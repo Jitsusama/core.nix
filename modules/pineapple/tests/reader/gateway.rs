@@ -4,8 +4,9 @@
 //! many rounds find it, in a folder of its own; the gateway is asked only
 //! to read, both searches in their detailed form; Slack's own API is never
 //! asked, nor Joel's phone told; a gateway that can't be signed in to
-//! writes its row of what waits in its own folder; and the reader refuses
-//! to go live over one.
+//! writes its row of what waits in its own folder; and the reader needs
+//! both the gateway and its sign-in. Live, it takes the live reader's
+//! place (gateway/live.rs).
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
@@ -24,7 +25,9 @@ use super::{
 };
 
 mod cut;
+mod live;
 mod pages;
+mod unread;
 
 /// Where the reader over a gateway keeps all it writes, under its home.
 const OWN: &str = "state/pineapple-gateway";
@@ -337,8 +340,8 @@ fn a_gateway_with_no_sign_in_to_give_writes_its_row_in_its_own_folder() {
     assert!(
         row["items"][0]["why"]
             .as_str()
-            .is_some_and(|why| why.contains("no Slack sign-in it can read")),
-        "for want of a sign-in, not a refused one: {row}"
+            .is_some_and(|why| why.contains("no tool gateway sign-in it can read")),
+        "for want of the gateway's sign-in, not a refused one: {row}"
     );
     assert!(
         !named.exists(),
@@ -429,9 +432,36 @@ struct Came {
     searched: Vec<Value>,
     journal: String,
     wrote_live: bool,
+    /// Its rows saying what a search read on past was never read.
+    missed: Value,
+    /// Each stop's record it kept, by its file's name.
+    stops: Vec<Value>,
+}
+
+/// Each stop's record kept in `folder`, by its file's name.
+fn kept_stops(folder: &Path) -> Vec<Value> {
+    let mut named: Vec<_> = std::fs::read_dir(folder)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().is_some_and(|it| it == "json"))
+        .collect();
+    named.sort();
+    named
+        .iter()
+        .filter_map(|path| std::fs::read_to_string(path).ok())
+        .filter_map(|record| serde_json::from_str(&record).ok())
+        .collect()
 }
 
 fn hearing(answer: fn(&str, &Value, u64) -> String, until: &Until) -> Came {
+    hearing_in(answer, until, |_| {})
+}
+
+/// What a reader over a fake gateway came to, as [`hearing`] says, from
+/// its own folder as `before` leaves it.
+fn hearing_in(answer: fn(&str, &Value, u64) -> String, until: &Until, before: fn(&Path)) -> Came {
     let (origin, _) = stand_in();
     let (url, called) = serving(answer);
     let home = home();
@@ -450,6 +480,7 @@ fn hearing(answer: fn(&str, &Value, u64) -> String, until: &Until) -> Came {
             json!({ "since": format!("{}.000000", now - 600), "keys": [], "read_at": read_at });
         std::fs::write(own.join("judged.json"), kept.to_string()).expect("what it judged");
     }
+    before(&own);
     let searches = || {
         called
             .lock()
@@ -509,6 +540,8 @@ fn hearing(answer: fn(&str, &Value, u64) -> String, until: &Until) -> Came {
         searched: asks,
         journal: journal(&home),
         wrote_live: named.exists(),
+        missed: read("missed.json"),
+        stops: kept_stops(&own.join("stops")),
     };
     std::fs::remove_dir_all(&home).expect("the case's home goes");
     came
@@ -606,7 +639,7 @@ fn a_search_slack_refuses_stops_the_round_though_the_other_reads() {
     );
     assert!(
         came.why
-            .starts_with("Slack refused the safe word's sign-in"),
+            .starts_with("The tool gateway or Slack behind it refused the safe word's sign-in"),
         "a refusal is told as one, not as a search that can't be read: {}",
         came.why
     );
@@ -622,9 +655,10 @@ fn a_search_that_blinks_beside_one_that_cant_be_read_isnt_told_as_both() {
                 said(tool, now)
             } else if asked["query"] == "pineapple" {
                 poisoned()
-            } else if TAGS.fetch_add(1, Ordering::SeqCst) < 2 {
+            } else if TAGS.fetch_add(1, Ordering::SeqCst) != 2 {
                 said(tool, now)
             } else {
+                // The tag's search blinks in one round alone.
                 format!("{FAILS}Slack said: ratelimited")
             }
         },
@@ -637,7 +671,51 @@ fn a_search_that_blinks_beside_one_that_cant_be_read_isnt_told_as_both() {
     assert!(
         came.why
             .contains("search of Slack for pineapple can't be read"),
-        "rounds whose tag search wasn't asked leave the row as it was: {}",
+        "a round whose tag search blinked once leaves the row as it was: {}",
+        came.why
+    );
+}
+
+#[test]
+fn a_first_page_blinking_beside_a_search_that_cant_be_read_leaves_the_row_as_it_was() {
+    static TAGS: AtomicUsize = AtomicUsize::new(0);
+    static BLINKS: AtomicUsize = AtomicUsize::new(0);
+    let came = hearing(
+        |tool, asked, now| {
+            if tool != "slack_search_public_and_private" {
+                said(tool, now)
+            } else if asked["query"] == "pineapple" {
+                poisoned()
+            } else if TAGS.fetch_add(1, Ordering::SeqCst) < 3 {
+                // Both can't be read until the row says so, then the
+                // tag's first page blinks in every round.
+                poisoned()
+            } else {
+                if cut::opens(asked) {
+                    BLINKS.fetch_add(1, Ordering::SeqCst);
+                }
+                format!("{FAILS}Slack said: ratelimited")
+            }
+        },
+        // Told, then rounds enough to tell it anew.
+        &Until {
+            judging: 0,
+            asks: 30,
+            read_at: None,
+        },
+    );
+    // A blink heard narrows the row in its second round, so four blinks
+    // leave it room to.
+    assert!(
+        BLINKS.load(Ordering::SeqCst) >= 4,
+        "four rounds blinked after the row said both: {}",
+        came.journal
+    );
+    assert!(
+        came.why
+            .contains("Slack's answers to the safe word can't be read"),
+        "a search whose first page blinks, waiting on no later page, isn't heard, so the \
+         row still says both can't be read: {}",
         came.why
     );
 }
@@ -686,18 +764,8 @@ fn ran(args: &[&str]) -> (Option<i32>, String) {
 }
 
 #[test]
-fn a_reader_over_a_gateway_is_never_live_and_needs_its_sign_in() {
+fn a_reader_over_a_gateway_needs_its_sign_in() {
     let url = "http://127.0.0.1:9/mcp";
-    let (code, said) = ran(&["--live", "--gateway", url, "--gateway-sign-in", "x"]);
-    assert_eq!(
-        code,
-        Some(64),
-        "live over a gateway is asked wrongly: {said}"
-    );
-    assert!(
-        said.contains("--live isn't taken with --gateway"),
-        "it says why: {said}"
-    );
     for half in [["--gateway", url], ["--gateway-sign-in", "x"]] {
         let (code, said) = ran(&half);
         assert_eq!(code, Some(64), "{half:?} alone is asked wrongly: {said}");

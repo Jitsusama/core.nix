@@ -7,8 +7,9 @@ pragma ComponentBehavior: Bound
 // them, whether they're muted, sharing their screen or showing their
 // camera; who's calling while a ring lasts, the calls missed, Joel's
 // room's link, and Recent, the calls ended and missed lately. Joining,
-// leaving, muting, sharing and opening the room are asks of the daemon,
-// which does each through Tuple's own command.
+// leaving, muting, sharing, showing or stopping his camera and opening
+// the room are asks of the daemon, which does each through Tuple's own
+// command.
 //
 // Tuple on Linux doesn't yet tell Joel when someone joins or leaves, or
 // that everyone else has left, so the shell does, as notices of Tuple's,
@@ -117,9 +118,9 @@ Singleton {
     // found anywhere by name and as Tuple's own acts in Programs › Tuple
     // (Calls.qml). A ringing call's window, where it's answered, comes
     // first; in a call, its window while it has one, whether Joel's Muted
-    // there, sharing while nothing is shared, and leaving; out of one,
-    // opening Joel's room, or joining the call whose link was just copied;
-    // and copying his room's link once it's known.
+    // there, sharing while nothing is shared, his camera, and leaving; out
+    // of one, opening Joel's room, or joining the call whose link was just
+    // copied; and copying his room's link once it's known.
     readonly property var controls: {
         // Named and found as the launcher's vocabulary says (Words.qml),
         // never by the program's name, which only finds them.
@@ -164,6 +165,15 @@ Singleton {
                     later: true,
                     run: () => root.share()
                 }));
+            // Tuple's camera picker, where Joel picks a camera and shares
+            // it, or stopping the camera once it's in the call.
+            rows.push(Object.assign(said("tuple:camera", filming ? "on" : ""), {
+                glyph: Theme.glyph.camera,
+                hue: "action",
+                note: filming ? "" : "pick one in Tuple's window to share it",
+                later: true,
+                run: () => root.camera(!filming)
+            }));
             rows.push(Object.assign(said("tuple:leave"), {
                 glyph: Theme.glyph.hangUp,
                 hue: "action",
@@ -234,6 +244,45 @@ Singleton {
         calls.ask({ ask: "share" });
     }
 
+    // Opens Tuple's camera picker, which shares nothing until Joel picks
+    // there, or stops his camera; Tuple's stream says which it is after.
+    // The launcher has closed by the time Tuple answers, so a refusal, or
+    // no answer at all with tuple-call gone, is told as a notice of
+    // Tuple's, with the reason given. A stop that didn't happen is kept,
+    // one at a time, offering the call's window while Tuple has one, where
+    // the camera stops by hand, since his face may still be in the call,
+    // until the call ends or his camera is said off; a picker that didn't
+    // open isn't kept, as nothing was shared, and one Tuple hasn't
+    // answered in time is told as not yet said open, since it may be open
+    // all the same. By the time Tuple answers, the call may be over or his
+    // camera said off, and then nothing's told.
+    function camera(on) {
+        calls.ask({ ask: "camera", on: on }, answer => {
+            if (answer?.done === true)
+                return;
+            const why = answer === null ? "Tuple's call daemon didn't answer"
+                : String(answer?.error?.message ?? answer?.error?.code ?? "It wasn't done");
+            console.warn(`tuple: the camera's ${on ? "picker" : "stop"} wasn't done: ${why}`);
+            if (!calling)
+                return;
+            if (on)
+                notify(answer?.error?.code === "unanswered"
+                    ? "Tuple hasn't said its camera picker opened"
+                    : "Tuple's camera picker didn't open", plain(why), [], false);
+            else if (filming) {
+                withdraw("camera");
+                notify("Your camera may still be in the call", plain(why),
+                    windowed ? [["camera", "Go To the Call"]] : [], true, ["camera"]);
+            }
+        });
+    }
+
+    // Text from elsewhere, as a notice's body says it rather than reading
+    // it as markup, which the notices daemon does.
+    function plain(text) {
+        return String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
     // Once Tuple says it's done, the record says so.
     function mute(quiet) {
         calls.ask({ ask: "mute", muted: quiet });
@@ -275,6 +324,8 @@ Singleton {
         call = now;
         if (was && !is)
             withdraw("leave");
+        if ((was && !is) || (before.camera && !now.camera))
+            withdraw("camera");
         if (before.ringing !== null && now.ringing === null)
             withdraw("show");
         const ring = now.ringing;
@@ -314,7 +365,8 @@ Singleton {
     property var offering: ({})
 
     // Puts away Tuple's notices that offer what can't be done any more,
-    // leaving a call that's over or showing a ring that's stopped. Each is
+    // leaving a call that's over, showing a ring that's stopped, or
+    // stopping a camera that's off or whose call is over. Each is
     // closed as its program would close it, by its id, which counts it
     // read.
     function withdraw(key) {
@@ -327,18 +379,26 @@ Singleton {
                 });
     }
 
-    function notify(summary, body, actions, kept) {
+    // Tells a notice of Tuple's, offering each action's key, or the keys
+    // given, to be withdrawn by; one offering a key with no action is
+    // waited on all the same, so its id is held until it closes. The
+    // text follows a `--`, so words from elsewhere opening with a dash
+    // aren't read as notify-send's flags.
+    function notify(summary, body, actions, kept, keys) {
+        const offers = keys ?? actions.map(([key]) => key);
         notice.createObject(root, {
-            offers: actions.map(([key]) => key),
+            offers: offers,
             command: ["notify-send", "--app-name=Tuple", "--print-id"]
                 .concat(kept ? [] : ["--transient"])
+                .concat(actions.length === 0 && offers.length > 0 ? ["--wait"] : [])
                 .concat(actions.map(([key, label]) => `--action=${key}=${label}`))
-                .concat([summary], body === "" ? [] : [body])
+                .concat(["--", summary], body === "" ? [] : [body])
         });
     }
 
-    // A notice of Tuple's, which notify-send waits on while it has actions,
-    // printing its id as it's shown and then the action Joel picks.
+    // A notice of Tuple's, which notify-send waits on while it has actions
+    // or is told to wait, printing its id as it's shown and then the
+    // action Joel picks.
     Component {
         id: notice
 
@@ -359,7 +419,7 @@ Singleton {
                                 { [said]: asking.offers });
                     } else if (said === "leave")
                         root.leave();
-                    else if (said === "show")
+                    else if (said === "show" || said === "camera")
                         root.show();
                 }
             }

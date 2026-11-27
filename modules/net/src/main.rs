@@ -16,6 +16,8 @@
 //! ```text
 //! net                             each source, the devices, and what's worth a look
 //! net devices [NAME]              every device, or one in full (views.rs)
+//! net devices NAME press KEY      press a key on a TV's remote (television/)
+//! net devices NAME wake           wake a TV from standby (television/)
 //! net daemon                      keep the home network's record
 //! net switch-reader ADDRESS       read the switch for the daemon (switch_reader.rs)
 //! net uplink                      who filled this machine's uplink just now (uplink/)
@@ -34,6 +36,7 @@ mod room;
 mod serve;
 mod sources;
 mod switch_reader;
+mod television;
 mod time;
 // Its sockets are read through Linux's sock_diag, which a Mac lacks.
 #[cfg(target_os = "linux")]
@@ -82,6 +85,14 @@ fn run(context: &Context) -> Result<(), Failure> {
             show(context, &views::device_json(&network, device), || {
                 views::device(&network, device, now(), &context.out, context.room)
             })
+        }
+        ["devices" | "device", name, "press", key] => {
+            let network = record()?;
+            television::press(context, views::find(&network, name)?, key)
+        }
+        ["devices" | "device", name, "wake"] => {
+            let network = record()?;
+            television::wake(context, views::find(&network, name)?)
         }
         _ => Err(Failure::new(Exit::Usage, "net doesn't know those words").try_this("net --help")),
     }

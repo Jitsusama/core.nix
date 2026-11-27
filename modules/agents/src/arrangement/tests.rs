@@ -1,3 +1,10 @@
+//! The arrangement's cases, apart from its code.
+//!
+//! Long because each is one rule of where a window goes back, when its
+//! place is let go, and when the daemon wakes to keep it, built on this
+//! file's fixtures (`held`, `desk_parts`, `untold`, `in_kitty` and
+//! `session`), which a split by rule would have to share across files.
+
 use super::*;
 
 fn held(records: &Value) -> Held {
@@ -574,6 +581,79 @@ fn a_closed_mark_stamped_ahead_of_now_counts_from_now() {
 }
 
 #[test]
+fn a_closed_mark_that_isnt_a_time_counts_from_now() {
+    let at = 1_000_000;
+    let grace = u64::try_from(CLOSED_FOR.as_millis()).expect("minutes fit");
+    let kept = Arrangement::of(&json!({"v": 1,
+            "boots": {"this": {"s-shut": {"column": 4, "closed": "soon"},
+                "s-parked": {"column": 5, "closed": -3},
+                "s-idle": {"column": 6, "closed": 1.5}}}}));
+    let shut = Windowless {
+        closed: HashSet::from(["s-shut".to_owned()]),
+        heard: HashSet::from(["s-parked".to_owned()]),
+        ..Windowless::default()
+    };
+    let marked = kept.kept("this", "", Map::new(), Vec::new(), &shut, at);
+    assert_eq!(
+        marked.boots["this"],
+        json!({"s-shut": {"column": 4, "closed": at},
+            "s-parked": {"column": 5, "closed": at},
+            "s-idle": {"column": 6, "closed": at}}),
+        "a mark that isn't a time in ms, as a hand edit may leave, is stamped now, \
+         rather than holding its place for good"
+    );
+    assert_eq!(
+        marked.let_go("this", at + grace).boots["this"],
+        json!({}),
+        "so each goes a boot's end from now"
+    );
+    assert_eq!(
+        kept.let_go("this", at).boots["this"],
+        marked.boots["this"],
+        "and with no window listed it's stamped now the same"
+    );
+}
+
+#[test]
+fn a_closed_mark_cleared_by_hand_is_no_mark() {
+    let at = 1_000_000;
+    let grace = u64::try_from(CLOSED_FOR.as_millis()).expect("minutes fit");
+    let kept = Arrangement::of(&json!({"v": 1,
+            "boots": {"this": {"s-null": {"column": 4, "closed": null},
+                "s-false": {"column": 5, "closed": false}}}}));
+    let cleared = json!({"s-null": {"column": 4}, "s-false": {"column": 5}});
+    assert_eq!(
+        kept.let_go("this", at + grace).boots["this"],
+        cleared,
+        "a mark set to null or false, as a hand edit clearing it leaves, is no mark, \
+         so its place stays"
+    );
+    let heard = Windowless {
+        heard: HashSet::from(["s-null".to_owned(), "s-false".to_owned()]),
+        ..Windowless::default()
+    };
+    assert_eq!(
+        kept.kept("this", "", Map::new(), Vec::new(), &heard, at + grace)
+            .boots["this"],
+        cleared,
+        "and the same while a window is listed"
+    );
+    let gone = Windowless {
+        closed: HashSet::from(["s-null".to_owned()]),
+        unsure: HashSet::from(["s-false".to_owned()]),
+        ..Windowless::default()
+    };
+    assert_eq!(
+        kept.kept("this", "", Map::new(), Vec::new(), &gone, at)
+            .boots["this"],
+        json!({"s-null": {"column": 4, "closed": at},
+            "s-false": {"column": 5, "orphaned": true}}),
+        "one closed by hand since is marked afresh, and one whose terminal went is \
+         orphaned, neither held by the mark cleared"
+    );
+}
+
+#[test]
 fn let_go_takes_only_this_boots_places_due_and_counts_a_mark_ahead_from_now() {
     let at = 1_000_000;
     let grace = u64::try_from(CLOSED_FOR.as_millis()).expect("minutes fit");
@@ -753,6 +833,40 @@ fn places_are_kept_once_the_windows_are_still() {
     assert!(
         still.due(start + Duration::from_secs(72)),
         "and is kept then"
+    );
+    still.again(start + Duration::from_secs(90));
+    still.again(start + Duration::from_secs(95));
+    assert_eq!(
+        still.wait(start + Duration::from_secs(80)),
+        Some(Duration::from_secs(10)),
+        "of two let-gos asked, the sooner first, the later puts it off no further"
+    );
+    assert!(still.due(start + Duration::from_secs(90)), "and kept then");
+    still.moved(start + Duration::from_secs(100));
+    still.retry(start + Duration::from_secs(101));
+    still.retry(start + Duration::from_secs(111));
+    assert_eq!(
+        still.wait(start + Duration::from_secs(100)),
+        Some(Duration::from_secs(1)),
+        "a write tried again is waited for though the windows move, the sooner of two"
+    );
+    assert!(
+        !still.retried(start + Duration::from_secs(100)),
+        "a write tried again isn't due before its time"
+    );
+    assert!(
+        !still.due(start + Duration::from_secs(101))
+            && still.retried(start + Duration::from_secs(101)),
+        "and is due then, with nothing kept until the windows are still"
+    );
+    assert_eq!(
+        still.wait(start + Duration::from_secs(101)),
+        Some(Duration::from_secs(1)),
+        "tried, the windows' stillness is waited for alone"
+    );
+    assert!(
+        !still.retried(start + Duration::from_secs(102)),
+        "and nothing's tried again until it's asked"
     );
 }
 

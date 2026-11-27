@@ -4,13 +4,14 @@
 // check copies modules/quickshell/QueryKeys.js, Editing.js, Typing.js,
 // ListedKeys.js, DrawerPage.js, DrawerLines.js, DrawerRun.js, DrawerFigure.js, DrawerProse.js,
 // DrawerValue.js, Search.js, Reading.js, Changes.js,
-// LineEditing.js, Operators.js, Finding.js, Confirm.js and launcher/Headings.js beside this
-// file and runs
+// LineEditing.js, Operators.js, Finding.js, Confirm.js, KeyActs.js and launcher/Headings.js
+// beside this file and runs
 // `qml -platform offscreen query-keys.qml`.
 import QtQuick
 import "Editing.js" as Editing
 import "ListedKeys.js" as Listed
 import "KeyNames.js" as KeyNames
+import "KeyActs.js" as KeyActs
 import "QueryKeys.js" as Keys
 import "ModeMarks.js" as ModeMarks
 import "Typing.js" as Typing
@@ -29,6 +30,8 @@ import "Search.js" as Search
 import "launcher/Headings.js" as Headings
 
 QtObject {
+    id: root
+
     // What failed, said as the test ends, or as it throws.
     property var failures: []
 
@@ -1110,6 +1113,16 @@ QtObject {
         // looking for nothing would find it in place for ever.
         holds("a pattern of joiners alone finds nothing",
             Search.found("\u2060\u200b", "a-\u2060b"), []);
+        // A title's lines are its words broken where a space stood
+        // (Identifier.titleLines), so its wash reads each break as that
+        // space and washes across it, where any other text's break ends one.
+        const wash = { ink: "ink", ground: "ground" };
+        const washing = words => `<span style="color:ink;background-color:ground">${words}</span>`;
+        holds("a title's break is washed across as the space it stood for",
+            Search.washed("Drawing 2026-11-09\n10.12.03.svg", "11-09 10", wash, true),
+            `Drawing 2026-${washing("11-09<br>10")}.12.03.svg`);
+        holds("though another text's break still ends what's washed",
+            Search.washed("line 14\nline 15", "14 line", wash, false), "line 14<br>line 15");
         // How fast a drawer's search runs is drawer-search-pace.qml's.
     }
 
@@ -1284,6 +1297,50 @@ QtObject {
         for (const [what, pattern, want] of besideOn)
             holds(`the drawer's search runs on ${what}`,
                 Page.matchesIn(beside, pattern).map(match => [match.line, match.letter]), want);
+        // The spaces a line holds before its paragraph's break, or at its
+        // text's end, its `trailing`, are no letters the cursor stands on,
+        // but the wash takes them in, so the search reads them too: one
+        // begun in them lands on the line's last letter, the nearest it
+        // stands, and none runs past them into the next paragraph. Both
+        // paragraphs are one text's words, as a fact's value broken in two
+        // is, so only the break stops the search between them; a text of
+        // only spaces, and a wrapped one ending in them, land on the
+        // nearest letter there is.
+        const ending = (words, text, trailing) =>
+            ({ words, text, length: text.length, on: null, trailing });
+        const [ends, blank, wraps] = [{}, {}, {}];
+        const ended = [
+            laid(ending(ends, "Ends here", "  ")),
+            laid(ending(ends, "next", " ")),
+            laid(ending(blank, "", "   ")),
+            laid(part(wraps, "Wraps", " ")), laid(ending(wraps, "here", "  "))
+        ];
+        const endedOn = [
+            ["into the spaces before a paragraph's break", "here ", [[0, 5], [4, 0]]],
+            ["into the spaces at a text's end", "next ", [[1, 0]]],
+            ["landing on a line's last letter from the spaces it ends with", "  ",
+                [[0, 8], [2, 0], [4, 3]]],
+            ["so a space finds those once a line, beside its own", " ",
+                [[0, 4], [0, 8], [1, 3], [2, 0], [4, 0], [4, 3]]],
+            ["never past them", "here   ", []],
+            ["nor from them into the next paragraph", "here  n", []],
+            ["on a text of only spaces, at its line's start", "   ", [[2, 0]]],
+            ["across a wrap into the spaces its last line ends with", "ps here ", [[3, 3]]]
+        ];
+        for (const [what, pattern, want] of endedOn)
+            holds(`the drawer's search reads ${what}`,
+                Page.matchesIn(ended, pattern).map(match => [match.line, match.letter]), want);
+        // Each text the search reads ends with its own spaces and nothing
+        // joined after them, so a paragraph's are never read into the next
+        // however it would be joined.
+        holds("the drawer's search reads each paragraph to its spaces and no further",
+            Page.textsOf(ended).map(text => text.text),
+            ["Ends here  ", "next ", "   ", "Wraps here  "]);
+        // Two spaces a line ends with land on one letter, so the foot
+        // counts them once, as the cursor can stand there only once: from a
+        // cursor past them, a second count would show in both numbers.
+        holds("the drawer's foot counts a line's trailing matches once",
+            Page.found(ended, " ", 1, 3), { at: 3, of: 6 });
     }
 
     // What would change the drawer, which a page can't be: Vim's E21, as
@@ -1644,6 +1701,42 @@ QtObject {
             Value.besideText(opens, 200, width), "PDF \u00b7 HTML \u00b7 2 more");
         holds("any other value is measured whole", Value.besideText({ value: 42,
             valueItems: kinds, between: " " }, 60, width), "42");
+        // The facts a drawer draws: a fact only saying its title again goes,
+        // as a server's name would right under it (VKCF3Z, 2026-11-03).
+        const given = [{ label: "Name", value: "kitty" }, null,
+            { label: "Kind", value: "Terminal" }, { label: "Port", value: 8080 }];
+        // A throw is said as the case's answer, so a fact read before it's
+        // known to be there fails its case by name rather than the run.
+        const shownLabels = (facts, title) => {
+            try {
+                return Value.factsDrawn(facts, title).map(fact => fact.label);
+            } catch (error) {
+                return `threw ${error}`;
+            }
+        };
+        holds("a drawer draws every fact given in order, less one that isn't there",
+            shownLabels(given, "Ghostty"), ["Name", "Kind", "Port"]);
+        holds("less one whose value is its title", shownLabels(given, "kitty"),
+            ["Kind", "Port"]);
+        holds("a figure is compared as its text", shownLabels(given, "8080"),
+            ["Name", "Kind"]);
+        holds("a title only part of a value keeps it", shownLabels(given, "Term"),
+            ["Name", "Kind", "Port"]);
+        holds("and no facts given draws none", shownLabels(undefined, "kitty"), []);
+        // Facts with no value, given as nothing or as null, and one with a
+        // blank value. The titles "null" and "undefined" are what a value
+        // given as null, or not given at all, would read as were it made text
+        // without its fallback.
+        const valueless = [{ label: "Unset" }, { label: "Asked", value: null },
+            { label: "Blank", value: "" }];
+        holds("a fact given null is never taken for a title of null",
+            shownLabels(valueless, "null"), ["Unset", "Asked", "Blank"]);
+        holds("nor one given nothing for a title of undefined",
+            shownLabels(valueless, "undefined"), ["Unset", "Asked", "Blank"]);
+        holds("and under no title, every fact is drawn, a blank one too",
+            shownLabels(valueless, ""), ["Unset", "Asked", "Blank"]);
+        holds("but under no title still none that isn't there",
+            shownLabels([null, ...given, undefined], ""), ["Name", "Kind", "Port"]);
         // Where a fact's figure stands: a stroke of 100 that reads down to
         // 30, a spark of 100 that reads only whole (VKCF3Z, 2026-11-09).
         const stroke = { shape: "stroke", usual: 100, least: 30 };
@@ -1763,10 +1856,245 @@ QtObject {
             holds(`a drawer's prose: ${what}`,
                 JSON.stringify(Prose.lines({ text: words, styled }, wide, 5, width)),
                 JSON.stringify(want));
+        // A long body, as a notice whose sender wrote 34 kB in it (2026-11-25, its drawer
+        // 3.2 s to its frame), is laid no further than a line past the fifth, plain or
+        // styled: nothing beyond it is measured, and it's cut as a short one is.
+        const longProse = Array.from({ length: 6000 }, () => "aa").join(" ");
+        for (const [styledness, longText, longWant] of [
+            ["plain", longProse, "aa aa aa aa aa aa aa aa aa\u2026"],
+            ["styled", `<b>${longProse}</b>`, "<b>aa aa aa aa aa aa aa aa aa\u2026</b>"]
+        ]) {
+            let proseMeasured = 0;
+            const proseMeasuring = text => {
+                proseMeasured++;
+                return width(text);
+            };
+            const longLaid = Prose.lines({ text: longText, styled: styledness === "styled" }, 50,
+                5, proseMeasuring);
+            holds(`a drawer's prose, long and ${styledness}: cut as a short one is`,
+                JSON.stringify(longLaid), JSON.stringify({ said: longWant, cut: true }));
+            holds(`a drawer's prose, long and ${styledness}: none past its sixth line measured`,
+                proseMeasured < 40, true);
+        }
+        // Laid to a line, as the drawer lays to the line that fades, they're the first
+        // lines of the whole lay, paragraphs and empty ones counted as it counts them.
+        const paragraphs = "aa bb cc dd\n\nee ff gg\nhh";
+        for (const most of [1, 2, 3, 4, 5, 9])
+            holds(`a drawer's prose, laid to ${most} lines: the whole lay's first`,
+                JSON.stringify(Prose.laid(paragraphs, 50, width, most)),
+                JSON.stringify(Prose.laid(paragraphs, 50, width).slice(0, most)));
         for (const [what, figure, lines, room, under, want] of places)
             holds(`a figure's place: ${what}`,
                 JSON.stringify(Figure.place(figure, lines, room, under)),
                 JSON.stringify(want));
+    }
+
+    // Whether a key acted (KeyActs.acts), from what the table reads each
+    // of `keys` as, in turn from rest, the last the one asked of, in
+    // `mode` on a line holding `text`, a prompt's words where `words`,
+    // with how else the line stood: by default with a row to go into, a
+    // place above, a selection to take back and an ask taking answers.
+    function acting(keys, mode, line = {}) {
+        let standing = Keys.rest();
+        let read = null;
+        for (const key of keys) {
+            read = Keys.read(standing, key, mode, line.words ?? false);
+            standing = read.standing;
+        }
+        return KeyActs.acts(read, Object.assign({ alone: false, registering: false,
+            answering: false, answerTaken: true, repeated: false, operated: false, commands: false,
+            drawerHere: false, intoHere: () => true, upHere: true, reselectHere: true, mode,
+            fillLeaves: () => false, text: "slack" }, line));
+    }
+
+    // Whether a key that acted only moved through the rows (KeyActs.moves),
+    // by the keys and mode and where Tab goes (`intoHere`).
+    function moving(keys, mode, intoHere = () => true) {
+        let standing = Keys.rest();
+        let read = null;
+        for (const key of keys) {
+            read = Keys.read(standing, key, mode, false);
+            standing = read.standing;
+        }
+        return KeyActs.moves(read.act, { mode, intoHere });
+    }
+
+    function keysMoving(holds) {
+        // [what, keys, mode, where Tab goes, moved]
+        const cases = [
+            ["j in normal", ["j"], "normal", () => true, true],
+            ["Down on the find", ["Down"], "find", () => true, true],
+            // The find's Tab with nowhere to go goes on to the next row,
+            // as Down does (Launcher.qml's tabbedIn).
+            ["Tab on the find going on to the next row", ["Tab"], "find", () => false, true],
+            ["Tab on the find going into a row", ["Tab"], "find", () => true, false],
+            ["Tab in normal, which only says it can't go in", ["Tab"], "normal", () => false,
+                false],
+            ["Return on the find", ["Return"], "find", () => false, false],
+            ["j, asking nothing of where Tab would go", ["j"], "normal",
+                () => { throw new Error("intoHere asked of j"); }, true]
+        ];
+        for (const [what, keys, mode, intoHere, moved] of cases)
+            holds(`${what} ${moved ? "only moves" : "does more than move"}`,
+                orThrown(() => moving(keys, mode, intoHere)), moved);
+    }
+
+    // What `asked` gives, or what it threw, said as the case's answer, so a
+    // guard asked of a key it shouldn't be fails that case by name and the
+    // cases after it still run.
+    function orThrown(asked) {
+        try {
+            return asked();
+        } catch (error) {
+            return `threw ${error}`;
+        }
+    }
+
+    function keysActing(holds) {
+        // [what, keys, mode, line]
+        const idle = [
+            ["a letter typed into the find", ["a"], "find", {}],
+            ["Space typed into the find", ["Space"], "find", {}],
+            ["Shift+Space, typing a space as Space does", ["Shift+Space"], "find", {}],
+            ["Shift+Left, the field's own", ["Shift+Left"], "find", {}],
+            ["Alt+a, the field's own", ["Alt+a"], "find", {}],
+            ["a key the table can't name", [""], "find", {}],
+            ["the caret moved on the find", ["Left"], "find", {}],
+            ["or to its start", ["Home"], "find", {}],
+            ["or right", ["Right"], "find", {}],
+            ["or to its end", ["End"], "find", {}],
+            ["Ctrl+H on a find holding text, as Backspace", ["Ctrl+h"], "find", {}],
+            ["Ctrl+Y completing the find", ["Ctrl+y"], "find", {}],
+            ["Backspace on a find holding text", ["Backspace"], "find", {}],
+            ["Ctrl+W on the find", ["Ctrl+w"], "find", {}],
+            ["Ctrl+U on the find", ["Ctrl+u"], "find", {}],
+            ["Backspace on an empty line in insert", ["Backspace"], "insert", { text: "" }],
+            ["a count begun", ["2"], "normal", {}],
+            ["a sequence begun", ["g"], "normal", {}],
+            ["Escape at rest in normal", ["Escape"], "normal", {}],
+            ["Escape letting a count go", ["2", "Escape"], "normal", {}],
+            ["a key meaning nothing in normal", ["Alt+z"], "normal", {}],
+            ["the drawer's key with no drawer out", ["Ctrl+w", "l"], "normal", {}],
+            ["l on a row, which only says the way in", ["l"], "normal", {}],
+            ["h on a row, which only says the way out", ["h"], "normal", {}],
+            ["Backspace on a row, as h", ["Backspace"], "normal", {}],
+            ["Left on a row, as h", ["Left"], "normal", {}],
+            ["q on a row, which only says how to close", ["q"], "normal", {}],
+            ["q in the drawer", ["q"], "page", {}],
+            ["x in the drawer, which only says E21", ["x"], "page", {}],
+            ["Tab in normal on a row with nothing to go into", ["Tab"], "normal",
+                { intoHere: () => false }],
+            ["- with nothing above", ["-"], "normal", { upHere: false }],
+            ["gv on the rows with nothing to take back", ["g", "v"], "normal",
+                { reselectHere: false }],
+            // The drawer's gv asks the word as Prompt.qml does, so a swap of
+            // what reselectHere reads fails here as well as in reselectsHere.
+            ["gv in the drawer with nothing chosen", ["g", "v"], "page",
+                { reselectHere: KeyActs.reselectHere("page", true, "") }],
+            ["l moving the caret on a prompt's words", ["l"], "normal", { words: true }],
+            // On words h is idle only as an edit (letterBack), not by the
+            // rows' outSaid, so it's held here apart from h on a row.
+            ["or h", ["h"], "normal", { words: true }],
+            ["or Backspace, as h", ["Backspace"], "normal", { words: true }],
+            ["or w", ["w"], "normal", { words: true }],
+            ["or b", ["b"], "normal", { words: true }],
+            ["or e", ["e"], "normal", { words: true }],
+            ["or 0", ["0"], "normal", { words: true }],
+            ["or $", ["$"], "normal", { words: true }],
+            ["x deleting a letter of them", ["x"], "normal", { words: true }],
+            ["or dw a word", ["d", "w"], "normal", { words: true }],
+            ["u undoing an edit of them", ["u"], "normal", { words: true }],
+            ["the operator again, swallowed after visual's", ["d"], "normal",
+                { operated: true }],
+            // d and y read as begun on their own, so these hold the guards
+            // by a key that would act without them.
+            ["or j, swallowed as it", ["j"], "normal", { operated: true }],
+            ["a key before an ask takes answers", ["y"], "normal",
+                { answering: true, answerTaken: false }],
+            ["or j", ["j"], "normal", { answering: true, answerTaken: false }],
+            ["a modifier alone, as the line asks", ["y"], "normal",
+                { alone: true, answering: true }],
+            ["Return naming a register after Ctrl+R", ["Return"], "insert",
+                { registering: true }],
+            // Where two guards disagree, the one first in acts' order
+            // wins, as Prompt.qml's modalKey hands the key on: what an ask
+            // leaves before a colon opening the command line.
+            ["a key the ask leaves, though it opens the command line", [":"], "normal",
+                { answering: true, answerTaken: false, commands: true }],
+            // A held key's repeats never answer an ask (modalKey), so one
+            // held from before the ask was ready does nothing as it repeats.
+            ["a held key's repeat, which the ask never takes", ["n"], "normal",
+                { answering: true, repeated: true }]
+        ];
+        for (const [what, keys, mode, line] of idle)
+            holds(`${what} acts on nothing`, orThrown(() => acting(keys, mode, line)), false);
+        const acted = [
+            ["Backspace on an empty find, leaving it", ["Backspace"], "find", { text: "" }],
+            ["Escape on the find", ["Escape"], "find", {}],
+            ["Tab into a row", ["Tab"], "find", {}],
+            ["Down on the find", ["Down"], "find", {}],
+            ["Return on the find", ["Return"], "find", {}],
+            ["j in normal", ["j"], "normal", {}],
+            ["Tab in normal into a row with parts", ["Tab"], "normal", {}],
+            ["Tab on the find, which goes in or on to the next row", ["Tab"], "find",
+                { intoHere: () => false }],
+            // Where Tab goes is asked only of Tab, as the launcher runs a
+            // search held back before it answers (Launcher.qml's intoHere).
+            ["j, asking nothing of where Tab would go", ["j"], "normal",
+                { intoHere: () => { throw new Error("intoHere asked of j"); } }],
+            ["- going up", ["-"], "normal", {}],
+            ["gv taking a selection back", ["g", "v"], "normal", {}],
+            ["gv in the drawer taking its last choice back", ["g", "v"], "page",
+                { reselectHere: KeyActs.reselectHere("page", false, "pageVisual") }],
+            ["j on a prompt's words, still the rows'", ["j"], "normal", { words: true }],
+            ["cw on a prompt's words, going into insert as i does", ["c", "w"], "normal",
+                { words: true }],
+            ["d ending the drawer's choice, though it says E21", ["d"], "pageVisual", {}],
+            ["or c ending its choice of lines", ["c"], "pageVisualLine", {}],
+            ["gg's second g", ["g", "g"], "normal", {}],
+            ["the drawer's key with a drawer out", ["Ctrl+w", "l"], "normal",
+                { drawerHere: true }],
+            ["a key the ask takes, whatever it is", ["Alt+z"], "normal",
+                { answering: true }],
+            ["a key opening the command line, whatever the table reads it as", ["a"],
+                "find", { commands: true }],
+            // An ask taking a key, or a colon opening the line, acts before
+            // the key's word is read, so neither says only E21 nor has
+            // nowhere to go.
+            ["q the ask takes, though q only says how to close", ["q"], "normal",
+                { answering: true }],
+            // The ask answers before visual's operator is let go, as
+            // modalKey does, so the operator again is the ask's answer.
+            ["the operator again, which the ask takes as its answer", ["d"], "normal",
+                { operated: true, answering: true }],
+            ["a colon opening the line from Tab with nowhere to go", ["Tab"], "normal",
+                { commands: true, intoHere: () => false }],
+            // Ctrl+Y on a command's row in a place puts its start in the
+            // field out at the top (Launcher.qml's fill), leaving the place.
+            ["Ctrl+Y filling a command's start, out of a place", ["Ctrl+y"], "find",
+                { fillLeaves: () => true }],
+            ["j, asking nothing of where Ctrl+Y would go", ["j"], "normal",
+                { fillLeaves: () => { throw new Error("fillLeaves asked of j"); } }]
+        ];
+        for (const [what, keys, mode, line] of acted)
+            holds(`${what} acts`, orThrown(() => acting(keys, mode, line)), true);
+    }
+
+    // Whether gv has something to take back (KeyActs.reselectHere), by
+    // where the keys are, whether the rows hold a selection and the kind
+    // the drawer last chose by.
+    function reselectsHere(holds) {
+        // [what, mode, a selection on the rows, the drawer's last kind, has]
+        const cases = [
+            ["the rows with a selection", "normal", true, "", true],
+            ["the rows with none, whatever the drawer chose", "normal", false, "pageVisual",
+                false],
+            ["the drawer having chosen", "page", false, "pageVisual", true],
+            ["the drawer with nothing chosen, whatever the rows hold", "page", true, "", false]
+        ];
+        for (const [what, mode, rows, chosen, has] of cases)
+            holds(`gv on ${what} has ${has ? "something" : "nothing"} to take back`,
+                KeyActs.reselectHere(mode, rows, chosen), has);
     }
 
     // How tall a drawer's preview stands, on a pitch of 24, two beats of
@@ -1921,6 +2249,25 @@ QtObject {
         // What a laid line runs on into the next with (DrawerLines.runsOn),
         // from all it holds to the next line past the letters it keeps:
         // what Qt wrapped at, or null for a break however Qt keeps it.
+        // A title's break stands for the space it was laid at, so a search
+        // runs on across it as across a wrap, as the title's wash does.
+        holds("a laid line of a title runs on with the space its break stood for",
+            Lines.runsOn("Drawing 2026-11-09\u2028", 18, true), " ");
+        holds("and with none at another text's break",
+            Lines.runsOn("Drawing 2026-11-09\u2028", 18, false), null);
+        // The break those are read at is the one Qt gives: a title's "\n"
+        // goes into its reader, a rich text, as <br>, and the reader gives
+        // it back as a line separator, not a newline (Drawer.qml's words).
+        const titleReader = Qt.createQmlObject(
+            "import QtQuick; TextEdit { textFormat: TextEdit.RichText }", root);
+        titleReader.text = `<div style="white-space:pre-wrap">`
+            + `${Search.escaped("Drawing 2026-11-09\n10.12.03.svg")}</div>`;
+        const atBreak = titleReader.getText(0, 19);
+        holds("a title's reader gives its break back as a line separator", atBreak,
+            "Drawing 2026-11-09\u2028");
+        holds("which a search runs on across with the space it stood for",
+            Lines.runsOn(atBreak, 18, true), " ");
+        titleReader.destroy();
         const runsOn = [
             ["a space wrapped at", "Sparkling ", 9, " "],
             ["nothing at a zero-width space", "Server time.\u200b", 13, ""],
@@ -1931,6 +2278,19 @@ QtObject {
         ];
         for (const [what, raw, kept, want] of runsOn)
             holds(`a laid line runs on with ${what}`, Lines.runsOn(raw, kept), want);
+        // What a laid line that ends its paragraph or its text holds past
+        // the letters it keeps, before its break (DrawerLines.trailing),
+        // which the wash takes in and so the search reads.
+        const trailing = [
+            ["the spaces before a plain text's break", "ends  \n", 4, "  "],
+            ["the spaces before a log's line", "line 14 \u2028", 7, " "],
+            ["the spaces before a styled text's", "end \u2029", 3, " "],
+            ["the spaces at a text's end", "end ", 3, " "],
+            ["nothing where its break follows its letters", "end\u2029", 3, ""],
+            ["nothing of the next paragraph's", "one\n two", 3, ""]
+        ];
+        for (const [what, raw, kept, want] of trailing)
+            holds(`a laid line ends with ${what}`, Lines.trailing(raw, kept), want);
         // How pieces become laid lines (DrawerLines.linesOf): those sharing
         // a baseline one line, its parts left to right, each keeping what
         // it wrapped at, which a search runs on with (DrawerPage.textsOf).
@@ -2886,6 +3246,9 @@ QtObject {
         drawerFaces(holds);
         drawerValueLines(holds);
         drawerPreviewHeights(holds);
+        keysActing(holds);
+        keysMoving(holds);
+        reselectsHere(holds);
 
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);

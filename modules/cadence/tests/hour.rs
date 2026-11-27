@@ -3,6 +3,7 @@
 //! the run that sends the card may keep the hour or owe anyone its drag,
 //! since a look by hand, missing the timer's checkouts, reads differently.
 
+use std::fmt::Write;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
@@ -71,6 +72,10 @@ fn a_look_by_hand_prints_the_card_and_keeps_and_tells_nothing() {
         card.contains("the backup notice stayed up after later runs succeeded · 88LQC0"),
         "the look didn't print the open miss: {card}"
     );
+    assert!(
+        !said.contains("the hour kept can't be read"),
+        "a first hour, with nothing kept, said what it kept can't be read: {said}"
+    );
     assert_eq!(
         files(account.path()),
         before,
@@ -79,10 +84,6 @@ fn a_look_by_hand_prints_the_card_and_keeps_and_tells_nothing() {
     );
 }
 
-/// A miss renamed in the ledger, or cut from it, leaves the misses unjudged
-/// the hour it goes, since the hour can't say whether it was fixed; the
-/// hour after reads the ledger as it now stands, so one rename doesn't
-/// leave them unjudged for good.
 #[test]
 fn the_card_counts_the_pains_the_hearer_summed_up() {
     let account = account();
@@ -106,6 +107,10 @@ fn the_card_counts_the_pains_the_hearer_summed_up() {
     );
 }
 
+/// A miss renamed in the ledger, or cut from it, leaves the misses unjudged
+/// the hour it goes, since the hour can't say whether it was fixed; the
+/// hour after reads the ledger as it now stands, so one rename doesn't
+/// leave them unjudged for good.
 #[test]
 fn a_miss_gone_from_the_ledger_leaves_one_hour_unjudged() {
     let account = account();
@@ -147,6 +152,57 @@ fn a_miss_gone_from_the_ledger_leaves_one_hour_unjudged() {
     );
 }
 
+/// A miss open last hour that its owner has since said was none leaves the
+/// open misses with its reason shown, and Joel is never told it's fixed:
+/// it wasn't, and nothing catches it if it comes back.
+#[test]
+fn a_miss_said_none_closes_with_why_and_is_never_told_fixed() {
+    let account = account();
+    let kept = account.path().join("state/cadence");
+    fs::create_dir_all(&kept).expect("cadence's folder");
+    fs::write(
+        kept.join("hour.json"),
+        r#"{"open": ["the backup notice stayed up after later runs succeeded · 88LQC0"]}"#,
+    )
+    .expect("last hour");
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("a clock past 1970")
+        .as_millis();
+    let said = MISS.replace(
+        r#""owner""#,
+        &format!(r#""none": "a notice it meant to keep", "none_at_ms": {now}, "owner""#),
+    );
+    fs::write(
+        account.path().join("state/mission/misses.jsonl"),
+        format!("{said}\n"),
+    )
+    .expect("the miss said none");
+
+    let ran = hour(account.path(), &["--to", "WCJQSG"]);
+    let stderr = String::from_utf8_lossy(&ran.stderr);
+    assert!(ran.status.success(), "cadence failed: {stderr}");
+    let card = String::from_utf8_lossy(&ran.stdout);
+    assert!(
+        card.contains("a notice it meant to keep") && !card.contains("For Joel"),
+        "a miss said none was told fixed, or its reason wasn't shown: {card}"
+    );
+    // Judged, and none open: an hour that judged nothing would tell no one
+    // it was fixed either, so the misses' own line says this one judged.
+    assert!(
+        card.contains(
+            "✓ misses Joel found himself, with no check yet running here to catch the \
+             next: 0, at most 0"
+        ) && !card.contains("Why didn't our checks catch these?"),
+        "a miss said none was still listed open, or the misses went unjudged: {card}"
+    );
+    let carried = fs::read_to_string(kept.join("hour.json")).expect("the hour kept");
+    assert!(
+        !carried.contains("after later runs succeeded"),
+        "a miss said none was carried open: {carried}"
+    );
+}
+
 /// A ledger torn mid-write names no miss gone, so the hour carries every
 /// one open last hour, and the one that closes later is still told fixed.
 #[test]
@@ -177,6 +233,99 @@ fn a_torn_ledger_leaves_the_misses_unjudged_and_carried() {
     assert!(
         carried.contains("as first written"),
         "a torn ledger dropped a miss open last hour: {carried}"
+    );
+}
+
+/// A last hour kept that's there but won't read is said, torn or not text
+/// alike, and its hour's asks are unread on the card, as starting from
+/// nothing forgets what the hour saw of the asks.
+#[test]
+fn a_last_hour_that_wont_read_is_said() {
+    for last in [&b"{\"asks\":"[..], b"{\"open\": [\"\xff\"]}"] {
+        let account = account();
+        let kept = account.path().join("state/cadence");
+        fs::create_dir_all(&kept).expect("cadence's folder");
+        fs::write(kept.join("hour.json"), last).expect("last hour");
+
+        let ran = hour(account.path(), &[]);
+        let said = String::from_utf8_lossy(&ran.stderr);
+        assert!(ran.status.success(), "cadence failed: {said}");
+        assert!(
+            said.contains("the hour kept can't be read, so it starts from nothing"),
+            "a last hour that won't read went unsaid: {said}"
+        );
+        let card = String::from_utf8_lossy(&ran.stdout);
+        assert!(
+            card.contains("the asks list unread: what the last hour saw of it can't be read"),
+            "an hour starting from nothing read the asks against nothing: {card}"
+        );
+    }
+}
+
+/// What one hour sending its card saw of the asks list guards the next, so
+/// a list written over between them is unread, not none of his asks.
+#[test]
+fn what_an_hour_saw_of_the_asks_guards_the_next() {
+    let account = account();
+    let asks = account.path().join("state/mission/asks.jsonl");
+    let records = (1..=4).fold(String::new(), |mut text, day| {
+        let _ = writeln!(
+            text,
+            "{{\"at\":\"2026-11-1{day}T10:00:00-05:00\",\"words\":\"ask {day}\"}}"
+        );
+        text
+    });
+    fs::write(&asks, records).expect("the asks list");
+    let ran = hour(account.path(), &["--to", "WCJQSG"]);
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(ran.status.success(), "cadence failed: {said}");
+    let kept =
+        fs::read_to_string(account.path().join("state/cadence/hour.json")).expect("the hour kept");
+    assert!(
+        kept.contains(r#""asks":{"most":4"#),
+        "the hour didn't keep what it saw of the asks: {kept}"
+    );
+
+    fs::write(&asks, "{\"ts\": 1}\n").expect("the asks list written over");
+    let ran = hour(account.path(), &["--to", "WCJQSG"]);
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(ran.status.success(), "cadence failed: {said}");
+    let card = String::from_utf8_lossy(&ran.stdout);
+    assert!(
+        card.contains("the asks list unread: it holds no ask records, where 4 were read in it"),
+        "a list written over after an hour saw it was read: {card}"
+    );
+}
+
+/// An hour whose last hour won't read leaves the asks unread on its card,
+/// yet keeps what it saw of them, so the hour after it is guarded again.
+#[test]
+fn an_hour_after_one_that_wont_read_still_keeps_what_it_saw_of_the_asks() {
+    let account = account();
+    let kept = account.path().join("state/cadence");
+    fs::create_dir_all(&kept).expect("cadence's folder");
+    fs::write(kept.join("hour.json"), "{\"asks\":").expect("last hour");
+    let records = (1..=4).fold(String::new(), |mut text, day| {
+        let _ = writeln!(
+            text,
+            "{{\"at\":\"2026-11-1{day}T10:00:00-05:00\",\"words\":\"ask {day}\"}}"
+        );
+        text
+    });
+    let asks = account.path().join("state/mission/asks.jsonl");
+    fs::write(&asks, records).expect("the asks list");
+    let ran = hour(account.path(), &["--to", "WCJQSG"]);
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(ran.status.success(), "cadence failed: {said}");
+    let card = String::from_utf8_lossy(&ran.stdout);
+    assert!(
+        card.contains("the asks list unread: what the last hour saw of it can't be read"),
+        "an hour starting from nothing read the asks against nothing: {card}"
+    );
+    let kept = fs::read_to_string(kept.join("hour.json")).expect("the hour kept");
+    assert!(
+        kept.contains(r#""asks":{"most":4"#),
+        "an hour after one that wouldn't read kept nothing of the asks: {kept}"
     );
 }
 

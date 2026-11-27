@@ -2,7 +2,9 @@
 //! copier is named, and then refused before any secret is read; a copy
 //! marked sensitive, held in the foreground and cleared when its time is
 //! up; and that time 30 s unless told otherwise, as the fence's terms for
-//! copying ask.
+//! copying ask. A copy goes with the daemon however it ends, since the
+//! shell starts a new one at once, which knows of no copy to clear, and
+//! Joel would read the password as gone while it could still be pasted.
 
 use std::path::Path;
 
@@ -83,6 +85,47 @@ fn a_copy_clears_in_thirty_seconds_unless_told_otherwise() {
         "the copy clears {} ms after it was asked, not 30 s: {copied}",
         i128::from(clears) - i128::from(asked)
     );
+}
+
+#[test]
+fn a_copy_goes_as_the_daemon_ends() {
+    let mut running = held_copy("copy-ends");
+    running.close();
+    let started = std::time::Instant::now();
+    while !running.ended() {
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(20),
+            "the daemon outlived its channel"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    until("the copy goes with it", || !copier_runs(&running.copied()));
+}
+
+#[test]
+fn a_copy_goes_as_the_daemon_is_killed() {
+    let mut running = held_copy("copy-killed");
+    running.kill();
+    until("the copy goes with it", || !copier_runs(&running.copied()));
+}
+
+/// A daemon holding a copy far longer than a test takes, so only its
+/// ending can end the copy.
+fn held_copy(test: &str) -> Running {
+    let running = Running::with_env(
+        test,
+        &[("keeping", KEEPING)],
+        &[("PASSWORDS_CLEARS_MS", "600000")],
+    );
+    let mut client = running.client();
+    client.ask(&json!({"id": 1, "ask": "list", "asked": true}));
+    let copied = client.ask(&json!({"id": 2, "ask": "copy", "key": "entry:keeping:gh"}));
+    assert_eq!(copied["copied"], true, "{copied}");
+    until("the copier holds the password", || {
+        copier_runs(&running.copied())
+            && std::fs::read_to_string(running.copied()).is_ok_and(|held| held == "hunter2")
+    });
+    running
 }
 
 /// Milliseconds since the epoch, as the daemon tells a clear time.

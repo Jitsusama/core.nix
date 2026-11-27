@@ -170,20 +170,21 @@ pub(super) fn said_status(
             // Each holder hangs: its first line at the label's inset, the
             // rest two further in, so where one ends and the next begins
             // reads at a glance.
-            let hung = layout::hung(says, INSET + layout::GAP, prose);
-            for (at, line) in hung.split('\n').enumerate() {
-                let lead = if at == 0 { INSET } else { 0 };
-                block.push(format!("{}{}", " ".repeat(lead), pen.role("text", line)));
-            }
+            block.extend(
+                layout::hanging(says, INSET, prose)
+                    .into_iter()
+                    .map(|line| pen.role("text", &line)),
+            );
         }
         blocks.push(block);
     }
     blocks
 }
 
-/// Each disk a guard watches and its last pass, as facts: a disk's band,
-/// what's free and when it reaches the next band, and the pass's when,
-/// where, band, end and what it freed.
+/// Each disk a guard watches and its passes, as facts: a disk's band,
+/// what's free and when it reaches the next band; the pass at work's
+/// start, disk, band and why; and the last pass's when, where, band, end
+/// and what it freed.
 fn disk_facts(status: &Value, now: f64) -> Vec<(String, String)> {
     let mut disks: Vec<(String, String)> = Vec::new();
     for filesystem in status["filesystems"].as_array().into_iter().flatten() {
@@ -209,6 +210,21 @@ fn disk_facts(status: &Value, now: f64) -> Vec<(String, String)> {
             disk["name"].as_str().unwrap_or("?").to_owned(),
             wear_said(disk),
         ));
+    }
+    // A pass reaching for room can judge for hours, so the one at work is
+    // told before the one that last ended.
+    let passing = &status["passing"];
+    if passing.is_object() {
+        let said = [
+            format!(
+                "since {} ago on {}",
+                span(now - passing["since"].as_f64().unwrap_or(now)),
+                passing["path"].as_str().unwrap_or("?")
+            ),
+            passing["band"].as_str().unwrap_or("?").to_owned(),
+            passing["why"].as_str().unwrap_or("?").to_owned(),
+        ];
+        disks.push(("pass at work".to_owned(), said.join(layout::ITEMS)));
     }
     let last = &status["last"];
     if last.is_object() {
@@ -386,6 +402,16 @@ fn said(entry: &Value) -> [String; 4] {
                     .map_or_else(String::new, |seconds| format!(" in {}", span(seconds))),
             ),
         ],
+        // A walk frees nothing, so its size is what it read from disk, and
+        // a walk that couldn't tell leaves it empty.
+        Some("walk") => [
+            "walked".to_owned(),
+            entry["step"].as_str().unwrap_or("?").to_owned(),
+            entry["read"].as_u64().map_or_else(String::new, size),
+            entry["seconds"]
+                .as_f64()
+                .map_or_else(String::new, |seconds| format!("in {}", span(seconds))),
+        ],
         Some("replaced") => [
             "swept".to_owned(),
             "replaced".to_owned(),
@@ -446,7 +472,12 @@ pub(super) fn journal(
                 let mut row = vec![
                     format!("{} ago", span(now - at)),
                     whose.to_owned(),
-                    entry["band"].as_str().unwrap_or("?").to_owned(),
+                    // A walk is of no one disk, so it has no band to say.
+                    match entry["band"].as_str() {
+                        Some(band) => band.to_owned(),
+                        None if entry["event"] == "walk" => String::new(),
+                        None => "?".to_owned(),
+                    },
                 ];
                 row.extend(said(&entry));
                 rows.push(row);

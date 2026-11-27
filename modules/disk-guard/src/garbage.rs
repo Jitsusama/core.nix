@@ -8,7 +8,10 @@
 //! than any moment is closed under referrers, and deleting it needs
 //! nothing newer.
 
-use crate::commands::{self, Job, Ran};
+mod ran;
+
+use ran::{failed, name, output};
+pub(crate) use ran::{last_words, ran};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::cmp::Reverse;
@@ -100,9 +103,14 @@ impl Listing {
 
     /// When it ended and how long it took, in wall seconds, if it says, so
     /// a guard started since rests after it as the one that listed would
-    /// have.
+    /// have. Its length counts at most what a listing may run, as the
+    /// guard that heard it counts it now: one saved before that could hold
+    /// the hours of a pass it was heard after, and rest the next a day.
     pub fn ended(&self) -> Option<(f64, f64)> {
-        self.took.map(|took| (self.listed_at + took, took))
+        self.took.map(|took| {
+            let took = took.clamp(0.0, LIST_TIMEOUT.as_secs_f64());
+            (self.listed_at + took, took)
+        })
     }
 }
 
@@ -171,17 +179,54 @@ pub const NEAR_MIN_FREE_EVERY: Duration = Duration::from_mins(5);
 
 /// The `min-free` Nix is set to on this machine, in bytes: what a
 /// person's own `nix.conf` says, which the guard reads rather than
-/// repeats. None where Nix can't say, which leaves the guard to its bands.
-pub fn min_free(nix: &Path) -> Option<u64> {
+/// repeats. Why not where Nix can't say, which leaves the guard to its
+/// bands.
+pub fn min_free(nix: &Path) -> Result<u64, String> {
     let argv: Vec<&OsStr> = std::iter::once(nix.as_os_str())
         .chain(NIX_COMMAND.iter().map(OsStr::new))
         .chain(["config", "show", "min-free"].map(OsStr::new))
         .collect();
-    ran(&argv, Duration::from_secs(30), true)
-        .ok()?
-        .trim()
-        .parse()
-        .ok()
+    // Only the length of what Nix said is told, on either stream: the
+    // guard's log is often readable by any account, and a Nix printing
+    // more than the one value, or quoting a nix.conf line it refuses,
+    // could print its access tokens. Where its other commands' last words
+    // are told with a quoted line left out, this one's aren't, since a read
+    // of the config may print a setting in no quoted form at all; the read
+    // itself is named instead, to run as the guard's account.
+    // Not idle, unlike the guard's collections: it's one quick read, and on
+    // a Mac the background band throttles it most while the machine is
+    // busiest, which is when a read past its thirty seconds keeps the guard
+    // from its floor. So it runs as its guard runs. On Linux both guards'
+    // units are in background.slice, whose CPU weight yields to what the
+    // account runs, though its disk reads don't wait as an idle one's do.
+    // On a Mac the system guard is a daemon at launchd's standard priority,
+    // and an account's guard runs wholly in the background band, as its
+    // launchd agent's ProcessType puts it so the account's own work comes
+    // first, and so does this read.
+    let (status, said) = output(&argv, Duration::from_secs(30), false, &[])?;
+    let see = argv
+        .iter()
+        .map(|arg| arg.to_string_lossy())
+        .collect::<Vec<_>>()
+        .join(" ");
+    if status != Some(0) {
+        let ended = status.map_or_else(
+            || "was ended by a signal".to_owned(),
+            |code| format!("exited {code}"),
+        );
+        return Err(format!(
+            "nix config show min-free {ended}, saying {} bytes on its error stream; run {see} \
+             as the guard's account to see why",
+            said.trim().len()
+        ));
+    }
+    said.trim().parse().map_err(|error| {
+        format!(
+            "nix config show min-free said {} bytes that aren't a number: {error}; run {see} \
+             as the guard's account to see why",
+            said.trim().len()
+        )
+    })
 }
 
 /// What the `nix` command needs to be told before any of the commands the
@@ -246,49 +291,44 @@ pub fn parse(json: &str) -> Result<Vec<Dead>, String> {
 
 /// How many paths one `nix path-info` is asked about, so its arguments
 /// stay well inside what the kernel lets a program be given.
-const CHUNK: usize = 1000;
+pub(crate) const CHUNK: usize = 1000;
 /// How long listing the dead may take: about a minute on a store of
 /// 240 GiB of garbage, and far longer at idle priority on a busy disk.
-const LIST_TIMEOUT: Duration = Duration::from_mins(30);
+pub(crate) const LIST_TIMEOUT: Duration = Duration::from_mins(30);
 /// How long describing one chunk may take.
 const DESCRIBE_TIMEOUT: Duration = Duration::from_mins(5);
-/// The most of a command's output read: a listing of 12,000 paths is
-/// 4 MiB, and a chunk's description about 3.
-const OUTPUT_LIMIT: usize = 256 << 20;
 
-/// Every dead path, through `nix-store --gc --print-dead` beside `nix`,
-/// and what each weighs and refers to, through `nix path-info`. With
-/// `idle`, at idle priority. A path that died since is found at the next
-/// listing; one that came alive is refused by Nix when it's deleted.
+/// Every dead path in the store at `store`, and what each weighs and
+/// refers to, through `nix path-info` beside `nix`. With `idle`, at idle
+/// priority. A path that died since is found at the next listing; one
+/// that came alive is refused by Nix when it's deleted, since deleting
+/// takes Nix's lock and looks again.
 ///
-/// The listing asks for no experimental features. With content-addressed
+/// The dead are worked out without Nix's garbage collector lock
+/// (`crate::dead`), and asked of `nix-store --gc --print-dead` only
+/// where Nix keeps the outputs of what's live, or can't say whether it
+/// does. The lock is the one every other collection waits on,
+/// Nix's own near `min-free` included, and the listing held it for up to
+/// `LIST_TIMEOUT`: on 24 November a laptop's ran 24 minutes, with its
+/// builds and tests waiting on the lock behind it.
+///
+/// The locked listing asks for no experimental features. With content-addressed
 /// derivations on and `keep-outputs`, Nix parses and hashes every
 /// derivation the trace meets to look up its outputs' realisations: on 7
 /// November a store of 101,000 paths, none of them floating or impure,
 /// took 675 s of CPU to list that way and 137 s without. A floating
 /// output that only a realisation keeps is listed dead, and Nix, deleting
 /// with the machine's own settings, refuses it as alive.
-pub fn list(nix: &Path, idle: bool) -> Result<Vec<Listed>, String> {
-    let store = nix.with_file_name("nix-store");
-    let listed = ran(
-        &[
-            store.as_os_str(),
-            "--option".as_ref(),
-            "experimental-features".as_ref(),
-            "".as_ref(),
-            "--gc".as_ref(),
-            "--print-dead".as_ref(),
-        ],
-        LIST_TIMEOUT,
-        idle,
-    )?;
+pub fn list(nix: &Path, store: &Path, idle: bool) -> Result<Vec<Listed>, String> {
+    let listed = crate::dead::dead(nix, store, idle)?;
     // Nix's own temporary files in the store's directory, its .tmp-link-s
     // and the tmp- folders it adds a path through, are listed too and gone
     // a moment later, and asking about one fails the whole listing: on 9
     // November the system guard's failed 44 times so. A store path's name
     // starts with its hash, never a dot or tmp-.
     let paths: Vec<&str> = listed
-        .lines()
+        .iter()
+        .map(String::as_str)
         .filter(|line| line.starts_with('/'))
         .filter(|line| {
             Path::new(line).file_name().is_some_and(|name| {
@@ -467,8 +507,8 @@ pub fn delete(
         if left_of_it.is_zero() {
             return Err(format!("{} ran past {DELETE_TIMEOUT:?}", name(&argv)));
         }
-        let (ok, said) = output(&argv, left_of_it, idle, &input)?;
-        if ok {
+        let (status, said) = output(&argv, left_of_it, idle, &input)?;
+        if status == Some(0) {
             return Ok(Deleted {
                 refused: forbidden,
                 ran,
@@ -490,60 +530,6 @@ pub fn delete(
             },
         }
     }
-}
-
-/// What a command printed, or why it failed, in its own last words.
-pub(crate) fn ran(argv: &[&OsStr], timeout: Duration, idle: bool) -> Result<String, String> {
-    match output(argv, timeout, idle, &[])? {
-        (true, stdout) => Ok(stdout),
-        (false, stderr) => Err(failed(argv, &stderr)),
-    }
-}
-
-/// Whether a command succeeded, with what it printed if so and what it
-/// said on its error stream if not.
-fn output(
-    argv: &[&OsStr],
-    timeout: Duration,
-    idle: bool,
-    input: &[u8],
-) -> Result<(bool, String), String> {
-    let name = name(argv);
-    let job = Job {
-        argv: argv.iter().map(|&arg| arg.to_owned()).collect(),
-        cwd: None,
-        env: Vec::new(),
-        timeout,
-        limit: OUTPUT_LIMIT,
-        idle,
-    };
-    match commands::fed(&job, input).map_err(|error| format!("starting {name}: {error}"))? {
-        Ran::TimedOut => Err(format!("{name} ran past {timeout:?}")),
-        Ran::Stopped => Err(format!("{name} was stopped with the guard")),
-        Ran::Finished(output) if output.truncated => Err(format!("{name} said more than it may")),
-        Ran::Finished(output) if output.status == Some(0) => {
-            let stdout = String::from_utf8(output.stdout);
-            Ok((
-                true,
-                stdout.map_err(|_| format!("{name} printed what isn't text"))?,
-            ))
-        }
-        Ran::Finished(output) => Ok((false, String::from_utf8_lossy(&output.stderr).into_owned())),
-    }
-}
-
-fn failed(argv: &[&OsStr], said: &str) -> String {
-    let last = said
-        .lines()
-        .rev()
-        .find(|line| !line.trim().is_empty())
-        .unwrap_or("");
-    format!("{} failed: {last}", name(argv))
-}
-
-fn name(argv: &[&OsStr]) -> String {
-    let program = Path::new(argv[0]).file_name().unwrap_or_default();
-    program.to_string_lossy().into_owned()
 }
 
 impl Listing {

@@ -3,6 +3,7 @@
 {
   exampleLaptop,
   holds,
+  lib,
   onLinux,
   passesClippy,
   pkgs,
@@ -83,6 +84,386 @@ onLinux {
         && !(service ? MemoryMax)
         && (service.TimeoutStartSec or null) == "30min"
       );
+  # The hour asks nix-store for the closure of the build each service's unit
+  # names, so its PATH holds the account's Nix: without it every service
+  # would read as one cadence can't judge, and every merge reaching one
+  # would wait.
+  cadence-hour-finds-nix-store =
+    let
+      user = exampleLaptop.config.home-manager.users.joel;
+      nix = if user.nix.package != null then user.nix.package else pkgs.nix;
+      # The path alone, since a check's condition may not name a derivation.
+      bin = builtins.unsafeDiscardStringContext "${pkgs.lib.getBin nix}/bin";
+      environment = user.systemd.user.services.cadence-hour.Service.Environment or [ ];
+    in
+    holds "cadence-hour-finds-nix-store"
+      "cadence-hour's PATH holds no Nix, so it can't list the closure of the build any service's unit names, and every service reads as unread."
+      (
+        pkgs.lib.any (
+          entry:
+          pkgs.lib.hasPrefix "PATH=" entry
+          && pkgs.lib.hasInfix bin (builtins.unsafeDiscardStringContext entry)
+        ) environment
+      );
+  # A switch leaves each cadence run an installed timer starts be, the
+  # tick, day, review and hour and any added, since waiting on its start
+  # would outlast home-manager's patience under load and send the whole
+  # switch back; each timer starts the new unit next, so a changed unit
+  # reaches the next run, not one under way. With no switch to end one,
+  # each is a oneshot, whose start timeout bounds the whole run, and sets
+  # one of its own that ends a hang, rather than leaving it to the bound
+  # core's base module gives every timed run that sets none, which no
+  # cadence run is sized to: zero, infinity or a span systemd can't read,
+  # which it drops, ends nothing. A timer's run is found as the base
+  # module finds it: a service, an instance by its template, and one the
+  # account writes empty, as it writes every timed run, no unit of its
+  # own. The four known runs must each be
+  # among those found. Stand-in units, each wrong one way, must each be
+  # refused, so a check that stopped refusing fails too, and stand-ins
+  # right in each way allowed must each pass, so one that refused too
+  # much fails as well. It reads the units as declared; that sd-switch
+  # keeps an old run it is told to rests on sd-switch.
+  cadence-outlasts-a-switch =
+    let
+      known = [
+        "cadence"
+        "cadence-day"
+        "cadence-review"
+        "cadence-hour"
+      ];
+      # A timeout ends a hang when it is a whole number above zero, or a
+      # span spelled as systemd reads one, numbers each with a unit it
+      # knows or none, holding a digit other than zero.
+      units = lib.concatStringsSep "|" [
+        "usec"
+        "us"
+        "msec"
+        "ms"
+        "seconds"
+        "second"
+        "sec"
+        "s"
+        "minutes"
+        "minute"
+        "min"
+        "m"
+        "hours"
+        "hour"
+        "hr"
+        "h"
+        "days"
+        "day"
+        "d"
+        "weeks"
+        "week"
+        "w"
+        "months"
+        "month"
+        "M"
+        "years"
+        "year"
+        "y"
+      ];
+      span = "( *[0-9]+(\\.[0-9]+)? *(${units})?)+ *";
+      ends =
+        value:
+        (builtins.isInt value && value > 0)
+        || (
+          builtins.isString value
+          && builtins.match span value != null
+          && builtins.match ".*[1-9].*" value != null
+        );
+      problemsOf =
+        user:
+        let
+          startedBy = name: t: t.Timer.Unit or "${name}.service";
+          written =
+            unit:
+            let
+              parts = lib.splitString "@" unit;
+            in
+            if lib.length parts == 2 then "${lib.head parts}@" else unit;
+          # A target given as one name, not a list, installs it as well.
+          installed = lib.filterAttrs (_: t: targets t != [ ]) user.timers;
+          targets =
+            t:
+            lib.concatMap (key: lib.toList (t.Install.${key} or [ ])) [
+              "WantedBy"
+              "RequiredBy"
+            ];
+          started = lib.filter (name: name == "cadence" || lib.hasPrefix "cadence-" name) (
+            lib.unique (
+              map (unit: written (lib.removeSuffix ".service" unit)) (
+                lib.filter (lib.hasSuffix ".service") (lib.mapAttrsToList startedBy installed)
+              )
+            )
+          );
+          wrong =
+            name:
+            let
+              service = user.services.${name};
+              timeout = service.Service.TimeoutStartSec or service.Service.TimeoutSec or null;
+            in
+            if
+              !user.services ? ${name}
+              || (
+                service ? Service.ExecStart
+                && lib.elem service.Service.ExecStart [
+                  [ ]
+                  ""
+                  null
+                ]
+              )
+            then
+              [ "${name} has a timer but no unit" ]
+            else
+              lib.optional (
+                (service.Unit.X-SwitchMethod or null) != "keep-old"
+              ) "a switch restarts ${name} and waits on it"
+              ++ lib.optional (
+                (service.Service.Type or null) != "oneshot"
+              ) "${name} isn't a oneshot, so no start timeout ends its hang"
+              ++ lib.optional (timeout == null) "${name} sets no timeout of its own to end a hang"
+              ++ lib.optional (
+                timeout != null && !ends timeout
+              ) "${name}'s timeout ${builtins.toJSON timeout} ends no hang, as systemd reads it";
+        in
+        lib.concatMap wrong started
+        ++ map (name: "no installed timer starts ${name}, so it went unchecked") (
+          lib.subtractLists started known
+        );
+      run = timeout: {
+        Unit.X-SwitchMethod = "keep-old";
+        Service = {
+          Type = "oneshot";
+          TimeoutStartSec = timeout;
+        };
+      };
+      timer = {
+        Install.WantedBy = [ "timers.target" ];
+      };
+      timers = lib.genAttrs known (_: timer);
+      services = lib.genAttrs known (_: run "1h");
+      # Each stand-in, wrong one way, and words its refusal must hold.
+      refused = {
+        "a timeout of infinity" = {
+          user = {
+            inherit timers;
+            services = services // {
+              cadence-day = run "infinity";
+            };
+          };
+          says = "cadence-day's timeout \"infinity\" ends no hang";
+        };
+        "a timeout systemd can't read" = {
+          user = {
+            inherit timers;
+            services = services // {
+              cadence-day = run "10 minuets";
+            };
+          };
+          says = "cadence-day's timeout \"10 minuets\"";
+        };
+        "a zero timeout as a number" = {
+          user = {
+            inherit timers;
+            services = services // {
+              cadence = run 0;
+            };
+          };
+          says = "cadence's timeout 0 ends no hang";
+        };
+        "a run with no timeout" = {
+          user = {
+            inherit timers;
+            services = services // {
+              cadence-hour = {
+                Unit.X-SwitchMethod = "keep-old";
+                Service.Type = "oneshot";
+              };
+            };
+          };
+          says = "cadence-hour sets no timeout of its own";
+        };
+        "a run with no type, so systemd's default" = {
+          user = {
+            inherit timers;
+            services = services // {
+              cadence-review = {
+                Unit.X-SwitchMethod = "keep-old";
+                Service.TimeoutStartSec = "1h";
+              };
+            };
+          };
+          says = "cadence-review isn't a oneshot";
+        };
+        "a timer not installed" = {
+          user = {
+            inherit services;
+            timers = timers // {
+              cadence-review = { };
+            };
+          };
+          says = "no installed timer starts cadence-review";
+        };
+        "a zero timeout spelled 0min" = {
+          user = {
+            inherit timers;
+            services = services // {
+              cadence-day = run "0min";
+            };
+          };
+          says = "cadence-day's timeout \"0min\"";
+        };
+        "a run a switch restarts" = {
+          user = {
+            inherit timers;
+            services = services // {
+              cadence-hour = lib.removeAttrs (run "1h") [ "Unit" ];
+            };
+          };
+          says = "a switch restarts cadence-hour";
+        };
+        "a run told to restart at a switch" = {
+          user = {
+            inherit timers;
+            services = services // {
+              cadence-hour = lib.recursiveUpdate (run "1h") { Unit.X-SwitchMethod = "restart"; };
+            };
+          };
+          says = "a switch restarts cadence-hour";
+        };
+        "a start timeout that ends nothing over a TimeoutSec that would" = {
+          user = {
+            inherit timers;
+            services = services // {
+              cadence-day = lib.recursiveUpdate (run "infinity") { Service.TimeoutSec = "30min"; };
+            };
+          };
+          says = "cadence-day's timeout \"infinity\"";
+        };
+        "a timer whose unit the account writes empty" = {
+          user = {
+            timers = timers // {
+              cadence-new = timer;
+            };
+            services = services // {
+              cadence-new = lib.recursiveUpdate (run "1h") { Service.ExecStart = [ ]; };
+            };
+          };
+          says = "cadence-new has a timer but no unit";
+        };
+        "a run that isn't a oneshot" = {
+          user = {
+            inherit timers;
+            services = services // {
+              cadence = lib.recursiveUpdate (run "1h") { Service.Type = "simple"; };
+            };
+          };
+          says = "cadence isn't a oneshot";
+        };
+        "a timer with no unit" = {
+          user = {
+            inherit services;
+            timers = timers // {
+              cadence-new = timer;
+            };
+          };
+          says = "cadence-new has a timer but no unit";
+        };
+        "a known run no timer starts" = {
+          user = {
+            inherit services;
+            timers = lib.removeAttrs timers [ "cadence-review" ];
+          };
+          says = "no installed timer starts cadence-review";
+        };
+        "a timer named otherwise starting a wrong run" = {
+          user = {
+            timers = timers // {
+              tick.Timer.Unit = "cadence-extra.service";
+              tick.Install = timer.Install;
+            };
+            services = services // {
+              cadence-extra = run "0";
+            };
+          };
+          says = "cadence-extra's timeout \"0\"";
+        };
+      };
+      # Each stand-in right in a way the check allows, which it must pass.
+      accepted = {
+        "units as they should be" = { inherit timers services; };
+        "a timeout given as TimeoutSec alone" = {
+          inherit timers;
+          services = services // {
+            cadence-day = {
+              Unit.X-SwitchMethod = "keep-old";
+              Service = {
+                Type = "oneshot";
+                TimeoutSec = "30min";
+              };
+            };
+          };
+        };
+        "a timeout as a number or in parts" = {
+          inherit timers;
+          services = services // {
+            cadence = run 600;
+            cadence-hour = run "1h 30min";
+          };
+        };
+        "a timer installed as required" = {
+          inherit services;
+          timers = timers // {
+            cadence-review.Install.RequiredBy = [ "timers.target" ];
+          };
+        };
+        "a timer installed by one target named alone" = {
+          inherit services;
+          timers = timers // {
+            cadence-review.Install.WantedBy = "timers.target";
+          };
+        };
+        "a start timeout that ends a hang over a TimeoutSec that wouldn't" = {
+          inherit timers;
+          services = services // {
+            cadence-day = lib.recursiveUpdate (run "1h") { Service.TimeoutSec = "infinity"; };
+          };
+        };
+        "an instance's timer, its run written as its template" = {
+          timers = timers // {
+            "cadence-repo@core" = timer;
+          };
+          services = services // {
+            "cadence-repo@" = run "1h";
+          };
+        };
+        "a cadence timer starting what isn't a service" = {
+          inherit services;
+          timers = timers // {
+            cadence-path = timer // {
+              Timer.Unit = "cadence-path.path";
+            };
+          };
+        };
+        "a cadence unit no timer starts" = {
+          inherit timers;
+          services = services // {
+            cadence-spec = { };
+          };
+        };
+      };
+      unrefused = lib.attrNames (
+        lib.filterAttrs (_: case: !lib.any (lib.hasInfix case.says) (problemsOf case.user)) refused
+      );
+      overrefused = lib.attrNames (lib.filterAttrs (_: user: problemsOf user != [ ]) accepted);
+      problems =
+        problemsOf exampleLaptop.config.home-manager.users.joel.systemd.user
+        ++ map (name: "the check no longer refuses ${name}") unrefused
+        ++ map (name: "the check refuses ${name}, which it should pass") overrefused;
+    in
+    holds "cadence-outlasts-a-switch" (lib.concatStringsSep "; " problems) (problems == [ ]);
   # cadence's budget measures match spend-watch's findings by keys copied
   # from it, and its budget alarm reads budgets.json by spend-watch's field
   # names, so one renamed there would read as no budget unbilled, missed or

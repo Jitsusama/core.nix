@@ -13,14 +13,19 @@
 // root element as `data-reach` once it has drawn each reading, for the map's
 // build test and `mycelium-map-check` to read. Otherwise it does nothing.
 
+import { oneCopyEach } from "./lineage.ts";
+
 /** Why a cell fails: drawn alone, in an unnamed network, or held nowhere. */
 type Why = "alone" | "unnamed network" | "unreachable";
 
-/** One cell the map misses, with whom to tell. */
+/**
+ * One cell the map misses, with whom to tell: the lead of its
+ * orchestration, else the cell itself, and nobody for a cell with no name.
+ */
 type Failure = {
   readonly cell: string;
   readonly orchestration: string | null;
-  readonly owner: string;
+  readonly owner?: string;
   readonly why: Why;
 };
 
@@ -40,9 +45,11 @@ type Network = {
 
 /** A cell as the node prints it, of what this reads. */
 type Cell = {
-  readonly name: string;
+  readonly name?: unknown;
+  readonly machine?: unknown;
   readonly type?: string;
   readonly networks?: readonly string[];
+  readonly since?: unknown;
 };
 
 /** A reading as site.ts hands it to the drawing. */
@@ -145,6 +152,26 @@ function orchestrationOf(
   return key && orchestrations.has(key) ? key : belongsTo(cell, orchestrations);
 }
 
+/** The address `cell` is drawn and found by, none when it has no name as words. */
+function addressOfCell(cell: Cell): string | undefined {
+  return typeof cell.name === "string" && cell.name !== "" ? cell.name : undefined;
+}
+
+/** Whether `cell` has no name to be drawn or found by. */
+function nameless(cell: Cell): boolean {
+  return addressOfCell(cell) === undefined;
+}
+
+/**
+ * What a failure calls a cell with no name, as words every reader of the
+ * answer takes, with the machine that listed it, where it says one.
+ */
+function namelessOn(cell: Cell): string {
+  return typeof cell.machine === "string" && cell.machine !== ""
+    ? `a cell with no name on ${cell.machine}`
+    : "a cell with no name";
+}
+
 /** Each cell of `reading` that `model`, the map drawn of it, misses. */
 function reachOf(reading: Reading, model: Model): Reach {
   const orchestrations = new Set(
@@ -153,18 +180,23 @@ function reachOf(reading: Reading, model: Model): Reach {
       .map((network) => network.name),
   );
   // A cell moving between machines can come from both for a while; the
-  // drawing holds it once, under its one address, so it's judged once.
-  const cells = [...new Map(reading.cells.map((cell) => [cell.name, cell])).values()];
+  // drawing holds it once, under its one address, so it's judged once, by
+  // the copy the drawing keeps. A cell with no name is one the drawing
+  // drops, so it's judged here on its own, and found unreachable, rather
+  // than left out by the same rule that lost it.
+  const cells = [...oneCopyEach(reading.cells), ...reading.cells.filter(nameless)];
   const failures: Failure[] = [];
   for (const cell of cells) {
-    const drawn = model.byAddress.get(cell.name);
+    const address = addressOfCell(cell);
+    const drawn = address === undefined ? undefined : model.byAddress.get(address);
     const orchestration = orchestrationOf(cell, drawn, orchestrations);
     const why = missed(cell, orchestration, drawn, model);
     if (why !== null) {
+      const owner = (orchestration && model.hubs.get(orchestration)?.lead?.address) || address;
       failures.push({
-        cell: cell.name,
+        cell: address ?? namelessOn(cell),
         orchestration: orchestration ? addressOf(orchestration) : null,
-        owner: (orchestration && model.hubs.get(orchestration)?.lead?.address) || cell.name,
+        ...(owner ? { owner } : {}),
         why,
       });
     }

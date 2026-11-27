@@ -33,6 +33,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::time::Duration;
 
+use dictation::echo;
 use dictation::mel::RATE;
 use dictation::parakeet::{Parakeet, Timings, Word};
 use dictation::pieces;
@@ -73,14 +74,20 @@ pub enum Job {
 /// A call being written, with each piece of a take of theirs that was
 /// embedded and which of the lines it's of, if Parakeet heard words in
 /// its take: one it heard none in still helps tell the others apart, as
-/// it does where the voices check measures them (apart.rs). Each line of
-/// theirs heard in this run keeps its words, timed from the call's start,
-/// so it can be split where its voice changes. It's `whole` when its embeddings cover
+/// it does where the voices check measures them (apart.rs). Each line
+/// heard in this run keeps its words, timed from the call's start, so one
+/// of theirs can be split where its voice changes, and their echo cut
+/// from one of Joel's. It's `whole` when its embeddings cover
 /// the whole call, as they do for one heard from its start in this run,
 /// and not for one taken up from its file after a restart. Its `guesses`
 /// say who the voices left numbered may be, once it's told apart; they
 /// aren't in its lines, so a restart loses them. Its first `read` lines
-/// were read back from its file, their echoes already left out.
+/// were read back from its file, their echoes already left out. Its
+/// `told` are the echo cuts from Joel's words already journaled, by the
+/// sample the cut starts at, and `left` the lines of his already
+/// journaled as left out whole, by the sample each starts at: splitting
+/// their takes by voice moves his lines' indices on but never their
+/// times, so what's told stays told across a rejoin.
 #[derive(Default)]
 struct Writing {
     lines: Vec<Line>,
@@ -92,6 +99,8 @@ struct Writing {
     takes: usize,
     whole: bool,
     guesses: Option<String>,
+    told: HashSet<usize>,
+    left: HashSet<usize>,
 }
 
 /// A piece of a take of theirs as the speaker model heard it: its
@@ -99,19 +108,61 @@ struct Writing {
 type Embedded = (Vec<f32>, usize, usize);
 
 impl Writing {
+    /// What's newly left out of Joel's side as the others' echo, a
+    /// journal line each, said once: for words cut from a line, how many,
+    /// when and how late; for a line left out whole, how many words and
+    /// when. Never the words, since a call's words stay out of the
+    /// journal. What's wrongly left out is gone from the file, so this is
+    /// all that says where to listen for it.
+    fn untold_cuts(&mut self) -> Vec<String> {
+        let (cut, cuts) = echo::cut_echoes(&self.lines, &self.words, said::spoken);
+        let rate = isize::try_from(RATE).unwrap_or(isize::MAX);
+        let mut untold: Vec<String> = cuts
+            .into_iter()
+            .filter(|cut| self.told.insert(cut.at))
+            .map(|cut| {
+                format!(
+                    "call-transcripts: {} of Joel's words at {} cut as their echo, \
+                     {} ms after theirs",
+                    cut.text.split_whitespace().count(),
+                    transcript::clock(cut.at),
+                    cut.after * 1000 / rate,
+                )
+            })
+            .collect();
+        let mut left: Vec<usize> = split::echoing(&cut, &self.pieces, self.read)
+            .into_iter()
+            .filter(|&index| self.left.insert(self.lines[index].start))
+            .collect();
+        left.sort_unstable();
+        untold.extend(left.into_iter().map(|index| {
+            format!(
+                "call-transcripts: a line of Joel's, {} words at {}, left out whole as \
+                 their echo",
+                cut[index].text.split_whitespace().count(),
+                transcript::clock(cut[index].start),
+            )
+        }));
+        untold
+    }
+
     /// Keeps the embedding of each piece of a take of theirs embedded,
     /// with the sample of the call it starts at and how many it holds,
     /// and which line the take is, if it has one; a piece is worded when
-    /// the line's `words` that start in it say more than hesitation, as a
-    /// run must to be split into a line of its own. The voices check has
-    /// one worded when the reference has any speech in it, so a piece
-    /// holding only the end of a word is worded there and not here.
+    /// the line's `words` that splitting would give it (`split::runs_of`)
+    /// say more than hesitation, as a run must to be split into a line of
+    /// its own. The voices check has one worded when the reference has any
+    /// speech in it, so a piece holding only the end of a word is worded
+    /// there and not here.
     fn heard(&mut self, line: Option<usize>, words: &[Word], embedded: Vec<Embedded>) {
-        for (embedding, start, samples) in embedded {
+        let starts: Vec<usize> = embedded.iter().map(|&(_, start, _)| start).collect();
+        let runs = split::runs_of(&starts, words);
+        for (piece, (embedding, start, samples)) in embedded.into_iter().enumerate() {
             let in_it: Vec<&str> = words
                 .iter()
-                .filter(|word| (start..start + samples).contains(&word.at))
-                .map(|word| word.text.as_str())
+                .zip(&runs)
+                .filter(|&(_, &run)| run == piece)
+                .map(|(word, _)| word.text.as_str())
                 .collect();
             self.heard.push(Heard {
                 embedding,
@@ -211,7 +262,7 @@ pub fn hear(
                 let Some(parakeet) = loaded(settings, &mut speech, book, &key, &mut told) else {
                     continue;
                 };
-                let (text, words) = transcribe_take(parakeet, side, start, &samples);
+                let (text, words) = heard_or_left_out(transcribe_take(parakeet, start, &samples));
                 // Embedded once Parakeet has heard it, so a call's first
                 // line never waits on the speaker model's loading.
                 if side == Side::Theirs {
@@ -222,9 +273,7 @@ pub fn hear(
                 let Some(text) = text else {
                     continue;
                 };
-                if side == Side::Theirs {
-                    writing.words.insert(writing.lines.len(), words);
-                }
+                writing.words.insert(writing.lines.len(), words);
                 writing.lines.push(Line {
                     side,
                     start,
@@ -233,6 +282,9 @@ pub fn hear(
                     voice: None,
                     name: None,
                 });
+                for cut in writing.untold_cuts() {
+                    eprintln!("{cut}");
+                }
                 write(book, &key, writing, me, true);
             }
             Job::Done { key, side } => {
@@ -264,8 +316,6 @@ pub fn hear(
 pub trait Hears {
     /// The words said in a take, each timed from its start.
     fn words(&mut self, samples: &[f32]) -> dictation::openvino::Result<(Vec<Word>, Timings)>;
-    /// What's said in a take.
-    fn text(&mut self, samples: &[f32]) -> dictation::openvino::Result<(String, Timings)>;
     /// Where it runs, for the journal.
     fn device(&self) -> &str;
 }
@@ -275,47 +325,42 @@ impl Hears for Parakeet {
         self.transcribe_words(samples)
     }
 
-    fn text(&mut self, samples: &[f32]) -> dictation::openvino::Result<(String, Timings)> {
-        self.transcribe(samples)
-    }
-
     fn device(&self) -> &str {
         &self.device
     }
 }
 
-/// What's heard in a take of `side`'s, `start` samples into the call, as
-/// the call keeps it: its text tidied, none when it holds no words or
-/// isn't heard, which is logged. Only their words are kept, spelling
-/// their text a space between each, as `transcribe` would, and timed
-/// from the call's start, which is where its pieces are, so each word
-/// finds the piece it was said in.
+/// What's heard in a take, `start` samples into the call, as the call
+/// keeps it: its text tidied, none when it holds no words, or why it
+/// isn't heard, which the daemon logs. Its words are kept, spelling its
+/// text a space between each, as `transcribe` would, and timed from the
+/// call's start, which is where its pieces are, so each of theirs finds
+/// the piece it was said in and each of Joel's the words of theirs it
+/// may echo. The `transcribe` subcommand and the scorer hear a take
+/// through this too (`score::hear_take`), so they read what it writes.
 pub fn transcribe_take(
     hears: &mut impl Hears,
-    side: Side,
     start: usize,
     samples: &[f32],
+) -> dictation::openvino::Result<(Option<String>, Vec<Word>)> {
+    let (words, took) = hears.words(samples)?;
+    eprintln!("call-transcripts: {}", took.describe(hears.device()));
+    let spelled: Vec<&str> = words.iter().map(|word| word.text.as_str()).collect();
+    let text = said::spoken(spelled.join(" ").trim());
+    Ok((text, from_call_start(start, words)))
+}
+
+/// What the daemon goes on with from a take `heard`: what was heard, or,
+/// when it wasn't, no text and no words, logged once. One take not heard
+/// mustn't end the call: it's left out, a take of theirs still helps tell
+/// the voices apart, and the next is heard as ever.
+fn heard_or_left_out(
+    heard: dictation::openvino::Result<(Option<String>, Vec<Word>)>,
 ) -> (Option<String>, Vec<Word>) {
-    let transcribed = if side == Side::Theirs {
-        hears.words(samples).map(|(words, took)| {
-            let spelled: Vec<&str> = words.iter().map(|word| word.text.as_str()).collect();
-            (spelled.join(" "), from_call_start(start, words), took)
-        })
-    } else {
-        hears
-            .text(samples)
-            .map(|(text, took)| (text, Vec::new(), took))
-    };
-    match transcribed {
-        Ok((text, words, took)) => {
-            eprintln!("call-transcripts: {}", took.describe(hears.device()));
-            (said::spoken(text.trim()), words)
-        }
-        Err(why) => {
-            eprintln!("call-transcripts: a take wasn't heard: {why}");
-            (None, Vec::new())
-        }
-    }
+    heard.unwrap_or_else(|why| {
+        eprintln!("call-transcripts: a take wasn't heard: {why}");
+        (None, Vec::new())
+    })
 }
 
 /// A take's `words`, timed from its start, timed from the call's instead,
@@ -701,7 +746,8 @@ fn write(book: &Shared, key: &str, writing: &Writing, me: &str, transcribing: bo
 /// Lines read back from the file were told when first written, and are
 /// kept, since a split take's parts read back can't be joined again.
 fn transcript_of(writing: &Writing, me: &str, them: Option<&str>, note: Option<&str>) -> String {
-    let heard = split::unechoed(&writing.lines, &writing.pieces, writing.read);
+    let (cut, _) = echo::cut_echoes(&writing.lines, &writing.words, said::spoken);
+    let heard = split::unechoed(&cut, &writing.pieces, writing.read);
     let guesses = writing.guesses.as_deref();
     markdown_unechoed(&heard, me, them, note, guesses)
 }

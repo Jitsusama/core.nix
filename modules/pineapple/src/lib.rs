@@ -45,7 +45,7 @@
 //!
 //! Readers hand it sayings from each platform, Slack first
 //! (src/bin/pineapple-slack/), then GitHub
-//! (src/bin/pineapple-github.rs), and the enforcer acts on what it
+//! (src/bin/pineapple-github/), and the enforcer acts on what it
 //! decides. The cases in sayings.json are the one table of what counts,
 //! so anything else judging a saying can be held to the same answers.
 

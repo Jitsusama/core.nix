@@ -1,7 +1,8 @@
 """The desktop test's keeps copies area.
 
 Here the clipboard keeps what's copied, text and pictures, past the programs that copied
-them, gives it back by Super+V into the window it opened over, and forgets it all when asked.
+them, gives it back by Super+V into the window it opened over, and forgets it all when asked;
+and a password Passwords copies pastes, is never kept or read by a fenced command, and clears.
 
 tests/desktop/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
 its opening comment says what the test proves. Every test asks for the desktop, started once a run
@@ -10,12 +11,15 @@ its opening comment says what the test proves. Every test asks for the desktop, 
 
 from __future__ import annotations
 
+import functools
 import json
+import math
 import time
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
 import pytest
+import vm_helpers
 from desktop_session import STARTING, retry
 
 if TYPE_CHECKING:
@@ -365,18 +369,246 @@ def test_forget_the_clipboard_forgets_every_copy_and_what_it_held(desktop: Deskt
     assert desktop.as_account("ls -A $XDG_RUNTIME_DIR/clipboard-history") == ""
 
 
+# The script's own lines, each said once its phase holds
+# (modules/pi/tests): the walls before any window holds the focus, and
+# the focus the secret copy's phase needs.
+WALLS_HOLD = "WALLS HOLD: "
+FOCUSED = "FOCUSED: "
+READ = "READ: "
+# Where the script's words are kept as it runs, so a run cut off at the
+# timeout still says which phases held: Joel's runtime folder, his alone.
+X11_SAID = "$XDG_RUNTIME_DIR/x11-fence-said"
+# The script bounds its waits to about two minutes; this leaves it room.
+X11_ENDING = timedelta(minutes=4)
+# Where the script stops at a step of the satellite's, by the line that
+# step says once it holds and the failure it ends with where it doesn't.
+# Those are the focus subtest's to fail while the satellite's stall is
+# quarantined, and every other failure is the fence subtest's.
+SATELLITE_STEPS = (
+    (FOCUSED, "FAIL: niri focused no X11 window"),
+    (READ, "FAIL: Joel's own X11 client didn't read his copy"),
+)
+
+
+def fence_failure(said: str) -> str | None:
+    """Say how the fence's walls weren't shown to hold in what the script said, or None.
+
+    The walls are tried before the satellite's steps and again after both, so a run that
+    stopped at one of those steps, by that step's own failure, proves the walls it reached.
+    The failure is found by its words, not where it falls, so lines another program wrote
+    can't stand in for it; the script's end is the line written after it ended.
+    """
+    lines = said.rstrip().splitlines()
+    if not any(line.startswith(WALLS_HOLD) for line in lines):
+        return "the fence's walls weren't shown to hold"
+    ended = lines[-1]
+    if ended == "ended 0":
+        return None
+    failures = [line for line in lines if line.startswith("FAIL: ")]
+    for mark, failure in SATELLITE_STEPS:
+        if not any(line.startswith(mark) for line in lines):
+            stopped = (
+                ended == "ended 1" and failures[-1:] != [] and failures[-1].startswith(failure)
+            )
+            return None if stopped else "the walls held, then the script failed otherwise"
+    return "the fence let X11 through"
+
+
+def said_line(said: str, mark: str) -> bool:
+    """Whether a line of the script's own opens with `mark`, never words it quoted."""
+    return any(line.startswith(mark) for line in said.splitlines())
+
+
+@functools.cache
+def x11_fence_said(desktop: Desktop) -> str:
+    """Run the X11 fence's script once, for both subtests that read what it said."""
+    # A raise is kept as words, since a cache keeps none, and both
+    # subtests judge the one run rather than the second running it again.
+    try:
+        # niri imports its X11 display as a session does, run as its child
+        # so it holds what niri set; the session's start imports the rest.
+        desktop.as_account("niri msg action spawn -- systemctl --user import-environment DISPLAY")
+        desktop.machine.wait_until_succeeds(
+            desktop.in_session("systemctl --user show-environment | grep -q '^DISPLAY='")
+        )
+        # The script says each case it tried, and fails naming the one
+        # that let the secret through (modules/pi/tests); this area alone
+        # has it.
+        # Its waits run on the guest's clock, so they're stretched by the
+        # host's busyness as as_account stretches the wait for its end.
+        # The one pace, read once, stretches both, so the script's waits
+        # always end inside the time given for its end.
+        pace = math.ceil(vm_helpers.pace(vm_helpers.busyness()))
+        return desktop.machine.succeed(
+            desktop.in_session(
+                f"X11_PACE={pace} pi-fence-keeps-x11-from-secrets > {X11_SAID} 2>&1;"
+                f" echo ended $? >> {X11_SAID};"
+                f" cat {X11_SAID}"
+            ),
+            timeout=X11_ENDING * pace,
+        )
+    except Exception as error:  # noqa: BLE001 # Said by the subtests that read it.
+        so_far = desktop.diagnosis(f"cat {X11_SAID} 2>&1 || true")
+        return f"{so_far}\nthe script didn't end: {error!r}"
+
+
+def test_an_x11_window_of_joels_takes_the_focus(desktop: Desktop) -> None:
+    """An X11 window of Joel's takes the focus through the satellite."""
+    said = x11_fence_said(desktop)
+    # The walls come first, so a run that never reached the focus says so
+    # by its own cause rather than as a window that never took it. Their
+    # line is missing too where X never answered or the script didn't end,
+    # which proves no breach, so this says only that they weren't shown.
+    assert said_line(said, WALLS_HOLD), (
+        f"the walls weren't shown to hold, so the focus went untried: {said}"
+    )
+    assert said_line(said, FOCUSED), f"no X11 window was seen to take the focus: {said}"
+    assert said_line(said, READ), f"Joel's own X11 client didn't read his copy: {said}"
+    # The secret copy's walls follow, so it's this subtest's too: a run
+    # whose walls failed there fails the next one as well, so the
+    # quarantine excuses only a run stopped at one of the satellite's steps.
+    assert said.rstrip().endswith("ended 0"), f"the secret copy's phase didn't end clean: {said}"
+
+
 def test_a_fenced_command_reads_no_secret_copy_through_x11(desktop: Desktop) -> None:
     """A fenced command reads no secret copy through X11, where Joel's own client does."""
-    # niri imports its X11 display as a session does, run as its child so
-    # it holds what niri set; the session's start here imports only the rest.
-    desktop.as_account("niri msg action spawn -- systemctl --user import-environment DISPLAY")
-    desktop.machine.wait_until_succeeds(
-        desktop.in_session("systemctl --user show-environment | grep -q '^DISPLAY='")
+    said = x11_fence_said(desktop)
+    # The walls are tried before any window takes the focus, so this
+    # proves them in every run, and fails in every run they let X through.
+    # Refusing a connection owes nothing to what the clipboard holds, so
+    # the walls are proven with or without the copy.
+    failure = fence_failure(said)
+    assert failure is None, f"{failure}: {said}"
+
+
+# Passwords' copy, walked as Joel walks it: the stand-in for op lists the
+# console's login (tests/desktop/stand-ins/op-stand-in.sh), whose Return copies its password.
+ENTRY = "Lighthouse Console"
+STAND_IN = "stand-in-password"
+# Passwords clears its copy this long after it's made (modules/passwords/src/main.rs).
+CLEARS = timedelta(seconds=30)
+# A page that takes a paste, saying what it holds in its title, which niri lists.
+PAGE = (
+    "data:text/html,<title>paste-page</title>"
+    '<input autofocus oninput="document.title = &quot;pasted:&quot; + this.value">'
+)
+
+
+def copy_a_password(desktop: Desktop) -> float:
+    """Copy the console's password from Passwords by its Return, and give when, monotonic.
+
+    The first step in asks 1Password, through op, and leads with it locked until it's
+    answered, so the place is opened again once it has, to stand as Joel finds it then. Its
+    Copy the Password is chosen by name among the entry's acts, since the entry's own Return
+    types it instead while a window is under the launcher, as a terminal or a page is here.
+    """
+    machine = desktop.machine
+    desktop.answer("passwords")
+    desktop.launcher_until(
+        lambda shown: (shown["selected"] or {}).get("is") == "collection:passwords"
     )
-    # The script says each case it tried, and fails naming the one that
-    # let the secret through (modules/pi/tests); this area alone has it.
-    said = desktop.as_account("pi-fence-keeps-x11-from-secrets 2>&1; echo ended $?")
-    assert said.rstrip().endswith("ended 0"), f"the fence let X11 through: {said}"
+    desktop.step_in("ret")
+    desktop.launcher_until(lambda shown: ENTRY in shown["rows"])
+    desktop.close_launcher()
+    desktop.as_account("qs ipc call launcher collection passwords")
+    desktop.launcher_ready()
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == ENTRY)
+    desktop.follow()
+    desktop.launcher_until(lambda shown: "Copy the Password" in shown["rows"])
+    desktop.down_to("Copy the Password")
+    copied = time.monotonic()
+    machine.send_key("ret")
+    desktop.launcher_until(lambda shown: not shown["open"])
+    machine.wait_until_succeeds(
+        desktop.in_session(f"wl-paste --no-newline | grep -qx {STAND_IN}"),
+        timeout=timedelta(seconds=10),
+    )
+    return copied
+
+
+def focused(desktop: Desktop, title: str) -> None:
+    """Wait until niri's focused window is titled so."""
+    desktop.machine.wait_until_succeeds(
+        desktop.in_session(f"niri msg focused-window | grep -q {title}"), timeout=STARTING
+    )
+
+
+# Joel's rule for turning copying on (2026-11-16): each path it opens runs for real first. A
+# password Passwords copies pastes into a terminal and into a page, a command pi fences can't
+# read it while it's held, the clipboard's history never keeps it, and it's gone in 30 s.
+
+
+def test_a_password_copied_pastes_is_never_kept_or_fenced_and_clears(desktop: Desktop) -> None:
+    """A password copied pastes, is never kept or read fenced, and clears in 30 s."""
+    machine = desktop.machine
+    # Into a terminal, by its Ctrl+Shift+V.
+    desktop.as_account(
+        "niri msg action spawn -- kitty --title paste-here "
+        "sh -c 'stty -icanon -echo; cat > /tmp/pasted'"
+    )
+    focused(desktop, "paste-here")
+    copy_a_password(desktop)
+    focused(desktop, "paste-here")
+    machine.send_key("ctrl-shift-v")
+    machine.wait_until_succeeds(
+        desktop.in_session(f"grep -qx {STAND_IN} /tmp/pasted"), timeout=timedelta(seconds=10)
+    )
+    # Each pattern's bracket keeps it from matching the shell running it, whose own
+    # command line holds the words, and which pkill would otherwise end mid-command.
+    desktop.as_account("pkill -f '[c]at > /tmp/pasted'; rm -f /tmp/pasted")
+    machine.wait_until_fails(
+        desktop.in_session("niri msg windows | grep -q paste-here"), timeout=timedelta(seconds=30)
+    )
+
+    # Into a page, by Ctrl+V, the browser opened first since it's slow to start here.
+    desktop.as_account(
+        "niri msg action spawn -- chromium --ozone-platform=wayland --disable-gpu --no-first-run "
+        "--no-default-browser-check --password-store=basic "
+        f"--user-data-dir=/tmp/paste-page-profile '--app={PAGE}'"
+    )
+    focused(desktop, "paste-page")
+    copy_a_password(desktop)
+    focused(desktop, "paste-page")
+    machine.send_key("ctrl-v")
+    machine.wait_until_succeeds(
+        desktop.in_session(f"niri msg focused-window | grep -q 'pasted:{STAND_IN}'"),
+        timeout=timedelta(seconds=10),
+    )
+    desktop.as_account("pkill -f '[p]aste-page-profile'")
+    machine.wait_until_fails(
+        desktop.in_session("niri msg windows | grep -q pasted:"), timeout=timedelta(seconds=30)
+    )
+
+    # Never kept: Super+V leads with the copy before it and lists no row of it, which is where
+    # a kept text copy would show, since the history keeps text in memory alone; and no
+    # picture it writes to its folder holds it either.
+    with desktop.told("heard copy before the password"):
+        desktop.as_account("echo -n 'before the password' | wl-copy > /dev/null 2>&1")
+    copied = copy_a_password(desktop)
+    machine.send_key("meta_l-v")
+    desktop.launcher_ready()
+    desktop.launcher_until(
+        lambda shown: (shown["selected"] or {}).get("reads") == "before the password"
+    )
+    assert STAND_IN not in json.dumps(desktop.showing()), desktop.showing()["rows"]
+    desktop.close_launcher()
+    machine.fail(desktop.in_session(f"grep -rqF {STAND_IN} $XDG_RUNTIME_DIR/clipboard-history"))
+
+    # Gone once its time is up, and held till then.
+    def cleared(_: bool) -> bool:
+        """Say whether the clipboard no longer holds the password."""
+        return desktop.as_account("wl-paste --no-newline 2>/dev/null || true") != STAND_IN
+
+    retry(cleared, timeout=CLEARS + timedelta(seconds=15))
+    held = timedelta(seconds=time.monotonic() - copied)
+    assert held >= CLEARS - timedelta(seconds=5), f"the copy went after only {held}"
+
+    # A fenced command can't read it while it's held (modules/passwords/tests); this area
+    # alone has the script.
+    copy_a_password(desktop)
+    said = desktop.as_account(f"fence-reads-no-copy {STAND_IN} 2>&1; echo ended $?")
+    # The script says why it failed, a read copy or its own trouble, so that's passed on.
+    assert said.rstrip().endswith("ended 0"), f"fence-reads-no-copy failed: {said}"
 
 
 # A binding that throws or assigns the wrong type only warns, and

@@ -3,13 +3,17 @@
 # btrfs, date and timeout, each answering only the calls the script may
 # make. btrfs's usage says the disk's size and the bytes in no chunk,
 # kept in files, and each balance step adds what a file of steps gives
-# that step, fails, runs until timeout ends it at 06:00, outlives that by
-# a minute and is killed, or is killed by day. date reads a clock a step
-# can move, and timeout notes each step's deadline. It balances only
-# from 01:00 to 06:00 and while short, ends a step at 06:00, stops at the
-# first step that frees enough, goes past a step that fails or is killed
-# by day, stops at half-full chunks, and fails when it ends short or
-# can't read the usage.
+# that step, fails for want of room or otherwise, runs until timeout ends
+# it at 06:00, outlives that by a minute and is killed, or is killed by
+# day. date reads a clock a step
+# can move, on a day whose 06:00 a file can bring forward as a night the
+# clocks go forward does, and timeout notes each step's deadline. It
+# balances only from 01:00 to 06:00 and while short, ends a step at
+# 06:00, stops at the first step that frees enough, goes past a step that
+# fails or is killed by day, stops at half-full chunks, ends well when
+# left short only by full chunks or 06:00, saying which, and fails when no
+# step finished, the half-full one was killed by day or failed for anything
+# but room, or it can't read the usage.
 set -euo pipefail
 
 given=$1
@@ -34,6 +38,11 @@ if [ "\$#" -ne 4 ] || [ "\$1 \$2" != "balance start" ] || [ "\$4" != / ] \
   echo "the stand-in for btrfs was asked: \$*" >&2
   exit 99
 fi
+# Its room error is matched in English, which only the C locale promises.
+if [ "\${LC_ALL:-}" != C ]; then
+  echo "the stand-in for btrfs was asked to balance outside the C locale" >&2
+  exit 99
+fi
 step=\${3#-dusage=}
 echo "\$step" >>"$work/steps"
 # A step the file doesn't name gives nothing.
@@ -43,7 +52,16 @@ if [ -n "\${after:-}" ]; then
 fi
 case "\${gives:-0}" in
 fails) exit 1 ;;
+fails-full)
+  echo "ERROR: error during balancing '/': No space left on device" >&2
+  exit 1
+  ;;
 ends)
+  echo 06:00:00 >"$work/clock"
+  exit 124
+  ;;
+ends+*)
+  echo \$((\$(cat "$work/free") + \${gives#ends+})) >"$work/free"
   echo 06:00:00 >"$work/clock"
   exit 124
   ;;
@@ -56,13 +74,24 @@ killed-by-day) exit 137 ;;
 esac
 EOF
 
+# The day starts at a round epoch, and 06:00 falls the seconds in the
+# shift file after the hour the clock face says. The clock face's epoch
+# is taken as the hours before a change of clocks, which is all a case
+# starting at 01:30 needs.
 cat >"$work/bin/date" <<EOF
 #!$BASH
-if [ "\$*" != "+%H:%M:%S" ]; then
+day=864000000
+case "\$*" in
+"+%H:%M:%S %s")
+  IFS=: read -r h m s <"$work/clock"
+  echo "\$h:\$m:\$s \$((day + 10#\$h * 3600 + 10#\$m * 60 + 10#\$s))"
+  ;;
+"-d 06:00 +%s") echo \$((day + 21600 + \$(cat "$work/shift"))) ;;
+*)
   echo "the stand-in for date was asked: \$*" >&2
   exit 99
-fi
-cat "$work/clock"
+  ;;
+esac
 EOF
 
 cat >"$work/bin/timeout" <<EOF
@@ -79,8 +108,8 @@ chmod +x "$work/bin/btrfs" "$work/bin/date" "$work/bin/timeout"
 
 # A disk of SIZE GiB with FREE GiB in no chunk, whose steps give what
 # each line of the rest says: a step's fullness, then GiB, "fails",
-# "ends", "killed" or "killed-by-day", and the clock after it, if the
-# step moves it.
+# "fails-full" (for want of room), "ends", "killed" or "killed-by-day",
+# and the clock after it, if the step moves it.
 disk() {
   rm -f "$work/garbled"
   echo $(($1 * gib)) >"$work/size"
@@ -92,16 +121,21 @@ disk() {
   for line in "$@"; do
     read -r step gives after <<<"$line"
     case "$gives" in
-    fails | ends | killed | killed-by-day) echo "$step $gives $after" >>"$work/gives" ;;
+    fails | fails-full | ends | killed | killed-by-day)
+      echo "$step $gives $after" >>"$work/gives"
+      ;;
+    ends+*) echo "$step ends+$((${gives#ends+} * gib)) $after" >>"$work/gives" ;;
     *) echo "$step $((gives * gib)) $after" >>"$work/gives" ;;
     esac
   done
 }
 
-# Runs the script at CLOCK (03:00:00 unless given), and notes how it ended.
+# Runs the script at CLOCK (03:00:00 unless given), on a night whose
+# 06:00 is SHIFT seconds off the clock face's, and notes how it ended.
 give() {
   local status=0
   echo "${CLOCK:-03:00:00}" >"$work/clock"
+  echo "${SHIFT:-0}" >"$work/shift"
   PATH="$work/bin:$PATH" bash "$given" / >"$work/out" 2>"$work/err" || status=$?
   echo "$status" >"$work/status"
 }
@@ -157,12 +191,18 @@ expect "0 5 10 " 0 "a step that fails is passed for the next"
 
 disk 950 0 "0 1"
 give
-expect "0 5 10 20 30 40 50 " 1 "balancing stops at half-full chunks and fails short"
+expect "0 5 10 20 30 40 50 " 0 "balancing stops at half-full chunks and ends well short"
 expect_said "after chunks up to half full" "a night whose steps gave too little says files must go"
+
+disk 950 0 "0 fails" "5 1" "10 1" "20 1" "30 1" "40 1" "50 1"
+give
+expect "0 5 10 20 30 40 50 " 0 "an early step's failure doesn't fail a night the rest finish"
+expect_said "needs files gone" "a night whose later steps finish short says files must go"
 
 disk 950 0 "0 fails" "5 fails" "10 fails" "20 fails" "30 fails" "40 fails" "50 fails"
 give
 expect "0 5 10 20 30 40 50 " 1 "a night when every step fails fails"
+expect_said "no balance step finished" "a night when every step fails says none finished"
 
 disk 950 0
 touch "$work/garbled"
@@ -192,7 +232,7 @@ expect_deadlines "60 " "a step begun a minute before 06:00 is given that minute"
 
 disk 950 0 "0 1 06:00:00" "5 50"
 CLOCK=05:00:00 give
-expect "0 " 1 "a night that reaches 06:00 between steps stops and fails short"
+expect "0 " 0 "a night that reaches 06:00 between steps stops and ends well short"
 
 disk 950 0 "0 1 05:00:00" "5 50"
 give
@@ -201,13 +241,13 @@ expect_deadlines "10800 3600 " "each step is given only until 06:00, read again 
 
 disk 950 0 "0 ends" "5 50"
 CLOCK=05:30:00 give
-expect "0 " 1 "a step ended at 06:00 is the last, and the night fails short"
+expect "0 " 0 "a step ended at 06:00 is the last, and the night ends well short"
 expect_said "was ended at 06:00" "a step ended at 06:00 says so"
 expect_said "the rest waits for the next night" "a night ended at 06:00 says when the rest runs"
 
 disk 950 0 "0 killed" "5 50"
 CLOCK=05:30:00 give
-expect "0 " 1 "a step killed a minute past 06:00 is the last, and the night fails short"
+expect "0 " 0 "a step killed a minute past 06:00 is the last, and the night ends short"
 expect_said "was killed after 06:00" "a step killed past 06:00 says so"
 
 disk 950 0 "0 killed-by-day" "5 50"
@@ -217,7 +257,7 @@ expect_said "was killed, so the next step is tried" "a step killed before 06:00 
 
 disk 950 0 "0 1" "5 1" "10 1" "20 1" "30 1" "40 1" "50 ends"
 CLOCK=05:30:00 give
-expect "0 5 10 20 30 40 50 " 1 "a half-full step ended at 06:00 fails short"
+expect "0 5 10 20 30 40 50 " 0 "a half-full step ended at 06:00 ends well short"
 expect_said "the rest waits for the next night" \
   "a half-full step ended at 06:00 says the rest waits"
 if grep -qF "needs files gone" "$work/out" "$work/err"; then
@@ -225,9 +265,65 @@ if grep -qF "needs files gone" "$work/out" "$work/err"; then
   exit 1
 fi
 
+disk 950 0 "0 ends+50" "5 50"
+CLOCK=05:30:00 give
+expect "0 " 0 "a step ended at 06:00 that freed enough leaves enough"
+expect_said "GiB is in no chunk now" "a step ended at 06:00 that freed enough says so"
+
+disk 950 0 "0 50"
+CLOCK=01:30:00 SHIFT=-3600 give
+expect_deadlines "12600 " "a night the clocks go forward gives a step only the time until 06:00"
+
+disk 950 0 "0 50"
+CLOCK=01:30:00 SHIFT=3600 give
+expect_deadlines "19800 " "a night the clocks go back gives a step the hour it gains"
+
+disk 950 0 "0 1" "5 1" "10 1" "20 1" "30 1" "40 1" "50 killed-by-day"
+give
+expect "0 5 10 20 30 40 50 " 1 "a night whose half-full step is killed by day fails short"
+expect_said "up to half full didn't finish" "a half-full step killed by day says it didn't finish"
+if grep -qF "needs files gone" "$work/out" "$work/err"; then
+  echo "a half-full step killed by day said files must go, though it didn't finish"
+  exit 1
+fi
+if grep -qF "next step is tried" "$work/out" "$work/err"; then
+  echo "the half-full step killed by day said a next step is tried, though it is the last"
+  exit 1
+fi
+
+disk 950 0 "0 1" "5 1" "10 1" "20 1" "30 1" "40 1" "50 fails-full"
+give
+expect "0 5 10 20 30 40 50 " 0 "a night whose half-full step wants room ends well short"
+expect_said "needs files gone" "a half-full step failing for want of room says files must go"
+expect_said "No space left on device" "a step's failure is said as btrfs gave it"
+if grep -qF "next step is tried" "$work/out" "$work/err"; then
+  echo "the half-full step said a next step is tried, though it is the last"
+  exit 1
+fi
+
+disk 950 0 "0 1" "5 fails" "10 fails" "20 fails" "30 fails" "40 fails" "50 fails"
+give
+expect "0 5 10 20 30 40 50 " 1 "a night whose half-full step fails but not for room fails"
+expect_said "up to half full failed" "a half-full step failing but not for room says so"
+if grep -qF "needs files gone" "$work/out" "$work/err"; then
+  echo "a half-full step failing but not for room said files must go"
+  exit 1
+fi
+if grep -qF "up to 50% full failed, so the next step" "$work/out" "$work/err"; then
+  echo "the half-full step failing said a next step is tried, though it is the last"
+  exit 1
+fi
+
+# Only the last step's kill is told: an earlier one's, passed for the
+# next, leaves a half-full step that wants room saying files must go.
+disk 950 0 "0 killed-by-day" "5 1" "10 1" "20 1" "30 1" "40 1" "50 fails-full"
+give
+expect "0 5 10 20 30 40 50 " 0 "a night whose first step is killed and last wants room ends well"
+expect_said "needs files gone" "an early kill leaves a failing half-full step saying files must go"
+
 disk 950 0 "0 1" "5 1" "10 1" "20 1" "30 1" "40 1" "50 killed"
 CLOCK=05:30:00 give
-expect "0 5 10 20 30 40 50 " 1 "a half-full step killed past 06:00 fails short"
+expect "0 5 10 20 30 40 50 " 0 "a half-full step killed past 06:00 ends well short"
 expect_said "the rest waits for the next night" \
   "a half-full step killed past 06:00 says the rest waits"
 if grep -qF "needs files gone" "$work/out" "$work/err"; then

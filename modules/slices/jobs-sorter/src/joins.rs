@@ -17,7 +17,7 @@ const SLOT_MOST: u64 = 64 << 10;
 
 /// Linux's flag to open without waiting, 0o4000 on `x86_64` and `aarch64`
 /// alike, where this runs; the crate takes no libc for one constant.
-const O_NONBLOCK: i32 = 0o4000;
+pub const O_NONBLOCK: i32 = 0o4000;
 
 /// Linux's flag to refuse a link at the path's end, which differs by
 /// architecture: 1 << 15 in arm64's own fcntl.h, 1 << 17 in the generic one
@@ -34,7 +34,7 @@ compile_error!("O_NOFOLLOW's bit is known for x86_64 and aarch64 alone");
 
 /// Linux's flag that keeps a terminal opened from becoming the sorter's
 /// own, 0o400 on both.
-const O_NOCTTY: i32 = 0o400;
+pub const O_NOCTTY: i32 = 0o400;
 
 /// The host unit a viewer's words join, `<prefix><key>.service`, when
 /// they are mycelium's `attach --host <key>`.

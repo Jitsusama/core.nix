@@ -34,4 +34,7 @@ onLinux {
   vm-hibernation-resumes-through-its-boot-entry = import ./hibernate-entry.nix {
     inherit self pkgs;
   };
+  # Whether a folder becomes a subvolume's root, and an account may remove
+  # the half copy it made, shows only on Btrfs.
+  vm-hot-folders-get-subvolumes-of-their-own = import ./subvolumes.nix { inherit self pkgs; };
 }

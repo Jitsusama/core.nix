@@ -3,23 +3,35 @@
 //! November: a line a pain, written once, its owner the cell it went to.
 //! Once a landing a switch carried closes the pain, its line's check says
 //! what landed, and cadence keeps the miss open until the change it names
-//! runs here. One the keeper carries into a ledger of its own after it
-//! was written is marked carried, as that ledger tracks it from then. No
-//! other line of the ledger is changed, and a pain closes only on its
-//! fix, never on how long it has been quiet.
+//! runs here. One the keeper carries into a ledger of its own is marked
+//! carried, as that ledger tracks its fix from then, and is written even
+//! when it was carried first: it is still a miss, and cadence asks its
+//! owner for a test that runs. One carried before it was ever sent, so
+//! never sent at all, is written to the owner the first carrying line
+//! naming one the routes allow names, or else to the ledgers' keeper that
+//! carried it, and left unwritten only while the routes refuse both or
+//! name no keeper. One a line the keeper wrote before
+//! quotes is written too: said again, it is that miss come back, which
+//! needs a test of its own. No other line of the ledger is changed, and a
+//! pain closes only on its fix, never on how long it has been quiet.
 //!
-//! Only pains sent from `FROM_MS` on are written: the 214 sent before it
-//! had no thread kept, so most would only ever read as lost, and would
-//! each ask its owner for a check at once. They still count as open or
-//! lost in the hour until a landing naming each closes it.
+//! Only pains sent, or heard and carried unsent, from `FROM_MS` on are
+//! written: the 214 sent before it had no thread kept, so most would only
+//! ever read as lost, and would each ask its owner for a check at once.
+//! They still count as open or lost in the hour until a landing naming
+//! each closes it.
 //!
 //! pain-points is the ledger's only writer, under its lock, and nobody
-//! writes it by hand; a line changed is still written whole only once the
-//! ledger reads as it did before, read again just ahead of the rename
-//! that replaces it, so a write from outside the lock is never lost but
-//! left for the next run.
+//! has written it by hand since the keeper's last line of 21 November; a
+//! line changed is still written whole only once the ledger reads as it
+//! did before, read again just ahead of the rename that replaces it, so
+//! a write from outside the lock is lost only in the moment between that
+//! read and the rename, and is otherwise left for the next run.
 
-use super::heard::Heard;
+pub mod tested;
+
+use super::heard::{self, Heard, Line};
+use super::route::Routes;
 use super::stalled;
 use serde_json::{Value, json};
 use std::fs::{self, File, TryLockError};
@@ -37,38 +49,35 @@ const LOCK_AT_MOST: Duration = Duration::from_secs(2);
 /// Joel's time, in ms.
 pub const FROM_MS: i64 = 1_795_496_400_000;
 
-/// Writes each of `kept` sent to a cell from `from_ms` on, and carried by
-/// no ledger, into the ledger at `ledger` once, at his time by
-/// `offset_s`, and the check of each closed since, or that it is carried.
+/// Writes each of `kept` owed to a cell from `from_ms` on into the ledger
+/// at `ledger` once, at his time by `offset_s`, and the check of each
+/// closed since, or that it is carried; one carried unsent is owed as
+/// `owning` says.
 /// Lines are added at its end; the ledger is written whole only when a
-/// line changes, under its lock either way, so the keeper's own writes
-/// aren't lost.
+/// line changes, under its lock either way, so another run's writes are
+/// kept, and only once the ledger reads as it did before, so a writer that
+/// skips the lock loses nothing but in the moment of the rename.
 ///
 /// # Errors
 ///
 /// When the ledger or its lock can't be read or written, or stays locked,
 /// or the ledger changed as a line of it was being written.
-pub fn write(ledger: &Path, kept: &[Heard], offset_s: i64, from_ms: i64) -> Result<(), String> {
-    let owed: Vec<&Heard> = kept
+pub fn write(
+    ledger: &Path,
+    kept: &[Heard],
+    owning: &Owning,
+    offset_s: i64,
+    from_ms: i64,
+) -> Result<(), String> {
+    let owed: Vec<(&Heard, &str)> = kept
         .iter()
-        .filter(|h| h.to.is_some() && !h.void && !stalled::is(h))
-        .filter(|h| h.routed_at.is_some_and(|at| at >= from_ms))
+        .filter(|h| !h.void && !stalled::is(h))
+        .filter_map(|h| Some((h, owner(h, owning, from_ms)?)))
         .collect();
     if owed.is_empty() {
         return Ok(());
     }
-    let name = ledger.file_name().map_or_else(
-        || "misses.jsonl".to_owned(),
-        |n| n.to_string_lossy().into_owned(),
-    );
-    let lock_at = ledger.with_file_name(format!("{name}.lock"));
-    let lock = File::options()
-        .create(true)
-        .truncate(false)
-        .write(true)
-        .open(&lock_at)
-        .map_err(|e| format!("{}: {e}", lock_at.display()))?;
-    locked(&lock, &name)?;
+    let (_lock, name) = held(ledger)?;
     let text = match fs::read_to_string(ledger) {
         Ok(text) => text,
         Err(e) if e.kind() == ErrorKind::NotFound => String::new(),
@@ -100,6 +109,72 @@ pub fn write(ledger: &Path, kept: &[Heard], offset_s: i64, from_ms: i64) -> Resu
         .map_err(|e| format!("{}: {e}", ledger.display()))
 }
 
+/// Whom a pain carried unsent may be owed to: the ledger lines naming an
+/// owner a miss may be written to, and the ledgers' keeper that carried
+/// it, for one whose carrying lines name none.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct Owning {
+    pub lines: Vec<Line>,
+    pub keeper: Option<String>,
+}
+
+/// Who may own a pain carried unsent, by `ledgers` and `routes`: each
+/// line's owner named, trimmed, that `routes` doesn't refuse, as no pain
+/// is sent to, and the ledgers' keeper `routes` names, unless refused.
+#[must_use]
+pub fn owning(ledgers: &[Line], routes: &Routes) -> Owning {
+    let allowed = |owner: &str| !owner.is_empty() && !routes.refuses(owner);
+    let lines = ledgers
+        .iter()
+        .filter_map(|line| {
+            let owner = line.owner.trim();
+            allowed(owner).then(|| Line {
+                words: line.words.clone(),
+                owner: owner.to_owned(),
+            })
+        })
+        .collect();
+    let keeper = routes.ledgers.as_deref().map(str::trim);
+    Owning {
+        lines,
+        keeper: keeper.filter(|k| allowed(k)).map(str::to_owned),
+    }
+}
+
+/// Whom `pain` is owed to as a miss: the cell it was sent to from
+/// `from_ms` on, or, for one heard from then that the keeper carried
+/// before it was sent, the owner of the first line of `owning` carrying
+/// it, or else its keeper.
+fn owner<'a>(pain: &'a Heard, owning: &'a Owning, from_ms: i64) -> Option<&'a str> {
+    match (&pain.to, pain.routed_at) {
+        (Some(to), Some(at)) if at >= from_ms => Some(to.as_str()),
+        (None, None) if pain.carried && pain.at >= from_ms => {
+            let line = heard::carrier(&pain.words, &owning.lines);
+            line.map(|line| line.owner.as_str())
+                .or(owning.keeper.as_deref())
+        }
+        _ => None,
+    }
+}
+
+/// The ledger at `ledger`'s lock, held, and the ledger's name: the lock
+/// is let go as it drops.
+fn held(ledger: &Path) -> Result<(File, String), String> {
+    let name = ledger.file_name().map_or_else(
+        || "misses.jsonl".to_owned(),
+        |n| n.to_string_lossy().into_owned(),
+    );
+    let lock_at = ledger.with_file_name(format!("{name}.lock"));
+    let lock = File::options()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&lock_at)
+        .map_err(|e| format!("{}: {e}", lock_at.display()))?;
+    locked(&lock, &name)?;
+    Ok((lock, name))
+}
+
 /// Holds `lock` within `LOCK_AT_MOST`, or says why not.
 fn locked(lock: &File, name: &str) -> Result<(), String> {
     let started = Instant::now();
@@ -121,9 +196,9 @@ fn locked(lock: &File, name: &str) -> Result<(), String> {
 }
 
 /// What the ledger `text` becomes for `owed`: the whole of it, when a line
-/// of a pain closed or carried since says so, and the lines of pains not
-/// carried it holds none of, to add at its end.
-fn written(text: &str, owed: &[&Heard], offset_s: i64) -> (Option<String>, Vec<String>) {
+/// of a pain closed or carried since says so, and the lines of pains it
+/// holds none of, to add at its end.
+fn written(text: &str, owed: &[(&Heard, &str)], offset_s: i64) -> (Option<String>, Vec<String>) {
     let mut held = Vec::new();
     let mut changed = false;
     let lines: Vec<String> = text
@@ -135,9 +210,9 @@ fn written(text: &str, owed: &[&Heard], offset_s: i64) -> (Option<String>, Vec<S
             let Some(key) = read.get(PAIN).and_then(Value::as_str).map(str::to_owned) else {
                 return line.to_owned();
             };
-            let pain = owed.iter().copied().find(|h| h.key == key);
+            let pain = owed.iter().find(|(h, _)| h.key == key);
             held.push(key);
-            let Some(pain) = pain else {
+            let Some(&(pain, _)) = pain else {
                 return line.to_owned();
             };
             if pain.carried && read.get("carried").is_none() {
@@ -156,26 +231,29 @@ fn written(text: &str, owed: &[&Heard], offset_s: i64) -> (Option<String>, Vec<S
         .collect();
     let added = owed
         .iter()
-        .filter(|h| !h.carried && !held.contains(&h.key))
-        .map(|h| line_of(h, offset_s))
+        .filter(|(h, _)| !held.contains(&h.key))
+        .map(|(h, owner)| line_of(h, owner, offset_s))
         .collect();
     let whole = changed.then(|| lines.into_iter().map(|line| line + "\n").collect());
     (whole, added)
 }
 
 /// A pain's line, as the keeper writes a miss: when he said it, his words
-/// and its owner, with the pain it is and what heard it.
-fn line_of(pain: &Heard, offset_s: i64) -> String {
+/// and its `owner`, with the pain it is and what heard it.
+fn line_of(pain: &Heard, owner: &str, offset_s: i64) -> String {
     let mut line = json!({
         "at": stamp(pain.at, offset_s),
         "words": pain.words,
-        "owner": pain.to,
+        "owner": owner,
         PAIN: pain.key,
         "heard_by": "pain-points",
     });
     if let Some(fix) = pain.fixed_by() {
         line["check"] = json!(fix.said);
         line["closed_by"] = json!(fix.commit);
+    }
+    if pain.carried {
+        line["carried"] = json!(true);
     }
     line.to_string()
 }

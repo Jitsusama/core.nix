@@ -137,6 +137,43 @@ let
   # read too, held to clippyLints, and nothing installed.
   passesClippy = name: package: clippy.passes { inherit name package; };
 
+  # Rust with macOS's standard library and clippy, for compilesForMacos. It
+  # takes the clippy a crate's Linux clippy check runs, so both judge by the
+  # same lints rather than a newer clippy's own. A nixpkgs whose Rust the
+  # locked rust-overlay doesn't list yet stops here, saying so.
+  macosToolchain =
+    let
+      overlaid = pkgs.extend arguments.rust-overlay.overlays.default;
+      inherit (pkgs.clippy) version;
+      stable =
+        overlaid.rust-bin.stable.${version}
+          or (throw "rust-overlay lists no Rust ${version}: update it in flake.lock");
+    in
+    stable.minimal.override {
+      targets = [ "aarch64-apple-darwin" ];
+      extensions = [ "clippy" ];
+    };
+
+  # The same check of a package, read as macOS would compile it, from Linux:
+  # code only a Mac compiles is held to clippyLints on the machine every
+  # merge's checks build on, which no Mac is.
+  compilesForMacos =
+    name: package:
+    package.overrideAttrs {
+      pname = name;
+      CLIPPY_CONF_DIR = clippyConfig;
+      buildPhase = ''
+        export PATH=${macosToolchain}/bin:$PATH
+        cargo clippy --target aarch64-apple-darwin --all-targets --offline -- \
+          ${lib.escapeShellArgs clippyLints}
+      '';
+      doCheck = false;
+      doInstallCheck = false;
+      installPhase = ''
+        touch $out
+      '';
+    };
+
   # The packages a VM test's host runs it with, the virtiofsd its VMs share
   # folders through started by without-syncfs (modules/nix-daemon), so a
   # guest's sync of a share never commits the host's whole filesystem,
@@ -343,6 +380,9 @@ let
 
   # Checks for Linux alone, which a Mac neither builds nor evaluates.
   onLinux = lib.optionalAttrs (pkgs.stdenv.hostPlatform.system == "x86_64-linux");
+  # Checks for a Mac alone, as what runs macOS's own tools through macosTools.
+  onMacos = lib.optionalAttrs (pkgs.stdenv.hostPlatform.system == "aarch64-darwin");
+  macosTools = pkgs.callPackage ./tests/lib/macos-tools.nix { };
 
   # What every folder's checks.nix is given, this file's arguments and the
   # helpers here, of which each takes what it uses.
@@ -366,7 +406,10 @@ let
       quickshellTypes
       shellFolderLint
       passesClippy
+      compilesForMacos
       onLinux
+      onMacos
+      macosTools
       vmHostPkgs
       ;
   };
@@ -557,6 +600,7 @@ gather {
     ./modules/call-under-load/checks.nix
     ./modules/calls/checks.nix
     ./modules/camera/checks.nix
+    ./modules/camera-guard/checks.nix
     ./modules/cargo/checks.nix
     ./modules/chrome/checks.nix
     ./modules/claude/checks.nix
@@ -575,10 +619,12 @@ gather {
     ./modules/disk-guard/checks.nix
     ./modules/disk-loss-panic/checks.nix
     ./modules/disko/checks.nix
+    ./modules/du/checks.nix
     ./modules/eero/checks.nix
     ./modules/elsewhere/checks.nix
     ./modules/ergodox/checks.nix
     ./modules/file-link-keys/checks.nix
+    ./modules/find/checks.nix
     ./modules/firmware-errors/checks.nix
     ./modules/firmware-notice/checks.nix
     ./modules/firmware-settings/checks.nix
@@ -594,6 +640,7 @@ gather {
     ./modules/hang-panic/checks.nix
     ./modules/health/checks.nix
     ./modules/hibernate/checks.nix
+    ./modules/home-manager/checks.nix
     ./modules/house-report/checks.nix
     ./modules/inkscape/checks.nix
     ./modules/inlyne/checks.nix
@@ -628,6 +675,7 @@ gather {
     ./modules/mx-brio/checks.nix
     ./modules/mx-brio-seat/checks.nix
     ./modules/mycelium/checks.nix
+    ./modules/name-lookups/checks.nix
     ./modules/name-service/checks.nix
     ./modules/neovim/checks.nix
     ./modules/net/checks.nix

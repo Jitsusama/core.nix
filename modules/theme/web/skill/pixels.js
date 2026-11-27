@@ -9,8 +9,8 @@
 //   browser's Cumulative Layout Shift counts it, stays under 0.1. Run it
 //   first on a page freshly loaded, before layout.js opens its folds.
 //
-// Each word's size and contrast are words.js's, and a control's name is
-// names.js's, each run beside it.
+// Each word's size is floor.js's, its contrast words.js's, and a control's
+// name names.js's, each run beside it.
 //
 // It ends without a semicolon, since an eval asked for one expression
 // answers nothing for a statement.

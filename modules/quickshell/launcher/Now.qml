@@ -40,6 +40,7 @@ import "Keeping.js" as Keeping
 import "PlaceRow.js" as PlaceRow
 import "Presented.js" as Presented
 import "SessionRow.js" as SessionRow
+import "TalkAnswers.js" as TalkAnswers
 import "../pieces/Holding.js" as Holding
 
 Provider {
@@ -2211,6 +2212,11 @@ Provider {
         const known = Sessions.wantKnown(address);
         const said = Words.of("on:waiting").said ?? {};
         const session = () => provider.wantsNow[address] ?? madeFrom;
+        // What it asks in full, read as its drawer is drawn, where the want says more than
+        // its short line (wants.rs's `whole`), so its drawer says the question as it was put,
+        // paragraphs and list lines kept (Joel's bar of 2026-11-24, that any surface he's in
+        // answers a question in full); "" where it says no more.
+        const whole = () => TalkAnswers.whole(provider.source("agents")?.wantOf(address) ?? null);
         // Said answered only once the node has put it in the session's
         // inbox, since one it couldn't put never reached the session.
         const answer = (fields, label) => {
@@ -2241,7 +2247,7 @@ Provider {
             sure: true,
             drawer: () => ({
                 title: one.label,
-                body: one.description || asked,
+                body: one.description || whole() || asked,
                 facts: [fact("answers", madeFrom.title)].concat(one.recommended
                     ? [fact("recommended", said.recommended ?? "")] : [])
             }),
@@ -2279,13 +2285,22 @@ Provider {
             forYou: { kind: "agent", source: "sessions" },
             side: count === 1 ? said.answerOne ?? ""
                 : filledIn(said.answer ?? "", { count: String(count) }),
-            drawer: () => ({
-                title: madeFrom.title,
-                facts: [fact("asked", asked)].concat(answers.choices.map(one => ({
-                    label: Words.name(`on:waiting:${one.recommended ? "recommended" : "choice"}`),
-                    value: one.description ? `${one.label} \u00b7 ${one.description}` : one.label
-                })), [fact("session", madeFrom.title)])
-            }),
+            // Its question whole as its body where the want says more than its short line,
+            // which it then doesn't say again as a fact.
+            drawer: () => {
+                const put = whole();
+                return {
+                    title: madeFrom.title,
+                    body: put,
+                    facts: (put === "" ? [fact("asked", asked)] : []).concat(
+                        answers.choices.map(one => ({
+                            label: Words.name(
+                                `on:waiting:${one.recommended ? "recommended" : "choice"}`),
+                            value: one.description ? `${one.label} \u00b7 ${one.description}`
+                                : one.label
+                        })), [fact("session", madeFrom.title)])
+                };
+            },
             // Its Return is stepping in, not Agents' own act on the session.
             returns: null,
             verb: "more",
@@ -2321,7 +2336,7 @@ Provider {
             make: () => provider.toReopen
         }]).concat((provider.source("agents") ? sessions : [])
         .map(session => ({
-            // Gathered in Agents Asking once two ask (ForYou.js).
+            // Gathered in Agents once two ask (ForYou.js).
             kind: "agent",
             thing: { kind: "todo", blocks: 1, since: session.presence?.wants?.since ?? null },
             cell: () => session,
@@ -2333,6 +2348,8 @@ Provider {
             }
         })).concat(WaitingOnYou.now.map(each => ({
             kind: "do",
+            // Home's Now row names it by its title where it leads.
+            toDo: each,
             thing: provider.itemThing(each),
             cell: () => WaitingOnYou.session(each),
             make: now => provider.item(each, now)
@@ -2460,21 +2477,25 @@ Provider {
         return band.map(one => one.make(now)).filter(row => row !== null);
     }
 
-    // What needs Joel now, under a heading for each cell behind it, the
-    // cells by their heaviest row and each one's rows by weight but for
-    // what it asks, which leads it as what holds it up, with what
-    // no session is behind under one heading of his own (ForYouCells.js's
-    // byCell; Joel, 2026-11-16: "one 'what needs me' view grouped by
-    // cell"). No heading while all of it is his own, and a group whose rows
-    // all went as they were made says nothing. `asked`, Agents Asking's row
-    // or none, stands first while headings show, else by `weight`, its
-    // heaviest, among the loose rows (ForYouCells.js's laidOut). What a
-    // cell asks is its want's row, or a to-do of its own it blocks on, as a
-    // session whose want is an action asks it (ForYou.js's blocked).
-    function cellRows(band, now, asked, weight) {
+    // What needs Joel now: his own rows loose, and what the sessions raised
+    // gathered into Agents, standing among his own by its heaviest,
+    // inside it a heading for each cell behind it and its rows, the cells by
+    // their heaviest row and each one's rows by weight but for what it asks,
+    // which leads it as what holds it up (ForYouCells.js's byCell and
+    // laidOut; Joel, 2026-11-16: "one 'what needs me' view grouped by
+    // cell", and 2026-11-25 21:52: "it also makes no sense for the agents
+    // to be top level"). What a cell asks is its want's row, or a to-do of
+    // its own it blocks on, as a session whose want is an action asks it
+    // (ForYou.js's blocked).
+    function cellRows(band, now) {
+        return Cells.laidOut(cellsOf(band),
+            items => bandRows(items, now), cellHeading,
+            inside => keptAlike(kindsKept, "agent", inside, () => madeKindRow("agent", inside)));
+    }
+
+    function cellsOf(band) {
         const asks = one => one.kind === "agent" || one.kind === "do" && one.thing.blocks > 0;
-        return Cells.laidOut(Cells.byCell(band, one => one.cell(), asks),
-            items => bandRows(items, now), cellHeading, { rows: asked, weight });
+        return Cells.byCell(band, one => one.cell(), asks);
     }
 
     // A cell's heading, its name and how it stands as the agents daemon
@@ -2503,7 +2524,7 @@ Provider {
     // otherwise. It moves as a session turns, working to listening and
     // back, which remakes For You while it's held, as a heading must to say
     // it true; shut, it's only these words made again.
-    readonly property string cellsTold: Cells.byCell(forYouBands.now, one => one.cell())
+    readonly property string cellsTold: Cells.byCell(forYouBands.all, one => one.cell())
         .map(group => cellSaid(group.cell)).join("\n")
 
     // A kind's own row, To Look At, To Try or To Read, holding what of that kind
@@ -2517,11 +2538,11 @@ Provider {
     // that holds more draws one, its name in text, so what needs him now
     // leads by its order (VKCF3Z, 2026-11-09).
     // Kept while it holds the same rows, each kept as it is (kindsKept).
-    // Agents Asking is such a row too, gathering what agents ask of Joel,
-    // though each needs him now, so it stands among what does where its
-    // heaviest weighs, its mark in the hue of what it holds rather than
-    // muted (Joel, 2026-11-18 10:18: "they are all loose amongst other
-    // things properly categorized").
+    // Agents is such a row too, gathering what the sessions raised
+    // for Joel under each one's heading (cellRows), though each needs him
+    // now, so it stands among what does where its heaviest weighs, its mark
+    // in the hue of what it holds rather than muted (Joel, 2026-11-18
+    // 10:18: "they are all loose amongst other things properly categorized").
     function kindRow(kind, rows) {
         if (rows.length === 0)
             return [];
@@ -2531,19 +2552,22 @@ Provider {
 
     function madeKindRow(kind, rows) {
         const id = `for-you:kind:${kind}`;
+        // Agents holds each cell's heading over its rows, which says
+        // whose they are but is none of them to count or weigh.
+        const things = rows.filter(one => one.heading !== true);
         const row = member({
             key: `on:waitingOnYou:kind:${kind}`,
             verb: "more",
             stays: true,
             name: Words.name(id),
             glyph: Words.glyph(id),
-            hue: kind === "agent" ? rows[0].hue ?? "" : "muted",
-            side: String(rows.length),
+            hue: kind === "agent" ? things[0]?.hue ?? "" : "muted",
+            side: String(things.length),
             nested: true,
             thing: true,
             drawer: () => ({
                 title: Words.name(id),
-                facts: [provider.fact("heaviest", rows[0].name)]
+                facts: [provider.fact("heaviest", things[0]?.name ?? "")]
             }),
             verbs: () => rows,
             targets: () => rows,
@@ -2563,7 +2587,10 @@ Provider {
     // Each asking is a pass of the to-dos', sessions' and kinds' keeping,
     // so what's no longer there is let go; a look is let go once its file
     // is, since History's looks are kept beside them.
+    // Each part is lapped for the step that asks (Launcher's stepLap), so
+    // a slow step into For You says which part made it slow.
     function waitingRows() {
+        const lap = name => provider.launcher?.stepLap?.(name);
         const now = Date.now();
         const bands = bandsAt(now);
         const keeps = [itemsKept, wantsKept, kindsKept, cellsKept];
@@ -2572,32 +2599,51 @@ Provider {
             delete itemsNow[identity];
         for (const address of Object.keys(wantsNow))
             delete wantsNow[address];
-        const asked = kindRow("agent", bandRows(bands.agent, now));
-        const rows = latelyRows(now).filter(latelyComingIn).concat(
-            cellRows(bands.now, now, asked, bands.agent[0]?.weight ?? 0),
-            kindRow("look", bandRows(bands.look, now)),
-            kindRow("try", bandRows(bands.try, now)), kindRow("read", bandRows(bands.read, now)),
+        lap("banding");
+        const lately = latelyRows(now).filter(latelyComingIn);
+        lap("lately");
+        // What needs him now, Agents among it with each cell's rows
+        // inside, so the agents' rows are made as part of it (cellRows).
+        const cells = cellRows(bands.all, now);
+        lap("cells");
+        const lookRows = kindRow("look", bandRows(bands.look, now));
+        const tryRows = kindRow("try", bandRows(bands.try, now));
+        const readRows = kindRow("read", bandRows(bands.read, now));
+        lap("kinds");
+        const rows = lately.concat(cells, lookRows, tryRows, readRows,
             laterRow === null ? [] : [laterRow], historyRow === null ? [] : [historyRow]);
         keeps.forEach(keeping => keptOnly(keeping));
         for (const file of Object.keys(looksKept.rows)) {
             if (!(file in lookTexts))
                 delete looksKept.rows[file];
         }
+        lap("letting go");
         return rows;
     }
 
-    // Every row For You's :filter narrows, each one by one, as its bands
-    // order them: a filter steps past the rows that hold a kind, so
+    // Every row For You's :filter narrows, each one by one, as For You
+    // orders them: a filter steps past the rows that hold a kind, so
     // :filter look holds what To Look At does, and any lifted (VKCF3Z,
-    // 2026-11-09).
+    // 2026-11-09). Agents is opened where it stands, its headings left
+    // out as a filter draws none, and each row it holds is told as an
+    // agent's too, beside its own kind, so :filter agent holds what Agents
+    // does (round 5, F26) and :filter do still holds a session's to-do
+    // (round 6).
     function filterable() {
         const now = Date.now();
         const bands = bandsAt(now);
+        const opened = row => row.key !== "on:waitingOnYou:kind:agent" ? [row]
+            : Array.from(row.targets()).filter(one => one.heading !== true).map(agentsOwn);
         return latelyRows(now).filter(latelyComingIn).concat(
-            bandRows(bands.now.slice(0, bands.agentAt), now),
-            bandRows(bands.agent, now), bandRows(bands.now.slice(bands.agentAt), now),
-            bandRows(bands.look, now),
-            bandRows(bands.try, now), bandRows(bands.read, now));
+            cellRows(bands.all, now).reduce((rows, row) => rows.concat(opened(row)), []),
+            bandRows(bands.look, now), bandRows(bands.try, now), bandRows(bands.read, now));
+    }
+    // A row inside Agents as :filter tells it, an agent's as well as its
+    // own kind, from where it came, kept while the row is.
+    function agentsOwn(row) {
+        return keptAlike(itemsKept, `agent:${row.key}`, [row], () => Object.assign({}, row,
+            { forYou: Object.assign({}, row.forYou, { also: "agent",
+                source: row.forYou?.source ?? "sessions" }) }));
     }
 
     // Whether one of Lately's rows stands in For You: only while its own
@@ -3333,14 +3379,19 @@ Provider {
         const held = leading === null ? [] : latelyCriticalHeld[leading] ?? [];
         const critical = leading === null ? ""
             : String(held[0]?.summary ?? "") || Words.name(`for-you:source:${leading}`);
-        const asked = sessions.length > 0 && critical === "";
-        const lead = sessions.length === 0 && critical === ""
-            ? WaitingOnYou.now[0] ?? null : null;
-        // A look or a landing lifted into what needs him now, where no
-        // session or to-do leads, says its own row's name.
-        const lifted = sessions.length > 0 || lead ? null : forYouBands.now[0] ?? null;
-        const title = critical !== "" ? critical : asked ? first : lead ? lead.title
-            : lifted?.make(Date.now())?.name ?? "";
+        // Else what leads what needs him now as For You lays it out
+        // (ForYouCells.js's leading): a session's ask, his to-do, or a look
+        // or a landing lifted, by its own row's name. Agents leading, it's
+        // the heaviest Agents holds, which Return, Return steps in to, a
+        // to-do of a session asking nothing among them (round 5, F43).
+        // Banded at this minute, as waitingRows is, since time alone moves a
+        // to-do's weight and forYouBands isn't banded again for it (round 6).
+        const led = critical === "" ? Cells.leading(cellsOf(bandsAt(Date.now()).all)) : null;
+        const asker = led?.item.kind === "agent" ? led.item.cell() : null;
+        const lead = led?.item.toDo ?? null;
+        const title = critical !== "" ? critical
+            : asker ? `${asker.title} ${Sessions.wanted(asker.presence?.wants?.kind)}`
+            : lead ? lead.title : led?.item.make(Date.now())?.name ?? "";
         if (title === "") {
             return [];
         }

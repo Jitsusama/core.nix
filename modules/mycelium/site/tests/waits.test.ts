@@ -153,7 +153,7 @@ it("names who asked, and how long the oldest question waited", () => {
   );
 });
 
-it("says one question waiting, and what holds a cell up", () => {
+it("says one answer a cell owes, and what holds it up, as the cell's to give", () => {
   const one = [{ from: "TERN01", at: "2026-11-19T09:59:30" }];
   const two = [
     { from: "GULL02", at: "2026-11-19T09:45:00" },
@@ -167,15 +167,15 @@ it("says one question waiting, and what holds a cell up", () => {
   assert.deepEqual(
     said,
     [
-      "tern01's question waiting since yesterday at 21:15",
-      "a question waiting; it came from tern01 under a minute ago, with no answer yet",
-      "2 questions waiting; the oldest came from GULL02 15 min ago, with no word since",
+      "hasn't answered tern01's question of yesterday at 21:15",
+      "owes tern01 an answer: asked under a minute ago, with no answer yet",
+      "owes 2 answers: the oldest asked by GULL02 15 min ago, with no word since",
     ],
     "the count, the oldest's asker and age, and how the page knows should each be said",
   );
   assert.equal(
     heldWords(cell("A", { owes: one }), seen, AT, { judged: true, named: (n) => n.slice(0, 3) }),
-    "a question waiting; it came from ter under a minute ago, with no answer yet",
+    "owes ter an answer: asked under a minute ago, with no answer yet",
     "the asker's name should be fitted to the row as the drawer asks",
   );
 });

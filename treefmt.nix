@@ -145,6 +145,8 @@ in
       python.pillow
       # The local sites' page tests drive Chromium with it.
       python.playwright
+      # The live pages' heads gate parses each page as a browser does with it.
+      python.selectolax
       # The desktop test's window named as Tuple's.
       python.xlib
     ]
@@ -165,6 +167,7 @@ in
   # Each is named alone, so an edit to a file beside them rebuilds no mypy.
   jitsusama.mypy.paths = [
     ./modules/local-sites/tests
+    ./modules/mycelium/surfaces
     ./modules/niri/tests
     ./modules/quickshell/tests/launcher_on_niri.py
     ./tests/desktop/desktop_session.py

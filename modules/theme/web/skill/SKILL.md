@@ -141,7 +141,7 @@ Load each when its step needs it, not before.
 | `craft.md` | the CSS for a technique: faces' axes, the switch, folds, side sheets, replays, diagrams |
 | `sites.md` | making, placing or publishing a site: the local home, links home, the kit |
 | `gates.md` | verifying, after the design is judged |
-| `checks.md` | running the verification, with `gate.js`, `layout.js`, `map.js`, `homes.js`, `svgtext.js`, `looks.js`, `pixels.js`, `words.js` and `names.js` |
+| `checks.md` | running the verification, with `gate.js`, `layout.js`, `map.js`, `homes.js`, `svgtext.js`, `looks.js`, `pixels.js`, `floor.js`, `words.js` and `names.js` |
 
 The kit (`~/.local/share/jitsusama/web/`, `sites.md`) gives a site its
 colours, faces, space ladder and a sensible base. It's a palette to

@@ -12,8 +12,8 @@
   ...
 }:
 let
-  # A graphical machine that shares the Brio, since no role does while its
-  # relay gives no picture (nixos.nix says why).
+  # A graphical machine that shares the Brio, since no role takes its relay
+  # in yet (nixos.nix says why).
   shared = graphical.extendModules { modules = [ self.nixosModules.mx-brio ]; };
 in
 onLinux {

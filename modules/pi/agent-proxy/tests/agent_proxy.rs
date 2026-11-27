@@ -2,7 +2,9 @@
 //! a fake agent behind it that signs whatever reaches it, and host keys
 //! made for each test, so every refusal is seen not to reach the agent.
 //! Some proxies also hold a builders' key and lend it to the builders
-//! root's file names, as nix-offload's lent builders are reached.
+//! root's file names, as nix-offload's lent builders are reached, and
+//! some make a key of their own for the OS Login hosts a known-hosts
+//! file names, as gcloud's IAP logins reach a cloud's machines.
 //!
 //! Long because each case drives the real program through the same
 //! helpers, a socket, a fake agent and keys made for it, and its cases
@@ -11,6 +13,7 @@
 
 use std::fs;
 use std::io::{Read, Write};
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -124,20 +127,57 @@ struct Proxy {
 impl Proxy {
     /// A proxy told of the hosts in `hosts`, one OpenSSH key a line.
     fn start(name: &str, hosts: &str) -> Self {
-        Self::launch(name, hosts, None, Behind::Signing)
+        Self::launch(name, hosts, None, None, Behind::Signing)
+    }
+
+    /// A proxy told of the hosts in `hosts` that also makes a key of its
+    /// own for the OS Login hosts `known` names, the text of a known-hosts
+    /// file as gcloud writes one.
+    fn os_login(name: &str, hosts: &str, known: &str) -> Self {
+        Self::launch(name, hosts, None, Some(known), Behind::Signing)
+    }
+
+    /// Write the known-hosts file an OS Login proxy reads afresh at each
+    /// bind.
+    fn know(&self, known: &str) {
+        fs::write(self.dir.join("known_hosts"), known).expect("the known hosts are written");
+    }
+
+    /// The OS Login key's public half, as the proxy wrote it for ssh to
+    /// find, and its wire blob.
+    fn os_login_key(&self) -> (PublicKey, Vec<u8>) {
+        let text = fs::read_to_string(self.dir.join("os-login.pub")).expect("the key is written");
+        let key = PublicKey::from_openssh(text.trim()).expect("the key reads");
+        // os-login.sh knows the proxy's own key by this comment alone.
+        let made = key
+            .comment()
+            .strip_prefix("pi-agent-proxy OS Login ")
+            .expect("the file names the key as os-login.sh reads it");
+        assert!(
+            !made.is_empty() && made.bytes().all(|byte| byte.is_ascii_digit()),
+            "the file's comment ends in the time it was made: {made}"
+        );
+        let blob = key.to_bytes().expect("the key encodes");
+        (key, blob)
     }
 
     /// A proxy told of the hosts in `hosts` that also holds `builders`'s
     /// key and lends it to the builders `machines` names, the text of
     /// root's file of the builders it vouches for.
     fn lending(name: &str, hosts: &str, builders: &Ed25519Keypair, machines: &str) -> Self {
-        Self::launch(name, hosts, Some((builders, machines)), Behind::Signing)
+        Self::launch(
+            name,
+            hosts,
+            Some((builders, machines)),
+            None,
+            Behind::Signing,
+        )
     }
 
     /// A lending proxy like [`Proxy::lending`] whose agent behind takes
     /// each question and never answers, as one waiting on its person.
     fn stalled(name: &str, builders: &Ed25519Keypair, machines: &str) -> Self {
-        Self::launch(name, "", Some((builders, machines)), Behind::Stalled)
+        Self::launch(name, "", Some((builders, machines)), None, Behind::Stalled)
     }
 
     /// Write the file of lent builders a lending proxy reads afresh at
@@ -150,6 +190,7 @@ impl Proxy {
         name: &str,
         hosts: &str,
         builders: Option<(&Ed25519Keypair, &str)>,
+        known: Option<&str>,
         behind: Behind,
     ) -> Self {
         let dir =
@@ -186,17 +227,28 @@ impl Proxy {
                 .arg("--lent")
                 .arg(dir.join("lent"));
         }
+        if let Some(known) = known {
+            fs::write(dir.join("known_hosts"), known).expect("the known hosts are written");
+            command
+                .arg("--os-login")
+                .arg(&dir)
+                .arg("--os-login-hosts")
+                .arg(dir.join("known_hosts"));
+        }
         let child = command
             .stderr(Stdio::from(
                 fs::File::create(dir.join("said")).expect("a file for what it says"),
             ))
             .spawn()
             .expect("the proxy starts");
+        // The OS Login key is written once the socket is bound, so a
+        // proxy asked for one is ready once both are there.
+        let ready = || socket.exists() && (known.is_none() || dir.join("os-login.pub").exists());
         let started = Instant::now();
-        while !socket.exists() {
+        while !ready() {
             assert!(
                 started.elapsed() < Duration::from_secs(10),
-                "the proxy never bound its socket"
+                "the proxy never bound its socket, or never wrote its OS Login key"
             );
             // A short poll for the socket the proxy binds as it starts.
             thread::sleep(Duration::from_millis(5));
@@ -209,8 +261,14 @@ impl Proxy {
         }
     }
 
+    /// A client whose answer, never coming, fails the test rather than
+    /// holding it.
     fn client(&self) -> UnixStream {
-        UnixStream::connect(&self.socket).expect("a client reaches the proxy")
+        let client = UnixStream::connect(&self.socket).expect("a client reaches the proxy");
+        client
+            .set_read_timeout(Some(Duration::from_secs(10)))
+            .expect("a read timeout is set");
+        client
     }
 
     fn signatures(&self) -> usize {
@@ -271,6 +329,8 @@ const REASONS: &[&str] = &[
     "account",
     "not-lent",
     "lent-host",
+    "not-os-login",
+    "os-login-host",
 ];
 
 /// Whether `line` has the fixed shape a journal reader keeps fields
@@ -287,7 +347,7 @@ fn shaped(line: &str) -> bool {
         let fields: Vec<&str> = signed.split(' ').collect();
         return fields.len() == 4
             && host(fields[0])
-            && ["key=builders", "key=agent"].contains(&fields[1])
+            && ["key=builders", "key=agent", "key=os-login"].contains(&fields[1])
             && fields[2]
                 .strip_prefix("user=")
                 .is_some_and(|user| !user.is_empty())
@@ -979,4 +1039,681 @@ fn lists_the_builders_key_though_the_agent_behind_never_answers() {
     string(&mut expected, &key);
     string(&mut expected, b"nix-offload builders");
     assert_eq!(answer, expected, "the builders' key alone");
+}
+
+/// A known-hosts line as gcloud writes one for an instance it reached,
+/// under `name`, with `host`'s key.
+fn known(name: &str, host: &Ed25519Keypair) -> String {
+    let key = PublicKey::from(KeyData::Ed25519(host.public))
+        .to_openssh()
+        .expect("a host key writes");
+    format!("{name} {key}\n")
+}
+
+/// The OS Login account gcloud logs in as, as an agent's ssh asks.
+const OS_LOGIN_USER: &[u8] = b"someone_example_com";
+
+// The red case of 24 November: an agent's `gcloud compute ssh` to an OS
+// Login host failed, since the person's own key is in the TPM, whose agent
+// refuses agents, and this proxy held no key such a host takes.
+#[test]
+fn signs_an_os_login_hosts_login_with_a_key_only_it_holds() {
+    let (instance, blob) = host(5);
+    let proxy = Proxy::os_login(
+        "os-login",
+        "",
+        &format!(
+            "# gcloud's\n{}",
+            known("compute.8034457558281374540", &instance)
+        ),
+    );
+    let (key, key_blob) = proxy.os_login_key();
+    let session = b"an instance's session";
+    let (mut client, taken) = bound(&proxy, &instance, &blob, session);
+    assert!(
+        taken,
+        "an OS Login host's binding is taken though --hosts names it not"
+    );
+
+    let data = login_as(session, &key_blob, OS_LOGIN_USER);
+    send(&mut client, &sign(&key_blob, &data));
+    let answer = receive(&mut client).expect("an answer");
+
+    assert_eq!(answer.first(), Some(&SIGN_RESPONSE), "the login is signed");
+    let signature = Signature::try_from(&answer[5..]).expect("a signature reads");
+    key.key_data()
+        .verify(&data, &signature)
+        .expect("the key it wrote out signed the login");
+    assert_eq!(proxy.signatures(), 0, "the agent behind was never asked");
+    assert_eq!(
+        proxy.lines(),
+        [format!(
+            "pi-agent-proxy: signed host={} key=os-login user=someone_example_com claimed-session={}",
+            fingerprint(&blob),
+            claimed()
+        )],
+        "the login is said with the OS Login key and account"
+    );
+    for file in fs::read_dir(&proxy.dir).expect("the folder reads") {
+        let text = fs::read(file.expect("an entry").path()).unwrap_or_default();
+        assert!(
+            !String::from_utf8_lossy(&text).contains("PRIVATE KEY"),
+            "no OpenSSH private key lands in the key's folder or the log"
+        );
+    }
+}
+
+#[test]
+fn lists_the_os_login_key_after_the_agents() {
+    let (instance, _) = host(5);
+    let proxy = Proxy::os_login("lists-os-login", "", &known("compute.1", &instance));
+    let (_, key_blob) = proxy.os_login_key();
+    let mut client = proxy.client();
+
+    send(&mut client, &[REQUEST_IDENTITIES]);
+    let answer = receive(&mut client).expect("an answer");
+
+    let mut expected = vec![IDENTITIES_ANSWER];
+    expected.extend_from_slice(&2u32.to_be_bytes());
+    string(&mut expected, LOGIN_KEY);
+    string(&mut expected, b"login key");
+    string(&mut expected, &key_blob);
+    string(&mut expected, b"pi-agent-proxy OS Login");
+    assert_eq!(answer, expected, "the agent's key, then the OS Login one");
+}
+
+#[test]
+fn makes_a_new_os_login_key_each_time_it_starts() {
+    let (instance, _) = host(5);
+    let first = Proxy::os_login("first-key", "", &known("compute.1", &instance));
+    let second = Proxy::os_login("second-key", "", &known("compute.1", &instance));
+
+    assert_ne!(
+        first.os_login_key().1,
+        second.os_login_key().1,
+        "each start's key is its own, so none outlives its proxy"
+    );
+}
+
+#[test]
+fn takes_as_os_login_hosts_only_those_named_as_an_instance() {
+    let (named, named_blob) = host(5);
+    let (aliased, aliased_blob) = host(6);
+    let proxy = Proxy::os_login(
+        "instances-only",
+        "",
+        &format!(
+            "{}{}{}",
+            known("compute.1,10.0.0.4", &named),
+            known("basin-1", &aliased),
+            known("@revoked compute.2", &aliased),
+        ),
+    );
+
+    let (_, taken) = bound(&proxy, &named, &named_blob, b"a named instance's session");
+    assert!(
+        taken,
+        "a host named compute.<id> among its names is an OS Login host"
+    );
+    let (_, taken) = bound(&proxy, &aliased, &aliased_blob, b"an alias's session");
+    assert!(
+        !taken,
+        "one named otherwise, or marked, is no OS Login host"
+    );
+    let lines = proxy.lines();
+    assert!(
+        lines[0].contains("why=untold-host "),
+        "the refusal says the host is untold: {lines:?}"
+    );
+}
+
+#[test]
+fn stops_taking_an_os_login_host_once_it_leaves_the_file() {
+    let (instance, blob) = host(5);
+    let proxy = Proxy::os_login("forgotten", "", &known("compute.1", &instance));
+    let (_, first) = bound(&proxy, &instance, &blob, b"while known");
+    assert!(first, "the instance's binding is taken while it's known");
+
+    proxy.know("");
+    let (_, second) = bound(&proxy, &instance, &blob, b"once forgotten");
+
+    assert!(!second, "its binding is refused once it's no longer known");
+}
+
+#[test]
+fn refuses_the_os_login_key_to_a_host_that_isnt_one() {
+    let (allowed, blob) = host(1);
+    let (instance, _) = host(5);
+    let proxy = Proxy::os_login(
+        "not-os-login",
+        &hosts_file(&[&allowed]),
+        &known("compute.1", &instance),
+    );
+    let (_, key_blob) = proxy.os_login_key();
+    let session = b"a told host's session";
+    let (mut client, taken) = bound(&proxy, &allowed, &blob, session);
+    assert!(taken, "a told host's binding is taken");
+
+    send(
+        &mut client,
+        &sign(&key_blob, &login_as(session, &key_blob, OS_LOGIN_USER)),
+    );
+
+    assert_eq!(
+        receive(&mut client),
+        Some(vec![FAILURE]),
+        "the login is refused"
+    );
+    let lines = proxy.lines();
+    assert!(
+        lines[0].contains("why=not-os-login "),
+        "the refusal says the host isn't an OS Login one: {lines:?}"
+    );
+    assert!(shaped(&lines[0]), "a line a reader can keep fields from");
+}
+
+#[test]
+fn refuses_an_agents_key_to_an_os_login_host() {
+    let (instance, blob) = host(5);
+    let proxy = Proxy::os_login("os-login-host", "", &known("compute.1", &instance));
+    let session = b"an instance's session";
+    let (mut client, taken) = bound(&proxy, &instance, &blob, session);
+    assert!(taken, "the instance's binding is taken");
+
+    send(
+        &mut client,
+        &sign(LOGIN_KEY, &login_as(session, LOGIN_KEY, OS_LOGIN_USER)),
+    );
+
+    assert_eq!(
+        receive(&mut client),
+        Some(vec![FAILURE]),
+        "the login is refused"
+    );
+    assert_eq!(proxy.signatures(), 0, "the agent behind was never asked");
+    let lines = proxy.lines();
+    assert!(
+        lines[0].contains("why=os-login-host "),
+        "the refusal says the host is an OS Login one: {lines:?}"
+    );
+}
+
+#[test]
+fn keeps_a_told_host_told_though_gcloud_knows_it() {
+    let (instance, blob) = host(5);
+    let proxy = Proxy::os_login(
+        "told-first",
+        &hosts_file(&[&instance]),
+        &known("compute.1", &instance),
+    );
+    let (_, key_blob) = proxy.os_login_key();
+    let session = b"a told instance's session";
+    let (mut client, taken) = bound(&proxy, &instance, &blob, session);
+    assert!(taken, "the instance's binding is taken");
+
+    send(
+        &mut client,
+        &sign(&key_blob, &login_as(session, &key_blob, OS_LOGIN_USER)),
+    );
+    assert_eq!(
+        receive(&mut client),
+        Some(vec![FAILURE]),
+        "the OS Login key is refused to a host --hosts names"
+    );
+    send(
+        &mut client,
+        &sign(LOGIN_KEY, &login_as(session, LOGIN_KEY, OS_LOGIN_USER)),
+    );
+    let answer = receive(&mut client).expect("an answer");
+    assert_eq!(
+        answer.first(),
+        Some(&SIGN_RESPONSE),
+        "the agent's key signs for it, as before gcloud knew it"
+    );
+}
+
+#[test]
+fn refuses_the_builders_key_to_an_os_login_host() {
+    let (builders, key) = builders();
+    let (instance, blob) = host(5);
+    let (builder, _) = host(3);
+    let proxy = Proxy::launch(
+        "builders-os-login",
+        "",
+        Some((&builders, &machine("nix-offload", &builder))),
+        Some(&known("compute.1", &instance)),
+        Behind::Signing,
+    );
+    let session = b"an instance's session";
+    let (mut client, taken) = bound(&proxy, &instance, &blob, session);
+    assert!(taken, "the instance's binding is taken");
+
+    send(
+        &mut client,
+        &sign(&key, &login_as(session, &key, b"nix-offload")),
+    );
+
+    assert_eq!(
+        receive(&mut client),
+        Some(vec![FAILURE]),
+        "the builders' key is refused to an OS Login host"
+    );
+    let lines = proxy.lines();
+    assert!(
+        lines[0].contains("why=not-lent "),
+        "the refusal says the host isn't lent: {lines:?}"
+    );
+}
+
+#[test]
+fn refuses_the_os_login_key_to_a_lent_builder() {
+    let (builders, _) = builders();
+    let (instance, _) = host(5);
+    let (builder, blob) = host(3);
+    let proxy = Proxy::launch(
+        "os-login-lent",
+        "",
+        Some((&builders, &machine("nix-offload", &builder))),
+        Some(&known("compute.1", &instance)),
+        Behind::Signing,
+    );
+    let (_, key_blob) = proxy.os_login_key();
+    let session = b"a builder's session";
+    let (mut client, taken) = bound(&proxy, &builder, &blob, session);
+    assert!(taken, "the lent builder's binding is taken");
+
+    send(
+        &mut client,
+        &sign(&key_blob, &login_as(session, &key_blob, b"nix-offload")),
+    );
+
+    assert_eq!(
+        receive(&mut client),
+        Some(vec![FAILURE]),
+        "the OS Login key is refused to a lent builder"
+    );
+    let lines = proxy.lines();
+    assert!(
+        lines[0].contains("why=not-os-login "),
+        "the refusal says the host isn't an OS Login one: {lines:?}"
+    );
+}
+
+#[test]
+fn keeps_a_lent_builder_lent_though_gcloud_knows_it() {
+    let (builders, key) = builders();
+    let (builder, blob) = host(3);
+    let proxy = Proxy::launch(
+        "lent-first",
+        "",
+        Some((&builders, &machine("nix-offload", &builder))),
+        Some(&known("compute.1", &builder)),
+        Behind::Signing,
+    );
+    let (_, key_blob) = proxy.os_login_key();
+    let session = b"a known builder's session";
+    let (mut client, taken) = bound(&proxy, &builder, &blob, session);
+    assert!(taken, "the builder's binding is taken");
+
+    send(
+        &mut client,
+        &sign(&key_blob, &login_as(session, &key_blob, OS_LOGIN_USER)),
+    );
+    assert_eq!(
+        receive(&mut client),
+        Some(vec![FAILURE]),
+        "the OS Login key is refused to a lent builder gcloud knows"
+    );
+    send(
+        &mut client,
+        &sign(&key, &login_as(session, &key, b"nix-offload")),
+    );
+    let answer = receive(&mut client).expect("an answer");
+    assert_eq!(
+        answer.first(),
+        Some(&SIGN_RESPONSE),
+        "the builders' key signs for it, as before gcloud knew it"
+    );
+}
+
+#[test]
+fn reads_no_os_login_host_past_the_first_eight_mebibytes() {
+    let (instance, blob) = host(5);
+    let proxy = Proxy::os_login("most-known", "", "");
+    let mut padded = "# a comment of gcloud's, padding the file out\n".repeat(200_000);
+    assert!(padded.len() > 8 * 1024 * 1024, "the padding passes the cap");
+    padded.push_str(&known("compute.1", &instance));
+    proxy.know(&padded);
+
+    let (_, taken) = bound(&proxy, &instance, &blob, b"an instance's session");
+
+    assert!(
+        !taken,
+        "an instance named past the first 8 MiB isn't read as one"
+    );
+}
+
+#[test]
+fn knows_no_os_login_host_from_a_file_that_isnt_plain() {
+    let (instance, blob) = host(5);
+    let line = known("compute.1", &instance);
+    let proxy = Proxy::os_login("fifo-known", "", &line);
+    let known_hosts = proxy.dir.join("known_hosts");
+    fs::remove_file(&known_hosts).expect("the known hosts go");
+    let path = std::ffi::CString::new(known_hosts.as_os_str().as_encoded_bytes())
+        .expect("a path with no nul");
+    // SAFETY: mkfifo reads a nul-terminated path and changes nothing else.
+    assert_eq!(
+        unsafe { libc::mkfifo(path.as_ptr(), 0o600) },
+        0,
+        "a fifo is made"
+    );
+    // The host's own line waits in the fifo, so a proxy that opened it
+    // would read the host as known; a check before opening it or after
+    // refuses it, each alone.
+    let _reader = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NONBLOCK)
+        .open(&known_hosts)
+        .expect("the fifo opens to read");
+    let mut writer = fs::OpenOptions::new()
+        .write(true)
+        .open(&known_hosts)
+        .expect("the fifo opens to write");
+    writer
+        .write_all(line.as_bytes())
+        .expect("the host's line waits in the fifo");
+
+    let started = Instant::now();
+    let (_, taken) = bound(&proxy, &instance, &blob, b"an instance's session");
+
+    assert!(
+        !taken,
+        "a fifo names no OS Login host, even holding its line"
+    );
+    assert!(
+        started.elapsed() < Duration::from_secs(5),
+        "and the binding isn't held open waiting on a writer"
+    );
+}
+
+#[test]
+fn knows_no_os_login_host_while_gcloud_has_reached_none() {
+    let (instance, blob) = host(5);
+    let proxy = Proxy::os_login("no-known-hosts", "", &known("compute.1", &instance));
+    fs::remove_file(proxy.dir.join("known_hosts")).expect("the known hosts go");
+
+    let (_, taken) = bound(&proxy, &instance, &blob, b"an instance's session");
+
+    assert!(
+        !taken,
+        "with no known-hosts file, no host is an OS Login one"
+    );
+    let mut client = proxy.client();
+    send(&mut client, &[REQUEST_IDENTITIES]);
+    assert_eq!(
+        receive(&mut client).and_then(|answer| answer.first().copied()),
+        Some(IDENTITIES_ANSWER),
+        "and the proxy still answers"
+    );
+}
+
+/// The proxy run with `args` in a folder of its own, to its end within
+/// ten seconds: whether it succeeded, what it said, and whether it left
+/// an OS Login key's public half in the folder.
+fn ended(name: &str, args: &[&str]) -> (bool, String, bool) {
+    let dir = std::env::temp_dir().join(format!("pi-agent-proxy-{name}-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).expect("a folder for the test");
+    fs::write(dir.join("hosts"), "").expect("the hosts file is written");
+    let mut child = Command::new(env!("CARGO_BIN_EXE_pi-agent-proxy"))
+        .current_dir(&dir)
+        .args(args)
+        .stderr(Stdio::from(
+            fs::File::create(dir.join("said")).expect("a file for what it says"),
+        ))
+        .spawn()
+        .expect("the proxy starts");
+    let started = Instant::now();
+    let status = loop {
+        if let Some(status) = child.try_wait().expect("the proxy is waited on") {
+            break status;
+        }
+        if started.elapsed() > Duration::from_secs(10) {
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = fs::remove_dir_all(&dir);
+            panic!("the proxy ran on where it should have ended");
+        }
+        // A short poll for a proxy that should end as it starts.
+        thread::sleep(Duration::from_millis(5));
+    };
+    let said = fs::read_to_string(dir.join("said")).unwrap_or_default();
+    let key = dir.join("os-login.pub").exists();
+    let _ = fs::remove_dir_all(&dir);
+    (status.success(), said, key)
+}
+
+#[test]
+fn refuses_one_os_login_flag_without_the_other() {
+    let (ok, said, _) = ended(
+        "os-login-folder-alone",
+        &[
+            "--hosts",
+            "hosts",
+            "--upstream",
+            "up.sock",
+            "--os-login",
+            ".",
+        ],
+    );
+    assert!(!ok, "--os-login alone is refused");
+    assert!(said.contains("go together"), "and says why: {said:?}");
+    let (ok, said, _) = ended(
+        "os-login-hosts-alone",
+        &[
+            "--hosts",
+            "hosts",
+            "--upstream",
+            "up.sock",
+            "--os-login-hosts",
+            "known",
+        ],
+    );
+    assert!(!ok, "--os-login-hosts alone is refused");
+    assert!(said.contains("go together"), "and says why: {said:?}");
+}
+
+#[test]
+fn fails_when_asked_for_an_os_login_key_alone_and_it_cant_make_one() {
+    let (ok, said, _) = ended(
+        "os-login-alone",
+        &[
+            "--hosts",
+            "hosts",
+            "--socket",
+            "proxy.sock",
+            "--os-login",
+            "absent",
+            "--os-login-hosts",
+            "known",
+        ],
+    );
+    assert!(!ok, "a proxy with nothing else to do fails without its key");
+    assert!(
+        said.contains("couldn't make its OS Login key"),
+        "and says why: {said:?}"
+    );
+}
+
+#[test]
+fn makes_no_os_login_key_when_it_cant_listen() {
+    let (ok, _, key) = ended(
+        "os-login-no-socket",
+        &[
+            "--hosts",
+            "hosts",
+            "--upstream",
+            "up.sock",
+            "--socket",
+            "absent/proxy.sock",
+            "--os-login",
+            ".",
+            "--os-login-hosts",
+            "known",
+        ],
+    );
+    assert!(!ok, "a proxy with no socket ends");
+    assert!(!key, "having made no key a profile could be given");
+}
+
+#[test]
+fn cant_be_read_by_another_process_of_the_account() {
+    let mut proxy = Proxy::os_login("undumpable", "", "");
+    let mem = format!("/proc/{}/mem", proxy.child.id());
+
+    // The kernel gives a process that can't be dumped to root in /proc,
+    // whatever Yama allows, so this holds where a refused open alone
+    // would pass for ptrace_scope's sake.
+    // SAFETY: getuid only reads the calling process's user.
+    let account = unsafe { libc::getuid() };
+    assert_ne!(
+        fs::metadata(&mem)
+            .expect("the proxy's memory is listed")
+            .uid(),
+        account,
+        "the proxy's memory isn't the account's"
+    );
+
+    // A refusal of any other kind, or a proxy already gone, would pass
+    // without its memory being kept from the account.
+    let refused = fs::File::open(&mem)
+        .map(|_| ())
+        .map_err(|error| error.kind());
+    assert!(
+        matches!(proxy.child.try_wait(), Ok(None)),
+        "the proxy still runs as its memory is read"
+    );
+    assert_eq!(
+        refused,
+        Err(std::io::ErrorKind::PermissionDenied),
+        "its memory, holding the OS Login key, can't be opened by the account"
+    );
+}
+
+#[test]
+fn takes_away_a_previous_key_when_it_cant_make_its_own() {
+    let (allowed, _) = host(1);
+    let dir = std::env::temp_dir().join(format!("pi-agent-proxy-stale-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).expect("a folder for the test");
+    let upstream = dir.join("upstream.sock");
+    fake_agent(&upstream, Arc::new(AtomicUsize::new(0)));
+    fs::write(dir.join("hosts"), hosts_file(&[&allowed])).expect("the hosts file is written");
+    // A previous proxy's public half, and a folder where the new one's
+    // can't be written beside it, as a full runtime folder refuses it.
+    fs::write(dir.join("os-login.pub"), "ssh-ed25519 AAAA an old key\n")
+        .expect("the old key is written");
+    fs::create_dir(dir.join("os-login.pub.new")).expect("the new key's place is taken");
+    let socket = dir.join("proxy.sock");
+    let mut child = Command::new(env!("CARGO_BIN_EXE_pi-agent-proxy"))
+        .arg("--hosts")
+        .arg(dir.join("hosts"))
+        .arg("--upstream")
+        .arg(&upstream)
+        .arg("--socket")
+        .arg(&socket)
+        .arg("--os-login")
+        .arg(&dir)
+        .arg("--os-login-hosts")
+        .arg(dir.join("known_hosts"))
+        .stderr(Stdio::from(
+            fs::File::create(dir.join("said")).expect("a file for what it says"),
+        ))
+        .spawn()
+        .expect("the proxy starts");
+    let started = Instant::now();
+    while !fs::read_to_string(dir.join("said"))
+        .unwrap_or_default()
+        .contains("so it signs no OS Login logins")
+    {
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "the proxy never said it goes on without its key"
+        );
+        // A short poll for the line the proxy says as it starts.
+        thread::sleep(Duration::from_millis(5));
+    }
+    let left = dir.join("os-login.pub").exists();
+    let _ = child.kill();
+    let _ = child.wait();
+    let _ = fs::remove_dir_all(&dir);
+
+    assert!(
+        !left,
+        "the previous proxy's key is taken away, so ssh offers no key nobody holds"
+    );
+}
+
+#[test]
+fn goes_on_without_an_os_login_key_it_cant_write() {
+    let (allowed, blob) = host(1);
+    let dir =
+        std::env::temp_dir().join(format!("pi-agent-proxy-unwritable-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).expect("a folder for the test");
+    let upstream = dir.join("upstream.sock");
+    fake_agent(&upstream, Arc::new(AtomicUsize::new(0)));
+    fs::write(dir.join("hosts"), hosts_file(&[&allowed])).expect("the hosts file is written");
+    let socket = dir.join("proxy.sock");
+    let mut child = Command::new(env!("CARGO_BIN_EXE_pi-agent-proxy"))
+        .arg("--hosts")
+        .arg(dir.join("hosts"))
+        .arg("--upstream")
+        .arg(&upstream)
+        .arg("--socket")
+        .arg(&socket)
+        .arg("--os-login")
+        .arg(dir.join("absent"))
+        .arg("--os-login-hosts")
+        .arg(dir.join("known_hosts"))
+        .stderr(Stdio::from(
+            fs::File::create(dir.join("said")).expect("a file for what it says"),
+        ))
+        .spawn()
+        .expect("the proxy starts");
+    let started = Instant::now();
+    while !socket.exists() {
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "the proxy never bound its socket, so a key it couldn't write stopped it"
+        );
+        // A short poll for the socket the proxy binds as it starts.
+        thread::sleep(Duration::from_millis(5));
+    }
+    let mut client = UnixStream::connect(&socket).expect("a client reaches the proxy");
+    let session = b"a told host's session";
+    send(
+        &mut client,
+        &bind(&blob, session, &signed(&allowed, session), false),
+    );
+    let taken = receive(&mut client) == Some(vec![SUCCESS]);
+    send(&mut client, &sign(LOGIN_KEY, &login(session, LOGIN_KEY)));
+    let signed_by_agent = receive(&mut client).and_then(|answer| answer.first().copied());
+    let said = fs::read_to_string(dir.join("said")).unwrap_or_default();
+    let _ = child.kill();
+    let _ = child.wait();
+    let _ = fs::remove_dir_all(&dir);
+
+    assert!(taken, "a told host's session is still taken");
+    assert_eq!(
+        signed_by_agent,
+        Some(SIGN_RESPONSE),
+        "and the agent behind still signs its login"
+    );
+    assert!(
+        said.contains("couldn't make its OS Login key in")
+            && said.contains("so it signs no OS Login logins"),
+        "it says it goes on without the key: {said:?}"
+    );
 }

@@ -2,8 +2,8 @@
 // keys already reach opens no list of its acts (Joel, 2026-11-11 22:00: "a
 // number of menu items that i open to only see verb:copy, which is stupid
 // as shit. if they have nothing under them, we shouldn't open a submenu for
-// them"). Apart from ReadyRows.js, which is at the length a file may be,
-// and tests/ready-rows.qml holds it.
+// them"), and which rows made sit beneath another. Apart from ReadyRows.js,
+// which is at the length a file may be, and tests/ready-rows.qml holds it.
 .pragma library
 
 // Whether a row's acts hold nothing a list would add: none steps into rows,
@@ -34,4 +34,12 @@ function entered(row, named) {
 function led(rows, first) {
     return first && rows.includes(first) ? [first].concat(rows.filter(one => one !== first))
         : rows;
+}
+
+// The keys of the rows `made` holds that sit inside another, each row as
+// `served` gives it by key: those a place makes only once a step into
+// their parent shows them, let go as the launcher closes, so the emoji of
+// every group stepped into aren't held for the shell's life.
+function madeInside(made, served) {
+    return Object.keys(made).filter(key => (served(key)?.parent ?? "") !== "");
 }

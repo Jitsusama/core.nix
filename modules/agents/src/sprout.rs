@@ -7,10 +7,15 @@
 //! code. Only the shell may ask (asker.rs), since the node takes this
 //! daemon for Joel.
 //!
-//! Only what the launcher says is sent: the words as one, a folder only
-//! as a whole path, and never a `cwd`, since this daemon's own working
-//! folder says nothing of where Joel is, nor the machine or cell a
-//! sprout may name, which the launcher never asks for.
+//! Only what the launcher says is sent: the words as one, a folder as a
+//! whole path, and never a `cwd`, since this daemon's own working folder
+//! says nothing of where Joel is, nor the cell a sprout may name, which
+//! the launcher never asks for. Work for elsewhere names the machine it
+//! starts `on`, or what it `needs`, as the cloud (Joel, 2026-11-25: "we
+//! need full integation, from pi, from cli, from laucnher, from
+//! website"), and then its folder may be a place's name, a zone's
+//! `//<path>` or a checkout's last step, since a whole path here is a
+//! folder only on this machine.
 
 use std::io::{self, BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
@@ -26,6 +31,18 @@ pub const ASK: &str = "sprout";
 /// is placed, in a second or two, and the launcher waits a minute, so the
 /// node's silence is said before the launcher stops waiting.
 const PATIENCE: Duration = Duration::from_secs(50);
+
+/// How long the node may take to start work for elsewhere: it answers
+/// once the session has started, and a start that needs a machine made
+/// waits on the provider's make, then up to five minutes for the new
+/// machine to link (mycelium's `LINKED_WITHIN`). No make has been timed
+/// yet, so it's eight minutes, as mycelium's owner set it.
+pub const PATIENCE_ELSEWHERE: Duration = Duration::from_mins(8);
+
+/// What work may need of where it starts, as the node's sprout takes it:
+/// the cloud alone, a machine that costs money, linked with room or made
+/// from the node's providers' offers.
+const NEEDS: [&str; 1] = ["cloud"];
 
 /// What a node that took the ask but said nothing in time is told as:
 /// it may still start the work, so asking again could start it twice.
@@ -45,13 +62,67 @@ pub fn request_of(said: &Value) -> Result<Value, String> {
         .filter(|words| !words.is_empty())
         .ok_or("say what the work is: a link or a few words")?;
     let mut sprout = json!({"words": [words]});
+    let on = named(said, "on")?;
+    if let Some(on) = on {
+        if !plain(on) {
+            return Err("that machine's name isn't one plain word".to_owned());
+        }
+        sprout["on"] = json!(on);
+    }
+    let needs = needs_of(said)?;
+    if !needs.is_empty() {
+        sprout["needs"] = json!(needs);
+    }
+    let elsewhere = on.is_some() || !needs.is_empty();
     if let Some(folder) = named(said, "folder")? {
-        if !folder.starts_with('/') {
-            return Err("that folder isn't a whole path".to_owned());
+        let placed = folder.starts_with('/') || (elsewhere && plain(folder));
+        if !placed {
+            return Err(if elsewhere {
+                "that place isn't a whole path or a place's name"
+            } else {
+                "that folder isn't a whole path"
+            }
+            .to_owned());
         }
         sprout["folder"] = json!(folder);
     }
     Ok(json!({"Sprout": sprout}))
+}
+
+/// Whether a sprout asks for work to start elsewhere than here, and so
+/// may wait for a machine to be made (`PATIENCE_ELSEWHERE`).
+fn elsewhere(request: &Value) -> bool {
+    request["Sprout"].get("on").is_some() || request["Sprout"].get("needs").is_some()
+}
+
+/// Whether `name` is one plain word, as a machine's or a checkout's name
+/// is (mycelium's places.rs): letters, digits, `-`, `_` and `.`, and not
+/// opening with `-`, so nothing reads it as a flag.
+fn plain(name: &str) -> bool {
+    !name.is_empty()
+        && !name.starts_with('-')
+        && !name.bytes().all(|byte| byte == b'.')
+        && name.len() <= 200
+        && name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+}
+
+/// What `said` needs of where it starts, each one of `NEEDS`, none where
+/// it's left out or empty.
+fn needs_of(said: &Value) -> Result<Vec<&str>, String> {
+    match &said["needs"] {
+        Value::Null => Ok(Vec::new()),
+        Value::Array(needs) => needs
+            .iter()
+            .map(|need| {
+                need.as_str()
+                    .filter(|need| NEEDS.contains(need))
+                    .ok_or_else(|| format!("a sprout needs only {}", NEEDS.join(" or ")))
+            })
+            .collect(),
+        _ => Err("a sprout's needs are a list".to_owned()),
+    }
 }
 
 /// The field of `said` named `field`, none where it's left out, null or
@@ -66,7 +137,8 @@ fn named<'a>(said: &'a Value, field: &str) -> Result<Option<&'a str>, String> {
 }
 
 /// The answer to a sprout: `sprouted` with where the node started it,
-/// or an error in the node's words, or why it wasn't asked: `asker` says
+/// or an error in the node's words, with the code it refused by where it
+/// gave one (`refusal`, as `needs_folder`), or why it wasn't asked: `asker` says
 /// whether the shell asked, and `node` is the realm's, none where this
 /// machine runs no node.
 pub fn answer(said: &Value, asker: Result<(), String>, node: Option<&Path>) -> Value {
@@ -77,15 +149,45 @@ pub fn answer(said: &Value, asker: Result<(), String>, node: Option<&Path>) -> V
         Ok(request) => request,
         Err(why) => return refused(&why),
     };
-    match asked(node, &request, PATIENCE) {
-        Ok(reply) => match (&reply["Ok"]["Started"], &reply["Err"]) {
-            (Value::Object(started), _) => json!({"sprouted": started}),
-            (_, Value::String(why)) => refused(why),
+    let patience = if elsewhere(&request) {
+        PATIENCE_ELSEWHERE
+    } else {
+        PATIENCE
+    };
+    match asked(node, &request, patience) {
+        Ok(reply) => match (&reply["Ok"]["Started"], &reply["Err"], refusal_of(&reply)) {
+            (Value::Object(started), _, _) => json!({"sprouted": started}),
+            (_, Value::String(why), _) => refused(why),
+            (_, _, Some((code, why))) => {
+                let mut answer = refused(why);
+                if let Some(code) = code {
+                    answer["error"]["refusal"] = json!(code);
+                }
+                answer
+            }
             _ => refused(&format!("the node's answer couldn't be read: {reply}")),
         },
         Err(Unanswered::Unreached(why)) => refused(&format!("the node couldn't be reached: {why}")),
         Err(Unanswered::Silent) => silent(),
     }
+}
+
+/// The code and words of a refusal its judging made, as the node says
+/// one, `{"Refused": {"code", "why"}}` (mycelium's PROTOCOL.md), alone or
+/// under `Ok`; none where it gave no words, and no code where it gave
+/// none that's a plain word of letters and underscores.
+pub(crate) fn refusal_of(reply: &Value) -> Option<(Option<&str>, &str)> {
+    let refusal = reply
+        .get("Refused")
+        .or_else(|| reply["Ok"].get("Refused"))?;
+    let code = refusal["code"].as_str().filter(|code| {
+        !code.is_empty()
+            && code
+                .bytes()
+                .all(|byte| byte.is_ascii_lowercase() || byte == b'_')
+    });
+    let why = refusal["why"].as_str().filter(|why| !why.is_empty())?;
+    Some((code, why))
 }
 
 /// Why the node gave no answer: it couldn't be reached, so nothing was
@@ -149,18 +251,58 @@ mod tests {
             "the words as one, trimmed, with no folder, no cwd"
         );
         assert_eq!(
-            request_of(&ask(&json!({"folder": "/home/j/src/r", "on": "skiff",
+            request_of(&ask(&json!({"folder": "/home/j/src/r",
                 "from": "P9R1KI", "cwd": "/home/j/elsewhere"}))),
             Ok(
                 json!({"Sprout": {"words": ["https://github.com/o/r/issues/7"],
                 "folder": "/home/j/src/r"}})
             ),
-            "a folder goes as said; a machine, a cell and a cwd never do"
+            "a folder goes as said; a cell and a cwd never do"
+        );
+        assert_eq!(
+            request_of(&ask(&json!({"folder": "/home/j/src/r", "on": "skiff"}))),
+            Ok(
+                json!({"Sprout": {"words": ["https://github.com/o/r/issues/7"],
+                "folder": "/home/j/src/r", "on": "skiff"}})
+            ),
+            "a machine named goes as said"
+        );
+        for place in ["core.nix", "//system/reef"] {
+            assert_eq!(
+                request_of(&ask(&json!({"folder": place, "needs": ["cloud"]}))),
+                Ok(
+                    json!({"Sprout": {"words": ["https://github.com/o/r/issues/7"],
+                    "folder": place, "needs": ["cloud"]}})
+                ),
+                "work for the cloud names its place by name: {place}"
+            );
+        }
+        assert_eq!(
+            request_of(&ask(&json!({"needs": []}))),
+            Ok(json!({"Sprout": {"words": ["https://github.com/o/r/issues/7"]}})),
+            "no needs are none"
         );
         assert_eq!(
             request_of(&ask(&json!({"folder": ""}))),
             Ok(json!({"Sprout": {"words": ["https://github.com/o/r/issues/7"]}})),
             "an empty one is none"
+        );
+    }
+
+    #[test]
+    fn only_work_for_elsewhere_waits_for_a_machine_made() {
+        let request = |more: &Value| request_of(&ask(more)).expect("a sprout");
+        assert!(
+            !elsewhere(&request(&json!({"folder": "/home/j/src/r"}))),
+            "here"
+        );
+        assert!(
+            elsewhere(&request(&json!({"on": "skiff"}))),
+            "on a machine named"
+        );
+        assert!(
+            elsewhere(&request(&json!({"needs": ["cloud"]}))),
+            "in the cloud"
         );
     }
 
@@ -175,6 +317,25 @@ mod tests {
                 "a folder that isn't a whole path",
             ),
             (ask(&json!({"folder": 7})), "a folder that isn't a path"),
+            (
+                ask(&json!({"folder": "core.nix"})),
+                "a place's name for work started here",
+            ),
+            (
+                ask(&json!({"folder": "src/r", "needs": ["cloud"]})),
+                "a place that's neither a whole path nor a name",
+            ),
+            (
+                ask(&json!({"needs": ["gpu"]})),
+                "a need the launcher never asks",
+            ),
+            (ask(&json!({"needs": "cloud"})), "needs that aren't a list"),
+            (ask(&json!({"on": "--all"})), "a machine named as a flag"),
+            (ask(&json!({"on": "sk iff"})), "a machine of two words"),
+            (
+                ask(&json!({"folder": "..", "needs": ["cloud"]})),
+                "a place named as the folder above",
+            ),
         ] {
             assert!(
                 request_of(&said).is_err_and(|refused| !refused.is_empty()),
@@ -246,6 +407,56 @@ mod tests {
             json!({"error": {"code": "unsprouted",
                 "message": "/home/j isn't a repository's folder"}}),
             "the node's own reason"
+        );
+        let _ = asked.join();
+        let _ = std::fs::remove_file(&socket);
+    }
+
+    #[test]
+    fn a_sprout_the_node_refuses_by_code_says_its_words_and_code() {
+        for (name, reply) in [
+            (
+                "coded",
+                r#"{"Refused": {"code": "needs_folder", "why": "say which"}}"#,
+            ),
+            (
+                "coded-ok",
+                r#"{"Ok": {"Refused": {"code": "needs_folder", "why": "say which"}}}"#,
+            ),
+        ] {
+            let (socket, asked) = node(name, reply);
+            assert_eq!(
+                answer(&ask(&json!({})), Ok(()), Some(&socket)),
+                json!({"error": {"code": "unsprouted", "message": "say which",
+                    "refusal": "needs_folder"}}),
+                "{name}: the node's words, and the code it refused by"
+            );
+            let _ = asked.join();
+            let _ = std::fs::remove_file(&socket);
+        }
+        for (name, reply) in [
+            (
+                "odd-code",
+                r#"{"Refused": {"code": "Needs Folder", "why": "say which"}}"#,
+            ),
+            ("no-code", r#"{"Refused": {"why": "say which"}}"#),
+        ] {
+            let (socket, asked) = node(name, reply);
+            assert_eq!(
+                answer(&ask(&json!({})), Ok(()), Some(&socket)),
+                json!({"error": {"code": "unsprouted", "message": "say which"}}),
+                "{name}: its words alone, with no code that isn't one"
+            );
+            let _ = asked.join();
+            let _ = std::fs::remove_file(&socket);
+        }
+        let (socket, asked) = node("no-words", r#"{"Refused": {"code": "needs_folder"}}"#);
+        let answer = answer(&ask(&json!({})), Ok(()), Some(&socket));
+        assert!(
+            answer["error"]["message"]
+                .as_str()
+                .is_some_and(|why| why.starts_with("the node's answer couldn't be read")),
+            "one with no words is unread: {answer}"
         );
         let _ = asked.join();
         let _ = std::fs::remove_file(&socket);

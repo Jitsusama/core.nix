@@ -92,6 +92,40 @@ QtObject {
         expect("a place without a screen, by its connector",
             Places.placed(older, { "eDP-1": panel, "DP-4": monitor }, "DP-4")
                 .map(at => [at.output, at.workspace]), [["eDP-1", 2]]);
+        // Only a connector niri said is one: a prototype's name never is, so
+        // a place kept on one is gone, and noted away from it (noteAway).
+        expect("a place kept on a prototype's name is gone, to the screen in use",
+            Places.placed([{ output: "constructor", workspace: 2, column: 1, tile: 1 }],
+                { "eDP-1": panel }, "eDP-1").map(at => [at.output, at.away?.screen ?? null]),
+            [["eDP-1", "constructor"]]);
+        // Nor heard on one: a twin kept on a prototype's name is among the
+        // others a gone twin's note says, as any twin gone is.
+        const protoTwin = { screen: twin, output: "Virtual-1", workspace: 1, column: 1, tile: 1 };
+        expect("a twin kept on a prototype's name is among the others it left",
+            Places.whereKept(protoTwin, [protoTwin, Object.assign({}, protoTwin,
+                { output: "toString" })], { "eDP-1": panel }, { inUse: "eDP-1" }).away.others,
+            { "eDP-1": panel, "toString": twin });
+        // __proto__ too, though a write to it on a plain object sets a
+        // prototype: gone after the screen in use's workspaces, among the
+        // others, and noted away (Reopening's notedAway, noteAway's) as any.
+        const proto = { output: "__proto__", workspace: 2, column: 1, tile: 1 };
+        expect("a place kept on __proto__ is gone, after the screen in use's workspaces",
+            Places.placed([proto], { "eDP-1": panel }, "eDP-1")
+                .map(at => [at.output, at.workspace, at.away?.screen ?? null]),
+            [["eDP-1", 2, "__proto__"]]);
+        expect("a twin kept on __proto__ is among the others it left",
+            Places.whereKept(protoTwin, [protoTwin, Object.assign({}, protoTwin,
+                { output: "__proto__" })], { "eDP-1": panel }, { inUse: "eDP-1" }).away.others,
+            { "eDP-1": panel, ["__proto__"]: twin });
+        const noted = (awayFrom, screen, id) => Reopening.notedAway(awayFrom,
+            { screen, workspace: 2, output: screen, others: {} }, id);
+        const protoNoted = noted(noted({}, "constructor", 7), "__proto__", 8);
+        expect("a workspace away from a prototype's name is noted, once",
+            [Object.keys(protoNoted).map(screen => [screen, protoNoted[screen].map(one => one.id)]),
+                noted(protoNoted, "__proto__", 8), noted(protoNoted, "constructor", 7),
+                Reopening.notedAway(protoNoted, null, 9),
+                Reopening.notedAway(protoNoted, { screen: panel })],
+            [[["constructor", [7]], ["__proto__", [8]]], null, null, null, null]);
 
         // No screen known, as when niri didn't answer: left as it was kept,
         // rather than every place taken for a gone screen's.
@@ -142,24 +176,26 @@ QtObject {
                 .output], ["Virtual-3", "Virtual-4"]);
         // And go where their sessions went, whatever order each comes back in.
         const twinsLast = [twins[1], twins[0]];
-        const sessionsGiven = Reopening.givenBy(twinsLast,
-            Places.placed(twinsLast, bothBack, "Virtual-3", [twins, twins]));
+        const sessions = Reopening.placedGiven(twinsLast, bothBack, "Virtual-3",
+            { moments: [twins, twins], before: [] });
+        const sessionsGiven = sessions.given;
         expect("a twin window back renumbered goes where its sessions went",
             [Places.whereKept(twins[0], twins, bothBack,
                 { given: sessionsGiven, inUse: "Virtual-3" }).output,
-                sessionsGiven.map(one => one.output)], ["Virtual-4", ["Virtual-3", "Virtual-4"]]);
+                sessionsGiven.map(one => one.output), sessions.places.map(at => at.output)],
+            ["Virtual-4", ["Virtual-3", "Virtual-4"], ["Virtual-3", "Virtual-4"]]);
         // A window back before its sessions were placed gives way to them,
         // so the other twin's windows still have a connector to go to; one
         // whose twin's sessions said nothing keeps what it took.
         const early = [{ at: twins[0], output: "Virtual-3" }];
-        const seeded = Reopening.givenBy(twinsLast,
-            Places.placed(twinsLast, bothBack, "Virtual-3", [twins, twins]), early);
+        const seeded = Reopening.placedGiven(twinsLast, bothBack, "Virtual-3",
+            { moments: [twins, twins], before: early }).given;
         expect("a window back before its sessions gives way to them",
             [seeded.map(one => one.output), Places.whereKept(twins[1], twins, bothBack,
                 { given: seeded, inUse: "Virtual-3" }).output],
             [["Virtual-3", "Virtual-4"], "Virtual-3"]);
-        const twinFirst = Reopening.givenBy([twins[1]],
-            Places.placed([twins[1]], bothBack, "Virtual-3", [twins]), early);
+        const twinFirst = Reopening.placedGiven([twins[1]], bothBack, "Virtual-3",
+            { moments: [twins], before: early }).given;
         expect("nor keeps a connector the other twin's sessions were given",
             [twinFirst.map(one => one.output), Places.whereKept(twins[1], twins, bothBack,
                 { given: twinFirst, inUse: "Virtual-3" }).output], [["Virtual-3"], "Virtual-3"]);
@@ -167,20 +203,70 @@ QtObject {
         // what the twin's was when kept.
         const panelThere = { "Virtual-1": panel, "Virtual-3": twin, "Virtual-4": twin };
         const panelAt = { screen: panel, output: "Virtual-1", workspace: 1, column: 1, tile: 1 };
-        const panelFirst = Reopening.givenBy([panelAt],
-            Places.placed([panelAt], panelThere, "Virtual-1", [[]]), early);
+        const panelFirst = Reopening.placedGiven([panelAt], panelThere, "Virtual-1",
+            { moments: [[]], before: early }).given;
         expect("nor gives way to another screen's session",
-            Places.whereKept(twins[1], twins, panelThere,
-                { given: panelFirst, inUse: "Virtual-1" }).output, "Virtual-4");
+            [panelFirst.map(one => one.output), Places.whereKept(twins[1], twins, panelThere,
+                { given: panelFirst, inUse: "Virtual-1" }).output],
+            [["Virtual-1", "Virtual-3"], "Virtual-4"]);
+        // Nor to a session of its twin's given no connector: sent to another
+        // screen in use, or left as kept, with no screen said or none in use,
+        // though last boot's connector is another screen's now. (One kept
+        // away on a screen showing its own is the twin gone's case below.)
+        const tookFirst = [{ at: twins[1], output: "Virtual-3" }];
+        const givenNone = (why, screens, inUse) => {
+            const given = Reopening.placedGiven([twins[1]], screens, inUse,
+                { moments: [twins], before: tookFirst }).given;
+            expect(`nor gives way to its twin's session ${why}`,
+                [given.map(one => one.output ?? "none"), Places.whereKept(twins[0], twins,
+                    bothBack, { given, inUse: "Virtual-3" }).output],
+                [["none", "Virtual-3"], "Virtual-4"]);
+        };
+        givenNone("sent to another screen in use", { "eDP-1": panel }, "eDP-1");
+        givenNone("left as kept with no screen said", {}, "Virtual-3");
+        givenNone("left as kept with none in use", { "eDP-1": panel }, null);
+        givenNone("left as kept on another screen's connector", { "Virtual-2": panel }, null);
+        // A window put back gives the connector it's found on only while
+        // that shows its screen: a twin's, one kept before screens were
+        // named, never last boot's with no screen said, nor a twin's on one
+        // not heard yet, nor a prototype's name, nor any with no screens.
+        const windowOn = (at, screens, inUse) =>
+            Reopening.keptBack(at, twins, screens, { given: [], inUse }).gives.output ?? "none";
+        const unnamed = { output: "Virtual-3", workspace: 1, column: 1, tile: 1 };
+        expect("a window put back gives only a connector showing its screen",
+            [windowOn(twins[1], bothBack, "Virtual-3"), windowOn(unnamed, bothBack, "Virtual-3"),
+                windowOn(twins[1], {}, null), windowOn(twins[1], { "Virtual-2": "" }, "Virtual-2"),
+                Reopening.givenOn("", { output: "constructor" }, {}) ?? "none",
+                Reopening.givenOn(twin, { output: "Virtual-3" }) ?? "none"],
+            ["Virtual-3", "Virtual-3", "none", "none", "none", "none"]);
+        // It goes back by where it's found, but gives only givenOn's: found
+        // on last boot's connector with no screen said, or on one not heard
+        // yet, it goes back there and gives none; found on the connector its
+        // own sessions were given, it gives that one.
+        const backAt = (screens, given, inUse) => {
+            const back = Reopening.keptBack(twins[1], twins, screens, { given, inUse });
+            return [back.kept.output, back.gives.at === twins[1], back.gives.output ?? "none"];
+        };
+        expect("a window put back gives givenOn's connector, not the one it's found on",
+            [backAt({}, [], null), backAt({ "Virtual-2": "" }, [], "Virtual-2"),
+                backAt(bothBack, sessionsGiven, "Virtual-3")],
+            [["Virtual-2", true, "none"], ["Virtual-2", true, "none"],
+                ["Virtual-3", true, "Virtual-3"]]);
+        // And past a connector given its twin this pass, so split twins take one each.
+        const pastTwin = Reopening.keptBack(twins[1], twins, bothBack,
+            { given: [{ at: twins[0], output: "Virtual-3" }], inUse: "Virtual-3" });
+        expect("a window put back passes its twin's given connector by",
+            [pastTwin.kept.output, pastTwin.gives.output], ["Virtual-4", "Virtual-4"]);
         expect("one whose twin's sessions said nothing keeps what it took",
             Places.whereKept(twins[1], twins, bothBack,
-                { given: Reopening.givenBy([], [], early), inUse: "eDP-1" }).output, "Virtual-4");
+                { given: Reopening.givenBy([], [], early, {}), inUse: "eDP-1" }).output,
+            "Virtual-4");
         // A twin gone gives its windows no connector, so none is kept from
         // them, and one kept nowhere gives nothing.
         const oneTwin = [twins[0], twins[1], null];
         expect("a twin gone gives its windows no connector, nor one kept nowhere",
-            Reopening.givenBy(oneTwin, Places.placed(oneTwin, { "Virtual-3": twin }, "Virtual-3",
-                [twins, twins, []])).map(one => [one.at.output, one.output ?? "none"]),
+            Reopening.placedGiven(oneTwin, { "Virtual-3": twin }, "Virtual-3", { moments: [twins,
+                twins, []], before: [] }).given.map(one => [one.at.output, one.output ?? "none"]),
             [["Virtual-1", "Virtual-3"], ["Virtual-2", "none"]]);
         // A window back joins its own twin's windows, not the other's, though
         // both monitors are one screen to look at.
@@ -782,6 +868,83 @@ QtObject {
         expect("handed over again while queued or begun, it isn't asked twice",
             Reopening.queuedOnce([asked("q1"), asked("q2")], [asked("q2"), asked("q3"), asked("q4")],
                 ["q4"]).map(entry => entry.one.id), ["q1", "q2", "q3"]);
+        // What Reopen Them All's lists find gone, counted by the walk
+        // Sessions joins each to: its own while it may still find one of
+        // its tally's folders gone, else one of the list's own. Each
+        // reading is what Agents' foot says next.
+        const heard = [];
+        const hear = now => heard.push(`${now.gone} gone, ${now.reopened} reopened`);
+        const walkOf = (tally, queue, looking, begun) => ({ tally, queue, looking,
+            begun: begun ?? [] });
+        const walked = Reopening.tallyOf(null, ["a", "b", "c"], hear);
+        Reopening.foundGone(walked, { id: "a" });
+        expect("a list with no walk counts its own", heard, ["1 gone, 2 reopened"]);
+        // A second given while the walk still holds sessions joins it, the
+        // same sessions counting once and one more among them, told at once
+        // since one was told gone already.
+        const walking = walkOf(walked, [asked("b")], null);
+        expect("given mid-walk, it counts in the walk's tally",
+            Reopening.tallyOf(walking, ["a", "b", "c", "d"], hear) === walked, true);
+        Reopening.foundGone(walked, { id: "d" });
+        Reopening.foundGone(walked, { id: "b" });
+        expect("and the walk's count grows by what it adds", heard.slice(1),
+            ["1 gone, 3 reopened", "2 gone, 2 reopened", "3 gone, 1 reopened"]);
+        expect("given while it holds one started afresh for its own, it joins",
+            Reopening.tallyOf(walkOf(walked, [{ one: { id: "fresh", afreshFor: "c" } }], null),
+                [], hear) === walked, true);
+        expect("given while the walk looks for its last folder, it joins too",
+            Reopening.tallyOf(walkOf(walked, [], asked("c")), ["a"], hear) === walked, true);
+        // Once every session it asked for is begun, nothing more of its can
+        // be found gone, though a window given up on keeps the walk for good
+        // or the harness's sessions keep it busy, so a list given then
+        // counts afresh (core.nix#6037's F39).
+        expect("given while only the harness's sessions keep the walk busy, it counts afresh",
+            Reopening.tallyOf(walkOf(walked, [asked("h")], asked("h2")), ["x"], hear)
+                === walked, false);
+        const after = Reopening.tallyOf(walkOf(walked, [], null), ["a", "b", "c"], hear);
+        Reopening.foundGone(after, { id: "a" });
+        expect("given once the walk can find no more gone, it counts afresh",
+            [after === walked, heard[heard.length - 1]], [false, "1 gone, 2 reopened"]);
+        // Counting afresh on a walk that began some of what it's given, it
+        // counts none of those, which the walk won't look for again, one
+        // found gone among them.
+        const later = Reopening.tallyOf(walkOf(walked, [], null, ["a", "b", "c"]),
+            ["a", "b", "c", "d"], hear);
+        Reopening.foundGone(later, { id: "d" });
+        expect("given once the walk began some of it, it counts only the rest",
+            heard[heard.length - 1], "1 gone, 0 reopened");
+        // Joining a tally still counting, as a press again while one of its
+        // sessions waits its turn, it counts none of those either.
+        const second = Reopening.tallyOf(walkOf(walked, [], null, ["a", "b", "c"]),
+            ["a", "b", "c", "d", "e"], hear);
+        const joining = Reopening.tallyOf(walkOf(second, [asked("e")], null, ["a", "b", "c", "d"]),
+            ["a", "b", "c", "d", "e"], hear);
+        Reopening.foundGone(second, { id: "e" });
+        expect("joined while it counts, it counts none the walk is done with",
+            [joining === second, heard[heard.length - 1]], [true, "1 gone, 1 reopened"]);
+        // One the walk began and can still find gone, its folder looked for
+        // now or one queued afresh for it, counts, so its folder gone is told.
+        const still = Reopening.tallyOf(walkOf(null, [{ one: { id: "fresh", afreshFor: "y" } }],
+            asked("c"), ["c", "y"]), ["c", "y", "x"], hear);
+        Reopening.foundGone(still, { id: "c" });
+        Reopening.foundGone(still, { id: "fresh", afreshFor: "y" });
+        expect("begun and still looked for, or queued afresh, it counts once found gone",
+            heard.slice(-2), ["1 gone, 2 reopened", "2 gone, 1 reopened"]);
+        // A walk the harness began counts nothing, and a list given during
+        // it counts the sessions both hold, whichever list queued them.
+        const harness = walkOf(null, [asked("h"), asked("a")], null);
+        const during = Reopening.tallyOf(harness, ["a", "b"], hear);
+        Reopening.foundGone(during, { id: "a" });
+        expect("given during the harness's walk, a session it asked for counts once found gone",
+            heard[heard.length - 1], "1 gone, 1 reopened");
+        // One started afresh counts as the one it stands in for, and one
+        // no list asked for counts nowhere, telling nothing.
+        const soFar = heard.length;
+        Reopening.foundGone(during, { id: "fresh", afreshFor: "b" });
+        Reopening.foundGone(during, { id: "h" });
+        Reopening.foundGone(null, { id: "a" });
+        expect("one started afresh counts as the one it stands for, one not asked nowhere",
+            heard.slice(soFar), ["2 gone, 0 reopened"]);
         // Those whose kept place says they led others are begun first, so
         // the sessions they lead have them back to answer to; the rest,
         // those kept nowhere among them, keep their order.
@@ -807,6 +970,8 @@ QtObject {
         expect("with none in use as its sessions were placed, a window goes by the one now",
             [Reopening.inUseFor(null, "eDP-1", twoThere),
                 Reopening.inUseFor(undefined, "eDP-1", twoThere)], ["eDP-1", "eDP-1"]);
+        expect("a prototype's name is never the screen in use a window goes by",
+            Reopening.inUseFor("constructor", "eDP-1", twoThere), "eDP-1");
         expect("kept somewhere, it opens there, not at its orchestrator's",
             Reopening.broughtBack(true, keptHere, true, true), { window: true, home: false });
         expect("kept nowhere, it comes back held without a window",
@@ -952,6 +1117,13 @@ QtObject {
         expect("no view words, or none whole, are none", [Viewers.waitingWords({}),
             Viewers.waitingWords({ view: [] }), Viewers.waitingWords({ view: ["node", 3] }),
             Viewers.waitingWords(null)], [null, null, null, null]);
+        // A row's Reopen is said by the row's name as the daemon words it,
+        // its id only where the row has no name to say.
+        expect("a row is said by its name", Viewers.rowSaid("s-a", { name: "Reef" }),
+            { address: "Reef", machine: "" });
+        expect("one with an empty name, or none, by its id", [Viewers.rowSaid("s-a",
+            { name: "" }).address, Viewers.rowSaid("s-a", {}).address,
+            Viewers.rowSaid("s-a", undefined).address], ["s-a", "s-a", "s-a"]);
 
         // Each kept place is one viewer to open once its session runs
         // hosted with words to view it by, and then kept no more; one whose
@@ -1013,6 +1185,20 @@ QtObject {
         expect("its viewer open, it is let go however Joel is", Viewers.viewersDue(alone,
             [hosted("moved", laid(4, 3))], 10, gone(screens, { away: false })),
             { open: [], kept: {} });
+        // A window the windows daemon's index still names, which niri, its
+        // list trusted, no longer lists, as in a gap of the daemon's, is no
+        // viewer open (Sessions.qml's listedNow): its viewer opens.
+        // Niri lists every window but the session's own (7, as laid), and
+        // no window is never listed, as listedNow says.
+        const unlisted = gone(screens, { listed: window => Boolean(window) && window.id !== 7 });
+        expect("its window named by the index alone, it opens", Viewers.viewersDue(alone,
+            [hosted("moved", laid(4, 3))], 10, unlisted).open.map(one => one.into),
+            [{ workspace: 4, column: 3 }]);
+        const woken = { moved: { workspace: 4, column: 3, at: 0, slept: true, asleep: true,
+            asked: true } };
+        expect("a sleeper woken, its window named by the index alone, opens",
+            Viewers.viewersDue(woken, [hosted("moved", laid(4, 3))], 5, unlisted).open
+                .map(one => one.into), [{ workspace: 4, column: 3 }]);
 
         // One Reopen Them All kept while Joel was on its workspace, with
         // words to wait for its host by, opens by them once he isn't

@@ -4,8 +4,43 @@
 
 use crate::band::{Band, Thresholds};
 use crate::clock::Awake;
-use crate::moments::{Power, Pressure};
+use crate::moments::{MemoryLevel, Power, Pressure};
 use crate::units::float;
+
+/// What a filesystem's trend says comes next, in seconds: it's full, or it
+/// reaches the floor Nix keeps, never both.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Ahead {
+    pub full_in: Option<f64>,
+    pub floor_in: Option<f64>,
+}
+
+/// How far under Nix's floor free space may dip while Nix collects: Nix
+/// starts collecting only once free space is under its floor and frees as
+/// it goes, so a dip that shallow is neither the disk filling nor at its
+/// floor, and telling when it fills there would warn every time Nix
+/// collects. It's at most this, and at most half the floor, since a floor
+/// of 10 GiB, as NixOS's, would otherwise leave nothing under it that is
+/// told when it fills.
+pub const COLLECTING_UNDER: u64 = 10 << 30;
+
+/// How far under `floor` free space may dip while Nix collects: the
+/// smaller of `COLLECTING_UNDER` and half the floor.
+pub fn collecting_under(floor: u64) -> u64 {
+    COLLECTING_UNDER.min(floor / 2)
+}
+
+/// What one filesystem's trend says comes next, as its status carries it:
+/// when it's full, and Nix's floor with when it reaches it, the floor only
+/// on the filesystem Nix's store is on.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Forecast {
+    /// When it's full, in wall seconds.
+    pub full_at: Option<f64>,
+    pub nix_floor: Option<u64>,
+    /// When it reaches `nix_floor`, in wall seconds.
+    pub floor_at: Option<f64>,
+}
 
 /// How a filesystem's free space is being used up, in bytes a second:
 /// averaged over about two minutes, so one burst doesn't set it but a
@@ -98,6 +133,60 @@ impl Fill {
         match self.trend() {
             Some(trend) if trend > 0.0 => Some(float(free - below) / trend),
             _ => None,
+        }
+    }
+
+    /// When the disk is full, or when it reaches `floor`, the free space
+    /// Nix keeps by collecting its own garbage as it builds, at the trend.
+    /// Above the floor only when it reaches it is told, since Nix collects
+    /// there before the disk fills; within `collecting_under` it neither,
+    /// since Nix is collecting; further under, Nix's collections haven't
+    /// kept up, so when it's full is told.
+    pub fn ahead(&self, free: u64, floor: Option<u64>) -> Ahead {
+        match floor {
+            Some(floor) if free > floor => Ahead {
+                full_in: None,
+                floor_in: self.steady_until(free, floor),
+            },
+            Some(floor) if free >= floor - collecting_under(floor) => Ahead::default(),
+            _ => Ahead {
+                full_in: self.steady_until(free, 0),
+                floor_in: None,
+            },
+        }
+    }
+
+    /// Seconds until free space reaches a band starting at `start`, at the
+    /// trend, or none where Nix's `floor` keeps it from getting there: a
+    /// band starting under the floor, while free space is above where Nix
+    /// collects, would otherwise be told as coming when Nix stops the
+    /// disk at its floor first.
+    pub fn band_in(&self, free: u64, start: u64, floor: Option<u64>) -> Option<f64> {
+        match floor {
+            Some(floor) if start < floor && free >= floor - collecting_under(floor) => None,
+            _ => self.steady_until(free, start),
+        }
+    }
+
+    /// What comes next for a filesystem on `device` with `free` bytes
+    /// free, at `now`: Nix's floor counts only on the filesystem Nix's
+    /// store is on, `nix_floor`'s device, so a separate home or build disk
+    /// is still told when it's full.
+    pub fn forecast(
+        &self,
+        free: u64,
+        device: u64,
+        nix_floor: Option<(u64, u64)>,
+        now: f64,
+    ) -> Forecast {
+        let floor = nix_floor
+            .filter(|&(on, _)| on == device)
+            .map(|(_, floor)| floor);
+        let ahead = self.ahead(free, floor);
+        Forecast {
+            full_at: ahead.full_in.map(|seconds| now + seconds),
+            nix_floor: floor,
+            floor_at: ahead.floor_in.map(|seconds| now + seconds),
         }
     }
 
@@ -216,15 +305,48 @@ pub fn powered(power: Power, saver: bool) -> bool {
 
 /// Whether tasks stall on anything most of the time, so routine work, a
 /// listing of the store or upkeep, waits for the machine to recover unless
-/// a disk is past healthy and needs it.
+/// a disk is past healthy and needs it. On a Mac, that's its kernel telling
+/// apps memory is critical.
 pub fn overloaded(pressure: Pressure) -> bool {
-    [pressure.io.some, pressure.memory.some, pressure.cpu.some]
-        .iter()
-        .any(|&stall| stall >= OVERLOAD)
+    let critical = pressure
+        .memory_room
+        .is_some_and(|room| room.level == MemoryLevel::Critical);
+    critical
+        || [pressure.io.some, pressure.memory.some, pressure.cpu.some]
+            .iter()
+            .any(|&stall| stall >= OVERLOAD)
+}
+
+/// The share of the last minute, in percent, all tasks may stall at once
+/// on memory, and on the disk, before a listing of a store short of nearly
+/// full waits. On 23 November listings of 10 to 15 minutes ran at io full
+/// 17 to 36 over the minute, beside sessions that already stalled; these
+/// are the bars the machine's other heavy work starts under.
+const ROOMY_MEMORY: f64 = 5.0;
+const ROOMY_IO: f64 = 10.0;
+
+/// The share of memory a Mac's kernel must count free for a listing that
+/// can wait, the bar the Mac's other heavy work starts under.
+const ROOMY_MAC_FREE: u8 = 35;
+
+/// Whether the machine has room for a listing of the store that can wait:
+/// all tasks stalled at once over the last minute no more than
+/// `ROOMY_MEMORY` on memory and `ROOMY_IO` on the disk. A Mac keeps no
+/// stall averages, so there it's memory its kernel calls normal with
+/// `ROOMY_MAC_FREE` free, and the disk goes unjudged.
+pub fn roomy(pressure: Pressure) -> bool {
+    match pressure.memory_room {
+        Some(room) => room.level == MemoryLevel::Normal && room.free_percent >= ROOMY_MAC_FREE,
+        None => pressure.memory.full_minute <= ROOMY_MEMORY && pressure.io.full_minute <= ROOMY_IO,
+    }
 }
 
 /// Whether tasks stall on the disk and on memory little enough for work
-/// that can be skipped altogether, such as deduplicating the store.
+/// that can be skipped altogether, such as deduplicating the store, and on
+/// a Mac memory its kernel calls normal.
 pub fn calm(pressure: Pressure) -> bool {
-    pressure.io.some < STALL_CEILING && pressure.memory.some < STALL_CEILING
+    let normal = pressure
+        .memory_room
+        .is_none_or(|room| room.level == MemoryLevel::Normal);
+    normal && pressure.io.some < STALL_CEILING && pressure.memory.some < STALL_CEILING
 }

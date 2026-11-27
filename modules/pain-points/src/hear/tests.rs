@@ -1,12 +1,17 @@
 //! The listener's runs, over session logs, ledgers and a routes file made
 //! in a folder of their own.
+//!
+//! Long because each run is told from the day of his it hears, which the
+//! tests here share.
 
+use super::node::node_took;
 use super::*;
 use serde_json::json;
 use std::fs;
 use std::io::Write;
 
 mod answered;
+mod sends;
 mod standing;
 mod troubles;
 
@@ -43,6 +48,7 @@ impl Place {
             switches: self.root.join("switches.jsonl"),
             core: self.root.join("core.git"),
             git: "git".into(),
+            asks_end: Instant::now() + Duration::from_secs(3600),
             at: AT,
             offset_s: -5 * 3600,
         }
@@ -388,6 +394,96 @@ fn a_first_run_sends_each_new_pain_to_its_owner_once() {
     )
     .expect("an hour");
     assert_eq!(kept, hour);
+    let misses = fs::read_to_string(place.root.join("misses.jsonl")).expect("misses written");
+    let carried = misses
+        .lines()
+        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+        .find(|line| line["pain"] == "s-live/e4");
+    assert_eq!(
+        carried.map(|line| (line["owner"].clone(), line["carried"].clone())),
+        Some((json!("Y"), json!(true))),
+        "the pain the asks carried before it was sent wasn't written to that line's owner"
+    );
+}
+
+#[test]
+fn the_keeper_is_told_not_asked_of_a_pain_sent_to_a_cell_its_list_leaves_to_it() {
+    let place = a_told_day("told");
+    let cells = r#"{"Ok":{"Sessions":[
+        {"id":"s-live","address":"ABC123","state":"busy"},
+        {"id":"s-other","address":"GHI789","state":"busy"},
+        {"id":"s-void","address":"VOID01","state":"idle"}]}}"#;
+    let mut sent: Vec<(String, String, Put)> = Vec::new();
+    let hour = hear_putting(&place.ears(), cells, &mut |to, text, put| {
+        sent.push((to.into(), text.into(), put));
+        Sent::Went
+    })
+    .expect("a run");
+    let to_keeper = |put: Put| -> Vec<&str> {
+        sent.iter()
+            .filter(|(to, text, p)| {
+                to == "ORCH01" && *p == put && text.contains(route::FOR_THE_KEEPER)
+            })
+            .map(|(_, text, _)| text.as_str())
+            .collect()
+    };
+    assert!(
+        sent.iter()
+            .any(|(to, _, put)| to == "ABC123" && *put == Put::Asked),
+        "its owner is still asked: {sent:?}"
+    );
+    let asked = to_keeper(Put::Asked);
+    assert!(
+        asked.len() == 1 && asked[0].contains("sent to GHI789") && !asked[0].contains("ABC123"),
+        "the keeper wasn't asked of the unlisted owner's pain alone: {asked:?}"
+    );
+    let told = to_keeper(Put::Told);
+    assert!(
+        told.len() == 1
+            && told[0].contains("nothing to answer")
+            && told[0].contains("sent to ABC123")
+            && !told[0].contains("GHI789"),
+        "the keeper wasn't told of the listed owner's pain alone, wanting nothing: {told:?}"
+    );
+    assert!(hour.troubles.is_empty(), "a run that went well: {hour:?}");
+}
+
+#[test]
+fn a_told_note_that_did_not_go_is_a_trouble() {
+    let place = a_told_day("told-failed");
+    let hour = hear_putting(&place.ears(), CELLS, &mut |_, _, put| match put {
+        Put::Asked => Sent::Went,
+        Put::Told => Sent::Failed,
+    })
+    .expect("a run");
+    assert!(
+        !hour.troubles.is_empty(),
+        "a told note that failed passed as a clean hour: {hour:?}"
+    );
+}
+
+/// A day of his, with a routes file that tells the keeper of what goes
+/// to ABC123, named in another case, and a pain in GHI789's session.
+fn a_told_day(name: &str) -> Place {
+    let place = Place::new(name);
+    fs::write(
+        place.root.join("state/routes.json"),
+        r#"{"from":"EAR001","fallback":"ORCH01","ledgers":"ORCH01","never":["NEVER1"],
+            "told":["abc123"]}"#,
+    )
+    .expect("routes written");
+    a_day(&place);
+    place.log(
+        "src",
+        "s-other",
+        Path::new("/home/j/src"),
+        &[user(
+            "o1",
+            "2026-11-16T19:35:00.000Z",
+            "no, the page is broken",
+        )],
+    );
+    place
 }
 
 #[test]

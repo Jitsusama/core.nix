@@ -5806,6 +5806,60 @@ mod tests {
         assert!(c.why().contains("clear for"), "{}", c.why());
     }
 
+    // On 23 November a probe's 12.5 Mb/s read as a hold above the 12.0
+    // line. The reason is chosen each step from the probe the controller
+    // stands in, so a probe says it looks for room, and the hold after
+    // it no longer does (voids round 2's F2, F7 and F14). Every probing
+    // step says so, and the hold after it reads clear, where the flag
+    // would show (pin words round 1's F3 and F4).
+    #[test]
+    fn a_controller_probing_past_its_hold_says_it_looks_for_room() {
+        let mut c = anchored(12_000.0);
+        let (mut at, mut looked, mut ended) = (0.0, false, None);
+        while at < ended.unwrap_or(120.0) {
+            let rate = c.up.limit().map_or(12_000.0, crate::rate::float);
+            c.step(&Seen {
+                at_s: at,
+                up_kbit: rate.min(12_000.0),
+                up_ours: Some(Ours {
+                    waiting: true,
+                    ..Ours::default()
+                }),
+                ..quiet(0.0, 300.0)(at)
+            });
+            if ended.is_none() && c.up.probing_until.is_some() {
+                looked = true;
+                assert!(
+                    c.why().contains("looking past its hold"),
+                    "at {at:.1} s a probing step didn't say it looked for room: {}",
+                    c.why()
+                );
+            } else if ended.is_none() && looked {
+                ended = Some(at + 1.0);
+            }
+            at += 0.1;
+        }
+        assert!(looked, "no probe said it looked for room: {}", c.why());
+        // A probe still running when the minutes run out is named as such,
+        // not as a second probe (pin words narrowed round 1's F1, F3, F5
+        // and F7).
+        assert!(ended.is_some(), "the probe never ended: {}", c.why());
+        assert!(
+            c.up.probing_until.is_none(),
+            "another probe began within a second"
+        );
+        assert!(
+            c.why().contains("clear for"),
+            "the hold after a probe didn't read clear: {}",
+            c.why()
+        );
+        assert!(
+            !c.why().contains("looking past"),
+            "the hold after a probe said it looked for room: {}",
+            c.why()
+        );
+    }
+
     /// Steps an anchored controller for `seconds` whose agents fill the
     /// VPN, its CAKE holding a queue, through a tunnel that delivers
     /// `tunnel(at)` kbit/s: what the VPN's CAKE sends past that waits in

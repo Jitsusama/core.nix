@@ -1,5 +1,6 @@
 use super::crossing::refusing;
-use super::{Left, far_line, far_line_in, far_run, kind, said, work};
+use super::sweeping::gone;
+use super::{Left, far_line, far_line_in, far_run, handover, kind, said, work};
 use crate::far::{Heard, relay};
 use std::path::Path;
 use terminal_kit::Exit;
@@ -464,6 +465,8 @@ fn a_far_machine_that_can_t_make_the_tree_says_so_and_not_that_it_refused() {
     let (_, searching) = refusing("find", "*\" -type l \"*", "exit 1");
     for (step, stand_in) in [
         ("mkdir", "exit 1"),
+        ("mv", "exit 1"),
+        ("od", "exit 1"),
         ("tar", "exit 1"),
         ("find", "exit 1"),
         ("tar", &unpacking),
@@ -486,9 +489,10 @@ fn a_far_machine_that_can_t_make_the_tree_says_so_and_not_that_it_refused() {
         assert!(
             !work(&home).join("ran").exists()
                 && !work(&home).join("1").exists()
-                && !work(&home).join("1.run").exists(),
+                && !work(&home).join("1.run").exists()
+                && !work(&home).join("1.tar").exists(),
             "a tree it couldn't make for {step} ({stand_in:?}) was run, or left behind with \
-             its run's file"
+             its run's file or archive"
         );
         assert!(
             stand_in != unpacking || work(&home).join("closed").exists(),
@@ -496,6 +500,147 @@ fn a_far_machine_that_can_t_make_the_tree_says_so_and_not_that_it_refused() {
         );
         let _ = std::fs::remove_dir_all(&home);
     }
+}
+
+#[test]
+fn a_tree_left_in_several_archives_is_unpacked_from_each() {
+    // Each archive's list of names is made new where the one before's
+    // lay, so a second archive is never refused as already listed.
+    let (code, err, home) = far_line(
+        Left::Parts,
+        &[("a", "a"), ("b", "b"), ("c/d", "d")],
+        "cat a b c/d > ../ran",
+        &kind(""),
+        None,
+        &[],
+    );
+    let list = std::fs::read_to_string(handover(&home).join(crate::far::LEFT)).unwrap_or_default();
+    assert_eq!(
+        list.matches(".tar\n").count(),
+        3,
+        "the files weren't left in an archive each: {list:?}"
+    );
+    assert_eq!(code, Some(0), "a tree left in parts wasn't taken: {err}");
+    assert_eq!(
+        std::fs::read_to_string(work(&home).join("ran"))
+            .ok()
+            .as_deref(),
+        Some("abd"),
+        "a file of a later archive wasn't unpacked: {err}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
+fn a_run_s_file_another_run_holds_is_left_with_its_copy_and_tree_to_it() {
+    // Another run of the job has written its run's file, its copy and its
+    // names by the time this one sweeps, so this line's noclobber write
+    // loses whenever the other's came. Its file names this machine and
+    // process space and a process still running, the test's own, so the
+    // sweep keeps it as a live run's rather than for naming none. A gone
+    // run's file beside it, alike but for its process, must be taken, so
+    // the sweep is known to have judged them by their processes rather
+    // than passing both by, as where it can't tell its process space.
+    let theirs = std::process::id();
+    let ended = gone();
+    let (step, winning) = refusing(
+        "uname",
+        "*",
+        &format!(
+            "runs=\"$HOME/.cache/pi/agentic-harness.pi/quest-workspace/QEST-20261115-ABC123/.s\"
+             if mkdir \"$HOME/planting\" 2>/dev/null; then mkdir -p \"$runs/1\" && \
+             echo {theirs} \"$(uname -n)\" \"$(readlink /proc/self/ns/pid 2>/dev/null)\" \
+             > \"$runs/1.run\" && : > \"$runs/1/theirs\" && : > \"$runs/1.names\" && \
+             mkdir \"$runs/2\" && \
+             sed 's/^{theirs} /{ended} /' \"$runs/1.run\" > \"$runs/2.run\" && \
+             : > \"$HOME/planted\"; fi"
+        ),
+    );
+    let (code, err, home) = far_line(
+        Left::Whole,
+        &[("a", "x")],
+        "touch ../ran",
+        &kind(""),
+        None,
+        &[(step, &winning)],
+    );
+    // First, so neither a win nor the gone run's absence below is read
+    // while its planting never got that far.
+    assert!(
+        home.join("planted").exists(),
+        "the two runs weren't planted: {err}"
+    );
+    let heard = relay(said(&home).as_slice(), "1");
+    assert!(
+        code == Some(75) && heard == Heard::Untaken,
+        "a run that lost its run's file read as {heard:?}, ending {code:?}: {err}"
+    );
+    let runs = work(&home);
+    let file = std::fs::read_to_string(runs.join("1.run")).unwrap_or_default();
+    assert!(
+        file.starts_with(&format!("{theirs} ")),
+        "the winner's run's file was cleared or written over, reading {file:?}: {err}"
+    );
+    assert!(
+        runs.join("1/theirs").exists() && runs.join("1.names").exists(),
+        "the winner's copy or names were cleared: {err}"
+    );
+    assert!(
+        !runs.join("2").exists() && !runs.join("2.run").exists(),
+        "the sweep passed a gone run by, so it never judged the winner by its process: {err}"
+    );
+    assert!(
+        handover(&home).join(crate::far::TREE).exists(),
+        "the job's tree, which the winner unpacks, was cleared: {err}"
+    );
+    assert!(
+        !runs.join("ran").exists(),
+        "the job ran though it lost: {err}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
+fn a_far_line_stopped_before_its_run_s_file_leaves_another_run_s_copy() {
+    // Another run of the job writes its run's file, its copy and its names
+    // while this one waits on its files, and this one is stopped there,
+    // before it wrote a run's file of its own.
+    let (step, stopping) = refusing(
+        "sleep",
+        "*",
+        "runs=\"$HOME/.cache/pi/agentic-harness.pi/quest-workspace/QEST-20261115-ABC123/.s\"
+         if mkdir \"$HOME/planting\" 2>/dev/null; then mkdir -p \"$runs/1\" && \
+         echo theirs > \"$runs/1.run\" && : > \"$runs/1/theirs\" && : > \"$runs/1.names\" && \
+         kill -TERM \"$PPID\"; fi",
+    );
+    let (code, err, home) = far_line(
+        NEVER_CROSSING,
+        &[("x", "x")],
+        "touch ../ran",
+        &kind(""),
+        None,
+        &[(step, &stopping)],
+    );
+    let died_by = std::fs::read_to_string(home.join("signal")).unwrap_or_default();
+    assert_eq!(
+        (code, died_by.as_str()),
+        (None, "15"),
+        "it wasn't stopped: {err}"
+    );
+    // Only the stop's own clearing takes the files still crossing, so a
+    // line the signal killed outright leaves them.
+    assert!(
+        !handover(&home).join(crate::far::TREE).exists(),
+        "the stop's clearing never ran: {err}"
+    );
+    let runs = work(&home);
+    assert!(
+        std::fs::read_to_string(runs.join("1.run")).ok().as_deref() == Some("theirs\n")
+            && runs.join("1/theirs").exists()
+            && runs.join("1.names").exists(),
+        "a stop before its own run's file cleared another run's: {err}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
 }
 
 #[test]

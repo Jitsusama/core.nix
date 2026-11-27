@@ -81,10 +81,10 @@ const BLANK = [
     [0xe0002, 0xe001f], [0xe0080, 0xe0fff]
 ];
 
-// Whether `code` is a format character or draws a blank.
+// Whether `code` is a format character or draws a blank. A run is read by index, since
+// Qt's engine makes an iterator and its results for each pair taken apart (Wheres.js).
 function unseen(code) {
-    return [FORMATTING, BLANK].some(runs =>
-        runs.some(([first, last]) => code >= first && code <= last));
+    return [FORMATTING, BLANK].some(runs => runs.some(run => code >= run[0] && code <= run[1]));
 }
 
 // The first code point past the 16 bits one UTF-16 half holds.
@@ -279,7 +279,7 @@ function ended(answer, said) {
     const why = answer.error?.message;
     if (typeof why === "string" && why !== "") {
         return answer.error.code === "unanswered" ? { started: false, unanswered: true, why }
-            : { started: false, why };
+            : { started: false, why, refusal: String(answer.error.refusal ?? "") };
     }
     return { started: false, why: String(said.unread ?? "") };
 }
@@ -302,39 +302,37 @@ function sproutedOf(running, held, machine) {
 }
 
 // Whether Joel still waits on the act `key` in `launcher`: open, on its row
-// or held in its ask, where Return leaves him with the field emptied, and no
-// letter typed since the answer, when its `lettersAt` was `letters`. Only
-// then may its window take the keys; otherwise what he types next, a new try
-// in the ask included, could go into an agent's prompt.
-function waitsOn(launcher, key, letters) {
+// or held in its ask, where Return leaves him with the field emptied, with
+// no key taken and no letter given since his Return, when its `keysTaken`
+// was `keys` and its `lettersAt` `letters`: an arrow moves only the keys, a
+// paste only the letters. Else what he types could reach an agent's prompt.
+function waitsOn(launcher, key, keys, letters) {
     const on = row => row?.key === key;
-    return (
-        launcher?.open === true &&
-        launcher.lettersAt === letters &&
-        (on(launcher.asking) || on(launcher.selected))
-    );
+    return launcher?.open === true && launcher.keysTaken === keys &&
+        launcher.lettersAt === letters && (on(launcher.asking) || on(launcher.selected));
 }
 
-// How `openings` ({key, held, machine, since}) stand at `now`, `found`
-// giving each one's session or null: `late` have waited `patience`
-// milliseconds or more, and open nothing even if up by now, so a window
-// never comes past the minute it's said to; `up` came up within it, each
-// with its `session`; `waiting` are neither yet.
-function settled(openings, found, now, patience) {
-    const late = [];
-    const up = [];
-    const waiting = [];
+// How `openings` ({key, held, machine, since, late}) stand at `now`, by
+// `found` giving each one's session or null: `up` are up, however late;
+// `late` waited `patience` unmarked, and wait on in `waiting` marked `late`,
+// so each is said late once; `gone` waited `watch`; `waiting` wait on.
+function settled(openings, found, now, { patience, watch }) {
+    const stood = { late: [], up: [], gone: [], waiting: [] };
     for (const one of openings) {
         const session = found(one);
-        if (now - one.since >= patience) {
-            late.push(one);
-        } else if (session) {
-            up.push(Object.assign({}, one, { session }));
+        const waited = now - one.since;
+        if (session) {
+            stood.up.push(Object.assign({}, one, { session }));
+        } else if (waited >= watch) {
+            stood.gone.push(one);
+        } else if (waited >= patience && one.late !== true) {
+            stood.late.push(one);
+            stood.waiting.push(Object.assign({}, one, { late: true }));
         } else {
-            waiting.push(one);
+            stood.waiting.push(one);
         }
     }
-    return { late, up, waiting };
+    return stood;
 }
 
 // What opens a placement refusal, and a machine's reason in one that waiting
@@ -359,7 +357,8 @@ const NEVER_TAKES = /^\S+ (?:lacks|isn't) |, (?:lacks|isn't) /u;
 // words for the two, is said again once the node runs; any other failure to
 // reach it isn't a node that's down. A refusal none of these knows is told in its own words alone.
 const ACTS = [
-    { says: /^it needs a repository to work in, /u, cut: /: say which, as `[^`]*`$/u,
+    { says: /^it needs a repository to work in, /u,
+        cut: /: say which, as `[^`]*`(?:; `mycelium places` lists the places)?$/u,
         act: "actRepository" },
     { says: /^a session begun in a home folder /u, cut: /: name the repository's folder$/u,
         act: "actRepository" },
@@ -402,6 +401,38 @@ function acted(why, said) {
     }
     const cut = known.cut === null ? words : words.replace(known.cut, "");
     return `${cut}; ${act}`;
+}
+
+// Whether a start that ended `how` asks Joel where it starts: one refused
+// for want of a repository, which a folder Start New Work lists gets past,
+// so he's stepped back to them, his words carried to the one he picks
+// (Joel, 24 November, of a link refused so: "the UI was crap").
+const unplacedBy = why =>
+    ACTS.find(one => one.act === "actRepository" && one.says.test(String(why ?? "")));
+function asksWhere(how) {
+    return how?.started === false && how.unanswered !== true
+        && (how.refusal === "needs_folder" || unplacedBy(how.why) !== undefined);
+}
+
+// Whether `launcher` may step Joel back to pick where act `key` starts: he's
+// still in its emptied field, no key since his Return (`letters` its
+// lettersAt then), and `folders` are listed to pick from.
+function stepsBack(launcher, key, letters, folders) {
+    return launcher?.open === true && launcher.asking?.key === key
+        && launcher.lettersAt === letters && folders > 0;
+}
+
+// How a start that asks where is told, in `said`'s words: the refusal, the
+// command line's act cut, then that his words go with the folder he picks;
+// as `told` says it where those words are missing or the cut isn't there.
+function toldWhere(how, said) {
+    const words = String(how.why ?? "");
+    const known = unplacedBy(words);
+    const where = String(said?.askedWhere ?? "");
+    if (where === "" || (known?.cut && !known.cut.test(words))) {
+        return told(how, said);
+    }
+    return `${known?.cut ? words.replace(known.cut, "") : words}; ${where}`;
 }
 
 // What the act that ran says of how it ended, in `said`'s words: one

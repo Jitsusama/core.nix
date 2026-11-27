@@ -45,9 +45,6 @@ SEEING_ENDS = timedelta(seconds=4)
 # How long a place's members take to say their first answers once it's stepped into, each of
 # which makes the step again: a change told after it is said only by the row it moves.
 SETTLED = timedelta(seconds=3)
-# How long no key is said presented before every key pressed counts as shown: a key's frame
-# comes within a few, and its record a moment after.
-PRESENTED_STILL = timedelta(milliseconds=500)
 # How long before its line a chord is said to have run, well past any opening's own time here.
 CHORD_AGO = timedelta(seconds=2)
 # How long the shell is held stopped just after a chord, well past any opening's own time here.
@@ -392,8 +389,7 @@ def test_a_drawers_nerdy_bits_open_on_za_and_stay_as_left(shell: Shell) -> None:
     shell.answer("time")
     shell.launcher_until(
         lambda shown: (
-            shown["drawer"]["nerd"] == ["Unix Time", "Julian Day"]
-            and shown["drawer"]["folded"] is False
+            shown["drawer"]["nerd"] == ["Unix Time", "TAI"] and shown["drawer"]["folded"] is False
         )
     )
     shell.normal()
@@ -1476,6 +1472,46 @@ def test_notices_answered_late_come_in_with_the_selection_on_its_row(shell: Shel
     now = shell.showing()["selected"]["name"]
     shell.close_launcher()
     assert now == selected, f"the notices came in and the selection went from {selected} to {now}"
+
+
+# How long a case holds the notices daemon after the launcher closed, in seconds, so a late
+# answer to a key typed before the closing says at least this long after it.
+HELD_PAST_CLOSING = 1.5
+# A notices' answer come after its key was listed without it, with how late (Presented.js's
+# answeredLateSaid).
+NOTICES_LATE = re.compile(r"launcher: notices answered .+? (\d+) ms after its key")
+
+
+def test_a_closing_ends_the_keys_its_answers_came_late_for(shell: Shell) -> None:
+    """A key listed without the notices' answer is let go when the launcher closes.
+
+    Its answer, come after the closing, is no key's being late: nobody waits on it. Kept, the
+    mark is said late by the first unheld notices' answer. Here that is the stopped daemon's,
+    as it resumes with the launcher shut, which is where this case goes red. The reopening
+    types the words again, so its opening is read too. A notice brought in with the launcher
+    open, which would say a kept mark however many hours on, isn't driven: no case here brings
+    one in open, and waiting for its row timed out (2026-11-25).
+    """
+    with shell.told("shows card Windows of the past"):
+        shell.as_account("notify-send --expire-time=1000 'Windows of the past' 'a late notice'")
+    shell.notices_gone()
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    since = shell.mark()
+    with launcher_on_niri.notices_stopped():
+        shell.type_in("windows", selecting="windows")
+        shell.reported("listed without answers", lambda rest: rest == "", since)
+        closed = shell.mark()
+        shell.close_launcher()
+        time.sleep(HELD_PAST_CLOSING)
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.type_in("windows", selecting="windows")
+    shell.close_launcher()
+    logged = launcher_on_niri.logged_since(shell, closed)
+    lates = [int(late) for late in NOTICES_LATE.findall(logged)]
+    held = [late for late in lates if late >= HELD_PAST_CLOSING * 1000]
+    assert not held, f"the notices came late for a key typed before the closing: {held} ms"
 
 
 def test_for_yous_filter_steps_into_a_kind_and_minus_comes_back_out(shell: Shell) -> None:
@@ -2594,10 +2630,10 @@ def test_a_drawer_shown_again_measures_little_anew(shell: Shell) -> None:
 FIRST_GROUP = "Smileys & Emotion"
 # How many of Emoji's rows its start makes and Super+E lists at most: its groups, not 1,914.
 EMOJI_MADE_MOST = 20
-# The start line's count of rows by source, the most first, and Emoji's among them, where it's
-# one of the sources the line names; one it leaves out made fewer than the last it names.
-START_MADE = re.compile(r"places kept as the shell started, \d+ rows made \(([^)]*)\)")
-EMOJI_MADE = re.compile(r"\bemoji (\d+)")
+# How many emoji Desktop's Emoji says it holds at least, though its own rows are its groups.
+EMOJI_LISTED_LEAST = 1000
+# How each of Emoji's group rows' keys begins (clipboard/src/emoji.rs), and no emoji's does.
+EMOJI_GROUP_KEY = "row:emoji:group:"
 
 DRAWER_SAID = re.compile(
     r'launcher: drawer for "((?:[^"\\]|\\.)*)" presented (\d+) ms from the key: a median (\d+) ms '
@@ -2676,10 +2712,15 @@ def test_an_emoji_shows_the_drawer_the_shell_makes_of_it(shell: Shell) -> None:
     assert drawer["nerd"] == ["Code Points"], f"its code points went unnamed: {drawer}"
     # Unicode's first emoji, the grinning face, has keywords, so a drawer without them, or
     # with other words beside their name, lost them between the served row and the made
-    # drawer. Its title is held first, so a list that leads with another fails as itself.
+    # drawer. Its title is held first, so a list that leads with another fails as itself. The
+    # words are read beside the drawn facts' names, the list they come from, since the drawn
+    # card drops a fact that repeats its title; and a value still being asked is said as such.
     assert title == "Grinning face", f"Unicode's first emoji isn't the grinning face: {drawer}"
     assert drawer["facts"] == ["Keywords"], f"its keywords went unnamed or missing: {drawer}"
-    assert "grin" in str(drawer["values"][0] or "").split(", "), f"its keywords were lost: {drawer}"
+    assert drawer["drawnFacts"] == ["Keywords"], f"its drawer didn't draw its keywords: {drawer}"
+    keywords = drawer["values"][0]
+    assert keywords is not None, f"its keywords were still being asked: {drawer}"
+    assert "grin" in str(keywords).split(", "), f"its keywords were lost: {drawer}"
     since = shell.mark()
     shell.send_chars("j")
     shell.launcher_until(functools.partial(drawer_moved, title))
@@ -2691,27 +2732,128 @@ def test_an_emoji_shows_the_drawer_the_shell_makes_of_it(shell: Shell) -> None:
 
 
 def test_emoji_makes_a_row_only_for_an_emoji_it_shows(shell: Shell) -> None:
-    """Super+E lists Unicode's groups, and the clipboard's history finds what's typed there.
+    """Super+E lists Unicode's groups, and makes a row only for an emoji a step shows.
 
     Every one of Emoji's 1,914 rows was made as the shell started, kept for Super+E and matched
     in the shell, about 30 MB of what its heap held (Y2YBTS's lab, 2026-11-19). The history
-    finds them now (clipboard/src/search.rs), so the start makes only its groups' rows.
+    finds what's typed now (clipboard/src/search.rs, the whole-word case below), so the start
+    makes only its groups' rows, a group's row moved over makes none of its emoji, and closing
+    lets go of those a step into a group made, which were otherwise held for the shell's life.
+    The tally counts every row since the shell started, and a case before this one in its part
+    steps into a group, so each count here is from this case's start; the start itself is
+    judged by having made fewer than Emoji holds, which a step into one group never reaches.
     """
     launcher_on_niri.warmed(shell)
-    said = shell.log.read_bytes()[shell.launched :].decode(errors="replace")
-    start = START_MADE.search(said)
-    assert start, f"the shell never said what its start made\n{shell.tail()}"
-    made = EMOJI_MADE.search(start.group(1))
-    counted = int(made.group(1)) if made else 0
-    assert counted < EMOJI_MADE_MOST, f"the start made {counted} of Emoji's rows"
+    before = shell.rows_made("emoji")
+    assert before < EMOJI_LISTED_LEAST, (
+        f"Emoji made {before} rows before this case, so its start made every emoji"
+    )
     shell.as_account(shell.ipc("collection", "emoji"))
     shell.launcher_ready()
     shell.launcher_until(lambda shown: shown["rows"][:1] == [FIRST_GROUP])
-    rows = shell.showing()["rows"]
-    # showing() lists at most 20 rows, so 20 or more shows as 20, which this refuses.
-    assert len(rows) < EMOJI_MADE_MOST, f"Super+E listed {rows[:12]}, not Unicode's groups"
-    shell.type_in("tada", selecting="Party popper")
+    # Once its groups are listed the history's records have come, so an opening that made
+    # every emoji has made them by now.
+    made = shell.rows_made("emoji") - before
+    assert made < EMOJI_MADE_MOST, f"Emoji made {made} rows before a group was stepped into"
+    listed = shell.showing()
+    assert listed["count"] < EMOJI_MADE_MOST, (
+        f"Super+E listed {listed['count']} rows, {listed['rows'][:12]}, not Unicode's groups"
+    )
+    shell.normal()
+    shell.send_chars("j")
+    shell.launcher_until(lambda shown: (shown.get("selected") or {}).get("name") != FIRST_GROUP)
+    # The selection's actions are read a moment after it moves (Launcher.qml's
+    # readSelectedActions, called later), which would make every emoji of a group they read,
+    # so what moving made is judged once Emoji has stopped making rows, and by each row's key:
+    # its groups' rows may be made again, but none of their emoji.
+    shell.made_settled("emoji")
+    moved = shell.rows_made("emoji") - before
+    assert moved - made <= launcher_on_niri.LATELY_KEPT, (
+        f"moving to the next group made {moved - made} rows: {shell.made_lately('emoji')}"
+    )
+    made_moving = shell.made_since("emoji", before + made)
+    emoji = [key for key in made_moving if not key.startswith(EMOJI_GROUP_KEY)]
+    assert not emoji, f"moving to the next group made {len(emoji)} of its emoji: {emoji}"
+    shell.send_chars("k")
+    shell.launcher_until(lambda shown: (shown.get("selected") or {}).get("name") == FIRST_GROUP)
+    shell.step_in()
+    shell.launcher_until(functools.partial(stands_in, FIRST_GROUP))
+    stepped = shell.rows_made("emoji") - before
+    assert stepped > moved, (
+        "a step into the first group made none of its emoji, so they were made before this"
+        " case and kept: a close before it let none go, or the start made them"
+    )
     shell.close_launcher()
+    shell.as_account(shell.ipc("collection", "emoji"))
+    shell.launcher_ready()
+    shell.launcher_until(lambda shown: shown["rows"][:1] == [FIRST_GROUP])
+    shell.step_in()
+    shell.launcher_until(functools.partial(stands_in, FIRST_GROUP))
+    again = shell.rows_made("emoji") - before - stepped
+    assert again > 0, "closing kept every emoji the first step made, so the second made none"
+    shell.close_launcher()
+
+
+def test_emoji_finds_a_whole_word_typed_in_it(shell: Shell) -> None:
+    """A word typed into Super+E is found by the clipboard's history, its emoji first.
+
+    Each letter asks the history again (launcher/Emoji.qml's search), so the rows a word's first
+    letter found must give way to the word's own. It stands apart from the rows case above so
+    a quarantine of it excuses only this search, not the bounds on what Emoji makes.
+    """
+    shell.as_account(shell.ipc("collection", "emoji"))
+    shell.launcher_ready()
+    # Its groups listed, Emoji has heard from the history, so a case run alone types into a
+    # search that can ask it, as one run after the rows case does.
+    shell.launcher_until(lambda shown: shown["rows"][:1] == [FIRST_GROUP])
+    # Twice a failure here showed the rows held from "t" and never tada's, with nothing in the
+    # journal to say why (2026-11-23), so a failure says how Emoji's search of the history stood.
+    try:
+        shell.type_in("tada", selecting="Party popper")
+    except AssertionError as failed:
+        said = f"{failed}; Emoji's search: {shell.searching('emoji')}"
+        raise AssertionError(said) from failed
+    shell.close_launcher()
+
+
+# How the head says a find the history answered only in part, in normal: those shown, of all it
+# found (Launcher.qml's narrowed, which showing() gives as `found`).
+FOUND_OF = re.compile(r"(\d+) of (\d+) found")
+
+
+def test_emoji_says_how_many_it_found_past_those_it_answers(shell: Shell) -> None:
+    """A find in Emoji the history answers with its first hundred says how many it found.
+
+    The history answers a find with its best hundred emoji and how many it found
+    (clipboard/src/search.rs), and Emoji passes that on (launcher/Emoji.qml's search), so the
+    head says "100 of 412 found" rather than "100 found" as though that were all. An f finds
+    every flag and face, past a hundred.
+    """
+    shell.as_account(shell.ipc("collection", "emoji"))
+    shell.launcher_ready()
+    shell.launcher_until(lambda shown: shown["rows"][:1] == [FIRST_GROUP])
+    shell.type_in("f")
+    # Emoji lists nothing for an f until the history answers, which type_in takes as settled.
+    shell.launcher_until(lambda shown: shown["count"] > 0)
+    shell.normal()
+    # The head judged is the one the wait passed on, as a later showing() could come after the
+    # answer was let go and say nothing.
+    heads: list[Json] = []
+
+    def says_found(shown: Json) -> bool:
+        heads.append(shown)
+        return cast("str", shown["found"]) != ""
+
+    shell.launcher_until(says_found)
+    said, listed = cast("str", heads[-1]["found"]), int(heads[-1]["count"])
+    shell.close_launcher()
+    counted = FOUND_OF.fullmatch(said)
+    assert counted, f"Emoji's head never said how many it found past those it shows: {said}"
+    shown, found = (int(part) for part in counted.groups())
+    # The head says "N of M" only where M is more, so what pins it is that N is the list it
+    # stood over, its groups found with the history's hundred.
+    assert shown == listed, f"the head said {shown} of {found} found over {listed} rows: {said}"
+    assert shown < found, f"the head said {shown} of {found} found: {said}"
 
 
 def test_a_cheap_drawer_comes_in_its_keys_own_frame(shell: Shell) -> None:
@@ -2719,10 +2861,11 @@ def test_a_cheap_drawer_comes_in_its_keys_own_frame(shell: Shell) -> None:
 
     Each drawer came the frame after its key, waiting a whole refresh for its swap: 16 ms of
     Joel's median of 69 from the key, against his 50 (2026-11-12), while making one took a
-    median of 2. So one whose kind made in under 8 ms of late comes in the key's own frame,
+    median of 2. So one whose kind made in under 13 ms of late comes in the key's own frame,
     and its line says so (VKCF3Z, 2026-11-12, d4c660a6; 8 rather than 3 from 2026-11-16, for
-    For You's, made in 4 to 7). Home's first places make theirs in 0 to 2 ms here, so the walk
-    is over home's.
+    For You's, made in 4 to 7; 13 from 2026-11-26, for on's, collections' and notices', made
+    in 7 to 8).
+    Home's first places make theirs in 0 to 2 ms here, so the walk is over home's.
     """
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
@@ -2939,6 +3082,71 @@ def test_a_program_selected_in_programs_is_asked_its_acts_alone_once(shell: Shel
     assert asked <= 1, f"moving onto the next program asked rows' acts alone {asked} times"
 
 
+# Eight makings of a kind well past the 13 ms a drawer joins its key's frame under, and eight
+# well within it. Four more makings leave DEAR's median at 20 or more, and five take CHEAP's to
+# the line only if each takes 13 ms, where a program's makes in 4 to 14 ms, so either stays.
+DEAR = [40] * 8
+CHEAP = [1] * 8
+
+
+def kept_makings_file(shell: Shell) -> Path:
+    """Give the file the shell keeps its drawers' makings in, making one drawer if none is."""
+    state = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state")
+
+    def found() -> list[Path]:
+        return sorted(state.glob("quickshell/by-shell/*/launcher-drawers.json"))
+
+    if not found():
+        # Home's first row's drawer follows as it opens, and the launcher keeps its making as
+        # it shuts.
+        shell.as_account(shell.ipc("toggle"))
+        shell.launcher_ready()
+        shell.launcher_until(lambda shown: bool(shown["drawer"]["out"]))
+        shell.close_launcher()
+        deadline = time.monotonic() + 5
+        while not found() and time.monotonic() < deadline:
+            time.sleep(0.05)
+    files = found()
+    assert len(files) == 1, f"the shell keeps its drawers' makings in {files}"
+    return files[0]
+
+
+@contextlib.contextmanager
+def taught(shell: Shell, makings: dict[str, list[int]]) -> Iterator[None]:
+    """Restart the shell having made each kind's drawers as `makings` says, and as it was after.
+
+    Whether a drawer joins its key's frame or rests for the letters is decided by its kind's
+    makings, and a program's make in 4 to 14 ms here, cheap under the line or past it by the
+    builder's load alone: at 13 a case about the dear way almost never saw it (#6737's
+    council, 2026-11-26). So a case about one way teaches the shell which, through the file
+    it reads as it starts. What it kept comes back after, so the cases after read their own.
+    """
+    path = kept_makings_file(shell)
+    before: list[str] = []
+
+    def teach() -> None:
+        before.append(path.read_text())
+        # The shell writes the file off its thread as the launcher shuts, so a stop can land
+        # mid-write, and it reads what it couldn't finish as nothing (Makings.js); so does this.
+        try:
+            kept = cast("dict[str, Json]", json.loads(before[0] or "{}"))
+        except json.JSONDecodeError:
+            kept = {}
+        path.write_text(json.dumps({**kept, **makings}))
+
+    def put_back() -> None:
+        if before:
+            path.write_text(before[0])
+
+    # Put back however the teaching ended, so a failed start leaves no kind taught for the
+    # cases after, and the shell is started again for them.
+    try:
+        shell.restart(teach)
+        yield
+    finally:
+        shell.restart(put_back)
+
+
 def test_a_key_is_timed_on_its_swap_before_the_drawer_it_brings(shell: Shell) -> None:
     """A key's frame is timed as it's swapped, before the drawer waiting on that frame is made.
 
@@ -2947,36 +3155,34 @@ def test_a_key_is_timed_on_its_swap_before_the_drawer_it_brings(shell: Shell) ->
     the key's: Joel's down onto Slack took 28 ms before the shell heard its frame swapped,
     beside Slack's drawer made in 28, and onto mpv 39 beside 39 (2026-11-13, 20:05).
 
-    A drawer whose kind made in under 8 ms of late is made in the key's own handler instead,
-    to come in the key's frame, so it's said first by design. A program's makes in 4 to 6 ms
-    here, under 8 on a quick builder and over it on a loaded one, and it was said first on
-    five unrelated changes' runs on 2026-11-14 and 15 even under the old 3. So the order
-    asserted is the one the way it came promises.
+    A drawer whose kind made in under 13 ms of late is made in the key's own handler instead,
+    to come in the key's frame, and a program's makes in 4 to 14 ms here. So programs' kind,
+    home's wherever they're listed, is taught dear first, as Slack's is on Joel's machine, and
+    its drawer comes the frame after.
     """
-    shell.as_account(shell.ipc("toggle"))
-    shell.launcher_ready()
-    stepped_into_programs(shell)
-    shell.held_still()
-    since = shell.mark()
-    shell.send_key("down")
-    shell.reported("drawer follows ", lambda _: True, since)
-    shell.held_still()
-    said, _ = shell.said_since(since)
-    drawn = [
-        line
-        for line in said_once(shell, since, DRAWER_SAID).splitlines()
-        if DRAWER_SAID.search(line)
-    ]
-    shell.close_launcher()
+    with taught(shell, {"home program": DEAR}):
+        shell.as_account(shell.ipc("toggle"))
+        shell.launcher_ready()
+        stepped_into_programs(shell)
+        shell.held_still()
+        since = shell.mark()
+        shell.send_key("down")
+        shell.reported("drawer follows ", lambda _: True, since)
+        shell.held_still()
+        said, _ = shell.said_since(since)
+        drawn = [
+            line
+            for line in said_once(shell, since, DRAWER_SAID).splitlines()
+            if DRAWER_SAID.search(line)
+        ]
+        shell.close_launcher()
     assert drawn, "the drawer the key brought was never said presented"
+    assert not came_in_its_keys_frame(drawn[-1]), (
+        f"a program's drawer taught dear came in its key's frame, so the kind taught isn't "
+        f"its: {drawn[-1]}"
+    )
     order = [one for one in said if one.startswith(("drawer follows ", "key framed "))]
-    follows = next((one for one in order if one.startswith("drawer follows ")), "")
-    if came_in_its_keys_frame(drawn[-1]):
-        assert order[:2] == [follows, "key framed ↓"], (
-            f"a drawer in its key's frame wasn't made in the key's handler: {order}"
-        )
-    else:
-        assert order[:1] == ["key framed ↓"], f"the key was timed after its drawer: {order}"
+    assert order[:1] == ["key framed ↓"], f"the key was timed after its drawer: {order}"
 
 
 def drawer_moved(was: str, shown: Json) -> bool:
@@ -3368,6 +3574,13 @@ def test_a_terminal_is_shown_a_place_by_its_names_and_a_miss_the_nearest(shell: 
     grinning = shown("desktop", "emoji", FIRST_GROUP, "grinning face")
     assert "Copy" in [row["name"] for row in grinning["acts"]], grinning
     assert "Copy" not in [row["name"] for row in grinning["rows"]], grinning
+    # Desktop's Emoji says how many emoji it holds, counted from the history's records, though
+    # it lists only Unicode's groups and has made none of the emoji inside them. A place's
+    # figure is its side, as "1,914"; its count is what needs Joel.
+    emoji = next(row for row in shown("desktop")["rows"] if row["name"] == "Emoji")
+    figure = re.match(r"[\d,]+", str(emoji.get("side", "")))
+    held = int(figure.group().replace(",", "")) if figure else 0
+    assert held >= EMOJI_LISTED_LEAST, f"Desktop's Emoji said how many it holds so: {emoji}"
     assert all("drawer" not in row for row in machine["rows"]), machine["rows"]
     # A miss says where, the names it was nearest, and that nothing it was looked among is
     # still being read, so the terminal says it at once rather than asking again.
@@ -4735,7 +4948,7 @@ LETTER_TYPED = re.compile(r"letter typed (\d+) ms after the one before, resting 
 CHEAP_AFTER_LETTER = "letter's drawer is cheap: "
 
 
-def drawers_under_the_rest(said: list[str]) -> list[str]:
+def drawers_under_the_rest(said: list[str], *, before_the_first: bool = True) -> list[str]:
     """Give each dear drawer followed before a letter the shell heard quicker than its rest.
 
     wtype's letters are 50 ms apart, but a loaded builder spaced them 175 to 395 ms apart as
@@ -4743,9 +4956,10 @@ def drawers_under_the_rest(said: list[str]) -> list[str]:
     (Y2YBTS, 2026-11-14, ed99cdc6 and 5dc9f833; typing again three times still failed in four
     gates). So a drawer is judged by the gap before the letter after it: one followed before
     a letter under the rest didn't wait for the letters. Those before the first letter count
-    too, since home's drawer was out before it. One the shell judged cheap follows its letter
-    rather than resting, made long before the next (Pacing.drawerRestsForLetters), so it's
-    left out.
+    too, since home's drawer was out before it, unless `before_the_first` is false: a cheap
+    kind's drawer rightly joins the key's frame of a first letter, which no letters came before.
+    One the shell judged cheap follows its letter rather than resting, made long before the
+    next (Pacing.drawerRestsForLetters), so it's left out.
     """
     wrong: list[str] = []
     waiting: list[str] = []
@@ -4760,7 +4974,7 @@ def drawers_under_the_rest(said: list[str]) -> list[str]:
             cheap = None
         elif typed := LETTER_TYPED.fullmatch(one):
             # The first letter's gap is from whatever was typed before the mark.
-            if first or int(typed[1]) < int(typed[2]):
+            if (first and before_the_first) or int(typed[1]) < int(typed[2]):
                 wrong.extend(waiting)
             waiting = []
             first = False
@@ -4794,9 +5008,10 @@ def test_letters_typed_quicker_than_the_rest_make_no_dear_drawer(shell: Shell) -
     Joel types letters 100 to 150 ms apart, and each letter that moved the selection had its
     drawer made right after its frame, so the next letter waited behind it: "ca" 198 ms behind
     Chrome's drawer, "calend" 272 ms behind Google Calendar's first (2026-11-13, 06:14).
-    A program's drawer, made in 4 to 14 ms here, never joins its key's frame, so typing onto
-    one shows it; each letter makes its row again, and its drawer was made again each time.
-    Only a dear kind, or one not yet made, rests: a cheap one follows its letter.
+    No drawer comes in its letter's own frame, however cheap, so typing onto a program shows
+    it; each letter makes its row again, and its drawer was made again each time.
+    Only a dear kind, or one not yet made, rests: a cheap one follows its letter, so home's
+    programs are taught dear first, as Chrome's and Google Calendar's were.
     Only the drawers followed before the last letter are judged: once the letters rest, a
     loaded builder can list Foot's row again, and its drawer rightly follows the new row
     (75a49d9587e9, the net).
@@ -4807,7 +5022,11 @@ def test_letters_typed_quicker_than_the_rest_make_no_dear_drawer(shell: Shell) -
         shell.reported("drawer follows program:foot", lambda _: True, since)
         shell.held_still()
 
-    said = typed_from_home(shell, "foot", footed)
+    with taught(shell, {"home program": DEAR}):
+        said = typed_from_home(shell, "foot", footed)
+    assert f"{CHEAP_AFTER_LETTER}program:foot" not in said, (
+        f"Foot's drawer, taught dear, was judged cheap: {drawer_trace(said)}"
+    )
     last = max(at for at, report in enumerate(said) if report.startswith("letter typed "))
     between = drawers_under_the_rest(said)
     after = [report for report in said[last:] if report.startswith("drawer follows ")]
@@ -4818,26 +5037,52 @@ def test_letters_typed_quicker_than_the_rest_make_no_dear_drawer(shell: Shell) -
     )
 
 
-def test_a_drawer_resting_for_the_letters_names_the_row_selected(shell: Shell) -> None:
+@pytest.mark.parametrize("cheap", [False, True], ids=["dear", "cheap"])
+def test_a_drawer_resting_for_the_letters_names_the_row_selected(
+    shell: Shell, *, cheap: bool
+) -> None:
     """While letters rest, the drawer out names the row selected rather than the one before.
 
     The drawer waits for the letters before it's made, and kept the row before's facts beside
     the new highlight all the while, so typing "calend" would show Chrome's drawer by Google
     Calendar for the whole word (VKCF3Z, c842849d). Typing a program's name from home moves
-    the selection from Now, whose drawer is out, to the program, whose drawer never joins its
-    key's frame, and before that drawer follows the drawer out must say the program's name.
-    One cheap enough to follow its letter rather than rest names it by being made, in the
-    frame after the letter's, so the first showing after it is judged instead.
+    the selection from Now, whose drawer is out, to the program, whose drawer never comes in its
+    letter's frame, and before that drawer follows the drawer out must say the program's name.
+    One cheap enough to follow its letter rather than rest names it by being made, so the first
+    showing after it is judged instead, and it never rests: in the frame after its letter, or
+    in its key's frame once a loaded builder has spaced the letters past the rest. A program's
+    makes in 4 to 14 ms here, either side of the line by the builder's load, so home's programs
+    are taught each way in turn.
     """
 
     def footed(since: int) -> None:
         shell.reported("drawer follows program:foot", lambda _: True, since)
+        if cheap:
+            # Its timing is kept a frame after it's made and said in a showing after that, and
+            # each letter can follow it again, so the whole word is waited for, held still.
+            shell.launcher_until(lambda shown: shown["typed"] == "foot")
+            shell.held_still()
 
-    said = typed_from_home(shell, "foot", footed)
+    with taught(shell, {"home program": CHEAP if cheap else DEAR}):
+        said = typed_from_home(shell, "foot", footed)
     follow = said.index("drawer follows program:foot")
-    cheap = f"{CHEAP_AFTER_LETTER}program:foot" in said[:follow]
     judged = said[follow:] if cheap else said[:follow]
     shown = [json.loads(one[len("showing ") :]) for one in judged if one.startswith("showing ")]
+    # How Foot's drawers came (in its key's frame, the frame after its letter or after
+    # resting), as the showings after it follows time them.
+    timed = [one["drawer"].get("timed") or {} for one in shown]
+    came = [one.get("came", "") for one in timed if one.get("key") == "program:foot"]
+    # Taught dear, it's never judged cheap after its letter. Taught cheap, it's said cheap only
+    # while letters still come, which a loaded builder's spacing can end first, joining its
+    # key's frame unsaid, so it's judged by never resting for them, and by joining only the
+    # frame of a letter heard at or past the rest (#6737's council, 2026-11-26).
+    judged_cheap = f"{CHEAP_AFTER_LETTER}program:foot" in said[:follow]
+    rested = [how for how in came if how.startswith("after resting")]
+    joined = drawers_under_the_rest(said, before_the_first=False)
+    assert (bool(came) and not rested and not joined) if cheap else not judged_cheap, (
+        f"Foot's drawer, taught {'cheap' if cheap else 'dear'}, was judged otherwise: "
+        f"{drawer_trace(said)}; came {came!r}; joined under the rest {joined!r}"
+    )
     on_foot = [one for one in shown if one["drawer"]["out"] and selecting("Foot", one)]
     assert on_foot, f"the drawer was never out beside Foot: {drawer_trace(said)}"
     assert on_foot[0 if cheap else -1]["drawer"]["title"] == "Foot", (
@@ -5750,12 +5995,12 @@ def test_a_step_in_from_typed_words_is_timed_once_as_the_step(shell: Shell) -> N
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
     shell.type_in("programs", selecting="Programs")
-    before = len(keys_presented_settled(shell))
+    before = len(launcher_on_niri.keys_presented_settled(shell))
     shell.step_in()
-    presented = keys_presented_settled(shell)[before:]
+    presented = launcher_on_niri.keys_presented_settled(shell)[before:]
     # A letter typed after the step is timed as a key again.
     shell.type_in("f")
-    after = keys_presented_settled(shell)[before + len(presented) :]
+    after = launcher_on_niri.keys_presented_settled(shell)[before + len(presented) :]
     shell.close_launcher()
     steps = [one.get("step") for one in presented]
     assert steps == ["\u2192 Programs"], f"Return into Programs wasn't timed once: {presented}"
@@ -5772,10 +6017,10 @@ def test_a_step_in_through_the_place_holding_it_is_timed_once_as_the_step(shell:
     shell.launcher_ready()
     shell.type_in("power")
     shell.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Power")
-    before = len(keys_presented_settled(shell))
+    before = len(launcher_on_niri.keys_presented_settled(shell))
     shell.step_in()
     shell.launcher_until(lambda shown: shown["path"][-2:] == ["Machine", "Power"])
-    presented = keys_presented_settled(shell)[before:]
+    presented = launcher_on_niri.keys_presented_settled(shell)[before:]
     shell.close_launcher()
     steps = [one.get("step") for one in presented]
     assert steps == ["\u2192 Power"], f"Return into Power wasn't timed once: {presented}"
@@ -5790,10 +6035,10 @@ def test_a_step_in_by_a_word_and_a_space_is_timed_once_as_the_step(shell: Shell)
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
     shell.type_in("network")
-    before = len(keys_presented_settled(shell))
+    before = len(launcher_on_niri.keys_presented_settled(shell))
     shell.send_chars(" ")
     shell.launcher_until(lambda shown: shown["path"][-1:] == ["Network"])
-    presented = keys_presented_settled(shell)[before:]
+    presented = launcher_on_niri.keys_presented_settled(shell)[before:]
     shell.close_launcher()
     steps = [one.get("step") for one in presented]
     assert steps == ["\u2192 Network"], f"the space into Network wasn't timed once: {presented}"
@@ -5807,10 +6052,10 @@ def test_a_word_and_a_space_typed_at_once_time_only_the_last_key_as_the_step(she
     """
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
-    before = len(keys_presented_settled(shell))
+    before = len(launcher_on_niri.keys_presented_settled(shell))
     typed_at_once(shell, "'network '")
     shell.launcher_until(lambda shown: shown["path"][-1:] == ["Network"])
-    presented = keys_presented_settled(shell)[before:]
+    presented = launcher_on_niri.keys_presented_settled(shell)[before:]
     shell.close_launcher()
     steps = [one.get("step") for one in presented]
     assert steps.count("\u2192 Network") == 1, f"the step was timed other than once: {presented}"
@@ -5827,11 +6072,11 @@ def test_a_walk_through_a_place_is_timed_once_as_where_it_ends(shell: Shell) -> 
     """
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
-    before = len(keys_presented_settled(shell))
+    before = len(launcher_on_niri.keys_presented_settled(shell))
     asked = shlex.quote(json.dumps({"steps": ["machine", "power"], "words": "", "sure": False}))
     shell.as_account(f"qs -p {shell.folder} ipc call -- launcher doing {asked}")
     shell.launcher_until(lambda shown: shown["path"] == ["Machine", "Power"])
-    presented = keys_presented_settled(shell)[before:]
+    presented = launcher_on_niri.keys_presented_settled(shell)[before:]
     shell.close_launcher()
     steps = [one.get("step") for one in presented]
     assert steps == ["\u2192 Power"], f"the walk to Power wasn't timed once as it: {presented}"
@@ -5844,24 +6089,10 @@ def minus_presented(shell: Shell, out: Callable[[Json], object]) -> list[Json]:
     rows, and waits on past the first since, so a second timing a frame later is seen.
     """
     shell.normal()
-    before = len(keys_presented_settled(shell))
+    before = len(launcher_on_niri.keys_presented_settled(shell))
     shell.send_chars("-")
     shell.launcher_until(out)
-    return keys_presented_settled(shell)[before:]
-
-
-def keys_presented_settled(shell: Shell) -> list[Json]:
-    """Give the keys the launcher said presented, once no more have come for PRESENTED_STILL."""
-    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
-    presented = json.loads(shell.as_account(shell.ipc("keysPresented")))
-    still = time.monotonic()
-    while time.monotonic() - still < PRESENTED_STILL.total_seconds():
-        assert time.monotonic() < deadline, f"keys kept being presented: {presented}"
-        time.sleep(launcher_on_niri.POLL)
-        now = json.loads(shell.as_account(shell.ipc("keysPresented")))
-        if len(now) != len(presented):
-            presented, still = now, time.monotonic()
-    return cast("list[Json]", presented)
+    return launcher_on_niri.keys_presented_settled(shell)[before:]
 
 
 def moved_presented(shell: Shell, written: float, deadline: float) -> list[Json]:

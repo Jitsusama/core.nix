@@ -21,11 +21,12 @@ let
   };
 in
 # The hosts' own checks change with host.nix alone, the harness's settings
-# check with harness-settings.nix alone, and the timers' checks with
-# timers.nix alone, so they sit beside them.
+# check with harness-settings.nix alone, and the timers' checks and the
+# log rewrite's with timers/ alone, so they sit beside them.
 import ./host-checks.nix args
 // import ./harness-settings-checks.nix args
-// import ./timer-checks.nix args
+// import ./timers/checks.nix args
+// import ./timers/compressed-logs-checks.nix args
 // {
   # pi's folder, its session logs among what it holds, is the account's
   # alone, set as the account is switched to, on every machine with pi.
@@ -185,15 +186,15 @@ import ./host-checks.nix args
       '';
       # The plan's model as an account has it.
       inherit (home.jitsusama.pi.claude) model;
-      program = lib.getExe (import ./claude.nix { inherit pkgs claude model; });
+      program = lib.getExe (import ./claude { inherit pkgs claude model; });
       onOwnLogin = lib.getExe (
-        import ./claude.nix {
+        import ./claude {
           inherit pkgs claude model;
           ownLogin = true;
         }
       );
       inOther = lib.getExe (
-        import ./claude.nix {
+        import ./claude {
           inherit pkgs claude model;
           realm = "other";
           homeRealm = "home";
@@ -238,7 +239,7 @@ import ./host-checks.nix args
   # usage, in words pi never retries.
   pi-says-when-the-plan-runs-out = pkgs.runCommandLocal "pi-says-when-the-plan-runs-out" { } ''
     ${lib.getExe pkgs.nodejs} --experimental-strip-types --no-warnings \
-      ${./tests/pi-says-when-the-plan-runs-out.mjs} ${import ./claude-provider.nix { inherit pkgs; }}
+      ${./tests/pi-says-when-the-plan-runs-out.mjs} ${import ./claude/provider.nix { inherit pkgs; }}
     touch $out
   '';
 
@@ -334,6 +335,32 @@ import ./host-checks.nix args
         touch $out
       '';
 
+  # A hosted pi evaluates a keyed package's modules once for all its
+  # extensions, in a cache of the package's own, while an unkeyed package's
+  # extensions keep a copy each; a reload or a moved link lets go of it,
+  # and a turn held too long lets loads go on without it. Only finished
+  # modules are shared, so a failed load or an import made as an extension
+  # runs leaves nothing part-way for another, which the second test drives.
+  # Both import the loader they drive from the helper beside them.
+  pi-hosted-shares-keyed-modules =
+    let
+      tests = lib.fileset.toSource {
+        root = ./tests;
+        fileset = lib.fileset.unions [
+          ./tests/hosted-keyed-packages.mjs
+          ./tests/pi-hosted-keyed-late-imports.mjs
+          ./tests/pi-hosted-shares-keyed-modules.mjs
+        ];
+      };
+    in
+    pkgs.runCommandLocal "pi-hosted-shares-keyed-modules" { } ''
+      HOME=$TMPDIR ${lib.getExe pkgs.nodejs} --no-warnings \
+        ${tests}/pi-hosted-shares-keyed-modules.mjs ${hostedPi}/lib/node_modules/pi-monorepo
+      HOME=$TMPDIR ${lib.getExe pkgs.nodejs} --no-warnings \
+        ${tests}/pi-hosted-keyed-late-imports.mjs ${hostedPi}/lib/node_modules/pi-monorepo
+      touch $out
+    '';
+
   # A hosted pi's conversations each read their keys and headers from their
   # own auth context and never from the process, while a pi given none
   # reads the process as ordinary pi does.
@@ -389,6 +416,14 @@ import ./host-checks.nix args
         touch $out
       '';
 
+  # A hosted pi draws its conversation before its extensions bind, so a
+  # session_start that never settles leaves the window readable, not blank.
+  pi-hosted-draws-before-it-binds = pkgs.runCommandLocal "pi-hosted-draws-before-it-binds" { } ''
+    HOME=$TMPDIR ${lib.getExe pkgs.nodejs} --no-warnings \
+      ${./tests/pi-hosted-draws-before-it-binds.mjs} ${hostedPi}/lib/node_modules/pi-monorepo
+    touch $out
+  '';
+
   # A hosted pi's screen stays in its own conversation: quitting or a crash
   # ends only that screen and what it was doing, a stopped screen builds
   # nothing for an extension and disposes the footer, header and editor one
@@ -442,7 +477,7 @@ import ./host-checks.nix args
       ''
         ${lib.getExe pkgs.nodejs} --experimental-transform-types --no-warnings \
           ${./tests/pi-asks-claude-code-its-login-once.mjs} ${
-            import ./claude-provider.nix { inherit pkgs; }
+            import ./claude/provider.nix { inherit pkgs; }
           }
         touch $out
       '';
@@ -455,7 +490,7 @@ import ./host-checks.nix args
       ''
         ${lib.getExe pkgs.nodejs} --experimental-transform-types --no-warnings \
           ${./tests/pi-answers-a-tool-it-has-not-loaded.mjs} ${
-            import ./claude-provider.nix { inherit pkgs; }
+            import ./claude/provider.nix { inherit pkgs; }
           }
         touch $out
       '';

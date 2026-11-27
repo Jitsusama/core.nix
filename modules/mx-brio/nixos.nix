@@ -22,11 +22,12 @@
 # hold of a Brio already plugged in, so nobody plugs it in again
 # (take-hold.sh).
 #
-# No role imports it while its relay gives no picture: opened by a program,
-# the relay builds no input pipeline, so the loopback shows only its
+# No role imports it yet. Its relay gave no picture: opened by a program,
+# it built no input pipeline, since its description ended in bare caps,
+# which GStreamer's parser refuses there, so the loopback showed only its
 # placeholder, and Chrome, which lists a loopback only while one streams,
-# leaves the Brio out of a call. Until the relay is fixed, the seat opens
-# the Brio itself, one program at a time.
+# left the Brio out of a call. Until a role takes the fixed relay in, the
+# seat opens the Brio itself, one program at a time.
 {
   config,
   lib,
@@ -52,13 +53,17 @@ let
   # camera. A leaky queue drops a stale frame rather than delaying the next.
   caps = "video/x-raw,format=NV12,width=1920,height=1080,framerate=30/1";
   # Either picture is a choice of two caps, which GStreamer reads only as
-  # a quoted value; bare, its parser takes the first for an element.
+  # a quoted value; bare, its parser takes the first for an element. The
+  # picture it ends as is a capsfilter's too: the relay makes its input
+  # from the description alone and links its own sink after, and the
+  # parser takes bare caps only between two elements, so ending in them
+  # left the relay with no input at all.
   input = lib.concatStringsSep " ! " [
     "v4l2src device=/dev/mx-brio"
     ''capsfilter caps="${caps};image/jpeg,width=1920,height=1080,framerate=30/1"''
     "decodebin3"
     "videoconvert"
-    caps
+    "capsfilter caps=${caps}"
   ];
   output = lib.concatStringsSep " ! " [
     "appsrc name=appsrc caps=${caps}"
@@ -157,7 +162,14 @@ in
         "modprobe@v4l2loopback.service"
       ];
       wants = [ "modprobe@v4l2loopback.service" ];
-      environment.GST_PLUGIN_PATH = plugins;
+      environment = {
+        GST_PLUGIN_PATH = plugins;
+        # GStreamer's errors, so an input the relay can't make says why in
+        # its journal rather than leaving a client the placeholder: the
+        # relay says so with GST_ERROR, which level 1 keeps.
+        GST_DEBUG = "1";
+        GST_DEBUG_NO_COLOR = "1";
+      };
       serviceConfig = {
         RuntimeDirectory = "mx-brio";
         # It runs as root to make the loopback camera, as the built-in

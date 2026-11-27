@@ -113,6 +113,9 @@ def keys(joel: Joel, values: dict[str, Any]) -> Keys:
     joel.machine.wait_for_unit("signing-key.service", "joel")
     # The agents' own agent reads its key as it starts, so it starts again too.
     joel.run("systemctl --user stop agent-signing.service")
+    # Its socket listens only once the agents' key is there, which it wasn't at login,
+    # and its path unit starts it when the key appears.
+    joel.machine.wait_for_unit("agent-signing.socket", "joel")
     joel.run("git init -q repo")
     return Keys(
         joel=joel.fingerprint(f"{JOEL_KEY}.pub"), agent=joel.fingerprint(f"{AGENT_KEY}.pub")

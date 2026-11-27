@@ -1,5 +1,6 @@
 //! When the safe word's Slack reader tells Joel it can't hear Slack, and
-//! what it asks of him.
+//! what it asks of him. What it never read is said in rows of their own,
+//! in missed.rs.
 
 use std::ffi::OsStr;
 use std::path::Path;

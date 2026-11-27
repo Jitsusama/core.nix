@@ -95,7 +95,7 @@
         && lib.elem "timers.target" timer.wantedBy
         && timerConfig.OnCalendar == "*-*-* 03:00"
         && !(timerConfig.Persistent or false)
-        && service.TimeoutStartSec == "2h"
+        && service.TimeoutStartSec == "6h 5min"
         && service.IOWeight == 1
         && service.CPUWeight == 1
       );
