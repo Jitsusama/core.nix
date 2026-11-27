@@ -77,15 +77,7 @@ pub fn gather(folder: &Path, runtime: &Path, now: i64) -> Sources {
         command("git", &all).unwrap_or_default()
     };
     let (main, reverts, journal) = side_by_side(
-        || {
-            git(&[
-                "log",
-                "--first-parent",
-                &since,
-                "--format=%H %ct %s",
-                "main",
-            ])
-        },
+        || first_parent(&core, now),
         || {
             git(&[
                 "log",
@@ -117,6 +109,38 @@ pub fn gather(folder: &Path, runtime: &Path, now: i64) -> Sources {
         looks: records::parse_looks(&journal),
         bills: fs::read_to_string(runtime.join("spend-watch/collection.json")).unwrap_or_default(),
     }
+}
+
+/// Core's main as `gather` reads it, from cadence's mirror, with no
+/// journal read, for the hour, which counts landings from the logs alone.
+#[must_use]
+pub fn core_main(folder: &Path, now: i64) -> String {
+    first_parent(&folder.join("core.git").to_string_lossy(), now)
+}
+
+/// The harness's main as `gather_harness` reads it, with no journal read.
+#[must_use]
+pub fn harness_main(now: i64) -> String {
+    first_parent(&harness_mirror().to_string_lossy(), now)
+}
+
+/// The first-parent log of `main` in the repository at `at` over the
+/// window, newest first as `%H %ct %s` lines, or nothing when git fails.
+fn first_parent(at: &str, now: i64) -> String {
+    let since = format!("--since=@{}", now - DAYS * DAY);
+    command(
+        "git",
+        &[
+            "-C",
+            at,
+            "log",
+            "--first-parent",
+            &since,
+            "--format=%H %ct %s",
+            "main",
+        ],
+    )
+    .unwrap_or_default()
 }
 
 /// Runs a source's three commands at once, since each waits on the disk
@@ -166,15 +190,7 @@ pub fn gather_harness(now: i64) -> Sources {
         command("git", &all).unwrap_or_default()
     };
     let (main, reverts, journal) = side_by_side(
-        || {
-            git(&[
-                "log",
-                "--first-parent",
-                &since,
-                "--format=%H %ct %s",
-                "main",
-            ])
-        },
+        || first_parent(&mirror, now),
         || {
             git(&[
                 "log",

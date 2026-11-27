@@ -37,7 +37,6 @@
   "modules/cadence/src/daily.rs" = 4;
   "modules/cadence/src/day/passed.rs" = 1;
   "modules/cadence/src/day/phases.rs" = 1;
-  "modules/cadence/src/findings.rs" = 1;
   "modules/cadence/src/gate.rs" = 1;
   "modules/cadence/src/hour.rs" = 12;
   "modules/cadence/src/hour/measures/broken.rs" = 1;

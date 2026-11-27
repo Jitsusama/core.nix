@@ -11,11 +11,14 @@
 //! nothing a day found is lost and nobody is asked twice. A must a
 //! quest owes, filed with `cadence owe` (owe.rs), is kept here too, and
 //! stays open until its owner says it's done.
+//!
+//! Long because over half of it is its cases, each a way the ledger is
+//! read, kept, filed, closed or told, beside the rules they hold.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -97,15 +100,52 @@ fn is_zero(count: &u32) -> bool {
     *count == 0
 }
 
-/// The ledger kept at `path`, a line each; a line that isn't an entry is
-/// left out rather than failing the run.
-#[must_use]
-pub fn read(path: &Path) -> Vec<Entry> {
-    fs::read_to_string(path)
-        .unwrap_or_default()
-        .lines()
-        .filter_map(|line| serde_json::from_str(line).ok())
-        .collect()
+/// The ledger kept at `path`, a line each, or none when no ledger is
+/// there yet. A line that isn't an entry, torn by a write or kept in a
+/// shape this cadence doesn't read, is set aside as it stood, appended to
+/// `findings.unread.jsonl` beside the ledger, and said on stderr, before
+/// the ledger is returned: each caller keeps the ledger whole after, so a
+/// line only left out would be lost at that keep.
+///
+/// # Errors
+///
+/// When the ledger is there but can't be read as text, so its caller
+/// stops rather than reading it as empty and keeping that over every
+/// finding, or when a line that isn't an entry can't be set aside.
+pub fn read(path: &Path) -> io::Result<Vec<Entry>> {
+    let text = match fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(err) => return Err(err),
+    };
+    let mut ledger = Vec::new();
+    let mut unread = Vec::new();
+    // A ledger kept empty is one blank line, which is nothing to set aside.
+    for line in text.lines().filter(|line| !line.trim().is_empty()) {
+        if let Ok(entry) = serde_json::from_str::<Entry>(line) {
+            ledger.push(entry);
+        } else {
+            unread.push(line);
+        }
+    }
+    if !unread.is_empty() {
+        let aside = unread_at(path);
+        let mut file = fs::File::options().create(true).append(true).open(&aside)?;
+        io::Write::write_all(&mut file, (unread.join("\n") + "\n").as_bytes())?;
+        let lines = if unread.len() == 1 { "line" } else { "lines" };
+        eprintln!(
+            "cadence: findings: {} {lines} unread, set aside in {}",
+            unread.len(),
+            aside.display()
+        );
+    }
+    Ok(ledger)
+}
+
+/// Where the lines of the ledger at `path` that aren't entries are set
+/// aside: `findings.unread.jsonl` beside `findings.jsonl`.
+fn unread_at(path: &Path) -> PathBuf {
+    path.with_extension("unread.jsonl")
 }
 
 /// Holds the ledger at `path` for one writer until what it returns is
@@ -372,6 +412,77 @@ pub(crate) mod tests {
         [("crashes", "A"), ("crashes:chrome", "B"), ("switch", "C")]
             .map(|(k, v)| (k.to_owned(), v.to_owned()))
             .into()
+    }
+
+    /// Where a test keeps its ledger, in a folder of its own.
+    fn ledger_in(folder: &tempfile::TempDir) -> PathBuf {
+        folder.path().join("findings.jsonl")
+    }
+
+    #[test]
+    fn a_ledger_that_isnt_text_fails_its_read() {
+        let folder = tempfile::tempdir().expect("a scratch folder");
+        let path = ledger_in(&folder);
+        fs::write(&path, [0xff, 0xfe]).expect("a ledger that isn't text");
+        assert!(
+            read(&path).is_err(),
+            "a ledger that can't be read as text read as empty, so the keep after it would \
+             write over every finding it holds"
+        );
+    }
+
+    #[test]
+    fn a_missing_or_empty_ledger_reads_as_none_set_aside() {
+        let folder = tempfile::tempdir().expect("a scratch folder");
+        let path = ledger_in(&folder);
+        assert!(
+            read(&path).expect("a missing ledger reads").is_empty(),
+            "a ledger not yet kept held findings"
+        );
+        keep(&path, &[]).expect("an empty ledger kept");
+        assert!(
+            read(&path).expect("an empty ledger reads").is_empty(),
+            "a ledger kept empty held findings"
+        );
+        assert!(
+            !unread_at(&path).exists(),
+            "a missing or empty ledger set a line aside as unread"
+        );
+    }
+
+    #[test]
+    fn a_torn_line_is_set_aside_once_and_its_neighbours_kept() {
+        let folder = tempfile::tempdir().expect("a scratch folder");
+        let path = ledger_in(&folder);
+        let mut ledger = Vec::new();
+        let worse = [found("crashes:tec"), found("oom.machine")];
+        update(&mut ledger, &day("d1", DAY), &worse, &owners());
+        let [first, second] = [&ledger[0], &ledger[1]]
+            .map(|entry| serde_json::to_string(entry).expect("an entry as a line"));
+        let torn = r#"{"key":"#;
+        fs::write(&path, format!("{first}\n{torn}\n{second}\n")).expect("a torn ledger");
+        let read_back = read(&path).expect("a ledger with a torn line reads");
+        assert_eq!(
+            read_back, ledger,
+            "the entries either side of a torn line weren't both read"
+        );
+        let aside = unread_at(&path);
+        assert_eq!(
+            fs::read_to_string(&aside).expect("the torn line set aside"),
+            format!("{torn}\n"),
+            "the torn line wasn't set aside as it stood"
+        );
+        keep(&path, &read_back).expect("the ledger kept");
+        assert_eq!(
+            read(&path).expect("the kept ledger reads"),
+            ledger,
+            "the keep after a torn line lost an entry"
+        );
+        assert_eq!(
+            fs::read_to_string(&aside).expect("the torn line still set aside"),
+            format!("{torn}\n"),
+            "a read after the keep set more aside, or the torn line was lost"
+        );
     }
 
     #[test]

@@ -58,8 +58,9 @@ onLinux {
   # ledger, a finding goes to the longest prefix's owner, is kept once and
   # closes two days after its last, each owner is told once in one message,
   # and a finding past its date is late once; of the units, a loop of three
-  # restarts in fifteen minutes (13 November's slack-unreads, replayed) is
-  # told at the tick after its third, once a spell, a failed unit from when it
+  # restarts in fifteen minutes, other than retries on a status the unit
+  # names for them (13 November's slack-unreads, replayed), is told at the
+  # tick after its third, once a spell, a failed unit from when it
   # failed, a daemon signed out at once and one silent or unreachable once it
   # holds, each with its last error and owner; and of the axes, each reading
   # is parsed from the card, the measure, the mesh, the notices and niri, a
@@ -158,7 +159,12 @@ onLinux {
             name:
             let
               service = user.services.${name};
-              inherit (runs.timeout service.Service) given read value;
+              inherit (runs.timeout service.Service)
+                given
+                read
+                dropped
+                value
+                ;
               unread = key: builtins.toJSON service.Service.${key};
             in
             if runs.bare user.services name then
@@ -173,6 +179,11 @@ onLinux {
               ++ map (key: "${name}'s ${key} ${unread key} is one systemd can't read") (
                 lib.subtractLists read given
               )
+              ++ map (
+                key:
+                "${name}'s ${key} ends in ${builtins.toJSON (runs.late service.Service.${key})}, "
+                + "which systemd drops for the line before"
+              ) dropped
               ++ lib.optional (read == [ ]) "${name} sets no timeout of its own that systemd reads"
               ++ lib.optional (
                 value != null && !runs.ends value
@@ -216,6 +227,25 @@ onLinux {
             };
           };
           says = "cadence-day's timeout \"infinity\" ends no hang";
+        };
+        # systemd counts a span down to the microsecond, so these are zero.
+        "a timeout under a microsecond" = {
+          user = {
+            inherit timers;
+            services = services // {
+              cadence-day = run "0.5us";
+            };
+          };
+          says = "cadence-day's timeout \"0.5us\" ends no hang";
+        };
+        "a float home-manager writes as zero" = {
+          user = {
+            inherit timers;
+            services = services // {
+              cadence-day = run 1.0e-7;
+            };
+          };
+          says = "cadence-day's timeout 1e-07 ends no hang";
         };
         "a timeout systemd can't read" = {
           user = {
@@ -456,6 +486,30 @@ onLinux {
           };
           says = "cadence-new has a timer but no unit";
         };
+        "a list whose last line systemd drops for the one before" = {
+          user = {
+            inherit timers;
+            services = services // {
+              cadence = run [
+                "1h"
+                "10 minuets"
+              ];
+            };
+          };
+          says = "cadence's TimeoutStartSec ends in [\"10 minuets\"]";
+        };
+        # An empty list writes no line, so it is no key given, and not one
+        # systemd can't read.
+        "a timeout given as an empty list" = {
+          user = {
+            inherit timers;
+            services = services // {
+              cadence-day = run [ ];
+            };
+          };
+          says = "cadence-day sets no timeout of its own that systemd reads";
+          unsaid = [ "cadence-day's TimeoutStartSec" ];
+        };
         "a known run no timer starts" = {
           user = {
             inherit services;
@@ -498,14 +552,35 @@ onLinux {
         "timeouts systemd reads in its looser spellings" = {
           inherit timers;
           services = services // {
-            cadence = run [
-              "1h"
-              "10 minuets"
-            ];
+            cadence = run "12.34s.56";
             cadence-day = run ".5h";
             cadence-hour = run " +1.5h\t";
             cadence-review = run 1.5;
-            cadence-repo-day = run "12.34s.56 1h30m";
+          };
+        };
+        # The micro sign and the Greek mu are each a unit of their own.
+        "timeouts with units side by side, or in micro signs" = {
+          inherit timers;
+          services = services // {
+            cadence = run "1h30m";
+            cadence-day = run "5000000µs";
+            cadence-hour = run "5000000μs";
+          };
+        };
+        "timeouts of a microsecond, spelt in a larger unit" = {
+          inherit timers;
+          services = services // {
+            cadence = run "0.001ms";
+            cadence-day = run 0.000001;
+          };
+        };
+        "a list whose unreadable line comes before the one systemd reads" = {
+          inherit timers;
+          services = services // {
+            cadence = run [
+              "10 minuets"
+              "1h"
+            ];
           };
         };
         "an ExecStart cleared, then given again" = {
@@ -575,6 +650,20 @@ onLinux {
           says = "cadence-pkg is named unwritten, so its run went unchecked";
         };
       };
+      # A package's own run named unwritten, which the check must let be.
+      acceptedNamed = {
+        "a package's run named unwritten" = {
+          user = {
+            services = services // {
+              pkg-run.Service.ExecStart = [ ];
+            };
+            timers = timers // {
+              pkg-run = timer;
+            };
+          };
+          unwritten = [ "pkg-run" ];
+        };
+      };
       unrefused = lib.attrNames (
         lib.filterAttrs (
           _: case:
@@ -595,7 +684,7 @@ onLinux {
       );
       overrefused = lib.attrNames (
         lib.filterAttrs (_: args: problemsOf args != [ ]) (
-          lib.mapAttrs (_: user: { inherit user; }) accepted
+          lib.mapAttrs (_: user: { inherit user; }) accepted // acceptedNamed
         )
       );
       home = exampleLaptop.config.home-manager.users.joel;
