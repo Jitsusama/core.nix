@@ -81,7 +81,7 @@ mod asks;
 
 use passwords::{
     Ask, Changes, DOMAIN, DRAWER, Held, KIND, Of, PATIENCE, Said, Standing, VERSION, ask, audit,
-    cli, error, key, named, now, rows, said, standing,
+    cli, error, key, named, now, rows, said, standing, waited_until,
 };
 use ready_rows::kept::Kept;
 use secret_asks::engine::{self, Engine, Setting};
@@ -1356,9 +1356,20 @@ fn copy(shared: &Shared, value: &str) -> Result<u64, String> {
             let _ = before.wait();
         }
     }
+    // Ended by the wall clock the foot and margin show it clearing by, so a
+    // copy whose time ran out while the lid was closed goes on waking, not
+    // as long after as a sleep had left.
+    let clears_at = u64::try_from(u128::from(now()) + clears.as_millis()).unwrap_or(u64::MAX);
     let shared = Arc::clone(shared);
     std::thread::spawn(move || {
-        std::thread::sleep(clears);
+        let started = Instant::now();
+        waited_until(
+            clears_at,
+            clears,
+            now,
+            || started.elapsed(),
+            std::thread::sleep,
+        );
         let mut daemon = lock(&shared);
         if daemon
             .copied
@@ -1370,7 +1381,7 @@ fn copy(shared: &Shared, value: &str) -> Result<u64, String> {
             let _ = child.wait();
         }
     });
-    Ok(u64::try_from(u128::from(now()) + clears.as_millis()).unwrap_or(u64::MAX))
+    Ok(clears_at)
 }
 
 /// Why nothing is typed: no typist is named, as the checks that copy
