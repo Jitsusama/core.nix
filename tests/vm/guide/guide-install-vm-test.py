@@ -1084,7 +1084,7 @@ def test_only_the_keys_and_recovery_key_open_the_disk(installed: QemuMachine) ->
 
 def test_card_says_what_the_disk_asks_and_shuts_down(shut_down: QemuMachine) -> None:
     """The card says what the disk will ask, and the machine shuts down."""
-    assert not shut_down.booted
+    assert not shut_down.booted, "the machine still runs once the card said what the disk asks"
 
 
 def test_machine_boots_its_own_disk_with_a_keys_pin(first_boot: QemuMachine) -> None:

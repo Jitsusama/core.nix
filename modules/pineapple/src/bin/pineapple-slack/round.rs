@@ -382,6 +382,13 @@ fn keep_stop(
         stop["by_joel"] = false.into();
         stop["said_by"] = format!("{} (unconfirmed)", message.author).into();
     }
+    // Joel's own, read agreed and never edited, said just before a resume
+    // of his naming it and heard only after, is kept as he left it,
+    // resumed (src/resume.rs). An edited one's time is when it was first
+    // said, not when its words were, so it stands.
+    if agreed && !message.edited {
+        *stop = resume::as_left(records, std::mem::take(stop));
+    }
     let shadow = if shadow { ", in shadow" } else { "" };
     let unagreed = if agreed {
         ""
@@ -390,6 +397,10 @@ fn keep_stop(
     };
     let kept = record::keep(records, key, stop);
     match &kept {
+        Ok(true) if resume::ended(stop) => eprintln!(
+            "<5>a stop{shadow}, said before Joel resumed it, kept as resumed: {}",
+            message.link
+        ),
         // An unagreed stop is named by the key it's kept under, as its
         // link could point anywhere.
         Ok(true) => eprintln!(
