@@ -105,6 +105,24 @@ fn a_sched_file_gives_the_wait_for_a_cpu_never_the_wait_for_a_disk() {
 }
 
 #[test]
+fn a_wait_under_an_older_kernel_s_dotted_key_is_read_as_the_same_wait() {
+    // Older kernels print the fair count with the prefix of the struct that
+    // holds it, as stats.wait_sum, where 7.3 prints it bare. Reading both
+    // keeps the fair count, and so the lesser of the two, on such a kernel.
+    // The disk's wait comes first, since its key ends as the CPU's does but
+    // for the dot.
+    let dotted = "slack (7, #threads: 30)\n\
+                  ----------------------------------------\n\
+                  stats.iowait_sum             :        900.000000\n\
+                  stats.wait_sum               :         12.250000\n";
+    assert_eq!(
+        waited(dotted),
+        Some(12_250_000),
+        "the wait wasn't read from its dotted line"
+    );
+}
+
+#[test]
 fn a_thread_s_own_name_never_reads_as_a_count() {
     let forged = "wait_sum: 9000000\n (7, #threads: 1)\n\
                   ----------------------------------------\n\
@@ -145,6 +163,33 @@ fn a_thread_s_own_name_never_reads_as_a_count() {
         blocked(no_header),
         None,
         "a file without its header was read"
+    );
+}
+
+#[test]
+fn a_sched_read_without_its_dash_row_is_told_from_one_not_read() {
+    let rowless = "slack (7, #threads: 30)\n\
+                   wait_sum                     :         12.250000\n";
+    assert!(
+        lacks_dash_row(rowless),
+        "a sched without its dash row passed as whole"
+    );
+    assert_eq!(waited(rowless), None, "a count was read past no dash row");
+    let whole = "slack (7, #threads: 30)\n\
+                 ----------------------------------------\n\
+                 wait_sum                     :         12.250000\n";
+    assert!(
+        !lacks_dash_row(whole),
+        "a whole sched was taken as one without its dash row"
+    );
+    // Its stats may all be ones the kernel doesn't keep: the row is there.
+    assert!(
+        !lacks_dash_row("t (7, #threads: 1)\n----------------\n"),
+        "a sched with nothing past its dash row was taken as one without it"
+    );
+    assert!(
+        !lacks_dash_row(""),
+        "a sched not read was taken as one without its dash row"
     );
 }
 
@@ -206,6 +251,43 @@ fn a_thread_s_fair_count_is_read_beside_its_schedstat() {
     );
     assert_eq!(read_sched(&root.join("9/task/9/schedstat")), None);
     let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn a_thread_whose_schedstat_is_gone_never_has_its_sched_opened() {
+    let gone = Path::new("/proc/7/task/7/schedstat");
+    let mut asked = Vec::new();
+    let read = read_in_order(gone, |path| {
+        asked.push(path.to_path_buf());
+        String::new()
+    });
+    assert_eq!(read, None, "a thread that ended was read");
+    assert_eq!(
+        asked,
+        [gone.to_path_buf()],
+        "the sched was opened after its schedstat gave nothing"
+    );
+    // One still running is read in the order the carry's tests describe.
+    let kept = Path::new("/proc/8/task/8/schedstat");
+    let mut asked = Vec::new();
+    let read = read_in_order(kept, |path| {
+        asked.push(path.to_path_buf());
+        if path.ends_with("schedstat") {
+            "5000000 3000000 40\n".to_string()
+        } else {
+            "t (8, #threads: 1)\n----------------\nwait_sum : 2.000000\n".to_string()
+        }
+    });
+    assert_eq!(
+        read.map(|(found, _)| found.fair_ns),
+        Some(Some(2_000_000)),
+        "the fair count wasn't read after the schedstat"
+    );
+    assert_eq!(
+        asked,
+        [kept.to_path_buf(), kept.with_file_name("sched")],
+        "the files weren't read schedstat first, then sched"
+    );
 }
 
 #[test]

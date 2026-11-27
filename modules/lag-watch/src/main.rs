@@ -246,20 +246,22 @@ fn snapshot(
         // An app's thread blocked in the kernel, on a lock, a page read back or reclaim, hangs
         // its window without waiting for a CPU, so its time blocked is read beside its waits.
         // Its sched file is read once, for both, after its schedstat, as each
-        // two-second read takes them.
-        let stat_text = kernel::text(&thread.schedstat);
-        let sched_text = kernel::text(&thread.schedstat.with_file_name("sched"));
+        // two-second read takes them, and not at all once its schedstat is gone.
+        let Some((sched, sched_text)) = kernel::read_sched_and_text(&thread.schedstat) else {
+            continue;
+        };
+        if kernel::lacks_dash_row(&sched_text) {
+            s.scheds_without_dash_row += 1;
+        }
         if apps::is_app(thread)
             && let Some(ns) = kernel::blocked(&sched_text)
         {
             s.blocked.insert(thread.clone(), ns);
         }
-        if let Some(sched) = kernel::read_sched_beside(&stat_text, &sched_text) {
-            if hidden {
-                s.resting.insert(thread.clone(), sched);
-            } else {
-                s.threads.insert(thread.clone(), sched);
-            }
+        if hidden {
+            s.resting.insert(thread.clone(), sched);
+        } else {
+            s.threads.insert(thread.clone(), sched);
         }
     }
     for label in lowered.into_values().flatten() {
@@ -489,6 +491,41 @@ fn now(context: &Context) -> Result<(), Failure> {
     .map_err(|error| unwritten(&error))
 }
 
+/// The window from `then` to `now` (`window::between`), carried on from
+/// the one before it, `last`. What each of `now`'s threads is owed for the
+/// next window (`window::credit`) is taken here, after the window is
+/// measured and before `now` becomes where the next one starts, so a wait
+/// one count booked before this window's read and the other after it is
+/// counted in the next. It reads nothing, so its tests reach that order.
+fn close_window(
+    then: &Snapshot,
+    now: &mut Snapshot,
+    niri: Answers,
+    ended: u64,
+    system: &str,
+    last: Option<&Window>,
+) -> Window {
+    let mut w = window::between(then, now, niri, ended, system);
+    w.carry(last);
+    window::credit(then, now);
+    w
+}
+
+/// Carries into `fresh`, the snapshot the minute's look takes again, what
+/// each count of a thread still watched was owed at `was`, the window's
+/// end, so the minute's look loses no wait `close_window` left owed. A
+/// thread hidden since keeps it too, in `resting`, since a tab shown again
+/// starts from where it rested. One resting at `was` is owed nothing, as
+/// `window::credit` credits only the threads read. What grew between the
+/// two reads is left out, and nothing is read, so its tests reach it.
+fn look_again(fresh: &mut Snapshot, was: &Snapshot) {
+    for (key, s) in fresh.threads.iter_mut().chain(fresh.resting.iter_mut()) {
+        if let Some(old) = was.threads.get(key) {
+            s.owed = old.owed;
+        }
+    }
+}
+
 /// The watch, a window every ten seconds until it's stopped.
 fn run() -> Result<(), Failure> {
     let cgroups = PathBuf::from("/sys/fs/cgroup");
@@ -552,15 +589,14 @@ fn run() -> Result<(), Failure> {
         window::book(&mut booked, &read.sched, &read.asleep, &after.sched, passed);
         read = after;
         now.booked = std::mem::take(&mut booked);
-        let mut w = window::between(
+        let w = close_window(
             &then,
-            &now,
+            &mut now,
             Answers::of(&answers, unanswered),
             seconds_now(),
             &system(),
+            last.as_ref(),
         );
-        w.carry(last.as_ref());
-        window::credit(&then, &mut now);
         keep(&w);
         last = Some(w);
         answers.clear();
@@ -577,14 +613,9 @@ fn run() -> Result<(), Failure> {
                 sched: read_of(&then),
                 asleep: sleeping,
             };
-            // A thread still watched keeps what each count is owed, after
-            // the ticks' read, which counts each tick alone; what grew
-            // between the two reads is left out, as it was before.
-            for (key, s) in &mut then.threads {
-                if let Some(was) = now.threads.get(key) {
-                    s.owed = was.owed;
-                }
-            }
+            // What is owed is carried after the ticks' read is taken from the
+            // fresh snapshot, since a tick is counted alone and owes nothing.
+            look_again(&mut then, &now);
         } else {
             then = now;
         }

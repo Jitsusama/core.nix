@@ -171,18 +171,28 @@ pub fn sched(text: &str) -> Option<Sched> {
 /// fair count grew by at most 2 ms on each (docs/kernel.md, The Patches).
 /// None for a schedstat that can't be read.
 pub fn read_sched(schedstat: &Path) -> Option<Sched> {
-    let stat_text = text(schedstat);
-    read_sched_beside(&stat_text, &text(&schedstat.with_file_name("sched")))
+    read_sched_and_text(schedstat).map(|(read, _)| read)
 }
 
-/// `read_sched`, given both files already read, so a caller that reads
-/// the `sched` for more than the wait reads it once. Each caller reads the
-/// schedstat first and the `sched` after it, the order the carry's tests
-/// describe.
-pub fn read_sched_beside(stat_text: &str, sched_text: &str) -> Option<Sched> {
-    let mut read = sched(stat_text)?;
-    read.fair_ns = waited(sched_text);
-    Some(read)
+/// `read_sched`, with the text of the `sched` it read, so a caller that
+/// reads the `sched` for more than the wait reads it once. The schedstat is
+/// read first and the `sched` after it, the order the carry's tests
+/// describe, and only once the schedstat gave a read: a thread that ended
+/// would otherwise cost a second failed open on every two-second read.
+pub fn read_sched_and_text(schedstat: &Path) -> Option<(Sched, String)> {
+    read_in_order(schedstat, text)
+}
+
+/// `read_sched_and_text`, each file read by `read`, so a test can see
+/// which files it opens, and in what order.
+fn read_in_order(
+    schedstat: &Path,
+    mut read: impl FnMut(&Path) -> String,
+) -> Option<(Sched, String)> {
+    let mut found = sched(&read(schedstat))?;
+    let sched_text = read(&schedstat.with_file_name("sched"));
+    found.fair_ns = waited(&sched_text);
+    Some((found, sched_text))
 }
 
 /// How long a thread has waited for a CPU in all, in nanoseconds, by the
@@ -203,26 +213,37 @@ pub fn blocked(text: &str) -> Option<u64> {
 }
 
 /// The longest name a thread can give itself, in bytes: the kernel's
-/// `TASK_COMM_LEN` less its closing nul.
+/// `TASK_COMM_LEN`, 16, less the nul that ends it. `sched_stats` tells the
+/// kernel's row of dashes from one a name forges only by its length, so that
+/// guard holds only while names stay this short.
 const NAME_MOST: usize = 15;
 
 /// The lines of a `sched` past its header. The header opens with the
 /// thread's name, which the thread sets itself and may break into lines
 /// of its own, such as one reading `wait_sum: 9e9`, and ends at a line of
 /// dashes longer than any name can hold. So only what follows that line
-/// is the kernel's; a `sched` with no such line has none.
-fn sched_stats(text: &str) -> std::str::Lines<'_> {
+/// is the kernel's; a `sched` with no such line has none, and gives none.
+fn sched_stats(text: &str) -> Option<std::str::Lines<'_>> {
     let mut lines = text.lines();
     lines
         .by_ref()
-        .find(|line| line.trim().len() > NAME_MOST && line.trim().bytes().all(|b| b == b'-'));
-    lines
+        .find(|line| line.trim().len() > NAME_MOST && line.trim().bytes().all(|b| b == b'-'))?;
+    Some(lines)
+}
+
+/// Whether a `sched` was read yet has no row of dashes ending its header, so
+/// none of its lines can be told from a name's (`sched_stats`). Its fair
+/// count is lost and the wait falls back to the schedstat's alone, which
+/// would pass unseen were such reads not counted in the window. One that
+/// couldn't be read, or that the kernel doesn't keep, is empty, and isn't one.
+pub fn lacks_dash_row(text: &str) -> bool {
+    !text.is_empty() && sched_stats(text).is_none()
 }
 
 /// The first line of a `sched`'s stats whose key `named` takes, which the
 /// kernel prints in milliseconds, in nanoseconds.
 fn sched_ms(text: &str, named: impl Fn(&str) -> bool) -> Option<u64> {
-    let ms: f64 = sched_stats(text).find_map(|line| {
+    let ms: f64 = sched_stats(text)?.find_map(|line| {
         let (key, value) = line.split_once(':')?;
         named(key.trim()).then(|| value.trim().parse().ok())?
     })?;
