@@ -65,14 +65,14 @@ impl Agent {
             .arg(&key)
             .status()
             .unwrap();
-        assert!(made.success());
+        assert!(made.success(), "ssh-keygen failed: {made}");
         let added = Command::new("ssh-add")
             .arg("-q")
             .arg(&key)
             .env("SSH_AUTH_SOCK", self.socket())
             .status()
             .unwrap();
-        assert!(added.success());
+        assert!(added.success(), "ssh-add failed: {added}");
         self
     }
 
@@ -180,10 +180,12 @@ fn json_gives_each_key_and_its_public_half() {
         keys[0]["public"].as_str(),
         Some(agent.public("stand-in signing key").as_str())
     );
+    let fingerprint = &keys[0]["fingerprint"];
     assert!(
-        keys[0]["fingerprint"]
+        fingerprint
             .as_str()
-            .is_some_and(|fingerprint| fingerprint.starts_with("SHA256:"))
+            .is_some_and(|text| text.starts_with("SHA256:")),
+        "the fingerprint isn't SHA256's: {fingerprint}"
     );
 }
 

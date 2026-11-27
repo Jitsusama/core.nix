@@ -181,12 +181,12 @@ mod tests {
         let start = Instant::now();
         let mut looks = Looks::default();
 
-        assert!(looks.due(start, true, false));
+        assert!(looks.due(start, true, false), "with the first read");
         looks.done(start);
 
         assert!(!looks.due(start + secs(5), true, false), "an asked read");
-        assert!(!looks.due(start + secs(30), false, false));
-        assert!(looks.due(start + secs(30), true, false));
+        assert!(!looks.due(start + secs(30), false, false), "with no read");
+        assert!(looks.due(start + secs(30), true, false), "a later read");
         assert_eq!(looks.wait(start + secs(30), false), None);
     }
 
@@ -197,8 +197,8 @@ mod tests {
         looks.done(start);
 
         assert_eq!(looks.wait(start + secs(4), true), Some(secs(6)));
-        assert!(!looks.due(start + secs(9), false, true));
-        assert!(looks.due(start + secs(10), false, true));
+        assert!(!looks.due(start + secs(9), false, true), "within 10 s");
+        assert!(looks.due(start + secs(10), false, true), "unreachable");
     }
 
     /// A schedule with every read done at `at`.

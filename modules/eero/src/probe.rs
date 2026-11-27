@@ -406,9 +406,13 @@ mod tests {
         let reading = look(&targets(None, vec![closed_port(), at], 0), QUICK);
 
         assert!(reading.reachable, "one resolver answering is enough");
-        assert!(reading.internet_ms.is_some_and(|ms| ms < 500.0));
+        let internet = reading.internet_ms;
+        assert!(
+            internet.is_some_and(|ms| ms < 500.0),
+            "the internet answering at once was timed as {internet:?}"
+        );
         assert_eq!(reading.gateway_ms, None, "away from home it isn't timed");
-        assert!(!reading.home);
+        assert!(!reading.home, "with no gateway this machine isn't home");
     }
 
     #[test]
@@ -418,9 +422,10 @@ mod tests {
 
         let reading = look(&targets(localhost, vec![refusing], refusing.port()), QUICK);
 
-        assert!(!reading.reachable);
+        assert!(!reading.reachable, "a refusal isn't an answer");
         assert_eq!(reading.internet_ms, None);
-        assert!(reading.gateway_ms.is_some());
+        let gateway = reading.gateway_ms;
+        assert!(gateway.is_some(), "the gateway went untimed: {gateway:?}");
     }
 
     #[test]
@@ -432,8 +437,12 @@ mod tests {
             QUICK,
         );
 
-        assert!(reading.dns_ms.is_some_and(|ms| ms < 500.0));
-        assert!(reading.home);
+        let dns = reading.dns_ms;
+        assert!(
+            dns.is_some_and(|ms| ms < 500.0),
+            "the gateway resolving at once was timed as {dns:?}"
+        );
+        assert!(reading.home, "a gateway that resolves is home");
     }
 
     #[test]
@@ -463,11 +472,11 @@ mod tests {
 
     #[test]
     fn a_reply_to_another_query_or_a_query_itself_answers_nothing() {
-        assert!(answers(&[0x12, 0x34, 0x81, 0x80], 0x1234));
+        assert!(answers(&[0x12, 0x34, 0x81, 0x80], 0x1234), "its reply");
         assert!(answers(&[0x12, 0x34, 0x81, 0x83], 0x1234), "no such name");
-        assert!(!answers(&[0x12, 0x35, 0x81, 0x80], 0x1234));
-        assert!(!answers(&[0x12, 0x34, 0x01, 0x00], 0x1234));
-        assert!(!answers(&[0x12], 0x1234));
+        assert!(!answers(&[0x12, 0x35, 0x81, 0x80], 0x1234), "another id");
+        assert!(!answers(&[0x12, 0x34, 0x01, 0x00], 0x1234), "a query");
+        assert!(!answers(&[0x12], 0x1234), "too short to be a reply");
     }
 
     #[test]
@@ -508,20 +517,20 @@ mod tests {
             mask: Ipv4Addr::UNSPECIFIED,
             gateway: Ipv4Addr::new(192, 168, 1, 1),
         };
+        let unlisted = ["02:00:00:00:00:99".to_owned()];
 
         assert_eq!(gateway, Ipv4Addr::new(10, 0, 0, 1));
-        assert!(at_home(&model, &own, &[on_the_link], gateway));
-        assert!(!at_home(
-            &model,
-            &own,
-            &[elsewhere, through_another],
-            gateway
-        ));
-        assert!(!at_home(
-            &model,
-            &["02:00:00:00:00:99".into()],
-            &[on_the_link],
-            gateway
-        ));
+        assert!(
+            at_home(&model, &own, &[on_the_link], gateway),
+            "listed and on the gateway's link is home"
+        );
+        assert!(
+            !at_home(&model, &own, &[elsewhere, through_another], gateway),
+            "reaching the gateway only through another isn't home"
+        );
+        assert!(
+            !at_home(&model, &unlisted, &[on_the_link], gateway),
+            "a machine eero doesn't list isn't home"
+        );
     }
 }

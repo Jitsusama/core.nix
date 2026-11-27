@@ -103,7 +103,7 @@ mod tests {
 
         assert_eq!(fs::read_to_string(&file).unwrap(), first, "asked again");
         ask(&file, false, 3).unwrap();
-        assert!(!file.exists());
+        assert!(!file.exists(), "the ask stayed once eero answered");
         ask(&file, false, 4).unwrap();
         fs::remove_dir_all(&folder).unwrap();
     }

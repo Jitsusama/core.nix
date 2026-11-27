@@ -520,7 +520,8 @@ fn an_audit_unasked_by_joel_is_refused() {
     let refused = client.ask(&json!({"id": 3, "ask": "audit", "asked": false}));
     assert_eq!(refused["error"]["code"], "refused", "{refused}");
     // Nothing was read and nothing sent, and no list says a health.
-    assert!(!running.asked_of("auditing").contains("audit"));
+    let asked = running.asked_of("auditing");
+    assert!(!asked.contains("audit"), "an audit was asked: {asked}");
     assert_eq!(breaches.requests(), Vec::<String>::new());
     let listed = client.ask(&json!({"id": 4, "ask": "list", "held": true}));
     assert!(
@@ -627,7 +628,8 @@ fn what_an_audit_found_is_kept_without_a_secret_and_outlives_the_daemon() {
         let folder = std::fs::metadata(state.0.join("passwords")).unwrap();
         assert_eq!(folder.permissions().mode() & 0o777, 0o700);
         // Written whole through a file beside it, which is gone.
-        assert!(!state.0.join("passwords/checked.json.writing").exists());
+        let writing = state.0.join("passwords/checked.json.writing");
+        assert!(!writing.exists(), "{} was left", writing.display());
         says_no_secret(&text);
         let password = hash("password");
         assert!(!text.contains(&password[..5]), "a hash was kept: {text}");
@@ -672,7 +674,8 @@ fn what_an_audit_found_is_kept_without_a_secret_and_outlives_the_daemon() {
         "{listed}"
     );
     assert!(listed["records"][3].get("health").is_none(), "{listed}");
-    assert!(!running.asked_of("auditing").contains("audit"));
+    let asked = running.asked_of("auditing");
+    assert!(!asked.contains("audit"), "an audit was asked: {asked}");
     says_no_secret(&running.logged());
 }
 
