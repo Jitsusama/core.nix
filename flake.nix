@@ -746,6 +746,9 @@
             # Ahead of cargo itself, so an agent's whole suite goes to a lent
             # builder (modules/nix-offload/cargo.sh).
             (pkgs.callPackage ./modules/nix-offload/cargo.nix { })
+            # The biome treefmt holds JavaScript to (biome.jsonc), so a
+            # file can be checked as the formatter will before it runs.
+            pkgs.biome
             pkgs.cargo
             pkgs.clippy
             # code-health's tests run these three over Terraform, tflint

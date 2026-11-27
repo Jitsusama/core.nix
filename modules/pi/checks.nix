@@ -16,8 +16,8 @@ args@{
 # The hosts' own checks change with host.nix alone, the hosted pi's with
 # hosted-pi.nix and host-patches alone, the harness's settings check with
 # harness-settings.nix alone, the timers' checks and the log rewrite's with
-# timers/ alone, and the windowed pi's with windowed-pi/ alone, so they sit
-# beside them. The hosted pi's are given pi's package folder, a word only
+# timers/ alone, and the windowed pi's with windowed-pi/ and the host's
+# loader patches and tests it takes, so they sit beside them. The hosted pi's are given pi's package folder, a word only
 # a checks.nix may say.
 import ./host-checks.nix args
 // import ./hosted-pi-checks.nix (args // { folder = "pi-monorepo"; })

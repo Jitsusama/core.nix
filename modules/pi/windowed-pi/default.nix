@@ -5,7 +5,16 @@
 # hosted-pi.nix's, which takes none of these.
 { pkgs }:
 let
-  windowedPatches = [
+  # A windowed pi loads its extensions through the same loader as a host,
+  # so it takes the host's three patches that keep a keyed package's
+  # modules once, in the host's order, from the host's own folder: one copy
+  # of each, which both pis' checks hold to.
+  loaderPatches = [
+    ../host-patches/pi-host-extension-cache-per-folder.patch
+    ../host-patches/pi-host-extension-cache-keyed-shared.patch
+    ../host-patches/pi-host-extension-modules-keyed-shared.patch
+  ];
+  windowedPatches = loaderPatches ++ [
     ./pi-windowed-reads-left-out-entries-light.patch
   ];
 in

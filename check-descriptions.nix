@@ -3851,6 +3851,12 @@
     a rewrite of the log hold what they need whole, a later compaction lets go only of entries
     whose place pi knows, and a log pi migrates or with an unfinished last line is read whole
   '';
+  pi-windowed-shares-keyed-modules = ''
+    a windowed pi, unbundled and as its bundle runs, passes the host's keyed-modules tests: each
+    folder keeps its own extensions, a package declaring its per-session state keyed is shared
+    across folders and evaluates each module it reaches once for all its extensions, while every
+    other package keeps a copy for each folder and each extension, and a reload loads afresh
+  '';
   pixels-probe-holds-every-pixel = ''
     the web-design skill's pixels probe, and its words and names probes beside it, in headless
     Chromium at a phone's width, names a page wider than its window and what reaches past it
