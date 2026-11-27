@@ -125,7 +125,6 @@ struct Kept {
 #[must_use]
 pub fn read(state_home: &Path, folder: &Path, now: i64, keeps: bool) -> Measure {
     let root = state_home.join("pi/agentic-harness.pi");
-    let review = fs::read_to_string(root.join("review/causes.jsonl")).unwrap_or_default();
     let messages = root.join("mesh-workflow/messages");
     let unread = |why: &str| Measure {
         now: 1.0,
@@ -137,6 +136,21 @@ pub fn read(state_home: &Path, folder: &Path, now: i64, keeps: bool) -> Measure 
     if !messages.is_dir() {
         return unread("no mesh messages folder here");
     }
+    // No record yet is no review causes; one that can't be read is unread,
+    // or the classes only it holds up would close and be asked again. A
+    // byte that isn't UTF-8, as a read inside an append can meet, costs
+    // only its own line.
+    let review_at = root.join("review/causes.jsonl");
+    let review = match fs::read(&review_at) {
+        Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(error) => {
+            return unread(&format!(
+                "{} couldn't be read ({error})",
+                review_at.display()
+            ));
+        }
+    };
     let kept_at = folder.join("causes.json");
     let kept: Kept = fs::read_to_string(&kept_at)
         .ok()

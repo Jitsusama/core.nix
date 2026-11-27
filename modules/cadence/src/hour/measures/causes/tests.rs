@@ -391,3 +391,28 @@ fn with_no_mesh_to_read_it_is_past_its_target_for_the_keeper() {
         m.behind
     );
 }
+
+/// A review record that can't be read is unread, not empty, or the classes
+/// only it holds up would close and be asked again the next hour; one not
+/// written yet is no review causes.
+#[test]
+fn a_review_record_that_cant_be_read_is_unread_and_a_missing_one_is_none() {
+    let home = tempfile::tempdir().expect("a temporary home");
+    let folder = tempfile::tempdir().expect("a temporary folder");
+    let root = home.path().join("pi/agentic-harness.pi");
+    fs::create_dir_all(root.join("mesh-workflow/messages")).expect("the messages folder");
+    let missing = read(home.path(), folder.path(), NOW, false);
+    assert!(
+        missing.past().is_none() && missing.behind.is_empty(),
+        "no review record yet read as unread: {:?}",
+        missing.behind
+    );
+    // A folder where the record goes can't be read as a file.
+    fs::create_dir_all(root.join("review/causes.jsonl")).expect("a folder in its place");
+    let m = read(home.path(), folder.path(), NOW, false);
+    assert!(
+        m.past().is_some() && m.behind.len() == 1 && class_of(&m.behind[0]) == "unread",
+        "a review record that couldn't be read passed as no review causes: {:?}",
+        m.behind
+    );
+}

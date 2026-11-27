@@ -175,7 +175,9 @@ pub fn settle(ledger: &mut [Entry], key: &str) -> bool {
 /// Closes the must filed as `key` at `now`, or says the finding filed as
 /// `key` was fixed by `fix`, saying which; a finding with no fix said is
 /// refused, since its figure gone quiet shows no fix. A drag closed this
-/// way keeps when, and the fix its owner named.
+/// way keeps when, and the fix its owner named; so does one the hour
+/// already closed, when its fix is named, since a root fix often lands
+/// after its class dips under the bar, and its old cases still count.
 fn done(ledger: &mut [Entry], key: &str, fix: Option<&str>, now: i64) -> Result<String, Failure> {
     if let Some(entry) = ledger
         .iter_mut()
@@ -197,6 +199,18 @@ fn done(ledger: &mut [Entry], key: &str, fix: Option<&str>, now: i64) -> Result<
             format!("no open must or finding is filed as {key}"),
         )
     };
+    let settled = ledger
+        .iter_mut()
+        .rev()
+        .find(|e| e.key == key)
+        .filter(|e| !e.open && e.kind.as_deref() == Some("drag"));
+    if let (Some(entry), Some(fix)) = (settled, fix) {
+        entry.closed = Some(now);
+        entry.fixed = Some(fix.to_owned());
+        return Ok(format!(
+            "cadence: {key} was closed already, and is now held by {fix}"
+        ));
+    }
     let Some(fix) = fix else {
         if ledger.iter().any(|e| e.open && e.key == key) {
             return Err(wrongly(
@@ -510,5 +524,42 @@ mod tests {
                 "{key} reopened still read as late from its closed run: {entry:?}"
             );
         }
+    }
+
+    /// A root fix often lands after the hour closed its class, which fell
+    /// under the bar; naming it then still holds the class.
+    #[test]
+    fn a_fix_named_after_the_hour_closed_its_drag_is_kept() {
+        let key = "hour:causes-recurring:test passes undone";
+        let mut ledger = Vec::new();
+        owe(
+            &mut ledger,
+            Owed {
+                kind: "drag".to_owned(),
+                ..owed(key, DUE)
+            },
+            "d1",
+            DAY,
+        );
+        assert!(settle(&mut ledger, key), "the hour couldn't close its drag");
+        let bare = done(&mut ledger, key, None, 2 * DAY).map_err(|f| f.exit);
+        assert_eq!(
+            (bare, ledger[0].closed),
+            (Err(Exit::NotFound), None),
+            "a bare --done on a closed drag held it, though it named no fix"
+        );
+        let said = done(&mut ledger, key, Some("core #6000"), 2 * DAY).map_err(|f| f.exit);
+        assert_eq!(
+            (said, ledger[0].closed, ledger[0].fixed.as_deref()),
+            (
+                Ok(format!(
+                    "cadence: {key} was closed already, and is now held by core #6000"
+                )),
+                Some(2 * DAY),
+                Some("core #6000")
+            ),
+            "a fix named after the hour closed the drag wasn't kept"
+        );
+        assert!(!ledger[0].open, "naming the fix opened the drag again");
     }
 }

@@ -470,13 +470,16 @@ fn back_in(key: &str, measures: &[Measure]) -> bool {
 
 /// Whether `key` is a class of cause its owner closed by naming its fix
 /// within the week before `now`: its cases still count from before the
-/// fix, so filing it again would ask for the fix just named.
+/// fix, so filing it again would ask for the fix just named. A bare
+/// `--done`, which names none, holds nothing.
 fn fixed_lately(ledger: &[Entry], key: &str, now: i64) -> bool {
     key.strip_prefix("hour:")
         .is_some_and(|key| key.starts_with(causes::KEY))
-        && ledger
-            .iter()
-            .any(|e| e.key == key && e.closed.is_some_and(|at| at > now - causes::WITHIN))
+        && ledger.iter().any(|e| {
+            e.key == key
+                && e.fixed.is_some()
+                && e.closed.is_some_and(|at| at > now - causes::WITHIN)
+        })
 }
 
 /// Files the hour's drag in the loop's ledger as a must of kind `drag`,
@@ -798,19 +801,28 @@ mod tests {
         );
         // Its owner names the fix, as `cadence owe --done` does; the cases
         // from before it still count the class over for the week.
+        // A bare `--done` names no fix, so it holds nothing.
         let at = ledger.iter().position(|e| e.key == key).expect("its line");
         ledger[at].open = false;
         ledger[at].closed = Some(90_000);
+        let bare = file(&mut ledger, &[recurring(&[racy])], "2026-11-27", 91_800);
+        assert!(
+            bare.len() == 1 && ledger[at].open && ledger[at].reopened == 2,
+            "a class closed with no fix named was held: {bare:?}"
+        );
+        ledger[at].open = false;
+        ledger[at].closed = Some(90_000);
+        ledger[at].fixed = Some("core #6000".to_owned());
         let fixed = file(&mut ledger, &[recurring(&[racy])], "2026-11-27", 93_600);
         assert!(
-            fixed.is_empty() && !ledger[at].open && ledger[at].reopened == 1,
+            fixed.is_empty() && !ledger[at].open && ledger[at].reopened == 2,
             "a class its owner closed by naming the fix was asked again: {fixed:?}"
         );
         let week = 90_000 + causes::WITHIN + 1;
         let past = file(&mut ledger, &[recurring(&[racy])], "2026-12-04", week);
         assert_eq!(
             (past.len(), ledger[at].open, ledger[at].reopened),
-            (1, true, 2),
+            (1, true, 3),
             "a class still over a week after its fix wasn't asked again"
         );
     }
