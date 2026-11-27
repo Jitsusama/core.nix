@@ -227,6 +227,25 @@ onLinux {
           };
           says = "cadence-day's timeout \"infinity\" ends no hang";
         };
+        # systemd counts a span down to the microsecond, so these are zero.
+        "a timeout under a microsecond" = {
+          user = {
+            inherit timers;
+            services = services // {
+              cadence-day = run "0.5us";
+            };
+          };
+          says = "cadence-day's timeout \"0.5us\" ends no hang";
+        };
+        "a float home-manager writes as zero" = {
+          user = {
+            inherit timers;
+            services = services // {
+              cadence-day = run 1.0e-7;
+            };
+          };
+          says = "cadence-day's timeout 1e-07 ends no hang";
+        };
         "a timeout systemd can't read" = {
           user = {
             inherit timers;
@@ -545,6 +564,13 @@ onLinux {
             cadence = run "1h30m";
             cadence-day = run "5000000µs";
             cadence-hour = run "5000000μs";
+          };
+        };
+        "timeouts of a microsecond, spelt in a larger unit" = {
+          inherit timers;
+          services = services // {
+            cadence = run "0.001ms";
+            cadence-day = run 0.000001;
           };
         };
         "a list whose unreadable line comes before the one systemd reads" = {

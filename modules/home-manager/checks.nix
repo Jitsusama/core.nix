@@ -421,9 +421,27 @@ onLinux {
         "30secs"
         "2 mins"
         "-1h"
+        # Spans under a microsecond, which systemd counts as zero, and
+        # those just over; and a float as home-manager writes 1.0e-7.
+        "0.5us"
+        "1.5us"
+        "0.3μs"
+        "0.001ms"
+        "0.0001ms"
+        "0.000001s"
+        "0.0000001s"
+        "0.0000000000001y"
+        "0.00000000000001y"
+        "0min"
+        "0.000000"
       ];
       table = lib.concatMapStrings (
-        spelling: "${if runs.readsAs spelling then "reads" else "refuses"}\t${spelling}\n"
+        spelling:
+        let
+          reads = if runs.readsAs spelling then "reads" else "refuses";
+          ends = if runs.ends spelling then "ends" else "endless";
+        in
+        "${reads}\t${ends}\t${spelling}\n"
       ) spellings;
     in
     pkgs.runCommand "systemd-reads-each-span-as-core-does"
@@ -434,14 +452,27 @@ onLinux {
       }
       ''
         wrong=0
-        while IFS=$'\t' read -r core spelling; do
-          if systemd-analyze timespan -- "$spelling" >/dev/null 2>&1; then
+        while IFS=$'\t' read -r core ends spelling; do
+          # The second line systemd-analyze prints is the span in
+          # microseconds; a span of one or more bounds a start.
+          if said=$(systemd-analyze timespan -- "$spelling" 2>/dev/null); then
             systemd=reads
+            micros=$(printf '%s\n' "$said" | sed -n '2s/.*: *//p')
+            case $micros in
+              "" | 0 | infinity) lasts=endless ;;
+              *) lasts=ends ;;
+            esac
           else
             systemd=refuses
+            micros=
+            lasts=endless
           fi
           if [ "$core" != "$systemd" ]; then
             echo "timed.nix $core \"$spelling\", which systemd $systemd"
+            wrong=1
+          fi
+          if [ "$ends" != "$lasts" ]; then
+            echo "timed.nix says \"$spelling\" $ends, which systemd reads as \"$micros\" microseconds"
             wrong=1
           fi
         done < "$tablePath"
