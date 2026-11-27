@@ -52,12 +52,15 @@ impl Unheard {
                 let (stretches, at) = rest.split_once(" stretches of it, the first at ")?;
                 (stretches.parse().ok()?, at)
             };
-            let seconds = at.strip_suffix('.')?.split(':').try_fold(0, |sum, part| {
-                part.parse::<usize>().ok().map(|n| sum * 60 + n)
-            })?;
+            let seconds = at
+                .strip_suffix('.')?
+                .split(':')
+                .try_fold(0, |sum: usize, part| {
+                    sum.checked_mul(60)?.checked_add(part.parse().ok()?)
+                })?;
             Some(Self {
                 stretches,
-                first: seconds * RATE,
+                first: seconds.checked_mul(RATE)?,
             })
         })
     }

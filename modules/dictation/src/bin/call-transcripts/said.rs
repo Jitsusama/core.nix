@@ -8,6 +8,8 @@ use std::collections::HashSet;
 
 use dictation::{transcript, wer};
 
+use crate::unheard::Unheard;
+
 /// What a call with too little said gets in place of a summary.
 pub const TOO_LITTLE: &str = "Too little was said to sum up.";
 
@@ -68,9 +70,11 @@ pub fn too_little(transcript: &str) -> bool {
 }
 
 /// What `transcript` gets in place of a summary, or none when enough of
-/// it was said to sum it up.
+/// it was said to sum it up: too little heard when its note says the
+/// speech model failed on part of it, else too little said.
 pub fn in_place_of_a_summary(transcript: &str) -> Option<&'static str> {
-    too_little(transcript).then_some(TOO_LITTLE)
+    let heard = Unheard::read(transcript).is_none();
+    too_little(transcript).then_some(if heard { TOO_LITTLE } else { TOO_LITTLE_HEARD })
 }
 
 /// `text`'s words, lowercase, without what's around them or a

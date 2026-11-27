@@ -82,11 +82,11 @@ pub fn written_down(title: &str) -> Notice {
     }
 }
 
-/// What failed, said as words in a body, which a notice carries as markup
-/// (the spec's, and the notices daemon's body.rs): an error's `<` or `&`
-/// is shown, never read as a tag or an entity.
-fn plain(why: &str) -> String {
-    why.replace('&', "&amp;")
+/// A body said as words, which a notice carries as markup (the spec's,
+/// and the notices daemon's body.rs): an error's or a summary's `<` or
+/// `&` is shown, never read as a tag or an entity.
+fn plain(body: &str) -> String {
+    body.replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")
 }
@@ -95,7 +95,7 @@ fn plain(why: &str) -> String {
 pub fn not_transcribed(title: &str, why: &str) -> Notice {
     Notice {
         heading: format!("{} Couldn't Be Transcribed", named(title, true)),
-        body: plain(why),
+        body: why.to_owned(),
         acts: vec![("forget", "Forget")],
         quiet: true,
     }
@@ -107,7 +107,7 @@ pub fn not_transcribed(title: &str, why: &str) -> Notice {
 pub fn not_all_heard(title: &str, why: &str) -> Notice {
     Notice {
         heading: format!("Part of {} Wasn't Heard", named(title, false)),
-        body: format!("The speech model failed on part of it: {}", plain(why)),
+        body: format!("The speech model failed on part of it: {why}"),
         acts: vec![("forget", "Forget")],
         quiet: true,
     }
@@ -131,7 +131,8 @@ pub fn not_summed_up(title: &str, why: &str, can_pass: bool) -> Notice {
 }
 
 /// notify-send's arguments for a notice, the heading and body after `--`,
-/// since a body that opens with a dash is never an option.
+/// since a body that opens with a dash is never an option, and the body
+/// said as words, whichever notice it is.
 fn arguments(notice: &Notice) -> Vec<String> {
     let mut args = vec![
         "--app-name=Calls".to_owned(),
@@ -152,7 +153,7 @@ fn arguments(notice: &Notice) -> Vec<String> {
         "--wait".to_owned(),
         "--".to_owned(),
         notice.heading.clone(),
-        notice.body.clone(),
+        plain(&notice.body),
     ]);
     args
 }
