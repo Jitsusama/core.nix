@@ -785,6 +785,12 @@ def test_a_chord_first_after_a_restart_makes_only_its_places_rows(shell: Shell) 
     made = made_by_others(shell, "windows")
     now = json.loads(shell.as_account(shell.ipc("changed")))
     changed = sorted(name for name, count in now.items() if count != kept.get(name, 0))
+    # Every source excused as changed would leave nothing for the case to catch, so a pass
+    # says how much it excused, and one that excused them all fails rather than passing.
+    print(f"excused {len(changed)} of {len(now)} sources as changed since home was kept")
+    assert len(changed) < len(now), (
+        f"every source changed since home was kept, so nothing was left to catch: {changed}"
+    )
     unchanged = {name: rows for name, rows in made.items() if name not in changed}
     assert not unchanged, (
         f"first into Windows after a restart, sources unchanged since home was kept made rows:"
