@@ -116,7 +116,7 @@ function sayHow(): void {
   const now = standing();
   const problems = [...unread.values()];
   const trouble = problems.length > 0 ? ` Couldn't read: ${problems.join("; ")}.` : "";
-  asof.textContent = `${sayStanding(now)}${talkWords()}${trouble}`;
+  asof.textContent = `${sayStanding(now)}${talkWords(now)}${trouble}`;
   asof.dataset["state"] = now?.state ?? "connecting";
   // The drawing's own look for a map that isn't now.
   asof.classList.toggle("stale", now?.state === "stale" || now?.state === "broken");
@@ -126,10 +126,10 @@ function sayHow(): void {
  * What the line says of messages the map is drawn without: that it is
  * reading them, and past its patience that it is still waiting on them,
  * said again then so the words move without a reading to move them. A
- * message watch that broke is said by the standing instead.
+ * map that isn't live reads nothing, and its standing says why.
  */
-function talkWords(): string {
-  if (!readingTalk() || standings.get("message")?.state === "broken") {
+function talkWords(now: Standing | undefined): string {
+  if (!readingTalk() || now?.state !== "live" || standings.get("message")?.state === "broken") {
     return "";
   }
   if (readingSince === undefined) {
