@@ -285,6 +285,11 @@ const MESSAGES_FOR: i64 = 2 * DAY;
 /// cadence's hourly questions, by the ids in `asked`, more than a day
 /// before it, within the two days read.
 fn unanswered(messages: &[Note], now: i64, asked: &BTreeSet<String>) -> usize {
+    unanswered_ids(messages, now, asked).len()
+}
+
+/// The ids of the questions `unanswered` counts, in the order read.
+fn unanswered_ids<'a>(messages: &'a [Note], now: i64, asked: &BTreeSet<String>) -> Vec<&'a str> {
     let answered: BTreeSet<&str> = messages.iter().filter_map(|m| m.re.as_deref()).collect();
     let (day, asked_by) = ((now - DAY) * 1000, (now - 30 * 60) * 1000);
     messages
@@ -299,7 +304,8 @@ fn unanswered(messages: &[Note], now: i64, asked: &BTreeSet<String>) -> usize {
                 }
             })
         })
-        .count()
+        .map(|m| m.id.as_str())
+        .collect()
 }
 
 fn collaboration(s: &Sources) -> Axis {
@@ -845,9 +851,13 @@ The net tests 6f8501688 (9 merges behind main), merged 28 min ago.
             "the reader didn't keep two days, its own: {read:?}"
         );
         let asked: BTreeSet<String> = crate::findings::asked_in(&ledger_asking(&[&old, &new]));
+        let mut ids = unanswered_ids(&read, NOW, &asked);
+        ids.sort_unstable();
+        let alarm = stamp(3600, crate::FROM, "ee");
+        let mut wanted = vec![old.as_str(), alarm.as_str()];
+        wanted.sort_unstable();
         assert_eq!(
-            unanswered(&read, NOW, &asked),
-            2,
+            ids, wanted,
             "cadence's day-old question and its alarm weren't the two unanswered"
         );
     }

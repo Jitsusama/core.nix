@@ -858,7 +858,9 @@ pub fn file(
         // a day from when it was last asked, whatever its due: a measure
         // hovering at its line, back in one hour and out the next, would
         // otherwise ask its owner hourly, and a due a week on would keep a
-        // queue unasked a week. Only what it named is held a day, not its
+        // queue unasked a week. An open line is never filed again, so a cell
+        // or file gone red under its key while it's open waits for it to
+        // close. Once closed, only what it named is held a day, not its
         // figure: an owner's other cell or file gone red under the same key
         // is new to them, while fewer of the same, in any order, are not.
         // Each is named by what stays while it's red, as a cell's address,
