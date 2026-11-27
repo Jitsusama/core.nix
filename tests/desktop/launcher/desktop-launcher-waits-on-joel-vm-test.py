@@ -277,19 +277,26 @@ def test_the_launchers_home_says_how_its_sessions_stand_rather_than_naming_them(
     long = "\u03c0 - Bootstrap the Lighthouse to Replace Every Other Machine on the Desk - tree"
     desktop.pi_window("TESTQC", long)
     desktop.presence_says({"addresses": ["TESTQC"], "busy": True, "title": long}, "TESTQC")
-    desktop.as_account("qs ipc call launcher toggle")
-    desktop.launcher_ready()
-    desktop.launcher_until(
-        lambda shown: any(
-            thing["is"] == "collection:agents"
-            and re.fullmatch(r"Agents \u00b7 \d+ working(?: \u00b7 \S+ today)?", thing["reads"])
-            for thing in shown["things"]
+    # Its session goes however this ends, a wait for home failing as much as
+    # its shot: left, an open launcher and a busy session would wait on Joel
+    # in the cases after it, hiding its failure behind theirs.
+    try:
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        desktop.launcher_until(
+            lambda shown: any(
+                thing["is"] == "collection:agents"
+                and re.fullmatch(r"Agents \u00b7 \d+ working(?: \u00b7 \S+ today)?", thing["reads"])
+                for thing in shown["things"]
+            )
         )
-    )
-    desktop.shoot("launcher-home-agents")
-    desktop.close_launcher()
-    desktop.as_account(f"niri msg action close-window --id {desktop.window_titled(long)['id']}")
-    desktop.as_account(f"rm -f {PI_PRESENCE}/testqc.json")
+        desktop.shoot("launcher-home-agents", ticking=NOWS_CLOCK)
+    finally:
+        if desktop.showing()["open"]:
+            desktop.close_launcher()
+        window = desktop.window_titled(long)["id"]
+        desktop.as_account(f"niri msg action close-window --id {window}")
+        desktop.as_account(f"rm -f {PI_PRESENCE}/testqc.json")
 
 
 def test_the_launchers_agents_hold_still_as_one_changes_the_selection_on_its_row(
@@ -441,6 +448,12 @@ def test_where_an_agents_title_is_cut_holds_still_as_its_side_changes(desktop: D
 # the session that needs him.
 
 
+# Home's selected row is Now, whose drawer counts the seconds and the clock's offset from
+# its source as they run, so a home shot waits on the rest of the picture alone: the moving
+# shot's words said only these changed (the drawer's seconds, offset and minute).
+NOWS_CLOCK = "Now's drawer, its seconds and the clock's offset"
+
+
 def shoots_now_at_joels_scales(desktop: Desktop, reads: str) -> None:
     """Shoot home at 1 and Joel's scales, its Now row reading as given, and the plate beside it.
 
@@ -449,14 +462,20 @@ def shoots_now_at_joels_scales(desktop: Desktop, reads: str) -> None:
     # The to-do's card away first, which would stand over the row and the plate.
     with desktop.told("gone notifications"):
         desktop.as_account("qs ipc call notices putAway")
-    desktop.shoot("launcher-home-now-waiting")
-    for scale in JOELS_SCALES:
-        desktop.as_account(f"niri msg output winit scale {scale}")
-        desktop.launcher_until(
-            lambda shown: any(thing["reads"] == reads for thing in shown["things"])
-        )
-        desktop.shoot(f"launcher-home-now-waiting-at-{scale.replace('.', '-')}")
-    desktop.as_account("niri msg output winit scale 1")
+    desktop.shoot("launcher-home-now-waiting", ticking=NOWS_CLOCK)
+    # Back at 1 however a shot ends, since a scale left at 2 would lay out
+    # every case after it at Joel's laptop's size.
+    try:
+        for scale in JOELS_SCALES:
+            desktop.as_account(f"niri msg output winit scale {scale}")
+            desktop.launcher_until(
+                lambda shown: any(thing["reads"] == reads for thing in shown["things"])
+            )
+            desktop.shoot(
+                f"launcher-home-now-waiting-at-{scale.replace('.', '-')}", ticking=NOWS_CLOCK
+            )
+    finally:
+        desktop.as_account("niri msg output winit scale 1")
 
 
 def test_the_safe_words_slack_reader_stays_down_and_tells_for_you_nothing(

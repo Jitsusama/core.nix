@@ -1,8 +1,8 @@
 // How an open launcher paces the refreshes its sources ask for, run in Qt's
 // own JavaScript engine, the one the shell runs it in. The
-// `the-launcher-paces-its-refreshes` check copies
-// modules/quickshell/launcher/Pacing.js beside this file and runs
-// `qml -platform offscreen pacing.qml`, with launcher/Wanted.js. A burst of
+// `the-launcher-paces-its-refreshes` check copies the launcher's files its
+// cases read beside this file, as its copy lines list, and runs
+// `qml -platform offscreen pacing.qml`. A burst of
 // changes is taken a pace apart, and never two refreshes closer than that,
 // however the first was asked for; a source's rows are wanted only where
 // they're shown or searched, so a change nobody sees asks none; a key's
@@ -1239,9 +1239,12 @@ QtObject {
         check(failures, "and a step into a place of the launcher's own says its id",
             Presented.timedShown("\u2192 Programs", "\u2192 Programs", false,
                 "collection:applications"), "\u2192 collection:applications");
-        check(failures, "and an own place's id past keyShown's cut counts the row",
+        check(failures, "and an own place's key as long as keyShown's cut is said whole",
             Presented.timedShown("\u2192 Harbour", "\u2192 Harbour", false,
-                `collection:${"a".repeat(64)}`), "\u2192 7 letters");
+                `collection:${"a".repeat(53)}`), `\u2192 collection:${"a".repeat(53)}`);
+        check(failures, "but one a letter past the cut counts the row",
+            Presented.timedShown("\u2192 Harbour", "\u2192 Harbour", false,
+                `collection:${"a".repeat(54)}`), "\u2192 7 letters");
         check(failures, "but an own kind holding more than an id counts the row",
             Presented.timedShown("\u2192 Harbour House", "\u2192 Harbour House", false,
                 "place:wifi:Harbour House"), "\u2192 13 letters");
