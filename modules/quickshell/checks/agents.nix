@@ -34,6 +34,13 @@
       "CLIPBOARD=${lib.getExe (pkgs.callPackage ../clipboard/package.nix { })}"
       "CLIPBOARD_WORDS=${(import ../launcher/words.nix).file}"
     ];
+    # OSPHT4 probe for 42P0R4: the walk case and the paused case each alone.
+    parts = [
+      "test_a_sessions_acts_walked_from_outside_steer_nothing_and_say_why"
+      "test_an_orchestrators_served_acts_walked_from_outside_steer_nothing"
+      "test_a_paused_sessions_return_lands_on_resume_and_a_second_sends_it"
+      "test_a_sessions_drawer_marks_return_on_the_act_return_does"
+    ];
   };
 
   # Pause All Agents, found by typing, arms on a first Return and asks the
