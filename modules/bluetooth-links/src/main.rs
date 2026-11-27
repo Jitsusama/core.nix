@@ -531,7 +531,7 @@ mod tests {
     pub fn mouse() -> Connection {
         Connection {
             handle: 0x0040,
-            address: "C3:9C:E3:2A:F3:6E".into(),
+            address: "C2:00:00:00:C3:00".into(),
             le: true,
             outgoing: false,
             mode: 0x0000,
@@ -643,7 +643,7 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&report).unwrap(),
             concat!(
-                r#"{"at":1,"links":[{"address":"C3:9C:E3:2A:F3:6E","rssi":-58,"quality":null,"#,
+                r#"{"at":1,"links":[{"address":"C2:00:00:00:C3:00","rssi":-58,"quality":null,"#,
                 r#""power":null,"channels":null,"map":null,"le":true,"#,
                 r#""held":{"central":false,"outgoing":false,"security":"none"},"#,
                 r#""history":{"rssi":[-58],"quality":[null]}}]}"#

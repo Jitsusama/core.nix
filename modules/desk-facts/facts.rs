@@ -2991,7 +2991,7 @@ Playback:
             "devices/virtual/misc/uhid",
             "0005:25A7:FAA0.0001",
             "DRIVER=hid-generic\nHID_ID=0005:000025A7:0000FAA0\nHID_NAME=ProtoArc EM11 NL\n\
-             HID_PHYS=b4:8c:9d:00:00:01\nHID_UNIQ=c3:9c:e3:2a:f3:6e\n",
+             HID_PHYS=b4:8c:9d:00:00:01\nHID_UNIQ=c2:00:00:00:c3:00\n",
             ["0508\n", "1f0000 0 0 0 0\n", "903\n"],
         );
         let said = |pairs: &[(&str, &str)]| -> Facts {
@@ -3003,7 +3003,7 @@ Playback:
         assert_eq!(
             bluetooth(&sys.0),
             vec![(
-                "C3:9C:E3:2A:F3:6E".to_owned(),
+                "C2:00:00:00:C3:00".to_owned(),
                 said(&[
                     ("connection", "LE, HID over GATT"),
                     ("buttons", "5"),

@@ -32,7 +32,7 @@
         mkdir -p runtime/desk launcher && chmod 700 runtime
         cat > runtime/desk/bluetooth.json <<'EOF'
         {
-          "C3:9C:E3:2A:F3:6E": [
+          "C2:00:00:00:C3:00": [
             {"name": "connection", "value": "LE, HID over GATT"},
             {"name": "buttons", "value": "5"}
           ]
@@ -49,7 +49,7 @@
            "channels": 61, "map": "$map", "le": false,
            "held": {"central": true, "outgoing": false, "security": "secure"},
            "history": {"rssi": [-20, null, 0], "quality": [204, 230]}},
-          {"address": "C3:9C:E3:2A:F3:6E", "rssi": -58, "quality": null, "power": 4,
+          {"address": "C2:00:00:00:C3:00", "rssi": -58, "quality": null, "power": 4,
            "channels": null, "map": null, "le": true,
            "held": {"central": false, "outgoing": true, "security": "none"}}
         ]}
