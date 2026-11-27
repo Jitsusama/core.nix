@@ -12857,11 +12857,12 @@ Scope {
     // of their own, 236 to 377 ms of it (cycle-r1, 2026-11-14). The heap
     // leaves room after every collection that ends later too, but no more
     // than twice the room past what its chunks held at the first ask since
-    // one ended (heap.h's leaveRoom), so one the shell starts while the
-    // launcher is shut can still leave less. Each closing's collection says
-    // how far the opening's chunks, and what's held outside the heap,
-    // reached against where the collector would start, weighed before it
-    // collects, so whether 32 is still ample is read there.
+    // one ended, and twice what its sweeps kept beyond what the last kept
+    // then (heap.h's leaveRoom), so one the shell starts while the launcher
+    // is shut can still leave less. Each closing's collection says how far
+    // the opening's chunks, and what's held outside the heap, reached
+    // against where the collector would start, weighed before it collects,
+    // so whether 32 is still ample is read there.
     readonly property real openingRoom: 32
     function collectClosed() {
         // A count or a weighing already due would land within a second of
