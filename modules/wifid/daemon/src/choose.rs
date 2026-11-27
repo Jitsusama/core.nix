@@ -3580,13 +3580,44 @@ pub(crate) mod tests {
 
     #[test]
     fn a_give_way_never_reached_an_hour_after_the_last_is_taken_as_a_first() {
+        // Whether a call may give way as a second give-way misses, a
+        // `fading::BETWEEN` after it was made, `apart` after the first
+        // missed, which was a `fading::BETWEEN` after it was made too.
+        let missed_apart = |apart: Duration| {
+            let mut chooser = Chooser::default();
+            let start = Instant::now();
+            chooser.gave_way(start, (DESK, HALL), LOSING);
+            chooser.answered(start, HALL, start);
+            chooser.followed(start + fading::BETWEEN, DESK);
+            let again = start + apart;
+            chooser.gave_way(again, (DESK, NEAR), LOSING);
+            chooser.answered(again, NEAR, again);
+            let missed = again + fading::BETWEEN;
+            chooser.followed(missed, DESK);
+            chooser.may_give_way(missed, false)
+        };
+
+        assert!(
+            missed_apart(SPURNED),
+            "a miss an hour after the last held give-ways"
+        );
+        assert!(
+            !missed_apart(SPURNED - Duration::from_secs(1)),
+            "a miss a second short of an hour after the last, not after its give-way, held nothing"
+        );
+    }
+
+    #[test]
+    fn a_give_way_refused_is_no_miss_toward_holding_the_call_s_give_ways() {
         let mut chooser = Chooser::default();
         let start = Instant::now();
         chooser.gave_way(start, (DESK, HALL), LOSING);
-        chooser.answered(start, HALL, start);
-        chooser.followed(start + fading::BETWEEN, DESK);
+        let refused = start + Duration::from_secs(1);
+        chooser.refused(refused, HALL, start);
 
-        let again = start + fading::BETWEEN + SPURNED;
+        // The next best, once the refusal's own hold is past, never gets
+        // there either.
+        let again = refused + fading::WINDOW;
         chooser.gave_way(again, (DESK, NEAR), LOSING);
         chooser.answered(again, NEAR, again);
         let missed = again + fading::BETWEEN;
@@ -3594,8 +3625,38 @@ pub(crate) mod tests {
 
         assert!(
             chooser.may_give_way(missed, false),
-            "a miss an hour after the last held give-ways"
+            "a refused give-way counted as a miss, so one miss held the call's give-ways"
         );
+        assert!(!chooser.began_holding(), "a hold was said that never began");
+    }
+
+    #[test]
+    fn a_give_way_refused_between_two_misses_within_an_hour_still_holds_a_settle() {
+        let mut chooser = Chooser::default();
+        let start = Instant::now();
+        chooser.gave_way(start, (DESK, HALL), LOSING);
+        chooser.answered(start, HALL, start);
+        let first = start + fading::BETWEEN;
+        chooser.followed(first, DESK);
+        chooser.gave_way(first, (DESK, NEAR), LOSING);
+        let refused = first + Duration::from_secs(1);
+        chooser.refused(refused, NEAR, first);
+
+        let again = refused + fading::WINDOW;
+        chooser.gave_way(again, (DESK, STAIRS), LOSING);
+        chooser.answered(again, STAIRS, again);
+        let second = again + fading::BETWEEN;
+        chooser.followed(second, DESK);
+
+        assert!(
+            !chooser.may_give_way(second + SETTLE - Duration::from_secs(1), false),
+            "a refusal between two misses within an hour forgot the first, holding nothing"
+        );
+        assert!(
+            chooser.may_give_way(second + SETTLE, false),
+            "two misses with a refusal between held give-ways past a settle"
+        );
+        assert!(chooser.began_holding(), "the hold began unsaid");
     }
 
     #[test]
