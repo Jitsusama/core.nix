@@ -1171,7 +1171,7 @@ mod tests {
         let now = Instant::now();
         arrivals.warned("wlan0", DESK, now + Duration::from_secs(600));
 
-        arrivals.retimed("wlan0", HALL, now + Duration::from_secs(1200));
+        arrivals.retimed("wlan0", HALL, now + Duration::from_mins(20));
         assert!(
             !arrivals.drops("wlan0", DESK, now + Duration::from_secs(600)),
             "another point's warning timed this one's again"

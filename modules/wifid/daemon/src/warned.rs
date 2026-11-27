@@ -521,7 +521,9 @@ mod tests {
         let (_, forgotten) = Warned::kept_in(&file, boot(600));
 
         assert!(
-            forgotten.len() == 2 && forgotten[1].starts_with("can't write back"),
+            forgotten.len() == 2
+                && forgotten[0].contains("as they aren't as it keeps them")
+                && forgotten[1].starts_with("can't write back"),
             "a forgetting it couldn't write back didn't say it'll be said again: {forgotten:?}"
         );
     }
@@ -537,7 +539,9 @@ mod tests {
         let (_, forgotten) = Warned::kept_in(&file, boot(600));
 
         assert!(
-            forgotten.len() == 1 && !file.with_extension("partial").exists(),
+            forgotten.len() == 1
+                && forgotten[0].contains("as it can't read them")
+                && !file.with_extension("partial").exists(),
             "a file it couldn't read was written over as it started: {forgotten:?}"
         );
     }
@@ -706,6 +710,28 @@ mod tests {
         assert!(
             second.0 >= first.0 && first.0 > Duration::ZERO,
             "the boot clock read {first:?} then {second:?}"
+        );
+    }
+
+    #[test]
+    fn the_boot_clock_counts_from_the_machine_s_start() {
+        // The kernel's uptime is the boot clock's, read between two reads
+        // of it, to its hundredth of a second; the wall clock reads 56
+        // years apart.
+        let before = Boot::now().expect("the boot clock");
+        let uptime = fs::read_to_string("/proc/uptime").expect("the uptime");
+        let after = Boot::now().expect("the boot clock");
+        let seconds: f64 = uptime
+            .split_whitespace()
+            .next()
+            .and_then(|seconds| seconds.parse().ok())
+            .expect("seconds since the start");
+        let up = Duration::from_secs_f64(seconds);
+
+        assert!(
+            before.0.saturating_sub(Duration::from_millis(20)) <= up
+                && up <= after.0 + Duration::from_millis(20),
+            "the boot clock read {before:?} and {after:?} around an uptime of {up:?}"
         );
     }
 }

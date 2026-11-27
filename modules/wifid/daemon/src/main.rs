@@ -1730,8 +1730,10 @@ fn take_in_warnings(
     arrivals: &RefCell<Arrivals>,
     state: &watch::Sender<State>,
 ) -> Warned {
-    let boot = match Boot::now() {
-        Ok(boot) => boot,
+    // Both clocks are read together, as a warning's end is carried from
+    // one to the other by the gap between them.
+    let (now, boot) = match Boot::now() {
+        Ok(boot) => (Instant::now(), boot),
         Err(error) => {
             eprintln!(
                 "<4>wifid forgets the warnings it kept, as it can't read the boot clock: {error}"
@@ -1745,7 +1747,7 @@ fn take_in_warnings(
     }
     let mut kept_off = Vec::new();
     change(state, |state| {
-        let now = (Instant::now(), boot);
+        let now = (now, boot);
         kept_off = keep_off_as_warned(&warned, &mut arrivals.borrow_mut(), state, now);
     });
     for said in kept_off {
@@ -2179,8 +2181,8 @@ impl Wifid<'_> {
     /// later than the same warning read back after a restart (warned.rs).
     /// A keep-off whose warning couldn't be kept stays as it was.
     fn retime_warnings(&self) {
-        let boot = match Boot::now() {
-            Ok(boot) => boot,
+        let (now, boot) = match Boot::now() {
+            Ok(boot) => (Instant::now(), boot),
             Err(error) => {
                 eprintln!(
                     "<4>can't time the keep-offs again as wifid wakes, as it can't read the boot \
@@ -2189,7 +2191,6 @@ impl Wifid<'_> {
                 return;
             }
         };
-        let now = Instant::now();
         for (card, point, until) in self.warned.borrow().ends(now, boot) {
             self.arrivals.borrow_mut().retimed(&card, &point, until);
             change(self.state, |state| state.retimed(&card, &point, until));
@@ -3866,7 +3867,10 @@ impl Wifid<'_> {
         // moves now hold, not only for what was decided.
         if let Some(from) = from.as_deref() {
             let lasts = request.keeps_off(&followed);
+            // The boot clock is read with `now`, as the kept copy of the
+            // warning's end is carried between them by their gap.
             let now = Instant::now();
+            let boot = Boot::now();
             let until = lasts.map(|lasts| now + lasts);
             self.arrivals
                 .borrow_mut()
@@ -3875,7 +3879,7 @@ impl Wifid<'_> {
                 change(self.state, |state| {
                     state.warned_off(card, from, (now, until));
                 });
-                let kept = Boot::now().and_then(|boot| {
+                let kept = boot.and_then(|boot| {
                     self.warned
                         .borrow_mut()
                         .warned(card, from, until, (now, boot))
