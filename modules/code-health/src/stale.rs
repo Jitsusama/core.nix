@@ -22,6 +22,7 @@
 
 use std::collections::HashSet;
 
+use crate::language::{Language, language};
 use crate::measure::{File, extension};
 
 /// Every comment of `files` naming a path `paths` doesn't hold, as the
@@ -89,12 +90,17 @@ pub fn stale(paths: &[String], files: &[File]) -> Vec<String> {
 /// docstrings included: none for a language this doesn't know the
 /// comments of.
 fn comments(file: &File) -> Vec<(usize, &str)> {
-    let extension = extension(&file.path);
-    let (mark, blocks) = match extension {
-        "rs" | "js" | "ts" | "qml" | "c" | "h" => ("//", true),
-        "nix" => ("#", true),
-        "sh" | "bash" | "py" | "toml" | "yaml" | "yml" => ("#", false),
-        _ => return Vec::new(),
+    let language = language(&file.path);
+    let python = language == Some(Language::Python);
+    let nix = language == Some(Language::Nix);
+    let (mark, blocks) = match language {
+        Some(Language::Rust | Language::Script | Language::Qml | Language::C) => ("//", true),
+        Some(Language::Nix) => ("#", true),
+        Some(Language::Shell | Language::Python) => ("#", false),
+        None if matches!(extension(&file.path), "toml" | "yaml" | "yml") => ("#", false),
+        Some(Language::Go | Language::Lua | Language::Ruby | Language::Terraform) | None => {
+            return Vec::new();
+        }
     };
     // The quotes a docstring opened with, which alone close it, while
     // one is open, and the same for a string in code, whose lines aren't
@@ -134,8 +140,7 @@ fn comments(file: &File) -> Vec<(usize, &str)> {
         } else if block {
             block = !line.contains("*/");
             true
-        } else if let Some((quotes, past)) = opens(trimmed).filter(|_| extension == "py" && starts)
-        {
+        } else if let Some((quotes, past)) = opens(trimmed).filter(|_| python && starts) {
             (docstring, string) = docstring_line(&trimmed[past..], quotes);
             starts = false;
             logical = Logical::default();
@@ -147,11 +152,11 @@ fn comments(file: &File) -> Vec<(usize, &str)> {
             // Only a file's first line can be its shebang; past it, `#!` is
             // read as any line is.
             let shebang = number == 0 && line.starts_with("#!");
-            let comment = (trimmed.starts_with(mark) && !shebang)
-                || (extension == "nix" && trimmed.starts_with('*'));
+            let comment =
+                (trimmed.starts_with(mark) && !shebang) || (nix && trimmed.starts_with('*'));
             // A blank line, a comment or a shebang leaves where a statement
             // starts as it was.
-            if extension == "py" && !comment && !trimmed.is_empty() && !shebang {
+            if python && !comment && !trimmed.is_empty() && !shebang {
                 let scanned = scan(line, None);
                 logical.begin(scanned.code);
                 string = scanned.open;

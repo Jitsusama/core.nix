@@ -6,6 +6,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::hash::{Hash, Hasher};
 
+use crate::language::{Language, language};
 use crate::{attributes, lints, notes, reached, stale, terraform};
 
 /// A file of the repository: its path from the folder read, and its text.
@@ -54,12 +55,6 @@ pub const RUN_BY_NAME: &[&str] = &[
     "__init__.py",
 ];
 
-/// The extensions of the files counted as code.
-const CODE: &[&str] = &[
-    "bash", "c", "cc", "cjs", "cpp", "go", "h", "js", "lua", "mjs", "nix", "py", "qml", "rb", "rs",
-    "sh", "tf", "ts", "tsx",
-];
-
 /// A repository's figures, by measure, and what each counted, by name.
 #[derive(Debug, Default, PartialEq)]
 pub struct Health {
@@ -84,8 +79,7 @@ pub fn extension(path: &str) -> &str {
 pub fn is_code(path: &str) -> bool {
     let name = path.rsplit('/').next().unwrap_or(path);
     let generated = name.ends_with(".min.js") || path.split('/').any(|part| part == "node_modules");
-    let extension = name.rsplit_once('.').map(|(_, extension)| extension);
-    !generated && extension.is_some_and(|extension| CODE.contains(&extension))
+    !generated && language(path).is_some()
 }
 
 /// Whether a path's text is read by a measure: code, a folder's note, a
@@ -135,7 +129,7 @@ pub fn measure(paths: &[String], files: &[File], roots: &[String]) -> Health {
         .flat_map(|file| {
             let at = |number: usize| format!("{}:{number}", file.path);
             // Rust is read whole, since what a line opens in decides it.
-            if extension(&file.path) == "rs" {
+            if language(&file.path) == Some(Language::Rust) {
                 return attributes::lines_turning_a_lint_off(&file.text)
                     .into_iter()
                     .map(at)
@@ -316,7 +310,6 @@ fn sentence(line: &str, words: &str) -> bool {
 /// own way of saying so, so a string naming one in other code isn't one.
 /// Rust's are read apart, by `attributes`.
 fn suppresses(path: &str, line: &str) -> bool {
-    let extension = path.rsplit_once('.').map_or("", |(_, extension)| extension);
     // A mark is a comment's only where no quote before it is left open.
     let comment = |mark: &str, markers: &[&str]| {
         line.match_indices(mark).any(|(at, _)| {
@@ -328,14 +321,14 @@ fn suppresses(path: &str, line: &str) -> bool {
             !quoted && markers.iter().any(|marker| said.starts_with(marker))
         })
     };
-    match extension {
-        "py" => comment(
+    match language(path) {
+        Some(Language::Python) => comment(
             "#",
             &["noqa", "type: ignore", "pyright: ignore", "pylint: disable"],
         ),
-        "sh" | "bash" => comment("#", &["shellcheck disable"]),
-        "qml" => comment("//", &["qmllint disable"]),
-        "js" | "mjs" | "cjs" | "ts" | "tsx" => comment(
+        Some(Language::Shell) => comment("#", &["shellcheck disable"]),
+        Some(Language::Qml) => comment("//", &["qmllint disable"]),
+        Some(Language::Script) => comment(
             "//",
             &[
                 "biome-ignore",
@@ -345,14 +338,15 @@ fn suppresses(path: &str, line: &str) -> bool {
                 "@ts-nocheck",
             ],
         ),
-        "nix" => comment("#", &["deadnix: skip"]),
+        Some(Language::Nix) => comment("#", &["deadnix: skip"]),
         // Terraform comments start with either mark, and trivy still reads
         // tfsec's older form.
-        "tf" => {
+        Some(Language::Terraform) => {
             let markers = ["tflint-ignore", "trivy:ignore", "tfsec:ignore"];
             comment("#", &markers) || comment("//", &markers)
         }
-        _ => false,
+        Some(Language::C | Language::Go | Language::Lua | Language::Ruby | Language::Rust)
+        | None => false,
     }
 }
 
