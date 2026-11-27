@@ -404,8 +404,9 @@ ShellRoot {
     function fail(what) {
         // How often it backed off and whether its daemon runs say which of a
         // restart's tries a failing step was waiting on.
-        console.warn(`FAIL ${what}: state ${people.state}, backed off ${people.refusals} times,`
-            + ` its daemon ${peopleRunning.running ? "running" : "stopped"}`
+        console.warn(`FAIL ${what}: the people link ${people.state}`
+            + `, backed off ${people.refusals} times`
+            + `, its daemon ${peopleRunning.running ? "running" : "stopped"}`
             + `, held ${JSON.stringify(people.held)}`
             + `, listed ${Object.keys(listed.held).join(" ")}`
             + `, kinds ${JSON.stringify(kinds.held)}`
@@ -413,22 +414,24 @@ ShellRoot {
             + `, answered ${JSON.stringify(root.answered)}`
             + `, letting go ${lettingGo.state} ${root.letGo} ${JSON.stringify(root.letGoGiven)}`
             + ` awaiting ${Object.keys(lettingGo.awaited).length}`
-            + `, relinked ${root.relinked}, backed off ${lettingGo.refusals} times`
+            + `, relinked ${root.relinked}, the let-go link backed off ${lettingGo.refusals} times`
             + `, its tries ${root.failure(lettingGo.failedWith)}`
             + `, the census heard ${root.heardSaid} of ${root.heardLines.join(" and ")}`);
         Qt.exit(1);
     }
 
-    // A link's last failure in words, by QLocalSocket's LocalSocketError, so a FAIL line read
-    // from any step says it without Qt's enum beside it. Those past 3 are what a connect
-    // starved on a busy builder may end as: out of the kernel's resources, timed out, or a
-    // failure Qt names no further.
+    // A link's last failure in words, by every code Qt documents for QLocalSocket's
+    // LocalSocketError, so a FAIL line read from any step says it without Qt's enum beside it.
+    // Only 2 is pinned against a real failure (the second step); the number is said beside the
+    // words, so a word Quickshell's Socket gives another meaning to can still be read.
     function failure(code) {
         if (code === null)
             return "haven't failed since it last connected or was relinked, if it tried at all";
         const named = { "-1": "unknown", 0: "refused", 1: "closed by the daemon",
             2: "found nothing there", 3: "not allowed", 4: "out of resources",
-            5: "timed out", 7: "a connection error" }[code];
+            5: "timed out", 6: "too large a datagram", 7: "a connection error",
+            10: "an operation the system can't do",
+            19: "an operation its state doesn't allow" }[code];
         return `last failed with ${code}${named === undefined ? "" : `, ${named}`}`;
     }
 
@@ -443,6 +446,21 @@ ShellRoot {
     // stopped at 110 s says which step spent its time, not only which it stopped on.
     property real stepBegan: 0
     property var took: []
+
+    // A step as a FAIL line names it, with what it shows of itself where it says, so a step that
+    // fails and one the 110 s stop catches read alike.
+    function stepSaid(now) {
+        return now.shows ? `${now.what} (${now.shows()})` : now.what;
+    }
+
+    // How long the step waiting has taken, and each before it by its number, so a slow step reads
+    // without counting the steps in the source; nothing before the first.
+    function timesSaid() {
+        const waited = `${Math.round((Date.now() - stepBegan) / 100) / 10} s into step`
+            + ` ${step + 1} of ${steps.length}`;
+        const before = took.map((seconds, at) => `${at + 1} ${seconds}`).join(", ");
+        return before === "" ? waited : `${waited}, the steps before it taking ${before} s`;
+    }
     property var answered: undefined
     property int aheadToldBefore: 0
     // The stages an ask answered in steps was given, in order.
@@ -484,9 +502,11 @@ ShellRoot {
             // at all, 2, 6 and 14 s on, each inside the 20 s it's given. What
             // its tries failed with counts afresh too, so a FAIL line names
             // only the relink's, and it's said gone once the relink connects.
-            // On the path a passing run takes, the link connects by itself
-            // after failing with 2 above, so its failure still being there
-            // once it's connected would show Daemon.qml no longer clears it.
+            // Where the daemon starts within the link's own tries, the link
+            // connects by itself after failing with 2 above, so its failure
+            // still being there once it's connected would show Daemon.qml no
+            // longer clears it. A run that relinks clears it here first, so
+            // only the first path proves that.
             polls: 400,
             holds: () => {
                 const answering = people.state === "answering" && "slack" in people.sources;
@@ -904,7 +924,7 @@ ShellRoot {
                 root.left -= 1;
                 if (root.left === 0) {
                     stop();
-                    root.fail(now.shows ? `${now.what} (${now.shows()})` : now.what);
+                    root.fail(root.stepSaid(now));
                 }
             }
         }
@@ -920,8 +940,9 @@ ShellRoot {
         interval: 110000
         onTriggered: {
             waiting.stop();
-            root.fail(`${root.steps[root.step]?.what ?? "its end"}, still waiting at 110 s`
-                + `, the steps before it taking ${root.took.join(", ")} s in turn`);
+            const now = root.steps[root.step];
+            root.fail(now === undefined ? "its end, still waiting at 110 s"
+                : `${root.stepSaid(now)}, still waiting at 110 s, ${root.timesSaid()}`);
         }
     }
 
