@@ -1878,10 +1878,11 @@ struct Taken {
 /// `room` and its own link's `most` each way: the leader's upload rate and
 /// steady ceiling, so the two together are held under it exactly, and
 /// what the controller asked of the leader's download, held under the
-/// follower's room, never the leader's. Its download and its steady
-/// upload ceiling are told no more than the follower's own link carries
-/// (a link's own line round 7's F5 and F12); its upload rate is the
-/// leader's as it stands, which may pass it. A leader the controller
+/// follower's room, never the leader's. Its download and the most its
+/// upload's CAKE is told are no more than the follower's own link carries
+/// (a link's own line round 7's F5 and F12); its upload rate and steady
+/// ceiling are the leader's as they stand, which may pass it (ceilings
+/// named apart round 2's F12). A leader the controller
 /// leaves unlimited is told its own link's most,
 /// which says nothing of the follower's, so the follower takes its own
 /// most then, under its room: a cable's wire never holds the Wi-Fi
