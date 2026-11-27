@@ -589,8 +589,10 @@ def test_the_map_draws_how_cells_connect_and_answers_a_click_in_one_window(
 # On 15 November 2026 Joel said of the map: "clicking on networks is
 # confusing, often the entire line isn't put into view", and "when I select a
 # network lane, nodes directly connected to it should be more prominent". The
-# skiff's network, opened, is fitted whole with its branch, clear of its
-# drawer; the cells it joins stay strong while the heron's step back.
+# skiff's network, opened from the heron's, which leaves it out of view, is
+# fitted whole with its branch, clear of its drawer; the cells it joins stay
+# strong while the heron's step back. Opened from the whole map instead, the
+# whole map's own fit would hold it in view with no network fit at all.
 SKIFF_TITLE = "Rig the Skiff for the Season"
 SKIFF_JOINS = ("SKIFF1", "TERN01", "TERN02", "GULL01", "TERN03")
 SKIFF_LEAVES = ("HERON1", "HERON2")
@@ -608,6 +610,8 @@ BOXES = """(keys) => [document.getElementById('map-view'), document.getElementBy
   .map((e) => { if (!e || !e.isConnected) return null; const r = e.getBoundingClientRect();
     return [r.left, r.top, r.right, r.bottom]; })"""
 DRAWN = f"(keys) => ({BOXES})(keys).every((box) => box !== null && box[2] > box[0])"
+# A health said for one thing: its verdict, then why.
+HEALTH_SAID = re.compile(r"^(Well|Watch|Tend): \S")
 
 
 def drawn_boxes(page: Page, cells: list[str], why: str) -> list[list[float]]:
@@ -636,6 +640,14 @@ def strongest(page: Page, cell: str) -> float:
     return max(float(mark["alpha"] or 0) for mark in marks_of(page, f"c:{cell}"))
 
 
+def in_view(page: Page, cell: str) -> bool:
+    """Say whether a cell's disc is wholly inside the map's view."""
+    view, _, disc = page.evaluate(BOXES, [cell])
+    assert disc, f"the map drew no {cell}"
+    left, top, right, bottom = disc
+    return view[0] <= left and right <= view[2] and view[1] <= top and bottom <= view[3]
+
+
 def test_a_network_opened_is_put_into_view_whole_and_what_it_joins_stands_out(
     mycelium_opened: Opened,
 ) -> None:
@@ -647,6 +659,13 @@ def test_a_network_opened_is_put_into_view_whole_and_what_it_joins_stands_out(
     settled(page, "0 didn't fit the whole map")
     for cell in SKIFF_LEAVES:
         assert strongest(page, cell) >= STRONG_ALPHA, f"{cell} stepped back with nothing open"
+    page.evaluate(f"location.hash = '#net={HERONS}'")
+    expect(page.locator("#panel-title"), "the heron's drawer never opened").to_contain_text(
+        HERONS_TITLE
+    )
+    settled(page, "the heron's network never stood still once opened")
+    out = [cell for cell in SKIFF_JOINS if not in_view(page, cell)]
+    assert out, "the heron's network, opened, left every cell of the skiff's in view"
     page.evaluate(f"location.hash = '#net={BRANCHED_FROM}'")
     expect(page.locator("#panel-title"), "the skiff's drawer never opened").to_have_text(
         SKIFF_TITLE
@@ -682,19 +701,25 @@ def test_a_network_pointed_at_says_what_it_is_for_and_how_it_stands_unopened(
     the_map_stands(page, "live")
     peek = page.locator("#peek")
     expect(peek, "a peek stood with nothing pointed at").to_be_hidden()
-    # The map taking focus walks to the first machine and peeks at it in
-    # the corner, so the pointer's peek must then name the heron's instead.
+    # The map taking focus walks to the first thing the feed names, with
+    # the machines hidden the skiff's network, and peeks at it in the
+    # corner, so only the heron's name in the peek shows the pointer's.
     page.locator("#map-view").focus()
     page.keyboard.press("0")
     settled(page, "0 didn't fit the whole map")
+    said = peek.locator("p")
+    expect(said.first, "the walk's own peek already named the heron's").not_to_have_text(
+        HERONS_TITLE
+    )
     before = page.url
     ring = page.locator(f'#world .hub[data-key="h:{HERONS}"] .m-hub').bounding_box()
     assert ring, "the map drew no ring for the heron's network to point at"
     page.mouse.move(ring["x"] + ring["width"] / 2, ring["y"] + ring["height"] / 2)
-    expect(peek, "pointing at a network said nothing of it").to_be_visible()
-    said = peek.locator("p")
+    expect(said.first, "pointing at the heron's network never peeked at it").to_have_text(
+        HERONS_TITLE
+    )
+    expect(peek, "the pointer's peek was hidden").to_be_visible()
     expect(said, "the peek should say a name, a purpose and a health").to_have_count(3)
-    expect(said.nth(0), "the peek misnamed the network").to_have_text(HERONS_TITLE)
     expect(said.nth(1), "the peek said nothing of what it is for").to_have_text(re.compile(r"\S"))
     expect(said.nth(2), "the peek said nothing of how it stands").to_have_text(re.compile(r": \S"))
     assert page.url == before, f"pointing at a network went from {before} to {page.url}"
@@ -713,7 +738,8 @@ def test_a_cell_and_a_network_each_open_on_its_purpose_doing_and_health(
     the_map_stands(page, "live")
     glance = page.locator("#panel-body dl.glance").first
     page.evaluate("location.hash = '#cell=TERN01'")
-    # A cell's title is set in title case, as its drawer names it.
+    # A cell's drawer is titled by its window's name, which node.json writes
+    # "Mend The Sails" for TERN02 too; what it's doing tells the two apart.
     expect(page.locator("#panel-title"), "TERN01's drawer never opened").to_contain_text(
         "Mend The Sails"
     )
@@ -724,10 +750,10 @@ def test_a_cell_and_a_network_each_open_on_its_purpose_doing_and_health(
     expect(told.nth(1), "the cell's glance missed what it's doing").to_contain_text(
         "Stitch the jib"
     )
-    for n in (0, 2):
-        expect(told.nth(n), f"the cell's glance left its row {n} empty").to_have_text(
-            re.compile(r"\S")
-        )
+    expect(told.nth(0), "the cell's glance said nothing of what it's for").to_have_text(
+        re.compile(r"\S")
+    )
+    expect(told.nth(2), "the cell's glance said no health").to_have_text(HEALTH_SAID)
     page.evaluate(f"location.hash = '#net={BRANCHED_FROM}'")
     expect(page.locator("#panel-title"), "the skiff's drawer never opened").to_have_text(
         SKIFF_TITLE
@@ -735,6 +761,9 @@ def test_a_cell_and_a_network_each_open_on_its_purpose_doing_and_health(
     expect(glance.locator("dt"), "a network's drawer opened on no glance").to_have_text(
         ["Purpose", "Doing", "Health"]
     )
+    for n, what in ((0, "what it's for"), (1, "what it's doing")):
+        said = glance.locator("dd").nth(n)
+        expect(said, f"the skiff's glance said nothing of {what}").to_have_text(re.compile(r"\S"))
     levels = glance.locator("dd").nth(2).locator(".row .name")
     expect(levels, "the skiff's health wasn't said by its cells, its branch and all").to_have_text(
         [
@@ -743,9 +772,10 @@ def test_a_cell_and_a_network_each_open_on_its_purpose_doing_and_health(
             re.compile(r"^All \d+ together$"),
         ]
     )
-    expect(
-        glance.locator(f'dd .row[data-go="net={BRANCH}"]'), "the branch's health opens no branch"
-    ).to_be_visible()
+    glance.locator(f'dd .row[data-go="net={BRANCH}"]').click()
+    expect(page, "the branch's health row didn't open the branch").to_have_url(
+        re.compile(rf"#net={re.escape(BRANCH)}$")
+    )
 
 
 def test_a_cell_that_moves_is_drawn_moving(mycelium_opened: Opened, mycelium_node: StandIn) -> None:
