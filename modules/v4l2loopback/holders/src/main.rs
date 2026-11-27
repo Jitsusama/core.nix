@@ -51,7 +51,9 @@
 //! or the run is stopped, only once its own file says nobody, so a reader
 //! never finds a holder with no node to find it by; a nobody it couldn't
 //! write, or a node file it couldn't remove, is tried again, and once more
-//! as the run is stopped.
+//! as the run is stopped. A loopback whose camera changes, while its node
+//! file still says the one before, says nobody until it can say the new
+//! node, so no holder is ever put on a camera it doesn't hold.
 //!
 //! Between those it sleeps on inotify and a signal, so a camera nobody
 //! holds costs nothing. A file it couldn't write, its own or the one in
@@ -517,11 +519,18 @@ fn watch(
             }
         };
         let anyone = !names.is_empty();
-        let shown = listed(names, sysfs, node);
         // The node first, so a reader that finds a holder can find the
         // camera by it, and a run killed between the two leaves the node
         // file that finds the holders file, as the removals keep it.
         let found = run.name(output);
+        // A node file still saying the camera before, which it couldn't
+        // replace or remove, would put these holders on that camera, so
+        // until this node is said the file says nobody.
+        let shown = if found || !says_another(output, node) {
+            listed(names, sysfs, node)
+        } else {
+            BTreeSet::new()
+        };
         let right = said.as_ref() == Some(&shown)
             || match write(output, &shown) {
                 Ok(()) => true,
@@ -626,6 +635,16 @@ fn usb(events: &mut Events, options: &Options, run: &mut Run) -> Result<(), Fail
 /// How a node file says its node.
 fn said_as(node: &Path) -> String {
     format!("{}\n", node.display())
+}
+
+/// Whether the node file beside the holders file says a node other than
+/// this one, as a loopback's says the camera it had before, when it
+/// couldn't be removed as that one went.
+fn says_another(output: &Path, node: &Path) -> bool {
+    let Some(said) = device_file(output).and_then(|file| fs::read_to_string(file).ok()) else {
+        return false;
+    };
+    said != said_as(&fs::canonicalize(node).unwrap_or_else(|_| node.to_owned()))
 }
 
 /// Removes what says a USB camera's node, as its unit stops: its own run
