@@ -125,11 +125,11 @@ pub fn pass(
         shared(files, &since, crates.beside(files, &since), clean)
     };
     let built = |commit: &str| ready::built_there(&ready::record(commit), on_main);
-    let merged = |base: &str| earlier::merged_tree(here, base, head);
+    let tree_over = |base: &str| earlier::merged_tree(here, base, head);
     let judge = Judge {
         built: &built,
         on_main,
-        merged: &merged,
+        merged: &tree_over,
         moved: &moved,
     };
     speaking(head, &merges, &judge)
