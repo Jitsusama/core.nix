@@ -2,6 +2,7 @@ use std::io::{BufRead, BufReader, ErrorKind, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::thread;
 
+use super::joels_acts::{AS_JOEL, NOT_AS_JOEL, ONLY_THE_SHELL};
 use super::*;
 
 /// The daemon's own socket, served as `serve` serves it, refuses a
