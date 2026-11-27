@@ -578,8 +578,16 @@ fn a_cut_says_what_it_was_cut_by() {
         below,
     };
     assert_eq!(
-        [cut(-200, None).by(), cut(50, Some(21.6)).by()],
-        ["-200 ms after theirs", "22 dB below theirs"],
+        [
+            cut(-200, None).by(),
+            cut(50, None).by(),
+            cut(50, Some(21.6)).by(),
+        ],
+        [
+            "200 ms before theirs",
+            "50 ms after theirs",
+            "22 dB below theirs",
+        ],
         "a cut didn't say the rule it was cut by"
     );
 }
