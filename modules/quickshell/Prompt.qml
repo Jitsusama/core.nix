@@ -734,8 +734,10 @@ Item {
         keyAlone = KeyNames.alone(event.key, Qt);
         keyTaken = key;
         // What the key does is read before it's counted, so whether it
-        // acted is said with the count; reading changes nothing, and each
-        // step below reads it as it stands here.
+        // acted is said with the count; reading changes nothing but a
+        // search held back, which intoHere and fillLeaves run first, as the
+        // key's own step would, and each step below reads it as it stands
+        // here.
         const after = visualOperated;
         const read = QueryKeys.read(standing, key, mode, editsWords);
         const now = Date.now();
@@ -745,6 +747,9 @@ Item {
             registering: takesRegister(event, key),
             answering: confirming,
             answerTaken: confirming && answerTaken(key, now),
+            // A guard, so keyActed is truthful of a repeat under an ask: none
+            // moves keysTaken there (below), so the launcher's clock, which
+            // reads keyActed only as keysTaken moves, never saw one anyway.
             repeated: event.isAutoRepeat,
             operated,
             commands: QueryKeys.opensCommands(key, mode, input.text),

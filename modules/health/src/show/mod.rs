@@ -681,7 +681,8 @@ mod tests {
             .unwrap_or_else(|| panic!("a line for pi: {shown}"));
         assert!(
             line.starts_with(
-                "memory    pi: 2 hold 6.0 GiB by Pss, 2.0 GiB in swap; largest 4.0 GiB, oldest 22 h; \
+                "memory    pi: 2 hold 6.0 GiB by Pss, 2.0 GiB in swap; \
+                 largest 4.0 GiB, oldest 22 h; \
                  typical 2.0 GiB, heavy 4.0 GiB; at most 6.0 GiB at "
             ),
             "{shown}"
@@ -699,6 +700,11 @@ mod tests {
         assert!(
             quiet.most_kib > 0 && typical(&quiet).is_empty(),
             "ran earlier in the day, with no copies now"
+        );
+        assert_eq!(
+            holding(&quiet),
+            "0 hold 0 MiB, 0 MiB in swap",
+            "no copies now, so no measure and no gap left for one"
         );
         let aged = asked(&minded, "memory");
         assert!(!aged.contains("quickshell"), "not running all day: {aged}");

@@ -233,6 +233,11 @@ pub struct Memory {
     /// than by all they had resident, as `Held::by_rss` says. A day kept
     /// before shares were read has none, as every copy then was by Rss.
     pub by_pss: u64,
+    /// The day's looks that counted every copy they saw by its Pss, so
+    /// the typical and heavy copy, means over the looks, say how much of
+    /// them was by shares: fewer than `looks` on the day a machine moved
+    /// to shares, or where some copy's share couldn't be read.
+    pub looks_by_pss: u64,
 }
 
 /// The copies of an age, and what they held in memory and swap, in KiB.
@@ -266,6 +271,9 @@ impl Memory {
             self.looks += 1;
             self.median_sum_kib += self.median_kib;
             self.p95_sum_kib += self.p95_kib;
+            if self.by_pss == self.copies {
+                self.looks_by_pss += 1;
+            }
         }
         self.by_age = vec![Aged::default(); AGES.len() + 1];
         for held in copies {
@@ -277,15 +285,17 @@ impl Memory {
 }
 
 /// What the last look counted its copies by: their own share (Pss), all
-/// they had resident (Rss), or, when it was both, how many were by Rss;
-/// nothing when none was running.
+/// they had resident (Rss), or, when it was both, how many were by Rss,
+/// in brackets so the count can't read as one of the line's sizes;
+/// nothing when none was running. A kept day saying more copies by Pss
+/// than it saw reads as all by Pss rather than a wrapped count.
 #[must_use]
 pub fn measure(held: &Memory) -> String {
     match (held.copies, held.by_pss) {
         (0, _) => String::new(),
         (_, 0) => "by Rss".to_owned(),
-        (all, pss) if pss == all => "by Pss".to_owned(),
-        (all, pss) => format!("by Pss, {} by Rss", all - pss),
+        (all, pss) if pss >= all => "by Pss".to_owned(),
+        (all, pss) => format!("by Pss ({} by Rss)", all - pss),
     }
 }
 
@@ -630,7 +640,7 @@ mod tests {
     }
 
     #[test]
-    fn the_copies_counted_by_rss_are_kept_each_look() {
+    fn each_look_says_how_many_copies_it_counted_by_pss() {
         let copy = |by_rss| Held {
             kib: 10,
             swap_kib: 0,
@@ -654,7 +664,19 @@ mod tests {
         memory.saw(3, &[copy(true), copy(true)]);
         assert_eq!(measure(&memory), "by Rss");
         memory.saw(4, &[copy(true), copy(false), copy(false)]);
-        assert_eq!(measure(&memory), "by Pss, 1 by Rss");
+        assert_eq!(measure(&memory), "by Pss (1 by Rss)");
+        assert_eq!(
+            (memory.looks, memory.looks_by_pss),
+            (4, 1),
+            "only the look whose one copy was by Pss counted every copy by it"
+        );
+        let overcounted: Memory =
+            serde_json::from_str(r#"{"copies": 2, "by_pss": 5}"#).expect("a day");
+        assert_eq!(
+            measure(&overcounted),
+            "by Pss",
+            "more by Pss than copies reads as all, not a wrapped count"
+        );
     }
 
     #[test]
