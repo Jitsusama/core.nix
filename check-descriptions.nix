@@ -3518,7 +3518,7 @@
     clears, nor bash's start-up variables, rather than on a host's thread; left running through
     a switch for up to two hours, started only once it has waited up to 15 minutes for the
     machine to have room, reading when the last sweep ended, as a condition whose skip leaves
-    the unit unfailed, at disk weight 10, made to give memory back past 6 GiB with no hard
+    the unit unfailed, at disk weight 1, made to give memory back past 6 GiB with no hard
     limit, its own, its slices' or its account manager's, to kill it at, skipped where the
     harness isn't installed, and never on a Mac
   '';

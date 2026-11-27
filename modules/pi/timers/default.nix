@@ -178,8 +178,9 @@ in
         Type = "oneshot";
         # A sweep waits up to 15 minutes for a machine stalled on memory or
         # I/O, reading it every 30 s, and skips the hour if the stall
-        # outlasts the wait, but never two, as two skipped hours hand
-        # sweeping to the hosts (sweep-room.sh). The hosts take over two
+        # outlasts the wait, but only while the run at the next top of
+        # the hour can still start before the hosts, as two skipped hours
+        # hand sweeping to them (sweep-room.sh). The hosts take over two
         # hours after the last whole sweep ended, by the stamp the
         # harness's pi-sweep.ts dates as each run ends (markSweptOutside),
         # and only while no sweep holds the lock, which the sweep takes as
@@ -194,10 +195,12 @@ in
           "${lib.getExe sweepRoom} /proc/pressure /proc/meminfo 900 30"
           "%S/pi/agentic-harness.pi/work/sweep.lock.outside"
         ];
-        # Below agents' own commands for the disk, since a sweep walks
-        # thousands of trees and none of it is waited on; 10 passes BFQ
-        # unscaled, as a weight at or under 100 does.
-        IOWeight = 10;
+        # Below agents' own commands for the disk, and below every tier's
+        # least weight but level with it (modules/slices/tiers.nix), since
+        # a sweep walks thousands of trees and none of it is waited on.
+        # A weight counts only where the disk is shared by weight, by BFQ
+        # or io.cost; elsewhere only a cap holds a sweep back.
+        IOWeight = 1;
         ExecStart = "${lib.getExe pkgs.nodejs} --disable-warning=MODULE_TYPELESS_PACKAGE_JSON ${sweepScript}";
         # Where agents' own commands run, beneath everything Joel uses, and
         # a place the polkit rules and the TPM agent's gate both take as an

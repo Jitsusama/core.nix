@@ -9,12 +9,14 @@
 # Those averages trail a stall that ends by minutes, so a wait often runs
 # most of its length. A wait that runs out skips the hour, since a sweep
 # started without room on 27 November read 367 MB/s for ten minutes on a
-# disk already saturated. It skips only one: a host's own sweep takes
-# over once the last whole sweep ended two hours ago, on the host's one
-# thread and with no limits, and two skipped hours on 26 November did
-# just that. So past its wait it skips only when the next hour's run, an
-# hour after this one began, would still find the stamp young enough to
-# start before the hosts, and that run never skips. It lets the sweep
+# disk already saturated. A skip must leave the next run its turn: a
+# host's own sweep takes over once the last whole sweep ended two hours
+# ago, on the host's one thread and with no limits, and two skipped hours
+# on 26 November did just that. So past its wait it skips only when the
+# stamp, at the next top of the hour, when the hourly timer runs it
+# again, will still be young enough for that run to start before the
+# hosts. That holds however this run began, by hand, late or after a
+# suspend, since it judges by the clock as it ends. It lets the sweep
 # start at once when the last sweep's stamp is too old for a wait to end
 # before the hosts take over, is dated ahead of the clock, or on a reading
 # it can't make. It reads the stamp again on every pass, the last too,
@@ -31,14 +33,21 @@
 # Its help takes the shape every command of ours does (docs/commands.md),
 # by hand.
 
-# A condition that ends nonzero skips the hour, so a wait that fails
-# itself, by a command or by bash, lets the sweep start rather than skip,
-# as it did when this ran before it. Only a skip it chose, and being
-# asked wrongly, which the unit's own words never are, end otherwise.
+# A condition that ends 1 to 254 skips the hour and leaves the unit
+# unfailed, so a wait that fails itself, by a command or by bash, lets
+# the sweep start rather than skip, as it did when this ran before it.
+# Only a skip it chose, and being asked wrongly, end otherwise. Under a
+# unit, which systemd marks with INVOCATION_ID, being asked wrongly ends
+# 255, the one end that fails a condition, so a unit whose words went
+# wrong fails where it's seen rather than skipping every hour unheard.
 skipping=false
 ended() {
   local status=$?
-  [ "$status" -eq 64 ] || "$skipping" || exit 0
+  if [ "$status" -eq 64 ]; then
+    [ -z "${INVOCATION_ID:-}" ] || exit 255
+    return
+  fi
+  "$skipping" || exit 0
 }
 trap ended EXIT
 
@@ -48,7 +57,9 @@ pi-sweep-room  wait for room before the tree sweep
 
   Reads the kernel's memory and I/O stalls and free
   memory every APART seconds, and ends once the machine
-  has room, or after WAIT seconds however it stands. It
+  has room. After WAIT seconds without room it skips the
+  hour when the next hour's run can still start before
+  the hosts sweep, and else lets the sweep start. It
   ends at once when the last sweep, by its STAMP, ended
   too long ago to wait, and on a reading it can't make.
   The sweep's unit runs it before each hourly sweep.
@@ -61,7 +72,7 @@ EXAMPLES
 EXIT
   0   the sweep may start
   1   the sweep skips this hour
-  64  asked wrongly
+  64  asked wrongly, or 255 under a unit
 EOF
 }
 
@@ -117,6 +128,14 @@ age() {
   esac
 }
 
+# How many seconds are left to the next top of the hour, by the local
+# clock the hourly timer keeps.
+to_the_hour() {
+  local minute second
+  read -r minute second < <(date '+%M %S')
+  echo $((3600 - 10#$minute * 60 - 10#$second))
+}
+
 # The oldest the stamp may be while a sweep still waits.
 latest=$((7200 - apart - 120))
 ago=$(age)
@@ -159,7 +178,7 @@ while :; do
   # Read again before judging, since a sleep ages it, a suspend most.
   ago=$(age)
   if [ -z "$ago" ]; then
-    echo "pi-sweep starts without room: the last sweep's stamp is gone: $said"
+    echo "pi-sweep starts without room: the last sweep's stamp can't be read: $said"
     exit 0
   fi
   if [ "$ago" -ge "$latest" ]; then
@@ -168,8 +187,8 @@ while :; do
     exit 0
   fi
   if [ "$SECONDS" -ge "$most" ]; then
-    # As old as the next hour's run, an hour after this one began, finds it.
-    if [ $((ago - SECONDS + 3600)) -lt "$latest" ]; then
+    # As old as the next hour's run, at the next top of the hour, finds it.
+    if [ $((ago + $(to_the_hour))) -lt "$latest" ]; then
       echo "pi-sweep skips this hour without room after waiting $SECONDS s: $said"
       skipping=true
       exit 1
