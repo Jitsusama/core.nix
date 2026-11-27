@@ -458,10 +458,11 @@ fn timed_uncited<'a>(
             continue;
         }
         let switch = said.iter().any(|w| w.starts_with("switch"));
-        let gives = |cite: &&Cite, clock: &u32| {
+        let gives = |cite: &&Cite, clock: &Clock| {
             let told = senders.get(&cite.msgid).map(|sent| sent.text.as_str());
-            clock_times(&cite.item).contains(clock)
-                && told.is_some_and(|told| clock_times(told).contains(clock))
+            let says = |text: &str| clock_times(text).iter().any(|c| c.is(clock));
+            says(&cite.item)
+                && told.is_some_and(says)
                 && (!switch || cite.owner.eq_ignore_ascii_case(SWITCHES))
         };
         if !clocks
@@ -683,11 +684,33 @@ fn words(text: &str) -> BTreeSet<String> {
         .collect()
 }
 
-/// Each clock time in `text`, as `9:05`, `10:06` or `22:45`, read as
-/// its minutes past twelve on a 12-hour dial and leaving out the seconds
-/// of one given to the second: lines to Joel say "10:45" where the owner
-/// said "22:45", and both are the one time.
-fn clock_times(text: &str) -> Vec<u32> {
+/// A clock time, on the 24-hour clock, and whether it was written as
+/// one of the 12-hour dial's, from 1 to 12 with no "am" or "pm", which
+/// could be either half of the day.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct Clock {
+    pub hour: u32,
+    pub minute: u32,
+    pub dial: bool,
+}
+
+impl Clock {
+    /// Whether two clock times can be the one time: lines to Joel say
+    /// "10:45" where the owner said "22:45", but "22:45" is never "10:45"
+    /// in the morning, nor "10:45 am" the evening's.
+    pub fn is(self, other: &Self) -> bool {
+        let turned = |hour: u32| (hour + 12) % 24;
+        self.minute == other.minute
+            && (self.hour == other.hour
+                || self.dial && other.hour == turned(self.hour)
+                || other.dial && self.hour == turned(other.hour))
+    }
+}
+
+/// Each clock time in `text`, as `9:05`, `10:06`, `22:45` or `10:45 pm`,
+/// leaving out the seconds of one given to the second, and any hour past
+/// 23 or minute past 59, which no clock shows.
+fn clock_times(text: &str) -> Vec<Clock> {
     let bytes = text.as_bytes();
     let digit = |at: usize| bytes.get(at).is_some_and(u8::is_ascii_digit);
     let mut found = Vec::new();
@@ -705,11 +728,39 @@ fn clock_times(text: &str) -> Vec<u32> {
             continue;
         }
         let (hour, minute) = (&text[start..at], &text[at + 1..at + 3]);
-        if let (Ok(hour), Ok(minute)) = (hour.parse::<u32>(), minute.parse::<u32>()) {
-            found.push(hour % 12 * 60 + minute);
+        let (Ok(hour), Ok(minute)) = (hour.parse::<u32>(), minute.parse::<u32>()) else {
+            continue;
+        };
+        if hour > 23 || minute > 59 {
+            continue;
         }
+        let dial = (1..=12).contains(&hour);
+        found.push(match (dial, half(&text[at + 3..])) {
+            (true, Some(pm)) => Clock {
+                hour: hour % 12 + if pm { 12 } else { 0 },
+                minute,
+                dial: false,
+            },
+            _ => Clock { hour, minute, dial },
+        });
     }
     found
+}
+
+/// Whether what follows a clock time's minutes names the half of the
+/// day, past any seconds: `Some(true)` for "pm" or "p.m.", `Some(false)`
+/// for "am" or "a.m.", and `None` when it names neither.
+fn half(after: &str) -> Option<bool> {
+    let seconds = after
+        .strip_prefix(':')
+        .filter(|s| s.len() >= 2 && s.as_bytes()[..2].iter().all(u8::is_ascii_digit));
+    let rest = seconds.map_or(after, |s| &s[2..]).trim_start_matches(' ');
+    let low = rest.to_ascii_lowercase();
+    let named = [("a.m.", false), ("p.m.", true), ("am", false), ("pm", true)];
+    named.iter().find_map(|&(word, pm)| {
+        let tail = low.strip_prefix(word)?;
+        (!tail.starts_with(|c: char| c.is_alphanumeric())).then_some(pm)
+    })
 }
 
 #[cfg(test)]
