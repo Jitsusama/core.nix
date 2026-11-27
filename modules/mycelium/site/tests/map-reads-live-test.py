@@ -620,6 +620,10 @@ def test_the_map_draws_before_the_node_says_what_passed(
 # busy node took 14 s on 26 November, so a slow one is said as waited on too.
 WAITING_TALK = "Still waiting on what passed between cells."
 TALK_PATIENCE_MS = 10_000
+# What a drawer says of messages yet to answer, as the line says it (view.js).
+DRAWER_READING = "Still reading the node's latest messages."
+DRAWER_WAITING = "Still waiting on the node's latest messages."
+DRAWER_BROKEN = "Couldn't read the node's latest messages."
 
 
 def test_the_map_says_it_still_waits_on_messages_that_never_answer(
@@ -631,6 +635,10 @@ def test_the_map_says_it_still_waits_on_messages_that_never_answer(
     the_map_stands(page, "live")
     asof = page.locator("#asof")
     expect(asof, "the map didn't say it was reading what passed").to_contain_text(READING_TALK)
+    # A drawer open as the line passes its patience says what the line says.
+    page.evaluate("location.hash = '#cell=TERN01'")
+    drawer = page.locator("#panel-body")
+    expect(drawer, "a cell's drawer didn't say it was reading").to_contain_text(DRAWER_READING)
     expect(asof, "the map still said it was reading what never answered").to_contain_text(
         WAITING_TALK, timeout=TALK_PATIENCE_MS + PACE_MS
     )
@@ -638,6 +646,16 @@ def test_the_map_says_it_still_waits_on_messages_that_never_answer(
         READING_TALK
     )
     expect(asof, "a map waiting on its messages wasn't said live").to_contain_text("Live from")
+    expect(drawer, "a cell's drawer was still reading what the line waits on").to_contain_text(
+        DRAWER_WAITING, timeout=PACE_MS
+    )
+    expect(drawer, "a cell's drawer said reading and waiting at once").not_to_contain_text(
+        DRAWER_READING
+    )
+    page.evaluate(f"location.hash = '#talk=' + encodeURIComponent('c:HERON1|c:{HEARD}')")
+    expect(drawer, "a talk's drawer was still reading what the line waits on").to_contain_text(
+        DRAWER_WAITING
+    )
     opened.close()
 
 
@@ -691,9 +709,15 @@ def test_a_stale_map_says_nothing_of_reading_its_messages(
     the_map_stands(page, "live")
     asof = page.locator("#asof")
     expect(asof, "the map didn't say it was reading what passed").to_contain_text(READING_TALK)
+    page.evaluate("location.hash = '#cell=TERN01'")
+    drawer = page.locator("#panel-body")
+    expect(drawer, "a cell's drawer didn't say it was reading").to_contain_text(DRAWER_READING)
     opened.loses(server)
     the_map_stands(page, "stale")
     expect(asof, "a stale map said it was reading what it can't").not_to_contain_text(READING_TALK)
+    expect(drawer, "a stale map's drawer said it was reading what it can't").to_contain_text(
+        DRAWER_BROKEN, timeout=PACE_MS
+    )
     opened.close()
 
 
@@ -784,12 +808,22 @@ def test_messages_broken_before_they_answer_are_said_broken(
     the_map_stands(page, "live")
     asof = page.locator("#asof")
     expect(asof, "the map didn't say it was reading what passed").to_contain_text(READING_TALK)
+    page.evaluate("location.hash = '#cell=TERN01'")
+    drawer = page.locator("#panel-body")
+    expect(drawer, "a cell's drawer didn't say it was reading").to_contain_text(DRAWER_READING)
     slow_talk_node.cut("message")
     the_map_stands(page, "broken")
     expect(asof, "broken messages weren't said as not live").to_contain_text(NOT_LIVE)
     expect(asof, "broken messages were said as read for").not_to_contain_text(READING_TALK)
     expect(asof, "broken messages were said as waited on").not_to_contain_text(WAITING_TALK)
     the_map_counts(page, COUNTED, "the map dropped the realm when its messages broke")
+    # The drawer open as they broke says so, as the line does, and one opened since.
+    expect(drawer, "a cell's drawer was still reading what broke").to_contain_text(
+        DRAWER_BROKEN, timeout=PACE_MS
+    )
+    page.evaluate(f"location.hash = '#talk=' + encodeURIComponent('c:HERON1|c:{HEARD}')")
+    expect(drawer, "a talk's drawer was still reading what broke").to_contain_text(DRAWER_BROKEN)
+    expect(drawer, "a talk's drawer said reading what broke").not_to_contain_text(DRAWER_READING)
     opened.close()
 
 
