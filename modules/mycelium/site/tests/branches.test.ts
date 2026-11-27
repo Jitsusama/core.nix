@@ -176,8 +176,8 @@ it("a cell's start counts before its split from one network, whichever is handed
 
 it("a split from a cell drawn in no network grows nothing, leaving its start", () => {
   const networks = [network("skiff", ["SKIFF1"]), network("heron", ["HERON1", "HERON2"])];
-  // The split is handed first, so the start still growing is what the
-  // undrawn split leaves, not the order it came in.
+  // An undrawn split names no network, so it neither grows nor takes the
+  // cell's place from its start, wherever it comes in the list.
   const origins: Origin[] = [
     { cell: "HERON1", by: "GONE01", split: true },
     { cell: "HERON2", by: "GONE01", split: true },

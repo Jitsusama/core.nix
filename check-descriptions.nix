@@ -2639,8 +2639,8 @@
     kept drawn and live once it's back, stale once the server goes with the realm kept, a record's
     words drawn as words and never as markup, what each spent today listed most first in Now, a
     machine's drawer and a network's, a network two machines feed listing each with the cells it
-    draws there, most first and its branch's counted in, what waits on a cell and what holds stand
-    said as the node
+    draws there, its branch's counted in, what waits on a cell and what holds stand said as the
+    node
     judges them, every cell drawn a step out from the whole map and folded only once too small to
     read, every line thinned as the map steps out past its own size, the talk between two networks
     drawn as one line as warm as its warmest pair until it or a cell it touches opens, a receptor's

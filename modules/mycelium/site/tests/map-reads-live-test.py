@@ -2497,7 +2497,7 @@ def test_a_network_fed_by_two_machines_lists_each_with_its_cells(
         "A network of 3 cells, with 2 more in 1 branch, fed by 2 machines.", timeout=PACE_MS
     )
     # A network belongs to no machine, so its drawer lists every one that
-    # feeds it, most cells first, its branch's cells counted in.
+    # feeds it, its branch's cells counted in.
     rows = body.locator("h3:text-is('Its Machines') + ul.rows li")
     expect(rows, "the skiff's drawer didn't list both machines").to_have_count(2)
     lines = [line for row in rows.all_inner_texts() for line in row.splitlines() if line]
