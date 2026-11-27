@@ -13,10 +13,11 @@
 //! failed included, since a run can fail after its script wrote the stop
 //! there; one that never held it is given nothing. A stop no longer kept
 //! here, such as one read from an answer that couldn't be read, forgotten
-//! once the answer could be, is taken away from each machine given it. A
-//! machine that couldn't take what it was given is tried again after a
-//! minute, never sooner, for every stop at once, so one out of reach
-//! costs a run a minute.
+//! once the answer could be, is taken away from each machine given it.
+//! Each machine lacking a stop is given it at once, so one that doesn't
+//! answer holds none of the others up. A machine that couldn't take what
+//! it was given is tried again after a minute, never sooner, for every
+//! stop at once, so one out of reach costs a run a minute.
 //!
 //! A stop is kept there under the same file name as here, never its id:
 //! a stop read from an answer that couldn't be read is kept apart from
@@ -181,16 +182,20 @@ impl Carrier {
         } else {
             Gift::Resume
         };
+        let lacking: Vec<Reached> = one_each(&targets)
+            .into_iter()
+            .filter(|target| {
+                let holds = held
+                    .iter()
+                    .find(|(reached, _)| reached.machine == target.machine)
+                    .map(|(_, holds)| holds);
+                holds != Some(record) && !self.waits(&target.machine, here.at)
+            })
+            .collect();
+        let answers = give(here.plan, runs, &lacking, &script(name, record, here.host));
         let mut carried = Vec::new();
-        for target in one_each(&targets) {
-            let holds = held
-                .iter()
-                .find(|(reached, _)| reached.machine == target.machine)
-                .map(|(_, holds)| holds);
-            if holds == Some(record) || self.waits(&target.machine, here.at) {
-                continue;
-            }
-            let failed = give(here.plan, runs, &target, &script(name, record, here.host)).err();
+        for (target, answer) in lacking.into_iter().zip(answers) {
+            let failed = answer.err();
             self.took(&target.machine, here.at, failed.is_some());
             // One that answered it couldn't may still have written it, so it
             // is noted as holding something no record equals, given again
@@ -221,14 +226,14 @@ impl Carrier {
     /// given to, since it is kept here no longer, and forgets each machine
     /// it was taken from.
     fn take_away(&mut self, here: Here<'_>, runs: &mut dyn Runs, name: &str) -> Vec<Carried> {
-        let mut kept = Vec::new();
+        let (mut kept, taking): (Vec<_>, Vec<_>) = given(here.state, name)
+            .into_iter()
+            .partition(|(target, _)| self.waits(&target.machine, here.at));
+        let targets: Vec<Reached> = taking.iter().map(|(target, _)| target.clone()).collect();
+        let answers = give(here.plan, runs, &targets, &taken_away(name));
         let mut carried = Vec::new();
-        for (target, holds) in given(here.state, name) {
-            if self.waits(&target.machine, here.at) {
-                kept.push((target, holds));
-                continue;
-            }
-            let failed = give(here.plan, runs, &target, &taken_away(name)).err();
+        for ((target, holds), answer) in taking.into_iter().zip(answers) {
+            let failed = answer.err();
             self.took(&target.machine, here.at, failed.is_some());
             if failed.is_some() {
                 kept.push((target.clone(), holds));
@@ -289,23 +294,40 @@ pub fn taken_away(name: &str) -> String {
     )
 }
 
-/// Asks mycelium to run `script` on the machine `at` names.
-fn give(plan: &Plan, runs: &mut dyn Runs, at: &Reached, script: &str) -> Result<(), String> {
+/// Asks mycelium to run `script` on each machine `at` names, all at once,
+/// so one out of reach holds none of the others up; answers each in the
+/// order named.
+fn give(plan: &Plan, runs: &mut dyn Runs, at: &[Reached], script: &str) -> Vec<Result<(), String>> {
+    if at.is_empty() {
+        return Vec::new();
+    }
     let Some(mycelium) = &plan.mycelium else {
-        return Err("this machine names no mycelium to reach it".to_owned());
+        let unnamed = "this machine names no mycelium to reach it";
+        return at.iter().map(|_| Err(unnamed.to_owned())).collect();
     };
-    let mut args = reach::asked(&["run"], at.realm.as_deref());
-    args.extend([
-        "--need".to_owned(),
-        format!("machine={}", at.machine),
-        "--".to_owned(),
-        "sh".to_owned(),
-        "-c".to_owned(),
-        script.to_owned(),
-    ]);
-    runs.run(mycelium, &args)
-        .map(|_| ())
-        .map_err(|why| reach::without_begun(&why))
+    let asked: Vec<Vec<String>> = at
+        .iter()
+        .map(|one| {
+            let mut args = reach::asked(&["run"], one.realm.as_deref());
+            args.extend([
+                "--need".to_owned(),
+                format!("machine={}", one.machine),
+                "--".to_owned(),
+                "sh".to_owned(),
+                "-c".to_owned(),
+                script.to_owned(),
+            ]);
+            args
+        })
+        .collect();
+    let each: Vec<(&Path, &[String])> = asked
+        .iter()
+        .map(|args| (mycelium.as_path(), args.as_slice()))
+        .collect();
+    runs.run_all(&each)
+        .into_iter()
+        .map(|answer| answer.map(|_| ()).map_err(|why| reach::without_begun(&why)))
+        .collect()
 }
 
 /// What a give answers when what each machine was given couldn't be noted:
