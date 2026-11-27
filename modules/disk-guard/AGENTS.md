@@ -67,9 +67,12 @@ or launchd, and [`home.nix`][2] the account's.
   longer for it. On 27 November surveys of 15 GB apiece walked for 32 of
   50 minutes, each for a reach that ended waiting or an upkeep that freed
   nothing, and seven spaced at most half an hour read 136 GB while none
-  freed more than 1.3 GB. A disk worse than filling never waits, nor one forecast to be
-  within a pass, whose pass starts early so it's done before the band
-  arrives, and nor does the store's garbage, which needs no survey.
+  freed more than 1.3 GB. A survey a stop or a failure cut short is
+  spaced by what it walked too. A disk worse than filling never waits,
+  nor one forecast to be within a pass, whose pass starts early so it's
+  done before the band arrives, nor the store's garbage, which needs no
+  survey, nor upkeep for builds whose owner ended or that went an hour
+  unused in a snapshot, which go within a minute.
 - **Windows.** How long a thing has to sit idle before it goes narrows with
   each band, and counts only time the machine was awake. Even while healthy,
   waste goes, and so does what nobody has used for long: a build after a
@@ -207,8 +210,10 @@ or launchd, and [`home.nix`][2] the account's.
   disk for what's left: one restarted by a switch on 27 November walked
   every source again, reading 40 GB to find the same nothing. A disk
   that reads healthy ends the hour, saved too, so a restart never brings
-  back a rest the guard had ended. One that kept things only for want of the system guard's word ends its rest
-  as soon as the system guard answers again, once in a row. A survey counts the
+  back a rest the guard had ended. One that kept things only for want of
+  the system guard's word ends its rest as soon as the system guard
+  answers again, once in a row, which any disk's upkeep in a step keeping
+  so is enough to bring. A survey counts the
   blocks its candidates share once, for the first it measures, as trees
   cloned with their builds inside share them: what it predicts is what
   deleting them all frees, unless something it didn't measure shares them

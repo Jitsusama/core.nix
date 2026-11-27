@@ -1582,7 +1582,8 @@ fn a_pressed_disk_is_reclaimed_at_once_however_busy_the_machine() {
 }
 
 /// A stop that comes while the survey walks ends the step there, and what
-/// the survey found is taken by nobody, however full the disk.
+/// the survey found is taken by nobody, however full the disk. The walk
+/// it cut short is kept, so the guard a switch starts spaces the next.
 #[test]
 fn a_stop_during_the_survey_ends_the_step_taking_nothing() {
     let home = Home::new();
@@ -1593,6 +1594,11 @@ fn a_stop_during_the_survey_ends_the_step_taking_nothing() {
     assert_eq!(stepped.unwrap_err().kind(), std::io::ErrorKind::Interrupted);
     assert!(old.exists());
     assert!(home.journal().iter().all(|line| line["event"] != "pass"));
+    let kept = home.memory()["surveyed"].clone();
+    assert!(
+        kept[0].as_f64() >= Some(tick().wall - 60.0),
+        "a survey a stop cut short wasn't kept for the next one's spacing: {kept}"
+    );
 }
 
 #[test]
@@ -2678,6 +2684,23 @@ fn a_trees_build_goes_within_a_minute_of_its_last_holder_ending() {
     assert!(built.exists(), "owners are looked at once a minute");
     guard.step(&tick_at(3661.0), &CALM).unwrap();
     assert!(!built.exists(), "the build goes once its holder has ended");
+}
+
+#[test]
+fn a_build_whose_holder_ended_goes_within_a_minute_however_lately_a_survey_walked() {
+    // Surveys are spaced up to three hours apart, but what an owner leaves
+    // is spent the moment it ends, and waiting would keep it for hours.
+    let home = Home::new();
+    let built = held_tree(&home, 400);
+    surveyed_before(&home, wall(), 3600.0);
+    let mut guard = home.guard(owned_trees(&home));
+    guard.step(&tick(), &CALM).unwrap();
+    fs::remove_dir_all(home.root.join("proc/400")).unwrap();
+    guard.step(&tick_at(3661.0), &CALM).unwrap();
+    assert!(
+        !built.exists(),
+        "a build whose holder ended waited out the survey's spacing"
+    );
 }
 
 #[test]

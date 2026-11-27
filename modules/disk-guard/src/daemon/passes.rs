@@ -224,6 +224,11 @@ impl Guard {
         if !(0.0..survey_spacing(seconds)).contains(&(now - ended)) {
             return;
         }
+        // Builds an owner left go within a minute, however soon after the
+        // last survey; only upkeep that's merely due again waits.
+        if self.spent_due {
+            return;
+        }
         let pressing = due.iter().any(|&(device, decision, _)| {
             self.watched
                 .get(&device)
@@ -276,10 +281,23 @@ impl Guard {
 
     /// Walks every source, keeping when the walk ended and how long it
     /// took, for the next one's spacing, and the survey for a plan to read.
+    /// One a stop or a failure cut short is spaced by what it walked too:
+    /// a switch is likelier than not to land in a half-hour walk, and the
+    /// guard it starts would otherwise walk again at once. Its memory is
+    /// saved then, as the step it ends saves nothing; not over a damaged
+    /// one, which the next full save sets aside first.
     fn survey_whole(&mut self, tick: &Tick) -> io::Result<(Scan, Vec<Offer>, Walked)> {
-        let (scan, offers, walked) = self
-            .offers(tick, None)
-            .inspect_err(|_| self.end_passing())?;
+        let started = Instant::now();
+        let (scan, offers, walked) = self.offers(tick, None).inspect_err(|_| {
+            let ended = tick.wall + self.stepped.elapsed().as_secs_f64();
+            self.memory.surveyed = Some((ended, started.elapsed().as_secs_f64()));
+            if !self.damaged
+                && let Err(error) = crate::state::save(&self.memory_path, &self.memory)
+            {
+                say!("disk-guard: keeping when a survey cut short ended: {error}");
+            }
+            self.end_passing();
+        })?;
         let ended = tick.wall + self.stepped.elapsed().as_secs_f64();
         self.memory.surveyed = Some((ended, walked.seconds));
         // Kept for a plan to read; one that can't be kept only means the

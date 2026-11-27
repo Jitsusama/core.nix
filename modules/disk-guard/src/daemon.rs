@@ -226,6 +226,10 @@ pub struct Guard {
     /// reached on, so the next reach there takes up from where it stopped
     /// rather than judging the same again.
     reached_short: BTreeMap<u64, BTreeSet<PathBuf>>,
+    /// The step whose upkeep passes are being judged, by its wall clock,
+    /// and whether the upkeep before them had gone unheard, so each of
+    /// them is judged against that and not against the one before it.
+    upkeep_judged: Option<(f64, bool)>,
     /// What a system daemon hears from user daemons.
     hearing: Option<Hearing>,
     /// For a user daemon, the filesystems the system daemon collects
@@ -273,6 +277,10 @@ pub struct Guard {
     /// The pinned snapshots the last look at the owners found, so one cut
     /// since, which no survey has offered yet, times its own hour.
     snapshots_known: Option<Vec<PathBuf>>,
+    /// Whether the upkeep due now was made due by builds whose owner ended
+    /// or went an hour unused, which go within a minute, past a survey's
+    /// spacing, since nothing an agent leaves should outlive it for long.
+    spent_due: bool,
     /// When, in wall seconds, a cargo source's disk past its budget last
     /// made upkeep due, so one still past it after the pass, its builds
     /// all recent, asks again only an hour on.
@@ -491,7 +499,37 @@ fn ending(end: &End) -> String {
 mod tests {
     use super::nix_garbage::min_free_again;
     use super::passes::pressed;
+    use super::surveying::upkept_after;
     use super::{Band, Decision, Goal, Walked, Why, aim};
+
+    #[test]
+    fn any_upkeep_of_a_step_that_kept_unvouched_brings_the_retry_once() {
+        // Two disks' upkeep passes in one step, as a user guard watching a
+        // home pool and a build image makes, the later one keeping what
+        // only the unheard system daemon could vouch for.
+        let (wall, retry) = (100_000.0, 79_000.0);
+        let judged = |kept: [bool; 2], before: bool| {
+            kept.iter()
+                .fold(None, |upkept: Option<(f64, bool)>, &kept| {
+                    upkept_after(upkept.map(|(at, _)| at), (wall, retry), before, kept).or(upkept)
+                })
+        };
+        assert_eq!(
+            judged([false, true], false),
+            Some((retry, true)),
+            "a later disk's unvouched keep was lost to an earlier disk that kept nothing"
+        );
+        assert_eq!(
+            judged([true, false], false),
+            Some((retry, true)),
+            "a later disk that kept nothing took back the retry an earlier one set"
+        );
+        assert_eq!(
+            judged([false, true], true),
+            Some((wall, false)),
+            "a retry that kept unvouched again was retried"
+        );
+    }
 
     #[test]
     fn a_disk_worse_than_filling_or_forecast_to_be_goes_past_a_survey_s_spacing() {

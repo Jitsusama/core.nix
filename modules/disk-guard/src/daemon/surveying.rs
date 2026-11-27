@@ -197,6 +197,24 @@ pub(super) fn stale(outcome: &Outcome) -> bool {
     matches!(outcome, Outcome::Failed(why) if garbage::stale(why))
 }
 
+/// When upkeep was last done, and whether it went unheard, once one more
+/// upkeep pass of a step at `wall` ends: `retry`, so it comes again soon,
+/// when the pass `kept` what only an unheard system daemon could vouch
+/// for, unless the upkeep `before` the step had gone unheard already, and
+/// `wall` otherwise. None leaves the retry an earlier pass of the step set.
+pub(super) fn upkept_after(
+    upkept: Option<f64>,
+    (wall, retry): (f64, f64),
+    before: bool,
+    kept: bool,
+) -> Option<(f64, bool)> {
+    if upkept == Some(retry) {
+        return None;
+    }
+    let again = kept && !before;
+    Some((if again { retry } else { wall }, again))
+}
+
 impl Guard {
     /// What reads this machine's processes for `me`, vouched for by the
     /// system daemon under every source's roots when there is one.
@@ -422,15 +440,24 @@ impl Guard {
             // Only a pass that got through what was due counts as upkeep:
             // one cut short by its length or a stop leaves the rest due.
             let retry = tick.wall - crate::decide::UPKEEP_EVERY + UNHEARD_AGAIN;
-            // Every disk's upkeep in a step shares its scan, so the first
-            // to end judges for them all: another judging the same step
-            // would take back the retry it set, or retry the retry it ended.
-            if self.memory.upkept == Some(tick.wall) || self.memory.upkept == Some(retry) {
-                return;
+            // Every disk's upkeep in a step comes again if any of them kept
+            // what only the unheard system daemon could vouch for, each
+            // judged against the upkeep before the step, so a later disk's
+            // keep isn't lost to an earlier disk that kept nothing, and a
+            // retry that went unheard again isn't retried.
+            let before = match self.upkeep_judged {
+                Some((at, before)) if at.to_bits() == tick.wall.to_bits() => before,
+                _ => self.memory.upkeep_unheard,
+            };
+            self.upkeep_judged = Some((tick.wall, before));
+            self.spent_due = false;
+            let kept = self.kept_unvouched(scan, report);
+            if let Some((upkept, unheard)) =
+                upkept_after(self.memory.upkept, (tick.wall, retry), before, kept)
+            {
+                self.memory.upkept = Some(upkept);
+                self.memory.upkeep_unheard = unheard;
             }
-            let again = self.kept_unvouched(scan, report) && !self.memory.upkeep_unheard;
-            self.memory.upkeep_unheard = again;
-            self.memory.upkept = Some(if again { retry } else { tick.wall });
         }
     }
 
