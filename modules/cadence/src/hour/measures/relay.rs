@@ -69,11 +69,14 @@ pub fn read(now: i64) -> Option<String> {
 
 /// journalctl's arguments for the relay's lines in the hour to `now`. The
 /// relay is the user's unit, and an hour can hold tens of thousands of its
-/// lines, so each is read as its message alone rather than as json.
+/// lines, so each is read as its message alone rather than as json. It is
+/// read quietly, so an hour with none is empty rather than a `-- No
+/// entries --` line, and so reads unjudged rather than as a green nought.
 #[must_use]
-pub fn journal(now: i64) -> [String; 8] {
+pub fn journal(now: i64) -> [String; 9] {
     [
         "--user".to_owned(),
+        "--quiet".to_owned(),
         "-u".to_owned(),
         "model-relay-agents.service".to_owned(),
         "-o".to_owned(),

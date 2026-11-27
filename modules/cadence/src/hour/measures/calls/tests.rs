@@ -75,7 +75,8 @@ fn each_is_past_its_ceiling_only_above_it() {
     let at_most = calls(Some(&failing(100, 5000)), NOW);
     assert_eq!(by_key(&at_most, FAILED).past(), None, "100 is the most");
     assert_eq!(by_key(&at_most, SHARE).past(), None, "2% is the most");
-    // The share is said to a tenth, so 2.02% reads 2% and isn't past it.
+    // The share is said to a tenth, so 2.02% would read 2% and be in; 105
+    // of 5000 is 2.1%, the first tenth past it.
     let past = calls(Some(&failing(105, 5000)), NOW);
     assert!(by_key(&past, FAILED).past().is_some(), "105 is past 100");
     assert!(by_key(&past, SHARE).past().is_some(), "2.1% is past 2%");
@@ -139,6 +140,54 @@ fn a_log_is_read_back_only_to_the_hours_start() {
         [turn_at(3000, None), turn_at(60, Some("Connection error.")),],
         "only the hour's turns, each error its first line"
     );
+}
+
+#[test]
+fn a_turn_wider_than_several_steps_is_read_whole() {
+    let sessions = tempfile::tempdir().expect("a folder");
+    let folder = sessions.path().join("--home-me--");
+    fs::create_dir(&folder).expect("its folder");
+    let step = usize::try_from(STEP).expect("a step fits");
+    // Its error spans three steps and a part, and the narrow turns either
+    // side of it sit across a step's edge, so every piece is joined.
+    let wide = "z".repeat(step * 3 + step / 2);
+    let lines = [
+        logged((NOW - 3000) * 1000, None),
+        logged((NOW - 2000) * 1000, Some(&wide)),
+        logged((NOW - 60) * 1000, None),
+    ];
+    fs::write(folder.join("a.jsonl"), lines.join("\n") + "\n").expect("a log");
+    let mut turns = read(sessions.path(), NOW).expect("read");
+    turns.sort_by_key(|t| t.at_ms);
+    assert_eq!(
+        turns,
+        [
+            turn_at(3000, None),
+            turn_at(2000, Some(&wide)),
+            turn_at(60, None)
+        ],
+        "each turn once, the wide one whole"
+    );
+}
+
+#[test]
+fn a_log_is_read_back_no_further_than_the_hours_first_turn() {
+    let sessions = tempfile::tempdir().expect("a folder");
+    let folder = sessions.path().join("--home-me--");
+    fs::create_dir(&folder).expect("its folder");
+    // back_to keeps what it reads unfiltered, so a turn of an earlier hour
+    // in its answer means it read on past the first one before the hour.
+    let step = usize::try_from(STEP).expect("a step fits");
+    let lines = [
+        logged((NOW - 9000) * 1000, Some("Request timed out.")),
+        logged((NOW - 7200) * 1000, Some("Request timed out.")),
+        "x".repeat(step * 2),
+        logged((NOW - 60) * 1000, None),
+    ];
+    fs::write(folder.join("a.jsonl"), lines.join("\n") + "\n").expect("a log");
+    let path = folder.join("a.jsonl");
+    let turns = back_to(&path, (NOW - 3600) * 1000).expect("read");
+    assert_eq!(turns, [turn_at(60, None)], "only the hour's turn");
 }
 
 #[test]

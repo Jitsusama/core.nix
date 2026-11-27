@@ -61,8 +61,10 @@ for origin in "$@"; do
   address=$(getent ahosts "${origin}" | awk 'NR == 1 {print $1}') || address=""
   device="unresolved"
   if [[ -n ${address} ]]; then
+    # No route is the worst path there is, so it is sampled as one rather
+    # than ending the run before its sample is written.
     device=$(ip -o route get "${address}" |
-      awk '{for (i = 1; i < NF; i++) if ($i == "dev") print $(i + 1)}')
+      awk '{for (i = 1; i < NF; i++) if ($i == "dev") print $(i + 1)}') || device="no route"
   fi
   status=0
   timed=$(curl --silent --output /dev/null --max-time "${WAIT}" \

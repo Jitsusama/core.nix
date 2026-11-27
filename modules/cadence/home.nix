@@ -522,8 +522,9 @@ in
         Type = "oneshot";
         ExecStart = lib.escapeShellArgs ([ (lib.getExe probe) ] ++ cfg.origins);
         Slice = "background.slice";
-        # A sample waits 20 s at most for each origin.
-        TimeoutStartSec = "5min";
+        # A sample waits 20 s at most for each origin, beside its lookup and
+        # route, so a minute each bounds a run however many are named.
+        TimeoutStartSec = "${toString (60 + 60 * builtins.length cfg.origins)}s";
       };
     };
     systemd.user.timers.cadence-path = lib.mkIf (cfg.origins != [ ]) {

@@ -47,6 +47,20 @@ fn the_hours_median_tls_setup_is_held_to_its_ceiling() {
 }
 
 #[test]
+fn an_hours_six_samples_take_the_middle_twos_mean() {
+    let m = of(&[
+        sampled(100, Some(0.2)),
+        sampled(700, Some(0.2)),
+        sampled(1300, Some(0.4)),
+        sampled(1900, Some(1.6)),
+        sampled(2500, Some(9.0)),
+        sampled(3100, Some(9.0)),
+    ]);
+    assert_eq!(m.now, 1.0, "the mean of 0.4 s and 1.6 s");
+    assert_eq!(m.past(), None, "a median of 1 s is at its ceiling");
+}
+
+#[test]
 fn a_failed_sample_counts_as_the_probes_whole_wait() {
     let m = of(&[
         sampled(100, None),

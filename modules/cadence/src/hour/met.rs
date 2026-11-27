@@ -4,23 +4,22 @@
 //! call's video. The path is said beside the calls, so a red of the calls
 //! names the route as well as the failure.
 
-use std::env;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use jiff::tz::TimeZone;
 use serde_json::Value;
 
-use super::measures::{Measure, calls, path, relay, wifi};
+use super::measures::{Measure, agent_folder, calls, path, relay, wifi};
 use super::today;
 use crate::DAY;
 
-/// The sessions' logs, under the account's home, as pi keeps them.
-const SESSIONS: &str = ".pi/agent/sessions";
+/// The sessions' logs, in pi's own folder.
+const SESSIONS: &str = "sessions";
 
 /// The hour's measures of the calls, the paths, the relay and the wifi.
 pub fn met(state_home: &Path, now: i64) -> Vec<Measure> {
-    let sessions = env::var_os("HOME").map(|home| PathBuf::from(home).join(SESSIONS));
+    let sessions = agent_folder().map(|agent| agent.join(SESSIONS));
     let mut calls = sessions.map_or_else(|| calls::calls(None, now), |s| calls::hour(&s, now));
     let folder = state_home.join(path::FOLDER);
     let day = |at| fs::read_to_string(folder.join(format!("{}.jsonl", today(at))));

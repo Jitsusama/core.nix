@@ -195,7 +195,10 @@ fn behind_each_count_its_commonest_causes_come_first() {
 #[test]
 fn the_journal_is_the_users_relay_for_the_hour() {
     let args = journal(7200);
-    assert_eq!(args[..3], ["--user", "-u", "model-relay-agents.service"]);
+    assert_eq!(
+        args[..4],
+        ["--user", "--quiet", "-u", "model-relay-agents.service"]
+    );
     assert!(
         args.contains(&"--since=@3600".to_owned()),
         "read from the hour's start: {args:?}"

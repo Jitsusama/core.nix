@@ -84,10 +84,12 @@ pub fn read(sessions: &Path, now: i64) -> io::Result<Vec<Turn>> {
         };
         for log in logs.flatten() {
             let path = log.path();
-            let written = log
-                .metadata()
-                .and_then(|m| m.modified())
+            // Only a plain file is read, so a pipe or device named like a
+            // log can never hold the hour waiting on it.
+            let written = fs::metadata(&path)
                 .ok()
+                .filter(fs::Metadata::is_file)
+                .and_then(|m| m.modified().ok())
                 .and_then(|at| at.duration_since(UNIX_EPOCH).ok())
                 .and_then(|at| i64::try_from(at.as_secs()).ok());
             if path.extension().is_some_and(|e| e == "jsonl") && written >= Some(since) {
@@ -105,7 +107,10 @@ fn back_to(path: &Path, since_ms: i64) -> io::Result<Vec<Turn>> {
     let mut file = File::open(path)?;
     let mut end = file.seek(SeekFrom::End(0))?;
     let mut read = 0;
-    let mut partial = Vec::new();
+    // The line that runs on past the steps read so far, as its pieces from
+    // the log's end back, so each piece is copied once, into its whole line
+    // when that line's start is found, however many steps it spans.
+    let mut later: Vec<Vec<u8>> = Vec::new();
     let mut turns = Vec::new();
     while end > 0 && read < READ_AT_MOST {
         let step = STEP.min(end);
@@ -114,12 +119,22 @@ fn back_to(path: &Path, since_ms: i64) -> io::Result<Vec<Turn>> {
         let mut chunk = vec![0; usize::try_from(step).unwrap_or(0)];
         file.read_exact(&mut chunk)?;
         read += step;
-        chunk.extend_from_slice(&partial);
-        let mut lines: Vec<&[u8]> = chunk.split(|b| *b == b'\n').collect();
-        // The first line runs on into the step before, unless this is the
-        // log's start.
-        let first = if end > 0 { lines.remove(0) } else { &[] };
-        for line in lines.iter().rev() {
+        // What comes before the step's first newline runs on into the step
+        // before, unless this is the log's start.
+        let (first, rest) = if end == 0 {
+            (&[][..], &chunk[..])
+        } else if let Some(at) = chunk.iter().position(|b| *b == b'\n') {
+            (&chunk[..at], &chunk[at + 1..])
+        } else {
+            later.push(chunk);
+            continue;
+        };
+        let mut lines: Vec<&[u8]> = rest.split(|b| *b == b'\n').collect();
+        let mut last = lines.pop().unwrap_or_default().to_vec();
+        for piece in later.drain(..).rev() {
+            last.extend_from_slice(&piece);
+        }
+        for line in std::iter::once(&last[..]).chain(lines.into_iter().rev()) {
             if let Some(turn) = turn(line) {
                 if turn.at_ms < since_ms {
                     return Ok(turns);
@@ -127,7 +142,7 @@ fn back_to(path: &Path, since_ms: i64) -> io::Result<Vec<Turn>> {
                 turns.push(turn);
             }
         }
-        partial = first.to_vec();
+        later.push(first.to_vec());
     }
     Ok(turns)
 }

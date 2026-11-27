@@ -238,7 +238,15 @@ fn on_the_way_asked(m: &Measure, what: &str, says: String) -> Filed {
     let causes = if m.behind.is_empty() {
         String::new()
     } else {
-        format!(" Most of them: {}.", m.behind.join("; "))
+        // Each is quoted, kept to one line and rid of its own quotes, since
+        // a cause is the relay's, the origin's or pi's error text, so it
+        // never reads as cadence's words to the agent it reaches.
+        let quoted: Vec<String> = m
+            .behind
+            .iter()
+            .map(|cause| format!("\"{}\"", cause.replace(['"', '\n', '\r'], " ")))
+            .collect();
+        format!(" Most of them: {}.", quoted.join("; "))
     };
     Filed {
         key: format!("hour:{}", m.key),
@@ -439,6 +447,12 @@ fn back_in(key: &str, measures: &[Measure]) -> bool {
             .split_once(':')
             .map(|(owner, date)| format!("{date} · {owner}"));
         return m.target.is_some() && line.is_none_or(|line| !m.behind.contains(&line));
+    }
+    // A path is measured for a day after its origin was last sampled, so a
+    // path gone from the hour is an origin no longer named, and its ask is
+    // settled as the queues' are, rather than held open for good.
+    if key.starts_with(path::PREFIX) && !measures.iter().any(|m| m.key == key) {
+        return true;
     }
     // An unread file leaves only its one line, never a figure, so a drag
     // isn't closed while its figure can't be seen; a figure written with no
@@ -999,6 +1013,12 @@ mod tests {
         assert!(
             asked
                 .iter()
+                .any(|text| text.contains("Most of them: \"176 on Request timed out.\"; ")),
+            "a cause isn't quoted: {asked:?}"
+        );
+        assert!(
+            asked
+                .iter()
                 .any(|text| text.contains("the sessions' model calls is past")
                     && text.contains("via tunnel0")),
             "the calls' ask doesn't name the path: {asked:?}"
@@ -1051,6 +1071,29 @@ mod tests {
                 .iter()
                 .any(|e| e.open && e.key.starts_with("hour:relay:")),
             "a count back in left its ask open"
+        );
+    }
+
+    #[test]
+    fn a_path_ask_closes_once_its_origin_is_no_longer_sampled() {
+        let mut slow = measure("path:tls:forge.example", Class::Functional, 7.2, Some(1.0));
+        slow.owner = "OXUW1Y".to_owned();
+        let mut ledger = Vec::new();
+        file(&mut ledger, &[slow], "2026-11-26", 1000);
+        assert!(
+            ledger
+                .iter()
+                .any(|e| e.open && e.key == "hour:path:tls:forge.example"),
+            "a slow path wasn't asked: {ledger:?}"
+        );
+        let mut other = measure("path:tls:model.example", Class::Functional, 0.2, Some(1.0));
+        other.owner = "OXUW1Y".to_owned();
+        file(&mut ledger, &[other], "2026-11-27", 1000 + DAY);
+        assert!(
+            !ledger
+                .iter()
+                .any(|e| e.open && e.key == "hour:path:tls:forge.example"),
+            "an origin gone from the hour held its ask open: {ledger:?}"
         );
     }
 

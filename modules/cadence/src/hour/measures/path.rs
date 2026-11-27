@@ -96,7 +96,14 @@ fn measured(origin: &str, samples: &[Sample]) -> Measure {
         .map(|s| s.tls.unwrap_or(PROBE_WAIT))
         .collect();
     times.sort_by(f64::total_cmp);
-    let median = times[times.len() / 2];
+    // An even count, the usual six an hour, takes the middle two's mean, so
+    // three slow samples of six read half way rather than as the slow one.
+    let half = times.len() / 2;
+    let median = if times.len() % 2 == 0 {
+        f64::midpoint(times[half - 1], times[half])
+    } else {
+        times[half]
+    };
     let worst = times[times.len() - 1];
     let mut devices: Vec<&str> = samples.iter().map(|s| s.device.as_str()).collect();
     devices.sort_unstable();
