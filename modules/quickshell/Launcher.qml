@@ -11725,6 +11725,7 @@ Scope {
             openWorkedClocks = null;
             openSettled = -1;
             openBegun = -1;
+            forgetFirstFrame();
             openKept = false;
             openAskedWeighings = keysWeighings;
             openAskedRedone = redone();
@@ -12363,9 +12364,10 @@ Scope {
     // last opening woke can answer after it closed.
     property var openFirstMade: null
     property var openAskedMade: null
-    // What an opening's first frame left is let go as it's begun, shut or
-    // said, so a whole opening after a kept one shut before its size
-    // (unopened) says its own drawing, not the kept one's frame's.
+    // What an opening's first frame left is let go as it's asked, begun,
+    // shut or said, so a whole opening after a kept one shut before its
+    // size (unopened), or filled by a key and shut before its record
+    // (openDrawn), says its own drawing, not the kept one's frame's.
     function forgetFirstFrame(): void {
         openFirstDrawn = -1;
         openFirstSplit = null;
@@ -13215,6 +13217,7 @@ Scope {
             wokeEarly = null;
             openAskedClocks = null;
             openWorkedClocks = null;
+            forgetFirstFrame();
         }
         if ((!open && !opening) || asked < 0)
             return;
@@ -13230,8 +13233,10 @@ Scope {
         const parts = partsSaid(openParts);
         const settled = openSettled < 0 ? asked + openWorked : openSettled;
         const begun = openBegun < 0 ? drawn : openBegun;
-        const split = openFirstSplit;
-        openFirstSplit = null;
+        // A whole opening's first frame is the one it's told of here, as
+        // it's swapped, so it's split as a kept one's is in openShown.
+        const split = openFirstSplit
+            ?? (frame === undefined ? null : frameSplit({ frame, begun: beganAt }, sized));
         const after = Object.assign({ settling: Math.round(settled - asked - openWorked),
             waiting: Math.round(begun - settled), drawing: Math.round(drawn - begun),
             sizing: Math.round(sized - drawn) }, split ?? {});
@@ -13245,8 +13250,6 @@ Scope {
         openingsDrawn += 1;
         const now = openFirstMade ?? tallies();
         const from = openFirstMade === null ? madeFrom.rows : openAskedMade;
-        openFirstMade = null;
-        openFirstDrawn = -1;
         const made = Object.keys(now).map(name => ({ name, rows: now[name]
             - (from[name] ?? 0) })).filter(each => each.rows > 0)
             .sort((a, b) => b.rows - a.rows || a.name.localeCompare(b.name));
@@ -13255,13 +13258,12 @@ Scope {
         const kept = openKept;
         const weighings = (openFirstWeighings < 0 ? keysWeighings : openFirstWeighings)
             - openAskedWeighings;
-        openFirstWeighings = -1;
         const redoneBy = openFirstRedone ?? redone();
         const measured = redoneBy.measured - (openAskedRedone.measured ?? 0);
         const toldEarly = redoneBy.toldEarly - (openAskedRedone.toldEarly ?? 0);
         const toldLate = redoneBy.toldLate - (openAskedRedone.toldLate ?? 0);
         const blocked = redone().blocked - (openAskedRedone.blocked ?? 0);
-        openFirstRedone = null;
+        forgetFirstFrame();
         // How long after the ask the mark said open, or -1 while it hasn't.
         const marked = markSays === "open" && markedOpenAt >= asked
             ? Math.round(markedOpenAt - asked) : -1;

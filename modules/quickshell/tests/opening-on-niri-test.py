@@ -1135,7 +1135,8 @@ def test_a_kept_place_opens_afresh_while_niri_hasnt_said_its_casts(shell: Shell)
     Its rows were kept before any share could begin, so a chord in a call drew them on its first
     frame: Super+V a copy, Super+O a waiting ask. Here a stand-in for the windows daemon holds
     the shell where niri is yet to say its casts, which counts as a share, and home opens afresh
-    there too.
+    there too. Each says its first frame's drawing apart as a kept opening does, since its frame
+    is told it as it's swapped.
     """
     with casts_stood_in(shell, said=False):
         since = shell.mark()
@@ -1151,6 +1152,10 @@ def test_a_kept_place_opens_afresh_while_niri_hasnt_said_its_casts(shell: Shell)
     assert f"launcher: on opened afresh, {unsaid_why}" in said, f"On's wasn't said:\n{said}"
     assert not home.get("kept"), f"home was drawn from its kept rows under a share: {home}"
     assert f"launcher: home opened afresh, {unsaid_why}" in said, f"home's wasn't said:\n{said}"
+    took = [line for line in said.splitlines() if "opening took" in line]
+    assert len(took) >= 2, f"the two openings didn't say their time:\n{said}"
+    for line in took[-2:]:
+        assert DRAWING_SPLIT.search(line), f"a whole opening didn't say its drawing apart: {line}"
 
 
 def test_a_share_begun_before_a_kept_opening_is_filled_in_fills_it_at_once(
