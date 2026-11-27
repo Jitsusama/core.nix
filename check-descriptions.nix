@@ -674,11 +674,12 @@
   call-transcripts-hears-echoed-meetings-as-well-as-it-did = ''
     three AMI meetings laid out as calls, the far end heard again in Joel's microphone 20 dB down
     as speakers with no echo cancelling would, are written down with no more of their words wrong
-    than the ceiling the last measurement set
+    than the ceiling the last measurement set, nor of Joel's own words than his side's own ceiling
   '';
   call-transcripts-hears-meetings-as-well-as-it-did = ''
     three AMI meetings laid out as calls, the far end through Opus as Meet sends it, are written
-    down with no more of their words wrong than the ceiling the last measurement set
+    down with no more of their words wrong than the ceiling the last measurement set, nor of
+    Joel's own words than his side's own ceiling
   '';
   call-transcripts-names-voices-as-well-as-it-did = ''
     the far ends of three AMI meetings, joined one speaker at a time as if over a Meet, have their
