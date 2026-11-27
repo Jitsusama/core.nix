@@ -280,6 +280,8 @@ mod tests {
             ("hardware/*", "hardware/a/kernel/local.nix", true),
             ("flake.lock", "flake.lock", true),
             ("flake.lock", "flake.nix", false),
+            ("flake", "flake.lock", false),
+            ("*.nix", "home.nix.orig", false),
             ("vm-boot-*", "vm-boot-asks-in-the-theme", true),
             ("vm-boot-*", "vm-reboot-cannot-hang", false),
             ("tests/plymouth*", "tests/plymouth-vm-test.py", true),
@@ -299,8 +301,19 @@ mod tests {
     fn a_line_without_its_tests_is_refused() {
         parse("boot: modules/plymouth/*").expect_err("a line with no `=>` was read");
         parse("boot: => vm-boot-*").expect_err("a line with no paths was read");
-        parse("# a comment\n\nboot: a/* => vm-a\n")
+        parse("boot: modules/plymouth/* =>").expect_err("a line with no tests was read");
+        let read = parse("# a comment\n\nboot: a/* => vm-a\n")
             .expect("a comment or a blank line was taken for an area");
+        assert_eq!(
+            read,
+            [Area {
+                name: "boot".to_owned(),
+                paths: words("a/*"),
+                tests: words("vm-a"),
+                there: false,
+            }],
+            "around a comment and a blank line, the one area wasn't read as written"
+        );
     }
 
     #[test]
@@ -397,7 +410,17 @@ mod tests {
         );
         assert_eq!(needs.tests, [] as [std::string::String; 0]);
         assert_eq!(needs.there, words("nix-offload"));
-        parse("a: a/* => there").expect("an area whose only test is there was refused");
+        let read = parse("a: a/* => there").expect("an area whose only test is there was refused");
+        assert_eq!(
+            read,
+            [Area {
+                name: "a".to_owned(),
+                paths: words("a/*"),
+                tests: Vec::new(),
+                there: true,
+            }],
+            "there wasn't read as sending the area through a VM test"
+        );
     }
 
     #[test]

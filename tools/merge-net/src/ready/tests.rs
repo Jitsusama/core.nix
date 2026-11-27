@@ -121,21 +121,23 @@ fn a_run_that_built_what_it_named_is_ready() {
                   \"run\":[\"--system\",\"x86_64-linux\"]}\n";
     assert!(
         built_there(record, &on_main),
-        "a run that built what it named wasn't taken as ready"
+        "a building run at the repository's root, against no base, wasn't taken as ready"
     );
 }
 
 #[test]
 fn a_run_that_only_named_or_kept_a_base_is_not() {
-    let named = "{\"dir\":null,\"printed\":\"\",\
-                 \"run\":[\"--name-only\",\"--system\",\"x86_64-linux\"]}\n\
-                 {\"dir\":null,\"printed\":\"\",\
-                 \"run\":[\"--keep-base\",\"--system\",\"x86_64-linux\"]}\n\
-                 {\"check\":\"checks.x86_64-linux.b\",\"dir\":null}\n";
-    assert!(
-        !built_there(named, &on_main),
-        "a run that only named or kept a base was taken as built"
-    );
+    for flag in ["--name-only", "--keep-base"] {
+        let record = format!(
+            "{{\"dir\":null,\"printed\":\"\",\
+             \"run\":[\"{flag}\",\"--system\",\"x86_64-linux\"]}}\n\
+             {{\"check\":\"checks.x86_64-linux.b\",\"dir\":null}}\n"
+        );
+        assert!(
+            !built_there(&record, &on_main),
+            "a run given {flag} was taken as built"
+        );
+    }
     assert!(!built_there("", &on_main), "nothing passed there");
 }
 
