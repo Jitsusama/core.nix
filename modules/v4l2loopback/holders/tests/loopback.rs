@@ -6,7 +6,7 @@
 //! can be, its trouble said once, and only then is the run ready; and as
 //! its camera goes or its watch stops, the node file goes only once its
 //! nobody is written, and one it couldn't remove as its camera went is
-//! tried again.
+//! tried again; and a stop tries once more what's still owed.
 
 use std::fs::{self, File, Permissions};
 use std::os::unix::fs::{PermissionsExt, symlink};
@@ -483,6 +483,13 @@ fn a_stopped_watch_keeps_its_node_named_while_its_nobody_cant_be_written() {
         |watch| ready(&watch.read("log")) == 1,
         "a camera whose files were written wasn't said ready",
     );
+    // Held as it stops, so its file says a holder a reader looks up by
+    // the node.
+    let held = File::open(&camera).unwrap();
+    watch.until(
+        |watch| fs::read_to_string(watch.file()).is_ok_and(|said| !said.is_empty()),
+        "a camera held wasn't said held",
+    );
     // The holders file's folder locked, the node files' folder not.
     fs::set_permissions(&watch.folder, Permissions::from_mode(0o555)).unwrap();
     assert!(
@@ -490,9 +497,87 @@ fn a_stopped_watch_keeps_its_node_named_while_its_nobody_cant_be_written() {
         "a locked folder still took a file, as it does for root"
     );
     watch.stop();
+    drop(held);
+    assert!(
+        fs::read_to_string(watch.file()).is_ok_and(|said| !said.is_empty()),
+        "a stopped watch's holder went unsaid with its nobody unwritten"
+    );
     assert!(
         watch.names(&camera),
-        "a stopped watch unnamed its node with its nobody unwritten"
+        "a stopped watch unnamed its node while its file still said a holder"
+    );
+}
+
+#[test]
+fn a_stop_with_no_camera_tries_its_nobody_and_node_file_once_more() {
+    // A node file a killed run left, beside a holders file that can't be
+    // written, as in the test of their order.
+    let mut watch = Watch::started("lasting", "", |folder| {
+        fs::create_dir(folder.join(".devices")).unwrap();
+        fs::write(folder.join(".devices/Stand-in"), "/dev/random\n").unwrap();
+        fs::set_permissions(folder, Permissions::from_mode(0o555)).unwrap();
+        assert!(
+            File::create(folder.join("probe")).is_err(),
+            "a locked folder still took a file, as it does for root"
+        );
+    });
+    watch.until(
+        |watch| complaints_of(watch, &watch.file()) == 1,
+        "a nobody it couldn't write went unsaid",
+    );
+    // Unlocked and stopped at once, well inside the second before its next
+    // try, so only the stop's own try can write them.
+    fs::set_permissions(&watch.folder, Permissions::from_mode(0o755)).unwrap();
+    watch.stop();
+    assert!(
+        fs::read_to_string(watch.file()).is_ok_and(|said| said.is_empty()),
+        "a stop with no camera didn't try its nobody once more"
+    );
+    assert!(
+        !watch.device().exists(),
+        "a stop with no camera didn't try its node file once more"
+    );
+}
+
+#[test]
+fn a_stop_as_its_camera_goes_tries_its_nobody_and_node_file_once_more() {
+    let mut watch = Watch::owned("leaving");
+    let camera = watch.root.join("camera");
+    watch.until(
+        |watch| ready(&watch.read("log")) == 1,
+        "a camera whose files were written wasn't said ready",
+    );
+    // Held as it goes, so the nobody said after is a write of its own.
+    let held = File::open(&camera).unwrap();
+    watch.until(
+        |watch| fs::read_to_string(watch.file()).is_ok_and(|said| !said.is_empty()),
+        "a camera held wasn't said held",
+    );
+    // The holders file's folder locked, the node files' folder not.
+    fs::set_permissions(&watch.folder, Permissions::from_mode(0o555)).unwrap();
+    assert!(
+        File::create(watch.folder.join("probe")).is_err(),
+        "a locked folder still took a file, as it does for root"
+    );
+    // Gone, then let go, so the look its closing wakes finds it gone.
+    fs::remove_file(&camera).unwrap();
+    drop(held);
+    watch.until(
+        |watch| complaints_of(watch, &watch.file()) == 1,
+        "a nobody it couldn't write as its camera went went unsaid",
+    );
+    // Unlocked and stopped at once: in the half second the run waits
+    // after a watch, or, on a slow machine, in the second between tries
+    // with no camera. Either way it's the stop's own try that writes them.
+    fs::set_permissions(&watch.folder, Permissions::from_mode(0o755)).unwrap();
+    watch.stop();
+    assert!(
+        fs::read_to_string(watch.file()).is_ok_and(|said| said.is_empty()),
+        "a stop as its camera went didn't try its nobody once more"
+    );
+    assert!(
+        !watch.device().exists(),
+        "a stop as its camera went didn't try its node file once more"
     );
 }
 
