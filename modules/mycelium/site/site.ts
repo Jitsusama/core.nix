@@ -8,8 +8,12 @@
 // A reading is handed over at most every FLOOR_MS, however fast the node
 // moves, since a whole map redraws for each, and none while the tab is
 // hidden: idle means zero, and the latest is handed over as it shows again.
-// Nothing is drawn until every kind has answered once, so the first map is
-// never one with its machines or its messages missing. The balance, each
+// Nothing is drawn until the networks, cells and machines have answered
+// once, so the first map is never one with its machines missing. Messages
+// are waited for only where the node serves no ties, which the map draws
+// its talk from: a node's first answer of them is every message it keeps,
+// once 12,179 of them and 14 s late, for a map that lists the latest few,
+// so it draws without them and says it is still reading them. The balance, each
 // machine's share of the realm's work, and what waits on the mesh are
 // watched apart: a node serves the one only where the balance service runs
 // and the other only once it is new enough, so the map neither waits for
@@ -36,6 +40,12 @@ const NOW_EVENT = "mycelium:now";
 const KINDS = ["network", "cell", "machine", "message"] as const;
 type Kind = (typeof KINDS)[number];
 
+/** The kinds the map is never drawn without. */
+const DRAWN_WITH: readonly Kind[] = ["network", "cell", "machine"];
+
+/** What the standing line adds while the map is drawn and its messages aren't read. */
+const READING_TALK = " Reading what passed between cells.";
+
 const found = document.querySelector("#asof");
 if (!(found instanceof HTMLParagraphElement)) {
   throw new Error("the page has no #asof, where the map says how it stands");
@@ -52,12 +62,19 @@ let waiting: number | undefined;
 let owed = false;
 let expires: number | undefined;
 
-/** The worst of the four watches' states, the one the map says. */
+/**
+ * The worst of the watches' states, the one the map says. Messages still
+ * connecting once the map is drawn are said apart, so a map drawn live
+ * isn't said as one still reaching its node.
+ */
 function standing(): Standing | undefined {
   const order = ["broken", "stale", "connecting", "live"];
-  return [...standings.values()].sort(
-    (one, other) => order.indexOf(one.state) - order.indexOf(other.state),
-  )[0];
+  const counted = [...standings].filter(
+    ([kind, now]) => !(kind === "message" && now.state === "connecting" && drawable()),
+  );
+  return counted
+    .map(([, now]) => now)
+    .sort((one, other) => order.indexOf(one.state) - order.indexOf(other.state))[0];
 }
 
 /**
@@ -86,7 +103,8 @@ function sayHow(): void {
   const now = standing();
   const problems = [...unread.values()];
   const trouble = problems.length > 0 ? ` Couldn't read: ${problems.join("; ")}.` : "";
-  asof.textContent = `${sayStanding(now)}${trouble}`;
+  const reading = drawable() && !answered.has("message") ? READING_TALK : "";
+  asof.textContent = `${sayStanding(now)}${reading}${trouble}`;
   asof.dataset["state"] = now?.state ?? "connecting";
   // The drawing's own look for a map that isn't now.
   asof.classList.toggle("stale", now?.state === "stale" || now?.state === "broken");
@@ -107,10 +125,20 @@ function handOver(): void {
   expires = due === undefined ? undefined : globalThis.setTimeout(owe, due - handed + 1);
 }
 
+/**
+ * Whether the map can be drawn: its networks, cells and machines heard, and
+ * its talk, from the ties where the node serves them, else the messages.
+ */
+function drawable(): boolean {
+  return (
+    DRAWN_WITH.every((kind) => answered.has(kind)) && (answered.has("message") || ties.answered())
+  );
+}
+
 /** Hands a reading over once the floor allows, and while the tab shows. */
 function owe(): void {
   owed = true;
-  if (document.hidden || answered.size < KINDS.length || waiting !== undefined) {
+  if (document.hidden || !drawable() || waiting !== undefined) {
     return;
   }
   const wait = handed + FLOOR_MS - Date.now();
@@ -139,6 +167,9 @@ function watchApart(kind: string): Apart {
     {
       moved: () => {
         answeredOnce = true;
+        // The ties answering can be what lets the map draw before its
+        // messages, which the standing line says.
+        sayHow();
         owe();
       },
       stands: () => undefined,
@@ -156,6 +187,9 @@ function watch(kind: Kind): Held {
       moved: () => {
         answered.add(kind);
         unread.delete(kind);
+        // What the standing line says moves with what has answered, as
+        // much as with how each watch stands.
+        sayHow();
         owe();
       },
       stands: (now) => {
@@ -179,11 +213,17 @@ const forages = watchApart("forage");
 // and never a copy, since a copy would stay as it was first told. What waits
 // is there only once its watch has answered, so a node that doesn't serve it
 // reads as one that says nothing of it rather than one with nothing waiting.
+const messages = watch("message");
+
 const heard: Heard = {
   network: watch("network"),
   cell: watch("cell"),
   machine: watch("machine"),
-  message: watch("message"),
+  // None until told, so a map drawn before its messages says it is still
+  // reading them rather than that nothing passed.
+  get message() {
+    return answered.has("message") ? messages : undefined;
+  },
   balance: watchApart("balance").held,
   builder: watchApart("builder").held,
   get unanswered() {
