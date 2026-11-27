@@ -11,10 +11,12 @@ the arrows on the theme switch choose a look and leave the cursor where it was,
 and the look chosen holds on the next visit. Its mark is drawn in each look's
 own tint from the kit. It passes the web-design skill's page checks at a
 phone's width and a desk's in both looks, and anything it logs fails it. On a
-laptop's short screen its first site stands whole in the first screen, and a
-tall one draws its crest whole. A document whose head is a hero rather than a
-head answers a tap on its shown keys too. The server, the browser and the tab
-are modules/local-sites/tests/live_page.py's.
+laptop's short screen its first site stands whole in the first screen, and
+only a wide screen under 60rem tall tightens the threshold; its crest follows
+the height on a wide screen, tall or between, and a phone's goes by its width.
+A document whose head is a hero rather than a head answers a tap on its shown
+keys too. The server, the browser and the tab are
+modules/local-sites/tests/live_page.py's.
 """
 
 import json
@@ -24,7 +26,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import pytest
 from live_page import LOOKS, SIZES, Opened, serving
@@ -288,9 +290,10 @@ SHUT = ["0px", "0px"]
     ids=["laptop", "between"],
 )
 def test_only_a_screen_under_60rem_tall_tightens_the_threshold(
-    browser: Browser, home: str, size: tuple[int, int], threshold: str
+    browser: Browser, home: str, size: tuple[int, int], threshold: Literal["shut", "open"]
 ) -> None:
     """The threshold's gaps go only on a wide screen shorter than 60rem."""
+    assert threshold in {"shut", "open"}, f"a threshold is shut or open, never {threshold!r}"
     opened = Opened(browser, home, size, "dark")
     try:
         gaps = opened.page.evaluate(GAPS)

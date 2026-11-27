@@ -68,9 +68,11 @@ REDRAWN_MS = 2500
 # What node.json's realm comes to on the map, every part of the count. Its
 # sentence counts the seven sessions alone, as the node counts cells, while
 # the map draws all eight marks, the receptor at the edge among them; the
-# sentence after one session moves, and after the stuck one goes.
+# sentence after one session moves, after the receptor reads mail, said apart
+# from the cells, and after the stuck one goes.
 COUNTED = "7 cells, 2 moving, 1 stuck"
 COUNTED_MOVED = "7 cells, 3 moving, 1 stuck"
+COUNTED_READING = "7 cells, 2 moving, 1 stuck, 1 receptor reading"
 COUNTED_GONE = "6 cells, 2 moving"
 CELLS = 8
 # What a first visit to the map may cost, drawn from the stand-in's cells: what
@@ -599,7 +601,9 @@ def test_a_receptor_reading_moves_the_sentence_and_not_its_count(
     the_map_stands(page, "live")
     the_map_counts(page, COUNTED, "the map miscounted the realm")
     mycelium_node.tell("cell", changed=[{"key": "cell:calls@kestrel", "state": "reading"}])
-    the_map_counts(page, COUNTED_MOVED, "a receptor reading was said quiet, or counted a cell")
+    the_map_counts(
+        page, COUNTED_READING, "a receptor reading was said quiet, or counted a cell or moving one"
+    )
 
 
 # The two cells node.json names "Mend the Sails": the first moving, the
@@ -2355,7 +2359,8 @@ def test_the_legend_shows_what_moves_moving_only_at_his_word(
 # What node.json's cells spent today, as the Spent Today fold lists it under
 # its sum, line by line: by machine and network in Now, by network on osprey
 # with only the cells that run there, and by branch in the skiff's network.
-SPENT_NOW = ["$8.10", "By Machine", "kestrel", "$5.60, 5 cells", "osprey", "$2.50, 3 cells"]
+# kestrel's four sessions, its receptor at the edge no cell of them.
+SPENT_NOW = ["$8.10", "By Machine", "kestrel", "$5.60, 4 cells", "osprey", "$2.50, 3 cells"]
 SPENT_NOW_NETWORKS = ["By Network", "Rig the Skiff for the Season", "$6.10, 5 cells"]
 SPENT_NOW_CELLS = ["Chart the Harbour", "$2.00, 2 cells", "Its Cells", "Rig The Skiff"]
 SPENT_ON_OSPREY = ["$2.50", "By Network", "Chart the Harbour", "$2.00, 2 cells"]

@@ -1824,7 +1824,8 @@
     to the next visit, its mark takes each look's own tint from the kit, a document under a hero
     answers a tap on its keys, the web-design skill's page checks pass at a phone's width and a
     desk's in both looks, with nothing logged, a laptop's 1280 by 800 and 1024 by 768 screens show
-    its first site whole, and a tall screen draws its crest whole
+    its first site whole, only a wide screen under 60rem tall tightens the threshold, and its
+    crest follows the height on a tall wide screen and one between, and a phone's its width
   '';
   home-builds-from-its-rows = ''
     the local sites' home lists each site from its row in sites.json, the settled apart and every

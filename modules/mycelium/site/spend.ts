@@ -3,7 +3,16 @@
 // it spent, how each list is headed, and what the parts past a list's end
 // spent between them. The sums are the sessions' own, as words.ts reads them.
 
-import { allCells, type Cell, money, type Network, plural, spentBy, spentOf } from "./words.ts";
+import {
+  allCells,
+  type Cell,
+  counted,
+  money,
+  type Network,
+  plural,
+  spentBy,
+  spentOf,
+} from "./words.ts";
 
 /** How many rows a list of the fold shows before it counts the rest. */
 export const SPEND_SHOWN = 10;
@@ -70,7 +79,7 @@ export const shownAndRest = <T>(rows: readonly T[]): readonly [readonly T[], rea
 
 /** What a part of a sum spent, over how many cells. */
 export const partWords = (cells: readonly Cell[]): string =>
-  `${money(spentOf(cells))}, ${plural(cells.length, "cell")}`;
+  `${money(spentOf(cells))}, ${plural(counted(cells).length, "cell")}`;
 
 /** What one cell spent, and in how many turns where its session says. */
 export const cellSpendWords = (s: Cell): string => {

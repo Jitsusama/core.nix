@@ -21,6 +21,8 @@ export const STANDING_WORD: Readonly<Record<Standing, string>> = {
 
 /** A cell as the map's reading holds it, of what its words read. */
 export interface Cell {
+  /** A session, or a receptor at the edge, which is never counted a cell. */
+  readonly kind?: string | null | undefined;
   readonly address: string;
   readonly short: string;
   readonly standing: Standing;
@@ -134,6 +136,21 @@ const CENTS = new Intl.NumberFormat("en-CA", {
 /** `n` of a thing, as "1 cell" or "3 cells", or as `many` says more than one. */
 export const plural = (n: number, one: string, many = `${one}s`): string =>
   `${NUMBER.format(n)} ${n === 1 ? one : many}`;
+
+/** The marks that count as cells, as every page counts them: all but the receptors. */
+export const counted = (cells: readonly Cell[]): readonly Cell[] =>
+  cells.filter((s) => s.kind !== "receptor");
+
+/**
+ * How many cells, as every page counts them, the receptors among the marks
+ * named apart beside the number, as "4 cells and 1 receptor".
+ */
+export const cellsSaid = (cells: readonly Cell[]): string => {
+  const cellsAlone = counted(cells).length;
+  const receptors = cells.length - cellsAlone;
+  const said = plural(cellsAlone, "cell");
+  return receptors > 0 ? `${said} and ${plural(receptors, "receptor")}` : said;
+};
 
 /** Dollars, or nothing where there is no sum. */
 export const money = (usd: number | null | undefined): string =>
@@ -288,7 +305,7 @@ export const machineWords = (
   } else if (off) {
     state = `ready, ${off}`;
   }
-  return `${state}, ${plural(cells.length, "cell")}${spentWords(cells)}`;
+  return `${state}, ${cellsSaid(cells)}${spentWords(cells)}`;
 };
 
 /** How a builder stands, as the map says it: each as the node says, but one heard by nobody. */
