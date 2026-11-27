@@ -49,6 +49,20 @@ function said(tells) {
     return [].concat(...tells.map(one => one.told));
 }
 
+// The words of `tells` that `fits` lets the foot say, a whole tell giving
+// way at a time, the newest first, so the oldest keeps the foot's first
+// word. The foot gives way a word at a time (Standing.keysFitted), which
+// knows nothing of where one tell ends: left to it, a narrow foot dropped
+// a refusal's what and left its why beside the next refusal's (#7116's
+// second stack round, 34). The one tell left is cut as any words are.
+function fitting(tells, fits) {
+    let kept = tells;
+    while (kept.length > 1 && !fits(said(kept))) {
+        kept = kept.slice(0, -1);
+    }
+    return said(kept);
+}
+
 // What's said as the launcher opens at `now`: the tells told no more than
 // LAPSES_MS before and their words, loose only where every one of them
 // is, and how many words lapsed, which the journal counts without them.

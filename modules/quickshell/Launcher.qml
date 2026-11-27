@@ -3843,10 +3843,15 @@ Scope {
     // Return giving way first (Standing.keysFitted), counted for stepFits
     // with the facts' fittings (standing.fitNow) in a plain object, since a
     // property read and written as they're fitted would fit them again.
+    // Several tells an opening said give way a whole tell at a time first
+    // (ToldShut.fitting), so one's why never stands beside another's what.
     readonly property var footFitted: ({ keys: 0, facts: 0 })
     function keysFittedIn(told, loose, room) {
         footFitted.keys += 1;
-        return Standing.keysFitted(told, keys => keysWide(keys, loose), room, footYielding);
+        const wide = keys => keysWide(keys, loose);
+        const whole = told === toldSaid.said && toldSaid.tells.length > 1
+            ? ToldShut.fitting(toldSaid.tells, keys => wide(keys) <= room) : told;
+        return Standing.keysFitted(whole, wide, room, footYielding);
     }
 
     // How wide a row's keys are, Return in its place, or loose (say) at

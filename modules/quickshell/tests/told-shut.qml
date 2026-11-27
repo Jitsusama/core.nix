@@ -116,6 +116,22 @@ QtObject {
                 ToldShut.among(offered, [["q", "does nothing"]], offer),
                 ToldShut.among(offered, withOffer.said, came)],
             [true, false, false]);
+        // Fitted into a foot with room for `words` words, as the foot
+        // weighs them (Launcher.qml's keysFittedIn).
+        const roomFor = words => keys => keys.length <= words;
+        const refusals = ToldShut.due(kept([
+            { told: refused("timed out", "VPN not connected"), at: 0,
+                about: "VPN not connected" },
+            { told: refused("no answer", "Home not disconnected"), at: 0,
+                about: "Home not disconnected" }]), minute).tells;
+        const firstWhole = ["timed out", "x"];
+        Expect.same("a narrow foot gives the newest refusal way whole",
+            ToldShut.fitting(refusals, roomFor(3)).map(one => one[0]), firstWhole);
+        Expect.same("and says both where both fit",
+            ToldShut.fitting(refusals, roomFor(4)).map(one => one[0]),
+            ["timed out", "x", "no answer", "x"]);
+        Expect.same("the one tell left is left for the foot to cut",
+            ToldShut.fitting(refusals, roomFor(1)).map(one => one[0]), firstWhole);
         Expect.same("a lapsed tell counts its words",
             opened([{ told: tally(1, 3), at: 0, about: "reopen them all" }],
                 15 * minute + 1).lapsed,
