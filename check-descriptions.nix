@@ -2732,12 +2732,20 @@
     profile, and an unfenced one none, no fence says a launcher when agents' runs are turned
     off, a machine of either system declaring every fence evaluates, a machine kept lively
     says its ceiling, a memory_full or io_full of 0 and the groups its disk pressure is read
-    from included, one naming no groups names none, and one not kept lively says none, the
-    locked mycelium reads that ceiling as kept_lively, an Option<Lively> whose cpu is a u32,
-    memory_available an Option<u64> and, from the lock that first has each, memory_full and
-    io_full an Option<u32> and io_full_from a Vec<String>, read by a scan that fails on what it
-    can't read, with nothing over Lively refusing a field it doesn't know, one declaring
-    nothing has no file, and agents in a realm it doesn't join are refused
+    from included, one naming no groups names none, and one not kept lively says none, one
+    declaring nothing has no file, and agents in a realm it doesn't join are refused
+  '';
+  mycelium-reads-a-lively-ceiling = ''
+    the locked mycelium reads the ceiling a machine kept lively says as kept_lively, an
+    Option<Lively> whose fields, by name and in any order, are cpu a u32, memory_available an
+    Option<u64> and, from the lock that first has each, memory_full and io_full an Option<u32>
+    and io_full_from a Vec<String>, read by a scan that fails on what it can't read; no serde
+    attribute stands over Declared or Lively, a cfg_attr's included, and kept_lively and each
+    of Lively's fields take only default, skip_serializing_if and their own readers. Copies of
+    today's source, each with Lively or Declared renamed or refusing unknown fields, a field
+    skipped, read otherwise, retyped or renamed, or kept_lively retyped or skipped, are each
+    refused for that reason alone, and one with its fields reordered isn't. A lock that drops
+    a part also passes, since core can't tell which lock is meant to have which part
   '';
   mycelium-lends-from-the-store = ''
     a NixOS machine that lends evaluates, and its home realm mycelium node is given what it lends
