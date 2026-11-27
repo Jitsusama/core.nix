@@ -70,17 +70,39 @@ const SO_PEERPIDFD: libc::c_int = 77;
 /// to be its own, or the kernel names no peer by pidfd.
 #[cfg(not(feature = "walks"))]
 pub fn the_shell(stream: &UnixStream) -> Result<(), String> {
-    let untold = |why: io::Error| format!("who asked can't be told: {why}");
     let (pidfd, seen) = peer_of(stream).map_err(untold)?;
+    // SAFETY: getuid has no failure and touches no memory.
+    let uid = unsafe { libc::getuid() };
+    judged(&TAKEN, pidfd, &seen, uid, shells_main_pid)
+}
+
+/// Why who asked can't be told, in the words the shell says.
+fn untold(why: io::Error) -> String {
+    format!("who asked can't be told: {why}")
+}
+
+/// Whether `seen`, the process `pidfd` holds, is the shell under account
+/// `uid`: the one `kept` holds, while both run, with no manager asked;
+/// else as `takes` judges it, asking `main_pid`, and then kept in its
+/// place. Given its store and its manager, so a test holds both.
+///
+/// # Errors
+///
+/// Why it isn't taken for the shell, as `the_shell` says it.
+fn judged(
+    kept: &Mutex<Option<Taken>>,
+    pidfd: OwnedFd,
+    seen: &Seen,
+    uid: u32,
+    main_pid: impl FnOnce() -> io::Result<u32>,
+) -> Result<(), String> {
     // The one taken is looked at before the asker's own pidfd, so an asker
     // with its pid is that same process: both run at once, and no two
     // running processes share a pid.
-    if taken_already(taken().as_ref(), seen.pid) && alive(&pidfd) {
+    if taken_already(taken(kept).as_ref(), seen.pid) && alive(&pidfd) {
         return Ok(());
     }
-    // SAFETY: getuid has no failure and touches no memory.
-    let uid = unsafe { libc::getuid() };
-    if !takes(&seen, uid, shells_main_pid).map_err(untold)? {
+    if !takes(seen, uid, main_pid).map_err(untold)? {
         // Who it was is journalled, quoted as the kernel read it, so an
         // agent asking as Joel can be traced to its own process and unit.
         let unit = seen
@@ -97,7 +119,7 @@ pub fn the_shell(stream: &UnixStream) -> Result<(), String> {
     }
     // Read last, so a pid taken again since any read above can't answer.
     if alive(&pidfd) {
-        *taken() = Some(Taken {
+        *taken(kept) = Some(Taken {
             pidfd,
             pid: seen.pid,
         });
@@ -122,8 +144,10 @@ struct Taken {
     pid: u32,
 }
 
-fn taken() -> std::sync::MutexGuard<'static, Option<Taken>> {
-    TAKEN.lock().unwrap_or_else(PoisonError::into_inner)
+/// What `kept` holds, read through a panic that poisoned it, since a
+/// `Taken` is whole whenever it's written.
+fn taken(kept: &Mutex<Option<Taken>>) -> std::sync::MutexGuard<'_, Option<Taken>> {
+    kept.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 /// Whether `pid` is still the process `taken` stands for: it has that
@@ -142,7 +166,6 @@ fn taken_already(taken: Option<&Taken>, pid: u32) -> bool {
 /// Why: it isn't the shell's program, or it can't be read.
 #[cfg(feature = "walks")]
 pub fn the_shell(stream: &UnixStream) -> Result<(), String> {
-    let untold = |why: io::Error| format!("who asked can't be told: {why}");
     let mut said = libc::ucred {
         pid: 0,
         uid: 0,
@@ -730,6 +753,55 @@ mod tests {
             !taken_already(taken.as_ref(), pid),
             "once it ends, its pid could go to anyone"
         );
+    }
+
+    #[test]
+    fn the_shell_once_taken_is_taken_again_with_no_manager_asked_while_it_runs() {
+        let mut shell = Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .expect("sleep starts");
+        let pid = shell.id();
+        let kept = Mutex::new(None);
+        let seen = in_the_shells_unit(pid, WRAPPED);
+        judged(&kept, pidfd_of(pid), &seen, 1000, || Ok(pid)).expect("its manager names it");
+        let unasked = || -> io::Result<u32> { panic!("the manager was asked") };
+        judged(&kept, pidfd_of(pid), &seen, 1000, unasked).expect("taken as it was");
+        // Its pid alone answers nothing for another process, wherever it runs.
+        let mut other = Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .expect("sleep starts");
+        let beside = Seen {
+            cgroup: format!("{SESSION}/not-quickshell.service\n"),
+            ..in_the_shells_unit(other.id(), WRAPPED)
+        };
+        assert_eq!(
+            judged(&kept, pidfd_of(other.id()), &beside, 1000, unasked),
+            Err(REFUSED.to_owned()),
+            "another process isn't the one taken"
+        );
+        shell.kill().expect("it's killed");
+        shell.wait().expect("it's reaped");
+        // Ended, it is never taken again, so the next asker is judged
+        // whole, its manager asked.
+        let asked = std::cell::Cell::new(false);
+        let named = || {
+            asked.set(true);
+            Ok(pid)
+        };
+        let next = in_the_shells_unit(other.id(), WRAPPED);
+        assert_eq!(
+            judged(&kept, pidfd_of(other.id()), &next, 1000, named),
+            Err(REFUSED.to_owned()),
+            "its manager names another main process"
+        );
+        assert!(
+            asked.get(),
+            "the manager was asked once the taken one ended"
+        );
+        other.kill().expect("it's killed");
+        other.wait().expect("it's reaped");
     }
 
     #[test]
