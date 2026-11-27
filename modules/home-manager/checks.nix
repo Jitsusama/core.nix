@@ -69,6 +69,9 @@ let
   #   it can't;
   # - list-probe, loose-probe and padded-probe say bounds systemd reads
   #   as a list, with no whole number, and padded;
+  # - skipped-probe's list ends in a line systemd can't read, so it skips
+  #   that line and keeps the one before;
+  # - refused-probe says a span systemd's parse_time refuses, "1.h";
   # - reset-probe's last ExecStart line clears the lines before it;
   # - unit-probe's timer names the service it runs, unit-probe-run;
   # - probe@one runs an instance of the template probe@;
@@ -138,6 +141,8 @@ let
         "half-probe"
         "kept-bound-probe"
         "list-probe"
+        "skipped-probe"
+        "refused-probe"
         "loose-probe"
         "padded-probe"
         "reset-probe"
@@ -215,6 +220,13 @@ let
         };
       };
       list-probe = oneshot { Service.TimeoutStartSec = [ "1h" ]; };
+      skipped-probe = oneshot {
+        Service.TimeoutStartSec = [
+          "1h"
+          "10 minuets"
+        ];
+      };
+      refused-probe = oneshot { Service.TimeoutStartSec = "1.h"; };
       loose-probe = oneshot { Service.TimeoutStartSec = ".5h"; };
       padded-probe = oneshot { Service.TimeoutStartSec = "infinity "; };
       reset-probe = oneshot {
@@ -284,13 +296,25 @@ let
       lib.all (name: bound home name == null)
         [
           "list-probe"
+          "skipped-probe"
           "loose-probe"
           "padded-probe"
         ];
+    "a span systemd's parse_time refuses is no bound" = bound home "refused-probe" == "3h";
     "a bound systemd can't read is warned of, by name and key" =
       lib.any (lib.hasInfix "misspelt-probe's TimeoutStartSec") home.warnings
       && lib.any (lib.hasInfix "kept-bound-probe's TimeoutSec") home.warnings
-      && !lib.any (lib.hasInfix "loose-probe") home.warnings;
+      && lib.any (lib.hasInfix "half-probe's TimeoutStartSec") home.warnings
+      && !lib.any (lib.hasInfix "loose-probe") home.warnings
+      && !lib.any (lib.hasInfix "skipped-probe") home.warnings;
+    # Only a run left with no bound systemd reads is told it now ends at
+    # three hours: one whose other key still bounds it isn't.
+    "the warning says three hours only where the base's bound now holds" =
+      let
+        of = name: lib.filter (lib.hasInfix "${name}'s ") home.warnings;
+        hours = name: lib.any (lib.hasInfix "three hours") (of name);
+      in
+      hours "misspelt-probe" && !hours "half-probe" && !hours "kept-bound-probe";
     "a timer's Timer.Unit is the service it keeps" =
       method home "unit-probe-run" == "keep-old" && !(home.systemd.user.services ? unit-probe);
     "a template's instance keeps its run, and its bound, on the template" =

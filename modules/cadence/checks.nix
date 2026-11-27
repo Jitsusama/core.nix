@@ -226,6 +226,35 @@ onLinux {
           };
           says = "cadence-day's TimeoutStartSec \"10 minuets\" is one systemd can't read";
         };
+        "spans systemd's parse_time refuses" = {
+          user = {
+            inherit timers;
+            services = services // {
+              cadence = run "1.h";
+              cadence-day = run "+.5h";
+              cadence-hour = run "1.5.0h";
+              cadence-review = run "10+5min";
+            };
+          };
+          says = "cadence-review's TimeoutStartSec \"10+5min\" is one systemd can't read";
+          also = [
+            "cadence's TimeoutStartSec \"1.h\" is one systemd can't read"
+            "cadence-day's TimeoutStartSec \"+.5h\" is one systemd can't read"
+            "cadence-hour's TimeoutStartSec \"1.5.0h\" is one systemd can't read"
+          ];
+        };
+        "a list whose every line systemd can't read" = {
+          user = {
+            inherit timers;
+            services = services // {
+              cadence-day = run [
+                "10 minuets"
+                ""
+              ];
+            };
+          };
+          says = "cadence-day's TimeoutStartSec [\"10 minuets\",\"\"] is one systemd can't read";
+        };
         "a start timeout systemd can't read over a TimeoutSec it can" = {
           user = {
             inherit timers;
@@ -469,10 +498,14 @@ onLinux {
         "timeouts systemd reads in its looser spellings" = {
           inherit timers;
           services = services // {
-            cadence = run [ "1h" ];
+            cadence = run [
+              "1h"
+              "10 minuets"
+            ];
             cadence-day = run ".5h";
-            cadence-hour = run " +1.h\t";
+            cadence-hour = run " +1.5h\t";
             cadence-review = run 1.5;
+            cadence-repo-day = run "12.34s.56 1h30m";
           };
         };
         "an ExecStart cleared, then given again" = {
@@ -549,11 +582,14 @@ onLinux {
             said = problemsOf (
               lib.removeAttrs case [
                 "says"
+                "also"
                 "unsaid"
               ]
             );
           in
-          !lib.any (lib.hasInfix case.says) said
+          # Each of `also` must be said too, so a case of several stand-ins
+          # proves each is refused, not only the first.
+          !lib.all (says: lib.any (lib.hasInfix says) said) ([ case.says ] ++ case.also or [ ])
           || lib.any (unsaid: lib.any (lib.hasInfix unsaid) said) (case.unsaid or [ ])
         ) (refused // refusedNamed)
       );

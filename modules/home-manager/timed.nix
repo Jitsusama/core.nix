@@ -47,70 +47,82 @@ rec {
     in
     lines == [ ] || last == null || lib.trim (toString last) == "";
 
-  # A time span as systemd reads one: numbers, each with a unit it knows
-  # or none, a number as strtod reads it, with a sign or a stop at
-  # either end, and spaces or tabs between.
+  # A time span as systemd's parse_time reads one: numbers, each with a
+  # unit it knows or none, and spaces or tabs between. A number is whole,
+  # with a plus before it or not, and may have a stop and digits after;
+  # or it is a stop and digits alone. A number with no unit must be
+  # followed by a space or tab, or end the span, so "1.5.0h" and "10+5"
+  # are refused, and "1.h" and "+.5h" too, as systemd refuses each.
   span =
     let
-      units = lib.concatStringsSep "|" [
-        "usec"
-        "us"
-        "µs"
-        "μs"
-        "msec"
-        "ms"
-        "seconds"
-        "second"
-        "sec"
-        "s"
-        "minutes"
-        "minute"
-        "min"
-        "m"
-        "hours"
-        "hour"
-        "hr"
-        "h"
-        "days"
-        "day"
-        "d"
-        "weeks"
-        "week"
-        "w"
-        "months"
-        "month"
-        "M"
-        "years"
-        "year"
-        "y"
-      ];
+      number = "(\\+?[0-9]+(\\.[0-9]+)?|\\.[0-9]+)";
+      united = "${number}[[:blank:]]*(${units})";
     in
-    "([[:blank:]]*\\+?([0-9]+(\\.[0-9]*)?|\\.[0-9]+)[[:blank:]]*(${units})?)+[[:blank:]]*";
+    "[[:blank:]]*((${united})[[:blank:]]*|${number}[[:blank:]]+)*((${united})|${number})[[:blank:]]*";
+
+  # The units systemd's time spans take.
+  units = lib.concatStringsSep "|" [
+    "usec"
+    "us"
+    "µs"
+    "μs"
+    "msec"
+    "ms"
+    "seconds"
+    "second"
+    "sec"
+    "s"
+    "minutes"
+    "minute"
+    "min"
+    "m"
+    "hours"
+    "hour"
+    "hr"
+    "h"
+    "days"
+    "day"
+    "d"
+    "weeks"
+    "week"
+    "w"
+    "months"
+    "month"
+    "M"
+    "years"
+    "year"
+    "y"
+  ];
 
   # A key's value as systemd reads it: home-manager writes a list as one
-  # line each, and the last line wins; a string is read trimmed.
+  # line each, and systemd skips a line it can't read, so the last line it
+  # can read wins, or, when it can read none, the last is the one said; a
+  # string is read trimmed.
   said =
     value:
     let
-      last =
-        if !builtins.isList value then
-          value
-        else if value == [ ] then
-          null
-        else
-          lib.last value;
+      lines = map (line: if builtins.isString line then lib.trim line else line) (lib.toList value);
+      kept = lib.filter readsAs lines;
     in
-    if builtins.isString last then lib.trim last else last;
+    if lines == [ ] then
+      null
+    else if !builtins.isList value then
+      lib.head lines
+    else if kept != [ ] then
+      lib.last kept
+    else
+      lib.last lines;
 
-  # A timeout systemd reads: a number not below zero, a span, or
-  # infinity. One it can't read it drops, as if it weren't there.
-  readable =
-    value:
-    let
-      v = said value;
-    in
+  # Whether systemd reads one line as a timeout: a number not below zero,
+  # a span, or infinity.
+  readsAs =
+    v:
     ((builtins.isInt v || builtins.isFloat v) && v >= 0)
     || (builtins.isString v && (builtins.match span v != null || v == "infinity"));
+
+  # A timeout systemd reads: one whose line it reads. One it can't read
+  # it drops, as if it weren't there.
+  readable = value: readsAs (said value);
 
   # Whether a timeout ends a hang: a number above zero, or a span holding
   # a digit other than zero. Zero and infinity end nothing.
@@ -131,7 +143,8 @@ rec {
   timeout =
     service:
     let
-      given = lib.filter (key: service ? ${key}) [
+      # An empty list writes no line, so it is no key given.
+      given = lib.filter (key: service ? ${key} && service.${key} != [ ]) [
         "TimeoutStartSec"
         "TimeoutSec"
       ];
