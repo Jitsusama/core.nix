@@ -245,13 +245,14 @@ fn snapshot(
         }
         // An app's thread blocked in the kernel, on a lock, a page read back or reclaim, hangs
         // its window without waiting for a CPU, so its time blocked is read beside its waits.
+        // Its sched file is read once, for both.
+        let sched_text = kernel::text(&thread.schedstat.with_file_name("sched"));
         if apps::is_app(thread)
-            && let Some(ns) =
-                kernel::blocked(&kernel::text(&thread.schedstat.with_file_name("sched")))
+            && let Some(ns) = kernel::blocked(&sched_text)
         {
             s.blocked.insert(thread.clone(), ns);
         }
-        if let Some(sched) = kernel::read_sched(&thread.schedstat) {
+        if let Some(sched) = kernel::read_sched_beside(&thread.schedstat, &sched_text) {
             if hidden {
                 s.resting.insert(thread.clone(), sched);
             } else {
@@ -706,7 +707,9 @@ mod tests {
             fs::write(at.join("stat"), &stat).unwrap();
             fs::write(dir.join(pid).join("stat"), &stat).unwrap();
             if let Some(ms) = blocked {
-                let sched = format!("slack ({pid}, #threads: 9)\nstats.sum_block_runtime : {ms}\n");
+                let sched = format!(
+                    "slack ({pid}, #threads: 9)\n----------------\nstats.sum_block_runtime : {ms}\n"
+                );
                 fs::write(at.join("sched"), sched).unwrap();
             }
             kernel::Thread {

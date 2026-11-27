@@ -72,6 +72,7 @@ fn a_sched_file_gives_the_time_blocked_only_while_it_is_kept() {
         "the time blocked wasn't read from its line"
     );
     let unkept = "cat (7, #threads: 1)\n\
+                  ----------------------------------------\n\
                   se.sum_exec_runtime          :          1.019739\n";
     assert_eq!(blocked(unkept), None, "a file without it read as blocked");
 }
@@ -79,6 +80,7 @@ fn a_sched_file_gives_the_time_blocked_only_while_it_is_kept() {
 #[test]
 fn a_sched_file_gives_the_wait_for_a_cpu_never_the_wait_for_a_disk() {
     let kept = "slack (7, #threads: 30)\n\
+                ----------------------------------------\n\
                 iowait_sum                   :        900.000000\n\
                 wait_sum                     :         12.250000\n";
     assert_eq!(
@@ -87,6 +89,7 @@ fn a_sched_file_gives_the_wait_for_a_cpu_never_the_wait_for_a_disk() {
         "the wait wasn't read from its line"
     );
     let only_io = "slack (7, #threads: 30)\n\
+                   ----------------------------------------\n\
                    iowait_sum                   :        900.000000\n";
     assert_eq!(
         waited(only_io),
@@ -96,12 +99,35 @@ fn a_sched_file_gives_the_wait_for_a_cpu_never_the_wait_for_a_disk() {
 }
 
 #[test]
+fn a_thread_s_own_name_never_reads_as_a_count() {
+    let forged = "wait_sum: 9000000\n (7, #threads: 1)\n\
+                  ----------------------------------------\n\
+                  wait_sum                     :         12.250000\n\
+                  stats.sum_block_runtime      :          3.000000\n";
+    assert_eq!(
+        waited(forged),
+        Some(12_250_000),
+        "a line in the thread's name was read as its wait"
+    );
+    let no_header = "wait_sum : 2.000000\nstats.sum_block_runtime : 3.000000\n";
+    assert_eq!(waited(no_header), None, "a file without its header was read");
+    assert_eq!(
+        blocked(no_header),
+        None,
+        "a file without its header was read"
+    );
+}
+
+#[test]
 fn a_thread_s_fair_count_is_read_beside_its_schedstat() {
     let root = std::env::temp_dir().join(format!("lag-watch-wait-{}", std::process::id()));
     let _ = fs::remove_dir_all(&root);
     let kept = root.join("7/task/7/schedstat");
     write(&kept, "5000000 999000000 40\n");
-    write(&kept.with_file_name("sched"), "wait_sum : 2.000000\n");
+    write(
+        &kept.with_file_name("sched"),
+        "t (7, #threads: 1)\n----------------\nwait_sum : 2.000000\n",
+    );
     assert_eq!(
         read_sched(&kept),
         Some(Sched {
@@ -192,6 +218,31 @@ fn a_wait_the_two_count_either_side_of_a_read_is_counted_once_both_have() {
         windows(&[(0, 0), (0, 300), (300, 300)]),
         [0, 300],
         "a wait ending between the files was lost"
+    );
+}
+
+#[test]
+fn growth_that_pays_what_is_owed_is_never_owed_again() {
+    // The fair count's 500 pays the schedstat's 200 owed, and only its
+    // other 300 is owed on; the schedstat's 500 after it can then book
+    // no more than those 300, so the three windows count the lesser
+    // total, 500, never 700.
+    assert_eq!(
+        windows(&[(0, 0), (200, 0), (200, 500), (700, 500)]),
+        [0, 200, 300],
+        "what paid a debt was owed again"
+    );
+}
+
+#[test]
+fn a_fair_count_that_went_back_lets_go_of_what_was_owed() {
+    // The schedstat books a 4 s sleep and the fair count then goes back,
+    // as when schedstats is turned off and on: what was owed goes with
+    // it, so the fair count's growth after it pays nothing.
+    assert_eq!(
+        windows(&[(0, 0), (4_000, 10), (4_000, 5), (4_000, 4_005)]),
+        [10, 0, 0],
+        "a sleep owed survived the fair count going back"
     );
 }
 
