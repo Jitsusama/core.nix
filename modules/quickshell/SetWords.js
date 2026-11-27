@@ -135,16 +135,16 @@ function setting(arg, options) {
     if (words.length === 0) {
         return { changes: [{ option: "all", how: "show", value: "" }] };
     }
-    const changes = [];
+    const asked = [];
     for (const word of words) {
         const change = word === "all" ? { option: "all", how: "show", value: "" }
             : setOne(word, options);
         if (change.error !== undefined) {
             return change;
         }
-        changes.push(change);
+        asked.push(change);
     }
-    return { changes };
+    return { changes: asked };
 }
 
 // Whether :set's plans, each { steps } of { change }, change any option,
