@@ -18,8 +18,12 @@ heard() {
 heard "a slow key" "launcher: 13 letters took 900 ms"
 heard "a slow step, its arrow kept" "launcher: → 13 letters took 900 ms"
 heard "a slow key of the launcher's own, said whole" 'launcher: "page down" took 900 ms'
-heard "a key heard late, timed from its press" \
-  'launcher: "down" took 45 ms to its frame, heard 37 ms after its press, 2 ms searching'
+# Its lateness said last, so what reads a line's first figures reads it as any other.
+if ! grep -aqE '"down" took 45 ms to its frame, 2 ms searching.*, heard 37 ms after its press$' \
+  "$said"; then
+  echo "a key heard late, timed from its press, isn't said as it should be"
+  failed=1
+fi
 
 if grep -aF 'Harbour' "$said"; then
   echo "a line names the row with reports off"

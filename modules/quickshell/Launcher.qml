@@ -7742,16 +7742,15 @@ Scope {
         // opening's work drew within 8 ms of it and was never said (ZINAWZ,
         // 2026-11-27, #6934's arrow case). How late it was heard is said
         // apart; a key no press made, as through IPC, is timed from its
-        // handler.
-        const late = newest.stamped ? Math.max(0, Math.round(newest.heard - newest.pressed))
-            : 0;
+        // handler (Trials.qml's fromPress).
+        const felt = trials.fromPress(drawn, newest);
         // Its time after its own work said apart, as a drawer's is: waiting
         // for the frame that drew it, then drawing it, so a key whose frame
         // came 80 ms after a 30 ms search says which held it (Joel's "ag",
         // 2026-11-11).
-        trials.timed(newest.searched, drawn - newest.began + late, newest.parts, newest.text,
+        trials.timed(newest.searched, felt.took, newest.parts, newest.text,
             Object.assign({
-                heardLate: late,
+                heardLate: felt.late,
                 waiting: Math.round(newest.begun - newest.done),
                 drawing: Math.round(shown - newest.begun),
                 collecting: Math.round(Heap.collected() - newest.collected),

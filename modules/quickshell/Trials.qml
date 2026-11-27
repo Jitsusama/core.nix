@@ -88,7 +88,7 @@ Scope {
         const whole = Options.reports || own === true;
         if (Trials.felt(drawn))
             console.info(`launcher: ${Presented.timedShown(typed, step, whole, stepKey)} took`
-                + ` ${drawn} ms to its frame, ${heardLate(frame)}${searched} ms`
+                + ` ${drawn} ms to its frame, ${searched} ms`
                 + " searching" + (parts
                     ? ` (lists ${parts.lists}${Stepped.slowest(parts.each, parts)},`
                     + ` rows ${parts.rows}${matched(parts.rows, parts.within)},`
@@ -101,14 +101,29 @@ Scope {
                 + (frame ? `, then ${frame.waiting} waiting for its frame and ${frame.drawing}`
                     + " drawing it" + Thread.drawingApart(frame) + collecting(frame, drawn)
                     + framesBeforeSaid(frame)
-                    + Thread.said(searched, frame.thread, "its searching") : ""));
+                    + Thread.said(searched, frame.thread, "its searching") : "")
+                + heardLate(frame));
+    }
+
+    // How long a key took to its frame as Joel felt it, from `drawn`, the
+    // wall time its frame came, and `key` as Launcher.qml's keyTimed keeps
+    // it: from its handler's start, and how late after its press the shell
+    // heard it where the compositor stamped one, which `late` says apart. A
+    // key no press made, as through IPC or typed by wtype with no time
+    // (keytimes.cpp), is timed from its handler alone, and one heard before
+    // its press, as a clock's step would read, as heard on time.
+    function fromPress(drawn, key) {
+        const late = key.stamped ? Math.max(0, Math.round(key.heard - key.pressed)) : 0;
+        return { took: drawn - key.began + late, late: late };
     }
 
     // How long after its press the shell heard a key, where it was late,
-    // which its time to its frame counts from the press (Launcher.qml's
-    // keyDrawn); nothing where it was heard as it was pressed.
+    // which its time to its frame counts from the press (fromPress); nothing
+    // where it was heard as it was pressed. Said last, so what reads a
+    // line's first figures, as desktop-keeps-pace's STEP_SAID does, reads a
+    // key heard late as it reads any other (#7087's review, F1).
     function heardLate(frame) {
-        return (frame?.heardLate ?? 0) > 0 ? `heard ${frame.heardLate} ms after its press, ` : "";
+        return (frame?.heardLate ?? 0) > 0 ? `, heard ${frame.heardLate} ms after its press` : "";
     }
 
     // How much of the key, from its being heard to its frame, Qt's

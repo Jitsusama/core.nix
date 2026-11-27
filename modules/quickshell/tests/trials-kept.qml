@@ -139,6 +139,16 @@ ShellRoot {
                 // step keeping its arrow, and the launcher's own key whole;
                 // and a down arrow heard 37 ms after its press, timed from
                 // the press, which says how late it was heard.
+                // A stamped key is timed from its press, how late it was
+                // heard said apart; one with no press time, or heard before
+                // it, from its handler alone (Trials.qml's fromPress).
+                const pressed = (stamped, heard) => root.made.fromPress(1000,
+                    { began: 960, stamped: stamped, heard: heard, pressed: 463 });
+                const felt = [pressed(true, 500.4), pressed(false, 500.4), pressed(true, 450)];
+                const meant = [{ took: 77, late: 37 }, { took: 40, late: 0 },
+                    { took: 40, late: 0 }];
+                if (JSON.stringify(felt) !== JSON.stringify(meant))
+                    return Expect.fail(`a key's press timed as ${JSON.stringify(felt)}`);
                 root.made.opened();
                 root.made.timed(2, 45, null, "down", { heardLate: 37 }, "", true);
                 root.made.timed(2, 900, null, "Harbour House", null, "");
