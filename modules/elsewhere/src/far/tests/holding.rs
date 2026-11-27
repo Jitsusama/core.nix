@@ -7,8 +7,8 @@
 //! over once it went waited for, and links at
 //! the copies' folder or the copy, put while it's made, leaving it
 //! untaken, or put as the list of what's brought back is sorted, cutting
-//! the list, and a link put at the job's folder in the copy before it's
-//! entered leaving it untaken.
+//! the list, and a link put at the job's folder in the copy, or above the
+//! copy itself, before it's entered leaving it untaken.
 
 use std::path::Path;
 use std::time::{Duration, Instant};
@@ -602,6 +602,60 @@ fn a_link_put_above_the_job_s_folder_in_its_copy_before_it_s_entered_leaves_it_u
     assert!(
         code == Some(75) && err.contains("the job's copy was moved or linked from its place"),
         "the far line didn't leave the job untaken and say its copy moved ({code:?}): {err}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
+fn a_link_put_above_the_copy_before_it_s_entered_leaves_it_untaken() {
+    // A find of what isn't a file or a folder that, once it has looked,
+    // moves the quest's scratch aside and puts a link at its name to a
+    // decoy holding the job's folders, as a job of the quest may
+    // meanwhile: the cd and the copy's name read again then both lead into
+    // the decoy, so only where the copy was as it was made tells.
+    let finding = refusing(
+        "find",
+        "*\" -type l -o -type p \"*",
+        "find \"$@\"; found=$?; s=${1%/*/*}; [ -e \"$HOME/aside\" ] ||
+         { mkdir -p \"$HOME/decoy/${1#\"$s\"/}/sub/deep\" && mv \"$s\" \"$HOME/aside\" &&
+           ln -s \"$HOME/decoy\" \"$s\"; }; exit $found",
+    );
+    let (code, err, home) = far_line_in(
+        Path::new("sub/deep"),
+        Left::Whole,
+        &[("sub/deep/x", "x")],
+        "touch \"$HOME/ran\"",
+        &kind(""),
+        None,
+        &[(finding.0, finding.1.as_str())],
+    );
+    assert!(
+        home.join("aside").exists() && !home.join("ran").exists(),
+        "the job ran in a decoy reached through a link put above its copy ({code:?}): {err}"
+    );
+    assert!(
+        code == Some(75) && err.contains("the job's copy was moved or linked from its place"),
+        "the far line didn't leave the job untaken and say its copy moved ({code:?}): {err}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
+fn a_job_in_a_folder_whose_name_ends_in_a_newline_runs_there_in_its_copy() {
+    // The folder's name keeps its newline where it's measured against the
+    // copy's, which a substitution of pwd would strip.
+    let (code, err, home) = far_line_in(
+        Path::new("sub\n"),
+        Left::Whole,
+        &[("sub\n/x", "x")],
+        "touch \"$HOME/ran\"",
+        &kind(""),
+        None,
+        &[],
+    );
+    assert!(
+        code == Some(0) && home.join("ran").exists(),
+        "the job wasn't entered in a folder whose name ends in a newline ({code:?}): {err}"
     );
     let _ = std::fs::remove_dir_all(&home);
 }

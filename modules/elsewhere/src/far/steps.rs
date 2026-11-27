@@ -255,10 +255,11 @@ pub(super) const CACHE: &str =
 /// given away whole, its folders made the far line's own to enter and
 /// write first, since a job may close one so that nothing under it can be
 /// taken, `copies`, true once no link stands at the copies' folder,
-/// `placed`, true once none stands at the copy either, and `stays`,
-/// saying where one can't be cleared that the copy stays. It comes first,
-/// before any step that clears, so each finds all four whichever runs
-/// first. `cleared` opens what its walk meets only below
+/// `placed`, true once none stands at the copy either, `pinned` and
+/// `entered`, which keep where the copy was made and ask the job's folder
+/// is in it, and `stays`, saying where one can't be cleared that the copy
+/// stays. It comes first, before any step that clears, so each finds all
+/// of them whichever runs first. `cleared` opens what its walk meets only below
 /// each path, and a link met there as itself alone; a folder above a path
 /// is passed through as `rm` passes it.
 pub(super) const CLEARING: &str = r#"# Takes each path away whole,
@@ -299,13 +300,24 @@ copies() {
 placed() {
   copies && [ -d "$work" ] && [ ! -L "$work" ]
 }
+# Keeps where the copy was made, read once as it's made, so `entered`
+# measures the job's folder against that rather than where the copy's
+# name leads by the cd: a link put above the copy meanwhile would lead
+# both the cd and a second read to wherever it points. The dot keeps a
+# name's trailing newlines, which a substitution would strip.
+pinned() {
+  place=$(cd -P "$work" && pwd -P && echo .) && place=${place%?.}
+}
 # True once the copy is `placed` and the working folder is the very one
-# the copy holds at `$1` within it, by where the cd landed, not by names:
-# a link put at a folder of the copy, or above it and taken down again,
-# around the cd would otherwise have the job run where it points. Where
-# the copy's own place can't be read, nothing is taken as entered.
+# the copy held at `$1` within it as it was made, by where the cd landed,
+# not by names: a link put at a folder of the copy, or above it, around
+# the cd would otherwise have the job run where it points. Both its path
+# and the folder itself are asked, since a shell's pwd -P may resolve
+# the path it remembers by name rather than ask where it is. Where the
+# copy's place wasn't read, nothing is taken as entered.
 entered() {
-  placed && place=$(cd -P "$work" && pwd -P) && [ "$(pwd -P)" = "$place${1:+/$1}" ]
+  placed && [ -n "$place" ] && cwd=$(pwd -P && echo .) &&
+    [ "${cwd%?.}" = "$place${1:+/$1}" ] && [ . -ef "$place${1:+/$1}" ]
 }
 # Says the copy isn't the folder it was where `placed` no longer holds.
 moved() {

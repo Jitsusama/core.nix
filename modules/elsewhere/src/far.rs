@@ -301,7 +301,7 @@ pub fn script(
         r#"{CACHE}
 job={job}
 work={work}
-mine= tab=$(printf '\t')
+mine= place= tab=$(printf '\t')
 {CLEARING}
 {crossing}
 {copying}
@@ -325,7 +325,7 @@ say() {{ printf '\n%s\n' "$1"; }}
 if {{ [ ! -L "$runs" ] || rm -f "$runs"; }} && mkdir -p "$runs" &&
   {{ [ ! -L "$work{RUN}" ] || rm -f "$work{RUN}"; }} &&
   (set -C && printf '%s %s\n' "$$" "$here" > "$work{RUN}") && mine=1 &&
-  copies && cleared "$work" && mkdir "$work"; then copied; why=$?; else why=2; fi
+  copies && cleared "$work" && mkdir "$work" && pinned; then copied; why=$?; else why=2; fi
 # What was taken as an archive may be a folder the job named as one. A
 # link standing at the copies' folder or at the copy as it's checked, or
 # a copy gone with one cleared, leaves it untaken, as this machine's, as
