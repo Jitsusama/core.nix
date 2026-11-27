@@ -222,7 +222,10 @@ mod tests {
 
         let going = greet(&mut client).unwrap();
 
-        assert!(going);
+        assert!(
+            going,
+            "a client offering a username and password should go on"
+        );
         assert_eq!(client.answered, [VERSION, USERNAME_PASSWORD]);
     }
 
@@ -232,7 +235,10 @@ mod tests {
 
         let going = greet(&mut client).unwrap();
 
-        assert!(!going);
+        assert!(
+            !going,
+            "a client offering no username and password should stop"
+        );
         assert_eq!(client.answered, [VERSION, NO_ACCEPTABLE_METHOD]);
     }
 
@@ -242,7 +248,10 @@ mod tests {
 
         let going = authenticate(&mut client, &window()).unwrap();
 
-        assert!(going);
+        assert!(
+            going,
+            "the window's own username and password should let it on"
+        );
         assert_eq!(client.answered, [1, 0]);
     }
 
@@ -252,7 +261,7 @@ mod tests {
 
         let going = authenticate(&mut client, &window()).unwrap();
 
-        assert!(!going);
+        assert!(!going, "a guessed password should be refused");
         assert_eq!(client.answered, [1, 1]);
     }
 
