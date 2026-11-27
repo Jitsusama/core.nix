@@ -21,6 +21,7 @@ use tokio::time::Duration;
 
 use crate::air::Heard;
 use crate::choose;
+use crate::state::Security;
 
 /// How far back a call's echoes are counted. The card echoes once a
 /// second, so it holds about ten.
@@ -120,13 +121,15 @@ pub enum Way {
 /// only where it hears none as wide within reach, as 2.4 GHz brought the
 /// 17 Nov 2026 downloads down to 54 to 76% (choose.rs), and a give-way
 /// settles where it lands. A point that says another security than the
-/// card's own is never given way to: the card's network can't be joined
-/// there, and a radio in range naming itself the network could otherwise
-/// pull a call off its point with a loud beacon alone. Where the card's
-/// own point isn't heard, nothing says its security, so it gives way to
-/// none.
+/// network is saved with (`security`, as `Joined::security`) is never
+/// given way to: the card's network can't be joined there, and a radio in
+/// range naming itself the network could otherwise pull a call off its
+/// point with a loud beacon alone. That's the saved network's word, not
+/// the card's own point's, which anyone in range can change too. Where
+/// the network isn't saved, nothing says its security, so a call gives
+/// way to none.
 pub fn giving_way(
-    point: &str,
+    (point, security): (&str, Option<Security>),
     (lost, signal): (usize, Option<i32>),
     around: &[Heard],
     kept_off: impl Fn(&str) -> bool,
@@ -158,7 +161,7 @@ pub fn giving_way(
     let best = around
         .iter()
         .filter(|heard| heard.bssid != point && !kept_off(&heard.bssid))
-        .filter(|heard| own.is_some_and(|own| heard.security == own.security))
+        .filter(|heard| security == Some(heard.security))
         .filter_map(|heard| Some((why(heard)?, heard)))
         .max_by_key(|(_, heard)| (!choose::wider(frequency, heard.frequency), heard.signal));
     match (best, faint) {
@@ -176,7 +179,9 @@ pub fn giving_way(
 mod tests {
     use super::*;
     use crate::radio::Radio;
-    use crate::state::Security;
+
+    /// How the tests' network is saved to be joined.
+    const SAVED: Option<Security> = Some(Security::Personal);
 
     const DESK: &str = "6c:ae:f6:c1:84:26";
     const HALL: &str = "6c:ae:f6:ba:85:86";
@@ -217,8 +222,8 @@ mod tests {
     fn a_call_gives_way_on_the_second_echo_lost_in_ten_seconds_not_the_first() {
         let around = [heard(DESK, -45), heard(HALL, -48)];
 
-        let one = giving_way(DESK, (1, Some(-45)), &around, none);
-        let two = giving_way(DESK, (2, Some(-45)), &around, none);
+        let one = giving_way((DESK, SAVED), (1, Some(-45)), &around, none);
+        let two = giving_way((DESK, SAVED), (2, Some(-45)), &around, none);
 
         assert_eq!(one, Way::Holds, "a lone lost echo moves no call");
         assert_eq!(
@@ -237,8 +242,8 @@ mod tests {
         let within = [heard(DESK, -45), heard(HALL, -51)];
         let past = [heard(DESK, -45), heard(HALL, -52)];
 
-        let taken = to(giving_way(DESK, (3, Some(-45)), &within, none));
-        let kept = giving_way(DESK, (3, Some(-45)), &past, none);
+        let taken = to(giving_way((DESK, SAVED), (3, Some(-45)), &within, none));
+        let kept = giving_way((DESK, SAVED), (3, Some(-45)), &past, none);
 
         assert_eq!(
             taken.map(|giving| giving.to),
@@ -258,8 +263,8 @@ mod tests {
         // the last frame it heard.
         let around = [heard(DESK, -42), heard(HALL, -60)];
 
-        let four = giving_way(DESK, (4, Some(-42)), &around, none);
-        let five = to(giving_way(DESK, (5, Some(-42)), &around, none));
+        let four = giving_way((DESK, SAVED), (4, Some(-42)), &around, none);
+        let five = to(giving_way((DESK, SAVED), (5, Some(-42)), &around, none));
 
         assert_eq!(four, Way::Nowhere(Why::Lossy(4)), "four lost may be air");
         assert_eq!(
@@ -275,8 +280,8 @@ mod tests {
         // the link is tells them apart.
         let around = [heard(DESK, -60), heard(HALL, -60)];
 
-        let at = giving_way(DESK, (0, Some(-72)), &around, none);
-        let past = giving_way(DESK, (0, Some(-73)), &around, none);
+        let at = giving_way((DESK, SAVED), (0, Some(-72)), &around, none);
+        let past = giving_way((DESK, SAVED), (0, Some(-73)), &around, none);
 
         assert_eq!(at, Way::Holds, "at -72 dBm the link holds");
         assert_eq!(
@@ -294,7 +299,7 @@ mod tests {
     fn a_faint_call_gives_way_to_no_point_less_than_eight_db_stronger() {
         let around = [heard(DESK, -60), heard(HALL, -67)];
 
-        let held = giving_way(DESK, (0, Some(-74)), &around, none);
+        let held = giving_way((DESK, SAVED), (0, Some(-74)), &around, none);
 
         assert_eq!(
             held,
@@ -312,9 +317,9 @@ mod tests {
         let enough = [heard(DESK, -74), heard_on(NEAR, -56, 2437)];
         let wide = [heard(DESK, -74), heard(HALL, -66)];
 
-        let held = giving_way(DESK, (0, Some(-74)), &short, none);
-        let narrowed = to(giving_way(DESK, (0, Some(-74)), &enough, none));
-        let widened = to(giving_way(DESK, (0, Some(-74)), &wide, none));
+        let held = giving_way((DESK, SAVED), (0, Some(-74)), &short, none);
+        let narrowed = to(giving_way((DESK, SAVED), (0, Some(-74)), &enough, none));
+        let widened = to(giving_way((DESK, SAVED), (0, Some(-74)), &wide, none));
 
         assert_eq!(held, Way::Nowhere(Why::Faint(-74)), "17 dB isn't enough");
         assert_eq!(narrowed.map(|giving| giving.to), Some(NEAR.into()), "18 is");
@@ -331,10 +336,10 @@ mod tests {
         // hears it faded now.
         let around = [heard(DESK, -48), heard(HALL, -40)];
 
-        let faded = to(giving_way(DESK, (0, Some(-78)), &around, none));
+        let faded = to(giving_way((DESK, SAVED), (0, Some(-78)), &around, none));
         // And the other way: a look heard it faint, the kernel loud now.
         let heard_faint = [heard(DESK, -78), heard(HALL, -40)];
-        let loud = giving_way(DESK, (0, Some(-50)), &heard_faint, none);
+        let loud = giving_way((DESK, SAVED), (0, Some(-50)), &heard_faint, none);
 
         assert_eq!(
             faded.map(|giving| giving.why),
@@ -352,9 +357,12 @@ mod tests {
     fn a_call_gives_way_to_the_loudest_point_not_kept_off() {
         let around = [heard(DESK, -78), heard(HALL, -40), heard(ROOM, -55)];
 
-        let giving = to(giving_way(DESK, (0, Some(-78)), &around, |point| {
-            point == HALL
-        }));
+        let giving = to(giving_way(
+            (DESK, SAVED),
+            (0, Some(-78)),
+            &around,
+            |point| point == HALL,
+        ));
 
         assert_eq!(
             giving.map(|giving| giving.to),
@@ -374,8 +382,8 @@ mod tests {
             heard(HALL, -60),
         ];
 
-        let faded = to(giving_way(DESK, (0, None), &fresh, none));
-        let unknown = giving_way(DESK, (0, None), &stale, none);
+        let faded = to(giving_way((DESK, SAVED), (0, None), &fresh, none));
+        let unknown = giving_way((DESK, SAVED), (0, None), &stale, none);
 
         assert_eq!(
             faded.map(|giving| giving.why),
@@ -395,8 +403,8 @@ mod tests {
         ];
         let narrower = [heard(DESK, -50), heard_on(NEAR, -40, 2437)];
 
-        let wide = to(giving_way(DESK, (2, Some(-50)), &both, none));
-        let only = to(giving_way(DESK, (2, Some(-50)), &narrower, none));
+        let wide = to(giving_way((DESK, SAVED), (2, Some(-50)), &both, none));
+        let only = to(giving_way((DESK, SAVED), (2, Some(-50)), &narrower, none));
 
         assert_eq!(
             wide.map(|giving| giving.to),
@@ -420,7 +428,7 @@ mod tests {
             },
         ];
 
-        let way = giving_way(DESK, (5, Some(-78)), &around, none);
+        let way = giving_way((DESK, SAVED), (5, Some(-78)), &around, none);
 
         assert_eq!(
             way,
@@ -430,15 +438,41 @@ mod tests {
     }
 
     #[test]
-    fn a_call_whose_own_point_is_unheard_gives_way_to_none() {
-        let unsure = [heard(HALL, -40)];
+    fn a_call_vouches_for_a_point_by_its_saved_network_not_its_own_point() {
+        let open = |bssid, signal| Heard {
+            security: Security::Open,
+            ..heard(bssid, signal)
+        };
+        // A radio naming itself the network open, the card's own point's
+        // beacon said open too.
+        let forged = [open(DESK, -78), open(HALL, -40)];
+        let unheard = [heard(HALL, -40)];
 
-        let way = giving_way(DESK, (5, Some(-78)), &unsure, none);
+        let to_forged = giving_way((DESK, SAVED), (5, Some(-78)), &forged, none);
+        let own_unheard = giving_way((DESK, SAVED), (5, Some(-78)), &unheard, none);
+
+        assert_eq!(
+            to_forged,
+            Way::Nowhere(Why::Lossy(5)),
+            "an open point was vouched for by the own point's beacon, not the saved network"
+        );
+        assert!(
+            matches!(own_unheard, Way::To(Giving { ref to, .. }) if to == HALL),
+            "a point the saved network vouches for was refused as the own point went unheard: \
+             {own_unheard:?}"
+        );
+    }
+
+    #[test]
+    fn a_call_on_a_network_not_saved_gives_way_to_none() {
+        let around = [heard(DESK, -78), heard(HALL, -40)];
+
+        let way = giving_way((DESK, None), (5, Some(-78)), &around, none);
 
         assert_eq!(
             way,
             Way::Nowhere(Why::Lossy(5)),
-            "a call gave way though nothing said its own point's security"
+            "a call gave way though nothing said its network's security"
         );
     }
 
@@ -447,7 +481,7 @@ mod tests {
         let alone = [heard(DESK, -80)];
 
         assert_eq!(
-            giving_way(DESK, (5, Some(-80)), &alone, none),
+            giving_way((DESK, SAVED), (5, Some(-80)), &alone, none),
             Way::Nowhere(Why::Lossy(5))
         );
     }

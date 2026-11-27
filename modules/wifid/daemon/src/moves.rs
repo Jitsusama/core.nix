@@ -248,7 +248,7 @@ fn given(
         return None;
     }
     let kept_off = |point: &str| chooser.call_keeps_off(point, now, gone);
-    let way = fading::giving_way(&on.point, measured, around, kept_off);
+    let way = fading::giving_way((&on.point, on.security), measured, around, kept_off);
     // Losing on the point it gave way to for loss, as on the one it left,
     // the card holds and looks for no other: no move escapes the network's
     // own loss, and each takes the call off its link a while.

@@ -99,6 +99,10 @@ pub struct Joined {
     /// The network's name, and whether it's saved as trusted.
     pub network: String,
     pub trusted: bool,
+    /// How the network is saved to be joined, which vouches for another
+    /// access point of it as what a point advertises can't, anyone in
+    /// range changing that at will (`link_of`). None where it isn't saved.
+    pub security: Option<Security>,
 }
 
 /// Every card, every saved network and the networks in the air, as the
@@ -737,6 +741,7 @@ impl State {
                     point: self.heard.get(path)?.bssid.clone(),
                     gateway: *self.gateways.get(index)?,
                     trusted: saved.is_some_and(|saved| saved.trusted),
+                    security: saved.map(|saved| saved.security),
                     network,
                 })
             })
@@ -1515,6 +1520,7 @@ mod tests {
             gateway: Ipv4Addr::new(10, 43, 0, 1),
             network: "Roadside Inn".into(),
             trusted: false,
+            security: None,
         };
         assert_eq!(
             state.joined(),
@@ -1553,6 +1559,11 @@ mod tests {
             state.link_of("wlan2"),
             Some(Security::Personal),
             "a point advertising its network open was taken at its word"
+        );
+        assert_eq!(
+            state.joined()[0].security,
+            Some(Security::Personal),
+            "a card was joined by its point's word, not as its network is saved"
         );
         assert_eq!(
             state.link_of("wlan9"),

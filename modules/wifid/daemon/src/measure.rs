@@ -1862,6 +1862,7 @@ pub(crate) mod tests {
             gateway: std::net::Ipv4Addr::new(10, 43, 0, 1),
             network: "Lantern".into(),
             trusted: true,
+            security: Some(crate::state::Security::Personal),
         }
     }
 }
