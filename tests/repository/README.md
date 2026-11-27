@@ -14,6 +14,7 @@ repositories built on core, through `core.lib` in `flake.nix`.
 | `every-vm-test-keeps-to-the-pyramid.py`    | no VM test grows past twenty subtests        |
 | `every-pattern-names-a-file.py`            | every tool's path pattern still names a file |
 | `every-module-meets-the-others.sh`         | an example machine brings every module       |
+| `every-hardware-address-is-made-up.sh`     | no hardware address is a real device's       |
 | `nothing-names-its-own-look.sh`            | nothing but the theme names a colour or face |
 | `nothing-spells-a-mark.sh`                 | nothing but the theme spells a mark          |
 | `the-desktop-speaks-its-javascript.sh`     | the shell calls no method its engine lacks   |

@@ -1334,6 +1334,10 @@
   every-folder-says-what-it-holds = ''
     every folder says what goes in it, but those still waiting for their note
   '';
+  every-hardware-address-is-made-up = ''
+    no hardware address in the repository could be a real device's, but the ten kept on purpose
+    under a maker's prefix, and a copied one is refused
+  '';
   every-lock-agrees-with-its-manifests = ''
     every Cargo.lock names each dependency its crates' manifests take, and none they dropped, as
     cargo locks them

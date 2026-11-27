@@ -163,6 +163,65 @@
       touch $out
     '';
 
+  # No hardware address here could be a real device's, since one copied
+  # beside the network a test names says where a machine has been
+  # (tests/repository/every-hardware-address-is-made-up.sh). Those below
+  # are kept on purpose: each has a real maker's prefix, as a vendor is
+  # named from or a card is read like, under a device part plainly made up.
+  # A made-up tree shows a copied address is refused and these aren't.
+  every-hardware-address-is-made-up =
+    let
+      script = "${lib.getExe pkgs.bash} ${./every-hardware-address-is-made-up.sh}";
+      kept = pkgs.writeText "kept" (
+        lib.concatLines [
+          # Headphones in Bluetooth's links, by their maker's prefix.
+          "00:1b:66:aa:bb:cc"
+          # A wired card the shell names by its maker.
+          "00:1b:21:aa:bb:cc"
+          # A headset's sound devices, as PipeWire names them from it.
+          "00:11:22:33:44:55"
+          # A cable's card as the shell reads it, and the address it was made with.
+          "3c:22:fb:00:00:01"
+          # The launcher's example of a vendor named from an address.
+          "3c:22:fb:12:34:56"
+          # A trusted cable, the option's example and its check.
+          "44:67:52:00:00:01"
+          # The address a cable was made with, beside the one it's given.
+          "8c:16:45:00:00:02"
+          # A Wi-Fi radio's own address, read from sysfs.
+          "8c:f8:c5:12:34:5f"
+          # A Bluetooth mouse's radio, as its HID device says it.
+          "b4:8c:9d:00:00:01"
+          # A Bluetooth keyboard, as its HID device says it.
+          "f4:4e:fd:00:11:22"
+        ]
+      );
+      madeUp = {
+        said = pkgs.writeText "said" ''
+          ./copied.txt:1:00:00:00:00:00:01
+          The addresses above could be a real device's. Write a made-up one, as
+          02:00:00:00:a0:00, or RFC 7042's 00:00:5e:00:53:01; an address that needs
+          a vendor's real prefix is kept on purpose in tests/repository/checks.nix.
+        '';
+      };
+    in
+    pkgs.runCommandLocal "every-hardware-address-is-made-up" { nativeBuildInputs = [ pkgs.ripgrep ]; }
+      ''
+        ${script} ${../..} ${kept}
+        mkdir made-up
+        # A maker's address, then made-up ones of each kind, seven octets, and
+        # a kept one in upper case.
+        echo '00:00:00:00:00:01' >made-up/copied.txt
+        echo '02:00:00:00:a0:00 52:54:00:12:34:56 ff:ff:ff:ff:ff:ff 01:00:5e:00:00:fb' \
+          '00:00:5E:00:53:01 00:00:00:00:00:00 00:00:00:00:00:01:01 00:1B:66:AA:BB:CC' \
+          >made-up/made-up.txt
+        if ${script} made-up ${kept} 2>said; then
+          echo "It passed a maker's address no one kept." >&2; exit 1
+        fi
+        diff ${madeUp.said} said
+        touch $out
+      '';
+
   # Every module core offers is brought into an example machine, by a role,
   # a hardware model, the example itself or another module, so it meets the
   # others there and two that clash fail the example, not a machine

@@ -172,6 +172,16 @@ is installed system-wide only when it's worth having outside any project.
   usual mistakes never land.
 - A check has to earn its place in the loop; see [Testing][1].
 
+## Hardware Addresses Are Made Up
+
+A test, an example or a doc writes a hardware address no device has: one
+like 02:00:00:00:a0:00, which says it was set by hand, or RFC 7042's
+00:00:5e:00:53:01 for an example. A real one, beside the network a test
+names, says where a machine has been. An address that needs a real maker's
+prefix, so a vendor can be named from it, takes a device part plainly made
+up and goes on the list `every-hardware-address-is-made-up` keeps, saying
+why.
+
 ## Checks Before Switches
 
 Nothing is applied to a machine until the checks its change touched pass
