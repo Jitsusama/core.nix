@@ -10,7 +10,8 @@
 }:
 onLinux {
   # cargo builds a program with the config an account gets, and mold is the
-  # linker that wrote it.
+  # linker that wrote it, through the linker setting rather than rustflags, which
+  # would keep a crate build cache (World's cargo-wrapper) from serving any crate.
   cargo-links-with-mold =
     let
       files = (account workstation).home.file;
@@ -33,6 +34,10 @@ onLinux {
         echo 'fn main() {}' > hello/src/main.rs
         cargo build --offline --quiet --manifest-path hello/Cargo.toml
         readelf -p .comment hello/target/debug/hello | grep mold
+        if grep -q rustflags .cargo/config.toml; then
+          echo 'the account config sets rustflags, which turn a crate build cache off' >&2
+          exit 1
+        fi
         touch $out
       '';
 
