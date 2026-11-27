@@ -4049,13 +4049,16 @@ mod tests {
 
     #[test]
     fn a_move_to_a_point_wpa_supplicant_forgot_is_told_from_other_bad_asks() {
-        // hostap's own words for every bad argument, said first.
+        // hostap's own words for every bad argument, said first, and those
+        // it says second of a point it no longer holds, written out rather
+        // than read from BSS_FORGOTTEN, so a change to those words fails.
         let bad = "Did not receive correct message arguments.";
+        let forgotten = "Target BSS not found";
         let refused = |name: &str, said: (&str, &str)| {
             refused_move("wlan0", "02:00:00:00:0a:00", &refusal(name, &said))
         };
         assert_eq!(
-            refused(INVALID_ARGS, (bad, BSS_FORGOTTEN)),
+            refused(INVALID_ARGS, (bad, forgotten)),
             Refused::NotNearby,
             "a move to a forgotten point wasn't refused as out of reach"
         );
@@ -4068,7 +4071,7 @@ mod tests {
         );
         assert!(
             matches!(
-                refused(NOT_CONNECTED, (bad, BSS_FORGOTTEN)),
+                refused(NOT_CONNECTED, (bad, forgotten)),
                 Refused::Failed { .. }
             ),
             "another refusal was taken for a forgotten point"
