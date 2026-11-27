@@ -64,13 +64,14 @@ let expires: number | undefined;
 
 /**
  * The worst of the watches' states, the one the map says. Messages still
- * connecting once the map is drawn are said apart, so a map drawn live
- * isn't said as one still reaching its node.
+ * connecting for their first answer once the map is drawn are said apart,
+ * so a map drawn live isn't said as one still reaching its node; once they
+ * have answered, connecting again is said as any watch's is.
  */
 function standing(): Standing | undefined {
   const order = ["broken", "stale", "connecting", "live"];
   const counted = [...standings].filter(
-    ([kind, now]) => !(kind === "message" && now.state === "connecting" && drawable()),
+    ([kind, now]) => !(kind === "message" && now.state === "connecting" && readingTalk()),
   );
   return counted
     .map(([, now]) => now)
@@ -103,7 +104,9 @@ function sayHow(): void {
   const now = standing();
   const problems = [...unread.values()];
   const trouble = problems.length > 0 ? ` Couldn't read: ${problems.join("; ")}.` : "";
-  const reading = drawable() && !answered.has("message") ? READING_TALK : "";
+  // A message watch that broke is said by the standing, not as one reading.
+  const broke = standings.get("message")?.state === "broken";
+  const reading = readingTalk() && !broke ? READING_TALK : "";
   asof.textContent = `${sayStanding(now)}${reading}${trouble}`;
   asof.dataset["state"] = now?.state ?? "connecting";
   // The drawing's own look for a map that isn't now.
@@ -133,6 +136,11 @@ function drawable(): boolean {
   return (
     DRAWN_WITH.every((kind) => answered.has(kind)) && (answered.has("message") || ties.answered())
   );
+}
+
+/** Whether the map is drawn and its messages have yet to first answer. */
+function readingTalk(): boolean {
+  return drawable() && !answered.has("message");
 }
 
 /** Hands a reading over once the floor allows, and while the tab shows. */
@@ -166,10 +174,13 @@ function watchApart(kind: string): Apart {
     { feed: "node", kind },
     {
       moved: () => {
-        answeredOnce = true;
-        // The ties answering can be what lets the map draw before its
-        // messages, which the standing line says.
-        sayHow();
+        // The ties first answering can be what lets the map draw before
+        // its messages, which the standing line says. Only then, so a
+        // line the drawing wrote, as when a reading couldn't draw, stays.
+        if (!answeredOnce) {
+          answeredOnce = true;
+          sayHow();
+        }
         owe();
       },
       stands: () => undefined,
@@ -185,11 +196,15 @@ function watch(kind: Kind): Held {
     { feed: "node", kind },
     {
       moved: () => {
+        // What the standing line says moves with what has answered, as
+        // much as with how each watch stands, so it is said again when a
+        // kind first answers or was unread, and otherwise left as it is.
+        const news = !answered.has(kind) || unread.has(kind);
         answered.add(kind);
         unread.delete(kind);
-        // What the standing line says moves with what has answered, as
-        // much as with how each watch stands.
-        sayHow();
+        if (news) {
+          sayHow();
+        }
         owe();
       },
       stands: (now) => {

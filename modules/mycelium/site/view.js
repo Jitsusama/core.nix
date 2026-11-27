@@ -3521,7 +3521,7 @@ import {
       (tied
         ? `<p class="carries">Talk on the mesh today, as the node ties the two: how much each said and of what kinds, never the words.</p>` + tieWords(tied)
         : `<p class="carries">Talk on the mesh in the last ten minutes: who said what kind of thing to whom, never the words.</p>` +
-          `<p class="counts mono">${esc(`${plural(said.length, "message")}\u00a0\u00b7 ${asked} asked or found something`)}</p>`) +
+          (current.messagesHeard ? `<p class="counts mono">${esc(`${plural(said.length, "message")}\u00a0\u00b7 ${asked} asked or found something`)}</p>` : "")) +
       `<h3>Between Them</h3><ul class="rows">${ends.map(endRow).join("")}</ul>` +
       `<h3>What Passed</h3>` +
       (rows.length ? `<ul class="lately">${rows.join("")}</ul>` : !current.messagesHeard ? `<p class="hint">Still reading the node's latest messages.</p>` : `<p class="hint">Nothing has passed between them in the last ten minutes: the page lists ten minutes of what it heard, from the latest messages the node keeps.</p>`)
@@ -4947,8 +4947,10 @@ import {
         const was = spots;
         draw();
         noteLives(was);
-        panel();
+        // Heard before the drawer is written, so a talk open says what
+        // this reading brought rather than what the one before it did.
         hear(true);
+        panel();
       }
       drawStatus();
       performance.clearMeasures("mycelium-redraw");
