@@ -116,7 +116,9 @@ fn only_docs_and_tests(repo: &Path, one: &str) -> bool {
     files.lines().all(|file| {
         file.starts_with("docs/")
             || file.starts_with("tests/")
-            || file.ends_with(".md")
+            || Path::new(file)
+                .extension()
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("md"))
             || file.ends_with(".test.ts")
     })
 }
