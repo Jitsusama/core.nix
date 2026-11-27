@@ -121,7 +121,10 @@ pub fn ignored(cgroup: &str, units: &[String]) -> bool {
             return false;
         };
         path.split('/')
-            .find(|part| !part.ends_with(".slice"))
+            .find(|part| {
+                part.rsplit_once('.')
+                    .is_none_or(|(_, kind)| kind != "slice")
+            })
             .is_some_and(|part| units.iter().any(|unit| unit == part))
     })
 }
