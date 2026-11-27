@@ -283,6 +283,40 @@ fn a_line_back_a_week_unexplained_closes_and_a_fall_reopens_its_own_line() {
     );
 }
 
+/// A line routed to each cell's owner closes as its cell goes, and the
+/// cell idle again within the week reopens its owner's own line, counted,
+/// so it reads as a recurrence rather than a fresh line (1JQPPC's rider
+/// of 27 November).
+#[test]
+fn a_routed_line_closes_as_its_cell_goes_and_reopens_counted_when_it_comes_back() {
+    let idle = |behind: &[&str]| {
+        let mut m = measure("cells-idle", Class::Cells, 0.0, Some(0.0));
+        m.behind = behind.iter().map(|&line| line.to_owned()).collect();
+        m.now = f64::from(u8::try_from(behind.len()).expect("a few cells"));
+        m
+    };
+    let cell = "AAAAAA idle 30 min: write it · ORCH";
+    let mut ledger = Vec::new();
+    file(&mut ledger, &[idle(&[cell])], "2026-11-14", NOW);
+    file(&mut ledger, &[idle(&[])], "2026-11-14", NOW + 3600);
+    assert_eq!(
+        (ledger.len(), ledger[0].open, ledger[0].shown.is_empty()),
+        (1, false, true),
+        "a routed line didn't close as its cell went, or waited on a fix shown"
+    );
+    let told = file(&mut ledger, &[idle(&[cell])], "2026-11-17", NOW + 3 * DAY);
+    assert_eq!(
+        (
+            ledger.len(),
+            ledger[0].open,
+            ledger[0].reopened,
+            told.iter().filter(|(to, _)| to == "ORCH").count()
+        ),
+        (1, true, 1, 1),
+        "a cell idle again within the week didn't reopen its owner's line, counted"
+    );
+}
+
 #[test]
 fn a_line_with_a_rule_of_its_own_or_routed_to_each_owner_still_closes_by_it() {
     let slip = Class::Slip.name();
