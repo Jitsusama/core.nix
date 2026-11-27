@@ -554,6 +554,9 @@ fn github_a_search_cut_short_twice_tells_joel_in_one_row_however_many_rounds_lea
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 
     let (reach, oldest) = (last - 3600, CUT_TOLD.load(Ordering::SeqCst) - 500);
+    // The mark is 30 s back, so the second round reaches later than the
+    // first and names its row apart: one row starting at the first's
+    // reach is the two meeting, not the second's overwriting the first.
     let row = &rows["items"][0];
     assert!(
         rows["items"].as_array().map(Vec::len) == Some(1)

@@ -82,16 +82,22 @@ pub fn row(id: &str, title: &str, why: &str, step: &str, at: u64, whole: bool) -
 
 /// Adds `row`, raised `at` in milliseconds, to the rows in `file` named
 /// for `prefix`, keeping those whose span ended in the [`MISSED_FOR`]
-/// before, and any not named for it, as another's to age. Rows of its
-/// kind whose spans come within [`MEET`] of its own are said with it as
-/// one row, which `say` makes from the span they reach together (its
-/// start, if known, and end) and whether that's whole: where together
-/// they leave no read stretch, whatever order they're met in. Rows that
-/// meet only what it spans once it has taken others are taken too, as a
-/// file written before rows met holds. That row is named anew, so one
-/// Joel said he'd looked at comes back holding what's new; one not named
-/// by [`named`] meets nothing, and one whose start can't be told meets
-/// only its own name, so no dated row is lost into it.
+/// before, by the end each one's name carries (the digits after its last
+/// `-`, in milliseconds), whatever reader it's named for: each file has
+/// one writer, so a row named for another, as an older reader's, would
+/// stay for good, as nothing else ages it. Only one whose end can't be
+/// read, with no name or none ending in a number, is kept however old,
+/// as nothing says when it ended, and dropping it could lose what Joel
+/// hasn't looked at. Rows of its kind whose spans come within [`MEET`]
+/// of its own are said with it as one row, which `say` makes from the
+/// span they reach together (its start, if known, and end) and whether
+/// that's whole: where together they leave no read stretch, whatever
+/// order they're met in. Rows that meet only what it spans once it has
+/// taken others are taken too, as a file written before rows met holds.
+/// That row is named anew, so one Joel said he'd looked at comes back
+/// holding what's new; one not named by [`named`] meets nothing, and one
+/// whose start can't be told meets only its own name, so no dated row is
+/// lost into it.
 ///
 /// `file` is a file of its own, which a reader's stop doesn't take away
 /// as it does the row saying it can't hear, since what it says stays true
@@ -124,14 +130,11 @@ pub fn keep(
         Err(error) => return Err(error),
     };
     let recent = |row: &Value| {
-        let Some(named) = row["id"].as_str().and_then(|id| id.strip_prefix(prefix)) else {
-            return true;
-        };
-        named
-            .rsplit('-')
-            .next()
+        row["id"]
+            .as_str()
+            .and_then(|id| id.rsplit('-').next())
             .and_then(|ended| ended.parse::<u64>().ok())
-            .is_some_and(|ended| ended.saturating_add(MISSED_FOR) >= at)
+            .is_none_or(|ended| ended.saturating_add(MISSED_FOR) >= at)
     };
     let mut rows: Vec<Value> = kept
         .as_ref()
@@ -248,6 +251,37 @@ mod tests {
         row(&id, "Missed", kind, "Look", AT, true)
     }
 
+    /// A folder of `case`'s own in this test run, removed once it's
+    /// dropped, so a case that fails leaves nothing behind.
+    struct Home(std::path::PathBuf);
+
+    impl Home {
+        fn new(case: &str) -> Self {
+            let pid = std::process::id();
+            Self(std::env::temp_dir().join(format!("pineapple-missed-{case}-{pid}")))
+        }
+    }
+
+    impl Drop for Home {
+        fn drop(&mut self) {
+            drop(std::fs::remove_dir_all(&self.0));
+        }
+    }
+
+    /// The rows `file` holds, and their names in its order.
+    fn ids_in(file: &Path) -> (Value, Vec<String>) {
+        let kept: Value =
+            serde_json::from_slice(&std::fs::read(file).expect("read")).expect("rows");
+        let ids = kept["items"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|row| row["id"].as_str())
+            .map(str::to_owned)
+            .collect();
+        (kept, ids)
+    }
+
     #[test]
     fn a_kind_holding_dashes_reads_back_whole() {
         let span = span_of(&of("thread-0a", 5, 9), "p-").expect("a span");
@@ -264,8 +298,8 @@ mod tests {
 
     #[test]
     fn rows_of_two_kinds_never_meet_and_one_kinds_do() {
-        let home = std::env::temp_dir().join(format!("pineapple-missed-{}", std::process::id()));
-        let file = home.join("missed.json");
+        let home = Home::new("meet");
+        let file = home.0.join("missed.json");
         let keep_of = |kind: &str, from: u64, to: u64| {
             let say = |from: Option<u64>, to: u64, _: bool| of(kind, from.unwrap_or(0), to);
             keep(&file, "p-", of(kind, from, to), AT, say).expect("written")
@@ -273,32 +307,24 @@ mod tests {
         keep_of("thread-0a", AT - 9_000, AT - 8_000);
         keep_of("thread-0b", AT - 9_000, AT - 8_000);
         keep_of("thread-0a", AT - 7_000, AT - 6_000);
-        let kept: Value =
-            serde_json::from_slice(&std::fs::read(&file).expect("read")).expect("rows");
-        std::fs::remove_dir_all(&home).expect("the case's folder goes");
-        let ids: Vec<&str> = kept["items"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(|row| row["id"].as_str())
-            .collect();
-        let (a, b) = (
-            format!("p-thread-0a-{}-{}", AT - 9_000, AT - 6_000),
-            format!("p-thread-0b-{}-{}", AT - 9_000, AT - 8_000),
-        );
+        let (kept, mut ids) = ids_in(&file);
+        // Which rows there are is the claim, not the order they're in.
+        ids.sort();
         assert_eq!(
             ids,
-            [b.as_str(), a.as_str()],
+            [
+                format!("p-thread-0a-{}-{}", AT - 9_000, AT - 6_000),
+                format!("p-thread-0b-{}-{}", AT - 9_000, AT - 8_000),
+            ],
             "one thread's spans are one row, and another's stays its own: {kept}"
         );
     }
 
     #[test]
-    fn a_file_it_cant_read_is_left_and_a_week_old_row_goes_but_anothers_stays() {
-        let home =
-            std::env::temp_dir().join(format!("pineapple-missed-kept-{}", std::process::id()));
-        std::fs::create_dir_all(&home).expect("the case's folder");
-        let file = home.join("missed.json");
+    fn a_file_it_cant_read_is_left_and_a_week_old_row_goes_whoever_its_named_for() {
+        let home = Home::new("kept");
+        std::fs::create_dir_all(&home.0).expect("the case's folder");
+        let file = home.0.join("missed.json");
         let say = |from: Option<u64>, to: u64, _: bool| of("own", from.unwrap_or(0), to);
         let new = of("own", AT - 2_000, AT - 1_000);
         for (held, why) in [
@@ -314,39 +340,34 @@ mod tests {
                 "one holding {held} is refused and left as it is: {refused:?}, {left}"
             );
         }
-        let ended = AT - MISSED_FOR - 1;
-        let theirs = row(
-            &named("q-", "own", Some(ended - 9_000), ended),
-            "Missed",
-            "Theirs",
-            "Look",
-            AT,
-            true,
-        );
+        let (ended, edge) = (AT - MISSED_FOR - 1, AT - MISSED_FOR);
+        let theirs = |from: u64, to: u64| {
+            let id = named("q-", "own", Some(from), to);
+            row(&id, "Missed", "Theirs", "Look", AT, true)
+        };
+        let undated = row("someone-elses", "Missed", "Undated", "Look", AT, true);
         let held = [
             of("own", ended - 9_000, ended),
-            theirs,
+            theirs(ended - 9_000, ended),
+            theirs(AT - 9_000, AT - 5_000),
+            of("thread-0a", edge - 9_000, edge),
+            undated,
             of("thread-0b", AT - 9_000, AT),
         ];
         std::fs::write(&file, json!({ "items": held }).to_string()).expect("rows written");
         keep(&file, "p-", new, AT, say).expect("written");
-        let kept: Value =
-            serde_json::from_slice(&std::fs::read(&file).expect("read")).expect("rows");
-        std::fs::remove_dir_all(&home).expect("the case's folder goes");
-        let ids: Vec<&str> = kept["items"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(|row| row["id"].as_str())
-            .collect();
+        let (kept, ids) = ids_in(&file);
         assert_eq!(
             ids,
             [
-                named("q-", "own", Some(ended - 9_000), ended),
+                named("q-", "own", Some(AT - 9_000), AT - 5_000),
+                named("p-", "thread-0a", Some(edge - 9_000), edge),
+                "someone-elses".to_owned(),
                 named("p-", "thread-0b", Some(AT - 9_000), AT),
                 named("p-", "own", Some(AT - 2_000), AT - 1_000),
             ],
-            "its own a week past ended go, another reader's are its own to age: {kept}"
+            "a row a week past ended goes whoever it's named for, one ended a week ago to the \
+             millisecond stays, and one whose end can't be read is kept: {kept}"
         );
     }
 }

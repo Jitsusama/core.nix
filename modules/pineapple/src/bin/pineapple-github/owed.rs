@@ -25,9 +25,11 @@ const TRIES: u32 = 12;
 
 /// How many failed asks a thread whose row in For You can't be written is
 /// owed before it's let go anyway, the journal alone saying so: twelve
-/// more, about three hours at the longest wait, so a rows file that stays
-/// broken can't hold every such thread owed for good, each asked every
-/// quarter hour against Joel's limit and the site read as never whole.
+/// more, 384 rounds at the longest wait, about three hours at a round
+/// each half minute, six on a site searched by author, a round a minute,
+/// so a rows file that stays broken can't hold every such thread owed for
+/// good, each asked every quarter hour against Joel's limit and the site
+/// read as never whole.
 const UNTOLD: u32 = 2 * TRIES;
 
 /// How many doublings an owed thread's wait between asks grows by, so the
@@ -79,12 +81,14 @@ pub(super) fn list(hits: Vec<Listed>, notified: Vec<Listed>, owed: &[Owed]) -> V
 /// they're searched, and only what's fresh is read, so they're read first,
 /// and owed like the search's. They come before its hits, which anyone's
 /// words may list, so others flooding his rate limit can't spend it
-/// before what only his own words list is read. One already `owed` isn't
-/// listed but owed from no later than the `reach`, so it waits its turn
-/// yet is read from as far back as his words: the watch lists it each
-/// round until they're judged, where the search lists one again only once
-/// it changes, so listed it would be asked every round, and three failing
-/// would spend each round's failures before what notified him is read.
+/// before what only his own words list is read. That's only for threads
+/// not yet owed: one already `owed` isn't listed but owed from no later
+/// than the `reach`, so it takes its turn among what's owed, after the
+/// search's hits, yet is read from as far back as his words: the watch
+/// lists it each round until they're judged, where the search lists one
+/// again only once it changes, so listed it would be asked every round,
+/// and three failing would spend each round's failures before what
+/// notified him is read.
 pub(super) fn with_spoken(
     found: Vec<Listed>,
     spoke: Option<Vec<Thread>>,
@@ -183,20 +187,30 @@ pub(super) fn kept(
         if tries >= TRIES {
             let told = tell.thread(thread, *from);
             if told || tries >= UNTOLD {
+                // So the journal tells one Joel was told of from one he wasn't.
+                let untold = if told {
+                    ""
+                } else {
+                    ", and his row in For You saying so couldn't be written"
+                };
                 eprintln!(
                     "<3>couldn't read {} in {tries} tries since {}, each failing or answered gone, \
-                     so what was said there from {} on goes unjudged: look there for a stop",
+                     so what was said there from {} on goes unjudged{untold}: look there for a \
+                     stop",
                     thread.key(),
                     github::stamp(at),
                     github::stamp(*from)
                 );
                 continue;
             }
-            eprintln!(
-                "<4>{} is owed still, as Joel's row saying it went unread isn't written, until \
-                 the row is or it's failed {UNTOLD} tries",
-                thread.key()
-            );
+            // Said only on a try, not each round a busy thread is listed.
+            if chosen {
+                eprintln!(
+                    "<4>{} is owed still, as Joel's row saying it went unread isn't written, \
+                     until the row is or it's failed {UNTOLD} tries",
+                    thread.key()
+                );
+            }
         }
         // Asked the round after a first failure, then after waits doubling;
         // one asked early, or not at all, is a round nearer due.
@@ -220,28 +234,7 @@ pub(super) fn kept(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// GitHub's rows in shadow, in a folder of `case`'s own in this test
-    /// run, removed once they're dropped, as cases run at once.
-    struct Rows {
-        home: std::path::PathBuf,
-        left: Left,
-    }
-
-    impl Rows {
-        fn new(case: &str) -> Self {
-            let home =
-                std::env::temp_dir().join(format!("pineapple-owed-{}-{case}", std::process::id()));
-            let left = Left::new("github", "GitHub", "https://api.github.com", true, &home);
-            Self { home, left }
-        }
-    }
-
-    impl Drop for Rows {
-        fn drop(&mut self) {
-            drop(std::fs::remove_dir_all(&self.home).or_else(|_| std::fs::remove_file(&self.home)));
-        }
-    }
+    use crate::left::Rows;
 
     /// example/shop's pull request `number`.
     fn thread(number: u64) -> Thread {
@@ -328,12 +321,33 @@ mod tests {
 
     #[test]
     fn one_whose_row_cant_be_written_is_let_go_at_its_last_held_try() {
+        assert_eq!(
+            UNTOLD, 24,
+            "a rows file that stays broken holds a thread twelve tries past its last"
+        );
         let rows = Rows::new("untold");
         std::fs::write(&rows.home, "").expect("a file where the rows' home would be");
-        let before = [owed(14, 100, UNTOLD - 1, 0)];
+        let before = [owed(14, 100, UNTOLD - 2, 0)];
         let threads = list(Vec::new(), vec![(thread(14), 100, 100)], &before);
-        let owing = kept(&rows.left, &threads, (&[0], &[], 1), &before, 900);
+        let mut owing = kept(&rows.left, &threads, (&[0], &[], 1), &before, 900);
+        assert_eq!(
+            owing,
+            [owed(14, 100, UNTOLD - 1, 31)],
+            "a try before its last held try, it's owed still, at the longest wait"
+        );
 
+        // Its wait counts down in rounds that don't list it.
+        for round in 1..=31 {
+            let threads = list(Vec::new(), Vec::new(), &owing);
+            owing = kept(&rows.left, &threads, (&[], &[], 0), &owing, 900 + round);
+        }
+        assert_eq!(
+            owing,
+            [owed(14, 100, UNTOLD - 1, 0)],
+            "its wait over, it's due"
+        );
+        let threads = list(Vec::new(), vec![(thread(14), 100, 100)], &owing);
+        let owing = kept(&rows.left, &threads, (&[0], &[], 1), &owing, 940);
         assert!(
             owing.is_empty(),
             "a rows file that stays broken holds it no longer, the journal alone saying so"
