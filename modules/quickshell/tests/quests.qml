@@ -1113,6 +1113,11 @@ ShellRoot {
                 JSON.stringify([row.key, row.name]));
             expect("saying what landed where its note was", row.note === "landed: the dock",
                 row.note);
+            // What What Moved's drawer counts, as the daemon served it: the
+            // one ask that moved since the start, which landed.
+            expect("its asks counted as the daemon served them",
+                JSON.stringify(row.movedAsks) === JSON.stringify({ landed: 1, moved: 1 }),
+                JSON.stringify(row.movedAsks));
             expect("acted on as the quest's own row is",
                 JSON.stringify(row.verbs().map(verb => verb.name))
                     === JSON.stringify(own.verbs().map(verb => verb.name)),

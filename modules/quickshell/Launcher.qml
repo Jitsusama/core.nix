@@ -3144,14 +3144,22 @@ Scope {
     }
 
     // When Return last wrote an ending row's line, so a Return doubled
-    // with it, a key bounced, doesn't run the line it opened.
+    // with it, a key bounced, doesn't run the line it opened. It's in
+    // milliseconds of the monotonic clock, as landedAt is, so a wall clock
+    // stepped back can't hold every Return after it as doubled.
     property real linedAt: 0
 
     // Return on a row that ends something: its command written on the :
     // line, the menu naming what it acts on, for a fresh Return to run.
     function lineFor(choice) {
         commandLine({ typed: endsLine(choice) });
-        linedAt = Date.now();
+        linedAt = KeyTimes.now();
+    }
+
+    // Whether a Return now comes so soon after the one that wrote an
+    // ending row's line that it's that one doubled, which runs nothing.
+    function linedJustNow() {
+        return KeyTimes.now() - linedAt < Options.keyTiming.wait;
     }
 
     // What the last Return did ("ran", "armed", "landed", "entered", "gave", "lined", "held"
@@ -3162,7 +3170,8 @@ Scope {
     property var returned: ({})
 
     // The row Return last landed on, by its steady id, and the keys the
-    // line had taken then, so what it says lasts only until the next key.
+    // line had taken then, so what it says lasts only until the next key,
+    // and when, on the monotonic clock, for landedJustNow.
     property string landedKey: ""
     property int landedKeys: -1
     property real landedAt: 0
@@ -3188,7 +3197,7 @@ Scope {
         prompt.toNormal();
         landedKey = steadyId(choice);
         landedKeys = prompt.keysTaken;
-        landedAt = Date.now();
+        landedAt = KeyTimes.now();
     }
 
     // Whether a row is the one landed on, until the next key.
@@ -3201,7 +3210,7 @@ Scope {
     // Return doubled, a key bounced or pressed twice for one, which does
     // nothing, as a confirm's second Return waits the same while.
     function landedJustNow() {
-        return landedKey !== "" && Date.now() - landedAt < Options.keyTiming.wait;
+        return landedKey !== "" && KeyTimes.now() - landedAt < Options.keyTiming.wait;
     }
 
     // The row that ends the session a first press armed (Arming.js), by
@@ -3234,7 +3243,7 @@ Scope {
     // as `returned` reads.
     function pressArming(choice, counted) {
         const did = Arming.pressed(armed, steadyId(choice), { keysTaken: prompt.keysTaken,
-            counted, now: Date.now(), wait: Options.keyTiming.wait });
+            counted, now: KeyTimes.now(), wait: Options.keyTiming.wait });
         armed = did.armed;
         if (did.act === "ends")
             run(Object.assign({}, choice, { confirm: false }), false);
@@ -5185,7 +5194,7 @@ Scope {
     function commandRan(read, from) {
         // A Return doubled with the one that wrote an ending row's line is
         // that one press, so it runs nothing; only a fresh Return does.
-        if (commanding?.typed && Date.now() - linedAt < Options.keyTiming.wait)
+        if (commanding?.typed && linedJustNow())
             return;
         // The command line's own Return, which the prompt never reads, runs
         // what's typed, or says why not, as E492, closing the line either
@@ -10381,7 +10390,7 @@ Scope {
             landedFresh: root.landedJustNow(),
             // Whether a Return now would still be the one that wrote an
             // ending row's line, so a test waits it out before running it.
-            linedFresh: Date.now() - root.linedAt < Options.keyTiming.wait,
+            linedFresh: root.linedJustNow(),
             returned: root.returned,
             // The landing a step that left by itself guessed, so a test can
             // tell a Return held under it ("waited") from one lost.
@@ -13011,13 +13020,17 @@ Scope {
         const chunks = Math.round(weight.chunks);
         const reachedChunks = Math.round(reached.chunks);
         const chunksAt = Math.round(reached.collectsAt);
+        // Where the rooms alone capped them, so a line whose collector
+        // started higher says what the sweeps kept, or Qt's own limit, set it.
+        const roomsAt = reached.roomsCapAt < 0 ? "no room"
+            : `the rooms ${Math.round(reached.roomsCapAt)} MB`;
         const reachedOutside = Math.round(reached.outside);
         const outsideAt = Math.round(reached.collectsOutsideAt);
         console.info(
             `launcher: collected after closing in ${took} ms: ${live} MB live of ${held} MB`
             + ` held, ${resident} of it resident, ${free} of it in free pages,`
             + ` ${outside} MB outside, chunks`
-            + ` ${chunks} MB; before it, chunks ${reachedChunks} of ${chunksAt} MB and`
+            + ` ${chunks} MB; before it, chunks ${reachedChunks} of ${chunksAt} MB (${roomsAt}) and`
             + ` outside ${reachedOutside} of ${outsideAt} MB, weighed in ${weighing} ms,`
             + ` ${lent} MB of free pages lent in ${lending} ms, the kernel holding`
             + ` ${holding} of the shell lent`
