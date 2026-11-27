@@ -78,8 +78,10 @@ impl Sched {
     /// went back, as when schedstats was turned off and on, leaves the
     /// schedstat's alone.
     pub fn waited_since(&self, old: &Sched) -> u64 {
-        self.matched(old)
-            .map_or(self.wait_ns.saturating_sub(old.wait_ns), |(waited, _)| waited)
+        match self.matched(old) {
+            Some((waited, _)) => waited,
+            None => self.wait_ns.saturating_sub(old.wait_ns),
+        }
     }
 
     /// Takes what each count is owed for the window after this read

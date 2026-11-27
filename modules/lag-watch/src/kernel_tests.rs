@@ -225,7 +225,14 @@ fn a_sleep_one_count_booked_lends_the_other_s_excess_only_beside_it() {
     // schedstat books. The fair count's excess is counted only in the
     // windows either side of the sleep, never after.
     assert_eq!(
-        windows(&[(0, 0), (20, 30), (4_040, 60), (4_060, 90), (4_080, 120), (4_100, 150)]),
+        windows(&[
+            (0, 0),
+            (20, 30),
+            (4_040, 60),
+            (4_060, 90),
+            (4_080, 120),
+            (4_100, 150)
+        ]),
         [20, 40, 30, 20, 20],
         "the fair count's excess went on being counted after a sleep"
     );

@@ -529,7 +529,10 @@ fn a_read_books_the_lesser_of_the_two_counts() {
     let after = BTreeMap::from([(thread.clone(), at(4_000_000_000, 1_000_000))]);
     let mut booked = BTreeMap::new();
     book(&mut booked, &before, &BTreeSet::from([thread]), &after, 2.0);
-    assert!(booked.is_empty(), "a sleep one count booked was booked: {booked:?}");
+    assert!(
+        booked.is_empty(),
+        "a sleep one count booked was booked: {booked:?}"
+    );
 }
 
 #[test]
