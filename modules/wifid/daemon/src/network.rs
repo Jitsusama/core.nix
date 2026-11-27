@@ -389,7 +389,10 @@ mod tests {
         assert_eq!(network.security, Security::Open);
         assert_eq!(network.secret, None);
         assert_eq!(network.priority, 0);
-        assert!(!network.hidden);
+        assert!(
+            !network.hidden,
+            "a network whose file says nothing of hiding was taken as hidden"
+        );
         assert_eq!(network.address, Address::Network);
     }
 
@@ -520,7 +523,10 @@ mod tests {
     fn a_network_whose_file_turns_on_multicast_dns_is_trusted() {
         let network = read("[Match]\nSSID=Home\n\n[Network]\nMulticastDNS=yes\n\n[X-WiFi]\n");
 
-        assert!(network.unwrap().unwrap().trusted);
+        assert!(
+            network.unwrap().unwrap().trusted,
+            "multicast DNS on didn't make it trusted"
+        );
     }
 
     #[test]

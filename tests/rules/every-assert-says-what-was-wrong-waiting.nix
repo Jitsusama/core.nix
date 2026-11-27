@@ -211,17 +211,9 @@
   "modules/v4l2loopback/holders/src/main.rs" = 4;
   "modules/warp/src/read.rs" = 1;
   "modules/warp/src/switch.rs" = 6;
-  "modules/wifid/daemon/src/check.rs" = 4;
   "modules/wifid/daemon/src/detail.rs" = 2;
-  "modules/wifid/daemon/src/link.rs" = 4;
-  "modules/wifid/daemon/src/network.rs" = 2;
-  "modules/wifid/daemon/src/page.rs" = 3;
-  "modules/wifid/daemon/src/radio.rs" = 3;
-  "modules/wifid/daemon/src/rfkill.rs" = 5;
-  "modules/wifid/daemon/src/secret.rs" = 4;
   "modules/wifid/daemon/src/service.rs" = 5;
   "modules/wifid/daemon/src/state.rs" = 18;
-  "modules/wifid/daemon/src/store.rs" = 17;
   "modules/wifid/daemon/src/supplicant.rs" = 7;
   "tests/desktop/launcher/desktop-launcher-answers-vm-test.py" = 4;
   "tests/desktop/launcher/desktop-launcher-finds-by-name-vm-test.py" = 1;

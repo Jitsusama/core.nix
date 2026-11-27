@@ -343,9 +343,21 @@ mod tests {
         let plain_secure_page = Settings::read("[Check]\nSecurePage=http://check.inn/204\n");
         let nonsense = Settings::read("[Check]\nPage=check.inn\n");
 
-        assert!(secure_plain_page.unwrap_err().contains("Page"));
-        assert!(plain_secure_page.unwrap_err().contains("SecurePage"));
-        assert!(nonsense.unwrap_err().contains("check.inn"));
+        let refused = secure_plain_page.unwrap_err();
+        assert!(
+            refused.contains("Page"),
+            "the refusal didn't name Page: {refused}"
+        );
+        let refused = plain_secure_page.unwrap_err();
+        assert!(
+            refused.contains("SecurePage"),
+            "the refusal didn't name SecurePage: {refused}"
+        );
+        let refused = nonsense.unwrap_err();
+        assert!(
+            refused.contains("check.inn"),
+            "the refusal didn't name the page: {refused}"
+        );
     }
 
     #[test]
@@ -426,7 +438,10 @@ mod tests {
 
         let session = Session::read(&given).unwrap();
 
-        assert!(!session.captive);
+        assert!(
+            !session.captive,
+            "a session the network said was free was taken as captive"
+        );
         assert_eq!(session.remaining, Some(Duration::from_secs(326)));
     }
 

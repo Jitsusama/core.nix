@@ -145,14 +145,14 @@ mod tests {
     fn a_cable_reaching_beyond_the_machine_is_wired() {
         let links = [card(), cable("routable")];
 
-        assert!(wired(&links));
+        assert!(wired(&links), "a routable cable wasn't taken as wired");
     }
 
     #[test]
     fn a_cable_plugged_into_nothing_isn_t() {
         let links = [card(), cable("no-carrier")];
 
-        assert!(!wired(&links));
+        assert!(!wired(&links), "a cable with no carrier was taken as wired");
     }
 
     #[test]
@@ -160,7 +160,7 @@ mod tests {
         let mut veth = cable("routable");
         veth["Kind"] = json!("veth");
 
-        assert!(!wired(&[veth]));
+        assert!(!wired(&[veth]), "a container's veth was taken as wired");
     }
 
     fn card() -> Value {
@@ -268,7 +268,10 @@ mod tests {
         let link = Link::described(&link).unwrap();
 
         assert_eq!(link.ssid, None);
-        assert!(!link.routable);
+        assert!(
+            !link.routable,
+            "a link with no carrier was taken as routable"
+        );
         assert_eq!(link.dns, Vec::<IpAddr>::new());
         assert_eq!(link.portal, None);
         assert_eq!(link.gateway, None);
