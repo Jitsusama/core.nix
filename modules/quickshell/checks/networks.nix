@@ -84,12 +84,22 @@ let
 
   # How a Wi-Fi case ends once ranJudged and any script reading what was said
   # have judged it: failed where either found something. Kept whole, so the
-  # throw guard's check finds it after ranJudged in every case's build.
+  # throw guard's check finds it after ranJudged and the reading in every
+  # case's build.
   verdict = ''
     if [ "$failed" -ne 0 ]; then
       exit 1
     fi
   '';
+
+  # What the shell said, read by `heard` whatever the run ended in, failing
+  # the case on a miss, or nothing where a case names no script. Kept apart,
+  # so the throw guard's check finds it before the verdict.
+  readingOf =
+    heard:
+    pkgs.lib.optionalString (heard != null) ''
+      ${pkgs.lib.getExe pkgs.bash} ${heard} said || failed=1
+    '';
 
   # A Wi-Fi case run through the real Wireless.qml, ReadyRows.qml and
   # Daemon.qml, with the launcher stood in by the case itself and Wifi's card
@@ -120,10 +130,6 @@ let
         readonly property string network: ""
         function open() {}
       '';
-      # What the shell said, read whatever the run ended in, failing the case on a miss.
-      reading = pkgs.lib.optionalString (heard != null) ''
-        ${pkgs.lib.getExe pkgs.bash} ${heard} said || failed=1
-      '';
     in
     # Kept in Nix because each line copies a file Nix gives it beside the
     # cases, or sets what the shell runs them with.
@@ -148,7 +154,7 @@ let
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       ${ranJudged qs}
-      ${reading}
+      ${readingOf heard}
       ${verdict}
       touch $out
     '';
@@ -157,16 +163,30 @@ let
   # check reads its script, as wifiCase writes every case's, never building it.
   joinedAhead = wifiCase "wifi-holds-the-network-joined-ahead" ../tests/wifi-ahead.qml null;
 
+  # The network joined ahead reads nothing of what was said, so its reading
+  # is empty and can't be found in its script. The same case given a script
+  # to read, which does nothing and is never run, as this case is never
+  # built, is read for the reading's order instead: wifiCase writes it as it
+  # writes a case that reads.
+  heardStandIn = pkgs.writeShellScript "reads-what-was-said" "";
+  readAhead = wifiCase "wifi-holds-the-network-joined-ahead" ../tests/wifi-ahead.qml heardStandIn;
+
   # Whether a case's build runs the shell and then the guard as ranJudged does
-  # with qs, and then ends on the verdict. hasInfix makes a pattern of the
-  # sequence, and a pattern may name no store path, so its qs is matched as
-  # text alone; the verdict is looked for only in what follows the run.
+  # with qs, then reads what was said, and then ends on the verdict. hasInfix
+  # makes a pattern of each, and a pattern may name no store path, so each is
+  # matched as text alone, and each looked for only in what follows the one
+  # before; `following` gives what follows `mark`'s first place in `text`,
+  # or nothing where it isn't there.
+  scriptOf = case: builtins.unsafeDiscardStringContext case.buildCommand;
+  following =
+    mark: text: pkgs.lib.concatStringsSep mark (pkgs.lib.tail (pkgs.lib.splitString mark text));
   judgedText = builtins.unsafeDiscardStringContext (ranJudged qs);
-  caseScript = builtins.unsafeDiscardStringContext joinedAhead.buildCommand;
-  afterJudged = pkgs.lib.tail (pkgs.lib.splitString judgedText caseScript);
-  casesRunJudged = afterJudged != [ ];
-  afterTheRun = pkgs.lib.concatStringsSep judgedText afterJudged;
-  casesEndOnTheVerdict = pkgs.lib.hasInfix verdict afterTheRun;
+  readingText = builtins.unsafeDiscardStringContext (readingOf heardStandIn);
+  casesRunJudged = pkgs.lib.hasInfix judgedText (scriptOf joinedAhead);
+  casesEndOnTheVerdict = pkgs.lib.hasInfix verdict (following judgedText (scriptOf joinedAhead));
+  casesEndOnTheVerdictAfterReading = pkgs.lib.hasInfix verdict (
+    following readingText (following judgedText (scriptOf readAhead))
+  );
 in
 {
   # The Home Network is offered wherever eero's module brings its daemon,
@@ -378,15 +398,20 @@ in
   # run here with stand-in shells, so a run that failed or timed out fails
   # though it said nothing, and one that threw fails though it passed. The
   # network joined ahead's script, which wifiCase writes as every case's, is
-  # read for ranJudged with qs and then the verdict, so a case can't drop
-  # either; what a case built some other way runs isn't read. Kept in Nix
-  # because it runs the very guard and run the cases are built with.
+  # read for ranJudged with qs and then the verdict, and the same case given a
+  # script to read for the run, the reading and then the verdict, so a case
+  # can't drop any of them or end before reading; what a case built some
+  # other way runs isn't read. Kept in Nix because it runs the very guard and
+  # run the cases are built with.
   the-wifi-cases-fail-on-a-throw = pkgs.runCommandLocal "the-wifi-cases-fail-on-a-throw" { } ''
     ${pkgs.lib.optionalString (!casesRunJudged) (
       throw "a Wi-Fi case no longer runs its shell and then the throw guard as ranJudged does"
     )}
     ${pkgs.lib.optionalString (casesRunJudged && !casesEndOnTheVerdict) (
       throw "a Wi-Fi case no longer ends failed on the verdict after ranJudged's run"
+    )}
+    ${pkgs.lib.optionalString (casesEndOnTheVerdict && !casesEndOnTheVerdictAfterReading) (
+      throw "a Wi-Fi case no longer reads what was said before ending failed on the verdict"
     )}
     ran_judged() {
       if [ "$failed" -ne "$1" ]; then

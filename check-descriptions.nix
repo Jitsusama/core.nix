@@ -6364,7 +6364,8 @@
     or timed out though it said nothing; passes one holding only the launcher's own lines, an
     Error: in no file's line among them; and stops the build when what was said can't be read. The
     network joined ahead's case, whose script wifiCase writes as every case's, runs the shell and
-    then that guard, whatever the run ended in, and then ends failed on what it found
+    then that guard, whatever the run ended in, then reads what was said where it's given a script
+    to, and then ends failed on what either found
   '';
   the-window-buffers-stay-under-load = ''
     the XPS 14's udev sets xe's `shrinker_non_purgeable_seeks` to 64, so reclaim under a build
