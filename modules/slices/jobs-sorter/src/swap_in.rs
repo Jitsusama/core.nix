@@ -201,7 +201,7 @@ fn become_owner(pid: u32) -> Result<String, String> {
 fn scope_of(pid: u32) -> Result<PathBuf, String> {
     let cgroup = fs::read_to_string(format!("/proc/{pid}/cgroup"))
         .map_err(|error| format!("process {pid}: {error}"))?;
-    Ok(Path::new("/sys/fs/cgroup").join(
+    Ok(Path::new(crate::holds::ROOT).join(
         cgroup
             .trim()
             .split("::")
@@ -439,7 +439,7 @@ fn kittys(pid: u32, kitty: u32) -> usize {
         return 0;
     };
     let path = cgroup.trim().split("::").nth(1).unwrap_or_default();
-    let parent = Path::new("/sys/fs/cgroup").join(path.trim_start_matches('/'));
+    let parent = Path::new(crate::holds::ROOT).join(path.trim_start_matches('/'));
     let own = format!("kitty-{kitty}-");
     parent
         .parent()
