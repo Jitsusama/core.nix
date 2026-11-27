@@ -33,7 +33,9 @@ use super::{GitHub, Unread, searched};
 /// and judged, and how far before that a thread found is read, in
 /// seconds. A stop heard an hour late beats one never heard,
 /// while one older than that he may have moved past. What that finds
-/// again is known by its key, so nothing is judged twice.
+/// again is known by its key, so nothing is judged twice. A thread GitHub
+/// wouldn't let a round read is judged from where it was owed (owed.rs),
+/// however late: a stop the reader never saw leans to stopping.
 const OWN_LAG: u64 = 60 * 60;
 
 /// How many searches a round makes for Joel's words: one cut short at
@@ -61,9 +63,10 @@ pub(super) struct Searched {
 }
 
 /// What one search found: each pull request or issue to read, when each
-/// it named had last changed, whether its first search answered, so the
-/// round moves on, as it does from one cut short, and what it left out,
-/// for the journal once the round knows where the next reaches.
+/// it named had last changed, whether the round may move on from it (not
+/// when its first search failed, or was cut short giving nothing it could
+/// read, which holds as an outage does), and what it left out, for the
+/// journal once the round knows where the next reaches.
 pub(super) struct Found {
     pub(super) threads: Vec<Thread>,
     pub(super) seen: HashMap<String, String>,
@@ -135,7 +138,9 @@ impl Searched {
                 Ok(answer) => answer,
                 // Its reach stays put, so the journal says how far back
                 // it has fallen.
-                Err(Unread::Gone(why) | Unread::Failed(why)) if before.is_none() => {
+                Err(Unread::Gone(why) | Unread::Failed(why) | Unread::Limited(why))
+                    if before.is_none() =>
+                {
                     eprintln!(
                         "<4>couldn't search {} for what Joel said, so it's searched from {reach} \
                          again next round: {why}",
@@ -147,7 +152,7 @@ impl Searched {
                 // A later one failing leaves what's older unread, as one
                 // cut short would, rather than hold every round back on a
                 // wide search that may keep failing.
-                Err(Unread::Gone(why) | Unread::Failed(why)) => {
+                Err(Unread::Gone(why) | Unread::Failed(why) | Unread::Limited(why)) => {
                     found.left.push(format!(
                         "<4>couldn't search {} for what Joel said changed {changed} ({why}), so \
                          threads the search before left out are",
@@ -157,7 +162,7 @@ impl Searched {
                 }
             };
             let given = found_when(&answer, site);
-            let oldest = given.iter().map(|(_, at)| at.clone()).min();
+            let oldest = oldest(&given);
             for (thread, at) in given {
                 // One read since and unchanged holds nothing new, and one
                 // a search before gave is read already.
@@ -199,10 +204,10 @@ impl Searched {
     }
 
     /// Moves on to a round begun at `began` once what it `found` was
-    /// answered, knowing what that read as read, and says in the journal
-    /// what its searches left out, from where the next round reaches. Only
-    /// here, as a round that couldn't read a thread holds, so searches
-    /// it all again; said before, the journal would name a later time.
+    /// answered, knowing what that read as read, what the round couldn't
+    /// read owed (owed.rs), and says in the journal what its searches left
+    /// out, from where the next round reaches, which only moving on
+    /// settles.
     pub(super) fn moved_on(&mut self, began: u64, found: Found) {
         if found.answered {
             self.from = began;
@@ -245,11 +250,25 @@ impl Searched {
     }
 }
 
+/// When the least lately changed of what a search `given` last changed,
+/// as GitHub stamps it; one that doesn't say is passed over, as an empty
+/// stamp sorts first and would ask what's older with no end. None where
+/// none says.
+fn oldest(given: &[(Thread, String)]) -> Option<String> {
+    given
+        .iter()
+        .map(|(_, at)| at)
+        .filter(|at| !at.is_empty())
+        .min()
+        .cloned()
+}
+
 #[cfg(test)]
 mod tests {
+    use pineapple::github::Thread;
     use pineapple::progress::Own;
 
-    use super::{OWN_LAG, Searched};
+    use super::{OWN_LAG, Searched, oldest};
 
     /// When the reader's rounds begin in these cases, in seconds.
     const SINCE: u64 = 100_000;
@@ -291,6 +310,31 @@ mod tests {
             searched.reach(),
             SINCE - 3 * OWN_LAG,
             "an hour before the search it held back, not an hour before the rounds begin"
+        );
+    }
+
+    #[test]
+    fn the_oldest_a_search_gave_passes_over_one_that_doesnt_say() {
+        let thread = |number| Thread {
+            site: "github".to_owned(),
+            repo: "example/shop".to_owned(),
+            number,
+            pull: false,
+        };
+        let given = [
+            (thread(1), "2026-11-26T05:00:00Z".to_owned()),
+            (thread(2), String::new()),
+            (thread(3), "2026-11-26T04:00:00Z".to_owned()),
+        ];
+        assert_eq!(
+            oldest(&given).as_deref(),
+            Some("2026-11-26T04:00:00Z"),
+            "the least lately changed that says when"
+        );
+        assert_eq!(
+            oldest(&given[1..2]),
+            None,
+            "none where none says, so the search before bounds it"
         );
     }
 

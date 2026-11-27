@@ -243,6 +243,19 @@ mod tests {
     }
 
     #[test]
+    fn a_client_speaking_another_version_is_turned_away() {
+        let mut client = Conversation::new(&[4, 1, USERNAME_PASSWORD]);
+
+        let going = greet(&mut client).unwrap();
+
+        assert!(
+            !going,
+            "a client greeting as version 4 should stop, though it offers a password"
+        );
+        assert_eq!(client.answered, [VERSION, NO_ACCEPTABLE_METHOD]);
+    }
+
+    #[test]
     fn the_window_s_own_username_and_password_let_it_on() {
         let mut client = Conversation::new(&proving("window", "one-time"));
 
@@ -262,6 +275,19 @@ mod tests {
         let going = authenticate(&mut client, &window()).unwrap();
 
         assert!(!going, "a guessed password should be refused");
+        assert_eq!(client.answered, [1, 1]);
+    }
+
+    #[test]
+    fn another_username_with_the_window_s_password_is_refused() {
+        let mut client = Conversation::new(&proving("someone", "one-time"));
+
+        let going = authenticate(&mut client, &window()).unwrap();
+
+        assert!(
+            !going,
+            "the window's password under another username should be refused"
+        );
         assert_eq!(client.answered, [1, 1]);
     }
 

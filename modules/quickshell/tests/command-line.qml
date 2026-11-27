@@ -375,8 +375,16 @@ QtObject {
             { error: "E521: Number required after =: volume=loud" });
         // Whether a line's plans change an option, which times its Return
         // as acting (Launcher.qml's commandSet), as :setl over several
-        // things plans one each.
-        const planOf = arg => ({ steps: (set(arg).changes ?? []).map(change => ({ change })) });
+        // things plans one each. A word :set refuses has no plan, as the
+        // launcher answers its error first, so one here fails the case
+        // rather than passing as changing none.
+        const planOf = arg => {
+            const plan = set(arg);
+            if (plan.error !== undefined) {
+                throw new Error(`:set ${arg} was refused: ${plan.error}`);
+            }
+            return { steps: plan.changes.map(change => ({ change })) };
+        };
         holds("a line only saying options changes none, :set all and :set nothing among them",
             ["volume?", "all", "", "volume? wifi?"].map(arg => SetWords.changes([planOf(arg)])),
             [false, false, false, false]);
