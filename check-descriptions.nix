@@ -6170,8 +6170,9 @@
   '';
   the-shell-stays-light-allowing-only-what-was-taken = ''
     what the-shell-stays-light-on-niri lets the heap's resident climb by for pages the kernel
-    took is the lesser of what the machine took, by the page size given and a MB of 2**20 bytes,
-    and the most any closing held but hadn't resident, a closing of unknown resident skipped,
+    took is weighed on the round before the last, the lesser of what the machine took by then, by
+    the page size given and a MB of 2**20 bytes, a part of a MB counting as that part, and the
+    most any of its closings held but hadn't resident, a closing of unknown resident skipped,
     one with none resident counting all it held and one holding less than it has resident none,
     and a round with no closing known allows nothing
   '';

@@ -173,12 +173,12 @@ def test_a_round_of_every_place_keeps_no_more_live(capsys: pytest.CaptureFixture
     resident = [
         float(statistics.median([said for _, said in each])) if each else 0.0 for each in residents
     ]
-    # A take in the third round only lowers it, so only what was taken by the second's end counts.
+    # It weighs the second round, the one before the last, which the third is held to.
     room = allowance(
         started=started,
-        taken=taken[1],
+        taken=taken,
         page_size=os.sysconf("SC_PAGE_SIZE"),
-        closings=residents[1],
+        rounds=residents,
     )
     # Said whether it passes, so a change's cost is read from its run.
     with capsys.disabled():
