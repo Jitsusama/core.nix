@@ -979,7 +979,8 @@ fn waiting_in(ours: &[u8]) -> bool {
 /// on the network alone says nothing of the change either: on 19 November
 /// two such failed #5650's comparison and told its owner so. One ended
 /// while it still waited for a turn on the Mac that took it built
-/// nothing there either. A log that can't be read leaves the ending as it
+/// nothing there either, nor did one built off a Mac, which no Mac took
+/// (`macs::built_off_a_mac`). A log that can't be read leaves the ending as it
 /// was.
 fn mac_ending(code: Option<i32>, ours: Option<&[u8]>) -> Option<i32> {
     let Some(ours) = ours else {
@@ -992,6 +993,9 @@ fn mac_ending(code: Option<i32>, ours: Option<&[u8]>) -> Option<i32> {
         None if !taken_in(ours) || waiting_in(ours) => Some(UNCOMPARED),
         Some(UNSENT | UNREACHED) => Some(UNSENT),
         Some(code) if code != 0 && unresolved(&String::from_utf8_lossy(ours)) => Some(UNCOMPARED),
+        Some(code) if code != 0 && macs::built_off_a_mac(&String::from_utf8_lossy(ours)) => {
+            Some(UNSENT)
+        }
         code => code,
     }
 }

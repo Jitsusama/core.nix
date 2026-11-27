@@ -103,6 +103,38 @@ pub fn skipped(record: &str) -> Vec<Skipped> {
     skipped
 }
 
+/// Whether a failed comparison's log, `words`, says no Mac built it: nix
+/// refused a check for its platform on a builder that isn't a Mac, and
+/// every other failure followed from those refusals. On 26 and 27 November
+/// the net's lent-only setting sent its comparisons to Linux lenders, whose
+/// 26 to 118 refusals a run failed at least nine main commits' comparisons,
+/// and one was blamed on #6763, which changed nothing they build.
+pub fn built_off_a_mac(words: &str) -> bool {
+    let mut refused = false;
+    for line in words.lines().map(str::trim_start) {
+        if let Some(error) = line.strip_prefix("error:") {
+            let error = error.trim_start();
+            if !(error.starts_with("Cannot build ")
+                || error.starts_with("Build failed due to failed dependency"))
+            {
+                return false;
+            }
+        } else if let Some(reason) = line.strip_prefix("Reason:") {
+            let reason = reason.trim();
+            if reason == "platform mismatch" {
+                refused = true;
+            } else if !(reason.ends_with(" dependencies failed.")
+                || reason.ends_with(" dependency failed."))
+            {
+                return false;
+            }
+        } else if line.starts_with("Current system:") && line.contains(SYSTEM) {
+            return false;
+        }
+    }
+    refused
+}
+
 /// What `needs` says of the comparisons skipped at `head`, or nothing.
 pub fn said(record: &str, head: &str) -> String {
     let mut said = String::new();
@@ -206,6 +238,39 @@ mod tests {
             marked,
             (false, true),
             "a head was marked when no record skipped, or unmarked when one did"
+        );
+    }
+
+    /// A check nix refused on a Linux lender, as 84ec9529's second run
+    /// printed it, `current` being the builder's system.
+    fn refused_on(current: &str) -> String {
+        format!(
+            "error: Cannot build '/nix/store/j7qs-checks.drv'.\n       Reason: platform \
+             mismatch\n       Required system: 'aarch64-darwin'\n       Current system: \
+             '{current}'\nerror: Build failed due to failed dependency\n       Reason: 1 \
+             dependency failed.\n"
+        )
+    }
+
+    #[test]
+    fn a_comparison_refused_for_its_platform_was_built_off_a_mac() {
+        let linux = refused_on("x86_64-linux");
+        assert!(
+            built_off_a_mac(&linux),
+            "a comparison nix refused on a Linux lender read as one a Mac built"
+        );
+        let failed = format!("{linux}error: builder for '/nix/store/a-x.drv' failed\n");
+        assert!(
+            !built_off_a_mac(&failed),
+            "a check that failed beside the refusals was read as built off a Mac"
+        );
+        assert!(
+            !built_off_a_mac(&refused_on(SYSTEM)),
+            "a refusal on a Mac was read as built off one"
+        );
+        assert!(
+            !built_off_a_mac("error: Build failed due to failed dependency\n"),
+            "a failure with no refusal was read as built off a Mac"
         );
     }
 
