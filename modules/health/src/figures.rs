@@ -358,19 +358,10 @@ mod tests {
                 looks: 4,
                 median_sum_kib: (4 * 300) << 10,
                 p95_sum_kib: (2 * (500 + 700)) << 10,
-                looks_by_pss: Some(3),
                 ..Memory::default()
             },
         );
         day.memory.insert("quickshell".into(), Memory::default());
-        let looked = |looks_by_pss| Memory {
-            looks: 2,
-            looks_by_pss,
-            ..Memory::default()
-        };
-        day.memory.insert("overcounted".into(), looked(Some(5)));
-        day.memory.insert("resumed".into(), looked(None));
-        day.memory.insert("by-rss".into(), looked(Some(0)));
         let figures = of(&day);
         let figure = |name: &str| figures.get(name).copied();
         assert_eq!(
@@ -381,6 +372,32 @@ mod tests {
             (Some(300.0), Some(600.0)),
             "each the mean of the day's looks, in MiB"
         );
+        assert_eq!(
+            (
+                figure("memory.quickshell.copy-median-mib"),
+                figure("memory.quickshell.copy-p95-mib"),
+            ),
+            (None, None),
+            "never seen running, so no typical or heavy copy"
+        );
+    }
+
+    #[test]
+    fn the_share_of_looks_by_pss_is_figured_where_their_count_is_known() {
+        let mut day = Day::new("2026-11-21");
+        let looked = |looks, looks_by_pss| Memory {
+            looks,
+            looks_by_pss,
+            ..Memory::default()
+        };
+        day.memory
+            .insert("pi-conversation".into(), looked(4, Some(3)));
+        day.memory.insert("quickshell".into(), Memory::default());
+        day.memory.insert("overcounted".into(), looked(2, Some(5)));
+        day.memory.insert("resumed".into(), looked(2, None));
+        day.memory.insert("by-rss".into(), looked(2, Some(0)));
+        let figures = of(&day);
+        let figure = |name: &str| figures.get(name).copied();
         assert_eq!(
             figure("memory.pi-conversation.looks-by-pss-percent"),
             Some(75.0),
@@ -406,13 +423,13 @@ mod tests {
             Some(0.0),
             "looks counted, none of them by Pss, read as none rather than unknown"
         );
+        let bytes = serde_json::to_vec(&day).expect("the day wasn't written");
+        let back: Day = serde_json::from_slice(&bytes).expect("the day doesn't read back");
         assert_eq!(
-            (
-                figure("memory.quickshell.copy-median-mib"),
-                figure("memory.quickshell.copy-p95-mib"),
-            ),
-            (None, None),
-            "never seen running, so no typical or heavy copy"
+            of(&back).get("memory.by-rss.looks-by-pss-percent").copied(),
+            Some(0.0),
+            "a known zero read back from the day's file as unknown: {}",
+            String::from_utf8_lossy(&bytes)
         );
     }
 

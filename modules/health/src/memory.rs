@@ -706,7 +706,7 @@ mod tests {
     #[test]
     fn a_day_of_unknown_count_reads_back_on_a_build_that_counts_plainly() {
         /// The day as a build holding the count as a plain number reads it.
-        #[derive(Debug, Default, Deserialize)]
+        #[derive(Debug, Default, Serialize, Deserialize)]
         #[serde(default)]
         struct Plain {
             looks: u64,
@@ -723,6 +723,37 @@ mod tests {
         );
         let plain: Plain = serde_json::from_str(&written).expect("the plain build reads it");
         assert_eq!((plain.looks, plain.looks_by_pss), (3, 0));
+        let back = serde_json::to_string(&plain).expect("the plain build writes it");
+        let mut forward: Memory = serde_json::from_str(&back).expect("read forward");
+        let by_pss = Held {
+            kib: 10,
+            swap_kib: 0,
+            age: 60,
+            by_rss: false,
+        };
+        forward.saw(1, &[by_pss]);
+        assert_eq!(
+            (forward.looks, forward.looks_by_pss),
+            (4, Some(1)),
+            "the documented rollback limit: the unknown count reads as known, \
+             as if no look before the rollback was by Pss: {back}"
+        );
+        let none_by_pss = Memory {
+            looks: 2,
+            looks_by_pss: Some(0),
+            ..Memory::default()
+        };
+        let written = serde_json::to_string(&none_by_pss).expect("a day written");
+        assert!(
+            written.contains(r#""looks_by_pss":0"#),
+            "a known zero is written, not left out as unknown: {written}"
+        );
+        let again: Memory = serde_json::from_str(&written).expect("read back");
+        assert_eq!(
+            again.looks_by_pss,
+            Some(0),
+            "a known zero reads back as known: {written}"
+        );
         let counted = Memory {
             looks: 3,
             looks_by_pss: Some(2),
