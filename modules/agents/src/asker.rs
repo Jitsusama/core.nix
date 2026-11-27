@@ -152,13 +152,14 @@ fn judged(
     uid: u32,
     main_pid: impl FnOnce() -> io::Result<u32>,
 ) -> Result<(), String> {
-    // The one taken is looked at before the asker's own pidfd, so an asker
-    // with its pid is that same process: both run at once, and no two
-    // running processes share a pid.
-    if taken_already(taken(kept).as_ref(), seen.pid) && alive(&pidfd) {
-        return Ok(());
-    }
-    if !takes(seen, uid, main_pid).map_err(|why| untold(&why))? {
+    let last = last_of(taken(kept).as_ref());
+    let (verdict, keep) = decided(
+        last,
+        seen.pid,
+        || alive(&pidfd),
+        || takes(seen, uid, main_pid),
+    );
+    if matches!(&verdict, Err(why) if why == REFUSED) {
         // Who it was is journalled, quoted as the kernel read it, so an
         // agent asking as Joel can be traced to its own process and unit.
         let unit = seen
@@ -171,17 +172,58 @@ fn judged(
             seen.exe,
             unit.unwrap_or("no unified cgroup")
         );
-        return Err(REFUSED.to_owned());
     }
-    // Read last, so a pid taken again since any read above can't answer.
-    if alive(&pidfd) {
+    if keep == Keep::TheAsker {
         *taken(kept) = Some(Taken {
             pidfd,
             pid: seen.pid,
         });
-        Ok(())
-    } else {
-        Err(untold(&gone()))
+    }
+    verdict
+}
+
+/// What's known of the process last taken for the shell, as a judge
+/// reads it: its pid then, and whether it runs yet.
+#[derive(Clone, Copy, Debug)]
+struct Last {
+    pid: u32,
+    runs: bool,
+}
+
+/// What a judge keeps once it's decided.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Keep {
+    /// Whatever was kept before, the asker taken again or refused.
+    AsItWas,
+    /// The asker, newly taken for the shell.
+    TheAsker,
+}
+
+/// Whether the asker with `pid` is the shell, and what's kept of it,
+/// given `last`, the process last taken, `alive`, whether the asker still
+/// runs, and `takes`, whether its manager says it's the shell. Pure but
+/// for what it's handed, so each way an asker might pass is a case of its
+/// own, with no process or manager (#6918, F119 and F126).
+///
+/// The one taken is looked at before the asker, so an asker with its pid
+/// is that same process: both run at once, and no two running processes
+/// share a pid. Otherwise the manager is asked, and the asker looked at
+/// again after, so a pid taken again since any read before can't answer,
+/// and only an asker the manager took and that still runs is kept.
+fn decided(
+    last: Option<Last>,
+    pid: u32,
+    alive: impl Fn() -> bool,
+    takes: impl FnOnce() -> io::Result<bool>,
+) -> (Result<(), String>, Keep) {
+    if last.is_some_and(|last| last.pid == pid && last.runs) && alive() {
+        return (Ok(()), Keep::AsItWas);
+    }
+    match takes() {
+        Err(why) => (Err(untold(&why)), Keep::AsItWas),
+        Ok(false) => (Err(REFUSED.to_owned()), Keep::AsItWas),
+        Ok(true) if alive() => (Ok(()), Keep::TheAsker),
+        Ok(true) => (Err(untold(&gone())), Keep::AsItWas),
     }
 }
 
@@ -206,10 +248,13 @@ fn taken(kept: &Mutex<Option<Taken>>) -> std::sync::MutexGuard<'_, Option<Taken>
     kept.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-/// Whether `pid` is still the process `taken` stands for: it has that
-/// pid and runs yet, so the pid can't since have gone to another.
-fn taken_already(taken: Option<&Taken>, pid: u32) -> bool {
-    taken.is_some_and(|one| one.pid == pid && alive(&one.pidfd))
+/// What a judge reads of `taken`: its pid, and whether it runs yet, so
+/// the pid can't since have gone to another.
+fn last_of(taken: Option<&Taken>) -> Option<Last> {
+    taken.map(|one| Last {
+        pid: one.pid,
+        runs: alive(&one.pidfd),
+    })
 }
 
 /// Whether the process at the other end of `stream` runs quickshell's
@@ -800,14 +845,97 @@ mod tests {
             pidfd: pidfd_of(pid),
             pid,
         });
-        assert!(taken_already(taken.as_ref(), pid), "the one taken, running");
-        assert!(!taken_already(taken.as_ref(), pid + 1), "another pid");
-        assert!(!taken_already(None, pid), "none taken yet");
+        let read = last_of(taken.as_ref()).expect("one is taken");
+        assert_eq!((read.pid, read.runs), (pid, true), "the one taken, running");
+        assert!(last_of(None).is_none(), "none taken yet");
         shell.kill().expect("it's killed");
         shell.wait().expect("it's reaped");
-        assert!(
-            !taken_already(taken.as_ref(), pid),
+        let read = last_of(taken.as_ref()).expect("one is taken");
+        assert_eq!(
+            (read.pid, read.runs),
+            (pid, false),
             "once it ends, its pid could go to anyone"
+        );
+    }
+
+    #[test]
+    fn a_live_taken_pid_is_taken_again_with_no_manager_asked() {
+        let unasked = || -> io::Result<bool> { panic!("the manager was asked") };
+        let last = Some(Last { pid: 7, runs: true });
+        assert_eq!(
+            decided(last, 7, || true, unasked),
+            (Ok(()), Keep::AsItWas),
+            "taken again, nothing kept anew"
+        );
+    }
+
+    #[test]
+    fn a_dead_taken_process_is_not_taken_again_by_its_pid() {
+        let asked = std::cell::Cell::new(false);
+        let refusing = || {
+            asked.set(true);
+            Ok(false)
+        };
+        // Its pid gone to another, which runs and asks.
+        let last = Some(Last {
+            pid: 7,
+            runs: false,
+        });
+        assert_eq!(
+            decided(last, 7, || true, refusing),
+            (Err(REFUSED.to_owned()), Keep::AsItWas),
+            "a pid reused is judged whole, and refused as its manager says"
+        );
+        assert!(
+            asked.get(),
+            "the manager was asked once the taken one ended"
+        );
+        // Nor is an asker that ended while the one taken runs on, though
+        // their pids agree: it's judged whole, as its manager says.
+        let last = Some(Last { pid: 7, runs: true });
+        assert_eq!(
+            decided(last, 7, || false, || Ok(false)),
+            (Err(REFUSED.to_owned()), Keep::AsItWas),
+            "an asker that ended isn't taken again by its pid"
+        );
+    }
+
+    #[test]
+    fn a_refusal_is_never_kept() {
+        for (takes, why) in [
+            (Ok(false), REFUSED.to_owned()),
+            (
+                Err(io::Error::other("no bus")),
+                "who asked can't be told: no bus".to_owned(),
+            ),
+        ] {
+            assert_eq!(
+                decided(None, 7, || true, || takes),
+                (Err(why.clone()), Keep::AsItWas),
+                "refused as {why:?}, with nothing kept"
+            );
+        }
+    }
+
+    #[test]
+    fn the_asker_is_kept_only_once_its_manager_takes_it_and_it_still_runs() {
+        assert_eq!(
+            decided(None, 7, || true, || Ok(true)),
+            (Ok(()), Keep::TheAsker),
+            "taken and running, it's kept"
+        );
+        // It runs as it asks and ends while its manager is asked: read
+        // after, it's never kept, as its pid could be another's by then.
+        let manager_said = std::cell::Cell::new(false);
+        let runs = || !manager_said.get();
+        let taking = || {
+            manager_said.set(true);
+            Ok(true)
+        };
+        assert_eq!(
+            decided(None, 7, runs, taking),
+            (Err(untold(&gone())), Keep::AsItWas),
+            "ended once its manager took it, it's refused and not kept"
         );
     }
 
