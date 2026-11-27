@@ -138,14 +138,21 @@ beside it, it rides there on niri's spring, as with a scroll. A
 ride isn't a rest: no play sets off and no pet starts till it ends. A scroll
 runs for niri's spring from when niri says it began, so a scroll's word left
 on a window long after reads as ended. niri can say its window scrolled
-wholly off the screen before it says the keys left that window; it rides off
-with it then, as it would after, since that move is never heard again. Moved
+wholly off the screen before it says the keys left that window; the move is
+taken then, as it would be after, since it's never heard again: sitting, it
+rides off with that window, a walk to it is caught and a puppy's visit over
+it cut. While the keys give it no seat, so on another screen or in the
+overview too, only a scroll's move is taken, across, on the screen or off
+it, and never a window gone fullscreen, resized or elsewhere. Moved
 to another workspace while it's off the edge, it holds out of sight through
 niri's slide, then comes in at that edge head first over the new workspace's
 windows; with its workspace emptied, it comes in at that edge along the floor.
 
 - Held by `margin-cat-one-screen.qml`: "its window scrolled, it's carried as far"
-- Held by `margin-cat-one-screen.qml`: "its window said off the screen first"
+- Held by `margin-cat-one-screen.qml`: "its window moved with no seat for the keys"
+- Held by `margin-cat-one-screen.qml`: "A said off the screen first"
+- Held by `margin-cat-one-screen.qml`: "a walk to A is caught"
+- Held by `margin-cat-one-screen.qml`: "a visit over A is cut"
 - Held by `margin-cat-tiles.qml`: "a column's move asked of long after keeps its begin and reads
   as ended"
 - Owed since 2026-11-27: a case on niri that the cat rides back to its seat as a column
@@ -186,8 +193,8 @@ windows; with its workspace emptied, it comes in at that edge along the floor.
 - Owed since 2026-11-27: a case of the view's own wiring, that follow() gives backOn
   `held` only for the seat a scroll held it short of, and `heldShortOn` is cleared once it
   plays; the choices are pinned in MarginCatCarried.js, not what the view passes them.
-- Owed since 2026-11-27: a case of the view's own wiring, that its window said scrolled
-  wholly off the screen before the keys' move rides it off (carriedOff); on nested niri
+- Owed since 2026-11-27: a case of the view's own wiring, that follow() takes a move said
+  while the keys give no seat through takeMoved, as it does once they do; on nested niri
   the order can't be chosen, so `the-margin-cat-follows-the-keys-on-niri` reaches it only
   when the race goes that way, and the choice is pinned in MarginCatCarried.js alone.
 - Owed since 2026-11-27: a case that a column moved before its tile record keeps a
