@@ -359,6 +359,10 @@
     a YubiKey's keyboard interface is refused in the running system and in the initrd, so a touch
     types no one-time password at the disk prompt, and udev reads the rule without a complaint
   '';
+  agents-asks-as-joel-are-the-daemons = ''
+    Agents holds to Joel's own Return the very asks the agents daemon does only as his, its copy
+    naming each the daemon's does and no other
+  '';
   agents-cargo-goes-through-nix-offload = ''
     the dev shell's cargo sends an agent's words, from pi in a terminal or a hosted session, each
     kept whole, through nix-offload cargo naming cargo itself, and runs cargo itself for a person,

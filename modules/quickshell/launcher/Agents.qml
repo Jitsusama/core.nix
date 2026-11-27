@@ -1630,7 +1630,8 @@ Provider {
     function actWalked() {
         return String((Words.of("agents").said ?? {}).actWalked ?? "");
     }
-    // The asks the agents daemon does only as Joel (main.rs's AS_JOEL),
+    // The asks the agents daemon does only as Joel (main.rs's AS_JOEL, each
+    // named here and no other, as tests/as-joel-agrees.py holds them),
     // sent as served from its top rows only when he chose them; any
     // other ask, and his own, goes as it is.
     readonly property var asJoel: ["pause", "resume", "stop", "close", "wake", "talk",
