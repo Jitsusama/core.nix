@@ -621,6 +621,14 @@
       # holding fewer until its count is lowered.
       lib.everyFixedWaitSaysWhy = pkgs: pkgs.callPackage ./tests/rules/every-fixed-wait-says-why.nix { };
 
+      # How a repository built on core keeps a failed file read from passing as
+      # nothing, as core does: `core.lib.everyFailedReadSaysWhy pkgs { src =
+      # ./.; waiting = { ... }; }` is a check that fails on a file holding more
+      # Rust reads that turn their error into a default without saying why
+      # than it waits with, and on one holding fewer until its count is lowered.
+      lib.everyFailedReadSaysWhy =
+        pkgs: pkgs.callPackage ./tests/rules/every-failed-read-says-why.nix { };
+
       # How a repository built on core keeps its failing assertions saying what
       # was wrong, as core does: `core.lib.everyAssertSaysWhatWasWrong pkgs { src
       # = ./.; waiting = { ... }; }` is a check that fails on a file holding more
