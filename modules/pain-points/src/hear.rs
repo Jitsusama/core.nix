@@ -378,12 +378,15 @@ pub fn hear_putting(
         .flat_map(|path| heard::ledger(&fs::read_to_string(path).unwrap_or_default()))
         .collect();
     let cells = route::cells(cells_printed);
+    let apart = |h: &Heard| route::apart(&h.session, h.void, &cells, &routes);
     // A pain the keeper has carried since it was heard is closed, though
     // it was open on an earlier run, and one still open is looked for
-    // however old, as the keeper may carry it any day.
+    // however old, as the keeper may carry it any day. One said in a cell
+    // kept apart the keeper never hears of, so a ledger line with its
+    // words is another's, and its own cell is still sent it.
     for h in &mut kept {
         let looked = h.at >= ears.at - DAY_MS || h.closed_by.is_none();
-        if !h.carried && !stalled::is(h) && looked {
+        if !h.carried && !stalled::is(h) && looked && !apart(h) {
             h.carried = heard::carried(&h.words, &ledgers);
         }
     }
@@ -439,14 +442,18 @@ pub fn hear_putting(
     }
     // A listener nobody set up writes nothing of his.
     let (offset_s, from) = (ears.offset_s, ears.misses_from);
-    let owning = missed::owning(&ledgers, &routes);
+    let mut owning = missed::owning(&ledgers, &routes);
+    owning.apart = kept
+        .iter()
+        .filter(|h| apart(h))
+        .map(|h| h.key.clone())
+        .collect();
     let ledgered = routes
         .sends()
         .then(|| missed::write(&ears.misses, &kept, &owning, offset_s, from).err())
         .flatten();
     let mut hour = hour_of(&kept, ears.at);
     hour.unclosed = stood.unclosed;
-    let apart = |h: &Heard| route::apart(&h.session, h.void, &cells, &routes);
     let (waiting, given_up) = unsent(&kept, ears.at, &apart);
     hour.cellless_since = cellless_since(&ears.state, ears.at, cells.is_empty() && waiting);
     hour.troubles = troubles(

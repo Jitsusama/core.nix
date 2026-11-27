@@ -70,6 +70,31 @@ fn a_pain_hours_old_in_a_cell_kept_apart_still_goes_to_its_owner_alone() {
 }
 
 #[test]
+fn a_pain_in_a_cell_kept_apart_is_never_the_keepers_carried_though_a_ledger_quotes_it() {
+    let said = [user(
+        "e1",
+        "2026-11-16T19:30:00.000Z",
+        "the budget sheet is broken again",
+    )];
+    let place = apart_place("quoted-apart", &said);
+    fs::write(
+        place.root.join("asks.jsonl"),
+        r#"{"at":"x","words":"the budget sheet is broken again","owner":"Y"}"#,
+    )
+    .expect("a ledger");
+    let (_, sent) = run(&place, CELLS, true);
+    assert!(
+        place.heard().iter().all(|h| !h.carried),
+        "a pain kept apart was read as carried by another's ledger line"
+    );
+    assert!(
+        sent.iter()
+            .any(|(to, text)| to == "ABC123" && text.contains("budget")),
+        "a pain kept apart that a ledger quotes wasn't sent to its own cell: {sent:?}"
+    );
+}
+
+#[test]
 fn a_pain_in_a_cell_kept_apart_is_tried_three_times_then_given_up_never_the_keepers() {
     let said = [user(
         "e1",
