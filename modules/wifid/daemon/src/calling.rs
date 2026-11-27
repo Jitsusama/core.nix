@@ -953,6 +953,30 @@ mod tests {
     }
 
     #[test]
+    fn a_sleeper_goes_once_the_thread_that_started_it_does() {
+        // The kernel's death signal follows the thread that forked the
+        // child, not its process, so a thread that starts a sleeper and
+        // ends is a parent gone: the case needs no forked child of the
+        // runner to spawn from, which isn't safe in a process of many
+        // threads, nor a second run of the runner. `spawn` returns only
+        // once the exec has closed the child's end of the socket it reports
+        // a failed exec on, after the hook has asked (`Command::spawn` in
+        // `library/std/src/sys/process/unix/unix.rs`, as rust-lang/rust's
+        // master read on 27 Nov 2026), so the thread can't end before the
+        // ask. The sleeper is held to the case's end, so it's reaped, and
+        // killed first should it outlive the thread.
+        let (_sleeper, _, pidfd) = std::thread::spawn(a_sleeper)
+            .join()
+            .expect("a sleeper starts");
+        let went = exits_soon(&pidfd);
+
+        assert!(
+            went,
+            "a sleeper outlived the thread that started it, so a killed runner would leave it"
+        );
+    }
+
+    #[test]
     fn a_process_is_said_exited_once_it_has() {
         let (mut child, pid, pidfd) = a_sleeper();
         let asked = || held(Ok(pidfd.try_clone().expect("a pidfd copies")));
