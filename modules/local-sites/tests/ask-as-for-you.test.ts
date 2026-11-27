@@ -174,6 +174,11 @@ const TARGETS: Record<string, string> = {
   terminal: "QGB4ON",
 };
 
+/** Choices offering each label as its own value. */
+function labelled(labels: readonly string[]): readonly object[] {
+  return labels.map((label) => ({ value: label, label }));
+}
+
 /** Looks to read alike: each rule's cases, either side of what it decides. */
 const LOOKS: Record<string, object> = {
   "a look of the second form": LOOK,
@@ -256,6 +261,43 @@ const LOOKS: Record<string, object> = {
       { value: "", label: "Empty" },
     ],
   },
+  // Each posing rule either side of what it decides, so either copy's
+  // WHOLE_CHOICE, word count, CUTS, DIGIT, PLAIN or VARIANTS drifting shows.
+  "choices opening with a one-word act, either side of its cut": {
+    ...LOOK,
+    choices: labelled([
+      "Open a PR",
+      "Talk to them about it, now",
+      `Talk ${"x".repeat(19)}`,
+      `Talk ${"x".repeat(20)}`,
+    ]),
+  },
+  "choices an act's words lead before a line break or spaces": {
+    ...LOOK,
+    choices: labelled([
+      "Clear It\nfor good",
+      `Clear It${" ".repeat(40)}Away`,
+      "Talk\nto them",
+      "Open\r\nit",
+    ]),
+  },
+  "choices of five words, a count can't measure, or Qt splits": {
+    ...LOOK,
+    choices: labelled([
+      "Talk to me a bit",
+      "Talk\u2024\u2024\u2024",
+      "Open \u65e5\u65e5",
+      "Talk\u009cX",
+    ]),
+  },
+  "choices a digit joins, of four words, or an act's own": {
+    ...LOOK,
+    choices: labelled(["Clear It2", `Talk9${"x".repeat(25)}`, "Talk to me now", "Open"]),
+  },
+  "an act a choice opens with": { ...LOOK, act: "Review It", choices: labelled(["Review It Now"]) },
+  "an act a one-word choice begins": { ...LOOK, act: "Review It", choices: labelled(["Review"]) },
+  "an act opening with a choice's words": { ...LOOK, act: "Keep It Now" },
+  "an act Qt splits": { ...LOOK, act: "Review\u009cIt" },
   "an act read as a choice it offers": { ...LOOK, act: "keep it." },
   "an act posing as the launcher's": { ...LOOK, act: "Clear\u200b It" },
   "an act holding a turn": { ...LOOK, act: "Read\u202e" },

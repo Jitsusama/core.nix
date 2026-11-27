@@ -31,6 +31,15 @@ const CUTS = /[\n\r\v\f\u0085\u2028\u2029]|\s{2,}/u;
 // or an isolate: left out of a name it's read as nothing, yet "\u202etI
 // raelC" still draws as Clear It, so a name holding one is never trusted.
 const TURNS = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/u;
+// What splits a name into variants Qt's Text draws only the first of that
+// fits, eliding the last alone: "Talk\u009cX" draws as Talk however it reads
+// here, so a name holding one is never trusted either.
+const VARIANTS = /\u009c/u;
+// What may follow a one-word act in a choice that's still trusted to draw
+// whole: plain printable ASCII, whose width the row's cut can be judged by.
+// A wide glyph or a mark drawn like a stop ("Open \u65e5\u65e5", "Talk\u2024\u2024")
+// may draw as the act and an ellipsis however few its characters.
+const PLAIN = /^[\x20-\x7e]*$/u;
 // And the rest of what Unicode says may draw as nothing, some of it past
 // U+FFFF: selectors of a letter's variant (Mongolian's and Unicode's),
 // Khmer's inherent vowels, shorthand's and music's format controls, and
@@ -99,6 +108,7 @@ function actOf(one, taken = []) {
     const act = secondForm(one) ? written(one.act).trim() : "";
     const read = readAs(act);
     return read === "" || read.split(" ").length > ACT_WORDS || TURNS.test(act)
+        || VARIANTS.test(act)
         || poses(act, taken)
         || (one.offers ?? []).some(choice => poses(act, [written(choice.label)])
             || poses(written(choice.label), [act])) ? "" : act;
@@ -122,14 +132,16 @@ function headOf(name) {
 // show the rest. A one-word act, as Open, Answer or Talk, begins many a
 // choice Joel should press (Open a PR, Answer Later, Talk It Through), so
 // one opening with it poses only once it's long enough to be cut short to
-// it: past ACT_WORDS words or WHOLE_CHOICE characters.
+// it: past ACT_WORDS words or WHOLE_CHOICE characters, or once what
+// follows it isn't PLAIN, whose width its count can't tell.
 function poses(name, taken) {
     const read = readAs(name);
     const head = readAs(headOf(name));
     const cut = read.split(" ").length > ACT_WORDS || read.length > WHOLE_CHOICE;
-    return taken.length > 0 && (TURNS.test(String(name))
+    const opened = each => each.includes(" ") || cut || !PLAIN.test(read.slice(each.length));
+    return taken.length > 0 && (TURNS.test(String(name)) || VARIANTS.test(String(name))
         || taken.map(readAs).some(each => each !== "" && (each === read || each === head
-            || (opensWith(read, each) && (each.includes(" ") || cut)))));
+            || (opensWith(read, each) && opened(each)))));
 }
 
 // Whether `read` opens with the words `each` and then a break between
@@ -155,9 +167,13 @@ function presses(one, cellActs, openName) {
     return one.kind === "terminal" ? cellActs.concat([openName]) : cellActs.slice();
 }
 
-// Whether a look in its second form asks Joel back: it wants a choice or
-// his own words, or offers choices. One in its first form says so in its ask.
-function asksBack(one) {
-    return secondForm(one) && (one.wants?.words === true || (one.offers ?? []).length > 0
-        || (Array.isArray(one.wants?.choices) && one.wants.choices.length > 0));
+// Whether a look in its second form asks Joel back: it wants his own
+// words, or offers choices he can press (`offered`, those poses left), or
+// wants a choice it offers none for. One whose every choice was held back
+// asks nothing he can give, so it doesn't say it asks. One in its first
+// form says so in its ask.
+function asksBack(one, offered = one.offers ?? []) {
+    const wanted = Array.isArray(one.wants?.choices) && one.wants.choices.length > 0;
+    return secondForm(one) && (one.wants?.words === true || offered.length > 0
+        || (wanted && (one.offers ?? []).length === 0));
 }

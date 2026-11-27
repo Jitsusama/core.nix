@@ -27,10 +27,14 @@ const HEX = 16;
  * or only the first, shows), beside a space and after a stop (so steps run
  * in another order show), in a run after the first that ends nothing (so
  * a pattern rewriting only the first run shows), and against a name it
- * could pass for or by a turn pose as.
+ * could pass for or by a turn pose as: a two-word act, and a one-word act,
+ * whose choices are judged by what follows it and how long they run.
  */
 function alike(form: Script, c: string): boolean {
-  return [
+  const talking = [`Talk${c}to it`, `Talk${c}${c}to it`, `Talk ${c}${"x".repeat(19)}`].every(
+    (name) => poses(name, ["Talk"]) === form.poses(name as never, ["Talk"] as never),
+  );
+  return talking && [
     `Keep${c} It`,
     `${c}tI peeK`,
     `Keep It${c}`,

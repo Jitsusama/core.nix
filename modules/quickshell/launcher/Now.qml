@@ -1541,7 +1541,12 @@ Provider {
             : [];
         const choices = followed.length > 0 ? []
             : [fact("choices", offered.map(choice => choice.label).join(" \u00b7 "))];
+        // A choice held back as worded like the launcher's own act is named
+        // as left out, with why, rather than gone without a word
+        // (docs/design.md, a figure shown or named as left out).
+        const held = waits ? one.offers.length - offered.length : 0;
         const facts = followed.concat(choices, [
+            fact("heldBack", held > 0 ? waitingSaid("heldBack", { count: held }) : ""),
             fact("ifNothing", waits ? Looks.ifNothingOf(one) || lookLapses(one, say) : ""),
             fact("since", one.since === null ? "" : say.clock(one.since)),
             fact("resolved", waits ? "" : ForYou.historySide(one, say)),
@@ -1704,7 +1709,8 @@ Provider {
             return ForYou.historySide(one, say);
         const reason = ForYou.reason(lookThing(one), now, say);
         if (LookForm.secondForm(one))
-            return [LookForm.asksBack(one) ? waitingSaid("asksYou", {}) : "", reason]
+            return [LookForm.asksBack(one, lookOffers(one)) ? waitingSaid("asksYou", {}) : "",
+                reason]
                 .filter(part => part !== "").join(" \u00b7 ");
         return Looks.askOf(one) || reason;
     }

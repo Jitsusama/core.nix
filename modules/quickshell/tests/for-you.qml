@@ -523,6 +523,32 @@ QtObject {
                 LookForm.poses("Talk\u00a0to Them", ["Talk"]),
                 LookForm.poses("Open", ["Open"])],
             [false, false, false, false, true]);
+        // Each limit at its edge: 24 characters draw whole and 25 may not, four
+        // words and five, and a digit goes on the act's word as a letter does,
+        // so Clear It2 and Talk9 open with no act (#6562's seventh review).
+        expect("a one-word act's choice is cut at 24 characters or four words, a digit joining",
+            [LookForm.poses(`Talk ${"x".repeat(19)}`, ["Talk"]),
+                LookForm.poses(`Talk ${"x".repeat(20)}`, ["Talk"]),
+                LookForm.poses("Talk to me a bit", ["Talk"]),
+                LookForm.poses("Talk to me now", ["Talk"]),
+                LookForm.poses("Clear It2", ["Clear It"]),
+                LookForm.poses(`Talk9${"x".repeat(25)}`, ["Talk"])],
+            [false, true, true, false, false, false]);
+        // What follows a one-word act is judged by its count only where it's
+        // plain ASCII: a wide glyph's run, or a mark drawn like a stop, may
+        // draw as the act and an ellipsis however few its characters; and a
+        // name Qt splits into variants draws as its first that fits.
+        expect("a choice whose rest a count can't measure, or split for Qt, poses as the act",
+            [LookForm.poses("Open \u65e5\u65e5\u65e5", ["Open"]),
+                LookForm.poses("Open \ufdfd", ["Open"]),
+                LookForm.poses("Talk\u2024\u2024\u2024", ["Talk"]),
+                LookForm.poses("Talk\u22ef", ["Talk"]),
+                LookForm.poses("Talk\u009cX", ["Talk"]),
+                LookForm.poses("Keep this exactly as it stands for now\u009cClear It",
+                    ["Clear It"]),
+                LookForm.actOf(second({ act: "Review\u009cIt" })),
+                LookForm.poses("Open a PR", ["Open"])],
+            [true, true, true, true, true, true, "", false]);
         // And a look's own act can't pass for a choice, nor a choice for it,
         // once either is cut short; a one-word choice its short act opens
         // with draws whole beside it, so both stay.
@@ -533,8 +559,10 @@ QtObject {
             [LookForm.actOf(offeringOf(["Review It Now"])),
                 LookForm.actOf(offeringOf(["Review"])),
                 LookForm.actOf(offeringOf(["Review It\nfor good"])),
-                LookForm.actOf(offeringOf(["Keep It", "Roll It Back"]))],
-            ["", "Review It", "", "Review It"]);
+                LookForm.actOf(offeringOf(["Keep It", "Roll It Back"])),
+                LookForm.actOf(second({ act: "Keep It Now",
+                    choices: [{ value: "keep", label: "Keep It" }] }))],
+            ["", "Review It", "", "Review It", ""]);
         // A verb draws on one line, cut short where it runs out of room, so
         // what follows a line break, or a run of spaces past its room, never
         // shows: a name whose words before either read as an act poses as it.
@@ -543,12 +571,14 @@ QtObject {
             [LookForm.poses("Clear It\nfor good", ["Clear It"]),
                 LookForm.poses("Clear It\r\nnow", ["Clear It"]),
                 LookForm.poses("Talk\u2028to it", ["Talk"]),
+                LookForm.poses("Talk\nto them", ["Talk"]),
+                LookForm.poses("Open\r\nit", ["Open"]),
                 LookForm.poses(`Clear It${" ".repeat(40)}Away`, ["Clear It"]),
                 LookForm.poses("Clear It\u3000\u3000Away", ["Clear It"]),
                 LookForm.poses("Clear\u200b  It  Away", ["Clear"]),
                 LookForm.poses("Keep It\nClear It", ["Clear It"]),
                 LookForm.poses("Clear  It", ["Clear It"])],
-            [true, true, true, true, true, true, false, true]);
+            [true, true, true, true, true, true, true, true, false, true]);
         // Explain It is told a terminal look's Open beside its cell's acts, by
         // the name its row shows, as that Open goes to the cell's window; any
         // other look's Open answers the look, so it is told none.
@@ -569,6 +599,12 @@ QtObject {
                 LookForm.asksBack(second({ wants: { choices: [] }, choices: undefined })),
                 LookForm.asksBack(firstly), LookForm.asksBack(choosing)],
             [true, true, true, true, false, false, false, false]);
+        // One whose every choice was held back as posing asks nothing he can
+        // give, so it doesn't say it asks; one still offering any does.
+        expect("it asks back only by the choices left to press",
+            [LookForm.asksBack(secondly, []), LookForm.asksBack(secondly, secondly.offers.slice(1)),
+                LookForm.asksBack(second({ wants: { words: true } }), [])],
+            [false, true, true]);
         const secondBack = JSON.parse(Looks.rewritten(secondly, "opened", "opened", now));
         expect("written back, its second form as its session wrote it",
             [secondBack.happened, secondBack.act, secondBack.wants.choices[1].follows,
