@@ -44,6 +44,13 @@ ShellRoot {
             throw new Error(`${what}: ${said}`);
     }
 
+    // That what was said is what was meant, compared as JSON, as
+    // tests/lib/Expect.js's same does.
+    function same(what, said, meant) {
+        const was = JSON.stringify(said);
+        expect(what, was === JSON.stringify(meant), `said ${was}, meant ${JSON.stringify(meant)}`);
+    }
+
     // The weather provider as Now reads it: an answer to its first word,
     // and `answered` when a forecast arrives.
     QtObject {
@@ -1163,7 +1170,7 @@ ShellRoot {
         theLauncher.open = true;
         expect("nothing moved is no row", moved() === null, JSON.stringify(keys()));
         const quest = { key: "moved:quests:QEST-A", name: "Bootstrap the laptop",
-            note: "landed: the fix" };
+            note: "landed: the fix", movedAsks: { landed: 1, moved: 3 } };
         const fix = { key: "at\tthe fix", landed: 1, expected: null };
         quests.movedRows = [quest];
         quests.shown = [fix];
@@ -1180,6 +1187,43 @@ ShellRoot {
             row.name === "What Moved" && row.side === "1 moved"
                 && row.note === "Bootstrap the laptop",
             JSON.stringify([row.name, row.side, row.note]));
+        // Its drawer gives what the note can't: how many that moved
+        // landed, and where most moved, its count said as one or many.
+        const facts = () => moved().drawer()?.facts ?? null;
+        quests.movedRows = [quest, { key: "moved:quests:QEST-B", name: "Tune the dock",
+            note: "a date moved: the dock", movedAsks: { landed: 0, moved: 1 } }];
+        quests.movedRevision += 1;
+        same("its drawer says how many that moved landed, and the busiest", facts(), [
+            { label: "Asks Landed", value: "1", qualifier: "of 4 that moved" },
+            { label: "Busiest", value: "Bootstrap the laptop", qualifier: "3 asks" }]);
+        quests.movedRows = [{ key: "moved:quests:QEST-B", name: "Tune the dock",
+            note: "a date moved: the dock", movedAsks: { landed: 0, moved: 1 } }];
+        quests.movedRevision += 1;
+        same("one workstream has no busiest, its name being the note", facts(), [
+            { label: "Asks Landed", value: "0", qualifier: "of 1 that moved" }]);
+        quests.movedRows = [quest, { key: "moved:quests:QEST-B", name: "Tune the dock",
+            note: "a date moved: the dock", movedAsks: { landed: 0, moved: 3 } }];
+        quests.movedRevision += 1;
+        same("a tie for the most has no busiest", facts(), [
+            { label: "Asks Landed", value: "1", qualifier: "of 6 that moved" }]);
+        quests.movedRows = [quest, { key: "moved:quests:QEST-B", name: "Tune the dock",
+            note: "a date moved: the dock", movedAsks: { landed: 0, moved: 1 } },
+            { key: "moved:quests:QEST-D", name: "Mend the mail",
+                note: "landed: the mail", movedAsks: { landed: 1, moved: 1 } }];
+        quests.movedRevision += 1;
+        same("the one that moved most of several is busiest", facts()[1],
+            { label: "Busiest", value: "Bootstrap the laptop", qualifier: "3 asks" });
+        quests.movedRows = [{ key: "moved:quests:QEST-B", name: "Tune the dock",
+            note: "a date moved: the dock", movedAsks: { landed: 0, moved: 1 } },
+            { key: "moved:quests:QEST-C", name: "Uncounted", note: "" }];
+        quests.movedRevision += 1;
+        same("one ask is said as one", facts()[1],
+            { label: "Busiest", value: "Tune the dock", qualifier: "1 ask" });
+        quests.movedRows = [{ key: "moved:quests:QEST-C", name: "Uncounted", note: "" }];
+        quests.movedRevision += 1;
+        same("counts the daemon never gave are no facts, so no drawer", facts(), null);
+        quests.movedRows = [quest];
+        quests.movedRevision += 1;
         expect("it steps into each quest's row", row.verbs()[0] === quest,
             JSON.stringify(row.verbs()));
         expect("it asks nothing, so it's not in For You",
@@ -1203,6 +1247,8 @@ ShellRoot {
         quests.movedRevision += 1;
         expect("nothing left moved while he's in, it stays till shut", moved() !== null,
             JSON.stringify(keys()));
+        same("and its drawer says nothing moved", moved().drawer()?.body,
+            "Nothing moved since you last looked.");
         quests.movedRows = moving;
         quests.movedRevision += 1;
         theLauncher.open = false;
@@ -2918,19 +2964,30 @@ ShellRoot {
         WaitingOnYou.now = [toDo("Pay It", new Date(Date.now() - 3600000).toISOString())];
         expect("his own heavier than a session's ask, home names his own",
             now.homeSays() === "Pay It \u00b7 1 more", now.homeSays());
-        // And time alone lifts a to-do past the ask, though nothing banded
-        // For You again: home reads the bands at its own minute, as its
-        // rows do, not those kept since its items changed (#6777's seventh
-        // review, F75). Sign In, raised two hours ago, weighs the ask's 50
-        // once it has waited fifteen more.
+        // And time alone brings a to-do level with the ask, and his own
+        // leads a tie (ForYouCells.js's leading): home reads the bands at
+        // its own minute, as its rows do, not those kept since its items
+        // changed (#6777's seventh review, F75). Sign In, raised two hours
+        // ago, weighs at most 50 (ForYou.js's WAITED_MOST), the ask's
+        // weight here, once it has waited about twelve more; this ask has
+        // no `since`, so it never ages past it (#7014's review, F1 and F15).
         WaitingOnYou.now = [toDo("Sign In")];
-        const keptBands = now.forYouBands;
         const later = Date.now() + 16 * 3600000;
-        expect("time alone lifting his own past the ask, home names it then",
+        expect("time alone bringing his own level with the ask, home names it then",
             now.homeSays() === "Session C needs you \u00b7 1 more"
-                && now.homeSays(later) === "Sign In \u00b7 1 more"
-                && now.forYouBands === keptBands,
+                && now.homeSays(later) === "Sign In \u00b7 1 more",
             JSON.stringify([now.homeSays(), now.homeSays(later)]));
+        // And reading home later leaves the bands kept for this minute,
+        // which For You's rows share (#7014's review, F4 and F7). Home is
+        // read now first, so the minute kept is this one, whatever read came
+        // before.
+        now.homeSays();
+        const keptMinute = now.bandsKept.minute;
+        const keptTimes = now.bandsKept.times;
+        now.homeSays(later);
+        expect("a read later keeps the bands kept for now",
+            now.bandsKept.minute === keptMinute && now.bandsKept.times === keptTimes,
+            JSON.stringify([keptMinute, now.bandsKept.minute, keptTimes, now.bandsKept.times]));
         Location.here = here;
         Facts.all = [];
         WaitingOnYou.now = [];
