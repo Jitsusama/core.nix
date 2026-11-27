@@ -103,6 +103,53 @@ fn their_echo_in_a_take_of_joels_is_cut_and_his_own_words_written() {
     );
 }
 
+/// Joel's line saying `text` at `level` dB, a word each 300 ms from
+/// `from_ms` milliseconds into the call, heard into `writing`.
+fn joel_says(writing: &mut Writing, from_ms: usize, text: &str, level: f32) {
+    let words: Vec<Word> = text
+        .split_whitespace()
+        .zip(0..)
+        .map(|(spelled, i)| Word {
+            level,
+            ..word(spelled, (from_ms + 300 * i) * SECOND / 1000)
+        })
+        .collect();
+    let said = Line {
+        start: words[0].at,
+        end: words[words.len() - 1].at + SECOND * 3 / 10,
+        text: text.to_owned(),
+        ..line(Side::Mine, 0, None)
+    };
+    writing.words.insert(writing.lines.len(), words);
+    writing.lines.push(said);
+}
+
+#[test]
+fn joels_words_over_bo_on_a_quieter_microphone_are_written_back_once_six_are_heard_on_it() {
+    // Six words alone on a -20 dB headset make his voice the headset's,
+    // so his line over Bo's "Not yet." on a laptop 20 dB quieter is cut
+    // as their echo and left out. Six alone on the laptop after it are
+    // nearer it than the headset's, so the call written again brings it
+    // back as his.
+    let mut writing = ada_then_bo();
+    let headset = "Morning all, I'm on my headset.";
+    joel_says(&mut writing, 2_000, headset, -20.0);
+    joel_says(&mut writing, 46_100, "Hang on.", -40.0);
+    assert_eq!(
+        joels_written(&writing),
+        [headset],
+        "Joel's line over Bo wasn't cut by his headset's voice, so its coming back shows nothing"
+    );
+    let laptop = "Sorry, I'm on my laptop now.";
+    joel_says(&mut writing, 60_000, laptop, -40.0);
+    assert_eq!(
+        joels_written(&writing),
+        [headset.to_owned(), format!("Hang on. {laptop}")],
+        "Joel's line over Bo stayed left out once six of his words were heard alone on its \
+         microphone"
+    );
+}
+
 #[test]
 fn each_echo_cut_from_joels_words_is_told_once_and_without_them() {
     let mut writing = ada_then_bo();
@@ -128,30 +175,121 @@ fn each_echo_cut_from_joels_words_is_told_once_and_without_them() {
 
 #[test]
 fn an_echo_cut_for_its_level_is_told_by_how_far_below_theirs_it_was() {
-    // His microphone hears Bo's "Not yet." 20 dB down, its own way, in a
-    // take of his that opens with five words alone, so it's cut against
-    // his voice as well as Bo's; it would be against Bo's alone too.
+    // His microphone hears Bo's "Not yet." 20 dB down, its own way, and
+    // none of his words is heard alone, so it's cut against Bo's level.
     let mut writing = ada_then_bo();
-    let late = SECOND / 20;
-    let mut words: Vec<Word> = ["Fine", "by", "me,", "thanks", "all."]
-        .iter()
-        .zip(10..)
-        .map(|(text, at)| word(text, at * SECOND))
-        .collect();
-    for (text, at) in [("Knot", 46), ("yep.", 47)] {
-        words.push(Word {
+    let words: Vec<Word> = [("Knot", 46 * SECOND + SECOND / 20), ("yep.", 47 * SECOND)]
+        .into_iter()
+        .map(|(text, at)| Word {
             level: -20.0,
-            ..word(text, at * SECOND + late)
-        });
-    }
+            ..word(text, at)
+        })
+        .collect();
     writing.words.insert(writing.lines.len(), words);
-    writing
-        .lines
-        .push(joels(10, 48, "Fine by me, thanks all. Knot yep."));
+    writing.lines.push(joels(46, 48, "Knot yep."));
     assert_eq!(
         writing.untold_cuts(),
         ["call-transcripts: 2 of Joel's words at 0:46 cut as their echo, 20 dB below theirs"],
         "the level cut was told by how late it was, or with the call's words"
+    );
+}
+
+/// `ada_then_bo`, then a take of Bo's from 60 s, 2 s at 0 dB, that
+/// Parakeet heard no words in, and Joel's microphone hearing it 30 dB
+/// down as a word of his, 61 s in.
+fn joel_under_a_wordless_take() -> Writing {
+    let mut writing = ada_then_bo();
+    let wordless = Ok((None, Vec::new()));
+    writing.take_heard(Side::Theirs, 60 * SECOND, &vec![1.0; 2 * SECOND], wordless);
+    joel_says(&mut writing, 61_000, "Yeah.", -30.0);
+    writing
+}
+
+#[test]
+fn joels_word_under_a_take_of_theirs_that_wasnt_heard_is_his_own() {
+    let mut writing = ada_then_bo();
+    let failed = Err("the encoder failed".to_owned());
+    writing.take_heard(Side::Theirs, 60 * SECOND, &vec![1.0; 2 * SECOND], failed);
+    joel_says(&mut writing, 61_000, "Yeah.", -30.0);
+    assert_eq!(
+        joels_written(&writing),
+        ["Yeah."],
+        "Joel's word was cut under the sound of a take of theirs Parakeet never heard"
+    );
+}
+
+#[test]
+fn joels_word_under_a_loud_take_of_his_own_is_his_own() {
+    let mut writing = ada_then_bo();
+    let wordless = Ok((None, Vec::new()));
+    writing.take_heard(Side::Mine, 60 * SECOND, &vec![1.0; 2 * SECOND], wordless);
+    joel_says(&mut writing, 61_000, "Yeah.", -30.0);
+    assert_eq!(
+        joels_written(&writing),
+        ["Yeah."],
+        "Joel's word was cut under the sound of a take of his own"
+    );
+}
+
+#[test]
+fn joels_word_under_a_take_of_theirs_with_no_words_is_left_out() {
+    assert!(
+        joels_written(&joel_under_a_wordless_take()).is_empty(),
+        "Joel's word 30 dB under Bo's take with no words was written as his"
+    );
+}
+
+#[test]
+fn an_echo_cut_for_their_sound_is_told_by_how_far_under_it_it_was() {
+    assert_eq!(
+        joel_under_a_wordless_take().untold_cuts(),
+        [
+            "call-transcripts: 1 of Joel's words at 1:01 cut as their echo, 30 dB under \
+          their sound"
+        ],
+        "the cut under their sound wasn't told, or was told with the call's words"
+    );
+}
+
+#[test]
+fn a_cut_his_voice_heard_later_brings_back_is_told_written_back() {
+    // His words 20 dB below Bo's "Not yet.", spelling none of it, are cut
+    // against Bo's level while none of his is heard alone. Five of his
+    // heard alone later, at that level too, make it his voice's, so the
+    // call written again brings them back, and the journal must say so,
+    // as it said the cut: what it told left out is no longer.
+    let mut writing = ada_then_bo();
+    let quiet = |text: &str, at: usize| Word {
+        level: -20.0,
+        ..word(text, at)
+    };
+    let over = vec![
+        quiet("Knot", 46 * SECOND + SECOND / 20),
+        quiet("yep.", 47 * SECOND),
+    ];
+    writing.words.insert(writing.lines.len(), over);
+    writing.lines.push(joels(46, 48, "Knot yep."));
+    assert_eq!(
+        writing.untold_cuts(),
+        ["call-transcripts: 2 of Joel's words at 0:46 cut as their echo, 20 dB below theirs"],
+        "the cut wasn't told, so its bringing back shows nothing"
+    );
+    let alone: Vec<Word> = ["Fine", "by", "me,", "thanks", "all."]
+        .into_iter()
+        .zip(60..)
+        .map(|(text, at)| quiet(text, at * SECOND))
+        .collect();
+    writing.words.insert(writing.lines.len(), alone);
+    writing.lines.push(joels(60, 65, "Fine by me, thanks all."));
+    assert_eq!(
+        writing.untold_cuts(),
+        ["call-transcripts: 2 of Joel's words at 0:46 written back"],
+        "words told as cut and then written back weren't told, or were told with the call's words"
+    );
+    hear_take(&mut writing, 80, &[ADA], &[("Right.", 0)]);
+    assert!(
+        writing.untold_cuts().is_empty(),
+        "words written back were told again with the next take"
     );
 }
 

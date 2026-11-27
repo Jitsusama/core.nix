@@ -4,7 +4,9 @@
 //! Parakeet is loaded with a call's first take, at the NPU's background
 //! priority, and let go once no call has needed it for a while, so it
 //! holds no memory between calls. A take's sound is let go once it's
-//! heard.
+//! heard; of theirs Parakeet heard, words or none, only how loud each
+//! 50 ms was is kept (`dictation::loudness`), so Joel's words far under
+//! it are cut as their echo.
 //!
 //! A new OpenVINO or driver means compiling Parakeet again, about a
 //! minute on the NPU, which a call's first take used to wait for: on 12
@@ -34,6 +36,7 @@ use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::time::Duration;
 
 use dictation::echo;
+use dictation::loudness::Track;
 use dictation::mel::RATE;
 use dictation::parakeet::{Parakeet, Timings, Word};
 use dictation::pieces;
@@ -83,11 +86,14 @@ pub enum Job {
 /// say who the voices left numbered may be, once it's told apart; they
 /// aren't in its lines, so a restart loses them. Its first `read` lines
 /// were read back from its file, their echoes already left out. Its
-/// `told` are the echo cuts from Joel's words already journaled, by the
-/// sample the cut starts at, and `left` the lines of his already
-/// journaled as left out whole, by the sample each starts at: splitting
-/// their takes by voice moves his lines' indices on but never their
-/// times, so what's told stays told across a rejoin.
+/// `told` are the echo cuts from Joel's words journaled and not since
+/// written back, how many words each, by the sample the cut starts at,
+/// and `left` the lines of his already journaled as left out whole, by
+/// the sample each starts at: splitting their takes by voice moves his
+/// lines' indices on but never their times, so what's told stays told
+/// across a rejoin. Its `sound` is how loud each take of theirs heard
+/// was, words or none, so his words far under it are cut as their echo; one
+/// taken up from its file starts with none, since sound is never kept.
 #[derive(Default)]
 struct Writing {
     lines: Vec<Line>,
@@ -99,8 +105,9 @@ struct Writing {
     takes: usize,
     whole: bool,
     guesses: Option<String>,
-    told: HashSet<usize>,
+    told: HashMap<usize, usize>,
     left: HashSet<usize>,
+    sound: Track,
 }
 
 /// A piece of a take of theirs as the speaker model heard it: its
@@ -108,26 +115,46 @@ struct Writing {
 type Embedded = (Vec<f32>, usize, usize);
 
 impl Writing {
-    /// What's newly left out of Joel's side as the others' echo, a
-    /// journal line each, said once: for words cut from a line, how many,
-    /// when and how late; for a line left out whole, how many words and
-    /// when. Never the words, since a call's words stay out of the
-    /// journal. What's wrongly left out is gone from the file, so this is
-    /// all that says where to listen for it.
+    /// What's newly left out of Joel's side as the others' echo, or
+    /// written back, a journal line each, said once: for words cut from a
+    /// line, how many, when and what they were cut by (`Cut::by`); for
+    /// words told cut that the call written again keeps, as it may once
+    /// more of his words are heard alone, how many and when; for a line
+    /// left out whole, how many words and when. Never the words, since a
+    /// call's words stay out of the journal. What's wrongly left out is
+    /// gone from the file, so this is all that says where to listen for
+    /// it.
     fn untold_cuts(&mut self) -> Vec<String> {
-        let (cut, cuts) = echo::cut_echoes(&self.lines, &self.words, said::spoken);
-        let mut untold: Vec<String> = cuts
+        let (cut, cuts) = echo::cut_echoes(&self.lines, &self.words, &self.sound, said::spoken);
+        let cutting: HashSet<usize> = cuts.iter().map(|cut| cut.at).collect();
+        let mut back: Vec<(usize, usize)> = Vec::new();
+        self.told.retain(|at, words| {
+            let still = cutting.contains(at);
+            if !still {
+                back.push((*at, *words));
+            }
+            still
+        });
+        back.sort_unstable();
+        let mut untold: Vec<String> = back
             .into_iter()
-            .filter(|cut| self.told.insert(cut.at))
-            .map(|cut| {
+            .map(|(at, words)| {
                 format!(
-                    "call-transcripts: {} of Joel's words at {} cut as their echo, {}",
-                    cut.text.split_whitespace().count(),
-                    transcript::clock(cut.at),
-                    cut.by(),
+                    "call-transcripts: {words} of Joel's words at {} written back",
+                    transcript::clock(at),
                 )
             })
             .collect();
+        for cut in cuts {
+            let words = cut.text.split_whitespace().count();
+            if self.told.insert(cut.at, words).is_none() {
+                untold.push(format!(
+                    "call-transcripts: {words} of Joel's words at {} cut as their echo, {}",
+                    transcript::clock(cut.at),
+                    cut.by(),
+                ));
+            }
+        }
         let mut left: Vec<usize> = split::echoing(&cut, &self.pieces, self.read)
             .into_iter()
             .filter(|&index| self.left.insert(self.lines[index].start))
@@ -142,6 +169,23 @@ impl Writing {
             )
         }));
         untold
+    }
+
+    /// What the daemon goes on with from a take of `side`'s, `start` samples
+    /// into the call, `heard` from its `samples` (`heard_or_left_out`),
+    /// keeping how loud it was when it's theirs and heard, words or none,
+    /// since its sound reaches Joel's microphone all the same.
+    fn take_heard(
+        &mut self,
+        side: Side,
+        start: usize,
+        samples: &[f32],
+        heard: dictation::openvino::Result<(Option<String>, Vec<Word>)>,
+    ) -> (Option<String>, Vec<Word>) {
+        if side == Side::Theirs && heard.is_ok() {
+            self.sound.hear(start, samples);
+        }
+        heard_or_left_out(heard)
     }
 
     /// Keeps the embedding of each piece of a take of theirs embedded,
@@ -260,7 +304,8 @@ pub fn hear(
                 let Some(parakeet) = loaded(settings, &mut speech, book, &key, &mut told) else {
                     continue;
                 };
-                let (text, words) = heard_or_left_out(transcribe_take(parakeet, start, &samples));
+                let heard = transcribe_take(parakeet, start, &samples);
+                let (text, words) = writing.take_heard(side, start, &samples, heard);
                 // Embedded once Parakeet has heard it, so a call's first
                 // line never waits on the speaker model's loading.
                 if side == Side::Theirs {
@@ -744,7 +789,7 @@ fn write(book: &Shared, key: &str, writing: &Writing, me: &str, transcribing: bo
 /// Lines read back from the file were told when first written, and are
 /// kept, since a split take's parts read back can't be joined again.
 fn transcript_of(writing: &Writing, me: &str, them: Option<&str>, note: Option<&str>) -> String {
-    let (cut, _) = echo::cut_echoes(&writing.lines, &writing.words, said::spoken);
+    let (cut, _) = echo::cut_echoes(&writing.lines, &writing.words, &writing.sound, said::spoken);
     let heard = split::unechoed(&cut, &writing.pieces, writing.read);
     let guesses = writing.guesses.as_deref();
     markdown_unechoed(&heard, me, them, note, guesses)

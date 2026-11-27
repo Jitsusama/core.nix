@@ -6,16 +6,23 @@
 //! just after they said them, and quieter than they said them, are cut
 //! from his line, as are words of his heard inside their speech far
 //! quieter than it, however spelled, and, once his voice is known, far
-//! quieter than his voice too. His own
-//! words in it stay: their microphones pick up his voice too, far
-//! quieter than their own, and that's his. A line of his whose words
-//! repeat a line of theirs said at the same time is their echo, and is
-//! left out whole, which also covers a line read back from a transcript,
-//! whose words' times are lost. On a headset there's none of either.
+//! quieter than his voice too. So are words of his said outside their
+//! lines far quieter than their sound just before, as their takes'
+//! loudness keeps it (loudness.rs), however spelled, and, once his voice
+//! is known, far quieter than his voice too: a line of theirs spans its
+//! whole take, so that reaches the takes their model heard no words in,
+//! and the second after one ends. His own words in their sound stay:
+//! their microphones pick up his voice too, far quieter than their own,
+//! and that's his. A line of his whose words repeat a line of theirs
+//! said at the same time is their echo, and is left out whole, which
+//! also covers a line read back from a transcript, whose words' times
+//! are lost. On a headset there's none of either.
 
 use std::collections::{HashMap, HashSet};
 use std::hash::BuildHasher;
+use std::mem::discriminant;
 
+use crate::loudness::Track;
 use crate::mel::RATE;
 use crate::parakeet::Word;
 use crate::transcript::{Line, Side};
@@ -80,10 +87,12 @@ const QUIETER: f32 = 12.0;
 /// know his voice's level: with fewer, a word is cut for its level
 /// against theirs alone, as where he says little his side is mostly their
 /// echo. Until then, his words over theirs through a quiet microphone may
-/// be cut too. A call still being written is cut again whole once his
-/// voice is known, which brings them back, but lines read back after a
-/// restart stay as they were written, and the journal says when each cut
-/// was.
+/// be cut too. A call still being written is cut again whole with each
+/// take, so a word's verdict can go either way as more of his words are
+/// heard alone, until six sit on each side of where he changes microphone
+/// (`NEAR`): a word cut may be written back, and one kept cut. The
+/// journal says each cut, and each written back, as it happens; lines
+/// read back after a restart stay as they were written.
 const ALONE: usize = 5;
 
 /// How many of Joel's words heard alone, those nearest in time to a
@@ -95,6 +104,22 @@ const ALONE: usize = 5;
 /// no limit in time: words alone long before or after count as soon as
 /// too few are nearer.
 const NEAR: usize = 11;
+
+/// How far under the loudest of their sound just before it, in dB, a word
+/// of Joel's said outside their lines is their echo however it's spelled
+/// and whatever words of theirs were heard there: a line of theirs spans
+/// its whole take, so it reaches their takes their model heard no words
+/// in, and the second after one ends, since their sound reaches his
+/// microphone there too. Once his voice is known, the word must be
+/// `QUIETER` under that as well, so his answer just after them is his.
+/// On the echoed meetings, 69 of the 71 echo words the spelling and level
+/// rules kept sat 20 dB or more under it, all inside their takes, and
+/// cutting them took his side from 19.0% of its words wrong to 14.4%.
+/// Inside their lines the same rule cut his own words where both speak at
+/// once, raising his side of the meetings with no echo from 12.0% to
+/// 12.9%, so it holds only outside them. There it took his echoed side to
+/// 18.0% and left the meetings with no echo as they were.
+const SOUND: f32 = 20.0;
 
 /// Whether `line` is Joel's microphone hearing one of the others' lines,
 /// and so left out of the transcript; the meetings check says which of
@@ -216,9 +241,10 @@ fn alone<'a>(mine: impl IntoIterator<Item = &'a Word>, theirs: &[Word]) -> Vec<(
 }
 
 /// The level of Joel's voice in his microphone at `at`: the middle level
-/// of the `NEAR` of his words heard `alone` nearest it, if `ALONE` are,
-/// the quieter of two middles, as a voice judged quieter cuts fewer of
-/// his words.
+/// of the `NEAR` of his words heard `alone` nearest it, if `ALONE` are.
+/// Where there are two middles, as only with 6, 8 or 10 of his words
+/// alone in the call, it's the quieter, as a voice judged quieter cuts
+/// fewer of his words.
 fn voice(alone: &[(usize, f32)], at: usize) -> Option<f32> {
     if alone.len() < ALONE {
         return None;
@@ -262,45 +288,101 @@ fn drowned(mine: &[Word], theirs: &[Word], alone: &[(usize, f32)]) -> Vec<Option
     drowned
 }
 
+/// Which rule cut some of Joel's words as the others' echo.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Rule {
+    /// Spelled as their words, heard just after they said them.
+    Spelling,
+    /// Far below the loudest of their words around the first, by this
+    /// many dB.
+    Level(f32),
+    /// Far under the loudest of their sound just before the first,
+    /// outside their lines, by this many dB.
+    Sound(f32),
+}
+
+/// The index of `theirs` a word of Joel's far under their `sound` is cut
+/// against, and how far under it the word is, if it's their echo by
+/// that: said outside each of `lines` of theirs, `SOUND` under the
+/// loudest of their sound just before it, and, once his `voice` around
+/// it is known from his words heard `alone`, `QUIETER` under that too, as
+/// for `drowned`, so his answer through a quiet microphone is his. It's
+/// cut against the first of theirs said from when he said it, or their
+/// last, so with no words of theirs there's none to cut it against, and
+/// it's kept.
+fn under(
+    word: &Word,
+    theirs: &[Word],
+    lines: &[&Line],
+    sound: &Track,
+    alone: &[(usize, f32)],
+) -> Option<(usize, Rule)> {
+    let last = theirs.len().checked_sub(1)?;
+    if lines
+        .iter()
+        .any(|line| line.start <= word.at && word.at < line.end)
+    {
+        return None;
+    }
+    if voice(alone, word.at).is_some_and(|his| word.level + QUIETER > his) {
+        return None;
+    }
+    let gap = sound.loudest_before(word.at) - word.level;
+    let against = theirs.partition_point(|said| said.at < word.at).min(last);
+    (gap >= SOUND).then_some((against, Rule::Sound(gap)))
+}
+
 /// Some of Joel's words cut from a line of his as the others' echo: the
 /// line's index, when the first was heard, how long after its word of
-/// theirs, in samples, what they say, and, if they were cut for their
-/// level rather than their spelling, how far below the loudest of theirs
-/// around it the first was, in dB.
+/// theirs, in samples, what they say, and the rule that cut them.
 #[derive(Debug, PartialEq)]
 pub struct Cut {
     pub line: usize,
     pub at: usize,
     pub after: isize,
     pub text: String,
-    pub below: Option<f32>,
+    pub rule: Rule,
 }
 
 impl Cut {
     /// What it was cut by, as the journal and the meetings check say it:
-    /// how far below theirs, if for its level, else how late after theirs.
+    /// how far below theirs, if for its level, or under their sound, if
+    /// for that, else how late after theirs, or how early before them.
     #[must_use]
     pub fn by(&self) -> String {
-        if let Some(below) = self.below {
-            format!("{below:.0} dB below theirs")
-        } else {
-            let rate = isize::try_from(RATE).unwrap_or(isize::MAX);
-            format!("{} ms after theirs", self.after * 1000 / rate)
+        match self.rule {
+            Rule::Level(below) => format!("{below:.0} dB below theirs"),
+            Rule::Sound(under) => format!("{under:.0} dB under their sound"),
+            Rule::Spelling => {
+                let rate = isize::try_from(RATE).unwrap_or(isize::MAX);
+                let ms = self.after * 1000 / rate;
+                if ms < 0 {
+                    format!("{} ms before theirs", -ms)
+                } else {
+                    format!("{ms} ms after theirs")
+                }
+            }
         }
     }
 }
 
 /// `lines` with the others' echo cut from each of Joel's whose words
-/// `words` holds, by the line's index, what's left tidied by `tidy`, and
-/// what was cut. A line whose opening words are cut starts at the first
-/// word kept, so his answer to what they said is written after it. A
-/// line left with nothing has no text, and isn't written, so the lines
-/// keep their indices.
+/// `words` holds, by the line's index, against their `sound`, what's left
+/// tidied by `tidy`, and what was cut; an empty `sound` cuts nothing by
+/// how loud they were. A line whose opening words are cut starts at the
+/// first word kept, so his answer to what they said is written after
+/// it. A line left with nothing has no text, and isn't written, so the
+/// lines keep their indices.
 pub fn cut_echoes<S: BuildHasher>(
     lines: &[Line],
     words: &HashMap<usize, Vec<Word>, S>,
+    sound: &Track,
     tidy: impl Fn(&str) -> Option<String>,
 ) -> (Vec<Line>, Vec<Cut>) {
+    let their_lines: Vec<&Line> = lines
+        .iter()
+        .filter(|line| line.side == Side::Theirs)
+        .collect();
     let mut theirs: Vec<Word> = lines
         .iter()
         .enumerate()
@@ -325,13 +407,16 @@ pub fn cut_echoes<S: BuildHasher>(
         let Some(mine) = words.get(&index).filter(|_| line.side == Side::Mine) else {
             continue;
         };
-        let echoes: Vec<Option<(usize, Option<f32>)>> = echoes_of(mine, &theirs)
+        let echoes: Vec<Option<(usize, Rule)>> = echoes_of(mine, &theirs)
             .into_iter()
             .zip(drowned(mine, &theirs, &his))
             .zip(mine)
             .map(|((by_spelling, by_level), word)| {
-                let below = |j: usize| (j, Some(theirs[j].level - word.level));
-                by_spelling.map(|j| (j, None)).or(by_level.map(below))
+                let below = |j: usize| (j, Rule::Level(theirs[j].level - word.level));
+                by_spelling
+                    .map(|j| (j, Rule::Spelling))
+                    .or(by_level.map(below))
+                    .or_else(|| under(word, &theirs, &their_lines, sound, &his))
             })
             .collect();
         if echoes.iter().all(Option::is_none) {
@@ -341,7 +426,7 @@ pub fn cut_echoes<S: BuildHasher>(
         let mut first = None;
         let mut run: Option<Cut> = None;
         for (word, echo) in mine.iter().zip(&echoes) {
-            let Some((j, below)) = *echo else {
+            let Some((j, rule)) = *echo else {
                 kept.push(word.text.as_str());
                 first = first.or(Some(word.at));
                 cuts.extend(run.take());
@@ -349,7 +434,7 @@ pub fn cut_echoes<S: BuildHasher>(
             };
             if run
                 .as_ref()
-                .is_some_and(|cutting| cutting.below.is_some() != below.is_some())
+                .is_some_and(|cutting| discriminant(&cutting.rule) != discriminant(&rule))
             {
                 cuts.extend(run.take());
             }
@@ -362,7 +447,7 @@ pub fn cut_echoes<S: BuildHasher>(
                     at: word.at,
                     after: later(word.at, theirs[j].at),
                     text: word.text.clone(),
-                    below,
+                    rule,
                 });
             }
         }
