@@ -31,24 +31,41 @@ fn as_before(name: &str) -> (Gated, String) {
 }
 
 /// A judging whose names are none, whose builds at the base and again at
-/// the candidate end as `at_base` and `again` say, and whose ride excused
-/// each check's reds `excused` times already.
+/// the candidate end as `at_base` and `again` say, whose build of every
+/// check passes, and whose ride excused each check's reds `excused` times
+/// already.
 fn judged(
     words: &str,
     at_base: &dyn Fn(&str) -> (Gated, String),
     again: &dyn Fn(&str) -> Gated,
     excused: usize,
 ) -> Option<Vec<(String, Blame)>> {
+    judged_whole(words, at_base, again, &|_| Gated::Passed, excused)
+}
+
+/// `judged`, its build of every check ending as `whole` says.
+fn judged_whole(
+    words: &str,
+    at_base: &dyn Fn(&str) -> (Gated, String),
+    again: &dyn Fn(&str) -> Gated,
+    whole: &dyn Fn(&[String]) -> Gated,
+    excused: usize,
+) -> Option<Vec<(String, Blame)>> {
     let mut base_build = |check: &str| at_base(check);
     let mut built_again = |check: &str| again(check);
+    let mut built_whole = |checks: &[String]| whole(checks);
     let mut judging = Judging {
         named: &|_| BTreeMap::new(),
         at_base: &mut base_build,
         again: &mut built_again,
+        whole: &mut built_whole,
         excused_before: &|_| excused,
     };
     judge(words, &mut judging)
 }
+
+/// A check that reports every failure, so its red can be main's.
+const RULE: &str = "every-long-file-says-why";
 
 /// A build that passed.
 fn passes(_: &str) -> Gated {
@@ -190,21 +207,109 @@ fn a_check_excused_as_a_flake_twice_in_a_ride_is_the_riders_on_its_third_red() {
 
 #[test]
 fn a_check_failing_at_the_base_as_it_failed_is_mains_and_one_failing_anew_the_riders() {
-    let said = words(&["formatting"], &["formatting"]);
+    let said = words(&[RULE], &[RULE]);
     let main = judged(&said, &as_before, &passes, 0).unwrap();
-    assert_eq!(main, [("formatting".to_owned(), Blame::Main)]);
+    assert_eq!(
+        main,
+        [(RULE.to_owned(), Blame::Main)],
+        "main's own red in a rule that reports every failure wasn't main's"
+    );
     assert!(excused(&main), "main's own red split the train");
-    let anew = said.clone() + "formatting> error: Ours.js has 600 lines\n";
+    let anew = said.clone() + &format!("{RULE}> error: Ours.js has 600 lines\n");
     assert_eq!(
         judged(&anew, &as_before, &passes, 0).unwrap(),
-        [("formatting".to_owned(), Blame::Riders)],
+        [(RULE.to_owned(), Blame::Riders)],
         "a second break of a check main fails hid behind main's"
     );
     let untaken = judged(&said, &|_| (Gated::Unsent, String::new()), &passes, 0).unwrap();
     assert_eq!(
         untaken,
-        [("formatting".to_owned(), Blame::Riders)],
+        [(RULE.to_owned(), Blame::Riders)],
         "a build at the base no builder took excused the riders"
+    );
+}
+
+/// treefmt stops at the first file no formatter reads, so main's
+/// formatting red may hide a rider's.
+#[test]
+fn mains_formatting_red_is_never_mains() {
+    let said = words(&["formatting"], &["treefmt-check"]);
+    let mut base_build = |_: &str| as_before("treefmt-check");
+    let mut built_again = passes;
+    let mut built_whole = |_: &[String]| Gated::Passed;
+    let mut judging = Judging {
+        named: &|_| BTreeMap::from([("treefmt-check".to_owned(), "formatting".to_owned())]),
+        at_base: &mut base_build,
+        again: &mut built_again,
+        whole: &mut built_whole,
+        excused_before: &|_| 0,
+    };
+    assert_eq!(
+        judge(&said, &mut judging).unwrap(),
+        [("formatting".to_owned(), Blame::Riders)],
+        "main's formatting red was excused, though treefmt may stop before a rider's"
+    );
+}
+
+/// A nix killed mid-run says nothing of the checks it never reached, and a
+/// failed derivation named like a check may have been another's.
+#[test]
+fn a_red_lands_only_once_every_other_check_it_built_builds() {
+    let said = words(
+        &[RULE, "vm-pi", "never-reached"],
+        &[RULE, "vm-test-run-vm-pi"],
+    );
+    let at_base = |check: &str| {
+        if check == RULE {
+            as_before(RULE)
+        } else {
+            (Gated::Passed, String::new())
+        }
+    };
+    let asked = std::cell::RefCell::new(Vec::new());
+    let whole = |checks: &[String]| {
+        asked.borrow_mut().extend_from_slice(checks);
+        Gated::Red
+    };
+    assert_eq!(
+        judged_whole(&said, &at_base, &passes, &whole, 0),
+        None,
+        "a red landed though not every check it built was known built"
+    );
+    assert_eq!(
+        *asked.borrow(),
+        ["vm-pi", "never-reached"],
+        "every check but main's own red wasn't built once more"
+    );
+    assert!(
+        judged_whole(&said, &at_base, &passes, &|_| Gated::Passed, 0)
+            .is_some_and(|judged| excused(&judged)),
+        "a red whose every other check built wasn't excused"
+    );
+}
+
+/// changed-checks says `✕` of its own when it gives up before its builds
+/// end, and its verdict on a failed build is what shows they did.
+#[test]
+fn a_red_without_changed_checks_verdict_on_its_builds_is_never_judged() {
+    let flaky = words(&["a"], &["a"]);
+    let gave_up = flaky.clone() + "\u{2715} nix eval of the VM tests failed: signal: 9\n";
+    assert_eq!(
+        judged(&gave_up, &passes_at_base, &passes, 0),
+        None,
+        "a flake excused a red changed-checks gave up on"
+    );
+    let unsaid = flaky.replace("\u{2715} a check the change touched failed\n", "");
+    assert_eq!(
+        judged(&unsaid, &passes_at_base, &passes, 0),
+        None,
+        "a flake excused a red changed-checks never said was a failed build"
+    );
+    let traced = words(&["a"], &["a"]) + "error:\n       \u{2026} while evaluating\n";
+    assert_eq!(
+        judged(&traced, &passes_at_base, &passes, 0),
+        None,
+        "a flake excused a red beside a traced nix error"
     );
 }
 
@@ -257,23 +362,20 @@ fn a_ride_counts_each_flake_its_excused_reds_hold() {
     let mut flakes = Flakes::default();
     let judged = [
         ("vm-pi".to_owned(), Blame::Flaky),
-        ("formatting".to_owned(), Blame::Main),
+        (RULE.to_owned(), Blame::Main),
     ];
     assert_eq!(flakes.count(&judged), ["vm-pi"]);
     flakes.count(&judged);
     assert_eq!(flakes.of("vm-pi"), MOST_EXCUSED, "a flake went uncounted");
-    assert_eq!(flakes.of("formatting"), 0, "main's red was counted a flake");
+    assert_eq!(flakes.of(RULE), 0, "main's red was counted a flake");
 }
 
 #[test]
 fn a_red_is_excused_only_when_none_of_its_failures_is_the_riders() {
-    let said = words(
-        &["formatting", "vm-pi"],
-        &["formatting", "vm-test-run-vm-pi"],
-    );
+    let said = words(&[RULE, "vm-pi"], &[RULE, "vm-test-run-vm-pi"]);
     let at_base = |check: &str| {
-        if check == "formatting" {
-            as_before("formatting")
+        if check == RULE {
+            as_before(RULE)
         } else {
             (Gated::Passed, String::new())
         }
@@ -282,7 +384,7 @@ fn a_red_is_excused_only_when_none_of_its_failures_is_the_riders() {
     assert_eq!(
         judged,
         [
-            ("formatting".to_owned(), Blame::Main),
+            (RULE.to_owned(), Blame::Main),
             ("vm-pi".to_owned(), Blame::Riders),
         ]
     );
@@ -295,12 +397,12 @@ fn a_red_is_excused_only_when_none_of_its_failures_is_the_riders() {
 
 #[test]
 fn once_a_failure_is_the_riders_nothing_after_it_is_built_again() {
-    let said = words(&["formatting", "b", "c"], &["formatting", "b", "c"]);
+    let said = words(&[RULE, "b", "c"], &[RULE, "b", "c"]);
     let asked = std::cell::RefCell::new(Vec::new());
     let at_base = |check: &str| {
         asked.borrow_mut().push(check.to_owned());
-        if check == "formatting" {
-            as_before("formatting")
+        if check == RULE {
+            as_before(RULE)
         } else {
             (Gated::Passed, String::new())
         }
@@ -312,7 +414,7 @@ fn once_a_failure_is_the_riders_nothing_after_it_is_built_again() {
     );
     assert_eq!(
         *asked.borrow(),
-        ["formatting", "b"],
+        [RULE, "b"],
         "a check was built again once the red was the riders'"
     );
 }
