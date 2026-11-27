@@ -49,8 +49,7 @@ fn a_name_is_asked_of_resolved_itself_with_its_port_kept() {
 
 #[test]
 fn a_name_resolved_cannot_find_answers_nothing() {
-    let (dir, asked) =
-        resolved(r#"{"error":"io.systemd.Resolve.NoNameServers","parameters":{}}"#);
+    let (dir, asked) = resolved(r#"{"error":"io.systemd.Resolve.NoNameServers","parameters":{}}"#);
     assert_eq!(
         found("gone.local:22", &dir.path().join("resolve")),
         [] as [std::net::SocketAddr; 0]

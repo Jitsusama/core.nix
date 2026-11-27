@@ -16,8 +16,7 @@ fn standing_builders_are_read_a_line_each() {
 
 #[test]
 fn a_lent_builder_is_named_for_its_big_work_alone() {
-    let line =
-        "ssh-ng://lent x86_64-linux /key 8 1 kvm,nixos-test,big-parallel,benchmark - KEY";
+    let line = "ssh-ng://lent x86_64-linux /key 8 1 kvm,nixos-test,big-parallel,benchmark - KEY";
     assert_eq!(
         for_big_work(line),
         "ssh-ng://lent x86_64-linux /key 8 1 big-parallel,benchmark big-parallel KEY"
