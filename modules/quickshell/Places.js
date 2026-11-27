@@ -143,7 +143,7 @@ function connected(screens, workspaces) {
     const unheard = said.length === 0 ? [] : [...listed]
         .filter(name => typeof name === "string" && !heard.includes(name));
     return heard.concat(unheard)
-        .reduce((there, name) => Object.assign(there, { [name]: screens[name] ?? "" }), {});
+        .reduce((there, name) => Object.assign(there, { [name]: screens[name] ?? "" }), byName());
 }
 
 // `maps` merged with no prototype, so a name from data, even __proto__, is a key like any other.

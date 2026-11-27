@@ -419,6 +419,10 @@ QtObject {
         expect("with no workspace listed yet each screen said is taken for there",
             Places.connected({ "Virtual-1": qemu, "eDP-1": panel }, []),
             { "Virtual-1": qemu, "eDP-1": panel });
+        expect("a screen said on a connector named __proto__ is connected by name",
+            Object.keys(Places.connected({ ["__proto__"]: qemu },
+                [{ id: 21, output: "__proto__" }])),
+            ["__proto__"]);
         // A screen niri lists a workspace on that the answer to Outputs
         // predates is there all the same, undescribed (""). Left out, as
         // when that answer named only the monitor since unplugged, the
