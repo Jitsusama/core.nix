@@ -4013,7 +4013,7 @@ Singleton {
     function stillLostTo(pid) {
         const lost = Object.keys(stillSaid)
             .filter(named => (stillSaid[named].under ?? "") !== ""
-                && stillSaid[named].under !== pid);
+                && pid !== "");
         for (const named of lost) {
             const said = stillSaid[named].said;
             forgetStill(named);
