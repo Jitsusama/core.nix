@@ -216,7 +216,7 @@ Floating {
     }
 
     // What it's given to show, or null once it's to go in, when it keeps
-    // what it last showed while it slides away.
+    // what it last showed while it fades away.
     property var given: null
     property var shown: null
     onGivenChanged: {

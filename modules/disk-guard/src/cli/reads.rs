@@ -402,6 +402,16 @@ fn said(entry: &Value) -> [String; 4] {
                     .map_or_else(String::new, |seconds| format!(" in {}", span(seconds))),
             ),
         ],
+        // A walk frees nothing, so its size is what it read from disk, and
+        // a walk that couldn't tell leaves it empty.
+        Some("walk") => [
+            "walked".to_owned(),
+            entry["step"].as_str().unwrap_or("?").to_owned(),
+            entry["read"].as_u64().map_or_else(String::new, size),
+            entry["seconds"]
+                .as_f64()
+                .map_or_else(String::new, |seconds| format!("in {}", span(seconds))),
+        ],
         Some("replaced") => [
             "swept".to_owned(),
             "replaced".to_owned(),
@@ -462,7 +472,12 @@ pub(super) fn journal(
                 let mut row = vec![
                     format!("{} ago", span(now - at)),
                     whose.to_owned(),
-                    entry["band"].as_str().unwrap_or("?").to_owned(),
+                    // A walk is of no one disk, so it has no band to say.
+                    match entry["band"].as_str() {
+                        Some(band) => band.to_owned(),
+                        None if entry["event"] == "walk" => String::new(),
+                        None => "?".to_owned(),
+                    },
                 ];
                 row.extend(said(&entry));
                 rows.push(row);

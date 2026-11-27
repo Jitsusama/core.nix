@@ -57,7 +57,11 @@ function kindOf(record) {
     return at < 0 ? record.key : record.key.slice(0, at);
 }
 
-// The fields `record`'s change says deep, by its kind.
+// The fields `record`'s change says deep, by its kind. Only a list is
+// taken, since `by` is a plain object: a record keyed "constructor" or
+// "toString" names a kind it inherits a function for, and mended() would
+// throw on that, losing every record of the change it came in.
 function deepOf(by, record) {
-    return by[kindOf(record)] ?? [];
+    const deep = by[kindOf(record)];
+    return Array.isArray(deep) ? deep : [];
 }

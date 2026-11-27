@@ -1,11 +1,22 @@
-# Tuple's Linux alpha, newer than nixpkgs' v2026_09_16.1: v2026_11_25.0,
-# whose command is the one Tuple's docs describe (tuple call, contacts,
-# state, webcam). v2026_11_19.0 was the first to share a webcam from
-# Linux; this one's new words, read from the build itself, say when
-# Tuple can't take a camera's colour space. The log lines and stream keys
-# tuple-call reads, the contacts' keys and status words tuple-people
-# reads, and the window titles niri's rules match are in this build as
-# they were in v2026_11_19.0, by a comparison of the two builds' strings.
+# Tuple's Linux alpha, newer than nixpkgs' v2026_09_16.1: v2026_11_25.0.
+# tuple-completes-in-zsh fails unless Tab offers each command core runs
+# against it, and each flag tuple-call and tuple-people pass as they
+# follow it. That shows they're there, not that they do as before.
+# tuple-ends-its-flags fails unless "--" still ends tuple's flags before a
+# contact, which the launcher's call, join and star rows rely on. No check
+# reads the other arguments they take. On v2026_11_25.0, `tuple help <cmd>`
+# printed a command's arguments without running it, where `tuple new --help`
+# failed with "too many cmdline args"; no check holds either, so read the
+# help in the build sandbox, not on a machine signed in. This build calls
+# new and share deprecated, which tuple-call runs to open Joel's room and
+# share his screen, so a later one may drop them.
+# New strings say a camera's or a video's colour space isn't handled, one
+# adding that it's converted as BT.601 limited; nobody has yet seen Tuple
+# say them. The log lines and stream keys tuple-call reads, the contacts'
+# keys and status words tuple-people reads, and the window titles niri's
+# rules match are still among this build's strings. That shows they're
+# there, not that Tuple says or answers them as before. No check reads
+# them, so each bump looks for them by hand among the new build's strings.
 # Screen sharing through the portal was last seen working here on
 # v2026_10_21.0. Webcam sharing is yet to be seen here: the build reads
 # cameras through PipeWire, where the IR camera is hidden, and until the

@@ -230,6 +230,67 @@ fn an_import_beside_a_running_daemon_is_to_try_again() {
     assert_eq!(imported.exit, Exit::TryAgain, "{}", imported.stderr);
 }
 
+// A watch run beside one answering on the socket is told at once that
+// one is running, rather than waiting ten minutes to take over from it.
+// The watch runs on a thread of its own so one that waits fails this
+// test in seconds rather than hanging the suite; the thread is left to
+// the process's end then, since nothing can stop a watch from outside.
+#[test]
+fn a_watch_beside_a_running_one_is_to_try_again_at_once() {
+    let dir = tempfile::tempdir().expect("a folder");
+    let _listening = std::os::unix::net::UnixListener::bind(dir.path().join("socket"))
+        .expect("the socket is bound");
+    let (said, heard) = std::sync::mpsc::channel();
+    let path = dir.path().to_owned();
+    std::thread::spawn(move || {
+        // The test has stopped listening only when it already failed.
+        let _ = said.send(ran(&path, &["run"]));
+    });
+    let started = match heard.recv_timeout(AT_ONCE) {
+        Ok(started) => started,
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+            panic!("a second watch waited beside a running one")
+        }
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+            panic!("the second watch panicked rather than answer")
+        }
+    };
+    assert_eq!(started.exit, Exit::TryAgain, "{}", started.stderr);
+}
+
+/// How long a refusal said at once may take, even on a busy builder.
+const AT_ONCE: std::time::Duration = std::time::Duration::from_secs(5);
+
+// A watch whose wait for a held lock ran out, and a reader that met a
+// busy history, are each to try again rather than told they failed.
+#[test]
+fn a_held_lock_past_the_wait_and_a_busy_history_are_to_try_again() {
+    let dir = tempfile::tempdir().expect("a folder");
+    let state = dir.path().join("state");
+    let _held = crate::daemon::lock(&state).expect("the lock is free");
+    let refused = crate::daemon::lock(&state).expect_err("a second taking of the lock is refused");
+    assert_eq!(
+        stopped(refused).exit,
+        Exit::TryAgain,
+        "a watch whose wait ran out on a held lock was told it failed"
+    );
+    assert_eq!(
+        stopped("database is locked".to_owned()).exit,
+        Exit::TryAgain,
+        "a watch whose wait ran out on a busy history was told it failed"
+    );
+    assert_eq!(
+        unread("database is locked".to_owned()).exit,
+        Exit::TryAgain,
+        "a reader that met a busy history was told it can't be read"
+    );
+    assert_eq!(
+        unread("file is not a database".to_owned()).exit,
+        Exit::Failed,
+        "a history that doesn't read was taken for a busy one"
+    );
+}
+
 // The daemon brings an older history up to date as it starts, holding it
 // for minutes on a large one, so a read meanwhile is to try again: not an
 // unreadable history, and not a second move of it from under the daemon.

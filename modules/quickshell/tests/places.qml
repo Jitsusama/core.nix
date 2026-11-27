@@ -92,6 +92,40 @@ QtObject {
         expect("a place without a screen, by its connector",
             Places.placed(older, { "eDP-1": panel, "DP-4": monitor }, "DP-4")
                 .map(at => [at.output, at.workspace]), [["eDP-1", 2]]);
+        // Only a connector niri said is one: a prototype's name never is, so
+        // a place kept on one is gone, and noted away from it (noteAway).
+        expect("a place kept on a prototype's name is gone, to the screen in use",
+            Places.placed([{ output: "constructor", workspace: 2, column: 1, tile: 1 }],
+                { "eDP-1": panel }, "eDP-1").map(at => [at.output, at.away?.screen ?? null]),
+            [["eDP-1", "constructor"]]);
+        // Nor heard on one: a twin kept on a prototype's name is among the
+        // others a gone twin's note says, as any twin gone is.
+        const protoTwin = { screen: twin, output: "Virtual-1", workspace: 1, column: 1, tile: 1 };
+        expect("a twin kept on a prototype's name is among the others it left",
+            Places.whereKept(protoTwin, [protoTwin, Object.assign({}, protoTwin,
+                { output: "toString" })], { "eDP-1": panel }, { inUse: "eDP-1" }).away.others,
+            { "eDP-1": panel, "toString": twin });
+        // __proto__ too, though a write to it on a plain object sets a
+        // prototype: gone after the screen in use's workspaces, among the
+        // others, and noted away (Reopening's notedAway, noteAway's) as any.
+        const proto = { output: "__proto__", workspace: 2, column: 1, tile: 1 };
+        expect("a place kept on __proto__ is gone, after the screen in use's workspaces",
+            Places.placed([proto], { "eDP-1": panel }, "eDP-1")
+                .map(at => [at.output, at.workspace, at.away?.screen ?? null]),
+            [["eDP-1", 2, "__proto__"]]);
+        expect("a twin kept on __proto__ is among the others it left",
+            Places.whereKept(protoTwin, [protoTwin, Object.assign({}, protoTwin,
+                { output: "__proto__" })], { "eDP-1": panel }, { inUse: "eDP-1" }).away.others,
+            { "eDP-1": panel, ["__proto__"]: twin });
+        const noted = (awayFrom, screen, id) => Reopening.notedAway(awayFrom,
+            { screen, workspace: 2, output: screen, others: {} }, id);
+        const protoNoted = noted(noted({}, "constructor", 7), "__proto__", 8);
+        expect("a workspace away from a prototype's name is noted, once",
+            [Object.keys(protoNoted).map(screen => [screen, protoNoted[screen].map(one => one.id)]),
+                noted(protoNoted, "__proto__", 8), noted(protoNoted, "constructor", 7),
+                Reopening.notedAway(protoNoted, null, 9),
+                Reopening.notedAway(protoNoted, { screen: panel })],
+            [[["constructor", [7]], ["__proto__", [8]]], null, null, null, null]);
 
         // No screen known, as when niri didn't answer: left as it was kept,
         // rather than every place taken for a gone screen's.
@@ -142,24 +176,26 @@ QtObject {
                 .output], ["Virtual-3", "Virtual-4"]);
         // And go where their sessions went, whatever order each comes back in.
         const twinsLast = [twins[1], twins[0]];
-        const sessionsGiven = Reopening.givenBy(twinsLast,
-            Places.placed(twinsLast, bothBack, "Virtual-3", [twins, twins]), [], bothBack);
+        const sessions = Reopening.placedGiven(twinsLast, bothBack, "Virtual-3",
+            { moments: [twins, twins], before: [] });
+        const sessionsGiven = sessions.given;
         expect("a twin window back renumbered goes where its sessions went",
             [Places.whereKept(twins[0], twins, bothBack,
                 { given: sessionsGiven, inUse: "Virtual-3" }).output,
-                sessionsGiven.map(one => one.output)], ["Virtual-4", ["Virtual-3", "Virtual-4"]]);
+                sessionsGiven.map(one => one.output), sessions.places.map(at => at.output)],
+            ["Virtual-4", ["Virtual-3", "Virtual-4"], ["Virtual-3", "Virtual-4"]]);
         // A window back before its sessions were placed gives way to them,
         // so the other twin's windows still have a connector to go to; one
         // whose twin's sessions said nothing keeps what it took.
         const early = [{ at: twins[0], output: "Virtual-3" }];
-        const seeded = Reopening.givenBy(twinsLast,
-            Places.placed(twinsLast, bothBack, "Virtual-3", [twins, twins]), early, bothBack);
+        const seeded = Reopening.placedGiven(twinsLast, bothBack, "Virtual-3",
+            { moments: [twins, twins], before: early }).given;
         expect("a window back before its sessions gives way to them",
             [seeded.map(one => one.output), Places.whereKept(twins[1], twins, bothBack,
                 { given: seeded, inUse: "Virtual-3" }).output],
             [["Virtual-3", "Virtual-4"], "Virtual-3"]);
-        const twinFirst = Reopening.givenBy([twins[1]],
-            Places.placed([twins[1]], bothBack, "Virtual-3", [twins]), early, bothBack);
+        const twinFirst = Reopening.placedGiven([twins[1]], bothBack, "Virtual-3",
+            { moments: [twins], before: early }).given;
         expect("nor keeps a connector the other twin's sessions were given",
             [twinFirst.map(one => one.output), Places.whereKept(twins[1], twins, bothBack,
                 { given: twinFirst, inUse: "Virtual-3" }).output], [["Virtual-3"], "Virtual-3"]);
@@ -167,19 +203,20 @@ QtObject {
         // what the twin's was when kept.
         const panelThere = { "Virtual-1": panel, "Virtual-3": twin, "Virtual-4": twin };
         const panelAt = { screen: panel, output: "Virtual-1", workspace: 1, column: 1, tile: 1 };
-        const panelFirst = Reopening.givenBy([panelAt],
-            Places.placed([panelAt], panelThere, "Virtual-1", [[]]), early, panelThere);
+        const panelFirst = Reopening.placedGiven([panelAt], panelThere, "Virtual-1",
+            { moments: [[]], before: early }).given;
         expect("nor gives way to another screen's session",
-            Places.whereKept(twins[1], twins, panelThere,
-                { given: panelFirst, inUse: "Virtual-1" }).output, "Virtual-4");
+            [panelFirst.map(one => one.output), Places.whereKept(twins[1], twins, panelThere,
+                { given: panelFirst, inUse: "Virtual-1" }).output],
+            [["Virtual-1", "Virtual-3"], "Virtual-4"]);
         // Nor to a session of its twin's given no connector: sent to another
         // screen in use, or left as kept, with no screen said or none in use,
         // though last boot's connector is another screen's now. (One kept
         // away on a screen showing its own is the twin gone's case below.)
         const tookFirst = [{ at: twins[1], output: "Virtual-3" }];
         const givenNone = (why, screens, inUse) => {
-            const given = Reopening.givenBy([twins[1]],
-                Places.placed([twins[1]], screens, inUse, [twins]), tookFirst, screens);
+            const given = Reopening.placedGiven([twins[1]], screens, inUse,
+                { moments: [twins], before: tookFirst }).given;
             expect(`nor gives way to its twin's session ${why}`,
                 [given.map(one => one.output ?? "none"), Places.whereKept(twins[0], twins,
                     bothBack, { given, inUse: "Virtual-3" }).output],
@@ -193,8 +230,8 @@ QtObject {
         // that shows its screen: a twin's, one kept before screens were
         // named, never last boot's with no screen said, nor a twin's on one
         // not heard yet, nor a prototype's name, nor any with no screens.
-        const windowOn = (at, screens, inUse) => Reopening.givenOn(at.screen,
-            Places.whereKept(at, twins, screens, { given: [], inUse }), screens) ?? "none";
+        const windowOn = (at, screens, inUse) =>
+            Reopening.keptBack(at, twins, screens, { given: [], inUse }).gives.output ?? "none";
         const unnamed = { output: "Virtual-3", workspace: 1, column: 1, tile: 1 };
         expect("a window put back gives only a connector showing its screen",
             [windowOn(twins[1], bothBack, "Virtual-3"), windowOn(unnamed, bothBack, "Virtual-3"),
@@ -202,6 +239,24 @@ QtObject {
                 Reopening.givenOn("", { output: "constructor" }, {}) ?? "none",
                 Reopening.givenOn(twin, { output: "Virtual-3" }) ?? "none"],
             ["Virtual-3", "Virtual-3", "none", "none", "none", "none"]);
+        // It goes back by where it's found, but gives only givenOn's: found
+        // on last boot's connector with no screen said, or on one not heard
+        // yet, it goes back there and gives none; found on the connector its
+        // own sessions were given, it gives that one.
+        const backAt = (screens, given, inUse) => {
+            const back = Reopening.keptBack(twins[1], twins, screens, { given, inUse });
+            return [back.kept.output, back.gives.at === twins[1], back.gives.output ?? "none"];
+        };
+        expect("a window put back gives givenOn's connector, not the one it's found on",
+            [backAt({}, [], null), backAt({ "Virtual-2": "" }, [], "Virtual-2"),
+                backAt(bothBack, sessionsGiven, "Virtual-3")],
+            [["Virtual-2", true, "none"], ["Virtual-2", true, "none"],
+                ["Virtual-3", true, "Virtual-3"]]);
+        // And past a connector given its twin this pass, so split twins take one each.
+        const pastTwin = Reopening.keptBack(twins[1], twins, bothBack,
+            { given: [{ at: twins[0], output: "Virtual-3" }], inUse: "Virtual-3" });
+        expect("a window put back passes its twin's given connector by",
+            [pastTwin.kept.output, pastTwin.gives.output], ["Virtual-4", "Virtual-4"]);
         expect("one whose twin's sessions said nothing keeps what it took",
             Places.whereKept(twins[1], twins, bothBack,
                 { given: Reopening.givenBy([], [], early, {}), inUse: "eDP-1" }).output,
@@ -210,9 +265,8 @@ QtObject {
         // them, and one kept nowhere gives nothing.
         const oneTwin = [twins[0], twins[1], null];
         expect("a twin gone gives its windows no connector, nor one kept nowhere",
-            Reopening.givenBy(oneTwin, Places.placed(oneTwin, { "Virtual-3": twin }, "Virtual-3",
-                [twins, twins, []]), [], { "Virtual-3": twin })
-                .map(one => [one.at.output, one.output ?? "none"]),
+            Reopening.placedGiven(oneTwin, { "Virtual-3": twin }, "Virtual-3", { moments: [twins,
+                twins, []], before: [] }).given.map(one => [one.at.output, one.output ?? "none"]),
             [["Virtual-1", "Virtual-3"], ["Virtual-2", "none"]]);
         // A window back joins its own twin's windows, not the other's, though
         // both monitors are one screen to look at.

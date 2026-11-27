@@ -36,7 +36,7 @@
   "modules/guide/tests/finish.rs" = 1;
   "modules/guide/tests/github.rs" = 1;
   "modules/guide/tests/stick.rs" = 1;
-  "modules/lag-watch/src/kernel.rs" = 1;
+  "modules/lag-watch/src/kernel_tests.rs" = 1;
   "modules/machine/src/camera.rs" = 1;
   "modules/machine/src/counts.rs" = 1;
   "modules/machine/src/firmware_rows.rs" = 1;

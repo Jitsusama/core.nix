@@ -21,6 +21,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::UnixListener;
 use std::path::PathBuf;
 use std::process::{Child, Command};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant, SystemTime};
 
 use daemon_client::{Client, until};
@@ -60,6 +61,11 @@ case "$*" in
   "call accept") echo "no call is ringing" >&2; exit 1 ;;
 esac
 "#;
+
+/// How many daemons this run has started, which makes each one's folder
+/// its own: two tests given the same name once shared one, and each
+/// clearing it at its start took away the other's sockets.
+static STARTED: AtomicUsize = AtomicUsize::new(0);
 
 /// The daemon, with a folder standing in for the runtime, data and state
 /// folders, and Tuple's daemon's socket, which answers while it's held.
@@ -120,8 +126,16 @@ impl Running {
     /// Started by `launcher` and its arguments, each given the socket's
     /// path where it says `{socket}`, rather than on its own.
     fn through(test: &str, answering: bool, launcher: &[&str], waits: &[&str]) -> Running {
-        let folder = std::env::temp_dir().join(format!("tuple-call-{test}-{}", std::process::id()));
+        let folder = std::env::temp_dir().join(format!(
+            "tuple-call-{test}-{}-{}",
+            std::process::id(),
+            STARTED.fetch_add(1, Ordering::Relaxed)
+        ));
         let _ = std::fs::remove_dir_all(&folder);
+        // Made afresh, so a folder the removal couldn't take fails here
+        // rather than feeding this run what an earlier one wrote.
+        std::fs::create_dir(&folder)
+            .unwrap_or_else(|error| panic!("{} should be made afresh: {error}", folder.display()));
         for inner in ["run/daemons", "data/tuple/0", "state", "bin"] {
             std::fs::create_dir_all(folder.join(inner)).unwrap();
         }
@@ -325,7 +339,11 @@ fn a_call_is_said_to_a_watch_as_it_changes() {
         json!([{"id": "7", "name": "Ada Brightwater", "email": "ada@example.com",
                 "connection": "connected", "muted": true, "sharing": true, "camera": true}])
     );
-    assert!(record["heard"].as_i64().is_some());
+    assert!(
+        record["heard"].as_i64().is_some(),
+        "the call should say when it was heard, not {}",
+        record["heard"]
+    );
     let said = client.ask(&json!({"id": 2, "ask": "get", "keys": ["call:current"]}));
     assert_eq!(said["records"][0]["state"], "connected");
     running.streams("{\"type\":\"current_call\",\"data\":null}");
@@ -814,7 +832,7 @@ fn a_mute_done_once_another_connecting_call_began_leaves_it_alone() {
 
 #[test]
 fn a_command_held_past_its_hold_lets_its_act_be_asked_afresh() {
-    let running = Running::waiting("held", &["--answers-within", "1", "--held-for", "3"]);
+    let running = Running::waiting("held", &["--answers-within", "1", "--held-for", "4"]);
     running.streams(STATE);
     let mut watching = running.client();
     watching.watch();
@@ -831,6 +849,9 @@ fn a_command_held_past_its_hold_lets_its_act_be_asked_afresh() {
         said["error"]["code"], "unanswered",
         "a stop Tuple hadn't answered wasn't told so: {said}"
     );
+    // When the last stop the hold refused was sent, which the hold had
+    // lasted to: the one run afresh took its own second to answer.
+    let mut refused = first.elapsed();
     let again = asking.ask(&json!({"id": "again", "ask": "camera", "on": false}));
     assert_eq!(
         again["error"]["message"], "Tuple hasn't answered the last time it was asked",
@@ -838,11 +859,13 @@ fn a_command_held_past_its_hold_lets_its_act_be_asked_afresh() {
     );
     // Asked until one is run afresh, as the first stop's hold ends by the
     // daemon's clock, which began a moment after this test's.
-    let afresh = loop {
+    let (afresh, ran) = loop {
+        let sent = first.elapsed();
         let said = asking.ask(&json!({"id": "afresh", "ask": "camera", "on": false}));
         if said["error"]["message"] != "Tuple hasn't answered the last time it was asked" {
-            break said;
+            break (said, sent);
         }
+        refused = sent;
         assert!(
             first.elapsed() < Duration::from_secs(10),
             "the first stop's hold never ended: {said}"
@@ -851,20 +874,34 @@ fn a_command_held_past_its_hold_lets_its_act_be_asked_afresh() {
         // once within the hold, so the loop doesn't spin.
         std::thread::sleep(Duration::from_millis(100));
     };
+    // Asks a tenth of a second apart, so a four-second hold refuses one
+    // sent past three and runs one sent before five, nearly a second to
+    // spare on each side for a builder that stalls the test, while a hold
+    // of three seconds or five fails.
     assert!(
-        first.elapsed() >= Duration::from_secs(3),
-        "the first stop's hold ended early, after {:?}",
-        first.elapsed()
+        refused >= Duration::from_secs(3),
+        "the first stop's hold ended early, the last stop it refused sent after {refused:?}"
+    );
+    assert!(
+        ran < Duration::from_secs(5),
+        "the first stop's hold ended late, the first stop run afresh sent after {ran:?}"
     );
     assert_eq!(
         afresh["error"]["message"], "Tuple hasn't answered in 1 second",
         "a stop asked past the last one's hold wasn't run afresh: {afresh}"
     );
-    let stops = running.read("bin/asked");
-    assert_eq!(
-        stops.iter().filter(|line| *line == "webcam stop").count(),
-        2,
-        "a stop asked past the last one's hold didn't run Tuple again: {stops:?}"
+    // The second stand-in says it was asked as it starts, a moment after
+    // the daemon runs it.
+    until(
+        "a stop asked past the last one's hold didn't run Tuple again",
+        || {
+            running
+                .read("bin/asked")
+                .iter()
+                .filter(|line| *line == "webcam stop")
+                .count()
+                == 2
+        },
     );
     std::fs::remove_file(&stall).unwrap();
     until("both stops weren't journaled once done", || {
@@ -879,7 +916,7 @@ fn a_command_held_past_its_hold_lets_its_act_be_asked_afresh() {
 
 #[test]
 fn a_stream_followed_afresh_journals_the_camera_it_says_on() {
-    let running = Running::start("afresh", true);
+    let running = Running::start("camera-afresh", true);
     running.streams(STATE);
     running.streams(&filming());
     let mut watching = running.client();

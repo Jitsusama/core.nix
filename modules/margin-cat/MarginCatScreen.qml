@@ -15,10 +15,12 @@ import Quickshell.Wayland
 import QtQuick
 import KeyTimes
 import "MarginCat.js" as MarginCat
+import "MarginCatCarried.js" as Carried
 import "MarginCatFloats.js" as Floats
 import "MarginCatGames.js" as Games
 import "MarginCatPaths.js" as Paths
 import "MarginCatPlays.js" as Plays
+import "MarginCatPuppy.js" as Puppy
 import "MarginCatShown.js" as Shown
 import "MarginCatStacked.js" as Stacked
 import "MarginCatTiles.js" as Tiles
@@ -155,11 +157,14 @@ PanelWindow {
     // builder.
     property string pose: ""
     property int facing: 0
-    // Whether it's sitting still, neither going, moving, at play nor
-    // stretching, so a pointer may pet it; and since when, so one it
+    // Whether it's sitting still, neither going, moving, riding its
+    // window's scroll, at play nor stretching, so a pointer may pet it and
+    // a play may set off from where it's drawn; and since when, so one it
     // came to under isn't one that moved onto it (MarginCat.strokes).
     readonly property bool still: going === null && moving === null && !holding
-        && (yarnAt === null || yarnLies) && window.scene.posed === "" && !window.scene.stretching
+        && carry === null
+        && (yarnAt === null || yarnLies) && puppyAt === null && window.scene.posed === ""
+        && !window.scene.stretching
     property real stillSince: -1
     // A check waits for its rest to begin before it pets it, since when
     // that comes is niri's to say.
@@ -400,27 +405,81 @@ PanelWindow {
                     || (!column.floats && Math.abs(column.top - under.top) > 0.5));
             sat = wanted;
             under = column;
-            if (reshaped)
+            // Back on its own column, it walks there, as it was reshaped
+            // or held short of its seat as a scroll caught its walk
+            // (heldShortOn), rides with its window from where it's drawn,
+            // sits there at once, or lets a ride under way run on
+            // (Carried.backOn).
+            const back = Carried.backOn(place, there, {
+                wide: size,
+                across: modelData.width,
+                riding: carry !== null,
+                scrolling: scrolling(),
+                reshaped,
+                held: heldShortOn !== null && heldShortOn === wanted
+            });
+            if (back === "walks")
                 walkFrom(true, saw);
-            else if (carry !== null || scrolled()) {
-                // Back on its own column while niri's spring still slides
-                // the strip, or once it has settled with the cat off the
-                // screen, it goes back with its window from where it's
-                // drawn, never at once to where niri will have it. Where
-                // niri sets off no new scroll, as the keys come back to a
-                // column still in view, its ride runs on as its window's
-                // spring does, never set off again from a lag gone by.
-                if (!placedAt(there))
-                    rideTo(there);
-            } else
+            else if (back === "rides")
+                rideTo(there);
+            else if (back === "sits")
                 place = there;
         } else if (going !== null && wanted === goingTo) {
             if (Math.round(there.x * ratio) !== Math.round(going.to.x * ratio)
                 || Math.round(there.y * ratio) !== Math.round(going.to.y * ratio))
                 walkFrom(true, saw);
         } else {
-            if (going === null)
-                carried(saw);
+            // Walking still to a window the keys have left, as niri
+            // scrolls the strip under it, it stops where it's drawn and
+            // rides that window, as it would sitting, rather than walking
+            // on to where that window was, over the air. A drop by his
+            // hand falls on as it was let go.
+            // Caught mid-leap, on a side or on the top it set off from,
+            // or carried by a drag or a column moved beside it rather than
+            // a scroll, it walks on to that window where niri moved it
+            // instead, riding what moved, never held in the air until the
+            // keys rest; with no seat left on the screen, it rides that
+            // window from where it's drawn (walkOnTo, Carried.caught). A
+            // play plays on, as before: a key ends one (stroll), but for
+            // a puppy's visit, which the first branch ends where niri
+            // carries its window away.
+            const by = going?.kind === "puppy"
+                ? MarginCat.carries(saw, tilesOf(space?.id), sat) : null;
+            if (by !== null) {
+                // The keys gone to a column niri scrolls its window away
+                // for end the puppy's visit there, the puppy fading where
+                // it was, so the cat rides off with its window as a seated
+                // cat does, never left standing on the air where that
+                // window was. Cut mid-hop, its place is a leap's frame
+                // above its seat, so it rides to its seat on that window
+                // rather than keeping the leap. A window scrolled wholly
+                // off the screen gives no seat (MarginCat.sits), so the
+                // cat goes as far as niri carries it, as carried() does.
+                tell("puppy");
+                halt();
+                const home = seat(tile(sat));
+                if (home !== null)
+                    rideTo(home);
+                else if (place !== null)
+                    rideTo({ x: place.x + by.x, y: place.y + by.y });
+            } else {
+                if (going !== null && !going.kind && !byHand
+                    && MarginCat.carries(saw, tilesOf(space?.id), goingTo) !== null) {
+                    const was = goingTo;
+                    const top = (saw ?? []).find(one => one.id === was);
+                    const caught = Carried.caught(drawnAt(), top,
+                        { wide: size, tall: size, air: cell, scrolling: scrolling() });
+                    if (caught === "holds") {
+                        halt();
+                        sat = was;
+                        heldShortOn = was;
+                    } else {
+                        walkOnTo(was, saw);
+                    }
+                }
+                if (going === null)
+                    carried(saw);
+            }
             if (going !== null || !resting.running || wanted !== waitingOn) {
                 // Its wander forgotten a moment later, outside this
                 // change of `there`, which forgetting it changes again.
@@ -439,29 +498,31 @@ PanelWindow {
     // is where niri says the window will come to rest, off the screen too,
     // and it's drawn on niri's spring from where it was (lag), so it goes
     // with the window as niri draws it. Once the keys rest, it comes back
-    // in at that edge (MarginCatStacked.js's walk).
+    // in at that edge (MarginCatStacked.js's walk). Let go, it's carried
+    // by the window it landed on, never by `sat`'s (carriedBy).
     function carried(saw: var): void {
-        const by = MarginCat.carries(saw, tilesOf(space?.id), sat);
+        const on = Carried.carriedBy(landedOn, sat);
+        const by = on === null ? null : MarginCat.carries(saw, tilesOf(space?.id), on);
         if (by === null || place === null)
             return;
         rideTo({ x: place.x + by.x, y: place.y + by.y });
     }
-    // Whether niri scrolls its own column under it, where it sits, as niri
-    // says, or, where niri says nothing, from off the screen, where only a
-    // scroll leaves it at rest: never a drag, which niri doesn't animate.
-    function scrolled(): bool {
-        if (there === null || place === null || placedAt(there))
-            return false;
-        return scrolling() || place.x + size <= 0 || place.x >= modelData.width;
-    }
+    // Whether its place is `to` already, within half a pixel, as a cut
+    // puppy visit asks of its seat.
     function placedAt(to: var): bool {
         return place !== null && Math.abs(place.x - to.x) < 0.5
             && Math.abs(place.y - to.y) < 0.5;
     }
-    // Whether niri's scroll of its workspace still runs: told less than
+    // Whether niri's scroll of its workspace still runs: begun less than
     // its spring's length ago, since niri never says one ended, so an old
     // scroll's word, still on its windows, isn't taken for a new one
-    // (MarginCatTiles.js's told). Heard again with each layout niri sends.
+    // (MarginCatTiles.js's hears). Heard again with each layout niri
+    // sends (onSettledChanged), and with each window niri's own stream
+    // says again whole, as a retitle mid-scroll does, layout and all,
+    // which only bumps Niri.revision, so each word is dated as near as it
+    // can be to when it came. A window the daemon says again keeps its
+    // layout while its tile is unchanged (NiriRecords.js), so a window
+    // used after a scroll isn't heard as scrolling.
     function scrolling(): bool {
         const now = Date.now();
         scrollHeard = Tiles.hears(scrollHeard, Tiles.told(Niri.windows, space?.id, "ViewMove"),
@@ -469,12 +530,19 @@ PanelWindow {
         return Tiles.runs(scrollHeard, now, slideMs);
     }
     property var scrollHeard: null
+    Connections {
+        target: Niri
+
+        function onRevisionChanged() {
+            window.scrolling();
+        }
+    }
     readonly property var spring: Object.assign({}, Theme.motion.spring,
         { slowdown: Theme.motion.slowdown })
     readonly property int slideMs: MarginCat.slides(spring)
     // Its place set to `to` as niri's scroll sets off, drawn where it was
     // as niri set it off and closing on `to` on niri's spring
-    // (MarginCatStacked.js's rides).
+    // (MarginCatCarried.js's rides).
     // Under the launcher's card it's put there at once, as nothing moves
     // under the card (stilled), so the ride draws no frames beside his keys.
     function rideTo(to: var): void {
@@ -485,11 +553,13 @@ PanelWindow {
             return;
         }
         const now = Date.now();
-        // As far into the scroll as niri says, or a guess at how late it
-        // hears of one where niri says nothing or tells of one ended.
+        // As far into the scroll as niri says, by its latest begin rather
+        // than an old scroll's word left on another window, or a guess at
+        // how late it hears of one where niri says nothing or tells of one
+        // ended.
         const behind = MarginCat.behindTold(frameMs, "slide", scrolling()
-            ? Tiles.animating(Niri.windows, space?.id, "ViewMove") : null);
-        carry = Stacked.rides(carry, place, to, { at: now - behind, spring });
+            ? now - scrollHeard.at : null);
+        carry = Carried.rides(carry, place, to, { at: now - behind, spring });
         lag = MarginCat.lags(carry.from, now - carry.at, spring);
         place = to;
     }
@@ -500,17 +570,30 @@ PanelWindow {
     // A ride ended where it's drawn, so whatever it does next, a walk, a
     // move or a lift, sets off from there, never from its place a lag on.
     function unride(): void {
-        if (carry !== null)
-            place = drawnAt();
+        // Where it's drawn is taken before the lag goes and set after, so
+        // the report its place's change sends says it drawn there, not a
+        // lag on again.
+        const at = carry !== null ? drawnAt() : null;
         carry = null;
         lag = { x: 0, y: 0 };
+        if (at !== null)
+            place = at;
     }
     // The scroll carrying it, while niri's spring runs, and how far from
     // its place that has it drawn now.
     property var carry: null
     property var lag: ({ x: 0, y: 0 })
+    // The window it was held short of the seat on, its walk there caught
+    // by a scroll, until its next walk sets off or anything halts it, as
+    // a move, a leave or a drop does (walks, halt). Named, not a flag, so
+    // keys back on another window never read it as held short of theirs.
+    property var heldShortOn: null
+    // Under the launcher's card it draws none of the ride, as it draws no
+    // walk (stilled, below), apart from one his hand set off, which runs
+    // on as his walks do; every other is put at its place as the card
+    // comes (rideTo, onStilledChanged).
     FrameAnimation {
-        running: window.carry !== null
+        running: window.carry !== null && !(window.stilled && !window.byHand)
         onTriggered: {
             const t = Date.now() - window.carry.at;
             // A clock stepped back ends it too, rather than holding it
@@ -565,7 +648,44 @@ PanelWindow {
             return;
         resting.stop();
         endStroll();
-        walkTo(true, null, { x: place.x, y: floor });
+        // A ride ends where it's drawn first, so the side it's off is
+        // where it's seen, not where its window went. Carried off the
+        // screen's side with its window (carried), it comes in from the
+        // floor past that edge (Stacked.floorsFrom).
+        unride();
+        const fell = Stacked.floorsFrom(place, {
+            height: modelData.height,
+            tall: size,
+            wide: size,
+            across: modelData.width
+        });
+        if (fell.off !== 0) {
+            halt();
+            place = fell.from;
+        }
+        walkTo(true, null, fell.to);
+    }
+
+    // A walk on to the window `id`'s seat where niri has it now, riding
+    // what moved of the windows it `saw`, rather than to the keys' window,
+    // still standing on `id` for what follows; held where it's drawn if
+    // that window has no tile here now, or no seat on the screen, as one
+    // niri scrolled wholly past its edge, rather than walking on over the
+    // air to where it was.
+    function walkOnTo(id: var, saw: var): void {
+        const onto = tile(id);
+        const to = onto === null ? null : seat(onto);
+        if (to === null) {
+            halt();
+            sat = id;
+            heldShortOn = id;
+            return;
+        }
+        walkTo(true, saw, to);
+        goingTo = id;
+        under = onto;
+        if (going === null)
+            sat = id;
     }
 
     function walkTo(hurried: bool, saw: var, to: var): void {
@@ -620,6 +740,9 @@ PanelWindow {
         if (!fallsYet())
             closedOn = null;
         if (plan === null) {
+            // A play it was in, cut short where it sits, is told as walks says.
+            if (going?.kind)
+                tell(going.kind);
             halt();
             sat = wanted;
             place = to;
@@ -633,7 +756,12 @@ PanelWindow {
     // A walk's frames are counted from begunAt, read once `going` has
     // set following, so no frame it counts begins unasked.
     function walks(plan: var): void {
-        const fresh = going === null;
+        // A play cut short by a walk, as a key ends the puppy's visit, is
+        // told as itself, its frames never filed under the walk after it.
+        const cut = Boolean(going?.kind) && going.kind !== plan.kind;
+        if (cut)
+            tell(going.kind);
+        const fresh = going === null || cut;
         if (fresh) {
             sayWalked();
             shown = [];
@@ -643,6 +771,7 @@ PanelWindow {
             steps = 0;
         }
         byHand = false;
+        heldShortOn = null;
         // Set off before a scroll's spring settled, it walks from where
         // that had it drawn, as its plan does.
         unride();
@@ -750,7 +879,11 @@ PanelWindow {
         // from just over the screen where it rode the old one off the
         // top, or springs up onto it from just under the screen where it
         // rode the old one off the bottom.
-        if (there === null && emptied && place !== null && place.y >= modelData.height) {
+        // Off the screen's side, it comes in along the floor at that edge
+        // whichever way it rode (floors), never up onto a floor out of sight.
+        const aside = place !== null && (place.x + size <= 0 || place.x >= modelData.width);
+        if (there === null && emptied && place !== null && place.y >= modelData.height
+            && !aside) {
             place = Stacked.risesFrom(place, { height: modelData.height, tall: size });
             goingTo = wanted;
             walks(Stacked.risesOnto(place, {
@@ -763,7 +896,8 @@ PanelWindow {
                 slowdown: Theme.motion.slowdown
             }));
         } else if (there === null && emptied && place !== null) {
-            place = Stacked.dropsFrom(place, { tall: size });
+            if (!aside)
+                place = Stacked.dropsFrom(place, { tall: size });
             floors();
         }
         else
@@ -897,6 +1031,7 @@ PanelWindow {
         // After `going`, whose handler fades the yarn as the play that
         // ends was set off.
         byHand = false;
+        heldShortOn = null;
         stepped = null;
         pose = "";
     }
@@ -941,17 +1076,38 @@ PanelWindow {
     function stroll(to: string): void {
         if (to === "") {
             handsBack = false;
+            // The puppy's visit is his being away, so a key ends it: the
+            // puppy fades where it is and the cat sits from where it's got
+            // to, never playing on while he types and wanting every tile.
+            // With nowhere to walk to, as niri says its column nowhere for
+            // a moment, the visit still ends where it is. With the keys gone
+            // to another column, it goes back over the window it sat on, and
+            // follow()'s rest sends it on once they rest there, as after any
+            // play, never at once to a column the focus passed through.
+            // Dozing off is still his being away, so the visit plays on.
+            const home = wanted === sat ? there : seat(tile(sat));
+            const cut = going?.kind === "puppy" && window.scene.lively !== "asleep";
+            if (cut && !(wanted !== sat && home !== null && placedAt(home))) {
+                walkTo(true, null, home);
+                if (going !== null && going.kind !== "puppy" && wanted !== sat) {
+                    goingTo = sat;
+                    under = tile(sat);
+                }
+            }
+            if (cut && going?.kind === "puppy") {
+                tell("puppy");
+                halt();
+            }
             if (strolled !== null) {
                 roams = true;
                 strolled = null;
             }
             return;
         }
-        if (place === null || column === null || going !== null || resting.running
-            || wanted !== sat || holding)
-            return;
-        if (to === "play") {
-            play(window.scene.playing);
+        const refusal = strollsNot(to);
+        if (refusal !== "") {
+            if (to === "play")
+                turnedDown(window.scene.playing?.kind ?? "", refusal);
             return;
         }
         if (to === "column") {
@@ -961,6 +1117,10 @@ PanelWindow {
             handsBack = true;
             roams = false;
             strolled = null;
+            return;
+        }
+        if (to === "play") {
+            play(window.scene.playing);
             return;
         }
         const spot = Plays.wander({
@@ -982,15 +1142,55 @@ PanelWindow {
         strolled = spot;
     }
 
-    // A play that moves it (MarginCatGames.js), `asked` by the scene,
-    // its kind and how long it thinks, from where it sits: run on the
-    // walker as a walk is, its seat for the walk back where it lands.
+    // Why a stroll `to` there is turned down, by the name a turned-down
+    // report gives it, or "" where it may stroll: stroll()'s guard itself,
+    // so a reason added to it is named as it is.
+    function strollsNot(to: string): string {
+        if (place === null)
+            return "not on this screen";
+        if (column === null)
+            return "no column";
+        if (going !== null)
+            return `going ${going.kind || "walking"}`;
+        if (resting.running)
+            return "resting";
+        if (wanted !== sat)
+            return "keys elsewhere";
+        if (holding)
+            return "held";
+        // Riding its window on niri's scroll, it sets off on no play or
+        // wander till the ride ends, though a walk back still takes it
+        // home, never left at a wander's spot off its seat.
+        if (carry !== null && to !== "column")
+            return "riding";
+        return "";
+    }
+
+    // A play the scene handed it, turned down, said only for the one a
+    // test asked for by name (MarginCat.qml's `asked`), so the case that
+    // waited on it names the refusal that held: the puppy a case asked
+    // for never came in 45 s, with nothing saying why (2026-11-26). Only
+    // the screen the cat sits on says it, since every screen is handed the
+    // play and the others' "not on this screen" would read as refusals of
+    // a play another screen's cat then plays.
+    function turnedDown(kind: string, why: string): void {
+        if (Options.reports && place !== null && kind !== "" && window.scene.asked === kind)
+            Report.say(`turned cat ${named} ${JSON.stringify({ kind, why })}`);
+    }
+
+    // A play that moves it (MarginCatGames.js), or the puppy's visit
+    // (MarginCatPuppy.js), `asked` by the scene, its kind and how long it
+    // thinks, from where it sits: run on the walker as a walk is, its seat
+    // for the walk back where it lands.
     function play(asked: var): void {
-        if (asked === null || holding)
+        if (asked === null || holding || carry !== null)
             return;
-        const playing = Games.play(asked.kind, playsFrom(asked.pause));
-        if (playing === null)
+        const playing = asked.kind === "puppy" ? Puppy.visit(playsFrom(asked.pause))
+            : Games.play(asked.kind, playsFrom(asked.pause));
+        if (playing === null) {
+            turnedDown(asked.kind, "no room");
             return;
+        }
         window.scene.strollTaken = true;
         handsBack = true;
         plays(playing, false);
@@ -1094,8 +1294,10 @@ PanelWindow {
     // Where it plays from, as a play takes it (MarginCatGames.js), thinking
     // `pause` ms.
     function playsFrom(pause: real): var {
+        // From where it's drawn, a ride's lag short of its place.
+        const at = drawnAt();
         return {
-            seat: { x: place.x, y: place.y },
+            seat: { x: at.x, y: at.y },
             column,
             across: modelData.width,
             height: modelData.height,
@@ -1114,9 +1316,14 @@ PanelWindow {
     function plays(playing: var, hand: bool): void {
         if (playing === null)
             return;
+        // Its ride ended where it's drawn, where the play sets off.
+        unride();
         closedOn = null;
         roams = null;
         landedOn = null;
+        // No longer held short of a seat once it plays, which only the
+        // keys back on that seat's window let it do today (heldShortOn).
+        heldShortOn = null;
         sayWalked();
         shown = [];
         costs = [];
@@ -1146,6 +1353,8 @@ PanelWindow {
     readonly property bool yarnLies: yarnKept && yarnAt !== null && !yarnFades.running
     onYarnLiesChanged: say()
     onGoingChanged: {
+        if (puppyAt !== null && !puppyFades.running && going?.kind !== "puppy")
+            goes(puppyFades);
         if (yarnAt === null || yarnFades.running)
             return;
         if (going === null ? !yarnKept : going.kind === undefined
@@ -1163,6 +1372,26 @@ PanelWindow {
             window.yarnAt = null;
             window.yarnKept = false;
             window.yarnLeft = 1;
+        }
+    }
+
+    // The puppy where its visit has it, or null (MarginCatPuppy.js); and,
+    // anything cutting the visit short, how much of it is left as it fades
+    // where it stood, as the yarn does. It never stays behind its visit.
+    property var puppyAt: null
+    property real puppyLeft: 1
+    readonly property bool puppyShown: puppyAt !== null
+    onPuppyShownChanged: say()
+    NumberAnimation {
+        id: puppyFades
+        target: window
+        property: "puppyLeft"
+        from: 1
+        to: 0
+        duration: Theme.motion.short
+        onFinished: {
+            window.puppyAt = null;
+            window.puppyLeft = 1;
         }
     }
 
@@ -1218,6 +1447,9 @@ PanelWindow {
             lag = { x: 0, y: 0 };
             say();
         }
+        if (stilled && puppyFades.running && !byHand)
+            goes(puppyFades);
+        // The puppy's fade is never held: it went at once above.
         for (const clock of [walker, mover, yarnFades]) {
             if (stilled && clock.running && !byHand)
                 clock.pause();
@@ -1246,10 +1478,18 @@ PanelWindow {
     // off. It reads the card itself rather than
     // `stilled`, which another handler of the same change may run before.
     function goes(clock: var): void {
+        // Under the card the puppy goes at once, a frame rather than a
+        // fade held at full sight beside his keys till the card closes.
+        if (clock === puppyFades && Launched.up && !byHand) {
+            puppyFades.stop();
+            puppyAt = null;
+            puppyLeft = 1;
+            return;
+        }
         clock.restart();
         if (Launched.up && !byHand) {
             clock.pause();
-            if (clock !== yarnFades && heldAt < 0)
+            if (clock !== yarnFades && clock !== puppyFades && heldAt < 0)
                 heldAt = window.FramePresentation.framesBegun;
         }
     }
@@ -1273,6 +1513,8 @@ PanelWindow {
                 : Games.frame(window.going, t);
             if (kind !== undefined && !yarnFades.running)
                 window.yarnAt = now.yarn;
+            if (kind !== undefined && !puppyFades.running)
+                window.puppyAt = Puppy.frame(window.going, t);
             if (now.done) {
                 // A click's play leaves its yarn lying where it ends.
                 if (window.yarnAt !== null && !yarnFades.running)
@@ -1515,13 +1757,29 @@ PanelWindow {
             // Whether its rest has begun, from which a pet may come; not
             // `resting`, the pause before it sets off on a walk.
             restBegun: window.stillSince >= 0,
+            // How long before this niri's newest scroll began, as the cat
+            // dated it, null for none, and how long niri's spring takes,
+            // so a check can tell a cat put on its seat at once since it
+            // heard of a scroll already done from one that missed it.
+            scrolled: (window.scrollHeard?.at ?? null) === null ? null
+                : Math.round(Date.now() - window.scrollHeard.at),
+            slides: window.slideMs,
             // Whether it's held still under the launcher's card, which
             // what Joel's hand set off never is.
             stilled: window.stilled && !window.byHand,
             landed: window.landedOn,
             yarn: yarnLies ? { x: yarnAt.x, y: yarnAt.y } : null,
+            // Whether the puppy's drawn, visiting or fading where a key
+            // cut its visit short, which `walk` stops saying once it sits.
+            puppy: puppyShown,
+            // How many of its cells are lit, so a check sees it drawn in the
+            // theme's cells, not only placed.
+            puppyLit: window.puppyDrawn.join("").split("#").length - 1,
             walk: going === null || stepped === null ? null : {
                 t: Math.round(walker.elapsedTime * 10000) / 10,
+                // When it ends on the same clock, so a check can tell where
+                // its undrawn last frames would have had the puppy.
+                ends: Math.round(going.ends * 10) / 10,
                 beat: stepped.beat,
                 pose: stepped.pose,
                 facing: stepped.facing,
@@ -1529,7 +1787,8 @@ PanelWindow {
                 to: going.to.x,
                 beats: going.beats.map(beat => beat.name),
                 play: going.kind ?? null,
-                yarn: yarnAt
+                yarn: yarnAt,
+                puppy: puppyAt
             },
             move: moving === null || stepped === null ? null : {
                 t: Math.round(mover.elapsedTime * 10000) / 10,
@@ -1649,28 +1908,45 @@ PanelWindow {
         }
     }
 
-    // Its ball of yarn, where a play has it, in the cat's own cells and
-    // hue, on the screen's own pixels as the cat is, and drawn only within
-    // its room, so it rolls out from behind the room's edge and back
-    // behind it.
-    Item {
-        x: window.yarnAt ? window.snapped(window.yarnAt.within.left) : 0
-        width: window.yarnAt
-            ? window.snapped(window.yarnAt.within.right) - window.snapped(window.yarnAt.within.left)
-            : 0
+    // Its ball of yarn and the puppy, where a play has them, in the cat's
+    // own cells and hue, on the screen's own pixels as the cat is, and
+    // drawn only within its room, so they come out from behind the room's
+    // edge and go back behind it.
+    Companion {
+        at: window.yarnAt
+        remains: window.yarnLeft
+        drawn: window.yarnDrawn
+    }
+    Companion {
+        at: window.puppyAt
+        remains: window.puppyLeft
+        drawn: window.puppyDrawn
+    }
+
+    // One of them, `at` where its play has it, what `remains` of it as it fades
+    // and `drawn` in its pose's cells.
+    component Companion: Item {
+        id: companion
+
+        required property var at
+        required property real remains
+        required property var drawn
+
+        x: at ? window.snapped(at.within.left) : 0
+        width: at ? window.snapped(at.within.right) - window.snapped(at.within.left) : 0
         height: parent.height
         clip: true
-        opacity: window.yarnLeft
-        visible: window.yarnAt !== null
+        opacity: remains
+        visible: at !== null
 
         Item {
-            x: window.yarnAt ? window.snapped(window.yarnAt.x) - parent.x : 0
-            y: window.yarnAt ? window.snapped(window.yarnAt.y) : 0
+            x: companion.at ? window.snapped(companion.at.x) - companion.x : 0
+            y: companion.at ? window.snapped(companion.at.y) : 0
             width: window.size
             height: window.size
 
             Repeater {
-                model: Pixels.runs(window.yarnDrawn)
+                model: Pixels.runs(companion.drawn)
 
                 Rectangle {
                     required property var modelData
@@ -1705,8 +1981,10 @@ PanelWindow {
     // never each frame it rolls: a new drawing each frame had its cells
     // made again each frame, and a play cost the shell 4 to 7% of a core
     // (the GPU rig, 2026-11-14).
-    readonly property string yarnLooks: MarginCat.yarnLooks(yarnAt)
-    readonly property var yarnDrawn: MarginCat.yarnDrawn(yarnLooks, Theme.pixels)
+    readonly property string yarnLooks: MarginCat.companionLooks(yarnAt)
+    readonly property var yarnDrawn: MarginCat.companionDrawn(yarnLooks, Theme.pixels)
+    readonly property string puppyLooks: MarginCat.companionLooks(puppyAt)
+    readonly property var puppyDrawn: MarginCat.companionDrawn(puppyLooks, Theme.pixels)
 
     // Where `at` logical pixels falls on one of the screen's own.
     function snapped(at: real): real {
