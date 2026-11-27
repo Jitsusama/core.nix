@@ -523,6 +523,26 @@ def test_the_map_draws_the_realm_live(mycelium_opened: Opened) -> None:
     the_map_counts(page, COUNTED, "the map miscounted the realm")
 
 
+# The messages the map shows, LATEST_MESSAGES in model.ts, which the node feed's
+# message kind in local-sites' home.nix asks the node for.
+LATEST_MESSAGES = 20
+
+
+# On 26 November 2026 the node sent the map all 12,179 messages it held, 1796
+# KB, to show 20 of them, and its message watch took 6.41 s to answer. The
+# server shares one watch for every tab, so the feed's declaration is what
+# asks the node for only the latest; a node that doesn't know the field sends
+# them all, which the map's own slice keeps to 20.
+def test_the_node_is_asked_for_only_the_latest_messages(
+    mycelium_opened: Opened, mycelium_node: StandIn
+) -> None:
+    the_map_stands(mycelium_opened.page, "live")
+    asked = [ask for ask in mycelium_node.asked if ask.get("kind") == "message"]
+    assert asked, "the server never watched the node's messages"
+    latest = [ask.get("latest") for ask in asked]
+    assert latest == [LATEST_MESSAGES] * len(asked), f"the messages were asked as {asked}"
+
+
 # The networks node.json's realm leads, each drawn as a hub, and the one
 # branching from another, as a mind map branches.
 NETWORKS = ("orchestration.skiff1", "orchestration.tern01", "orchestration.heron1")

@@ -35,7 +35,11 @@ import { BALANCE_FRESH_MS, type Balance, balanceOf, latestReading, sharesOf } fr
 import { foragedOf, type Split, type Started, splitsOf, startedOf } from "./lineage.ts";
 import type { Builder } from "./words.ts";
 
-/** How many messages the map hears, the latest, as `mycelium messages` says. */
+/**
+ * How many messages the map hears, the latest, as `mycelium messages` says.
+ * The node feed's message kind asks the node for as many (local-sites'
+ * home.nix), so a page is sent these rather than every message held.
+ */
 const LATEST_MESSAGES = 20;
 
 /**

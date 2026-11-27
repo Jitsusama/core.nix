@@ -137,6 +137,16 @@ let
           says only what moved in it, as the mycelium node's `deep` does.
         '';
       };
+      latest = lib.mkOption {
+        type = lib.types.nullOr lib.types.ints.positive;
+        default = null;
+        description = ''
+          How many of the kind's records, those the daemon heard latest, it
+          is asked for, as the mycelium node's `latest` says; every page
+          then holds only those. Null asks for them all, as does a daemon
+          that doesn't know `latest`.
+        '';
+      };
     };
   };
   feed = lib.types.submodule {
@@ -467,10 +477,12 @@ in
       # when. The map reads, of each forage, only its cell and who started
       # it, from its lineage, though every page is passed what the forage
       # page reads. It reads its networks and cells whole, as `mycelium networks` draws them; of
-      # each machine only what the map draws; of each message only who
-      # sent it, how and where, never its words; the balance service's
-      # latest reading whole, for each machine's share of the work; and of
-      # what waits on the mesh, each question waiting and hold standing,
+      # each machine only what the map draws; of each of the latest 20
+      # messages the node heard, as many as the map shows (LATEST_MESSAGES
+      # in its model.ts), only who sent it, how and where, never its
+      # words; the balance service's latest reading whole, for each
+      # machine's share of the work; and of what waits on the mesh, each
+      # question waiting and hold standing,
       # who sent it, where and since when, and whom or until when it
       # waits, never its words either. Of each tie between two cells, when
       # they last talked, how much each said and of what kinds, and how
@@ -516,12 +528,15 @@ in
             "declared"
             "measured_at"
           ];
-          message.fields = [
-            "at"
-            "from"
-            "intent"
-            "groups"
-          ];
+          message = {
+            fields = [
+              "at"
+              "from"
+              "intent"
+              "groups"
+            ];
+            latest = 20;
+          };
           murmur.fields = [
             "writer"
             "at"

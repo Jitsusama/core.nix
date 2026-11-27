@@ -2271,8 +2271,9 @@
     the local sites' server serves the documents and a mount, answers a file the browser holds by
     its tag alone and sends one written since again, even at the same size and time, refuses a
     stranger's host name and a stranger's page, has two pages share one watch on a daemon with
-    each told every change trimmed to the feed's fields, refuses an act before it reaches the
-    daemon, and says a missing daemon broken with why
+    each told every change trimmed to the feed's fields, asks the daemon for only the latest a
+    kind declares and refuses a page asking it, refuses an act before it reaches the daemon, and
+    says a missing daemon broken with why
   '';
   locking-asked-wrongly-does-nothing = ''
     lock-screen, lock-for-sleep and swayidle-away answer --help and refuse an unknown word with
@@ -2632,7 +2633,8 @@
   mycelium-site-reads-live = ''
     the mycelium map, served by the local sites' server beside a stand-in node through the node feed
     as home.nix declares it for a machine in a realm, reads live in headless Chromium: the realm
-    drawn and counted, its networks, a branch and lines across them in one window that opens a cell
+    drawn and counted, the node asked for only the latest 20 messages, its networks, a branch and
+    lines across them in one window that opens a cell
     clicked, a cell moving and one going, two cells sharing a title moving each owing an
     answer, the legend saying a ring is an answer owed and never one waiting on him, broken
     while the node is away with the realm
