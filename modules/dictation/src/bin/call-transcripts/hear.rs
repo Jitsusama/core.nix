@@ -418,10 +418,14 @@ fn not_heard(
 /// The notice for `title`'s call when its speech model didn't load,
 /// saying `why`: that part of it wasn't heard once a line of it was
 /// (`heard`), since its transcript holds those, and that it couldn't be
-/// transcribed while it has none.
+/// transcribed while it has none. `why` names the model already, so it's
+/// the body alone.
 fn not_loaded(title: &str, why: &str, heard: bool) -> Notice {
     if heard {
-        notices::not_all_heard(title, why)
+        Notice {
+            body: why.to_owned(),
+            ..notices::not_all_heard(title, why)
+        }
     } else {
         notices::not_transcribed(title, why)
     }
