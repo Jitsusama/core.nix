@@ -64,8 +64,8 @@ impl Room {
     /// carried to a line it didn't fill (download hold round 2's F7 and F24,
     /// round 3's F5). The one exception is a hold `follow` gave a link while
     /// it followed, unmeasured, which it keeps on the same network and line
-    /// as it leads for the rest of the call, whether or not it fills it, at
-    /// a tenth of its line, rather than let a download it couldn't hear go a
+    /// as it leads for the rest of the call, whether or not it fills it, a
+    /// tenth under its line, rather than let a download it couldn't hear go a
     /// second (a link's own line round 4's F2 and F12, round 9's F8). A
     /// link the recorder doesn't follow carries nothing known
     /// and isn't cut, so it starts no hold, but keeps one it has, as it
