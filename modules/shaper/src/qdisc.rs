@@ -122,7 +122,7 @@ pub fn unturn(dev: &str) -> Vec<String> {
 /// the connection, however small they are. Counted as a share of the rate
 /// instead, small packets, where it's most, would overrun the connection,
 /// and the queue would form again in its CAKE, where the VPN is one flow.
-const VPN_OVERHEAD: u32 = 80;
+pub const VPN_OVERHEAD: u32 = 80;
 
 /// What a VPN may send and bring in, as a share of the connection it
 /// rides. On the connection a VPN is one flow, in one tin, so its queue
@@ -258,6 +258,14 @@ impl Tin {
         self.peak_us = self.peak_us.max(other.peak_us);
         self.flows += other.flows;
     }
+
+    /// What a VPN's CAKE has counted coming in to this tin: its bytes, and
+    /// the header it counts each packet with, as `counted_bytes` reads
+    /// the whole CAKE's. A tin counts a packet as it comes in, so those it
+    /// then drops count too, where the whole CAKE's count what it sent.
+    pub fn counted_bytes(&self) -> u64 {
+        self.bytes + u64::from(VPN_OVERHEAD) * self.packets
+    }
 }
 
 fn tins_of(cake: &Value) -> Vec<Tin> {
@@ -355,6 +363,13 @@ impl TinRates {
             voice: kbit(3),
         });
         self.then = Some((sent, at));
+    }
+
+    /// Says nothing for a read that missed part of what it sums, and keeps
+    /// the counts before, so the next read's rate spans the miss rather
+    /// than rising by all the missed part ever sent.
+    pub fn miss(&mut self) {
+        self.kbit = None;
     }
 
     /// Each tin's rate over the last second read, once there is one.

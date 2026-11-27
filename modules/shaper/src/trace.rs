@@ -94,6 +94,18 @@ pub struct Line {
     /// what main asked, not known to be what the classes hold.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub held_unsent: Option<bool>,
+    /// What reached the VPNs' own CAKEs to go up, every tin over the last
+    /// second or more, and the rates they were held to, each summed, in
+    /// kbit/s, while a VPN was held. A CAKE counts a tin's packets as they
+    /// come in, those it then drops too, so what passes a VPN's hold is
+    /// what its hold kept back. The link's rate counts agents' sending
+    /// outside the tunnel too, so on 27 November a replay couldn't tell
+    /// whether a tunnel held at a quarter of its lane offered more than
+    /// that hold.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vpn_offered: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vpn_up: Option<u64>,
 }
 
 impl Line {
@@ -118,6 +130,8 @@ impl Line {
             vpn_share: None,
             agents_share: None,
             held_unsent: None,
+            vpn_offered: None,
+            vpn_up: None,
         }
     }
 
@@ -465,6 +479,32 @@ mod tests {
         assert!(
             written.contains(r#""held_unsent":true"#),
             "shares from a split tc refused weren't marked: {written}"
+        );
+    }
+
+    // What reached the VPNs beside their hold reads back as written, and a
+    // line written before either was traced reads as neither.
+    #[test]
+    fn a_line_says_what_reached_the_vpns_or_nothing_of_it() {
+        let sent = Line {
+            vpn_offered: Some(2_900),
+            vpn_up: Some(3_000),
+            ..line(NOV16, Some(9_500), None)
+        };
+        let written = serde_json::to_string(&sent).expect("a line");
+        let back: Line = serde_json::from_str(&written).expect("the line reads back");
+        assert_eq!(back, sent, "read back otherwise than written: {written}");
+        let old: Line =
+            serde_json::from_str(r#"{"at":1794787200,"link":"wlan0"}"#).expect("an old line reads");
+        assert_eq!(
+            (old.vpn_offered, old.vpn_up),
+            (None, None),
+            "an old line said what reached the VPNs"
+        );
+        let none = serde_json::to_string(&line(NOV16, None, None)).expect("a line");
+        assert!(
+            !none.contains("vpn_offered") && !none.contains("vpn_up"),
+            "wrote neither: {none}"
         );
     }
 
