@@ -39,6 +39,7 @@ pub mod told_late;
 mod tracked;
 pub mod unbilled;
 pub mod unresolved;
+pub mod way_out;
 pub mod wifi;
 
 pub use balanced::balanced;
@@ -144,12 +145,15 @@ pub fn unread(mut measure: Measure, why: &str) -> Measure {
 /// is filed to each owner apart, but never leads, since asking its owner
 /// to steer it each hour moves nothing; nor do the queues, whose worst is asked apart once a day,
 /// nor a cause found again and again, each class of which is filed with its own owner apart.
+/// Nor does a count of the way the calls go out (the relay, pi's calls and
+/// the path), filed to its keeper apart each hour it is past, so it never
+/// takes the place of what else drags.
 #[must_use]
 pub fn drag(measures: &[Measure]) -> Option<&Measure> {
     measures
         .iter()
         .filter(|m| !m.key.starts_with(rounds::FRUITLESS) && !m.key.starts_with(told_late::KEY))
-        .filter(|m| m.key != causes::KEY)
+        .filter(|m| m.key != causes::KEY && !way_out::on_the_way(&m.key))
         .filter(|m| m.class != Class::Queues)
         .filter_map(|m| m.past().map(|past| (m, past)))
         .min_by(|(a, pa), (b, pb)| a.class.cmp(&b.class).then(pb.total_cmp(pa)))
@@ -450,6 +454,16 @@ fn strings(list: &Value) -> impl Iterator<Item = &str> {
         .filter_map(Value::as_str)
 }
 
+/// The measure under `key` among those a source gave, for its tests to
+/// read one by one.
+#[cfg(test)]
+fn by_key<'a>(measures: &'a [Measure], key: &str) -> &'a Measure {
+    measures
+        .iter()
+        .find(|m| m.key == key)
+        .unwrap_or_else(|| panic!("no {key}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::card::{CARD_FRESH_FOR, card_median};
@@ -589,6 +603,20 @@ mod tests {
             drag(&measures).map(|m| m.key.as_str()),
             Some("far"),
             "a date told late, which no one can move now, led the hour"
+        );
+    }
+
+    #[test]
+    fn a_count_of_the_way_out_never_leads_however_far_past_it_is() {
+        let measures = [
+            measure("relay:answered-502", Class::Functional, 704.0, Some(50.0)),
+            measure("path:tls:forge.example", Class::Functional, 20.0, Some(1.0)),
+            measure("broken", Class::Functional, 4.0, Some(0.0)),
+        ];
+        assert_eq!(
+            drag(&measures).map(|m| m.key.as_str()),
+            Some("broken"),
+            "the relay, filed apart, took broken main's place as the lead"
         );
     }
 

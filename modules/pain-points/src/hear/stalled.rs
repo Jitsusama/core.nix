@@ -19,6 +19,10 @@ pub const STALL_S: f64 = 60.0;
 /// from what he said.
 pub const KIND: &str = "stalled";
 
+/// How a stall the model's provider caused is said, whose words name the
+/// subject its owner holds (route.rs's `said`).
+pub const PROVIDER_FAILING: &str = "the provider failing";
+
 /// What read keeps of pi's logs, by each log's file name.
 #[derive(Deserialize)]
 struct Kept {
@@ -49,7 +53,7 @@ pub fn stalls(log: &Log, session: &str, void: bool, since: i64, until: i64) -> V
             let entry = format!("turn-{}", p.at);
             let why = match p.slowed {
                 "waiting" => "waiting on pi's queue or a tool that held it",
-                "an error" => "the provider failing",
+                "an error" => PROVIDER_FAILING,
                 "stopped it" => "he stopped it",
                 "tried again" => "he had to say it again",
                 other => other,
@@ -73,6 +77,7 @@ pub fn stalls(log: &Log, session: &str, void: bool, since: i64, until: i64) -> V
                 to: None,
                 routed_at: None,
                 tries: 0,
+                sends_failed_at: Vec::new(),
                 unnoted_since: None,
                 taken_by: None,
                 answered_at: None,

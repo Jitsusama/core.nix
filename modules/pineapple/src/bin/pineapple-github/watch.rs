@@ -56,7 +56,7 @@ impl Watched {
         let newest = |repo: &str| format!("/repos/{repo}/issues/comments?{NEWEST}");
         let events = match self.ask(github, &feed) {
             Ok(events) => events,
-            Err(Unread::Gone(why) | Unread::Failed(why)) => {
+            Err(Unread::Gone(why) | Unread::Failed(why) | Unread::Limited(why)) => {
                 eprintln!("<4>{why}, {WAITS}");
                 return Vec::new();
             }
@@ -74,7 +74,7 @@ impl Watched {
                     eprintln!("<4>{why}; it's passed by, {WAITS}");
                     continue;
                 }
-                Err(Unread::Failed(why)) => {
+                Err(Unread::Failed(why) | Unread::Limited(why)) => {
                     eprintln!("<4>{why}, {WAITS}");
                     break;
                 }
@@ -94,8 +94,8 @@ impl Watched {
 
     /// One list, asked with the tag GitHub last gave it: the list it
     /// keeps when GitHub answers that nothing changed. One gone or not
-    /// Joel's to read is told from GitHub failing, its rate limit included,
-    /// as a round tells them.
+    /// Joel's to read is told from GitHub failing, and both from his rate
+    /// limit spent, as a round tells them.
     fn ask(&mut self, github: &GitHub<'_>, path: &str) -> Result<Value, Unread> {
         let url = format!("{}{path}", github.origin);
         let mut request = github
@@ -133,6 +133,7 @@ impl Watched {
             let limited = github::rate_limited(status, remaining.as_deref(), retry_after, message);
             return Err(match status {
                 403 | 404 | 410 if !limited => Unread::Gone(why),
+                _ if limited => Unread::Limited(why),
                 _ => Unread::Failed(why),
             });
         }
