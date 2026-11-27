@@ -452,10 +452,9 @@ qint64 sweepsOf(const QJSEngine &engine) {
 // BURST_ROOMS rooms, collects at least once and no more than once for
 // each room it grows by and once besides, with `litter` objects made
 // and dropped after a collection and before the first ask since it, on
-// a heap holding over
-// twice what's live in runs too small for it, as Joel's shell held 201
-// to 209 MB for 63 to 68 live. With none, its ask stands for the
-// closing's, straight after the closing's collection. With some, it
+// a heap holding over twice what's live in runs too small for it, as
+// Joel's shell held 201 to 209 MB for 63 to 68 live. With none, its ask
+// stands for the closing's, straight after the closing's collection. With some, it
 // stands for an ask taking the baseline with garbage made since the last
 // sweep: an opening's after a collection run while the launcher was shut
 // or still parting, or a fresh shell's first.
@@ -554,6 +553,10 @@ bool ceilingFollowsWhatsKept() {
                        "return 0; })()")
             .arg(KEPT / 10));
     const double usedAtAsk = usedNowOf(engine);
+    // Before any room is asked, Qt's own limit stands and no rooms cap it.
+    const QVariantMap unasked = heap.standing();
+    const bool noRoomSaid = unasked.value(QStringLiteral("roomsCapAt")).toDouble() < 0 &&
+                            unasked.value(QStringLiteral("collectsBy")) == QStringLiteral("sweep");
     heap.leaveRoom(SMALL_ROOM_MB);
     const Room asked = roomOf(heap);
     QV4::MemoryManager *manager = engine.handle()->memoryManager;
@@ -568,8 +571,11 @@ bool ceilingFollowsWhatsKept() {
     const double cap =
         static_cast<double>(manager->slotsHeldWhenRoomLeft) * slotMb + 2 * SMALL_ROOM_MB;
     // Where standing() says the rooms alone cap the chunks, which a
-    // closing's line puts beside where the collector starts.
-    const double roomsAt = heap.standing().value(QStringLiteral("roomsCapAt")).toDouble();
+    // closing's line puts beside where the collector starts, and that the
+    // room past what's held sets it at the ask, which is nearer.
+    const QVariantMap atAsk = heap.standing();
+    const double roomsAt = atAsk.value(QStringLiteral("roomsCapAt")).toDouble();
+    const QString byAtAsk = atAsk.value(QStringLiteral("collectsBy")).toString();
     QStringList values;
     for (int each = 0; each < BURST_VALUES; each++)
         values << QStringLiteral("v%1: i").arg(each);
@@ -586,22 +592,32 @@ bool ceilingFollowsWhatsKept() {
     const double grown = roomOf(heap).chunks;
     // What the sweeps left, as if they kept this many slots in all.
     const std::size_t icSwept = manager->icAllocator.usedSlotsAfterLastSweep;
+    // Which limit standing() says set it after each, kept as they're read.
+    QStringList by;
     const auto collectsAtWith = [&](std::size_t swept) {
         const std::size_t ic = std::min(icSwept, swept);
         manager->icAllocator.usedSlotsAfterLastSweep = ic;
         manager->blockAllocator.usedSlotsAfterLastSweep = swept - ic;
         manager->keepRoom();
+        by << heap.standing().value(QStringLiteral("collectsBy")).toString();
         return static_cast<double>(manager->heldBeforeCollecting()) / mb;
     };
     const std::size_t beyond = static_cast<std::size_t>(SMALL_ROOM_MB / 4 / slotMb);
     const double same = collectsAtWith(sweptAsked);
     const double less = collectsAtWith(sweptAsked / 2);
     const double more = collectsAtWith(sweptAsked + beyond);
+    // Once the sweeps keep more, the collector starts past the rooms' cap,
+    // which still says where the rooms alone would have held it.
+    const double roomsAtMore = heap.standing().value(QStringLiteral("roomsCapAt")).toDouble();
     engine.collectGarbage();
     const double moved = 2 * static_cast<double>(beyond) * slotMb;
+    const QStringList byWanted = {QStringLiteral("rooms"), QStringLiteral("rooms"),
+                                  QStringLiteral("kept")};
+    const bool said = noRoomSaid && byAtAsk == QStringLiteral("room") && by == byWanted &&
+                      std::abs(roomsAtMore - cap) < SAME_MB && more > roomsAtMore + SAME_MB;
     const bool holds = made && fromTheSweep && grown >= upTo && std::abs(same - cap) < SAME_MB &&
                        std::abs(less - cap) < SAME_MB && std::abs(more - cap - moved) < SAME_MB &&
-                       std::abs(roomsAt - cap) < SAME_MB;
+                       std::abs(roomsAt - cap) < SAME_MB && said;
     if (!holds)
         std::fprintf(stderr,
                      "FAIL the ceiling is twice the room past what was held at the ask, and "
@@ -609,11 +625,13 @@ bool ceilingFollowsWhatsKept() {
                      "%.2f MB at the ask, %.2f kept by the last sweep of %.2f in use, grown "
                      "to %.2f; "
                      "collecting at %.2f, %.2f and %.2f MB for sweeps keeping as much, half "
-                     "and %.2f MB more, against %.2f, %.2f and %.2f; the rooms alone at %.2f; "
-                     "made %s, from the sweep %s\n",
+                     "and %.2f MB more, against %.2f, %.2f and %.2f; the rooms alone at %.2f, "
+                     "then %.2f; set by %s at the ask and %s after, wanting room and rooms, "
+                     "rooms, kept; none asked said %s; made %s, from the sweep %s\n",
                      asked.chunks, sweptAskedMb, usedAtAsk, grown, same, less, more, moved / 2, cap,
-                     cap, cap + moved, roomsAt, made ? "yes" : "no",
-                     fromTheSweep ? "yes" : "no");
+                     cap, cap + moved, roomsAt, roomsAtMore, qPrintable(byAtAsk),
+                     qPrintable(by.join(QStringLiteral(", "))), noRoomSaid ? "rightly" : "wrongly",
+                     made ? "yes" : "no", fromTheSweep ? "yes" : "no");
     return holds;
 }
 

@@ -289,6 +289,31 @@ QtObject {
             Collector.standingSaid(0.4, stoodAtAsk), "");
         check(failures, "nor does one with no standing read",
             Collector.standingSaid(30, null) + Collector.standingSaid(30, {}), "");
+        // Past the rooms, what the sweeps kept since set the collector.
+        const stoodPastRooms = Object.assign({}, stoodAtAsk,
+            { roomsCapAt: 310.2, collectsBy: "kept" });
+        check(failures, "a stall says where the rooms cap the chunks and what set the collector",
+            Collector.standingSaid(30, stoodPastRooms),
+            "; at the ask, chunks 300 of 322 MB (the rooms 310 MB, set by the rooms and what"
+            + " the sweeps kept since) and outside 27 of 59 MB");
+        check(failures, "Qt's own limit is said by its name",
+            Collector.limitSaid(Object.assign({}, stoodPastRooms, { collectsBy: "sweep" })),
+            " (the rooms 310 MB, set by Qt's own limit)");
+        check(failures, "as are the room and the rooms",
+            Collector.limitSaid(Object.assign({}, stoodPastRooms, { collectsBy: "room" }))
+            + Collector.limitSaid(Object.assign({}, stoodPastRooms, { collectsBy: "rooms" })),
+            " (the rooms 310 MB, set by the room past what they held)"
+            + " (the rooms 310 MB, set by the rooms)");
+        check(failures, "a heap with no room asked says so, not that it has none left",
+            Collector.limitSaid({ roomsCapAt: -1, collectsBy: "sweep" }),
+            " (no room asked, set by Qt's own limit)");
+        check(failures, "a limit it doesn't know is left unsaid, the cap kept",
+            Collector.limitSaid({ roomsCapAt: 310.2, collectsBy: "later" }),
+            " (the rooms 310 MB)");
+        check(failures, "and a cap that isn't a number says nothing",
+            Collector.limitSaid({ roomsCapAt: NaN, collectsBy: "kept" })
+            + Collector.limitSaid({ roomsCapAt: "310", collectsBy: "kept" })
+            + Collector.limitSaid(null), "");
         check(failures, "a tick without a count keeps the last",
             Pacing.feltTicked(Pacing.feltBegun(0, { collected: 5 }), 16, pace).collected, 5);
     }

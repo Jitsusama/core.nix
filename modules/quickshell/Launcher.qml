@@ -13017,17 +13017,16 @@ Scope {
         const chunks = Math.round(weight.chunks);
         const reachedChunks = Math.round(reached.chunks);
         const chunksAt = Math.round(reached.collectsAt);
-        // Where the rooms alone capped them, so a line whose collector
-        // started higher says what the sweeps kept, or Qt's own limit, set it.
-        const roomsAt = reached.roomsCapAt < 0 ? "no room"
-            : `the rooms ${Math.round(reached.roomsCapAt)} MB`;
+        // Where the rooms alone capped them, and which limit set where the
+        // collector started (Collector.limitSaid).
+        const limit = Collector.limitSaid(reached);
         const reachedOutside = Math.round(reached.outside);
         const outsideAt = Math.round(reached.collectsOutsideAt);
         console.info(
             `launcher: collected after closing in ${took} ms: ${live} MB live of ${held} MB`
             + ` held, ${resident} of it resident, ${free} of it in free pages,`
             + ` ${outside} MB outside, chunks`
-            + ` ${chunks} MB; before it, chunks ${reachedChunks} of ${chunksAt} MB (${roomsAt}) and`
+            + ` ${chunks} MB; before it, chunks ${reachedChunks} of ${chunksAt} MB${limit} and`
             + ` outside ${reachedOutside} of ${outsideAt} MB, weighed in ${weighing} ms,`
             + ` ${lent} MB of free pages lent in ${lending} ms, the kernel holding`
             + ` ${holding} of the shell lent`
