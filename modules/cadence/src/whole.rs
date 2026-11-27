@@ -1,8 +1,10 @@
 //! Writing a file whole: cadence keeps each reading, ledger and note by
 //! staging it beside its place and renaming it in, so no reader ever sees
 //! half of one. And reading one another program writes whole the same
-//! way, as text line by line, naming the first line that isn't text.
+//! way, as text line by line, naming the first line that isn't text. And
+//! reading a record cadence keeps, so one torn is refused, not emptied.
 
+use serde::de::DeserializeOwned;
 use std::fs;
 use std::io;
 use std::path::Path;
@@ -51,6 +53,38 @@ pub fn text_lines(bytes: &[u8]) -> (String, Option<usize>) {
     (kept.join("\n"), first_not)
 }
 
+/// The record kept as JSON at `path`, its default when it was never
+/// written. One that can't be read or parsed into its shape is an error,
+/// so a tick that tells from it and writes it back leaves it as it is
+/// rather than writing an emptied record over it: read as empty, a torn
+/// record would tell again everything it held, and an hour reading it
+/// whole would count none.
+///
+/// # Errors
+///
+/// When the record can't be read, or isn't JSON of its shape.
+pub fn read_kept<T: DeserializeOwned + Default>(path: &Path) -> io::Result<T> {
+    match fs::read(path) {
+        Ok(bytes) => serde_json::from_slice(&bytes).map_err(|err| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "{} isn't JSON of its shape, so it's kept as it is: {err}",
+                    path.display()
+                ),
+            )
+        }),
+        Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(T::default()),
+        Err(err) => Err(io::Error::new(
+            err.kind(),
+            format!(
+                "{} can't be read, so it's kept as it is: {err}",
+                path.display()
+            ),
+        )),
+    }
+}
+
 /// Removes the copies staged beside `path` by runs long gone: those named
 /// as `write_whole` stages any file, under any process, older than
 /// `LEFT_AFTER`. A folder that can't be read is left as it is, as a write
@@ -87,6 +121,8 @@ fn sweep_left(path: &Path) {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use super::*;
 
     fn scratch() -> tempfile::TempDir {
@@ -124,6 +160,51 @@ mod tests {
             text_lines(b"a\nb\xff\n"),
             ("a\n".to_owned(), Some(2)),
             "a whole last line that isn't text wasn't named"
+        );
+    }
+
+    #[test]
+    fn a_kept_record_never_written_is_its_default_and_one_torn_or_misshapen_is_refused() {
+        let scratch = scratch();
+        let path = scratch.path().join("units.json");
+        let never: io::Result<BTreeMap<String, i64>> = read_kept(&path);
+        assert!(
+            never.is_ok_and(|kept| kept.is_empty()),
+            "a record never written wasn't read as empty"
+        );
+        fs::write(&path, "{\"a\": 1}").expect("a whole record");
+        let whole: io::Result<BTreeMap<String, i64>> = read_kept(&path);
+        assert_eq!(
+            whole.ok(),
+            Some(BTreeMap::from([("a".to_owned(), 1)])),
+            "a whole record wasn't read as it was written"
+        );
+        for (kept, what) in [
+            ("{\"a\": 1", "torn"),
+            ("{\"a\": \"one\"}", "of another shape"),
+        ] {
+            fs::write(&path, kept).expect("a record that won't parse");
+            let read: io::Result<BTreeMap<String, i64>> = read_kept(&path);
+            let err = read.expect_err(&format!("a record {what} was read"));
+            assert_eq!(
+                err.kind(),
+                io::ErrorKind::InvalidData,
+                "a record {what} wasn't refused as unparsed: {err}"
+            );
+            assert!(
+                err.to_string().contains("kept as it is"),
+                "a record {what} didn't say it was kept: {err}"
+            );
+        }
+        // One that can't be read at all, here a folder in its place, is
+        // refused naming where it is, never read as empty.
+        fs::remove_file(&path).expect("the torn record goes");
+        fs::create_dir_all(&path).expect("a folder where the record goes");
+        let unreadable: io::Result<BTreeMap<String, i64>> = read_kept(&path);
+        let err = unreadable.expect_err("a record that can't be read was read");
+        assert!(
+            err.to_string().contains(&path.display().to_string()),
+            "a record that can't be read didn't name its path: {err}"
         );
     }
 
