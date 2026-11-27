@@ -12,7 +12,6 @@
   "modules/disk-guard/tests/guard/pace.rs" = 2;
   "modules/disk-guard/tests/guard/serve.rs" = 1;
   "modules/guide/tests/stick.rs" = 1;
-  "modules/machine/tests/daemon.rs" = 1;
   "modules/mpv/keys-test.sh" = 2;
   "modules/nix-offload/offload/tests/there.rs" = 1;
   "modules/people/tests/daemon.rs" = 2;
