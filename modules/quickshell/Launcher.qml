@@ -5096,7 +5096,7 @@ Scope {
             }
             planned.push(plan);
         }
-        if (planned.some(plan => plan.steps.some(step => step.change.how !== "show")))
+        if (SetWords.changes(planned))
             acting();
         const said = [];
         for (const { options, steps } of planned)

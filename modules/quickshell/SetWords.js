@@ -147,6 +147,14 @@ function setting(arg, options) {
     return { changes };
 }
 
+// Whether :set's plans, each { steps } of { change }, change any option,
+// rather than only saying one, as :set volume? or :set all does: the
+// launcher times the line's Return as acting only then, since only then
+// does a source change.
+function changes(plans) {
+    return plans.some(plan => plan.steps.some(step => step.change.how !== "show"));
+}
+
 // What a change sets the option to, from where it stands now: { to }, or
 // { error } for one that can't change while the shell runs (`fixed`), as
 // the theme's background, which a switch of the system sets. A switch
