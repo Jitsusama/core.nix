@@ -203,9 +203,18 @@ mod tests {
     fn the_node_going_is_heard_among_other_events() {
         let mut events = event(IN_OPEN, b"");
         events.extend(event(IN_CLOSE_NOWRITE, b"video0\0\0"));
-        assert!(!gone(&events));
+        assert!(
+            !gone(&events),
+            "an open and a close were heard as the node going"
+        );
         events.extend(event(IN_DELETE_SELF, b""));
-        assert!(gone(&events));
-        assert!(gone(&event(IN_IGNORED, b"")));
+        assert!(
+            gone(&events),
+            "the node's delete wasn't heard after a named event"
+        );
+        assert!(
+            gone(&event(IN_IGNORED, b"")),
+            "the watch's removal wasn't heard as the node going"
+        );
     }
 }

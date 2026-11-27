@@ -503,7 +503,7 @@ fn the_file_goes_when_it_is_stopped() {
     watch.until_there(true, "no file while the camera's there");
     watch.stop();
     assert_eq!(watch.ended(), Some(0));
-    assert!(!watch.file.exists());
+    assert!(!watch.file.exists(), "its holders file was left behind");
     assert!(!watch.device().exists(), "its node was still said");
 }
 
