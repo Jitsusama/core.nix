@@ -787,4 +787,32 @@ EOF
   esac
 done
 
+# Every cause the script can tell is one the shell's untaken knows, which
+# takes any other as no cause at all, so a cause added to one alone can't
+# pass unseen. It names those it doesn't know, and any cause written other
+# than as a bare word (quoted, hyphenated, a variable or with a comment
+# after), which it couldn't tell from one it knows, so none is skipped.
+# A reader that fails says so, as its silence would pass.
+unknown=$("$python" - "$script" "$sessions" << 'EOF'
+import re
+import sys
+from pathlib import Path
+
+script, sessions = (Path(name).read_text(encoding="utf-8") for name in sys.argv[1:3])
+written = re.findall(r"^[^#\n]*\bcause=(.*)$", script, re.MULTILINE)
+told = {word for word in written if re.fullmatch(r"\w+", word)}
+odd = [word for word in written if not re.fullmatch(r"\w+", word)]
+known = re.search(r"const why = \[([^\]]*)\]\.includes\(given\)", sessions)
+names = set(re.findall(r'"(\w*)"', known.group(1))) if known else set()
+if odd:
+    print("written so it can't be read: " + " | ".join(odd))
+else:
+    print(" ".join(sorted(told - names)) if told and names else "(none read)")
+EOF
+) || unknown="(the reader failed, ending $?)"
+if [ -n "$unknown" ]; then
+  echo "FAIL the shell's untaken doesn't know the script's causes: $unknown"
+  failed=1
+fi
+
 exit "$failed"
