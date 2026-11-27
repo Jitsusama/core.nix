@@ -37,7 +37,8 @@
 //! and read again, less often while it fails, what was read judged
 //! meanwhile, so nothing it couldn't read is skipped, but for a search of
 //! what's older than one GitHub cut short (own.rs) and one failing for
-//! hours, named loudly (owed.rs).
+//! hours (owed.rs), each named in the journal and to Joel in For You,
+//! beside the row of what waits on him (left.rs).
 //!
 //! Unless `run` is given `--live`, it is in shadow: every stop's record
 //! says so, and nothing acting on records takes a shadow one for a stop.
@@ -71,12 +72,14 @@ use terminal_kit::{Exit, Failure, Format, Help, flags};
 use ureq::Agent;
 
 mod judging;
+mod left;
 mod owed;
 mod own;
 mod said;
 mod watch;
 
 use judging::judge;
+use left::Left;
 use own::Searched;
 use said::said_on;
 use watch::Watched;
@@ -349,12 +352,15 @@ fn shown(site: &str) -> String {
 
 /// Where it keeps what it judged, beside the Slack reader's log and stops.
 fn state() -> PathBuf {
-    std::env::var_os("XDG_STATE_HOME")
-        .map_or_else(
-            || PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".local/state"),
-            PathBuf::from,
-        )
-        .join("pineapple")
+    state_home().join("pineapple")
+}
+
+/// Where Joel's programs keep their state, For You's folder among it.
+fn state_home() -> PathBuf {
+    std::env::var_os("XDG_STATE_HOME").map_or_else(
+        || PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".local/state"),
+        PathBuf::from,
+    )
 }
 
 /// When each site was last read whole, so a quiet reader is told from one
@@ -405,12 +411,13 @@ fn run(how: &Run) -> Result<(), Failure> {
     });
     let mut own = Searched::new(judged.since, judged.own, first, INDEX_LAG);
     let mut watched = Watched::default();
+    let name = shown(&how.site);
+    let left = Left::new(&how.site, &name, &how.origin, how.shadow, &state_home());
     let agent: Agent = Agent::config_builder()
         .timeout_global(Some(PATIENCE))
         .http_status_as_error(false)
         .build()
         .into();
-    let name = shown(&how.site);
     loop {
         match token() {
             SignIn::Token(token) => {
@@ -420,7 +427,7 @@ fn run(how: &Run) -> Result<(), Failure> {
                     token: &token,
                     agent: &agent,
                 };
-                let reading = (&mut own, &mut watched);
+                let reading = (&mut own, &mut watched, &left);
                 round(&github, how, &state, &mut judged, reading);
             }
             SignIn::Missing => eprintln!("<4>no {name} sign-in yet, so nothing is read"),
@@ -608,13 +615,14 @@ fn searched(github: &GitHub<'_>, query: &str) -> Result<Value, Unread> {
 /// far it has read moved on, Joel's own search only once what it found
 /// lets it (own.rs). What it couldn't read is owed, read again from where
 /// it was to be (owed.rs); at a spent limit, or after [`FAILS`] failures,
-/// it reads no more, and owes what's left.
+/// it reads no more, and owes what's left. What nothing reads again is
+/// told to Joel in rows of its own (left.rs).
 fn round(
     github: &GitHub<'_>,
     how: &Run,
     state: &Path,
     judged: &mut Judged,
-    (own, watched): (&mut Searched, &mut Watched),
+    (own, watched, left): (&mut Searched, &mut Watched, &Left),
 ) {
     let began = seconds();
     let Some(login) = who(github, how) else {
@@ -706,10 +714,10 @@ fn round(
     }
     judged.since = began;
     if let Some(hits) = hits {
-        own.moved_on(began, hits);
+        own.moved_on(began, hits, left);
     }
     let read = (&failed[..], &gone[..], unasked);
-    judged.owed = owed::kept(github.name, &threads, read, &judged.owed, began);
+    judged.owed = owed::kept(left, &threads, read, &judged.owed, began);
     // Kept only where Joel's words are searched for, as a site read by
     // what he opened never moves it on, and dropping that flag later
     // would search from its first start.
