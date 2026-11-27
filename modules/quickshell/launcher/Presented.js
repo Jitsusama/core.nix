@@ -275,9 +275,13 @@ function keyServed(key) {
 }
 
 // The key a served row is made with (ReadyRows.qml): its thing, else its key, as its daemon
-// wrote them, made as keyServed makes one.
-function keyMade(row, key) {
-    return keyServed(row.thing ?? key);
+// wrote them, from the daemon serving on `socket`, where that's given, made as keyServed makes
+// one; but a `program:` key from any daemon but the programs daemon is kept under `row:` too,
+// since keyShown says a program's id whole as that daemon's alone.
+function keyMade(row, key, socket) {
+    const made = row.thing ?? key;
+    const programs = String(socket ?? "").endsWith(KeysSaid.programsSocket);
+    return !programs && String(made).startsWith("program:") ? `row:${made}` : keyServed(made);
 }
 
 // A program's own id, as a power profile's hold names it: whole where `whole`, else where it's
@@ -303,7 +307,8 @@ function kindsLed(parts, kinds) {
 // launcher's own ids are whole, and an own kind's key holding more than an id is said by that kind
 // alone. `window:<app>:<title>` is `window:<app>`, and the programs daemon's `program:<id>` whole,
 // so each program's drawer is timed apart (RTOIMQ, 2026-11-24), only where its id is shaped as an
-// app's and else by its kind, as another daemon's so keyed. A `verb:` key, its daemon's own words,
+// app's and else by its kind; another daemon's so keyed is made `row:program:` (keyMade), so it's
+// said by its kind. A `verb:` key, its daemon's own words,
 // goes to its kind, and its act where that's one of KeysSaid's actWords: `verb:agent:close` whole,
 // `verb:disk:nvme0:/home` as `verb:disk`, `verb:notice:offer:<id>` as `verb:notice:offer`. A new
 // kind says nothing more until it's named here, and a first part that isn't a kind's word, as a
