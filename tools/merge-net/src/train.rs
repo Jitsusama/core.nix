@@ -495,6 +495,30 @@ fn say_it_runs(candidate: &str, merged: &[String]) {
     );
 }
 
+/// Let fall each rider whose head in `conflicted` conflicts with main at
+/// `base`, from the train under `root`.
+fn fall_conflicting(root: &Path, conflicted: &[String], base: &str) {
+    for head in conflicted {
+        let _ = fall(
+            root,
+            head,
+            &format!("it conflicts with main at {}", short(base)),
+        );
+    }
+}
+
+/// Open the train's run under `root`, `began` then, to changes that would
+/// merge alone. Only a clear run takes them, so none boards a red's search
+/// or an outage only to fall with its riders. One that boards rides the
+/// next candidate, cut once this one ends.
+fn open_the_run(root: &Path, began: u64) {
+    right_of_way::run_begins(root, began);
+    println!(
+        "merge-net: the train's run is clear, so a change that would merge alone boards it \
+         until the run ends"
+    );
+}
+
 /// Ride the train whose state is under `root` from the repository at
 /// `url`, until no one waits on it.
 fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
@@ -539,28 +563,15 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
         git(&["fetch", "--quiet", "origin", "main"])?;
         let base = git(&["rev-parse", "refs/remotes/origin/main"])?;
         let done = cut(&git, &base, &mergings)?;
-        for head in &done.conflicted {
-            let _ = fall(
-                &root,
-                head,
-                &format!("it conflicts with main at {}", short(&base)),
-            );
-        }
+        fall_conflicting(&root, &done.conflicted, &base);
         if done.merged.is_empty() {
             continue;
         }
         let candidate = git(&["rev-parse", "HEAD"])?;
         let log = folder(&root).join(format!("{candidate}.log"));
         let began = crate::state::now();
-        // Only a clear run takes changes that would merge alone, so none
-        // boards a red's search or an outage only to fall with its riders.
-        // One that boards rides the next candidate, cut once this one ends.
         if splitting.clear() {
-            right_of_way::run_begins(&root, began);
-            println!(
-                "merge-net: the train's run is clear, so a change that would merge alone \
-                 boards it until the run ends"
-            );
+            open_the_run(&root, began);
         }
         say_it_runs(&candidate, &done.merged);
         let (ended, code) = gate(&checkout, &log);
