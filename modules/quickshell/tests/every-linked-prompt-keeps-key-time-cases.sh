@@ -13,6 +13,7 @@ check() {
   "$python" "$script" "$@"
 }
 
+
 # What the check must say of a file, and the file's lines.
 unkept() {
   told=$1
@@ -20,7 +21,10 @@ unkept() {
   rm -rf quickshell
   mkdir quickshell
   printf '%s\n' "$@" > quickshell/Surface.qml
-  if check quickshell > said; then
+  # The script itself rather than check, whose set -e an || would turn off.
+  rc=0
+  "$python" "$script" quickshell > said || rc=$?
+  if [ "$rc" -eq 0 ]; then
     echo "The key time check passed on: $*"
     exit 1
   fi
@@ -40,7 +44,9 @@ unkept 'Surface.qml:2: Prompt p is linked but given no keyNow' \
   '    function link() { p.linked(); }' '}'
 rm -rf quickshell
 mkdir quickshell
-if check quickshell > said; then
+rc=0
+"$python" "$script" quickshell > said || rc=$?
+if [ "$rc" -eq 0 ]; then
   echo "The key time check passed on a folder holding no QML"
   exit 1
 fi
