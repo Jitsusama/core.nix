@@ -98,7 +98,10 @@ address. The patch recorded the name first. Most access points name their
 country, but hostapd doesn't unless it's told to. Upstream took it as
 [577f690ce5dc][3], which reached the stable series in 7.3.6.
 `wifi-names-a-network-without-a-country` reads core's kernel's source,
-with its patches, to hold it there for every machine.
+with its patches, to hold it there for each machine that builds core's
+kernel. The two Apple laptops build kernels of their own, which it doesn't
+read, and a machine whose own patches change `net/wireless/sme.c` would
+need it read against its kernel too.
 
 The Wi-Fi fix still carried is for a card that couldn't join an access point
 while memory was fragmented. Intel's driver adds a send queue as it joins,

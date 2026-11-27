@@ -21,29 +21,34 @@ fi
 listed=$(xargs lsdiff --strip=1 --no-filename <"$exact")
 sorted=$(sort -u <<<"$listed")
 mapfile -t files <<<"$sorted"
-# A file some patch creates isn't in the source to take out: that patch
-# makes it.
+# A file some patch creates may be missing from the source: that patch
+# makes it. One the source has too is taken all the same, so a patch that
+# would create a file the kernel now has is named, as the build would
+# refuse it.
 statuses=$(xargs lsdiff --status --strip=1 --no-filename <"$patches")
 created=$(sed -n 's/^+ //p' <<<"$statuses")
-kept=$sorted
-if [ -n "$created" ]; then
-  kept=$(grep -v -x -F "$created" <<<"$sorted" || true)
-fi
-mapfile -t taken <<<"$kept"
 mkdir -p "$out"
-if [ -z "$kept" ]; then
-  :
-elif [ -d "$source" ]; then
-  for file in "${taken[@]}"; do
-    install -D -m 644 "$source/$file" "$out/$file"
+if [ -d "$source" ]; then
+  for file in "${files[@]}"; do
+    if [ -e "$source/$file" ]; then
+      install -D -m 644 "$source/$file" "$out/$file"
+    fi
   done
+  said=""
 else
   wanted=()
-  for file in "${taken[@]}"; do
+  for file in "${files[@]}"; do
     wanted+=("*/$file")
   done
-  tar xf "$source" -C "$out" --strip-components=1 --wildcards "${wanted[@]}"
+  said=$(tar xf "$source" -C "$out" --strip-components=1 --wildcards "${wanted[@]}" 2>&1) || true
 fi
+for file in "${files[@]}"; do
+  if ! [ -e "$out/$file" ] && ! grep -q -x -F "$file" <<<"$created"; then
+    echo "$file isn't in the kernel's source, and no patch creates it."
+    echo "$said"
+    exit 1
+  fi
+done
 
 only=()
 for file in "${files[@]}"; do

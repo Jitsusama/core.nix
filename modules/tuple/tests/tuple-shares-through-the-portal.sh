@@ -8,14 +8,20 @@ set -euo pipefail
 
 activate=$1
 data=$2
-export HOME=$PWD XDG_DATA_HOME=$PWD/data XDG_RUNTIME_DIR=$PWD/run
+# A folder of its own, so run anywhere it leaves nothing behind, with the
+# Tuple daemon its commands may start kept in it and stopped however it
+# ends.
+here=$(mktemp -d)
+cd "$here"
+export HOME=$here XDG_DATA_HOME=$here/data XDG_RUNTIME_DIR=$here/run
 mkdir -m 700 run
-# Matched as plain text, so no character of the folder's name is read as a
-# pattern.
+trap 'timeout -k 5 10 tuple stop > /dev/null 2>&1 || true; rm -rf "$here"' EXIT
+# Matched and put back as plain text, so no character of either folder's
+# name is read as a pattern.
 while IFS= read -r line; do
   if [[ $line == "run "* && $line == *"$data/tuple/"* ]]; then
     step=${line#run }
-    printf '%s\n' "${step//"$data"/$PWD/data}"
+    printf '%s\n' "${step//"$data"/"$here/data"}"
   fi
 done < "$activate" > steps
 if [[ ! -s steps ]]; then
@@ -29,7 +35,6 @@ sh -e steps
 # given room, and a cut-off says so rather than reading as a setting unread.
 ended=0
 timeout -k 5 30 tuple settings > said 2>&1 < /dev/null || ended=$?
-timeout -k 5 10 tuple stop > /dev/null 2>&1 || true
 if [[ $ended -eq 124 || $ended -eq 137 ]]; then
   echo "tuple settings was cut off (status $ended); it said: $(< said)" >&2
   exit 1

@@ -634,11 +634,18 @@ mod tests {
             run(vec![step(4, &[]), step(8, &[])], None).passed(),
             "a run whose steps all passed didn't pass"
         );
-        let failed = run(vec![step(4, &[]), step(8, &[save])], None);
+        let failed = run(
+            vec![
+                step(4, &[]),
+                step(8, std::slice::from_ref(&save)),
+                step(16, &[save]),
+            ],
+            None,
+        );
         assert_eq!(
             (failed.passed(), failed.first_failed()),
             (false, Some(8)),
-            "a run with a failed save wasn't failed at its step"
+            "a run whose save failed at 8 builds and again at 16 wasn't failed at the first"
         );
         assert!(
             !run(vec![step(4, &[])], Some(8 * GIB)).passed(),

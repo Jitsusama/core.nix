@@ -18,10 +18,13 @@ import json
 import re
 import shlex
 from datetime import timedelta
+from functools import partial
 from typing import TYPE_CHECKING
 
 import pytest
+import vm_helpers
 from desktop_session import NOTICES, retry
+from heard import diagnosed
 from PIL import Image, ImageChops, ImageStat
 
 if TYPE_CHECKING:
@@ -671,20 +674,24 @@ class Camera:
     def said(self) -> None:
         """Print what the recording and its programs were doing, for a wait that ran out.
 
-        Each read goes through diagnosis, which never raises and is bounded, since a session
-        gone bad is when these fail too, and their error would be reported in place of the
-        failure they explain. The viewfinder's log (camera.sh) is read for its lines on its
-        keys (camera.lua's z), and the journal for its last lines.
+        Each read never raises and is bounded, since a session gone bad is when these fail
+        too, and their error would be reported in place of the failure they explain. Those
+        needing no session run as root, since every read in the session waits first on its
+        user manager, which may be what's wedged (round 2 on #6975, F15). The viewfinder's
+        log (camera.sh) is read for its lines on every key it heard (camera.lua), counted
+        first so a log never written reads apart from one with none, and the journal for
+        its last lines.
         """
         quick = timedelta(seconds=20)
+        allowed = quick * vm_helpers.pace(vm_helpers.busyness())
         for command in (
             "ps -eww -o pid,stat,wchan:32,args | grep -aE 'ffmpeg|mpv'",
             f"ls -la /run/user/1000 {self.videos}",
             "cat /run/user/1000/camera-recording.log",
-            "timeout 10 pw-top -b -n 2",
-            f"grep -a 'viewfinder:' {VIEWFINDER_LOG} | tail -n 40",
-            "journalctl --user --no-pager -n 60 -o cat",
+            f"wc -l {VIEWFINDER_LOG}; grep -a 'viewfinder:' {VIEWFINDER_LOG} | tail -n 40",
         ):
+            print(diagnosed(partial(self.machine.execute, command, timeout=allowed)))
+        for command in ("timeout 10 pw-top -b -n 2", "journalctl --user --no-pager -n 60 -o cat"):
             print(self.desktop.diagnosis(command, quick))
 
     def likeness(self, picture: str, turn: str) -> float:

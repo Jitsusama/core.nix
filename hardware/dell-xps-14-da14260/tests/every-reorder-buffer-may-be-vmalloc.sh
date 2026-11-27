@@ -16,7 +16,10 @@ if ! grep -q 'baid_data = kvzalloc(' "$1"; then
 fi
 # Within each function, from its opening line to the brace closing it at the
 # line's start, a name declared as the session data's pointer, as a
-# parameter or a local, is held; a kfree() of a name held is reported.
+# parameter or a local, the first on its declaration or one after, is held;
+# a kfree() of a name held is reported. So are a kfree() of what the
+# session table holds, whatever reads it out, and the session data's pointer
+# declared to be kfree()'d as it leaves its scope.
 freed=$(awk '
   /^[A-Za-z].*\(/ { delete names }
   {
@@ -26,11 +29,20 @@ freed=$(awk '
       sub(/.*\*/, "", name)
       names[name] = 1
       line = substr(line, RSTART + RLENGTH)
-    }
-    for (name in names) {
-      if ($0 ~ ("(^|[^A-Za-z0-9_])kfree\\(" name "([^A-Za-z0-9_]|$)")) {
-        print FILENAME ":" FNR ":" $0
+      while (match(line, /^[^;)(]*, *\*[A-Za-z_][A-Za-z0-9_]*/)) {
+        name = substr(line, RSTART, RLENGTH)
+        sub(/.*\*/, "", name)
+        names[name] = 1
+        line = substr(line, RSTART + RLENGTH)
       }
+    }
+    hit = $0 ~ /kfree\([^;]*fw_id_to_ba/
+    hit = hit || $0 ~ /struct iwl_mld_baid_data .*__free\(kfree\)/
+    for (name in names) {
+      hit = hit || $0 ~ ("(^|[^A-Za-z0-9_])kfree\\(" name "([^A-Za-z0-9_]|$)")
+    }
+    if (hit) {
+      print FILENAME ":" FNR ":" $0
     }
   }
   /^}/ { delete names }
