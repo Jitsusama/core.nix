@@ -259,8 +259,12 @@ ShellRoot {
                     last.includes("--action=0=See What Spends") && !last.includes("--action=1")
                     && !last.includes("Pause"), last);
                 Notices.live = { "103": notice(103, "tokens") };
-                root.waiting = "the count said in place";
-                tokens.hint = "Tokens Run Out in About 49 Min";
+                // Pause names the top spender, so it changes with no word the notice shows.
+                root.waiting = "nothing said as only a hidden act changes";
+                tokens.actions = [{ name: "See What Spends" }, { name: "Pause Next Spender",
+                    joelsOnly: true }];
+                counting.stop();
+                hiddenRenamed.start();
             } else if (root.waiting === "the count said in place" && lines.length === 4) {
                 expect("the new count replaces the notice by its id",
                     last.includes("--replace-id=103") && last.includes("About 49 Min")
@@ -295,6 +299,24 @@ ShellRoot {
             }
         } catch (error) {
             fail(error.message);
+        }
+    }
+
+    // Long enough for a notice to have been said again, were a hidden act's name to count
+    // (round 000036 on #6796, F120 and F144).
+    Timer {
+        id: hiddenRenamed
+        interval: 1000
+        onTriggered: {
+            try {
+                root.expect("a hidden act renamed says the notice no more",
+                    root.said().length === 3, root.said().join(" | "));
+                root.waiting = "the count said in place";
+                tokens.hint = "Tokens Run Out in About 49 Min";
+                counting.start();
+            } catch (error) {
+                root.fail(error.message);
+            }
         }
     }
 

@@ -1849,9 +1849,15 @@ Scope {
                 return { done: false, said: `${said} didn't open` };
             return { done: true, said: `opened ${said}` };
         }
+        // One that ends something is only offered, under Joel's next Return, so it opens only
+        // from closed and holds his first keys back, as a link does: offered while he types,
+        // a Return he meant for his own row would end it (round 000036 on #6796, F135).
         if (Catalogue.disruptive(target)) {
+            if (inUse())
+                return inUseSaid;
             open = true;
             goTo({ trail: ids.slice(0, -1), spot: ids[ids.length - 1] });
+            prompt.linked();
             return { done: false, offered: true, said: `${said}, ready for Return` };
         }
         // What Return does with it, as it does from the rows.

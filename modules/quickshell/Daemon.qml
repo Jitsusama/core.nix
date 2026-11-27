@@ -685,8 +685,12 @@ Scope {
             // (round 000011, F111); one given as words names what it acts on, so each waits.
             const alike = one => typeof said === "function" && typeof one.said === "function"
                 && one.ask === asked.ask;
+            // The one kept takes the most tries left of those it stands for, so a fresh ask
+            // isn't given up on with an older one's few (round 000036 on #6796, F139).
+            const left = refusedAgain.filter(alike).reduce((most, one) => Math.max(most, one.tries),
+                tries - 1);
             refusedAgain = refusedAgain.filter(one => !alike(one))
-                .concat([{ said: said, ask: asked.ask, tries: tries - 1 }]);
+                .concat([{ said: said, ask: asked.ask, tries: left }]);
             if (!askAgain.running)
                 askAgain.start();
         });

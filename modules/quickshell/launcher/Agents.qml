@@ -299,7 +299,12 @@ Provider {
         });
     }
 
+    // Joel's alone to choose: the node weighs a carry's starts by who asks, and the shell
+    // asks as him, and the top rows' stamp never sees it, since it's made here (round
+    // 000036 on #6796, F137).
     function carryBack(row, ask) {
+        if (!provider.joelsOwn("carry back"))
+            return;
         const said = Words.of("verb:carry:back").said ?? {};
         const shown = row.thing ?? row.key;
         let answered = false;
@@ -2927,6 +2932,10 @@ Provider {
             if (provider.launcher.open) {
                 provider.startPlacesAsked = false;
                 provider.askOffers();
+                // A share is the shell's alone to tell, so one refused through every try,
+                // as while the user manager is slow, is told again as Joel next looks
+                // (round 000036 on #6796, F121 and F133).
+                provider.tellSharing();
             }
             // Shut, no drawer shows, so none is watched.
             if (!provider.launcher.open) {
