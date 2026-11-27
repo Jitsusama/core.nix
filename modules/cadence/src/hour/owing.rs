@@ -24,6 +24,10 @@ use super::measures::{
 /// dated change it asks for to land.
 const QUEUE_DUE: i64 = 7 * DAY;
 
+/// How long the ask about a claim of his rule is given: past the day it
+/// closes in by itself, by a day of hours that may be missed.
+const RULED_DUE: i64 = 2 * DAY;
+
 /// One drag as the ledger files it: its key, owner, words, and what its
 /// owner is told.
 struct Filed {
@@ -283,7 +287,10 @@ fn ruled_asked(m: &Measure) -> Vec<Filed> {
             let (id, said) = claim.strip_prefix('[')?.split_once("] ")?;
             Some(Filed {
                 key: format!("hour:{}:{owner}:{id}", m.key),
-                says: format!("a claim of his rule with no word of his, yours: {said}"),
+                says: format!(
+                    "a claim of his rule with no word of his, yours: {}",
+                    ruled::quoted(said)
+                ),
                 text: ruled::ask(id, said),
                 owner: owner.to_owned(),
             })
@@ -622,12 +629,15 @@ pub fn file(
                 axis: m.class.name().to_owned(),
                 owner: one.owner.clone(),
                 // A queue's ask is answered by a change weighed against
-                // others, which takes longer than a day to land.
+                // others, which takes longer than a day to land. A claim's
+                // closes by itself a day after its message, at the latest
+                // by the hour a day after it was filed, so it's due a day
+                // past that, and an hour missed never makes its sender late.
                 due: now
-                    + if m.class == Class::Queues {
-                        QUEUE_DUE
-                    } else {
-                        DAY
+                    + match m.class {
+                        Class::Queues => QUEUE_DUE,
+                        _ if m.key == ruled::KEY => RULED_DUE,
+                        _ => DAY,
                     },
                 says: one.says,
                 kind: "drag".to_owned(),
@@ -1409,6 +1419,21 @@ mod tests {
         assert!(
             broke.contains("your message 1f2e3d4c") && broke.contains("\"I broke Joel's rule\""),
             "the sender wasn't told which message and claim: {broke}"
+        );
+        let filed = ledger
+            .iter()
+            .find(|e| e.key.ends_with("T6E7X6:1f2e3d4c"))
+            .expect("the claim's ask wasn't in the ledger");
+        assert_eq!(
+            filed.due,
+            1000 + 2 * DAY,
+            "the ask fell due by the hour it closes in by itself, so a missed hour made it late"
+        );
+        let late = format!("Late: {}, open since 26 Nov, with T6E7X6", filed.words);
+        assert_eq!(
+            ruled::unbacked(&late),
+            None,
+            "the day's late line, passed on, read as its relayer's claim"
         );
         let mut unread = claims.clone();
         unread.behind.clear();

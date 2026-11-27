@@ -27,8 +27,8 @@ const LARGEST: u64 = 1 << 20;
 
 impl Mesh {
     /// Every message stamped from `from_ms` to `to_ms` whose body names
-    /// the id its file is named by, and
-    /// the ids of the files there that aren't messages. As
+    /// the id its file is named by, and the ids of the files there that
+    /// aren't messages. As
     /// [`Mesh::senders`] holds, a body naming another id is no one's, and
     /// a measure that asks its sender would ask the wrong cell.
     ///

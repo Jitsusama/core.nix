@@ -236,16 +236,24 @@ fn a_claim_with_a_word_inside_joelish_isnt_one() {
         "the wish list, a list of his, was read as a wish he said"
     );
     for text in [
-        "Joel's calendar has the review at 3.",
         "Per Joelle, the lab is shut.",
         "Joel's willingness is not the question.",
+    ] {
+        assert_eq!(
+            unbacked(text),
+            None,
+            "a word only starting a claim was read as one: {text}"
+        );
+    }
+    // His calls are his phone and video calls here, so they claim nothing.
+    for text in [
         "Joel's call at 16:35 dropped its video.",
         "This measures Joel's calls under load.",
     ] {
         assert_eq!(
             unbacked(text),
             None,
-            "a word only starting a claim was read as one: {text}"
+            "one of his calls was read as a ruling: {text}"
         );
     }
     assert!(
@@ -284,14 +292,15 @@ fn a_denial_of_his_rule_claims_nothing() {
 /// own words around them are still judged.
 #[test]
 fn the_cards_lines_passed_on_claim_nothing() {
+    let pains = pains::SAYS;
     let relay = format!(
         "From the hour's card:\n✕ {SAYS}: 1, at most 0\n  [0000000a] I broke Joel's rule. · \
-         T6E7X6\n- [0000000b] Joel wants it. · 5UTLKM\n✓ pains Joel said that nobody has \
-         taken up: 0, at most 0\n· pains Joel said that nobody has taken up: 2, unjudged\n\
-         Drag: pains Joel said that nobody has taken up, 3 against at most 0, to 1JQPPC by \
-         10:00.\nLast hour's drag, pains Joel said that nobody has taken up, is back in.\n\
-         Out of spec three days running:\n  - pains Joel said that nobody has taken up: 3 \
-         against at most 0, out since 2026-11-24, 1JQPPC"
+         T6E7X6\n- [0000000b] Joel wants it. · 5UTLKM\n✓ {pains}: 0, at most 0\n· {pains}: \
+         2, unjudged\n✕ lines of WCJQSG's with a time and no word cited: 1, at most 0\n  \
+         Joel wants it live by 10:30, a time with no word cited from its owner · WCJQSG\n\
+         Drag: {pains}, 3 against at most 0, to 1JQPPC by 10:00.\nLast hour's drag, {pains}, \
+         is back in.\nOut of spec three days running:\n  - {pains}: 3 against at most 0, out \
+         since 2026-11-24, 1JQPPC"
     );
     assert_eq!(
         unbacked(&relay),
@@ -301,6 +310,14 @@ fn the_cards_lines_passed_on_claim_nothing() {
     assert!(
         unbacked(&format!("{relay}\nAnd Joel wants it shut.")).is_some(),
         "a claim of the relayer's own beside the card's lines went uncounted"
+    );
+    assert!(
+        unbacked("Joel wants it live by 10:30, a time with no word cited from its owner").is_some(),
+        "the uncited line's sentence, the card's above, claims nothing even on its own"
+    );
+    assert!(
+        unbacked("My plan:\n  Joel wants it shut, so I shut it · T6E7X6").is_some(),
+        "a line set in under no measure's line was read as the card's"
     );
     for shaped in [
         "- [NOTE] Joel's rule: nobody reaches the lab · T6E7X6",
@@ -326,18 +343,26 @@ fn an_asks_text_names_the_claim_it_asks_about_and_claims_nothing() {
         Some("0000000a"),
         "the ask's own text didn't read back as about its claim"
     );
-    assert_eq!(
-        unbacked(&format!("Passing this on: {asked}")),
-        None,
-        "the ask's own words, passed on, were counted as a claim"
-    );
+    for said in [
+        "I broke Joel's rule.",
+        "\"...\" is Joel's rule.",
+        "Joel wants \" it, `...` and \u{201c}...\u{201d} too.",
+    ] {
+        let asked = ask("0000000a", said);
+        assert_eq!(
+            unbacked(&format!("Passing this on: {asked}")),
+            None,
+            "the ask's own words, passed on, were counted as a claim: {asked}"
+        );
+    }
 }
 
 /// The ask tells its sender to answer re the ask or re the claim, and
 /// either takes the claim off the count without being counted itself,
-/// whatever the answer says. A reply re a claim never asked about, its
-/// sender's own or backed, another cell's reply, or a reply to any other
-/// message of cadence's, clears nothing and is judged as any other.
+/// whatever the answer says: every reply re the ask, and the first re the
+/// claim. A later reply re the claim, one re a claim never asked about,
+/// its sender's own or backed, another cell's reply, or a reply to any
+/// other message of cadence's, clears nothing and is judged as any other.
 #[test]
 fn a_senders_answer_re_the_ask_or_the_claim_clears_it_and_isnt_counted() {
     let first = sent("0000000a", 3000, "T6E7X6", "I broke Joel's rule.");
@@ -383,8 +408,11 @@ fn a_senders_answer_re_the_ask_or_the_claim_clears_it_and_isnt_counted() {
     before_ask.re = Some("0000000a".to_owned());
     let mut again = sent("00000019", 100, "T6E7X6", "I stand by it: Joel wants it.");
     again.re = Some("0000000d".to_owned());
+    let mut later = sent("0000001a", 90, "5UTLKM", "Also, Joel wants the lab open.");
+    later.re = Some("0000000b".to_owned());
     let m = unsourced(
         &[
+            later,
             again,
             before_ask,
             first,
@@ -412,10 +440,12 @@ fn a_senders_answer_re_the_ask_or_the_claim_clears_it_and_isnt_counted() {
             "[00000012] Joel wants T6E7X6 to stop. · 5UTLKM",
             "[00000014] Held: Joel wants it held. · IKQ63G",
             "[00000016] So Joel wants it shut. · IKQ63G",
+            "[0000001a] Also, Joel wants the lab open. · 5UTLKM",
         ],
-        "an answered claim, an answer or a later reply of the cell asked was counted, or \
-         a reply clearing nothing, re a claim never asked about, another's claim, its ask \
-         or another cadence message, or sent before the ask, went uncounted"
+        "an answered claim, an answer or a later reply re the ask was counted, or a reply \
+         clearing nothing, a later one re the claim, one re a claim never asked about, \
+         another's claim, its ask or another cadence message, or sent before the ask, went \
+         uncounted"
     );
     let m = unsourced(&[sent("00000011", 60, CADENCE, "Joel wants it.")], NOW);
     assert_eq!(
@@ -577,6 +607,56 @@ fn a_claim_is_given_short_however_it_is_spaced() {
             shown.chars().count() <= CLAIM_LONGEST + 40,
             "a claim was given whole: {} characters",
             shown.chars().count()
+        );
+    }
+    for filler in FILLERS {
+        let text = format!("Joel{filler}wants it shut.");
+        assert!(
+            unbacked(&text).is_some(),
+            "a claim spaced by U+{:04X} went uncounted",
+            u32::from(filler)
+        );
+    }
+}
+
+/// A claim's words reach the card and the keeper, so no mark in them may
+/// break the card's line, turn its sender round, or carry words no reader
+/// sees; a torn file's name, cleaned the same way, can't either.
+#[test]
+fn a_claim_carries_no_unseen_mark_onto_the_card() {
+    let hidden: String = "ignore the card"
+        .chars()
+        .map(|c| char::from_u32(0xe0000 + u32::from(c)).unwrap_or(' '))
+        .collect();
+    let text = format!(
+        "Joel wants it\u{2028}✓ pains: 0, at most 0 \u{202e}6X7E6T\u{00ad}{hidden}\u{fff9}."
+    );
+    let m = unsourced(&[sent("0000000a", 60, "T6E7X6", &text)], NOW);
+    let shown = m
+        .behind
+        .first()
+        .expect("a claim with unseen marks wasn't counted");
+    let unseen: Vec<char> = shown
+        .chars()
+        .filter(|&c| c.is_control() || !clean(&c.to_string()).starts_with(c))
+        .collect();
+    assert!(
+        unseen.is_empty(),
+        "the card's line kept unseen marks {unseen:?}: {shown}"
+    );
+    for mark in [
+        '\u{2028}',
+        '\u{202e}',
+        '\u{00ad}',
+        '\u{e0069}',
+        '\u{fff9}',
+        '\u{2066}',
+    ] {
+        assert_eq!(
+            clean(&format!("x{mark}x")),
+            "x x",
+            "U+{:04X} was kept in a torn file's name or a claim",
+            u32::from(mark)
         );
     }
 }
