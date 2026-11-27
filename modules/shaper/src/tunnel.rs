@@ -21,6 +21,11 @@ const CUT: f64 = 0.85;
 const LEAST: f64 = 0.25;
 const RISE: f64 = 0.02;
 
+/// A wait past this many times the lowest its run's cuts took it to has
+/// refilled, as a tunnel that slows does, rather than wavered, as a far
+/// path's does within a few ms either way.
+const REFILLED: f64 = 2.0;
+
 /// The VPN's own queue's hold: the share of its lane it's held to, and
 /// what its cuts found.
 #[derive(Clone, Debug)]
@@ -84,11 +89,11 @@ impl Hold {
     /// Steps the hold `dt` seconds on to `at`, with the VPN's wait past
     /// the line in ms when it's the tunnel's, or none, and the wait past
     /// which a queue counts as standing. A wait cuts the share every
-    /// `ELSEWHERE_S` it averages past `late_ms`; a cut after which it was
-    /// no lower, or once one has lowered it came to no new low, is futile,
-    /// and `FAR_CUTS` of those in a row show a far
-    /// path no hold drains, which goes unheeded a while, as the
-    /// controller's own far rule does.
+    /// `ELSEWHERE_S` it averages past `late_ms`. A cut is futile when the
+    /// wait is no lower after it, or, once a cut has lowered it, comes to
+    /// no new low. `FAR_CUTS` futile cuts in a row show a far path no hold
+    /// drains, which goes unheeded a while, as the controller's own far
+    /// rule does.
     pub fn step(&mut self, at: f64, dt: f64, waiting: Option<f64>, late_ms: f64) {
         let waiting = waiting.filter(|_| at >= self.unheeded_until);
         if let Some(ms) = waiting {
@@ -123,17 +128,23 @@ impl Hold {
         // carried about 8 of its 10.8 Mb/s and the agents inside the VPN
         // waited three seconds on average. Until a cut first lowers it,
         // each is judged against the window before, as a tunnel's queue
-        // still grows for the first cuts over its pace.
+        // still grows for the first cuts over its pace; and a wait past
+        // `REFILLED` times its low has refilled, as when the tunnel slows,
+        // so it's judged so again rather than against a low from before.
+        if self
+            .lowest_ms
+            .is_some_and(|lowest| mean > lowest * REFILLED)
+        {
+            (self.lowest_ms, self.futile) = (None, 0);
+        }
         match self.lowest_ms.or(self.before_ms) {
             Some(than) if mean >= than - VPN_MARGIN_MS => {
                 self.futile += 1;
                 self.lowest_ms = self.lowest_ms.map(|lowest| lowest.min(mean));
             }
-            Some(_) => {
-                self.futile = 0;
-                self.unheeded_for = 0.0;
-                self.lowest_ms = Some(mean);
-            }
+            // Only a run that drains ends the doubling of the time a far
+            // path goes unheeded: a wavering one's first dip would.
+            Some(_) => (self.futile, self.lowest_ms) = (0, Some(mean)),
             None => {}
         }
         if self.futile >= FAR_CUTS {
@@ -212,37 +223,83 @@ mod tests {
         );
     }
 
-    // A far path's wait wavers from one judgement to the next: a dip under
-    // the last judgement's isn't a drain, so the cuts come to no new low
-    // and are let go, rather than taking the share to its least.
-    #[test]
-    fn a_wavering_wait_no_cut_lowers_lets_the_share_go() {
-        let mut hold = Hold::default();
+    /// Steps a hold through judgements whose two seconds each read the
+    /// next of `waits`, in ms, from `from`. Answers the least share it
+    /// came to, and where it ended.
+    fn judged(hold: &mut Hold, from: f64, waits: &[f64]) -> (f64, f64) {
         let mut least = hold.share();
-        let mut at = 0.0;
-        while at < 30.0 {
-            // Each judgement's two seconds read 68, 60 or 74 ms in turn.
-            let window = (at / ELSEWHERE_S).floor() % 3.0;
-            let ms = 68.0
-                + if window < 1.0 {
-                    0.0
-                } else if window < 2.0 {
-                    -8.0
-                } else {
-                    6.0
-                };
-            hold.step(at, DT, Some(ms), LATE_MS);
+        let mut at = from;
+        let end = waits.iter().fold(from, |end, _| end + ELSEWHERE_S);
+        while at < end {
+            let window = waits
+                .iter()
+                .zip(0_u32..)
+                .take_while(|&(_, at_window)| from + ELSEWHERE_S * f64::from(at_window) <= at)
+                .last()
+                .map_or(0.0, |(&ms, _)| ms);
+            hold.step(at, DT, Some(window), LATE_MS);
             least = least.min(hold.share());
             at += DT;
         }
+        (least, at)
+    }
+
+    // A far path's wait wavers from one judgement to the next: a dip under
+    // the last judgement's isn't a drain, so the cuts come to no new low
+    // and are let go, whichever wait the cycle starts on, rather than
+    // taking the share to its least and holding it there.
+    #[test]
+    fn a_wavering_wait_no_cut_lowers_lets_the_share_go() {
+        for first in 0..3 {
+            let waits: Vec<f64> = (first..first + 15)
+                .map(|window| [68.0, 60.0, 74.0][window % 3])
+                .collect();
+            let mut hold = Hold::default();
+            let (least, _) = judged(&mut hold, 0.0, &waits);
+            // Six cuts at most, 0.377 of the lane, where the old rule's
+            // went on to the least and stayed.
+            assert!(
+                least > 0.35,
+                "a far path wavering from its {first}th wait cut the share to {least:.3}"
+            );
+            assert!(
+                (hold.share() - 1.0).abs() < f64::EPSILON,
+                "a far path wavering from its {first}th wait held the share at {:.3}",
+                hold.share()
+            );
+        }
+    }
+
+    // A tunnel that slows mid-run refills: its wait climbs past twice the
+    // low the cuts took it to, and drains again under cuts, but not under
+    // that old low at once. Its cuts are judged against the window before
+    // again, so a drain is still a drain, rather than three cuts that
+    // came to no new low.
+    #[test]
+    fn a_refilled_tunnel_drains_again_under_its_cuts() {
+        let mut hold = Hold::default();
+        let (least, _) = judged(&mut hold, 0.0, &[100.0, 40.0, 20.0, 60.0, 45.0, 30.0, 30.0]);
         assert!(
-            least >= 0.5,
-            "a wavering far path's wait cut the share to {least:.3}"
-        );
-        assert!(
-            (hold.share() - 1.0).abs() < f64::EPSILON,
-            "a wavering far path's wait held the share at {:.3}",
+            hold.share() < 0.5,
+            "a tunnel draining again after a refill was let go, at {:.3} from a least of \
+             {least:.3}",
             hold.share()
+        );
+    }
+
+    // Each far path found again is unheeded twice as long as the last, up
+    // to `FAR_MOST_S`: a wavering wait's first dip doesn't start it over.
+    #[test]
+    fn a_far_path_found_again_goes_unheeded_longer() {
+        let mut hold = Hold::default();
+        let waits: Vec<f64> = (0..350)
+            .map(|window| [68.0, 60.0, 74.0][window % 3])
+            .collect();
+        judged(&mut hold, 0.0, &waits);
+        assert!(
+            hold.unheeded_for > FAR_S,
+            "a far path found a second time went unheeded only {:.0} s",
+            hold.unheeded_for
         );
     }
 
