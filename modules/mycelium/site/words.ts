@@ -408,15 +408,15 @@ export interface Named {
  */
 export const toldApart = (networks: readonly Named[]): ReadonlyMap<string, string> => {
   const names = new Map(networks.map((n) => [n.key, asDrawn(n.name)]));
-  tell(networks, names, (n) => {
+  tell(networks, names, ": ", (n) => {
     const carries = asDrawn(n.carries);
-    return carries && carries !== asDrawn(n.name) ? `: ${carries}` : "";
+    return carries === asDrawn(n.name) ? "" : carries;
   });
-  tell(networks, names, (n) => ` ${idHint(n)}`);
+  tell(networks, names, " ", idHint);
   // Keys are unique, so each pass leaves fewer alike; one per network
   // bounds it whatever the titles say.
   for (let pass = 0; pass < networks.length; pass++) {
-    if (!tell(networks, names, (n) => ` [${n.key}]`)) {
+    if (!tell(networks, names, " ", (n) => `[${n.key}]`)) {
       break;
     }
   }
@@ -516,20 +516,34 @@ const hintedLabel = (
 ): string => {
   const hint = idHint(n);
   const left = room - hint.length - 1;
-  return left < LEAST_NAME ? clip(hint, room) : `${clip(asDrawn(n.name), left)} ${hint}`;
+  const name = asDrawn(n.name);
+  // A name that draws as nothing leaves the id alone, so no label starts on a space.
+  if (left < LEAST_NAME || name === "") {
+    return clip(hint, room);
+  }
+  return `${clip(name, left)} ${hint}`;
 };
 
-// Any run of spaces, tabs or line breaks.
-const SPACES = /\s+/gu;
+// Any run of the white space a page runs together: spaces, tabs and line breaks, as CSS has
+// it. JavaScript's \s takes in a no-break space too, which a page keeps as it is, so two names
+// apart only by one would be counted alike though a page never draws them so.
+const SPACES = /[ \t\n\r\f]+/gu;
+// The space a page drops at either end, once each run is one; trim() would drop a
+// no-break space there too.
+const EDGE_SPACES = /^ | $/gu;
 
 /**
  * A name as a page draws it, each run of spaces as one and none at its
  * ends, so two that read alike there are alike here too.
  */
-const asDrawn = (text: string): string => text.replace(SPACES, " ").trim();
+const asDrawn = (text: string): string => text.replace(SPACES, " ").replace(EDGE_SPACES, "");
 
-/** A network's id as a hint: the part of its key after its kind. */
-const idHint = (n: Named): string => `(${n.key.slice(n.key.indexOf(".") + 1).toUpperCase()})`;
+/**
+ * A network's id as a hint: the part of its key after its kind, as drawn,
+ * since a key can hold spaces or a line break the map runs together.
+ */
+const idHint = (n: Named): string =>
+  `(${asDrawn(n.key.slice(n.key.indexOf(".") + 1)).toUpperCase()})`;
 
 /** How many times each text comes. */
 const timesEach = (texts: Iterable<string>): ReadonlyMap<string, number> => {
@@ -541,12 +555,15 @@ const timesEach = (texts: Iterable<string>): ReadonlyMap<string, number> => {
 };
 
 /**
- * Adds `more` to each name that repeats, and says whether any did; a
- * network `more` has nothing for keeps its name.
+ * Adds what `more` tells to each name that repeats, after `between`, and
+ * says whether any did; a network `more` has nothing for keeps its name,
+ * and a name that draws as nothing is its tell alone, with no `between`
+ * to start on.
  */
 const tell = (
   networks: readonly Named[],
   names: Map<string, string>,
+  between: string,
   more: (n: Named) => string,
 ): boolean => {
   const seen = timesEach(names.values());
@@ -554,7 +571,10 @@ const tell = (
   for (const n of networks) {
     const name = names.get(n.key) ?? n.name;
     if ((seen.get(name) ?? 0) > 1) {
-      names.set(n.key, `${name}${more(n)}`);
+      const told = more(n);
+      if (told !== "") {
+        names.set(n.key, name === "" ? told : `${name}${between}${told}`);
+      }
       any = true;
     }
   }
