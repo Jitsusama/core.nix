@@ -2718,8 +2718,12 @@
     a fenced or strict one says its system's launcher for an agent's run, which runs pi's strict
     profile, and an unfenced one none, no fence says a launcher when agents' runs are turned
     off, a machine of either system declaring every fence evaluates, a machine kept lively
-    says its ceiling and one not kept lively none, one declaring nothing has no file, and
-    agents in a realm it doesn't join are refused
+    says its ceiling, a memory_full of 0 included, and one not kept lively none, the locked
+    mycelium reads that ceiling as kept_lively, an Option<Lively> whose cpu is a u32,
+    memory_available an Option<u64> and, from the lock that first has it, memory_full an
+    Option<u32>, read by a scan that fails on what it can't read, with nothing over Lively
+    refusing a field it doesn't know, one declaring nothing has no file, and agents in a realm
+    it doesn't join are refused
   '';
   mycelium-lends-from-the-store = ''
     a NixOS machine that lends evaluates, and its home realm mycelium node is given what it lends
