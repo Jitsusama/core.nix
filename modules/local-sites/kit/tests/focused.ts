@@ -34,7 +34,11 @@ function refocused(
   before: readonly Act[],
   after: readonly Act[],
   works = "on b",
-  { deep = false, around }: { readonly deep?: boolean; readonly around?: Control } = {},
+  {
+    deep = false,
+    around,
+    focusable = true,
+  }: { readonly deep?: boolean; readonly around?: Control; readonly focusable?: boolean } = {},
 ): Landed {
   const list = new List();
   if (around !== undefined) {
@@ -44,7 +48,7 @@ function refocused(
     keyed(list, {
       rows: told,
       key: (cell) => cell.key,
-      draw: (cell) => new Row(cell.works, list.ownerDocument, true, acts),
+      draw: (cell) => new Row(cell.works, list.ownerDocument, focusable, acts),
       moved: ["b"],
     });
   rows(before, cells("a", "b"));
@@ -63,7 +67,9 @@ type Changing = (
 /**
  * Draws rows a and b with `acts`, in rows taking focus unless told not to,
  * in a list inside `around` where told, focuses b's second control, then
- * draws b again where it stands after `change`; and says where focus landed.
+ * draws b again where it stands after `change`, made in b's drawing or,
+ * told `early`, between the focus and the drawing, as a page acting on a
+ * press makes it; and says where focus landed.
  */
 function inPlace(
   change: Changing,
@@ -71,10 +77,12 @@ function inPlace(
     focusable = true,
     acts = ["open", "copy"],
     around,
+    early = false,
   }: {
     readonly focusable?: boolean;
     readonly acts?: readonly Act[];
     readonly around?: Control;
+    readonly early?: boolean;
   } = {},
 ): Landed {
   const list = new List();
@@ -84,7 +92,7 @@ function inPlace(
       rows: cells("a", "b"),
       key: (cell) => cell.key,
       draw: (cell, was) => {
-        if (redraw && cell.key === "b" && was !== undefined) {
+        if (redraw && !early && cell.key === "b" && was !== undefined) {
           const control = was.children[1];
           if (control !== undefined) {
             change(control, holder);
@@ -97,6 +105,9 @@ function inPlace(
   rows(false);
   const control = list.rows[1]?.children[1];
   control?.focus();
+  if (early && control !== undefined) {
+    change(control, holder);
+  }
   rows(true);
   return landed(list, control);
 }
