@@ -458,7 +458,7 @@ fn timed_uncited<'a>(
             continue;
         }
         let switch = said.iter().any(|w| w.starts_with("switch"));
-        let gives = |cite: &&Cite, clock: &String| {
+        let gives = |cite: &&Cite, clock: &u32| {
             let told = senders.get(&cite.msgid).map(|sent| sent.text.as_str());
             clock_times(&cite.item).contains(clock)
                 && told.is_some_and(|told| clock_times(told).contains(clock))
@@ -683,9 +683,11 @@ fn words(text: &str) -> BTreeSet<String> {
         .collect()
 }
 
-/// Each clock time in `text`, as `9:05` or `10:06`, leaving out the
-/// seconds of one given to the second.
-fn clock_times(text: &str) -> Vec<String> {
+/// Each clock time in `text`, as `9:05`, `10:06` or `22:45`, read as
+/// its minutes past twelve on a 12-hour dial and leaving out the seconds
+/// of one given to the second: lines to Joel say "10:45" where the owner
+/// said "22:45", and both are the one time.
+fn clock_times(text: &str) -> Vec<u32> {
     let bytes = text.as_bytes();
     let digit = |at: usize| bytes.get(at).is_some_and(u8::is_ascii_digit);
     let mut found = Vec::new();
@@ -702,7 +704,10 @@ fn clock_times(text: &str) -> Vec<String> {
         if before.is_some_and(|b| b.is_ascii_digit() || *b == b':') {
             continue;
         }
-        found.push(text[start..at + 3].to_owned());
+        let (hour, minute) = (&text[start..at], &text[at + 1..at + 3]);
+        if let (Ok(hour), Ok(minute)) = (hour.parse::<u32>(), minute.parse::<u32>()) {
+            found.push(hour % 12 * 60 + minute);
+        }
     }
     found
 }

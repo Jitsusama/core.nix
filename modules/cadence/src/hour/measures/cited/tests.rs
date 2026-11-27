@@ -177,11 +177,32 @@ fn a_time_with_no_live_word_or_a_live_word_with_no_time_is_no_timed_line() {
 }
 
 #[test]
-fn a_clock_time_is_its_hour_and_minute_alone() {
+fn a_clock_time_is_its_hour_and_minute_alone_on_a_12_hour_dial() {
+    let said = "at 10:06:44, then 9:05, 22:45, 09:05, 12:30 and 0:30, not 123:45, 12:345 or 1:5";
     assert_eq!(
-        clock_times("at 10:06:44, then 9:05, not 123:45, 12:345 or 1:5"),
-        ["10:06", "9:05"],
+        clock_times(said),
+        [606, 545, 645, 545, 30, 30],
         "a clock time read wrong"
+    );
+}
+
+#[test]
+fn a_time_said_on_a_12_hour_clock_is_backed_by_its_owner_s_24_hour_one() {
+    let line = said("Its owner now says it goes live about 10:45.");
+    let by = sent(&[
+        ("aa11bb22", "16V6F4", "goes live about 22:45"),
+        ("cc33dd44", "16V6F4", "goes live about 22:15"),
+    ]);
+    let ago = NOW - 300;
+    let backed = cited(&[(ago, "16V6F4", "aa11bb22", "live about 22:45")]);
+    assert!(
+        judged(&line, "", &backed, &by).behind.is_empty(),
+        "10:45 wasn't taken as the 22:45 its owner gave"
+    );
+    let other = cited(&[(ago, "16V6F4", "cc33dd44", "live about 22:15")]);
+    assert!(
+        (judged(&line, "", &other, &by).now - 1.0).abs() < f64::EPSILON,
+        "10:45 was taken as backed by a citation of 22:15"
     );
 }
 
