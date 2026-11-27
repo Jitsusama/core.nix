@@ -7,7 +7,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
-use super::{pins, seen};
+use super::{folded, pins, seen};
 use crate::{candidates, candidates_at, git_at, patch_of, ready, short};
 
 /// How a change from a base to a head, in a repo, is told from others.
@@ -63,6 +63,12 @@ fn read_in_repo(
                 |witnessed| candidates_at(repo, commit, main, files, witnessed).unwrap_or_default(),
                 |read| same_patch(repo, commit, main, read, read_patch_id),
             )
+            .or_else(|unread| {
+                let said = folded::read(repo, commit, main, rounds, on_main_at(repo, main))
+                    .ok_or(unread)?;
+                eprintln!("merge-net: {said}");
+                Ok(())
+            })
         })
     });
     let Err(unread) = read else {
@@ -412,6 +418,7 @@ mod tests {
         seen::Read {
             commit: commit.to_owned(),
             from: from.map(str::to_owned),
+            stack: false,
         }
     }
 

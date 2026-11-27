@@ -2,9 +2,11 @@
 //! has no run of its own: `ready` merges a rebased head on one, and
 //! `needs` reads what one named moved rather than evaluating again. Beside
 //! it, whether a review round read a head or an earlier commit of it
-//! (`same`), what the harness's rounds say they read (`seen`), and which
-//! heads only pin repos those rounds already review (`pins`).
+//! (`same`), what the harness's rounds say they read (`seen`), which
+//! heads only pin repos those rounds already review (`pins`), and which a
+//! round read within a stack or before a docs-only push (`folded`).
 
+mod folded;
 mod pins;
 pub mod same;
 mod seen;

@@ -34,6 +34,7 @@ fn change_read(commit: char) -> Read {
     Read {
         commit: id(commit),
         from: None,
+        stack: false,
     }
 }
 
@@ -67,6 +68,14 @@ fn a_collected_round_reads_its_witness() {
             &json!({"round": "stack", "witness": null, "witnesses": [id('c'), id('d')]})
         )]),
         [id('c'), id('d')]
+    );
+    assert_eq!(
+        read_in(&json!({"change": {}, "runs": [round(&json!({})), round(&json!({"round": "stack", "witness": id('b')}))]}).to_string())
+            .into_iter()
+            .map(|read| (read.commit, read.stack))
+            .collect::<HashSet<_>>(),
+        HashSet::from([(id('a'), false), (id('b'), true)]),
+        "only a stack round's read is kept as a stack's"
     );
     assert_eq!(
         read(&[round(&json!({"outcomes": [
@@ -207,10 +216,12 @@ fn every_change_s_rounds_are_read_from_the_folder() {
     let ranged = Read {
         commit: id('b'),
         from: Some("origin/main".to_owned()),
+        stack: false,
     };
     let recorded = Read {
         commit: id('c'),
         from: Some(id('8')),
+        stack: false,
     };
     // A change's round keeps no base even when it records one, since
     // the host keeps a change's base.
@@ -267,7 +278,8 @@ fn a_range_round_reads_from_the_base_it_records() {
             seen,
             HashSet::from([Read {
                 commit: id('c'),
-                from: read.clone()
+                from: read.clone(),
+                stack: false,
             }]),
             "a round on {base}..c recording {from:?} read from the wrong base"
         );
@@ -344,14 +356,17 @@ fn every_mirrored_node_is_read_in_name_order() {
     let by_ref = Read {
         commit: id('e'),
         from: Some(String::new()),
+        stack: false,
     };
     let by_commit = Read {
         commit: id('f'),
         from: Some(id('9')),
+        stack: false,
     };
     let recorded = Read {
         commit: id('7'),
         from: Some(id('8')),
+        stack: false,
     };
     assert_eq!(
         mirrored.rounds,
@@ -486,6 +501,7 @@ fn a_mirrored_base_stands_here_only_as_a_commit_id() {
         let here = as_read_here(Read {
             commit: id('c'),
             from: from.clone(),
+            stack: false,
         });
         assert_eq!(
             here.from, stands,
