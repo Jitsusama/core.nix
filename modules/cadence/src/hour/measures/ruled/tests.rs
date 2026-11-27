@@ -891,6 +891,9 @@ fn a_claim_is_given_short_however_it_is_spaced() {
     }
     for mark in [
         '\u{00ad}',
+        '\u{034f}',
+        '\u{115f}',
+        '\u{17b4}',
         '\u{200b}',
         '\u{2060}',
         '\u{feff}',

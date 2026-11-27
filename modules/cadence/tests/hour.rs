@@ -412,8 +412,7 @@ fn a_finding_two_days_open_counts_apart_and_is_owed_to_its_owner() {
 
 /// A claim of Joel's rule an hour old, with no word of his, is named on
 /// the card and asked of its sender by the run sending the card; the next
-/// run reads that ask back from the mesh and the ledger it kept, and asks
-/// no one again that day.
+/// run, finding that ask open in the ledger it kept, asks no one again.
 #[test]
 fn a_claim_of_his_rule_is_asked_of_its_sender_once_a_day() {
     let account = account();

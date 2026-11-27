@@ -318,14 +318,18 @@ fn clean(text: &str) -> String {
 }
 
 /// Whether `c` is a mark that draws as nothing or turns text round, as a
-/// soft hyphen, a zero-width space, a variation selector or a tag. The
-/// card is kept clean of them, and a claim is read with them taken out,
-/// so one set inside "Joel" or between its words hides nothing.
+/// soft hyphen, a zero-width space, a combining grapheme joiner, a filler
+/// of no width, a variation selector or a tag. The card is kept clean of
+/// them, and a claim is read with them taken out, as its reader sees it,
+/// so one set inside "Joel" hides nothing.
 const fn unseen(c: char) -> bool {
     matches!(
         c,
         '\u{00ad}'
+            | '\u{034f}'
             | '\u{061c}'
+            | '\u{115f}'..='\u{1160}'
+            | '\u{17b4}'..='\u{17b5}'
             | '\u{180b}'..='\u{180f}'
             | '\u{200b}'..='\u{200f}'
             | '\u{202a}'..='\u{202e}'
@@ -639,11 +643,10 @@ fn unfenced(text: &str) -> String {
 }
 
 /// The marks that draw as a blank but are no space, as U+2800 or the
-/// Hangul fillers: each is read as a space, so a claim spaced by them is
-/// still one, and is given by its first words rather than whole.
-const FILLERS: [char; 8] = [
-    '\u{034f}', '\u{115f}', '\u{1160}', '\u{17b4}', '\u{17b5}', '\u{2800}', '\u{3164}', '\u{ffa0}',
-];
+/// Hangul filler letters: each is read as a space, so a claim spaced by
+/// them is still one, and is given by its first words rather than whole.
+/// Those that draw as nothing at all are [`unseen`].
+const FILLERS: [char; 3] = ['\u{2800}', '\u{3164}', '\u{ffa0}'];
 
 /// `text` with no line of cadence's card in it: neither a claim the card
 /// names, as `[0000000a] I broke Joel's rule. · T6E7X6`, nor a measure's
@@ -673,9 +676,9 @@ fn uncarded(text: &str) -> String {
                     && (target == "unjudged" || target.strip_prefix("at most ").is_some_and(number))
             })
     };
-    // A card passed on as a quote, each line opening `> `, is the card
-    // still, so the quote marks are read as its indent.
-    let lead = |c: char| c.is_whitespace() || c == '>';
+    // A card passed on as a quote, each line opening `> `, is put by
+    // [`unfenced`] before this reads it, so only blanks lead a line.
+    let lead = char::is_whitespace;
     let carded = |line: &str| {
         let line = line.trim_start_matches(|c: char| lead(c) || c == '-' || c == '*');
         let named = line
