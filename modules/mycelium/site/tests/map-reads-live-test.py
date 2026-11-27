@@ -83,9 +83,10 @@ CELLS = 8
 # about 2.4 KB more once a machine's drawer starts new work on it, 686.0 KB
 # once what each cell split from is read, about 0.9 KB more once new work
 # keeps to the machine chosen, and a little more once the kit draws a field's
-# placeholder in muted, under the 689 KB allowed; new work's line and its
-# hidden controls draw about 20 elements of the 611.
-BUDGET = Budget(files=33, kilobytes=689, elements=620)
+# placeholder in muted, and 689.1 KB once a failed draw's line gives way and
+# a lone blank name takes its id, under the 690 KB allowed; new work's line
+# and its hidden controls draw about 20 elements of the 611.
+BUDGET = Budget(files=33, kilobytes=690, elements=620)
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000
 TWIN_NETWORKS = 200
@@ -623,10 +624,15 @@ def test_the_map_says_it_still_waits_on_messages_that_never_answer(
 
 # What the map's line says when a reading fails to draw (view.js).
 COULDNT_DRAW = "The map couldn't draw"
+# The least time between two readings handed to the drawing (site.ts).
+FLOOR_MS = 2000
+# The page as hidden, as a tab put behind another is, and shown again.
+HIDDEN = "Object.defineProperty(document, 'hidden', { configurable: true, get: () => true })"
+SHOWN = "delete document.hidden; document.dispatchEvent(new Event('visibilitychange'))"
 
 
 def test_a_line_saying_the_map_couldnt_draw_outlasts_its_patience_with_messages(
-    browser: Browser, slow_talk_served: Served
+    browser: Browser, slow_talk_served: Served, slow_talk_node: StandIn
 ) -> None:
     root, _ = slow_talk_served
     opened = Opened(browser, f"{root}mycelium/", SIZES[-1], "dark")
@@ -635,6 +641,10 @@ def test_a_line_saying_the_map_couldnt_draw_outlasts_its_patience_with_messages(
     the_map_stands(page, "live")
     asof = page.locator("#asof")
     expect(asof, "the map didn't say it was reading what passed").to_contain_text(READING_TALK)
+    # A hidden page hands the drawing nothing, so no reading that draws comes between the one
+    # that fails and the patience; one already timed lands within the floor.
+    page.evaluate(HIDDEN)
+    page.wait_for_timeout(FLOOR_MS + 500)
     # A reading with nothing in it fails to draw, as a broken one would.
     page.evaluate("document.dispatchEvent(new CustomEvent('mycelium:now', { detail: null }))")
     expect(asof, "a reading that failed to draw wasn't said").to_contain_text(COULDNT_DRAW)
@@ -643,6 +653,13 @@ def test_a_line_saying_the_map_couldnt_draw_outlasts_its_patience_with_messages(
     expect(asof, "the patience with messages wiped what the drawing said").to_contain_text(
         COULDNT_DRAW
     )
+    # It is that reading's line alone: the next, which draws, says how the map stands again.
+    page.evaluate(SHOWN)
+    slow_talk_node.tell("cell", changed=[{"key": f"cell:{HEARD}", "standing": "moving"}])
+    expect(asof, "a reading that drew kept the line of one that couldn't").not_to_contain_text(
+        COULDNT_DRAW, timeout=PACE_MS
+    )
+    expect(asof, "a reading that drew didn't say the map live again").to_contain_text("Live from")
     opened.close()
 
 
@@ -1998,9 +2015,13 @@ ARM = """({ selector, has, is, unlike, within }) => {
   });
 }"""
 # When the answer's frame was painted, from the last key, and the longest task from the first
-# key to then, taken from the observer's records rather than waiting on its delivery.
-KEY_PAINTED = """async () => {
-  const painted = await window.answered;
+# key to then, taken from the observer's records rather than waiting on its delivery. The
+# check before it saw the answer read, so one never painted within `pace` ms fails the case;
+# evaluate has no clock of its own, and a wait on it would hold the build to its limit.
+KEY_PAINTED = """async (pace) => {
+  const late = new Promise((_, missed) =>
+    setTimeout(() => missed(new Error(`no answer painted within ${pace} ms`)), pace));
+  const painted = await Promise.race([window.answered, late]);
   window.longTasks.push(...window.longWatch.takeRecords());
   const within = window.longTasks.filter(
     (task) => task.startTime + task.duration > window.firstKey && task.startTime < painted,
@@ -2026,7 +2047,7 @@ def answered_in(
     for key in keys.split():
         page.keyboard.press(key)
     check()
-    answered: dict[str, float] = page.evaluate(KEY_PAINTED)
+    answered: dict[str, float] = page.evaluate(KEY_PAINTED, PACE_MS)
     return {measure: round(value) for measure, value in answered.items()}
 
 
