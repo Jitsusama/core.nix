@@ -290,6 +290,17 @@ const LOOKS: Record<string, object> = {
       "Talk\u009cX",
     ]),
   },
+  "choices measured as drawn, wide, stopped or accented": {
+    ...LOOK,
+    choices: labelled([
+      `Talk ${"W".repeat(19)}`,
+      `Talk x${"!".repeat(200)}`,
+      "Open The Pull Request",
+      "Open Jos\u00e9\u2019s PR",
+      "Answer \u201cyes\u201d",
+    ]),
+  },
+  "an act whose stops draw past its room": { ...LOOK, act: `Talk x${"!".repeat(200)}` },
   "choices a digit joins, of four words, or an act's own": {
     ...LOOK,
     choices: labelled(["Clear It2", `Talk9${"x".repeat(25)}`, "Talk to me now", "Open"]),

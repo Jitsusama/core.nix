@@ -34,20 +34,23 @@ function alike(form: Script, c: string): boolean {
   const talking = [`Talk${c}to it`, `Talk${c}${c}to it`, `Talk ${c}${"x".repeat(19)}`].every(
     (name) => poses(name, ["Talk"]) === form.poses(name as never, ["Talk"] as never),
   );
-  return talking && [
-    `Keep${c} It`,
-    `${c}tI peeK`,
-    `Keep It${c}`,
-    `Keep${c}${c} It`,
-    `${c}${c}tI peeK`,
-    `Keep It${c}${c}`,
-    `Keep ${c} It`,
-    `Keep It.${c}`,
-    `Keep It${c}Now`,
-  ].every(
-    (name) =>
-      readAs(name) === form.readAs(name as never) &&
-      poses(name, ["Keep It"]) === form.poses(name as never, ["Keep It"] as never),
+  return (
+    talking &&
+    [
+      `Keep${c} It`,
+      `${c}tI peeK`,
+      `Keep It${c}`,
+      `Keep${c}${c} It`,
+      `${c}${c}tI peeK`,
+      `Keep It${c}${c}`,
+      `Keep ${c} It`,
+      `Keep It.${c}`,
+      `Keep It${c}Now`,
+    ].every(
+      (name) =>
+        readAs(name) === form.readAs(name as never) &&
+        poses(name, ["Keep It"]) === form.poses(name as never, ["Keep It"] as never),
+    )
   );
 }
 

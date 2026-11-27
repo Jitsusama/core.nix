@@ -271,7 +271,9 @@ const CUTS = /[\n\r\v\f\u0085\u2028\u2029]|\s{2,}/u;
  * around (TURNS), so "\u202etI raelC" draws as Clear It; what splits it
  * into variants Qt draws only the first of (VARIANTS), so "Talk\u009cX"
  * draws as Talk; and what may follow a one-word act and still be judged
- * by its count (PLAIN), so "Talk\u2024\u2024" or a wide glyph's run poses.
+ * by its count (PLAIN), so "Talk\u2024\u2024" or a wide glyph's run poses;
+ * and what of it draws wider than a small letter, as LookForm.js weighs it
+ * (WIDEST about twice, WIDER half as wide again).
  */
 const SPACES = /\s+/gu;
 const STOPS = /[\s.!?,;:\u2026]+$/u;
@@ -282,7 +284,22 @@ const UNDRAWN =
 const FILLERS = /[\u115f\u1160\u2800\u3164\uffa0]/gu;
 const TURNS = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/u;
 const VARIANTS = /\u009c/u;
-const PLAIN = /^[\x20-\x7e]*$/u;
+const PLAIN =
+  /^[\x20-\x7e\u00c0-\u00d6\u00d8-\u00f6\u00f8-\u017f\u2013\u2014\u2018\u2019\u201c\u201d]*$/u;
+const WIDEST = /[MWmw@%\u2014]/u;
+const WIDER = /[A-Z\u00c0-\u00d6\u00d8-\u00de]/u;
+
+/**
+ * How wide `text` draws, in small letters, as LookForm.js's weighed: each
+ * character one, WIDER one and a half, WIDEST two.
+ */
+function weighed(text: string): number {
+  let width = 0;
+  for (const each of text) {
+    width += WIDEST.test(each) ? 2 : WIDER.test(each) ? 1.5 : 1;
+  }
+  return width;
+}
 
 /**
  * A name as it reads, to tell two apart, as LookForm.js's readAs: what
@@ -335,15 +352,17 @@ function opensWith(read: string, each: string): boolean {
  * holding a turn poses as any, since it can draw as either; one reading as
  * one once cut at a line break or a run of spaces poses; and one opening
  * with a taken name's words poses, but with a one-word name only once it's
- * long enough to be cut short to it, past four words or 24 characters, or
- * once what follows it isn't PLAIN.
+ * long enough to be cut short to it, past four words or 24 characters,
+ * read or drawn with its stops and capitals weighed, or once what follows
+ * it isn't PLAIN.
  */
 function poses(name: string, taken: readonly string[]): boolean {
   const read = readAs(name);
   const head = readAs(headOf(name));
   const cut = read.split(" ").length > ACT_WORDS || read.length > WHOLE_CHOICE;
+  const drawn = (each: string): number => each.length + weighed(name.trim().slice(each.length));
   const opened = (each: string): boolean =>
-    each.includes(" ") || cut || !PLAIN.test(read.slice(each.length));
+    each.includes(" ") || cut || !PLAIN.test(read.slice(each.length)) || drawn(each) > WHOLE_CHOICE;
   return (
     taken.length > 0 &&
     (TURNS.test(name) ||
@@ -353,9 +372,7 @@ function poses(name: string, taken: readonly string[]): boolean {
         .some(
           (each) =>
             each !== "" &&
-            (each === read ||
-              each === head ||
-              (opensWith(read, each) && opened(each))),
+            (each === read || each === head || (opensWith(read, each) && opened(each))),
         ))
   );
 }

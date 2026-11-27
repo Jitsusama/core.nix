@@ -36,10 +36,18 @@ const TURNS = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/u;
 // here, so a name holding one is never trusted either.
 const VARIANTS = /\u009c/u;
 // What may follow a one-word act in a choice that's still trusted to draw
-// whole: plain printable ASCII, whose width the row's cut can be judged by.
-// A wide glyph or a mark drawn like a stop ("Open \u65e5\u65e5", "Talk\u2024\u2024")
-// may draw as the act and an ellipsis however few its characters.
-const PLAIN = /^[\x20-\x7e]*$/u;
+// whole: printable ASCII, Latin's accented letters, and typographic quotes
+// and dashes, whose width the row's cut can be judged by (weighed), as
+// "Open Jos\u00e9\u2019s PR". A wide glyph or a mark drawn like a stop
+// ("Open \u65e5\u65e5", "Talk\u2024\u2024") may draw as the act and an
+// ellipsis however few its characters.
+const PLAIN =
+    /^[\x20-\x7e\u00c0-\u00d6\u00d8-\u00f6\u00f8-\u017f\u2013\u2014\u2018\u2019\u201c\u201d]*$/u;
+// What of it draws wider than a small letter, which weighed counts by its
+// width: about twice, "Talk " and 19 capital W's drawing as wide as 43
+// small x's (WIDEST), or half as wide again, as other capitals (WIDER).
+const WIDEST = /[MWmw@%\u2014]/u;
+const WIDER = /[A-Z\u00c0-\u00d6\u00d8-\u00de]/u;
 // And the rest of what Unicode says may draw as nothing, some of it past
 // U+FFFF: selectors of a letter's variant (Mongolian's and Unicode's),
 // Khmer's inherent vowels, shorthand's and music's format controls, and
@@ -132,16 +140,33 @@ function headOf(name) {
 // show the rest. A one-word act, as Open, Answer or Talk, begins many a
 // choice Joel should press (Open a PR, Answer Later, Talk It Through), so
 // one opening with it poses only once it's long enough to be cut short to
-// it: past ACT_WORDS words or WHOLE_CHOICE characters, or once what
-// follows it isn't PLAIN, whose width its count can't tell.
+// it: past ACT_WORDS words or WHOLE_CHOICE characters, read or drawn, its
+// stops and capitals weighed (weighed), or once what follows it isn't
+// PLAIN, whose width its count can't tell.
 function poses(name, taken) {
     const read = readAs(name);
     const head = readAs(headOf(name));
     const cut = read.split(" ").length > ACT_WORDS || read.length > WHOLE_CHOICE;
-    const opened = each => each.includes(" ") || cut || !PLAIN.test(read.slice(each.length));
+    // What follows the act as it's drawn, its stops and capitals with it,
+    // which the read leaves out or makes small.
+    const drawn = each => each.length + weighed(String(name).trim().slice(each.length));
+    const opened = each => each.includes(" ") || cut || !PLAIN.test(read.slice(each.length))
+        || drawn(each) > WHOLE_CHOICE;
     return taken.length > 0 && (TURNS.test(String(name)) || VARIANTS.test(String(name))
         || taken.map(readAs).some(each => each !== "" && (each === read || each === head
             || (opensWith(read, each) && opened(each)))));
+}
+
+// How wide `text` draws, in small letters: each character one, one drawn
+// half as wide again (WIDER) one and a half, and one about twice as wide
+// (WIDEST) two.
+function weighed(text) {
+    let width = 0;
+    for (let at = 0; at < text.length; at += 1) {
+        const each = text.charAt(at);
+        width += WIDEST.test(each) ? 2 : WIDER.test(each) ? 1.5 : 1;
+    }
+    return width;
 }
 
 // Whether `read` opens with the words `each` and then a break between

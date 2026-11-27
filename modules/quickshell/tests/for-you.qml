@@ -549,6 +549,22 @@ QtObject {
                 LookForm.actOf(second({ act: "Review\u009cIt" })),
                 LookForm.poses("Open a PR", ["Open"])],
             [true, true, true, true, true, true, "", false]);
+        // A one-word act's choice is measured as it's drawn, not as it reads:
+        // its closing stops, which reading leaves out, and its wide letters
+        // count, so 19 capital W's or 200 stops after it draw as the act and
+        // an ellipsis; and Latin's accents and typographic quotes are counted
+        // as letters, not refused (#6562's eighth review).
+        expect("a one-word act's choice is measured as drawn, its accents counted",
+            [LookForm.poses(`Talk ${"W".repeat(19)}`, ["Talk"]),
+                LookForm.poses(`Talk x${"!".repeat(200)}`, ["Talk"]),
+                LookForm.poses(`Open x${".".repeat(200)}`, ["Open"]),
+                LookForm.actOf(second({ act: `Talk x${"!".repeat(200)}` }), ["Talk"]),
+                LookForm.poses("Open The Pull Request", ["Open"]),
+                LookForm.poses("Open Jos\u00e9\u2019s PR", ["Open"]),
+                LookForm.poses("Talk to Zo\u00eb", ["Talk"]),
+                LookForm.poses("Answer \u201cyes\u201d", ["Answer"]),
+                LookForm.poses("Talk \u2014 later", ["Talk"])],
+            [true, true, true, "", false, false, false, false, false]);
         // And a look's own act can't pass for a choice, nor a choice for it,
         // once either is cut short; a one-word choice its short act opens
         // with draws whole beside it, so both stay.
