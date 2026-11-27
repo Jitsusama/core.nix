@@ -395,8 +395,12 @@ fn not_heard(
 /// saying `why`: that part of it wasn't heard once a line of it was
 /// (`heard`), since its transcript holds those, and that it couldn't be
 /// transcribed while it has none.
-fn not_loaded(title: &str, why: &str, _heard: bool) -> Notice {
-    notices::not_transcribed(title, why)
+fn not_loaded(title: &str, why: &str, heard: bool) -> Notice {
+    if heard {
+        notices::not_all_heard(title, why)
+    } else {
+        notices::not_transcribed(title, why)
+    }
 }
 
 /// A `notice`, shown, if there is one.
