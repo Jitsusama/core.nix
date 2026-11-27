@@ -243,13 +243,14 @@ fn one_message_or_one_hour_puts_only_so_many_classes_to_their_owners() {
 }
 
 /// A burst of unfolded wordings, which any cell can make, can't push a
-/// vetted class out of those an hour names, though theirs sort first.
+/// vetted class out of those an hour names, though theirs sort first by
+/// name and are on more changes, so being vetted must outrank both.
 #[test]
 fn a_vetted_class_is_named_ahead_of_unfolded_ones() {
     let vetted = "a vetted class";
     let mut cases: Vec<Case> = (0..=NAMED_AT_MOST)
         .flat_map(|n| {
-            (1..=3).map(move |c| {
+            (1..=4).map(move |c| {
                 case(
                     &format!("{}junk {n:02}", folds::UNFOLDED),
                     &format!("r#{c}"),
