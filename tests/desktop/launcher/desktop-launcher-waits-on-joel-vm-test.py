@@ -286,7 +286,7 @@ def test_the_launchers_home_says_how_its_sessions_stand_rather_than_naming_them(
             for thing in shown["things"]
         )
     )
-    desktop.shoot("launcher-home-agents")
+    desktop.shoot("launcher-home-agents", ticking=NOWS_CLOCK)
     desktop.close_launcher()
     desktop.as_account(f"niri msg action close-window --id {desktop.window_titled(long)['id']}")
     desktop.as_account(f"rm -f {PI_PRESENCE}/testqc.json")
@@ -441,6 +441,12 @@ def test_where_an_agents_title_is_cut_holds_still_as_its_side_changes(desktop: D
 # the session that needs him.
 
 
+# Home's selected row is Now, whose drawer counts the seconds and the clock's offset from
+# its source as they run, so a home shot waits on the rest of the picture alone: the moving
+# shot's words said only these changed (the drawer's seconds, offset and minute).
+NOWS_CLOCK = "Now's drawer, its seconds and the clock's offset"
+
+
 def shoots_now_at_joels_scales(desktop: Desktop, reads: str) -> None:
     """Shoot home at 1 and Joel's scales, its Now row reading as given, and the plate beside it.
 
@@ -449,13 +455,13 @@ def shoots_now_at_joels_scales(desktop: Desktop, reads: str) -> None:
     # The to-do's card away first, which would stand over the row and the plate.
     with desktop.told("gone notifications"):
         desktop.as_account("qs ipc call notices putAway")
-    desktop.shoot("launcher-home-now-waiting")
+    desktop.shoot("launcher-home-now-waiting", ticking=NOWS_CLOCK)
     for scale in JOELS_SCALES:
         desktop.as_account(f"niri msg output winit scale {scale}")
         desktop.launcher_until(
             lambda shown: any(thing["reads"] == reads for thing in shown["things"])
         )
-        desktop.shoot(f"launcher-home-now-waiting-at-{scale.replace('.', '-')}")
+        desktop.shoot(f"launcher-home-now-waiting-at-{scale.replace('.', '-')}", ticking=NOWS_CLOCK)
     desktop.as_account("niri msg output winit scale 1")
 
 
