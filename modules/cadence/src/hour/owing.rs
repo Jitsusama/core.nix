@@ -725,11 +725,26 @@ fn unheld(ledger: &mut [Entry], measures: &[Measure]) {
 /// late ask the hubs show, once sight is back, reads as it stands rather
 /// than as it was filed. Only that time is given back, so a blind hour
 /// now and then doesn't keep an ask from ever going late; one already
-/// late keeps its date, as the hubs were told it.
+/// late keeps its date, as the hubs were told it. An hour the measure
+/// can't read at all, its runs, switches or asks unread, is its keeper's
+/// to mend, so every open ask's clock stops through it the same way.
 fn blinded(ledger: &mut [Entry], measures: &[Measure], now: i64) {
     let Some(m) = measures.iter().find(|m| m.key == unproven::KEY) else {
         return;
     };
+    if m.target.is_none() && !unproven::sightless(m) {
+        let unproven = format!("hour:{}:", m.key);
+        for entry in ledger
+            .iter_mut()
+            .filter(|e| e.open && e.key.starts_with(&unproven))
+        {
+            if !entry.late {
+                entry.due += now - entry.last_to.min(now);
+            }
+            entry.last_to = now;
+        }
+        return;
+    }
     for line in m.behind.iter().filter(|line| unproven::blind(line)) {
         let Some((own, owner)) = line.rsplit_once(" · ") else {
             continue;
@@ -1996,6 +2011,14 @@ mod tests {
                 (0.0, None)
             };
             let mut m = measure(unproven::KEY, Class::Functional, now, target);
+            if !judged {
+                m.says = "his asks (cadence can't tell whether 1 of them are live)".to_owned();
+            }
+            assert_eq!(
+                unproven::sightless(&m),
+                !judged,
+                "the stand-in isn't as unproven has it"
+            );
             m.behind = vec![line];
             file(ledger, &[m], "2026-11-26", at)
         };
@@ -2125,6 +2148,53 @@ mod tests {
             late.map(|e| (e.late, e.due)),
             due.map(|due| (true, due)),
             "a late ask's date moved while it was blind, unsaid: {late:?}"
+        );
+    }
+
+    #[test]
+    fn the_measures_own_line_goes_to_its_cell_waits_out_an_unread_day_and_closes_on_a_pass() {
+        let now = "2026-11-26T12:00:00Z"
+            .parse::<jiff::Timestamp>()
+            .expect("a time")
+            .as_second();
+        let asks = r#"{"id":"card","at":"2026-11-25T09:00:00Z","words":"show the card",
+            "owner":"J7XHQN","answers":"1JQPPC","landed":"2026-11-26T09:00:00Z",
+            "probe":{"cmd":"true"}}"#
+            .replace('\n', "");
+        let run = |passed: bool, at: &str| {
+            format!(r#"{{"ask":"card","at":"{at}","passed":{passed},"switch":1200}}"#)
+        };
+        let hour = |probes: Result<&str, &str>, at: i64| {
+            unproven::unproven(&asks, probes, Ok(""), &|_, _, _| Some(true), at)
+        };
+        let mut ledger = Vec::new();
+        let failed = run(false, "2026-11-26T11:00:00Z");
+        let told = file(&mut ledger, &[hour(Ok(&failed), now)], "2026-11-26", now);
+        assert!(
+            told.iter().any(|(to, _)| to == "1JQPPC"),
+            "the measure's own line wasn't put to its cell: {told:?}"
+        );
+        // A day its runs can't be read is the keeper's, so the cell's clock
+        // stops through it.
+        let due = ledger.iter().find(|e| e.open).map(|e| e.due);
+        let unread = hour(Err("line 3 won't parse"), now + DAY);
+        file(&mut ledger, &[unread], "2026-11-27", now + DAY);
+        let open = ledger.iter().find(|e| e.open);
+        assert_eq!(
+            open.map(|e| e.due),
+            due.map(|due| due + DAY),
+            "an unread day ran the cell's clock, or let its ask go: {open:?}"
+        );
+        let passed = format!("{failed}\n{}", run(true, "2026-11-27T11:30:00Z"));
+        file(
+            &mut ledger,
+            &[hour(Ok(&passed), now + DAY + 3600)],
+            "2026-11-27",
+            now + DAY + 3600,
+        );
+        assert!(
+            ledger.iter().all(|e| !e.open),
+            "an ask whose probe passed stayed open on its cell: {ledger:?}"
         );
     }
 

@@ -863,44 +863,124 @@ fn a_switch_back_to_what_lacks_the_merge_holds_the_ask_back() {
         "a pass after a switch back to old code proved it: {:?}",
         m.behind
     );
-    // Rolled back, the record's last switch no longer runs, so nothing
-    // since can be judged by it.
+    // Rolled back to 6, which the record names, the pass on 7 isn't live.
     let m = over(&[switch(3600, 6, &old), switch(2400, 7, &merge)], 6);
     assert!(
-        m.behind.first().is_some_and(|line| line.contains(BLIND)),
-        "a pass after a rollback proved what no longer runs: {:?}",
+        m.behind.first().is_some_and(|line| line.contains(
+            "; its probe passed, not live yet, as the switch running doesn't carry it · A"
+        )),
+        "a pass on what was rolled back from stood: {:?}",
+        m.behind
+    );
+    assert_eq!(
+        m.now, 1.0,
+        "a rollback from the change wasn't counted: {}",
+        m.says
+    );
+    // Rolled back to one the record doesn't name, or with none known to
+    // run, what runs can't be judged.
+    let m = over(&[switch(3600, 6, &old), switch(2400, 7, &old)], 5);
+    assert!(
+        m.behind.first().is_some_and(|line| blind(line)),
+        "a generation the record doesn't name was judged: {:?}",
+        m.behind
+    );
+    std::fs::write(home.path().join(SWITCHES), switch(2400, 7, &old)).expect("switches");
+    let asks = list(&[landed(
+        "card",
+        3 * 3600,
+        "A",
+        &json!({"pr": "core.nix#6835"}),
+    )]);
+    let m = super::read_on(home.path(), home.path(), &[], &asks, NOW, None);
+    assert!(
+        m.behind.first().is_some_and(|line| blind(line)) && m.target.is_none(),
+        "with no generation known to run, what runs was judged: {} {:?}",
+        m.says,
         m.behind
     );
 }
 
 #[test]
-fn a_merge_or_checkout_cadence_cant_find_leaves_the_ask_unjudged() {
+fn a_run_is_judged_on_the_switch_whose_generation_it_names() {
+    let home = state();
+    let (old, merge) = scratch(&home.path().join("core.git"), 6835);
+    // It ran on 6, rolled back to, though 7 was recorded before it ran.
+    std::fs::write(home.path().join(PROBES), run("card", 1800, true, 6)).expect("a run");
+    let switches = [switch(3600, 6, &old), switch(2400, 7, &merge)];
+    let m = measured(home.path(), "core.nix#6835", &switches, 7, &[]);
+    assert!(
+        m.behind
+            .first()
+            .is_some_and(|line| line.contains("its probe passed before a switch could carry it")),
+        "a pass on a generation lacking the change proved it: {:?}",
+        m.behind
+    );
+}
+
+#[test]
+fn an_ask_naming_no_change_isnt_live_once_rolled_back_past_its_landing() {
+    let home = state();
+    let (old, merge) = scratch(&home.path().join("core.git"), 6835);
+    let switches = [switch(4 * 3600, 6, &old), switch(2400, 7, &merge)];
+    let m = measured(home.path(), "", &switches, 7, &[]);
+    assert!(
+        m.behind.is_empty(),
+        "a pass after its switch didn't prove it: {:?}",
+        m.behind
+    );
+    let m = measured(home.path(), "", &switches, 6, &[]);
+    assert!(
+        m.behind.first().is_some_and(|line| line.contains(
+            "its probe passed, not live yet, as the switch running came before it landed"
+        )),
+        "a rollback past its landing left a pass standing: {:?}",
+        m.behind
+    );
+}
+
+#[test]
+fn a_wrong_core_pr_is_its_cells_and_a_checkout_cadence_lacks_leaves_it_unjudged() {
     let home = state();
     let (old, merge) = scratch(&home.path().join("core.git"), 6835);
     let switches = [switch(3600, 6, &old), switch(2400, 7, &merge)];
-    for pr in ["core.nix#9999", "world#5"] {
-        let m = measured(home.path(), pr, &switches, 7, &[]);
-        assert!(
-            m.behind.first().is_some_and(|line| line.contains(BLIND)),
-            "{pr}, which cadence can't find, counted as carried: {:?}",
-            m.behind
-        );
-        // Its line stays on the card, uncounted, so the hour's outage
-        // isn't the drag, and with nothing else there the measure can't
-        // say it's in.
-        assert_eq!(
-            (m.now, m.target, m.owner.as_str()),
-            (0.0, None, ""),
-            "{pr}, which only cadence's sight holds, counted, named its cell or read as in: {}",
-            m.says
-        );
-        assert!(
-            m.says
-                .contains("cadence can't tell whether 1 of them are live"),
-            "an hour blind to every ask didn't say so: {}",
-            m.says
-        );
-    }
+    // Core's main is cadence's own, fetched each tick, so a merge it
+    // lacks is a wrong pr, the ask's cell's to mend.
+    let m = measured(home.path(), "core.nix#9999", &switches, 7, &[]);
+    assert!(
+        m.behind.first().is_some_and(|line| line.ends_with(
+            "; core's main holds no merge of a change its pr names, so its pr wants mending · A"
+        )),
+        "a pr core's main holds no merge of wasn't put to its cell to mend: {:?}",
+        m.behind
+    );
+    assert_eq!(
+        (m.now, m.target, m.owner.as_str()),
+        (1.0, Some(0.0), "A"),
+        "a wrong core pr went uncounted: {}",
+        m.says
+    );
+    // World's checkout isn't named here, so its merges can't be found.
+    let m = measured(home.path(), "world#5", &switches, 7, &[]);
+    assert!(
+        m.behind.first().is_some_and(|line| line.contains(BLIND)),
+        "a World change cadence can't find counted as carried: {:?}",
+        m.behind
+    );
+    // Its line stays on the card, uncounted, so the hour's outage isn't the
+    // drag, and with nothing else there the measure can't say it's in.
+    assert_eq!(
+        (m.now, m.target, m.owner.as_str()),
+        (0.0, None, ""),
+        "a line only cadence's sight holds counted, named its cell or read as in: {}",
+        m.says
+    );
+    assert!(
+        m.says
+            .contains("cadence can't tell whether 1 of them are live"),
+        "an hour blind to every ask didn't say so: {}",
+        m.says
+    );
 }
 
 #[test]
@@ -1068,9 +1148,10 @@ fn a_failure_on_what_carries_it_is_its_cells_while_cadence_cant_tell_what_runs()
     let home = state();
     std::fs::write(home.path().join(PROBES), run("card", 3000, false, 6)).expect("a run");
     let (_, merge) = scratch(&home.path().join("core.git"), 6835);
-    // Rolled back to 6, which carries it, so 7 can't be judged.
+    // Switched to 8, which the record doesn't name, so what runs can't be
+    // judged, though 6, the run's, carries it.
     let switches = [switch(3600, 6, &merge), switch(2400, 7, &merge)];
-    let m = measured(home.path(), "core.nix#6835", &switches, 6, &[]);
+    let m = measured(home.path(), "core.nix#6835", &switches, 8, &[]);
     assert!(
         m.behind.first().is_some_and(|line| {
             line.ends_with(
@@ -1132,6 +1213,23 @@ fn an_ask_past_the_week_judges_only_the_switch_its_run_was_on() {
 }
 
 #[test]
+fn an_ask_past_the_week_whose_run_cadence_cant_judge_is_held_back_uncounted() {
+    let old = 8 * DAY;
+    let asks = list(&[landed("ran", old, "B", &json!({"pr": "core.nix#6835"}))]);
+    let switches = json!({"at": at(NOW - old + 60)}).to_string();
+    let unjudged = |_: &Value, _: Repo, _: u32| None;
+    let ran = run("ran", old - 120, true, 1200);
+    let m = unproven(&asks, Ok(&ran), Ok(&switches), &unjudged, NOW);
+    assert_eq!(
+        (m.now, m.target, sightless(&m)),
+        (0.0, None, true),
+        "a week-old ask whose run cadence can't judge was counted: {} {:?}",
+        m.says,
+        m.behind
+    );
+}
+
+#[test]
 fn a_mycelium_change_counts_once_the_core_switched_to_pins_it() {
     let home = state();
     let core = home.path().join("core.git");
@@ -1171,7 +1269,7 @@ fn a_mycelium_change_counts_once_the_core_switched_to_pins_it() {
 }
 
 #[test]
-fn the_harness_part_of_an_ask_waits_on_its_install_not_the_switch() {
+fn a_harness_part_beside_a_core_part_counts_at_once() {
     let pr = json!({"pr": "agentic-harness.pi#2326, core.nix#6835"});
     let asks = list(&[landed("mixed", 3 * 3600, "A", &pr)]);
     let switch = json!({"at": at(NOW - 3600)}).to_string();

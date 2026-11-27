@@ -78,9 +78,10 @@ pub fn read(
 }
 
 /// The measure as `read` has it, on a machine whose system generation
-/// `running` runs, if known: the newest switch is judged only while it
-/// does, since a switch back, or a boot into an older generation, leaves
-/// the record naming what doesn't run, as the misses read it.
+/// `running` runs, if known: what runs now is judged by the switch the
+/// record names for that generation, since a switch back, or a boot into
+/// an older generation, leaves the newest naming what doesn't run, as the
+/// misses read it; one the record doesn't name can't be judged.
 fn read_on(
     state_home: &Path,
     folder: &Path,
@@ -108,29 +109,22 @@ fn read_on(
         .min()
         .unwrap_or(now)
         - SINCE;
-    let newest = switches.as_deref().ok().and_then(|record| {
-        lines(record)
-            .filter_map(|line| Some((seconds(&line["at"])?, line)))
-            .max_by_key(|(at, _)| *at)
-            .map(|(_, line)| line)
-    });
+    unnamed(switches.as_deref().ok(), running);
     let merges: RefCell<BTreeMap<&str, Option<BTreeMap<u64, String>>>> = RefCell::default();
-    let judged: RefCell<BTreeMap<Judging, Option<bool>>> = RefCell::default();
-    let carried = |line: &Value, repo: Repo, number: u32| {
-        let runs = running.is_some() && line["generation"].as_u64() == running;
-        if newest.as_ref() == Some(line) && !runs {
-            return None;
-        }
-        let name = repo_name(repo);
-        let key = (line["revs"].to_string(), name, number);
-        if let Some(known) = judged.borrow().get(&key) {
-            return *known;
-        }
-        let merge = merges
+    // The merge of `number` on `name`'s main: none while that main is
+    // unread, and none within while it holds no such merge.
+    let merge_of = |name: &'static str, number: u32| {
+        merges
             .borrow_mut()
             .entry(name)
             .or_insert_with(|| {
-                let path = repos.get(name)?;
+                let Some(path) = repos.get(name) else {
+                    eprintln!(
+                        "cadence: no checkout of {name} is named, so no ask of it is judged: \
+                         name one in jitsusama.cadence.checkouts"
+                    );
+                    return None;
+                };
                 let read = misses::merges_since(path, since);
                 if read.is_none() {
                     eprintln!(
@@ -141,30 +135,90 @@ fn read_on(
                 read
             })
             .as_ref()
-            .and_then(|merges| {
-                let merge = merges.get(&u64::from(number)).cloned();
-                // Cadence fetches neither core's checkout nor World's, so a
-                // merge missing from a main it read may be its own stale
-                // sight or a wrong `pr`; it says which number, to be mended.
-                if merge.is_none() {
-                    eprintln!(
-                        "cadence: {name}'s main holds no merge of #{number}, so an ask naming \
-                         it is unjudged: fetch its checkout, or mend the ask's pr"
-                    );
-                }
-                merge
-            });
+            .map(|merges| merges.get(&u64::from(number)).cloned())
+    };
+    let judged: RefCell<BTreeMap<Judging, Option<bool>>> = RefCell::default();
+    let carried = |line: &Value, repo: Repo, number: u32| {
+        let name = repo_name(repo);
+        let key = (line["revs"].to_string(), name, number);
+        if let Some(known) = judged.borrow().get(&key) {
+            return *known;
+        }
+        // Only core's main is cadence's own clone, fetched each tick, so a
+        // merge missing from another's may be stale sight or a wrong `pr`;
+        // it says which number, to be mended.
+        let merge = match merge_of(name, number) {
+            Some(None) if repo != Repo::Core => {
+                eprintln!(
+                    "cadence: {name}'s main holds no merge of #{number}, so an ask naming \
+                     it is unjudged: fetch its checkout, or mend the ask's pr"
+                );
+                None
+            }
+            merge => merge.flatten(),
+        };
         let held = merge.and_then(|merge| misses::holds(line, name, &merge, &repos));
         judged.borrow_mut().insert(key, held);
         held
     };
-    unproven(
+    // Core's main, fetched each tick and read two hours past the merge,
+    // holds every merge an ask can name of it, so one it lacks is a wrong
+    // `pr`, the ask's to mend, not the hour's sight.
+    let unmerged =
+        |repo: Repo, number: u32| repo == Repo::Core && merge_of("core", number) == Some(None);
+    let sight = Sight {
+        carried: &carried,
+        unmerged: &unmerged,
+        running: running.map_or(Runs::Unknown, Runs::Generation),
+    };
+    seen(
         asks,
         probes.as_deref().map_err(String::as_str),
         switches.as_deref().map_err(String::as_str),
-        &carried,
+        &sight,
         now,
     )
+}
+
+/// Logs a generation `running` that the switch `record`, read and holding
+/// lines, doesn't name, as no ask can be judged by what runs then.
+fn unnamed(record: Option<&str>, running: Option<u64>) {
+    let (Some(record), Some(running)) = (record, running) else {
+        return;
+    };
+    if !record.trim().is_empty() && !lines(record).any(|line| generation(&line) == Some(running)) {
+        eprintln!(
+            "cadence: generation {running} runs, which the switch record doesn't name, so \
+             no ask is judged by what runs now"
+        );
+    }
+}
+
+/// How cadence sees what the switches carry: `carried` judges a change on
+/// a switch's line, `unmerged` says a change cadence's own main holds no
+/// merge of, and `running` says which switch runs now.
+struct Sight<'a> {
+    carried: &'a Carried<'a>,
+    unmerged: &'a dyn Fn(Repo, u32) -> bool,
+    running: Runs,
+}
+
+/// Which switch runs now.
+#[derive(Clone, Copy)]
+enum Runs {
+    /// The newest the record names, as where nothing else is known.
+    Newest,
+    /// The one of this system generation.
+    Generation(u64),
+    /// None that can be told.
+    Unknown,
+}
+
+/// A switch line's system generation, as its record writes it.
+fn generation(line: &Value) -> Option<u64> {
+    line["generation"]
+        .as_u64()
+        .or_else(|| line["switch"].as_u64())
 }
 
 /// A switch's revisions, as its line writes them, and a change's repository
@@ -210,7 +264,8 @@ type Unproven = (i64, String, String);
 /// result, its `answers`, else its owner, else the list's keeper. Until any ask in the
 /// list names a probe, or while the runs can't be read, the measure says so
 /// and goes unjudged, so no ask is asked for a probe its keeper hasn't
-/// written yet and an unread record never reads as none passed.
+/// written yet and an unread record never reads as none passed. The
+/// newest switch is taken to run, and every merge to be found.
 #[must_use]
 pub fn unproven(
     text: &str,
@@ -219,28 +274,23 @@ pub fn unproven(
     carried: &Carried<'_>,
     now: i64,
 ) -> Measure {
-    let mut latest: BTreeMap<String, Value> = BTreeMap::new();
-    for ask in lines(text) {
-        // A twin the keeper folded into a kept record carries the record's
-        // id and a `~`, so it neither counts again nor stands in for it.
-        let key = match ask["id"].as_str().filter(|id| !id.is_empty()) {
-            Some(id) if id.contains('~') => continue,
-            Some(id) => id.to_owned(),
-            None => said(&ask),
-        };
-        latest.insert(key, ask);
-    }
-    // An ask first written with no id and later with one is one ask; the
-    // list writes an id on every line it writes now, so one with none is
-    // only ever the older.
-    let ided: Vec<String> = latest
-        .iter()
-        .filter(|(key, ask)| **key != said(ask))
-        .map(|(_, ask)| said(ask))
-        .collect();
-    for key in ided {
-        latest.remove(&key);
-    }
+    let sight = Sight {
+        carried,
+        unmerged: &|_, _| false,
+        running: Runs::Newest,
+    };
+    seen(text, probes, switches, &sight, now)
+}
+
+/// The measure as `unproven` has it, seen as `sight` sees the switches.
+fn seen(
+    text: &str,
+    probes: Result<&str, &str>,
+    switches: Result<&str, &str>,
+    sight: &Sight<'_>,
+    now: i64,
+) -> Measure {
+    let latest = latest(text);
     let named = latest.values().any(names_probe);
     let runs = probes.map_err(ToOwned::to_owned).and_then(runs);
     match &runs {
@@ -268,22 +318,29 @@ pub fn unproven(
         .filter_map(|ask| {
             let switches = Switches {
                 switched: &timed,
-                carried,
+                sight,
             };
             Some((ask, unproven_ask(ask, by_ask, &switches, now)?))
         })
         .partition(|(_, (landed, _, _))| *landed < now - SINCE);
     let (unnamed, mut open): (Vec<_>, Vec<_>) =
         week.into_iter().partition(|(ask, _)| !names_probe(ask));
-    open.sort_by_key(|(_, (landed, _, _))| *landed);
+    // Those its cell can mend come first, so the card names them first.
+    open.sort_by_key(|(_, (landed, line, _))| (blind(line), *landed));
     let mut open: Vec<Unproven> = open.into_iter().map(|(_, unproven)| unproven).collect();
     // A line only cadence's own sight holds stays on the card uncounted, nor
     // names the measure's owner, so the hour's outage can't become the
     // drag, as the misses hold theirs; while it's all the card holds, the
-    // measure is unjudged rather than in, as cadence can't say it is.
-    let seen = |(_, line, _): &&Unproven| !blind(line);
-    let blinded = open.iter().filter(|unproven| !seen(unproven)).count();
-    let counted = open.iter().filter(seen).count() + unnamed.len() + older.len();
+    // measure is unjudged rather than in, as cadence can't say it is. An
+    // older ask whose run cadence can't judge is held back the same way.
+    let sighted = |(_, line, _): &&Unproven| !blind(line);
+    let older_blind = older
+        .iter()
+        .filter(|(_, (_, line, _))| line == BLIND)
+        .count();
+    let older = older.len() - older_blind;
+    let blinded = open.iter().filter(|unproven| !sighted(unproven)).count() + older_blind;
+    let counted = open.iter().filter(sighted).count() + unnamed.len() + older;
     let figure = count(counted);
     // The keeper is asked for the probes it hasn't written; the older asks
     // are its backfill, already dated, so that line holds no "; " and is
@@ -293,9 +350,8 @@ pub fn unproven(
         let line = format!("{UNNAMED}; {n} of them · {KEEPER}");
         open.push((0, line, KEEPER.to_owned()));
     }
-    if !older.is_empty() {
-        let n = older.len();
-        let line = format!("{n} older than a week, left to the probes' backfill · {KEEPER}");
+    if older > 0 {
+        let line = format!("{older} older than a week, left to the probes' backfill · {KEEPER}");
         open.push((0, line, KEEPER.to_owned()));
     }
     let says = "his asks landed over 2 h ago with no probe passing since";
@@ -316,11 +372,40 @@ pub fn unproven(
         target: unjudged.is_none().then_some(0.0),
         owner: open
             .iter()
-            .find(seen)
+            .find(sighted)
             .map(|(_, _, o)| o.clone())
             .unwrap_or_default(),
         behind: open.into_iter().map(|(_, line, _)| line).collect(),
     }
+}
+
+/// The asks in the list `text`, each by its id, else when it was asked and
+/// its words, from its latest line, as the list writes an ask whole each
+/// time.
+fn latest(text: &str) -> BTreeMap<String, Value> {
+    let mut latest: BTreeMap<String, Value> = BTreeMap::new();
+    for ask in lines(text) {
+        // A twin the keeper folded into a kept record carries the record's
+        // id and a `~`, so it neither counts again nor stands in for it.
+        let key = match ask["id"].as_str().filter(|id| !id.is_empty()) {
+            Some(id) if id.contains('~') => continue,
+            Some(id) => id.to_owned(),
+            None => said(&ask),
+        };
+        latest.insert(key, ask);
+    }
+    // An ask first written with no id and later with one is one ask; the
+    // list writes an id on every line it writes now, so one with none is
+    // only ever the older.
+    let ided: Vec<String> = latest
+        .iter()
+        .filter(|(key, ask)| **key != said(ask))
+        .map(|(_, ask)| said(ask))
+        .collect();
+    for key in ided {
+        latest.remove(&key);
+    }
+    latest
 }
 
 /// The runs in `probes` by the id of the ask each names, as several asks
@@ -361,7 +446,8 @@ fn runs(probes: &str) -> Result<BTreeMap<String, Vec<Run>>, String> {
 }
 
 /// What a line ends with when only cadence's own sight keeps it from being
-/// judged: no checkout, git failing, or a switch that doesn't run now. It
+/// judged: no checkout, git failing, or a generation running that the
+/// switch record doesn't name. It
 /// stays on the card uncounted, and isn't the answering cell's to mend, so
 /// it isn't put to the cell, nor lets go of what was, as the misses hold
 /// back what the hour can't see.
@@ -389,11 +475,10 @@ pub fn blind(line: &str) -> bool {
         .is_some_and(|(line, _)| line.ends_with(BLIND))
 }
 
-/// The machine's switches, oldest first, and how each is judged to carry a
-/// change.
+/// The machine's switches, oldest first, and how cadence sees them.
 struct Switches<'a> {
     switched: &'a [(i64, Value)],
-    carried: &'a Carried<'a>,
+    sight: &'a Sight<'a>,
 }
 
 /// What the switch running at a moment says of an ask.
@@ -408,10 +493,74 @@ enum Carry {
     /// Whether the switch carries a change it names can't be told, so it
     /// counts as not carrying it.
     Unjudged,
+    /// Cadence's own main holds no merge of a change it names, so its `pr`
+    /// names the wrong one.
+    Unmerged,
+}
+
+impl Carry {
+    /// What a line says of an ask whose switch running now is `self`, its
+    /// probe `failed_on_it` or not: only a failure on what carries it is
+    /// the cell's to mend while cadence can't tell what runs now.
+    fn live(self, failed_on_it: bool) -> &'static str {
+        match self {
+            Carry::Carries | Carry::Unmerged => "",
+            Carry::Unswitched => ", not live yet, as the switch running came before it landed",
+            Carry::Lacks => ", not live yet, as the switch running doesn't carry it",
+            Carry::Unjudged if failed_on_it => {
+                ", though cadence can't tell whether the switch running now carries it"
+            }
+            Carry::Unjudged => BLIND,
+        }
+    }
 }
 
 impl Switches<'_> {
-    /// Whether the switch running at `at` carries `ask`: every change its
+    /// Whether the switch running now carries `ask`, landed at `landed`:
+    /// the one the record names for the generation running, as a switch
+    /// back, or a boot into an older one, writes no line. One it doesn't
+    /// name, or none known to run, can't be judged, unless its `pr` names a
+    /// change cadence's own main holds no merge of.
+    fn running(&self, ask: &Value, landed: i64) -> Carry {
+        let pr = ask["pr"].as_str().unwrap_or_default();
+        let unmerged = |&(repo, number): &(Repo, u32)| (self.sight.unmerged)(repo, number);
+        if at_risk::changes(pr).iter().any(unmerged) {
+            return Carry::Unmerged;
+        }
+        let line = match self.sight.running {
+            Runs::Newest => self.switched.last(),
+            Runs::Generation(running) => {
+                let named = |(_, line): &&(i64, Value)| generation(line) == Some(running);
+                match self.switched.iter().rfind(named) {
+                    Some(line) => Some(line),
+                    None => return Carry::Unjudged,
+                }
+            }
+            Runs::Unknown => return Carry::Unjudged,
+        };
+        self.carry(ask, landed, line)
+    }
+
+    /// Whether the switch `run` ran on carries `ask`, landed at `landed`:
+    /// the one whose generation it names, where the record names it, else
+    /// the last before it ran.
+    fn ran(&self, ask: &Value, landed: i64, run: &Run) -> Carry {
+        let on = run.switch.and_then(|switch| u64::try_from(switch).ok());
+        let line = on
+            .and_then(|on| {
+                self.switched
+                    .iter()
+                    .rfind(|(_, line)| generation(line) == Some(on))
+            })
+            .or_else(|| {
+                self.switched
+                    .iter()
+                    .rfind(|(switched, _)| *switched <= run.at)
+            });
+        self.carry(ask, landed, line)
+    }
+
+    /// Whether the switch `line`, if any, carries `ask`: every change its
     /// `pr` names that a switch carries, as `carried` judges it, the
     /// harness's coming by its install instead. Where every part names a
     /// change a switch carries, a switch from before it was marked `landed`
@@ -419,10 +568,9 @@ impl Switches<'_> {
     /// one git can't judge is unjudged, the hour's to mend; where a part
     /// names no change found, or the harness's, whose install isn't read
     /// for a switch, only a switch since it landed counts, as there's no
-    /// merge it can be shown to hold.
-    fn carry(&self, ask: &Value, landed: i64, at: i64) -> Carry {
-        let Some((switched, line)) = self.switched.iter().rfind(|(switched, _)| *switched <= at)
-        else {
+    /// merge it can be shown to hold. With no switch, none has come.
+    fn carry(&self, ask: &Value, landed: i64, line: Option<&(i64, Value)>) -> Carry {
+        let Some((switched, line)) = line else {
             return Carry::Unswitched;
         };
         let pr = ask["pr"].as_str().unwrap_or_default();
@@ -433,8 +581,14 @@ impl Switches<'_> {
             .filter(|(repo, _)| *repo != Repo::Harness)
             .collect();
         let mut carry = Carry::Carries;
+        if changes
+            .iter()
+            .any(|&(repo, number)| (self.sight.unmerged)(repo, number))
+        {
+            return Carry::Unmerged;
+        }
         for &(repo, number) in &changes {
-            match (self.carried)(line, repo, number) {
+            match (self.sight.carried)(line, repo, number) {
                 Some(true) => {}
                 Some(false) => return Carry::Lacks,
                 None => carry = Carry::Unjudged,
@@ -451,7 +605,8 @@ impl Switches<'_> {
 
 /// `ask`'s line and who answers for it, when it's Joel's own, landed in
 /// the window before `now`, needs a probe, and its latest run since it
-/// landed didn't pass or there is none. An ask with no id has none of the
+/// landed didn't pass or there is none, or did on a switch that no longer
+/// runs, as after a switch back. An ask with no id has none of the
 /// runs, as its keeper writes the id on every line it writes a probe on;
 /// with the `runs` unread, none is said to have run. One the switch running
 /// now doesn't carry isn't live yet, so its cell knows to chase the switch
@@ -484,36 +639,42 @@ fn unproven_ask(
         // A run dated past now would stay the latest whatever runs after.
         .filter(|run| run.at >= landed && run.at <= now)
         .max_by_key(|run| run.at);
-    let carry = |at: i64| {
-        if any_run {
+    let ran_on = last.map(|run| {
+        let on = if any_run {
             Carry::Carries
         } else {
-            switches.carry(ask, landed, at)
-        }
-    };
-    let ran_on = last.map(|run| (run, carry(run.at)));
+            switches.ran(ask, landed, run)
+        };
+        (run, on)
+    });
     let proven = ran_on.is_some_and(|(run, on)| run.passed && on == Carry::Carries);
     // One past the week only counts, so the switch it would run on now,
-    // which costs git, isn't asked of it.
+    // which costs git, isn't asked of it; one whose run cadence can't
+    // judge is as blind as one in the week.
     if landed < now - SINCE {
-        return (!proven).then(|| (landed, String::new(), String::new()));
+        let blinded = ran_on.is_some_and(|(_, on)| on == Carry::Unjudged);
+        let line = if blinded { BLIND } else { "" };
+        return (!proven).then(|| (landed, line.to_owned(), String::new()));
     }
-    if proven {
+    let now_on = if any_run {
+        Carry::Carries
+    } else {
+        switches.running(ask, landed)
+    };
+    // A pass stands while what runs now carries it; switched back from
+    // what it passed on, it isn't live.
+    if proven && !matches!(now_on, Carry::Lacks | Carry::Unswitched) {
         return None;
     }
     // Only a failure on what carries it is the cell's to mend while cadence
     // can't tell what runs now; otherwise the line is the hour's own.
     let failed_on_it = ran_on.is_some_and(|(run, on)| !run.passed && on == Carry::Carries);
-    let unswitched = match carry(now) {
-        Carry::Carries => "",
-        Carry::Unswitched => ", not live yet, as no switch has come since it landed",
-        Carry::Lacks => ", not live yet, as the switch running doesn't carry it",
-        Carry::Unjudged if failed_on_it => {
-            ", though cadence can't tell whether the switch running now carries it"
-        }
-        Carry::Unjudged => BLIND,
-    };
+    let unswitched = now_on.live(failed_on_it);
     let state = match (!names_probe(ask), ran_on) {
+        _ if now_on == Carry::Unmerged => {
+            "core's main holds no merge of a change its pr names, so its pr wants mending"
+                .to_owned()
+        }
         (_, Some((run, Carry::Unjudged))) => format!(
             "its probe {} on a switch cadence can't judge",
             if run.passed { "passed" } else { "failed" }
@@ -523,6 +684,7 @@ fn unproven_ask(
             "its probe {} before a switch could carry it",
             if run.passed { "passed" } else { "failed" }
         ),
+        (false, Some((run, _))) if run.passed => "its probe passed".to_owned(),
         (true, _) => "it names no probe".to_owned(),
         (false, None) if runs.is_none() => "its probe runs unread".to_owned(),
         (false, None) => "its probe hasn't run since it landed".to_owned(),
