@@ -23,12 +23,12 @@ let
   # relay), and reading the boot (there), whose sysctl in /usr/sbin a
   # sandboxed build can't reach. Measured on 18 November.
   deniedInMacSandbox = [
+    "machines::named::tests::a_lent_builder_is_named_for_any_work_to_builds_that_ask"
     "machines::tests::a_builder_beside_is_named_to_every_build_for_its_big_work_while_it_answers"
-    "machines::tests::a_builder_beside_stands_as_roots_prover_says_where_one_writes"
-    "machines::tests::a_lender_started_again_names_no_builder_beside_before_its_proof"
-    "machines::tests::a_lent_builder_is_named_for_any_work_to_builds_that_ask"
     "machines::tests::a_standing_builder_is_named_only_to_builds_that_ask_while_it_answers"
     "machines::tests::builders_standing_and_beside_are_read_again_each_time_they_are_named"
+    "machines::trusted::tests::a_builder_beside_stands_as_roots_prover_says_where_one_writes"
+    "machines::trusted::tests::a_lender_started_again_names_no_builder_beside_before_its_proof"
     "relay::tests::a_far_side_that_closes_before_speaking_is_dialled_again"
     "relay::tests::a_far_side_that_never_speaks_in_time_is_hung_up_on_once"
     "relay::tests::a_name_is_listened_on_at_every_address_it_gives"
