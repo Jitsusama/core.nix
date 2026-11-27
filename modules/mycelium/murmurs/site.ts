@@ -15,8 +15,8 @@ import type { Held, Moved } from "../../local-sites/kit/records.ts";
 import { said } from "../../local-sites/kit/status.ts";
 import { pressable } from "../../local-sites/kit/steps.ts";
 import { themeSwitch } from "../../local-sites/kit/theme.ts";
-import { escaped, murmurRow, skyOf } from "./draw.ts";
-import { headline, lede, type Murmur, murmursOf } from "./model.ts";
+import { headlineOf, murmurRow, skyOf } from "./draw.ts";
+import { headline, lede, type Murmur, murmursOf, UNHEARD } from "./model.ts";
 
 /** The element `selector` finds, which the page's markup always holds. */
 function found<T extends Element>(selector: string, kind: new () => T): T {
@@ -93,9 +93,8 @@ function sayWhen(): void {
   // list the server held for it.
   if (!fromLive && murmurs.length === 0 && standing?.state === "broken") {
     // Beside the "Listening to the mycelium node." it opens on, in as many lines.
-    title.textContent = "Not hearing the mycelium node.";
-    ledeLine.textContent =
-      "The mycelium node didn't say what its sessions murmur; the line below says why.";
+    title.textContent = UNHEARD.headline;
+    ledeLine.textContent = UNHEARD.lede;
   }
 }
 
@@ -176,16 +175,7 @@ function draw(): void {
 
 /** The headline, its counts leading to what they count, and the lede under it. */
 function sayWhole(): void {
-  const whole = headline(murmurs);
-  const lead = escaped(whole.lead);
-  const turn = escaped(whole.turn);
-  if (whole.said === 0) {
-    title.innerHTML = `${lead} <em>${turn}</em>`;
-  } else if (whole.open === 0 || whole.open === whole.said) {
-    title.innerHTML = `<a href="#all" data-show="all">${lead}</a> <em>${turn}</em>`;
-  } else {
-    title.innerHTML = `<a href="#all" data-show="all">${lead}</a> <em><a href="#air" data-show="air">${turn}</a></em>`;
-  }
+  title.innerHTML = headlineOf(headline(murmurs));
   ledeLine.textContent = lede(murmurs);
 }
 

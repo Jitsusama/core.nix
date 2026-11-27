@@ -6,7 +6,7 @@
 // never by colour alone. Every word read from a record is escaped before it
 // reaches the page.
 
-import { ago, type Murmur, questsOf } from "./model.ts";
+import { ago, type Headline, type Murmur, questsOf } from "./model.ts";
 
 const ESCAPES: { readonly [character: string]: string } = {
   "&": "&amp;",
@@ -47,6 +47,20 @@ function scatter(seed: number, nth: number): number {
 /** `text` safe to put in markup, as text or an attribute's value. */
 function escaped(text: string): string {
   return text.replace(/[&<>"']/gu, (character) => ESCAPES[character] ?? character);
+}
+
+/** The headline's markup: its count links to every murmur, and a part still in the air to those. */
+function headlineOf(whole: Headline): string {
+  const lead = escaped(whole.lead);
+  const turn = escaped(whole.turn);
+  if (whole.said === 0) {
+    return `${lead} <em>${turn}</em>`;
+  }
+  const all = `<a href="#all" data-show="all">${lead}</a>`;
+  if (whole.open === 0 || whole.open === whole.said) {
+    return `${all} <em>${turn}</em>`;
+  }
+  return `${all} <em><a href="#air" data-show="air">${turn}</a></em>`;
 }
 
 /** Where each quest's flock gathers: spread across the sky in turn, rising and falling. */
@@ -136,11 +150,11 @@ function murmurRow(murmur: Murmur, now: number): string {
   return `<div role="option" id="murmur-${escaped(murmur.key)}" data-key="${escaped(murmur.key)}" aria-selected="false">
   <span class="mk">${mark}</span>
   <span class="line">
-    <span class="words">${escaped(murmur.words)}</span>
-    <span class="said">from ${escaped(murmur.quest)} <code>${escaped(murmur.writer)}</code> · ${escaped(ago(murmur.at, now))}${tiedTo(murmur)}</span>
+    <span class="words" dir="auto">${escaped(murmur.words)}</span>
+    <span class="said">from <bdi>${escaped(murmur.quest)}</bdi> <code>${escaped(murmur.writer)}</code> · ${escaped(ago(murmur.at, now))}${tiedTo(murmur)}</span>
     ${settled}
   </span>
 </div>`;
 }
 
-export { escaped, murmurRow, skyOf };
+export { escaped, headlineOf, murmurRow, skyOf };

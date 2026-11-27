@@ -59,13 +59,16 @@ const WORDS: readonly string[] = [
 
 /** A stop that would sit before the ellipsis a cut murmur ends with. */
 const TRAILING_STOP = /[,;:.]$/u;
+/** The controls that embed, override or isolate a direction, which could close the lede's own. */
+const DIRECTIONS = /[\u202A-\u202E\u2066-\u2069]/gu;
 
 /**
  * How many characters of a murmur the lede quotes, and of its quest's name, before each is
- * trimmed: the most that keeps the whole lede inside the four lines its box holds on a phone,
- * so nothing in it is ever cut away. The murmur's row says both whole. It's sized for prose: a
- * lede of wider letters, or a word too long to break, takes a line more, which the box grows to
- * hold rather than cutting it, moving what's under it down a line as the lede draws.
+ * trimmed: the most that keeps the whole lede inside the four lines its box holds on a 390 px
+ * phone, the width the sites are checked at, so nothing in it is ever cut away. The murmur's
+ * row says both whole. It's sized for prose: wide letters in both, a word too long to break or
+ * a narrower phone takes a fifth line, which the box grows to hold rather than cutting it,
+ * moving what's under it down a line as the lede draws.
  */
 const QUOTED = 84;
 const NAMED = 48;
@@ -163,9 +166,19 @@ function trimmed(words: string, most: number): string {
   return `${kept.replace(TRAILING_STOP, "")}...`;
 }
 
-/** `words` between a first-strong isolate and its pop, the plain text form of `<bdi>`. */
-function isolated(words: string): string {
-  return `\u2068${words}\u2069`;
+/** What the page says while it hasn't heard the node, beside the words it opens on. */
+const UNHEARD = {
+  headline: "Not hearing the mycelium node.",
+  lede: "The mycelium node didn't say what its sessions murmur; the line below says why.",
+};
+
+/**
+ * `words` cut at `most`, between a first-strong isolate and its pop, the plain text form of
+ * `<bdi>`, so a direction they set, or one a cut leaves open, runs no further than them. Any
+ * control of direction in them goes first, since one could close the isolate early.
+ */
+function isolated(words: string, most: number): string {
+  return `\u2068${trimmed(words.replace(DIRECTIONS, ""), most)}\u2069`;
 }
 
 /** The line under the sentence: the newest murmur still in the air, and who said it. */
@@ -177,10 +190,8 @@ function lede(murmurs: readonly Murmur[]): string {
   if (newest === undefined) {
     return "Every murmur has been settled; the newest says how on its row.";
   }
-  // Each in an isolate, so a direction a cell's words set, or one a trim leaves open, runs no
-  // further than them.
-  const quest = isolated(trimmed(newest.quest, NAMED));
-  return `Newest in the air, from ${quest}: ${isolated(trimmed(newest.words, QUOTED))}`;
+  const quest = isolated(newest.quest, NAMED);
+  return `Newest in the air, from ${quest}: ${isolated(newest.words, QUOTED)}`;
 }
 
 /** How long ago `at` was, from `now`, both in seconds, said short. */
@@ -206,4 +217,4 @@ function questsOf(murmurs: readonly Murmur[]): readonly string[] {
 }
 
 export type { Headline, Murmur, Murmurs };
-export { ago, headline, inTheAir, lede, murmursOf, questsOf, short, trimmed };
+export { ago, headline, inTheAir, lede, murmursOf, questsOf, short, trimmed, UNHEARD };

@@ -165,16 +165,27 @@ it("the lede keeps room for the murmur however long its quest's name runs", () =
     ),
     `the quest's name should be cut on a word before the murmur: ${line}`,
   );
+  const quoted = `${"gulls wheel over the cistern ".repeat(2)}gulls wheel over the...`;
+  assert.ok(
+    line.endsWith(`: ${FSI}${quoted}${PDI}`),
+    `the murmur should follow the name, cut at its own most: ${line}`,
+  );
 });
 
-it("the lede holds a direction the murmur sets to the murmur, though a cut drops its end", () => {
-  // A right-to-left override opened in the quest's name and never closed, as a cut leaves it.
+it("the lede drops the controls of direction a name or a murmur holds", () => {
+  // An override left open, a pop that would close the lede's isolate early, and an isolate of
+  // the murmur's own: any of them would bend the lede's own isolates.
   const purpose = `\u202e${"the nightly audit, which found everything in order ".repeat(2)}`;
-  const { murmurs } = murmursOf(holding([murmur("OSPREY", 200, { purpose, text: "Gulls." })]));
+  const text = "Gulls\u2069 are \u2067back\u2069.";
+  const { murmurs } = murmursOf(holding([murmur("OSPREY", 200, { purpose, text })]));
   const line = lede(murmurs);
   assert.ok(
-    line.includes(`...${PDI}: ${FSI}Gulls.${PDI}`),
-    `the name's isolate should close before the colon and the quote: ${line}`,
+    line.startsWith(`Newest in the air, from ${FSI}the nightly audit, which found`),
+    `the name's override should go: ${line}`,
+  );
+  assert.ok(
+    line.endsWith(`...${PDI}: ${FSI}Gulls are back.${PDI}`),
+    `only the lede's own isolates should hold the name and the quote: ${line}`,
   );
 });
 
