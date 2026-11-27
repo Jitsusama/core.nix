@@ -4,8 +4,10 @@ copier-keeps-a-secret-in-memory.py reads what a copier said, how it ended and wh
 read its standard input, each for as long as its PATIENCE and no longer, so a copier that
 holds on, or leaves a child holding its standard error open, fails a case rather than hanging
 the check. Its own run needs a display, so these reads are pinned here with copiers that are
-bash scripts: each ending one way, saying one thing or never ending at all. PATIENCE is set
-to 2 s, so a read that waits past it plus a second fails its case.
+bash scripts: each ending one way, saying one thing, saying half a line and holding on, or
+never ending at all. PATIENCE is set to 2 s, so a read that waits past it plus a second fails
+its case, and one that would hang is run on a thread of its own, so it fails rather than
+hanging this test.
 
 usage: copier-check-reads-bounded-test.py <bash> <copier-keeps-a-secret-in-memory.py>
 """
@@ -16,6 +18,7 @@ import os
 import signal
 import subprocess
 import sys
+import threading
 import time
 from typing import TYPE_CHECKING
 
@@ -27,6 +30,9 @@ if TYPE_CHECKING:
 PATIENCE = 2.0
 # How long past PATIENCE a bounded read may take to answer, in seconds.
 SLACK = 1.0
+# How long past PATIENCE and SLACK a read run on a thread of its own is waited on, in seconds,
+# before its case fails as hung.
+HUNG = 5.0
 # The data fed to a reader, of a MiB, the copier's cap, so it outgrows a pipe's buffer.
 DATA = b"x" * (1024 * 1024)
 # Why a fake copier refused, for the refusals it's judged by.
@@ -41,6 +47,10 @@ def loaded(path: str) -> ModuleType:
         raise SystemExit(why)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    # A renamed PATIENCE would otherwise be set beside it, unread, and show only as slow cases.
+    if not hasattr(module, "PATIENCE"):
+        why = f"{path} has no PATIENCE to cut to this test's"
+        raise SystemExit(why)
     # A module's type reads any name but sets none, so the patience is set in its namespace.
     vars(module)["PATIENCE"] = PATIENCE
     return module
@@ -78,6 +88,19 @@ def timed[T](read: Callable[[], T]) -> tuple[T, float]:
     began = time.monotonic()
     answer = read()
     return answer, time.monotonic() - began
+
+
+def answered_in_time[T](read: Callable[[], T]) -> tuple[T, float] | None:
+    """Answer what `read` answers and how long it took, or None if it's still reading.
+
+    It's read on a thread of its own, waited on for PATIENCE, SLACK and HUNG, so a read that
+    hangs fails its case rather than this test; the thread is left to end with the copier.
+    """
+    answered: list[tuple[T, float]] = []
+    reading = threading.Thread(target=lambda: answered.append(timed(read)), daemon=True)
+    reading.start()
+    reading.join(PATIENCE + SLACK + HUNG)
+    return answered[0] if answered else None
 
 
 def a_running_copier_has_not_refused() -> None:
@@ -181,6 +204,27 @@ def a_silent_copier_says_nothing_after_patience() -> None:
     assert took < PATIENCE + SLACK, f"a copier saying nothing held it {took:.1f} s"
 
 
+def a_copier_saying_half_a_line_is_answered_within_patience() -> None:
+    """said_next answers the part of a line a copier said and held on after, within PATIENCE."""
+    with copier("printf ready; exec sleep 600") as halfway:
+        answer = answered_in_time(lambda: CHECK.said_next(halfway))
+    waited = PATIENCE + SLACK + HUNG
+    assert answer is not None, f"a copier saying half a line held it past {waited:g} s"
+    said, took = answer
+    assert said == "ready", f"a copier saying 'ready' with no newline was said {said!r}"
+    assert took < PATIENCE + SLACK, f"a copier saying half a line held it {took:.1f} s"
+
+
+def a_copier_saying_two_lines_at_once_is_answered_each_in_turn() -> None:
+    """said_next answers two lines a copier said at once one at a time, the first first."""
+    with copier("printf 'ready\\nheld\\n'; exec sleep 30") as saying:
+        first = CHECK.said_next(saying)
+        second, took = timed(lambda: CHECK.said_next(saying))
+    assert first == "ready", f"a copier saying 'ready' then 'held' was first said {first!r}"
+    assert second == "held", f"a copier saying 'ready' then 'held' was next said {second!r}"
+    assert took < SLACK, f"the second line, said with the first, took {took:.1f} s to answer"
+
+
 CASES = [
     a_running_copier_has_not_refused,
     a_failing_copier_is_refused_with_what_it_said,
@@ -191,6 +235,8 @@ CASES = [
     a_reader_never_reading_is_fed_no_longer_than_patience,
     a_reader_that_closed_is_fed_without_fault,
     a_silent_copier_says_nothing_after_patience,
+    a_copier_saying_half_a_line_is_answered_within_patience,
+    a_copier_saying_two_lines_at_once_is_answered_each_in_turn,
 ]
 
 
