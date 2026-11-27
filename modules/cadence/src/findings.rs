@@ -101,45 +101,67 @@ fn is_zero(count: &u32) -> bool {
 }
 
 /// The ledger kept at `path`, a line each, or none when no ledger is
-/// there yet. A line that isn't an entry, torn by a write or kept in a
-/// shape this cadence doesn't read, is set aside as it stood, appended to
-/// `findings.unread.jsonl` beside the ledger, and said on stderr, before
-/// the ledger is returned: each caller keeps the ledger whole after, so a
-/// line only left out would be lost at that keep.
+/// there yet. A line that isn't an entry, torn by a write, kept in a
+/// shape this cadence doesn't read or not even text, is set aside as it
+/// stood, appended to `findings.unread.jsonl` beside the ledger, and said
+/// on stderr, before the ledger is returned: each caller keeps the ledger
+/// whole after, so a line only left out would be lost at that keep. A
+/// line already set aside isn't set aside again, so a run that fails
+/// before its keep, each hour, doesn't copy it each time.
 ///
 /// # Errors
 ///
-/// When the ledger is there but can't be read as text, so its caller
-/// stops rather than reading it as empty and keeping that over every
-/// finding, or when a line that isn't an entry can't be set aside.
+/// When the ledger is there but can't be read, so its caller stops rather
+/// than reading it as empty and keeping that over every finding, or when
+/// a line that isn't an entry can't be set aside; each names its file.
 pub fn read(path: &Path) -> io::Result<Vec<Entry>> {
-    let text = match fs::read_to_string(path) {
-        Ok(text) => text,
+    let bytes = match fs::read(path) {
+        Ok(bytes) => bytes,
         Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(err) => return Err(err),
+        Err(err) => return Err(naming(path, &err)),
     };
     let mut ledger = Vec::new();
-    let mut unread = Vec::new();
+    let mut unread: Vec<&[u8]> = Vec::new();
     // A ledger kept empty is one blank line, which is nothing to set aside.
-    for line in text.lines().filter(|line| !line.trim().is_empty()) {
-        if let Ok(entry) = serde_json::from_str::<Entry>(line) {
-            ledger.push(entry);
-        } else {
-            unread.push(line);
+    for line in bytes
+        .split(|byte| *byte == b'\n')
+        .filter(|line| !line.trim_ascii().is_empty())
+    {
+        match std::str::from_utf8(line).map(serde_json::from_str::<Entry>) {
+            Ok(Ok(entry)) => ledger.push(entry),
+            _ => unread.push(line),
         }
     }
+    let aside = unread_at(path);
+    let already = match fs::read(&aside) {
+        Ok(kept) => kept,
+        Err(err) if err.kind() == io::ErrorKind::NotFound => Vec::new(),
+        Err(err) => return Err(naming(&aside, &err)),
+    };
+    let kept: BTreeSet<&[u8]> = already.split(|byte| *byte == b'\n').collect();
+    unread.retain(|line| !kept.contains(line));
     if !unread.is_empty() {
-        let aside = unread_at(path);
-        let mut file = fs::File::options().create(true).append(true).open(&aside)?;
-        io::Write::write_all(&mut file, (unread.join("\n") + "\n").as_bytes())?;
-        let lines = if unread.len() == 1 { "line" } else { "lines" };
+        let mut lines = unread.join(&b'\n');
+        lines.push(b'\n');
+        fs::File::options()
+            .create(true)
+            .append(true)
+            .open(&aside)
+            .and_then(|mut file| io::Write::write_all(&mut file, &lines))
+            .map_err(|err| naming(&aside, &err))?;
+        let count = if unread.len() == 1 { "line" } else { "lines" };
         eprintln!(
-            "cadence: findings: {} {lines} unread, set aside in {}",
+            "cadence: findings: {} {count} unread, set aside in {}",
             unread.len(),
             aside.display()
         );
     }
     Ok(ledger)
+}
+
+/// `err` with the file it was met at, so a caller printing it names which.
+fn naming(path: &Path, err: &io::Error) -> io::Error {
+    io::Error::new(err.kind(), format!("{}: {err}", path.display()))
 }
 
 /// Where the lines of the ledger at `path` that aren't entries are set
@@ -420,14 +442,69 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn a_ledger_that_isnt_text_fails_its_read() {
+    fn a_ledger_that_cant_be_read_fails_naming_it() {
         let folder = tempfile::tempdir().expect("a scratch folder");
         let path = ledger_in(&folder);
-        fs::write(&path, [0xff, 0xfe]).expect("a ledger that isn't text");
+        fs::create_dir(&path).expect("a folder where the ledger goes");
+        let err = read(&path).expect_err(
+            "a ledger that can't be read read as empty, so the keep after it would write \
+             over every finding it holds",
+        );
         assert!(
-            read(&path).is_err(),
-            "a ledger that can't be read as text read as empty, so the keep after it would \
-             write over every finding it holds"
+            err.to_string().contains(&path.display().to_string()),
+            "the read's error didn't name the ledger: {err}"
+        );
+    }
+
+    #[test]
+    fn a_line_that_isnt_text_is_set_aside_and_its_neighbours_read() {
+        let folder = tempfile::tempdir().expect("a scratch folder");
+        let path = ledger_in(&folder);
+        let mut ledger = Vec::new();
+        update(
+            &mut ledger,
+            &day("d1", DAY),
+            &[found("crashes:tec")],
+            &owners(),
+        );
+        let mut bytes = serde_json::to_vec(&ledger[0]).expect("an entry as a line");
+        bytes.extend_from_slice(b"\n{\"key\":\"\xff\"}\n");
+        fs::write(&path, &bytes).expect("a ledger with a line that isn't text");
+        assert_eq!(
+            read(&path).expect("a ledger with a line that isn't text reads"),
+            ledger,
+            "a line that isn't text stopped the read, or its neighbour was lost"
+        );
+        assert_eq!(
+            fs::read(unread_at(&path)).expect("the line set aside"),
+            b"{\"key\":\"\xff\"}\n",
+            "the line that isn't text wasn't set aside as it stood"
+        );
+    }
+
+    #[test]
+    fn a_line_is_set_aside_once_however_often_it_is_read_and_new_ones_join_it() {
+        let folder = tempfile::tempdir().expect("a scratch folder");
+        let path = ledger_in(&folder);
+        let first = r#"{"key":"#;
+        fs::write(&path, format!("{first}\n")).expect("a torn ledger");
+        // Two runs failing before their keep each read the same torn line.
+        for _ in 0..2 {
+            read(&path).expect("a torn ledger reads");
+        }
+        let aside = unread_at(&path);
+        assert_eq!(
+            fs::read_to_string(&aside).expect("the torn line set aside"),
+            format!("{first}\n"),
+            "a line read twice was set aside twice"
+        );
+        let second = r#"{"owner":"#;
+        fs::write(&path, format!("{first}\n{second}\n")).expect("a second torn line");
+        read(&path).expect("a ledger torn twice reads");
+        assert_eq!(
+            fs::read_to_string(&aside).expect("both torn lines set aside"),
+            format!("{first}\n{second}\n"),
+            "a second line set aside lost the first, or the first was set aside again"
         );
     }
 
