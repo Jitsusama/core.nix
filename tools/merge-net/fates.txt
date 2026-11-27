@@ -1,8 +1,10 @@
-# Folders that share a fate: what one check measures of them all, so a
+# Folders that share a fate: every folder one check is built from, so a
 # change in any is checked again once main moves any. Each line is a name,
 # then after a colon the folders, each ending in `/`. ready counts a file
 # main moved in one of a fate's folders as one the change shares, when the
 # change has a file in any of them, so changed-checks runs again at its
 # head. Two changes in different files of one folder, each passing alone,
 # otherwise merge as they stand and meet only on main.
-the map's first visit: modules/mycelium/site/ modules/local-sites/kit/
+# The map's live test measures a page built from its folder, the sites'
+# kit, strip, build, server, feeds and tests, and the theme's web kit.
+the map's first visit: modules/mycelium/site/ modules/local-sites/ modules/theme/web/

@@ -95,6 +95,26 @@ mod tests {
     }
 
     #[test]
+    fn every_folder_the_maps_check_is_built_from_shares_its_fate() {
+        // The page is built from the theme's web kit and the sites' strip,
+        // build and feeds too, so a move in any can join a map change in
+        // overrunning its room.
+        let moved = owned(&[
+            "modules/theme/web/base.css",
+            "modules/local-sites/home/strip.css",
+            "modules/local-sites/site.nix",
+            "modules/local-sites/home.nix",
+            "modules/local-sites/kit/head.css",
+        ]);
+        let shared = beside(
+            &fates(),
+            &owned(&["modules/mycelium/site/view.js"]),
+            &moved,
+        );
+        assert_eq!(shared, moved, "a move the map's check is built from wasn't shared");
+    }
+
+    #[test]
     fn two_changes_in_different_files_of_one_folder_share_it() {
         let shared = beside(
             &the_map(),
