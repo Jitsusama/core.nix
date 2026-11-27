@@ -109,6 +109,7 @@ const NOTHING_SENT = /nothing was sent/u;
 const flush = (): Promise<void> => new Promise((then) => setImmediate(then));
 const COME_BACK = /come back once this page is live/u;
 const ANSWERED = /Answered Merge It/u;
+const SENDING = /Sending your answer/u;
 const AS_TEXT = /<img src=x onerror=alert\(1\)> Its checks passed\./u;
 
 /** A look waiting on him, left by the cell at `address` `ago` before now. */
@@ -312,14 +313,20 @@ it("answers show only while the feed is live and go once one is pressed", async 
   feed.tell({ id: 2, state: "live" });
   const [yes] = holder.all("button");
   assert.ok(yes !== undefined, "no answers showed while live");
+  const [told] = holder.all("ask-told");
+  const [offered] = holder.all("ask-answers");
   yes.clicks[0]?.();
-  assert.equal(holder.all("button").length, 0, "answers stayed once one was pressed");
+  assert.equal(offered?.getAttribute("hidden"), "", "answers stayed once one was pressed");
+  assert.match(told?.words() ?? "", SENDING);
   await flush();
   assert.deepEqual(
     posted.map((body) => JSON.parse(body)),
     [{ look: "l1", value: "yes" }],
   );
-  assert.match(holder.words(), ANSWERED);
+  // The same line, changed where it stands, since one drawn anew with its
+  // words in it isn't heard.
+  assert.equal(holder.all("ask-told")[0], told, "the told line was drawn anew");
+  assert.match(told?.words() ?? "", ANSWERED);
   assert.deepEqual(counts.slice(-1), [1]);
 });
 
@@ -355,12 +362,14 @@ it("a page narrowed to a cell shows only its asks, and every one widened again",
   const sockets: StandIn[] = [];
   const holder = new Element("div");
   const asks = followAsks({ holder, make, address: "abc", reaching: reaching(sockets) });
-  telling(sockets[0], look("mine", "abc"), look("theirs", "def"));
-  assert.equal(holder.all("article").length, 1, "a cell was shown another's asks");
+  const titled = (id: string, address: string) => ({ ...look(id, address), title: id });
+  telling(sockets[0], titled("mine", "abc"), titled("theirs", "def"));
+  const shown = () => holder.all("h3").map((title) => title.words());
+  assert.deepEqual(shown(), ["mine"], "a cell was shown another's asks");
   asks.narrow(null);
-  assert.equal(holder.all("article").length, 2, "widened, the page didn't show every ask");
+  assert.deepEqual(shown().toSorted(), ["mine", "theirs"], "widened, not every ask showed");
   asks.narrow("def");
-  assert.deepEqual(holder.all("h3").length, 1);
+  assert.deepEqual(shown(), ["theirs"], "narrowed again, another cell's asks showed");
 });
 
 it("a page asks again whether its answers are taken once its feed comes back", async () => {

@@ -11,8 +11,9 @@ how). A page reads a feed at `/feed/<name>`, a WebSocket over which it
 speaks the daemon interface every daemon here speaks
 ([`docs/daemons.md`][daemons]). The server holds one watch on the daemon
 for each kind any page reads, and tells every page and tab from it. A
-page reads and never acts; it sees only the kinds and fields its feed
-declares in `jitsusama.local-sites.feeds`. The server answers only its own
+feed reads and never acts; a page sees only the kinds and fields its feed
+declares in `jitsusama.local-sites.feeds`, and its one act, Joel's answer
+to a look, goes by `/answer` alone. The server answers only its own
 names on loopback, and opens a feed only to its own pages: the live sites
 and the home, which its builder writes into a folder of its own. A document
 a session wrote is served under a name of its own,

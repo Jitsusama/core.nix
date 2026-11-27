@@ -24,6 +24,11 @@
 //!   him and offers the value, as the kit's ask.ts and For You read one;
 //! - no answer to that look was carried before, since the server started.
 //!
+//! Asking the kernel who pressed walks every descriptor the account holds,
+//! and any process can ask it as fast as it connects, so it's paced
+//! (`WALKS`), refused "busy" past that; so are the journal's refusals
+//! (`REFUSALS`), each line let through saying how many weren't.
+//!
 //! The server asks no more of a page's answer than that one value: what it
 //! sends is built here, never taken from the page, and says it came by the
 //! sites (`via`).
@@ -34,10 +39,12 @@ use std::io::{self, Read};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::{Mutex, PoisonError};
+use std::time::Duration;
 
 use serde_json::{Value, json};
 
 use crate::clock::{iso, now, when};
+use crate::pace::{Pace, Turn};
 use crate::page;
 use crate::peer::Told;
 use crate::posing;
@@ -61,6 +68,13 @@ const KINDS: [&str; 5] = ["pr", "page", "file", "diff", "terminal"];
 /// The most an answer's body may run to, far past any look's id and value.
 pub const LONGEST: usize = 4096;
 
+/// How often the kernel is asked who pressed: eight at once, far past a
+/// page's one ask on loading and one on pressing, then four a second.
+const WALKS: (u32, Duration) = (8, Duration::from_millis(250));
+
+/// How often a refusal is journalled: sixteen at once, then one a second.
+const REFUSALS: (u32, Duration) = (16, Duration::from_secs(1));
+
 /// Where answers are checked and sent, and what was carried.
 pub struct Answers {
     /// The looks' daemon (the to-do daemon), asked for a look as it stands.
@@ -74,6 +88,10 @@ pub struct Answers {
     claims: Mutex<Claims>,
     /// Who pressed: the person, an agent, or nothing told.
     tell: Teller,
+    /// How often `tell` may be asked.
+    walks: Pace,
+    /// How often a refusal is journalled.
+    refusals: Pace,
 }
 
 /// The looks whose answers were carried, and those on their way.
@@ -85,6 +103,8 @@ struct Claims {
 
 /// The words the node refuses a steer with when no session goes by its
 /// address now, the one refusal the next session is told in its place for.
+/// The node's protocol names these words (mycelium's PROTOCOL.md, under a
+/// steer: "as `no session goes by SAK9FZ now`"), so they're its to keep.
 const GONE: &str = "no session goes by ";
 
 /// What a request to answer says of itself.
@@ -127,6 +147,20 @@ impl Answers {
             secret,
             claims: Mutex::default(),
             tell,
+            walks: Pace::new(WALKS.0, WALKS.1),
+            refusals: Pace::new(REFUSALS.0, REFUSALS.1),
+        }
+    }
+
+    /// Journals `refusal`, unless refusals come too fast to journal each,
+    /// saying how many went unjournalled before it.
+    pub fn journal(&self, refusal: &str) {
+        match self.refusals.take() {
+            Turn::Go { turned: 0 } => eprintln!("{refusal}"),
+            Turn::Go { turned } => {
+                eprintln!("{refusal} ({turned} refused before it went unjournalled)");
+            }
+            Turn::Wait => {}
         }
     }
 
@@ -270,6 +304,13 @@ impl Answers {
     /// Whether the process at the other end of `asked`'s connection is the
     /// person's, as the kernel tells it.
     fn pressed_by_the_person(&self, asked: &Asked) -> Result<(), Refused> {
+        if self.walks.take() == Turn::Wait {
+            return Err(refused(
+                "busy",
+                429,
+                "who pressed was asked too often just now: try again in a moment",
+            ));
+        }
         let told = asked.ends.map(|(peer, server)| (self.tell)(peer, server));
         match told {
             Some(Told::Person) => Ok(()),
@@ -618,6 +659,38 @@ mod tests {
             "a press with no ends was carried: {}",
             why.why
         );
+    }
+
+    #[test]
+    fn who_pressed_is_asked_only_so_often_and_a_flood_is_refused_busy() {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let walked = Arc::new(AtomicUsize::new(0));
+        let counting = Arc::clone(&walked);
+        let answers = Answers::holding(
+            (PathBuf::new(), PathBuf::new()),
+            "c0ffee".to_owned(),
+            Box::new(move |_, _| {
+                counting.fetch_add(1, Ordering::Relaxed);
+                Told::Person
+            }),
+        );
+        let asking = pressed_here_but(|asked| asked.origin = None);
+        let words: Vec<_> = (0..40)
+            .map(|_| answers.cookie_for(&asking).err().map(|why| why.word))
+            .collect();
+        let busy = words.iter().filter(|word| **word == Some("busy")).count();
+        // Forty at once take a moment at most, in which a spell or two
+        // may give one back.
+        let walks = walked.load(Ordering::Relaxed);
+        assert!((8..=10).contains(&walks), "forty asks walked {walks} times");
+        assert_eq!(
+            busy + walks,
+            40,
+            "an ask was neither walked nor refused busy"
+        );
+        assert_eq!(words[0], None, "the first ask wasn't given the cookie");
     }
 
     #[test]

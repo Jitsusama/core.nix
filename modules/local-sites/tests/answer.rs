@@ -252,6 +252,11 @@ impl Drop for Served {
 static STARTING: Mutex<()> = Mutex::new(());
 
 fn served(name: &str) -> Served {
+    served_by(name, Path::new(GATE))
+}
+
+/// A server as `served` starts one, judging agents' by the gate `places`.
+fn served_by(name: &str, places: &Path) -> Served {
     let folder =
         std::env::temp_dir().join(format!("local-sites-answer-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&folder);
@@ -278,7 +283,7 @@ fn served(name: &str) -> Served {
         "home": home,
         "mounts": {},
         "feeds": {},
-        "answers": {"looks": socket, "node": socket, "processes": kernel.root, "places": GATE},
+        "answers": {"looks": socket, "node": socket, "processes": kernel.root, "places": places},
     });
     let file = folder.join("config.json");
     std::fs::write(&file, config.to_string()).expect("the config");
@@ -385,6 +390,22 @@ fn from_a_page(port: u16, pressed: &str) -> String {
         "Origin: http://sites.localhost:{port}\r\nSec-Fetch-Site: same-origin\r\n\
          Cookie: {pressed}\r\nContent-Type: application/json\r\n"
     )
+}
+
+#[test]
+fn a_gate_it_cant_read_leaves_the_sites_served_and_answers_in_for_you() {
+    let gate = std::env::temp_dir().join(format!("local-sites-gate-{}", std::process::id()));
+    std::fs::write(&gate, "allow /app\\.slice/\n").expect("a gate refusing no place");
+    let served = served_by("ungated", &gate);
+    let (status, _, body) = asked(&served, "GET /", "", "");
+    assert_eq!(status, "HTTP/1.1 200 OK", "the home wasn't served: {body}");
+    let ours = "Sec-Fetch-Site: same-origin\r\n";
+    let (status, _, body) = asked(&served, "GET /answer", ours, "");
+    assert_eq!(
+        status, "HTTP/1.1 404 Not Found",
+        "answers were taken: {body}"
+    );
+    let _ = std::fs::remove_file(&gate);
 }
 
 #[test]
@@ -543,6 +564,37 @@ fn a_session_slow_to_answer_holds_up_no_other_looks_press_and_its_own_once() {
             "the slow look's press was held up: {body}"
         );
     });
+}
+
+#[test]
+fn an_answer_longer_than_a_look_and_a_value_or_saying_no_length_is_never_read() {
+    let served = served("long");
+    let pressed = given(&served);
+    let port = served.port;
+    let page = from_a_page(port, &pressed);
+    let long = format!("{{\"look\": \"l1\", \"value\": \"{}\"}}", "y".repeat(5000));
+    let (status, _, _) = asked(&served, "POST /answer", &page, &long);
+    assert_eq!(
+        status, "HTTP/1.1 413 Content Too Large",
+        "a long answer was read"
+    );
+    let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("it connects");
+    served.kernel.opened(&stream, Holder::Person);
+    write!(
+        stream,
+        "POST /answer HTTP/1.1\r\nHost: sites.localhost:{port}\r\n{page}\r\n"
+    )
+    .expect("it asks");
+    let mut answer = String::new();
+    stream.read_to_string(&mut answer).expect("it's answered");
+    assert!(
+        answer.starts_with("HTTP/1.1 413 Content Too Large"),
+        "an answer saying no length was read: {answer}"
+    );
+    assert!(
+        served.steered.lock().expect("the steers").is_empty(),
+        "an answer never read was carried"
+    );
 }
 
 #[test]

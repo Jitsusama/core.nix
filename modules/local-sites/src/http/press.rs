@@ -75,10 +75,10 @@ pub(super) fn press(server: &Server, stream: &mut TcpStream, head: &Head) {
             );
         }
         Err(refused) => {
-            eprintln!(
+            answers.journal(&format!(
                 "local-sites: refused an answer pressed on the sites ({}): {pressed:?}: {}",
                 refused.word, refused.why
-            );
+            ));
             let said = json!({"refused": refused.word, "why": refused.why});
             send(
                 stream,
@@ -115,10 +115,10 @@ fn given(answers: &Answers, stream: &mut TcpStream, head: &Head) {
             &[("Set-Cookie", &cookie)],
         ),
         Err(refused) => {
-            eprintln!(
+            answers.journal(&format!(
                 "local-sites: gave no page the answers' cookie ({}): {}",
                 refused.word, refused.why
-            );
+            ));
             let said = json!({"refused": refused.word, "why": refused.why});
             let reason = reason_for(refused.status);
             let body = said.to_string();
@@ -133,7 +133,9 @@ fn given(answers: &Answers, stream: &mut TcpStream, head: &Head) {
     }
 }
 
-/// The reason phrase an answer's refusal is sent with, by its status.
+/// The reason phrase an answer's refusal is sent with, by its status; one
+/// not named here is said only as refused, so it never reads as a daemon's
+/// failure it wasn't.
 const fn reason_for(status: u16) -> &'static str {
     match status {
         400 => "Bad Request",
@@ -141,6 +143,37 @@ const fn reason_for(status: u16) -> &'static str {
         404 => "Not Found",
         409 => "Conflict",
         415 => "Unsupported Media Type",
-        _ => "Bad Gateway",
+        429 => "Too Many Requests",
+        502 => "Bad Gateway",
+        _ => "Refused",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use regex_lite::Regex;
+
+    use super::reason_for;
+
+    #[test]
+    fn every_status_an_answer_is_refused_with_has_its_own_phrase() {
+        let refusing = Regex::new(r#"refused\(\s*"[a-z]+",\s*(\d{3}),"#).expect("a pattern");
+        let statuses: Vec<u16> = refusing
+            .captures_iter(include_str!("../answer.rs"))
+            .map(|found| found[1].parse().expect("a status"))
+            .collect();
+        assert!(statuses.len() > 20, "answer.rs's refusals weren't found");
+        for status in statuses {
+            assert_ne!(
+                reason_for(status),
+                "Refused",
+                "{status} has no phrase of its own"
+            );
+        }
+        assert_eq!(
+            reason_for(503),
+            "Refused",
+            "an unnamed status read as another"
+        );
     }
 }

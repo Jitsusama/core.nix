@@ -2658,7 +2658,9 @@
     rounded boxes,
     dashed while taking no builds, their words read unopened, opened by link and let go by m,
     an asking cell's drawer saying its question whole and leading with Go to It, which g follows,
-    a key of each
+    the looks waiting on Joel listed in Now and beside a cell's drawer, narrowed to that cell's
+    own and hidden beside a machine's, and one answered there carried once to the session that
+    asked, its row saying so with no answers left, a key of each
     kind keys.ts decides answering (the keys dialog, find and a letter typed into it, n and N,
     Escape in its order, the walk, the machines, Now and Escape closing it, the view zoomed in
     and out about its middle, panned a step across and down and fitted whole again, -

@@ -31,6 +31,7 @@ mod door;
 mod files;
 mod gate;
 mod http;
+mod pace;
 mod page;
 mod peer;
 mod posing;
@@ -131,22 +132,21 @@ fn serve(file: &PathBuf) -> Result<(), Failure> {
     })?;
     // Only a kernel that tells who holds a connection lets an answer be
     // known as the person's (peer.rs); elsewhere the pages answer in For You.
-    let places = config
-        .answers
-        .as_ref()
-        .map(|at| {
-            std::fs::read_to_string(&at.places)
-                .map_err(|why| why.to_string())
-                .and_then(|text| Places::read(&text))
-                .map_err(|why| {
-                    Failure::new(
-                        Exit::Failed,
-                        "local-sites can't read where agents' work runs",
-                    )
-                    .because(why)
-                })
-        })
-        .transpose()?;
+    // So do they where the gate's places can't be read: that's answering
+    // lost, not the sites, which are served all the same.
+    let places = config.answers.as_ref().and_then(|at| {
+        std::fs::read_to_string(&at.places)
+            .map_err(|why| why.to_string())
+            .and_then(|text| Places::read(&text))
+            .map_err(|why| {
+                eprintln!(
+                    "local-sites: takes no answers here, since it can't read where agents' \
+                     work runs ({}): {why}",
+                    at.places.display()
+                );
+            })
+            .ok()
+    });
     let answers = config
         .answers
         .as_ref()

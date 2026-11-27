@@ -301,8 +301,9 @@ in
     default = { };
     description = ''
       The daemons a page may read live, each at /feed/<name>, with the
-      kinds and fields of each it may read. A page reads and never acts:
+      kinds and fields of each it may read. A feed reads and never acts:
       the server passes only hello, get, list, watch, unwatch and health.
+      A page's one act, an answer to a look, goes by /answer alone.
     '';
   };
 

@@ -77,6 +77,7 @@ const REFUSALS: Readonly<Record<string, string>> = {
   unread: `The server couldn't read it as it stands, ${NOT_SENT}: ${FOR_YOU}.`,
   unreached: UNREACHED,
   unsteered: UNREACHED,
+  busy: `The server was asked too often just now, ${NOT_SENT}: press it again in a moment.`,
 };
 
 /**
@@ -88,6 +89,7 @@ const UNREADY: Readonly<Record<string, string>> = {
   untold: `The server couldn't tell this page is yours: ${FOR_YOU}.`,
   origin: `Only a page of your sites can answer: ${FOR_YOU}.`,
   site: `Only a page of your sites can answer: ${FOR_YOU}.`,
+  busy: "The server was asked too often just now: reload this page in a moment to answer here.",
 };
 
 /** The browser's post of `body` to the server that served the page. */

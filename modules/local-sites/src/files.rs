@@ -30,7 +30,8 @@ use crate::config::Config;
 const HOMES: &str = "homes.json";
 
 /// The files the home's builder writes into the home's folder (home.py's
-/// `OWN` and `FILES`), which only that folder answers.
+/// `OWN` and `FILES`), which only that folder answers; a test holds the two
+/// alike.
 const HOME_OWN: [&str; 7] = [
     "index.html",
     "favicon.svg",
@@ -184,10 +185,37 @@ fn decoded(path: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
+    use std::collections::{BTreeMap, BTreeSet};
     use std::fs;
 
     use super::*;
+
+    /// The names a tuple of home.py's holds, as `NAME = ("a", "b")`.
+    fn named<'a>(builder: &'a str, tuple: &str) -> Vec<&'a str> {
+        let opening = format!("\n{tuple} = (");
+        let start = builder.find(&opening).expect("home.py names the tuple") + opening.len();
+        let held = &builder[start..];
+        let held = &held[..held.find(')').expect("the tuple closes")];
+        held.split(',')
+            .map(|name| name.trim().trim_matches('"'))
+            .filter(|name| !name.is_empty())
+            .collect()
+    }
+
+    #[test]
+    fn the_home_s_own_files_are_the_ones_its_builder_writes() {
+        let builder = include_str!("../home/home.py");
+        let written: BTreeSet<&str> = [named(builder, "OWN"), named(builder, "FILES")]
+            .concat()
+            .into_iter()
+            .collect();
+        assert!(written.len() > 4, "home.py's tuples read as {written:?}");
+        let known: BTreeSet<&str> = HOME_OWN.into_iter().collect();
+        assert_eq!(
+            known, written,
+            "the server knows other files as the home's own than home.py writes"
+        );
+    }
 
     struct Folders {
         config: Config,

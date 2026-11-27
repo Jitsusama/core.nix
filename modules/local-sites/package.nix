@@ -21,6 +21,8 @@ rustPlatform.buildRustPackage rec {
       ./tests/common/mod.rs
       # The looks a page and the server must each read alike.
       ./kit/tests/offered.json
+      # The home's builder, whose own files the server knows by name.
+      ./home/home.py
       ../daemon-serve/Cargo.toml
       ../daemon-serve/src
       ../terminal-kit/Cargo.toml

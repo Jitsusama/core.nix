@@ -61,33 +61,55 @@ pub enum Told {
     Untold(&'static str),
 }
 
-/// The places agents' work runs in, each a pattern over a cgroup's path.
+/// The places agents' work runs in, as the gate's rules say them in order:
+/// each a pattern over a cgroup's path, refused or allowed.
 #[derive(Debug, Clone)]
-pub struct Places(Vec<Regex>);
+pub struct Places(Vec<(Regex, bool)>);
 
 impl Places {
-    /// The places `text` names, written as the gate's `gate.conf` is: a
-    /// `refuse` line for each, `#` comments and blank lines aside. Any other
-    /// line is refused, so a verdict this doesn't know of can't pass for one
-    /// it does.
+    /// The places `text` names, written as the gate's `gate.conf` is and
+    /// read as its `parseGate` reads it: `refuse` and `allow` lines in order,
+    /// and `watch`, `#` comments and blank lines aside. `watch` has the gate
+    /// serve what it would refuse while it's tried; answers are refused
+    /// all the same, since one carried is the person's word. Any other line
+    /// is refused, so a verdict this doesn't know of can't pass for one it
+    /// does, and so is a file refusing no place, as the gate refuses one,
+    /// since it would take every press as the person's.
     pub fn read(text: &str) -> Result<Self, String> {
-        text.lines()
+        let rules = text
+            .lines()
             .map(str::trim)
-            .filter(|line| !line.is_empty() && !line.starts_with('#'))
+            .filter(|line| !line.is_empty() && !line.starts_with('#') && *line != "watch")
             .map(|line| {
-                let pattern = line
-                    .strip_prefix("refuse ")
-                    .ok_or_else(|| format!("the gate's line `{line}` refuses nothing"))?;
-                Regex::new(pattern.trim())
+                let (word, pattern) = line.split_once(' ').unwrap_or((line, ""));
+                let pattern = pattern.trim();
+                let refused = match word {
+                    "refuse" if !pattern.is_empty() => true,
+                    "allow" if !pattern.is_empty() => false,
+                    _ => return Err(format!("the gate's line `{line}` is no rule")),
+                };
+                Regex::new(pattern)
+                    .map(|place| (place, refused))
                     .map_err(|why| format!("the gate's `{pattern}` isn't a pattern: {why}"))
             })
-            .collect::<Result<_, _>>()
-            .map(Self)
+            .collect::<Result<Vec<_>, _>>()?;
+        if !rules.iter().any(|(_, refused)| *refused) {
+            return Err("the gate refuses no place".to_owned());
+        }
+        Ok(Self(rules))
     }
 
-    /// Whether a process in the cgroup `path` runs where agents' work does.
-    fn name(&self, path: &str) -> bool {
-        path.contains(OFFLOAD) || self.0.iter().any(|place| place.is_match(path))
+    /// What the cgroup `path` is, as the first rule naming it says: agents'
+    /// work (`Some(true)`), allowed (`Some(false)`), or named by none.
+    /// nix-offload's place is agents' whatever the rules say.
+    fn name(&self, path: &str) -> Option<bool> {
+        if path.contains(OFFLOAD) {
+            return Some(true);
+        }
+        self.0
+            .iter()
+            .find(|(place, _)| place.is_match(path))
+            .map(|(_, refused)| *refused)
     }
 }
 
@@ -212,14 +234,16 @@ impl Processes {
             let (Some((name, parent)), Some(place)) = (named(&status), placed(&cgroup)) else {
                 return Told::Untold("a forebear of its process can't be read");
             };
-            if self.places.name(place) {
+            let ruled = self.places.name(place);
+            if ruled == Some(true) {
                 let unit = place.rsplit('/').find(|part| !part.is_empty());
                 return Told::Agent(unit.unwrap_or(place).to_owned());
             }
             if name == PI || name == PI_HOST {
                 return Told::Agent(format!("{name}'s process {at}"));
             }
-            if parent <= 1 {
+            // A place allowed ends the search, as it does at the gate.
+            if ruled == Some(false) || parent <= 1 {
                 return Told::Person;
             }
             at = parent;
@@ -499,15 +523,57 @@ mod tests {
             ("init.scope", false),
         ] {
             assert_eq!(
-                places.name(&format!("{account}{cgroup}")),
+                places.name(&format!("{account}{cgroup}")) == Some(true),
                 agents,
                 "{cgroup}"
             );
         }
-        let refused = Places::read("serve /app\\.slice/\n").expect_err("refused");
-        assert!(refused.contains("refuses nothing"), "{refused}");
-        let refused = Places::read("refuse /(\n").expect_err("refused");
-        assert!(refused.contains("isn't a pattern"), "{refused}");
+        for (text, why) in [
+            ("serve /app\\.slice/\n", "is no rule"),
+            ("refuse\n", "is no rule"),
+            ("refuse /(\n", "isn't a pattern"),
+            ("allow /app\\.slice/\n", "refuses no place"),
+            ("# emptied\n\nwatch\n", "refuses no place"),
+        ] {
+            let refused = Places::read(text).expect_err("refused");
+            assert!(refused.contains(why), "{text:?} was refused as {refused}");
+        }
+    }
+
+    #[test]
+    fn the_gates_allow_and_watch_are_read_as_the_gate_reads_them() {
+        let places =
+            Places::read("watch\nallow /agents\\.slice/kept\\.service\nrefuse /agents\\.slice/\n")
+                .expect("a gate allowing and watching reads");
+        for (cgroup, ruled) in [
+            ("/agents.slice/kept.service", Some(false)),
+            ("/agents.slice/pi-host-a.service", Some(true)),
+            ("/offload.slice/o.scope", Some(true)),
+            ("/app.slice/app-niri-chromium-1.scope", None),
+        ] {
+            assert_eq!(places.name(cgroup), ruled, "{cgroup}");
+        }
+        // A place allowed ends the search, as at the gate, though a forebear
+        // runs where agents' work does.
+        if cfg!(target_endian = "big") {
+            return;
+        }
+        let (peer, server) = ends();
+        let proc = Proc::new("allowed");
+        let uid = uid_of(&proc.root);
+        proc.connected(uid, 777);
+        proc.process(900, "systemd", 1, &format!("{MANAGER}init.scope\n"));
+        let agents = format!("{MANAGER}agents.slice/sessions-kitty.service\n");
+        proc.process(950, "kitty", 900, &agents);
+        let kept = format!("{MANAGER}agents.slice/kept.service\n");
+        proc.process(952, "chromium", 950, &kept);
+        proc.holds(952, 777);
+        let processes = Processes::at(proc.root.clone(), uid, places);
+        assert_eq!(
+            processes.tell(peer, server),
+            Told::Person,
+            "a press from a place the gate allows was refused"
+        );
     }
 
     #[test]
