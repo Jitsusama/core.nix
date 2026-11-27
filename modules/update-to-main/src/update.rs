@@ -13,6 +13,7 @@
 //! parameters changed becomes what the machine boots only once it passes.
 //! Each step is told as it starts.
 
+use crate::boot_default;
 use crate::busy;
 use crate::config::{Config, Kind};
 use crate::follows;
@@ -462,6 +463,9 @@ fn switch(
     head: String,
     followed: follows::Followed,
 ) -> Line {
+    // Read before this switch moves the profile, which would leave it
+    // naming another than the profile the boot default was kept beside.
+    let default = boot_default::kept(config);
     // After a switch its daemon left, what runs was never checked, so a
     // switch now goes back, if it must, to what ran before that one
     // began, whatever main builds since.
@@ -474,7 +478,13 @@ fn switch(
             // Going back from this very system didn't finish, cut off as
             // a Mac's is when going back reloads its daemon too, or
             // failed: it's made again, not the broken switch.
-            let mut failure = going_back(config, built.system, Failure::new(why), Some(previous));
+            let mut failure = going_back(
+                config,
+                built.system,
+                Failure::new(why),
+                Some(previous),
+                default,
+            );
             failure
                 .why
                 .push_str(", making again a going back that didn't finish");
@@ -515,7 +525,7 @@ fn switch(
     if let Err(failure) = begin(config, &begun) {
         return failed(last, failure);
     }
-    switch_from(config, built, last, head, followed, previous)
+    switch_from(config, built, last, head, followed, previous, default)
 }
 
 /// Whether the machine runs `built` as a switch to it leaves it: running
@@ -577,6 +587,7 @@ fn switch_from(
     head: String,
     followed: follows::Followed,
     previous: Option<std::path::PathBuf>,
+    default: Result<std::path::PathBuf, String>,
 ) -> Line {
     // Whatever waited for a hold is older than what switches now.
     let _ = fs::remove_file(waiting_file(config));
@@ -591,8 +602,13 @@ fn switch_from(
             // the head to build again, not a checked switch marked unended.
             if switched.unbooted {
                 keep_boots(config, built.system, UNCHECKED);
+                // The boot default stays, beside the profile as it points now.
+                if let Ok(default) = &default {
+                    boot_default::keep(config, default);
+                }
             } else {
                 booted_as_run(config);
+                boot_default::keep(config, built.system);
             }
             end_switch(config);
             if let Err(e) =
@@ -606,7 +622,10 @@ fn switch_from(
             let mut boots = None;
             if switched.unbooted {
                 match system::boot_once_checked(config, built, &head) {
-                    Ok(()) => booted_as_run(config),
+                    Ok(()) => {
+                        booted_as_run(config);
+                        boot_default::keep(config, built.system);
+                    }
                     Err(failure) => {
                         switched.restart = None;
                         let why = format!(
@@ -628,19 +647,24 @@ fn switch_from(
                 followed,
             }
         }
-        Err(failure) => failed(last, going_back(config, built.system, failure, previous)),
+        Err(failure) => failed(
+            last,
+            going_back(config, built.system, failure, previous, default),
+        ),
     }
 }
 
 /// Goes back from `system`, whose switch failed as `failure` says, to
 /// `previous`, saying how that went. Going back is marked begun first,
 /// so one its daemon is cut off in, as a Mac's going back can reload it
-/// as surely as going forward, is finished by the next update.
+/// as surely as going forward, is finished by the next update. `default`
+/// is the boot default update-to-main left before `system`'s switch.
 fn going_back(
     config: &Config,
     system: &std::path::Path,
     mut failure: Failure,
     previous: Option<std::path::PathBuf>,
+    default: Result<std::path::PathBuf, String>,
 ) -> Failure {
     let Some(previous) = previous else {
         failure.why.push_str("; there was no system to go back to");
@@ -654,12 +678,19 @@ fn going_back(
     if let Err(unmarked) = begin(config, &begun) {
         eprintln!("{}", unmarked.why);
     }
-    match system::go_back(config, &previous, unchecked(config, &previous)) {
+    let unchecked = unchecked(config, &previous);
+    match system::go_back(config, &previous, unchecked) {
         Ok(()) => {
             end_switch(config);
             failure
                 .why
                 .push_str("; the machine went back to what it ran");
+            if unchecked {
+                boots_as_before(config, system, default, &mut failure);
+            } else {
+                // Going back switched, which made it the boot default.
+                boot_default::keep(config, &previous);
+            }
         }
         Err(back) => {
             failure.why.push_str("; going back failed too: ");
@@ -668,6 +699,46 @@ fn going_back(
         }
     }
     failure
+}
+
+/// Puts back `default`, the boot default update-to-main left before
+/// `system`'s switch, once going back only activated what ran before and
+/// so left the boot default where that switch put it, saying in `failure`
+/// what the machine boots next.
+fn boots_as_before(
+    config: &Config,
+    system: &std::path::Path,
+    default: Result<std::path::PathBuf, String>,
+    failure: &mut Failure,
+) {
+    if !system::boots_at_once(config, system) {
+        // Its switch only activated it, so the boot default is where it
+        // was, kept beside the profile as it points now.
+        if let Ok(default) = &default {
+            boot_default::keep(config, default);
+        }
+        return;
+    }
+    let why = match default {
+        Err(why) => why,
+        Ok(default) => match boot_default::put_back(config, &default) {
+            Ok(()) => {
+                boot_default::keep(config, &default);
+                failure.why.push_str(", booting what it booted before next");
+                return;
+            }
+            Err(back) => {
+                failure.lines.extend(back.lines);
+                format!(
+                    "making {} the boot default again failed: {}",
+                    default.display(),
+                    back.why
+                )
+            }
+        },
+    };
+    let next = format!(", but it boots {} next, since {why}", system.display());
+    failure.why.push_str(&next);
 }
 
 /// The commit the machine last switched to, when it has.
