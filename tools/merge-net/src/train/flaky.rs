@@ -162,16 +162,21 @@ const REPORTS_EVERY_FAILURE: &[&str] = &[
 
 /// Whether the riders, moving `files`, moved what a rule runs besides the
 /// tree it reads: a rule's script, wrapper or waiting list, under
-/// `tests/rules/`, the flake that wires each rule, or the lock that gives
-/// them Python. A rider's rule that stops early, or says a new failure as
-/// main's, would print main's lines and hide its break behind main's red,
-/// so then no red is main's. None, the files unread, moved them all.
+/// `tests/rules/`; the flake, which wires each rule and gives the checks
+/// their `pkgs`; the root `checks.nix`, which hands every folder's checks
+/// that `pkgs` and `self`, picks the folders and makes each check; or the
+/// lock that gives them Python. A rule reads nothing else of the
+/// repository but the tree it judges. A rider's rule that stops early, or
+/// says a new failure as main's, would print main's lines and hide its
+/// break behind main's red, so then no red is main's. None, the files
+/// unread, moved them all.
 pub(super) fn moves_a_rule(files: Option<&[String]>) -> bool {
-    files.is_none_or(|files| {
-        files.iter().any(|file| {
-            file.starts_with("tests/rules/") || file == "flake.nix" || file == "flake.lock"
-        })
-    })
+    files.is_none_or(|files| files.iter().any(|file| runs_a_rule(file)))
+}
+
+/// Whether `file` is one of those `moves_a_rule` names.
+fn runs_a_rule(file: &str) -> bool {
+    file.starts_with("tests/rules/") || ["flake.nix", "flake.lock", "checks.nix"].contains(&file)
 }
 
 /// The checks the gate's `words` name as added or changed, which it built,
@@ -586,14 +591,18 @@ fn said(blamed: Blame) -> &'static str {
 /// none where git can't say.
 fn moved_between(checkout: &Path, base: &str, candidate: &str) -> Option<Vec<String>> {
     let ran = Command::new("git")
-        .args(["diff", "--name-only", "--no-renames", base, candidate])
+        // Each name whole and unquoted, ended by a NUL, since git quotes a
+        // name with an unusual byte otherwise, and a quoted name under
+        // tests/rules/ wouldn't start with it.
+        .args(["diff", "--name-only", "-z", "--no-renames", base, candidate])
         .current_dir(checkout)
         .output()
         .ok()
         .filter(|ran| ran.status.success())?;
     Some(
         String::from_utf8_lossy(&ran.stdout)
-            .lines()
+            .split('\0')
+            .filter(|name| !name.is_empty())
             .map(str::to_owned)
             .collect(),
     )

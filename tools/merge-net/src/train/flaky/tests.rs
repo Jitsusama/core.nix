@@ -272,13 +272,53 @@ fn mains_red_in_a_rule_the_riders_moved_is_theirs() {
         "the lock giving the rules Python moved unseen"
     );
     assert!(
-        !moved(&["modules/a/b.nix", "tests/vm/rules-vm-test.py"]),
+        moved(&["checks.nix"]),
+        "the root checks.nix, handing each rule its pkgs, moved unseen"
+    );
+    assert!(
+        !moved(&[
+            "modules/a/b.nix",
+            "modules/a/checks.nix",
+            "tests/vm/rules-vm-test.py"
+        ]),
         "files no rule runs were read as a rule's"
     );
     assert!(
         moves_a_rule(None),
         "files git couldn't read were read as moving no rule"
     );
+}
+
+/// The files moved between two commits are read whole from git, a name
+/// with an unusual byte too, which git would otherwise quote.
+#[test]
+fn the_files_moved_between_two_commits_are_read_unquoted() {
+    let git = super::super::tests::git_in;
+    let repo = std::env::temp_dir().join(format!("merge-net-moved-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&repo);
+    let base = super::super::tests::based(&repo);
+    fs::create_dir_all(repo.join("tests/rules")).unwrap();
+    fs::write(repo.join("tests/rules/r\u{e9}gle.py"), "").unwrap();
+    fs::write(repo.join("shared"), "moved\n").unwrap();
+    git(&repo, &["add", "-A"]).unwrap();
+    git(&repo, &["commit", "-q", "-m", "moves"]).unwrap();
+    let candidate = git(&repo, &["rev-parse", "HEAD"]).unwrap();
+    let moved = moved_between(&repo, &base, &candidate);
+    assert_eq!(
+        moved.as_deref(),
+        Some(&["shared".to_owned(), "tests/rules/r\u{e9}gle.py".to_owned()][..]),
+        "the files moved weren't read as git has them"
+    );
+    assert!(
+        moves_a_rule(moved.as_deref()),
+        "a rule's file with an unusual name moved unseen"
+    );
+    assert_eq!(
+        moved_between(&repo, &base, &"0".repeat(40)),
+        None,
+        "a commit git hasn't was read as moving nothing"
+    );
+    fs::remove_dir_all(&repo).unwrap();
 }
 
 /// treefmt stops at the first file no formatter reads, so main's
