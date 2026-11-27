@@ -101,6 +101,8 @@ pub fn niri_config(
 
 #[cfg(test)]
 mod tests {
+    use std::os::unix::fs::DirBuilderExt;
+
     use super::*;
 
     /// A built folder, a working copy and a preview's own, made afresh.
@@ -120,11 +122,14 @@ mod tests {
                     root.display()
                 );
             }
-            // Made afresh, so an earlier run's files, or a folder planted
-            // there, fail the test rather than feed it.
-            fs::create_dir(&root).unwrap_or_else(|error| {
-                panic!("{} should be made afresh: {error}", root.display())
-            });
+            // Made afresh, and only this user's, so anything made or planted
+            // there since it was cleared fails the test rather than feed it.
+            fs::DirBuilder::new()
+                .mode(0o700)
+                .create(&root)
+                .unwrap_or_else(|error| {
+                    panic!("{} should be made afresh: {error}", root.display())
+                });
             for folder in ["built/launcher", "work/modules/quickshell/launcher"] {
                 fs::create_dir_all(root.join(folder)).expect("a folder");
             }
@@ -147,6 +152,12 @@ mod tests {
         fn known(&self, tracked: &[&str]) -> Known {
             let tracked: Vec<PathBuf> = tracked.iter().map(PathBuf::from).collect();
             known(&self.at("work"), &tracked)
+        }
+    }
+
+    impl Drop for Folders {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.root);
         }
     }
 
