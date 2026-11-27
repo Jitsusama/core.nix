@@ -178,7 +178,9 @@ fn a_stop_ends_the_preview_and_the_desktop_it_started() {
     );
 
     let pid = i32::try_from(preview.id()).expect("a pid");
-    let stopped = Timed::start();
+    // Held short of the five seconds' grace a desktop that ignores being
+    // asked waits out, so that one fails however busy the machine.
+    let stopped = Timed::start().short_of(Duration::from_secs(5));
     // SAFETY: kill only signals the preview this test started.
     unsafe { libc::kill(pid, libc::SIGTERM) };
     let status = preview.wait().expect("the preview ends");

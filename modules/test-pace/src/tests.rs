@@ -70,6 +70,7 @@ fn a_step_longer_than_any_pace_allows_is_not_within_it() {
             .checked_sub(Duration::from_secs(60))
             .expect("the host has run for a minute"),
         busy: 0.0,
+        wrong: None,
     };
 
     assert!(
@@ -84,6 +85,7 @@ fn a_step_begun_on_a_busy_host_keeps_that_pace_though_the_host_quietens() {
     let timed = Timed {
         began: Instant::now(),
         busy: MOST_PACE,
+        wrong: None,
     };
 
     assert!(
@@ -94,10 +96,63 @@ fn a_step_begun_on_a_busy_host_keeps_that_pace_though_the_host_quietens() {
 }
 
 #[test]
+fn a_bound_held_short_stops_short_of_the_wrong_behaviours_time() {
+    // Asked, the desktop ends at once; ignoring it, it waits out five
+    // seconds. At the most pace a two-second bound would reach eight.
+    let timed = Timed {
+        began: Instant::now(),
+        busy: MOST_PACE,
+        wrong: None,
+    }
+    .short_of(Duration::from_secs(5));
+
+    assert_eq!(
+        timed.allowed(Duration::from_secs(2)),
+        Duration::from_secs(5).saturating_sub(SLACK)
+    );
+}
+
+#[test]
+fn a_bound_held_short_still_allows_its_idle_time_and_stretches_below_the_wrong_one() {
+    assert_eq!(
+        held_short(
+            Duration::from_secs(3),
+            Duration::from_secs(2),
+            Some(Duration::from_secs(5))
+        ),
+        Duration::from_secs(3),
+        "a stretch short of the wrong time is kept"
+    );
+    assert_eq!(
+        held_short(
+            Duration::from_secs(9),
+            Duration::from_secs(6),
+            Some(Duration::from_secs(5))
+        ),
+        Duration::from_secs(6),
+        "an idle bound already past the wrong time is left as it is"
+    );
+    assert_eq!(
+        held_short(Duration::from_secs(9), Duration::from_secs(2), None),
+        Duration::from_secs(9),
+        "with no wrong time the stretch stands"
+    );
+}
+
+#[test]
+fn a_macs_load_averages_say_the_last_minute_first_too() {
+    assert_eq!(
+        ready_each_minute("{ 2.10 1.98 1.85 }\n").map(f64::to_bits),
+        Some(2.10_f64.to_bits())
+    );
+}
+
+#[test]
 fn what_a_failure_says_names_both_bounds() {
     let timed = Timed {
         began: Instant::now(),
         busy: 0.0,
+        wrong: None,
     };
 
     let said = timed.said(Duration::from_secs(2));

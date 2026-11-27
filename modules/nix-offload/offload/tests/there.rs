@@ -896,7 +896,9 @@ fn a_send_that_falls_behind_stops_and_the_builder_builds_the_rest() {
     )
     .unwrap();
     fs::write(folder.path().join("copy-takes"), "30").unwrap();
-    let began = test_pace::Timed::start();
+    // Held short of the copy's thirty seconds, so a send run to its end
+    // fails however busy the machine.
+    let began = test_pace::Timed::start().short_of(std::time::Duration::from_secs(30));
     let ran = there_command(folder.path(), &offload, folder.path())
         .arg("/nix/store/aaaa-system.drv")
         .env("NIX_OFFLOAD_SEND_WITHIN", "1")
@@ -4660,7 +4662,9 @@ fn a_mac_that_stalls_is_ended_and_kept_as_skipped() {
     fs::write(changed.bin.join("says"), "changed  a\n").unwrap();
     fs::write(changed.bin.join("holds-mac"), "60").unwrap();
 
-    let asked = test_pace::Timed::start();
+    // Held short of the Mac's sixty seconds, so a gate held that long
+    // fails however busy the machine.
+    let asked = test_pace::Timed::start().short_of(std::time::Duration::from_secs(60));
     let (ran, _) = changed.run_bounded(3, &GATE);
     assert!(
         asked.within(std::time::Duration::from_secs(45)),

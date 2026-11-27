@@ -16,11 +16,19 @@
 //! [`MOST_PACE`]. [`SLACK`] is added, since a step of a few milliseconds
 //! can lose that much to one turn of the scheduler that no average sees.
 //!
-//! The load average is the host's, a build sandbox not hiding it. Where
-//! it can't be read, as on a Mac, the pace is one and the bound is the
-//! idle one plus the slack.
+//! Many timed steps tell right behaviour from wrong by time alone: asked,
+//! the desktop ends at once, where one that ignores being asked waits out
+//! a fixed five seconds' grace. Stretching such a bound past five seconds
+//! would pass the wrong behaviour too, so a step like that is started with
+//! [`Timed::short_of`], naming the fixed time the wrong behaviour takes,
+//! and its bound stretches only to [`SLACK`] short of it.
+//!
+//! The load average is the host's, a build sandbox not hiding it. Linux
+//! says it in `/proc/loadavg` and a Mac through `sysctl vm.loadavg`, as
+//! Python's `os.getloadavg`, which `vm_helpers` reads, takes it on each.
+//! Where it can't be read the pace is one and the bound is the idle one
+//! plus the slack.
 
-use std::fs;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -36,13 +44,20 @@ pub const SLACK: Duration = Duration::from_millis(250);
 
 /// Where Linux says how many tasks were ready to run, over the last
 /// minute first.
+#[cfg(not(target_os = "macos"))]
 const LOAD_AVERAGE: &str = "/proc/loadavg";
+
+/// What says a Mac's load averages, over the last minute first, as
+/// `{ 2.10 1.98 1.85 }`.
+#[cfg(target_os = "macos")]
+const SYSCTL: &str = "/usr/sbin/sysctl";
 
 /// A timed step of a test, begun when it was started.
 #[derive(Debug, Clone, Copy)]
 pub struct Timed {
     began: Instant,
     busy: f64,
+    wrong: Option<Duration>,
 }
 
 impl Timed {
@@ -54,6 +69,19 @@ impl Timed {
         Self {
             busy: busyness(),
             began: Instant::now(),
+            wrong: None,
+        }
+    }
+
+    /// Hold the step's bound short of the fixed time the behaviour it
+    /// tells apart from takes, however busy the host: a stretched bound
+    /// stops [`SLACK`] short of `wrong`, so the wrong behaviour fails on
+    /// any host. An idle bound already past that is left as it is.
+    #[must_use]
+    pub fn short_of(self, wrong: Duration) -> Self {
+        Self {
+            wrong: Some(wrong),
+            ..self
         }
     }
 
@@ -65,10 +93,11 @@ impl Timed {
 
     /// How long the step may take, given the bound an idle host meets: the
     /// bound stretched by the busier of the host's pace as the step
-    /// started and its pace now, plus [`SLACK`].
+    /// started and its pace now, plus [`SLACK`], and held short of the
+    /// wrong behaviour's time where [`Timed::short_of`] named one.
     #[must_use]
     pub fn allowed(&self, idle: Duration) -> Duration {
-        allowance(idle, self.busy.max(busyness()))
+        held_short(allowance(idle, self.busy.max(busyness())), idle, self.wrong)
     }
 
     /// Whether the step took no longer than it may on this host, given the
@@ -98,6 +127,15 @@ pub fn allowance(idle: Duration, busy: f64) -> Duration {
     idle.mul_f64(pace(busy)) + SLACK
 }
 
+/// A stretched bound held [`SLACK`] short of the time the wrong behaviour
+/// takes, where there is one, but never below the idle bound.
+#[must_use]
+pub fn held_short(allowed: Duration, idle: Duration, wrong: Option<Duration>) -> Duration {
+    wrong.map_or(allowed, |wrong| {
+        allowed.min(wrong.saturating_sub(SLACK)).max(idle)
+    })
+}
+
 /// How many times longer than its idle bound a step may take on a host
 /// this busy. On a host with a processor to spare for each task a step
 /// takes its idle time; past that each task waits its turn behind the
@@ -118,17 +156,37 @@ pub fn busyness() -> f64 {
         .ok()
         .and_then(|count| u32::try_from(count.get()).ok())
         .unwrap_or(1);
-    fs::read_to_string(LOAD_AVERAGE)
-        .ok()
+    load_averages()
         .and_then(|said| ready_each_minute(&said))
         .map_or(0.0, |ready| ready / f64::from(processors))
 }
 
-/// The tasks ready to run over the last minute, from what
-/// `/proc/loadavg` says.
+/// What the host says of its load averages, or none where it can't.
+#[cfg(not(target_os = "macos"))]
+fn load_averages() -> Option<String> {
+    std::fs::read_to_string(LOAD_AVERAGE).ok()
+}
+
+/// What the host says of its load averages, or none where it can't.
+#[cfg(target_os = "macos")]
+fn load_averages() -> Option<String> {
+    let said = std::process::Command::new(SYSCTL)
+        .args(["-n", "vm.loadavg"])
+        .output()
+        .ok()?;
+    said.status
+        .success()
+        .then(|| String::from_utf8_lossy(&said.stdout).into_owned())
+}
+
+/// The tasks ready to run over the last minute, from what Linux's
+/// `/proc/loadavg` or a Mac's `sysctl -n vm.loadavg` says.
 #[must_use]
 pub fn ready_each_minute(said: &str) -> Option<f64> {
-    said.split_whitespace().next()?.parse().ok()
+    said.split_whitespace()
+        .find(|word| *word != "{")?
+        .parse()
+        .ok()
 }
 
 #[cfg(test)]

@@ -469,7 +469,9 @@ fn tuple_starting_is_followed_at_once() {
          \"rooms\":{\"personal\":[{\"http_value\":\"https://tuple.app/c/listed\",\
          \"created_at\":\"2026-07-31T12:00:00Z\"}]}}}",
     );
-    let began = Timed::start();
+    // Held short of the five seconds to the daemon's next look, so a
+    // start heard only then fails however busy the machine.
+    let began = Timed::start().short_of(Duration::from_secs(5));
     running.logs(&logged(now(), "daemon loop started, waiting for events..."));
     // What Tuple's state said is heard before that Tuple answers, so a
     // client acting on its answering holds the room already.

@@ -13,6 +13,12 @@ when it goes through the host's pace: in Rust, a step started with
 `test_pace::Timed::start()` and judged with its `within`, which this never sees as
 a bound; in Python, a bound multiplied by `vm_helpers.pace`, on the same line.
 
+It reads one form a line at a time, so some bounds pass it unseen: a time taken held
+in a name and compared on a later line, a deadline such as `Instant::now() <
+deadline`, a Python time held past one in an `if`, and Rust tests inside a crate's
+src folder. A bound that only tells right behaviour from wrong by time is judged by
+its author, who holds it short of the wrong behaviour's time with `short_of`.
+
 WAITING is JSON naming, for each file that held bounds at idle before the rule, how
 many it holds while each comes to allow for the host's pace. A file holding more
 fails, naming each; a file holding fewer fails until its count is lowered, so the

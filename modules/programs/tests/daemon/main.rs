@@ -771,7 +771,9 @@ fn a_file_that_file_preview_never_answers_is_said_unanswered_and_holds_up_nothin
         before["records"][0]["shown"]["by"], after["records"][0]["shown"]["by"],
         "the stuck file-preview was kept rather than stopped"
     );
-    let asked = Timed::start();
+    // Held short of the three seconds file-preview is given to answer, so
+    // asking the stuck file again fails however busy the machine.
+    let asked = Timed::start().short_of(Duration::from_secs(3));
     let again = client.ask(&json!({"id": 4, "ask": "get", "keys": ["preview:/stuck.png"]}));
     assert_eq!(
         again["records"][0]["answering"],
