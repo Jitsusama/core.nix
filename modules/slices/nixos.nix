@@ -587,9 +587,9 @@ in
     # The disk's weight is ten times too, as session.slice's is, since
     # io.cost on a measured disk shares it by weight: at systemd's 100 his
     # programs would get no more of it than agents' sessions. The latency
-    # target a disk with no model keeps ignores it, but systemd gives the
-    # same weight to the BFQ scheduler, so on a disk BFQ runs his programs
-    # get ten times agents' share there too.
+    # target a disk with no model keeps ignores it, and systemd scales it
+    # down for the BFQ scheduler, 1000 to 181 against 100 left at 100, so
+    # on a disk BFQ runs his programs get under twice agents' share.
     systemd.user.slices.app.sliceConfig = {
       CPUWeight = 1000;
       IOWeight = 1000;
