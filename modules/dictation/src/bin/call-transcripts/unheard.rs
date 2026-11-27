@@ -135,14 +135,28 @@ mod tests {
     fn a_call_none_of_which_was_heard_says_so() {
         let unheard = and(Some(and(None, 2 * RATE)), 14 * MINUTE);
         let note = unheard.note_with_none_heard();
+        // Takes heard may hold no word too, so it says only that no word
+        // was heard, never that the model failed on all of it.
         assert_eq!(
             note,
-            "None of the call was heard: the speech model failed on 2 stretches of it, the \
-             first at 0:02.",
-            "a call none of which was heard was said to be heard in part"
+            "No words of the call were heard: the speech model failed on 2 stretches of it, \
+             the first at 0:02.",
+            "a call none of which was heard was said to be heard in part, or failed on whole"
         );
         let said = format!("# Transcript\n\n{note}");
         assert_eq!(Unheard::read(&said), Some(unheard), "{said}");
+    }
+
+    #[test]
+    fn a_note_of_none_heard_as_first_written_is_read_back() {
+        // Files written before keep the note as it opened then.
+        let written = "# Transcript\n\nNone of the call was heard: the speech model failed on \
+            a stretch of it, at 0:02.";
+        let one = Unheard {
+            stretches: 1,
+            first: 2 * RATE,
+        };
+        assert_eq!(Unheard::read(written), Some(one), "{written}");
     }
 
     #[test]

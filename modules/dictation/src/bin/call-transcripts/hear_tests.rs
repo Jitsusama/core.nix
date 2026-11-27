@@ -720,7 +720,7 @@ fn a_call_none_of_which_was_heard_has_a_file_saying_so() {
     );
     let file = std::fs::read_to_string(folder.path().join(TRANSCRIPT)).unwrap();
     assert!(
-        file.contains("None of the call was heard"),
+        file.contains("No words of the call were heard"),
         "a call none of which was heard was said to be heard in part: {file}"
     );
 }
