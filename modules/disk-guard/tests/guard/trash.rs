@@ -114,10 +114,14 @@ fn reclaiming_takes_the_file_then_its_info() {
     );
     assert_eq!(outcome, Outcome::Reclaimed);
     assert_eq!(unlinked, 1, "its file, told so a pacer can rest");
-    assert!(!root.path().join("files/report.pdf").exists());
-    assert!(!root.path().join("info/report.pdf.trashinfo").exists());
-    assert!(root.path().join("files/other.pdf").exists());
-    assert!(root.path().join("info/other.pdf.trashinfo").exists());
+    let there = |path: &str| root.path().join(path).exists();
+    assert!(!there("files/report.pdf"), "its file was left");
+    assert!(!there("info/report.pdf.trashinfo"), "its info was left");
+    assert!(there("files/other.pdf"), "another item's file went too");
+    assert!(
+        there("info/other.pdf.trashinfo"),
+        "another item's info went too"
+    );
 }
 
 #[test]
@@ -139,5 +143,6 @@ fn reclaiming_something_outside_the_trash_fails_untouched() {
         &mut || {},
     );
     assert!(matches!(outcome, Outcome::Failed(_)), "{outcome:?}");
-    assert!(root.path().join("elsewhere/keep").exists());
+    let kept = root.path().join("elsewhere/keep");
+    assert!(kept.exists(), "a file outside the trash was taken");
 }

@@ -66,14 +66,16 @@ fn settings(low_power_mode: &str) -> String {
 
 #[test]
 fn low_power_mode_is_saving_power() {
-    assert!(low_power(&settings("1")));
-    assert!(!low_power(&settings("0")));
+    assert!(low_power(&settings("1")), "lowpowermode 1 read as off");
+    assert!(!low_power(&settings("0")), "lowpowermode 0 read as on");
 }
 
 #[test]
 fn settings_without_low_power_mode_save_nothing() {
-    assert!(!low_power("Currently in use:\n standby 1\n"));
-    assert!(!low_power(""));
+    let standby = "Currently in use:\n standby 1\n";
+    assert!(!low_power(standby), "read as on with no lowpowermode");
+    assert!(!low_power(""), "read as on with no settings");
     // A setting whose name only begins with it is another.
-    assert!(!low_power("Currently in use:\n lowpowermodeforever 1\n"));
+    let longer = "Currently in use:\n lowpowermodeforever 1\n";
+    assert!(!low_power(longer), "lowpowermodeforever taken for it");
 }

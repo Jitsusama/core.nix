@@ -109,7 +109,7 @@ fn a_process_is_read_from_its_proc_directory() {
     assert_eq!(cargo.uid, 1000);
     assert_eq!(cargo.name, "cargo) (build");
     assert_eq!(cargo.start_ticks, 500);
-    assert!(cargo.readable);
+    assert!(cargo.readable, "cargo's folder, files or maps went unread");
     assert_eq!(cargo.cwd.as_deref(), Some(Path::new("/home/u/src/app")));
     assert_eq!(
         cargo.exe.as_deref(),
@@ -155,7 +155,7 @@ fn a_process_whose_details_are_hidden_is_unreadable() {
     let all = processes(root.path()).unwrap();
     let sshd = all.iter().find(|p| p.pid == 200).expect("sshd wasn't read");
     assert_eq!(sshd.uid, 0);
-    assert!(!sshd.readable);
+    assert!(!sshd.readable, "sshd's hidden files were taken as read");
     assert_eq!(sshd.cgroup.as_deref(), Some("/system.slice/sshd.service"));
 }
 
@@ -211,9 +211,9 @@ fn a_listing_without_a_lock_the_guard_holds_is_an_error() {
     let root = tempfile::tempdir().unwrap();
     text(root.path(), "locks", LOCKS);
     let locks = root.path().join("locks");
-    assert!(lock_waiters(&locks, 42, &[9]).is_err());
-    assert!(lock_waiters(&locks, 43, &[7]).is_err());
-    assert!(lock_waiters(&locks, 42, &[7, 11]).is_err());
+    lock_waiters(&locks, 42, &[9]).expect_err("took 9, pid 77's lock, as the guard's");
+    lock_waiters(&locks, 43, &[7]).expect_err("took pid 43 as holding 7");
+    lock_waiters(&locks, 42, &[7, 11]).expect_err("took the guard as holding 11");
 }
 
 /// The same paging can print a record twice.
@@ -268,7 +268,7 @@ fn this_process_reads_as_itself() {
         .iter()
         .find(|p| p.pid == std::process::id())
         .expect("not found in /proc");
-    assert!(me.readable);
+    assert!(me.readable, "its own folder, files or maps went unread");
     assert_eq!(
         me.cwd.as_deref(),
         Some(std::env::current_dir().unwrap().as_path())
@@ -280,5 +280,10 @@ fn this_process_reads_as_itself() {
     // Resolved, as /proc gives it, since a TMPDIR may be a link.
     let held_at = fs::canonicalize(held.path()).unwrap();
     assert!(me.files.contains(&held_at), "{:?}", me.files);
-    assert!(me.maps.contains(&std::env::current_exe().unwrap()));
+    let exe = std::env::current_exe().unwrap();
+    assert!(
+        me.maps.contains(&exe),
+        "{exe:?} isn't mapped: {:?}",
+        me.maps
+    );
 }

@@ -115,16 +115,18 @@ fn a_process_touching_the_askers_roots_is_told_of_only_there() {
         [OsString::from("rustc")],
         "only the name it was called by"
     );
-    assert!(seen.readable);
+    assert!(seen.readable, "told of, yet not read");
     assert_eq!((seen.write_bytes, seen.cgroup.as_deref()), (None, None));
 }
 
 #[test]
 fn a_process_touching_nothing_of_the_askers_is_vouched_for_and_no_more() {
     let told = asked();
-    assert!(told.vouched.contains(&(301, 78)));
-    assert!(told.vouched.contains(&(300, 77)));
-    assert!(!told.touching.iter().any(|seen| seen.pid == 301));
+    let vouched = &told.vouched;
+    assert!(vouched.contains(&(301, 78)), "{vouched:?}");
+    assert!(vouched.contains(&(300, 77)), "{vouched:?}");
+    let told_of: Vec<u32> = told.touching.iter().map(|seen| seen.pid).collect();
+    assert!(!told_of.contains(&301), "sshd was told of: {told_of:?}");
 }
 
 #[test]
@@ -185,16 +187,20 @@ fn what_the_system_vouches_for_replaces_what_the_asker_could_not_read() {
         merged[1].files,
         [PathBuf::from("/home/u/src/app/target/debug/.cargo-lock")]
     );
-    assert!(merged[1].readable);
+    assert!(merged[1].readable, "told of, yet still unread");
     assert!(merged[2].readable, "vouched for, touching nothing");
-    assert!(merged[2].files.is_empty() && merged[2].cwd.is_none());
+    let bare = &merged[2];
+    assert!(
+        bare.files.is_empty() && bare.cwd.is_none(),
+        "vouched for, but gained files or a folder: {bare:?}"
+    );
     assert!(!merged[3].readable, "never asked about, still unknown");
 }
 
 #[test]
 fn a_reused_pid_is_not_what_the_system_vouched_for() {
     let merged = merge(vec![unreadable(300, 999)], &asked());
-    assert!(!merged[0].readable);
+    assert!(!merged[0].readable, "vouched for a pid since reused");
 }
 
 #[test]
@@ -207,13 +213,21 @@ fn a_path_is_the_askers_to_hear_of_beneath_anything_it_owns() {
     let file = dir.path().join("target/debug/.cargo-lock");
     std::fs::create_dir_all(file.parent().unwrap()).unwrap();
     std::fs::write(&file, "").unwrap();
-    assert!(reached_by(&file, me));
-    assert!(reached_by(&dir.path().join("gone (deleted)"), me));
+    assert!(
+        reached_by(&file, me),
+        "a file beneath its own directory wasn't its"
+    );
+    let gone = dir.path().join("gone (deleted)");
+    assert!(
+        reached_by(&gone, me),
+        "gone, it wasn't judged by what it lay in"
+    );
     assert!(
         !reached_by(&file, me + 1),
         "nothing on the way is another's"
     );
-    assert!(!reached_by(Path::new("/etc/hostname"), me));
+    let hostname = Path::new("/etc/hostname");
+    assert!(!reached_by(hostname, me), "root's file was taken as its");
     assert!(
         !reached_by(Path::new("src/vouch.rs"), me),
         "a relative path means nothing to the system daemon"
