@@ -175,7 +175,9 @@ fn address(said: &Value) -> Result<String, (&'static str, String)> {
     if parts.len() == 6 && parts.iter().all(hex) {
         Ok(bssid.to_ascii_lowercase())
     } else {
-        let why = "say the access point by its address, as 02:00:00:00:a4:00";
+        // The example is RFC 7042's documentation address, as the shaper's
+        // help gives, so the refusal names no access point of a test's.
+        let why = "say the access point by its address, as 00:00:5e:00:53:01";
         Err(("bad-ask", why.to_owned()))
     }
 }
@@ -841,9 +843,14 @@ mod tests {
         assert_eq!(heard[0]["error"]["code"], "bad-ask");
         let heard = acted(json!({"act": "radio"}), drop).await;
         assert_eq!(heard[0]["error"]["code"], "bad-ask");
+        let how = "say the access point by its address, as 00:00:5e:00:53:01";
         for bssid in [json!(null), json!("next door"), json!("02:00:00:00:a4")] {
             let heard = acted(json!({"act": "roam", "bssid": bssid}), drop).await;
             assert_eq!(heard[0]["error"]["code"], "bad-ask", "roaming to {bssid}");
+            assert_eq!(
+                heard[0]["error"]["message"], how,
+                "roaming to {bssid} wasn't told how to say one"
+            );
         }
     }
 }
