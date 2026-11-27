@@ -30,17 +30,17 @@
 //! else cadence repeats a claim, in its ask and in its ledger, it quotes
 //! it whole, so passing those on claims nothing either.
 //!
-//! Cadence's own messages are left out, and so is every reply to its ask
-//! from the cell asked, and its first reply re the claim after the ask,
-//! before any re the ask, to an ask within the two days the claims are
-//! read: the ask tells it to say the claim is dropped, and the words it
-//! drops it in name the claim. Either answers, and takes off the count
-//! every claim its sender sent before, whatever it says, so a cell is
-//! asked once about its day's backlog: cadence can't judge whether the
-//! words given are his, so the ask has the answer sent where the claim
-//! went, to be read by those it bound. The ask asks for a reply re
-//! itself, so a later reply re the claim is judged as any message, and a
-//! thread of its own hides no fresh claim. A claim its sender replaces,
+//! Cadence's own messages are left out, and so is the first reply to its
+//! ask from the cell asked, and its first reply re the claim after the
+//! ask, before any re the ask, to an ask within the two days the claims
+//! are read: the ask tells it to say the claim is dropped, and the words
+//! it drops it in name the claim. The first of them answers, and takes
+//! off the count every claim its sender sent before it, whatever it says,
+//! so a cell is asked once about its day's backlog: cadence can't judge
+//! whether the words given are his, so the ask has the answer sent where
+//! the claim went, to be read by those it bound. Every later reply, re
+//! the ask or the claim, is judged as any message and settles nothing, so
+//! a thread of its own hides no fresh claim. A claim its sender replaces,
 //! as the mesh lets it, is off the count too. Its asks are
 //! read back over [`ASKS_READ`] days, so an answer sent long after is
 //! still one. A message whose id isn't well formed, or names another
@@ -253,7 +253,12 @@ pub fn read(state_home: &Path, now: i64) -> Measure {
     }
     let ask = |m: &Message| m.from == CADENCE && about(&m.text).is_some();
     let used = |m: &Message| {
-        ask(m) || m.re.is_some() || m.supersedes.is_some() || m.text.to_lowercase().contains("joel")
+        // Read as `plain` reads it, so a mark that draws as nothing set
+        // inside his name doesn't drop the claim before it's judged.
+        ask(m)
+            || m.re.is_some()
+            || m.supersedes.is_some()
+            || m.text.replace(unseen, "").to_lowercase().contains("joel")
     };
     let two_days = (now - CLAIMS_READ) * 1000;
     let read = mesh
@@ -465,15 +470,16 @@ struct Answers<'a> {
 /// The answers in `sent` to an ask about a claim of his rule, by `now`.
 /// Only a claim this measure asked about has an answer: a reply, after
 /// the ask, from the cell it asked, re its ask or re the claim the ask
-/// names. Every reply re the ask is left unjudged, since it answers
-/// cadence and a cell dropping the claim names it; of those re the
-/// claim, only the first after the ask, and before any re the ask, is,
-/// and only for an ask sent within the [`CLAIMS_READ`] read, so a cell's
-/// thread on its own report hides no fresh claim, and the first is always
-/// among the messages read. The ask, not the claim, says who may answer,
-/// so an answer counts after its claim has left the day. A reply before
-/// the ask, one re a message never asked about, or one re any other of
-/// cadence's, is judged as any other.
+/// names. The first reply re the ask is left unjudged, since it answers
+/// cadence and a cell dropping the claim names it; so is the first re the
+/// claim, when it comes before that, and only for an ask sent within the
+/// [`CLAIMS_READ`] read, so the first is always among the messages read.
+/// Each later reply, re either, is the cell's thread going on and is
+/// judged, so one ask never opens a lasting way to clear what it sends.
+/// The ask, not the claim, says who may answer, so an answer counts after
+/// its claim has left the day. A reply before the ask, one re a message
+/// never asked about, or one re any other of cadence's, is judged as any
+/// other.
 fn answers<'a>(sent: &[&'a Message], now: i64) -> Answers<'a> {
     let asks: Vec<(&str, &str, &Message)> = sent
         .iter()
@@ -495,47 +501,59 @@ fn answers<'a>(sent: &[&'a Message], now: i64) -> Answers<'a> {
                 && (via_ask || sent.is_some_and(|sent| sent >= read_from))
         })
     };
-    let mut replies = BTreeSet::new();
-    let mut first: BTreeMap<(&str, &str), (Option<i64>, &str)> = BTreeMap::new();
-    let mut by_ask: BTreeMap<(&str, &str), Option<i64>> = BTreeMap::new();
-    let mut stamps: BTreeMap<&str, (&str, Option<i64>)> = BTreeMap::new();
+    let mut by_claim: BTreeMap<(&str, &str), (i64, &str)> = BTreeMap::new();
+    let mut by_ask: BTreeMap<(&str, &str), (i64, &str)> = BTreeMap::new();
     for &m in sent {
         let Some(re) = m.re.as_deref().map(short_id) else {
             continue;
         };
         let via_ask = claim_of.get(re).copied();
         let claim = via_ask.unwrap_or(re);
-        let at = stamped_at(&m.id);
-        if !asked_before(claim, &m.from, at, via_ask.is_some()) {
+        let stamped = stamped_at(&m.id);
+        let Some(at) = stamped else {
+            continue;
+        };
+        if !asked_before(claim, &m.from, stamped, via_ask.is_some()) {
             continue;
         }
-        stamps.insert(m.id.as_str(), (m.from.as_str(), at));
-        let key = (m.from.as_str(), claim);
-        if via_ask.is_some() {
-            replies.insert(m.id.as_str());
-            let earliest = by_ask.entry(key).or_insert(at);
-            *earliest = (*earliest).min(at);
+        let of = if via_ask.is_some() {
+            &mut by_ask
         } else {
-            let earliest = first.entry(key).or_insert((at, m.id.as_str()));
-            *earliest = (*earliest).min((at, m.id.as_str()));
+            &mut by_claim
+        };
+        let earliest = of
+            .entry((m.from.as_str(), claim))
+            .or_insert((at, m.id.as_str()));
+        *earliest = (*earliest).min((at, m.id.as_str()));
+    }
+    // Each ask's answer is the first reply to it, or the first re its
+    // claim when that comes sooner, and settles what its sender sent
+    // before then: a reply judged as any other leaves its sender's claims
+    // as they stood, so claims made after an answer wait for their own.
+    // The first re the ask still answers cadence, so it's left unjudged
+    // when the first re the claim came sooner, but that one is the answer.
+    let mut replies = BTreeSet::new();
+    let mut answered: Vec<(&str, i64)> = Vec::new();
+    for (&(from, claim), &(at, id)) in &by_ask {
+        replies.insert(id);
+        let sooner = by_claim
+            .get(&(from, claim))
+            .filter(|claimed| claimed.0 < at);
+        answered.push((from, sooner.map_or(at, |claimed| claimed.0)));
+    }
+    for (&(from, claim), &(at, id)) in &by_claim {
+        let asked = by_ask.get(&(from, claim));
+        if asked.is_none_or(|asked| at < asked.0) {
+            replies.insert(id);
+        }
+        if asked.is_none() {
+            answered.push((from, at));
         }
     }
-    // A reply re the claim after one re the ask is the cell's own thread
-    // going on, not its answer, so it's judged.
-    replies.extend(
-        first
-            .into_iter()
-            .filter(|(key, (at, _))| by_ask.get(key).is_none_or(|asked| at < asked))
-            .map(|(_, (_, id))| id),
-    );
-    // Only an answer settles what its sender sent before: a reply judged
-    // as any other leaves its sender's claims as they stood.
     let mut through: BTreeMap<&str, i64> = BTreeMap::new();
-    for (from, at) in replies.iter().filter_map(|id| stamps.get(id)) {
-        if let Some(at) = *at {
-            let last = through.entry(*from).or_insert(at);
-            *last = (*last).max(at);
-        }
+    for (from, at) in answered {
+        let last = through.entry(from).or_insert(at);
+        *last = (*last).max(at);
     }
     Answers { replies, through }
 }
@@ -622,8 +640,11 @@ fn uncarded(text: &str) -> String {
                     && (target == "unjudged" || target.strip_prefix("at most ").is_some_and(number))
             })
     };
+    // A card passed on as a quote, each line opening `> `, is the card
+    // still, so the quote marks are read as its indent.
+    let lead = |c: char| c.is_whitespace() || c == '>';
     let carded = |line: &str| {
-        let line = line.trim_start_matches(|c: char| c.is_whitespace() || c == '-' || c == '*');
+        let line = line.trim_start_matches(|c: char| lead(c) || c == '-' || c == '*');
         let named = line
             .strip_prefix('[')
             .and_then(|rest| rest.split_once("] "))
@@ -645,7 +666,7 @@ fn uncarded(text: &str) -> String {
     // cell's own words, as the uncited lines' sentences or his misses, so
     // every line set in deeper than a line of the card's, until one that
     // isn't, is the card's, whatever its shape.
-    let indent = |line: &str| line.len() - line.trim_start().len();
+    let indent = |line: &str| line.len() - line.trim_start_matches(lead).len();
     let mut beneath: Option<usize> = None;
     let kept = text
         .lines()

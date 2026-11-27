@@ -34,6 +34,13 @@ const QUEUE_DUE: i64 = 7 * DAY;
 /// open to go late.
 const RULED_DUE: i64 = 7 * DAY;
 
+/// How many senders one hour asks about a claim of his rule, the oldest
+/// claims first, the rest left to the hours after. The first hour after
+/// the measure starts finds a day's backlog, some few dozen senders on
+/// 26 November, and each ask wakes its cell if it's parked, so the wakes
+/// are spread over the hours rather than sent at once.
+const RULED_HOURLY: usize = 6;
+
 /// One drag as the ledger files it: its key, owner, words, and what its
 /// owner is told.
 struct Filed {
@@ -322,7 +329,8 @@ fn told_late_asked(m: &Measure, says: &str) -> Vec<Filed> {
 /// day after it was sent. Each sender is asked about its oldest ones, as
 /// [`ruled::asked_of_each`] gives them, and at most once a day, as
 /// [`asked_lately`] holds it, so a day's backlog wakes a cell once rather
-/// than for every message in it; the card names the same ones and counts
+/// than for every message in it, and at most [`RULED_HOURLY`] senders an
+/// hour; the card names the same ones and counts
 /// the rest. Only [`back_in`] closes these, by this measure's key, so a
 /// revert of the measure must first settle every open
 /// `hour:rulings-unsourced:` entry, or each goes late and stays open.
@@ -685,15 +693,19 @@ pub fn file(
         .any(|e| e.key.starts_with(&format!("hour:{QUEUE}")) && e.first == date);
     dragging.extend(queues::worst(measures).filter(|_| !asked_today));
     let mut told = Vec::new();
+    let mut ruled_left = RULED_HOURLY;
     for (m, one) in dragging
         .into_iter()
         .flat_map(|m| filed(m).into_iter().map(move |f| (m, f)))
     {
         if ledger.iter().any(|e| e.open && e.key == one.key)
             || fixed_lately(ledger, &one.key, now)
-            || (m.key == ruled::KEY && asked_lately(ledger, &one.owner, now))
+            || (m.key == ruled::KEY && (ruled_left == 0 || asked_lately(ledger, &one.owner, now)))
         {
             continue;
+        }
+        if m.key == ruled::KEY {
+            ruled_left -= 1;
         }
         owe::owe(
             ledger,
@@ -1640,6 +1652,17 @@ mod tests {
         );
         let mut unread = measure(ruled::KEY, Class::Cells, 0.0, None);
         unread.behind.clear();
+        file(
+            &mut ledger,
+            std::slice::from_ref(&unread),
+            "2026-11-27",
+            1000 + DAY - 1,
+        );
+        assert_eq!(
+            open(&ledger),
+            [format!("hour:{}:5UTLKM:5a6b7c8d", ruled::KEY)],
+            "an ask closed by its age before a day had passed"
+        );
         file(&mut ledger, &[unread], "2026-11-27", 1000 + DAY);
         assert_eq!(
             open(&ledger),
@@ -1699,6 +1722,17 @@ mod tests {
                 .all(|e| !e.key.ends_with("0000000a") || !e.open),
             "the answered claim's ask stayed open"
         );
+        let told = file(
+            &mut ledger,
+            std::slice::from_ref(&claims),
+            "2026-11-27",
+            1000 + DAY - 1,
+        );
+        assert_eq!(
+            asked(&told),
+            Vec::<String>::new(),
+            "a sender was asked again before a day had passed since its last ask"
+        );
         // A day on, the other sender's claim has left the count by its age.
         claims.behind.retain(|line| !line.ends_with("5UTLKM"));
         let told = file(&mut ledger, &[claims], "2026-11-27", 1000 + DAY);
@@ -1706,6 +1740,43 @@ mod tests {
             asked(&told),
             ["0000000b"],
             "the next claim wasn't asked a day after the last ask, or one was asked again"
+        );
+    }
+
+    /// The first hour finds a day's backlog, so it asks at most
+    /// [`RULED_HOURLY`] senders, the oldest claims first, and the rest in
+    /// the hours after, rather than waking every one at once.
+    #[test]
+    fn an_hour_asks_only_so_many_senders_the_oldest_first() {
+        let mut claims = measure(ruled::KEY, Class::Cells, 8.0, Some(0.0));
+        claims.behind = (0..8)
+            .map(|n| format!("[0000000{n}] Joel wants it. · SENDER{n}"))
+            .collect();
+        let senders = |told: Vec<(String, String)>| -> Vec<String> {
+            told.into_iter()
+                .filter(|(_, text)| text.contains("a rule or wish of Joel's"))
+                .map(|(to, _)| to)
+                .collect()
+        };
+        let mut ledger = Vec::new();
+        let first = file(
+            &mut ledger,
+            std::slice::from_ref(&claims),
+            "2026-11-26",
+            1000,
+        );
+        assert_eq!(
+            senders(first),
+            (0..RULED_HOURLY)
+                .map(|n| format!("SENDER{n}"))
+                .collect::<Vec<_>>(),
+            "an hour asked more senders than its cap, or not the oldest claims' first"
+        );
+        let next = file(&mut ledger, &[claims], "2026-11-26", 4600);
+        assert_eq!(
+            senders(next),
+            ["SENDER6", "SENDER7"],
+            "the senders past the first hour's cap weren't asked in the next"
         );
     }
 

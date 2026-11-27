@@ -325,6 +325,12 @@ fn the_cards_lines_passed_on_claim_nothing() {
         None,
         "the card as it's sent, its lines set in, was counted as a claim: {sent_whole}"
     );
+    let quoted_whole = format!("> {}", sent_whole.replace('\n', "\n> "));
+    assert_eq!(
+        unbacked(&quoted_whole),
+        None,
+        "the card passed on as a quote was counted as a claim: {quoted_whole}"
+    );
     assert_eq!(
         unbacked(
             "Why didn't our checks catch these? Each stays open until its owner names it:\n  - \
@@ -386,10 +392,12 @@ fn an_asks_text_names_the_claim_it_asks_about_and_claims_nothing() {
 
 /// The ask tells its sender to answer re the ask or re the claim, and
 /// either takes the claim off the count without being counted itself,
-/// whatever the answer says: every reply re the ask, and the first re the
-/// claim. A later reply re the claim, one re a claim never asked about,
-/// its sender's own or backed, another cell's reply, or a reply to any
-/// other message of cadence's, clears nothing and is judged as any other.
+/// whatever the answer says: the first reply re the ask, and the first re
+/// the claim before it. A later reply re either, one re a claim never
+/// asked about, its sender's own or backed, another cell's reply, or a
+/// reply to any other message of cadence's, clears nothing and is judged
+/// as any other, nor does a later one settle what was sent after the
+/// answer.
 #[test]
 fn a_senders_answer_re_the_ask_or_the_claim_clears_it_and_isnt_counted() {
     let first = sent("0000000a", 3000, "T6E7X6", "I broke Joel's rule.");
@@ -437,6 +445,7 @@ fn a_senders_answer_re_the_ask_or_the_claim_clears_it_and_isnt_counted() {
     before_ask.re = Some("0000001b".to_owned());
     let mut after_answer = sent("0000001c", 40, "T6E7X6", "Joel wants it open.");
     after_answer.re = Some(first.id.clone());
+    let between = sent("0000001e", 350, "T6E7X6", "Joel wants it held.");
     let mut again = sent("00000019", 100, "T6E7X6", "I stand by it: Joel wants it.");
     again.re = Some("0000000d".to_owned());
     let mut later = sent("0000001a", 90, "5UTLKM", "Also, Joel wants the lab open.");
@@ -448,6 +457,7 @@ fn a_senders_answer_re_the_ask_or_the_claim_clears_it_and_isnt_counted() {
             ask_unanswered,
             later,
             again,
+            between,
             before_ask,
             first,
             second,
@@ -471,17 +481,19 @@ fn a_senders_answer_re_the_ask_or_the_claim_clears_it_and_isnt_counted() {
             "[0000000c] Joel wants the lab shut. · IKQ63G",
             "[0000001b] Joel wants it shut. · QGB4ON",
             "[00000018] Correction: Joel wants it. · QGB4ON",
+            "[0000001e] Joel wants it held. · T6E7X6",
             "[00000012] Joel wants T6E7X6 to stop. · 5UTLKM",
             "[00000014] Held: Joel wants it held. · IKQ63G",
             "[00000016] So Joel wants it shut. · IKQ63G",
+            "[00000019] I stand by it: Joel wants it. · T6E7X6",
             "[0000001a] Also, Joel wants the lab open. · 5UTLKM",
             "[00000010] Joel's rule binds you too. · T6E7X6",
             "[0000001c] Joel wants it open. · T6E7X6",
         ],
-        "an answered claim, an answer or a later reply re the ask was counted, or a reply \
-         clearing nothing, a later one re the claim or one after an answer re the ask, one \
-         re a claim never asked about, another's claim, its ask or another cadence message, \
-         or sent before the ask, went uncounted"
+        "an answered claim or an answer was counted, or a reply clearing nothing, a later one \
+         re the ask or the claim, a claim after the answer, one re a claim never asked \
+         about, another's claim, its ask or another cadence message, or sent before the \
+         ask, went uncounted"
     );
 }
 
@@ -753,6 +765,24 @@ fn an_answer_sent_days_after_its_ask_is_still_an_answer() {
         read(dir.path(), NOW).behind,
         Vec::<String>::new(),
         "an answer to an ask past the two days of claims read was counted as a claim"
+    );
+}
+
+/// The hour keeps a message to judge as [`unbacked`] reads it, so a mark
+/// that draws as nothing set inside his name doesn't drop its claim from
+/// what's read before it's judged.
+#[test]
+fn a_claim_with_an_unseen_mark_in_his_name_is_read_and_counted() {
+    let dir = tempfile::tempdir().expect("the test's folder couldn't be made");
+    let messages = dir
+        .path()
+        .join("pi/agentic-harness.pi/mesh-workflow/messages");
+    let hidden = sent("0000000a", 60, "T6E7X6", "Jo\u{200b}el wants it shut.");
+    put(&messages, &hidden);
+    assert_eq!(
+        read(dir.path(), NOW).behind,
+        ["[0000000a] Joel wants it shut. · T6E7X6"],
+        "a claim with a zero-width space in his name was dropped before it was judged"
     );
 }
 
