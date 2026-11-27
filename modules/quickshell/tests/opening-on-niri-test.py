@@ -634,10 +634,10 @@ def test_an_open_card_fits_a_screen_that_shrinks_under_it(shell: Shell) -> None:
                     and shown["cut"] == []
                 )
             )
-        except AssertionError as missed:
+        except (AssertionError, launcher_on_niri.ShowingError) as missed:
             card = shell.showing()["card"]
             failed = f"open at 1 and shrunk to 2, the card ran off the screen: {card}"
-            raise AssertionError(failed) from missed
+            raise type(missed)(failed) from missed
         # Read once it holds still, so a fit the card only passed through isn't what's held.
         assert shell.held_still(), "the card never held still once it refitted"
         shown = shell.showing()
@@ -2645,7 +2645,7 @@ def test_the_launcher_takes_keys_after_each_of_five_restarts(shell: Shell) -> No
                     shown["typed"] == "agents" and (shown["selected"] or {}).get("name") == "Agents"
                 )
             )
-        except AssertionError as failed:
+        except (AssertionError, launcher_on_niri.ShowingError) as failed:
             message = f"after restart {restart} of {RESTARTS}, typing found nothing: {failed}"
-            raise AssertionError(message) from failed
+            raise type(failed)(message) from failed
         shell.close_launcher()

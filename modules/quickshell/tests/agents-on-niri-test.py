@@ -2055,9 +2055,9 @@ def scaled(shell: Shell, scales: Mapping[str, float | str]) -> None:
     try:
         # Within a pixel, as Qt and niri may round a fractional scale's height apart.
         shell.launcher_until(lambda shown: abs(shown["card"]["screen"] - height) <= 1)
-    except AssertionError as missed:
+    except (AssertionError, launcher_on_niri.ShowingError) as missed:
         failed = f"the shell never heard the screen {height} high at {dict(scales)}"
-        raise AssertionError(failed) from missed
+        raise type(missed)(failed) from missed
 
 
 @pytest.fixture
