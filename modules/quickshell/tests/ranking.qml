@@ -49,7 +49,19 @@ QtObject {
         return out;
     }
 
+    // A throw before the last case ends as a failure at once, naming it,
+    // rather than leaving qml running until the check's timeout ends it
+    // with nothing said.
     Component.onCompleted: {
+        try {
+            run();
+        } catch (error) {
+            console.warn(`the test threw: ${error}`);
+            Qt.exit(1);
+        }
+    }
+
+    function run() {
         const failures = [];
         let asked = 0;
         const expect = (what, got, wanted) => {
