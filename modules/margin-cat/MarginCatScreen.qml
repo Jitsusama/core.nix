@@ -1139,9 +1139,12 @@ PanelWindow {
     // A play the scene handed it, turned down, said only for the one a
     // test asked for by name (MarginCat.qml's `asked`), so the case that
     // waited on it names the refusal that held: the puppy a case asked
-    // for never came in 45 s, with nothing saying why (2026-11-26).
+    // for never came in 45 s, with nothing saying why (2026-11-26). Only
+    // the screen the cat sits on says it, since every screen is handed the
+    // play and the others' "not on this screen" would read as refusals of
+    // a play another screen's cat then plays.
     function turnedDown(kind: string, why: string): void {
-        if (Options.reports && kind !== "" && window.scene.asked === kind)
+        if (Options.reports && place !== null && kind !== "" && window.scene.asked === kind)
             Report.say(`turned cat ${named} ${JSON.stringify({ kind, why })}`);
     }
 

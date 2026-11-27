@@ -27,7 +27,7 @@ import pytest
 from launcher_on_niri import placed
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
     from launcher_on_niri import Json, Shell
 
@@ -58,6 +58,9 @@ BACK, HOME = 1.0, timedelta(seconds=15)
 PLAYED = "played cat "
 # A play a case asked for, turned down by a cat, with why (MarginCatScreen.qml's turnedDown).
 TURNED = "turned cat "
+# A play a case asked for, let go after its refusals outlasted MarginCatPlays.js's
+# REFUSED_FOR, so a story of refusals that stop says the ask was dropped, not met.
+LET_GO = "let go cat "
 HOP = ["crouches", "hops", "lands"]
 YARN = [
     "waits",
@@ -110,9 +113,18 @@ def story(said: list[str]) -> str:
     """
     told: list[str] = []
     was: dict[str, object] | None = None
+    repeats = 1
     for line in said:
-        if line.startswith((PLAYED, TURNED)):
+        # A cat turns an asked play down again with each scene drawn for it, two to five a
+        # second for up to 20 s, so a refusal said again with nothing changed between is
+        # counted on its first line, not told again.
+        if line.startswith(TURNED) and told and told[-1].startswith(line):
+            repeats += 1
+            told[-1] = f"{line} ({repeats} times)"
+            continue
+        if line.startswith((PLAYED, TURNED, LET_GO)):
             told.append(line)
+            repeats = 1
             was = None
         if not line.startswith(SITS):
             continue
@@ -132,6 +144,23 @@ def story(said: list[str]) -> str:
             told.append(f"x {at.get('x')}: {json.dumps(now)}")
             was = now
     return "\n".join(told)
+
+
+def reported_since_ask(
+    shell: Shell, found: Callable[[str], bool], since: int, timeout: timedelta
+) -> None:
+    """Wait for a place said since a play was asked for, or fail with the cat's story since.
+
+    A play or visit that never came said nothing of why (2026-11-23, 2026-11-24 and
+    2026-11-26), so a failed wait names each time a cat turned it down, and what held it.
+    """
+    try:
+        shell.reported(SITS, found, since, timeout)
+    except AssertionError as failed:
+        said, _ = shell.said_since(since)
+        # The wait's own failure, its log tail with it, is printed once as this one's cause.
+        told = f"what the cat did since the ask:\n{story(said)}"
+        raise AssertionError(told) from failed
 
 
 def reports(shell: Shell, since: int) -> tuple[list[Json], int]:
@@ -242,13 +271,7 @@ def plays_out(shell: Shell, kind: str, lasts: timedelta = PLAYS) -> tuple[list[J
     def asked(said: str) -> bool:
         return (playing(placed(said)) or {}).get("play") == kind
 
-    try:
-        shell.reported(SITS, asked, since, STROLLS)
-    except AssertionError as failed:
-        said, _ = shell.said_since(since)
-        # The wait's own failure, its log tail with it, is printed once as this one's cause.
-        told = f"what the cat did since the ask:\n{story(said)}"
-        raise AssertionError(told) from failed
+    reported_since_ask(shell, asked, since, STROLLS)
     began = shell.mark()
     shell.reported(PLAYED, lambda said: said.split(" ", 1)[1].startswith("{"), began, lasts)
     said, _ = shell.said_since(since)
@@ -551,14 +574,7 @@ def test_a_key_ends_the_puppys_visit(shell: Shell) -> None:
 
     # Pressed once the puppy stands by the cat in plain sight, so it ends a visit he can see,
     # not one still behind the room's edge, where the puppy is drawn nowhere either way.
-    try:
-        shell.reported(SITS, in_sight, since, VISITS)
-    except AssertionError as failed:
-        # A visit that never came in 45 s said nothing of why (2026-11-26), so the story since
-        # the ask names each time a cat turned it down, and what held it.
-        said, _ = shell.said_since(since)
-        told = f"what the cat did since the ask:\n{story(said)}"
-        raise AssertionError(told) from failed
+    reported_since_ask(shell, in_sight, since, VISITS)
     since = shell.mark()
     keyed = time.monotonic()
     shell.send_key("F24")

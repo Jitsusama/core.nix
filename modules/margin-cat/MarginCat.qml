@@ -193,9 +193,13 @@ Scope {
 
     // What handing out a beat leaves of the play asked for and the rests
     // of the plays that rest, as Plays.handed says, so a play a cat turned
-    // down is neither spent nor rested from.
+    // down is neither spent nor rested from. An ask let go once its
+    // refusals outlast REFUSED_FOR is said, so a case waiting on it reads
+    // that it was dropped, not that the refusals cleared.
     function handed(beat: var, taken: bool): void {
         const left = Plays.handed({ answers, asked, refusedAt }, beat, taken, Date.now());
+        if (Options.reports && !taken && asked !== "" && left.asked === "")
+            Report.say(`let go cat ${JSON.stringify({ kind: asked })}`);
         answers = left.answers;
         asked = left.asked;
         refusedAt = left.refusedAt;
