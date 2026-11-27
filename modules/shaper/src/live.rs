@@ -33,14 +33,17 @@ const SILENT_MS: u64 = 10_000;
 /// two to three seconds old, and one older says nothing of the line now.
 pub const CARRIED_MS: u64 = 5_000;
 
-/// How many bytes of the recorder's lines one poll reads at most, whole
-/// lines, so a start that comes on a day and a half of them reads them
-/// over many steps and hears a stop between. On 27 November a first step
-/// read 89 MB of them in about 13 s on the shaped machine, and a stop a
-/// second into a start waited behind it past the unit's 15 s and was
-/// killed. At that pace 4 MiB take about 600 ms, so a stop is heard within
-/// a second and the whole is read in about as long as before; until it
-/// is, the poll answers no link, as before the recorder names one.
+/// How many bytes of the recorder's lines one poll reads at most, across
+/// a move from one day's file to the next, so a start that comes on a day
+/// and a half of them reads them over many steps and hears a stop between.
+/// A line the bound falls within is read on by the next poll, so even one
+/// with no end, as a torn file can hold, costs a poll no more. On 27
+/// November a first step read 89 MB of them in about 13 s on the shaped
+/// machine, and a stop a second into a start waited behind it past the
+/// unit's 15 s and was killed. At that pace 4 MiB take about 600 ms, so
+/// a stop is heard within a second and the whole is read in about as long
+/// as before; until it is, the poll answers no link, as before the
+/// recorder names one.
 const READ_AT_MOST: u64 = 4 << 20;
 
 /// What the controller last heard of its link's second, and what it made
@@ -430,7 +433,11 @@ pub struct Live {
     folder: PathBuf,
     /// The day file being read, and how far into it.
     file: (PathBuf, u64),
-    /// A line the recorder is still writing.
+    /// A moment of the day whose file is being read, so the one read after
+    /// it is the next day's.
+    day: SystemTime,
+    /// A line the recorder is still writing, or one a poll's bound fell
+    /// within, read so far.
     partial: Vec<u8>,
     /// How many bytes a poll reads at most (`READ_AT_MOST`).
     at_most: u64,
@@ -450,6 +457,7 @@ impl Live {
         Live {
             folder: folder.to_path_buf(),
             file: (day_file(folder, yesterday), 0),
+            day: yesterday,
             partial: Vec::new(),
             at_most: READ_AT_MOST,
             caught_up: false,
@@ -533,19 +541,21 @@ impl Live {
         self.caught_up
     }
 
-    /// Reads what the recorder wrote since, up to `at_most` bytes of it,
-    /// and answers the link it follows and the rates to hold it to. A
-    /// day's file is read to its end before the next day's is begun.
-    /// Until a start has read today's to its end it answers no link: a
-    /// link named in an older line may be one the recorder no longer
-    /// follows, such as a cable since unplugged.
+    /// Reads what the recorder wrote since, up to `at_most` bytes of it
+    /// whichever files they are in, and answers the link it follows and
+    /// the rates to hold it to. A day's file is read to its end before the
+    /// next day's is begun, and the next is the day after it, never past
+    /// today, so a catch-up that runs past midnight still reads the day it
+    /// began on. Until a start has read today's to its end it answers no
+    /// link: a link named in an older line may be one the recorder no
+    /// longer follows, such as a cable since unplugged.
     pub fn poll(&mut self, now: SystemTime) -> Option<(&str, Rates)> {
         let today = day_file(&self.folder, now);
-        let mut ended = self.read_on();
-        if ended && self.file.0 != today {
-            self.file = (today.clone(), 0);
-            self.partial.clear();
-            ended = self.read_on();
+        let mut left = self.at_most;
+        let mut ended = self.read_on(&mut left);
+        while ended && self.file.0 != today && left > 0 {
+            self.next_day(now);
+            ended = self.read_on(&mut left);
         }
         self.caught_up |= ended && self.file.0 == today;
         if !self.caught_up {
@@ -574,10 +584,25 @@ impl Live {
         self.follow.controller.agents_share()
     }
 
-    /// Takes each whole line the file gained, keeping one half written,
-    /// until `at_most` bytes are read. Answers whether it read to the
-    /// file's end, or found none to read.
-    fn read_on(&mut self) -> bool {
+    /// Moves to the file of the day after the one read, or to today's
+    /// where that would be today's or past it, as after a clock stepped
+    /// back. A line left half written in the last file is let go.
+    fn next_day(&mut self, now: SystemTime) {
+        self.day = self
+            .day
+            .checked_add(Duration::from_hours(24))
+            .filter(|next| day_of(*next) < day_of(now))
+            .unwrap_or(now);
+        self.file = (day_file(&self.folder, self.day), 0);
+        self.partial.clear();
+    }
+
+    /// Takes each whole line the file gained, keeping the one it stops
+    /// within, until `left` bytes are read, taking what it reads from
+    /// `left`. A line is read in steps no longer than what is left, so one
+    /// with no end can't make a poll read it whole. Answers whether it
+    /// read to the file's end, or found none to read.
+    fn read_on(&mut self, left: &mut u64) -> bool {
         let Ok(mut file) = File::open(&self.file.0) else {
             return true;
         };
@@ -585,17 +610,26 @@ impl Live {
             return true;
         }
         let mut reader = BufReader::new(file);
-        let mut taken = 0;
-        while taken < self.at_most {
-            let Ok(read) = reader.read_until(b'\n', &mut self.partial) else {
+        while *left > 0 {
+            let Ok(buffer) = reader.fill_buf() else {
                 return true;
             };
-            let read = u64::try_from(read).unwrap_or(0);
-            self.file.1 += read;
-            if read == 0 || self.partial.last() != Some(&b'\n') {
+            if buffer.is_empty() {
                 return true;
             }
-            taken += read;
+            let most = buffer
+                .len()
+                .min(usize::try_from(*left).unwrap_or(usize::MAX));
+            let end = buffer[..most].iter().position(|&byte| byte == b'\n');
+            let step = end.map_or(most, |at| at + 1);
+            self.partial.extend_from_slice(&buffer[..step]);
+            reader.consume(step);
+            let read = u64::try_from(step).unwrap_or(*left);
+            self.file.1 += read;
+            *left -= read;
+            if end.is_none() {
+                continue;
+            }
             if let Some(sample) = parse(&String::from_utf8_lossy(&self.partial)) {
                 self.follow.take(&sample);
             }
@@ -603,6 +637,15 @@ impl Live {
         }
         false
     }
+}
+
+/// The UTC day a moment falls on, as days since 1970, as its day file is
+/// named by.
+fn day_of(at: SystemTime) -> u64 {
+    at.duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+        / 86_400
 }
 
 fn ms(at: SystemTime) -> u64 {
@@ -1477,6 +1520,141 @@ mod tests {
             followed(&lines).now(NOV3 + 6_000).map(|(_, r)| r)
         );
         assert_eq!(live.follow.last_ms, NOV3 + 6_000);
+        let _ = fs::remove_dir_all(&folder);
+    }
+
+    // A start just before midnight whose catch-up runs past it reads the
+    // day it began on before the next, rather than leaping from the day
+    // before to today's and leaving the start's own lines unread.
+    #[test]
+    fn a_catch_up_past_midnight_reads_the_day_it_began_on_before_the_next() {
+        let folder =
+            std::env::temp_dir().join(format!("shaper-live-midnight-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&folder);
+        fs::create_dir_all(&folder).expect("a folder");
+        let midnight = NOV3 + 12 * 3_600_000;
+        let from = midnight - 5_000;
+        let lines = flow_queued(from);
+        let split = lines
+            .iter()
+            .position(|l| parse(l).expect("a sample").at() >= midnight)
+            .expect("a line after midnight");
+        let (before, after) = lines.split_at(split);
+        let started = SystemTime::UNIX_EPOCH + Duration::from_millis(from);
+        let now = SystemTime::UNIX_EPOCH + Duration::from_millis(midnight + 10_000);
+        let began = crate::record::day_file(&folder, started);
+        let next = crate::record::day_file(&folder, now);
+        fs::write(&began, format!("{}\n", before.join("\n"))).expect("the start's day's file");
+        fs::write(&next, format!("{}\n", after.join("\n"))).expect("the next day's file");
+        let mut live = Live::new(&folder, started);
+        live.at_most = 1_000;
+        let mut read: Vec<PathBuf> = Vec::new();
+        let mut polls = 0;
+        while !live.caught_up() && polls < 1_000 {
+            let _ = live.poll(now);
+            if read.last() != Some(&live.file.0) {
+                read.push(live.file.0.clone());
+            }
+            polls += 1;
+        }
+        assert_eq!(
+            read,
+            [began, next],
+            "a catch-up past midnight didn't read the day it began on, then the next"
+        );
+        assert_eq!(
+            live.poll(now).map(|(l, r)| (l.to_string(), r)),
+            followed(&lines)
+                .now(midnight + 10_000)
+                .map(|(l, r)| (l.to_string(), r)),
+            "read across midnight over {polls} polls, the stay differed from one read whole"
+        );
+        let _ = fs::remove_dir_all(&folder);
+    }
+
+    // The poll that finishes one day's file reads on into the next's, and
+    // what it reads of both together stays within its bound and a line.
+    #[test]
+    fn a_poll_reads_no_more_than_its_bound_and_a_line_across_two_files() {
+        let folder =
+            std::env::temp_dir().join(format!("shaper-live-across-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&folder);
+        fs::create_dir_all(&folder).expect("a folder");
+        let lines = queued();
+        let today = SystemTime::UNIX_EPOCH + Duration::from_millis(NOV3 + 6_000);
+        let yesterday = crate::record::day_file(&folder, today - Duration::from_hours(24));
+        let (older, newer) = lines.split_at(15);
+        fs::write(&yesterday, format!("{}\n", older.join("\n"))).expect("yesterday's file");
+        let path = crate::record::day_file(&folder, today);
+        fs::write(&path, format!("{}\n", newer.join("\n"))).expect("today's file");
+        let longest = lines
+            .iter()
+            .map(|l| u64::try_from(l.len()).expect("a line's length") + 1)
+            .max()
+            .expect("lines");
+        let size = |path: &Path| fs::metadata(path).map_or(0, |m| m.len());
+        let started = SystemTime::UNIX_EPOCH + Duration::from_millis(NOV3);
+        let mut live = Live::new(&folder, started);
+        live.at_most = 10 * longest;
+        let mut polls = 0;
+        while !live.caught_up() && polls < 1_000 {
+            let (file, at) = live.file.clone();
+            let _ = live.poll(today);
+            let read = if live.file.0 == file {
+                live.file.1 - at
+            } else {
+                size(&file) - at + live.file.1
+            };
+            assert!(
+                read <= live.at_most + longest,
+                "poll {polls} read {read} bytes against a bound of {} and a line of {longest}",
+                live.at_most
+            );
+            polls += 1;
+        }
+        assert_eq!(
+            (live.caught_up(), &live.file.0),
+            (true, &path),
+            "{polls} polls never read today's file to its end"
+        );
+        let _ = fs::remove_dir_all(&folder);
+    }
+
+    // A file of 10 MiB with no newline, as a torn one can hold, is read
+    // in steps of the bound, kept whole to be ended, rather than in one
+    // poll that a stop would wait behind.
+    #[test]
+    fn a_line_with_no_end_is_read_over_several_polls() {
+        const SIZE: u64 = 10 << 20;
+        let folder =
+            std::env::temp_dir().join(format!("shaper-live-endless-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&folder);
+        fs::create_dir_all(&folder).expect("a folder");
+        let now = SystemTime::UNIX_EPOCH + Duration::from_millis(NOV3);
+        let path = crate::record::day_file(&folder, now);
+        let endless = vec![b'x'; usize::try_from(SIZE).expect("a size in memory")];
+        fs::write(&path, endless).expect("today's file");
+        let mut live = Live::new(&folder, now);
+        let mut polls = 0;
+        while !live.caught_up() && polls < 100 {
+            let before = live.file.1;
+            let _ = live.poll(now);
+            let read = live.file.1 - before;
+            assert!(
+                read <= READ_AT_MOST,
+                "poll {polls} read {read} bytes of a line with no end, past {READ_AT_MOST}"
+            );
+            polls += 1;
+        }
+        assert_eq!(
+            polls, 3,
+            "a line of {SIZE} bytes with no end was read in {polls} polls, not in 4 MiB steps"
+        );
+        assert_eq!(
+            (live.file.1, u64::try_from(live.partial.len()).ok()),
+            (SIZE, Some(SIZE)),
+            "a line with no end wasn't read to the file's end and kept whole"
+        );
         let _ = fs::remove_dir_all(&folder);
     }
 }
