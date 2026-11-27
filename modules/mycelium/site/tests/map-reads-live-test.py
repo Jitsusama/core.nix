@@ -656,11 +656,13 @@ def test_a_network_pointed_at_says_what_it_is_for_and_how_it_stands_unopened(
 ) -> None:
     page = mycelium_opened.page
     the_map_stands(page, "live")
+    peek = page.locator("#peek")
+    expect(peek, "a peek stood with nothing pointed at").to_be_hidden()
+    # The map taking focus walks to the first machine and peeks at it in
+    # the corner, so the pointer's peek must then name the heron's instead.
     page.locator("#map-view").focus()
     page.keyboard.press("0")
     settled(page, "0 didn't fit the whole map")
-    peek = page.locator("#peek")
-    expect(peek, "a peek stood with nothing pointed at").to_be_hidden()
     before = page.url
     ring = page.locator(f'#world .hub[data-key="h:{HERONS}"] .m-hub').bounding_box()
     assert ring, "the map drew no ring for the heron's network to point at"
@@ -687,8 +689,9 @@ def test_a_cell_and_a_network_each_open_on_its_purpose_doing_and_health(
     the_map_stands(page, "live")
     glance = page.locator("#panel-body dl.glance").first
     page.evaluate("location.hash = '#cell=TERN01'")
+    # A cell's title is set in title case, as its drawer names it.
     expect(page.locator("#panel-title"), "TERN01's drawer never opened").to_contain_text(
-        "Mend the Sails"
+        "Mend The Sails"
     )
     expect(glance.locator("dt"), "a cell's drawer opened on no glance").to_have_text(
         ["Purpose", "Doing", "Health"]
