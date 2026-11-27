@@ -5,6 +5,9 @@ a plugin, and its opening comment says what the test proves. So every area finds
 without declaring or importing them: the desktop, made once a run by `started`, the launcher
 closed after each test, for an area that asks for it, and the stand-in Google. A helper two
 areas use comes here too, and nothing here is a test.
+
+Long because every desktop VM test imports it as the one session they share, so a helper two of
+them need lives here rather than in a copy beside each.
 """
 
 from __future__ import annotations

@@ -10,6 +10,9 @@
 # jitsusama.quickshell.margin.pieces, rendered into Pieces.qml at build,
 # and what the launcher finds and how it learns are
 # jitsusama.quickshell.launcher, rendered into Providers.qml.
+# Long because it is one tool's module: the QML files linked, the theme
+# written for them and the service that runs them meet here. What stands
+# alone, such as the providers and the recents, has its own file beside it.
 { wallpapers }:
 {
   config,
