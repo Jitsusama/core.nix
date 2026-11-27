@@ -3,7 +3,8 @@
 // (tests/explain-it-node.sh) and a pi that answers as it's told. A session
 // asked of reads while the node answers, then its pi is asked holding only
 // its facts, and the act shows the answer while it's this act's, its first
-// sentence as its name and the whole read; an answer to another question
+// sentence as its name and the whole read, its words streamed said at most
+// once each pace, the last never left unsaid; an answer to another question
 // leaves it as it was. An address that isn't one asks nothing, one the
 // node doesn't know or finds only by title says so, a node that can't say
 // is no answer, a second row asked while the first reads makes the first
@@ -107,11 +108,42 @@ ShellRoot {
         expect("and never its folder", !ask.posed.includes("/home/"), ask.posed);
         same("while its pi thinks, the act says so", [explainer.shown("a")?.name,
             explainer.shown("a")?.note], ["\u2026", "asking"]);
+        // A word a moment, as Ask streams them: forty told at once are said once, on the
+        // pace, never once each.
         const before = told;
-        ask.said = whole;
-        ask.stage = "answered";
-        ask.answered();
-        expect("an answer told says the act again", told > before, told);
+        Array.from({ length: 40 }, (_, at) => at).forEach(at => {
+            ask.said = whole.slice(0, at + 1);
+            ask.answered();
+        });
+        same("no word streamed is said inside the pace", told, before);
+        until("the words streamed are said once the pace ends", () => told > before, () => {
+            same("and said once", told, before + 1);
+            paced.before = told;
+            ask.said = whole;
+            ask.stage = "answered";
+            ask.answered();
+            paced.start();
+        });
+    }
+
+    // A second later nothing more was said of the burst, and the answer's last word was.
+    Timer {
+        id: paced
+
+        property int before: 0
+
+        interval: 1000
+        onTriggered: {
+            try {
+                Expect.same("the last word is said, once", root.told, paced.before + 1);
+                root.answered();
+            } catch (error) {
+                Expect.fail(error.message);
+            }
+        }
+    }
+
+    function answered() {
         const shown = explainer.shown("a");
         same("the answer's first sentence names the act", shown?.name, fjord);
         same("the whole of it is read", shown?.reads, whole);

@@ -49,6 +49,12 @@ Scope {
     // Told whenever what an act shows changes, so its place is said again.
     signal changed
 
+    // How often, at most, in milliseconds, a streaming answer says its act again: the pi tells
+    // each word as it comes, and each change makes all of Now's rows read as changed, many
+    // times a second through an answer (Y2YBTS on #5357). A tenth of a second still reads as
+    // the words coming.
+    property int pace: 100
+
     // Explains the session at `address` on `key`'s row, whose acts Joel
     // could answer it by are named `beside` (Explaining.facts), kept with
     // it so its answer goes once they change (Explaining.fits). They're
@@ -132,12 +138,24 @@ Scope {
     }
 
     // The pi's answer, a word a moment as Ask tells it, said again for
-    // whichever row it answers.
+    // whichever row it answers, at most once each `pace`: the words told
+    // meanwhile are said together as it ends, whether a row still asks
+    // judged then, so the last word is never left unsaid.
     Connections {
         target: explainer.asker
         ignoreUnknownSignals: true
 
         function onAnswered() {
+            if (!pacing.running)
+                pacing.start();
+        }
+    }
+
+    Timer {
+        id: pacing
+
+        interval: explainer.pace
+        onTriggered: {
             const posed = explainer.asker?.posed;
             if (Object.values(explainer.explained).some(one => one.stage === "asking"
                 && one.message === posed))
