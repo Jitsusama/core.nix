@@ -809,6 +809,19 @@ struct Red<'a> {
     quarantine: &'a str,
 }
 
+#[cfg(test)]
+impl<'a> Red<'a> {
+    /// A red cut on a main whose quarantine list is empty.
+    fn unexcused(candidate: &'a str, log: &'a Path, merged: &'a [String]) -> Self {
+        Red {
+            candidate,
+            log,
+            merged,
+            quarantine: "",
+        }
+    }
+}
+
 /// Whether the red `red_of` was settled by what failed in it: run once
 /// more, being wholly on main's quarantine list, once for the same
 /// riders, or put on the riders whose own passes moved what failed, which

@@ -266,13 +266,14 @@ fn a_train_that_gives_up_makes_every_rider_fall_saying_why() {
     }
     let mut splitting = Splitting::default();
     let log = Path::new("/state/train/c.log");
-    red(&root, "c1", log, &["a1".to_owned()], &mut splitting);
+    let (a1, b2) = (["a1".to_owned()], ["b2".to_owned()]);
+    red(&root, &Red::unexcused("c1", log, &a1), &mut splitting);
     assert_eq!(
         riders(&root).len(),
         2,
         "the first rider to fail alone didn't fall by itself"
     );
-    red(&root, "c2", log, &["b2".to_owned()], &mut splitting);
+    red(&root, &Red::unexcused("c2", log, &b2), &mut splitting);
     assert!(
         riders(&root).is_empty(),
         "riders still rode a train that gave up"
