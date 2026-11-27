@@ -218,3 +218,85 @@ fn a_need_that_couldnt_be_kept_is_a_trouble_and_the_pain_still_sent() {
         "a need not kept unsent its pain: {void:?}"
     );
 }
+
+#[test]
+fn a_need_is_kept_before_the_next_owners_send() {
+    let place = Place::new("hub-kept-each");
+    place.routes();
+    a_day(&place);
+    // The holder sorts before ABC123, whose own pain is sent after it, so
+    // a run stopped at that send has kept the holder's need already.
+    let cells = r#"{"Ok":{"Sessions":[
+        {"id":"s-live","address":"ABC123","state":"busy"},
+        {"id":"s-void","address":"VOID01","state":"idle"},
+        {"id":"s-never","address":"NEVER1","state":"idle"},
+        {"id":"s-fit","address":"A0FIT2","state":"idle"},
+        {"id":"s-hub","address":"HUB001","state":"idle"}]}}"#;
+    let ears = ears_with(&place, vec![Hub::new("launcher", "HUB001", &["A0FIT2"])]);
+    let mut kept_by_then = None;
+    hear_putting(&ears, cells, &mut |to, text, _| {
+        if to == "ABC123" && text.contains("broken again") {
+            kept_by_then.get_or_insert_with(|| place.needs().len());
+        }
+        Sent::Went
+    })
+    .expect("a run");
+    assert_eq!(
+        kept_by_then,
+        Some(1),
+        "the holder's need wasn't kept before the next send"
+    );
+    assert_eq!(place.needs().len(), 1, "a need was kept twice");
+}
+
+#[test]
+fn a_need_that_couldnt_be_kept_stays_a_trouble_for_the_hour() {
+    let place = Place::new("hub-unkept-hour");
+    place.routes();
+    a_day(&place);
+    fs::write(place.root.join("mesh"), "").expect("a file in the folder's place");
+    let hubs = || vec![Hub::new("launcher", "HUB001", &["FIT002"])];
+    let ears = ears_with(&place, hubs());
+    hear_putting(&ears, HELD, &mut |_, _, _| Sent::Went).expect("the run that lost it");
+    // The folder can be made now, and nothing new is put to a hub.
+    fs::remove_file(place.root.join("mesh")).expect("the file gone");
+    let said_at = |at: i64| {
+        let ears = Ears {
+            at,
+            ..ears_with(&place, hubs())
+        };
+        hear_putting(&ears, HELD, &mut |_, _, _| Sent::Went)
+            .expect("a later run")
+            .troubles
+            .iter()
+            .any(|t| t.starts_with("the needs put to hubs couldn't be kept: "))
+    };
+    let minute = 60_000;
+    assert!(said_at(ears.at + 5 * minute), "the next run forgot it");
+    assert!(said_at(ears.at + 59 * minute), "forgotten within the hour");
+    assert!(!said_at(ears.at + 61 * minute), "still said past its hour");
+}
+
+#[test]
+fn a_need_unkept_ahead_of_the_run_is_no_trouble() {
+    let place = Place::new("hub-unkept-ahead");
+    let ears = place.ears();
+    let ahead = Hour {
+        at: ears.at,
+        unkept: Some(Unkept {
+            at: ears.at + 60_000,
+            why: "read-only".into(),
+        }),
+        ..Hour::default()
+    };
+    fs::write(
+        place.root.join("state/hour.json"),
+        serde_json::to_string(&ahead).expect("an hour"),
+    )
+    .expect("hour.json");
+    assert_eq!(
+        crate::hear::troubles::unkept(&ears.state, ears.at, None),
+        None,
+        "one dated ahead was carried"
+    );
+}

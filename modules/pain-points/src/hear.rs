@@ -52,7 +52,7 @@ use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, Instant, UNIX_EPOCH};
-use troubles::{CELLLESS_AT_MOST_MS, cellless_since, troubles};
+use troubles::{CELLLESS_AT_MOST_MS, Unkept, cellless_since, troubles};
 
 /// How far back a first run hears, and how long a pain whose thread was
 /// never seen waits before it counts as lost.
@@ -156,6 +156,9 @@ pub struct Hour {
     /// to ask of it can't be read: said, though it fails no run.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub unclosed: Option<String>,
+    /// Needs put to hubs that a run within the hour couldn't keep.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unkept: Option<Unkept>,
 }
 
 /// How a send is put to a cell: asked, wanting an answer, or told, read
@@ -480,7 +483,9 @@ pub fn hear_putting(
         ));
     }
     hour.troubles.extend(ledgered);
-    hour.troubles.extend(unkept);
+    hour.unkept = troubles::unkept(&ears.state, ears.at, unkept);
+    hour.troubles
+        .extend(hour.unkept.as_ref().map(Unkept::trouble));
     crate::write_whole(
         &ears.state.join("hour.json"),
         &serde_json::to_string(&hour).map_err(|e| e.to_string())?,
@@ -665,7 +670,8 @@ struct Through {
 
 /// Sends each pain of the last two hours not yet sent, nor carried, to its
 /// owner, one finding a cell, worst first, and gives the keys of those
-/// that went, with the trouble of needs that couldn't be kept. A pain no
+/// that went, with why its needs couldn't be kept, where some couldn't.
+/// A pain no
 /// live cell of its own takes goes to the least-held live holder of its
 /// subject that its hub names, kept as a need the way the harness keeps
 /// every need put to a hub, and only with no hub to take it to the
@@ -740,7 +746,7 @@ fn route_waiting(
         }
     }
     let mut owned = Vec::new();
-    let mut needs = Vec::new();
+    let (mut put, mut unkept) = (0, None);
     for (owner, mut pains) in by_owner {
         pains.sort_by_key(|n| (std::cmp::Reverse(kept[*n].hits), kept[*n].at));
         pains.truncate(route::NAMED_AT_MOST);
@@ -752,6 +758,7 @@ fn route_waiting(
         let finding = route::finding_held(&named, cells, ears.offset_s, &held_as);
         match send(&owner, &finding) {
             Sent::Went => {
+                let mut needs = Vec::new();
                 for n in pains {
                     kept[n].to = Some(owner.clone());
                     kept[n].routed_at = Some(ears.at);
@@ -759,13 +766,23 @@ fn route_waiting(
                     if let Some(went) = through.get(&n) {
                         needs.push(subject_hubs::Need::put(
                             routes.from.as_deref().unwrap_or_default(),
-                            needs.len(),
+                            put,
                             ears.at,
                             went.words.clone(),
                             (&went.hub, &owner),
                             live.len(),
                         ));
+                        put += 1;
                     }
+                }
+                // Its needs are kept before its pains are kept as sent,
+                // so a run stopped after this send loses none of them: a
+                // pain read as sent is never put again, and its need with
+                // it (#6774's round, F5 and F25). Stopped between the two,
+                // the pain goes again as the one being sent does, with a
+                // need of its own.
+                if let Err(error) = subject_hubs::keep(&ears.mesh, &needs) {
+                    unkept.get_or_insert_with(|| error.to_string());
                 }
             }
             // Only a send made and failed spends a try.
@@ -779,9 +796,6 @@ fn route_waiting(
         }
         let _ = keep(heard_at, kept);
     }
-    let unkept = subject_hubs::keep(&ears.mesh, &needs)
-        .err()
-        .map(|error| format!("the needs put to hubs couldn't be kept: {error}"));
     (owned, unkept)
 }
 

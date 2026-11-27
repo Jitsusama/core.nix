@@ -1,9 +1,11 @@
 //! What kept a run from routing as it should, each said as a trouble so a
-//! broken listener never reads as a quiet hour, and how long the node has
-//! named no sessions, which is a trouble only once it has gone on.
+//! broken listener never reads as a quiet hour, how long the node has
+//! named no sessions, which is a trouble only once it has gone on, and
+//! needs that couldn't be kept, which stay a trouble for the hour.
 
 use super::route::Routes;
-use super::{Hour, SEND_TRIES};
+use super::{HOUR_MS, Hour, SEND_TRIES};
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
 
@@ -35,6 +37,40 @@ pub fn cellless_since(state: &Path, at: i64, cellless: bool) -> Option<i64> {
             .filter(|since| *since <= at)
             .unwrap_or(at)
     })
+}
+
+/// Needs put to hubs that a run couldn't keep, and why: the judge reading
+/// needs never sees them, so the pains they carried weigh on no holder.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Unkept {
+    /// When the run that couldn't keep them ran.
+    pub at: i64,
+    pub why: String,
+}
+
+impl Unkept {
+    /// As the hour's troubles say it.
+    #[must_use]
+    pub fn trouble(&self) -> String {
+        format!("the needs put to hubs couldn't be kept: {}", self.why)
+    }
+}
+
+/// The needs this run couldn't keep, as `why`, or else those the run
+/// before carries from within the hour. Cadence's card reads only the
+/// last run's troubles once an hour, so a trouble said by the one
+/// five-minute run that lost them would almost never reach it (#6774's
+/// round, F22). One dated ahead of this run carries nothing, so a wrong
+/// clock can't hold it past its hour.
+pub fn unkept(state: &Path, at: i64, why: Option<String>) -> Option<Unkept> {
+    if let Some(why) = why {
+        return Some(Unkept { at, why });
+    }
+    fs::read(state.join("hour.json"))
+        .ok()
+        .and_then(|text| serde_json::from_slice::<Hour>(&text).ok())
+        .and_then(|before| before.unkept)
+        .filter(|before| before.at <= at && at - before.at < HOUR_MS)
 }
 
 /// What kept a run from routing as it should: sends that failed this run,
