@@ -239,8 +239,9 @@ onLinux {
 
   # The sweep's room check, the one its unit runs, over readings of a
   # quiet machine, one at each mark, one past each, a wait run out, a
-  # stall that clears, a last sweep too long ago to wait for or none, and
-  # readings it can't make or that aren't numbers.
+  # stall that clears, a last sweep too long ago to wait for, none or one
+  # ahead of the clock, a stamp aging in the last sleep, a wait that fails
+  # itself, and readings it can't make or that aren't numbers.
   pi-sweep-waits-for-room =
     let
       service = (account workstation).systemd.user.services.pi-sweep;

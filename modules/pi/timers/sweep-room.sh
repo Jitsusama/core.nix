@@ -12,12 +12,14 @@
 # disk already saturated. It skips only one: a host's own sweep takes
 # over once the last whole sweep ended two hours ago, on the host's one
 # thread and with no limits, and two skipped hours on 26 November did
-# just that. So past its wait it lets the sweep start however the machine
-# stands when the next hour's run might find the stamp too old to wait
-# on; it lets it start at once when the last sweep's stamp is too old
-# for a wait to end before the hosts take over, and on a reading it can't
-# make. It reads the stamp again on every pass, since a machine that
-# sleeps through a wait wakes with the stamp older than the wait counted,
+# just that. So past its wait it skips only when the next hour's run, an
+# hour after this one began, would still find the stamp young enough to
+# start before the hosts, and that run never skips. It lets the sweep
+# start at once when the last sweep's stamp is too old for a wait to end
+# before the hosts take over, is dated ahead of the clock, or on a reading
+# it can't make. It reads the stamp again on every pass, the last too,
+# since a machine that sleeps through a wait wakes with the stamp older
+# than the wait counted,
 # and sleeps between passes a second at a time by the wall clock, since
 # `sleep` doesn't count a suspend, so a pass ends within a second of
 # waking, and no longer than its count of seconds if the clock steps
@@ -29,9 +31,16 @@
 # Its help takes the shape every command of ours does (docs/commands.md),
 # by hand.
 
-# A condition that fails skips the hour, so a wait that fails itself lets
-# the sweep start rather than skip, as it did when this ran before it.
-trap 'exit 0' ERR
+# A condition that ends nonzero skips the hour, so a wait that fails
+# itself, by a command or by bash, lets the sweep start rather than skip,
+# as it did when this ran before it. Only a skip it chose, and being
+# asked wrongly, which the unit's own words never are, end otherwise.
+skipping=false
+ended() {
+  local status=$?
+  [ "$status" -eq 64 ] || "$skipping" || exit 0
+}
+trap ended EXIT
 
 say_help() {
   cat << 'EOF'
@@ -96,14 +105,15 @@ past() {
 }
 
 # How many seconds ago the last whole sweep ended, by its stamp, or
-# nothing when there's none, as before the first, when hosts sweep.
+# nothing when there's none, as before the first, when hosts sweep, or
+# when it's dated ahead of the clock, which no wait can be judged by.
 age() {
   local stamped now
   stamped=$(stat -c %Y "$stamp" 2> /dev/null || true)
   now=$(date +%s)
   case $stamped in
   '' | *[!0-9]*) ;;
-  *) echo $((now - stamped)) ;;
+  *) [ "$now" -lt "$stamped" ] || echo $((now - stamped)) ;;
   esac
 }
 
@@ -111,7 +121,7 @@ age() {
 latest=$((7200 - apart - 120))
 ago=$(age)
 if [ -z "$ago" ]; then
-  echo "pi-sweep starts: no sweep has left a stamp, so the hosts sweep meanwhile"
+  echo "pi-sweep starts: no sweep has left a stamp it can read, so the hosts sweep meanwhile"
   exit 0
 fi
 if [ "$ago" -gt $((latest - most)) ]; then
@@ -146,14 +156,7 @@ while :; do
     fi
     exit 0
   fi
-  if [ "$SECONDS" -ge "$most" ]; then
-    if [ $((ago + 3600)) -lt "$latest" ]; then
-      echo "pi-sweep skips this hour without room after waiting $SECONDS s: $said"
-      exit 1
-    fi
-    echo "pi-sweep starts without room after waiting $SECONDS s: $said"
-    exit 0
-  fi
+  # Read again before judging, since a sleep ages it, a suspend most.
   ago=$(age)
   if [ -z "$ago" ]; then
     echo "pi-sweep starts without room: the last sweep's stamp is gone: $said"
@@ -162,6 +165,16 @@ while :; do
   if [ "$ago" -ge "$latest" ]; then
     echo "pi-sweep starts without room: the last sweep ended $((ago / 60)) minutes ago," \
       "too long to wait more: $said"
+    exit 0
+  fi
+  if [ "$SECONDS" -ge "$most" ]; then
+    # As old as the next hour's run, an hour after this one began, finds it.
+    if [ $((ago - SECONDS + 3600)) -lt "$latest" ]; then
+      echo "pi-sweep skips this hour without room after waiting $SECONDS s: $said"
+      skipping=true
+      exit 1
+    fi
+    echo "pi-sweep starts without room after waiting $SECONDS s: $said"
     exit 0
   fi
   if ! "$waited"; then

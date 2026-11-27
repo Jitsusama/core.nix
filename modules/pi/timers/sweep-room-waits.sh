@@ -90,8 +90,15 @@ said=$("$program" "$here" "$here/meminfo" 900 1 "$here/stamp")
 judge "$said" "$?" "pi-sweep starts: the last sweep ended 104 minutes ago, too long to wait" \
   "a stamp a wait would outlast"
 said=$("$program" "$here" "$here/meminfo" 900 1 "$here/none")
-judge "$said" "$?" "pi-sweep starts: no sweep has left a stamp, so the hosts sweep meanwhile" \
+judge "$said" "$?" \
+  "pi-sweep starts: no sweep has left a stamp it can read, so the hosts sweep meanwhile" \
   "no stamp"
+# A stamp ahead of the clock can't say how long the hosts will wait.
+touch -d '10 minutes' "$here/stamp"
+said=$("$program" "$here" "$here/meminfo" 0 1 "$here/stamp")
+judge "$said" "$?" \
+  "pi-sweep starts: no sweep has left a stamp it can read, so the hosts sweep meanwhile" \
+  "a stamp ahead of the clock"
 # Its last pass counts too: readings 30 s apart over a minute's wait end
 # 3 minutes 30 s short of two hours, so a stamp 6995 s old, which a
 # check a second apart would still wait on, is too old.
@@ -99,12 +106,28 @@ touch -d '6995 seconds ago' "$here/stamp"
 said=$("$program" "$here" "$here/meminfo" 60 30 "$here/stamp")
 judge "$said" "$?" "pi-sweep starts: the last sweep ended 116 minutes ago, too long to wait" \
   "a stamp its last pass would outlast"
-# A stamp 56 minutes old whose wait runs out skips the hour, since the
-# next hour's run finds it under 118 minutes old and still waits.
-touch -d '56 minutes ago' "$here/stamp"
-said=$("$program" "$here" "$here/meminfo" 0 1 "$here/stamp")
-judge "$said" "$?" "pi-sweep skips this hour without room after waiting 0 s: $memory" \
-  "a stamp 56 minutes old" 1
+# A wait that runs out skips the hour when the next hour's run, an hour
+# after this one began, finds the stamp young enough to start: a second
+# apart, under 7079 s, two minutes and a second short of two hours. So a
+# stamp 3476 s old as a six-second wait begins skips, though it is 3482 s
+# old as the wait ends, which the end's own age would have started on.
+touch -d '3476 seconds ago' "$here/stamp"
+said=$("$program" "$here" "$here/meminfo" 6 1 "$here/stamp")
+status=$?
+said=${said//"waiting 7 s"/"waiting 6 s"}
+judge "$said" "$status" "pi-sweep waits for room: $memory $marks
+pi-sweep skips this hour without room after waiting 6 s: $memory" \
+  "a stamp the next hour's run starts on" 1
+# A wait that can't say what it did lets the sweep start rather than skip.
+touch -d '1 minute ago' "$here/stamp"
+"$program" "$here" "$here/meminfo" 0 1 "$here/stamp" >&- 2> /dev/null
+judge "" "$?" "" "a wait that can't write"
+# And so does one that fails in bash itself, on a count that isn't one.
+"$program" "$here" "$here/meminfo" 0 x "$here/stamp" > /dev/null 2>&1
+judge "" "$?" "" "a wait that fails in bash"
+# Being asked wrongly still says so.
+"$program" "$here" > /dev/null 2>&1
+judge "" "$?" "" "a wait asked wrongly" 64
 # A stamp an hour old, as each hourly run finds it, still waits, then
 # starts rather than skip, as the next hour's might find it too old.
 touch -d '60 minutes ago' "$here/stamp"
@@ -160,6 +183,27 @@ if [ "$SECONDS" -gt 10 ]; then
   echo "a stamp too old to wait for still held the sweep $SECONDS more seconds" >&2
   failed=1
 fi
+
+# A stamp that ages past the wait's end during its last sleep starts the
+# sweep, read as it is then, rather than skipping by the age it had. A
+# one-second wait sleeps once, between its two readings; one whose clock
+# ticked a second before its first reading ends at once, unslept, so it
+# is run again.
+machine 3.51 0.00 40000000 64000000
+for _ in 1 2; do
+  touch -d '1 minute ago' "$here/stamp"
+  "$program" "$here" "$here/meminfo" 1 1 "$here/stamp" > "$here/said" &
+  waiting=$!
+  sleep 0.5
+  touch -d '118 minutes ago' "$here/stamp"
+  wait "$waiting"
+  status=$?
+  said=$(cat "$here/said")
+  case $said in "pi-sweep waits for room: "*) break ;; *) ;; esac
+done
+judge "$said" "$status" "pi-sweep waits for room: $memory $marks
+pi-sweep starts without room: the last sweep ended 118 minutes ago, too long to wait more: \
+$memory" "a stamp that ages in the last sleep"
 
 # A stamp that goes during a wait starts the sweep at the next reading.
 touch -d '1 minute ago' "$here/stamp"
