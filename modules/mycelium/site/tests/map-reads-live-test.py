@@ -612,6 +612,13 @@ BOXES = """(keys) => [document.getElementById('map-view'), document.getElementBy
 DRAWN = f"(keys) => ({BOXES})(keys).every((box) => box !== null && box[2] > box[0])"
 # A health said for one thing: its verdict, then why.
 HEALTH_SAID = re.compile(r"^(Well|Watch|Tend): \S")
+# A cell's disc, found and measured in one go: a reading's redraw between
+# finding a disc and measuring it measures a disc no longer drawn, at 0.
+DISC = """(key) => {
+  const e = document.querySelector(`#world circle.cell[data-key="${key}"]`);
+  const r = e?.getBoundingClientRect();
+  return r ? [r.left, r.top, r.right, r.bottom] : null;
+}"""
 
 
 def drawn_boxes(page: Page, cells: list[str], why: str) -> list[list[float]]:
@@ -638,6 +645,13 @@ def drawn_boxes(page: Page, cells: list[str], why: str) -> list[list[float]]:
 def strongest(page: Page, cell: str) -> float:
     """Say the alpha of the strongest mark a cell is drawn with."""
     return max(float(mark["alpha"] or 0) for mark in marks_of(page, f"c:{cell}"))
+
+
+def disc_of(page: Page, cell: str) -> list[float]:
+    """Where a cell's disc is drawn on the page, failing when it isn't."""
+    disc: list[float] | None = page.evaluate(DISC, f"c:{cell}")
+    assert disc, f"{cell} wasn't drawn"
+    return disc
 
 
 def in_view(page: Page, cell: str) -> bool:
