@@ -65,11 +65,16 @@ impl App {
         // One set for a width the window has since left is let go, since
         // the reloader sets it again at the new one. Its words are held
         // against the page shown, which takes them only once it shows, so
-        // the set at the new width still says the edit.
+        // the set at the new width still says the edit. One taken is held
+        // coming, in the place of the one before it, until it shows.
         let page_pt = page.frame.size().x.to_pt();
-        let Some(edited) = self.shown_words.takes(page_pt, self.width.page_pt(), words) else {
+        if self
+            .shown_words
+            .sets(page_pt, self.width.page_pt(), words)
+            .is_none()
+        {
             return;
-        };
+        }
         self.let_incoming_go();
         let px_per_pt = self.px_per_pt();
         let screen_pt = self.screen_px() / px_per_pt;
@@ -104,8 +109,6 @@ impl App {
             set_ms: ms,
             opens: opens.then_some(file),
             title,
-            words,
-            edited,
         });
         self.ask_incoming();
     }
@@ -235,8 +238,8 @@ impl App {
         self.fresh.extend(incoming.textures.keys().copied());
         self.textures = incoming.textures;
         // The page shown holds its words from now, so a set after it is
-        // judged against them.
-        self.shown_words.shows(incoming.words);
+        // judged against them, and says whether it came of an edit.
+        let edited = self.shown_words.shows() && incoming.opens.is_none();
         // Set again at another width, the page's blocks have moved, so each
         // mark, and the cursor's line, goes as far through its block from
         // the line it's on. Set again at the same width with its pictures
@@ -247,7 +250,6 @@ impl App {
         // landed lands again from what was kept, unless the file was edited.
         let reflowed = incoming.opens.is_none()
             && (incoming.page.frame.size().x.to_pt() - self.painter.width_pt()).abs() >= 0.01;
-        let edited = incoming.edited && incoming.opens.is_none();
         let again = incoming.opens.is_none() && (reflowed || edited || !self.landed.is_empty());
         let most_before_pt = self.painter.height_pt();
         let before = if again {

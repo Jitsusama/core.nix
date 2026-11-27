@@ -1,9 +1,9 @@
 //! What the reloader takes from the asks that came while it set, and when
 //! a page set again comes of an edit, which lets the marks kept from the
 //! last time land again from what was kept only when it doesn't. The
-//! sequences below call `Shown` as `App::saved` and `shows` do, in their
-//! order, since an `App` needs a window to make; that wiring itself is
-//! read, not run.
+//! sequences below call `Shown` as `App::saved` and `App::take_incoming`
+//! do, in their order, since an `App` needs a window to make: each set
+//! is `sets`, and each page that shows is `shows`.
 
 use super::{Reload, Shown, newest};
 use crate::page::Width;
@@ -29,49 +29,46 @@ fn the_newest_file_and_width_are_taken_and_setting_again_adds_nothing() {
     );
 }
 
-/// What the page shown holds, as `App::saved` judges each set and a set
-/// shows: a save set for a width the window has left is let go unjudged,
-/// and the page shown keeps its words until a page shows, so the set at
-/// the new width says the edit.
+/// A save, then its pictures come from the web before its page shows: the
+/// set from the fetch takes the save's place coming, and though its words
+/// are the save's, it still says the edit, since the page shown kept its
+/// own until a page showed.
+#[test]
+fn an_edit_whose_set_a_fetch_replaced_before_it_showed_is_said_by_the_fetchs() {
+    let (opened, saved) = (1, 2);
+    let mut shown = Shown::of(opened);
+    assert_eq!(shown.sets(500.0, 500.0, saved), Some(true), "the save");
+    assert_eq!(
+        shown.sets(500.0, 500.0, saved),
+        Some(true),
+        "the fetch, set before the save showed, still says the edit"
+    );
+    assert!(shown.shows(), "the page that shows comes of the edit");
+    assert_eq!(
+        shown.sets(500.0, 500.0, saved),
+        Some(false),
+        "once its words show, the same words set again aren't an edit"
+    );
+    assert!(!shown.shows(), "and the page that shows comes of none");
+}
+
+/// A save set at the width the window has since left is let go unjudged,
+/// and the set again at the new width says the edit.
 #[test]
 fn an_edit_whose_set_was_let_go_for_a_width_left_is_said_by_the_next() {
     let (opened, saved) = (1, 2);
     let (left, now) = (300.0, 500.0);
     let mut shown = Shown::of(opened);
     assert_eq!(
-        shown.takes(left, now, saved),
+        shown.sets(left, now, saved),
         None,
         "the save, set at the width the window left, is let go"
     );
+    assert!(!shown.shows(), "nothing it let go comes");
     assert_eq!(
-        shown.takes(now, now, saved),
+        shown.sets(now, now, saved),
         Some(true),
         "set again at the new width, it says the edit"
     );
-    shown.shows(saved);
-    assert_eq!(
-        shown.takes(now, now, saved),
-        Some(false),
-        "once its words show, the same words set again aren't an edit"
-    );
-}
-
-/// A set replaced by a newer one before it shows leaves the page shown as
-/// it was, so the newer still says the edit the first carried, though its
-/// own words are the same as the first's.
-#[test]
-fn an_edit_whose_set_a_newer_replaced_before_it_showed_is_said_by_the_newer() {
-    let (opened, saved) = (1, 2);
-    let shown = Shown::of(opened);
-    assert_eq!(shown.takes(500.0, 500.0, saved), Some(true), "the save");
-    assert_eq!(
-        shown.takes(500.0, 500.0, saved),
-        Some(true),
-        "pictures come before it shows: set again, it still says the edit"
-    );
-    assert_eq!(
-        Shown::of(opened).takes(500.0, 500.0, opened),
-        Some(false),
-        "pictures come or a width: the same words"
-    );
+    assert!(shown.shows(), "the page that shows comes of the edit");
 }

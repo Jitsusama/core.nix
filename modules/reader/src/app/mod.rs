@@ -117,12 +117,6 @@ pub(crate) struct Incoming {
     opens: Option<std::path::PathBuf>,
     /// The window's title once it shows.
     title: String,
-    /// The words it was set from, hashed, which the page shown holds once
-    /// it shows.
-    words: u64,
-    /// Whether it comes of an edit to the page shown, which may renumber
-    /// its blocks, as `Shown::takes` judged it when it was set.
-    edited: bool,
 }
 
 /// A place on the jump list: a file, how far down it the view's top was,
@@ -162,7 +156,7 @@ pub(crate) enum Reload {
 /// What asks that came while one set are taken as: the newest file asked
 /// for and the newest width, each if any asked. Setting again needs no
 /// more than the set itself, since whether the file was edited is judged
-/// by its words against the page shown (`Shown::takes`), not by what was
+/// by its words against the page shown (`Shown::sets`), not by what was
 /// heard.
 pub(crate) fn newest(
     asks: impl IntoIterator<Item = Reload>,
@@ -183,29 +177,44 @@ pub(crate) fn sets_for(page_pt: f64, window_pt: f64) -> bool {
 
 /// The words the page shown was set from, hashed (`page::words_of`), which
 /// each page set again is judged against to know whether the file was
-/// edited. Judging takes a copy, so no set judged, let go or replaced
-/// before it shows moves them, and none can lose an edit: only a page
-/// that shows does.
+/// edited, and those of the page set to take its place, `coming`, with
+/// whether it comes of an edit. Only a page that shows moves the words
+/// shown, so no set judged, let go or replaced before it shows can lose
+/// an edit.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct Shown(u64);
+pub(crate) struct Shown {
+    words: u64,
+    coming: Option<(u64, bool)>,
+}
 
 impl Shown {
-    /// The words of the first page shown.
+    /// The words of the first page shown, with none coming.
     pub(crate) fn of(words: u64) -> Self {
-        Self(words)
+        Self {
+            words,
+            coming: None,
+        }
     }
 
     /// Whether a page set from words hashed `set`, `page_pt` wide, is taken
     /// for a window whose page is `window_pt` wide, and if so whether it
-    /// comes of an edit to the page shown. One set for a width the window
-    /// has left is let go unjudged.
-    pub(crate) fn takes(self, page_pt: f64, window_pt: f64, set: u64) -> Option<bool> {
-        sets_for(page_pt, window_pt).then_some(set != self.0)
+    /// comes of an edit to the page shown, which it's held coming with, in
+    /// the place of the set coming before it. One set for a width the
+    /// window has left is let go unjudged, and what's coming stays.
+    pub(crate) fn sets(&mut self, page_pt: f64, window_pt: f64, set: u64) -> Option<bool> {
+        let edited = sets_for(page_pt, window_pt).then_some(set != self.words)?;
+        self.coming = Some((set, edited));
+        Some(edited)
     }
 
-    /// A page set from words hashed `words` shows, and holds them from now.
-    pub(crate) fn shows(&mut self, words: u64) {
-        self.0 = words;
+    /// The page coming shows: its words are held from now, and whether it
+    /// came of an edit is said. With none coming, nothing was edited.
+    pub(crate) fn shows(&mut self) -> bool {
+        let Some((words, edited)) = self.coming.take() else {
+            return false;
+        };
+        self.words = words;
+        edited
     }
 }
 
