@@ -84,6 +84,46 @@ fn a_look_by_hand_prints_the_card_and_keeps_and_tells_nothing() {
     );
 }
 
+/// The hour counts landings from the mains' logs alone: ten days of
+/// update-to-main's journal and pi-packages' were read beside them once, and
+/// their mapped pages charged to the hour's memory limit throttled it for
+/// minutes. A stand-in journalctl writes down each reading it's asked for.
+#[test]
+fn the_hour_reads_neither_journal_the_looks_come_from() {
+    let account = account();
+    let bin = account.path().join("bin");
+    fs::create_dir_all(&bin).expect("a folder for the stand-in");
+    let asked = account.path().join("journalctl-asked");
+    let journalctl = bin.join("journalctl");
+    fs::write(
+        &journalctl,
+        format!(
+            "#!/bin/sh\nprintf '%s\\n' \"$*\" >> '{}'\n",
+            asked.display()
+        ),
+    )
+    .expect("the stand-in journalctl");
+    fs::set_permissions(&journalctl, fs::Permissions::from_mode(0o755)).expect("the stand-in runs");
+
+    let ran = Command::new(env!("CARGO_BIN_EXE_cadence"))
+        .arg("hour")
+        .env("HOME", account.path())
+        .env("XDG_STATE_HOME", account.path().join("state"))
+        .env("XDG_DATA_HOME", account.path().join("data"))
+        .env("PATH", &bin)
+        .output()
+        .expect("cadence runs");
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(ran.status.success(), "cadence failed: {said}");
+    let readings = fs::read_to_string(&asked).unwrap_or_default();
+    for journal in ["update-to-main.service", "pi-packages"] {
+        assert!(
+            !readings.contains(journal),
+            "the hour read {journal}'s journal, which only the looks need: {readings}"
+        );
+    }
+}
+
 #[test]
 fn the_card_counts_the_pains_the_hearer_summed_up() {
     let account = account();
