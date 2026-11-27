@@ -15,7 +15,9 @@
 //! its own state (heard.jsonl, a fortnight of it, and each pain sent past
 //! that until its fix runs) and in his misses ledger, where the cells
 //! that keep his misses read them, and go only over the machine's own
-//! mycelium socket to the cell that owns what hurt. For the
+//! mycelium socket to the cell that owns what hurt, or, where no live
+//! cell of its own takes it, to one holder of its subject, which the
+//! subject's hub names, else the fallback. For the
 //! moment a send runs they are in mycelium's command line too, which any
 //! account here can read, since `mycelium send` takes its text no other
 //! way.
@@ -52,7 +54,7 @@ use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, Instant, UNIX_EPOCH};
-use troubles::{CELLLESS_AT_MOST_MS, Unkept, cellless_since, hubless_since, troubles};
+use troubles::{CELLLESS_AT_MOST_MS, Hubless, Unkept, cellless_since, hubless_since, troubles};
 
 /// How far back a first run hears, and how long a pain whose thread was
 /// never seen waits before it counts as lost.
@@ -155,6 +157,9 @@ pub struct Hour {
     /// Since when the node couldn't be asked for its hubs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hubless_since: Option<i64>,
+    /// Pains a run within the hour sent to the fallback for want of hubs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hubless: Option<Hubless>,
     /// Why no pain can close, when the core the machine runs or the git
     /// to ask of it can't be read: said, though it fails no run.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -341,7 +346,7 @@ fn said(hour: &Hour) -> String {
         hour.hubless_since
             .filter(|since| hour.at - since < CELLLESS_AT_MOST_MS)
             .map_or(String::new(), |since| format!(
-                "; the mycelium has named no hubs for {} minutes, so pains go to the fallback",
+                "; the mycelium has named no hubs for {} minutes, so pains a hub would take wait",
                 (hour.at - since) / 60_000
             )),
         hour.unclosed.as_ref().map_or(String::new(), |why| format!(
@@ -454,7 +459,25 @@ pub fn hear_putting(
         answer
     };
     let mut asked = |to: &str, text: &str| guarded(to, text, Put::Asked);
-    let (owned, unkept) = route_waiting(ears, &routes, &cells, &mut kept, &mut asked, &heard_at);
+    // A node that couldn't be asked for its hubs holds back the pains a
+    // hub would take while it blinks, as the next run may name them, and
+    // past that sends them to the fallback, said on the card (#6774's
+    // round, F13).
+    let outage = hubless_since(
+        &ears.state,
+        ears.at,
+        ears.hubless.is_some() && routes.sends(),
+    );
+    let past_a_blink = outage.is_some_and(|since| ears.at - since >= CELLLESS_AT_MOST_MS);
+    let hubs_wait = ears.hubless.is_some() && !past_a_blink;
+    let (owned, unkept, hubless_sent) = route_waiting(
+        ears,
+        &routes,
+        (&cells, hubs_wait),
+        &mut kept,
+        &mut asked,
+        &heard_at,
+    );
     note_for_keeper(
         ears,
         &routes,
@@ -488,23 +511,13 @@ pub fn hear_putting(
         hour.cellless_since
             .is_some_and(|since| ears.at - since >= CELLLESS_AT_MOST_MS),
     );
-    // A node that couldn't be asked for its hubs sends pains back to the
-    // fallback the hubs would have spared, so once it has gone on past a
-    // blink it's said on the card too.
-    hour.hubless_since = hubless_since(
-        &ears.state,
-        ears.at,
-        ears.hubless.is_some() && routes.sends(),
-    );
-    let hubless_on = hour
-        .hubless_since
-        .is_some_and(|since| ears.at - since >= CELLLESS_AT_MOST_MS);
-    if let Some(why) = ears.hubless.as_ref().filter(|_| hubless_on) {
-        hour.troubles.push(format!(
-            "the mycelium named no hubs, so pains no cell of their own takes go to the \
-             fallback: {why}"
-        ));
-    }
+    hour.hubless_since = outage;
+    hour.hubless = routes
+        .sends()
+        .then(|| troubles::hubless(&ears.state, ears.at, hubless_sent, ears.hubless.as_deref()))
+        .flatten();
+    hour.troubles
+        .extend(hour.hubless.as_ref().map(Hubless::trouble));
     hour.troubles.extend(ledgered);
     hour.unkept = troubles::unkept(&ears.state, ears.at, unkept);
     hour.troubles
@@ -696,11 +709,12 @@ struct Through {
 /// The owner of each pain of the last two hours not yet sent, nor
 /// carried, nor out of tries: its own live cell, else the least-held live
 /// holder of its subject, else the fallback. A pain said in a session the
-/// mycelium doesn't know has none yet.
+/// mycelium doesn't know has none yet, nor, while `hubs_wait`, one only a
+/// hub would take.
 fn owners_for(
     ears: &Ears,
     routes: &Routes,
-    cells: &BTreeMap<String, Cell>,
+    (cells, hubs_wait): (&BTreeMap<String, Cell>, bool),
     kept: &[Heard],
 ) -> Owners {
     let live: BTreeSet<String> = cells
@@ -708,6 +722,15 @@ fn owners_for(
         .filter(|cell| cell.live)
         .map(|cell| cell.address.clone())
         .collect();
+    // Nothing goes to the void, so no session known to be the void holds
+    // another's pain, even where the routes forgot its address (#6774's
+    // round, F10).
+    let mut holders = live.clone();
+    for void in kept.iter().filter(|h| h.void) {
+        if let Some(cell) = cells.get(&void.session) {
+            holders.remove(&cell.address);
+        }
+    }
     // A holder is given the pain while it holds the fewest still open,
     // counting each it is given now.
     let mut held: BTreeMap<String, usize> = BTreeMap::new();
@@ -720,6 +743,7 @@ fn owners_for(
     }
     let mut by_owner: BTreeMap<String, Vec<usize>> = BTreeMap::new();
     let mut through: BTreeMap<usize, Through> = BTreeMap::new();
+    let mut for_want_of_hubs = 0;
     for (n, pain) in kept.iter().enumerate() {
         if pain.carried
             || pain.routed_at.is_some()
@@ -736,7 +760,7 @@ fn owners_for(
         let owner = route::own(&pain.session, pain.void, cells, routes).or_else(|| {
             // Never back to its own cell, which the void's or a refused
             // one may be, live as it is.
-            let mut takers = live.clone();
+            let mut takers = holders.clone();
             takers.remove(&cell.address);
             let said = route::said(pain, cells, routes);
             let Some((hub, fit, words)) = route::holder(
@@ -748,6 +772,13 @@ fn owners_for(
                 &pain.sends_failed_at,
                 pain.sent_late_at.as_deref(),
             ) else {
+                if ears.hubless.is_none() {
+                    return routes.fallback.clone();
+                }
+                if hubs_wait {
+                    return None;
+                }
+                for_want_of_hubs += 1;
                 return routes.fallback.clone();
             };
             through.insert(
@@ -769,6 +800,7 @@ fn owners_for(
         live,
         by_owner,
         through,
+        for_want_of_hubs,
     }
 }
 
@@ -780,6 +812,8 @@ struct Owners {
     by_owner: BTreeMap<String, Vec<usize>>,
     /// The hub each pain put through one went by, by its place.
     through: BTreeMap<usize, Through>,
+    /// How many go to the fallback only as the node named no hubs.
+    for_want_of_hubs: usize,
 }
 
 /// Sends each pain of the last two hours not yet sent, nor carried, to its
@@ -788,25 +822,27 @@ struct Owners {
 /// A pain no live cell of its own takes goes to the least-held live
 /// holder of its subject that its hub names, kept as a need the way the
 /// harness keeps every need put to a hub, and only with no hub to take it
-/// to the fallback.
+/// to the fallback, or, while `hubs_wait`, waits. It also gives how many
+/// went to the fallback only as the node named no hubs.
 fn route_waiting(
     ears: &Ears,
     routes: &Routes,
-    cells: &BTreeMap<String, Cell>,
+    (cells, hubs_wait): (&BTreeMap<String, Cell>, bool),
     kept: &mut [Heard],
     send: &mut dyn FnMut(&str, &str) -> Sent,
     heard_at: &Path,
-) -> (Vec<String>, Option<String>) {
+) -> (Vec<String>, Option<String>, usize) {
     // With no one named to send as, or no cell named never to send to,
     // nothing is sent: a listener nobody set up hears and counts alone.
     if !routes.sends() {
-        return (Vec::new(), None);
+        return (Vec::new(), None, 0);
     }
     let Owners {
         live,
         by_owner,
         through,
-    } = owners_for(ears, routes, cells, kept);
+        for_want_of_hubs,
+    } = owners_for(ears, routes, (cells, hubs_wait), kept);
     let mut owned = Vec::new();
     let (mut put, mut unkept) = (0, None);
     for (owner, mut pains) in by_owner {
@@ -869,7 +905,7 @@ fn route_waiting(
         }
         let _ = keep(heard_at, kept);
     }
-    (owned, unkept)
+    (owned, unkept, for_want_of_hubs)
 }
 
 /// Asks the ledgers' keeper of the pains just sent and those heard too

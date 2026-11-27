@@ -52,6 +52,7 @@ pub(super) fn hour_of(kept: &[Heard], at: i64) -> Hour {
         troubles: Vec::new(),
         cellless_since: None,
         hubless_since: None,
+        hubless: None,
         unclosed: None,
         unkept: None,
     }

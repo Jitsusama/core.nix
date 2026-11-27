@@ -204,11 +204,12 @@ pub fn said(pain: &Heard, cells: &BTreeMap<String, Cell>, routes: &Routes) -> Ve
 /// the narrowest subject whose hub is live, the live holder holding the
 /// fewest of `held`, never one the routes say never to send to. A holder
 /// in `failed_at`, where a send of the pain failed, isn't given it again
-/// while another fits. Counting failures into the list instead would land
-/// back on one of them once the counts reordered it (#6774's round, F1
-/// and F7). A holder at `late_at`, where a send of it ran past its limit
-/// and so may have gone, is given it again while it fits, so no second
-/// holder works on it beside the first (#6774's round, F16).
+/// while another fits, a broader hub's included. Counting failures into
+/// the list instead would land back on one of them once the counts
+/// reordered it (#6774's round, F1 and F7). A holder at `late_at`, where
+/// a send of it ran past its limit and so may have gone, is given it
+/// again while it fits, so no second holder works on it beside the first
+/// (#6774's round, F16).
 pub fn holder<'a>(
     said: &[String],
     hubs: &'a [subject_hubs::Hub],
@@ -219,19 +220,32 @@ pub fn holder<'a>(
     late_at: Option<&str>,
 ) -> Option<(&'a subject_hubs::Hub, &'a str, Vec<String>)> {
     let takes = |a: &str| live.contains(a) && !routes.refuses(a);
-    subject_hubs::taking(said, hubs, &takes)
-        .into_iter()
-        .find_map(|(hub, subject)| {
-            let mut fits: Vec<&String> = hub.fits.iter().filter(|f| takes(f)).collect();
-            // Stable, so holders holding as many keep the node's order.
-            fits.sort_by_key(|f| held.get(f.as_str()).copied().unwrap_or_default());
-            let fit = fits
-                .iter()
-                .find(|f| late_at == Some(f.as_str()))
-                .or_else(|| fits.iter().find(|f| !failed_at.contains(f)))
-                .or_else(|| fits.first())?;
-            Some((hub, fit.as_str(), subject))
+    // Each hub that takes it, narrowest first, with its live holders
+    // least-held first.
+    let taking: Vec<(&subject_hubs::Hub, Vec<String>, Vec<&String>)> =
+        subject_hubs::taking(said, hubs, &takes)
+            .into_iter()
+            .map(|(hub, subject)| {
+                let mut fits: Vec<&String> = hub.fits.iter().filter(|f| takes(f)).collect();
+                // Stable, so holders holding as many keep the node's order.
+                fits.sort_by_key(|f| held.get(f.as_str()).copied().unwrap_or_default());
+                (hub, subject, fits)
+            })
+            .collect();
+    let pick = |fit_for: &dyn Fn(&str) -> bool| {
+        taking.iter().find_map(|(hub, subject, fits)| {
+            let fit = fits.iter().copied().find(|f| fit_for(f))?;
+            Some((*hub, fit.as_str(), subject.clone()))
         })
+    };
+    // A late send may have landed, so its holder keeps the pain wherever
+    // it still fits. Else it goes to a holder no send failed at, of any
+    // hub that takes it, before going back to one that failed, so a hub
+    // of one holder doesn't hold a pain a broader hub could take (#6774's
+    // round, F6).
+    pick(&|f| late_at == Some(f))
+        .or_else(|| pick(&|f| !failed_at.iter().any(|x| x == f)))
+        .or_else(|| pick(&|_| true))
 }
 
 /// Whether a pain said in `session` goes to its own cell: live, not the
@@ -647,14 +661,17 @@ mod tests {
                 retried(&held, &["B00002"]),
                 retried(&moved, &["A00001"]),
                 retried(&held, &["B00002", "A00001"]),
+                retried(&held, &["B00002", "A00001", "C00003"]),
             ],
             [
                 Some("A00001".to_owned()),
                 Some("B00002".to_owned()),
+                Some("C00003".to_owned()),
                 Some("B00002".to_owned())
             ],
-            "a pain whose send failed went to the holder it failed at while another fit, or \
-             with every holder failed at, not to the one holding fewest"
+            "a pain whose send failed went to a holder it failed at while another fit, the \
+             broader hub's included, or with every holder failed at, not to the narrowest \
+             hub's holder holding fewest"
         );
         let late = |at: &str| {
             holder(&said, &hubs, &live, &held, &routes, &[], Some(at)).map(|(_, fit, _)| fit)

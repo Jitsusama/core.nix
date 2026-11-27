@@ -128,45 +128,92 @@ fn a_mycelium_that_names_no_sessions_for_a_quarter_hour_is_a_trouble() {
 }
 
 #[test]
-fn a_node_that_named_no_hubs_past_a_blink_is_a_trouble_by_its_error() {
+fn a_pain_a_hub_would_take_waits_out_a_blink_then_goes_to_the_fallback_said() {
     let place = Place::new("hubless-node");
     place.routes();
+    a_day(&place);
     let minute = 60_000;
+    let void = "why is the launcher so slow";
+    // Whom the void's pain went to this run, and whether the card says
+    // pains went to the fallback for want of hubs, naming the error.
     let run = |at: i64, hubless: Option<&str>| {
         let ears = Ears {
             at,
             hubless: hubless.map(String::from),
             ..place.ears()
         };
-        let hour = hear(&ears, "", &mut |_, _| false).expect("a run");
+        let mut to = Vec::new();
+        let hour = hear(&ears, CELLS, &mut |owner, text| {
+            if text.contains(void) && !text.contains(route::FOR_THE_KEEPER) {
+                to.push(owner.to_owned());
+            }
+            true
+        })
+        .expect("a run");
         let said = hour
             .troubles
             .iter()
             .any(|t| t.contains("named no hubs") && t.contains("connection refused"));
-        (said, hour)
+        (to, said, hour)
     };
     let refused = Some("connection refused");
-    let (said, hour) = run(AT, refused);
-    assert!(!said, "a node that blinked for one run failed it: {hour:?}");
+    let (to, said, hour) = run(AT, refused);
+    assert!(
+        to.is_empty() && !said,
+        "a node that blinked for one run sent the void's pain on, or failed the run: {to:?} \
+         {hour:?}"
+    );
     assert_eq!(hour.hubless_since, Some(AT), "the outage wasn't counted");
-    assert!(!run(AT + 10 * minute, refused).0, "failed within the grace");
-    let (said, hour) = run(AT + 15 * minute, refused);
+    let (to, said, _) = run(AT + 10 * minute, refused);
+    assert!(to.is_empty() && !said, "within the grace: {to:?}");
+    let (to, said, hour) = run(AT + 15 * minute, refused);
+    assert_eq!(to, ["ORCH01"], "past a blink it didn't go to the fallback");
     assert!(
         said,
-        "pains going back to the fallback past a blink weren't said on the card: {hour:?}"
+        "a pain going to the fallback past a blink wasn't said on the card: {hour:?}"
     );
-    let (said, hour) = run(AT + 20 * minute, None);
+    let (to, said, hour) = run(AT + 20 * minute, None);
     assert!(
-        !said && hour.hubless_since.is_none(),
-        "a node naming hubs again still counted out: {hour:?}"
+        to.is_empty() && said && hour.hubless_since.is_none(),
+        "with hubs named again, the outage still counted, or the hour's fallback wasn't \
+         said: {to:?} {hour:?}"
+    );
+    assert!(
+        !run(AT + 76 * minute, None).1,
+        "the fallback was still said past its hour"
     );
     fs::remove_file(place.root.join("state/routes.json")).expect("routes gone");
-    run(AT + 25 * minute, refused);
-    let (said, hour) = run(AT + 40 * minute, refused);
+    run(AT + 80 * minute, refused);
+    let (to, said, hour) = run(AT + 95 * minute, refused);
     assert!(
-        !said && hour.hubless_since.is_none(),
+        to.is_empty() && !said && hour.hubless_since.is_none(),
         "a listener nobody set up counted or said the node out: {hour:?}"
     );
+}
+
+#[test]
+fn a_node_out_of_reach_while_no_pain_needs_a_hub_is_no_trouble() {
+    let place = Place::new("hubless-quiet");
+    place.routes();
+    let minute = 60_000;
+    for at in [
+        AT,
+        AT + 5 * minute,
+        AT + 10 * minute,
+        AT + 15 * minute,
+        AT + 20 * minute,
+    ] {
+        let ears = Ears {
+            at,
+            hubless: Some("connection refused".into()),
+            ..place.ears()
+        };
+        let hour = hear(&ears, CELLS, &mut |_, _| true).expect("a run");
+        assert!(
+            hour.troubles.is_empty(),
+            "a node out of reach failed a run with no pain to route: {hour:?}"
+        );
+    }
 }
 
 #[test]

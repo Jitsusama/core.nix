@@ -132,6 +132,29 @@ fn an_ended_sessions_pain_goes_to_a_holder_of_what_it_worked_on() {
 }
 
 #[test]
+fn a_session_known_to_be_the_void_holds_no_others_pain_though_the_routes_forgot_it() {
+    let place = Place::new("hub-void-holder");
+    // Routes that leave the void's VOID01 off their never list.
+    fs::write(
+        place.root.join("state/routes.json"),
+        r#"{"from":"EAR001","fallback":"ORCH01","ledgers":"ORCH01","never":["NEVER1"]}"#,
+    )
+    .expect("routes written");
+    a_day(&place);
+    let cells = r#"{"Ok":{"Sessions":[
+        {"id":"s-live","address":"ABC123","state":"ended","working_on":"the launcher"},
+        {"id":"s-void","address":"VOID01","state":"idle"},
+        {"id":"s-hub","address":"HUB001","state":"idle"}]}}"#;
+    let ears = ears_with(&place, vec![Hub::new("launcher", "HUB001", &["VOID01"])]);
+    let asked = asked_in(&ears, cells, |_| Sent::Went);
+    assert_eq!(
+        owners_of(&asked, "broken again"),
+        ["ORCH01"],
+        "an ended session's pain went to the void, a hub's only holder: {asked:?}"
+    );
+}
+
+#[test]
 fn one_no_hub_takes_goes_to_the_fallback_as_before() {
     for (hubs, why) in [
         (vec![], "no hub named"),
