@@ -3294,15 +3294,20 @@
   '';
   passwords-copier-keeps-a-secret-in-memory-on-niri = ''
     on a nested niri, Passwords' copier, given a secret on its standard input as the daemon gives
-    it, pastes it whole on Joel's display, makes nothing under TMPDIR, runs nothing from PATH,
-    can't be read through /proc and holds it in locked memory, and refuses a standard input it
-    can't read whole
+    it, pastes it whole on Joel's display, offered marked secret, makes nothing under TMPDIR,
+    runs nothing from PATH, typed or not, can't be read through /proc and holds it in locked
+    memory, says it's ready only once it can't
+    be read and held once it holds the copy, and refuses a standard input it can't read whole,
+    never saying it held it
   '';
   passwords-holds-no-secret = ''
     the passwords daemon holds every entry each password manager lists without a secret, even one
     given with its secrets on, answers over its standard input and output as the shell runs it, a
     held list or get without asking a manager, gives a secret only to the ask for it, never to a
-    watch, or to the clipboard marked sensitive and cleared when its time is up, refuses a copy
+    watch, or to the clipboard marked sensitive and cleared when its time is up, writes it to the
+    copier only once the copier says it's ready and answers it copied only once the copier says it
+    holds it, answering a refused copy with the copier's reason, ends the copy it holds as it
+    ends itself, killed or not, refuses a copy
     before reading any secret while no copier is named, types a password only into the niri
     window it was asked for once the launcher has let go of the keys and while that window still
     has them, refusing a second while one is under way, never into one an agent's process is
@@ -4773,8 +4778,9 @@
     time, was killed from outside or hung past the clock's guard, names each by how it ended and
     says every case's time, and stops at a hang, naming the cases it left unrun; it refuses
     limits that aren't whole seconds before any case runs, and, where the builder holds the run
-    below a case's hard limit, says so once with the limit in force and what would fit, and
-    runs no case; the check fails where that can't be shown
+    below a case's hard limit, says so once with the hard limit in force, what would fit and
+    ulimit's reason, and runs no case; the check fails where that can't be shown; and a case
+    whose limits are refused as it is run fails unrun rather than running with none
   '';
   the-cats-walk-is-read-only-from-its-lists = ''
     the cat's code is read as no walk, by the rule it breaks, when WALKS holds anything but
@@ -5854,7 +5860,8 @@
     then lists once as his, leads with the locked manager's row, whose Return unlocks it, one
     refused saying why the next time the launcher opens, types an entry's password on Return
     into the window the launcher opened over, landing on the row from the find first, copies it
-    by Copy the Password through the daemon to the clipboard as the launcher goes, the
+    by Copy the Password through the daemon and Passwords' own wl-copy to the clipboard as the
+    launcher goes, the
     margin wearing the clipboard's mark and the foot, opened again, counting to its clearing,
     nothing on screen saying it, reads an entry in full as the selection rests on it, never as
     Joel's own ask, its drawer never saying its password, and holds its acts in the design's order
