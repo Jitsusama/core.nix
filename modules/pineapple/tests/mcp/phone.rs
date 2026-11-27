@@ -256,16 +256,21 @@ fn a_name_from_slack_quoted_back_in_a_failing_holds_no_alert_back() {
         _ => status(202),
     });
     let mut gateway = Gateway::new(&url, sign_in(&dir).as_os_str());
-    let alert = Alert {
-        title: "Someone stopped agents in owner/rate_limited",
-        words: "stop",
-        link: "https://example.slack.com/archives/C1/p1",
-    };
-    let told = tell_self(&mut gateway, alert);
-    assert!(
-        matches!(told, Err(Missed::Unsure(_))),
-        "a failing quoting the title is the tool's failing, never a rate spent: {told:?}"
-    );
+    for title in [
+        "Someone stopped agents in owner/rate_limited",
+        "Someone stopped agents in owner/invalid_auth",
+    ] {
+        let alert = Alert {
+            title,
+            words: "stop",
+            link: "https://example.slack.com/archives/C1/p1",
+        };
+        let told = tell_self(&mut gateway, alert);
+        assert!(
+            matches!(told, Err(Missed::Unsure(_))),
+            "a failing quoting {title} is the tool's failing, never Slack's refusal: {told:?}"
+        );
+    }
     let _ = fs::remove_dir_all(&dir);
 }
 

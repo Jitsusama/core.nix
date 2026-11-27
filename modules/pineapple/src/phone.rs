@@ -238,10 +238,7 @@ pub fn tell_self(gateway: &mut Gateway, alert: Alert) -> Result<String, Missed> 
     let Err(called) = sent else {
         return Ok(said);
     };
-    let nothing_ran = |why: &str| {
-        let why = unquoted(why, &said);
-        spent(&why) || refuses_the_sign_in(&why)
-    };
+    let nothing_ran = |why: &str| says(why, &said, spent) || says(why, &said, refuses_the_sign_in);
     Err(match called {
         Called::Unreachable(why) | Called::Unreadable(why) | Called::Failed(why) if !put => {
             Missed::NotSent(why)
@@ -256,13 +253,19 @@ pub fn tell_self(gateway: &mut Gateway, alert: Alert) -> Result<String, Missed> 
     })
 }
 
-/// A failing's words without any line of `said` it quotes, as written or
-/// as JSON would write it, however its writer escapes it: the title and
-/// where are still from Slack, so a name in them can't be read as the
-/// gateway's own word for a rate spent. Each line is taken out before the
-/// failing's escapes are read back and again after, so a name holding a
-/// backslash of its own is found quoted as written and as escaped.
-fn unquoted(why: &str, said: &str) -> String {
+/// How many times a failing's escapes are read back at most, for a writer
+/// that quotes a body already quoted as JSON inside its own.
+const ESCAPED_DEEPEST: usize = 3;
+
+/// Whether a failing says what `word` looks for in every reading of it,
+/// each without any line of `said` it quotes, as written or as JSON would
+/// write it: the title and where are still from Slack, so a name in them
+/// can't be read as the gateway's own word. A reading reads the failing's
+/// escapes back up to [`ESCAPED_DEEPEST`] times, taking the lines out
+/// only after or also between, so a name holding a backslash of its own,
+/// or holding another line, is found whole in at least one, while the
+/// gateway's own word, outside any quote, is in them all.
+fn says(why: &str, said: &str, word: fn(&str) -> bool) -> bool {
     let lines: Vec<&str> = said
         .lines()
         .filter(|line| !line.trim().is_empty())
@@ -275,7 +278,15 @@ fn unquoted(why: &str, said: &str) -> String {
         }
         left
     };
-    without(unescaped(&without(why.to_owned())))
+    let (mut read, mut between) = (why.to_owned(), without(why.to_owned()));
+    for _ in 0..ESCAPED_DEEPEST {
+        if !word(&without(read.clone())) || !word(&between) {
+            return false;
+        }
+        read = unescaped(&read);
+        between = without(unescaped(&between));
+    }
+    word(&without(read)) && word(&between)
 }
 
 /// `why` with each of JSON's escapes read back, from left to right: `\\`,
@@ -577,13 +588,10 @@ mod tests {
             format!("could not post {json}"),
         ] {
             assert!(spent(&why), "quoted, the name reads as Slack's word: {why}");
-            assert!(
-                !spent(&unquoted(&why, &said)),
-                "left out, it doesn't: {why}"
-            );
+            assert!(!says(&why, &said, spent), "left out, it doesn't: {why}");
         }
         assert!(
-            spent(&unquoted(&format!("rate_limited, for {json}"), &said)),
+            says(&format!("rate_limited, for {json}"), &said, spent),
             "the gateway's own word still counts"
         );
     }
@@ -595,31 +603,29 @@ mod tests {
             words: WORDS_NOT_TAKEN,
             link: "https://x.slack.com/archives/C1/p1",
         });
-        let why = format!("could not post {said}");
+        let escaped = as_python_writes(&serde_json::to_string(&said).expect("text as JSON"));
+        let why = format!("could not post {escaped}");
         assert!(
             refuses_the_sign_in(&why),
             "quoted, the name reads as a refusal"
         );
         assert!(
-            !refuses_the_sign_in(&unquoted(&why, &said)),
-            "left out, it doesn't"
+            !says(&why, &said, refuses_the_sign_in),
+            "left out, escaped as it was, it doesn't: {why}"
         );
         assert!(
-            refuses_the_sign_in(&unquoted(&format!("invalid_auth, for {said}"), &said)),
+            says(
+                &format!("invalid_auth, for {escaped}"),
+                &said,
+                refuses_the_sign_in
+            ),
             "the gateway's own word still counts"
         );
     }
 
-    #[test]
-    fn a_name_quoted_with_its_characters_escaped_is_left_out_too() {
-        let said = text(Alert {
-            title: "A stop in owner/rate_limited & caf\u{e9} \u{1f34d}",
-            words: WORDS_NOT_TAKEN,
-            link: "https://x.slack.com/archives/C1/p1",
-        });
-        // As Python's JSON writes it, and Go's: whatever isn't ASCII, and
-        // `&`, `<` and `>`, as `\uXXXX`; and `/` as PHP's writes it.
-        let json = serde_json::to_string(&said).expect("text as JSON");
+    /// JSON text as Python's writer gives it, and Go's: whatever isn't
+    /// ASCII, and `&`, `<` and `>`, as `\uXXXX`; and `/` as PHP's does.
+    fn as_python_writes(json: &str) -> String {
         let mut escaped = String::new();
         for each in json.chars() {
             if each == '/' {
@@ -632,14 +638,25 @@ mod tests {
                 }
             }
         }
+        escaped
+    }
+
+    #[test]
+    fn a_name_quoted_with_its_characters_escaped_is_left_out_too() {
+        let said = text(Alert {
+            title: "A stop in owner/rate_limited & caf\u{e9} \u{1f34d}",
+            words: WORDS_NOT_TAKEN,
+            link: "https://x.slack.com/archives/C1/p1",
+        });
+        let escaped = as_python_writes(&serde_json::to_string(&said).expect("text as JSON"));
         let why = format!("could not post {escaped}");
         assert!(spent(&why), "quoted, the name reads as Slack's word");
         assert!(
-            !spent(&unquoted(&why, &said)),
+            !says(&why, &said, spent),
             "left out, escaped as it was, it doesn't: {why}"
         );
         assert!(
-            spent(&unquoted(&format!("rate_limited, for {escaped}"), &said)),
+            says(&format!("rate_limited, for {escaped}"), &said, spent),
             "the gateway's own word still counts"
         );
         assert_eq!(
@@ -652,6 +669,41 @@ mod tests {
             "\\u0072 / \" \n \\q \\",
             "read from left to right, an escaped backslash opens no escape"
         );
+        assert_eq!(
+            unescaped(r"\b\f\r\t"),
+            "\u{8}\u{c}\r\t",
+            "each of JSON's control characters is read back"
+        );
+    }
+
+    #[test]
+    fn a_name_holding_another_line_or_quoted_deep_is_left_out() {
+        let quoting = |title: &'static str, deep: usize| {
+            let said = text(Alert {
+                title,
+                words: WORDS_NOT_TAKEN,
+                link: "https://x.slack.com/archives/C1/p1",
+            });
+            let json = serde_json::to_string(&said).expect("text as JSON");
+            let mut quoted = as_python_writes(&json);
+            for _ in 1..deep {
+                quoted = serde_json::to_string(&quoted).expect("text as JSON");
+            }
+            (said, quoted)
+        };
+        let holding = "In owner/rate_Said: \"(the words are at the link)\"limited & caf\u{e9}";
+        let named = "A stop in owner/rate_limited & caf\u{e9}";
+        for (said, quoted) in [quoting(holding, 1), quoting(named, 2), quoting(named, 3)] {
+            let why = format!("could not post {quoted}");
+            assert!(
+                !says(&why, &said, spent),
+                "left out, quoted as {quoted}, it reads as no rate spent"
+            );
+            assert!(
+                says(&format!("rate_limited, for {quoted}"), &said, spent),
+                "the gateway's own word beside it, quoted as {quoted}, still counts"
+            );
+        }
     }
 
     #[test]
@@ -663,11 +715,19 @@ mod tests {
         });
         let json = serde_json::to_string(&said).expect("text as JSON");
         let ascii = json.replace('\u{e9}', r"\u00e9");
+        assert!(
+            spent(&unescaped(said.as_str())),
+            "read back first, the name would read as Slack's word"
+        );
         for quoted in [said.as_str(), json.as_str(), ascii.as_str()] {
             let why = format!("could not post {quoted}");
             assert!(
-                !spent(&unquoted(&why, &said)),
+                !says(&why, &said, spent),
                 "left out, quoted as {quoted}, it reads as no rate spent"
+            );
+            assert!(
+                says(&format!("rate_limited, for {quoted}"), &said, spent),
+                "the gateway's own word beside it, quoted as {quoted}, still counts"
             );
         }
     }
