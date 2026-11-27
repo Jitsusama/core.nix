@@ -4,7 +4,7 @@
 use std::fs;
 use std::process::Output;
 
-use super::{BASE, StandIn, WORKING, text};
+use super::{BASE, BUILT, StandIn, WORKING, text};
 
 #[test]
 fn asked_only_to_name_them_it_names_each_check_the_change_moved_and_builds_nothing() {
@@ -49,7 +49,7 @@ fn by_default_or_asked_it_builds_what_was_added_and_changed_but_the_vm_tests() {
         let flake = format!("git+file://{}#checks.x86_64-linux", repo.display());
         assert_eq!(
             stand_in.built(),
-            format!("--no-link --keep-going -L {flake}.new {flake}.a\n"),
+            format!("{BUILT} {flake}.new {flake}.a\n"),
             "{arguments:?}"
         );
         let runs = stand_in.runs();
@@ -120,7 +120,7 @@ fn a_check_main_quarantines_is_built_alone_and_its_failure_blocks_nothing() {
     let flake = format!("git+file://{}#checks.x86_64-linux", repo.display());
     assert_eq!(
         stand_in.built(),
-        format!("--no-link --keep-going -L {flake}.a\n--no-link --keep-going -L {flake}.new\n")
+        format!("{BUILT} {flake}.a\n{BUILT} {flake}.new\n")
     );
     assert_eq!(stand_in.runs()[0]["built"]["passed"], true);
 
@@ -201,7 +201,7 @@ fn a_build_here_goes_through_the_standing_door_where_there_is_one() {
     assert_eq!(
         stand_in.built(),
         format!(
-            "--no-link --keep-going -L --store unix://{} {flake}.new {flake}.a\n",
+            "{BUILT} --store unix://{} {flake}.new {flake}.a\n",
             stand_in.path("standing.sock").display()
         ),
         "the build named the builders itself, which Nix heeds only from a trusted account"
@@ -219,7 +219,7 @@ fn a_pushed_commit_is_built_on_the_lent_builder_and_anything_else_here() {
     let flake = format!("git+file://{}#checks.x86_64-linux", repo.display());
     let standing = offload.join("machines-with-standing");
     let here = format!(
-        "--no-link --keep-going -L --builders @{} {flake}.new {flake}.a\n",
+        "{BUILT} --builders @{} {flake}.new {flake}.a\n",
         standing.display()
     );
     let asked = || stand_in.run(&["--system", "x86_64-linux", "--build", "--no-vm"]);
