@@ -2878,15 +2878,17 @@ Singleton {
         const againRecent = Date.now() - (askedAgainAt[named] ?? 0) < answerPatience;
         // A press told its window may yet come, as the kitty didn't answer,
         // is told it came, for the same reason, within comingPatience.
+        // None was told where no press held the ask.
         const still = stillSaid[named] ?? null;
-        const stillRecent = Date.now() - (still?.at ?? 0) < comingPatience;
+        const stillRecent = (still?.said ?? null) !== null
+            && Date.now() - still.at < comingPatience;
         forgetAsk(named);
         if (told && recent)
             unhosted(told, same && told.startedInHost ? "startedOwnAfterAll"
                 : same ? "ownAfterAll" : told.startedInHost ? "startedCameAfter" : "cameAfter");
         else if (again !== null && againRecent)
             unhosted(again, again.startedInHost ? "startedCameAgain" : "cameAgain");
-        else if (still !== null && stillRecent)
+        else if (stillRecent)
             unhosted(still.said, still.said.startedInHost ? "startedCameAfterAll"
                 : "cameAfterAll");
     }
@@ -2956,7 +2958,11 @@ Singleton {
     // (Viewers.js) bound it, past which a window coming is told nothing.
     // An ask afresh ends it (viewWith), its press holding the ask, and so
     // does another kitty starting (kittyStarted), which can't draw what
-    // the one before was asked: under is that one's pid.
+    // the one before was asked: under is that one's pid. One no press held,
+    // as the walk's, viewKept's or a wake's, is kept with said null, so a
+    // press soon after is held as well (stillHeld).
+    // Its time is the give-up's, which a held press leaves as it was
+    // (heldBack), or each press would hold the viewer anew.
     // Cases shorten comingPatience to see one too late.
     property var stillSaid: ({})
     property int comingPatience: 900000
@@ -3061,6 +3067,14 @@ Singleton {
             || asked - refusedAt[named] >= answerPatience)
             return;
         if (cause === "unanswered") {
+            // Heard again for the same refusal, as no script sends but any
+            // caller can, the first give-up's time stands, so its hold ends
+            // answerPatience after it (refusedOwn, stillHeld).
+            if (named in refusalKeptAt) {
+                console.info(`sessions: ${named}'s give-up heard again for the same refusal, `
+                    + "taken once");
+                return;
+            }
             console.info(`sessions: the sessions kitty didn't answer for ${named}, so window `
                 + `${refusedAsks[named]}, come refused, may yet be its own`);
             // Kept within answerPatience only (refusedOwn), while the press
@@ -3192,8 +3206,9 @@ Singleton {
             + (said !== null ? "; its press is told" : ""));
         if (again)
             pressedAgain(named, said, going);
-        else if (said !== null && unanswered) {
-            unhosted(said, said.startedInHost ? "startedStillComing" : "stillComing");
+        else if (unanswered) {
+            if (said !== null)
+                unhosted(said, said.startedInHost ? "startedStillComing" : "stillComing");
             stillSaid = Object.assign({}, stillSaid,
                 { [named]: { said, at: Date.now(), under: sessionsKittyPid } });
         }
@@ -4036,14 +4051,19 @@ Singleton {
     // Each press told its window may yet come of a kitty other than the one
     // up now, as that kitty's gone with it, forgotten, so viewKept may ask
     // the new kitty for its viewer, and given back to be told (lostTold).
-    // One whose kitty wasn't known is left to comingPatience.
+    // One whose kitty wasn't known is left to comingPatience. Only a press
+    // told within comingPatience is given back, as viewerCame tells one:
+    // one long past would meet Joel's next open of the launcher, whatever
+    // he opens it for (tellOnOpen), and an ask no press held has none.
     function stillLostTo(pid) {
-        const lost = Object.keys(stillSaid)
-            .filter(named => (stillSaid[named].under ?? "") !== ""
-                && stillSaid[named].under !== pid)
+        const now = Date.now();
+        const gone = Object.keys(stillSaid).filter(named =>
+            (stillSaid[named].under ?? "") !== "" && stillSaid[named].under !== pid);
+        const lost = gone.filter(named => (stillSaid[named].said ?? null) !== null
+                && now - stillSaid[named].at < comingPatience)
             .map(named => ({ named, said: stillSaid[named].said }));
-        for (const one of lost)
-            forgetStill(one.named);
+        for (const named of gone)
+            forgetStill(named);
         return lost;
     }
     // Each press stillLostTo let go is told its viewer was asked for again
