@@ -17,6 +17,8 @@ places must move the cursor from section to section, and a machine's address
 must put it on that machine. Anything the page
 logs fails it, since that is how it drew four empty parts unseen on 16 November.
 The server, the browser and the tab are modules/local-sites/tests/live_page.py's.
+Long because every case reads the one page against the one stand-in daemon and its
+fixtures, which a split would copy into each half.
 """
 
 import json
