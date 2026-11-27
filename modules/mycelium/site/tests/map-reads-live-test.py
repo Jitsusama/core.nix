@@ -67,15 +67,17 @@ REDRAWN_MS = 2500
 COUNTED = "8 cells, 2 moving, 1 stuck"
 CELLS = 8
 # What a first visit to the map may cost, drawn from the stand-in's cells: its
-# cost when this line was last set, plus room for four files, 8 KB and 16
-# elements, so most changes never touch the line and parallel ones never clash
-# on it. The room lets the map grow that much unnoticed. Every run's summary
-# says what the map cost, and a change that grows it says so in its commit. One
-# that would pass the line sets it again to that cost plus the room. Two that
-# each fit can pass it together, as neither moves this file, so a change that
-# grows the map runs this test again at its head over main once main has moved
-# the map or the kit since (local-sites/AGENTS.md).
-BUDGET = Budget(files=37, kilobytes=695, elements=636)
+# measured cost when this line was last set, 33 files, 686.7 KB and 619
+# elements, plus room for four files, 8 KB and 16 elements, so most changes
+# never touch the line and parallel ones never clash on it. The room lets the
+# map grow that much unnoticed. Every run's summary says what the map cost, and
+# a change that grows it says in its commit what it cost and why that's worth
+# it. One that would pass the line sets it again to its measured cost plus the
+# room, writing that cost here. Two that each fit can pass it together, as
+# neither moves this file, so a change that grows the map runs this test again
+# at its head over main once main's moves have changed this check's derivation
+# since (local-sites/AGENTS.md).
+BUDGET = Budget(files=37, kilobytes=695, elements=635)
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000
 TWIN_NETWORKS = 200

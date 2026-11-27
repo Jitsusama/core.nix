@@ -69,16 +69,23 @@ What holds it together:
   and a failure names each measure past its budget beside all three,
   and for elements, which tags grew.
 - **The map holds room instead**, since many changes grow it at once:
-  its line is its cost when last set plus four files, 8 KB and 16
-  elements, so most changes never touch it. A change that grows the map
-  says what it cost in its commit, from the run's summary. One that
-  would pass the line sets it again to its cost plus the room. Two
-  changes that each fit can pass it together, since neither moves the
-  line's file and a merge sees only files, so before merging, a change
-  that grows the map counts every file of `modules/mycelium/site/` and
-  the kit main moved as its own, and runs the map's test again at its
-  head over main. If main still goes past, the change reverted for it
-  did nothing wrong alone: it sets the line again from a run over main.
+  its line is its measured cost when last set, written beside it, plus
+  four files, 8 KB and 16 elements, so most changes never touch it. A
+  change that grows the map says in its commit what it cost and why
+  that's worth it. The figures come from the summary of a run that
+  built the check: one answered from the store prints nothing, and
+  `nix log` keeps a built one's. A change that would pass the line sets
+  it again to its measured cost plus the room, writing that cost beside
+  it. Two changes that each fit can pass it together, since neither
+  moves the line's file and a merge sees only files. So before merging,
+  a change that grows the map runs the map's test again at its head
+  over main whenever main's moves since its run change the check's
+  derivation, which `nix build --dry-run` on `mycelium-site-reads-live`
+  shows. The map's folder, all of `modules/local-sites/` and the theme's
+  web kit build it. That run must come after main's last such move, or
+  the change boards the train. If main still goes past, the change
+  reverted for it did nothing wrong alone: it sets the line again from a
+  run over main.
 
 ## Adding a Live Page
 
