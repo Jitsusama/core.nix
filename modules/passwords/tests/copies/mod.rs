@@ -14,7 +14,7 @@
 
 use std::path::Path;
 
-use crate::common::{KEEPING, Running, until};
+use crate::common::{KEEPING, Running, until, until_saw};
 use crate::holds_no_secret;
 use serde_json::json;
 
@@ -304,11 +304,12 @@ fn a_copy_goes_as_the_daemon_is_killed() {
 
 #[test]
 fn a_copy_copied_over_stays_past_the_time_the_one_before_it_clears() {
-    // Each copy clears COPIED_OVER_CLEARS on and the second is asked 2 s
-    // after the first, so between their two times only the first one's
-    // clear could end the second, and it's held past the first's time by
-    // half a second. The second may be taken up to 6 s late on a loaded
-    // machine before the first clears by itself.
+    // Each copy clears COPIED_OVER_CLEARS on and the second is asked
+    // ASKED_APART after the first, so between their two times only the
+    // first one's clear could end the second, and it's held past the
+    // first's time by half a second. The second may be taken up to
+    // COPIED_OVER_CLEARS less ASKED_APART late on a loaded machine before
+    // the first clears by itself.
     let running = Running::with_env(
         "copy-copied-over",
         &[("keeping", KEEPING)],
@@ -317,8 +318,9 @@ fn a_copy_copied_over_stays_past_the_time_the_one_before_it_clears() {
     let mut client = running.client();
     client.ask(&json!({"id": 1, "ask": "list", "asked": true}));
     let (_, first_clears) = held(&running, &mut client, 2);
-    // Two of the first copy's 8 s pass, so the second's time falls 2 s past it.
-    std::thread::sleep(std::time::Duration::from_secs(2));
+    // ASKED_APART of the first copy's COPIED_OVER_CLEARS pass, so the
+    // second's time falls ASKED_APART past the first's.
+    std::thread::sleep(std::time::Duration::from_millis(ASKED_APART));
     // held waits until a new copier is the only one, so the first is gone.
     let (second, second_clears) = held(&running, &mut client, 3);
     // The daemon took the second copy at its time less its clear, which
@@ -327,8 +329,9 @@ fn a_copy_copied_over_stays_past_the_time_the_one_before_it_clears() {
     let taken = second_clears - COPIED_OVER_CLEARS;
     assert!(
         taken < first_clears,
-        "the second copy was taken only {} ms before the first's time, so none was copied over",
-        i128::from(first_clears) - i128::from(taken)
+        "the second copy was taken {} ms after the first's time, so the first may have cleared \
+         by itself and none was copied over",
+        taken - first_clears
     );
     while since_the_epoch() < first_clears + 500 {
         std::thread::sleep(std::time::Duration::from_millis(20));
@@ -365,18 +368,17 @@ fn a_copy_copied_over_stops_waiting_to_clear() {
     // before the new one is named, or on the first's left running.
     let running = held_copy("copy-stops-waiting");
     let mut client = running.client();
-    let first = std::cell::RefCell::new(Vec::new());
-    until("one thread waits to clear the first copy", || {
-        *first.borrow_mut() = clear_waits(running.pid());
-        first.borrow().len() == 1
-    });
+    let first = until_saw(
+        "one thread waits to clear the first copy",
+        || clear_waits(running.pid()),
+        |waits| waits.len() == 1,
+    );
     held(&running, &mut client, 3);
-    let now = std::cell::RefCell::new(Vec::new());
-    let first = first.into_inner();
-    until("only the new copy waits to clear", || {
-        *now.borrow_mut() = clear_waits(running.pid());
-        now.borrow().len() == 1 && !first.contains(&now.borrow()[0])
-    });
+    until_saw(
+        &format!("only the new copy waits to clear, not the first's {first:?}"),
+        || clear_waits(running.pid()),
+        |waits| waits.len() == 1 && !first.contains(&waits[0]),
+    );
 }
 
 /// A daemon holding a copy far longer than a test takes, so only its
@@ -424,6 +426,10 @@ fn held(running: &Running, client: &mut crate::common::Client, id: u64) -> (u32,
 
 /// How long each copy in the copied-over case holds, in milliseconds.
 const COPIED_OVER_CLEARS: u64 = 8_000;
+
+/// How long after the first copy the copied-over case asks the second, in
+/// milliseconds.
+const ASKED_APART: u64 = 2_000;
 
 /// The threads of a process that wait for a copy to clear, by their ids,
 /// leaving out any that ended as they were looked at.

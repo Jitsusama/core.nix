@@ -656,3 +656,25 @@ pub fn until(what: &str, holds: impl Fn() -> bool) {
         std::thread::sleep(Duration::from_millis(20));
     }
 }
+
+/// What `look` saw once `holds` held of it, looking again every 20 ms; past
+/// 20 s it fails, saying `what` never held and what `look` last saw, so a
+/// wait that fails says why.
+pub fn until_saw<T: std::fmt::Debug>(
+    what: &str,
+    look: impl Fn() -> T,
+    holds: impl Fn(&T) -> bool,
+) -> T {
+    let started = Instant::now();
+    loop {
+        let seen = look();
+        if holds(&seen) {
+            return seen;
+        }
+        assert!(
+            started.elapsed() < Duration::from_secs(20),
+            "{what} never held; it last saw {seen:?}"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
