@@ -3448,6 +3448,10 @@ pub(crate) mod tests {
         let the_hall = hall(-53, Some(20), None);
         let tried = chooser.choose(start, (DESK, &badly, -50, CH52), &[the_hall], false);
         assert_eq!(tried, Choice::Try(HALL.into()), "the hall is tried");
+        // A refusal of a move to the hall asked at another instant, while
+        // the trial is still open, is of no move the trial asked.
+        let other = start + Duration::from_secs(1);
+        let open = chooser.refused(other, HALL, other);
         let gave = start + fading::BETWEEN;
         chooser.gave_way(gave, (DESK, HALL), LOSING);
 
@@ -3456,6 +3460,11 @@ pub(crate) mod tests {
         let later = gave + fading::BETWEEN;
         chooser.followed(later, DESK);
 
+        assert_eq!(
+            open,
+            Refusal::Stale,
+            "a refusal asked at another instant than the open trial undid it"
+        );
         assert_eq!(
             undone,
             Refusal::Stale,
