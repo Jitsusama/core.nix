@@ -15,7 +15,7 @@ use std::path::Path;
 use jiff::Timestamp;
 
 use super::cells::short_id;
-use super::{Class, Measure, count, lines, seconds, short};
+use super::{Class, Measure, count, seconds, short};
 use crate::mesh::{Mesh, Message, stamped_at};
 
 /// The key the count of undated holds takes.
@@ -114,7 +114,7 @@ fn sent_at(m: &Message) -> Option<i64> {
 /// to come.
 fn dated(asks: &str, now: i64) -> BTreeSet<String> {
     let mut latest = BTreeMap::new();
-    for ask in lines(asks) {
+    for ask in super::asks(asks) {
         let asked = [ask["at"].to_string(), ask["words"].to_string()];
         let open = ask["landed"].is_null() && ask["closed"].is_null();
         let due = seconds(&ask["expected"]).is_some_and(|expected| expected > now);

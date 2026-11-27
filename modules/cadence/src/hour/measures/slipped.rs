@@ -163,3 +163,22 @@ fn the_day_boundary_and_each_asks_own_moves_decide_an_old_date() {
          slip's line didn't say how long ago it was due"
     );
 }
+
+/// The keeper folds a copy of an ask into it, marking the copy's id with
+/// `~`; written after the ask, the copy, with no date of its own, would
+/// read as its latest line and answer the date it slipped.
+#[test]
+fn a_twin_folded_into_an_ask_is_not_read_as_its_latest_line() {
+    let asked = at(NOW - 3 * DAY);
+    let text = list(&[
+        json!({"id": "0a1b2c3d", "at": asked, "words": "fold", "owner": "F",
+            "expected": at(NOW - 3600)}),
+        json!({"id": "0a1b2c3d~1", "at": asked, "words": "fold", "owner": "F",
+            "closed": at(NOW - 1800), "parked": "a ruling"}),
+    ]);
+    assert_eq!(
+        slips(&text, NOW, Tracking::His).behind,
+        ["fold · F"],
+        "a twin written after its ask stood for it and answered or parked its slip"
+    );
+}

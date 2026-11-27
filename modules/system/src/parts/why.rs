@@ -13,15 +13,17 @@ const WHY_AT_MOST: usize = 240;
 /// a refusal's reason; a failure's first error, else its reason, since a
 /// failure's reason names only the step that failed and the error is what
 /// says why (cadence reads it so); or why a done update's system isn't the
-/// one it boots. None for one that went ahead or is still under way, so a
-/// reason an earlier attempt left can't stand for this one.
+/// one it boots, which an unchanged one after it says too while it holds,
+/// since switching nothing leaves the boot default where it was. None for
+/// one that went ahead or is still under way, so a reason an earlier
+/// attempt left can't stand for this one.
 pub fn update_why(updated: &Value) -> Value {
     let reason = first_line(updated, "why");
     let reason = reason.as_deref();
     let why = match updated.get("step").and_then(Value::as_str) {
         Some("refused") => reason.and_then(refused_why),
         Some("failed") => failed_why(updated, reason),
-        Some("done") => first_line(updated, "boots").as_deref().and_then(plain),
+        Some("done" | "unchanged") => first_line(updated, "boots").as_deref().and_then(plain),
         _ => None,
     };
     why.map_or(Value::Null, Value::from)
@@ -470,6 +472,13 @@ mod tests {
                  before: no loader, bad entry"
             ),
             "a done update that boots its old system says why, without the check's command"
+        );
+        let mut still = boots.clone();
+        still["step"] = json!("unchanged");
+        assert_eq!(
+            why_of(&still),
+            why_of(&boots),
+            "an unchanged update after it says why the old system still boots"
         );
         let quiet = json!({"step": "done", "boots": "the boot check `check` failed (exit \
                            status: 1), so the machine boots what it booted before: "});

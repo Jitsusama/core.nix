@@ -211,6 +211,10 @@ let
   # source given in its place wins over the text, which then says words
   # the launcher never reads. Such a source isn't read, since reading it
   # would build it while the machine is evaluated, so it's refused below.
+  # Home-manager makes a text's source with writeTextFile, which carries the
+  # text; were it not to, every machine with the launcher's words would be
+  # refused, not let through, which local-sites-refuses-renamed-look-acts
+  # holds.
   fromText =
     wordsFile.text or null != null
     && lib.isAttrs wordsFile.source

@@ -108,7 +108,6 @@
   "modules/firmware-notice/src/main.rs" = 6;
   "modules/git-engine/src/fsmonitor.rs" = 19;
   "modules/git-engine/src/main.rs" = 1;
-  "modules/git-engine/src/odb.rs" = 1;
   "modules/git-engine/src/pattern.rs" = 16;
   "modules/git-engine/src/wildmatch.rs" = 5;
   "modules/guide/src/install/memory.rs" = 4;
@@ -255,7 +254,6 @@
   "modules/update-to-main/src/ask.rs" = 3;
   "modules/update-to-main/src/follow.rs" = 21;
   "modules/update-to-main/src/hosted.rs" = 8;
-  "modules/update-to-main/src/run.rs" = 9;
   "modules/update-to-main/src/session.rs" = 1;
   "modules/update-to-main/src/system.rs" = 11;
   "modules/update-to-main/tests/update/main.rs" = 11;
@@ -305,7 +303,6 @@
   "tests/vm/devices/usb-wake-vm-test.py" = 3;
   "tests/vm/guide/guide-install-vm-test.py" = 1;
   "tests/vm/network/wifi/wifi-joins-when-asked-vm-test.py" = 1;
-  "tools/merge-net/src/ready.rs" = 4;
   "tools/merge-net/src/rules/mod.rs" = 17;
   "tools/merge-net/src/watch.rs" = 24;
   "tools/merge-net/src/world.rs" = 11;

@@ -294,6 +294,14 @@ copies() {
 placed() {
   copies && [ -d "$work" ] && [ ! -L "$work" ]
 }
+# True once the copy is `placed` and the working folder is the very one
+# the copy holds at `$1` within it, by where the cd landed, not by names:
+# a link put at a folder of the copy, or above it and taken down again,
+# around the cd would otherwise have the job run where it points. Where
+# the copy's own place can't be read, nothing is taken as entered.
+entered() {
+  placed && place=$(cd -P "$work" && pwd -P) && [ "$(pwd -P)" = "$place${1:+/$1}" ]
+}
 # Says the copy isn't the folder it was where `placed` no longer holds.
 moved() {
   printf "elsewhere: the job's copy was moved or linked from its place\n" >&2
@@ -563,6 +571,16 @@ lose() {{
     printf '%s\t%s\n' - "$path" || return 1
   done
 }}
+# A link put at the handover, a folder above it or its folder for
+# copies, or anything at a copy's name, as the files are listed or cross
+# would have the list begun, or each later file copied or cleared,
+# through it, so the rest stays and the list gets no end.
+linked() {{
+  [ -L "${{job%/*/*}}" ] || [ -L "${{job%/*}}" ] || [ -L "$job" ] || [ -L "$job/{BACK}" ]
+}}
+halted() {{
+  printf "elsewhere: a link was put at its handover as it brought back, so the rest stays\n" >&2
+}}
 # The sorted list's name is tried with the others, then left free for
 # sort's own write.
 if [ -n "$beside" ] && true > "$names" && true > "$names.lost" && true > "$names.in" && rm -f "$names.in"; then
@@ -579,6 +597,7 @@ copies || exit 1
 LC_ALL=C sort -u "$names" > "$names.in" ||
   {{ rm -f "$names.in" "$names.lost" && true > "$names.in" && lose > "$names.lost" ||
     exit 1; }}
+! linked || {{ halted; exit 1; }}
 {{
   n=0 files=0 bytes=0 most_files={MOST_FILES} most_bytes={MOST_BYTES}
   # One that can't be read or copied keeps its number, listed with no
@@ -602,6 +621,9 @@ LC_ALL=C sort -u "$names" > "$names.in" ||
     n=$((n + 1))
   }}
   while IFS= read -r file; do
+    # Where its folder for copies is made new, nothing stands at a
+    # copy's name until it's written.
+    ! linked && [ ! -e "$job/{BACK}/$n" ] && [ ! -L "$job/{BACK}/$n" ] || {{ halted; exit 1; }}
     size=$(wc -c 2>/dev/null < "$file") || {{ missing; continue; }}
     past $size && {{ kept $size; continue; }}
     cp "$file" "$job/{BACK}/$n" && copied=$(wc -c < "$job/{BACK}/$n") ||
@@ -640,8 +662,9 @@ fn ended() -> String {
 # at the handover couldn't be cleared, as `freed` says, the list's end
 # and its cut aren't written through it, and the near side waits out a
 # list with no end; this line's words say why, where the near side's
-# own read as a slow crossing. One put there while the files were copied
-# isn't looked for between them.
+# own read as a slow crossing. One put there, or at a copy's name, as
+# the files were listed or copied is looked for before the list begins
+# and before each copy, which leaves the rest and the end.
 ! copies || rm -f "$names" "$names".*
 {freed}if [ -z "$handed" ]; then wrote=1
   {UNENDED}
