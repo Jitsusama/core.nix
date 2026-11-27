@@ -3132,6 +3132,41 @@ fn a_copy_that_cant_walk_between_two_commits_asks_the_host() {
     );
 }
 
+/// With no host to ask, a held commit the checkout lacks below the head
+/// it holds can't be told held or not, so it stops the update: a copy
+/// holding part of main's history proves nothing by lacking it.
+#[test]
+fn a_held_commit_the_checkout_lacks_with_no_host_to_ask_stops_main() {
+    let world = World::hosted_from(World::new(), counted_token);
+    let stopped = world.hosted_commit("stopped", None);
+    world.system(&stopped);
+    assert_eq!(
+        world.update().1,
+        done(&stopped),
+        "the first head wasn't read"
+    );
+    held::ask(&world.config, &format!("hold {stopped}"), Some(1000));
+    let two = world.hosted_commit("two", None);
+    assert_eq!(
+        shallow_checkout(&world),
+        two,
+        "the checkout wasn't fetched to two"
+    );
+    assert!(
+        !world.checkout_has(&stopped),
+        "the checkout held the held commit"
+    );
+    world.system(&two);
+    let ending = world.update().1;
+    let Line::Refused { why, .. } = &ending else {
+        panic!("a held commit the checkout lacks, with no host, let main through: {ending:?}")
+    };
+    assert!(
+        why.contains("couldn't be told") && why.contains("no host's API"),
+        "a held commit the checkout lacks wasn't said untold for want of a host: {why}"
+    );
+}
+
 /// A hold on a commit nobody can say main holds stops the update, and the
 /// stop says how to let it through.
 #[test]
