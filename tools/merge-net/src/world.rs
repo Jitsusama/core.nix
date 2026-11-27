@@ -993,8 +993,10 @@ fn mac_ending(code: Option<i32>, ours: Option<&[u8]>) -> Option<i32> {
         None if !taken_in(ours) || waiting_in(ours) => Some(UNCOMPARED),
         Some(UNSENT | UNREACHED) => Some(UNSENT),
         Some(code) if code != 0 && unresolved(&String::from_utf8_lossy(ours)) => Some(UNCOMPARED),
+        // Rested to the next round rather than sent again at once, since
+        // each send is a whole run on a lender that refuses it the same way.
         Some(code) if code != 0 && crate::macs::built_off_a_mac(&String::from_utf8_lossy(ours)) => {
-            Some(UNSENT)
+            Some(UNCOMPARED)
         }
         code => code,
     }
@@ -3351,5 +3353,23 @@ error: Cannot build '/nix/store/lvq948h202w1y515cz4g89fjgynya8d5-system-0.1.0.dr
             "the log net.log points at didn't say why the run compared nothing"
         );
         fs::remove_file(&log).unwrap();
+    }
+
+    #[test]
+    fn a_mac_comparison_built_off_a_mac_waits_for_the_next_round() {
+        let refused = "error: Cannot build '/nix/store/j7qs-checks.drv'.\n       Reason: \
+            platform mismatch\n       Required system: 'aarch64-darwin'\n       Current \
+            system: 'x86_64-linux'\n";
+        assert_eq!(
+            mac_ending(Some(1), Some(refused.as_bytes())),
+            Some(UNCOMPARED),
+            "a comparison a Linux lender refused was sent again or blamed on the merge"
+        );
+        let failed = format!("{refused}error: builder for '/nix/store/a-x.drv' failed\n");
+        assert_eq!(
+            mac_ending(Some(1), Some(failed.as_bytes())),
+            Some(1),
+            "a check that failed beside the refusals wasn't read as failing"
+        );
     }
 }

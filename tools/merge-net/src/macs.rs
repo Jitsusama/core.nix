@@ -268,6 +268,19 @@ mod tests {
             !built_off_a_mac(&refused_on(SYSTEM)),
             "a refusal on a Mac was read as built off one"
         );
+        let other = linux.replace("1 dependency failed.", "out of memory");
+        assert!(
+            !built_off_a_mac(&other),
+            "a failure for another reason beside the refusals was read as built off a Mac"
+        );
+        let many = format!(
+            "{linux}{}",
+            linux.replace("1 dependency failed.", "3 dependencies failed.")
+        );
+        assert!(
+            built_off_a_mac(&many),
+            "many refusals, some failing several dependencies, weren't read as built off a Mac"
+        );
         assert!(
             !built_off_a_mac("error: Build failed due to failed dependency\n"),
             "a failure with no refusal was read as built off a Mac"
