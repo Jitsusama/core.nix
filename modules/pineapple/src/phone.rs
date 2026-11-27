@@ -257,16 +257,61 @@ pub fn tell_self(gateway: &mut Gateway, alert: Alert) -> Result<String, Missed> 
 }
 
 /// A failing's words without any line of `said` it quotes, as written or
-/// as JSON would write it: the title and where are still from Slack, so a
-/// name in them can't be read as the gateway's own word for a rate spent.
+/// as JSON would write it, whatever it escapes as `\uXXXX`: the title and
+/// where are still from Slack, so a name in them can't be read as the
+/// gateway's own word for a rate spent.
 fn unquoted(why: &str, said: &str) -> String {
-    let mut why = why.to_owned();
+    let mut why = unescaped(why);
     for line in said.lines().filter(|line| !line.trim().is_empty()) {
         let json = serde_json::to_string(line).unwrap_or_default();
         let inner = json.get(1..json.len().saturating_sub(1)).unwrap_or(line);
         why = why.replace(line, "").replace(inner, "");
     }
     why
+}
+
+/// `why` with each `\uXXXX` escape read back as its character, a surrogate
+/// pair as one, since JSON writers other than serde's escape so what isn't
+/// ASCII, or `&`, `<` and `>`; what names no character is left as it was.
+fn unescaped(why: &str) -> String {
+    let mut out = String::with_capacity(why.len());
+    let mut rest = why;
+    while let Some(at) = rest.find("\\u") {
+        out.push_str(&rest[..at]);
+        rest = &rest[at..];
+        let (read, taken) = escape(rest);
+        match read {
+            Some(read) => out.push(read),
+            None => out.push_str(&rest[..taken]),
+        }
+        rest = &rest[taken..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// The character the `\uXXXX` escape opening `at` names, two escapes for a
+/// surrogate pair, and how many bytes it took; none where it names none,
+/// the `\u` alone taken where no four digits follow it.
+fn escape(at: &str) -> (Option<char>, usize) {
+    let unit = |from: usize| {
+        at.get(from..from + 2).filter(|mark| *mark == "\\u")?;
+        let digits = at.get(from + 2..from + 6)?;
+        if !digits.bytes().all(|digit| digit.is_ascii_hexdigit()) {
+            return None;
+        }
+        u16::from_str_radix(digits, 16).ok()
+    };
+    let Some(first) = unit(0) else {
+        return (None, 2);
+    };
+    if let Some(second) = unit(6)
+        && let Some(Ok(pair)) = char::decode_utf16([first, second]).next()
+        && pair.len_utf16() == 2
+    {
+        return (Some(pair), 12);
+    }
+    (char::from_u32(u32::from(first)), 6)
 }
 
 /// Whether a send that came back `called` is sent once more without its
@@ -531,6 +576,43 @@ mod tests {
         assert!(
             refuses_the_sign_in(&unquoted(&format!("invalid_auth, for {said}"), &said)),
             "the gateway's own word still counts"
+        );
+    }
+
+    #[test]
+    fn a_name_quoted_with_its_characters_escaped_is_left_out_too() {
+        let said = text(Alert {
+            title: "A stop in owner/rate_limited & caf\u{e9} \u{1f34d}",
+            words: WORDS_NOT_TAKEN,
+            link: "https://x.slack.com/archives/C1/p1",
+        });
+        // As Python's JSON writes it, and Go's: whatever isn't ASCII, and
+        // `&`, `<` and `>`, as `\uXXXX`.
+        let json = serde_json::to_string(&said).expect("text as JSON");
+        let mut escaped = String::new();
+        for each in json.chars() {
+            if each.is_ascii() && !matches!(each, '&' | '<' | '>') {
+                escaped.push(each);
+            } else {
+                for unit in each.encode_utf16(&mut [0; 2]) {
+                    escaped.push_str(&format!("\\u{unit:04x}"));
+                }
+            }
+        }
+        let why = format!("could not post {escaped}");
+        assert!(spent(&why), "quoted, the name reads as Slack's word");
+        assert!(
+            !spent(&unquoted(&why, &said)),
+            "left out, escaped as it was, it doesn't: {why}"
+        );
+        assert!(
+            spent(&unquoted(&format!("rate_limited, for {escaped}"), &said)),
+            "the gateway's own word still counts"
+        );
+        assert_eq!(
+            unescaped(r"\u00e9 \ud83c\udf4d \ud83c \u12 \uzzzz"),
+            "\u{e9} \u{1f34d} \\ud83c \\u12 \\uzzzz",
+            "what names no character is left as it was"
         );
     }
 
