@@ -104,6 +104,11 @@ in
         ExecStart = "/run/current-system/sw/bin/update-to-main follow";
         Restart = "always";
         RestartSec = 30;
+        # It asks in the background for as long as the session lasts, so it
+        # takes background's share of the disk and memory. Left in app.slice,
+        # it weighs as much as the windows Joel is using and was stalled
+        # beside them on a call.
+        Slice = "background.slice";
       };
     };
 
