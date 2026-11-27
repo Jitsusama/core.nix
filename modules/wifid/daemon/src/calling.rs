@@ -833,7 +833,10 @@ mod tests {
                     libc::waitpid(self.pid, &raw mut status, 0),
                 )
             };
-            if reaped == self.pid {
+            // A wait that fails, as it does on a child reaped elsewhere, is
+            // taken as reaped too, as `left` takes it: the pid may since be
+            // another process's, which the drop mustn't kill.
+            if reaped == self.pid || reaped < 0 {
                 self.reaped.set(true);
             }
             assert_eq!(
@@ -966,6 +969,36 @@ mod tests {
             child.left();
         }
         panic!("the child neither connected nor exited in 10 s");
+    }
+
+    #[test]
+    fn a_child_reaped_elsewhere_is_taken_as_reaped_so_its_pid_is_never_killed() {
+        let (_connected, child) = a_child_connected();
+        let mut status = 0;
+        // SAFETY: they take only numbers and the one int written, and the
+        // wait reaps only this case's own child.
+        let reaped = unsafe {
+            libc::kill(child.pid, libc::SIGKILL);
+            libc::waitpid(child.pid, &raw mut status, 0)
+        };
+        assert_eq!(reaped, child.pid, "the child wasn't reaped out of band");
+
+        // Its kill and its wait each fail on a child already reaped, so
+        // `gone` fails the case it's in, which this one catches.
+        let gone = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| child.gone()));
+        let taken = child.reaped.get();
+        // Set whatever `gone` did, so one that forgets never has the drop
+        // kill a pid that may since be another process's.
+        child.reaped.set(true);
+
+        assert!(
+            gone.is_err(),
+            "a child reaped elsewhere was said killed and reaped"
+        );
+        assert!(
+            taken,
+            "a child whose wait failed wasn't taken as reaped, so the drop would kill its pid"
+        );
     }
 
     #[test]
