@@ -32,9 +32,15 @@ const PATIENCE: Duration = Duration::from_secs(5);
 /// its answer can be followed as the harness takes it.
 pub fn steer_of(said: &Value, now_ms: u128) -> Option<Result<Value, String>> {
     let ask = said["ask"].as_str()?;
+    // ACTS is what steers, so the shell's list of what only it may ask can't
+    // miss an act this makes a steer of (round 000011 on #6796, F105).
+    if !ACTS.contains(&ask) {
+        return None;
+    }
     let steer = if STEERED.contains(&ask) {
         json!({"act": ask, "from": "joel"})
-    } else if ask == "talk" {
+    } else {
+        // The one act of ACTS not steered by its own name, a talk.
         match said["text"].as_str() {
             Some(text) if !text.trim().is_empty() => {
                 let mut talk =
@@ -50,8 +56,6 @@ pub fn steer_of(said: &Value, now_ms: u128) -> Option<Result<Value, String>> {
             }
             _ => return Some(Err("a talk has words to say".to_owned())),
         }
-    } else {
-        return None;
     };
     let Some(address) = said["address"]
         .as_str()
