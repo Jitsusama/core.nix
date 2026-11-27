@@ -749,6 +749,10 @@ fn a_call_taken_up_again_is_told_anew_after_a_restart_or_a_rejoin() {
     let mut told = HashSet::new();
     let mut writing = taken_up(&mut Vec::new(), &book, "call:e1", "Joel");
     assert!(
+        writing.unheard.is_some(),
+        "a call taken up after a restart lost what its file said wasn't heard"
+    );
+    assert!(
         lose("call:e1", SECOND, &mut writing, &mut told).is_some(),
         "a call its file said wasn't heard in part wasn't told anew after a restart"
     );
@@ -764,8 +768,52 @@ fn a_call_taken_up_again_is_told_anew_after_a_restart_or_a_rejoin() {
     let mut told = HashSet::new();
     let mut writing = taken_up(&mut ended, &book, "call:e1", "Joel");
     assert!(
+        writing.unheard.is_some(),
+        "a call rejoined after it ended lost what this run held wasn't heard"
+    );
+    assert!(
         lose("call:e1", 2 * SECOND, &mut writing, &mut told).is_some(),
         "a call rejoined after it ended wasn't told anew"
+    );
+}
+
+#[test]
+fn a_call_put_away_is_told_anew_through_the_same_told_calls() {
+    // The calls told of a failure are held as long as the daemon runs,
+    // so a call written down whole must leave them, or a failure once
+    // it's rejoined goes untold.
+    let folder = tempfile::tempdir().unwrap();
+    let book = Shared::new(Book::default());
+    book.lock().put(Record {
+        folder: folder.path().to_path_buf(),
+        ..record(&[], None)
+    });
+    let part = || notices::not_all_heard("Planning", "the encoder failed");
+    let lose = |writing: &mut Writing, at: usize, told: &mut HashSet<String>| {
+        not_heard(&book, "call:e1", writing, "Joel", at, told, part)
+    };
+    let mut calls: HashMap<String, Writing> = HashMap::new();
+    let (mut ended, mut told, mut unsummed) = (Vec::new(), HashSet::new(), Vec::new());
+    let writing = calls.entry("call:e1".to_owned()).or_default();
+    assert!(
+        lose(writing, 0, &mut told).is_some(),
+        "the call's first failure wasn't told"
+    );
+    let key = "call:e1".to_owned();
+    put_away(&mut calls, &mut ended, &mut told, &mut unsummed, key);
+    assert_eq!(
+        unsummed,
+        ["call:e1"],
+        "a call put away wasn't given to be summed up"
+    );
+    let mut writing = taken_up(&mut ended, &book, "call:e1", "Joel");
+    assert!(
+        writing.unheard.is_some(),
+        "a call put away wasn't kept as it was heard"
+    );
+    assert!(
+        lose(&mut writing, SECOND, &mut told).is_some(),
+        "a call put away and rejoined wasn't told anew of a failure"
     );
 }
 
