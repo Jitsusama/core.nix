@@ -1,13 +1,19 @@
 //! A machine that can't begin a run in the folder pineapple runs in here,
 //! as a cloud room whose account can't enter Joel's home: it's asked once
 //! more to begin it in the scratch folder, for a stop given there and for
-//! Joel's stop on everything alike, and nothing else is asked twice.
+//! Joel's stop on everything alike, and nothing else is asked twice. A
+//! machine keeping the node's own stops folder, which its guards read,
+//! is given a stop there or fails, never one in an account's own.
 
-use pineapple::pause::carry::{Carried, Carrier, Gift};
+use std::fs;
+use std::os::unix::fs::PermissionsExt;
+use std::path::Path;
+
+use pineapple::pause::carry::{Carried, Carrier, Gift, script, taken_away};
 use pineapple::pause::{self, Plan, Took};
 
 use super::carry::{heard, keep};
-use super::{Machine, asked_with, machine, plan, scratch};
+use super::{FORKS, Machine, asked_with, at_home, json, machine, plan, scratch};
 
 /// What an older node says when its fence can't start the shell in the
 /// folder asked.
@@ -140,4 +146,60 @@ fn joels_stop_on_everything_reaches_a_room_in_the_scratch_folder() {
         here.asked
     );
     let _ = std::fs::remove_dir_all(&state);
+}
+
+/// How `script` ends when run as a machine whose home is `home` runs it.
+fn ended_at(home: &Path, script: &str) -> Option<i32> {
+    let _held = FORKS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    std::process::Command::new("sh")
+        .arg("-c")
+        .arg(at_home(home, script))
+        .env("HOME", home)
+        .env_remove("XDG_STATE_HOME")
+        .output()
+        .expect("sh runs")
+        .status
+        .code()
+}
+
+#[test]
+fn a_machine_keeping_the_nodes_stops_folder_is_given_a_stop_there_or_fails() {
+    let home = scratch("begun-node-stops");
+    let node = home.join("node-stops");
+    fs::create_dir_all(&node).expect("the node's stops folder");
+    let record = heard("slack:C1:1.000000");
+    let kept = node.join(format!("{NAME}.json"));
+
+    assert_eq!(
+        ended_at(&home, &script(NAME, &record, "listener")),
+        Some(0),
+        "the stop is written"
+    );
+    assert_eq!(
+        json(&kept)["carried_from"],
+        "listener",
+        "it lands in the node's folder, which the guards read"
+    );
+    assert!(
+        !home.join(".local/state/pineapple").exists(),
+        "and nothing in the account's own state folder"
+    );
+    assert_eq!(ended_at(&home, &taken_away(NAME)), Some(0), "its end runs");
+    assert!(!kept.exists(), "and drops it from the node's folder");
+
+    fs::set_permissions(&node, fs::Permissions::from_mode(0o555)).expect("closed");
+    let refused = ended_at(&home, &script(NAME, &record, "listener"));
+    fs::set_permissions(&node, fs::Permissions::from_mode(0o755)).expect("opened");
+    assert_ne!(
+        refused,
+        Some(0),
+        "a node's folder this account can't write fails the give, so it's tried again"
+    );
+    assert!(
+        !home.join(".local/state/pineapple").exists(),
+        "rather than landing where no guard reads it"
+    );
+    let _ = fs::remove_dir_all(&home);
 }

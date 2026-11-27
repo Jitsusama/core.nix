@@ -56,7 +56,7 @@ const OWN_FAILURE: u8 = 70;
 /// The folder a run is asked to begin in once a machine refused to begin
 /// it in the one pineapple runs in here: a cloud room's account can't
 /// enter Joel's home, but may begin in the shared scratch folder and
-/// write its own stops folder from there.
+/// write the node's stops folder from there, where its account may.
 pub(super) const SCRATCH: &str = "/tmp";
 
 /// What mycelium says, as newer nodes say it, when a machine refuses to
@@ -353,10 +353,11 @@ pub fn script(said: &Value, act: &str, realm: Option<&str>) -> String {
              \"$m\" starts stop{flag} >/dev/null || exit {OWN_FAILURE}; fi\n"
         )
     };
+    let folder = super::carry::stops_folder();
     format!(
         "set -e\n\
          echo '{BEGUN}' >&2\n\
-         d=\"${{XDG_STATE_HOME:-$HOME/.local/state}}/pineapple/stops\"\n\
+         {folder}\
          mkdir -p \"$d\"\n\
          kept=\"$d/{file}.starts-kept{mark}\"\n\
          stopped=\"$d/{file}.stopped{mark}\"\n\

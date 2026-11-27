@@ -430,6 +430,22 @@ fn away(gone_since: Option<u64>, back: &[String], machine: &str) -> Option<Away>
     }
 }
 
+/// The stops folder a machine built as a mycelium node of its own keeps,
+/// as a cloud room does: each session's stops folder there is linked to
+/// it, so its guards read it rather than any account's state folder.
+pub const NODE_STOPS: &str = "/var/lib/pineapple/stops";
+
+/// Shell setting `d` to the stops folder a machine's guards read: the
+/// node's own where it keeps one, and this account's state folder
+/// otherwise. Where the node's can't be written, the script fails, so a
+/// stop is never said to be held where no guard reads it.
+pub(super) fn stops_folder() -> String {
+    format!(
+        "d={NODE_STOPS}\n\
+         [ -d \"$d\" ] || d=\"${{XDG_STATE_HOME:-$HOME/.local/state}}/pineapple/stops\"\n"
+    )
+}
+
 /// The script a machine runs to hold the stop `record` under `name`, given
 /// it from the machine `from`: the record written whole beside its stops
 /// and renamed into place, so its guard never reads half of one, naming
@@ -441,11 +457,12 @@ pub fn script(name: &str, record: &Value, from: &str) -> String {
     format!(
         "set -e\n\
          echo '{begun}' >&2\n\
-         d=\"${{XDG_STATE_HOME:-$HOME/.local/state}}/pineapple/stops\"\n\
+         {folder}\
          mkdir -p \"$d\"\n\
          printf '%s\\n' {record} > \"$d/{name}.new\"\n\
          mv \"$d/{name}.new\" \"$d/{name}.json\"\n",
         begun = reach::BEGUN,
+        folder = stops_folder(),
         record = quoted(&copy.to_string()),
     )
 }
@@ -458,9 +475,11 @@ pub fn taken_away(name: &str) -> String {
     format!(
         "set -e\n\
          echo '{begun}' >&2\n\
-         f=\"${{XDG_STATE_HOME:-$HOME/.local/state}}/pineapple/stops/{name}.json\"\n\
+         {folder}\
+         f=\"$d/{name}.json\"\n\
          if grep -q '\"carried_from\"' \"$f\" 2>/dev/null; then rm -f \"$f\"; fi\n",
         begun = reach::BEGUN,
+        folder = stops_folder(),
     )
 }
 

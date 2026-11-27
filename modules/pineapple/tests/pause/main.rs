@@ -16,6 +16,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
+use pineapple::pause::carry::NODE_STOPS;
 use pineapple::pause::{self, Plan, Runs, Tended, Took};
 use serde_json::Value;
 
@@ -260,6 +261,13 @@ fn scratch(name: &str) -> PathBuf {
 
 fn json(path: &Path) -> Value {
     serde_json::from_str(&fs::read_to_string(path).expect("written")).expect("json")
+}
+
+/// `script` as a case runs it in `home`: the node's stops folder it
+/// looks for is `node-stops` there, so a case run on a machine keeping
+/// one, as a cloud room does, never writes the real one.
+fn at_home(home: &Path, script: &str) -> String {
+    script.replace(NODE_STOPS, &home.join("node-stops").to_string_lossy())
 }
 
 fn asked_with(machine: &Machine, words: &str) -> Vec<String> {

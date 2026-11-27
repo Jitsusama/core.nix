@@ -14,7 +14,7 @@ use pineapple::pause::carry::{
 };
 use serde_json::{Value, json};
 
-use super::{FORKS, Machine, asked_with, json, machine, plan, scratch};
+use super::{FORKS, Machine, asked_with, at_home, json, machine, plan, scratch};
 
 /// A live stop from Slack, standing, as a reader keeps it.
 pub(super) fn heard(id: &str) -> Value {
@@ -646,7 +646,7 @@ fn the_scripts_write_the_record_whole_under_its_name_there_and_drop_only_a_copy(
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let ran = std::process::Command::new("sh")
             .arg("-c")
-            .arg(script)
+            .arg(at_home(&home, &script))
             .env("HOME", &home)
             .env_remove("XDG_STATE_HOME")
             .output()
