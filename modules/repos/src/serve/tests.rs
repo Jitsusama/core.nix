@@ -370,6 +370,7 @@ fn a_first_reading_that_never_answers_is_said_late_once_and_its_answer_once() {
             let _ = freed.lock().map(|freed| freed.recv_timeout(SAMPLED * 8));
             Sample::default()
         },
+        || None,
         move |said| {
             let _ = tell.send(said);
         },
@@ -479,6 +480,7 @@ fn a_first_reading_that_lands_old_is_said_as_none_answering_and_then_at_last() {
             }
             Sample::default()
         },
+        || None,
         move |said| {
             let _ = tell.send(said);
         },
@@ -534,6 +536,7 @@ fn a_first_reading_slower_than_a_wait_that_answers_young_says_nothing() {
             std::thread::sleep(SAMPLED + LATE);
             Sample::default()
         },
+        || None,
         move |said| {
             let _ = tell.send(said);
         },
@@ -852,6 +855,7 @@ fn the_reading_thread_says_a_lost_share_once_and_its_return_once() {
                 processes: Vec::new(),
             }
         },
+        || None,
         move |said| {
             let _ = tell.send(said);
         },
