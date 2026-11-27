@@ -28,7 +28,9 @@ pub(super) fn list(asks: &[Value]) -> String {
 /// id marked `~`, closed at `closed`, in seconds, and with no ruling of
 /// its own, as a folded copy is. Read as the ask's latest line, it would
 /// close it, so each measure of the asks shows it was skipped by still
-/// reading the ask as it was.
+/// reading the ask as it was. It keeps every other field of the ask, its
+/// dates too, so a measure that reads a date gives the twin its own, as
+/// told_late's test takes away its `promised`.
 pub(super) fn twin(ask: &Value, closed: i64) -> Value {
     let mut twin = ask.clone();
     if let Some(fields) = twin.as_object_mut() {

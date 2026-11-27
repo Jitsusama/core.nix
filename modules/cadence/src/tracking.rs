@@ -7,6 +7,8 @@
 //! the list's own are told apart, and owner-tracked ones are another
 //! system's to measure.
 
+use std::collections::BTreeSet;
+
 use serde_json::Value;
 
 /// Which of the list's kinds an ask is.
@@ -48,10 +50,40 @@ pub fn of(ask: &Value) -> Option<Tracking> {
     })
 }
 
+/// The list's lines but its twins: a line the keeper folded into another
+/// ask with the same moment and words, its id marked `~`. Every reader of
+/// the list keeps an ask by its latest line, so a twin written after the
+/// ask it copies would stand in its place. A twin whose ask isn't in the
+/// list is the only line of that ask, so it is kept.
+#[must_use]
+pub fn untwinned(lines: Vec<Value>) -> Vec<Value> {
+    let marked = |ask: &Value| ask["id"].as_str().is_some_and(|id| id.contains('~'));
+    let asked = |ask: &Value| (ask["at"].to_string(), ask["words"].to_string());
+    let copied: BTreeSet<(String, String)> =
+        lines.iter().filter(|ask| !marked(ask)).map(asked).collect();
+    lines
+        .into_iter()
+        .filter(|ask| !marked(ask) || !copied.contains(&asked(ask)))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn a_twin_is_left_out_beside_its_ask_and_kept_where_it_is_the_only_line() {
+        let ask = json!({"id": "0000000a", "at": "t1", "words": "fix it"});
+        let twin = json!({"id": "0000000a~1", "at": "t1", "words": "fix it", "closed": "t2"});
+        let alone = json!({"id": "0000000b~1", "at": "t3", "words": "fix that"});
+        let other = json!({"id": "0000000c", "at": "t1", "words": "fix this"});
+        assert_eq!(
+            untwinned(vec![ask.clone(), twin, alone.clone(), other.clone()]),
+            [ask, alone, other],
+            "a twin beside its ask was read, or a lone one or another ask dropped"
+        );
+    }
 
     #[test]
     fn an_ask_is_his_unless_the_list_marks_it_otherwise() {

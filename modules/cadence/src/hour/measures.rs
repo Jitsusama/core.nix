@@ -165,12 +165,10 @@ fn lines(text: &str) -> impl Iterator<Item = Value> + '_ {
         .filter_map(|line| serde_json::from_str(line).ok())
 }
 
-/// The asks list's lines, each read as its ask, but for a twin: a line
-/// the keeper folded into another with the same moment and words, its id
-/// marked `~`. Every measure of the asks keeps an ask by its latest line,
-/// so a twin written after the ask it copies would stand in its place.
-fn asks(text: &str) -> impl Iterator<Item = Value> + '_ {
-    lines(text).filter(|ask| !ask["id"].as_str().is_some_and(|id| id.contains('~')))
+/// The asks list's lines, each read as its ask, but for a twin beside the
+/// ask it copies, as `tracking::untwinned` leaves out.
+fn asks(text: &str) -> impl Iterator<Item = Value> {
+    tracking::untwinned(lines(text).collect()).into_iter()
 }
 
 fn seconds(value: &Value) -> Option<i64> {

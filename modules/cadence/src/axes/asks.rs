@@ -41,16 +41,27 @@ pub fn gather(state_home: &Path) -> String {
         .unwrap_or_default()
 }
 
-/// Each line of his own that says when he asked; one that doesn't is no
-/// ask, and one the list set itself or carries for another is not his.
+/// Each ask of his own that says when he asked, read from its latest line
+/// as the hour's measures read it: the list writes an ask again to move its
+/// date or to land, re-mark or put it down, and folds in twins. A line with
+/// no time is no ask, and one the list set itself or carries for another is
+/// not his.
 fn asks(text: &str) -> Vec<Ask> {
     let time = |v: &Value| {
         v.as_str()
             .and_then(|t| t.parse::<Timestamp>().ok())
             .map(Timestamp::as_second)
     };
-    text.lines()
+    let lines = text
+        .lines()
         .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .collect();
+    let mut latest: BTreeMap<(String, String), Value> = BTreeMap::new();
+    for ask in tracking::untwinned(lines) {
+        latest.insert((ask["at"].to_string(), ask["words"].to_string()), ask);
+    }
+    latest
+        .into_values()
         .filter(|ask| tracking::of(ask) == Some(Tracking::His))
         .filter_map(|ask| {
             Some(Ask {
@@ -244,9 +255,51 @@ mod tests {
             ask["tracking"] = tracking.into();
             ask.to_string()
         };
-        let text = [kind(""), kind("derived"), kind("owner-tracked")].join("\n");
+        let text = [kind(""), kind("derived"), kind("owner-tracked")]
+            .iter()
+            .enumerate()
+            .map(|(n, line)| line.replace("\"words\":\"\"", &format!("\"words\":\"ask {n}\"")))
+            .collect::<Vec<_>>()
+            .join("\n");
         let owners: Vec<String> = asks(&text).into_iter().map(|ask| ask.owner).collect();
         assert_eq!(owners, [""], "his alone, of the three");
+    }
+
+    #[test]
+    fn an_ask_written_again_or_twinned_counts_once_at_its_latest_line() {
+        let at = "2026-11-13T12:00:00-05:00";
+        let mut moved: Value =
+            serde_json::from_str(&line(at, "A", Some("2026-11-13T13:00:00-05:00"), None))
+                .expect("an ask line");
+        moved["id"] = "0000000a".into();
+        let mut now_dated = moved.clone();
+        now_dated["expected"] = "2026-11-13T22:00:00-05:00".into();
+        let mut landed = now_dated.clone();
+        landed["landed"] = "2026-11-13T14:00:00-05:00".into();
+        let mut twin = landed.clone();
+        twin["id"] = "0000000a~1".into();
+        twin["landed"] = "2026-11-13T19:00:00-05:00".into();
+        let text = [moved, now_dated, landed, twin]
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("\n");
+        let [middle, late] = readings(&text, NOW).try_into().unwrap();
+        assert_eq!(
+            middle.detail.as_deref(),
+            Some("1 of 1 this week reached him"),
+            "an ask written again or twinned was counted more than once"
+        );
+        assert_eq!(
+            middle.now,
+            Some(2.0),
+            "the twin's reaching stood for the ask's"
+        );
+        assert_eq!(
+            late.now,
+            Some(0.0),
+            "the date it was moved from was counted late"
+        );
     }
 
     #[test]
