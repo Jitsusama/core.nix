@@ -7821,16 +7821,19 @@ Scope {
 
     // A key while the ask stands, as Prompt.qml hands it over, with when
     // it came. It answers only as the field times it (Confirm.takes). A
-    // key that came with no time, or an ask that can't be timed, is
-    // journalled whether or not reports are on, as neither can answer yes.
+    // key let by as it came with no time, or as its ask can't be timed, is
+    // journalled, naming it, whether or not reports are on, as neither can
+    // answer yes; a key that answers is said by the answer alone, and a
+    // modifier alone, early to every ask, isn't journalled.
     function answerAsk(key, at) {
         const ask = asked;
         const said = askSaid(key, at);
         const untimed = ask === null ? null : Confirm.untimed(ask, askReady.interval);
-        if (ask !== null && !Number.isFinite(at))
-            console.info("launcher: a key came to the ask with no time, so it was let by");
-        else if (untimed !== null)
-            console.info(`launcher: the ask can't be timed, as ${untimed}, so Return is let by`);
+        const letBy = said === "early" && key !== "";
+        if (letBy && !Number.isFinite(at))
+            console.info(`launcher: ${key} came to the ask with no time, so it was let by`);
+        else if (letBy && untimed !== null)
+            console.info(`launcher: the ask can't be timed, as ${untimed}, so ${key} was let by`);
         if (ask === null || !Confirm.takes(said))
             return;
         asked = null;

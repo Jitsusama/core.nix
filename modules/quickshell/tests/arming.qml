@@ -192,6 +192,10 @@ QtObject {
             Arming.keepsSteps(null, [{ row: { key: "ask", from: {}, shownBy: never } }]), false);
         expect("nor one holding an ask made hidden, which says no source but holds still",
             Arming.keepsSteps(null, [stepOf({}), { row: { key: "ask", still: true } }]), false);
+        expect("nor one holding any row marked still, though it runs or has gone",
+            [{ still: true, run: () => {} }, { key: "ask", still: true, gone: true }]
+                .map(row => Arming.keepsSteps(null, [stepOf({}), { row }])).join(" "),
+            "false false");
         expect("one whose steps and name keep is, a step with no source among them",
             Arming.keepsSteps(null, [stepOf({}), { row: {} }]), true);
 
@@ -219,9 +223,14 @@ QtObject {
                 [{ returns: { run }, targets: true }, true, false]]), "false false");
         expect("but a Return's act that only asks for words changes none, as ranReturn asks",
             none([[{ returns: { given: true, run }, run }, true, false]]), "true");
-        expect("as does a target verb with its own run, or one outside a step",
+        expect("but a target verb with its own run, one outside a step, or a plain run may act",
             none([[{ targets: true, run, verb: "close" }, true, false],
                 [{ targets: true }, false, false], [{ run }, true, false]]), "false false false");
+        // The rest of run's order: held still before a start, a start before a
+        // Return's act, and a Return's act before a category's step-in.
+        expect("a row held still changes none though it starts, a start acts though Return asks",
+            none([[{ start: "x" }, true, true], [{ start: "x", returns: { given: true } }, true,
+                false], [{ category: true, returns: { run } }, true, false]]), "true false false");
 
         // What Return does on the selected row, as onAccepted asks: a held
         // row is held before anything else it might be stepped into,

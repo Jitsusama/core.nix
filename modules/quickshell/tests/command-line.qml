@@ -376,12 +376,14 @@ QtObject {
         // Whether a line's plans change an option, which times its Return
         // as acting (Launcher.qml's commandSet), as :setl over several
         // things plans one each. A word :set refuses has no plan, as the
-        // launcher answers its error first, so one here fails the case
-        // rather than passing as changing none.
+        // launcher answers its error first, so one here is a failure of its
+        // own, as holds says one, rather than passing as changing none, and
+        // the cases after it still run.
         const planOf = arg => {
             const plan = set(arg);
             if (plan.error !== undefined) {
-                throw new Error(`:set ${arg} was refused: ${plan.error}`);
+                failures.push(`:set ${arg} was refused: ${plan.error}`);
+                return { steps: [] };
             }
             return { steps: plan.changes.map(change => ({ change })) };
         };
