@@ -20,8 +20,8 @@ patches in [`../kernel/local/`][local], since they're made against the
 same kernel and regenerated with it, and `camera.nix` applies them:
 `ipu7-survives-resume`, `cvs-link-owner-wait`,
 `ipu-bridge-da14260-upside-down`, `hm1092-ir-sensor`, `hm1092-ir-flood`,
-`ipu7-mono-formats`, `ipu7-outlives-open-files`,
-`ipu7-isys-skips-unread-log` and `ipu7-isys-releases-firmware`. The one
+`ipu7-mono-formats`, `ipu7-outlives-open-files` and
+`ipu7-isys-skips-unread-log`. The one
 exception is `cvs-privacy-led.patch`, kept here as it was fetched from the
 media list, under that name and hash, so the kernel built from it keeps its
 store path now that the list turns fetches away.
