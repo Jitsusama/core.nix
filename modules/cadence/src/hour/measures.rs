@@ -38,6 +38,7 @@ pub mod told_late;
 #[cfg(test)]
 mod tracked;
 pub mod unbilled;
+pub mod unproven;
 pub mod unresolved;
 pub mod wifi;
 
@@ -143,13 +144,15 @@ pub fn unread(mut measure: Measure, why: &str) -> Measure {
 /// can a date already told late, which stays on the card for its day and
 /// is filed to each owner apart, but never leads, since asking its owner
 /// to steer it each hour moves nothing; nor do the queues, whose worst is asked apart once a day,
-/// nor a cause found again and again, each class of which is filed with its own owner apart.
+/// nor a cause found again and again, each class of which is filed with its own owner apart;
+/// nor his asks unproven, each asked of its own cell apart, so a week's backlog of them can't
+/// hold every later class's drag unfiled.
 #[must_use]
 pub fn drag(measures: &[Measure]) -> Option<&Measure> {
     measures
         .iter()
         .filter(|m| !m.key.starts_with(rounds::FRUITLESS) && !m.key.starts_with(told_late::KEY))
-        .filter(|m| m.key != causes::KEY)
+        .filter(|m| m.key != causes::KEY && m.key != unproven::KEY)
         .filter(|m| m.class != Class::Queues)
         .filter_map(|m| m.past().map(|past| (m, past)))
         .min_by(|(a, pa), (b, pb)| a.class.cmp(&b.class).then(pb.total_cmp(pa)))
@@ -589,6 +592,19 @@ mod tests {
             drag(&measures).map(|m| m.key.as_str()),
             Some("far"),
             "a date told late, which no one can move now, led the hour"
+        );
+    }
+
+    #[test]
+    fn his_asks_unproven_never_lead_so_a_broken_main_is_still_filed() {
+        let measures = [
+            measure(unproven::KEY, Class::Functional, 300.0, Some(0.0)),
+            measure("broken-on-main", Class::Functional, 1.0, Some(0.0)),
+        ];
+        assert_eq!(
+            drag(&measures).map(|m| m.key.as_str()),
+            Some("broken-on-main"),
+            "his asks unproven, filed apart already, took the drag from a broken main"
         );
     }
 
