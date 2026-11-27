@@ -147,22 +147,27 @@ fn an_id_past_the_longest_word_is_left_out_and_its_words_kept() {
         ["carry", "broke", "tok", x9.as_str()],
         "a token's id was kept, or its plain words lost"
     );
-    let (p, q) = ("p".repeat(29), "q".repeat(30));
+    let (fits, spills) = ("p".repeat(29), "q".repeat(30));
     assert_eq!(
-        words(&format!("{p} 26 and {q} 26")),
-        [p.clone(), q, format!("{p}-26")],
+        words(&format!("{fits} 26 and {spills} 26")),
+        [fits.clone(), spills, format!("{fits}-26")],
         "a numbered id of 32 letters dropped, or one of 33 kept"
     );
-    let (a, b) = ("a".repeat(28), "b".repeat(29));
+    let (joins, overruns) = ("a".repeat(28), "b".repeat(29));
     assert_eq!(
-        words(&format!("{a}-bcd {b}-bcd")),
-        [a.clone(), "bcd".to_owned(), b, format!("{a}-bcd")],
+        words(&format!("{joins}-bcd {overruns}-bcd")),
+        [
+            joins.clone(),
+            "bcd".to_owned(),
+            overruns,
+            format!("{joins}-bcd"),
+        ],
         "a joined id of 32 letters dropped, or one of 33 kept"
     );
-    let o = "o".repeat(28);
+    let long = "o".repeat(28);
     assert_eq!(
-        words(&format!("hand {o} over")),
-        ["hand".to_owned(), o],
+        words(&format!("hand {long} over")),
+        ["hand".to_owned(), long],
         "a phrase of 33 letters kept"
     );
 }
