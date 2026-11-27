@@ -91,7 +91,9 @@ const ALONE: usize = 5;
 /// with his microphone, which he may change partway through a call. On
 /// the clean meetings five or nine put his side past what one level for
 /// the call reached, while eleven held it there and still follows a new
-/// microphone once six of his words are heard alone on it.
+/// microphone once six of his words are heard alone on it. Nearest has
+/// no limit in time: words alone long before or after count as soon as
+/// too few are nearer.
 const NEAR: usize = 11;
 
 /// Whether `line` is Joel's microphone hearing one of the others' lines,
@@ -214,7 +216,9 @@ fn alone<'a>(mine: impl IntoIterator<Item = &'a Word>, theirs: &[Word]) -> Vec<(
 }
 
 /// The level of Joel's voice in his microphone at `at`: the middle level
-/// of the `NEAR` of his words heard `alone` nearest it, if `ALONE` are.
+/// of the `NEAR` of his words heard `alone` nearest it, if `ALONE` are,
+/// the quieter of two middles, as a voice judged quieter cuts fewer of
+/// his words.
 fn voice(alone: &[(usize, f32)], at: usize) -> Option<f32> {
     if alone.len() < ALONE {
         return None;
@@ -231,7 +235,7 @@ fn voice(alone: &[(usize, f32)], at: usize) -> Option<f32> {
     }
     let mut levels: Vec<f32> = alone[from..to].iter().map(|&(_, level)| level).collect();
     levels.sort_by(f32::total_cmp);
-    Some(levels[levels.len() / 2])
+    Some(levels[(levels.len() - 1) / 2])
 }
 
 /// For each of Joel's `mine`, the loudest of `theirs` said within a
