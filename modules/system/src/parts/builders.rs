@@ -293,8 +293,8 @@ mod tests {
                 (
                     "heron".to_owned(),
                     Health::Watch,
-                    "runs but is left out, its store full".to_owned(),
-                    vec!["left out, its store full".to_owned()]
+                    "runs with its store full, so it builds only when no other can".to_owned(),
+                    vec!["its store full".to_owned()]
                 ),
                 (
                     "lark".to_owned(),
@@ -370,7 +370,7 @@ mod tests {
             { "state": "running" },
             { "name": "  ", "state": "running" },
             { "name": "osprey", "state": "not answering",
-              "said": "refused\u{1b}[31m red\nsecond line" },
+              "said": "refused\u{1b}[31m red\u{202e} der\nsecond line" },
             { "name": "heron", "state": "not answering", "said": long },
             { "name": "gull", "state": "not answering", "said": "über ".repeat(40) },
             { "name": "wren", "state": "not answering", "said": " . " },
@@ -379,8 +379,8 @@ mod tests {
         let says: Vec<&str> = said.iter().map(|(_, _, says, _)| says.as_str()).collect();
         assert_eq!(said.len(), 5, "a builder without a name is left out");
         assert_eq!(
-            says[2], "isn't answering (refused [31m red)",
-            "only the first line is kept, a control character as a space"
+            says[2], "isn't answering (refused red der)",
+            "only the first line is kept, an escape gone whole and a turn of the text gone"
         );
         assert_eq!(
             says[1],
