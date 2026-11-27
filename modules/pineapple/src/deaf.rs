@@ -96,8 +96,12 @@ pub enum Round {
     /// One search answered while the other blinked, or one waits on a
     /// later page: too little read to count either way, though Slack, or
     /// its gateway, was reached. It names the search left unasked, if one
-    /// was and waits on no later page.
+    /// was and waits on no later page, beside one read whole.
     Partly(Option<Search>),
+    /// The search named left unasked, waiting on no later page, beside one
+    /// that waits on a later page, its first read: as [`Round::Partly`]
+    /// naming it, though neither search was read whole.
+    Waiting(Search),
 }
 
 /// What changes in the file of what waits on Joel.
@@ -163,8 +167,8 @@ pub struct Deaf {
     /// The search the round just before narrowed an unreached row to;
     /// any other round forgets it.
     turn: Option<Search>,
-    /// The search the round just before left unasked beside one answered;
-    /// any other round forgets it.
+    /// The search the round just before left unasked beside one read
+    /// whole; any other round forgets it.
     before: Option<Search>,
 }
 
@@ -317,29 +321,37 @@ impl Deaf {
                 })
             }
             Round::Partly(alone) => {
-                let change = self.answered(alone, turn, before, at);
+                let change = self.answered(alone, true, turn, before, at);
                 self.before = alone;
                 change
             }
+            Round::Waiting(alone) => self.answered(Some(alone), false, turn, before, at),
             Round::Unasked if self.gateway => self.none_answered(at),
             Round::Unasked => Change::Keep,
         }
     }
 
     /// What a round read in part changes, `alone` the search it left
-    /// unasked, if one. The gateway answered it, so a row saying it's
-    /// unreached is taken away, as is one saying only the search it
-    /// answered can't be read; a deafness after is a time of its own,
-    /// told anew even where Joel marked that row done. A row saying it's
-    /// unreached, though, is narrowed to the search still left unasked
+    /// unasked, if one, and `whole` whether the search it answered was read
+    /// whole rather than only to a later page. The gateway answered it, with
+    /// the sign-in it was given, so a row saying it's unreached, that the
+    /// sign-in was refused or that there's none to read is taken away, as
+    /// is one saying only the search it read whole can't be read; a
+    /// deafness after is a time of its own, told anew even where Joel
+    /// marked that row done, as after a round heard whole. A row saying
+    /// it's unreached, though, is narrowed to the search still left unasked
     /// rather than taken away, since that search is still unheard, unless
     /// the round just before narrowed it to the other: each was answered.
-    /// A row left from before, by a reader since restarted or an untelling
-    /// that wasn't written, goes once the round just before left the other
-    /// search unasked, as Slack was read whole across the two.
+    /// A row saying both searches can't be read, or one left from before,
+    /// by a reader since restarted or an untelling that wasn't written,
+    /// goes once this round and the one just before each read whole the
+    /// search the other left unasked, as Slack was read whole across the
+    /// two. A search read only to a later page may still hold what can't be
+    /// read past it, so that round is no turn of the two, either side.
     fn answered(
         &mut self,
         alone: Option<Search>,
+        whole: bool,
         turn: Option<Search>,
         before: Option<Search>,
         at: u64,
@@ -357,11 +369,12 @@ impl Deaf {
             self.turn = Some(search);
             return change;
         }
+        let turned = whole && alone.zip(before).is_some_and(|(now, then)| now != then);
         let reached = match self.told {
-            Some(Deafness::Unreached) => true,
-            Some(Deafness::Unread(told)) => alone.is_some_and(|left| left != told),
-            None => self.left && alone.zip(before).is_some_and(|(now, then)| now != then),
-            _ => false,
+            Some(Deafness::Unread(told)) => whole && alone.is_some_and(|left| left != told),
+            Some(Deafness::Unreadable) => turned,
+            None => self.left && turned,
+            Some(Deafness::Unreached | Deafness::Refused | Deafness::NoSignIn) => true,
         };
         if reached {
             self.left = false;
