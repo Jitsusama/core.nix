@@ -96,12 +96,13 @@ type Known<'a> = dyn Fn(&str, i16, Asked) -> Option<(Measured, Whence)> + 'a;
 
 /// Asks a card's chooser where it should be, from what the access point
 /// it's on carried, what it hears of its network and what's known of each,
-/// and moves it there as the roam act does.
+/// and moves it there as the roam act does. What it hears is read here,
+/// less a point that warned it drops the card (`State::around_to_choose`),
+/// so no caller can hand the chooser a point that just shed the card.
 pub fn choose(
     chooser: &mut Chooser,
     (now, hour): (Instant, u8),
     (on, measured): (&Joined, &Measured),
-    around: &[Heard],
     (lately, learned): (&Measures, &Learned),
     (asks, air, looked): (
         &mpsc::Sender<Ask>,
@@ -111,7 +112,13 @@ pub fn choose(
     call: bool,
 ) {
     let known = known(lately, learned, (now, hour));
-    match chosen(chooser, now, (on, measured), around, &known, call) {
+    let (around, warned) = {
+        let air = air.borrow();
+        let warned = air.warned_from(&on.card, now).map(str::to_owned);
+        (air.around_to_choose(&on.card, now), warned)
+    };
+    let choosable = (&*around, warned.as_deref());
+    match chosen(chooser, now, (on, measured), choosable, &known, call) {
         Some(Next::Move(to)) => {
             tokio::spawn(roam(asks.clone(), air.clone(), on.card.clone(), to));
         }
@@ -138,7 +145,7 @@ fn chosen(
     chooser: &mut Chooser,
     now: Instant,
     (on, measured): (&Joined, &Measured),
-    around: &[Heard],
+    (around, warned): (&[Heard], Option<&str>),
     known: &Known<'_>,
     call: bool,
 ) -> Option<Next> {
@@ -176,6 +183,21 @@ fn chosen(
             let why = tried(on, from, &others[at], whence[at]);
             println!("<6>{why}");
             Some(Next::Move(to))
+        }
+        // A trial's way back is to the point it began on, which the
+        // chooser keeps itself and may since have warned it drops the
+        // card, so it isn't taken to that one. One merely unheard is gone
+        // back to all the same, as the roam looks for it: by a trial's end
+        // wpa_supplicant has often forgotten the point left. Why it would
+        // have gone is taken all the same, so it isn't said of a later way
+        // back.
+        Choice::Back(to) if warned.is_some_and(|point| point.eq_ignore_ascii_case(&to)) => {
+            chooser.went_back();
+            println!(
+                "<6>{} stays on {} rather than go back to {to}, which warned it drops the card",
+                on.card, on.point
+            );
+            None
         }
         Choice::Back(to) => {
             println!("<6>{}", said_back(chooser, now, (on, measured), &to));
@@ -1290,7 +1312,7 @@ mod tests {
             &mut Chooser::default(),
             now,
             (&joined(DESK), &carried(9)),
-            &around,
+            (&around, None),
             &known,
             false,
         );
@@ -1314,7 +1336,7 @@ mod tests {
             &mut Chooser::default(),
             now,
             (&joined(DESK), &idle(30)),
-            &around,
+            (&around, None),
             &known,
             false,
         );
@@ -1342,7 +1364,7 @@ mod tests {
             &mut Chooser::default(),
             now,
             (&joined(DESK), &downloading),
-            &around,
+            (&around, None),
             &known,
             false,
         );
@@ -1377,7 +1399,7 @@ mod tests {
             &mut Chooser::default(),
             now,
             (&joined(DESK), &idle(26)),
-            &around,
+            (&around, None),
             &known,
             false,
         );
@@ -1397,7 +1419,7 @@ mod tests {
             &mut choose::tests::after_a_bad_minute(DESK),
             now,
             (&joined(DESK), &carried(52)),
-            &around,
+            (&around, None),
             &known,
             false,
         );
@@ -1421,12 +1443,63 @@ mod tests {
             &mut Chooser::default(),
             now,
             (&joined(DESK), &carried(30)),
-            &around,
+            (&around, None),
             &known,
             false,
         );
 
         assert_eq!(to, None, "30 ms is carrying well, and the hall is unknown");
+    }
+
+    #[test]
+    fn a_trial_goes_back_to_a_point_unheard_but_not_one_that_warned() {
+        let dir = tempfile::tempdir().unwrap();
+        let learned = the_hall_at_eight(dir.path(), 10);
+        let (lately, start) = (Measures::default(), Instant::now());
+        let known = known(&lately, &learned, (start, 20));
+        // A trial of the hall, learned far quicker, carrying far worse
+        // than the desk it left once there, which the card no longer
+        // hears, as wpa_supplicant forgets a point unheard a while, or
+        // which warned it drops the card (`State::warned_from`).
+        let judged = |warned: Option<&str>| {
+            let mut chooser = Chooser::default();
+            let tried = chosen(
+                &mut chooser,
+                start,
+                (&joined(DESK), &idle(30)),
+                (&[heard(DESK, -50), heard(HALL, -50)], None),
+                &known,
+                false,
+            );
+            assert_eq!(tried, Some(Next::Move(HALL.into())), "the hall is tried");
+            let at = start + choose::TRIAL;
+            let next = chosen(
+                &mut chooser,
+                at,
+                (&joined(HALL), &idle(200)),
+                (&[heard(HALL, -50)], warned),
+                &known,
+                false,
+            );
+            (next, chooser.went_back())
+        };
+
+        let (back, _) = judged(None);
+        let (kept, why) = judged(Some(&DESK.to_uppercase()));
+
+        assert_eq!(
+            back,
+            Some(Next::Move(DESK.into())),
+            "a trial carrying 200 ms against the 30 it left didn't go back to it unheard"
+        );
+        assert_eq!(
+            kept, None,
+            "a trial went back to a point that warned it drops the card"
+        );
+        assert!(
+            why.is_none(),
+            "why a way back not taken was left to be said of a later one"
+        );
     }
 
     #[test]
@@ -1449,7 +1522,7 @@ mod tests {
             &mut Chooser::default(),
             now,
             (&joined(HALL), &carried(38)),
-            &around,
+            (&around, None),
             &known,
             false,
         );
@@ -1479,7 +1552,7 @@ mod tests {
             &mut Chooser::default(),
             now,
             (&joined(HALL), &carried(38)),
-            &[crowded],
+            (&[crowded], None),
             &known,
             false,
         );

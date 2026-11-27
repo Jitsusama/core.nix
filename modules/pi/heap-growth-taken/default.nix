@@ -3,20 +3,28 @@
 # would end each conversation as it starts, which only a host's journal says
 # for a conversation woken in the background. So such a node fails the switch
 # by name instead. host.nix names this build in each conversation's unit, and
-# conversation-checks.nix builds it with a node that refuses the word, one
-# that fails another way, one it can't run, and for a machine it can't run.
-{ lib, pkgs }:
+# warns where it stands unproven; conversation-checks.nix builds it with a
+# node that refuses the word, one that fails another way, one that never
+# ends, one it can't run, and for a machine it can't run. The node is given
+# `seconds` to end, so one that hangs fails the switch rather than holding it.
+{
+  lib,
+  pkgs,
+  seconds ? 60,
+}:
 realm: node: percent:
 let
   word = "--heap-growing-percent=${toString percent}";
   given = "jitsusama.pi.hosts.${realm}.conversationHeapGrowingPercent is ${toString percent}";
-  # A node the build can't reach in its sandbox, as one named outside the
-  # store or by a store path without its context, hasn't refused the word,
-  # and needs another fix.
+  # A node the build can't run hasn't refused the word, and needs another
+  # fix: one named outside the store; one named by a store path without its
+  # context, which a sandboxed build can't reach; or a store path, with its
+  # context, that names nothing runnable, such as a package's folder or a
+  # program it doesn't hold.
   unrun = lib.concatStrings [
     "${given}, but the build proving the realm's node takes it can't run ${node}: give the realm "
-    "a node its build can reach, from the store and with its context, as lib.getExe gives one, "
-    "or unset the percent."
+    "a node its build can run, a program from the store named with its context, as lib.getExe "
+    "gives one, or unset the percent."
   ];
   refusal = lib.concatStrings [
     "${given}, but ${node} refuses ${word}, so each of the realm's conversations would end as it "
@@ -24,25 +32,41 @@ let
   ];
   failed = lib.concatStrings [
     "${given}, but ${node} failed with ${word} other than by refusing it, so the build can't prove "
-    "it takes the word. What it said is above: give the realm a node its build can run, or unset "
+    "it takes the word: give the realm a node its build can run, or unset the percent. What it "
+    "said is above."
+  ];
+  slow = lib.concatStrings [
+    "${given}, but ${node} didn't end within its ${toString seconds}-second limit once run with ${word}, "
+    "so the build can't prove it takes the word: give the realm a node that starts and ends, or "
+    "unset the percent. What it said is above."
+  ];
+  unproven = lib.concatStrings [
+    "${given}, but this machine is built on another platform, whose builder can't run ${node}, so "
+    "its switch doesn't prove the node takes ${word}, and a node that refuses it would end each "
+    "of the realm's conversations as it starts: build the machine on its own platform, or unset "
     "the percent."
   ];
   name = "pi-conversation-${realm}-takes-heap-growth";
 in
 # A machine built elsewhere, whose programs its builder can't run, can't
-# have its node run here either: the proof stands as unproven, rather than
-# failing the switch as if the node refused the word.
+# have its node run here either: the proof stands unproven and says so for
+# the machine's warnings, rather than failing the switch as if the node
+# refused the word.
 if pkgs.stdenv.buildPlatform.canExecute pkgs.stdenv.hostPlatform then
   pkgs.runCommandLocal name { } ''
     ${lib.getExe pkgs.bash} ${./taken.sh} ${
       lib.escapeShellArgs [
         node
         word
+        (toString seconds)
         unrun
         refusal
         failed
+        slow
       ]
     } "$out"
   ''
 else
-  pkgs.writeText name "${node} was not run with ${word}: this machine is built elsewhere.\n"
+  pkgs.runCommandLocal name { passthru = { inherit unproven; }; } ''
+    echo ${lib.escapeShellArg "${node} was not run with ${word}: this machine is built elsewhere."} > "$out"
+  ''

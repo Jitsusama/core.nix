@@ -1099,6 +1099,10 @@ QtObject {
             Presented.keyShown("place:Harbour House", false), "place");
         check(failures, "as is one forging a walk's steps",
             Presented.keyShown("category:power \u203a wifi", false), "category");
+        check(failures, "or forging them with no spaces about the step",
+            Presented.keyShown("category:power\u203awifi", false), "category");
+        check(failures, "or holding a colon, as a daemon's key of another kind would",
+            Presented.keyShown("place:wifi:Harbour", false), "place");
         check(failures, "or holding nothing after its kind",
             Presented.keyShown("collection:", false), "collection");
         check(failures, "but any other key only by its kind, as a network's name is",
@@ -1126,6 +1130,8 @@ QtObject {
             Presented.keyShown("program:", false), "program");
         check(failures, "or one whose id was read as null",
             Presented.keyShown("program:null", false), "program");
+        check(failures, "or as undefined",
+            Presented.keyShown("program:undefined", false), "program");
         check(failures, "and a daemon's record keyed as a program is said by its kind alone",
             Presented.keyShown("row:program:Harbour", false), "program");
         check(failures, "a row named but with no key is said only as an answer with reports off",

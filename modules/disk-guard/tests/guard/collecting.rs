@@ -766,10 +766,15 @@ fn step_later_until(
     };
     let started = Instant::now();
     while !done(store, at.wall) {
+        // What the guard kept and said, since this has given up seven
+        // times on a loaded builder with no word of why no listing began.
+        let read = |path: &str| fs::read_to_string(store.root.join(path)).unwrap_or_default();
         assert!(
             started.elapsed() < AT_IDLE,
-            "{seconds} s on: {:?}",
-            store.log()
+            "{seconds} s on: {:?}\nkept: {}\nstatus: {}",
+            store.log(),
+            read("state/garbage.json"),
+            read("status.json")
         );
         guard.step(&at, senses).unwrap();
         std::thread::sleep(Duration::from_millis(20));

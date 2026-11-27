@@ -10,10 +10,11 @@ fixes and why.
 | `next.nix`, `next/`   | fixes no release has yet, each header saying where from |
 | `local.nix`, `local/` | fixes written here and in no tree yet                   |
 
-Two patches came from elsewhere and wait to move at the stack's next
-regeneration, since moving them reorders the stack: the camera's
-hm1092-ir-sensor and ipu7-mono-formats, from the media list, which
-`../camera/camera.nix` applies.
+Three patches came from elsewhere and wait to move at the stack's
+next regeneration, since moving them reorders the stack: the camera's,
+which `../camera/camera.nix` applies (ipu7-isys-releases-firmware from
+linux-next, and hm1092-ir-sensor and ipu7-mono-formats from the media
+list).
 
 ## How a Patch Moves
 

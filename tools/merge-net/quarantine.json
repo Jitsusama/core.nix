@@ -77,15 +77,6 @@
     "test": "still-windows-draw-nothing-as-animations-start-on-niri"
   },
   {
-    "at": 1795371090,
-    "commit": "0e420d94fa7838778caa94587407fceeacb91fec",
-    "due": "2026-11-24",
-    "owner_pr": 6065,
-    "owner_session": "orchestrator",
-    "reason": "has been broken since #6065, whose revert won't apply; its owner fixes it forward and takes it off this list",
-    "test": "the-launcher-lists-inkscapes-drawings-lately"
-  },
-  {
     "at": 1795355612,
     "commit": "a6901f968d038fc3be538ac699ffda63c7fb8f49",
     "due": "2026-11-28",
@@ -189,12 +180,12 @@
     "test": "vm-screens-keep-the-launcher"
   },
   {
-    "at": 1795737990,
-    "commit": "137a0e537c4f4829140eef9e17d17a5b87f32207",
+    "at": 1795739917,
+    "commit": "009147baf0d8a81401d18b3e63203d1787ddf612",
     "due": "2026-11-29",
-    "owner_pr": 6678,
+    "owner_pr": 6166,
     "owner_session": "orchestrator",
-    "reason": "has been broken since #6678, whose revert won't apply; its owner fixes it forward and takes it off this list",
-    "test": "every-script-meets-shellcheck-at-its-strictest"
+    "reason": "has been broken since #6166, whose revert won't apply; its owner fixes it forward and takes it off this list",
+    "test": "a-macs-checks-since-2dc45751527486542c12ac15f1155e5071b30f90"
   }
 ]

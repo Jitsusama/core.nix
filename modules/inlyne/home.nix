@@ -73,6 +73,20 @@ let
     env = (old.env or { }) // {
       INLYNE_KEYBINDINGS = "${bindingsFile}";
     };
+    # Two of inlyne's test groups run against the clock: each interpreter
+    # test fails past 8 s, and each file watcher test waits a set time for
+    # its notice. A Mac builds its update beside the work it's used for,
+    # so on 26 November its update failed on slowly_swap_file with
+    # fseventsd at a whole core, then on image_loading_fails_gracefully at
+    # 8.4 s with its load at 48. Linux runs both groups over the same
+    # source and patches, so a Mac skips them rather than letting its load
+    # hold its update, and still runs the tests that keep no clock.
+    checkFlags =
+      (old.checkFlags or [ ])
+      ++ lib.optionals pkgs.stdenv.hostPlatform.isDarwin [
+        "--skip=file_watcher::tests"
+        "--skip=interpreter::tests"
+      ];
     postFixup =
       (old.postFixup or "")
       + lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''

@@ -4,8 +4,11 @@
 # follow it. That shows they're there, not that they do as before.
 # tuple-ends-its-flags fails unless "--" still ends tuple's flags before a
 # contact, which the launcher's call, join and star rows rely on. No check
-# reads the other arguments they take: `tuple help <cmd>` shows them and
-# runs nothing, where `tuple new --help` refuses. This build calls new and share
+# reads the other arguments they take. On v2026_11_25.0, `tuple help <cmd>`
+# printed a command's arguments without running it, where `tuple new --help`
+# failed with "too many cmdline args"; no check holds either, so read the
+# help in the build sandbox, not on a machine signed in. This build calls
+# new and share
 # deprecated, which tuple-call runs to open Joel's room and share his
 # screen, so a later one may drop them.
 # New strings say a camera's or a video's colour space isn't handled, one

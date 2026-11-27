@@ -194,11 +194,20 @@ def test_a_house_moved_to_another_address_still_holds(rig: Rig) -> None:
         f"journalctl -u house-report -o cat --no-pager | grep -q 'by eth1, from {MOVED_TO}'",
         timeout=QUIETING,
     )
-    rig.client.wait_until_succeeds(
-        "journalctl -u shaper -o cat --no-pager"
-        f' | grep -q "the first report from {MOVED_TO} for the house on {NETWORK} was heard"',
-        timeout=QUIETING,
-    )
+    first = f"the first report from {MOVED_TO} for the house on {NETWORK} was heard"
+
+    def taken(last_try: bool) -> bool:
+        """Say whether the moved address's first report was heard as the house's own."""
+        journal = rig.journal()
+        if last_try and first not in journal:
+            # What was said of the moved address instead, so a report heard as another
+            # house's, or said in other words, fails naming what was said (names its
+            # taker round 2's F15).
+            lines = [line for line in journal.splitlines() if MOVED_TO in line]
+            print(f"never said {first!r}; of {MOVED_TO} it said: {lines}")
+        return first in journal
+
+    retry(taken, timeout=QUIETING)
     # The house's word from its first address goes stale, so a hold that
     # stands past it was heard from the new one, where no house is named.
     rig.client.succeed("sleep 5")
