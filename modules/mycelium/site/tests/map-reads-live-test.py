@@ -1979,10 +1979,13 @@ WATCH_LONG = """() => {
 }"""
 # Before the keys, a watch on the element the answer is said in: once its words hold `has`, or
 # are `is`, and differ from `unlike`, the frame after the one that showed them. Timed in the page,
-# so the driver's round trips to press the keys and see the answer count for nothing.
-ARM = """({ selector, has, is, unlike }) => {
-  const at = document.querySelector(selector);
-  const said = () => at.textContent.replace(/\\s+/gu, " ").trim();
+# so the driver's round trips to press the keys and see the answer count for nothing. The watch is
+# on `within`, the answer's own element unless it's said, and the answer is found again at each
+# change, since an answer can be a new element, as Now's title replaces a cell's in the panel, and
+# a watch on the old one would never hear it.
+ARM = """({ selector, has, is, unlike, within }) => {
+  const said = () =>
+    (document.querySelector(selector)?.textContent ?? "").replace(/\\s+/gu, " ").trim();
   const answers = (words) => (is ? words === is : words.includes(has)) && words !== unlike;
   window.answered = new Promise((done) => {
     const seen = new MutationObserver(() => {
@@ -1990,7 +1993,8 @@ ARM = """({ selector, has, is, unlike }) => {
       seen.disconnect();
       requestAnimationFrame(() => requestAnimationFrame(() => done(performance.now())));
     });
-    seen.observe(at, { childList: true, characterData: true, subtree: true });
+    const watched = document.querySelector(within || selector);
+    seen.observe(watched, { childList: true, characterData: true, subtree: true });
   });
 }"""
 # When the answer's frame was painted, from the last key, and the longest task from the first
@@ -2017,7 +2021,7 @@ def answered_in(
 
     `answer` says what the answer reads (see ARM); `check` says, readably, when it never came.
     """
-    page.evaluate(ARM, {"has": "", "is": "", "unlike": "", **answer})
+    page.evaluate(ARM, {"has": "", "is": "", "unlike": "", "within": "", **answer})
     page.evaluate("() => { window.firstKey = performance.now(); }")
     for key in keys.split():
         page.keyboard.press(key)
@@ -2074,7 +2078,7 @@ def test_the_map_answers_its_keys_at_ten_thousand(
         now = answered_in(
             page,
             ".",
-            {"selector": "#panel-title", "is": "Now"},
+            {"selector": "#panel-title", "is": "Now", "within": "#panel"},
             lambda: expect(title, ". opened no Now").to_have_text("Now", timeout=PACE_MS),
         )
         # Said whether it passes, past pytest's capture, so each run's log adds a measure the
