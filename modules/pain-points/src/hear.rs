@@ -310,15 +310,29 @@ fn said(hour: &Hour) -> String {
 /// Before, only a landing closed a pain, so one heard wrongly stayed open
 /// in the hour, and its owner was asked of it again, until it aged out.
 /// A ledger that can't be read closes none, as nobody's word is read.
+/// Its word is read afresh each run, as cadence reads it, so a reason
+/// reworded is kept as reworded, and a none taken back, by naming a test
+/// in its place, opens the pain again unless a landing closed it.
 fn close_said_none(misses: &Path, at: i64, kept: &mut [Heard]) {
     let Ok(text) = fs::read_to_string(misses) else {
         return;
     };
     let said = heard::said_none(&text);
-    for h in kept.iter_mut().filter(|h| h.none.is_none()) {
-        if let Some((_, why)) = said.iter().find(|(key, _)| *key == h.key) {
-            h.none = Some(why.clone());
-            h.closed_at.get_or_insert(at);
+    for h in kept.iter_mut() {
+        match said.iter().find(|(key, _)| *key == h.key) {
+            Some((_, why)) => {
+                if !h.closed() {
+                    h.closed_at = Some(at);
+                }
+                h.none = Some(why.clone());
+            }
+            None if h.none.is_some() => {
+                h.none = None;
+                if h.closed_by.is_none() {
+                    h.closed_at = None;
+                }
+            }
+            None => {}
         }
     }
 }

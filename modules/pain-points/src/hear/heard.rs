@@ -236,6 +236,26 @@ mod tests {
     }
 
     #[test]
+    fn a_none_is_read_only_with_its_why_and_the_time_it_was_said() {
+        let text = [
+            r#"{"pain": "no-time", "none": "he was describing"}"#,
+            r#"{"pain": "blank", "none": "   ", "none_at_ms": 5}"#,
+            r#"{"pain": "time-as-text", "none": "why", "none_at_ms": "5"}"#,
+            r#"{"pain": "time-as-float", "none": "why", "none_at_ms": 5.5}"#,
+            r#"{"none": "no pain named", "none_at_ms": 5}"#,
+            "not a line of JSON",
+            r#"{"pain": "said", "none": "  he was describing ", "none_at_ms": 5}"#,
+        ]
+        .join("\n");
+        assert_eq!(
+            said_none(&text),
+            [("said".to_owned(), "he was describing".to_owned())],
+            "a none with no time, a blank or mistyped one, or one naming no pain was read, \
+             or the one said wasn't, trimmed"
+        );
+    }
+
+    #[test]
     fn a_ledger_gives_each_lines_words_and_owner() {
         let text = concat!(
             r#"{"at":"x","words":"the bar is too tight","owner":"Y","landed":"2026"}"#,

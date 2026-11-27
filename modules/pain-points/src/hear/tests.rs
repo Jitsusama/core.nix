@@ -713,9 +713,13 @@ fn a_pain_its_owner_says_was_none_closes_with_why() {
     fs::write(&misses, line.to_string() + "\n").expect("said none without why");
     let hour = hear(&place.ears(), CELLS, &mut |_, _| true).expect("a second run");
     assert_eq!(hour.open, 1, "none with no why closes nothing: {hour:?}");
+    // Said three days on, so only the moment its owner's word was read
+    // counts it closed today.
+    let mut later = place.ears();
+    later.at = AT + 3 * DAY_MS;
     line["none"] = json!("he was describing, not hurt");
     fs::write(&misses, line.to_string() + "\n").expect("said none");
-    let hour = hear(&place.ears(), CELLS, &mut |_, _| true).expect("a third run");
+    let hour = hear(&later, CELLS, &mut |_, _| true).expect("a third run");
     assert_eq!(
         (hour.open, hour.closed),
         (0, 1),
@@ -723,13 +727,27 @@ fn a_pain_its_owner_says_was_none_closes_with_why() {
     );
     let kept = place.heard();
     assert_eq!(
-        kept[0].none.as_deref(),
-        Some("he was describing, not hurt"),
-        "why it was none wasn't kept with it"
+        (kept[0].none.as_deref(), kept[0].closed_at),
+        (Some("he was describing, not hurt"), Some(later.at)),
+        "why it was none, or when it was read, wasn't kept with it"
     );
     assert_eq!(
         kept[0].closed_by, None,
         "no landing is said to have closed it"
+    );
+    // Its owner takes the none back by naming a test in its place.
+    let mut tested = line.clone();
+    let fields = tested.as_object_mut().expect("a line of fields");
+    fields.remove("none");
+    fields.remove("none_at_ms");
+    tested["test"] = json!("core modules/p tests/p.rs a_case");
+    fs::write(&misses, tested.to_string() + "\n").expect("a test named");
+    let hour = hear(&later, CELLS, &mut |_, _| true).expect("a fourth run");
+    let kept = place.heard();
+    assert_eq!(
+        (hour.open, kept[0].none.as_deref(), kept[0].closed_at),
+        (1, None, None),
+        "a none its owner took back left the pain closed: {hour:?}"
     );
 }
 
