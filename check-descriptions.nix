@@ -6777,8 +6777,8 @@
   '';
   vm-commits-are-signed = ''
     commits are signed with the TPM's keys, PINs asked for; the agents' socket stays off until
-    their key is made and listens once it is; stopped by hand, it listens again, and stays off
-    once its path unit is stopped first, until that unit starts again
+    their key is made and listens once it is; stopped by hand, it listens and serves
+    again, and stays off once its path unit is stopped first, until that unit starts again
   '';
   vm-desk-facts-follow-a-replug = ''
     desk-facts names a USB sound card plugged into a running machine, stops naming it once it's
