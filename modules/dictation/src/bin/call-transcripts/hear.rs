@@ -4,7 +4,9 @@
 //! Parakeet is loaded with a call's first take, at the NPU's background
 //! priority, and let go once no call has needed it for a while, so it
 //! holds no memory between calls. A take's sound is let go once it's
-//! heard.
+//! heard; of theirs, only how loud each 50 ms was is kept
+//! (`dictation::loudness`), so Joel's words far under it are cut as
+//! their echo.
 //!
 //! A new OpenVINO or driver means compiling Parakeet again, about a
 //! minute on the NPU, which a call's first take used to wait for: on 12
@@ -123,8 +125,7 @@ impl Writing {
     /// gone from the file, so this is all that says where to listen for
     /// it.
     fn untold_cuts(&mut self) -> Vec<String> {
-        let sound = Track::default();
-        let (cut, cuts) = echo::cut_echoes(&self.lines, &self.words, &sound, said::spoken);
+        let (cut, cuts) = echo::cut_echoes(&self.lines, &self.words, &self.sound, said::spoken);
         let cutting: HashSet<usize> = cuts.iter().map(|cut| cut.at).collect();
         let mut back: Vec<(usize, usize)> = Vec::new();
         self.told.retain(|at, words| {
@@ -174,8 +175,9 @@ impl Writing {
     /// call, when it's theirs, whether or not Parakeet heard words in it,
     /// since its sound reaches Joel's microphone all the same.
     fn hear_sound(&mut self, side: Side, start: usize, samples: &[f32]) {
-        // Red: nothing is kept yet.
-        let _ = (self, side, start, samples);
+        if side == Side::Theirs {
+            self.sound.hear(start, samples);
+        }
     }
 
     /// Keeps the embedding of each piece of a take of theirs embedded,
@@ -779,8 +781,7 @@ fn write(book: &Shared, key: &str, writing: &Writing, me: &str, transcribing: bo
 /// Lines read back from the file were told when first written, and are
 /// kept, since a split take's parts read back can't be joined again.
 fn transcript_of(writing: &Writing, me: &str, them: Option<&str>, note: Option<&str>) -> String {
-    let sound = Track::default();
-    let (cut, _) = echo::cut_echoes(&writing.lines, &writing.words, &sound, said::spoken);
+    let (cut, _) = echo::cut_echoes(&writing.lines, &writing.words, &writing.sound, said::spoken);
     let heard = split::unechoed(&cut, &writing.pieces, writing.read);
     let guesses = writing.guesses.as_deref();
     markdown_unechoed(&heard, me, them, note, guesses)
