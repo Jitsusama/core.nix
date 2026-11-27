@@ -1100,6 +1100,32 @@ def test_a_sessions_acts_walked_from_outside_steer_nothing_and_say_why(shell: Sh
             path.unlink()
 
 
+def test_an_orchestrators_served_acts_walked_from_outside_steer_nothing(shell: Shell) -> None:
+    """A walk's Stop or Talk on Agents' served top row steers no orchestrator as Joel.
+
+    The top rows' acts go to the agents daemon whole, never through the tree's joelsOwn, and
+    the daemon takes the shell's asks as Joel's (round 000056 on #6796, F21); so the shell
+    withholds one a walk chose, and the walk is told why.
+    """
+    inbox = STEER / "BOSSES"
+    before = set(inbox.glob("*.json"))
+    try:
+        for steps, words in (
+            (["agents", ORCHESTRATING, "Stop"], ""),
+            (["agents", ORCHESTRATING, "Talk"], "how goes it?"),
+        ):
+            walked = {"steps": steps, "words": words, "sure": True}
+            did = json.loads(shell.as_account(shell.ipc("doing", shlex.quote(json.dumps(walked)))))
+            assert did.get("refused") == ACT_WALKED, (steps, did)
+            shell.close_launcher()
+        time.sleep(LINK_QUIET)
+        after = set(inbox.glob("*.json"))
+        assert after == before, sorted(after - before)
+    finally:
+        for path in set(inbox.glob("*.json")) - before:
+            path.unlink()
+
+
 def test_a_want_walked_from_outside_is_dealt_with_only_once_joel_returns(shell: Shell) -> None:
     """A walk's Deal With It fills no session's prompt, though it runs once the walk has ended.
 

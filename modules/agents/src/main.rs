@@ -349,6 +349,9 @@ fn for_the_shell_alone(
                 .as_str()
                 .is_some_and(|ask| AS_JOEL.contains(&ask))
             {
+                if hides_only(said) {
+                    return as_joel(said);
+                }
                 return match asker::the_shell(stream) {
                     Ok(()) => as_joel(said),
                     Err(why) => Some(not_as_joel(&why, said)),
@@ -484,6 +487,16 @@ const SLOW: [&str; 6] = [
     wants::ASK,
     "feedback",
 ];
+
+/// Whether an ask of [`AS_JOEL`] only keeps amounts off a shared
+/// screen, which anyone may ask: a share's start refused because the
+/// shell's check couldn't be made, as when the user manager is slow,
+/// would leave amounts served on it, and the shell never says it again
+/// (round 000056 on #6796, F31 and F36). Its end shows them, so it is
+/// the shell's alone.
+fn hides_only(said: &Value) -> bool {
+    said["ask"] == "sharing" && said["sharing"] == true
+}
 
 /// What one of [`AS_JOEL`] is told where the shell's check refused it,
 /// in the form each is read: an act as the shell reads a steer

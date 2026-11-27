@@ -120,6 +120,11 @@ Provider {
             ?? provider.topGoTo(one)
             ?? provider.topCarryBack(one, row)
             ?? provider.topLetStart(key, one)
+        // Its served acts (Pause, Stop, Close) go straight to the daemon,
+        // which takes the shell's asks as Joel's, so one a walk chose is
+        // withheld and the walk told why, as joelsOwn tells the tree's.
+        stamp: (key, ask) => provider.joelsAsk(ask)
+        whyWithheld: () => provider.actWalked()
         maker: provider
         drawn: provider.launcher?.open ?? false
     }
@@ -216,7 +221,7 @@ Provider {
             heard: talk.heard,
             given: words => {
                 const text = words.trim();
-                if (text === "")
+                if (text === "" || !provider.joelsOwn("talk"))
                     return;
                 top.asked(key, Object.assign({}, one, {
                     ask: Object.assign({}, one.ask, { text })
@@ -1587,10 +1592,22 @@ Provider {
     function joelsOwn(act) {
         if (Sprouting.fromJoel(launcher))
             return true;
-        const outside = String((Words.of("agents").said ?? {}).actWalked ?? "");
+        const outside = actWalked();
         console.info(`launcher: agents' ${act} wasn't done from a walk: ${outside}`);
         launcher?.walkRefused?.(outside);
         return false;
+    }
+    function actWalked() {
+        return String((Words.of("agents").said ?? {}).actWalked ?? "");
+    }
+    // The asks the agents daemon does only as Joel (main.rs's AS_JOEL),
+    // sent as served from its top rows only when he chose them; any
+    // other ask, and his own, goes as it is.
+    readonly property var asJoel: ["pause", "resume", "stop", "close", "wake", "talk",
+        "tell", "feedback", "not-now", "put-off", "forget", "read", "heard", "sharing",
+        "keep-places"]
+    function joelsAsk(ask) {
+        return Sprouting.fromJoel(launcher) || !asJoel.includes(ask?.ask) ? ask : null;
     }
 
     // Reopens a closed orchestrator, its row reading as listening until its
