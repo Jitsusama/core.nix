@@ -52,6 +52,9 @@ const answered = new Set<Kind>();
 const standings = new Map<Kind, Standing>();
 // The last thing each watch couldn't read, said until it reads another.
 const unread = new Map<Kind, string>();
+// Why the last reading couldn't be drawn (view.js), said, broken, whatever a
+// feed's standing says, until a reading is drawn whole.
+let undrawn: string | undefined;
 
 let handed = Number.NEGATIVE_INFINITY;
 let waiting: number | undefined;
@@ -89,6 +92,10 @@ function sayStanding(now: Standing | undefined): string {
 
 /** Says how the map stands, and what it couldn't read. */
 function sayHow(): void {
+  if (undrawn !== undefined) {
+    tell(asof, `The map couldn't draw: ${undrawn}. It tries again with the next change.`, "broken");
+    return;
+  }
   const now = standing();
   const problems = [...unread.values()];
   const trouble = problems.length > 0 ? ` Couldn't read: ${problems.join("; ")}.` : "";
@@ -244,10 +251,17 @@ document.addEventListener("visibilitychange", () => {
 });
 sayHow();
 followTheAsks();
-// A reading that fails to draw says so on the standing line, broken
-// (view.js); the next drawn whole says how the map stands again, rather
-// than leaving a live map reading as broken until a feed's standing moves.
-document.addEventListener("mycelium:modelled", sayHow);
+// A reading that fails to draw says so on the standing line, broken, until
+// the next is drawn whole, which says how the map stands again, rather than
+// leaving a live map reading as broken until a feed's standing moves.
+document.addEventListener("mycelium:undrawn", (event) => {
+  undrawn = (event as CustomEvent<{ why: string }>).detail.why;
+  sayHow();
+});
+document.addEventListener("mycelium:modelled", () => {
+  undrawn = undefined;
+  sayHow();
+});
 // The map answers its keys in the drawing (view.js), so the kit is told of
 // the first one here: a touch screen shows the head's key line once typed on.
 watchForKeys();

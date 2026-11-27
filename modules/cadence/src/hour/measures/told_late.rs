@@ -50,9 +50,9 @@ pub fn told_late(text: &str, now: i64, which: Tracking) -> Measure {
             .1
             .push(ask);
     }
-    let mut asks: Vec<(usize, Vec<Value>)> = written.into_values().collect();
-    asks.sort_by_key(|(order, _)| *order);
-    let mut late: Vec<Late> = asks
+    let mut in_order: Vec<(usize, Vec<Value>)> = written.into_values().collect();
+    in_order.sort_by_key(|(order, _)| *order);
+    let mut late: Vec<Late> = in_order
         .iter()
         .flat_map(|(_, versions)| moved_late(versions, now, which))
         .collect();

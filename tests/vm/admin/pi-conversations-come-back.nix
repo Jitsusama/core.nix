@@ -26,7 +26,10 @@ let
   # rather than on a build of its whole tree, whose native modules a host
   # never loads. It is a whole clone, as an installed version is: a host
   # holds a second conversation only once git says every live pi's harness
-  # holds the commit that tells hosted conversations apart.
+  # holds the commit that tells hosted conversations apart. A kept .git can
+  # hash differently from one fetch to the next, since git's packing and the
+  # refs it fetches both feed it, so the hash below is the one a builder got
+  # last, and may need taking again until this test stops asking git.
   commit = "c365e2c19e515074dad1317c8356008cddaaf7b6";
   source = pkgs.fetchgit {
     url = "https://github.com/Jitsusama/agentic-harness.pi";
