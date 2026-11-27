@@ -604,9 +604,17 @@ fn a_transcript_says_what_wasnt_heard() {
         Some(unheard),
         "the transcript doesn't say what wasn't heard: {said}"
     );
+    // The summary carries only what comes before the first line, so the
+    // note is said ahead of it.
+    let at = |text: &str| said.find(text);
+    let (note, invited, first) = (
+        at(&unheard.note()),
+        at("Invited: Ada and Bo."),
+        at("**Joel**, 0:10: Said."),
+    );
     assert!(
-        said.contains("Invited: Ada and Bo.") && said.contains("**Joel**, 0:10: Said."),
-        "saying what wasn't heard lost the note or a line: {said}"
+        note.is_some() && note < invited && invited < first,
+        "what wasn't heard isn't said ahead of the note and the lines: {said}"
     );
 }
 
