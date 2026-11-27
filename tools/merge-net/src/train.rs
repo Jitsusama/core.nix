@@ -95,6 +95,9 @@ use splitting::{After, Splitting, UNTAKEN_FOR};
 pub struct Rider {
     /// The head that passed, as `ready` was asked about it.
     pub head: String,
+    /// The earlier commit whose pass `ready` let speak for the head, as
+    /// one for a rebased change does, when it wasn't the head's own.
+    pub passed: Option<String>,
     /// The branch its pull request merges from.
     pub branch: String,
     /// When it boarded, in seconds since the epoch.
@@ -134,7 +137,12 @@ fn fell_folder(root: &Path) -> PathBuf {
 pub fn board(root: &Path, rider: &Rider) -> io::Result<()> {
     let riders = riders_folder(root);
     fs::create_dir_all(&riders)?;
-    let said = json!({"head": rider.head, "branch": rider.branch, "at": rider.at});
+    let said = json!({
+        "head": rider.head,
+        "passed": rider.passed,
+        "branch": rider.branch,
+        "at": rider.at,
+    });
     fs::write(
         riders.join(format!("{}.json", rider.head)),
         format!("{said}\n"),
@@ -152,6 +160,7 @@ pub fn riders(root: &Path) -> Vec<Rider> {
             let said: Value = serde_json::from_str(&fs::read_to_string(entry.path()).ok()?).ok()?;
             Some(Rider {
                 head: said["head"].as_str()?.to_owned(),
+                passed: said["passed"].as_str().map(str::to_owned),
                 branch: said["branch"].as_str()?.to_owned(),
                 at: said["at"].as_u64()?,
             })
@@ -283,11 +292,12 @@ pub const UNIT: &str = "merge-net-train.service";
 /// What the unit's description says.
 const DESCRIBED: &str = "merge-net's train merges the changes that passed together";
 
-/// Board the change at `head`, asked from `branch`, and start the train
-/// unless it goes, saying what was done; nothing when the train can't
-/// take it and it runs again alone as before.
+/// Board the change at `head`, asked from `branch`, its pass the one at
+/// `passed` when that isn't its own, and start the train unless it goes,
+/// saying what was done; nothing when the train can't take it and it runs
+/// again alone as before.
 #[must_use]
-pub fn offer(head: &str, branch: &str) -> Option<String> {
+pub fn offer(head: &str, passed: Option<&str>, branch: &str) -> Option<String> {
     let root = crate::state::State::from_env().root;
     let boarded = rider_at(&root, head).is_some();
     match seat(boarded, fell(&root, head)) {
@@ -296,6 +306,7 @@ pub fn offer(head: &str, branch: &str) -> Option<String> {
         Seat::Board => {
             let rider = Rider {
                 head: head.to_owned(),
+                passed: passed.map(str::to_owned),
                 branch: branch.to_owned(),
                 at: crate::state::now(),
             };
@@ -508,6 +519,9 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
         }
         git(&["fetch", "--quiet", "origin", "main"])?;
         let base = git(&["rev-parse", "refs/remotes/origin/main"])?;
+        // Read from main rather than the candidate, whose riders could
+        // otherwise excuse their own red by listing it.
+        let quarantine = git(&["show", &format!("{base}:{}", crate::world::QUARANTINE)]);
         let done = cut(&git, &base, &mergings)?;
         for head in &done.conflicted {
             let _ = fall(
@@ -547,7 +561,13 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
                 right_of_way::run_ends(&root);
                 splitting.taken();
                 way(&root, &Ended::Otherwise);
-                red(&root, &candidate, &log, &done.merged, &mut splitting);
+                let red_of = Red {
+                    candidate: &candidate,
+                    log: &log,
+                    merged: &done.merged,
+                    quarantine: quarantine.as_deref().unwrap_or_default(),
+                };
+                red(&root, &red_of, &mut splitting);
                 continue;
             }
             Gated::Unsent => {
@@ -736,10 +756,16 @@ fn unsent(
 /// list, or the riders that moved what failed fall (`blame.rs`), or else
 /// the next takes fewer riders, or the rider that rode it alone falls, or
 /// every rider does, as `splitting` says.
-fn red(root: &Path, candidate: &str, log: &Path, merged: &[String], splitting: &mut Splitting) {
-    if blamed(root, candidate, log, merged, splitting) {
+fn red(root: &Path, red_of: &Red, splitting: &mut Splitting) {
+    if blamed(root, red_of, splitting) {
         return;
     }
+    let Red {
+        candidate,
+        log,
+        merged,
+        ..
+    } = *red_of;
     let (falling, why) = match splitting.red(merged.len()) {
         After::Falls => (merged.to_vec(), "the candidate it rode alone"),
         After::AllFall => (
@@ -774,28 +800,34 @@ fn red(root: &Path, candidate: &str, log: &Path, merged: &[String], splitting: &
     }
 }
 
-/// Whether the red of the candidate `candidate` of `merged` riders, its
-/// words in `log`, was settled by what failed in it: run once more, being
-/// wholly on the quarantine list in the train's checkout, or put on the
-/// riders whose own passes moved what failed, which fall while the rest
-/// ride on. Neither, and the search halves as before.
-fn blamed(
-    root: &Path,
-    candidate: &str,
-    log: &Path,
-    merged: &[String],
-    splitting: &mut Splitting,
-) -> bool {
+/// A candidate that failed: its commit, the log its words went to, the
+/// riders merged into it, and main's quarantine list as it was cut on.
+struct Red<'a> {
+    candidate: &'a str,
+    log: &'a Path,
+    merged: &'a [String],
+    quarantine: &'a str,
+}
+
+/// Whether the red `red_of` was settled by what failed in it: run once
+/// more, being wholly on main's quarantine list, once for the same
+/// riders, or put on the riders whose own passes moved what failed, which
+/// fall while the rest ride on. Neither, and the search halves as before.
+fn blamed(root: &Path, red_of: &Red, splitting: &mut Splitting) -> bool {
+    let Red {
+        candidate,
+        log,
+        merged,
+        quarantine,
+    } = *red_of;
     let Some(failing) = blame::failed(&words_of(log)) else {
         return false;
     };
     let failing_said = failing.iter().cloned().collect::<Vec<_>>().join(", ");
-    let listed = fs::read_to_string(folder(root).join("checkout").join(crate::world::QUARANTINE))
-        .ok()
-        .and_then(|list| serde_json::from_str::<Value>(&list).ok())
+    let listed = serde_json::from_str::<Value>(quarantine)
         .map(|list| blame::listed(&list))
         .unwrap_or_default();
-    if blame::flaky(&failing, &listed) && splitting.again() {
+    if blame::flaky(&failing, &listed) && splitting.again(merged) {
         println!(
             "merge-net: the candidate {} failed only in {failing_said}, each on the quarantine \
              list, so it runs once more before any rider is blamed",
@@ -808,7 +840,7 @@ fn blamed(
     }
     let riders: Vec<(String, Option<BTreeSet<String>>)> = merged
         .iter()
-        .map(|head| (head.clone(), blame::moved_in(&crate::ready::record(head))))
+        .map(|head| (head.clone(), blame::moved_in(&passes_of(root, head))))
         .collect();
     let Some(owners) = blame::owners(&failing, &riders) else {
         return false;
@@ -832,6 +864,17 @@ fn blamed(
         let _ = fall(root, head, &said);
     }
     true
+}
+
+/// What nix-offload kept of the passes that speak for the rider at `head`:
+/// its own, and the earlier one `ready` boarded it on, whose table says
+/// what it moved when the head's own run never ran.
+fn passes_of(root: &Path, head: &str) -> String {
+    let earlier = rider_at(root, head)
+        .and_then(|rider| rider.passed)
+        .map(|passed| crate::ready::record(&passed))
+        .unwrap_or_default();
+    format!("{}\n{earlier}", crate::ready::record(head))
 }
 
 /// Run the gate in `checkout`, its words going to `log`: how it ended.

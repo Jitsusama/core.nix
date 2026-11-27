@@ -138,6 +138,7 @@ fn pathdiff(path: &Path, from: &Path) -> PathBuf {
 fn rider(head: &str, at: u64) -> Rider {
     Rider {
         head: head.to_owned(),
+        passed: None,
         branch: format!("jitsusama/{head}"),
         at,
     }
@@ -436,6 +437,46 @@ fn a_run_is_clear_only_one_red_or_refusal_from_emptying_nothing() {
     );
     untaken.taken();
     assert!(untaken.clear(), "a taken candidate didn't end the wait");
+}
+
+#[test]
+fn a_quarantined_red_runs_again_once_for_the_same_riders() {
+    let (riders, fewer) = (["a".to_owned(), "b".to_owned()], ["a".to_owned()]);
+    let mut splitting = Splitting::default();
+    assert!(
+        splitting.again(&riders),
+        "a first quarantined red didn't run again"
+    );
+    assert!(!splitting.clear(), "a quarantined red's rerun read clear");
+    assert!(
+        !splitting.again(&riders),
+        "the same riders ran again for a second quarantined red"
+    );
+    assert!(
+        splitting.again(&fewer),
+        "other riders weren't given their own run again"
+    );
+    splitting.blamed();
+    assert!(splitting.clear(), "a settled red left it unclear");
+    assert!(
+        splitting.again(&riders),
+        "a red settled since didn't let the riders run again anew"
+    );
+}
+
+#[test]
+fn a_rider_keeps_the_earlier_pass_it_boarded_on() {
+    let root = root("passed");
+    let mut boarded = rider("b", 100);
+    boarded.passed = Some("a".to_owned());
+    board(&root, &boarded).unwrap();
+    board(&root, &rider("c", 101)).unwrap();
+    assert_eq!(
+        riders(&root),
+        vec![boarded, rider("c", 101)],
+        "a rider's earlier pass wasn't kept as it boarded"
+    );
+    fs::remove_dir_all(&root).unwrap();
 }
 
 #[test]

@@ -22,6 +22,10 @@ const UNBUILT: [&str; 2] = ["error: Cannot build ", "error: build of "];
 /// what its entry excuses, after its name.
 const UNEXCUSED: &str = "which main's quarantine doesn't excuse";
 
+/// What changed-checks says of a quarantined check whose failure its
+/// entry excuses, after its name.
+const EXCUSED: &str = "so it blocks nothing";
+
 /// What changed-checks heads its table of the checks a run moved with.
 const TABLE: &str = "KIND";
 
@@ -33,7 +37,8 @@ const NAMED_APART: [(&str, &str); 1] = [("treefmt-check", "formatting")];
 /// builder was lost. A failed derivation counts only when changed-checks'
 /// last table names it as a check the change moved, so the parts and
 /// files a check is built from, which fail beneath it, aren't counted:
-/// the check they failed beneath is.
+/// the check they failed beneath is. A check changed-checks excused, by
+/// main's quarantine, blocked nothing, so it isn't counted either.
 #[must_use]
 pub fn failed(words: &str) -> Option<BTreeSet<String>> {
     let table = words
@@ -49,23 +54,34 @@ pub fn failed(words: &str) -> Option<BTreeSet<String>> {
                 .or_else(|| word.strip_suffix(".drv"))
         })
         .filter_map(|path| path.rsplit('/').next())
-        .filter_map(|name| name.split_once('-').map(|(_, name)| check_of(name)));
-    let unexcused = words
-        .lines()
-        .filter(|line| line.contains(UNEXCUSED))
-        .filter_map(|line| line.strip_prefix("changed-checks: "))
-        .filter_map(|said| said.split(' ').next())
-        .map(str::to_owned);
+        .filter_map(|name| {
+            name.split_once('-')
+                .map(|(_, name)| check_of(name, &checks))
+        });
+    let said_of = |what: &'static str| {
+        words
+            .lines()
+            .filter(move |line| line.contains(what))
+            .filter_map(|line| line.strip_prefix("changed-checks: "))
+            .filter_map(|said| said.split(' ').next())
+            .map(str::to_owned)
+    };
+    let excused: BTreeSet<String> = said_of(EXCUSED).collect();
     let found: BTreeSet<String> = unbuilt
-        .chain(unexcused)
-        .filter(|check| checks.contains(check))
+        .chain(said_of(UNEXCUSED))
+        .filter(|check| checks.contains(check) && !excused.contains(check))
         .collect();
     (!found.is_empty()).then_some(found)
 }
 
-/// The check a derivation called `name` is: itself, its version after
-/// the last dash taken off, or the check it's named apart from.
-fn check_of(name: &str) -> String {
+/// The check a derivation called `name` is, of the `checks` a run moved:
+/// itself, when it's one of them, as `kernel-settings-hold-<model>-1958`
+/// is with its model's number, its version after the last dash taken
+/// off, or the check it's named apart from.
+fn check_of(name: &str, checks: &BTreeSet<String>) -> String {
+    if checks.contains(name) {
+        return name.to_owned();
+    }
     if let Some((_, check)) = NAMED_APART.iter().find(|(drv, _)| *drv == name) {
         return (*check).to_owned();
     }
@@ -78,16 +94,26 @@ fn check_of(name: &str) -> String {
 }
 
 /// The checks a pass's `printed` words, changed-checks' first table,
-/// name as moved.
+/// name as moved: its rows, each a kind and a check, up to the first line
+/// that isn't one, as nix-offload's words after it aren't.
 #[must_use]
 pub fn moved(printed: &str) -> BTreeSet<String> {
     printed
         .lines()
         .skip_while(|line| !line.starts_with(TABLE))
         .skip(1)
-        .filter_map(|line| line.split_whitespace().nth(1))
+        .map_while(row)
         .map(str::to_owned)
         .collect()
+}
+
+/// The check a line of changed-checks' table names, as `changed  <check>`,
+/// or none when the line isn't a row.
+fn row(line: &str) -> Option<&str> {
+    let mut words = line.split_whitespace();
+    let (kind, check) = (words.next()?, words.next()?);
+    (words.next().is_none() && kind.chars().all(|c| c.is_ascii_lowercase()) && !check.contains(':'))
+        .then_some(check)
 }
 
 /// The checks every changed-checks pass in nix-offload's `record` of a
@@ -230,6 +256,27 @@ mod tests {
     }
 
     #[test]
+    fn an_excused_check_and_a_numbered_one_are_read_as_they_were_said() {
+        let words = gate(
+            "error: Cannot build '/nix/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-the-launcher-\
+             answers-whats-typed-on-niri.drv'.\n\
+             error: Cannot build '/nix/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-kernel-settings-\
+             hold-1958.drv'.\n\
+             changed-checks: the-launcher-answers-whats-typed-on-niri failed, but its subtest \
+             test_a is on main's quarantine list, so it blocks nothing\n",
+            &[
+                "the-launcher-answers-whats-typed-on-niri",
+                "kernel-settings-hold-1958",
+            ],
+        );
+        assert_eq!(
+            failed(&words),
+            Some(set(&["kernel-settings-hold-1958"])),
+            "an excused check counted, or a check's own number was taken off"
+        );
+    }
+
+    #[test]
     fn a_pass_names_what_it_moved_from_its_table() {
         let printed = "comparing\nKIND     CHECK\nchanged  formatting\nnew      \
                        jobs-sorter-passes-clippy\n";
@@ -237,6 +284,12 @@ mod tests {
             moved(printed),
             set(&["formatting", "jobs-sorter-passes-clippy"]),
             "a pass's table wasn't read whole"
+        );
+        let followed = format!("{printed}nix-offload: sent 3 builds to vm-4\n\nchanged  later\n");
+        assert_eq!(
+            moved(&followed),
+            set(&["formatting", "jobs-sorter-passes-clippy"]),
+            "the lines after the table were read as rows of it"
         );
         let record = format!(
             "{}\n{}\n",

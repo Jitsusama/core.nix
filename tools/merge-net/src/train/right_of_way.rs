@@ -360,6 +360,7 @@ mod tests {
         for rider in 0..riders {
             let rider = super::super::Rider {
                 head: format!("{rider:040}"),
+                passed: None,
                 branch: format!("rider-{rider}"),
                 at: 100,
             };
