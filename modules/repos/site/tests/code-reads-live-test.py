@@ -706,8 +706,8 @@ FAILING = "has 1 change whose checks fail."
 # or three cells waiting, changes failing or changes asked for, or a pile of resting trees, as
 # model.ts says them, after what grew most or a grove resting. Each grove is built of only the
 # fields headOf and worthOf read, its repository named as short as the stand-in's core or as
-# long as eight characters. A tree whose folder is gone, two things worth a look or a longer
-# name are said at a length a phone gives a third line.
+# long as eight characters, each name with every kind. A tree whose folder is gone, two things
+# worth a look or a longer name are said at a length a phone gives a third line.
 HEAD_FORMS = """async () => {
   const { headOf } = await import("./head.js");
   const { worthOf } = await import("./model.js");
@@ -728,9 +728,8 @@ HEAD_FORMS = """async () => {
   const worth = [
     {}, { waiting: 1 }, { waiting: 3 }, { failing: 1 }, { failing: 3 }, { asked: 1 },
     { asked: 3 }, { resting: 12 }];
-  const ledes = [3, 0].flatMap((today) => [
-    ...worth.map((each) => [named("core", today, each)]),
-    [named("kelp-bed", today, { waiting: 1 })], [named("kelp-bed", today, { failing: 1 })]]);
+  const ledes = [3, 0].flatMap((today) => ["core", "kelp-bed"].flatMap((name) =>
+    worth.map((each) => [named(name, today, each)])));
   return {
     title: counts.map((each) => headOf(grove(each)).title),
     lede: ledes.map((each) => headOf(grove(each)).lede),

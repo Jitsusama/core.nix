@@ -445,7 +445,7 @@ function worthOf(repositories: readonly Repository[]): readonly Worth[] {
       found.push({
         weight: 1e4 + asked,
         repository,
-        says: `has ${plural(asked, "change")} with changes asked for.`,
+        says: `has ${plural(asked, "change")} sent back.`,
       });
     }
     const { gone, resting } = repository.seasons;
@@ -460,7 +460,7 @@ function worthOf(repositories: readonly Repository[]): readonly Worth[] {
       found.push({
         weight: resting,
         repository,
-        says: `rests ${plural(resting, "tree")} unwritten past a week.`,
+        says: `has ${plural(resting, "tree")} resting over a week.`,
       });
     }
   }

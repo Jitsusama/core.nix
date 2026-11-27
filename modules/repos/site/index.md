@@ -18,7 +18,7 @@ something to do.
   are growing (a tree written today), then at most two things worth a look,
   worst first, and which repository grew most today.
 - **What's worth a look,** in this order: cells waiting on Joel, changes
-  whose checks fail, changes with changes asked for, trees git still lists
+  whose checks fail, changes sent back for more work, trees git still lists
   whose folders are gone, and ten or more trees resting over a week.
 - **The grove:** a tree for each repository, kept in its place by name. Its
   crown grows with the trees cut from it. Its leaves are those trees:
