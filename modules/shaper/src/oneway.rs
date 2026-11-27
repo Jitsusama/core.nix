@@ -250,6 +250,21 @@ const DRAINED_S: f64 = UNSEEN_DRAIN_S;
 /// 5.6 of 12 Mbit/s, the reflectors 5 to 9 ms, and each 2 s dip was taken
 /// for the line, holding the upload at 4.
 const NEAR_THE_HOLD: f64 = 0.9;
+/// How long a router past our standing CAKE must drop over `DROPPED_PAST`
+/// of what it sent, in TCP's resends past CAKE's own drops, for its queue
+/// to be found under the anchor's near-hold, and while the VPN's tunnel
+/// reads clear: what it drops is the line's, not a dip a sender made. On
+/// 27 November, on a home network's second access point, such runs held
+/// 59% of 33 minutes, 16 of them 15 s or longer, while on the 24th's 21
+/// hours, by cable and by air, and the 26th's two and a half by cable,
+/// none passed 14 s.
+const DROPPING_S: f64 = 15.0;
+/// How long a hold found by `DROPPING_S` of drops stands before the
+/// anchor's guard may send it back to the anchor's hold: a minute's
+/// return would take up its drops again 15 s at a time, each minute, as
+/// long as the line past it stays under the anchor. The probes still look
+/// for room each minute, so a line come back is climbed to.
+const DROPPED_STANDS_S: f64 = 600.0;
 
 /// How the upload tells a queue and finds its line, which a trial may set
 /// in place of the constants above to learn how near the line it may hold.
@@ -509,6 +524,11 @@ pub struct Way {
     /// Since when data has waited with our CAKE holding nothing, what got
     /// through each moment of it, and how long late acks put it off.
     elsewhere: Option<(f64, f64, u32, f64)>,
+    /// Since when a router past our standing CAKE has dropped over
+    /// `DROPPED_PAST` of what it sent, and when a hold was last found by
+    /// `DROPPING_S` of that past the anchor, which the guard leaves be.
+    dropping_since: Option<f64>,
+    dropped_at: Option<f64>,
     /// What got through when the queue was last found past our CAKE, which
     /// the rate is held under, and when it next looks for more room, or
     /// until when it is looking.
@@ -561,6 +581,8 @@ impl Way {
             started_from: 0.0,
             starting_until: None,
             elsewhere: None,
+            dropping_since: None,
+            dropped_at: None,
             plateau: None,
             next_probe: 0.0,
             probing_until: None,
@@ -787,6 +809,20 @@ impl Way {
         let line_full = self
             .line()
             .is_none_or(|anchor| through >= anchor * ANCHOR_HOLD * NEAR_THE_HOLD);
+        // Neither guard reads what TCP sent again: a dip a sender made, or
+        // a link short of the anchor, drops nothing. A router past our
+        // standing CAKE dropping what it sent, for `DROPPING_S` on end,
+        // has a line under what we send, wherever the anchor stands and
+        // whatever the tunnel reads: as when a home network's second
+        // access point, by air, carried a cable's 12 Mbit/s line at 6.
+        let dropping = heard && ours.queued && ours.waiting && lost >= offered * DROPPED_PAST;
+        let dropped = if dropping {
+            at - *self.dropping_since.get_or_insert(at) >= DROPPING_S - 0.05
+        } else {
+            self.dropping_since = None;
+            false
+        };
+        let by_drops = dropped && (backing_off || !line_full);
         // With the other way's queue standing late, our flows wait on acks
         // that come late, so they send under any rate, the router's line
         // or ours: on 18 November a download filling the router's queue
@@ -804,12 +840,14 @@ impl Way {
         let late = ours.acks_late && ours.waiting && held_back && !backing_off;
         let elsewhere = ours.waiting
             && held_back
-            && !backing_off
-            && line_full
+            && (by_drops || !backing_off && line_full)
             && through > FLOWING_KBIT
             && self.reached(at) > 0.0
             && through >= self.reached(at) * REACHED;
         if self.count_elsewhere(at, dt, late, elsewhere, through) {
+            if by_drops {
+                self.dropped_at = Some(at);
+            }
             return true;
         }
         let Some(plateau) = self.plateau else {
@@ -1320,6 +1358,8 @@ impl Way {
         self.plateau = None;
         self.probing_until = None;
         self.elsewhere = None;
+        self.dropping_since = None;
+        self.dropped_at = None;
         self.under_half_since = None;
         self.late_since = None;
         self.passed_s = 0.0;
@@ -2015,6 +2055,16 @@ impl Controller {
         // Its low spell ends there, so a cut under the ceiling later is
         // given the whole minute before a return.
         if up.tuning.most_kbit.is_some_and(|most| held >= most) {
+            self.guard.low_since = None;
+            return false;
+        }
+        // A hold the router's own drops found isn't a guess, and a return
+        // would take up those drops again: it stands `DROPPED_STANDS_S`,
+        // then the guard's minute begins.
+        if up
+            .dropped_at
+            .is_some_and(|dropped| at - dropped < DROPPED_STANDS_S)
+        {
             self.guard.low_since = None;
             return false;
         }
@@ -5680,6 +5730,93 @@ mod tests {
             fell < 8_000.0,
             "with no anchor it held at least {fell}, so the wobble shows nothing"
         );
+    }
+
+    /// Steps `c` on from where it last stepped until `to`, its CAKE holding
+    /// a queue and sending, the VPN's share of it if `vpn`, up to a tenth
+    /// over the `line(at)` a router past it carries, which drops the rest
+    /// for TCP to send again. Answers the least limit it held.
+    fn dropped_under(c: &mut Controller, to: f64, vpn: bool, line: impl Fn(f64) -> f64) -> f64 {
+        let share = if vpn { crate::qdisc::VPN_SHARE } else { 1.0 };
+        let mut lowest = f64::INFINITY;
+        let mut at = c.last_at.map_or(0.0, |last| last + 0.1);
+        while at < to {
+            let rate = c.up.limit().map_or(f64::INFINITY, crate::rate::float);
+            let line = line(at);
+            let carried = (rate * share).min(line * 1.1);
+            #[expect(
+                clippy::cast_possible_truncation,
+                clippy::cast_sign_loss,
+                reason = "a positive rate far under u64's range"
+            )]
+            let kbit = |k: f64| k as u64;
+            let limits = c.step(&Seen {
+                at_s: at,
+                up_kbit: carried,
+                up_ours: Some(Ours {
+                    queued: true,
+                    in_vpn: vpn,
+                    vpn_queued: vpn,
+                    waiting: true,
+                    resent: kbit((carried - line).max(0.0)),
+                    sent: Some(kbit(carried)),
+                    ..Ours::default()
+                }),
+                ..quiet(0.0, 300.0)(at)
+            });
+            lowest = lowest.min(limits.up.map_or(f64::INFINITY, crate::rate::float));
+            at += 0.1;
+        }
+        lowest
+    }
+
+    // On 27 November a home network's second access point, by air,
+    // carried about 6 of the cable's 12 Mbit/s and dropped a twentieth to
+    // a tenth of what was sent, for hours, mostly the VPN's. Judged by the
+    // anchor alone the link was never full, and by the tunnel it was
+    // backing off, so the queue stayed the access point's at 10.8.
+    #[test]
+    fn a_router_dropping_under_an_anchor_has_the_upload_held_under_it() {
+        for vpn in [false, true] {
+            let mut c = anchored(12_000.0);
+            dropped_under(&mut c, 40.0, vpn, |_| 6_000.0);
+            let held = c.up.limit();
+            assert!(
+                held.is_some_and(|h| h < 6_000),
+                "held at {held:?} over a 6000 line, the VPN's {vpn}"
+            );
+            assert!(
+                c.up.dropped_at.is_some(),
+                "the VPN's {vpn}: not found by drops"
+            );
+            // Its own drops would find it again, so the guard leaves it be.
+            dropped_under(&mut c, 400.0, vpn, |_| 6_000.0);
+            let later = c.up.limit();
+            assert_eq!(c.guarded, 0, "the VPN's {vpn}: the guard took it back");
+            assert!(
+                later.is_some_and(|h| h < 6_000),
+                "held at {later:?} by 400 s, the VPN's {vpn}"
+            );
+        }
+    }
+
+    // A healthy day's drops come in runs of 14 s at most, on 24 November's
+    // 21 hours by cable and by air: shorter runs leave the anchor's hold.
+    #[test]
+    fn drops_shorter_than_their_while_leave_an_anchored_hold() {
+        let mut c = anchored(12_000.0);
+        let lowest = dropped_under(&mut c, 300.0, false, |at| {
+            if at % 30.0 < DROPPING_S - 1.0 {
+                6_000.0
+            } else {
+                12_000.0
+            }
+        });
+        assert!(
+            c.up.dropped_at.is_none(),
+            "found by drops shorter than {DROPPING_S} s"
+        );
+        assert!(lowest >= 10_000.0, "held down to {lowest} by short drops");
     }
 
     /// Steps a controller whose upload fills what it's held to, with no
