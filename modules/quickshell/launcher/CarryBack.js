@@ -1,4 +1,5 @@
 .pragma library
+.import "Presented.js" as Presented
 
 // Carry Back on a carry Agents lists under Carried, which an orchestrator
 // made in Joel's stead: one act, asked of the realm's node by the shell
@@ -13,6 +14,14 @@
 // name.
 const QUEST = /^QEST-[0-9]{8}-[A-Z0-9]{6}$/u;
 const MACHINE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/u;
+
+// The key a carried row reads as carrying back under, and has its refusal
+// said on: the one ReadyRows.qml made it with from its record's key
+// (Presented.js's keyMade), so what it becomes is that row, and a thing
+// claiming a kind of the launcher's own stays under `row:`.
+function keyed(row, key) {
+    return Presented.keyMade(row, key);
+}
 
 // The node's ask `served` names, or null for anything but a carry of a
 // quest to a machine.

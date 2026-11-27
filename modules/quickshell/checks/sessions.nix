@@ -360,6 +360,57 @@ in
       touch $out
     '';
 
+  # Reopen Them All passes the twin connectors its sessions were given on to
+  # the windows it puts back, and those of a window put back before the walk
+  # on through it, with two screens of one model back on new connectors
+  # (modules/quickshell/tests/sessions-twins-put-back.qml), with niri stood
+  # in. A window noted away from a screen named for a prototype's key is
+  # noted as any other.
+  twin-screens-each-take-their-own-windows-back =
+    let
+      options = singleton "Options.qml" ''
+        readonly property var sounds: ({ wants: "", player: "" })
+      '';
+      quiet = singleton "Quiet.qml" ''
+        property bool on: false
+      '';
+      notices = singleton "Notices.qml" ''
+        property var live: ({})
+        function mark(id, read) {}
+      '';
+      waiting = singleton "WaitingOnYou.qml" ''
+        readonly property var standing: ({})
+      '';
+      report = singleton "Report.qml" "function say(text) {}";
+    in
+    # Kept in Nix because each line copies a file Nix gives it beside the
+    # cases, or sets what Quickshell runs them with.
+    pkgs.runCommandLocal "twin-screens-each-take-their-own-windows-back" { } ''
+      export HOME=$TMPDIR XDG_STATE_HOME=$PWD/state XDG_DATA_HOME=$PWD/data
+      ${lib.getExe pkgs.bash} ${../tests/stand-ins/sessions-behind-the-lock-state.sh} \
+        $XDG_STATE_HOME
+      ${copied [
+        "Daemon.qml"
+        "PiSource.qml"
+        "Sessions.qml"
+      ]}
+      cp ${waiting} WaitingOnYou.qml
+      cp ${report} Report.qml
+      cp ${../tests/sessions-twins-put-back.qml} shell.qml
+      cp ${../../../tests/lib/Expect.js} Expect.js
+      cp ${../tests/stand-ins/hosted-reopen-niri.qml} Niri.qml
+      cp ${options} Options.qml
+      cp ${quiet} Quiet.qml
+      cp ${away} Away.qml
+      cp ${notices} Notices.qml
+      export XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      mkdir -m 700 $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR/mycelium
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      timeout 60 ${qs} -p shell.qml
+      touch $out
+    '';
+
   # Go To on a session with no window here brings the window it opens to the
   # front once niri lists it
   # (modules/quickshell/tests/sessions-go-to-focuses.qml), with the node and
