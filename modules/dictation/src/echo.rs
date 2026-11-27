@@ -6,7 +6,10 @@
 //! just after they said them, and quieter than they said them, are cut
 //! from his line, as are words of his heard inside their speech far
 //! quieter than it, however spelled, and, once his voice is known, far
-//! quieter than his voice too. His own
+//! quieter than his voice too. So are words of his said outside their
+//! lines far quieter than their sound just before, however spelled, as
+//! their takes' loudness keeps it (loudness.rs): their model may have
+//! heard no words in that sound, or it ran on past their last. His own
 //! words in it stay: their microphones pick up his voice too, far
 //! quieter than their own, and that's his. A line of his whose words
 //! repeat a line of theirs said at the same time is their echo, and is
@@ -99,6 +102,17 @@ const ALONE: usize = 5;
 /// no limit in time: words alone long before or after count as soon as
 /// too few are nearer.
 const NEAR: usize = 11;
+
+/// How far under the loudest of their sound just before it, in dB, a word
+/// of Joel's said outside their lines is their echo however it's spelled
+/// and whatever words of theirs were heard there: their sound reaches his
+/// microphone where their model heard no words in it, or after their last.
+/// On the echoed meetings, 69 of the 71 echo words the spelling and level
+/// rules kept sat 20 dB or more under it, all inside their takes, and
+/// cutting them took his side from 19.0% of its words wrong to 14.4%.
+/// Inside their lines the same rule cut his own words where both speak at
+/// once, so it holds only outside them.
+const SOUND: f32 = 20.0;
 
 /// Whether `line` is Joel's microphone hearing one of the others' lines,
 /// and so left out of the transcript; the meetings check says which of
@@ -280,6 +294,25 @@ pub enum Rule {
     Sound(f32),
 }
 
+/// The index of `theirs` a word of Joel's far under their `sound` is cut
+/// against, and how far under it the word is, if it's their echo by
+/// that: said outside each of `lines` of theirs, `SOUND` under the
+/// loudest of their sound just before it. It's cut against the first of
+/// theirs said from when he said it, or their last, so with no words of
+/// theirs there's none to cut it against, and it's kept.
+fn under(word: &Word, theirs: &[Word], lines: &[&Line], sound: &Track) -> Option<(usize, Rule)> {
+    let last = theirs.len().checked_sub(1)?;
+    if lines
+        .iter()
+        .any(|line| line.start <= word.at && word.at < line.end)
+    {
+        return None;
+    }
+    let gap = sound.loudest_before(word.at) - word.level;
+    let against = theirs.partition_point(|said| said.at < word.at).min(last);
+    (gap >= SOUND).then_some((against, Rule::Sound(gap)))
+}
+
 /// Some of Joel's words cut from a line of his as the others' echo: the
 /// line's index, when the first was heard, how long after its word of
 /// theirs, in samples, what they say, and the rule that cut them.
@@ -315,19 +348,22 @@ impl Cut {
 }
 
 /// `lines` with the others' echo cut from each of Joel's whose words
-/// `words` holds, by the line's index, what's left tidied by `tidy`, and
-/// what was cut. A line whose opening words are cut starts at the first
-/// word kept, so his answer to what they said is written after it. A
-/// line left with nothing has no text, and isn't written, so the lines
-/// keep their indices.
+/// `words` holds, by the line's index, against their `sound`, what's left
+/// tidied by `tidy`, and what was cut; an empty `sound` cuts nothing by
+/// how loud they were. A line whose opening words are cut starts at the
+/// first word kept, so his answer to what they said is written after
+/// it. A line left with nothing has no text, and isn't written, so the
+/// lines keep their indices.
 pub fn cut_echoes<S: BuildHasher>(
     lines: &[Line],
     words: &HashMap<usize, Vec<Word>, S>,
     sound: &Track,
     tidy: impl Fn(&str) -> Option<String>,
 ) -> (Vec<Line>, Vec<Cut>) {
-    // Red: their sound cuts nothing yet.
-    let _ = sound;
+    let their_lines: Vec<&Line> = lines
+        .iter()
+        .filter(|line| line.side == Side::Theirs)
+        .collect();
     let mut theirs: Vec<Word> = lines
         .iter()
         .enumerate()
@@ -361,6 +397,7 @@ pub fn cut_echoes<S: BuildHasher>(
                 by_spelling
                     .map(|j| (j, Rule::Spelling))
                     .or(by_level.map(below))
+                    .or_else(|| under(word, &theirs, &their_lines, sound))
             })
             .collect();
         if echoes.iter().all(Option::is_none) {
