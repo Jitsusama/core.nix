@@ -81,11 +81,10 @@ pub struct Entry {
     /// `cadence owe --done`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fixed: Option<String>,
-    /// The ids of the questions its owner was asked it in, the latest
-    /// last, pruned to those within `ASKED_FOR` whenever the line is asked
-    /// again, so each question of the two days the mesh is read over is
-    /// known as the hour's. Nothing reads a
-    /// reply against them yet: a line closes when its measure is back in.
+    /// The ids of the questions its owner was asked it in, latest last,
+    /// pruned to `ASKED_FOR` when it's asked again, so the questions of the
+    /// two days the mesh is read over are the hour's. No reply is read
+    /// against them yet: a line closes when its measure is back in.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub asked: Vec<String>,
     /// What the hour's line named as its owner's, each cell, file, miss
