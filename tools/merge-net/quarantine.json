@@ -234,5 +234,20 @@
       "test_the_kernel_fills_each_track_as_it_reads"
     ],
     "test": "vm-boot-says-it-wakes-from-hibernation"
+  },
+  {
+    "at": 1795807227,
+    "commit": "6b5965d226c94714ce829f96c8cbbb888352072d",
+    "due": "2026-11-29",
+    "owner_pr": 7133,
+    "owner_session": "orchestrator",
+    "reason": "failed, then passed, at 6b5965d226c9",
+    "subtests": [
+      "test_a_held_port_yields_the_other",
+      "test_a_pin_is_kept_through_a_restart_and_a_stop",
+      "test_a_pin_no_flow_gets_through_lets_go",
+      "test_the_vpns_next_socket_goes_the_quick_way"
+    ],
+    "test": "vm-the-vpn-takes-the-quick-way"
   }
 ]
