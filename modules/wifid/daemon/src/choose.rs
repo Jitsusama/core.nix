@@ -362,7 +362,8 @@ pub struct Chooser {
     /// stranger in radio range naming itself the network from point after
     /// point, none of which answers, could otherwise have the call leave
     /// its own point every `fading::BETWEEN`, as `missed` keeps the
-    /// chooser's own moves from doing.
+    /// chooser's own moves from doing. A give-way refused before it began
+    /// holds the next one a `fading::WINDOW` here too (`refused`).
     gives_way_from: Option<Instant>,
     /// Whether the call's link was last found fading with nowhere to give
     /// way to, so that's said once a spell.
@@ -1042,9 +1043,12 @@ impl Chooser {
     /// a give-way or trial to `to` not yet found there is forgotten, as
     /// though never asked, rather than followed or judged as a move that
     /// never got there, which would keep `to` off an hour for wifid's own
-    /// refusal. A trial still holds the card from choosing for a `SPAN`,
-    /// as one judged back where it began does. A later move to `to` is
-    /// left alone, as is one found there.
+    /// refusal. A give-way still holds the next one a `fading::WINDOW`, so
+    /// a refusal that lasts, as wifid's keeping the point off does, isn't
+    /// asked again each second the call fades. A trial still
+    /// holds the card from choosing for a `SPAN`, as one judged back where
+    /// it began does. A later move to `to` is left alone, as is one found
+    /// there.
     pub fn refused(&mut self, now: Instant, to: &str) {
         if self
             .gave
@@ -1054,6 +1058,7 @@ impl Chooser {
         {
             self.moved = gave.moved_before;
             self.left.remove(&gave.from);
+            self.gives_way_from = self.gives_way_from.max(Some(now + fading::WINDOW));
             return;
         }
         if self
@@ -3211,8 +3216,12 @@ pub(crate) mod tests {
             "the hall was kept off for wifid's own refusal"
         );
         assert!(
-            chooser.may_give_way(refused),
-            "the call waited out a move never made to give way again"
+            !chooser.may_give_way(refused),
+            "a refused give-way could be asked again at once, each second the call fades"
+        );
+        assert!(
+            chooser.may_give_way(refused + fading::WINDOW),
+            "the call waited out more than a window after a move never made"
         );
         assert!(
             !chooser.call_keeps_off(DESK, refused, false),

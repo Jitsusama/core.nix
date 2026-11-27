@@ -905,14 +905,22 @@ mod tests {
     async fn a_move_to_a_point_unheard_after_a_look_is_handed_back_as_nothing() {
         let (asks, mut taken) = mpsc::channel(1);
         let (back, mut came) = mpsc::channel(1);
-        let (_state, air) = watch::channel(State::default());
+        let (state, air) = watch::channel(State::default());
         let moving = tokio::spawn(roam((asks, air), "wlan0".into(), HALL.into(), back));
         let Some(Ask::Ready { done, .. }) = taken.recv().await else {
             panic!("asked for something other than readying the move");
         };
         done.send(Err(Refused::NotNearby)).expect("answered");
+        // The main loop starts the look and answers at once, and the move
+        // is asked once it ends, refused as nothing hears the hall still.
         let Some(Ask::Scan { done }) = taken.recv().await else {
             panic!("an unheard point wasn't looked for");
+        };
+        done.send(Ok(())).expect("answered");
+        tokio::task::yield_now().await;
+        state.send_modify(State::look_ended);
+        let Some(Ask::Roam { done, .. }) = taken.recv().await else {
+            panic!("the point wasn't moved to once the look ended");
         };
         done.send(Err(Refused::NotNearby)).expect("answered");
         moving.await.expect("moved");
