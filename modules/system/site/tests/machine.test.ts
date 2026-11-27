@@ -313,6 +313,11 @@ it("itself says its disk, then its processor, memory, power and update", () => {
     "a done update that didn't all go ahead says why",
   );
   assert.equal(
+    asideOf({ update_step: "unchanged", update_why: "the boot check failed" }),
+    "Unchanged at its update at 02:40, but the boot check failed.",
+    "an unchanged update after one that didn't all go ahead still says why",
+  );
+  assert.equal(
     asideOf({ update_step: "building" }),
     "Its update at 02:40 says building.",
     "an update with no why says how it stands",

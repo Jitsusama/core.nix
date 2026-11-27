@@ -21,7 +21,10 @@
 // (qtdeclarative-large-runs-by-size.patch); and small stores made next
 // split the small free runs and leave the large runs whole for the large
 // stores after them, reading back as they were made
-// (qtdeclarative-small-runs-split-first.patch). Its census counts all that's
+// (qtdeclarative-small-runs-split-first.patch); and what's made after a
+// sweep over chunks half and a quarter full fills the half-full ones, so the
+// others empty and are freed once what they kept is let go
+// (qtdeclarative-chunks-fullest-filled-first.patch). Its census counts all that's
 // live and names a shape kept by its property names, but no key taken from
 // data. Its holders count names the property that keeps the most first,
 // each by the file declaring it and its folder, counts what the engine
@@ -49,6 +52,7 @@
 #include <QQmlEngine>
 #include <QRegularExpression>
 #include <QTemporaryDir>
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -60,6 +64,7 @@
 #include <private/qv4mm_p.h>
 #include <sys/mman.h>
 #include <unistd.h>
+#include <utility>
 
 namespace {
 
@@ -826,6 +831,201 @@ bool leavesLargeRunsWhole() {
                      thirdsMB, madeMB - thirdsMB, freed.live, after.live, freed.held, after.held,
                      freed.free, after.free);
     return tried && intact && whole;
+}
+
+// How many objects are made in each of two runs of chunks, the first
+// keeping three of every six, half full, and the second, made after it, one
+// of every four, a quarter full, so the free runs in both are three objects
+// long and fall in the one bin; and how many are made once they're swept,
+// as many as the half-full chunks have room for and fewer than the
+// quarter-full ones have.
+constexpr int HALF_FULL = 120000;
+constexpr int QUARTER_FULL = 120000;
+constexpr int FILLING = HALF_FULL / 2;
+
+// Whether what's made after a sweep fills the fullest chunks first, so the
+// chunks using little are left to empty and be freed once what they keep
+// is let go. Each chunk's runs went on the front of the bins in the order
+// the chunks lay, so the chunks made last were filled first whatever they
+// held, and what lived long scattered over chunks nearly empty, none of
+// them ever freed: in five hours Joel's shell held 284 MB around 72 live
+// (2026-11-25). It holds only if the quarter-full chunks were made and
+// what's made is live, so a Qt that collected while making them, filling
+// them in, fails it rather than passing with nothing tried.
+bool fillsTheFullestFirst() {
+    QJSEngine engine;
+    Heap heap(&engine);
+    heap.leaveRoom(ROOM_MB);
+    const QJSValue kept = engine.evaluate(
+        QStringLiteral("(() => { const kept = { half: new Array(%1), quarter: new Array(%2), "
+                       "made: new Array(%3) }; let j = 0; for (let i = 0; i < %4; i++) { "
+                       "const each = { n: i }; if (i % 6 < 3) kept.half[j++] = each; } "
+                       "return kept; })()")
+            .arg(HALF_FULL / 2)
+            .arg(QUARTER_FULL / 4)
+            .arg(FILLING)
+            .arg(HALF_FULL));
+    const double halfChunks = heap.standing().value(QStringLiteral("chunks")).toDouble();
+    const QJSValue quarter = engine.evaluate(
+        QStringLiteral("(kept) => { let j = 0; for (let i = 0; i < %1; i++) { const each = { "
+                       "n: i }; if (i % 4 === 0) kept.quarter[j++] = each; } }")
+            .arg(QUARTER_FULL));
+    const QJSValue quartered = quarter.call({kept});
+    const double quarterMB =
+        heap.standing().value(QStringLiteral("chunks")).toDouble() - halfChunks;
+    const Weight swept = weighed(engine, heap);
+    heap.leaveRoom(ROOM_MB);
+    const QJSValue made =
+        engine
+            .evaluate(QStringLiteral("(kept) => { for (let i = 0; i < %1; i++) kept.made[i] = { "
+                                     "n: i }; }")
+                          .arg(FILLING))
+            .call({kept});
+    // Weighed before the quarter-kept go, which would take from live as much
+    // again as half of what's made.
+    const Weight filled = weighed(engine, heap);
+    const QJSValue dropped =
+        engine.evaluate(QStringLiteral("(kept) => { kept.quarter = null; }")).call({kept});
+    const Weight after = weighed(engine, heap);
+    const QJSValue read =
+        engine
+            .evaluate(QStringLiteral("(kept) => kept.made.every((each, i) => each.n === i) && "
+                                     "kept.half.every((each, i) => each.n === (i / 3 | 0) * "
+                                     "6 + i % 3)"))
+            .call({kept});
+    // Each object takes the same slots, so what's made is to the quarter-full
+    // chunks as how many are made is to how many were made in them.
+    const double madeMB = quarterMB * FILLING / QUARTER_FULL;
+    const bool ran =
+        !kept.isError() && !quartered.isError() && !made.isError() && !dropped.isError();
+    if (!ran)
+        std::fprintf(stderr, "FAIL the chunks half and a quarter full were made and filled: %s\n",
+                     qPrintable((kept.isError()        ? kept
+                                 : quartered.isError() ? quartered
+                                 : made.isError()      ? made
+                                                       : dropped)
+                                    .toString()));
+    const bool tried = ran && quarterMB > 0 && swept.held - swept.live > quarterMB / 2 &&
+                       filled.live - swept.live > madeMB / 2;
+    const bool intact = read.toBool();
+    const double beyond = after.held - after.live;
+    const bool freed = beyond < quarterMB / 2;
+    // Said whether it holds or not, so a build's log shows how far it's
+    // within its bound.
+    std::fprintf(stderr,
+                 "heap_test: %.1f MB made after a sweep over chunks half and a quarter full "
+                 "left %.2f MB held beyond live, within %.2f MB\n",
+                 madeMB, beyond, quarterMB / 2);
+    if (!tried)
+        std::fprintf(stderr,
+                     "FAIL the chunks a quarter full were made and what's made after is live: "
+                     "%.1f MB of them, then %.1f MB made: live %.1f then %.1f MB, held %.1f "
+                     "then %.1f MB\n",
+                     quarterMB, madeMB, swept.live, filled.live, swept.held, filled.held);
+    else if (!intact)
+        std::fprintf(stderr, "FAIL what's made in the fullest chunks reads back as it was made\n");
+    else if (!freed)
+        std::fprintf(stderr,
+                     "FAIL %.1f MB made after a sweep fills the half-full chunks and leaves "
+                     "the %.1f MB a quarter full to be freed: live %.1f then %.1f MB, held %.1f "
+                     "then %.1f MB, free %.1f then %.1f MB\n",
+                     madeMB, quarterMB, swept.live, after.live, swept.held, after.held,
+                     swept.free, after.free);
+    return tried && intact && freed;
+}
+
+// How many stores of 1024 values, 260 slots each, about seven to a chunk,
+// are made in each of two runs of chunks, the first keeping three of every
+// eight and the second one, so most chunks of both keep one free run of
+// 1024 slots or more, in the last bin, beside chunks using more and less.
+constexpr int LONG_RUN_STORES = 800;
+
+// Whether a sweep leaves every bin's runs fullest chunk first, the last bin
+// among them, read straight after it, before anything is made to take one.
+// A small request no smaller run serves takes the head of the first large
+// bin holding a run, the last bin among them, and bumps through the rest,
+// so with a bin's runs the other way round the emptiest chunks were filled
+// first and none drained; no case that weighs what's made reaches the last.
+// It holds only if the last bin has runs of chunks using both more and
+// less, so a layout that left none there fails it rather than passing with
+// nothing tried.
+bool sortsEachBinFullestFirst() {
+    QJSEngine engine;
+    Heap heap(&engine);
+    heap.leaveRoom(ROOM_MB);
+    const QJSValue kept = engine.evaluate(
+        QStringLiteral("(() => { const kept = [new Array(%1), new Array(%2)]; let j = 0; let "
+                       "k = 0; for (let i = 0; i < %3; i++) { const each = new Array(1024); if "
+                       "(i % 8 < 3) kept[0][j++] = each; } for (let i = 0; i < %3; i++) { const "
+                       "each = new Array(1024); if (i % 8 === 0) kept[1][k++] = each; } return "
+                       "kept; })()")
+            .arg(LONG_RUN_STORES * 3 / 8)
+            .arg(LONG_RUN_STORES / 8)
+            .arg(LONG_RUN_STORES));
+    engine.collectGarbage();
+    const QV4::MemoryManager *manager = engine.handle()->memoryManager;
+    using Allocator = QV4::BlockAllocator;
+    bool ordered = true;
+    const char *outOfOrder = "";
+    std::size_t badBin = 0;
+    uint badBefore = 0;
+    uint badAfter = 0;
+    int longRuns = 0;
+    uint leastUsed = std::numeric_limits<uint>::max();
+    uint mostUsed = 0;
+    for (const auto &[name, allocator] :
+         {std::pair<const char *, const Allocator *>{"objects'", &manager->blockAllocator},
+          std::pair<const char *, const Allocator *>{"shapes'", &manager->icAllocator}})
+        for (std::size_t bin = 0; bin < Allocator::NumBins; ++bin) {
+            uint before = std::numeric_limits<uint>::max();
+            for (const QV4::HeapItem *m = allocator->freeBins[bin]; m; m = m->freeData.next) {
+                const uint used = m->chunk()->nUsedSlots();
+                if (used > before && ordered) {
+                    ordered = false;
+                    outOfOrder = name;
+                    badBin = bin;
+                    badBefore = before;
+                    badAfter = used;
+                }
+                before = used;
+                if (allocator == &manager->blockAllocator && bin == Allocator::NumBins - 1) {
+                    ++longRuns;
+                    leastUsed = std::min(leastUsed, used);
+                    mostUsed = std::max(mostUsed, used);
+                }
+            }
+        }
+    // Read only once the bins are walked, since what it makes would take
+    // runs from their heads and push what's left back on.
+    const QJSValue read =
+        engine
+            .evaluate(QStringLiteral("(kept) => kept[0].length === %1 && kept[1].length === %2 "
+                                     "&& kept.every((stores) => stores.every((each) => "
+                                     "each.length === 1024))")
+                          .arg(LONG_RUN_STORES * 3 / 8)
+                          .arg(LONG_RUN_STORES / 8))
+            .call({kept});
+    // A chunk keeping three of its seven or eight stores uses about 760
+    // slots, and one keeping one about 260.
+    const bool tried =
+        !kept.isError() && longRuns >= LONG_RUN_STORES / 80 && leastUsed < 400 && mostUsed > 600;
+    const bool intact = read.toBool();
+    if (!tried)
+        std::fprintf(stderr,
+                     "FAIL chunks using more and less were swept with long runs: the last bin "
+                     "held %d runs, of chunks using %u to %u slots%s\n",
+                     longRuns, longRuns > 0 ? leastUsed : 0, mostUsed,
+                     kept.isError() ? qPrintable(QStringLiteral(", ") + kept.toString()) : "");
+    else if (!intact)
+        std::fprintf(stderr, "FAIL the long stores read back as they were made%s\n",
+                     read.isError() ? qPrintable(QStringLiteral(": ") + read.toString()) : "");
+    else if (!ordered)
+        std::fprintf(stderr,
+                     "FAIL each bin's runs come fullest chunk first after a sweep: in bin %zu "
+                     "of the %s allocator a chunk using %u slots came after one using %u, and "
+                     "the last bin held %d runs, of chunks using %u to %u slots\n",
+                     badBin, outOfOrder, badAfter, badBefore, longRuns, leastUsed, mostUsed);
+    return tried && intact && ordered;
 }
 
 bool expect(const char *what, bool holds, const Weight &before, const Weight &after) {
@@ -1812,6 +2012,8 @@ int main(int argc, char **argv) {
     const bool lent = lendsBack();
     const bool fits = takesRunsThatFit();
     const bool whole = leavesLargeRunsWhole();
+    const bool fullest = fillsTheFullestFirst();
+    const bool inOrder = sortsEachBinFullestFirst();
     const bool census = namesWhatsKept();
     const bool covered = residentCoversWhatsLive();
     const bool placed = placesWhatMadeIt();
@@ -1825,7 +2027,8 @@ int main(int argc, char **argv) {
     const bool chained = followsAChain();
     return grows && falls && holds && scattered && bounded && timed && collects && roomy &&
                    roomyOutside && lasting && lastingOutside && stillCollectsOutside &&
-                   reckoned && ownLimits && follows && given && lent && fits && whole && census &&
+                   reckoned && ownLimits && follows && given && lent && fits && whole && fullest &&
+                   inOrder && census &&
                    covered && placed && stands && underWay && holdsIt && waitsItOut && stray &&
                    alone && swept && chained
                ? 0
