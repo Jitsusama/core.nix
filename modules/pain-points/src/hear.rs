@@ -591,7 +591,10 @@ fn hear_logs(
                 entry: said.entry,
                 at: said.at,
                 void: log.void,
-                carried: heard::carried(&said.words, ledgers),
+                // A pain said in a cell kept apart is that cell's own
+                // errand, never the keeper's, whatever a ledger quotes.
+                carried: !route::apart(&log.session, log.void, cells, routes)
+                    && heard::carried(&said.words, ledgers),
                 words: said.words,
                 kinds: kinds.iter().map(|k| (*k).to_string()).collect(),
                 looking_at: said.looking_at,
