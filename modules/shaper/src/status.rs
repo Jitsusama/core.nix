@@ -686,7 +686,7 @@ mod tests {
         // a terminal both of a hang's outcomes see the controls; piped, one.
         let mut link = LinkStatus {
             name: "wlp0\u{1b}]0;owned\u{7}s20f3".to_owned(),
-            network: "6c:ae\u{1b}]0;owned\u{7}:f6".to_owned(),
+            network: "00:00\u{1b}]0;owned\u{7}:5e".to_owned(),
             follows: Some("enp0\u{1b}[2J\u{7}s13f0".to_owned()),
             ..held()
         };
