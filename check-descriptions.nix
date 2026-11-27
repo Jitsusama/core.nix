@@ -5329,7 +5329,7 @@
     it says, its note saying when it's signed out or out of reach
   '';
   the-launcher-says-a-lagging-keys-kind-on-niri = ''
-    on niri with reports off, a lagging key's journal line says an arrow whole, and a step in by
+    on niri with reports off, a lagging key's journal line says down and up whole, and a step in by
     Return, out by - and in by a word and a space by its arrow and the key of the launcher's own
     place it took, never the place's name; a key listed without the notices' answer, and their
     answer late, say what was typed by how many letters; and a program's lagging drawer is said by
@@ -7494,8 +7494,8 @@
     and at once on stepping in
   '';
   wifi-names-a-network-without-a-country = ''
-    core's kernel, which every machine on it builds, records the name of the network a card
-    joined even when its access point names no country, so networkd matches that network's file
+    core's kernel, with its own patches, records the name of the network a card joined even
+    when its access point names no country, so networkd matches that network's file
   '';
   wifi-sessions-survive-fragmented-memory = ''
     the XPS 14's kernel lets Wi-Fi's block-ack reorder buffers come from vmalloc when memory is

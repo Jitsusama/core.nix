@@ -1,8 +1,8 @@
 // How an open launcher paces the refreshes its sources ask for, run in Qt's
 // own JavaScript engine, the one the shell runs it in. The
-// `the-launcher-paces-its-refreshes` check copies
-// modules/quickshell/launcher/Pacing.js beside this file and runs
-// `qml -platform offscreen pacing.qml`, with launcher/Wanted.js. A burst of
+// `the-launcher-paces-its-refreshes` check copies the launcher's files its
+// cases read beside this file, as its copy lines list, and runs
+// `qml -platform offscreen pacing.qml`. A burst of
 // changes is taken a pace apart, and never two refreshes closer than that,
 // however the first was asked for; a source's rows are wanted only where
 // they're shown or searched, so a change nobody sees asks none; a key's

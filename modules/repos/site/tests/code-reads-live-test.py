@@ -930,8 +930,35 @@ def test_a_phone_reads_every_word_code_draws(
         assert said["small"] == [], f"Code drew words under {LEAST_PX} px at a phone: {said}"
         assert said["placeholder"] == said["muted"], f"the find's words weren't muted: {said}"
         assert said["opacity"] == "1", f"the find's words were faded below muted: {said}"
+        named = opened.page.evaluate(SPILT, LONG_NAME)
+        assert named["stands"] > 0, "Code drew no stand in its grove at a phone"
+        assert named["spilt"] == [], f"a long name spilt past its stand at a phone: {named}"
     finally:
         opened.close()
+
+
+# The longest repository name on Joel's machine with no dot or dash to wrap
+# at, which at 12 px drew wider than a phone's stand of four to a row.
+LONG_NAME = "infrastructure"
+
+# Each stand's name, given `name`, drawn past the stand it names.
+SPILT = """(name) => {
+  const spilt = [];
+  const stands = document.querySelectorAll(".grove .stand");
+  for (const stand of stands) {
+    const named = stand.querySelector(".nm");
+    if (!named) continue;
+    named.textContent = name;
+    const words = document.createRange();
+    words.selectNodeContents(named);
+    const drawn = words.getBoundingClientRect();
+    const room = stand.getBoundingClientRect();
+    if (drawn.left < room.left - 0.5 || drawn.right > room.right + 0.5) {
+      spilt.push(`${Math.round(drawn.width)} px in ${Math.round(room.width)}`);
+    }
+  }
+  return { stands: stands.length, spilt };
+}"""
 
 
 @pytest.mark.usefixtures("code_whole")

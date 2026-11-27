@@ -106,9 +106,10 @@ in
   # A join through wpa_supplicant recorded the network's name only after
   # finding the access point's country, and one that names none ended the
   # join's last step first, so networkd couldn't match the network's file.
-  # Core's kernel carried the fix for every machine until 7.3.6 took it, so
-  # the kernel it builds must still name the network first
-  # (tests/ssid-before-country.sh).
+  # Core's kernel carried the fix for each machine that builds it until
+  # 7.3.6 took it, so the kernel it builds must still name the network
+  # first (tests/ssid-before-country.sh). This reads core's kernel with its
+  # own patches; a machine whose patches change sme.c reads its own.
   wifi-names-a-network-without-a-country =
     let
       sme = "net/wireless/sme.c";
