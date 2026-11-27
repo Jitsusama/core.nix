@@ -126,10 +126,16 @@ const RULES: [&str; 5] = ["rule", "ruling", "wish", "call", "orders"];
 /// The words naming him, lower case, with his name's possessive.
 const HIM: [&str; 5] = ["joel", "joel's", "he", "his", "him"];
 
+/// How far past now, in seconds, a message's stamp may stand and still be
+/// read: a clock a little ahead of cadence's is a message, and one stamped
+/// further is a file that would otherwise be named as torn every hour.
+const AHEAD: i64 = 300;
+
 /// The measure, from the mesh's messages of the last day under
 /// `state_home`'s harness folder. With no messages folder there, or one
-/// that can't be read in full, it's left unjudged, rather than reading the
-/// messages it missed as none unsourced and closing their asks.
+/// that can't be listed or read, it's left unjudged, rather than reading
+/// the messages it missed as none unsourced and closing their asks. A file
+/// that isn't a message is named in what it says and read past.
 #[must_use]
 pub fn read(state_home: &Path, now: i64) -> Measure {
     let mesh = Mesh {
@@ -138,8 +144,13 @@ pub fn read(state_home: &Path, now: i64) -> Measure {
     if !mesh.root.join("mesh-workflow/messages").is_dir() {
         return unread("no mesh messages folder here");
     }
-    match mesh.sent_since_as_named((now - DAY) * 1000) {
-        Ok(sent) => unsourced(&sent, now),
+    match mesh.sent_as_named((now - DAY) * 1000, (now + AHEAD) * 1000) {
+        Ok((sent, torn)) if torn.is_empty() => unsourced(&sent, now),
+        Ok((sent, torn)) => {
+            let mut m = unsourced(&sent, now);
+            m.says = format!("{} (read past, not messages: {})", m.says, torn.join(", "));
+            m
+        }
         Err(why) => unread(&why),
     }
 }
@@ -207,30 +218,32 @@ fn well_named(m: &Message) -> bool {
 }
 
 /// The ids of the answers in `sent` to a claim of his rule, and the claims
-/// they answer, by sender and short id. An answer comes from the claim's
-/// sender, re the claim or re this measure's ask about it. Cadence's other
-/// messages, as its hour's card or a red line's question, ask nothing of a
-/// claim, so a reply to one is judged as any other message.
+/// they answer, by sender and short id. Only a claim this measure asked
+/// about has an answer: one from the cell it asked, re its ask or re the
+/// claim the ask names. The ask, not the claim, says who may answer, so
+/// an answer counts after its claim has left the day, and a reply re a
+/// message never asked about, or re any other of cadence's, is judged as
+/// any other message.
 fn answers<'a>(sent: &[&'a Message]) -> (BTreeSet<&'a str>, BTreeSet<(&'a str, &'a str)>) {
-    let asked: BTreeMap<&str, &str> = sent
+    let asks: Vec<(&str, &str, &Message)> = sent
         .iter()
         .copied()
         .filter(|m| m.from == CADENCE)
-        .filter_map(|m| Some((short_id(&m.id), about(&m.text)?)))
+        .filter_map(|m| Some((short_id(&m.id), about(&m.text)?, m)))
         .collect();
-    let claimed: BTreeMap<&str, &str> = sent
-        .iter()
-        .copied()
-        .filter(|m| m.from != CADENCE && claims_any(&m.text))
-        .map(|m| (short_id(&m.id), m.from.as_str()))
-        .collect();
+    let claim_of: BTreeMap<&str, &str> = asks.iter().map(|&(ask, claim, _)| (ask, claim)).collect();
+    let asked = |claim: &str, of: &str| {
+        asks.iter().any(|&(_, about, ask)| {
+            about == claim && ask.to.iter().any(|to| to == &format!("@{of}"))
+        })
+    };
     let (mut answers, mut answered) = (BTreeSet::new(), BTreeSet::new());
     for &m in sent {
         let Some(re) = m.re.as_deref().map(short_id) else {
             continue;
         };
-        let claim = asked.get(re).copied().unwrap_or(re);
-        if claimed.get(claim) == Some(&m.from.as_str()) {
+        let claim = claim_of.get(re).copied().unwrap_or(re);
+        if asked(claim, &m.from) {
             answers.insert(m.id.as_str());
             answered.insert((m.from.as_str(), claim));
         }
@@ -246,13 +259,6 @@ fn about(ask: &str) -> Option<&str> {
         .strip_prefix("cadence hour: your message ")?
         .split_once(' ')?;
     rest.starts_with("says Joel ruled").then_some(id)
-}
-
-/// Whether any sentence of `text` claims a rule or wish of Joel's.
-fn claims_any(text: &str) -> bool {
-    sentences(&plain(text))
-        .iter()
-        .any(|sentence| claims(sentence))
 }
 
 /// The first sentence of `text` claiming a rule or wish of Joel's that

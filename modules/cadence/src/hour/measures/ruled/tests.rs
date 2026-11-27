@@ -24,6 +24,15 @@ fn sent(short: &str, ago: i64, from: &str, text: &str) -> Message {
     }
 }
 
+/// Cadence's ask `ago` seconds back to `to` about its message `claim`.
+fn asked(short: &str, ago: i64, claim: &str, to: &str) -> Message {
+    let text = format!("cadence hour: your message {claim} says Joel ruled or wants something.");
+    Message {
+        to: vec![format!("@{to}")],
+        ..sent(short, ago, CADENCE, &text)
+    }
+}
+
 /// On 26 November two cells told the mesh they had broken Joel's rule,
 /// with no word of his behind it, each in a message holding code and
 /// times of its own, while a third gave his words and when.
@@ -201,19 +210,24 @@ fn a_claim_with_a_word_inside_joelish_isnt_one() {
 
 /// The ask tells its sender to answer re the ask or re the claim, and
 /// either takes the claim off the count without being counted itself,
-/// whatever the answer says. Another cell's reply, or a reply to any
-/// other message of cadence's, clears nothing and is judged as any other.
+/// whatever the answer says. A reply re a claim never asked about, its
+/// sender's own or backed, another cell's reply, or a reply to any other
+/// message of cadence's, clears nothing and is judged as any other.
 #[test]
 fn a_senders_answer_re_the_ask_or_the_claim_clears_it_and_isnt_counted() {
     let first = sent("0000000a", 3000, "T6E7X6", "I broke Joel's rule.");
     let second = sent("0000000b", 2900, "5UTLKM", "That breaks Joel's rule.");
     let third = sent("0000000c", 2800, "IKQ63G", "Joel wants the lab shut.");
-    let ask = sent(
-        "0000000d",
-        1200,
-        CADENCE,
-        "cadence hour: your message 0000000a says Joel ruled or wants something.",
+    let backed = sent(
+        "00000017",
+        2700,
+        "IKQ63G",
+        "Joel said on 22 Nov he wants it.",
     );
+    let ask = asked("0000000d", 1200, "0000000a", "T6E7X6");
+    let ask_second = asked("00000015", 1100, "0000000b", "5UTLKM");
+    let mut own_unasked = sent("00000016", 150, "IKQ63G", "So Joel wants it shut.");
+    own_unasked.re = Some(backed.id.clone());
     let mut by_ask = sent(
         "0000000e",
         600,
@@ -245,7 +259,10 @@ fn a_senders_answer_re_the_ask_or_the_claim_clears_it_and_isnt_counted() {
             first,
             second,
             third,
+            backed,
             ask,
+            ask_second,
+            own_unasked,
             by_ask,
             by_claim,
             not_its_own,
@@ -262,9 +279,11 @@ fn a_senders_answer_re_the_ask_or_the_claim_clears_it_and_isnt_counted() {
             "[00000010] Joel's rule binds you too. · T6E7X6",
             "[00000012] Joel wants T6E7X6 to stop. · 5UTLKM",
             "[00000014] Held: Joel wants it held. · IKQ63G",
+            "[00000016] So Joel wants it shut. · IKQ63G",
         ],
-        "an answered claim or an answer was counted, or a reply clearing nothing of its \
-         sender's, re another's claim, its ask or another cadence message, went uncounted"
+        "an answered claim or an answer was counted, or a reply clearing nothing, re a \
+         claim never asked about, another's claim, its ask or another cadence message, \
+         went uncounted"
     );
     let m = unsourced(&[sent("00000011", 60, CADENCE, "Joel wants it.")], NOW);
     assert_eq!(
@@ -306,8 +325,29 @@ fn a_claim_older_than_a_day_or_sent_twice_is_counted_once_or_not_at_all() {
     );
 }
 
+/// The ask names who may answer, so an answer after its claim has left
+/// the day is still one, and its sender isn't asked about its own
+/// retraction.
 #[test]
-fn with_no_messages_folder_or_an_unreadable_message_the_measure_is_left_unjudged() {
+fn an_answer_after_its_claim_left_the_day_is_still_an_answer() {
+    let ask = asked("0000000d", DAY - 600, "0000000a", "T6E7X6");
+    let mut answer = sent(
+        "0000000e",
+        60,
+        "T6E7X6",
+        "Dropped: Joel's rule was my caution.",
+    );
+    answer.re = Some(ask.id.clone());
+    let m = unsourced(&[ask, answer], NOW);
+    assert_eq!(
+        m.behind,
+        Vec::<String>::new(),
+        "an answer re an ask whose claim had left the day was counted as a claim"
+    );
+}
+
+#[test]
+fn with_no_messages_folder_or_one_that_cant_be_listed_the_measure_is_left_unjudged() {
     let dir = tempfile::tempdir().expect("the test's folder couldn't be made");
     let home = dir.path();
     let m = read(home, NOW);
@@ -319,11 +359,32 @@ fn with_no_messages_folder_or_an_unreadable_message_the_measure_is_left_unjudged
     fs::create_dir_all(&messages).expect("the messages folder couldn't be made");
     let m = read(home, NOW);
     assert_eq!(m.target, Some(0.0), "a mesh with no messages went unjudged");
-    let broken = format!("{}-T6E7X6-1-0000000a.json", (NOW - 60) * 1000);
-    fs::write(messages.join(broken), "{").expect("the broken message couldn't be written");
+    let torn = format!("{}-T6E7X6-1-0000000a", (NOW - 60) * 1000);
+    fs::write(messages.join(format!("{torn}.json")), "{")
+        .expect("the torn message couldn't be written");
+    let claim = sent("0000000b", 120, "5UTLKM", "Joel wants it.");
+    let body = serde_json::to_vec(&claim).expect("the claim couldn't be written");
+    fs::write(messages.join(format!("{}.json", claim.id)), body)
+        .expect("the claim couldn't be written");
+    let m = read(home, NOW);
+    assert_eq!(
+        (m.target, m.behind.as_slice()),
+        (
+            Some(0.0),
+            ["[0000000b] Joel wants it. · 5UTLKM".to_owned()].as_slice()
+        ),
+        "one torn file hid the day's messages"
+    );
+    assert!(
+        m.says.contains(&torn),
+        "the torn file wasn't named: {}",
+        m.says
+    );
+    fs::remove_dir_all(&messages).expect("the messages folder couldn't be removed");
+    fs::write(&messages, "").expect("a file couldn't stand in for the folder");
     let m = read(home, NOW);
     assert_eq!(
         m.target, None,
-        "a message that couldn't be read was read as none, so its ask would close"
+        "a messages folder that can't be listed was read as none, so its asks would close"
     );
 }
