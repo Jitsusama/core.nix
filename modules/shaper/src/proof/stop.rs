@@ -376,15 +376,40 @@ pub mod tests {
         SIGNALS.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// Puts every signal `hear_stops` set back to its default, so the
-    /// rest of the tests hear Ctrl-C as ever.
-    fn unheard() {
-        // SAFETY: setting the default disposition.
-        unsafe {
-            for signal in STOPS {
-                libc::signal(signal, libc::SIG_DFL);
+    /// Every signal `hear_stops` sets, each with its disposition as a test
+    /// found it, put back when it's dropped. A test holds one while it
+    /// changes them, so one that fails part way leaves the rest of the
+    /// test binary hearing Ctrl-C as ever, where putting them back at its
+    /// end would be skipped by the panic.
+    struct Dispositions(Vec<(libc::c_int, libc::sigaction)>);
+
+    impl Dispositions {
+        fn kept() -> Self {
+            let kept = STOPS
+                .into_iter()
+                .chain([libc::SIGCONT])
+                .map(|signal| {
+                    // SAFETY: sigaction(2) with no new action only reads one.
+                    let was = unsafe {
+                        let mut was: libc::sigaction = std::mem::zeroed();
+                        libc::sigaction(signal, std::ptr::null(), &raw mut was);
+                        was
+                    };
+                    (signal, was)
+                })
+                .collect();
+            Self(kept)
+        }
+    }
+
+    impl Drop for Dispositions {
+        fn drop(&mut self) {
+            for (signal, was) in &self.0 {
+                // SAFETY: putting back a disposition read from this process.
+                unsafe {
+                    libc::sigaction(*signal, was, std::ptr::null_mut());
+                }
             }
-            libc::signal(libc::SIGCONT, libc::SIG_DFL);
         }
     }
 
@@ -401,6 +426,7 @@ pub mod tests {
     #[test]
     fn a_stop_signal_is_heard_as_a_stop() {
         let _signals = signals();
+        let _dispositions = Dispositions::kept();
         let handler = heard as *const () as libc::sighandler_t;
         // Under nohup a SIGHUP is ignored, and stays so, while the same
         // call hears every other stop. Each is read before SIGHUP is
@@ -463,13 +489,54 @@ pub mod tests {
             );
             assert!(halted(&AtomicBool::new(false)), "a signal didn't halt");
         }
-        // SAFETY: a second signal only writes; then each goes back to
-        // its default, so the rest of the tests hear Ctrl-C as ever.
+        // SAFETY: a second signal only writes; then each goes back as
+        // `_dispositions` found it, so the rest of the tests hear Ctrl-C
+        // as ever.
         unsafe {
             libc::raise(libc::SIGTERM);
         }
-        unheard();
         STOPPED.store(false, Ordering::Relaxed);
+    }
+
+    #[test]
+    fn a_kept_ignore_is_read_and_never_set() {
+        let _signals = signals();
+        let _dispositions = Dispositions::kept();
+        // Setting a handler and then putting the ignore back, the order
+        // `hear_stops` once had, ends where reading first does, so a test
+        // of where it ends can't tell them apart. A SIGHUP this thread
+        // blocks, raised while it's ignored, can: Linux keeps a blocked
+        // signal pending though it's ignored, and setting an ignore, as
+        // putting one back does, discards it, where reading one doesn't.
+        // Nothing in the block panics, so the mask is always put back.
+        // SAFETY: setting dispositions and this thread's mask, raising a
+        // signal it blocks, and discarding that one before unblocking it.
+        let pending = unsafe {
+            for signal in STOPS {
+                libc::signal(signal, libc::SIG_DFL);
+            }
+            libc::signal(libc::SIGHUP, libc::SIG_IGN);
+            let mut hup: libc::sigset_t = std::mem::zeroed();
+            libc::sigemptyset(&raw mut hup);
+            libc::sigaddset(&raw mut hup, libc::SIGHUP);
+            let mut mask: libc::sigset_t = std::mem::zeroed();
+            libc::pthread_sigmask(libc::SIG_BLOCK, &raw const hup, &raw mut mask);
+            libc::raise(libc::SIGHUP);
+            hear_stops();
+            let mut pending: libc::sigset_t = std::mem::zeroed();
+            libc::sigpending(&raw mut pending);
+            let held = libc::sigismember(&raw const pending, libc::SIGHUP) == 1;
+            // Ignored again, which discards it, so unblocking it can't
+            // stop the tests, whichever order was taken.
+            libc::signal(libc::SIGHUP, libc::SIG_IGN);
+            libc::pthread_sigmask(libc::SIG_SETMASK, &raw const mask, std::ptr::null_mut());
+            held
+        };
+        assert!(
+            pending,
+            "hear_stops set the SIGHUP nohup ignores before putting the ignore back, \
+             discarding the one pending here; a SIGHUP arriving in between is heard as a stop"
+        );
     }
 
     /// Marks `marker` as written `ago`.
@@ -536,6 +603,7 @@ pub mod tests {
         // its keeper may put the shaper back. Resumed, it stops for good,
         // and every wait and window asks the same flag.
         let _signals = signals();
+        let _dispositions = Dispositions::kept();
         let was = STOPPED.swap(false, Ordering::Relaxed);
         hear_stops();
         // SAFETY: raising a signal whose handler was just set.
@@ -544,7 +612,6 @@ pub mod tests {
         }
         let resumed_stops = STOPPED.load(Ordering::Relaxed);
         let halts = halted(&AtomicBool::new(false));
-        unheard();
         STOPPED.store(was, Ordering::Relaxed);
         assert!(resumed_stops, "a resumed proof measured on");
         assert!(halts, "a resume didn't halt the window");
