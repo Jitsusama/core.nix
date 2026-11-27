@@ -1143,9 +1143,9 @@ QtObject {
             `Drawing 2026-${washing("11-09<br>10")}.12.03.svg`);
         holds("though another text's break still ends what's washed",
             Search.washed("line 14\nline 15", "14 line", wash, false), "line 14<br>line 15");
-        // Every break of a title is its space, two or more as one, and so is a line or
-        // paragraph separator its name holds, which titleBreaks keeps in a word too wide
-        // for a line, as the drawer's search reads it (DrawerLines.runsOn).
+        // Every break of a title is a space of its own, two together two spaces, and so is
+        // each line or paragraph separator its name holds, which titleBreaks keeps in a
+        // word too wide for a line, as the drawer's search reads it (DrawerLines.runsOn).
         holds("a title's every break is washed across",
             Search.washed("one\ntwo\nthree", "one two three", wash, true),
             washing("one<br>two<br>three"));
@@ -2376,7 +2376,10 @@ QtObject {
             ["one at its balanced break", "Drawing 2026-11-09\n10.12.03.svg"],
             ["one with a space before its break", "a \nb"],
             ["one with separators its name holds", "a\u2028b\u2029c"],
-            ["one ending in spaces", "a\nb  "]
+            ["one ending in spaces", "a\nb  "],
+            ["one with a space after its break", "a\n b"],
+            ["one with spaces on both sides of its break", "a \n b"],
+            ["one with two breaks together", "a\n\nb"]
         ];
         for (const [what, title] of titles)
             holds(`the search reads a title as its wash does: ${what}`,
