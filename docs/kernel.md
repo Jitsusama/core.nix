@@ -432,9 +432,12 @@ if less; record a new one after moving to a new series.
   user.slice, which holds a build back while a synced write waits out the
   drive's cache. Inside the account none is set: on 10 November targets on
   Joel's slices beside the agents' held his own reads back.
-  On the XPS 14's disk, which has no DRAM of its own, the target won: an
-  app's worst synced save beside heavy writes took 55 to 170 ms under it, and
-  76 to 492 ms under every `io.cost` setting tried, so that disk keeps it.
+  On the XPS 14's disk, which has no DRAM of its own, targets on Joel's
+  slices won on 24 October: an app's worst synced save beside heavy writes
+  took 55 to 170 ms under them, and 76 to 492 ms under every `io.cost`
+  setting tried. Those targets are gone since, so the choice there is now
+  `io.cost` against no order inside the account, on a measured model with
+  a qos of 10 ms at the 95th percentile both ways, from 50 to 150% of it.
 - **Building in every module a boot loads.** See
   [Built In or a Module](#built-in-or-a-module): only the ones the boot waits
   for earn it.

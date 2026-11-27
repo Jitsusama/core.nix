@@ -10,6 +10,8 @@ import { labelsApart, type Named, toldApart } from "../words.ts";
 const ROOM = 40;
 // A label clipped beside a hint ends on its id.
 const ENDS_ON_HERON = /\(HERON1\)$/u;
+// The stem two long ids clip to, alike, before each takes its number.
+const STEM_W = "(SKIFF-OF-THE-NORTH-SHORE-AND-THE-W...";
 
 /** A clip as the map's: the text whole within the room, else cut short with dots. */
 const clip = (text: string, within: number) =>
@@ -89,6 +91,35 @@ it("two sets of ids that clip to one stem share its numbers, so none read alike"
   assert.deepEqual(
     keys.map((key) => labels.get(key)),
     [1, 2, 3, 4].map((place) => `(SKIFF-OF-THE-NORTH-SHORE-AND-THE-W... ${place}`),
+  );
+});
+
+it("a number a network's own title stands on is passed over, so none read alike", () => {
+  const name = "Rig the Skiff for the Season";
+  const shore = "orchestration.skiff-of-the-north-shore-and-the-whole-bay";
+  const bay = "orchestration.skiff-of-the-north-shore-and-the-whole-cove";
+  const first = `${STEM_W} 1`;
+  const labels = labelledApart([
+    { key: shore, name, carries: "Mend the north gauges" },
+    { key: bay, name, carries: "Mend the south gauges" },
+    { key: "orchestration.heron1", name: first, carries: first },
+  ]);
+  assert.deepEqual(
+    [labels.get(shore), labels.get(bay), labels.get("orchestration.heron1")],
+    [`${STEM_W} 2`, `${STEM_W} 3`, first],
+    "the title keeps its words, and the numbers step past it",
+  );
+});
+
+it("ids alike past nine leave their stem room for a number of two digits", () => {
+  const name = "Rig the Skiff for the Season";
+  const stem = "orchestration.skiff-of-the-north-shore-and-the-whole-bay-";
+  const places = Array.from({ length: 12 }, (_, at) => at + 1);
+  const keys = places.map((place) => `${stem}${String(place).padStart(2, "0")}`);
+  const labels = labelledApart(keys.map((key) => ({ key, name, carries: key })));
+  assert.deepEqual(
+    keys.map((key) => labels.get(key)),
+    places.map((place) => `(SKIFF-OF-THE-NORTH-SHORE-AND-THE-... ${place}`),
   );
 });
 
