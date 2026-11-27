@@ -39,6 +39,9 @@ in
   waiting ? { },
   name ? "every-failed-read-says-why",
 }:
+# Kept in Nix because its lines only lay out store paths Nix names (the
+# planted files, the rule and the tree) and run the rule twice; the rule
+# itself lives in every-failed-read-says-why.py.
 runCommandLocal name { } ''
   mkdir -p planted/src
   cp ${./every-failed-read-says-why-planted.rs} planted/src/lib.rs
