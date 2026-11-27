@@ -1,6 +1,6 @@
 # What the home realm's node may do to ease the machine when it's over its
-# room and another has some (home.nix's `easesSleep` and `easesCarry`), and
-# the arguments that tell the node so. It changes only when what easing may
+# room and another has some (home.nix's `easesSleep`, `easesCarry` and
+# `easesOnto`), and the arguments that tell the node so. It changes only when what easing may
 # act on does, apart from how the node is run.
 {
   config,
@@ -36,8 +36,8 @@ in
         name, rather than only saying so. Mycelium, not this option, bounds
         what it carries: one parked session at a time, off the screen and
         part way through nothing, into a fence no weaker and behind no door
-        wider than here's, as each machine declares them, and at most six a
-        day. Only a parked session is carried, so with `easesSleep` off it
+        wider than here's, as each machine declares them, spaced apart and
+        capped each day by mycelium's own terms. Only a parked session is carried, so with `easesSleep` off it
         carries only those the harness parked once its own rule held. The
         session's harness must take a carry from the node, or the carry is
         kept and told but never made. It never carries a session the person
@@ -53,6 +53,19 @@ in
         stay where they went.
       '';
     };
+    easesOnto = lib.mkOption {
+      type = lib.types.listOf (lib.types.strMatching "[a-z0-9-]+");
+      default = [ ];
+      example = [ "tern" ];
+      description = ''
+        The workers the home realm's node may ease a session onto, by
+        their machine names, besides the peers it may always carry to. A
+        worker that says it takes carries is chosen only where it is named
+        here, since its word is only its own; it still has to have room,
+        and ground as firm as here's, as with any carry. Empty, the node
+        eases onto peers alone.
+      '';
+    };
   };
 
   # The node always writes, as it judges the machine, what it would do to
@@ -60,10 +73,15 @@ in
   # says so, and its source keeps the guards, it makes the carries it
   # chooses. Where the machine says so, it asks the harness to park the
   # idle sessions it would put to sleep, in the folder each session's
-  # harness reads.
+  # harness reads. It names each worker it may ease onto whether or not it
+  # carries, so the lines it writes say where it would have.
   args = [
     "--eases"
   ]
+  ++ lib.concatMap (machine: [
+    "--eases-onto"
+    machine
+  ]) cfg.easesOnto
   ++ lib.optional carries "--eases-carry"
   ++ lib.optionals cfg.easesSleep [
     "--eases-sleep"
