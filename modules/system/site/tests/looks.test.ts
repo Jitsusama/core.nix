@@ -326,6 +326,25 @@ it("says why each machine's look matters, with its one act, the machine's launch
   );
 });
 
+it("ranks each machine's look by its own health, the machine's where it says none", () => {
+  const kestrel = judged("kestrel", "bad", [
+    { side: "on battery at 9%", matters: "", health: "watch" },
+    { side: "nearly full disk, 3 GB free", matters: "", health: "bad" },
+  ]);
+  const osprey = judged("osprey", "watch", [{ side: "code wants a look", matters: "" }]);
+  const read = system([osprey, kestrel], [part("network", "bad", ["the modem is down"])]);
+  assert.deepEqual(
+    looksOf(read, 8).looks.map((look) => [look.health, look.whose, look.words]),
+    [
+      ["bad", "kestrel", "Nearly full disk, 3 GB free"],
+      ["bad", "Network", "The modem is down"],
+      ["watch", "osprey", "Code wants a look"],
+      ["watch", "kestrel", "On battery at 9%"],
+    ],
+    "a bad machine's watch look stands with the watches; a look with no health is its machine's",
+  );
+});
+
 it("gives the one look for a machine out of reach its why and act, and several neither", () => {
   const away = (name: string): Thing =>
     judged(

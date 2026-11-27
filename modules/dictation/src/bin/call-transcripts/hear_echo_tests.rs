@@ -127,6 +127,35 @@ fn each_echo_cut_from_joels_words_is_told_once_and_without_them() {
 }
 
 #[test]
+fn an_echo_cut_for_its_level_is_told_by_how_far_below_theirs_it_was() {
+    // His microphone hears Bo's "Not yet." 20 dB down, its own way, in a
+    // take of his that opens with five words alone, so it's cut against
+    // his voice as well as Bo's; it would be against Bo's alone too.
+    let mut writing = ada_then_bo();
+    let late = SECOND / 20;
+    let mut words: Vec<Word> = ["Fine", "by", "me,", "thanks", "all."]
+        .iter()
+        .zip(10..)
+        .map(|(text, at)| word(text, at * SECOND))
+        .collect();
+    for (text, at) in [("Knot", 46), ("yep.", 47)] {
+        words.push(Word {
+            level: -20.0,
+            ..word(text, at * SECOND + late)
+        });
+    }
+    writing.words.insert(writing.lines.len(), words);
+    writing
+        .lines
+        .push(joels(10, 48, "Fine by me, thanks all. Knot yep."));
+    assert_eq!(
+        writing.untold_cuts(),
+        ["call-transcripts: 2 of Joel's words at 0:46 cut as their echo, 20 dB below theirs"],
+        "the level cut was told by how late it was, or with the call's words"
+    );
+}
+
+#[test]
 fn each_line_of_joels_left_out_whole_as_their_echo_is_told_once_and_without_it() {
     let mut writing = ada_then_bo();
     hear_take(&mut writing, 49, &[BO], &[("Sounds", 0), ("good.", 1)]);
