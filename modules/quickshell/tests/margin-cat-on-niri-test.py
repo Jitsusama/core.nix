@@ -64,6 +64,9 @@ RESTS = 2.0
 # How long before the keys rest a case that must beat them sends its keys back by, for the
 # shell to hear them on a loaded builder.
 SPARE = 0.5
+# How far, in ms, the shell's date of a scroll may fall before the keys that set it off were
+# sent, both read from the one wall clock: niri's whole milliseconds of how long ago it began.
+CLOCKED = 2
 # The shortest of a walk's beats, its crouch, in ms: a frame of the nested niri's longer than
 # it may hide it.
 SHORTEST_BEAT = 110
@@ -676,12 +679,19 @@ def test_keys_back_on_its_column_ride_it_back_with_its_window(shell: Shell) -> N
     # A report the wait found in its last poll returns a poll and a read past its deadline, so
     # only one past half the spare is too late for the shell to hear the keys before they rest.
     assert took < RESTS - SPARE / 2, f"the keys came back {took:.2f} s on, too near their rest"
+    # On the wall clock, the shell's own, which dates the scroll it heard last by niri's begin.
+    sent = time.time() * 1000
     shell.as_account(f"niri msg action focus-window --id {third['id']}")
     sits_over(shell, third, back)
     said, _ = shell.said_since(back)
+    places = [placed(report[len(SITS) :]) for report in said if report.startswith(SITS)]
+    # It rides back or sits there at once, never walks: its column is neither grown nor was it
+    # held short of its seat (MarginCatCarried.js's backOn).
+    walked = [at for at in places if at is not None and at.get("walk")]
+    assert not walked, f"the cat walked back to its seat rather than riding: {walked[:1]}"
     back_on = [
         at
-        for at in (placed(report[len(SITS) :]) for report in said if report.startswith(SITS))
+        for at in places
         if at is not None and not at.get("walk") and at.get("window") == third["id"]
     ]
     rode = [at for at in back_on if abs(at["drawn"]["x"] - at["x"]) >= 1]
@@ -689,10 +699,16 @@ def test_keys_back_on_its_column_ride_it_back_with_its_window(shell: Shell) -> N
         # A shell that hears of niri's scroll back only once niri's spring is done, as a
         # loaded builder's can, finds its window at rest and sits on it at once, as it should.
         # Its first report off where it was held says how long before the scroll began, so
-        # one that missed a scroll still under way fails (C1BD3E07, 2026-11-26).
+        # one that missed a scroll still under way fails (C1BD3E07, 2026-11-26); and when, so
+        # one that never heard the scroll back, dating only the scroll away, fails too.
         seated = next((at for at in back_on if abs(at["x"] - held) >= 1), None)
         assert seated is not None, f"the cat never left {held} for its seat: {back_on[-2:]}"
-        heard_late = seated["scrolled"] is not None and seated["scrolled"] >= seated["slides"]
+        began = seated["scrollBegan"]
+        assert began is not None and began >= sent - CLOCKED, (
+            f"the cat was put on its seat at once, the last scroll it heard of begun at {began},"
+            f" before the keys came back at {sent:.0f}"
+        )
+        heard_late = seated["scrolled"] >= seated["slides"]
         assert heard_late, (
             "niri scrolled its window back and the cat was put on its seat at once, "
             f"{seated['scrolled']} ms into a scroll of {seated['slides']}"
