@@ -21,15 +21,26 @@ fn their_sound_at(from_ms: usize, to_ms: usize, level: f32) -> Track {
 
 /// What's written of Joel's line, and what each cut from it was cut by,
 /// over their `sound`, when he says "Fine by me." at -20 dB a second into
-/// the call and "Right." at `level` dB `at_ms` in, and they say "Lunch at
-/// noon on Thursday then." at -20 dB from 5 s, their line ending at 6.8 s.
-fn right_over(sound: &Track, at_ms: usize, level: f32) -> (Vec<String>, Vec<String>) {
+/// the call and then each of `said`, its text at its millisecond at its
+/// dB, and they say "Lunch at noon on Thursday then." at -20 dB from 5 s,
+/// their line spanning their take, 5 s to 7 s, as the daemon's and the
+/// scorer's do.
+fn said_over(sound: &Track, said: &[(&str, usize, f32)]) -> (Vec<String>, Vec<String>) {
     let theirs = at_level(timed("Lunch at noon on Thursday then.", 5_000), -20.0);
     let mut mine = at_level(timed("Fine by me.", 1_000), -20.0);
-    mine.extend(at_level(timed("Right.", at_ms), level));
-    let (lines, words) = lines_heard(&[theirs], &[mine]);
+    for &(text, at_ms, level) in said {
+        mine.extend(at_level(timed(text, at_ms), level));
+    }
+    let (mut lines, words) = lines_heard(&[theirs], &[mine]);
+    lines[0].end = 7_000 * RATE / 1000;
     let (cut, cuts) = cut_echoes(&lines, &words, sound, |left| Some(left.to_owned()));
     (kept(&cut), cuts.iter().map(Cut::by).collect())
+}
+
+/// `said_over` their `sound`, Joel saying "Right." at `level` dB `at_ms`
+/// milliseconds into the call.
+fn right_over(sound: &Track, at_ms: usize, level: f32) -> (Vec<String>, Vec<String>) {
+    said_over(sound, &[("Right.", at_ms, level)])
 }
 
 #[test]
@@ -46,6 +57,33 @@ fn joels_word_twenty_db_under_their_sound_after_their_line_is_cut() {
         cuts,
         ["20 dB under their sound"],
         "the cut didn't say it was for their sound, or by how far under it"
+    );
+}
+
+#[test]
+fn joels_word_nineteen_db_under_their_sound_is_his_own() {
+    let (written, cuts) = right_over(&their_sound(5_000, 7_000), 7_500, -19.0);
+    assert_eq!(
+        (written, cuts),
+        (vec!["Fine by me. Right.".to_owned()], Vec::new()),
+        "Joel's word 19 dB under their sound, short of the 20 dB it takes, was cut"
+    );
+}
+
+#[test]
+fn joels_words_in_a_row_under_their_sound_by_different_gaps_are_one_cut() {
+    // "Right." is 20 dB under their sound and "Okay.", with only 200 ms
+    // of it in the quarter second before, about 29 dB: one rule cuts
+    // both, so they're told as one cut, by the first's gap.
+    let said = [("Right.", 7_500, -20.0), ("Okay.", 7_800, -30.0)];
+    let (written, cuts) = said_over(&their_sound(5_000, 7_000), &said);
+    assert_eq!(
+        (written, cuts),
+        (
+            vec!["Fine by me.".to_owned()],
+            vec!["20 dB under their sound".to_owned()]
+        ),
+        "two words in a row cut for their sound weren't told as one cut"
     );
 }
 
