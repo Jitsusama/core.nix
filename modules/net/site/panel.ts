@@ -19,6 +19,8 @@ interface Context {
   readonly mycelium: Mycelium;
   readonly open: (id: string) => void;
   readonly letGo: () => void;
+  /** How many of net's concern and source watches sent a line the page couldn't read. */
+  readonly unheard?: number;
 }
 
 /** How many devices a line names before it counts the rest. */
@@ -196,6 +198,18 @@ function worthOf(network: Network): { worth: readonly Concern[]; quiet: readonly
   };
 }
 
+/** The concerns and sources read that the page couldn't make out, each maybe worth a look. */
+function unreadOf(network: Network): readonly string[] {
+  return network.unread.filter(
+    (record) => record.startsWith("concern ") || record.startsWith("source "),
+  );
+}
+
+/** What the panel says of `count` things net told that couldn't be read. */
+function unreadSaid(count: number): string {
+  return `${plural(count, "thing")} net told couldn't be read, and may be worth a look.`;
+}
+
 /** How many devices use the network: every one read, less the eeros and the modem. */
 function users(context: Context): number {
   const { network, shape } = context;
@@ -214,13 +228,10 @@ function asksOf(network: Network, told: boolean, unheard: number): string {
   }
   const { worth, quiet } = worthOf(network);
   // A concern or a source the page couldn't read may be one worth a look,
-  // so it's counted as one rather than read as an all-clear.
-  const unread = network.unread.filter(
-    (record) => record.startsWith("concern ") || record.startsWith("source "),
-  );
-  // So may one the watch couldn't read at all, as a line that isn't JSON or
-  // a record with no key, which never reaches the network.
-  const looks = worth.length + quiet.length + unread.length + unheard;
+  // so it's counted as one rather than read as an all-clear; so may one the
+  // watch couldn't read at all, as a line that isn't JSON or a record with
+  // no key, which never reaches the network. The panel counts the same.
+  const looks = worth.length + quiet.length + unreadOf(network).length + unheard;
   return looks === 0 ? "and nothing needs a look" : `and ${plural(looks, "thing")} worth a look`;
 }
 
@@ -300,7 +311,8 @@ function ledeOf(
   }
   const stands: Record<string, string> = {
     broken: UNANSWERED,
-    live: context === undefined ? REACHING : NAMELESS,
+    // Empty records held from before a reconnect name nothing net says now.
+    live: context === undefined || !heard.fresh ? REACHING : NAMELESS,
     stale: UNREACHED,
   };
   return stands[worst ?? ""] ?? REACHING;
@@ -319,16 +331,21 @@ function sayStandsNow(
   }
 }
 
-/** What's worth a look: net's concerns, and any source that didn't answer. */
-function worthALook(context: Context): HTMLElement {
+/**
+ * What's worth a look: net's concerns, any source that didn't answer, and
+ * how much net told that couldn't be read, counted as the lede counts it.
+ */
+function worthALook(context: Context): Child[] {
   const { network } = context;
   const { worth, quiet } = worthOf(network);
+  const unread = unreadOf(network).length + (context.unheard ?? 0);
+  const said = unread > 0 ? [h("p", { class: "hint" }, unreadSaid(unread))] : [];
   if (worth.length === 0 && quiet.length === 0) {
-    return h("p", { class: "hint" }, "Nothing needs a look.");
+    return said.length > 0 ? said : [h("p", { class: "hint" }, "Nothing needs a look.")];
   }
   const rows = worth.length > 0 ? concernRows(context, worth) : h("ul", { class: "rows" });
   rows.prepend(...quiet.map((source) => quietRow(network, source)));
-  return rows;
+  return [rows, ...said];
 }
 
 /** How the whole network stands. */
@@ -349,7 +366,7 @@ function overview(context: Context): Child[] {
       `${plural(shape.floors.length, "floor")}; ${joins}`,
     ),
     h("h3", {}, "Worth a Look"),
-    worthALook(context),
+    ...worthALook(context),
     ...theInternet(context),
     ...readFrom(context),
     h(
@@ -404,4 +421,5 @@ export {
   standsNow,
   UNANSWERED,
   UNREACHED,
+  unreadSaid,
 };

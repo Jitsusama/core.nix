@@ -4933,6 +4933,20 @@ import {
   let first = true;
   // How many readings the first path has been tried on.
   let firstTries = 0;
+  // Whether any reading has been drawn whole yet, by either path.
+  let drawnWhole = false;
+  // The address's cell, chosen on the first reading the ordinary path draws
+  // whole; one the address can't give is logged and the map drawn without
+  // it, so a step that always throws can't hold the line either.
+  const chooseFromAddress = () => {
+    try {
+      apply(false);
+    } catch (err) {
+      console.error("mycelium: the address named nothing to open", err?.stack || err);
+      chosen = null;
+      draw();
+    }
+  };
   const take = (now) => {
     try {
       // Each redraw is measured, so its cost at any size can be read from
@@ -4958,6 +4972,15 @@ import {
         // Only once the first reading is drawn whole, so one that fails part
         // way is drawn as a first again by the next, rather than left half set.
         first = false;
+      } else if (!drawnWhole) {
+        // A first path given up on never chose the address's cell or heard
+        // the node's messages as already said, so the first reading drawn
+        // whole here does both, and its cells are heard as a first.
+        const was = spots;
+        chooseFromAddress();
+        noteLives(was);
+        hear(false);
+        panel();
       } else {
         if (chosen && !knows(chosen)) chosen = null;
         const was = spots;
@@ -4967,6 +4990,7 @@ import {
         hear(true);
       }
       drawStatus();
+      drawnWhole = true;
       performance.clearMeasures("mycelium-redraw");
       performance.measure("mycelium-redraw", { start: started });
       // What was made of the reading, once drawn whole, for reach.ts to

@@ -2277,6 +2277,46 @@ def test_a_reading_that_fails_to_draw_is_said_though_the_node_stops(
     expect(asof, "the map promised a change that can't come").not_to_contain_text("It tries again")
 
 
+# Every reading site.ts hands over, held back from the map, the last kept, until the test lets them
+# through; run ahead of the page's own scripts, so even the first is held.
+READINGS_HELD = """
+window.held = null;
+const holding = (event) => {
+  if (event.detail === null) return;
+  event.stopImmediatePropagation();
+  window.held = event.detail;
+};
+document.addEventListener("mycelium:now", holding, { capture: true });
+window.letReadingsThrough = () => {
+  document.removeEventListener("mycelium:now", holding, { capture: true });
+  document.dispatchEvent(new CustomEvent("mycelium:now", { detail: window.held }));
+};
+"""
+
+
+def test_a_first_reading_that_fails_twice_still_opens_the_cell_the_address_names(
+    browser: Browser, mycelium_served: Served
+) -> None:
+    root, _ = mycelium_served
+    opened = Opened(browser, f"{root}mycelium/#cell={SOUGHT}", SIZES[-1], "dark", READINGS_HELD)
+    try:
+        page = opened.page
+        page.wait_for_function("window.held !== null", timeout=PACE_MS)
+        # Two first readings that fail leave the first path to the ordinary one.
+        opened.expecting("mycelium: a reading failed to draw")
+        page.evaluate(UNDRAWABLE)
+        page.evaluate(UNDRAWABLE)
+        the_map_stands(page, "broken")
+        page.evaluate("letReadingsThrough()")
+        # Its cells are heard as a first rather than compared with none, so it draws whole.
+        the_map_counts(page, COUNTED, "the first reading drawn whole failed")
+        the_map_stands(page, "live")
+        talk = page.locator(f'#panel-body a[href^="mycelium:cell/{SOUGHT}"]')
+        expect(talk.first, "the address's cell wasn't opened").to_be_visible()
+    finally:
+        opened.close()
+
+
 def test_a_server_that_goes_is_said_stale(mycelium_opened: Opened, mycelium_served: Served) -> None:
     page = mycelium_opened.page
     the_map_stands(page, "live")

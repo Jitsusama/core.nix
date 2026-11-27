@@ -194,9 +194,19 @@ class Opened:
     context: BrowserContext
     page: Page
 
-    def __init__(self, browser: Browser, address: str, size: tuple[int, int], look: str) -> None:
-        """Open `address` at `size` in `look`, listening before it loads."""
-        self.size, self.look = size, look
+    def __init__(
+        self,
+        browser: Browser,
+        address: str,
+        size: tuple[int, int],
+        look: str,
+        before: str | None = None,
+    ) -> None:
+        """Open `address` at `size` in `look`, listening before it loads.
+
+        A script given as `before` runs in the tab ahead of the page's own.
+        """
+        self.size, self.look, self.before = size, look, before
         self.logged: list[str] = []
         # Words a test expects the page to log from some line on, each with
         # where in the log it began expecting them (see expecting).
@@ -250,6 +260,8 @@ class Opened:
             viewport={"width": width, "height": height},
             color_scheme="dark" if self.look == "dark" else "light",
         )
+        if self.before is not None:
+            self.context.add_init_script(self.before)
         self.page = self.context.new_page()
         self.address = address
         # Whether the skill's checks have opened the page's folds, after which

@@ -11,6 +11,7 @@ import {
   standsNow,
   UNANSWERED,
   UNREACHED,
+  unreadSaid,
 } from "../panel.ts";
 import { study } from "../shape.ts";
 import { records, type Told, told } from "./house.ts";
@@ -31,6 +32,7 @@ const calm: readonly Told[] = [...records.filter((record) => record.kind !== "co
 
 /** How the lede ends with one source quiet, and with nothing but the ceiling told. */
 const ONE_WORTH = /, and 1 thing worth a look\.$/u;
+const TWO_WORTH = /, and 2 things worth a look\.$/u;
 const NOTHING_WORTH = /, and nothing needs a look\.$/u;
 const WORTH_A_LOOK = /needs a look|worth a look/u;
 
@@ -106,6 +108,11 @@ it("the lede says net has named no device over an empty net it has read", () => 
   assert.equal(ledeOf("live", empty), NAMELESS);
 });
 
+// Empty records held from before a reconnect aren't what net says now.
+it("the lede says net is still being reached until a live feed's records come", () => {
+  assert.equal(ledeOf("live", empty, { fresh: false, unheard: 0 }), REACHING);
+});
+
 it("the lede counts what stands, and what is worth a look, while net's feeds are live", () => {
   assert.equal(ledeOf("live", contextOf()), standsNow(contextOf()));
 });
@@ -123,6 +130,15 @@ it("the lede counts held records as net last told them until each live feed's re
 // network, but may have been a concern worth a look.
 it("the lede counts what a concern or source watch couldn't read as worth a look", () => {
   assert.match(ledeOf("live", contextOf(calm), { fresh: true, unheard: 1 }), ONE_WORTH);
+});
+
+// The panel's Worth a Look says what the lede counts, rather than nothing.
+it("the panel counts what couldn't be read as the lede does", () => {
+  const unreadable: Told = { key: "concern:unreadable", kind: "concern" };
+  const lede = ledeOf("live", contextOf([...calm, unreadable]), { fresh: true, unheard: 1 });
+  assert.match(lede, TWO_WORTH);
+  assert.equal(unreadSaid(2), "2 things net told couldn't be read, and may be worth a look.");
+  assert.equal(unreadSaid(1), "1 thing net told couldn't be read, and may be worth a look.");
 });
 
 // A page opened or reloaded while net is down is given the records the

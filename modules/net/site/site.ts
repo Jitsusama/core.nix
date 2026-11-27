@@ -85,6 +85,7 @@ function context(): Context | undefined {
     mycelium,
     open: (id) => open(id, { focusPanel: true }),
     letGo,
+    unheard: hearing.now().unheard,
   };
 }
 
@@ -459,23 +460,22 @@ function watch(kind: (typeof KINDS)[number]): Held {
   return follow(
     { feed: "net", kind },
     {
-      moved: () => {
+      moved: (_held, change) => {
         told.add(kind);
-        hearing.moved(kind);
+        hearing.moved(kind, change.whole);
         drawSoon();
       },
-      // A feed that never answers moves nothing, so the lede follows its
-      // standing here as well as from each drawing.
+      // A feed that never answers moves nothing, so the lede follows it here too.
       stands: (stands) => {
         standings.set(kind, stands);
         hearing.stands(kind, stands.state);
         sayWhen();
         sayStandsNow(lede, standings.worst()?.state, context(), hearing.now());
       },
+      // Said, and counted by the lede and the panel alike, with the next drawing.
       problem: (what) => {
         hearing.problem(kind, what);
-        sayWhen();
-        sayStandsNow(lede, standings.worst()?.state, context(), hearing.now());
+        drawSoon();
       },
     },
   ).held;
