@@ -59,7 +59,8 @@
 //! holds costs nothing. A file it couldn't write, its own or the one in
 //! `.devices/`, or a read of the holders that failed, is looked at again
 //! until it's right, whoever holds the camera: each second, or every two
-//! while a loopback's camera is watched. What went wrong is said once as
+//! while a loopback's camera is watched, and while nobody holds it, twice
+//! as long each try, up to sixteen seconds. What went wrong is said once as
 //! it begins and once as it clears, for each file. The first time its
 //! files say who holds the camera as a read that worked found, and which
 //! node it is, or nobody and no `.devices/` file where there's no camera,
@@ -478,6 +479,36 @@ impl Run {
     }
 }
 
+/// How long a watch sleeps before its next look, when nothing wakes it.
+/// While anyone holds the camera it looks every interval, as a stream and
+/// a descriptor handed on show only then. While a file is wrong with
+/// nobody holding it, each try waits twice the last, up to sixteen
+/// seconds, since each look reads every process's open files, a tenth of
+/// a second on a busy machine, and a fault such as a full disk can last
+/// hours; a holder opening the camera still wakes a look at once.
+struct Retry {
+    every: Duration,
+    next: Duration,
+}
+
+impl Retry {
+    const MOST: Duration = Duration::from_secs(16);
+
+    fn new(every: Duration) -> Self {
+        Self { every, next: every }
+    }
+
+    fn next(&mut self, anyone: bool, settled: bool) -> Option<Duration> {
+        if anyone || settled {
+            self.next = self.every;
+            return anyone.then_some(self.every);
+        }
+        let wait = self.next;
+        self.next = (wait * 2).min(Self::MOST.max(self.every));
+        Some(wait)
+    }
+}
+
 /// Says who holds the node until it goes. With sysfs, the node is a USB
 /// camera's, named only while it streams, and with a record, said in the
 /// log as it does.
@@ -500,6 +531,7 @@ fn watch(
     // Whether a USB camera streams shows only in sysfs, so while anyone
     // holds it, it's looked at every second.
     let every = Duration::from_secs(if sysfs.is_some() { 1 } else { 2 });
+    let mut retry = Retry::new(every);
     // What the file holds, as last written.
     let mut said = None;
     let mut pids = HashSet::new();
@@ -556,7 +588,7 @@ fn watch(
         // failed, is tried again on the next look, which comes on a timer
         // even while nobody holds the camera.
         said = right.then_some(shown);
-        match events.wait((anyone || !settled).then_some(every)) {
+        match events.wait(retry.next(anyone, settled)) {
             Woken::Timeout | Woken::Changed => {}
             Woken::NodeGone => return Ended::Gone,
             Woken::Stopped => return Ended::Stopped,
@@ -808,6 +840,43 @@ mod tests {
                 "the camera went",
                 "the camera went"
             ]
+        );
+    }
+
+    #[test]
+    fn a_wrong_file_nobody_holds_is_tried_less_often_up_to_sixteen_seconds() {
+        let mut retry = Retry::new(Duration::from_secs(2));
+        let waits: Vec<_> = (0..6).map(|_| retry.next(false, false)).collect();
+        let seconds = |all: &[u64]| all.iter().map(|s| Some(Duration::from_secs(*s))).collect();
+        let wanted: Vec<_> = seconds(&[2, 4, 8, 16, 16, 16]);
+        assert_eq!(waits, wanted, "a wrong file nobody holds was tried at other times");
+    }
+
+    #[test]
+    fn a_held_camera_is_looked_at_every_interval_and_a_right_file_waits() {
+        let every = Duration::from_secs(1);
+        let mut retry = Retry::new(every);
+        retry.next(false, false);
+        retry.next(false, false);
+        assert_eq!(
+            retry.next(true, false),
+            Some(every),
+            "a camera someone holds wasn't looked at each interval"
+        );
+        assert_eq!(
+            retry.next(false, false),
+            Some(every),
+            "a wrong file's tries didn't start again from the interval once it was held"
+        );
+        assert_eq!(
+            retry.next(false, true),
+            None,
+            "a right file nobody holds was looked at on a timer"
+        );
+        assert_eq!(
+            retry.next(false, false),
+            Some(every),
+            "a wrong file's tries didn't start again from the interval once it was right"
         );
     }
 
