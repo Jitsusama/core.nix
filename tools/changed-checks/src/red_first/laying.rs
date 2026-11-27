@@ -41,7 +41,12 @@ pub fn laid_over(
     git(at.root, &info, Some(&listing), &indexed)?;
     let tree = git(at.root, &["write-tree"], None, &indexed)?;
     let base = git(at.root, &["cat-file", "commit", at.base], None, &[])?;
-    let people: String = base
+    // The people are read from the header alone, which ends at the first
+    // empty line, so no line of the message is taken for one.
+    let header = base
+        .split_once("\n\n")
+        .map_or(base.as_str(), |(header, _)| header);
+    let people: String = header
         .lines()
         .filter(|line| line.starts_with("author ") || line.starts_with("committer "))
         .flat_map(|line| [line, "\n"])

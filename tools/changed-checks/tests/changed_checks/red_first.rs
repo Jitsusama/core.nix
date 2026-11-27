@@ -210,6 +210,19 @@ fn a_build_over_the_base_no_builder_failed_is_said_and_not_counted_red() {
         !said.contains("as it should"),
         "a lost build was counted red: {said}"
     );
+    let kept = fs::read_dir(stand_in.path("cache/changed-checks"))
+        .expect("the cache was made")
+        .filter_map(Result::ok)
+        .find(|entry| {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            name.starts_with("red-first-") && name.ends_with("-a.log")
+        })
+        .expect("nix's words for the lost build weren't kept");
+    let words = fs::read_to_string(kept.path()).expect("read");
+    assert!(
+        words.contains("unable to download"),
+        "the kept log doesn't hold nix's words: {words}"
+    );
 }
 
 #[test]
@@ -224,7 +237,9 @@ fn a_check_reading_none_of_the_changes_code_is_said_and_not_built_over_the_base(
         text(&ran.stderr)
     );
     assert!(
-        text(&ran.stderr).contains("a read the change's tests but none of its code"),
+        text(&ran.stderr).contains(
+            "a come out the same with the change's tests laid over the base as at its head"
+        ),
         "{}",
         text(&ran.stderr)
     );
@@ -280,20 +295,22 @@ fn a_lost_build_over_the_base_beside_a_passing_one_refuses_nothing() {
 #[test]
 fn the_checks_running_tests_are_built_over_the_base_before_the_systems() {
     let stand_in = committed("red-systems-last", CHANGE, "a3.drv");
-    stand_in.checks("base", r#"{"example-a": "e.drv", "b": "b.drv"}"#);
-    stand_in.checks("working", r#"{"example-a": "e2.drv", "b": "b2.drv"}"#);
-    let over = r#"{"example-a": "e3.drv", "b": "b3.drv"}"#;
+    // The check running the tests sorts after the system by name, so only
+    // the ordering puts it first.
+    stand_in.checks("base", r#"{"example-a": "e.drv", "z": "z.drv"}"#);
+    stand_in.checks("working", r#"{"example-a": "e2.drv", "z": "z2.drv"}"#);
+    let over = r#"{"example-a": "e3.drv", "z": "z3.drv"}"#;
     fs::write(stand_in.path("over.json"), over).expect("written");
     fs::write(stand_in.path("probed.json"), over).expect("written");
-    fs::write(stand_in.path("failing-over"), "b\n").expect("written");
+    fs::write(stand_in.path("failing-over"), "z\n").expect("written");
 
     let ran = stand_in.run(&["--system", "x86_64-linux"]);
 
     assert!(ran.status.success(), "{}", text(&ran.stderr));
     let built = stand_in.built();
     assert!(
-        built.contains("?rev=a1a1a1a1a1a1a1a1a1a1#checks.x86_64-linux.b"),
-        "b wasn't built over the base: {built}"
+        built.contains("?rev=a1a1a1a1a1a1a1a1a1a1#checks.x86_64-linux.z"),
+        "z wasn't built over the base: {built}"
     );
     assert!(
         !built.contains("?rev=a1a1a1a1a1a1a1a1a1a1#checks.x86_64-linux.example-a"),
@@ -362,10 +379,8 @@ fn tests_that_stop_the_evaluation_over_the_base_are_said_and_refuse_nothing() {
 
     assert!(ran.status.success(), "{}", text(&ran.stderr));
     assert!(
-        text(&ran.stderr).contains(
-            "red first couldn't judge the change (the checks don't evaluate with its tests \
-             laid over the base"
-        ),
+        text(&ran.stderr)
+            .contains("the checks don't evaluate with the change's tests laid over the base ("),
         "{}",
         text(&ran.stderr)
     );
@@ -443,6 +458,96 @@ fn a_new_test_file_only_the_changes_code_declares_is_said_and_not_laid() {
         text(&ran.stderr)
     );
     assert!(!stand_in.built().contains("?rev="), "{}", stand_in.built());
+}
+
+#[test]
+fn a_change_removing_a_test_beside_one_it_adds_is_said_and_not_judged() {
+    let change = "A\tmodules/a/tests/new.rs\nD\tmodules/a/tests/old.rs\nM\tmodules/a/src/lib.rs\n";
+    let stand_in = committed("red-removed", change, "a3.drv");
+
+    let ran = stand_in.run(&["--system", "x86_64-linux"]);
+
+    assert!(
+        ran.status.success(),
+        "a change whose laid tests the head doesn't have was judged: {}",
+        text(&ran.stderr)
+    );
+    let said = text(&ran.stderr);
+    assert!(
+        said.contains("modules/a/tests/old.rs is a test the change removes"),
+        "{said}"
+    );
+    assert!(
+        said.contains("so the change's tests can't be laid over the base as its head has them"),
+        "{said}"
+    );
+    assert!(!stand_in.built().contains("?rev="), "{}", stand_in.built());
+}
+
+#[test]
+fn a_change_whose_new_tests_only_its_code_declares_is_not_refused_over_a_helper() {
+    let change = "A\tmodules/a/src/new.rs\n\
+                  A\tmodules/a/src/new/tests.rs\n\
+                  M\tmodules/a/tests/a/main.rs\n";
+    let stand_in = committed("red-declared-beside", change, "a3.drv");
+
+    let ran = stand_in.run(&["--system", "x86_64-linux"]);
+
+    assert!(
+        ran.status.success(),
+        "a change was refused over an edited helper while its tests were set aside: {}",
+        text(&ran.stderr)
+    );
+    assert!(!stand_in.built().contains("?rev="), "{}", stand_in.built());
+}
+
+#[test]
+fn a_lint_passing_over_the_base_is_never_named_in_a_refusal() {
+    let stand_in = committed("red-lint-passes", CHANGE, "a3.drv");
+    stand_in.checks("base", r#"{"a": "a.drv", "a-passes-clippy": "l.drv"}"#);
+    stand_in.checks("working", r#"{"a": "a2.drv", "a-passes-clippy": "l2.drv"}"#);
+    let over = r#"{"a": "a3.drv", "a-passes-clippy": "l3.drv"}"#;
+    fs::write(stand_in.path("over.json"), over).expect("written");
+    fs::write(stand_in.path("probed.json"), over).expect("written");
+
+    let ran = stand_in.run(&["--system", "x86_64-linux"]);
+
+    assert!(
+        !ran.status.success(),
+        "a test passing on the base went through"
+    );
+    let said = text(&ran.stderr);
+    assert!(
+        !said.contains("a-passes-clippy passes with the change's tests"),
+        "a lint was named in the refusal: {said}"
+    );
+    assert!(
+        !stand_in
+            .built()
+            .contains("a1a1a1a1a1a1a1a1a1a1#checks.x86_64-linux.a-passes-clippy"),
+        "the lint was built over the base: {}",
+        stand_in.built()
+    );
+}
+
+#[test]
+fn a_check_missing_over_the_base_beside_a_passing_one_refuses_nothing() {
+    let stand_in = both_moved("red-undefined-of-two");
+    fs::write(stand_in.path("over.json"), r#"{"b": "b3.drv"}"#).expect("written");
+    fs::write(stand_in.path("probed.json"), r#"{"b": "b3.drv"}"#).expect("written");
+
+    let ran = stand_in.run(&["--system", "x86_64-linux"]);
+
+    assert!(
+        ran.status.success(),
+        "a change was refused though the check that might run its tests isn't over the base: {}",
+        text(&ran.stderr)
+    );
+    assert!(
+        text(&ran.stderr).contains("a isn't a check over the base"),
+        "{}",
+        text(&ran.stderr)
+    );
 }
 
 #[test]

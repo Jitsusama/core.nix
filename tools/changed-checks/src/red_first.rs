@@ -13,17 +13,20 @@
 //! starts `test_` or ends `_test`, `-test`, `.test` or `tests` before its
 //! extension. The root's `tests/lib` folder and `checks.nix` are the
 //! harness every test runs in, with no test written in them, so they're
-//! code to red first. The change's added and edited test files are laid over the base's tree as a
-//! commit of their own, never checked out, and each check the gate built
-//! is evaluated there. Which checks those tests reach follows from the
-//! derivations, with no list of which test is whose:
+//! code to red first. The change's added and edited test files are laid
+//! over the base's tree as a commit of their own, never checked out, and
+//! each check the gate built is evaluated there. Which checks those tests
+//! reach follows from the derivations, with no list of which test is
+//! whose:
 //!
 //! - one whose derivation over the base is the base's reads none of them;
-//! - one whose derivation over the base is the tree's reads none of the
-//!   change's code, so it passes there whatever its tests say, as a scan
-//!   counting every VM test's subtests does, and it's said, not built;
+//! - one whose derivation over the base is the tree's comes out as the
+//!   build that just passed at the head, as a scan counting every VM
+//!   test's subtests does, reading none of the change's code, or as a
+//!   check nix decides as it evaluates does, so it's said, not built;
 //! - one that doesn't evaluate there fails there, as it should, which
-//!   proves the tests;
+//!   proves the tests, and checks that stop the whole evaluation there,
+//!   as one naming a file the change adds does, refuse nothing;
 //! - one that isn't there over the base can't be asked there, so it's
 //!   said, and since it might be the one running them, nothing is refused;
 //! - a lint, named `-passes-clippy`, `-passes-qmllint` or
@@ -44,18 +47,22 @@
 //!   nothing. Nix's log of these builds is kept out of the run's, where
 //!   merge-net would read a failed build as the change's.
 //!
-//! A change of tests alone is said and not built, a test file moved
-//! whole is said and not laid over the base, a test file the change only
-//! takes lines from isn't laid there, nor is a new Rust test file among a
+//! Red first judges a change only when it can lay the change's whole test
+//! side over the base as the head has it, since a check reading every test
+//! of a kind would otherwise be judged by a tree that is neither the
+//! base's nor the head's, and the tests left out may be the ones failing
+//! there. A test file removed or moved, a new Rust test file among a
 //! crate's sources that only the change's code declares (one a laid test
-//! file declares is laid with it), and tests added inside a code file,
-//! which no path tells apart, are said. A candidate of merge-net's train,
+//! file declares is laid with it), a path git quotes, and a test added
+//! inside a code file, which no path tells apart, are each said, and such
+//! a change isn't judged. A change of tests alone, or one only taking
+//! lines from its tests, is said and not built. A candidate of merge-net's train,
 //! all merges of changes judged at their own heads, isn't judged again.
 //! Red first judges on Linux alone: a Mac's checks that a change's tests
 //! reach often only evaluate a system, while the check running them may
 //! be Linux's alone, so a Mac's run would refuse what Linux's proved.
-//! When red first can't judge at all, as when nix can't evaluate the
-//! laid tests or git can't lay them, the run says so and refuses nothing.
+//! When red first can't judge at all, as when git can't lay the tests,
+//! the run says so and refuses nothing.
 //!
 //! A test that pins behaviour that was already right passes on the base
 //! by design: a commit of the change saying `Red-first: none, <why>`
@@ -129,9 +136,14 @@ fn declared_by_code(path: &str) -> bool {
 /// The files that could declare the Rust module file at `path`: its
 /// parent module's, beside its folder or in it, or its crate's root.
 fn declarers(path: &str) -> Vec<String> {
-    let Some((folder, _)) = path.rsplit_once('/') else {
+    let Some((folder, file)) = path.rsplit_once('/') else {
         return Vec::new();
     };
+    // A `mod.rs` is its folder's module, declared as a file beside that
+    // folder would be.
+    if file == "mod.rs" {
+        return declarers(&format!("{folder}.rs"));
+    }
     let mut found = vec![format!("{folder}.rs"), format!("{folder}/mod.rs")];
     if folder == "src" || folder.ends_with("/src") {
         found.extend([format!("{folder}/lib.rs"), format!("{folder}/main.rs")]);
@@ -140,17 +152,44 @@ fn declarers(path: &str) -> Vec<String> {
     found
 }
 
+/// A test file of the change that can't be laid over the base as the
+/// change's head has it.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Apart {
+    /// A test file the change removes.
+    Removed(String),
+    /// A file moved, from and to, a test at either end.
+    Moved(String, String),
+    /// A new test file only the change's code declares, which would
+    /// never run over the base.
+    Declared(String),
+    /// A path git quotes, which can't be asked of it again as it says it.
+    Quoted(String),
+}
+
+impl Apart {
+    /// What the file is, said.
+    pub fn said(&self) -> String {
+        match self {
+            Self::Removed(path) => format!("{path} is a test the change removes"),
+            Self::Moved(from, to) => format!("{from} moved to {to}"),
+            Self::Declared(path) => format!(
+                "{path} is a new test file only the change's code declares, so it wouldn't run \
+                 on the base"
+            ),
+            Self::Quoted(path) => format!("git quotes the path {path}"),
+        }
+    }
+}
+
 /// The files a change touched, by what they are.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Change {
     /// Test files added or edited, which are laid over the base.
     pub tests: Vec<String>,
-    /// Test files moved, from and to, which pass on the base as before.
-    pub moved: Vec<(String, String)>,
-    /// Test files added that only the change's code declares, which
-    /// would never run over the base.
-    pub declared: Vec<String>,
-    /// Every other file touched, a moved one by both its paths.
+    /// Test files that can't be laid over the base as the head has them.
+    pub apart: Vec<Apart>,
+    /// Every other file touched.
     pub code: Vec<String>,
 }
 
@@ -158,28 +197,34 @@ impl Change {
     /// The change `git diff --find-renames --name-status` says.
     pub fn read(said: &str) -> Self {
         let mut change = Self::default();
+        let mut declared = Vec::new();
         for line in said.lines().filter(|line| !line.is_empty()) {
             let mut fields = line.split('\t');
             let (Some(status), Some(path)) = (fields.next(), fields.next()) else {
                 continue;
             };
-            // Only a file moved whole passed on the base as it is; one
-            // moved with lines of its own is as a test edited.
-            let whole = status.get(1..) == Some("100");
-            match (status.chars().next(), fields.next()) {
-                (Some('R' | 'C'), Some(to)) if is_test(path) && is_test(to) && whole => {
-                    change.moved.push((path.to_owned(), to.to_owned()));
-                }
-                (Some('R' | 'C'), Some(to)) if is_test(path) && is_test(to) => {
-                    change.tests.push(to.to_owned());
+            let to = fields.next();
+            if let Some(quoted) = std::iter::once(path)
+                .chain(to)
+                .find(|path| path.starts_with('"'))
+            {
+                change.apart.push(Apart::Quoted(quoted.to_owned()));
+                continue;
+            }
+            match (status.chars().next(), to) {
+                (Some('R' | 'C'), Some(to)) if is_test(path) || is_test(to) => {
+                    change
+                        .apart
+                        .push(Apart::Moved(path.to_owned(), to.to_owned()));
                 }
                 (Some('R' | 'C'), Some(to)) => {
                     change.code.extend([path.to_owned(), to.to_owned()]);
                 }
-                // A test removed takes nothing from the base's tests.
-                (Some('D'), _) if is_test(path) => {}
+                (Some('D'), _) if is_test(path) => {
+                    change.apart.push(Apart::Removed(path.to_owned()));
+                }
                 (Some('A'), _) if is_test(path) && declared_by_code(path) => {
-                    change.declared.push(path.to_owned());
+                    declared.push(path.to_owned());
                 }
                 _ if is_test(path) => change.tests.push(path.to_owned()),
                 _ => change.code.push(path.to_owned()),
@@ -187,16 +232,23 @@ impl Change {
         }
         // A new file a laid test file declares is laid with it, or the
         // laid one names a module the base lacks, and fails to build
-        // there whatever its tests say.
-        let (laid, declared): (Vec<String>, Vec<String>) = std::mem::take(&mut change.declared)
-            .into_iter()
-            .partition(|file| {
+        // there whatever its tests say; and so on down, for a laid one
+        // may declare another.
+        loop {
+            let (laid, rest): (Vec<String>, Vec<String>) = declared.into_iter().partition(|file| {
                 declarers(file)
                     .iter()
                     .any(|declarer| change.tests.contains(declarer))
             });
-        change.tests.extend(laid);
-        change.declared = declared;
+            declared = rest;
+            if laid.is_empty() {
+                break;
+            }
+            change.tests.extend(laid);
+        }
+        change
+            .apart
+            .extend(declared.into_iter().map(Apart::Declared));
         change
     }
 }
@@ -387,8 +439,10 @@ fn judging(
         );
         return Ok(true);
     }
+    // Only the change's own commits speak for it, not a branch it merged.
     let format = format!("--format=%s%x1f%(trailers:key={TRAILER},valueonly)%x1e");
-    let log = git(at.root, &["log", "--no-merges", &format, &range], None, &[])?;
+    let trailers = ["log", "--first-parent", "--no-merges", &format, &range];
+    let log = git(at.root, &trailers, None, &[])?;
     let (excuse, unread) = excused(&log);
     for trailer in unread {
         eprintln!(
@@ -413,16 +467,17 @@ fn judging(
         None => {}
     }
     let asked = ["diff", "--find-renames", "--name-status", at.base, "HEAD"];
-    let mut change = Change::read(&git(at.root, &asked, None, &[])?);
-    say_apart(at, &change)?;
-    if change.tests.is_empty() {
+    let change = Change::read(&git(at.root, &asked, None, &[])?);
+    if said_apart(at, &change)? || change.tests.is_empty() {
         return Ok(true);
     }
-    let mut counting = vec!["diff", "--numstat", at.base, "HEAD", "--"];
+    // Every test file is laid as the head has it, so a check reading only
+    // tests comes out there as at the head; only one gaining lines adds a
+    // test to ask. The paths are added or edited, so renames are off.
+    let mut counting = vec!["diff", "--numstat", "--no-renames", at.base, "HEAD", "--"];
     counting.extend(change.tests.iter().map(String::as_str));
     let added = adding(&git(at.root, &counting, None, &[])?);
-    change.tests.retain(|test| added.contains(test));
-    if change.tests.is_empty() {
+    if !change.tests.iter().any(|test| added.contains(test)) {
         eprintln!(
             "changed-checks: the change only takes lines from its tests, so none is asked to \
              fail on the base"
@@ -463,23 +518,28 @@ fn over_the_base(
     let laid = laid_over(at, tests, &[], "the change's tests over its base")?;
     let flake = format!("git+file://{}?rev={laid}", at.root);
     // A test reading what the change adds stops nix's whole evaluation
-    // over the base, as a checks file naming a new package does, and so
-    // does nix failing for its own reasons, which no exit tells apart; so
-    // it's said, and refuses nothing.
-    let on_base = evaluated_as(&flake, at.system, built, noted).map_err(|why| {
-        format!(
-            "the checks don't evaluate with its tests laid over the base, as when a test reads \
-             what the change adds: {why}"
-        )
-    })?;
+    // over the base, as a checks file naming a new file does, and so does
+    // nix failing for its own reasons, which no exit tells apart; so it's
+    // said, and refuses nothing.
+    let on_base = match evaluated_as(&flake, at.system, built, noted) {
+        Ok(found) => found,
+        Err(why) => {
+            eprintln!(
+                "changed-checks: the checks don't evaluate with the change's tests laid over the \
+                 base ({why}), as when a test reads a file the change adds, so the change isn't \
+                 refused"
+            );
+            return Ok(true);
+        }
+    };
     let mut moved = Vec::new();
     let mut only_tests = Vec::new();
     let mut undefined = false;
     for name in built {
         match over(name, before, after, &on_base) {
             Over::Moved => moved.push(name.clone()),
-            // One reading none of the change's code is the very build that
-            // just passed at the head, so its passing says nothing.
+            // One coming out as at the head is the very build that just
+            // passed there, so its passing says nothing.
             Over::OnlyTests => only_tests.push(name.as_str()),
             Over::Undefined => {
                 eprintln!(
@@ -500,8 +560,10 @@ fn over_the_base(
     }
     if !only_tests.is_empty() {
         eprintln!(
-            "changed-checks: {} read the change's tests but none of its code, so they pass on \
-             the base whatever the tests say, and aren't asked to fail there",
+            "changed-checks: {} come out the same with the change's tests laid over the base \
+             as at its head, as a check reading none of its code or one nix decides as it \
+             evaluates does, so building them there proves nothing, and they aren't asked to \
+             fail there",
             only_tests.join(", ")
         );
     }
@@ -592,7 +654,8 @@ fn say_refused(passing: &[&str], tests: &[String]) {
         eprintln!(
             "changed-checks: {name} passes with the change's tests laid over the base's code \
              ({tests}), so they'd pass without the change. Make a test fail without it, or say \
-             why it pins what was already right with a trailer on a commit of the change:"
+             why it pins what was already right with a trailer ending a commit message of the \
+             change:"
         );
     }
     // The trailer goes on a line of its own, so it's copied whole into a
@@ -600,24 +663,33 @@ fn say_refused(passing: &[&str], tests: &[String]) {
     eprintln!("\n    {TRAILER}: none, <why the tests pin what was already right>\n");
 }
 
-/// Say each test file the change moved, or added for its code alone to
-/// declare, which isn't laid over the base, and each code file it added a
-/// test among the code of.
-fn say_apart(at: &At, change: &Change) -> Result<(), String> {
-    for (from, to) in &change.moved {
+/// Whether the change holds tests that can't be laid over the base as its
+/// head has them, saying each: a test file removed, moved, declared only
+/// by its code or quoted, or a test added among code. Laying the rest
+/// alone would judge a check reading every test of a kind by a tree that
+/// is neither the base's nor the head's, and the tests set aside may be
+/// the ones that fail there, so such a change isn't judged.
+fn said_apart(at: &At, change: &Change) -> Result<bool, String> {
+    let mut apart: Vec<String> = change.apart.iter().map(Apart::said).collect();
+    apart.extend(inline_in(at, change)?.into_iter().map(|file| {
+        format!("{file} adds a test among its code, which no path tells apart from it")
+    }));
+    for said in &apart {
+        eprintln!("changed-checks: {said}");
+    }
+    if !apart.is_empty() {
         eprintln!(
-            "changed-checks: {from} moved to {to}, so it isn't asked to fail on the base, \
-             where it passed as it was"
+            "changed-checks: so the change's tests can't be laid over the base as its head has \
+             them, and none is asked to fail there"
         );
     }
-    for file in &change.declared {
-        eprintln!(
-            "changed-checks: {file} is a new test file only the change's code declares, so \
-             it wouldn't run on the base, and isn't asked to fail there"
-        );
-    }
+    Ok(!apart.is_empty())
+}
+
+/// The code files the change adds a test among the code of.
+fn inline_in(at: &At, change: &Change) -> Result<Vec<String>, String> {
     if change.code.is_empty() {
-        return Ok(());
+        return Ok(Vec::new());
     }
     // The prefixes are named, since a person's git may be set to leave
     // them out, and the files are read from after them.
@@ -632,13 +704,7 @@ fn say_apart(at: &At, change: &Change) -> Result<(), String> {
         "--",
     ];
     asked.extend(change.code.iter().map(String::as_str));
-    for file in inline_tests(&git(at.root, &asked, None, &[])?) {
-        eprintln!(
-            "changed-checks: {file} adds a test among its code, which no path tells apart \
-             from it, so that test isn't asked to fail on the base"
-        );
-    }
-    Ok(())
+    Ok(inline_tests(&git(at.root, &asked, None, &[])?))
 }
 
 /// Of `moved`, those that read the change's test files rather than the

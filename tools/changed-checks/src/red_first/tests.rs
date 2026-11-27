@@ -35,13 +35,9 @@ fn a_change_lays_its_added_and_edited_tests_over_the_base_and_no_other() {
     let said = "A\ttools/x/tests/new.rs\n\
                 M\tmodules/y/src/lib.rs\n\
                 M\tmodules/y/src/lib_tests.rs\n\
-                A\tmodules/y/src/new/tests.rs\n\
                 A\tmodules/y/tests/new/cases.rs\n\
-                D\tmodules/z/tests/gone.sh\n\
                 D\tmodules/z/old.rs\n\
-                R100\tmodules/q/tests/a.qml\tmodules/q/tests/b.qml\n\
                 R087\tmodules/q/One.qml\tmodules/q/Two.qml\n\
-                R062\tmodules/q/tests/c.qml\tmodules/q/tests/d.qml\n\
                 M\tmodules/e/src/far/tests.rs\n\
                 A\tmodules/e/src/far/tests/leaking.rs\n\
                 T\tmodules/y/tests/link.sh\n";
@@ -53,16 +49,11 @@ fn a_change_lays_its_added_and_edited_tests_over_the_base_and_no_other() {
                 "tools/x/tests/new.rs".to_owned(),
                 "modules/y/src/lib_tests.rs".to_owned(),
                 "modules/y/tests/new/cases.rs".to_owned(),
-                "modules/q/tests/d.qml".to_owned(),
                 "modules/e/src/far/tests.rs".to_owned(),
                 "modules/y/tests/link.sh".to_owned(),
                 "modules/e/src/far/tests/leaking.rs".to_owned(),
             ],
-            moved: vec![(
-                "modules/q/tests/a.qml".to_owned(),
-                "modules/q/tests/b.qml".to_owned()
-            )],
-            declared: vec!["modules/y/src/new/tests.rs".to_owned()],
+            apart: Vec::new(),
             code: vec![
                 "modules/y/src/lib.rs".to_owned(),
                 "modules/z/old.rs".to_owned(),
@@ -70,9 +61,63 @@ fn a_change_lays_its_added_and_edited_tests_over_the_base_and_no_other() {
                 "modules/q/Two.qml".to_owned(),
             ],
         },
-        "a removed test was laid over the base, one moved whole or one only new code declares \
-         wasn't said apart, one moved with lines or declared by a laid test wasn't laid, or \
-         code was taken for a test"
+        "an added or edited test wasn't laid, one declared by a laid test wasn't laid with \
+         it, or code was taken for a test"
+    );
+}
+
+#[test]
+fn a_test_the_head_has_otherwise_than_laid_is_said_apart() {
+    let said = "D\tmodules/z/tests/gone.sh\n\
+                R100\tmodules/q/tests/a.qml\tmodules/q/tests/b.qml\n\
+                R062\tmodules/q/tests/c.qml\tmodules/q/tests/d.qml\n\
+                R095\tmodules/q/src/a.rs\tmodules/q/src/b/tests.rs\n\
+                A\tmodules/y/src/new/tests.rs\n\
+                A\t\"modules/y/tests/caf\\303\\251.rs\"\n";
+
+    assert_eq!(
+        Change::read(said).apart,
+        [
+            Apart::Removed("modules/z/tests/gone.sh".to_owned()),
+            Apart::Moved(
+                "modules/q/tests/a.qml".to_owned(),
+                "modules/q/tests/b.qml".to_owned()
+            ),
+            Apart::Moved(
+                "modules/q/tests/c.qml".to_owned(),
+                "modules/q/tests/d.qml".to_owned()
+            ),
+            Apart::Moved(
+                "modules/q/src/a.rs".to_owned(),
+                "modules/q/src/b/tests.rs".to_owned()
+            ),
+            Apart::Quoted("\"modules/y/tests/caf\\303\\251.rs\"".to_owned()),
+            Apart::Declared("modules/y/src/new/tests.rs".to_owned()),
+        ],
+        "a test removed, moved, quoted or declared only by code wasn't said apart"
+    );
+}
+
+#[test]
+fn new_rust_test_files_are_laid_down_every_level_a_laid_one_declares() {
+    let said = "M\tmodules/a/src/x/tests.rs\n\
+                A\tmodules/a/src/x/tests/cases.rs\n\
+                A\tmodules/a/src/x/tests/cases/more.rs\n\
+                M\tmodules/b/src/tests/mod.rs\n\
+                A\tmodules/b/src/tests/helpers/mod.rs\n";
+
+    let change = Change::read(said);
+
+    assert_eq!(
+        change.apart,
+        Vec::<Apart>::new(),
+        "a file declared by a laid one, or a folder's mod.rs, was left out"
+    );
+    assert_eq!(
+        change.tests.len(),
+        5,
+        "not every test file was laid: {:?}",
+        change.tests
     );
 }
 
