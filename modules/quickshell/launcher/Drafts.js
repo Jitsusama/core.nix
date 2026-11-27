@@ -57,10 +57,23 @@ function sent(state, key, text, now) {
 // The state once the talks say what reached each address (Orchestrators'
 // talks, by address in upper case, each { words, stage }): words sent
 // that a talk delivered, or anything after delivery, go. A talk that
-// failed leaves them kept. The same state, unchanged, when none went, so
-// nothing is written for it.
+// failed leaves them kept. Words "answered" are spent, an answer given
+// or let go (Agents.qml's answerIn and letGoStale), so a draft of just
+// those words goes too: given back to the field, it's a draft of them
+// the moment it opens, and would answer a later ask with them. The same
+// state, unchanged, when none went, so nothing is written for it.
 function settled(state, talks) {
     let changed = false;
+    const drafts = Object.assign({}, state.drafts);
+    for (const key of Object.keys(state.drafts)) {
+        const spent = (talks[key.toUpperCase()] ?? [])
+            .filter(talk => talk.stage === "answered")
+            .map(talk => String(talk.words ?? "").trim());
+        if (spent.includes(String(state.drafts[key].text ?? "").trim())) {
+            delete drafts[key];
+            changed = true;
+        }
+    }
     const sending = {};
     for (const key of Object.keys(state.sending)) {
         const heard = (talks[key.toUpperCase()] ?? [])
@@ -72,7 +85,7 @@ function settled(state, talks) {
             sending[key] = waiting;
         }
     }
-    return changed ? { drafts: state.drafts, sending } : state;
+    return changed ? { drafts, sending } : state;
 }
 
 // The state from what was written, keeping only what's under a week old;

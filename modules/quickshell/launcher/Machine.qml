@@ -485,6 +485,13 @@ Provider {
                 agents?.standingOf(session.address)?.doing ?? "");
             // Its talk shows under the field as Agents' Talk shows one.
             const talking = agents?.talking(session.address, session.title) ?? null;
+            // While it asks Joel what his words answer here, this is its own Talk, which
+            // shows what it asks and answers it, as its inbox goes unread until its ask ends
+            // (Agents.qml's topTalk). Read as it's used, since its want is served apart
+            // from its row and may come after this row is made.
+            const own = agents?.sessionAct(session, "talk") ?? null;
+            const answering = () => own !== null
+                && agents.answerable(agents.sessionAt(session.address) ?? session);
             rows.push(act("talk", {
                 key: `verb:disk:talk:${holder.path}:${session.address}`,
                 // Its words go to the session as Joel's, so a walk is refused it.
@@ -492,12 +499,20 @@ Provider {
                 side: sided.map(item => item.said).join(" \u00b7 "),
                 sideItems: sided,
                 // The ask names who it's told to (VKCF3Z, 2026-11-08).
-                ask: (talk.ask ?? "").replace("{name}", session.title),
+                ask: answering() ? own.ask : (talk.ask ?? "").replace("{name}", session.title),
                 chip: session.title,
-                state: () => provider.talked,
-                talks: talking?.talks,
+                // Its words are the session's only while they answer its ask, else
+                // words typed to it there would lead what the disk guard says.
+                draft: () => answering() ? own.draft : "",
+                opening: () => answering() ? own.opening() : undefined,
+                state: () => answering() ? own.state() : provider.talked,
+                talks: () => answering() ? own.talks() : talking?.talks() ?? [],
                 heard: talking?.heard,
                 given: words => {
+                    if (answering()) {
+                        own.given(words);
+                        return;
+                    }
                     const said = `${words.trim()} ${about}`;
                     if (words.trim() !== "" && Sessions.talk(session.address, said)) {
                         talking?.said(said);

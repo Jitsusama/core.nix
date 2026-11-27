@@ -5876,9 +5876,12 @@ Scope {
         // words a start gave it (Agents' askWhere), opens past their end,
         // where Return gives them again.
         const carried = typeof offered === "string" ? "" : String(row.offered?.() ?? "");
+        // A row may let go of what it kept before the field opens on it (Agents' Talk).
+        if (typeof offered !== "string")
+            row.opening?.();
         const kept = typeof offered === "string" ? { text: offered, caret: 0 }
             : carried !== "" ? { text: carried, caret: carried.length }
-            : row.draft ? drafts.kept(row.draft) : { text: "", caret: 0 };
+            : draftOf(row) !== "" ? drafts.kept(draftOf(row)) : { text: "", caret: 0 };
         restart(kept.text);
         // Words are what it asks for, so the line is typed in at once.
         prompt.typing();
@@ -5905,8 +5908,8 @@ Scope {
         }
         // Kept until its talk says they were delivered, never on Return
         // alone, so a switch before then loses nothing.
-        if (asking.draft)
-            drafts.sent(asking.draft, words);
+        if (drafting !== "")
+            drafts.sent(drafting, words);
         // Given, a page's words are his now, and what he types next is his own.
         offerHeld = null;
         prompt.endWaits = false;
@@ -5924,10 +5927,29 @@ Scope {
     property var wordsGiven: null
 
     // What a talk's field is still asking for, by whom it goes to.
-    readonly property string drafting: asking?.draft ?? ""
+    readonly property string drafting: draftOf(asking)
+    // The key a row's words are kept under (Drafts.js), or "" for none: its
+    // own, or what it says now where it says it as asked, as a disk guard's
+    // Talk keeps a session's words only while it answers that session's ask
+    // (Machine.qml's holderParts).
+    function draftOf(row) {
+        return String((typeof row?.draft === "function" ? row.draft() : row?.draft) ?? "");
+    }
     function drafted() {
         if (drafting !== "")
             drafts.typed(drafting, prompt.text, prompt.keptCaret());
+    }
+
+    // Words let go for the talk to `key` (Agents' letGoStale): the field open for it empties
+    // when it holds just one of them, given back for an ask that's gone, so Return never gives
+    // them to the ask that replaced it. Words he's typed since stay.
+    function wordsLetGo(key, words) {
+        if (drafting === "" || drafting.toUpperCase() !== String(key).toUpperCase())
+            return;
+        if (!(words ?? []).map(one => String(one).trim()).includes(prompt.text.trim()))
+            return;
+        prompt.text = "";
+        searchNow();
     }
 
     // A collection whose things changed while it's open is searched again,
@@ -6990,7 +7012,7 @@ Scope {
     // went on (Stepped.steppedHolding); otherwise null.
     function stepBack(left, steps, timed, key) {
         // A talk's words put away are kept at once, not a moment later.
-        if (left.row.draft)
+        if (draftOf(left.row) !== "")
             drafts.flush();
         // Setting held wakes every source's wanting, and a source wanted
         // again makes its rows within it, so a timed step counts the rows

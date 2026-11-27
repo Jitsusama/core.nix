@@ -4834,20 +4834,278 @@ def test_a_talk_to_an_asking_cell_shows_its_question_and_answers_it_from_return(
         left_the_node("s-choose")
 
 
+def asking_left_or_right(shell: Shell, address: str, title: str) -> tuple[str, Path, set[Path]]:
+    """Lay a session asking Joel Left or Right, as the Talk case's does, and wait till it's known.
+
+    Gives the want's time, as the agents daemon writes it, its inbox and what's in it already.
+    It's back once Agents shows it, as the node reads a record laid only on its next look, and a
+    Talk or walk to a session it hasn't read finds none (or the void, for another daemon's Talk).
+    """
+    since = datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    choices = [{"value": "left", "label": "Left"}, {"value": "right", "label": "Right"}]
+    ask = {"question": "Which way?", "choices": choices, "allowOther": False}
+    wants = {"kind": "question", "since": since, "said": "Which way?", "ask": ask}
+    lay(address, title, {"state": "listening", "busy": False, "wants": wants})
+    inbox = STEER / address
+    inbox.mkdir(parents=True, exist_ok=True)
+    shell.as_account(shell.ipc("collection", "agents"))
+    shell.launcher_ready()
+    shell.launcher_until(lambda shown: title in shown["rows"])
+    shell.close_launcher()
+    return since, inbox, set(inbox.glob("*.json"))
+
+
+def to_asker(shell: Shell, title: str) -> list[str]:
+    """Step into For You's Agents where what `title` asks shows, and give a walk's steps there."""
+    in_for_yous_agents(shell)
+    shell.launcher_until(lambda shown: title in shown["rows"])
+    return list(AGENTS_ASKING)
+
+
+def stepped_to(shell: Shell, name: str) -> None:
+    """Move the selection to the row named a key at a time, as down_to does, waiting on each.
+
+    A key that leaves the selection where it was fails with what the launcher showed before
+    and after it, rather than down_to's one wait for the end, since a lender's niri run once
+    found Up leaving For You's selection on History (OSPHT4, 2026-11-26 [d087e10b]).
+    """
+    keys = ("rows", "current", "mode", "typed", "held", "footer", "open", "keys")
+    for _ in range(20):
+        before = shell.showing()
+        rows = cast("list[str]", before["rows"])
+        selected = (before["selected"] or {}).get("name")
+        if selected == name:
+            return
+        assert name in rows, rows
+        at = rows.index(selected) if selected in rows else 0
+        shell.send_key("down" if rows.index(name) > at else "up")
+        deadline = time.monotonic() + 5
+        while ((shown := shell.showing())["selected"] or {}).get("name") == selected:
+            was = {key: before.get(key) for key in keys}
+            said = {key: shown.get(key) for key in keys}
+            assert time.monotonic() < deadline, f"a key left {selected} selected: {was} {said}"
+            time.sleep(0.1)
+    raise AssertionError(name)
+
+
+def footed(shown: Json, said: str) -> bool:
+    """Whether the launcher's foot says this, in its words or its keys, hard spaces as spaces.
+
+    A Talk says a refusal in the foot's words, and a For You choice among the foot's
+    keys, where the row's Return said what it does.
+    """
+    hints = cast("list[str]", shown.get("hints") or [])
+    return any(said in one.replace("\xa0", " ") for one in [shown["footer"], *hints])
+
+
+def test_a_choice_in_for_you_is_joels_alone_and_his_talk_there_takes_no_second(
+    shell: Shell,
+) -> None:
+    """For You's choices answer only from Joel's own Return, once, and show in the Talk.
+
+    An answer goes as Joel's, so a walk from outside, as an agent's `launcher do` would be,
+    answers nothing and says why. His own Return on a choice reaches the session's inbox, and
+    is kept among its answers as a Talk's is (Agents.qml's answerKept), so a second choice
+    while it still asks goes nowhere, and its Talk shows the first and takes no second.
+    """
+    since, inbox, steered = asking_left_or_right(shell, "FORYOU", "Choosing Quest")
+    try:
+        # In For You before it's walked to, as Agents shows it a moment before For You does.
+        there = to_asker(shell, "Choosing Quest")
+        shell.close_launcher()
+        walked = {"steps": [*there, "Choosing Quest", "Right"], "sure": True}
+        did = json.loads(shell.as_account(shell.ipc("doing", shlex.quote(json.dumps(walked)))))
+        why = "what Choosing Quest asks is answered only from your own Return in the launcher"
+        assert did.get("refused") == why, did
+        assert set(inbox.glob("*.json")) == steered, sorted(inbox.glob("*.json"))
+        to_asker(shell, "Choosing Quest")
+        stepped_to(shell, "Choosing Quest")
+        shell.step_in()
+        shell.launcher_until(lambda shown: {"Left", "Right"} <= set(shown["rows"]))
+        shell.down_to("Right")
+        shell.send_key("ret")
+        deadline = time.monotonic() + 10
+        while not (told := sorted(set(inbox.glob("*.json")) - steered)):
+            assert time.monotonic() < deadline, "no answer reached the asking session's inbox"
+            time.sleep(0.1)
+        said = json.loads(told[0].read_text())
+        assert (said["act"], said["value"], said["from"]) == ("answer", "right", "joel"), said
+        assert said["want"] == f"question@{since}", said
+        # It still asks until the session takes the answer, so a second choice is still there.
+        shell.down_to("Left")
+        shell.send_key("ret")
+        shell.launcher_until(lambda shown: footed(shown, "you answered this already"))
+        assert sorted(set(inbox.glob("*.json")) - steered) == told, sorted(inbox.glob("*.json"))
+        # Its Talk shows the answer For You gave, and a Return there sends no other.
+        shell.close_launcher()
+        did = followed(shell, "talkTo", "FORYOU")
+        assert did["done"], did
+        shell.launcher_until(
+            lambda shown: (
+                shown["asking"]
+                and any(
+                    (one.get("line"), one.get("stands")) == ("Right", "answered")
+                    for one in cast("list[Json]", shown["talks"] or [])
+                )
+            )
+        )
+        shell.send_chars("left")
+        shell.launcher_until(lambda shown: shown["typed"] == "left")
+        shell.send_key("ret")
+        shell.launcher_until(lambda shown: footed(shown, "you answered this already"))
+        assert sorted(set(inbox.glob("*.json")) - steered) == told, sorted(inbox.glob("*.json"))
+    finally:
+        (PRESENCE / "foryou.json").unlink(missing_ok=True)
+        for one in set(inbox.glob("*.json")) - steered:
+            one.unlink()
+        shell.close_launcher()
+        left_the_node("s-foryou")
+
+
+def test_a_folders_talk_to_its_session_asking_joel_shows_what_it_asks_and_answers_it(
+    shell: Shell,
+) -> None:
+    """Another daemon's Talk on a session asking Joel is that session's own Talk.
+
+    The disk guard's Talk to Its Session would send words to an inbox the session leaves unread
+    while it asks, so on one asking what Joel can answer here it opens the Talk that shows the
+    question and answers it (Machine.qml's holderParts), as a top row's Talk does (Agents.qml's
+    topTalk).
+    """
+    folder = STATE / "toprow"
+    folder.mkdir(parents=True, exist_ok=True)
+    named = f"~/{folder.relative_to(Path.home())}"
+    status = Path(os.environ["XDG_RUNTIME_DIR"]) / "disk-guard" / "status.json"
+    since, inbox, steered = asking_left_or_right(shell, "TOPROW", "Top Row Quest")
+    guard_holds(
+        status,
+        {
+            "path": str(folder),
+            "name": named,
+            "bytes": 12_300_000_000,
+            "clears": 0,
+            "grew": None,
+            "owner": {"kind": "worktree", "name": "toprow"},
+            "clearable": False,
+            "why": None,
+            "kept": None,
+            "says": f"{named} holds 11.5 GiB.",
+        },
+    )
+    try:
+        shell.answer("disk")
+        shell.step_in()
+        shell.type_in("filling", selecting="What's Filling It")
+        shell.step_in()
+        held = f"machine:disk:holder:{folder}"
+        shell.launcher_until(lambda shown: shown["things"][0]["is"] == held)
+        shell.step_in()
+        shell.normal()
+        shell.launcher_until(lambda shown: "Talk to Its Session" in shown["rows"])
+        shell.down_to("Talk to Its Session")
+        shell.send_key("ret")
+
+        def first(shown: Json) -> Json:
+            return cast("Json", (shown["talks"] or [{}])[0])
+
+        shell.launcher_until(
+            lambda shown: (
+                shown["asking"]
+                and first(shown).get("line") == "Top Row Quest asks you"
+                and first(shown).get("takes") == "Left \u00b7 Right"
+            )
+        )
+        shell.send_chars("right")
+        shell.launcher_until(lambda shown: shown["typed"] == "right")
+        shell.send_key("ret")
+        deadline = time.monotonic() + 10
+        while not (told := sorted(set(inbox.glob("*.json")) - steered)):
+            assert time.monotonic() < deadline, "no answer reached the asking session's inbox"
+            time.sleep(0.1)
+        said = json.loads(told[0].read_text())
+        assert (said["act"], said["value"], said["from"]) == ("answer", "right", "joel"), said
+        assert said["want"] == f"question@{since}", said
+    finally:
+        status.unlink()
+        (PRESENCE / "toprow.json").unlink(missing_ok=True)
+        for one in set(inbox.glob("*.json")) - steered:
+            one.unlink()
+        shell.close_launcher()
+        left_the_node("s-toprow")
+
+
+def test_words_given_back_for_an_ask_that_went_never_answer_the_next(shell: Shell) -> None:
+    """Words an answer couldn't put are given back while their ask stands, and go once it's gone.
+
+    A node that can't put Joel's answer in the session's inbox, here one it may not write,
+    refuses it, so the Talk gives his words back to answer it again. Once the session asks
+    something else they'd answer that with words for the old ask, so they go: from the open
+    field as the new ask draws, and, closed, before the field opens (Agents.qml's letGoStale),
+    and they're kept as a draft neither way.
+    """
+    _, inbox, steered = asking_left_or_right(shell, "GIVEBK", "Given Back Quest")
+
+    def asks(said: str) -> Callable[[Json], bool]:
+        def drawn(shown: Json) -> bool:
+            first = cast("Json", (shown["talks"] or [{}])[0])
+            return bool(shown["asking"]) and said in "".join(first.get("answers") or [])
+
+        return drawn
+
+    def wants(said: str) -> None:
+        at = datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+        choices = [{"value": "left", "label": "Left"}, {"value": "right", "label": "Right"}]
+        ask = {"question": said, "choices": choices, "allowOther": False}
+        lay("GIVEBK", "Given Back Quest", {"state": "listening", "busy": False,
+            "wants": {"kind": "question", "since": at, "said": said, "ask": ask}})  # fmt: skip
+
+    def talk() -> None:
+        shell.close_launcher()
+        did = followed(shell, "talkTo", "GIVEBK")
+        assert did["done"], did
+
+    def refused(words: str, said: str) -> None:
+        talk()
+        shell.launcher_until(asks(said))
+        shell.send_chars(words)
+        shell.launcher_until(lambda shown: shown["typed"] == words)
+        shell.send_key("ret")
+        shell.launcher_until(lambda shown: shown["typed"] == "")
+        # Not put, they're given back to the Talk opened again, as its ask still stands.
+        talk()
+        shell.launcher_until(lambda shown: asks(said)(shown) and shown["typed"] == words)
+        assert set(inbox.glob("*.json")) == steered, sorted(inbox.glob("*.json"))
+
+    inbox.chmod(0o500)
+    try:
+        refused("right", "Which way?")
+        # Open as it asks something else, the field lets them go as the new ask draws.
+        wants("Which way now?")
+        shell.launcher_until(lambda shown: asks("Which way now?")(shown) and shown["typed"] == "")
+        talk()
+        no_words_come_back(shell, asks("Which way now?"), "words for a gone ask came back")
+        # Closed as it asks something else, the Talk opens on nothing.
+        refused("left", "Which way now?")
+        shell.close_launcher()
+        wants("Which way at last?")
+        talk()
+        no_words_come_back(shell, asks("Which way at last?"), "words for a gone ask opened it")
+    finally:
+        inbox.chmod(0o700)
+        (PRESENCE / "givebk.json").unlink(missing_ok=True)
+        for one in set(inbox.glob("*.json")) - steered:
+            one.unlink()
+        shell.close_launcher()
+        left_the_node("s-givebk")
+
+
 def test_a_for_you_choice_walked_from_outside_is_told_to_the_walk_alone(shell: Shell) -> None:
     """A walk choosing a For You answer is refused, told why, and says nothing in Joel's foot.
 
     An answer goes as Joel's, so a walk is refused it; the refusal was also said in the foot,
     where a terminal's walk would write over what Joel reads (round 000035 on #6796, F2).
     """
-    since = datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
-    choices = [{"value": "left", "label": "Left"}, {"value": "right", "label": "Right"}]
-    ask = {"question": "Which way?", "choices": choices, "allowOther": False}
-    wants = {"kind": "question", "since": since, "said": "Which way?", "ask": ask}
-    lay("WALKAN", "Walked Quest", {"state": "listening", "busy": False, "wants": wants})
-    inbox = STEER / "WALKAN"
-    inbox.mkdir(parents=True, exist_ok=True)
-    steered = set(inbox.glob("*.json"))
+    _, inbox, steered = asking_left_or_right(shell, "WALKAN", "Walked Quest")
     walked_words = "what Walked Quest asks is answered only from your own Return in the launcher"
     try:
         in_for_yous_agents(shell)
