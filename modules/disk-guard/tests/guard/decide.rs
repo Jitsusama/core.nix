@@ -268,7 +268,7 @@ fn a_trend_waits_for_ten_minutes_of_watching() {
     let (fill, free) = filling(500 * GIB, 10e6, 540);
     assert_eq!(fill.trend(), None);
     assert_eq!(fill.steady_until(free, 0), None);
-    assert!(fill.rate().is_some());
+    assert!(fill.rate().is_some(), "no rate while the trend waited");
 }
 
 #[test]
@@ -280,7 +280,8 @@ fn a_disk_getting_room_back_is_not_told_it_fills_however_it_trends() {
         free += 10 << 20;
         fill.observe(now, free);
     }
-    assert!(fill.trend().unwrap() > 0.0);
+    let trend = fill.trend().unwrap();
+    assert!(trend > 0.0, "the trend came to {trend}, not above 0");
     assert_eq!(fill.steady_until(free, 0), None);
 }
 
@@ -365,29 +366,47 @@ const ON_CHARGER: Power = Power {
 #[test]
 fn routine_work_waits_for_power() {
     let awake = awake_for(HOUR);
-    assert!(spare(ON_CHARGER, false, &awake, 1_000_000.0));
+    assert!(
+        spare(ON_CHARGER, false, &awake, 1_000_000.0),
+        "on the charger wasn't spare"
+    );
     let charged = Power {
         on_charger: false,
         battery: Some(51),
     };
-    assert!(spare(charged, false, &awake, 1_000_000.0));
+    assert!(
+        spare(charged, false, &awake, 1_000_000.0),
+        "a battery at 51% wasn't spare"
+    );
     let low = Power {
         on_charger: false,
         battery: Some(50),
     };
-    assert!(!spare(low, false, &awake, 1_000_000.0));
+    assert!(
+        !spare(low, false, &awake, 1_000_000.0),
+        "a battery at 50% was spare"
+    );
     assert!(!spare(ON_CHARGER, true, &awake, 1_000_000.0), "power saver");
     let desktop = Power {
         on_charger: true,
         battery: None,
     };
-    assert!(spare(desktop, false, &awake, 1_000_000.0));
+    assert!(
+        spare(desktop, false, &awake, 1_000_000.0),
+        "a desktop with no battery wasn't spare"
+    );
 }
 
 #[test]
 fn routine_work_waits_ten_minutes_after_boot_or_resume() {
-    assert!(!spare(ON_CHARGER, false, &awake_for(599.0), 1_000_000.0));
-    assert!(spare(ON_CHARGER, false, &awake_for(600.0), 1_000_000.0));
+    assert!(
+        !spare(ON_CHARGER, false, &awake_for(599.0), 1_000_000.0),
+        "spare 599 seconds after boot"
+    );
+    assert!(
+        spare(ON_CHARGER, false, &awake_for(600.0), 1_000_000.0),
+        "not spare 600 seconds after boot"
+    );
     let mut resumed = awake_for(HOUR);
     resumed.observe(&Tick {
         wall: 1_000_000.0 + 8.0 * HOUR,
@@ -395,12 +414,10 @@ fn routine_work_waits_ten_minutes_after_boot_or_resume() {
         suspended: 8.0 * HOUR - 60.0,
         boot: "b".into(),
     });
-    assert!(!spare(
-        ON_CHARGER,
-        false,
-        &resumed,
-        1_000_000.0 + 8.0 * HOUR
-    ));
+    assert!(
+        !spare(ON_CHARGER, false, &resumed, 1_000_000.0 + 8.0 * HOUR),
+        "spare a minute after resuming"
+    );
 }
 
 #[test]
@@ -435,7 +452,10 @@ fn room_is_a_minute_of_memory_stalling_all_tasks_at_most_5_and_the_disk_10() {
 
 #[test]
 fn only_stalls_on_the_disk_or_memory_keep_a_moment_from_being_calm() {
-    assert!(calm(Pressure::default()));
+    assert!(
+        calm(Pressure::default()),
+        "a moment without stalls wasn't calm"
+    );
     let disk = Pressure {
         io: Stall {
             some: 15.0,
@@ -444,7 +464,7 @@ fn only_stalls_on_the_disk_or_memory_keep_a_moment_from_being_calm() {
         },
         ..Pressure::default()
     };
-    assert!(!calm(disk));
+    assert!(!calm(disk), "a disk stalling 15% was calm");
     let memory = Pressure {
         memory: Stall {
             some: 15.0,
@@ -453,7 +473,7 @@ fn only_stalls_on_the_disk_or_memory_keep_a_moment_from_being_calm() {
         },
         ..Pressure::default()
     };
-    assert!(!calm(memory));
+    assert!(!calm(memory), "memory stalling 15% was calm");
     // Busy processors aren't a reason: such work runs at idle priority.
     let cpu = Pressure {
         cpu: Stall {
@@ -463,7 +483,7 @@ fn only_stalls_on_the_disk_or_memory_keep_a_moment_from_being_calm() {
         },
         ..Pressure::default()
     };
-    assert!(calm(cpu));
+    assert!(calm(cpu), "processors stalling 90% kept it from calm");
 }
 
 /// A moment whose tasks stall `some` percent of the time on each of the
@@ -543,14 +563,29 @@ fn a_mac_whose_kernel_calls_memory_critical_is_overloaded() {
 #[test]
 fn a_machine_stalled_most_of_the_time_on_anything_is_overloaded() {
     // As on 8 November at 01:31, at load 450.
-    assert!(overloaded(stalling(98.0, 7.0, 60.0)));
-    assert!(overloaded(stalling(0.0, 80.0, 0.0)));
-    assert!(overloaded(stalling(0.0, 0.0, 79.0)));
+    assert!(
+        overloaded(stalling(98.0, 7.0, 60.0)),
+        "the disk at 98% wasn't overloaded"
+    );
+    assert!(
+        overloaded(stalling(0.0, 80.0, 0.0)),
+        "memory at 80% wasn't overloaded"
+    );
+    assert!(
+        overloaded(stalling(0.0, 0.0, 79.0)),
+        "processors at 79% weren't overloaded"
+    );
 }
 
 #[test]
 fn a_machine_busy_building_is_not_overloaded() {
     // As the same evening, building all the while and still answering.
-    assert!(!overloaded(stalling(7.0, 7.0, 37.0)));
-    assert!(!overloaded(stalling(50.0, 30.0, 70.0)));
+    assert!(
+        !overloaded(stalling(7.0, 7.0, 37.0)),
+        "overloaded at 37% on the processors"
+    );
+    assert!(
+        !overloaded(stalling(50.0, 30.0, 70.0)),
+        "overloaded with every stall under 75%"
+    );
 }

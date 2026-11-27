@@ -114,7 +114,11 @@ fn space_reads_the_filesystem_a_path_is_on() {
     let btrfs = says("findmnt", &["-no", "FSTYPE", "-T"], dir.path()).as_deref() == Some("btrfs");
     if btrfs && Path::new("/sys/fs/btrfs").exists() {
         let allocation = space.btrfs.expect("Btrfs without its allocation");
-        assert!(allocation.unallocated < space.total * 2 && allocation.global_reserve > 0);
+        assert!(
+            allocation.unallocated < space.total * 2 && allocation.global_reserve > 0,
+            "{allocation:?} on a disk of {}",
+            space.total
+        );
     } else if !btrfs {
         assert_eq!(space.btrfs, None);
     }
@@ -128,9 +132,11 @@ fn a_tick_reads_the_clocks_and_the_boot() {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap();
-    assert!((second.wall - now.as_secs_f64()).abs() < 1.0);
-    assert!(second.monotonic - first.monotonic >= 0.02);
-    assert!(first.monotonic > 0.0 && first.suspended >= 0.0);
+    let off = (second.wall - now.as_secs_f64()).abs();
+    assert!(off < 1.0, "the wall clock was {off} seconds off");
+    let between = second.monotonic - first.monotonic;
+    assert!(between >= 0.02, "{between} seconds passed in a 20 ms sleep");
+    assert!(first.monotonic > 0.0 && first.suspended >= 0.0, "{first:?}");
     assert_eq!(first.boot, second.boot);
     let boot = fs::read_to_string("/proc/sys/kernel/random/boot_id").unwrap();
     assert_eq!(first.boot, boot.trim());
@@ -193,7 +199,8 @@ fn pressure_is_the_last_ten_seconds_of_each_stall_and_a_minute_of_all_at_once() 
 fn the_live_pressure_reads() {
     if Path::new("/proc/pressure/io").exists() {
         let pressure = pressure(Path::new("/proc/pressure")).unwrap();
-        assert!((0.0..=100.0).contains(&pressure.io.some));
+        let some = pressure.io.some;
+        assert!((0.0..=100.0).contains(&some), "{some} isn't a percentage");
     }
 }
 
@@ -259,7 +266,7 @@ fn a_missing_count_is_an_error_rather_than_a_guess() {
     let root = tempfile::tempdir().unwrap();
     sysfs(root.path());
     fs::remove_file(root.path().join("allocation/metadata/bytes_used")).unwrap();
-    assert!(btrfs_allocation(root.path()).is_err());
+    btrfs_allocation(root.path()).expect_err("read an allocation with no metadata count");
 }
 
 #[test]
@@ -276,7 +283,7 @@ fn the_boot_is_dated_from_the_kernels_statistics() {
     let ticks = u64::try_from(unsafe { libc::sysconf(libc::_SC_CLK_TCK) }).unwrap();
     crate::assert_exactly(booted.ticks, disk_guard::units::float(ticks));
     fs::write(&stat, "cpu  1 2 3\n").unwrap();
-    assert!(boot(&stat).is_err());
+    boot(&stat).expect_err("dated a boot with no btime");
 }
 
 #[test]
@@ -286,7 +293,8 @@ fn this_machines_boot_is_in_the_past() {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_secs_f64();
-    assert!(booted.wall > 0.0 && booted.wall < now);
+    let wall = booted.wall;
+    assert!(wall > 0.0 && wall < now, "booted at {wall}, now {now}");
 }
 
 const PATIENCE: Duration = Duration::from_millis(100);
@@ -305,7 +313,7 @@ fn a_commit_in_time_is_all_settling_takes() {
         },
     )
     .unwrap();
-    assert!(!fell_back.get());
+    assert!(!fell_back.get(), "fell back on a commit in time");
     let failing = patiently(&stuck, PATIENCE, || Err(io::Error::other("no")), || Ok(()));
     assert_eq!(failing.unwrap_err().to_string(), "no");
 }
@@ -363,12 +371,14 @@ fn while_a_commit_is_stuck_no_other_is_begun() {
         },
     )
     .unwrap();
-    assert!(fell_back.get());
+    assert!(fell_back.get(), "didn't fall back while one was stuck");
     assert!(
         started.elapsed() < PATIENCE,
         "no waiting on a commit known stuck"
     );
-    assert!(begun.recv_timeout(Duration::from_millis(200)).is_err());
+    begun
+        .recv_timeout(Duration::from_millis(200))
+        .expect_err("a commit was begun while one was stuck");
 }
 
 #[test]
@@ -390,7 +400,10 @@ fn commits_are_read_from_the_filesystems_stats() {
         }
     );
     fs::write(&stats, shown(161)).unwrap();
-    assert!(commits(&stats).unwrap().underway);
+    assert!(
+        commits(&stats).unwrap().underway,
+        "161 ms pending wasn't underway"
+    );
     fs::write(&stats, "cur_commit_ms 0\n").unwrap();
     assert!(commits(&stats).is_err(), "no count is no guess");
 }
