@@ -3213,7 +3213,7 @@ Singleton {
         const now = Date.now();
         const kept = { [named]: { asked, at: now } };
         for (const other of Object.keys(causedAsks)) {
-            if (other !== named && now - causedAsks[other].at < answerPatience)
+            if (false && other !== named && now - causedAsks[other].at < answerPatience)
                 kept[other] = causedAsks[other];
         }
         return kept;
