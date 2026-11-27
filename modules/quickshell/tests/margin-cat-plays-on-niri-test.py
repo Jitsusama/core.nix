@@ -135,8 +135,11 @@ def story(said: list[str]) -> str:
         at = placed(line[len(SITS) :]) or {}
         walk = at.get("walk") or {}
         move = at.get("move") or {}
-        keys = ("window", "strolling", "pose", "stilled", "held", "departing", "asleep")
+        # A walk's pose turns with each stride, which would tell a line each step and part a
+        # refusal said again mid-walk from the one before, so a walk is told by its beats.
+        keys = ("window", "strolling", "stilled", "held", "departing", "asleep")
         now: dict[str, object] = {key: at.get(key) for key in keys} | {
+            "pose": None if walk else at.get("pose"),
             "restBegun": at.get("restBegun"),
             "beats": walk.get("beats"),
             "play": walk.get("play"),
@@ -148,6 +151,24 @@ def story(said: list[str]) -> str:
             told.append(f"x {at.get('x')}: {json.dumps(now)}")
             was = now
     return "\n".join(told)
+
+
+def test_a_story_counts_a_refusal_said_again_mid_walk() -> None:
+    """A refusal said again as the cat strides on is counted, not told again (#6968's round).
+
+    The story runs only on a failed wait, so its counting is held here on lines of its own.
+    """
+
+    def step(pose: str, x: int) -> str:
+        walk = {"beats": ["goes"], "to": 318, "play": None}
+        # As MarginCatScreen.qml's say has it: its screen, where it is, and the column under it.
+        return f"{SITS}winit {json.dumps({'x': x, 'pose': pose, 'walk': walk})} over {{}}"
+
+    refused = f"{TURNED}yarn walking"
+    said = [step("walkingA", 900), refused, step("walkingB", 897), refused]
+    said.append(step("walkingC", 894))
+    told = story(said).splitlines()
+    assert told[1:] == [f"{refused} (2 times)"], told
 
 
 def reported_since_ask(
