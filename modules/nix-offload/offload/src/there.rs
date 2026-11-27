@@ -5631,6 +5631,15 @@ impl Load {
 /// builds none. It counts [`TURNS_COUNTED`] of them, past
 /// [`NEARBY_AT_ONCE`], since a run sent by an older nix-offload, from
 /// before 26 November, may hold a second.
+///
+/// A machine's own update to main, root's build into its out link
+/// `update-to-main/building`, counts as one more: it holds no turn, and at 05:10 on
+/// 27 November the Mac lane asked that a lent build never go beside it,
+/// since the two together are what took a Mac to swapping before. It's
+/// found by its command line, which any account may read, where the
+/// build's pid, root's, isn't one `kill -0` may ask about. A test names
+/// another in `NIX_OFFLOAD_OWN_UPDATE`, since a Mac's own update runs
+/// these tests outside a sandbox, beside the very build they'd count.
 pub fn building_read() -> String {
     format!(
         "{TURNS_READ} \
@@ -5640,9 +5649,17 @@ pub fn building_read() -> String {
          case \"$pid\" in ''|*[!0-9]*|0*|????????*) continue;; esac; \
          if [ -n \"$boot\" ] && [ \"${{holder#* }}\" = \"$boot\" ] && \
          kill -0 \"$pid\" 2>/dev/null; then building=$((building + 1)); fi; done; \
+         own=\"${{NIX_OFFLOAD_OWN_UPDATE:-{OWN_UPDATE_SEEN}}}\"; \
+         if pgrep -f \"$own\" >/dev/null 2>&1; then building=$((building + 1)); fi; \
          echo \"$building\""
     )
 }
+
+/// The out link a machine's own update to main builds into, the home
+/// zone's update-to-main, as `pgrep -f` looks for it: its last letter bracketed,
+/// so the pattern matches the build's command line but not the shell
+/// reading it, whose own command line holds the pattern as written.
+const OWN_UPDATE_SEEN: &str = "update-to-main/buildin[g]";
 
 /// What a Mac runs to say its memory ([`Memory::parse`]): the share free,
 /// then the swap-outs since the newest reading it kept at least a minute
@@ -6264,16 +6281,7 @@ mod tests {
         // killed however the test ends.
         let mut read = Vec::new();
         for shell in ["dash", "zsh"] {
-            let counted = |turns: &Path| {
-                Command::new(shell)
-                    .args(["-c", &building_read()])
-                    .env("NIX_OFFLOAD_TURNS", turns)
-                    .output()
-                    .map_or_else(
-                        |error| format!("{error}"),
-                        |said| String::from_utf8_lossy(&said.stdout).into_owned(),
-                    )
-            };
+            let counted = |turns: &Path| counted_in(shell, turns, NO_UPDATE);
             for (holder, building, what) in &holders {
                 let _ = fs::remove_file(turns.join("1"));
                 std::os::unix::fs::symlink(holder, turns.join("1")).unwrap();
@@ -6300,6 +6308,78 @@ mod tests {
         }
         live.kill().unwrap();
         live.wait().unwrap();
+        for (counted, building, why) in read {
+            assert_eq!(counted, building, "{why}");
+        }
+    }
+
+    /// A pattern no process's command line matches, for the counts that
+    /// aren't about a machine's own update: a Mac's own update runs these
+    /// tests outside a sandbox, beside the very build the default finds.
+    const NO_UPDATE: &str = "nix-offload-test-no-update/buildin[g]";
+
+    /// What [`building_read`] says in `shell` over `turns`, finding a
+    /// machine's own update by `update`, or why it couldn't be run.
+    fn counted_in(shell: &str, turns: &Path, update: &str) -> String {
+        Command::new(shell)
+            .args(["-c", &building_read()])
+            .env("NIX_OFFLOAD_TURNS", turns)
+            .env("NIX_OFFLOAD_OWN_UPDATE", update)
+            .output()
+            .map_or_else(
+                |error| format!("{error}"),
+                |said| String::from_utf8_lossy(&said.stdout).into_owned(),
+            )
+    }
+
+    #[test]
+    fn a_macs_own_update_to_main_counts_as_a_build_beside_its_turns() {
+        let folder = tempfile::tempdir().unwrap();
+        let turns = folder.path().join("turns");
+        fs::create_dir_all(&turns).unwrap();
+        let boot = Command::new("sh").args(["-c", BOOT_READ]).output().unwrap();
+        let boot = String::from_utf8(boot.stdout).unwrap().trim().to_owned();
+        // The update stands in as a shell whose command line ends in its
+        // out link, below a folder named for this test alone, so a Mac's
+        // real update beside these tests is never what's found.
+        let unique = format!("nix-offload-test-{}", std::process::id());
+        let link = folder.path().join(&unique).join("update-to-main/building");
+        let seen = format!("{unique}/update-to-main/buildin[g]");
+        let mut update = Command::new("sh")
+            .args(["-c", "sleep 30; :"])
+            .arg(&link)
+            .spawn()
+            .unwrap();
+        let mut live = Command::new("sleep").arg("30").spawn().unwrap();
+        // Every count is read before any is judged, so the live shells are
+        // killed however the test ends.
+        let mut read = Vec::new();
+        for shell in ["dash", "zsh"] {
+            let none = folder.path().join("none");
+            read.push((
+                counted_in(shell, &none, &seen),
+                "1\n",
+                format!("{shell}: a Mac's own update to main wasn't counted as a build"),
+            ));
+            std::os::unix::fs::symlink(format!("{} {boot}", live.id()), turns.join("1")).unwrap();
+            read.push((
+                counted_in(shell, &turns, &seen),
+                "2\n",
+                format!("{shell}: a run sent beside a Mac's own update wasn't counted apart"),
+            ));
+            fs::remove_file(turns.join("1")).unwrap();
+        }
+        update.kill().unwrap();
+        update.wait().unwrap();
+        live.kill().unwrap();
+        live.wait().unwrap();
+        for shell in ["dash", "zsh"] {
+            read.push((
+                counted_in(shell, &folder.path().join("none"), &seen),
+                "0\n",
+                format!("{shell}: a Mac's update to main was counted after it ended"),
+            ));
+        }
         for (counted, building, why) in read {
             assert_eq!(counted, building, "{why}");
         }

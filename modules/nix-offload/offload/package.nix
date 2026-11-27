@@ -11,6 +11,7 @@
   dash,
   git,
   lib,
+  procps,
   rustPlatform,
   stdenv,
   systemd,
@@ -40,6 +41,7 @@ let
     "there::tests::a_build_sent_where_no_turn_can_be_made_builds_without_one_and_says_so"
     "there::tests::a_burst_of_runs_sent_nearby_never_builds_more_than_its_turns_at_once"
     "there::tests::a_macs_builds_are_counted_by_the_live_turns_of_its_own_boot"
+    "there::tests::a_macs_own_update_to_main_counts_as_a_build_beside_its_turns"
     "there::tests::a_run_finding_no_turn_it_can_make_looks_again_before_building_without_one"
     "there::tests::a_run_sent_far_ended_as_its_watcher_ends_it_gives_its_turn_back_in_dash_and_zsh"
     "there::tests::a_run_that_loses_a_turn_between_two_looks_finding_none_looks_twice_again"
@@ -101,10 +103,12 @@ rustPlatform.buildRustPackage (
     # Its tests bundle a real git tree's commits, and start a run apart with
     # setsid as a builder does, in dash as well, since most builders' sh is
     # dash (src/command.rs), and send a run far through zsh, a Mac's login
-    # shell (src/there.rs).
+    # shell (src/there.rs), and find a Mac's own update to main with pgrep,
+    # as a Mac does with its own.
     nativeCheckInputs = [
       dash
       git
+      procps
       util-linux
       zsh
     ];

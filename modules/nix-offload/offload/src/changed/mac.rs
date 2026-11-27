@@ -184,7 +184,8 @@ pub fn asks_for_room(asked: Option<&str>, here: &str, builds: bool) -> bool {
 /// its room, while a session's darwin build ran there, and the two took
 /// it to 60. Until then a person's own part went beside another's build,
 /// bounded only by the Mac's turns, and on 26 November at 11:01 a gate's
-/// comparison went to the Mac beside one.
+/// comparison went to the Mac beside one. The Mac's own update to main
+/// counts as such a build ([`crate::there::building_read`]).
 pub fn room(host: &str, load: Result<Option<Load>, String>) -> Result<String, String> {
     let load = load?.ok_or_else(|| format!("{host} didn't say its load"))?;
     if load.over() {
@@ -192,7 +193,7 @@ pub fn room(host: &str, load: Result<Option<Load>, String>) -> Result<String, St
     }
     if load.building > 0 {
         return Err(format!(
-            "{host} has no room, building {} run{} sent to it already, at {}",
+            "{host} has no room, building {} run{} already, its own update or sent to it, at {}",
             load.building,
             if load.building == 1 { "" } else { "s" },
             load.said()
@@ -370,7 +371,8 @@ mod tests {
         assert_eq!(
             room("skiff", building(1)),
             Err(
-                "skiff has no room, building 1 run sent to it already, at load 20.0 \
+                "skiff has no room, building 1 run already, its own update or sent to it, \
+                 at load 20.0 \
                  over a minute and 35.0 over five on 12 processors"
                     .to_owned()
             ),
