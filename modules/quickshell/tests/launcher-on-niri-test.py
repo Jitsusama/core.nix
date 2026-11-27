@@ -4673,35 +4673,47 @@ def test_the_home_network_rests_whole_where_the_wheel_leaves_it(shell: Shell) ->
     onMovementEnded, Headings.rested). The selection stays on the first row, which the wheel
     can take out of view, and where the turn back up rests depends on the rows' heights, so
     whether the selection is in view isn't asked here.
+
+    It rests at every place a small turn reaches, down to the list's end and back up to its
+    top, then by larger turns: two turns, at one place in thirty, once left an eero whose mark
+    stood whole at the view's foot judged cut by its glyph's box, which is taller than its
+    ink (Mark.qml's inkFrom), so one rest alone passed by chance (2026-11-27).
     """
+    # A turn may leave the view where it was, at an end, or bring it back there, so one that
+    # hasn't moved it in this long has come to rest.
+    moves_within = 2
     home_network_in_normal(shell)
     card = shell.showing()["card"]
     wlrctl = os.environ["WLRCTL"]
     shell.as_account(f"{wlrctl} pointer move -100000 -100000")
     middle = ((card["left"] + card["right"]) // 2, (card["top"] + card["foot"]) // 2)
     shell.as_account(f"{wlrctl} pointer move {middle[0]} {middle[1]}")
-    # Down and back up by a turn that isn't a whole number of rows, so the view can stop
-    # inside one.
-    for by in [70, -70]:
+    # Turns that aren't a whole number of rows, so the view can stop inside one: small ones
+    # past the list's end and back past its top, then larger ones down and up.
+    places = []
+    for by in [35] * 7 + [-35] * 12 + [70] * 3 + [-70] * 3:
         was = shell.showing()["scrolled"]
         # Said, so a wait that runs out names which way the wheel went and from where.
         print(f"the wheel by {by} from {was}")
         shell.as_account(f"{wlrctl} pointer scroll {by} 0")
+        deadline = time.monotonic() + moves_within
+        while shell.showing()["scrolled"] == was and time.monotonic() < deadline:
+            time.sleep(launcher_on_niri.POLL)
 
         # Once the view has stopped, so one the wheel only passed through doesn't count.
-        def rested(shown: Json, was: int = was, by: int = by) -> bool:
-            return bool(
-                not shown["moving"]
-                and (shown["scrolled"] - was) * by > 0
-                and shown["restsOnARow"]
-                and shown["cut"] == []
-            )
+        def rested(shown: Json) -> bool:
+            return bool(not shown["moving"] and shown["restsOnARow"] and shown["cut"] == [])
 
         shell.launcher_until(rested)
         shown = shell.showing()
         print(f"the wheel by {by} rested at {shown['scrolled']}")
         assert rested(shown), (by, shown["scrolled"], shown["restsOnARow"], shown["cut"])
-        none_drawn_cut(shell, f"the wheel by {by}", selection_in_view=False)
+        none_drawn_cut(shell, f"the wheel by {by} from {was}", selection_in_view=False)
+        places.append(shown["scrolled"])
+    # The small turns reached past the top row and came back to it, so the places between
+    # were each rested at.
+    assert max(places[:7]) > 0, places
+    assert places[18] == 0, places
     shell.close_launcher()
 
 

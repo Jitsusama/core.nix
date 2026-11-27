@@ -9335,11 +9335,19 @@ Scope {
             const down = item.height - item.contentHeight;
             const aligned = item.verticalAlignment === Qt.AlignBottom ? down
                 : item.verticalAlignment === Qt.AlignVCenter ? down / 2 : 0;
+            // A mark says where its glyph's ink stands down its parent
+            // (Mark.qml's inkFrom), which a box its face's line tall, and
+            // taller than the name's, leaves empty above and below; judged
+            // by that box, a whole mark at a list's foot read as cut.
+            const marked = typeof item.inkFrom === "number" && typeof item.inkTo === "number"
+                && item.inkTo > item.inkFrom;
             const inked = {
                 x: at.x + (item.horizontalAlignment === Qt.AlignRight ? across
                     : item.horizontalAlignment === Qt.AlignHCenter ? across / 2 : 0),
-                y: at.y + (fixed && item.lineCount > 0 ? lines.top : aligned),
-                width: item.contentWidth, height: lines.height
+                y: marked ? at.y + item.inkFrom - item.y
+                    : at.y + (fixed && item.lineCount > 0 ? lines.top : aligned),
+                width: item.contentWidth,
+                height: marked ? item.inkTo - item.inkFrom : lines.height
             };
             const ink = shows === null ? inked : Contained.shared(inked, shows);
             if (ink !== null) {
