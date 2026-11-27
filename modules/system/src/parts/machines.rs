@@ -272,11 +272,13 @@ fn machine(
 /// Being short of room is said but never worth a look: agents' builds
 /// hold the processor nearly all day, which isn't Joel's to act on, and
 /// memory waits for a day measured to tell a held shortage from a spike.
-/// A filling disk is said but never worth a look either: the disk guard
-/// calls a disk filling under a quarter free and takes back what
-/// regenerates by itself, so only one it couldn't keep from nearly full
-/// is the reader's to act on. Two machines each with hundreds of
-/// gigabytes free were once headlined both worth a look for it.
+/// A filling disk is said but never worth a look either: the band calls a
+/// disk filling under a quarter free, and on a machine running the disk
+/// guard what regenerates is taken back by itself, so only a disk nearly
+/// full is the reader's to act on. Two machines each with hundreds of
+/// gigabytes free were once headlined both worth a look for it. A machine
+/// without the guard, such as a cloud builder, is judged the same, since
+/// its record doesn't say which it is.
 fn looked(said: &Value, own: Option<&Value>, backup: Option<Backup>) -> Said {
     let mut words = Said::default();
     if away(said) {
@@ -317,8 +319,8 @@ fn looked(said: &Value, own: Option<&Value>, backup: Option<Backup>) -> Said {
                 Health::Bad,
                 format!("has a {side}"),
                 side,
-                "Builds and sessions there fail once it fills, and the disk guard couldn't free \
-                 enough of it by itself.",
+                "Builds and sessions there fail once it fills, and nothing there freed enough of \
+                 it by itself.",
             );
         }
         _ => {}
@@ -1062,6 +1064,85 @@ mod tests {
         assert_eq!(ago_said(3_600), "1 hour ago");
         assert_eq!(ago_said(7_199), "1 hour ago");
         assert_eq!(ago_said(7_200), "2 hours ago");
+    }
+
+    #[test]
+    fn each_kind_of_look_says_its_whole_why() {
+        // This machine's backup is looked at, and another's own code, so
+        // no one machine wears every kind.
+        let mut here = laptop(&[], "nearly-full");
+        here["state"] = json!("unreachable");
+        here["power"] = json!({"on_battery": true, "charge": 12});
+        here["firmware"] = json!({"error_before_boot": 600});
+        let mut studio = json!({"name": "studio", "state": "ready", "disk_band": "healthy"});
+        studio["health"] = json!({"parts": {"code": "watch"}});
+        let part = super::machines(
+            &Ok(realm(&[here, studio])),
+            &Err(String::new()),
+            None,
+            None,
+            Some(Backup::Landed(7 * 3_600)),
+        );
+        let mut said: Vec<(&str, &str, &str)> = part
+            .things
+            .iter()
+            .flat_map(|thing| {
+                thing.looks.iter().map(|look| {
+                    (
+                        thing.name.as_str(),
+                        look.side.as_str(),
+                        look.matters.as_str(),
+                    )
+                })
+            })
+            .collect();
+        said.sort_unstable();
+        let mut whys = [
+            (
+                "laptop",
+                "out of reach",
+                "What runs there can't be read or steered from here until a link reaches it again.",
+            ),
+            (
+                "laptop",
+                "nearly full disk, 279 GB free",
+                "Builds and sessions there fail once it fills, and nothing there freed enough of \
+                 it by itself.",
+            ),
+            (
+                "laptop",
+                "on battery at 12%",
+                "It stops when its battery runs out, and what runs there stops with it.",
+            ),
+            (
+                "laptop",
+                "booted under an hour ago after a firmware error",
+                "Its firmware kept an error from before it booted, as an abrupt reset leaves, so \
+                 what ran there may have ended without warning.",
+            ),
+            (
+                "studio",
+                "code wants a look",
+                "Its own system check judged so, and that machine's system page says why.",
+            ),
+            (
+                "laptop",
+                "no quest backup in 7 h",
+                "Quests changed since then would be lost with this machine's disk.",
+            ),
+        ];
+        whys.sort_unstable();
+        assert_eq!(said, whys, "each look's why, whole, on its own machine");
+        let unread = backup_said(Backup::Unread("the backup's time file says no time"))
+            .map(|(.., look)| look.matters);
+        assert_eq!(
+            unread.as_deref(),
+            Some(
+                "Quests changed since its last backup would be lost with this machine's disk, \
+                 and when that was can't be told."
+            ),
+            "a backup whose time can't be told says why too"
+        );
     }
 
     #[test]

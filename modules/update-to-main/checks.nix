@@ -105,13 +105,14 @@ in
   # whenever follow ends, as it does when it can't start a newer one, and
   # naming no store path, so a switch never reloads it under its own ask.
   # Every Mac refuses an update during a call, and refuses the ask alone,
-  # for two hours at most, while nix-offload says it's busy; and the
-  # follower's switch waits while someone is at the Mac, for 45 minutes at
+  # for two hours at most, while mac-room.sh says it's short of memory,
+  # with the floor 35% and its record in the daemon's state, its refusal
+  # ending with the readings it judged; and the follower's switch waits while someone is at the Mac, for 45 minutes at
   # most. When the
   # Mac can't update, the follower tells its person.
   update-to-main-follows-on-a-mac =
     holds "update-to-main-follows-on-a-mac"
-      "A Mac's follower wouldn't start again after follow ends, names a store path a switch would reload it for, tells nobody when the Mac can't update, or a Mac would switch during a call or under someone at it, or build while over its load, or let that hold its own switch or every update for good."
+      "A Mac's follower wouldn't start again after follow ends, names a store path a switch would reload it for, tells nobody when the Mac can't update, or a Mac would switch during a call or under someone at it, or build while short of memory, or let that hold its own switch or every update for good."
       (
         follows.Label == "org.jitsusama.update-to-main-follows"
         && follows.RunAtLoad
@@ -122,42 +123,38 @@ in
         )
         && !(darwin.launchd.user.agents ? update-to-main-follows)
         && followed.jitsusama.update-to-main.followerTells != null
-        && lib.all (refusal: !refusal.followerWaits) (refusesOnAMac "a call is on")
+        && lib.all (refusal: !refusal.followerWaits && !refusal.saysWhy) (refusesOnAMac "a call is on")
         && refusesOnAMac "a call is on" != [ ]
         && lib.any (
           refusal:
           !refusal.followerWaits
           && refusal.refusesTheAskAlone
           && refusal.refusesAtMost == 2 * 60 * 60
-          && lib.hasSuffix "/bin/nix-offload" (lib.head refusal.command)
-          && lib.tail refusal.command == [ "busy" ]
-        ) (refusesOnAMac "the Mac is over its load")
+          && refusal.saysWhy
+          && lib.hasSuffix "/bin/bash" (lib.head refusal.command)
+          && lib.hasSuffix "mac-room.sh" (builtins.elemAt refusal.command 1)
+          &&
+            lib.drop 2 refusal.command == [
+              "/usr/sbin/sysctl"
+              "/usr/bin/vm_stat"
+              "${followed.jitsusama.update-to-main.system.state}/mac-room"
+              "35"
+            ]
+        ) (refusesOnAMac "the Mac is short of memory")
         && lib.any (refusal: refusal.followerWaits && refusal.followerWaitsAtMost == 45 * 60) (
           refusesOnAMac "someone is at the machine"
         )
       );
-  # The Mac's load check names a question nix-offload answers, not words it
-  # refuses as asked wrongly, which update-to-main would read as can't tell
-  # and refuse all but one ask in two hours for: while this change was
-  # written, nix-offload had no busy yet, and the words alone passed above.
-  # Built here from the package the Mac names, its words are asked as the
-  # daemon asks them, and answer as a question does: 0 busy, 1 room, 69
-  # can't say, as on a builder with no sysctl; never 64, asked wrongly.
-  update-to-main-asks-what-nix-offload-answers =
-    let
-      words = lib.tail (lib.head (refusesOnAMac "the Mac is over its load")).command;
-      offload = pkgs.callPackage ../nix-offload/offload/package.nix { };
-    in
-    # Kept in Nix because the command it runs is the Mac's own, read from
-    # this evaluation, and the rest only sorts its exit code.
-    pkgs.runCommand "update-to-main-asks-what-nix-offload-answers" { } ''
-      rc=0
-      ${lib.escapeShellArgs ([ (lib.getExe offload) ] ++ words)} || rc=$?
-      case $rc in
-        0 | 1 | 69) touch $out ;;
-        *) echo "nix-offload ${lib.concatStringsSep " " words} answered $rc, not a question's answer" >&2; exit 1 ;;
-      esac
-    '';
+  # A Mac has room for its update only from two readings a minute apart,
+  # both at the floor or over it with nothing swapped out between, and
+  # can't tell, never room, from what it can't read or keep
+  # (mac-room-test.sh).
+  update-to-main-waits-for-a-macs-memory =
+    pkgs.runCommandLocal "update-to-main-waits-for-a-macs-memory" { }
+      ''
+        $BASH ${./mac-room-test.sh} ${./mac-room.sh}
+        touch $out
+      '';
   # launchd gives a job 256 open files unless it says otherwise, and git
   # opens every pack it reads: on 16 November a Mac's update failed with
   # "Could not read" an object, its main's checkout holding about 489

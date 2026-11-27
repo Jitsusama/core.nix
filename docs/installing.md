@@ -263,6 +263,7 @@ mkdir -p ~/.local/share/signing
 ssh-tpm-keygen -C "$USER@$(hostname) signing" -f ~/.local/share/signing/joel-signing
 ssh-tpm-keygen -C "$USER@$(hostname) agents" -f ~/.ssh/agent-signing
 systemctl --user restart ssh-tpm-agent
+systemctl --user start agent-signing.socket
 ```
 
 Give Joel's a PIN and leave the agents' empty. Joel's lives outside `~/.ssh`

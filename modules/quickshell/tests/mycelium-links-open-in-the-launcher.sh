@@ -146,7 +146,9 @@ handles=$(sed -n '/^    IpcHandler {$/,/^    }$/p' "$launcher" |
   awk '{ name = $1; $1 = ""; print name, ($0 ~ /[^ ]/ ? split($0, each, ",") : 0) }')
 calls=$(sed -n '/^    fn call(&self)/,/^    }$/p' "$link_source" | grep -oE '"[A-Za-z]+"' |
   tr -d '"' | LC_ALL=C sort -u)
-if [ "$calls" != "$(cut -d ' ' -f 1 <<< "$passes")" ]; then
+# Taken apart from the test, so a failing cut isn't masked by it.
+passed=$(cut -d ' ' -f 1 <<< "$passes")
+if [ "$calls" != "$passed" ]; then
   echo "mycelium-link calls $calls; say here how many arguments each is passed"
   failed=1
 fi

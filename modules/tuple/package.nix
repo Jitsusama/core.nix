@@ -1,8 +1,14 @@
 # Tuple's Linux alpha, newer than nixpkgs' v2026_09_16.1: v2026_11_25.0.
 # tuple-completes-in-zsh fails unless Tab offers each command core runs
 # against it, and each flag tuple-call and tuple-people pass as they
-# follow it. That shows they're there, not that they do as before, and no
-# check reads the arguments they take. This build calls new and share
+# follow it. That shows they're there, not that they do as before.
+# tuple-ends-its-flags fails unless "--" still ends tuple's flags before a
+# contact, which the launcher's call, join and star rows rely on. No check
+# reads the other arguments they take. On v2026_11_25.0, `tuple help <cmd>`
+# printed a command's arguments without running it, where `tuple new --help`
+# failed with "too many cmdline args"; no check holds either, so read the
+# help in the build sandbox, not on a machine signed in. This build calls
+# new and share
 # deprecated, which tuple-call runs to open Joel's room and share his
 # screen, so a later one may drop them.
 # New strings say a camera's or a video's colour space isn't handled, one

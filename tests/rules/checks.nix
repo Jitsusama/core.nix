@@ -270,7 +270,7 @@
           script "pi-agent-proxy-os-login" ../../modules/pi/agent-proxy/os-login.sh
             { };
         pi-ask = script "pi-ask" ../../modules/pi/ask.sh { };
-        pi-claude = script "pi-claude" ../../modules/pi/claude.sh { };
+        pi-claude = script "pi-claude" ../../modules/pi/claude/claude.sh { };
         pi-compress-logs = script "pi-compress-logs" ../../modules/pi/timers/compress-logs.sh { };
         pi-host-down = script "pi-host-down" ../../modules/pi/host-down.sh { };
         pi-settings = script "pi-settings" ../../modules/pi/settings.sh { };

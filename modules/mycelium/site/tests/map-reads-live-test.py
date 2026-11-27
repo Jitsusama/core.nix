@@ -75,34 +75,14 @@ COUNTED_MOVED = "7 cells, 3 moving, 1 stuck"
 COUNTED_READING = "7 cells, 2 moving, 1 stuck, 1 receptor reading"
 COUNTED_GONE = "6 cells, 2 moving"
 CELLS = 8
-# What a first visit to the map may cost, drawn from the stand-in's cells:
-# 33 files since the balance, who started each cell, the tree beside the map,
-# what each thing is in words, how a time is said, how each thing stands, what
-# each is doing, what each spent, what waits, how wide each line is drawn, how
-# a cell is named, how the map's motion is timed, where everything stands,
-# what the ground layer's canvas touches, a reading's shape, what new work
-# hands the Launcher and what a cell's drawer offers were read in modules of
-# their own; about 668 KB since the builders, the legend's moving samples and
-# new work's line, and since no comment is sent, view.js's and the styles'
-# included, a little more with the drawer's acts and its whole question, and
-# 677.4 KB once a network's label keeps what tells it apart, and 678.2 KB
-# once a cloud machine says it's kept, a little more once a long lease counts
-# days, and about 0.4 KB more once every label is kept apart and in its room,
-# under the 680 KB allowed then; new work's line and its hidden controls draw
-# about 20 elements of the 611. Two files more are the kit's
-# head.css, the head every live page shares, two of the kilobytes less the
-# map's own head rules, and the kit's keys.js, which marks the page keyed at
-# its first key so a touch screen with a keyboard shows its key line, about
-# three more; the head and its link are seven elements more in the markup
-# than the map's header was, and its elements rose by three, the rest within
-# their room; five kilobytes in all, and one more for the labels kept apart,
-# 0.4 KB of it; and 685.0 KB as the gate first measured it all, 13 bytes past
-# 685, so one more; and more once a machine's drawer starts new work on it,
-# 688.1 KB in all as the gate measured it, and 626 elements as it measured
-# them twice; and about 0.6 KB more for a machine's receptors named apart
-# from its cells, in the lines already drawn, about 688.7 KB, so 689 until
-# the gate measures it.
-BUDGET = Budget(files=35, kilobytes=689, elements=626)
+# What a first visit to the map may cost, drawn from the stand-in's cells: what
+# it last measured (33 files, about 686.9 KB, at most 620 elements) with room
+# for four files, about 8 KB and 16 elements more, so most changes never touch
+# this line and parallel ones never clash on it. The room lets the map grow
+# that much unnoticed. A change that would pass it sets it again to what the
+# gate measures plus that room; why the map costs what it does is in each
+# change's commit.
+BUDGET = Budget(files=37, kilobytes=695, elements=636)
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000
 TWIN_NETWORKS = 200
@@ -1233,6 +1213,11 @@ HANDED_END = (
     "; nothing starts until you press Return there."
     " If it didn't open, wait a moment, then s brings the words back."
 )
+# What the map says when the machine the open line names leaves before Return.
+LEFT_OSPREY = (
+    "osprey has left the map, so the work won't start there;"
+    " Return starts it where new work starts."
+)
 # Where a box lies on the page, scrolled or not: left, top, width, height.
 PLACED = """(selector) => {
   const r = document.querySelector(selector).getBoundingClientRect();
@@ -1917,6 +1902,32 @@ def test_a_network_whose_cell_another_started_grows_out_of_it(
             "data-branch-of", re.compile("."), timeout=PACE_MS
         )
         expect(foraged, "the cell's drawer kept a forage that went").to_have_count(0)
+        # A forage saying only what the cell split from grows the same branch,
+        # since a sprout's start can go unsaid while its split stays, and both
+        # drawers say it split, never that anybody started it.
+        split = {"started_by": None, "split_from": GROWN_BY, "parent": None}
+        forage_node.tell("forage", changed=[{**forage, "lineage": split}])
+        expect(hub, "the network never grew out of the one it split from").to_have_attribute(
+            "data-branch-of", GROWN_FROM, timeout=PACE_MS
+        )
+        page.evaluate(f"location.hash = '#net={GROWN}'")
+        expect(body, "the branch's drawer never said what its cell split from").to_contain_text(
+            f"Split from {GROWN_BY_TITLE}: 1 of its 2 cells", timeout=PACE_MS
+        )
+        expect(body, "the branch's drawer said a split was a start").not_to_contain_text(
+            "Started by"
+        )
+        page.evaluate(f"location.hash = '#cell={GROWN_CELL}'")
+        said = body.locator("dl.facts > div", has=page.locator("dt", has_text="Split from"))
+        expect(said, "the cell's drawer never said what it split from").to_contain_text(
+            GROWN_BY_TITLE, timeout=PACE_MS
+        )
+        expect(body, "a split was said to be a start").not_to_contain_text(f"by {GROWN_BY_TITLE}")
+        forage_node.tell("forage", gone=[key])
+        expect(hub, "the branch outlived the split that grew it").not_to_have_attribute(
+            "data-branch-of", re.compile("."), timeout=PACE_MS
+        )
+        expect(said, "the cell's drawer kept a split that went").to_have_count(0)
     finally:
         opened.close()
 
@@ -2059,6 +2070,24 @@ def test_a_reading_that_fails_to_draw_is_said_broken_until_the_next_draws(
     expect(asof, "the map still said it couldn't draw").not_to_contain_text("couldn't draw")
 
 
+def test_a_reading_that_fails_to_draw_is_said_though_a_feeds_standing_moves(
+    mycelium_opened: Opened, mycelium_served: Served
+) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    mycelium_opened.expecting("mycelium: a reading failed to draw")
+    page.evaluate(UNDRAWABLE)
+    the_map_stands(page, "broken")
+    # Every watch goes stale once the server goes, which the line would say over the failure.
+    _, server = mycelium_served
+    mycelium_opened.loses(server)
+    page.wait_for_timeout(REDRAWN_MS)
+    the_map_stands(page, "broken")
+    expect(
+        page.locator("#asof"), "a feed's standing hid that the map couldn't draw"
+    ).to_contain_text("The map couldn't draw")
+
+
 def test_a_server_that_goes_is_said_stale(mycelium_opened: Opened, mycelium_served: Served) -> None:
     page = mycelium_opened.page
     the_map_stands(page, "live")
@@ -2160,6 +2189,12 @@ def test_a_reading_that_moves_no_shape_is_painted_over_the_map_as_drawn(
     page.evaluate(MARK_DRAWN)
     *_, focused = page.evaluate(STILL_DRAWN)
     assert focused, "the legend's summary took no focus"
+    # The ring is said as an answer the cell owes, and never as one waiting on him,
+    # which is what a question waiting once made him read it as.
+    expect(
+        page.locator('#panel-body details[data-keep="legend"] dd', has_text="An answer owed:"),
+        "the legend never said a ring is an answer owed, or let it read as his",
+    ).to_contain_text(re.compile("a cell another cell asked something.*, never one waiting on you"))
     # A turn's worth of context, which moves no cell and no network.
     used = {"limit": 1000000, "used": 12000}
     last = "2026-11-16T10:00:00Z"
@@ -2421,6 +2456,7 @@ def test_new_work_from_a_machines_drawer_starts_on_it_until_unticked(
     on = page.locator("#sprout-on-words")
     page.evaluate("location.hash = '#machine=kestrel'")
     expect(page.locator("#panel-title"), "kestrel's drawer never opened").to_have_text("kestrel")
+    sent_again(page, want)
     page.locator("#map-view").focus()
     page.keyboard.press("s")
     expect(on, "the kept words lost their machine").to_have_text("On osprey")
@@ -2434,6 +2470,7 @@ def test_new_work_from_a_machines_drawer_starts_on_it_until_unticked(
     page.keyboard.press("Escape")
     page.locator("#map-view").focus()
     page.keyboard.press("s")
+    expect(page.locator("#sprout"), "Escape kept the words").to_have_value("")
     expect(on, "s didn't offer the open machine").to_have_text("On kestrel")
     sent_as(page, "here", "mycelium:sprout?words=here&on=kestrel")
     # A tick lets it go, so the work starts where new work does when Joel
@@ -2479,6 +2516,71 @@ def test_new_works_words_kept_for_a_machine_that_left_go_with_it(
     expect(page.locator("#sprout-on-words"), "s didn't offer the open machine").to_have_text(
         "On kestrel"
     )
+
+
+def test_new_works_words_from_a_gone_cell_never_take_the_open_machine(
+    mycelium_opened: Opened, mycelium_node: StandIn
+) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    page.evaluate(TALK_HELD)
+    page.evaluate(f"location.hash = '#cell={NEEDING[1]}'")
+    page.locator("#panel-body").get_by_role("button", name="Start New Work From It").click()
+    page.keyboard.type("orphan")
+    page.keyboard.press("Enter")
+    page.evaluate("location.hash = '#machine=kestrel'")
+    expect(page.locator("#panel-title"), "kestrel's drawer never opened").to_have_text("kestrel")
+    mycelium_node.tell("cell", gone=[f"cell:{NEEDING[1]}"])
+    the_map_counts(page, "7 cells, 2 moving", "the gone cell was still counted")
+    # Words that went on no machine go again on none, though their cell
+    # has left and a machine's drawer is open: sent on kestrel, they'd
+    # start work where Joel never asked.
+    sent_again(page, "mycelium:sprout?words=orphan")
+    # New words typed over ones kept from a gone cell are new work, so
+    # they go on the open drawer's machine, as a fresh line's would.
+    page.evaluate("location.hash = '#cell=HERON2'")
+    page.locator("#panel-body").get_by_role("button", name="Start New Work From It").click()
+    page.keyboard.type("stray")
+    page.keyboard.press("Enter")
+    mycelium_node.tell("cell", gone=["cell:HERON2"])
+    heron = page.locator('#world [data-key="c:HERON2"]')
+    expect(heron, "the map kept a cell that left").to_have_count(0, timeout=PACE_MS)
+    page.evaluate("location.hash = '#machine=kestrel'")
+    expect(page.locator("#panel-title"), "kestrel's drawer never opened").to_have_text("kestrel")
+    page.locator("#map-view").focus()
+    page.keyboard.press("s")
+    expect(page.locator("#sprout"), "the gone cell's words never came back").to_have_value("stray")
+    expect(page.locator("#sprout-on-line"), "kept words took the open machine").to_be_hidden()
+    page.locator("#sprout").fill("mended")
+    expect(page.locator("#sprout-on-words"), "new words didn't take the open machine").to_have_text(
+        "On kestrel"
+    )
+
+
+def test_new_works_machine_that_leaves_while_the_line_is_open_is_let_go_at_return(
+    mycelium_opened: Opened, mycelium_node: StandIn
+) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    page.evaluate(TALK_HELD)
+    page.evaluate("location.hash = '#machine=osprey'")
+    expect(page.locator("#panel-title"), "osprey's drawer never opened").to_have_text("osprey")
+    page.locator("#panel-body").get_by_role("button", name="Start New Work Here").click()
+    page.keyboard.type("late")
+    osprey = page.locator('#world [data-key="m:osprey"]')
+    mycelium_node.tell("machine", gone=["machine:osprey"])
+    expect(osprey, "the map kept a machine that left").to_have_count(0, timeout=PACE_MS)
+    page.evaluate("window.talkedTo = null")
+    # A Return held a little long repeats; the repeat must send nothing
+    # before Joel has read why the machine went.
+    page.locator("#sprout").focus()
+    page.keyboard.down("Enter")
+    page.keyboard.down("Enter")
+    page.keyboard.up("Enter")
+    assert page.evaluate("window.talkedTo") is None, "the words went on, held Return or not"
+    expect(page.locator("#sprout-on-line"), "the gone machine stayed offered").to_be_hidden()
+    expect(page.locator("#where"), "the map didn't say the machine left").to_have_text(LEFT_OSPREY)
+    sent_as(page, "late", "mycelium:sprout?words=late")
 
 
 def test_what_each_spent_today_is_listed_most_first(mycelium_opened: Opened) -> None:

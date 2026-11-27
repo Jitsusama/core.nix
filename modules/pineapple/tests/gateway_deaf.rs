@@ -27,9 +27,10 @@ fn a_gateway_unreached_past_its_rounds_is_told_as_deaf_and_heard_again_untold() 
     assert!(
         item["why"]
             .as_str()
-            .is_some_and(|why| why.contains("can't be reached"))
+            .is_some_and(|why| why.contains("isn't answering its searches"))
             && item["doneWhen"] == serde_json::json!({"by": "person"}),
-        "it says the gateway can't be reached, and only Joel marks it done: {item}"
+        "it says the gateway isn't answering, as a tool failing gets there too, and only \
+         Joel marks it done: {item}"
     );
     assert_eq!(
         deaf.heard(Round::Unasked, round(UNREACHED + 3)),
@@ -41,6 +42,13 @@ fn a_gateway_unreached_past_its_rounds_is_told_as_deaf_and_heard_again_untold() 
         Change::Untell,
         "heard again, the row is taken away"
     );
+    for n in UNREACHED + 5..=2 * UNREACHED + 5 {
+        assert_eq!(
+            deaf.heard(Round::Unasked, round(n)),
+            Change::Keep,
+            "heard again, the count starts anew, so round {n} unasked isn't told yet"
+        );
+    }
     let mut keyring = Deaf::new();
     let _ = keyring.heard(Round::Heard, AT);
     for n in 1..=3 * UNREACHED {
@@ -154,6 +162,34 @@ fn a_search_left_unasked_round_after_round_beside_one_answered_is_told_unread() 
 }
 
 #[test]
+fn a_heard_round_or_a_deaf_one_of_another_cause_starts_each_run_afresh() {
+    let round = |n: u32| AT + u64::from(n) * 30_000;
+    let runs = [Round::Unasked, Round::Partly(Some(Search::Tag))];
+    let breaks = [Round::Heard, Round::Deaf(Deafness::Refused)];
+    for (run, broken_by) in runs.into_iter().flat_map(|run| breaks.map(|by| (run, by))) {
+        let mut deaf = Deaf::through_gateway();
+        // A reader's first round heard takes away whatever row an earlier
+        // one left, so it's had before the run.
+        let _ = deaf.heard(Round::Heard, round(0));
+        for n in 1..=UNREACHED {
+            assert_eq!(deaf.heard(run, round(n)), Change::Keep, "{run:?} round {n}");
+        }
+        assert_eq!(
+            deaf.heard(broken_by, round(UNREACHED + 1)),
+            Change::Keep,
+            "{broken_by:?} once, after {run:?} rounds that told nothing, tells nothing"
+        );
+        for n in UNREACHED + 2..=2 * UNREACHED + 1 {
+            assert_eq!(
+                deaf.heard(run, round(n)),
+                Change::Keep,
+                "after {broken_by:?}, {run:?} counts afresh, so round {n} isn't told yet"
+            );
+        }
+    }
+}
+
+#[test]
 fn a_gateway_answering_takes_away_its_unreached_row_so_an_outage_after_is_told_anew() {
     let round = |n: u32| AT + u64::from(n) * 30_000;
     let mut deaf = Deaf::through_gateway();
@@ -188,6 +224,56 @@ fn a_gateway_answering_takes_away_its_unreached_row_so_an_outage_after_is_told_a
         deaf.heard(Round::Unasked, again),
         Change::Tell(waits_on_gateway(Deafness::Unreached, again, again)),
         "an outage after is told anew, as a time of its own, even were the first marked done"
+    );
+}
+
+#[test]
+fn an_outage_then_one_search_answered_narrows_its_row_to_the_other_rather_than_blanking_it() {
+    let round = |n: u32| AT + u64::from(n) * 30_000;
+    let mut deaf = Deaf::through_gateway();
+    for n in 1..=UNREACHED + 1 {
+        let _ = deaf.heard(Round::Unasked, round(n));
+    }
+    let first = round(UNREACHED + 2);
+    assert_eq!(
+        deaf.heard(Round::Unasked, first),
+        Change::Tell(waits_on_gateway(Deafness::Unreached, first, first)),
+        "unreached, told"
+    );
+    let tag = Round::Partly(Some(Search::Tag));
+    assert_eq!(
+        deaf.heard(tag, round(UNREACHED + 3)),
+        Change::Keep,
+        "one round answering only the phrase leaves the row standing, never blank"
+    );
+    let at = round(UNREACHED + 4);
+    assert_eq!(
+        deaf.heard(tag, at),
+        Change::Tell(waits_on_gateway(Deafness::Unread(Search::Tag), at, at)),
+        "a second narrows it to the tag's, still unheard, as a time of its own"
+    );
+}
+
+#[test]
+fn a_search_left_unasked_is_never_told_as_alone_while_the_gateway_answers_nothing() {
+    let round = |n: u32| AT + u64::from(n) * 30_000;
+    let mut deaf = Deaf::through_gateway();
+    let tag = Round::Partly(Some(Search::Tag));
+    for n in 1..UNREACHED {
+        assert_eq!(deaf.heard(tag, round(n)), Change::Keep, "round {n}");
+    }
+    for n in UNREACHED..=2 * UNREACHED {
+        assert_eq!(
+            deaf.heard(Round::Unasked, round(n)),
+            Change::Keep,
+            "round {n}: with nothing answered, the tag's run isn't told as the phrase heard"
+        );
+    }
+    let at = round(2 * UNREACHED + 1);
+    assert_eq!(
+        deaf.heard(Round::Unasked, at),
+        Change::Tell(waits_on_gateway(Deafness::Unreached, at, at)),
+        "it's told as the gateway not answering"
     );
 }
 

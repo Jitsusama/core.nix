@@ -108,7 +108,7 @@ it("sums what cells spent, counting only those that say", () => {
   );
 });
 
-it("counts cells by standing, worst first, and those owing answers", () => {
+it("counts cells by standing, worst first, and the answers they owe", () => {
   const cells = [
     cell("A", { standing: "asks", owes: [{}] }),
     cell("B", { standing: "quiet" }),
@@ -122,13 +122,18 @@ it("counts cells by standing, worst first, and those owing answers", () => {
   );
   assert.equal(
     countsWords(cells),
-    "4 cells: 1 needs you, 1 stuck, 2 quiet; 2 owing answers",
-    "worst first, then what waits",
+    "4 cells: 1 needs you, 1 stuck, 2 quiet; 3 answers owed",
+    "worst first, then the answers owed",
   );
   assert.equal(
     countsWords([cells[0] as Cell]),
-    "1 cell: 1 needs you; 1 owing an answer",
-    "one owing is an answer",
+    "1 cell: 1 needs you; 1 answer owed",
+    "one answer owed",
+  );
+  assert.equal(
+    countsWords([cells[2] as Cell]),
+    "1 cell: 1 quiet; 2 answers owed",
+    "one cell owing two is two answers, as the drawer counts them",
   );
   assert.equal(countsWords([]), "0 cells", "no cells, no standings");
   const each: Cell["standing"][] = ["dormant", "quiet", "moving", "stuck", "asks"];
