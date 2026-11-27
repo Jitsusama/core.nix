@@ -658,13 +658,9 @@ def middle(box: list[float]) -> tuple[float, float]:
     return (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
 
 
-def in_view(page: Page, cell: str) -> bool:
-    """Say whether a cell's disc is wholly inside the map's view."""
-    boxes: list[list[float] | None] = page.evaluate(BOXES, [cell])
-    view, _, disc = boxes
-    assert view, "the map drew no view"
-    assert disc, f"the map drew no {cell}"
-    left, top, right, bottom = disc
+def inside(view: list[float], box: list[float]) -> bool:
+    """Say whether a box measured as left, top, right and bottom is wholly inside the view's."""
+    left, top, right, bottom = box
     return view[0] <= left and right <= view[2] and view[1] <= top and bottom <= view[3]
 
 
@@ -684,8 +680,12 @@ def test_a_network_opened_is_put_into_view_whole_and_what_it_joins_stands_out(
         HERONS_TITLE
     )
     settled(page, "the heron's network never stood still once opened")
-    out = [cell for cell in SKIFF_JOINS if not in_view(page, cell)]
-    assert out, "the heron's network, opened, left every cell of the skiff's in view"
+    view, _, *joins = drawn_boxes(page, list(SKIFF_JOINS), "opening the heron's left cells")
+    out = [cell for cell, box in zip(SKIFF_JOINS, joins, strict=True) if not inside(view, box)]
+    assert out, (
+        "the heron's network, opened, left every cell of the skiff's in view: opening a "
+        "network no longer fits the view to it, or the stand-in's skiff no longer lies outside"
+    )
     page.evaluate(f"location.hash = '#net={BRANCHED_FROM}'")
     expect(page.locator("#panel-title"), "the skiff's drawer never opened").to_have_text(
         SKIFF_TITLE
@@ -693,8 +693,8 @@ def test_a_network_opened_is_put_into_view_whole_and_what_it_joins_stands_out(
     settled(page, "the skiff's network never stood still once opened")
     view, drawer, *boxes = drawn_boxes(page, list(SKIFF_JOINS), "opening the skiff left cells")
     for cell, (left, top, right, bottom) in zip(SKIFF_JOINS, boxes, strict=True):
-        inside = view[0] <= left and right <= view[2] and view[1] <= top and bottom <= view[3]
-        assert inside, f"opening the skiff left {cell} at {left, top, right, bottom} outside {view}"
+        box = [left, top, right, bottom]
+        assert inside(view, box), f"opening the skiff left {cell} at {box} outside {view}"
         under = left < drawer[2] and drawer[0] < right and top < drawer[3] and drawer[1] < bottom
         assert not under, f"opening the skiff left {cell} under its drawer at {drawer}"
         assert strongest(page, cell) >= STRONG_ALPHA, f"{cell}, joined to the skiff, stepped back"

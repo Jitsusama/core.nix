@@ -3322,7 +3322,7 @@ import {
       launcherLink("machine", name, "Open It in the Launcher") +
       // New work starts on it, or on any of the cloud's for a basin's
       // stand, from the Launcher's Start New Work as any new work does.
-      sproutOnButton(drawerOffersOn(name, pool), pool ? "Start New Work on the Cloud" : "Start New Work Here") +
+      sproutOnButton(name, pool, pool ? "Start New Work on the Cloud" : "Start New Work Here") +
       // Its home as a device is the network page, which knows it by name.
       // A sandbox or a basin isn't a device on the home network, so it has
       // no row there.
@@ -3351,9 +3351,13 @@ import {
     const href = linkOf(kind, name, machine);
     return href ? `<p class="led"><a class="inline" href="${esc(href)}">${esc(words)}</a></p>` : "";
   };
-  // A machine drawerOffersOn offers none on has no button.
-  const sproutOnButton = (on, words) =>
-    on !== null ? `<p class="led"><button type="button" class="inline" data-sprout-on="${esc(on)}">${esc(words)}</button></p>` : "";
+  // A machine's drawer's button names what drawerOffersOn offers it, so
+  // no caller can draw one for a machine named cloud or one no link
+  // carries; a machine it offers none on has no button.
+  const sproutOnButton = (name, basin, words) => {
+    const on = drawerOffersOn(name, basin);
+    return on !== null ? `<p class="led"><button type="button" class="inline" data-sprout-on="${esc(on)}">${esc(words)}</button></p>` : "";
+  };
 
   const backButton = (label) =>
     `<button type="button" class="back" data-back><svg viewBox="0 0 10 10" aria-hidden="true"><path d="M7 1.5L3 5L7 8.5"/></svg>${esc(label)}</button>`;
@@ -3864,13 +3868,13 @@ import {
   // New words over kept ones are new work, so they go from the cell open
   // now, as a fresh line's would; a tick Joel cleared stays cleared. The
   // kept words themselves stay where they went, even once their machine
-  // has left, so Return says it left rather than send them elsewhere.
+  // has left, so Return says it left rather than send them elsewhere:
+  // the handler returns while the line holds them, offering nothing anew.
   sproutInput.addEventListener("input", () => {
     sproutInput.setCustomValidity("");
     if (!sproutKeptOffered || sproutInput.value === sproutKept?.words) return;
     const from = chosen?.kind === "cell" ? chosen.id : null;
     const next = offered({ from, on: drawerOn(), named: false, kept: sproutKept, typed: sproutInput.value }, standing());
-    if (next.kept) return;
     const ticked = sproutFromBox.checked;
     const onTicked = sproutOnBox.checked;
     offer(next);

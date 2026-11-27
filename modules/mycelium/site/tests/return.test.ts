@@ -32,6 +32,14 @@ it("lets go of a machine that left before Return, whatever the words", () => {
   );
 });
 
+it("says a machine that left before Return, and where the work starts instead", () => {
+  assert.equal(
+    leftWords("osprey"),
+    "osprey has left the map, so the work won't start there; " +
+      "Return starts it where new work starts.",
+  );
+});
+
 it("refuses Return that no link can carry, saying why", () => {
   assert.deepEqual(
     returned(" \t", "TERN02", null, []),
