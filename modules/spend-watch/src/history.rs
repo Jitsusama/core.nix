@@ -425,6 +425,17 @@ fn held(error: &rusqlite::Error) -> bool {
     error.sqlite_error_code() == Some(rusqlite::ErrorCode::DatabaseBusy)
 }
 
+/// Whether `error` says nothing about whether the history reads: busy or
+/// locked, either way something in the way rather than a history gone
+/// wrong. Wider than `held`, since setting a history aside on a wrong
+/// guess loses every kept bill, where leaving an index costs one open.
+fn in_the_way(error: &rusqlite::Error) -> bool {
+    matches!(
+        error.sqlite_error_code(),
+        Some(rusqlite::ErrorCode::DatabaseBusy | rusqlite::ErrorCode::DatabaseLocked)
+    )
+}
+
 /// Runs `step` with SQLite's sorts going through files, then puts them back
 /// in memory whether it worked or not. A step sorts every turn at once,
 /// unlike a pass, and once rather than every few minutes: on a history of
@@ -474,7 +485,7 @@ impl History {
         // Another connection holding the history is no sign it doesn't
         // read, and setting it aside then would lose every kept bill.
         if let Err(error) = &read
-            && held(error)
+            && in_the_way(error)
         {
             return Err(error.to_string());
         }
@@ -1116,6 +1127,41 @@ mod tests {
                 .is_err_and(|why| why.contains("sessions index") && why.contains("no such table")),
             "an index that can't be made was gone on from: {:?}",
             opened.err()
+        );
+    }
+
+    // Locked can't be made in a test without a shared cache, so its code is
+    // built: the schema read keeps a history that met it, and the index
+    // says it rather than waiting for an open that would meet it again.
+    #[test]
+    fn locked_keeps_the_history_but_not_the_index_unsaid() {
+        let locked = rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_LOCKED),
+            None,
+        );
+        assert!(
+            in_the_way(&locked),
+            "a locked schema read would set the history aside"
+        );
+        assert!(
+            !held(&locked),
+            "a locked index would be left unsaid for an open that meets it again"
+        );
+        let busy = rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_BUSY),
+            None,
+        );
+        assert!(
+            in_the_way(&busy) && held(&busy),
+            "a writer holding the history wasn't taken as in the way and held"
+        );
+        let corrupt = rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_CORRUPT),
+            None,
+        );
+        assert!(
+            !in_the_way(&corrupt),
+            "a history that doesn't read was kept from being set aside"
         );
     }
 

@@ -967,12 +967,13 @@ fn opened_in_turn(path: &Path, by: Instant) -> Result<History, String> {
 }
 
 /// Whether a history's error is another connection's write: SQLite's
-/// words for `SQLITE_BUSY` and `SQLITE_LOCKED`, the two `History::open`
-/// keeps from setting a history aside, as `history::sql` gives them,
-/// since the history's errors reach here only as words. A test holds a
-/// real write to pin the first.
+/// words for `SQLITE_BUSY`, as `history::sql` gives them, since the
+/// history's errors reach here only as words. Not `SQLITE_LOCKED`'s:
+/// without a shared cache that's the connection's own statement in the
+/// way, which every open would meet again, so waiting it out never ends.
+/// A test holds a real write to pin it.
 pub(crate) fn busy(why: &str) -> bool {
-    why.contains("database is locked") || why.contains("database table is locked")
+    why.contains("database is locked")
 }
 
 /// The history at `path`, said in the journal as it's brought up from an
@@ -1816,8 +1817,8 @@ mod tests {
             "a history that doesn't read was taken for a busy one"
         );
         assert!(
-            busy("database table is locked"),
-            "a locked table, which the history's open keeps too, didn't read as busy"
+            !busy("couldn't make the sessions index: database table is locked"),
+            "a locked table, which every open would meet again, read as busy"
         );
     }
 }
