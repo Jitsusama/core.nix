@@ -50,7 +50,8 @@ function runEach(due, said) {
 // so, held in one place by tests/pacing.qml.
 function drained(owner, names, said) {
     const due = [].concat(...names.map(name => owner[name]));
-    for (const name of names)
+    for (const name of names) {
         owner[name] = [];
+    }
     runEach(due, said);
 }
