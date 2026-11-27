@@ -194,6 +194,34 @@ fn an_echo_cut_for_its_level_is_told_by_how_far_below_theirs_it_was() {
     );
 }
 
+/// `ada_then_bo`, then a take of Bo's from 60 s, 2 s at 0 dB, that
+/// Parakeet heard no words in, and Joel's microphone hearing it 30 dB
+/// down as a word of his, 61 s in.
+fn joel_under_a_wordless_take() -> Writing {
+    let mut writing = ada_then_bo();
+    writing.hear_sound(Side::Theirs, 60 * SECOND, &vec![1.0; 2 * SECOND]);
+    joel_says(&mut writing, 61_000, "Yeah.", -30.0);
+    writing
+}
+
+#[test]
+fn joels_word_under_a_take_of_theirs_with_no_words_is_left_out() {
+    assert!(
+        joels_written(&joel_under_a_wordless_take()).is_empty(),
+        "Joel's word 30 dB under Bo's take with no words was written as his"
+    );
+}
+
+#[test]
+fn an_echo_cut_for_their_sound_is_told_by_how_far_under_it_it_was() {
+    assert_eq!(
+        joel_under_a_wordless_take().untold_cuts(),
+        ["call-transcripts: 1 of Joel's words at 1:01 cut as their echo, 30 dB under \
+          their sound"],
+        "the cut under their sound wasn't told, or was told with the call's words"
+    );
+}
+
 #[test]
 fn a_cut_his_voice_heard_later_brings_back_is_told_written_back() {
     // His words 20 dB below Bo's "Not yet.", spelling none of it, are cut

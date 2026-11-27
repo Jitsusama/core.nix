@@ -89,7 +89,9 @@ pub enum Job {
 /// and `left` the lines of his already journaled as left out whole, by
 /// the sample each starts at: splitting their takes by voice moves his
 /// lines' indices on but never their times, so what's told stays told
-/// across a rejoin.
+/// across a rejoin. Its `sound` is how loud every take of theirs was,
+/// worded or not, so his words far under it are cut as their echo; one
+/// taken up from its file starts with none, since sound is never kept.
 #[derive(Default)]
 struct Writing {
     lines: Vec<Line>,
@@ -103,6 +105,7 @@ struct Writing {
     guesses: Option<String>,
     told: HashMap<usize, usize>,
     left: HashSet<usize>,
+    sound: Track,
 }
 
 /// A piece of a take of theirs as the speaker model heard it: its
@@ -165,6 +168,14 @@ impl Writing {
             )
         }));
         untold
+    }
+
+    /// Keeps how loud a take of `side`'s was, `start` samples into the
+    /// call, when it's theirs, whether or not Parakeet heard words in it,
+    /// since its sound reaches Joel's microphone all the same.
+    fn hear_sound(&mut self, side: Side, start: usize, samples: &[f32]) {
+        // Red: nothing is kept yet.
+        let _ = (self, side, start, samples);
     }
 
     /// Keeps the embedding of each piece of a take of theirs embedded,
@@ -280,6 +291,7 @@ pub fn hear(
                 let writing = calls
                     .entry(key.clone())
                     .or_insert_with(|| taken_up(&mut ended, book, &key, me));
+                writing.hear_sound(side, start, &samples);
                 let Some(parakeet) = loaded(settings, &mut speech, book, &key, &mut told) else {
                     continue;
                 };
