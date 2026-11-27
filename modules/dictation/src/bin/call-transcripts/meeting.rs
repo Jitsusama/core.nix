@@ -720,7 +720,8 @@ mod tests {
         let name = folder(NOW, " Q4 / planning\n");
         assert!(name.ends_with(" Q4 planning"), "{name}");
         assert_eq!(name.len(), "2027-01-15 03.20 Q4 planning".len(), "{name}");
-        assert!(!folder(NOW, "..").contains(".."));
+        let dots = folder(NOW, "..");
+        assert!(!dots.contains(".."), "a title of dots climbed out: {dots}");
         assert_eq!(folder(NOW, "").len(), "2027-01-15 03.20".len());
     }
 

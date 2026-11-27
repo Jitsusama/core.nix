@@ -175,6 +175,10 @@ mod tests {
         store.put("Brightness", meaning(1.0));
         store.put("Gone", meaning(2.0));
         store.keep_only(["Brightness"].into_iter());
-        assert!(store.holds("Brightness") && !store.holds("Gone"));
+        assert_eq!(
+            (store.holds("Brightness"), store.holds("Gone")),
+            (true, false),
+            "held (Brightness, Gone)"
+        );
     }
 }

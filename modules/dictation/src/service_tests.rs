@@ -23,18 +23,28 @@ fn a_press_while_writing_says_so_and_waits() {
     assert_eq!(state, State::Transcribing);
     assert_eq!(said, Some(Said::Word("still-writing")));
     assert_eq!(generation, 3);
-    assert!(work.try_recv().is_err());
+    assert!(
+        work.try_recv().is_err(),
+        "a press while writing handed on a job"
+    );
 }
 
 #[test]
 fn letting_go_of_a_held_chord_stops_what_it_started() {
-    assert!(let_go(State::Listening, Some(4), 4, 400));
-    assert!(let_go(State::Listening, Some(4), 4, 9_000));
+    for ms in [400, 9_000] {
+        assert!(
+            let_go(State::Listening, Some(4), 4, ms),
+            "held {ms} ms and kept listening"
+        );
+    }
 }
 
 #[test]
 fn a_tap_s_release_leaves_it_listening() {
-    assert!(!let_go(State::Listening, Some(4), 4, 399));
+    assert!(
+        !let_go(State::Listening, Some(4), 4, 399),
+        "a tap's release stopped listening"
+    );
 }
 
 #[test]
@@ -49,10 +59,17 @@ fn it_says_it_listens_only_once_the_microphone_sounds() {
 fn a_release_stops_nothing_it_didnt_start() {
     // A toggle started it, or the press that started it was stopped
     // since, or it's no longer listening.
-    assert!(!let_go(State::Listening, None, 4, 900));
-    assert!(!let_go(State::Listening, Some(3), 4, 900));
-    assert!(!let_go(State::Transcribing, Some(4), 4, 900));
-    assert!(!let_go(State::Idle, Some(4), 4, 900));
+    for (state, held) in [
+        (State::Listening, None),
+        (State::Listening, Some(3)),
+        (State::Transcribing, Some(4)),
+        (State::Idle, Some(4)),
+    ] {
+        assert!(
+            !let_go(state, held, 4, 900),
+            "a release stopped {state:?}, held by {held:?}, in generation 4"
+        );
+    }
 }
 
 #[test]
@@ -62,7 +79,7 @@ fn a_press_while_listening_stops_quietly() {
     let mut generation = 3;
     let (state, said) = press(State::Listening, &mut None, &mut generation, &events, &jobs);
     assert_eq!(state, State::Idle);
-    assert!(said.is_none());
+    assert_eq!(said, None, "stopping while listening said something");
     assert_eq!(generation, 4);
 }
 
@@ -100,7 +117,10 @@ fn silence_isnt_transcribed_and_says_so() {
     let (jobs, work) = mpsc::channel();
     let silent = recorded(12, RATE, false);
     assert_eq!(stop(Some(silent), &jobs), Err(Nothing::Silent));
-    assert!(work.try_recv().is_err());
+    assert!(
+        work.try_recv().is_err(),
+        "silence was handed on to transcribe"
+    );
 }
 
 #[test]
@@ -108,7 +128,10 @@ fn speech_is_handed_to_whisper() {
     let (jobs, work) = mpsc::channel();
     let speech = recorded(8_000, RATE, false);
     assert_eq!(stop(Some(speech), &jobs), Ok(State::Transcribing));
-    assert!(matches!(work.try_recv(), Ok(Job::Transcribe(audio)) if audio.len() == RATE));
+    assert!(
+        matches!(work.try_recv(), Ok(Job::Transcribe(audio)) if audio.len() == RATE),
+        "the second of speech wasn't handed on whole to transcribe"
+    );
 }
 
 #[test]

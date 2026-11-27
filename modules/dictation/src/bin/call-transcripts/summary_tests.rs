@@ -237,7 +237,11 @@ fn words_the_line_never_said_are_never_kept() {
         verdict: "YES",
         asked: Vec::new(),
     };
-    assert!(summed(&mut model).ends_with(NONE_KEPT));
+    let summary = summed(&mut model);
+    assert!(
+        summary.ends_with(NONE_KEPT),
+        "words never said were kept: {summary}"
+    );
     // Asked once more for an exact copy, and the worth of a quote
     // that isn't found is never asked.
     assert_eq!(model.asked.len(), 3);
@@ -254,8 +258,16 @@ fn a_copy_not_found_is_asked_for_once_more() {
         verdict: "YES",
         asked: Vec::new(),
     };
-    assert!(summed(&mut model).contains("\"we should move the review to Thursday\" [0:19]"));
-    assert!(model.asked[2].contains("\"we must move the review to Friday\", which isn't"));
+    let summary = summed(&mut model);
+    assert!(
+        summary.contains("\"we should move the review to Thursday\" [0:19]"),
+        "the second copy wasn't kept: {summary}"
+    );
+    let asked = &model.asked[2];
+    assert!(
+        asked.contains("\"we must move the review to Friday\", which isn't"),
+        "asking again didn't name the copy not found: {asked}"
+    );
 }
 
 #[test]
@@ -275,10 +287,13 @@ fn a_part_keeps_a_quote_for_each_two_minutes_in_the_order_picked() {
         asked: Vec::new(),
     };
     let summary = summarize(&mut |p, _| Ok(model.ask(p)), "", None, call).unwrap();
-    assert!(summary.ends_with(
-        "- Others, to Joel: \"I will send the plan to the team\" [1:00]\n\
-         - Others, to Joel: \"I am worried the tests will not be ready\" [3:00]"
-    ));
+    assert!(
+        summary.ends_with(
+            "- Others, to Joel: \"I will send the plan to the team\" [1:00]\n\
+             - Others, to Joel: \"I am worried the tests will not be ready\" [3:00]"
+        ),
+        "the quotes weren't kept in the call's order: {summary}"
+    );
     assert_eq!(model.asked.len(), 5, "L2 is never asked about");
 }
 
@@ -294,17 +309,35 @@ fn a_line_opening_on_what_the_speaker_began_to_tell_isnt_theirs() {
         asked: Vec::new(),
     };
     let summary = summarize(&mut |p, _| Ok(model.ask(p)), "", None, call).unwrap();
-    assert!(summary.ends_with(NONE_KEPT));
+    assert!(
+        summary.ends_with(NONE_KEPT),
+        "a line opening on told words was kept: {summary}"
+    );
     assert_eq!(model.asked.len(), 2);
 }
 
 #[test]
 fn a_speaker_called_by_their_own_name_is_telling_someone_elses_words() {
-    assert!(named("Joel, you keep giving them fuel", "Joel"));
-    assert!(named("it's like Joel you keep giving them fuel", "Joel"));
-    assert!(!named("I told Joel about the fuel", "Joel"));
-    assert!(!named("Joel, you keep giving them fuel", "Ada"));
-    assert!(!named("Others, you keep giving them fuel", "Others"));
+    assert!(
+        named("Joel, you keep giving them fuel", "Joel"),
+        "a name and a comma weren't taken for the speaker called by name"
+    );
+    assert!(
+        named("it's like Joel you keep giving them fuel", "Joel"),
+        "a name after \"like\" wasn't taken for the speaker called by name"
+    );
+    assert!(
+        !named("I told Joel about the fuel", "Joel"),
+        "a name only spoken of was taken for the speaker called by name"
+    );
+    assert!(
+        !named("Joel, you keep giving them fuel", "Ada"),
+        "someone else's name was taken for the speaker's own"
+    );
+    assert!(
+        !named("Others, you keep giving them fuel", "Others"),
+        "the unnamed side was taken for a name"
+    );
     assert!(
         !named("my voice, it's going", "Voice 2"),
         "a voice's own word in its quote was taken for its name, so the quote was dropped"
@@ -318,7 +351,10 @@ fn a_speaker_called_by_their_own_name_is_telling_someone_elses_words() {
         asked: Vec::new(),
     };
     let summary = summarize(&mut |p, _| Ok(model.ask(p)), "", None, call).unwrap();
-    assert!(summary.ends_with(NONE_KEPT));
+    assert!(
+        summary.ends_with(NONE_KEPT),
+        "a quote naming its own speaker was kept: {summary}"
+    );
     assert_eq!(model.asked.len(), 2);
 }
 
@@ -330,7 +366,11 @@ fn a_quote_judged_not_worth_keeping_is_dropped() {
         verdict: "NO",
         asked: Vec::new(),
     };
-    assert!(summed(&mut model).ends_with(NONE_KEPT));
+    let summary = summed(&mut model);
+    assert!(
+        summary.ends_with(NONE_KEPT),
+        "a quote judged not worth it was kept: {summary}"
+    );
 }
 
 #[test]
@@ -341,7 +381,11 @@ fn a_line_named_outside_the_call_or_too_short_isnt_asked_about() {
         verdict: "YES",
         asked: Vec::new(),
     };
-    assert!(summed(&mut model).ends_with(NONE_KEPT));
+    let summary = summed(&mut model);
+    assert!(
+        summary.ends_with(NONE_KEPT),
+        "a line out of the call or too short was kept: {summary}"
+    );
     assert_eq!(model.asked.len(), 1);
 }
 
@@ -354,7 +398,11 @@ fn the_keep_question_sees_the_whole_line() {
         asked: Vec::new(),
     };
     summed(&mut model);
-    assert!(model.asked[2].contains("because the release slipped"));
+    let asked = &model.asked[2];
+    assert!(
+        asked.contains("because the release slipped"),
+        "the keep question didn't hold the line's end: {asked}"
+    );
 }
 
 #[test]
@@ -405,7 +453,10 @@ fn what_someone_else_said_is_known_from_the_words_before_it() {
     }
     let within = "but your processing speed is average. She's like your 50th percentile";
     let answer = "your processing speed is average. She's like your 50th percentile";
-    assert!(quoted(within, answer).unwrap().reported);
+    assert!(
+        quoted(within, answer).unwrap().reported,
+        "told words within the copy weren't marked as told"
+    );
     let own = [
         "and I was like I do not see this as a correction at all",
         "I went and said I do not see this as a correction at all",
@@ -430,7 +481,10 @@ fn a_quote_of_what_someone_else_said_is_never_asked_about() {
         asked: Vec::new(),
     };
     let summary = summarize(&mut |p, _| Ok(model.ask(p)), "", None, call).unwrap();
-    assert!(summary.ends_with(NONE_KEPT));
+    assert!(
+        summary.ends_with(NONE_KEPT),
+        "what someone else said was kept: {summary}"
+    );
     assert_eq!(model.asked.len(), 2);
 }
 
@@ -460,7 +514,10 @@ fn a_long_copy_is_cut_short_and_marked() {
     let text: Vec<String> = (0..40).map(|n| format!("w{n}")).collect();
     let text = text.join(" ");
     let quote = words(&text, &text).unwrap();
-    assert!(quote.ends_with("w29 ..."));
+    assert!(
+        quote.ends_with("w29 ..."),
+        "not cut at 30 words and marked: {quote}"
+    );
 }
 
 #[test]

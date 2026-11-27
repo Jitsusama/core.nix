@@ -173,7 +173,7 @@ impl Shared {
 /// Lets through keys alone, and of them the chord's alone. The mask in
 /// `EV_SYN`'s place is one of event types; the frames always pass.
 fn filter(fd: c_int) -> bool {
-    const _: () = assert!(words(EV_MAX + 1) == 1);
+    const _: () = assert!(words(EV_MAX + 1) == 1, "the event types don't fit one word");
     let kinds = [1_u64 << EV_KEY];
     let mut keys = [0_u64; KEY_WORDS];
     for key in CHORD_KEYS {
