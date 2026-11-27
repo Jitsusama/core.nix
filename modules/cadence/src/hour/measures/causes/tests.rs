@@ -577,7 +577,9 @@ fn a_kept_case_is_folded_again_by_its_wording() {
 }
 
 /// An hour that can't keep what it read says so on the card, naming no
-/// class, so the week read again each hour isn't silent.
+/// class, and first, above the classes over the bar, since the card
+/// shows only its first few lines; so the week read again each hour
+/// isn't silent.
 #[test]
 fn what_couldnt_be_kept_is_said_and_names_no_class() {
     let home = tempfile::tempdir().expect("a temporary home");
@@ -586,19 +588,27 @@ fn what_couldnt_be_kept_is_said_and_names_no_class() {
         .path()
         .join("pi/agentic-harness.pi/mesh-workflow/messages");
     fs::create_dir_all(&messages).expect("the messages folder");
+    let line = sent(
+        "cause: flaky gate | change: core.nix#1, #2, #3",
+        600,
+        "@1JQPPC",
+    );
+    write(&messages, &line, 600);
     let gone = folder.path().join("gone");
     let m = read(home.path(), &gone, NOW, true);
     assert!(
         m.past().is_some()
-            && m.behind.len() == 1
+            && m.behind.len() == 2
             && class_of(&m.behind[0]) == UNKEPT
-            && names_no_class(&m.behind[0]),
-        "a reading that couldn't be kept went unsaid, or was counted as a class: {:?}",
+            && names_no_class(&m.behind[0])
+            && !names_no_class(&m.behind[1]),
+        "a reading that couldn't be kept went unsaid, or below a class, or was counted as \
+         one: {:?}",
         m.behind
     );
     let kept = read(home.path(), folder.path(), NOW, true);
     assert!(
-        kept.behind.is_empty(),
+        kept.behind.len() == 1 && !names_no_class(&kept.behind[0]),
         "a reading kept whole said it wasn't: {:?}",
         kept.behind
     );
