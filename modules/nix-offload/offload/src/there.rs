@@ -3284,6 +3284,25 @@ pub fn far_brief(command: &str) -> String {
     far_within(command, "${NIX_OFFLOAD_RUN_GRACE:-15}", Far::Runs)
 }
 
+/// How many seconds a build sent to a machine nearby goes on once its
+/// caller is gone. `GRACE` waits out a lender's restart, which a Mac never
+/// has: on 27 November a Mac build whose sender was stopped at 08:34 ran
+/// its release tests on for 4 to 10 minutes, through a dip under 30% free
+/// (1OGSE7, 87150109). Half a minute still keeps a build through a
+/// moment's loss of its link.
+const NEARBY_GRACE: u32 = 30;
+
+/// `command` as `far_saying_where` sends it to a machine nearby, ending
+/// once its caller has been gone `NEARBY_GRACE` seconds, or
+/// `NIX_OFFLOAD_NEARBY_GRACE`'s.
+pub fn far_nearby(command: &str) -> String {
+    far_within(
+        command,
+        &format!("${{NIX_OFFLOAD_NEARBY_GRACE:-{NEARBY_GRACE}}}"),
+        Far::Runs,
+    )
+}
+
 /// What a command sent far is, for what its shell says of itself.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Far {
@@ -5854,7 +5873,7 @@ fn sent_nearby(
     let mut reached = reaching(ssh, &said);
     reached
         .arg(&machine.host)
-        .arg(far_saying_where(&in_turn_nearby(&command)));
+        .arg(far_nearby(&in_turn_nearby(&command)));
     let unrun = |error: std::io::Error| format!("couldn't run {ssh}: {error}");
     let status = if asked.print {
         // What a machine nearby built comes here only signed by a key Nix
@@ -7562,6 +7581,34 @@ mod tests {
         assert!(cleaned.exists(), "it cleaned up as it ended");
     }
 
+    #[test]
+    fn a_build_nearby_ends_soon_after_its_caller_though_a_lenders_run_waits() {
+        // The caller gives a run cut off 300 s, as a lender's does, and a
+        // build nearby 1 s: the build ends by its own grace.
+        let folder = tempfile::tempdir().unwrap();
+        let run = far_nearby("echo started; sleep 120");
+        let mut caller = calling_within(&run, folder.path(), 300);
+        let mut said = BufReader::new(caller.stdout.take().unwrap());
+        let mut line = String::new();
+        said.read_line(&mut line).unwrap();
+        assert!(
+            line.ends_with("started\n"),
+            "the build didn't start: {line:?}"
+        );
+        drop(caller.stdin.take());
+        caller.wait().unwrap();
+        let (ended, closed) = mpsc::channel();
+        std::thread::spawn(move || {
+            let mut rest = String::new();
+            let _ = std::io::Read::read_to_string(&mut said, &mut rest);
+            let _ = ended.send(());
+        });
+        assert!(
+            closed.recv_timeout(Duration::from_secs(30)).is_ok(),
+            "the build nearby waited out a lender's grace"
+        );
+    }
+
     /// A caller standing in for an ssh session: it starts `run` in a
     /// process group of its own, as sshd does, and ends once its input
     /// closes. A run cut off waits a second for another to claim it.
@@ -7576,6 +7623,7 @@ mod tests {
             .args(["-c", "sh -c \"$1\" & read -r line", "caller", run])
             .env("TMPDIR", scratch)
             .env("NIX_OFFLOAD_GRACE", grace.to_string())
+            .env("NIX_OFFLOAD_NEARBY_GRACE", "1")
             .env("NIX_OFFLOAD_OUTLIVE", "60")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
