@@ -75,7 +75,7 @@ import { grewWords, grownOf, oneCopyEach, originsOf, splitSaid } from "./lineage
 import { drawnWidth } from "./lines.js";
 import { durationOf, easedInOut, goneAndBack } from "./motion.js";
 import { shapeOf as shapeOfReading } from "./shape.js";
-import { CLOUD, FULL_WORDS, handedWords, isMachine, keptOnStands, LONGEST_WORDS, leftWords, offered, onWords, sproutLink, unsprouted } from "./sprout.js";
+import { drawerOffersOn, FULL_WORDS, handedWords, keptOnStands, LONGEST_WORDS, leftWords, offered, onWords, sproutLink, unsprouted } from "./sprout.js";
 import { EVERY_TREE_STEP, hasKids as hangsAny, kidsOf, openedTo, rootsOf, rowsOf, rowWords, upOf, walked, worstFirst } from "./outline.js";
 import {
   allCells,
@@ -3322,7 +3322,7 @@ import {
       launcherLink("machine", name, "Open It in the Launcher") +
       // New work starts on it, or on any of the cloud's for a basin's
       // stand, from the Launcher's Start New Work as any new work does.
-      sproutOnButton(pool ? CLOUD : name, pool ? "Start New Work on the Cloud" : "Start New Work Here") +
+      sproutOnButton(drawerOffersOn(name, pool), pool ? "Start New Work on the Cloud" : "Start New Work Here") +
       // Its home as a device is the network page, which knows it by name.
       // A sandbox or a basin isn't a device on the home network, so it has
       // no row there.
@@ -3351,9 +3351,9 @@ import {
     const href = linkOf(kind, name, machine);
     return href ? `<p class="led"><a class="inline" href="${esc(href)}">${esc(words)}</a></p>` : "";
   };
-  // A machine's name mycelium-link would refuse is never offered.
+  // A machine drawerOffersOn offers none on has no button.
   const sproutOnButton = (on, words) =>
-    isMachine(on) ? `<p class="led"><button type="button" class="inline" data-sprout-on="${esc(on)}">${esc(words)}</button></p>` : "";
+    on !== null ? `<p class="led"><button type="button" class="inline" data-sprout-on="${esc(on)}">${esc(words)}</button></p>` : "";
 
   const backButton = (label) =>
     `<button type="button" class="back" data-back><svg viewBox="0 0 10 10" aria-hidden="true"><path d="M7 1.5L3 5L7 8.5"/></svg>${esc(label)}</button>`;

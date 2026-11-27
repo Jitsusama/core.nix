@@ -8,6 +8,7 @@ import { test as it } from "node:test";
 import {
   type Asked,
   CLOUD,
+  drawerOffersOn,
   handedWords,
   isAddress,
   isMachine,
@@ -169,6 +170,25 @@ it("keeps words for a machine only while the map still has it", () => {
   assert.equal(keptOnStands("heron", names), false, "a machine that left should go");
   assert.equal(keptOnStands(CLOUD, []), true, "the cloud is no machine, and should stand");
   assert.equal(keptOnStands(null, []), true, "words sent on no machine should stand");
+});
+
+it("offers a machine's drawer button on it, but never on a machine named cloud", () => {
+  assert.equal(drawerOffersOn("osprey", false), "osprey", "a machine should offer itself");
+  assert.equal(
+    drawerOffersOn("heron basin", true),
+    CLOUD,
+    "a basin's stand should offer the cloud",
+  );
+  assert.equal(
+    drawerOffersOn(CLOUD, false),
+    null,
+    "a machine named cloud should offer nothing, since its link would start any cloud machine",
+  );
+  assert.equal(
+    drawerOffersOn("os prey", false),
+    null,
+    "a name no link carries should offer nothing",
+  );
 });
 
 // A map with kestrel and osprey on it and the cell TERN02 gone from it, its drawer open on

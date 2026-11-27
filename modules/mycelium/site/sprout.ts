@@ -57,6 +57,16 @@ export const onWords = (on: string): string => `On ${placeWords(on)}`;
 export const keptOnStands = (on: string | null, names: readonly string[]): boolean =>
   on === null || on === CLOUD || names.includes(on);
 
+/**
+ * The machine a machine's drawer offers new work on: any of the cloud's
+ * for a basin's stand, else the machine itself. A machine named `cloud`
+ * is offered nothing, since a link naming it would start the work on any
+ * of the cloud's machines rather than that one, and nor is one whose name
+ * no link carries.
+ */
+export const drawerOffersOn = (name: string, basin: boolean): string | null =>
+  basin ? CLOUD : name !== CLOUD && isMachine(name) ? name : null;
+
 /** Words last handed on, the cell they went from and the machine they went to. */
 export interface Kept {
   readonly words: string;
