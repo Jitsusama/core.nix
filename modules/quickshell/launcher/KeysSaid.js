@@ -20,10 +20,14 @@ const ownLength = 64;
 // and the rows Agents makes itself are keyed by kinds of its own, none in keysOwn. Agents' act
 // rows Talk to It, Carry Back and Let Them Start take their act's key only once it's that act's
 // own `verb:` key.
-// keyShown also says a served `program:<id>` whole where its id is shaped as an app's, which
-// holds while only the programs daemon serves two-part `program:` keys: sound's are
-// `program:<device>:<name>`, said as `program`.
+// keyShown also says a served `program:<id>` whole where its id is shaped as an app's, and only
+// the programs daemon's comes to it so: keyMade keeps one any other daemon serves under `row:`,
+// which keyShown says as `program`.
 const ownId = /^[A-Za-z0-9][A-Za-z0-9._-]*$/u;
+
+// Where the programs daemon serves its rows, the one daemon whose `program:` keys keyMade leaves
+// as served, as ReadyRows.qml's socket names it.
+const programsSocket = "/daemons/programs.sock";
 
 // A kind's word, as the launcher and its daemons write one, at most 32 letters, and the keys
 // whose kind keyShown says, as actShown leaves them, since their later parts may be someone's

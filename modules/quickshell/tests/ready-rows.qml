@@ -718,6 +718,16 @@ QtObject {
         for (const kind of ["place", "category", "collection"])
             Expect.same(`but one claiming a ${kind} is kept under row:`,
                 Presented.keyServed(`${kind}:x`), `row:${kind}:x`);
+        // Only the programs daemon's `program:<id>` is said whole with reports off, so another
+        // daemon's row claiming a program says only its kind.
+        Expect.same("another daemon's row keyed as a program is said by its kind alone",
+            Presented.keyShown(Presented.keyMade({ thing: "program:firefox" }, "k",
+                "/run/user/1000/daemons/agents.sock"), false), "program");
+        Expect.same("as is one whose daemon isn't named",
+            Presented.keyShown(Presented.keyMade({}, "program:firefox"), false), "program");
+        Expect.same("but the programs daemon's is said whole",
+            Presented.keyShown(Presented.keyMade({ thing: "program:firefox" }, "k",
+                "/run/user/1000/daemons/programs.sock"), false), "program:firefox");
         Expect.same("an ask is read by its act's words in the key language",
             Ready.wordsOf({ key: "verb:firmware:install", ask: { ask: "install" } }),
             "verb:firmware:install");
