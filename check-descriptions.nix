@@ -1616,7 +1616,7 @@
     and what a cell asks leading it, heads each in the words Agents says it in, finds a
     session's own notices by the cell they name, joining only the unread that ask something and
     haven't expired or been withdrawn,
-    kept as one list till that moves, and sets Agents Asking above every heading
+    kept as one list till that moves, and sets Agents above every heading
   '';
   for-you-weighs-again-only-for-news = ''
     For You weighs what waits on Joel again only when the node says something new of it: each
@@ -2587,7 +2587,7 @@
   '';
   mycelium-runs-among-the-sessions = ''
     on Linux, every realm's node runs in the agents' slice, beside Joel's programs rather than among
-    them
+    them, and keeps what it swaps out compressed in memory, never writing it to disk
   '';
   mycelium-site-holds = ''
     the mycelium map typechecks on the kit at its strictest and builds, its tests passing: the
@@ -3498,9 +3498,21 @@
     hour, catching up an hour missed while off, among agents' commands in jobs-work.slice, with
     the store's node, the account's git, its hosts' folders, provider modules as a machine gave
     them, only the agents' SSH proxy its hosts get and none of the variables a pi host's unit
-    clears, rather than on a host's thread; left running through a switch for up to two hours,
-    made to give memory back past 1.5 GiB with no hard limit, its own, its slices' or its account
-    manager's, to kill it at, skipped where the harness isn't installed, and never on a Mac
+    clears, nor bash's start-up variables, rather than on a host's thread; left running through
+    a switch for up to two hours, started only once it has waited up to 15 minutes for the
+    machine to have room, reading when the last sweep ended, a wait whose failure still starts
+    it, made to give memory back past 6 GiB with no hard limit, its own, its
+    slices' or its account manager's, to kill it at, skipped where the harness isn't installed,
+    and never on a Mac
+  '';
+  pi-sweep-waits-for-room = ''
+    the hourly sweep's room check lets it start at once when memory and I/O stalled little over
+    five minutes and a quarter of memory is free, and when either stalled past its mark or memory
+    is short waits, saying why, then lets it start as soon as the stall clears or its wait runs
+    out, never skipping the hour; one whose last sweep ended too long ago for a wait to end
+    before the hosts take over, or left no stamp, lets it start at once; one that can't read the
+    machine, or reads a value that isn't a number, lets it start at once, naming what it
+    couldn't read, and runs nothing it read
   '';
   pi-packages-compiles-for-macos = ''
     pi-packages and its tests pass clippy as a Mac compiles them, where libproc says which
@@ -3671,9 +3683,12 @@
   '';
   pi-conversations-refuse-a-node-without-growth = ''
     a realm whose node refuses --heap-growing-percent as a bad option fails the build its
-    conversations' unit names, saying the realm, the percent and the node, one whose node fails
-    another way or can't be run fails saying which, node 22, which pi is built with, takes it,
-    and a machine built elsewhere has the proof stand unproven
+    conversations' unit names, saying the realm, the percent, the node and what to do, as node 22
+    and the tree's own node refuse an option they don't know, one whose node fails another way,
+    never ends or can't be run, a package's folder among them, fails saying which and what to do,
+    node 22, which pi is built with, takes it and the rendered unit files name that proof, and a
+    machine cross-built for another platform has the proof stand unproven and warns of it, where
+    one built on its own platform doesn't
   '';
   pi-conversations-take-heap-growth = ''
     node 22, which pi is built with, and the tree's own node, each started with the word a realm's
@@ -4176,7 +4191,8 @@
   '';
   session-memory-is-protected = ''
     session.slice and app.slice carry hard memory floors and agents.slice a soft one, and every
-    slice above them carries one hard and one soft floor, the same at each
+    slice above them carries one hard and one soft floor, the same at each; session.slice and
+    app.slice keep what they swap out compressed in memory, never writing it to disk
   '';
   sessions-come-back-after-a-reboot = ''
     after a new boot or console login, sessions-come-back starts each pi session held before it
@@ -4755,7 +4771,10 @@
   the-cat-runner-names-how-each-case-ended = ''
     the margin cat's case runner fails a run with a case that failed, ran past its own processor
     time, was killed from outside or hung past the clock's guard, names each by how it ended and
-    says every case's time, and stops at a hang, naming the cases it left unrun
+    says every case's time, and stops at a hang, naming the cases it left unrun; it refuses
+    limits that aren't whole seconds before any case runs, and, where the builder holds the run
+    below a case's hard limit, says so once with the limit in force and what would fit, and
+    runs no case; the check fails where that can't be shown
   '';
   the-cats-walk-is-read-only-from-its-lists = ''
     the cat's code is read as no walk, by the rule it breaks, when WALKS holds anything but
@@ -6376,7 +6395,9 @@
   tuple-ends-its-flags = ''
     The real tuple takes a name that starts with a dash after "--" as a name, never a flag, for each
     command the launcher runs on a contact: call start, call join, and contacts favorite and
-    unfavorite
+    unfavorite; and its script, which stops Tuple's daemon, refuses before reaching tuple from a
+    person's shell in their home or a checkout, the repository's dev shell, a bare environment,
+    the root, and shells holding only some of the build's folders
   '';
   tuple-keeps-its-logs = ''
     Tuple's service keeps the daemon's last three logs, newest first, before it starts, and an empty
@@ -6484,7 +6505,9 @@
     say beside it, its trouble said once too; and a loopback's file is said ready only once it and
     its node are written; and as a loopback's camera goes or its watch is stopped, its node file
     goes only once its nobody is written, and as its camera goes, one it couldn't remove is tried
-    again until it can be; and a loopback with no camera is said ready only once its node file is
+    again until it can be; and a stop tries its nobody and node file once more, whether it comes
+    with no camera or just as its camera went; and a loopback with no camera is said ready only
+    once its node file is
     gone or can't be there
   '';
   usb-camera-holders-forget-a-killed-run = ''

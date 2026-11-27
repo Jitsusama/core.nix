@@ -69,8 +69,16 @@ onLinux {
       sed -n '\|^run .*${lib.escapeRegex data}/tuple/|{s|^run ||;s|${data}|'"$PWD"'/data|g;p}' \
         ${home.home.activationPackage}/activate > steps
       sh -e steps
-      tuple settings > said 2>&1 || true
-      tuple stop > /dev/null 2>&1 || true
+      # Any tuple command may start Tuple's daemon, so each is held to a
+      # time, as tests/tuple-ends-its-flags.sh says: settings reads Tuple's
+      # own files, so it's given room, and a cut-off says so rather than
+      # reading as a setting unread.
+      ended=0
+      timeout -k 5 30 tuple settings > said 2>&1 < /dev/null || ended=$?
+      timeout -k 5 10 tuple stop > /dev/null 2>&1 || true
+      if [ $ended -eq 124 ] || [ $ended -eq 137 ]; then
+        echo "tuple settings was cut off (status $ended); it said:"; cat said; exit 1
+      fi
       if ! grep -q '^capture | portal |' said; then cat said; exit 1; fi
       touch $out
     '';
@@ -158,7 +166,8 @@ onLinux {
 
   # The tuple command completes in zsh with Tuple's own completion, which
   # only shows when Tab offers nothing, so the check completes commands
-  # in a real line editor with the real tuple (tests/tuple-completion.zsh).
+  # in a real line editor with the real tuple (tests/tuple-completion.zsh),
+  # held to a time (tests/tuple-completes-in-zsh.sh).
   tuple-completes-in-zsh =
     let
       home = account graphical;
@@ -172,10 +181,8 @@ onLinux {
         ];
       }
       ''
-        export HOME=$PWD XDG_DATA_HOME=$PWD/data XDG_RUNTIME_DIR=$PWD/run
-        mkdir -m 700 run
-        zsh -f ${./tests/tuple-completion.zsh} ${tuple}/share/zsh/site-functions/_tuple
-        tuple stop > /dev/null 2>&1 || true
+        ${lib.getExe pkgs.bash} ${./tests/tuple-completes-in-zsh.sh} \
+          ${./tests/tuple-completion.zsh} ${tuple}/share/zsh/site-functions/_tuple
         touch $out
       '';
 
@@ -184,13 +191,17 @@ onLinux {
   # ending its flags there would leave every such row doing nothing. Each is
   # asked with one name too many, which the real tuple refuses by counting,
   # in a sandbox with no network or account, so it reaches nobody
-  # (tests/tuple-ends-its-flags.sh).
+  # (tests/tuple-ends-its-flags.sh). It stops Tuple's daemon, so it's run
+  # first from the shells a person would run it from, each of which it
+  # must refuse (tests/tuple-ends-its-flags-outside.sh).
   tuple-ends-its-flags =
     let
       home = account graphical;
       tuple = lib.findFirst (package: lib.getName package == "tuple") null home.home.packages;
     in
     pkgs.runCommandLocal "tuple-ends-its-flags" { nativeBuildInputs = [ tuple ]; } ''
+      ${lib.getExe pkgs.bash} ${./tests/tuple-ends-its-flags-outside.sh} \
+        ${./tests/tuple-ends-its-flags.sh}
       export HOME=$PWD XDG_DATA_HOME=$PWD/data XDG_RUNTIME_DIR=$PWD/run
       mkdir -m 700 run
       ${lib.getExe pkgs.bash} ${./tests/tuple-ends-its-flags.sh}

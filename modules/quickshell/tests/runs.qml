@@ -207,14 +207,27 @@ ShellRoot {
             // search matches what a search of every row matches, at every
             // grade, not only the finest shown.
             // Each finds the rows the list holds now, and, typed on, looks
-            // through fewer than all of them at least once.
+            // through fewer than all of them at least once, counted only
+            // where the list was made anew, so it's the kept rows' verdicts
+            // that narrowed it. Between "co" and "cor" a finished run's
+            // about comes, so its row, made again, is found by it as typing
+            // goes on.
             const sessionsThen = Sessions.running;
             let narrowedSteps = 0;
             for (const word of ["council", "2026", "fleet", "core"]) {
                 for (let end = 1; end <= word.length; end++) {
                     const soFar = word.slice(0, end);
+                    const allThen = runs.all;
                     Sessions.running = end % 2 === 0 ? [] : sessionsThen;
-                    if (end > 1 && runs.poolFor(runs.all, soFar).length < runs.all.length)
+                    if (soFar === "cor")
+                        runs.records = runs.records.map(record => record.about === "fleet-dead"
+                            ? Object.assign({}, record, { about: "core-late" }) : record);
+                    const remade = runs.all !== allThen;
+                    if (end > 1)
+                        expect(`"${soFar}" typed on after the list was made anew`, remade,
+                            "the same list");
+                    if (end > 1 && remade
+                        && runs.poolFor(runs.all, soFar).length < runs.all.length)
                         narrowedSteps += 1;
                     runs.search(soFar);
                     const chain = runs.lastMatched;
@@ -231,6 +244,8 @@ ShellRoot {
             }
             Sessions.running = sessionsThen;
             expect("typed on through updates, it narrowed", narrowedSteps > 0, narrowedSteps);
+            expect("a finished run's about come as it was typed, found by it",
+                names(runs.lastMatched.rows).includes("core-late"), names(runs.lastMatched.rows));
 
             // A run's own kind, where the harness wrote it beside the node's.
             runs.records = [{ key: "run:review.r7-1", kind: "run", "run.kind": "judge",

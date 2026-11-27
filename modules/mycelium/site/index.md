@@ -253,9 +253,10 @@ The keyboard comes first and the pointer works too.
   still on the map as the line opens, else from the one open now.
   Words for a machine that has left go with it, so s opens an empty
   line, and a machine that leaves while the line is open is let go of
-  at Return, which says so. A drawer's own Start New Work button
-  offers its own cell or machine, over any kept words. Escape closes
-  the line, and the control beside Now opens it too.
+  at Return, which sends nothing and says so; the next Return starts
+  the work where new work starts. A drawer's own Start New Work
+  button offers its own cell or machine, over any kept words. Escape
+  closes the line, and the control beside Now opens it too.
 - **Now holds the same network as a tree**, for a screen reader and
   for anyone who would rather walk a list: j and k step, l opens a branch,
   h closes it or climbs, g and G go to the first and last, and Return
