@@ -1,9 +1,10 @@
 //! Running the machine's own programs for a stop, each to a limit, so a
 //! machine that doesn't answer can't hold Joel's act up.
 
-use std::io::Read;
+use std::io::{ErrorKind, Read};
 use std::path::Path;
 use std::process::{Child, Command, ExitStatus, Stdio};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
@@ -86,7 +87,9 @@ impl System {
                 // children may hold them.
                 let ended = match one.exited() {
                     Ok(Some(status)) if one.read(status) => Ok(status),
-                    Ok(Some(status)) if late && one.ended_before(GRACE) => Err(Err(unread(status))),
+                    Ok(Some(status)) if late && one.ended_before(GRACE) => {
+                        Err(Err(unread(status, &one.said_so_far())))
+                    }
                     Ok(None) if late => {
                         // Killed at its limit; it may have ended meanwhile,
                         // which is as good.
@@ -119,8 +122,8 @@ impl System {
 /// A program started, with the readers of what it prints.
 struct Running {
     child: Child,
-    out: JoinHandle<Vec<u8>>,
-    err: JoinHandle<Vec<u8>>,
+    out: Reader,
+    err: Reader,
     /// When it was first seen ended.
     ended: Option<Instant>,
 }
@@ -161,12 +164,18 @@ fn start(program: &Path, args: &[String]) -> Result<Running, String> {
 /// success, since a caller reading its words would take none for nothing
 /// printed, such as no agents' work running; and never ending in its
 /// status, since a 255 so ending reads as the command never running there
-/// (src/pause/reach.rs), when it may have begun.
-fn unread(status: ExitStatus) -> String {
-    format!(
+/// (src/pause/reach.rs), when it may have begun. What it `said` before
+/// comes first, as a failure's answer has it, so a journal keeping its
+/// first line says why.
+fn unread(status: ExitStatus, said: &str) -> String {
+    let unknown = format!(
         "it ended ({status}), but what it printed was still held open at the \
          limit, so what it did there is unknown"
-    )
+    );
+    match said.trim() {
+        "" => unknown,
+        said => format!("{said}\n{unknown}"),
+    }
 }
 
 impl Running {
@@ -188,36 +197,90 @@ impl Running {
     /// waits on nothing: what it printed, and what it said unless it
     /// exited 0, which answers its output alone.
     fn read(&self, status: ExitStatus) -> bool {
-        self.out.is_finished() && (status.success() || self.err.is_finished())
+        self.out.finished() && (status.success() || self.err.finished())
+    }
+
+    /// What it said on its error output so far, or what it printed when
+    /// it said nothing there.
+    fn said_so_far(&self) -> String {
+        let err = self.err.so_far();
+        if err.trim().is_empty() {
+            self.out.so_far()
+        } else {
+            err
+        }
     }
 
     /// What it printed, once it exited 0 as `status` says, or what it said
     /// when it didn't.
     fn answer(self, status: ExitStatus) -> Result<String, String> {
-        let out = String::from_utf8_lossy(&self.out.join().unwrap_or_default()).into_owned();
+        let out = self.out.all();
         if status.success() {
             return Ok(out);
         }
-        let err = String::from_utf8_lossy(&self.err.join().unwrap_or_default()).into_owned();
+        let err = self.err.all();
         let said = if err.trim().is_empty() { out } else { err };
         Err(format!("{} ({status})", said.trim()))
     }
 }
 
+/// A pipe read on a thread of its own, what it gave kept as it comes, so
+/// what was read is known before the pipe ends.
+struct Reader {
+    read: Arc<Mutex<Vec<u8>>>,
+    thread: JoinHandle<()>,
+}
+
+impl Reader {
+    /// Whether its pipe ended, so all it gives is read.
+    fn finished(&self) -> bool {
+        self.thread.is_finished()
+    }
+
+    /// What it read so far.
+    fn so_far(&self) -> String {
+        text(&self.read)
+    }
+
+    /// All it reads, once its pipe ends.
+    fn all(self) -> String {
+        // A reader that panicked read only what it kept.
+        let _ = self.thread.join();
+        text(&self.read)
+    }
+}
+
+/// What `read` holds, as text.
+fn text(read: &Mutex<Vec<u8>>) -> String {
+    let read = read.lock().unwrap_or_else(PoisonError::into_inner);
+    String::from_utf8_lossy(&read).into_owned()
+}
+
 /// Reads all a pipe gives, on a thread of its own, or why no thread could
 /// be started.
-fn drain(pipe: Option<impl Read + Send + 'static>) -> Result<JoinHandle<Vec<u8>>, String> {
-    std::thread::Builder::new()
+fn drain(pipe: Option<impl Read + Send + 'static>) -> Result<Reader, String> {
+    let read = Arc::new(Mutex::new(Vec::new()));
+    let kept = Arc::clone(&read);
+    let thread = std::thread::Builder::new()
         .spawn(move || {
-            let mut read = Vec::new();
-            if let Some(mut pipe) = pipe {
-                // What couldn't be read is said as nothing; the exit says
-                // whether it ran.
-                let _ = pipe.read_to_end(&mut read);
+            let Some(mut pipe) = pipe else { return };
+            let mut chunk = [0; 8192];
+            loop {
+                match pipe.read(&mut chunk) {
+                    Ok(0) => break,
+                    Ok(given) => kept
+                        .lock()
+                        .unwrap_or_else(PoisonError::into_inner)
+                        .extend_from_slice(&chunk[..given]),
+                    Err(error) if error.kind() == ErrorKind::Interrupted => {}
+                    // What couldn't be read is said as nothing; the exit
+                    // says whether it ran.
+                    Err(_) => break,
+                }
             }
-            read
         })
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+    Ok(Reader { read, thread })
 }
 
 #[cfg(test)]
@@ -366,6 +429,22 @@ mod tests {
         assert!(
             took < Duration::from_secs(1),
             "it was answered as it ended, not at its limit: {took:?}"
+        );
+    }
+
+    #[test]
+    fn one_answered_unread_keeps_what_it_said_first() {
+        let mut system = System {
+            limit: Duration::from_secs(1),
+        };
+        let held = sh("echo some; echo 'mycelium: refused there' >&2; sleep 5 &");
+        let answers = system.run_all(&[(Path::new("sh"), &held)]);
+        assert!(
+            answers[0].as_ref().is_err_and(|why| {
+                why.lines().next() == Some("mycelium: refused there")
+                    && why.contains("still held open")
+            }),
+            "what it said is its answer's first line, its words unread after: {answers:?}"
         );
     }
 
