@@ -3020,6 +3020,12 @@ Singleton {
                 + "taking the focus");
             goingTo = { app: named, at: Date.now(), from: Niri.focused };
             disownedSaid = Object.assign({}, disownedSaid, { [named]: said });
+            // Where the kitty didn't answer for it, the press is the one held
+            // too, as heldBack's is, so a kitty started since or the window
+            // come late tells it rather than the press before or none.
+            if (named in stillSaid)
+                stillSaid = Object.assign({}, stillSaid,
+                    { [named]: Object.assign({}, stillSaid[named], { said }) });
         }
         return true;
     }
@@ -3097,6 +3103,7 @@ Singleton {
             // closes, a press would ask the quiet kitty again.
             refusalKeptAt = Object.assign({}, refusalKeptAt, { [named]: Date.now() });
             const told = disownedSaid[named] ?? null;
+            readKittyPid();
             stillSaid = Object.assign({}, stillSaid,
                 { [named]: { said: told, at: Date.now(), under: sessionsKittyPid } });
             // A place viewKept let go for the ask is kept again under the
@@ -3222,6 +3229,10 @@ Singleton {
         else if (unanswered) {
             if (said !== null)
                 unhosted(said, said.startedInHost ? "startedStillComing" : "stillComing");
+            // Held under the kitty up as the give-up is heard, its pid read
+            // now, as the shell may have missed its word it started: under
+            // the one before, a press would ask the quiet one again.
+            readKittyPid();
             stillSaid = Object.assign({}, stillSaid,
                 { [named]: { said, at: Date.now(), under: sessionsKittyPid } });
         }
@@ -3622,10 +3633,14 @@ Singleton {
     // `named`, within answerPatience of that give-up (stillSaid): long
     // enough for a kitty caught up to draw it, short enough that a kitty
     // gone quiet for good costs Joel only a minute and a half.
+    // Nor while the pid file says none, as the kitty's unit makes its
+    // folder anew: the kitty that didn't answer is gone, and the script
+    // waits for the one coming.
     function stillHeld(named) {
         const still = stillSaid[named];
         return still !== undefined && (still.under ?? "") !== ""
-            && still.under === sessionsKittyPid && Date.now() - still.at < answerPatience;
+            && still.under === sessionsKittyPid && Date.now() - still.at < answerPatience
+            && kittyPidNow() !== "";
     }
     // Whether a viewer `named` was asked for within viewPatience and niri
     // hasn't listed it since (viewerCame).
