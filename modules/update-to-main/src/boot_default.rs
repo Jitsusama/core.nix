@@ -8,7 +8,8 @@
 //! boot default was left on is kept, beside where the profile pointed
 //! then. A profile pointing elsewhere since was moved by someone else, a
 //! switch or boot by hand, whose boot default is that person's choice and
-//! is left be.
+//! is left be, unless it names a system of a switch update-to-main began
+//! and was cut off in, which moved the profile before it could keep it.
 
 use crate::config::{Config, Kind};
 use crate::run::{self, Failure};
@@ -18,15 +19,21 @@ use std::path::{Path, PathBuf};
 
 /// The system update-to-main left the boot default on, or why there is
 /// none to put back: never kept, unreadable, or since moved by someone
-/// else.
-pub fn kept(config: &Config) -> Result<PathBuf, String> {
+/// else. A profile naming one of `ours`, the systems of a switch
+/// update-to-main began and never ended, it moved itself, before a cut
+/// off left the record unwritten, so that is no other hand's.
+pub fn kept(config: &Config, ours: &[PathBuf]) -> Result<PathBuf, String> {
     let file = config.boot_default_file();
     let kept = fs::read_to_string(&file)
         .map_err(|_| "update-to-main hasn't yet kept what it booted before".to_owned())?;
     let Some((system, profile)) = kept.split_once('\n') else {
         return Err(format!("{} won't read", file.display()));
     };
-    if fs::read_link(&config.profile).ok().as_deref() != Some(Path::new(profile)) {
+    let named = fs::canonicalize(&config.profile).ok();
+    let our_own = ours
+        .iter()
+        .any(|ours| named.is_some() && fs::canonicalize(ours).ok() == named);
+    if fs::read_link(&config.profile).ok().as_deref() != Some(Path::new(profile)) && !our_own {
         return Err(
             "the profile moved outside update-to-main after it last switched, so the boot \
              default is whoever moved it's"

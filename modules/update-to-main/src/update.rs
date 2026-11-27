@@ -465,7 +465,11 @@ fn switch(
 ) -> Line {
     // Read before this switch moves the profile, which would leave it
     // naming another than the profile the boot default was kept beside.
-    let default = boot_default::kept(config);
+    // One a switch left unended moved stays its own.
+    let ours: Vec<std::path::PathBuf> = begun(config)
+        .map(|left| std::iter::once(left.system).chain(left.previous).collect())
+        .unwrap_or_default();
+    let default = boot_default::kept(config, &ours);
     // After a switch its daemon left, what runs was never checked, so a
     // switch now goes back, if it must, to what ran before that one
     // began, whatever main builds since.
