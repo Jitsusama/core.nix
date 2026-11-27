@@ -346,28 +346,30 @@ fn a_far_machine_with_no_cache_leaves_the_job_untaken_as_its_own_fault() {
 }
 
 thread_local! {
-    /// Whether `far_line_in` runs the line with no `HOME`, its cache
-    /// named by `XDG_CACHE_HOME` alone, as `homeless` sets it.
-    pub(super) static HOMELESS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    /// Whether `far_line_in` runs the line with a `HOME` that names no
+    /// folder, its cache named by `XDG_CACHE_HOME`, as `home_gone` sets it.
+    pub(super) static HOME_GONE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
-/// What `run` answers, with each far line it runs given no `HOME`.
-fn homeless<T>(run: impl FnOnce() -> T) -> T {
-    HOMELESS.set(true);
+/// What `run` answers, with each far line it runs given a `HOME` that
+/// names no folder.
+fn home_gone<T>(run: impl FnOnce() -> T) -> T {
+    HOME_GONE.set(true);
     let ran = run();
-    HOMELESS.set(false);
+    HOME_GONE.set(false);
     ran
 }
 
-// A cache named by XDG_CACHE_HOME alone, with no home, is a cache, so the
-// job runs from it, and its copy and run's file are freed from it too:
-// nothing the line clears is named by the home.
+// A cache named by XDG_CACHE_HOME is a cache though the home it names is
+// gone, as a service account's may be, so the job runs from it, and its
+// copy and run's file are freed from it too: stepping into that home
+// would fail and keep them, so nothing the line clears steps there.
 #[test]
-fn a_far_machine_with_a_cache_and_no_home_frees_its_copy() {
-    let (code, err, home) = homeless(|| far_run(Left::Whole, &[("x", "x")], "true"));
+fn a_far_machine_whose_home_is_gone_still_frees_its_copy() {
+    let (code, err, home) = home_gone(|| far_run(Left::Whole, &[("x", "x")], "true"));
     assert!(
         code == Some(0) && !work(&home).join("1").exists() && !work(&home).join("1.run").exists(),
-        "a far machine with no home didn't run the job or kept its copy ({code:?}): {err}"
+        "a far machine whose home is gone didn't run the job or kept its copy ({code:?}): {err}"
     );
     let _ = std::fs::remove_dir_all(&home);
 }
