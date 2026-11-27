@@ -547,9 +547,12 @@ every-failed-read-says-why = core.lib.everyFailedReadSaysWhy pkgs {
 };
 ```
 
-A `fs::read_to_string` or `fs::read` outside its tests whose error becomes
-a default says why in a comment on its statement or just above it, as
-[conventions.md][6] says.
+A `fs::read_to_string` or `fs::read` outside its tests whose failure its
+expression takes as nothing says why in a comment on its statement, or on
+a line of its own just above it, as [conventions.md][6] says. When core
+learns a shape the rule missed, a lock bump can find reads a repository
+never touched: the failure names each one, and their counts per file are
+the waiting list to give it.
 
 Its names say the glossary's words, as core's do, through a check that reads
 the glossary of the core it locks:

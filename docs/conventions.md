@@ -180,8 +180,10 @@ what it feeds reads as met while nothing was looked at. A program says it
 couldn't read, as an error or as a measure left unjudged, and takes a
 failure as nothing only where that's true, such as a file not yet written,
 with a comment saying why. `every-failed-read-says-why` holds Rust to it:
-a `fs::read_to_string` or `fs::read` outside its tests whose error becomes
-a default says why on its statement or just above it. Those before the rule
+a `fs::read_to_string` or `fs::read` outside its tests whose failure its
+expression takes as nothing (a default, an option, a false, a `let Ok(` or
+an `Err(_)` arm) says why on its statement or on a line of its own just
+above it. A default given in a later statement isn't seen. Those before the rule
 wait, counted by file, in `tests/rules/every-failed-read-says-why-waiting.nix`,
 and a count only falls.
 

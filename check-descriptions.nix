@@ -1319,8 +1319,9 @@
     0, and --help runs no du
   '';
   every-failed-read-says-why = ''
-    every Rust file read outside tests whose error becomes a default says why in a comment, but
-    those still waiting to say it couldn't read
+    every Rust file read outside tests whose failure its expression takes as nothing says why in
+    a comment, but those still waiting to say it couldn't read, once a planted tree shows each
+    shape counted
   '';
   every-fixed-wait-says-why = ''
     every sleep in a test polls, or says what passes while it waits in a comment or by a named
