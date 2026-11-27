@@ -24,21 +24,20 @@
 //!
 //! A search a gateway's answers leave a gap in is read on past it once
 //! Joel's row says so ([`crate::ears::Through`]), and that span is never
-//! read. So it's said first in a row of its own ([`missed`]), kept a week
+//! read. So it's said first in a row of its own ([`missed()`]), kept a week
 //! in a file the reader's stop leaves, until Joel says he has looked. A
 //! busy stretch reads on each round, each time past a span of its own, so
 //! a search's spans within [`MEET`] of one another are said as one row,
 //! as parts of it where a read stretch lies between them. A
 //! reader in shadow keeps both rows in its own folder, which For You never
 //! reads, so they're its record until it writes where For You reads.
-//!
-//! Long because the rows of spans missed live here beside the row of not
-//! hearing, each a file For You reads, until they move beside GitHub's.
 
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
+
+use crate::missed;
 
 /// How many rounds in a row are deaf before Joel is told: one is a
 /// blip a sign-in renewed mid-round makes, two at the reader's 30 seconds
@@ -590,20 +589,12 @@ pub fn make(file: &Path, change: &Change) -> std::io::Result<()> {
     }
 }
 
-/// How long a row saying what was never read is kept after the span it
-/// names ends, in milliseconds: a week, long past when Joel would look for
-/// a stop said then.
-const MISSED_FOR: u64 = 7 * 24 * 60 * 60 * 1000;
-
 /// What names each row saying what was never read.
 const MISSED: &str = "pineapple-slack-missed-";
 
-/// How near one search's spans never read come, in milliseconds, to be
-/// said in one row: ten minutes, as long as the reader's own look back,
-/// as one stretch Joel searches at once. Spans that keep coming that near
-/// chain into one row however long the stretch, said as parts once any
-/// of it was read; farther apart they're rows of their own.
-pub const MEET: u64 = 10 * 60 * 1000;
+/// How near one search's spans never read come to be said in one row,
+/// as pineapple's `missed` says of every reader's.
+pub use crate::missed::MEET;
 
 /// The row saying what `search` read on past is never read, from `from`
 /// to `to`, each in milliseconds since 1970 or unknown, as Joel reads it
@@ -617,21 +608,10 @@ pub fn missed(search: Search, from: Option<u64>, to: Option<u64>, at: u64) -> Va
     said(search, from, to, at, true)
 }
 
-/// The row [`missed`] makes, or with `whole` false the one saying only
+/// The row [`missed()`] makes, or with `whole` false the one saying only
 /// parts of its span were never read, as rows met in it left read
 /// stretches between them.
 fn said(search: Search, from: Option<u64>, to: Option<u64>, at: u64, whole: bool) -> Value {
-    let ago = |then: u64| at.saturating_sub(then);
-    let span = match (
-        from.map(|from| ago(from).div_ceil(60_000)),
-        to.map(|to| ago(to) / 60_000),
-    ) {
-        (Some(from), Some(to)) if to > 0 && to < from => {
-            format!("from {from} to {} before this was raised", minutes(to))
-        }
-        (Some(from), _) => format!("in the {} before this was raised", minutes(from)),
-        (None, _) => "before this was raised, since when it last read can't be told".to_owned(),
-    };
     let (name, unheard, step) = match search {
         Search::Phrase => (
             "phrase",
@@ -645,178 +625,37 @@ fn said(search: Search, from: Option<u64>, to: Option<u64>, at: u64, whole: bool
         ),
     };
     let what = if whole { "what" } else { "parts of what" };
-    json!({
-        "id": format!("{MISSED}{name}-{}-{}", from.unwrap_or(0), to.unwrap_or(at)),
-        "title": "The Safe Word Missed Part of Slack",
-        "why": format!(
+    let span = missed::when(from, to, at);
+    missed::row(
+        &missed::named(MISSED, name, from, to.unwrap_or(at)),
+        "The Safe Word Missed Part of Slack",
+        &format!(
             "The safe word never read {what} {unheard} {span}, as more was said than it could \
              read, so a stop said then wasn't heard"
         ),
-        "whole": whole,
-        "raisedAt": slack_people::messages::iso(at),
-        "minutes": 2,
-        "ready": true,
-        "doneWhen": {"by": "person"},
-        "steps": [step],
-    })
-}
-
-fn minutes(count: u64) -> String {
-    if count == 1 {
-        "1 minute".to_owned()
-    } else {
-        format!("{count} minutes")
-    }
+        step,
+        at,
+        whole,
+    )
 }
 
 /// Adds `row`, raised `at` in milliseconds, to the rows in `file` saying
-/// what was never read, keeping those whose span ended in the
-/// [`MISSED_FOR`] before. Its search's rows whose spans come within
-/// [`MEET`] of its own are said with it as one row, raised `at`, spanning
-/// them all: whole where together they leave no read stretch, as a gap
-/// read on again after its round was thrown away does, and otherwise as
-/// parts, whatever order they're met in. Rows that meet
-/// only what it spans once it has taken others are taken too, as a file
-/// written before rows met holds. That row is named anew, so one Joel
-/// said he'd looked at comes back holding what's new; one not made by
-/// [`missed`] meets nothing, and one whose start can't be told meets only
-/// its own name, so no dated row is lost into it.
-///
-/// `file` is a file of its own, which the reader's stop doesn't take
-/// away as it does the row saying it can't hear, since what it says stays
-/// true once the reader hears again or restarts. One not
-/// there holds no row; one that can't be read, or holds no rows, is left
-/// as it is, so no row it holds is lost. What the row written says is
-/// given back, so the journal says what Joel reads.
+/// what Slack's searches never read, as pineapple's `missed` keeps every
+/// reader's: its search's rows whose spans come within [`MEET`] of its own
+/// are said with it as one row, whole or in parts. What the row written
+/// says is given back, so the journal says what Joel reads.
 ///
 /// # Errors
 ///
 /// Why it couldn't be read or written.
 pub fn keep_missed(file: &Path, row: Value, at: u64) -> std::io::Result<String> {
-    let unread = |why: String| std::io::Error::new(std::io::ErrorKind::InvalidData, why);
-    let kept = match std::fs::read(file) {
-        Ok(read) => {
-            let kept: Value = serde_json::from_slice(&read)
-                .map_err(|error| unread(format!("it holds no rows it can read: {error}")))?;
-            if !kept["items"].is_array() {
-                return Err(unread("it holds no rows".to_owned()));
-            }
-            Some(kept)
-        }
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
-        Err(error) => return Err(error),
+    let phrase = format!("{MISSED}phrase-");
+    let search = if row["id"].as_str().is_some_and(|id| id.starts_with(&phrase)) {
+        Search::Phrase
+    } else {
+        Search::Tag
     };
-    let recent = |row: &Value| {
-        row["id"]
-            .as_str()
-            .and_then(|id| id.strip_prefix(MISSED))
-            .and_then(|named| named.rsplit('-').next())
-            .and_then(|raised| raised.parse::<u64>().ok())
-            .is_some_and(|raised| raised.saturating_add(MISSED_FOR) >= at)
-    };
-    let mut rows: Vec<Value> = kept
-        .as_ref()
-        .and_then(|kept| kept["items"].as_array())
-        .into_iter()
-        .flatten()
-        .filter(|kept| recent(kept))
-        .cloned()
-        .collect();
-    let mut own = span_of(&row);
-    let mut taken: Vec<Span> = span_of(&row).into_iter().collect();
-    if let Some(span) = own.as_mut() {
-        loop {
-            let before = rows.len();
-            rows.retain(|earlier| match span_of(earlier) {
-                Some(theirs) if span.meets(&theirs) => {
-                    span.reach(&theirs);
-                    taken.push(theirs);
-                    false
-                }
-                _ => true,
-            });
-            if rows.len() == before {
-                break;
-            }
-        }
-    }
-    let row = match own {
-        Some(span) if taken.len() > 1 => {
-            said(span.search, span.from, Some(span.to), at, whole(taken))
-        }
-        _ => row,
-    };
-    let why = row["why"].as_str().unwrap_or_default().to_owned();
-    rows.push(row);
-    let file_of = json!({
-        "v": 2,
-        "updated": slack_people::messages::iso(at),
-        "quest": "pineapple",
-        "items": rows,
-    });
-    make(file, &Change::Tell(file_of)).map(|()| why)
-}
-
-/// Whether `spans` met in one row are all never read and leave no read
-/// stretch between them, taken from the earliest start on, so the order
-/// they were met in says nothing.
-fn whole(mut spans: Vec<Span>) -> bool {
-    spans.sort_by_key(|span| span.from.unwrap_or(0));
-    let mut reached: Option<u64> = None;
-    spans.iter().all(|span| {
-        let joins = reached.is_none_or(|to| span.from.unwrap_or(0) <= to);
-        reached = Some(reached.map_or(span.to, |to| to.max(span.to)));
-        span.whole && joins
-    })
-}
-
-/// The span a row saying what was never read names, read back from its
-/// name and fields: its search, its start, if known, and end, in
-/// milliseconds, and whether all of it was never read.
-struct Span {
-    search: Search,
-    from: Option<u64>,
-    to: u64,
-    whole: bool,
-}
-
-impl Span {
-    /// Whether `theirs` is the same search's and comes within [`MEET`];
-    /// where either start can't be told, only the same span meets.
-    fn meets(&self, theirs: &Span) -> bool {
-        self.search == theirs.search
-            && match (self.from, theirs.from) {
-                (Some(own), Some(other)) => {
-                    own <= theirs.to.saturating_add(MEET) && other <= self.to.saturating_add(MEET)
-                }
-                (None, None) => self.to == theirs.to,
-                _ => false,
-            }
-    }
-
-    /// Spans `theirs` too; whether the two are whole is [`whole`]'s.
-    fn reach(&mut self, theirs: &Span) {
-        self.from = self
-            .from
-            .zip(theirs.from)
-            .map(|(own, other)| own.min(other));
-        self.to = self.to.max(theirs.to);
-    }
-}
-
-fn span_of(row: &Value) -> Option<Span> {
-    let (name, span) = row["id"].as_str()?.strip_prefix(MISSED)?.split_once('-')?;
-    let (from, to) = span.split_once('-')?;
-    let search = match name {
-        "phrase" => Search::Phrase,
-        "tag" => Search::Tag,
-        _ => return None,
-    };
-    let from: u64 = from.parse().ok()?;
-    Some(Span {
-        search,
-        from: (from != 0).then_some(from),
-        to: to.parse().ok()?,
-        whole: row["whole"].as_bool().unwrap_or(true),
+    missed::keep(file, MISSED, row, at, |from, to, whole| {
+        said(search, from, Some(to), at, whole)
     })
 }
