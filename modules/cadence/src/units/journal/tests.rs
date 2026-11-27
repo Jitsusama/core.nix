@@ -50,7 +50,7 @@ impl Stand {
     }
 
     fn run(&self) -> impl Fn(&[String]) -> Result<String, String> + '_ {
-        |args: &[String]| {
+        move |args: &[String]| {
             self.asked.borrow_mut().push(args.to_vec());
             Ok(self.said.clone())
         }
