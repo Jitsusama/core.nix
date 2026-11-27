@@ -392,16 +392,16 @@ Item {
             compare(stepped.signalArguments[0][0], "next");
         }
 
-        // The prompt's timing, given the launcher's rule (Confirm.taken, what
-        // Launcher.qml's answerTaken reads through askSaid), not the launcher's
-        // own binding: any named key past its guard answers, x as no, and a
+        // The prompt's timing, given the launcher's rule (Confirm.takes of
+        // Confirm.said, as Launcher.qml's answerTaken reads through askSaid),
+        // not the launcher's own binding: any named key past its guard answers, x as no, and a
         // key inside the guard is early and taken as nothing.
         function test_anAskActsWhereItTakesTheKey() {
             toNormal();
             line.confirming = true;
             const ask = { at: Date.now() };
             let guard = 0;
-            line.answerTaken = (key, at) => Confirm.taken(ask, key, at, guard);
+            line.answerTaken = (key, at) => Confirm.takes(Confirm.said(ask, key, at, guard));
             keyClick("x");
             compare(answered.count, 1);
             verify(line.keyActed, "x past the guard, answering no");

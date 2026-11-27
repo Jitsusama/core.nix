@@ -7827,10 +7827,10 @@ Scope {
     // A key while the ask stands, as Prompt.qml hands it over, with when
     // it came. It answers only as the field times it (Confirm.takes). A
     // key let by as it came with no time, as its ask can't be timed, or as
-    // it was timed before its ask, is journalled, naming it, whether or not
-    // reports are on, as none can answer yes (Confirm.letBy); a key that
-    // answers is said by the answer alone, and a modifier alone, early to
-    // every ask, isn't journalled.
+    // it was timed before its ask, is journalled, naming it only where it's
+    // Return or Enter, whether or not reports are on, as none can answer
+    // yes (Confirm.letBy); a key that answers is said by the answer alone,
+    // and a modifier alone, early to every ask, isn't journalled.
     function answerAsk(key, at) {
         const ask = asked;
         const said = askSaid(key, at);
