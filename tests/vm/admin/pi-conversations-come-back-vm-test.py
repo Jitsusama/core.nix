@@ -139,7 +139,7 @@ class Host:
         command = f"export XDG_RUNTIME_DIR=/run/user/1000; systemctl --user show -p {fields} {UNIT}"
         return self.reading(f"su - alice -c {shlex.quote(command)}")
 
-    def waited(self, what: str, wait: Callable[[], None], journal: str = "") -> None:
+    def waited(self, what: str, wait: Callable[[], object], journal: str = "") -> None:
         """Wait, and should it fail, say what the host never did and how it stands."""
         try:
             wait()
