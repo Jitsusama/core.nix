@@ -1617,6 +1617,24 @@ fn refused(failure: store::Failure) -> Refused {
     }
 }
 
+/// What a move wpa_supplicant refused is answered with. One to a point it
+/// forgot is out of reach as one wifid doesn't hear is, so a chooser keeps
+/// it off as never reached rather than taking the move as never asked and
+/// asking again.
+fn refused_move(card: &str, bssid: &str, error: &zbus::Error) -> Refused {
+    let forgotten = matches!(
+        error,
+        zbus::Error::MethodError(name, said, _) if forgot(name.as_str(), said.as_deref())
+    );
+    if forgotten {
+        println!("<6>{card} didn't move to {bssid}, which wpa_supplicant no longer holds");
+        return Refused::NotNearby;
+    }
+    Refused::Failed {
+        reason: format!("{card} didn't move to {bssid}: {error}"),
+    }
+}
+
 /// Whether wpa_supplicant refused a move, by its error's name and words,
 /// as it no longer holds the access point asked for.
 fn forgot(name: &str, said: Option<&str>) -> bool {
@@ -3092,10 +3110,6 @@ impl Wifid<'_> {
             }
         };
         if let Err(error) = roamed.await {
-            let forgotten = matches!(
-                &error,
-                zbus::Error::MethodError(name, said, _) if forgot(name.as_str(), said.as_deref())
-            );
             if let Some(before) = before {
                 let to = before.to().to_owned();
                 println!("<6>{card} keeps on its move to {to}, as the move to {bssid} failed");
@@ -3110,16 +3124,7 @@ impl Wifid<'_> {
                 self.together(&card, joining != Some(card.as_str())).await;
                 self.let_go(&card, false).await;
             }
-            // One wpa_supplicant forgot is out of reach as one wifid
-            // doesn't hear is, so a chooser keeps it off as never reached
-            // rather than taking the move as never asked and asking again.
-            if forgotten {
-                println!("<6>{card} didn't move to {bssid}, which wpa_supplicant no longer holds");
-                return Err(Refused::NotNearby);
-            }
-            return Err(Refused::Failed {
-                reason: format!("{card} didn't move to {bssid}: {error}"),
-            });
+            return Err(refused_move(&card, bssid, &error));
         }
         println!("<6>{card} moved to {bssid}, as asked");
         println!("<7>{card} keeps to {bssid} until it comes off its network");
