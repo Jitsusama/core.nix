@@ -624,6 +624,7 @@ pub(super) fn excuses(
     if excused(&judged) {
         // Only a red that lands is told: one that splits is its riders'.
         tell(root, url, red, &judged);
+        super::excused::keep(root, red, &judged);
         for check in flakes.count(&judged) {
             println!(
                 "merge-net: flake {check} at {} on {}: red, then passed when built again",

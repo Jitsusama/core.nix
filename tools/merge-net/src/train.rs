@@ -70,6 +70,7 @@ use crate::state::short;
 use right_of_way::Ended;
 pub use right_of_way::gives_way;
 
+mod excused;
 mod flaky;
 mod gated;
 mod hub;
@@ -575,27 +576,17 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
         }
         say_it_runs(&candidate, &done.merged);
         let (ended, code) = gate(&checkout, &log);
+        let gated_red = flaky::Red {
+            checkout: &checkout,
+            base: &base,
+            candidate: &candidate,
+            log: &log,
+        };
         match ended {
-            Gated::Passed => splitting.taken(),
-            // A red that is main's or a flake's, every part of it run,
-            // lands as a pass would.
-            Gated::Red
-                if gated::ran_whole(code)
-                    && flaky::excuses(
-                        &root,
-                        url,
-                        &flaky::Red {
-                            checkout: &checkout,
-                            base: &base,
-                            candidate: &candidate,
-                            log: &log,
-                        },
-                        &mut flakes,
-                        &mut flaky::Lenders,
-                    ) =>
-            {
-                splitting.taken();
-            }
+            // A red that is main's or a flake's lands as a pass would, and
+            // recuts as one (`excused`).
+            Gated::Passed => {}
+            Gated::Red if red_is_excused(&root, url, code, &gated_red, &mut flakes) => {}
             Gated::Red => {
                 right_of_way::run_ends(&root);
                 splitting.taken();
@@ -614,6 +605,7 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
                 continue;
             }
         }
+        splitting.taken();
         // Said before the first merge, so an outside merge can wait it out:
         // one between the train's merges left main untested on 25 November,
         // reverting all three of a run's. Each line until the one saying it
@@ -635,6 +627,18 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
         after_landing(&root, landing, &done.merged, began, &mut splitting);
         println!("merge-net: the landing of {} ends", short(&candidate));
     }
+}
+
+/// Whether the gate's `red`, which ended with `code`, is main's or a
+/// flake's, every part of it run, so it lands as a pass would.
+fn red_is_excused(
+    root: &Path,
+    url: &str,
+    code: Option<i32>,
+    red: &flaky::Red<'_>,
+    flakes: &mut flaky::Flakes,
+) -> bool {
+    gated::ran_whole(code) && flaky::excuses(root, url, red, flakes, &mut flaky::Lenders)
 }
 
 /// After `landing` the `merged` riders of a run begun at `began`: those
