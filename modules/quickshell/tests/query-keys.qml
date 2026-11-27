@@ -2307,6 +2307,15 @@ QtObject {
         titleReader.text = Search.readerText("Drawing 2026-11-09\n10.12.03.svg");
         holds("a title's reader gives its break back as a line separator",
             titleReader.getText(0, 19), "Drawing 2026-11-09\u2028");
+        // A space before a break stays before the separator it's given back
+        // as, and separators a title's name holds come back as they're held,
+        // as the search reads them (DrawerLines.runsOn).
+        titleReader.text = Search.readerText("a \nb");
+        holds("a title's reader keeps the space before its break",
+            titleReader.getText(0, titleReader.length), "a \u2028b");
+        titleReader.text = Search.readerText("a\u2028b\u2029c");
+        holds("and gives back the separators its name holds",
+            titleReader.getText(0, titleReader.length), "a\u2028b\u2029c");
         titleReader.destroy();
         holds("a reader's text keeps its spaces at its leading",
             Search.readerText("a  <b>", { leading: 20 }), "<div style=\"white-space:pre-wrap;"
