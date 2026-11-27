@@ -996,6 +996,46 @@ fn a_line_only_cadences_sight_holds_names_no_owner() {
         "a blind line named the owner ahead of the keeper's: {:?}",
         m.behind
     );
+    let alone = list(&[landed("world", 4 * 3600, "A", &world)]);
+    let m = unproven(&alone, Ok(""), Ok(&switched), &judge, NOW);
+    assert_eq!(
+        (m.owner.as_str(), m.target, sightless(&m)),
+        ("", None, true),
+        "a card only cadence's sight holds named a cell, read as judged or didn't say why: {}",
+        m.says
+    );
+}
+
+#[test]
+fn an_asks_own_words_cant_mark_its_line_as_one_only_cadences_sight_holds() {
+    let words = format!("fix it{BLIND}");
+    let core = json!({"pr": "core.nix#6835"});
+    let judge = |_: &Value, _: Repo, _: u32| Some(true);
+    let switched = json!({"at": at(NOW - 2 * 3600)}).to_string();
+    let asks = list(&[landed(&words, 3 * 3600, "B", &core)]);
+    let m = unproven(
+        &asks,
+        Ok(&run(&words, 600, false, 1200)),
+        Ok(&switched),
+        &judge,
+        NOW,
+    );
+    assert_eq!(
+        (m.now, m.owner.as_str(), m.target),
+        (1.0, "B", Some(0.0)),
+        "an ask quoting cadence's blindness went uncounted or off its cell: {:?}",
+        m.behind
+    );
+    assert!(
+        m.behind.first().is_some_and(|line| !blind(line)),
+        "an ask's own words marked its line blind: {:?}",
+        m.behind
+    );
+    assert!(
+        !sightless(&m),
+        "a card judged read as sightless: {}",
+        m.says
+    );
 }
 
 #[test]

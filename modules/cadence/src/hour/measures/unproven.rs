@@ -141,7 +141,19 @@ fn read_on(
                 read
             })
             .as_ref()
-            .and_then(|merges| merges.get(&u64::from(number)).cloned());
+            .and_then(|merges| {
+                let merge = merges.get(&u64::from(number)).cloned();
+                // Cadence fetches neither core's checkout nor World's, so a
+                // merge missing from a main it read may be its own stale
+                // sight or a wrong `pr`; it says which number, to be mended.
+                if merge.is_none() {
+                    eprintln!(
+                        "cadence: {name}'s main holds no merge of #{number}, so an ask naming \
+                         it is unjudged: fetch its checkout, or mend the ask's pr"
+                    );
+                }
+                merge
+            });
         let held = merge.and_then(|merge| misses::holds(line, name, &merge, &repos));
         judged.borrow_mut().insert(key, held);
         held
@@ -291,8 +303,7 @@ pub fn unproven(
         (Err(why), _) => Some(format!("the probe runs unread: {}", clean(why))),
         (Ok(_), false) => Some("no ask names a probe yet".to_owned()),
         (Ok(_), true) => switches_unread.or_else(|| {
-            (counted == 0 && blinded > 0)
-                .then(|| format!("cadence can't tell whether {blinded} of them are live"))
+            (counted == 0 && blinded > 0).then(|| format!("{SIGHTLESS} {blinded} of them are live"))
         }),
     };
     Measure {
@@ -356,6 +367,20 @@ fn runs(probes: &str) -> Result<BTreeMap<String, Vec<Run>>, String> {
 /// back what the hour can't see.
 pub const BLIND: &str =
     ", not live yet, as cadence can't tell whether the switch running carries it";
+
+/// What the measure says it's unjudged by when every line on it is one
+/// only cadence's own sight holds.
+const SIGHTLESS: &str = "cadence can't tell whether";
+
+/// Whether `m`, the measure, is unjudged only because every line on it is
+/// one cadence's own sight holds: its runs and switches were read, so a
+/// line gone from it is still known to be gone, as on a card judged.
+#[must_use]
+pub fn sightless(m: &Measure) -> bool {
+    m.target.is_none()
+        && m.says.contains(&format!("({SIGHTLESS} "))
+        && m.says.ends_with(" of them are live)")
+}
 
 /// Whether a line of the measure's ends its state with `BLIND`, read where
 /// it is written, just before its cell, so no ask's own words can mark it.

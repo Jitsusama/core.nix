@@ -456,9 +456,11 @@ fn routed(class: Class) -> bool {
 
 /// Whether the ask unproven keyed by `rest`, its owner and its ask, is
 /// back in: it's its cell's until its line, whatever its state now, is gone
-/// from the measure, read; unjudged, it stays open. A line only cadence's
-/// own sight holds still stands, as what it can't see for an hour hasn't
-/// passed, so neither the ask nor the why its cell gave is let go.
+/// from the measure, read; unjudged, it stays open, unless only cadence's
+/// sight of the lines left unjudges it, since a line gone is still known
+/// gone. A line only cadence's own sight holds still stands, as what it
+/// can't see for an hour hasn't passed, so neither the ask nor the why its
+/// cell gave is let go.
 fn unproven_back_in(rest: &str, measures: &[Measure]) -> bool {
     let Some((owner, ask)) = rest.split_once(':') else {
         return false;
@@ -468,7 +470,7 @@ fn unproven_back_in(rest: &str, measures: &[Measure]) -> bool {
         .iter()
         .find(|m| m.key == unproven::KEY)
         .is_some_and(|m| {
-            m.target.is_some()
+            (m.target.is_some() || unproven::sightless(m))
                 && !m
                     .behind
                     .iter()
@@ -717,10 +719,13 @@ fn unheld(ledger: &mut [Entry], measures: &[Measure]) {
 }
 
 /// Keeps each cell's open ask unproven whose line only cadence's own sight
-/// holds now saying what the line says, and not due while it does: what
-/// the hour can't see isn't the cell's to mend, so it doesn't go late on
-/// the cell, and the late ask the hubs show, once sight is back, reads as
-/// it stands rather than as it was filed.
+/// holds now saying what the line says, and its clock stopped while it
+/// does: what the hour can't see isn't the cell's to mend, so the time
+/// since the hour last read it isn't counted against the cell, and the
+/// late ask the hubs show, once sight is back, reads as it stands rather
+/// than as it was filed. Only that time is given back, so a blind hour
+/// now and then doesn't keep an ask from ever going late; one already
+/// late keeps its date, as the hubs were told it.
 fn blinded(ledger: &mut [Entry], measures: &[Measure], now: i64) {
     let Some(m) = measures.iter().find(|m| m.key == unproven::KEY) else {
         return;
@@ -737,7 +742,10 @@ fn blinded(ledger: &mut [Entry], measures: &[Measure], now: i64) {
             if let Some((says, _)) = entry.words.split_once(", yours: ") {
                 entry.words = format!("{says}, yours: {own}");
             }
-            entry.due = entry.due.max(now + DAY);
+            if !entry.late {
+                entry.due += now - entry.last_to.min(now);
+            }
+            entry.last_to = now;
         }
     }
 }
@@ -2069,6 +2077,54 @@ mod tests {
         assert!(
             theirs.is_some_and(|e| e.open && e.due < later),
             "a line cadence can judge stopped going due: {theirs:?}"
+        );
+    }
+
+    #[test]
+    fn an_ask_passed_beside_one_only_cadences_sight_holds_closes_and_the_blind_one_waits() {
+        let card = "show the card, asked 2026-11-26T09:00:00Z";
+        let bar = "fix the bar, asked 2026-11-26T10:00:00Z";
+        let blind = format!("passed on a switch cadence can't judge{}", unproven::BLIND);
+        let key = |ask: &str, cell: &str| format!("hour:{}:{cell}:{ask}", unproven::KEY);
+        let mut both = measure(unproven::KEY, Class::Functional, 2.0, Some(0.0));
+        both.behind = vec![
+            format!("{card}; its probe failed · 1JQPPC"),
+            format!("{bar}; its probe failed · B"),
+        ];
+        let mut ledger = Vec::new();
+        let told = file(&mut ledger, &[both], "2026-11-26", 1000);
+        assert_eq!(told.len(), 2, "both cells weren't asked: {told:?}");
+        // The card's probe passes, while only cadence's sight holds the
+        // bar's line, so the card goes unjudged, as `unproven` says it.
+        let mut left = measure(unproven::KEY, Class::Functional, 0.0, None);
+        left.says = "his asks (cadence can't tell whether 1 of them are live)".to_owned();
+        left.behind = vec![format!("{bar}; its probe {blind} · B")];
+        assert!(unproven::sightless(&left), "the stand-in isn't sightless");
+        file(&mut ledger, &[left.clone()], "2026-11-26", 4600);
+        let card_entry = ledger.iter().find(|e| e.key == key(card, "1JQPPC"));
+        assert!(
+            card_entry.is_some_and(|e| !e.open),
+            "an ask proven beside a blind line stayed open on its cell: {card_entry:?}"
+        );
+        // The blind one's clock stops for the time it can't be seen,
+        // however long, but not for the time before.
+        file(&mut ledger, &[left.clone()], "2026-11-26", 4600 + 2 * DAY);
+        let bar_entry = ledger.iter().find(|e| e.key == key(bar, "B"));
+        assert!(
+            bar_entry.is_some_and(|e| e.open && e.due == 1000 + DAY + 2 * DAY + 3600),
+            "a blind ask's clock ran on, or stopped for more than it was blind: {bar_entry:?}"
+        );
+        // One already late keeps the date the hubs were told.
+        let due = bar_entry.map(|e| e.due);
+        for e in ledger.iter_mut().filter(|e| e.key == key(bar, "B")) {
+            e.late = true;
+        }
+        file(&mut ledger, &[left], "2026-11-26", 4600 + 3 * DAY);
+        let late = ledger.iter().find(|e| e.key == key(bar, "B"));
+        assert_eq!(
+            late.map(|e| (e.late, e.due)),
+            due.map(|due| (true, due)),
+            "a late ask's date moved while it was blind, unsaid: {late:?}"
         );
     }
 
