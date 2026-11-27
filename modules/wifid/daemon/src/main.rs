@@ -1150,6 +1150,36 @@ impl<'a> Air<'a> {
         }
     }
 
+    /// Takes in a join of the card at this path that landed on a signal's
+    /// step, at `point` beside it where one came, and ends the move that
+    /// brought it there.
+    async fn join_landed(
+        &mut self,
+        bus: &Connection,
+        path: &ObjectPath<'_>,
+        card: &str,
+        point: Option<&zvariant::Value<'_>>,
+        now: Instant,
+    ) {
+        // A point beside the step is where the join landed, so it's taken
+        // in as it lands rather than after.
+        let at = match point {
+            Some(zvariant::Value::ObjectPath(said)) => Some(joined_to(said)),
+            _ => None,
+        };
+        change(&self.state, |state| match at {
+            Some(at) => state.landed_at(card, at),
+            None => state.landed(card),
+        });
+        let said = credited(point, self.at.get(path.as_str()).map(String::as_str));
+        let on = self.joined(bus, path, said.as_deref()).await;
+        let arrived = self.arrivals.borrow_mut().joined(card, on.as_deref(), now);
+        if let Some(arrived) = arrived {
+            println!("{}", arrived.said(card));
+        }
+        self.settled.push(card.to_owned());
+    }
+
     /// Takes in what wpa_supplicant says changed of the card at this path:
     /// how far it's got joining a network, the access point it's at, and
     /// any status that ends its join. The access point is taken only as
@@ -1177,9 +1207,9 @@ impl<'a> Air<'a> {
             let step = step.to_string();
             if let Some(card) = self.named(bus, path).await {
                 let before = self.cards.get(path.as_str());
-                let before = before.map_or("", |(_, step)| step.as_str());
-                let join = supplicant::join_at(before, &step);
-                let left = supplicant::left_its_network(before, &step);
+                let before = before.map(|(_, step)| step.clone()).unwrap_or_default();
+                let join = supplicant::join_at(&before, &step);
+                let left = supplicant::left_its_network(&before, &step);
                 match join {
                     Join::Begins => {
                         change(&self.state, |state| state.attempting(&card));
@@ -1190,23 +1220,7 @@ impl<'a> Air<'a> {
                 }
                 if join == Join::Lands {
                     landed = true;
-                    // A point beside the step is where the join landed, so
-                    // it's taken in as it lands rather than after.
-                    let at = match point {
-                        Some(zvariant::Value::ObjectPath(said)) => Some(joined_to(said)),
-                        _ => None,
-                    };
-                    change(&self.state, |state| match at {
-                        Some(at) => state.landed_at(&card, at),
-                        None => state.landed(&card),
-                    });
-                    let said = credited(point, self.at.get(path.as_str()).map(String::as_str));
-                    let on = self.joined(bus, path, said.as_deref()).await;
-                    let arrived = self.arrivals.borrow_mut().joined(&card, on.as_deref(), now);
-                    if let Some(arrived) = arrived {
-                        println!("{}", arrived.said(&card));
-                    }
-                    self.settled.push(card.clone());
+                    self.join_landed(bus, path, &card, point, now).await;
                 } else if step != before
                     && let Some(lost) = self.arrivals.borrow_mut().step(&card, &step, now)
                 {

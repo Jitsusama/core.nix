@@ -1646,13 +1646,14 @@ mod tests {
         state.warned_off("wlan2", &warned, (now, now + Duration::from_secs(3600)));
         // Left for the hall, then a join back to the point that warned,
         // which associates there and lands on the hall instead, the step
-        // and the hall in one signal.
+        // and the hall in one signal. The inn's own point is the first.
+        let (inn, hall) = ("/Interfaces/0/BSSs/1", "/Interfaces/0/BSSs/2");
         state.attempting("wlan2");
-        state.at("wlan2", Some("/Interfaces/0/BSSs/1".into()));
+        state.at("wlan2", Some(hall.into()));
         state.landed("wlan2");
         state.attempting("wlan2");
-        state.at("wlan2", Some("/Interfaces/0/BSSs/2".into()));
-        state.landed_at("wlan2", Some("/Interfaces/0/BSSs/1".into()));
+        state.at("wlan2", Some(inn.into()));
+        state.landed_at("wlan2", Some(hall.into()));
 
         assert_eq!(
             state.warned_from("wlan2", now),
