@@ -107,8 +107,8 @@ function letBy(ask, key, now, guard) {
 // ask stands: a yes or a no, never an early key. Launcher.qml's answerAsk
 // and its field's answerTaken both ask this of askSaid, so they can't read
 // an answer otherwise.
-function takes(said) {
-    return said === "yes" || said === "no";
+function takes(answered) {
+    return answered === "yes" || answered === "no";
 }
 
 // What the ask standing (`ask`, or null with none) makes of `key` come
@@ -225,9 +225,9 @@ function plural(kind, words) {
 }
 
 // Parts said as a list: commas between, and before the last.
-function listed(said, words) {
-    if (said.length < 2) {
-        return said.join("");
+function listed(items, words) {
+    if (items.length < 2) {
+        return items.join("");
     }
-    return `${said.slice(0, -1).join(", ")} ${words.and ?? ""} ${said[said.length - 1]}`;
+    return `${items.slice(0, -1).join(", ")} ${words.and ?? ""} ${items[items.length - 1]}`;
 }
