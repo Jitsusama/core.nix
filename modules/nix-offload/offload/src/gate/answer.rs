@@ -9,7 +9,8 @@
 //! of the forge's main is made fresh, from a mirror only the forge
 //! fills, and the bundle's commits are fetched into it object by object
 //! checked, refused unless each commit it needs is on that main and the
-//! commit descends from it (`fence.rs` runs each git). Only then does
+//! commit descends from each, or from main's newest when it needs none
+//! (`fence.rs` runs each git). Only then does
 //! `there --changed` run, through `outside`, on the exemption's terms,
 //! kept to the lent builders, so its pass is kept where a merge reads it.
 //!
@@ -341,16 +342,19 @@ pub fn gated(
             head.trim()
         )));
     }
-    git(
-        Net::None,
-        &[
-            "merge-base",
-            "--is-ancestor",
-            "refs/remotes/origin/main",
-            commit,
-        ],
-    )
-    .map_err(|_| refused("the commit doesn't descend from the forge's main"))?;
+    // The commit has to stand on main's history: on each commit of main
+    // the bundle says it needs, which `unlike_asked` holds to be some.
+    // Main's newest isn't asked of it, since main moves while an ask
+    // waits its turn, and a change behind main is gated as it stands, as
+    // `there --changed` gates one on this machine.
+    for base in &header.prerequisites {
+        git(Net::None, &["merge-base", "--is-ancestor", base, commit]).map_err(|_| {
+            refused(format!(
+                "the commit doesn't descend from {base}, which the bundle needs from the \
+                 forge's main"
+            ))
+        })?;
+    }
     git(Net::None, &["checkout", "--quiet", "--detach", commit]).map_err(refused)?;
     run(&tree, &work.join(LOG)).map_err(unreached)
 }

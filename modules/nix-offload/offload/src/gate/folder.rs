@@ -65,11 +65,15 @@ impl GateFolder {
         let shown = root.join(&beneath);
         let root_name = CString::new(root.as_os_str().as_encoded_bytes())
             .map_err(|_| io::Error::from(io::ErrorKind::InvalidInput))?;
+        // Only a place to look up from, never read: the answer runs fenced
+        // to its gate's folder, where opening the scratch root to read is
+        // refused, and the answer then waited out its crossing and ended
+        // 66 as though no gate had come.
         // SAFETY: open of a path this holds.
         let top = opened(unsafe {
             libc::open(
                 root_name.as_ptr(),
-                libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC,
+                LOOKUP | libc::O_DIRECTORY | libc::O_CLOEXEC,
             )
         })?;
         let folder = beneath_no_links(&top, &named(&beneath)?)?;
@@ -175,6 +179,14 @@ impl GateFolder {
         Ok(())
     }
 }
+
+/// How the scratch root is opened: on Linux only as a place to look up
+/// from, which the answer's fence allows where it refuses a read. A Mac
+/// has no `O_PATH`, and answers no gate, so it opens the root to read.
+#[cfg(target_os = "linux")]
+const LOOKUP: libc::c_int = libc::O_PATH;
+#[cfg(not(target_os = "linux"))]
+const LOOKUP: libc::c_int = libc::O_RDONLY;
 
 /// `path` below `top`, opened as a folder by openat2, following no link
 /// and leaving no folder below `top`.
@@ -288,6 +300,25 @@ mod tests {
             fs::read_to_string(gate.join("result.json")).expect("the result reads"),
             "{\"exit\":0}",
             "the result should be written in the gate's folder"
+        );
+    }
+
+    #[test]
+    fn a_gate_under_a_root_it_cant_read_still_opens() {
+        use std::os::unix::fs::PermissionsExt;
+        let (root, gate) = scratch();
+        fs::write(gate.join("request.json"), "{}").expect("a request");
+        // Searchable but not readable, as the fence leaves the scratch
+        // root to an answer fenced to its gate's folder.
+        fs::set_permissions(root.path(), fs::Permissions::from_mode(0o300))
+            .expect("the root's mode");
+        let opened = GateFolder::open(root.path(), QUEST, COMMIT);
+        fs::set_permissions(root.path(), fs::Permissions::from_mode(0o700))
+            .expect("the root's mode back");
+        let folder = opened.expect("a gate under a root it can't read should still open");
+        assert!(
+            folder.holds("request.json"),
+            "the gate's request should be found under a root it can't read"
         );
     }
 
