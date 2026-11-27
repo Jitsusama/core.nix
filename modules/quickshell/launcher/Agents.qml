@@ -151,6 +151,27 @@ Provider {
         if (!provider.warming)
             return;
         laidOut();
+        landedWarming.begun = true;
+        landedWarming.from = 0;
+        landedWarming.start();
+    }
+
+    // Landings told after the warm began, as a daemon slow to answer as
+    // the shell starts tells them, are kept the same way, so the first
+    // step finds those kept too. It goes through them all again from the
+    // newest, where a new one is put; each kept already is found alike.
+    // Only until the launcher first opens: past it, a landing is made as
+    // it's wanted, as a shut launcher makes none of Agents' rows that
+    // nobody sees (312 in 240 s on Joel's, 2026-11-10).
+    // It goes again only when the landings it went through differ from
+    // those there now, so a move that changes none (a landing's record
+    // told again) starts nothing; one told during a pass is found as the
+    // pass ends (landedWarming's onTriggered).
+    onLandedMovesChanged: {
+        if (!landedWarming.begun || landedWarming.opened || landedWarming.running)
+            return;
+        if (landedWarming.signed(provider.landings) === landedWarming.through)
+            return;
         landedWarming.from = 0;
         landedWarming.start();
     }
@@ -166,7 +187,22 @@ Provider {
         id: landedWarming
 
         property int from: 0
+        property bool begun: false
+        // Whether the launcher has opened since the shell started, which
+        // ends keeping landings told late.
+        property bool opened: false
+        // How many it said it kept last, so a warm again that kept no
+        // more says nothing.
+        property int said: -1
+        // The landings its last whole pass went through, as signed says.
+        property string through: ""
         readonly property real budget: 8
+
+        // Landings as a pass tells them apart: how many, and the newest's
+        // key, where a new one is put.
+        function signed(all) {
+            return `${all.length} ${all[0]?.key ?? ""}`;
+        }
 
         interval: 16
         repeat: true
@@ -175,6 +211,8 @@ Provider {
                 return;
             const began = KeyTimes.now();
             const all = provider.landings;
+            if (from === 0)
+                through = signed(all);
             const kept = provider.landedKept(String(Calendars.today ?? ""));
             let at = from;
             while (at < all.length && KeyTimes.now() - began < budget) {
@@ -184,7 +222,16 @@ Provider {
             from = at;
             if (at < all.length)
                 return;
+            // Those told during the pass are gone through again, unless the
+            // launcher has opened since, past which they're made as wanted.
+            if (!opened && signed(provider.landings) !== through) {
+                from = 0;
+                return;
+            }
             stop();
+            if (all.length === said)
+                return;
+            said = all.length;
             Report.say(`landings kept as the shell started: ${all.length}`);
         }
     }
@@ -2823,6 +2870,8 @@ Provider {
         target: provider.launcher
 
         function onOpenChanged() {
+            if (provider.launcher.open)
+                landedWarming.opened = true;
             provider.wrapAhead();
             provider.wrapForTyping();
             // Offers are a provider or two, asked at most every ten minutes

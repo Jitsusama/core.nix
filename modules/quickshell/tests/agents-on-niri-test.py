@@ -171,6 +171,8 @@ LANDINGS += [
 ]
 # How many rows' keys a step into Landed may weigh: one of each run alike, not each of them.
 WEIGHED_INTO_LANDED = 3
+# A quest document's item, as a plan's ticked one names it, never a change.
+DOCUMENT_ITEM = re.compile(r"[A-Z]+-\d{8}-[0-9A-Z]{6}#\d+")
 
 
 def landed_today() -> str:
@@ -460,17 +462,48 @@ def test_the_first_step_into_landed_after_a_start_makes_no_landings_row_anew(
     to 376 ms of its work, against 34 to 50 ms for each later one (his journal, 2026-11-15).
     It's the module's first case, so no case before it has stepped into Landed, and it reads
     no landing, which To Try's Return would, for the cases after it.
+
+    Landed holds only the last day's landings, a row for each day before standing for the
+    rest, so the step may make those days' rows but none of a landing's. The warm is waited
+    for until it has kept every one of the last day's, as a daemon slow to tell them at a
+    start would have it kept again once they come. Those are the ones worth reading: a plan
+    item ticked, saying nothing to try, is never told (landed.rs's worth_reading).
     """
+    day = timedelta(days=1)
+    lasts = sum(
+        1
+        for one in LANDINGS
+        if LANDED - datetime.fromisoformat(one["at"]) < day and worth_reading(one)
+    )
     launcher_on_niri.warmed(shell)
-    shell.reported("landings kept as the shell started", lambda _: True, shell.launched)
+    kept_all_lasts(shell, lasts)
     opened(shell)
     shell.launcher_until(lambda shown: "Landed" in shown["rows"])
     shell.down_to("Landed")
     before = made_by_agents(shell)
     shell.step_in()
     shell.launcher_until(lambda shown: shown["rows"][:2] == [STOPPED, TRY_FIRST])
-    made = made_by_agents(shell) - before
-    assert made < len(LANDINGS), f"the first step into Landed made {made}: {made_lately(shell)}"
+    made = [key for key in made_since(shell, before) if key.startswith("agents:landed:")]
+    assert not made, f"the first step into Landed made {made}: {made_lately(shell)}"
+
+
+def worth_reading(landing: Json) -> bool:
+    """Say whether the daemon tells a landing: a change merged, or one saying what to try."""
+    return "person" in landing or not DOCUMENT_ITEM.fullmatch(str(landing["ref"]))
+
+
+def kept_all_lasts(shell: Shell, lasts: int) -> None:
+    """Wait until the warm says it kept `lasts` landings, failing with every count it said."""
+    prefix = "landings kept as the shell started: "
+    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+    counts: list[str] = []
+    while lasts not in [int(one) for one in counts if one.isdigit()]:
+        assert time.monotonic() < deadline, (
+            f"the warm said it kept {counts or 'nothing'}, never the last day's {lasts}"
+        )
+        time.sleep(launcher_on_niri.POLL)
+        said, _ = shell.said_since(shell.launched)
+        counts = [one[len(prefix) :] for one in said if one.startswith(prefix)]
 
 
 def test_a_listening_sessions_return_asks_what_to_say_and_its_acts_stay_inside(
@@ -2821,6 +2854,12 @@ def test_a_shut_launcher_makes_no_agents_rows_as_a_session_comes_and_lands(shell
     # Warming wraps every session's row shut, a new one's too, so it fell inside this count as
     # an arrival's rows (`agent:ARRIVE shut` made from warmNext, 2026-11-13).
     launcher_on_niri.warmed(shell)
+    # Until the launcher first opens, a landing told late is kept as the warm's are, so the first
+    # step into Landed finds it kept (Agents.qml's onLandedMovesChanged); past it, shut, none is.
+    shell.as_account(shell.ipc("collection", "agents"))
+    shell.launcher_ready()
+    shell.close_launcher()
+    shell.launcher_closed()
     made_settled(shell)
     before = made_by_agents(shell)
     landing = {"at": datetime.now(UTC).isoformat(), "ref": "core.nix#2141", "what": "Arrived"}
