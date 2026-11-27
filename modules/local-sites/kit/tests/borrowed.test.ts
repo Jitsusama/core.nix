@@ -3,7 +3,7 @@
 
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
-import { drawsLike, pointsIn } from "../borrowed.ts";
+import { drawsLike, MARKS, pointsIn } from "../borrowed.ts";
 
 it("a letter beyond Latin where an act's letter stands may draw as it", () => {
   assert.equal(drawsLike("\u0441lear it", "clear it"), true);
@@ -16,6 +16,17 @@ it("a Latin letter draws only as itself, and a space only as a space", () => {
   assert.equal(drawsLike("clear at", "clear it"), false);
   assert.equal(drawsLike("clear\u0441it", "clear it"), false);
   assert.equal(drawsLike("\u0441lear", "clear it"), false);
+});
+
+it("a stem or a zero draws as the Latin letter it draws like", () => {
+  assert.equal(drawsLike("clear lt", "clear it"), true);
+  assert.equal(drawsLike("ta1k", "talk"), true);
+  assert.equal(drawsLike("explain \u0131t", "explain it"), true);
+  assert.equal(drawsLike("g0 t0", "go to"), true);
+});
+
+it("a combined mark is one the read takes out", () => {
+  assert.equal("tal\u0327k".replace(MARKS, ""), "talk");
 });
 
 it("a letter past U+FFFF counts once", () => {

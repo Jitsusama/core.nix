@@ -30,12 +30,19 @@ const HEX = 16;
  * could pass for or by a turn pose as: a two-word act, and a one-word act,
  * whose choices are judged by what follows it and how long they draw, at
  * the edge, where `c` weighing more than a small letter poses and one
- * weighing as one doesn't, so each copy's weights are held to the other's.
+ * weighing as one doesn't, so each copy's weights are held to the other's;
+ * and where an act's letter stands, first and inside, so each copy's letters
+ * that may draw as any, and its stems, are held to the other's (round 14 on
+ * #6562, 194).
  */
 function alike(form: Script, c: string): boolean {
-  const talking = [`Talk${c}to it`, `Talk${c}${c}to it`, `Talk ${c}${"x".repeat(18)}`].every(
-    (name) => poses(name, ["Talk"]) === form.poses(name as never, ["Talk"] as never),
-  );
+  const talking = [
+    `Talk${c}to it`,
+    `Talk${c}${c}to it`,
+    `Talk ${c}${"x".repeat(18)}`,
+    `${c}alk`,
+    `Ta${c}k`,
+  ].every((name) => poses(name, ["Talk"]) === form.poses(name as never, ["Talk"] as never));
   return (
     talking &&
     [

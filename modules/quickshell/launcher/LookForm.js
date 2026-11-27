@@ -20,6 +20,11 @@ const SPACES = /\s+/gu;
 // engine may not read.
 const UNSEEN = /[\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff\ufff0-\ufff8]/gu;
 const UNMARKED = /[\u00ad\u061c\u180e]|\u034f/gu;
+// The marks that combine with the letter before them, drawn on it and
+// taking no place of their own, so "Tal\u0327k" draws as Talk with a
+// cedilla under its l; read as nothing, it's read as Talk (round 14 on
+// #6562, 201).
+const MARKS = /[\u0300-\u036f\u1ab0-\u1aff\u1dc0-\u1dff\u20d0-\u20ff\ufe20-\ufe2f]/gu;
 const FILLERS = /[\u115f\u1160\u2800\u3164\uffa0]/gu;
 const STOPS = /[\s.!?,;:\u2026]+$/u;
 // The letters an act's are told apart from: ASCII's, and Latin's accented
@@ -32,6 +37,12 @@ const STOPS = /[\s.!?,;:\u2026]+$/u;
 // a choice in another script, as long as an act or longer, may be held
 // back too, which a look written in English never is.
 const LATIN = /[\x21-\x7e\u00c0-\u017f]/u;
+// And Latin's own letters that draw alike in a plain face, each read as
+// the one it draws like: a capital I, a small l, a dotless i, a one and a
+// bar as a stem, a zero as an o, so "Clear lt", "CIear It" and "Explain It"
+// with a dotless i draw as the act and read as it (round 14, 198 and 207).
+// Unlike the letters beyond Latin, these are few, and known.
+const STEMS = { i: "l", 1: "l", "|": "l", "\u0131": "l", 0: "o" };
 // A digit, which goes on a word as a letter does (opensWith).
 const DIGIT = /[0-9]/u;
 // Where a verb's one line stops showing what follows: a line break, or two
@@ -47,7 +58,8 @@ const TURNS = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/u;
 const VARIANTS = /\u009c/u;
 // What may follow a one-word act in a choice that's still trusted to draw
 // whole: printable ASCII, Latin's accented letters, Greek's and Cyrillic's
-// letters, which draw about as wide (round 13 on #6562, 180), and
+// letters, each weighed as wide as a W, which none draws wider than
+// (round 13 on #6562, 180; round 14, 189, 200 and 205), and
 // typographic quotes and dashes, whose width the row's cut can be judged
 // by (weighed), as "Open Jos\u00e9\u2019s PR" or "Answer \u0414\u0430". A wide
 // glyph, a fullwidth letter among them, or a mark drawn like a stop
@@ -57,9 +69,12 @@ const PLAIN =
     /^[\x20-\x7e\u00c0-\u017f\u0386-\u03ce\u0400-\u045f\u2013\u2014\u2018\u2019\u201c\u201d]*$/u;
 // What of it draws wider than a small letter, which weighed counts by its
 // width: about twice, "Talk " and 19 capital W's drawing as wide as 43
-// small x's, as their accented and joined kin do (WIDEST); or half as wide
-// again, as every other capital, which weighed tells by its case.
-const WIDEST = /[MWmw@%\u2014\u00c6\u00e6\u0152\u0153\u0174\u0175]/u;
+// small x's, as their accented and joined kin do, and every Greek or
+// Cyrillic letter PLAIN lets in, since Ш, ш, Ω and Μ draw as wide as W or
+// m, and weighing them all so only ever weighs them too wide (WIDEST); or
+// half as wide again, as every other capital, which weighed tells by its
+// case.
+const WIDEST = /[MWmw@%\u2014\u00c6\u00e6\u0152\u0153\u0174\u0175\u0386-\u03ce\u0400-\u045f]/u;
 // A space PLAIN can't see, since the read makes every space one: a tab or
 // a wide space draws past its count, "Talk x\t" and 15 y's as Talk.
 const SPACED = /[^\S \u00a0]/u;
@@ -133,11 +148,13 @@ function pointsOf(text) {
 
 // Whether the first of `read`'s letters, as many as `each` has, may draw as
 // `each`: each the act's own letter, or one not LATIN where the act has a
-// letter, which may draw as any. A space draws only as a space.
+// letter, which may draw as any, or one STEMS reads as the act's. A space
+// draws only as a space.
 function drawsLike(read, each) {
     const ours = pointsOf(read);
     const acts = pointsOf(each);
-    return ours.length >= acts.length && acts.every((one, at) => ours[at] === one
+    const stem = one => STEMS[one] ?? one;
+    return ours.length >= acts.length && acts.every((one, at) => stem(ours[at]) === stem(one)
         || (one !== " " && ours[at] !== " " && !LATIN.test(ours[at])));
 }
 
@@ -145,7 +162,7 @@ function drawsLike(read, each) {
 // spaces one, its closing stops gone, in small letters.
 function readAs(name) {
     return drawnOf(String(name)).replace(UNSEEN, "")
-        .replace(UNMARKED, "").replace(FILLERS, " ")
+        .replace(UNMARKED, "").replace(MARKS, "").replace(FILLERS, " ")
         .replace(SPACES, " ").replace(STOPS, "").trim().toLowerCase();
 }
 
@@ -171,7 +188,7 @@ function actOf(one, taken = []) {
 // all a verb drawn on one line shows once the rest is cut short.
 function headOf(name) {
     return drawnOf(String(name)).replace(UNSEEN, "").replace(UNMARKED, "")
-        .replace(FILLERS, " ").trim().split(CUTS)[0];
+        .replace(MARKS, "").replace(FILLERS, " ").trim().split(CUTS)[0];
 }
 
 // Whether a name reads as one of `taken`, however it's spaced, stopped or

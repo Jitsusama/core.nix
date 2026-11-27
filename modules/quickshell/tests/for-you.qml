@@ -539,6 +539,31 @@ QtObject {
                 LookForm.poses("Talk to \u041c\u0430\u0440\u0438\u044f", ["Talk"]),
                 LookForm.poses("Open \u039d\u03b1\u03b9", ["Open"])],
             [true, false, false, false]);
+        // Weighed as wide as a W, a Greek or Cyrillic rest that draws as
+        // wide as Latin's widest poses where W's would (round 14, 189, 200
+        // and 205): ten ш as ten m, twelve Ш or Μ as twelve W.
+        expect("a wide Greek or Cyrillic rest poses as W's and m's do",
+            [LookForm.poses(`Talk ${"\u0448".repeat(10)}`, ["Talk"]),
+                LookForm.poses(`Talk ${"\u0428".repeat(12)}`, ["Talk"]),
+                LookForm.poses(`Talk ${"\u039c".repeat(12)}`, ["Talk"]),
+                LookForm.poses(`Talk ${"\u0434".repeat(9)}`, ["Talk"])],
+            [true, true, true, false]);
+        // Latin's own letters that draw alike in a plain face read as one
+        // another, and a mark combined onto an act's letter reads as nothing,
+        // so one inside an act's face is refused as what draws as nothing
+        // there is (round 14, 198, 201 and 207; round 10, F132).
+        expect("a stem, a zero or a combined mark can't pass for an act's letter",
+            [LookForm.poses("Clear lt", ["Clear It"]),
+                LookForm.poses("CIear It", ["Clear It"]),
+                LookForm.poses("Ta1k", ["Talk"]),
+                LookForm.poses("Explain \u0131t", ["Explain It"]),
+                LookForm.poses("G0 T0", ["Go To"]),
+                LookForm.poses("Tal\u0327k", ["Talk"]),
+                LookForm.poses("Clear I\u0323t", ["Clear It"]),
+                LookForm.poses("Ope\u0331n a PR now", ["Open"]),
+                LookForm.poses("Clear at", ["Clear It"]),
+                LookForm.poses("Close It", ["Clear It"])],
+            [true, true, true, true, true, true, true, true, false, false]);
         // A verb cut short where it runs out of room shows only its first
         // words, so one opening with an act's words poses as it, however
         // short what follows: the line's room isn't known where it's judged

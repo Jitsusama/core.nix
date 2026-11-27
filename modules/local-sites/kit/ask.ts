@@ -64,7 +64,7 @@
 // Every word here is free text a session wrote, so a page draws each as
 // text, never as markup.
 
-import { drawsLike, pointsIn } from "./borrowed.ts";
+import { drawsLike, MARKS, pointsIn } from "./borrowed.ts";
 import { type Fields, isObject } from "./records.ts";
 
 /** How many of a look's choices are offered, as Looks.js's OFFERED. */
@@ -288,7 +288,7 @@ const TURNS = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/u;
 const VARIANTS = /\u009c/u;
 const PLAIN =
   /^[\x20-\x7e\u00c0-\u017f\u0386-\u03ce\u0400-\u045f\u2013\u2014\u2018\u2019\u201c\u201d]*$/u;
-const WIDEST = /[MWmw@%\u2014\u00c6\u00e6\u0152\u0153\u0174\u0175]/u;
+const WIDEST = /[MWmw@%\u2014\u00c6\u00e6\u0152\u0153\u0174\u0175\u0386-\u03ce\u0400-\u045f]/u;
 const SPACED = /[^\S \u00a0]/u;
 const DANGLING = /(?:[\s\u00b7,;:]|\s[-|\u2013])+$/u;
 
@@ -323,6 +323,7 @@ function readAs(name: string): string {
     .replace(UNDRAWN, "")
     .replace(UNSEEN, "")
     .replace(UNMARKED, "")
+    .replace(MARKS, "")
     .replace(FILLERS, " ")
     .replace(SPACES, " ")
     .replace(STOPS, "")
@@ -341,6 +342,7 @@ function headOf(name: string): string {
       .replace(UNDRAWN, "")
       .replace(UNSEEN, "")
       .replace(UNMARKED, "")
+      .replace(MARKS, "")
       .replace(FILLERS, " ")
       .trim()
       .split(CUTS)[0] ?? ""
