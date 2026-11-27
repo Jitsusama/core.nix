@@ -744,7 +744,7 @@ ShellRoot {
                 if (root.heardSaid === null) {
                     root.heardLines = [heardBy([people, listed, forgetting, refreshed, paced]),
                         heardBy([kinds, differing, flat, whole, wholeFor, rewatched, wholeAhead,
-                            marked, repaced, none])];
+                            inheriting, marked, repaced, none])];
                     root.heardSaid = Hearing.heardMost(99).said;
                 }
                 const peopleSaid = /(?:^|, )people ([0-9]+) lines?, ([0-9]+) characters/
