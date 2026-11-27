@@ -422,22 +422,25 @@ mod tests {
 
     #[test]
     fn a_units_finding_names_the_machine_and_the_hours_it_was_read_over() {
-        let mut worse = vec![judge::Finding {
+        let first = judge::Finding {
             key: "failed:serve-a-*.service".to_owned(),
             bar: None,
             before: Some(0.0),
             now: 1.0,
             words: "a failure of serve-a-*.service, new, once".to_owned(),
-        }];
+        };
         let other = |key: &str, words: &str| judge::Finding {
             key: key.to_owned(),
             words: words.to_owned(),
-            ..worse[0].clone()
+            ..first.clone()
         };
-        worse.push(other("oom.machine", "kills went from 0 to 2"));
-        worse.push(other("flaky:vm-a", "a flaky test"));
-        worse.push(other("code.queued-on:a", "a queue"));
-        worse.push(other("crashes:tec", "a crash of tec"));
+        let mut worse = vec![
+            first.clone(),
+            other("oom.machine", "kills went from 0 to 2"),
+            other("flaky:vm-a", "a flaky test"),
+            other("code.queued-on:a", "a queue"),
+            other("crashes:tec", "a crash of tec"),
+        ];
         on_machine(&mut worse, "host-a", 10 * DAY);
         let ended = ended(10 * DAY);
         let zone = ended.rsplit(' ').next().unwrap_or_default().as_bytes();
