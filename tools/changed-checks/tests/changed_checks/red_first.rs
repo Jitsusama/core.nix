@@ -12,9 +12,13 @@ const WORKING: &str = r#"{"a": "a2.drv", "vm-x": "v2.drv"}"#;
 /// A change adding a test of `a`'s and changing its code.
 const CHANGE: &str = "A\tmodules/a/tests/new.rs\nM\tmodules/a/src/lib.rs\n";
 
+/// What nix says of a build a builder failed.
+const BUILDER_FAILED: &str =
+    "error: Cannot build '/nix/store/x-a.drv'.\n       Reason: builder failed with exit code 1.\n";
+
 /// A committed change, `diff.whole` its files, whose tests over the base
 /// give `a` the derivation `over`, which moves no further with files
-/// nothing names.
+/// nothing names, and whose failed builds a builder failed.
 fn committed(test: &str, change: &str, over: &str) -> StandIn {
     let stand_in = StandIn::new(test);
     stand_in.checks("base", BASE);
@@ -24,6 +28,7 @@ fn committed(test: &str, change: &str, over: &str) -> StandIn {
     let derivation = format!(r#"{{"a": "{over}"}}"#);
     fs::write(stand_in.path("over.json"), &derivation).expect("written");
     fs::write(stand_in.path("probed.json"), &derivation).expect("written");
+    fs::write(stand_in.path("failing.said"), BUILDER_FAILED).expect("written");
     stand_in
 }
 
@@ -102,6 +107,99 @@ fn a_new_test_that_fails_on_the_base_and_passes_at_the_head_goes_through() {
         "a wasn't built over the base: {}",
         stand_in.built()
     );
+    assert!(
+        !text(&ran.stderr).contains("builder failed"),
+        "nix's words for the red build reached the run's log, where merge-net reads them as \
+         the change's: {}",
+        text(&ran.stderr)
+    );
+}
+
+#[test]
+fn a_build_over_the_base_no_builder_failed_is_said_and_not_counted_red() {
+    let stand_in = committed("red-unbuilt", CHANGE, "a3.drv");
+    fs::write(stand_in.path("failing-over"), "a\n").expect("written");
+    let lost = "error: unable to download 'https://cache/x.narinfo': Couldn't connect\n";
+    fs::write(stand_in.path("failing.said"), lost).expect("written");
+
+    let ran = stand_in.run(&["--system", "x86_64-linux"]);
+
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    let said = text(&ran.stderr);
+    assert!(
+        said.contains("a couldn't be built over the base, though no builder failed it"),
+        "{said}"
+    );
+    assert!(
+        !said.contains("as it should"),
+        "a lost build was counted red: {said}"
+    );
+}
+
+#[test]
+fn a_check_reading_none_of_the_changes_code_is_built_over_the_base_and_refused() {
+    let stand_in = committed("red-only-tests", CHANGE, "a2.drv");
+
+    let ran = stand_in.run(&["--system", "x86_64-linux"]);
+
+    assert!(
+        !ran.status.success(),
+        "a test its change's code can't reach went through"
+    );
+    assert!(
+        text(&ran.stderr).contains("a passes with the change's tests laid over the base's code"),
+        "{}",
+        text(&ran.stderr)
+    );
+}
+
+#[test]
+fn a_train_candidate_of_merges_alone_is_not_judged_again() {
+    let stand_in = committed("red-train", CHANGE, "a3.drv");
+    fs::write(stand_in.path("own"), "").expect("written");
+
+    let ran = stand_in.run(&["--system", "x86_64-linux"]);
+
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert!(
+        text(&ran.stderr).contains("every commit since the base merges a change judged"),
+        "{}",
+        text(&ran.stderr)
+    );
+    assert!(!stand_in.built().contains("?rev="), "{}", stand_in.built());
+}
+
+#[test]
+fn a_change_only_taking_lines_from_its_tests_builds_nothing_over_the_base() {
+    let stand_in = committed("red-taken", CHANGE, "a3.drv");
+    let counted = "0\t12\tmodules/a/tests/new.rs\n";
+    fs::write(stand_in.path("diff.counted"), counted).expect("written");
+
+    let ran = stand_in.run(&["--system", "x86_64-linux"]);
+
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert!(
+        text(&ran.stderr).contains("the change only takes lines from its tests"),
+        "{}",
+        text(&ran.stderr)
+    );
+    assert!(!stand_in.built().contains("?rev="), "{}", stand_in.built());
+}
+
+#[test]
+fn tests_that_dont_evaluate_over_the_base_fail_there_as_they_should() {
+    let stand_in = committed("red-unevaluable", CHANGE, "a3.drv");
+    fs::remove_file(stand_in.path("over.json")).expect("removed");
+
+    let ran = stand_in.run(&["--system", "x86_64-linux"]);
+
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert!(
+        text(&ran.stderr).contains("the change's tests don't evaluate laid over the base"),
+        "{}",
+        text(&ran.stderr)
+    );
+    assert!(!stand_in.built().contains("?rev="), "{}", stand_in.built());
 }
 
 #[test]
@@ -214,7 +312,11 @@ fn a_check_the_tests_dont_reach_or_that_isnt_there_over_the_base_builds_nothing_
             "{}",
             Some("a isn't a check over the base, so its tests aren't run there"),
         ),
-        ("red-unevaluated", r#"{"a": null}"#, None),
+        (
+            "red-unevaluated",
+            r#"{"a": null}"#,
+            Some("a doesn't evaluate with the change's tests laid over the base"),
+        ),
     ] {
         let stand_in = committed(test, CHANGE, "a3.drv");
         fs::write(stand_in.path("over.json"), over).expect("written");

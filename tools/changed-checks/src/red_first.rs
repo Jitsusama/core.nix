@@ -18,21 +18,31 @@
 //!
 //! - one whose derivation over the base is the base's reads none of them;
 //! - one whose derivation over the base is the tree's reads none of the
-//!   change's code, so its tests can't fail without it, and pass;
+//!   change's code, so its tests can't fail without it; it's built there
+//!   as the rest are, which the store answers at once;
 //! - one that isn't there over the base, or doesn't evaluate there, can't
-//!   pass there;
+//!   pass there, and is said;
 //! - a lint, named `-passes-clippy` or `-passes-qmllint` as core's are,
 //!   reads its folder's tests with its code but runs none of them, so it
 //!   passes over the base by design, and it's said, not built there;
 //! - one whose derivation moves too with a file nothing names at the root
 //!   reads the whole tree, as a formatter or a scan of every file does, so
 //!   no file of the change is its test, and it's said, not refused;
-//! - each other is built over the base, and refused if it passes.
+//! - each other is built over the base, and refused if it passes. One a
+//!   builder failed is red, as it should be; one that failed with no
+//!   builder failing it, as when one is lost or a download fails, says
+//!   nothing of its tests, and is said. Nix's log of these builds is kept
+//!   out of the run's, where merge-net would read a failed build as the
+//!   change's.
 //!
 //! A change of tests alone is said and not built, a moved test file is
-//! said and not laid over the base, and tests added inside a code file,
-//! which no path tells apart, are said. A test that pins behaviour that was
-//! already right passes on the base by design: a commit of the change
+//! said and not laid over the base, a test file the change only takes
+//! lines from isn't laid there, and tests added inside a code file, which
+//! no path tells apart, are said. A candidate of merge-net's train, all
+//! merges of changes judged at their own heads, isn't judged again.
+//!
+//! A test that pins behaviour that was already right passes on the base
+//! by design: a commit of the change
 //! saying `Red-first: none, <why>` excuses it, and the run says so. A
 //! revert, as the net lands one, restores old tests over code that passed
 //! them, and is excused too.
@@ -118,6 +128,44 @@ impl Change {
             }
         }
         change
+    }
+}
+
+/// Of the files `git diff --numstat` says, those it adds lines to, or
+/// can't count the lines of: a test file the change only takes lines
+/// from, as one dropping the cases of behaviour it takes out, adds no
+/// test to fail on the base.
+pub fn adding(said: &str) -> BTreeSet<String> {
+    said.lines()
+        .filter_map(|line| {
+            let mut fields = line.splitn(3, '\t');
+            let added = fields.next()?;
+            let path = fields.nth(1)?;
+            (added != "0").then(|| path.to_owned())
+        })
+        .collect()
+}
+
+/// How a check's build over the base ended, from its exit and nix's log.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Built {
+    /// It built, so its tests pass there.
+    Passed,
+    /// A builder ran it and it failed, as a test failing does.
+    Red,
+    /// It failed without a builder failing, as when one is lost, a
+    /// download fails or the disk fills, which says nothing of its tests.
+    Unbuilt,
+}
+
+/// How a build over the base that `passed` or not, saying `log`, ended.
+pub fn built(passed: bool, log: &str) -> Built {
+    if passed {
+        Built::Passed
+    } else if log.contains("failed with exit code") {
+        Built::Red
+    } else {
+        Built::Unbuilt
     }
 }
 
@@ -232,6 +280,17 @@ pub fn judged(
     }
     let built: Vec<String> = built.iter().map(|name| (*name).to_owned()).collect();
     let range = format!("{}..HEAD", at.base);
+    // merge-net's train cuts a candidate of merges alone, each of a change
+    // whose own head was judged, so judging them as one would refuse a
+    // rider of tests alone beside another's code.
+    let own = ["rev-list", "--first-parent", "--no-merges", &range];
+    if git(at.root, &own, None, &[])?.is_empty() {
+        eprintln!(
+            "changed-checks: every commit since the base merges a change judged at its own \
+             head, so its tests aren't asked to fail on the base again"
+        );
+        return Ok(true);
+    }
     let format = format!("--format=%s%x1f%(trailers:key={TRAILER},valueonly)%x1e");
     let log = git(at.root, &["log", "--no-merges", &format, &range], None, &[])?;
     let (excuse, unread) = excused(&log);
@@ -258,9 +317,20 @@ pub fn judged(
         None => {}
     }
     let asked = ["diff", "--find-renames", "--name-status", at.base, "HEAD"];
-    let change = Change::read(&git(at.root, &asked, None, &[])?);
+    let mut change = Change::read(&git(at.root, &asked, None, &[])?);
     say_apart(at, &change)?;
     if change.tests.is_empty() {
+        return Ok(true);
+    }
+    let mut counting = vec!["diff", "--numstat", at.base, "HEAD", "--"];
+    counting.extend(change.tests.iter().map(String::as_str));
+    let added = adding(&git(at.root, &counting, None, &[])?);
+    change.tests.retain(|test| added.contains(test));
+    if change.tests.is_empty() {
+        eprintln!(
+            "changed-checks: the change only takes lines from its tests, so none is asked to \
+             fail on the base"
+        );
         return Ok(true);
     }
     if change.code.is_empty() {
@@ -282,33 +352,99 @@ pub fn judged(
     if built.is_empty() {
         return Ok(true);
     }
-    let laid = laid_over(at, &change.tests, &[], "the change's tests over its base")?;
+    over_the_base(at, &change.tests, &built, (before, after), noted)
+}
+
+/// Whether each of the checks `built` fails with `tests` laid over the
+/// base's code, saying what it found.
+fn over_the_base(
+    at: &At,
+    tests: &[String],
+    built: &[String],
+    (before, after): (&Derivations, &Derivations),
+    noted: &mut Run,
+) -> Result<bool, String> {
+    let laid = laid_over(at, tests, &[], "the change's tests over its base")?;
     let flake = format!("git+file://{}?rev={laid}", at.root);
-    let on_base = evaluated_as(&flake, at.system, &built, noted)?;
+    // A test that reads what the change adds can't even be evaluated over
+    // the base, as a checks file naming a new package can't, so it fails
+    // there as it should.
+    let on_base = match evaluated_as(&flake, at.system, built, noted) {
+        Ok(on_base) => on_base,
+        Err(why) => {
+            eprintln!(
+                "changed-checks: the change's tests don't evaluate laid over the base ({why}), \
+                 so {} fail there, as they should",
+                built.join(", ")
+            );
+            return Ok(true);
+        }
+    };
     let mut moved = Vec::new();
-    for name in &built {
+    for name in built {
         match over(name, before, after, &on_base) {
-            Over::Moved => moved.push(name.clone()),
+            // One reading none of the change's code is the very build that
+            // just passed at the head, so it's built over the base too,
+            // costing nothing where the store still holds it.
+            Over::Moved | Over::OnlyTests => moved.push(name.clone()),
             Over::Undefined => eprintln!(
                 "changed-checks: {name} isn't a check over the base, so its tests aren't run there"
             ),
-            Over::Unreached | Over::OnlyTests | Over::Unevaluated => {}
+            Over::Unevaluated => eprintln!(
+                "changed-checks: {name} doesn't evaluate with the change's tests laid over the \
+                 base, so it fails there, as it should"
+            ),
+            Over::Unreached => {}
         }
     }
-    let moved = by_their_files(at, &change.tests, &on_base, moved, noted)?;
+    let moved = by_their_files(at, tests, &on_base, moved, noted)?;
     let mut passing = Vec::new();
+    let mut red = Vec::new();
     for name in &moved {
-        if building::build_here(&flake, at.system, &[name], &on_base)?.passed {
-            passing.push(name.as_str());
+        match built_over(&flake, at.system, name, &on_base)? {
+            Built::Passed => passing.push(name.as_str()),
+            Built::Red => red.push(name.clone()),
+            Built::Unbuilt => {}
         }
     }
-    say_verdict(&passing, &moved, &change.tests);
+    say_verdict(&passing, &red, tests);
     Ok(passing.is_empty())
 }
 
-/// Say which of the checks built over the base, `moved`, passed there,
-/// and so refuse the change's `tests`, or that none did.
-fn say_verdict(passing: &[&str], moved: &[String], tests: &[String]) {
+/// Build the check `name` over the base, keeping nix's log out of the
+/// run's: a test failing there as it should prints nix's words for a
+/// failed build, which merge-net reads as a check of the change failing.
+/// The log is kept in the cache, and named when it says nothing of the
+/// tests.
+fn built_over(
+    flake: &str,
+    system: &str,
+    name: &str,
+    on_base: &Derivations,
+) -> Result<Built, String> {
+    let ran = building::building_here(flake, system, &[name], on_base)
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|error| format!("running nix: {error}"))?;
+    let log = String::from_utf8_lossy(&ran.stderr);
+    let ended = built(ran.status.success(), &log);
+    if ended == Built::Unbuilt {
+        let folder = crate::cache().join("changed-checks");
+        let kept = folder.join(format!("red-first-{name}.log"));
+        let _ = fs::create_dir_all(&folder).and_then(|()| fs::write(&kept, &*log));
+        eprintln!(
+            "changed-checks: {name} couldn't be built over the base, though no builder failed \
+             it (nix's words are in {}), so its tests weren't asked to fail there",
+            kept.display()
+        );
+    }
+    Ok(ended)
+}
+
+/// Say which of the checks built over the base passed there, and so
+/// refuse the change's `tests`, or which failed there, `red`, as they
+/// should.
+fn say_verdict(passing: &[&str], red: &[String], tests: &[String]) {
     let tests = tests.join(", ");
     for name in passing {
         eprintln!(
@@ -321,10 +457,10 @@ fn say_verdict(passing: &[&str], moved: &[String], tests: &[String]) {
     // commit message rather than retyped from inside a sentence.
     if !passing.is_empty() {
         eprintln!("\n    {TRAILER}: none, <why the tests pin what was already right>\n");
-    } else if !moved.is_empty() {
+    } else if !red.is_empty() {
         eprintln!(
             "changed-checks: {} fails with the change's tests laid over the base, as it should",
-            moved.join(", ")
+            red.join(", ")
         );
     }
 }

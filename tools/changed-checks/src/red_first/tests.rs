@@ -160,3 +160,27 @@ fn a_check_over_the_base_is_judged_by_its_derivation_beside_both_sides() {
         ]
     );
 }
+
+#[test]
+fn a_test_file_the_change_only_takes_lines_from_adds_no_test() {
+    let said =
+        "3\t1\tmodules/a/tests/new.rs\n0\t4\tmodules/a/tests/old.rs\n-\t-\tmodules/a/tests/x.png\n";
+
+    let added = adding(said);
+
+    assert_eq!(
+        added.into_iter().collect::<Vec<_>>(),
+        ["modules/a/tests/new.rs", "modules/a/tests/x.png"]
+    );
+}
+
+#[test]
+fn only_a_builder_failing_a_build_over_the_base_makes_it_red() {
+    let failed = "error: Cannot build '/nix/store/x-a.drv'.\n       Reason: builder failed with \
+                  exit code 1.\n";
+    let lost = "error: unable to download 'https://cache/x.narinfo': Couldn't connect\n";
+
+    let ended = [built(true, ""), built(false, failed), built(false, lost)];
+
+    assert_eq!(ended, [Built::Passed, Built::Red, Built::Unbuilt]);
+}
