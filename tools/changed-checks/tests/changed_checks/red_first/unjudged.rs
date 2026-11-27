@@ -4,7 +4,9 @@
 use std::fs;
 use std::time::{Duration, Instant};
 
-use super::{CHANGE, committed, text, verdict};
+use serde_json::json;
+
+use super::{CHANGE, committed, noted_with, text, verdict};
 
 #[test]
 fn a_macs_run_leaves_the_tests_to_linux_and_builds_nothing_over_the_base() {
@@ -23,6 +25,7 @@ fn a_macs_run_leaves_the_tests_to_linux_and_builds_nothing_over_the_base() {
         text(&ran.stderr)
     );
     assert!(!stand_in.built().contains("?rev="), "{}", stand_in.built());
+    noted_with(&stand_in, &json!({ "why": "not linux" }));
 }
 
 #[test]
@@ -39,6 +42,7 @@ fn a_train_candidate_the_train_marks_is_not_judged_again() {
         text(&ran.stderr)
     );
     assert!(!stand_in.built().contains("?rev="), "{}", stand_in.built());
+    noted_with(&stand_in, &json!({ "why": "train candidate" }));
 }
 
 #[test]
@@ -86,11 +90,9 @@ fn a_build_over_the_base_that_never_ends_is_stopped_at_the_budget_and_refuses_no
         said.contains("red first's 1 seconds of building over the base ran out at a"),
         "{said}"
     );
-    assert_eq!(
-        verdict(&stand_in)["why"],
-        "over budget",
-        "{}",
-        verdict(&stand_in)
+    noted_with(
+        &stand_in,
+        &json!({ "verdict": "unjudged", "why": "over budget", "check": "a", "built": 1 }),
     );
 }
 
@@ -103,11 +105,9 @@ fn a_budget_already_spent_builds_nothing_over_the_base() {
 
     assert!(ran.status.success(), "{}", text(&ran.stderr));
     assert!(!stand_in.built().contains("?rev="), "{}", stand_in.built());
-    assert_eq!(
-        verdict(&stand_in)["why"],
-        "over budget",
-        "{}",
-        verdict(&stand_in)
+    noted_with(
+        &stand_in,
+        &json!({ "verdict": "unjudged", "why": "over budget", "check": "a", "built": 0 }),
     );
 }
 

@@ -24,6 +24,10 @@ const BUDGET_SET: &str = "CHANGED_CHECKS_RED_FIRST_SECONDS";
 /// often enough that the budget ends close to its deadline.
 const LOOKED: Duration = Duration::from_millis(200);
 
+/// The most characters of nix's last error a build left unbuilt says:
+/// enough for its cause, few enough for a line of the run's log.
+const REASON: usize = 200;
+
 /// How a check's build over the base ended, from its exit and nix's log.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Built {
@@ -32,8 +36,9 @@ pub enum Built {
     /// A builder ran it and it failed, as a test failing does.
     Red,
     /// It failed without a builder failing, as when one is lost, a
-    /// download fails or the disk fills, which says nothing of its tests.
-    Unbuilt,
+    /// download fails or the disk fills, which says nothing of its tests;
+    /// and why, as `reason` reads nix's log.
+    Unbuilt(String),
     /// It was still building when the budget ran out, so it was stopped,
     /// which says nothing of its tests either.
     Late,
@@ -64,15 +69,30 @@ pub fn built(passed: bool, log: &str) -> Built {
     {
         Built::Red
     } else {
-        Built::Unbuilt
+        Built::Unbuilt(reason(log))
     }
+}
+
+/// Why nix's `log` says a build failed: its last `error:` line, cut to
+/// `REASON` characters. The log is kept in the cache too, but a run on the
+/// lent builder can't reach it there, so the run's own log says this. A
+/// builder's lines start with its name, so a test's words are never read
+/// as nix's.
+pub fn reason(log: &str) -> String {
+    log.lines()
+        .map(str::trim)
+        .rfind(|line| line.starts_with("error:"))
+        .map_or_else(
+            || "nix said no error".to_owned(),
+            |line| line.chars().take(REASON).collect(),
+        )
 }
 
 /// Build the check `name` over the base, stopping it at `deadline` and
 /// keeping nix's log out of the run's: a test failing there as it should
 /// prints nix's words for a failed build, which merge-net reads as a check
-/// of the change failing. The log is kept in the cache, and named when it
-/// says nothing of the tests.
+/// of the change failing. The log is kept in the cache, and named with its
+/// last error when it says nothing of the tests.
 pub fn built_over(
     flake: &str,
     system: &str,
@@ -117,14 +137,14 @@ pub fn built_over(
     let log = reading.join().unwrap_or_default();
     let log = String::from_utf8_lossy(&log);
     let ended = built(passed, &log);
-    if ended == Built::Unbuilt {
+    if let Built::Unbuilt(reason) = &ended {
         let folder = crate::cache().join("changed-checks");
         // Runs judging the same check at once each keep their own.
         let kept = folder.join(format!("red-first-{}-{name}.log", std::process::id()));
         let _ = fs::create_dir_all(&folder).and_then(|()| fs::write(&kept, &*log));
         eprintln!(
             "changed-checks: {name} couldn't be built over the base, though no builder failed \
-             it (nix's words are in {}), so its tests weren't asked to fail there",
+             it ({reason}; nix's words are in {}), so its tests weren't asked to fail there",
             kept.display()
         );
     }

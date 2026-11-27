@@ -54,13 +54,14 @@
 //!   A check main's quarantine holds fails there for its own reasons, so
 //!   it isn't asked.
 //!   One that failed with no builder failing it, as when one is lost or a
-//!   download fails, says nothing of its tests, is said, and refuses
-//!   nothing. Nix's log of these builds is kept out of the run's, where
-//!   merge-net would read a failed build as the change's.
+//!   download fails, says nothing of its tests, is said with nix's last
+//!   error, and refuses nothing. Nix's log of these builds is kept out of
+//!   the run's, where merge-net would read a failed build as the change's.
 //!   The builds stop once they've taken red first's budget, ten minutes
 //!   unless `CHANGED_CHECKS_RED_FIRST_SECONDS` says otherwise, since a
 //!   test waiting on what only the change does may never end there, and
 //!   the run waits on them; the change is then said, unjudged.
+//!   A verdict from builds over the base notes how many it built.
 //!
 //! Red first judges a change only when it can lay the change's whole test
 //! side over the base as the head has it, since a check reading every test
@@ -107,6 +108,7 @@ use ended::{Built, built_over};
 use laying::{git, laid_over};
 use serde_json::json;
 pub use telling::{Apart, Change, adding, inline_tests, tests_begin};
+use verdict::Verdict;
 
 use crate::checks::Derivations;
 use crate::evaluating::evaluated;
@@ -263,48 +265,6 @@ pub fn judged(
     let mut line = verdict.noted(at.head);
     line["seconds"] = json!(began.elapsed().as_secs());
     noted.red_first(line);
-}
-
-/// What red first found of a change, as the run's line notes it.
-#[derive(Debug, PartialEq, Eq)]
-pub enum Verdict {
-    /// It wasn't judged, and why, in a word or two.
-    Unjudged(&'static str),
-    /// Its tests can't be laid over the base as its head has them, each
-    /// as it was said.
-    Apart(Vec<String>),
-    /// A commit excuses its tests, saying why, or it reverts.
-    Excused(Excused),
-    /// This check fails with its tests laid over the base, as it should.
-    Red { check: String, tests: Vec<String> },
-    /// Each check built over the base passed, so its tests would pass
-    /// without it.
-    Refused {
-        checks: Vec<String>,
-        tests: Vec<String>,
-    },
-}
-
-impl Verdict {
-    /// The verdict as the run's line holds it, of the commit `head`.
-    pub fn noted(&self, head: &str) -> serde_json::Value {
-        match self {
-            Self::Unjudged(why) => json!({ "head": head, "verdict": "unjudged", "why": why }),
-            Self::Apart(said) => json!({ "head": head, "verdict": "apart", "apart": said }),
-            Self::Excused(Excused::Pinned(why)) => {
-                json!({ "head": head, "verdict": "excused", "excuse": "pinned", "why": why })
-            }
-            Self::Excused(Excused::Reverts) => {
-                json!({ "head": head, "verdict": "excused", "excuse": "reverts" })
-            }
-            Self::Red { check, tests } => {
-                json!({ "head": head, "verdict": "red", "check": check, "tests": tests })
-            }
-            Self::Refused { checks, tests } => json!({
-                "head": head, "verdict": "would refuse", "checks": checks, "tests": tests,
-            }),
-        }
-    }
 }
 
 /// Whether the change's tests fail on the base, as `judged` says.
@@ -476,10 +436,6 @@ fn over_the_base(
     (before, after): (&Derivations, &Derivations),
     noted: &mut Run,
 ) -> Result<Verdict, String> {
-    let red = |check: &str| Verdict::Red {
-        check: check.to_owned(),
-        tests: tests.to_vec(),
-    };
     let laid = laid_over(at, tests, &[], "the change's tests over its base")?;
     let flake = format!("git+file://{}?rev={laid}", at.root);
     // A test reading what the change adds stops nix's whole evaluation
@@ -518,7 +474,11 @@ fn over_the_base(
                     "changed-checks: {name} doesn't evaluate with the change's tests laid over \
                      the base, so it fails there, as it should"
                 );
-                return Ok(red(name));
+                return Ok(Verdict::Red {
+                    check: name.clone(),
+                    tests: tests.to_vec(),
+                    built: 0,
+                });
             }
             Over::Unreached => {}
         }
@@ -555,7 +515,8 @@ fn over_the_base(
 /// fails there, proving the change's `tests`, or red first's budget ends.
 /// A check that only carries the tests, as a system holding a package
 /// whose source holds them does, passes over the base by design, so one
-/// failing there proves them, and the rest needn't be built.
+/// failing there proves them, and the rest needn't be built. The verdict
+/// notes how many were built, the one stopped at the deadline among them.
 fn asked(
     at: &At,
     flake: &str,
@@ -564,12 +525,15 @@ fn asked(
     tests: &[String],
 ) -> Result<Verdict, String> {
     let mut passing = Vec::new();
-    let mut unbuilt = false;
+    let mut unbuilt = None;
     let deadline = Instant::now() + ended::budget();
     for (done, name) in moved.iter().enumerate() {
         if Instant::now() >= deadline {
             say_over_budget(name);
-            return Ok(Verdict::Unjudged("over budget"));
+            return Ok(Verdict::OverBudget {
+                check: name.clone(),
+                built: done,
+            });
         }
         // A build's log is held back, so the run says what it waits on.
         eprintln!(
@@ -586,19 +550,31 @@ fn asked(
                 return Ok(Verdict::Red {
                     check: name.clone(),
                     tests: tests.to_vec(),
+                    built: done + 1,
                 });
             }
             Built::Passed => passing.push(name.as_str()),
-            Built::Unbuilt => unbuilt = true,
+            // The first is noted, since any one unbuilt leaves the change
+            // unjudged.
+            Built::Unbuilt(reason) if unbuilt.is_none() => unbuilt = Some((name.clone(), reason)),
+            Built::Unbuilt(_) => {}
             Built::Late => {
                 say_over_budget(name);
-                return Ok(Verdict::Unjudged("over budget"));
+                return Ok(Verdict::OverBudget {
+                    check: name.clone(),
+                    built: done + 1,
+                });
             }
         }
     }
+    let built = moved.len();
     // One unbuilt might have been the check that runs the tests.
-    if unbuilt {
-        return Ok(Verdict::Unjudged("unbuilt"));
+    if let Some((check, reason)) = unbuilt {
+        return Ok(Verdict::Unbuilt {
+            check,
+            reason,
+            built,
+        });
     }
     if passing.is_empty() {
         return Ok(Verdict::Unjudged("none moved"));
@@ -607,6 +583,7 @@ fn asked(
     Ok(Verdict::Refused {
         checks: passing.iter().map(|name| (*name).to_owned()).collect(),
         tests: tests.to_vec(),
+        built,
     })
 }
 
@@ -765,6 +742,7 @@ fn evaluated_as(
 mod ended;
 mod laying;
 mod telling;
+mod verdict;
 
 #[cfg(test)]
 mod tests;

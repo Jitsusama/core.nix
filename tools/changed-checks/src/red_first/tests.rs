@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use super::ended::built;
+use super::ended::{built, reason};
 use super::telling::is_test;
 use super::*;
 
@@ -331,7 +331,46 @@ fn only_a_builder_failing_a_build_over_the_base_makes_it_red() {
 
     assert_eq!(
         ended,
-        [Built::Passed, Built::Red, Built::Unbuilt, Built::Unbuilt],
+        [
+            Built::Passed,
+            Built::Red,
+            Built::Unbuilt(lost.trim().to_owned()),
+            Built::Unbuilt("error: unable to download 'https://cache/x.narinfo'".to_owned()),
+        ],
         "a build was told wrongly, or a builder's own words made a lost one red"
+    );
+}
+
+#[test]
+fn a_build_left_unbuilt_says_nixs_last_error_cut_short() {
+    let long = format!("error: {}\n", "x".repeat(300));
+    let builders = "error: unable to download 'https://cache/x.narinfo'\na> error: a test's own\n";
+
+    let said = [
+        reason(&format!("error: first\n  warning: w\n{long}")),
+        reason(builders),
+        reason("copying path '/nix/store/x'\n"),
+    ];
+
+    assert_eq!(
+        said[0].chars().count(),
+        200,
+        "nix's last error wasn't cut to 200 characters: {}",
+        said[0]
+    );
+    assert!(
+        said[0].starts_with("error: xxx"),
+        "an error before nix's last was said: {}",
+        said[0]
+    );
+    assert_eq!(
+        said[1],
+        "error: unable to download 'https://cache/x.narinfo'",
+        "a builder's line was read as nix's error"
+    );
+    assert_eq!(
+        said[2],
+        "nix said no error",
+        "a log with no error line wasn't said as one"
     );
 }
