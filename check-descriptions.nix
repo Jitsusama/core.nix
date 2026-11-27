@@ -467,8 +467,9 @@
     nothing
   '';
   an-ipc-reply-arrives-whole = ''
-    a Quickshell IPC reply of a million characters reaches `qs ipc call` whole, and a call to a
-    function that isn't there ends qs with a failure
+    a Quickshell IPC reply of a million characters reaches `qs ipc call` whole, a call to a
+    function that isn't there ends qs with a failure, and a call to one that answers nothing ends
+    it with success, having been given its words
   '';
   an-untrusted-client-passes-only-named-env = ''
     the Nix daemon hands a client that isn't trusted only the impure-env variables the machine
