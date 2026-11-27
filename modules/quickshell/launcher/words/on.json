@@ -713,8 +713,21 @@
       "glyph": "agent",
       "empty": "Nothing moved since you last looked.",
       "said": {
-        "count": "{count} moved"
+        "count": "{count} moved",
+        "ofMoved": "of {count} that moved",
+        "ask": "1 ask",
+        "asks": "{count} asks"
       }
+    },
+    {
+      "id": "on:moved:landed",
+      "in": "on:moved",
+      "name": "Asks Landed"
+    },
+    {
+      "id": "on:moved:busiest",
+      "in": "on:moved",
+      "name": "Busiest"
     },
     {
       "id": "verb:on:look:open",

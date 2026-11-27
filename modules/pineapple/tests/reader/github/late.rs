@@ -6,8 +6,9 @@
 //! read by what Joel opened never searches, so keeps nothing of; a search
 //! cut short is followed by one of what changed before the oldest it
 //! gave, and moves on, saying what it left unread when that's cut too,
-//! and from when it's searched again once the round moves on, unless the
-//! first gives none it can read, which holds.
+//! and from when it's searched again once the round moves on, and telling
+//! Joel in one row however many rounds leave it, unless the first gives
+//! none it can read, which holds.
 
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -359,6 +360,15 @@ fn cut_twice(line: &str, now: u64) -> Value {
     searched_short(line, now, &CUT_TWICE, Some(5))
 }
 
+/// When the thread a cut search gives in [`cut_twice_told`] last
+/// changed.
+static CUT_TOLD: AtomicU64 = AtomicU64::new(0);
+
+/// A search cut short twice, as [`cut_twice`], for the row it leaves.
+fn cut_twice_told(line: &str, now: u64) -> Value {
+    searched_short(line, now, &CUT_TOLD, Some(5))
+}
+
 /// A search cut short whose search of what's older fails.
 fn cut_then_failing(line: &str, now: u64) -> Value {
     searched_short(line, now, &CUT_FAILING, None)
@@ -507,6 +517,64 @@ fn github_a_search_cut_short_twice_says_what_it_left_unread_and_moves_on() {
         "what the older search gave is read: {said}"
     );
     std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+#[test]
+fn github_a_search_cut_short_twice_tells_joel_in_one_row_however_many_rounds_leave_it() {
+    let (origin, asked) = answering(cut_twice_told);
+    let (home, last) = read_lately();
+    let mut reading = github_reader(&home, &origin, &[]);
+    let began = Instant::now();
+    // Two searches a round, so the fifth begins the third round, once two
+    // have each left the oldest unread.
+    while searches(&asked).len() < 5 {
+        assert!(began.elapsed() < PATIENCE, "it never searched five times");
+        thread::sleep(Duration::from_millis(50));
+    }
+    reading.kill().expect("the reader stops");
+    reading.wait().expect("the reader is gone");
+    let shadow = home.join("state/pineapple/missed-github.json");
+    let rows: Value = std::fs::read_to_string(&shadow)
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or_default();
+    let said = journal(&home);
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+
+    let (reach, oldest) = (last - 3600, CUT_TOLD.load(Ordering::SeqCst) - 500);
+    let id = format!(
+        "pineapple-github-missed-own-{}-{}",
+        reach * 1000,
+        oldest * 1000
+    );
+    let row = &rows["items"][0];
+    assert_eq!(
+        (
+            rows["items"].as_array().map(Vec::len),
+            &row["id"],
+            &row["whole"]
+        ),
+        (Some(1), &json!(id), &json!(true)),
+        "in shadow, in its own folder, one row spans what both rounds left out, from the \
+         first's reach, as the two meet: {rows}"
+    );
+    let search = format!(
+        "pineapple involves:{LOGIN} updated:{}..{}",
+        stamp(reach),
+        stamp(oldest)
+    );
+    assert!(
+        row["steps"][0]
+            .as_str()
+            .is_some_and(|step| step.contains(&search))
+            && row["title"] == "The Safe Word Missed Part of GitHub",
+        "it names the search that finds what was left out: {rows}"
+    );
+    // A third round may have moved on before the reader stopped.
+    assert!(
+        said.matches("<5>wrote Joel's row in ").count() >= 2,
+        "each round that left it out said so as it moved on, so the one row met both: {said}"
+    );
 }
 
 #[test]

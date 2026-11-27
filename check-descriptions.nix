@@ -622,10 +622,11 @@
     a switch is told to leave each cadence run an installed timer starts be rather than restarting
     it and waiting on its start, which under load outlasts home-manager's wait and sends the whole
     switch back, and each is a oneshot setting a start timeout of its own systemd reads that ends a
-    hang now that no switch does; each timer's run is found as the base module finds it, the tick,
-    day, review and hour must each be among the runs found, a failure names each run and what it
-    lacks, stand-in units each wrong one way must each be refused, and ones right in each way
-    allowed must each pass
+    hang now that no switch does, a key it can't read refused as such; each timer's run is found
+    by the reading the base module finds it with, the tick, day, review and hour must each be
+    among the runs found, a failure names each run and what it lacks, stand-in units each wrong
+    one way must each be refused in their own words, and ones right in each way allowed must each
+    pass
   '';
   cadence-passes-clippy = ''
     clippy finds nothing in cadence or its tests
@@ -1327,6 +1328,11 @@
     counts a whole path, and no home found is said; a count above none runs as given and ends
     0, and --help runs no du
   '';
+  every-failed-read-says-why = ''
+    every Rust file read outside tests whose failure its expression takes as nothing says why in
+    a comment, but those still waiting to say it couldn't read, once a planted tree shows each
+    shape counted
+  '';
   every-fixed-wait-says-why = ''
     every sleep in a test polls, or says what passes while it waits in a comment or by a named
     constant, but those still waiting to become waits on their events
@@ -1991,6 +1997,11 @@
   '';
   kernel-settings-hold-with-a-theme = ''
     the kernel holds every setting with an account's theme, its panic colours among them
+  '';
+  kernel-source-files-are-taken-as-built = ''
+    a few files of a kernel's source are taken from a folder or its tarball, one missing that a
+    patch creates let be, one missing that none creates refused, and one the source has that a
+    patch would create refused, naming that patch
   '';
   kernel-trouble-is-named = ''
     `device-check` names a kernel that oopsed, locked up, saw a hardware fault or held a task stuck,
@@ -2720,8 +2731,12 @@
     a fenced or strict one says its system's launcher for an agent's run, which runs pi's strict
     profile, and an unfenced one none, no fence says a launcher when agents' runs are turned
     off, a machine of either system declaring every fence evaluates, a machine kept lively
-    says its ceiling and one not kept lively none, one declaring nothing has no file, and
-    agents in a realm it doesn't join are refused
+    says its ceiling, a memory_full of 0 included, and one not kept lively none, the locked
+    mycelium reads that ceiling as kept_lively, an Option<Lively> whose cpu is a u32,
+    memory_available an Option<u64> and, from the lock that first has it, memory_full an
+    Option<u32>, read by a scan that fails on what it can't read, with nothing over Lively
+    refusing a field it doesn't know, one declaring nothing has no file, and agents in a realm
+    it doesn't join are refused
   '';
   mycelium-lends-from-the-store = ''
     a NixOS machine that lends evaluates, and its home realm mycelium node is given what it lends
@@ -3691,6 +3706,12 @@
     and told so, left running through a switch, its host's restart and the kernel killing one
     of its commands for memory, and a Mac gets none
   '';
+  pi-conversations-read-says-what-it-read = ''
+    what the pi host VM test's failures read from the machine is said on one line, blank lines
+    dropped, an empty read and a failed one saying so with its exit, one cut short by its
+    timeout naming its own seconds, and every character a terminal would act on but a newline
+    written as its escape within its line, readable words kept as they are
+  '';
   pi-conversations-set-heap-growth = ''
     a realm's conversationHeapGrowingPercent reaches each of its conversations' own processes,
     attended and background, as V8's --heap-growing-percent after their heap and before the
@@ -4312,9 +4333,10 @@
   '';
   sign-in-program-never-waits-for-good = ''
     a sign-in program's token is taken trimmed, slow, ending after its output or once a hold
-    writing it is let go; one failing, printing nothing, missing, printing what isn't text or
-    past 64 KiB is none; one hanging, lingering or printing for good runs over within its
-    patience, killed with what it started
+    writing it is let go; one failing, printing nothing, printing what isn't text or past 64
+    KiB is none, as is one held for writing all its patience; one missing is none at once; one
+    hanging, lingering or printing for good runs over within its patience, killed with what it
+    started
   '';
   sign-in-program-passes-clippy = ''
     clippy finds nothing in sign-in-program, which runs a reader's sign-in, or its tests
@@ -6479,9 +6501,15 @@
   '';
   twin-screens-each-take-their-own-windows-back = ''
     Reopen Them All, with two screens of one model back on new connectors, puts a window kept on
-    one twin on the connector its session kept on the other didn't take, and the window of a twin
-    put back after the walk on the connector a window put back before it didn't take; and notes a
-    window away from a screen named constructor or __proto__ as any other, without a throw
+    one twin on the connector its session kept on the other didn't take, and one kept on the
+    session's own twin with it; the window of a twin put back after the walk on the connector a
+    window put back before it didn't take, unless a session took that connector, when the
+    session's twin goes with it; gives windows no connector from sessions handed over outside a
+    walk; keeps, for a walk joined after Joel's focus moved, the screen in use as it began; gives
+    twin sessions of one boot a connector each, as the places their boot kept say; puts a session
+    kept on a screen that's gone on the screen in use as its walk began, the other twin; notes a
+    window away from a screen named constructor or __proto__ as any other, without a throw; and
+    ends each walk before the next case begins, starting nothing for a session in a gone folder
   '';
   type-is-set-by-level = ''
     no QML file of the shell's sets a font's size, weight, axes, letter spacing or case other than
@@ -6777,8 +6805,8 @@
   '';
   vm-commits-are-signed = ''
     commits are signed with the TPM's keys, PINs asked for; the agents' socket stays off until
-    their key is made and listens once it is; stopped by hand, it listens again, and stays off
-    once its path unit is stopped first, until that unit starts again
+    their key is made and listens once it is; stopped by hand, it listens and serves
+    again, and stays off once its path unit is stopped first, until that unit starts again
   '';
   vm-desk-facts-follow-a-replug = ''
     desk-facts names a USB sound card plugged into a running machine, stops naming it once it's
@@ -7512,7 +7540,7 @@
   '';
   wifi-sessions-survive-fragmented-memory = ''
     the XPS 14's kernel lets Wi-Fi's block-ack reorder buffers come from vmalloc when memory is
-    too fragmented for an order-5 block, and frees them nowhere with kfree()
+    too fragmented for an order-5 block, and frees them nowhere with kfree() or kfree_sensitive()
   '';
   wifid-calls-passes-clippy = ''
     clippy finds nothing in what tells wifid of calls, or its tests
