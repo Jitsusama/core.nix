@@ -3304,7 +3304,9 @@
     copier's standard error open, a copier never ending, a reader never reading, a copier saying
     nothing and one saying half a line and holding on included; a line is read whole, as the
     daemon reads it, so one said in pieces is joined, two said at once are answered in turn, and
-    a half line is answered as said only once the copier ended
+    a half line is answered as said only once the copier ended; what was read past a line comes
+    first in how the copier ended, a refusal keeps none of it, a copier with no pipe to read is
+    refused by name, and a read that raised fails saying what it raised
   '';
   passwords-copier-keeps-a-secret-in-memory-on-niri = ''
     on a nested niri, Passwords' copier, given a secret on its standard input as the daemon gives

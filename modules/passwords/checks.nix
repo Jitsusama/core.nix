@@ -154,6 +154,9 @@ onLinux {
   # saying nothing says nothing. A line is read whole, as the daemon reads
   # it: one said in pieces is joined, two said at once are answered in
   # turn, and a half line is answered as said only once the copier ended.
+  # What was read past a line comes first in how the copier ended, and a
+  # refusal keeps none of it. A copier with no pipe to read is refused by
+  # name, and a read that raised fails by what it raised, not as a hang.
   # Its copiers are bash scripts, so it needs no display
   # (tests/copier-check-reads-bounded-test.py).
   passwords-copier-check-reads-are-bounded =

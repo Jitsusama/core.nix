@@ -8,7 +8,8 @@ bash scripts: each ending one way, saying one thing, saying a line in pieces or 
 or never ending at all. PATIENCE is set to 2 s, so a read that waits past it plus a second
 fails its case, and one that would hang is run on a thread of its own, so it fails rather
 than hanging this test. A half line is answered as said only where the copier ended, as the
-daemon reads whole lines and would never hear one held on after.
+daemon reads whole lines and would never hear one held on after. What a read took past its
+line is pinned too: it comes first in how the copier ended, and a refusal keeps none of it.
 
 usage: copier-check-reads-bounded-test.py <bash> <copier-keeps-a-secret-in-memory.py>
 """
@@ -98,11 +99,23 @@ def answered_in_time[T](read: Callable[[], T]) -> tuple[T, float] | None:
 
     It's read on a thread of its own, waited on for PATIENCE, SLACK and HUNG, so a read that
     hangs fails its case rather than this test; the thread is left to end with the copier.
+    A read that raised fails its case saying what it raised, not that it hung.
     """
     answered: list[tuple[T, float]] = []
-    reading = threading.Thread(target=lambda: answered.append(timed(read)), daemon=True)
+    raised: list[Exception] = []
+
+    def answering() -> None:
+        try:
+            answered.append(timed(read))
+        except Exception as wrong:  # noqa: BLE001 - whatever it raised is its case's failure
+            raised.append(wrong)
+
+    reading = threading.Thread(target=answering, daemon=True)
     reading.start()
     reading.join(PATIENCE + SLACK + HUNG)
+    if raised:
+        why = f"the read raised {raised[0]!r} rather than answering"
+        raise AssertionError(why) from raised[0]
     return answered[0] if answered else None
 
 
@@ -246,13 +259,78 @@ def a_copier_saying_a_line_in_pieces_is_answered_what_came_in_patience() -> None
 
 
 def a_copier_saying_two_lines_at_once_is_answered_each_in_turn() -> None:
-    """said_next answers two lines a copier said at once one at a time, the first first."""
-    with copier("printf 'ready\\nheld\\n'; exec sleep 30") as saying:
+    """said_next answers two lines a copier said at once one at a time, the first first.
+
+    The copier has ended before the first read, so both lines are there to come in it, and
+    the second can be answered only from what the first read kept.
+    """
+    with copier("printf 'ready\\nheld\\n'") as saying:
+        saying.wait()
         first = CHECK.said_next(saying)
         second, took = timed(lambda: CHECK.said_next(saying))
     assert first == "ready", f"a copier saying 'ready' then 'held' was first said {first!r}"
     assert second == "held", f"a copier saying 'ready' then 'held' was next said {second!r}"
     assert took < SLACK, f"the second line, said with the first, took {took:.1f} s to answer"
+
+
+def a_copier_with_no_pipe_to_read_is_refused_by_name() -> None:
+    """said_next raises for a copier whose standard output it has no pipe to, not answer ""."""
+    unpiped = subprocess.Popen([BASH, "-c", "echo ready"], stdout=subprocess.DEVNULL)
+    try:
+        said = CHECK.said_next(unpiped)
+    except ValueError:
+        return
+    finally:
+        unpiped.wait()
+    why = f"a copier with no pipe for its standard output was said {said!r}, not refused"
+    raise AssertionError(why)
+
+
+def a_read_that_raised_fails_saying_so() -> None:
+    """answered_in_time fails a read that raised by what it raised, not as one that hung."""
+
+    def raising() -> None:
+        why = "no pipe"
+        raise ValueError(why)
+
+    failed = ""
+    try:
+        answer = answered_in_time(raising)
+    except AssertionError as wrong:
+        failed = str(wrong)
+    else:
+        why = f"a read that raised was answered {answer!r}, as if it hung or answered"
+        raise AssertionError(why)
+    assert "ValueError('no pipe')" in failed, f"a read that raised failed as {failed!r}"
+
+
+def what_said_next_read_past_its_line_is_kept_for_how_the_copier_ended() -> None:
+    """ended_within's standard output begins with what said_next read but didn't answer.
+
+    So nothing a copier said after the line answered is lost, or kept once it has ended.
+    """
+    with copier("printf 'ready\\nheld\\nmore\\n'") as saying:
+        saying.wait()
+        first = CHECK.said_next(saying)
+        code, _, told = CHECK.ended_within(saying)
+        kept = saying in CHECK.UNANSWERED
+    assert first == "ready", f"a copier saying 'ready' then more was first said {first!r}"
+    assert code == 0, f"a copier that ended with 0 was said to end with {code}"
+    wanted = "held\nmore\n"
+    assert told == wanted, f"after 'ready', it was said to say {told!r}, not {wanted!r}"
+    assert not kept, "what it said past 'ready' was still kept once it had ended"
+
+
+def what_said_next_read_past_its_line_is_dropped_for_a_refusal() -> None:
+    """refused_instead keeps nothing said_next read of a copier, which may hold its secret."""
+    with copier("printf 'ready\\nheld\\nmore\\n'; exit 5") as saying:
+        saying.wait()
+        CHECK.said_next(saying)
+        refused = CHECK.refused_instead(saying)
+        kept = saying in CHECK.UNANSWERED
+    wanted = "it ended with 5, saying ''"
+    assert refused == wanted, f"a copier ending with 5 was said {refused!r}, not {wanted!r}"
+    assert not kept, "what it said past 'ready' was still kept after it was said to refuse"
 
 
 CASES = [
@@ -269,6 +347,10 @@ CASES = [
     a_copier_ending_on_half_a_line_is_answered_it,
     a_copier_saying_a_line_in_pieces_is_answered_what_came_in_patience,
     a_copier_saying_two_lines_at_once_is_answered_each_in_turn,
+    a_copier_with_no_pipe_to_read_is_refused_by_name,
+    a_read_that_raised_fails_saying_so,
+    what_said_next_read_past_its_line_is_kept_for_how_the_copier_ended,
+    what_said_next_read_past_its_line_is_dropped_for_a_refusal,
 ]
 
 

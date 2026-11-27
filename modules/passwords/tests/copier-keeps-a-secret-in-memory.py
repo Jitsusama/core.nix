@@ -48,7 +48,6 @@ usage: copier-keeps-a-secret-in-memory.py <copier> <shell for the stand-ins>
 import contextlib
 import ctypes
 import errno
-import io
 import os
 import resource
 import secrets
@@ -194,6 +193,8 @@ class Cases:
             locked = ended(copier) or unlocked(copier.pid, len(held))
             self.check("its secret is locked in memory", locked)
         finally:
+            # Anything it said past held could be the secret, so none of it is kept.
+            unanswered(copier)
             copier.kill()
             copier.wait()
 
@@ -369,19 +370,23 @@ def said_next(copier: subprocess.Popen[bytes]) -> str:
     The daemon reads whole lines, so a half line is answered as said only once the copier
     ended; one it still holds at the deadline is answered with UNFINISHED after it, as the
     daemon would never hear it. What came past the line is kept for the next call on the
-    same copier, as two lines said at once come in one read.
+    same copier, as two lines said at once come in one read, and for ended_within.
+
+    It reads the pipe itself, never the file object's buffer, so nothing it read sits
+    where select can't see it, and communicate later reads on from where it stopped.
     """
     stdout = copier.stdout
-    if not isinstance(stdout, io.BufferedReader):
-        return ""
-    heard = UNANSWERED.pop(copier, b"")
+    if stdout is None:
+        why = "the copier was started with no pipe for its standard output"
+        raise ValueError(why)
+    heard = unanswered(copier)
     until = time.monotonic() + PATIENCE
     ended = False
     while b"\n" not in heard:
         waiting = until - time.monotonic()
         if waiting <= 0 or not select.select([stdout], [], [], waiting)[0]:
             break
-        more = stdout.read1(65536)
+        more = os.read(stdout.fileno(), 65536)
         if not more:
             ended = True
             break
@@ -394,6 +399,11 @@ def said_next(copier: subprocess.Popen[bytes]) -> str:
         return said
     UNANSWERED[copier] = line
     return f"{said} {UNFINISHED}"
+
+
+def unanswered(copier: subprocess.Popen[bytes]) -> bytes:
+    """Give what said_next read of the copier past the line it answered, and keep it no more."""
+    return UNANSWERED.pop(copier, b"")
 
 
 def said_held(told: str) -> str | None:
@@ -416,6 +426,7 @@ def refused_instead(copier: subprocess.Popen[bytes]) -> str | None:
     code = copier.poll()
     if code is None:
         return None
+    unanswered(copier)
     try:
         _, said = copier.communicate(timeout=PATIENCE)
     except subprocess.TimeoutExpired as held_open:
@@ -451,14 +462,17 @@ def unlocked(pid: int, length: int) -> str | None:
 def ended_within(copier: subprocess.Popen[bytes]) -> tuple[int | None, str, str]:
     """Answer how the copier ended, or None, ended here, if it held on, and what it said.
 
-    What it said is on its standard error, then its standard output.
+    What it said is on its standard error, then its standard output, which begins with
+    anything said_next read of it but didn't answer.
     """
+    before = unanswered(copier)
     try:
         told, said = copier.communicate(timeout=PATIENCE)
     except subprocess.TimeoutExpired:
         copier.kill()
         told, said = copier.communicate()
-        return None, said.decode(errors="replace"), told.decode(errors="replace")
+        return None, said.decode(errors="replace"), (before + told).decode(errors="replace")
+    told = before + told
     return copier.returncode, said.decode(errors="replace"), told.decode(errors="replace")
 
 
