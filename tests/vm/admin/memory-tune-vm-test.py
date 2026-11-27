@@ -3,8 +3,9 @@
 memory-tune.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py).
 An account in wheel sets the watermarks' spacing, transparent huge pages, the multi-gen LRU,
 swappiness, swap's read-ahead, proactive compaction, the free memory floor, defrag_mode and
-zswap's shrinker to a listed value, as an agent measuring them under load would, outside any session. An account outside
-wheel can't, and an administrator can't set a value the rules don't list.
+zswap's shrinker to a listed value, as an agent measuring them under load would, outside any
+session. An account outside wheel can't, and an administrator can't set a value the rules
+don't list.
 Each test puts what it changed back as it ends, so any runs alone.
 """
 

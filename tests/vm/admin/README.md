@@ -20,7 +20,7 @@ a folder.
 | `fenced-runs.nix`, `-vm-test.py`                 | an agent's run reaching no socket, secret or home past its fence |
 | `firmware-asks.nix`, `-vm-test.py`               | writing firmware asking an administrator, even at the seat       |
 | `libvirt.nix`, `-vm-test.py`                     | libvirt's daemon stopping at once while its udev thread waits    |
-| `memory-tune.nix`, `-vm-test.py`                 | eight memory settings an administrator sets with no password     |
+| `memory-tune.nix`, `-vm-test.py`                 | nine memory settings an administrator sets with no password      |
 | `niri-off-cpu.nix`, `-vm-test.py`                | an account in wheel tracing its own niri, and nobody else        |
 | `offload-lines.nix`, `-vm-test.py`               | root's Nix given only the builders nix-offload's lines trust     |
 | `offload-lines-gcloud.sh`                        | that test's stand-in gcloud, saying what it lent                 |

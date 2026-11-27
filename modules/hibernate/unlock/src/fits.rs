@@ -13,8 +13,9 @@
 //! as swap has room for those. The hook switches zswap off first, so what
 //! reclaim swaps out for the image goes to the disk and counts as freed;
 //! what zswap's pool already holds counts as in use. Unlike the graphics
-//! pool below, zswap's shrinker gives back only part of its pool, and late:
-//! 7.3's mm/zswap.c scales its count down by the compression ratio and by
+//! pool below, zswap gives back at most part of its pool, and late: with
+//! its shrinker off, as modules/memory keeps it, nothing; turned on, 7.3's
+//! mm/zswap.c scales its count down by the compression ratio and by
 //! recent swap-ins from the disk, gives entries stored lately a second
 //! chance, and takes a whole page for each entry before freeing it.
 //! zswap.rs says when the shrinker runs, and why, once the image's reclaim
