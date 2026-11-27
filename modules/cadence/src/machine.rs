@@ -141,7 +141,10 @@ pub const MEASURES: &[Measure] = &[
     // shares would read so; a day whose measure moved reads here as a move,
     // and that figure in health's file says whether the typical and heavy
     // copy's measure moved. The most held is one look's, so on a day partly
-    // by Rss the figure doesn't say which measure that look took.
+    // by Rss the figure doesn't say which measure that look took. After a
+    // rollback to a build holding the count plainly, the figure can read a
+    // day as partly by Rss when it wasn't, as health's Memory doc says of
+    // `looks_by_pss`.
     measure(
         "health.memory.pi.most-mib",
         "resources",
