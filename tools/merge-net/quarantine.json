@@ -183,9 +183,9 @@
     "at": 1795760740,
     "commit": "536a6d77e989efb78e8c42f115830b566a4df64d",
     "due": "2026-11-29",
-    "owner_pr": 6763,
-    "owner_session": "orchestrator",
-    "reason": "has been broken since #6763, but fails with it reverted too, so a later merge breaks it as well; whoever finds that merge fixes it forward and takes it off this list",
+    "owner_pr": 7042,
+    "owner_session": "80ECO2",
+    "reason": "fails only because the net's lent-only setting sends a Mac's comparisons to Linux lenders, which refuse each check for its platform, not through #6763; #7042 reads such a run as not run, and 80ECO2 takes this off once the net runs it",
     "test": "a-macs-checks-since-063296b4dae0652f63e1c3d95ddd9e30a80d7c7d"
   },
   {
