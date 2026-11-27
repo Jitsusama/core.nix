@@ -430,6 +430,22 @@ fn away(gone_since: Option<u64>, back: &[String], machine: &str) -> Option<Away>
     }
 }
 
+/// The stops folder a machine built as a mycelium node of its own keeps,
+/// as a cloud room does: each session's stops folder there is linked to
+/// it, so its guards read it rather than any account's state folder.
+pub const NODE_STOPS: &str = "/var/lib/pineapple/stops";
+
+/// Shell setting `d` to the stops folder a machine's guards read: the
+/// node's own where it keeps one, and this account's state folder
+/// otherwise. Where the node's can't be written, the script fails, so a
+/// stop is never said to be held where no guard reads it.
+pub(super) fn stops_folder() -> String {
+    format!(
+        "d={NODE_STOPS}\n\
+         [ -d \"$d\" ] || d=\"${{XDG_STATE_HOME:-$HOME/.local/state}}/pineapple/stops\"\n"
+    )
+}
+
 /// The script a machine runs to hold the stop `record` under `name`, given
 /// it from the machine `from`: the record written whole beside its stops
 /// and renamed into place, so its guard never reads half of one, naming
@@ -441,11 +457,12 @@ pub fn script(name: &str, record: &Value, from: &str) -> String {
     format!(
         "set -e\n\
          echo '{begun}' >&2\n\
-         d=\"${{XDG_STATE_HOME:-$HOME/.local/state}}/pineapple/stops\"\n\
+         {folder}\
          mkdir -p \"$d\"\n\
          printf '%s\\n' {record} > \"$d/{name}.new\"\n\
          mv \"$d/{name}.new\" \"$d/{name}.json\"\n",
         begun = reach::BEGUN,
+        folder = stops_folder(),
         record = quoted(&copy.to_string()),
     )
 }
@@ -458,9 +475,11 @@ pub fn taken_away(name: &str) -> String {
     format!(
         "set -e\n\
          echo '{begun}' >&2\n\
-         f=\"${{XDG_STATE_HOME:-$HOME/.local/state}}/pineapple/stops/{name}.json\"\n\
+         {folder}\
+         f=\"$d/{name}.json\"\n\
          if grep -q '\"carried_from\"' \"$f\" 2>/dev/null; then rm -f \"$f\"; fi\n",
         begun = reach::BEGUN,
+        folder = stops_folder(),
     )
 }
 
@@ -491,7 +510,8 @@ fn give(
         .iter()
         .map(|args| (mycelium.as_path(), args.as_slice()))
         .collect();
-    runs.run_all(&each)
+    let answers = runs.run_all(&each);
+    begun_elsewhere(mycelium, runs, at, script, answers)
         .into_iter()
         .map(|answer| {
             answer.map(|_| ()).map_err(|why| Untaken {
@@ -500,6 +520,46 @@ fn give(
             })
         })
         .collect()
+}
+
+/// `answers` to runs of `script` on each of `at`, with each machine that
+/// refused to begin it there asked once more, all together, to begin it
+/// in the scratch folder, its second answer kept in place of its first.
+fn begun_elsewhere(
+    mycelium: &Path,
+    runs: &mut dyn Runs,
+    at: &[Reached],
+    script: &str,
+    mut answers: Vec<Result<String, String>>,
+) -> Vec<Result<String, String>> {
+    let refused: Vec<usize> = answers
+        .iter()
+        .enumerate()
+        .filter(|(_, answer)| {
+            answer
+                .as_ref()
+                .is_err_and(|why| reach::refused_to_begin(why))
+        })
+        .map(|(index, _)| index)
+        .collect();
+    if refused.is_empty() {
+        return answers;
+    }
+    let asked: Vec<Vec<String>> = refused
+        .iter()
+        .map(|&index| {
+            let one = &at[index];
+            reach::run_in_scratch(&one.machine, one.realm.as_deref(), script.to_owned())
+        })
+        .collect();
+    let each: Vec<(&Path, &[String])> = asked
+        .iter()
+        .map(|args| (mycelium, args.as_slice()))
+        .collect();
+    for (index, answer) in refused.into_iter().zip(runs.run_all(&each)) {
+        answers[index] = answer;
+    }
+    answers
 }
 
 /// What a give answers when what each machine was given couldn't be noted:

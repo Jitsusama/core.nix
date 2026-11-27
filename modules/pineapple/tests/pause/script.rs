@@ -8,7 +8,7 @@ use std::path::Path;
 use pineapple::pause;
 use serde_json::Value;
 
-use super::{FORKS, json, scratch};
+use super::{FORKS, at_home, json, scratch};
 
 /// Runs the script a machine runs for `act` of `said`, with a fake
 /// mycelium on its path that writes down what it's asked and says starts
@@ -74,7 +74,7 @@ fn script_in(
         .expect("chmod runs");
     let ran = std::process::Command::new("sh")
         .arg("-c")
-        .arg(pause::script(said, act, realm))
+        .arg(at_home(home, &pause::script(said, act, realm)))
         .env("HOME", home)
         .env_remove("XDG_STATE_HOME")
         .env(
@@ -120,7 +120,7 @@ fn script_bare(home: &Path, said: &Value, act: &str) -> Ran {
         .expect("chmod runs");
     let ran = std::process::Command::new(bin.join("sh"))
         .arg("-c")
-        .arg(pause::script(said, act, None))
+        .arg(at_home(home, &pause::script(said, act, None)))
         .env("HOME", home)
         .env_remove("XDG_STATE_HOME")
         .env("PATH", &bin)
@@ -170,6 +170,29 @@ fn the_stop_notes_its_realms_before_its_record_lands() {
     assert!(
         !stops.join("stop-all-1.json").exists(),
         "so no record lands that a resume would read as an older stop's"
+    );
+    let _ = fs::remove_dir_all(&home);
+}
+
+#[test]
+fn a_machine_keeping_the_nodes_stops_folder_holds_the_stop_there() {
+    let home = scratch("script-node-stops");
+    let node = home.join("node-stops");
+    fs::create_dir_all(&node).expect("the node's stops folder");
+    let said = pause::record("stop-all-1", "here", 1);
+    let asked = script_run(&home, &said, "stop", false);
+    assert_eq!(
+        asked, "starts list\nstarts stop\n",
+        "the stop refuses starts there"
+    );
+    assert_eq!(
+        json(&node.join("stop-all-1.json")),
+        said,
+        "its record lands in the node's folder, which the guards read"
+    );
+    assert!(
+        !home.join(".local/state/pineapple").exists(),
+        "and nothing in the account's own state folder"
     );
     let _ = fs::remove_dir_all(&home);
 }
