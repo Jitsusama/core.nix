@@ -65,6 +65,14 @@ STEER = STATE / "pi/agentic-harness.pi/steer"
 # reads to call one whose owner is gone parked rather than closed.
 PARKS = STATE / "pi/agentic-harness.pi/park-workflow/parked"
 NODE = Path(os.environ["XDG_RUNTIME_DIR"]) / "mycelium" / f"{REALM}.sock"
+# The id the node answers its list of sessions under, after hello's 1, and the two asks.
+LISTED = 2
+LIST_SESSIONS = (
+    json.dumps({"id": 1, "ask": "hello"})
+    + "\n"
+    + json.dumps({"id": LISTED, "ask": "list", "kind": "session"})
+    + "\n"
+).encode()
 # Where the agents daemon serves Agents' rows, as its unit's socket is.
 ROWS = Path(os.environ["XDG_RUNTIME_DIR"]) / "daemons" / "agents.sock"
 RESTORE = STATE / "pi/restore.json"
@@ -285,13 +293,11 @@ def node_record(key: str) -> Json | str | None:
         with socket.socket(socket.AF_UNIX) as node:
             node.settimeout(5)
             node.connect(str(NODE))
-            node.sendall(
-                b'{"id": 1, "ask": "hello"}\n{"id": 2, "ask": "list", "kind": "session"}\n'
-            )
+            node.sendall(LIST_SESSIONS)
             said = node.makefile()
             while line := said.readline():
                 answer = json.loads(line)
-                if answer.get("id") == 2:  # noqa: PLR2004
+                if answer.get("id") == LISTED:
                     records = cast("list[Json]", answer.get("records", []))
                     return next((one for one in records if one.get("key") == key), None)
     except (OSError, ValueError) as why:
@@ -303,11 +309,11 @@ def held_by_node() -> list[str]:
     """Give the sessions the node holds alive, by their keys, asked over its daemon interface."""
     with socket.socket(socket.AF_UNIX) as node:
         node.connect(str(NODE))
-        node.sendall(b'{"id": 1, "ask": "hello"}\n{"id": 2, "ask": "list", "kind": "session"}\n')
+        node.sendall(LIST_SESSIONS)
         said = node.makefile()
         while True:
             answer = json.loads(said.readline())
-            if answer.get("id") == 2:  # noqa: PLR2004
+            if answer.get("id") == LISTED:
                 return sorted(
                     record["key"]
                     for record in answer.get("records", [])

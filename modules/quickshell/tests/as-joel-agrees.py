@@ -16,7 +16,7 @@ SHELLS = re.compile(r"property var asJoel: \[([^\]]*)\]")
 
 
 def listed(text: str, made: re.Pattern[str], where: str) -> list[str]:
-    """The quoted names in the list `made` finds in `text`, or the run ends saying none."""
+    """Give the quoted names in the list `made` finds in `text`, or end the run saying none."""
     found = made.search(text)
     if not found:
         sys.exit(f"{where} has no list matching {made.pattern!r}")

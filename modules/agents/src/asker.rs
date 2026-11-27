@@ -133,7 +133,7 @@ fn remembered(
 }
 
 /// Why who asked can't be told, in the words the shell says.
-fn untold(why: io::Error) -> String {
+fn untold(why: &io::Error) -> String {
     format!("who asked can't be told: {why}")
 }
 
@@ -181,7 +181,7 @@ fn judged(
         });
         Ok(())
     } else {
-        Err(untold(gone()))
+        Err(untold(&gone()))
     }
 }
 
@@ -228,7 +228,7 @@ pub fn the_shell(stream: &UnixStream) -> Result<(), String> {
         gid: 0,
     };
     let mut length = libc::socklen_t::try_from(size_of::<libc::ucred>())
-        .map_err(|_| untold(io::Error::from(io::ErrorKind::InvalidInput)))?;
+        .map_err(|_| untold(&io::Error::from(io::ErrorKind::InvalidInput)))?;
     // SAFETY: SO_PEERCRED writes one ucred into the struct of the size
     // `length` gives, and the socket is open for the call.
     let read = unsafe {
@@ -241,12 +241,12 @@ pub fn the_shell(stream: &UnixStream) -> Result<(), String> {
         )
     };
     if read != 0 {
-        return Err(untold(io::Error::last_os_error()));
+        return Err(untold(&io::Error::last_os_error()));
     }
     // 0 for a peer in no namespace of this daemon's.
     let pid = said.pid;
     if pid <= 0 {
-        return Err(untold(gone()));
+        return Err(untold(&gone()));
     }
     let exe = std::fs::read_link(format!("/proc/{pid}/exe")).map_err(untold)?;
     if the_shells_program(&exe.to_string_lossy()) {

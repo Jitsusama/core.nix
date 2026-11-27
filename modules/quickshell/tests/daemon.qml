@@ -347,14 +347,18 @@ ShellRoot {
     // Each value the stand-in was asked to keep, in turn, and whether it's being asked now.
     property var keptAsks: []
     property bool keptAsking: false
-    // When the ask taken was last seen asked, to tell it's asked no more.
+    // When the ask taken was last seen asked, to tell it's asked no more, and when the read
+    // last answered was sent, so a step reads only what the stand-in said since.
     property real keptSince: -1
+    property real keptReadFrom: -1
     function keptRead() {
         if (root.keptAsking)
             return;
         root.keptAsking = true;
+        const from = Date.now();
         kinds.ask({ ask: "kept" }, answer => {
             root.keptAsks = answer?.asked ?? [];
+            root.keptReadFrom = from;
             root.keptAsking = false;
         });
     }
@@ -371,12 +375,15 @@ ShellRoot {
     // Each value the stand-in was asked of an ask, by ask, and whether one is being read.
     property var tried: ({})
     property bool triedReading: false
+    property real triedReadFrom: -1
     function triedRead(ask) {
         if (root.triedReading)
             return;
         root.triedReading = true;
+        const from = Date.now();
         kinds.ask({ ask: `tried:${ask}` }, answer => {
             root.tried = Object.assign({}, root.tried, { [ask]: answer?.asked ?? [] });
+            root.triedReadFrom = from;
             root.triedReading = false;
         });
     }
@@ -666,9 +673,11 @@ ShellRoot {
             run: () => {
                 root.keptSince = Date.now();
             },
+            // A poll starts a read while none is out, so the step holds on one sent 5 s on;
+            // judged as each poll ends, a read in flight never let it hold.
             holds: () => {
                 root.keptRead();
-                return Date.now() - root.keptSince >= 5000 && !root.keptAsking
+                return root.keptReadFrom - root.keptSince >= 5000
                     && JSON.stringify(root.keptAsks) === '["first","latest"]'
                     && kinds.refusedAgain.length === 0;
             }
@@ -718,7 +727,7 @@ ShellRoot {
             },
             holds: () => {
                 root.triedRead("hold");
-                return Date.now() - root.keptSince >= 5000 && !root.triedReading
+                return root.triedReadFrom - root.keptSince >= 5000
                     && root.triedOf("hold") === '["one","two","latest"]';
             }
         },

@@ -100,6 +100,41 @@ def told_after_whole(asked: dict[str, object]) -> list[dict[str, object]] | None
     return None
 
 
+def refused(asked: dict[str, object]) -> list[dict[str, object]]:
+    """Refuse an ask for now, as the agents daemon refuses one it can't yet tell the shell asked."""
+    return [{"id": asked.get("id"), "error": {"code": "refused", "message": "not yet"}}]
+
+
+def taken(asked: dict[str, object]) -> list[dict[str, object]]:
+    """Take an ask, saying the value it was given."""
+    return [{"id": asked.get("id"), "kept": asked.get("value")}]
+
+
+def keeping(asked: dict[str, object]) -> list[dict[str, object]] | None:
+    """Answer an ask to keep or hold, or of what one was asked, or None for another ask."""
+    ask = asked.get("ask")
+    if ask == "keep":
+        with KEPT_LOCK:
+            KEPT.append(asked.get("value"))
+            first = len(KEPT) == 1
+        return refused(asked) if first else taken(asked)
+    if ask == "kept":
+        with KEPT_LOCK:
+            return [{"id": asked.get("id"), "asked": list(KEPT)}]
+    if isinstance(ask, str) and ask in TRIED:
+        with KEPT_LOCK:
+            TRIED[ask].append(asked.get("value"))
+            untaken = len(TRIED[ask]) <= UNTAKEN[ask]
+        if not untaken:
+            return taken(asked)
+        # A drop leaves the ask unanswered; serve hangs up after it.
+        return [] if ask == "keep-dropped" else refused(asked)
+    if isinstance(ask, str) and ask.startswith("tried:"):
+        with KEPT_LOCK:
+            return [{"id": asked.get("id"), "asked": list(TRIED.get(ask[6:], []))}]
+    return None
+
+
 def answer(asked: dict[str, object], unwatched: int) -> list[dict[str, object]]:
     """Answer one ask, in the lines a daemon sends for it, its connection unwatched so often."""
     if asked.get("ask") == "hello":
@@ -113,9 +148,10 @@ def answer(asked: dict[str, object], unwatched: int) -> list[dict[str, object]]:
                 "kinds": offers,
             }
         ]
-    told = told_after_whole(asked)
-    if told is not None:
-        return told
+    for answering in (told_after_whole, keeping):
+        said = answering(asked)
+        if said is not None:
+            return said
     kind = asked.get("kind")
     if isinstance(kind, str) and kind in LAPSING:
         with WAITED_LOCK:
@@ -132,30 +168,6 @@ def answer(asked: dict[str, object], unwatched: int) -> list[dict[str, object]]:
         ]
     if asked.get("kind") == "verdict":
         return [{"id": asked.get("id"), "records": []}]
-    if asked.get("ask") == "keep":
-        with KEPT_LOCK:
-            KEPT.append(asked.get("value"))
-            first = len(KEPT) == 1
-        if first:
-            refused = {"code": "refused", "message": "not yet"}
-            return [{"id": asked.get("id"), "error": refused}]
-        return [{"id": asked.get("id"), "kept": asked.get("value")}]
-    if asked.get("ask") == "kept":
-        with KEPT_LOCK:
-            return [{"id": asked.get("id"), "asked": list(KEPT)}]
-    ask = asked.get("ask")
-    if isinstance(ask, str) and ask in TRIED:
-        with KEPT_LOCK:
-            TRIED[ask].append(asked.get("value"))
-            untaken = len(TRIED[ask]) <= UNTAKEN[ask]
-        if untaken and ask == "keep-dropped":
-            return []
-        if untaken:
-            return [{"id": asked.get("id"), "error": {"code": "refused", "message": "not yet"}}]
-        return [{"id": asked.get("id"), "kept": asked.get("value")}]
-    if isinstance(ask, str) and ask.startswith("tried:"):
-        with KEPT_LOCK:
-            return [{"id": asked.get("id"), "asked": list(TRIED.get(ask[6:], []))}]
     kinds = kinds_of(asked)
     keys = asked.get("keys")
     named = (
