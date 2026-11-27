@@ -191,7 +191,9 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
         mesh.send(&message(&whom, "finding", text))?;
     }
     let routes = fs::read_to_string(state_home.join("pain-points/routes.json")).ok();
-    let keeper = measures::keeper(routes.as_deref());
+    // A keeper no session answers as isn't asked; the orchestrator still
+    // has the card.
+    let keeper = measures::keeper(routes.as_deref()).filter(|k| answers(k));
     for (whom, intent) in card_to(to, keeper.as_deref()) {
         mesh.send(&message(whom, intent, card.clone()))?;
     }

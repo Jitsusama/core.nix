@@ -453,6 +453,10 @@ fn a_finding_two_days_open_counts_apart_and_is_owed_to_its_owner() {
 #[test]
 fn the_run_sending_the_card_keeps_the_hour_and_owes_its_drag() {
     let account = account();
+    // A keeper of Joel's ledgers no session answers as.
+    let hearer = account.path().join("state/pain-points");
+    fs::create_dir_all(&hearer).expect("the hearer's folder");
+    fs::write(hearer.join("routes.json"), r#"{"ledgers":"GONE02"}"#).expect("the routes");
 
     let ran = hour(account.path(), &["--to", "WCJQSG"]);
     let said = String::from_utf8_lossy(&ran.stderr);
@@ -488,5 +492,15 @@ fn the_run_sending_the_card_keeps_the_hour_and_owes_its_drag() {
             .iter()
             .any(|m| m.contains("\"@WCJQSG\"") && m.contains("For 88LQC0, ")),
         "a finding for an owner no session answers as didn't go to the orchestrator: {findings:?}"
+    );
+    let to_the_keeper = kept
+        .iter()
+        .filter(|file| file.starts_with("state/pi/agentic-harness.pi/mesh-workflow/messages/"))
+        .map(|file| fs::read_to_string(account.path().join(file)).expect("a message it wrote"))
+        .filter(|message| message.contains("\"@GONE02\""))
+        .count();
+    assert_eq!(
+        to_the_keeper, 0,
+        "the card was put to a keeper no session answers as"
     );
 }
