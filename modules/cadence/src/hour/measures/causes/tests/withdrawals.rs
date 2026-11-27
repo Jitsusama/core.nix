@@ -201,8 +201,7 @@ fn a_reading_kept_before_withdrawals_reads_and_is_kept_with_them() {
         .join("pi/agentic-harness.pi/mesh-workflow/messages");
     fs::create_dir_all(&messages).expect("the messages folder");
     let kept_at = folder.path().join("causes.json");
-    fs::write(&kept_at, r#"{"v":2,"through_ms":1,"cases":[]}"#)
-        .expect("a reading as main kept it");
+    fs::write(&kept_at, r#"{"v":2,"through_ms":1,"cases":[]}"#).expect("a reading as main kept it");
     let m = read(home.path(), folder.path(), NOW, true);
     assert!(
         m.past().is_none() && m.behind.is_empty(),
