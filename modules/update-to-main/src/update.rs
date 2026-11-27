@@ -241,6 +241,7 @@ fn run(
         Err(failure) => return failed(last, failure),
     };
     if last.as_deref() == Some(head.as_str()) && followed == last_followed {
+        call_off(config, at);
         return unchanged(head, followed);
     }
     if let Some(refused) = untrusted(config, &main, last.as_deref(), &head) {
@@ -349,6 +350,25 @@ fn ran_wholly(config: &Config, head: &str, followed: &follows::Followed) -> Resu
     follows::remember(config, followed)?;
     let _ = fs::remove_file(waiting_file(config));
     Ok(())
+}
+
+/// Lets go of a build that waited for a hold when `at`, an ask that ends at
+/// what already runs, names an input that build has at another commit: the
+/// ask calls the wait off, as one that builds does in `ran_wholly`, though
+/// it builds nothing. Kept, the wait is built again by the next update, and
+/// by every merge of main's after it. The whole wait goes, not the asked
+/// entries alone, since its system was built with the commit called off and
+/// a grant would still switch to it.
+fn call_off(config: &Config, at: &follows::Followed) {
+    let Some(waiting) = waited(config) else {
+        return;
+    };
+    if at
+        .iter()
+        .any(|(name, commit)| waiting.followed.get(name) != Some(commit))
+    {
+        let _ = fs::remove_file(waiting_file(config));
+    }
 }
 
 /// A built system whose switch waits for a hold to be given.
