@@ -443,15 +443,22 @@ fn transcribe(model: &Path, mine: &Path, theirs: &Path) -> Result<(), String> {
     let mut speech = Settings::read(model.to_owned()).load()?;
     let mut lines = Vec::new();
     let mut words = HashMap::new();
+    let mut their_sound = Track::default();
     for (side, file) in [(Side::Mine, mine), (Side::Theirs, theirs)] {
         let bytes = std::fs::read(file).map_err(|e| format!("reading {}: {e}", file.display()))?;
-        // Heard as the daemon hears a take, each side by its words, so the
-        // checks that run this read what it writes.
+        // Heard as the daemon hears a take, each side by its words and
+        // theirs by how loud it was too, so the checks that run this read
+        // what it writes.
         let named = file.display().to_string();
         let cut = takes(&wav::samples(&bytes)?);
+        if side == Side::Theirs {
+            for take in &cut {
+                their_sound.hear(take.start, &take.samples);
+            }
+        }
         score::hear_side(&mut speech, side, &named, &cut, &mut lines, &mut words)?;
     }
-    let (cut, _) = echo::cut_echoes(&lines, &words, &Track::default(), said::spoken);
+    let (cut, _) = echo::cut_echoes(&lines, &words, &their_sound, said::spoken);
     print!("{}", markdown(&cut, &own_name(), None, None));
     Ok(())
 }
