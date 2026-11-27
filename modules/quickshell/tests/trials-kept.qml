@@ -136,8 +136,11 @@ ShellRoot {
             } else if (root.stage === "closing after the cut" && root.lines.length === 4) {
                 // A slow key, a slow step and a slow page down, said with
                 // reports off, which the check reads: by how many letters, the
-                // step keeping its arrow, and the launcher's own key whole.
+                // step keeping its arrow, and the launcher's own key whole;
+                // and a down arrow heard 37 ms after its press, timed from
+                // the press, which says how late it was heard.
                 root.made.opened();
+                root.made.timed(2, 45, null, "down", { heardLate: 37 }, "", true);
                 root.made.timed(2, 900, null, "Harbour House", null, "");
                 root.made.timed(2, 900, null, "\u2192 Harbour House", null,
                     "\u2192 Harbour House");

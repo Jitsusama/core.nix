@@ -88,7 +88,7 @@ Scope {
         const whole = Options.reports || own === true;
         if (Trials.felt(drawn))
             console.info(`launcher: ${Presented.timedShown(typed, step, whole, stepKey)} took`
-                + ` ${drawn} ms to its frame, ${searched} ms`
+                + ` ${drawn} ms to its frame, ${heardLate(frame)}${searched} ms`
                 + " searching" + (parts
                     ? ` (lists ${parts.lists}${Stepped.slowest(parts.each, parts)},`
                     + ` rows ${parts.rows}${matched(parts.rows, parts.within)},`
@@ -102,6 +102,13 @@ Scope {
                     + " drawing it" + Thread.drawingApart(frame) + collecting(frame, drawn)
                     + framesBeforeSaid(frame)
                     + Thread.said(searched, frame.thread, "its searching") : ""));
+    }
+
+    // How long after its press the shell heard a key, where it was late,
+    // which its time to its frame counts from the press (Launcher.qml's
+    // keyDrawn); nothing where it was heard as it was pressed.
+    function heardLate(frame) {
+        return (frame?.heardLate ?? 0) > 0 ? `heard ${frame.heardLate} ms after its press, ` : "";
     }
 
     // How much of the key, from its being heard to its frame, Qt's
