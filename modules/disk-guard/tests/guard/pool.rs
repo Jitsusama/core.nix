@@ -16,7 +16,9 @@ pub(crate) fn on_btrfs(path: &Path) -> bool {
 }
 
 /// Fails, saying how to run it, unless `path` is on Btrfs, so a case run
-/// with TMPDIR elsewhere doesn't read as the guard's failure.
+/// with TMPDIR elsewhere doesn't read as the guard's failure. Every case
+/// that needs it reads Linux's own handles.
+#[cfg(target_os = "linux")]
 pub(crate) fn assert_on_btrfs(path: &Path) {
     assert!(
         on_btrfs(path),
