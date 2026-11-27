@@ -1,6 +1,9 @@
 //! What the hour measures, each against its target, read from text the
 //! machine already keeps, so every rule here is tested without a machine.
 //! Every target is a most: lower is better for each of them.
+//!
+//! Long because the measures too small for a file of their own sit here
+//! with their tests, which are over a third of it.
 
 use std::collections::{BTreeMap, BTreeSet};
 
