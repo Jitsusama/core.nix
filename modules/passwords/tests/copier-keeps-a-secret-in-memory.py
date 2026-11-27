@@ -18,9 +18,9 @@ the cat then running the real one so a copier that leans on it still holds its c
    locked as the secret is long, so a first page locked alone doesn't pass for it.
 6. A standard input it can't read is refused for that reason, making nothing under TMPDIR and
    running nothing.
-7. A standard input past the copier's cap is refused for being past it, rather than held in
-   part, so a refusal for any other reason, such as memory it couldn't lock, fails here; it
-   makes nothing under TMPDIR and runs nothing either.
+7. A standard input a byte past the copier's cap of a MiB is refused for being past it, rather
+   than held in part, so a refusal for any other reason, such as memory it couldn't lock, fails
+   here; it makes nothing under TMPDIR and runs nothing either.
 8. A secret long enough to outgrow the copier's first page pastes whole, making nothing under
    TMPDIR, running nothing and staying locked in memory once grown. It's copied with no type
    given, where stock wl-copy asks xdg-mime for one, so case 3's xdg-mime has a copy to run on.
@@ -29,8 +29,10 @@ the cat then running the real one so a copier that leans on it still holds its c
 11. A copy it refuses is never said to be held.
 12. The copy is offered marked secret, as x-kde-passwordManagerHint, the mark niri, the
     clipboard door and the clipboard's history each keep it from others by.
+13. A secret of exactly the cap pastes whole, so only a byte past it is refused: with case 7,
+    it pins the edge the copier grows its buffer a byte past the cap to tell.
 
-Every case is checked and reported before it fails. Cases 7 and 8 lock past a MiB at once, as
+Every case is checked and reported before it fails. Cases 7 and 13 lock past 2 MiB at once, as
 the copier grows its buffer, so the limit on locked memory is raised to its hard limit first,
 and one too low for them fails naming it rather than as a refusal or a paste that never came.
 
@@ -60,8 +62,8 @@ PATIENCE = 20.0
 IN_CREATE = 0x100
 IN_MOVED_TO = 0x80
 IN_NONBLOCK = 0o4000
-# A standard input past the copier's cap, of a MiB, in bytes.
-TOO_LONG = 2 * 1024 * 1024
+# The copier's cap on a sensitive copy, of a MiB, in bytes (SENSITIVE_CAP in the patch).
+CAP = 1024 * 1024
 # A secret's length past the copier's first page of 4 KiB, so its buffer grows several times.
 LONG = 64 * 1024
 # What the copier says as it refuses, and why, for an unreadable stdin and one past its cap.
@@ -70,14 +72,15 @@ UNREADABLE = REFUSED + os.strerror(errno.EISDIR)
 PAST_THE_CAP = REFUSED + "it is past 1 MiB"
 # The mark of a secret copy, which every wall keeping one from others looks for.
 HINT = "x-kde-passwordManagerHint"
-# The locked memory cases 7 and 8 need, in bytes: a MiB and its page, and the half before it.
-LOCKS = 2 * 1024 * 1024
+# The locked memory cases 7 and 13 need, in bytes: as the buffer grows from the cap to a byte
+# past it, the cap's pages and the next's, a MiB and a byte rounded up to its page, at once.
+LOCKS = 2 * CAP + 4096
 
 LIBC = ctypes.CDLL(None, use_errno=True)
 
 
 class Cases:
-    """The twelve cases, run against one copier, with how each came out."""
+    """The thirteen cases, run against one copier, with how each came out."""
 
     def __init__(self, copier: str, shell: str, folder: Path) -> None:
         """Run them against `copier`, its stand-ins run by `shell` and its TMPDIR in `folder`."""
@@ -190,26 +193,47 @@ class Cases:
             copier.kill()
             copier.wait()
 
+    def copied_at_the_cap(self) -> None:
+        """Run case 13: a secret of exactly the cap, pasted whole rather than refused."""
+        held = secrets.token_hex(CAP // 2)
+        reading, writing = os.pipe()
+        copier = self.copier_started(reading)
+        os.close(reading)
+        given(writing, held)
+        try:
+            pasted = pasted_once_held(held)
+            never = None if pasted else "it never pasted"
+            self.check("a secret of exactly the cap pastes whole", never)
+            self.check("a secret of exactly the cap makes nothing", self.anything_made())
+            self.check("a secret of exactly the cap runs nothing", self.anything_ran())
+        finally:
+            copier.kill()
+            copier.wait()
+
     def refused(self) -> None:
         """Run cases 6 and 7: a standard input it can't read, then one past its cap."""
         unreadable = os.open(self.made.parent, os.O_RDONLY | os.O_DIRECTORY)
         copier = self.copier_started(unreadable)
         os.close(unreadable)
         ended, said, told = ended_within(copier)
+        # Whatever was made is asked for and swept even when the refusal failed, so no case
+        # after it is handed this one's leftovers.
+        made = self.anything_made()
         failed = refusal(ended, said, UNREADABLE)
-        self.check("an unreadable stdin is refused", failed or self.anything_made())
+        self.check("an unreadable stdin is refused", failed or made)
         self.check("an unreadable stdin runs nothing", self.anything_ran())
         self.check("an unreadable stdin is never said held", said_held(told))
 
         reading, writing = os.pipe()
         copier = self.copier_started(reading)
         os.close(reading)
-        stalled = fed(writing, b"x" * TOO_LONG)
+        stalled = fed(writing, b"x" * (CAP + 1))
         ended, said, told = ended_within(copier)
+        made = self.anything_made()
         failed = stalled or refusal(ended, said, PAST_THE_CAP)
-        self.check("a stdin past the cap is refused", failed or self.anything_made())
-        self.check("a stdin past the cap runs nothing", self.anything_ran())
-        self.check("a stdin past the cap is never said held", said_held(told))
+        self.check("a stdin a byte past the cap is refused", failed or made)
+        self.check("a stdin a byte past the cap runs nothing", self.anything_ran())
+        self.check("a stdin a byte past the cap is never said held", said_held(told))
 
 
 def pasted_once_held(held: str) -> bool:
@@ -339,6 +363,7 @@ def main() -> None:
         cases.check("enough memory may be locked", locks_enough())
         cases.copied()
         cases.copied_long()
+        cases.copied_at_the_cap()
         cases.refused()
     for case, failed in cases.outcomes:
         print(f"{case}: {failed or 'held'}", file=sys.stderr if failed else sys.stdout)
