@@ -13,39 +13,50 @@
   self,
 }:
 let
-  # The units of a Linux machine whose account names these pi hosts, each
-  # host given an empty pi and node.
-  growingServicesOf =
-    hosts:
+  # Pi hosts for these realms, each given an empty pi and the node `nodeOf`
+  # names for it, and its percent where it has one.
+  growingHostsOf =
+    nodeOf: hosts:
     let
       pi = "${pkgs.emptyDirectory}/pi";
-      node = "${pkgs.emptyDirectory}/node";
       proof = proofOf { runtime = builtins.unsafeDiscardStringContext "${pkgs.emptyDirectory}"; };
     in
-    (account (bareNixos [
+    lib.mapAttrs (
+      realm: percent:
+      {
+        inherit pi proof;
+        node = nodeOf realm;
+      }
+      // lib.optionalAttrs (percent != null) {
+        conversationHeapGrowingPercent = percent;
+      }
+    ) hosts;
+  # The account of a Linux workstation whose account names these pi hosts.
+  # The traced realm's node is node 22, which its proof runs, so its
+  # rendered units can be built; every other realm's is empty, so its proof
+  # is only named, never built.
+  growingAccountOf =
+    hosts:
+    account (bareNixos [
       self.nixosModules.workstation
       {
-        home-manager.users.someone.jitsusama.pi.hosts = lib.mapAttrs (
-          _: percent:
-          {
-            inherit pi node proof;
-          }
-          // lib.optionalAttrs (percent != null) {
-            conversationHeapGrowingPercent = percent;
-          }
+        home-manager.users.someone.jitsusama.pi.hosts = growingHostsOf (
+          realm: if realm == "traced" then lib.getExe pkgs.nodejs_22 else "${pkgs.emptyDirectory}/node"
         ) hosts;
       }
-    ])).systemd.user.services;
-  # One workstation's units for every percent that is taken, so one
-  # evaluation serves them all: a percent that is refused fails the whole
-  # evaluation, so only those need one of their own.
-  growing = growingServicesOf {
+    ]);
+  growingServicesOf = hosts: (growingAccountOf hosts).systemd.user.services;
+  # One workstation for every percent that is taken, so one evaluation serves
+  # them all: a percent that is refused fails the whole evaluation, so only
+  # those need one of their own.
+  grown = growingAccountOf {
     set = 30;
     plain = null;
     least = 10;
     most = 100;
     traced = 70;
   };
+  growing = grown.systemd.user.services;
   # The command a unit starts with, or nothing where there's no such unit.
   startOf = services: unit: lib.head (lib.toList (services.${unit}.Service.ExecStart or ""));
   growthTakenBy = import ./heap-growth-taken { inherit lib pkgs; };
@@ -318,12 +329,16 @@ in
 
   # A realm whose node refuses the growing percent fails the generation's
   # build, naming the realm, the percent and the node, rather than ending
-  # each conversation as it starts; one whose node fails another way, or
-  # the build can't run, fails saying so; node 22, which pi is built with,
-  # takes it; and a machine built elsewhere, whose node its builder can't
-  # run, has the proof stand unproven rather than fail.
+  # each conversation as it starts, as node 22 and this tree's own node
+  # refuse an option they don't know; one whose node fails another way,
+  # never ends, or can't be run, a package's folder among them, fails saying
+  # so and what to do; node 22, which pi is built with, takes it, and the
+  # unit file home-manager renders names that proof; and a machine
+  # cross-built for another platform has the proof stand unproven and warns
+  # of it, where a machine built on its own doesn't.
   pi-conversations-refuse-a-node-without-growth =
     let
+      given = "jitsusama.pi.hosts.one.conversationHeapGrowingPercent is 70, ";
       # Refuses the word as node refuses an option it doesn't know, and runs
       # anything else, so only a build that gives it the word fails.
       refusing = pkgs.writeShellScript "node" ''
@@ -334,8 +349,9 @@ in
       '';
       refused = pkgs.testers.testBuildFailure (growthTakenBy "one" "${refusing}" 70);
       refusedSaid = lib.concatStrings [
-        "jitsusama.pi.hosts.one.conversationHeapGrowingPercent is 70, "
-        "but ${refusing} refuses --heap-growing-percent=70, so each"
+        given
+        "but ${refusing} refuses --heap-growing-percent=70, so each of the realm's conversations "
+        "would end as it starts: unset the percent, or give the realm a node that knows it."
       ];
       # Fails with the word, as a node that can't start does, but not as
       # node refuses an option.
@@ -346,20 +362,87 @@ in
         fi
       '';
       failed = pkgs.testers.testBuildFailure (growthTakenBy "one" "${failing}" 70);
-      failedSaid = "but ${failing} failed with --heap-growing-percent=70 other than by refusing it";
-      # Named outside the store, as no build's sandbox holds.
+      failedSaid = lib.concatStrings [
+        given
+        "but ${failing} failed with --heap-growing-percent=70 other than by refusing it, so the "
+        "build can't prove it takes the word: give the realm a node its build can run, or unset "
+        "the percent."
+      ];
+      # Never ends once given the word, as a node that hangs as it starts
+      # doesn't, given a second to.
+      hanging = pkgs.writeShellScript "node" ''
+        if [ "$1" = --heap-growing-percent=70 ]; then
+          echo "$0: still starting" >&2
+          exec sleep 600
+        fi
+      '';
+      slow = pkgs.testers.testBuildFailure (
+        import ./heap-growth-taken {
+          inherit lib pkgs;
+          seconds = 1;
+        } "one" "${hanging}" 70
+      );
+      slowSaid = lib.concatStrings [
+        given
+        "but ${hanging} didn't end within its 1-second limit once run with --heap-growing-percent=70, "
+        "so the build can't prove it takes the word: give the realm a node that starts and ends, "
+        "or unset the percent."
+      ];
+      # Each a node the build can't run: one named outside the store, as no
+      # build's sandbox holds, and a package's folder, named with its
+      # context, in place of its program.
+      unrunSaid =
+        node:
+        lib.concatStrings [
+          given
+          "but the build proving the realm's node takes it can't run ${node}: give the realm a "
+          "node its build can run, a program from the store named with its context, as "
+          "lib.getExe gives one, or unset the percent."
+        ];
       unrun = pkgs.testers.testBuildFailure (growthTakenBy "one" "/nowhere/node" 70);
-      unrunSaid = "but the build proving the realm's node takes it can't run /nowhere/node: give";
+      folder = pkgs.testers.testBuildFailure (growthTakenBy "one" "${pkgs.nodejs_22}" 70);
       taken = growthTakenBy "one" (lib.getExe pkgs.nodejs_22) 70;
-      # A machine whose programs are built for one its builder can't run.
+      # The proof the traced realm's units name, whose node is node 22, and
+      # the unit files home-manager renders for them.
+      tracedProof = growthTakenBy "traced" (lib.getExe pkgs.nodejs_22) 70;
+      renderedOf =
+        kind: grown.xdg.configFile."systemd/user/pi-conversation-traced-${kind}@.service".source;
+      # A workstation built here for an aarch64 machine, whose node its
+      # builder can't run: only evaluated, never built.
+      crossMachine = bareNixos [
+        self.nixosModules.workstation
+        (
+          { pkgs, ... }:
+          {
+            nixpkgs.buildPlatform = "x86_64-linux";
+            nixpkgs.hostPlatform = "aarch64-linux";
+            home-manager.users.someone.jitsusama.pi.hosts = growingHostsOf (_: lib.getExe pkgs.nodejs_22) {
+              one = 70;
+            };
+          }
+        )
+      ];
+      crossNode = lib.getExe crossMachine.pkgs.nodejs_22;
+      unprovenSaid = lib.concatStrings [
+        given
+        "but this machine is built on another platform, whose builder can't run ${crossNode}, so "
+        "its switch doesn't prove the node takes --heap-growing-percent=70"
+      ];
+      # The proof the cross-built machine's units name stands unproven,
+      # running no node, and its account warns of it, which home-manager
+      # carries into the machine's warnings; the workstation built on its
+      # own platform warns of no such proof.
       elsewhere = import ./heap-growth-taken {
         inherit lib;
-        pkgs = pkgs // {
-          stdenv = pkgs.stdenv // {
-            hostPlatform = lib.systems.elaborate "riscv64-linux";
-          };
-        };
-      } "one" "/nowhere/node" 70;
+        inherit (crossMachine) pkgs;
+      } "one" crossNode 70;
+      warnsOf = home: lib.any (lib.hasInfix "built on another platform, whose builder") home.warnings;
+      unproven =
+        elsewhere ? unproven
+        && lib.hasPrefix unprovenSaid elsewhere.unproven
+        && !lib.hasInfix "taken.sh" elsewhere.buildCommand
+        && lib.any (lib.hasPrefix unprovenSaid) (account crossMachine).warnings
+        && !warnsOf grown;
     in
     # Kept in Nix because each line reads a build Nix gives it for words
     # Nix makes from that build's own inputs, which a script of its own
@@ -377,12 +460,38 @@ in
         "refusing the percent"
       says ${failed} ${lib.escapeShellArg failedSaid} "failing another way"
       says ${failed} ${lib.escapeShellArg "${failing}: can't start"} "failing another way"
-      says ${unrun} ${lib.escapeShellArg unrunSaid} "the build can't run"
+      says ${slow} ${lib.escapeShellArg slowSaid} "that never ends"
+      says ${slow} ${lib.escapeShellArg "${hanging}: still starting"} "that never ends"
+      says ${unrun} ${lib.escapeShellArg (unrunSaid "/nowhere/node")} "the build can't run"
+      says ${folder} ${lib.escapeShellArg (unrunSaid "${pkgs.nodejs_22}")} "named by its folder"
+      # taken.sh reads exit 9 as a refusal, which a real node gives an
+      # option it doesn't know, saying so.
+      for node in ${lib.getExe pkgs.nodejs_22} ${lib.getExe pkgs.nodejs}; do
+        if "$node" --heap-growing-percents=70 -e 0 2>said; then
+          echo "$node took an option it doesn't know"
+          exit 1
+        else
+          code=$?
+        fi
+        if [ "$code" != 9 ] || ! grep -qF 'bad option: --heap-growing-percents=70' said; then
+          echo "$node refused an option it doesn't know with exit $code, not as taken.sh reads a refusal:"
+          cat said
+          exit 1
+        fi
+      done
       test -e ${taken}
-      if ! grep -qF 'was not run with --heap-growing-percent=70' ${elsewhere}; then
-        echo "a machine built elsewhere didn't have its proof stand unproven"
+      for unit in ${renderedOf "attended"} ${renderedOf "background"}; do
+        if ! grep -qxF ${lib.escapeShellArg "X-HeapGrowthTakenBy=${tracedProof}"} "$unit"; then
+          echo "$unit doesn't name the build proving its node takes its percent:"
+          cat "$unit"
+          exit 1
+        fi
+      done
+      test -e ${tracedProof}
+      ${lib.optionalString (!unproven) ''
+        echo "a machine cross-built for another platform didn't have its proof stand unproven and warn of it, or one built on its own warned"
         exit 1
-      fi
+      ''}
       touch $out
     '';
 

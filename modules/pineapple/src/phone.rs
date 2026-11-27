@@ -201,10 +201,11 @@ const WORDS_NOT_TAKEN: &str = "(the words are at the link)";
 /// are said as `(at)here` and so on; any failing of the tool, or a
 /// refusal of it before it ran, is met by sending it once more with the
 /// words left to the link, so the title and where still reach his phone.
-/// Only that second answer is judged, as it holds nothing anyone in Slack
-/// wrote: a rate spent there, Slack refusing the gateway's sign-in, or a
-/// refusal before it ran did nothing, so the alert is tried again whole
-/// the next round.
+/// Only that second answer is judged, as it holds none of the words, and
+/// any line of it the failing quotes is left out first, since the title
+/// and where are still from Slack: a rate spent there, Slack refusing
+/// the gateway's sign-in, or a refusal before it ran did nothing, so the
+/// alert is tried again whole the next round.
 ///
 /// The tool's failing promises nothing of whether Slack took the message,
 /// so a second failing is counted as may have gone: two such rounds and
@@ -234,11 +235,18 @@ pub fn tell_self(gateway: &mut Gateway, alert: Alert) -> Result<String, Missed> 
         asked => asked,
     };
     let put = gateway.put_to(TO_SELF);
-    sent.map(|_| said).map_err(|called| match called {
+    let Err(called) = sent else {
+        return Ok(said);
+    };
+    let nothing_ran = |why: &str| {
+        let why = unquoted(why, &said);
+        spent(&why) || refuses_the_sign_in(&why)
+    };
+    Err(match called {
         Called::Unreachable(why) | Called::Unreadable(why) | Called::Failed(why) if !put => {
             Missed::NotSent(why)
         }
-        Called::Failed(why) if spent(&why) || refuses_the_sign_in(&why) => Missed::NotSent(why),
+        Called::Failed(why) if nothing_ran(&why) => Missed::NotSent(why),
         Called::Unreachable(why) | Called::Unreadable(why) | Called::Failed(why) => {
             Missed::Unsure(why)
         }
@@ -246,6 +254,19 @@ pub fn tell_self(gateway: &mut Gateway, alert: Alert) -> Result<String, Missed> 
         Called::Refused => Missed::NotSent("the gateway refused Joel's sign-in".to_owned()),
         Called::NoSignIn(_) => Missed::NotSent("no sign-in to the gateway was given".to_owned()),
     })
+}
+
+/// A failing's words without any line of `said` it quotes, as written or
+/// as JSON would write it: the title and where are still from Slack, so a
+/// name in them can't be read as the gateway's own word for a rate spent.
+fn unquoted(why: &str, said: &str) -> String {
+    let mut why = why.to_owned();
+    for line in said.lines().filter(|line| !line.trim().is_empty()) {
+        let json = serde_json::to_string(line).unwrap_or_default();
+        let inner = json.get(1..json.len().saturating_sub(1)).unwrap_or(line);
+        why = why.replace(line, "").replace(inner, "");
+    }
+    why
 }
 
 /// Whether a send that came back `called` is sent once more without its
@@ -464,6 +485,30 @@ mod tests {
         assert!(
             !spent("Slack said: ratelimitedness"),
             "Slack's words count only whole"
+        );
+    }
+
+    #[test]
+    fn a_name_from_slack_quoted_in_a_failing_is_no_rate_spent() {
+        let said = text(Alert {
+            title: "A stop in owner/rate_limited \"x\"",
+            words: WORDS_NOT_TAKEN,
+            link: "https://x.slack.com/archives/C1/p1",
+        });
+        let json = serde_json::to_string(&said).expect("text as JSON");
+        for why in [
+            format!("could not post {said}"),
+            format!("could not post {json}"),
+        ] {
+            assert!(spent(&why), "quoted, the name reads as Slack's word: {why}");
+            assert!(
+                !spent(&unquoted(&why, &said)),
+                "left out, it doesn't: {why}"
+            );
+        }
+        assert!(
+            spent(&unquoted(&format!("rate_limited, for {json}"), &said)),
+            "the gateway's own word still counts"
         );
     }
 

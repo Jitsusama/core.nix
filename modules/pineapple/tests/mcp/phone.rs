@@ -205,6 +205,54 @@ fn answered_by_the_tool() -> [Case; 8] {
 }
 
 #[test]
+fn a_send_forgotten_then_never_reopened_isnt_sent_again_without_its_words() {
+    let dir = scratch("tell-self-forgotten-unopened");
+    let (url, seen) = gateway(forgotten_then_page);
+    let mut gateway = Gateway::new(&url, sign_in(&dir).as_os_str());
+    let alert = Alert {
+        title: "Someone stopped your agents",
+        words: "stop",
+        link: "https://example.slack.com/archives/C1/p1",
+    };
+    let told = tell_self(&mut gateway, alert);
+    let openings = methods(&seen)
+        .iter()
+        .filter(|method| *method == "initialize")
+        .count();
+    assert!(
+        matches!(told, Err(Missed::NotSent(_))) && openings == 2,
+        "a forgotten pass asked nothing, so nothing refused the words and no \
+         resend opens a third session: {told:?}, {openings} openings"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_name_from_slack_quoted_back_in_a_failing_holds_no_alert_back() {
+    let dir = scratch("tell-self-quoted-name");
+    let (url, _) = gateway(|one: &Seen, _| match one.method.as_str() {
+        "initialize" => opened("s1"),
+        "tools/call" => tool(
+            &format!("could not post {}", one.params["arguments"]["message"]),
+            true,
+        ),
+        _ => status(202),
+    });
+    let mut gateway = Gateway::new(&url, sign_in(&dir).as_os_str());
+    let alert = Alert {
+        title: "Someone stopped agents in owner/rate_limited",
+        words: "stop",
+        link: "https://example.slack.com/archives/C1/p1",
+    };
+    let told = tell_self(&mut gateway, alert);
+    assert!(
+        matches!(told, Err(Missed::Unsure(_))),
+        "a failing quoting the title is the tool's failing, never a rate spent: {told:?}"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn an_alert_is_unsure_only_once_its_tool_was_asked_and_its_words_never_hold_it_back() {
     let alert = Alert {
         title: "Someone stopped your agents",

@@ -421,7 +421,7 @@ struct Read {
 
 /// A message file listed: where it is, its name, and when this machine
 /// wrote it, in ms.
-type Listed = (PathBuf, String, i64);
+pub(in crate::hour::measures) type Listed = (PathBuf, String, i64);
 
 /// The messages under `messages` of the last `WITHIN` before `now` that
 /// went to the group or answer or withdraw one that did, oldest first,
@@ -610,7 +610,7 @@ fn by_written(one: &Posted, other: &Posted) -> Ordering {
 /// is old, read already, or expired, and into a day's folder, which is
 /// gathered only once the folder itself is listed, so one moved meanwhile
 /// is listed there.
-fn listed(
+pub(in crate::hour::measures) fn listed(
     messages: &Path,
     from_ms: i64,
     since_ms: i64,
