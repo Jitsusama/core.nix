@@ -11,6 +11,7 @@ use disk_guard::socket::Responder;
 use std::collections::HashMap;
 use std::fs;
 use std::io::Read;
+use std::os::unix::ffi::OsStrExt;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, mpsc};
@@ -97,7 +98,18 @@ impl Store {
             fs::create_dir_all(root.join(sub)).unwrap();
         }
         let log = root.join("log");
-        let policy = "$(cut -d' ' -f41 /proc/$$/stat)";
+        // The scheduling policy a script runs under, field 41 of its stat,
+        // read by builtins alone, as is the pause while a listing waits: a
+        // `cut` and a `sleep` forked at idle priority beside a loaded
+        // builder's builds slowed the listings until a wait gave up. A
+        // script's name holds no space, so the fields split as `cut` split
+        // them.
+        let read_policy = "field_41() { shift 40; policy=$1; }\n\
+                           read -r stat < /proc/$$/stat; field_41 $stat\n";
+        let policy = "$policy";
+        // What a listing reads to pause, and never hears from.
+        let never = root.join("never");
+        silent_pipe(&never);
         let script = |name: &str, body: String| {
             crate::garbage::script(&root.join("bin").join(name), &body);
         };
@@ -113,7 +125,8 @@ impl Store {
         script(
             "nix-store",
             format!(
-                "if [ \"$*\" = --optimise ]; then\n\
+                "{read_policy}\
+                 if [ \"$*\" = --optimise ]; then\n\
                    echo \"optimise {policy}\" >> {linked}\n\
                    [ -e {slow}-broken ] && {{ echo 'error: database is locked' >&2; exit 1; }}\n\
                    if [ -e {slow} ]; then\n\
@@ -124,7 +137,9 @@ impl Store {
                  fi\n\
                  [ \"$*\" = '{listing}' ] || exit 9\n\
                  echo \"list {policy}\" >> {log}\n\
-                 if [ -e {listed} ]; then while [ -e {slow_list} ]; do sleep 0.05; done; fi\n\
+                 if [ -e {listed} ]; then while [ -e {slow_list} ]; do\n\
+                   read -r -t 0.05 nothing <> {never}\n\
+                 done; fi\n\
                  : > {listed}\n\
                  [ -e {broken} ] && {{ echo 'error: a temporary file went' >&2; exit 1; }}\n\
                  for p in {store}/*; do [ -e \"$p/meta\" ] || [ -e \"$p/disk.img\" ] || continue\n\
@@ -139,13 +154,15 @@ impl Store {
                 broken = root.join("listing-broken").display(),
                 listed = root.join("listed").display(),
                 slow_list = root.join("listing-slow").display(),
+                never = never.display(),
                 stale = root.join("listing-stale").display(),
             ),
         );
         script(
             "nix",
             format!(
-                "[ \"$1 $2\" = '--extra-experimental-features nix-command' ] || exit 9\nshift 2\n\
+                "{read_policy}\
+                 [ \"$1 $2\" = '--extra-experimental-features nix-command' ] || exit 9\nshift 2\n\
                  case \"$1 $2\" in\n\
                  'path-info --json') [ \"$3\" = --offline ] || exit 9; shift 3\n\
                    printf '{{'; sep=''\n\
@@ -189,7 +206,8 @@ impl Store {
         script(
             "nix-env",
             format!(
-                "[ \"$1 $3\" = '-p --delete-generations' ] || exit 9\n\
+                "{read_policy}\
+                 [ \"$1 $3\" = '-p --delete-generations' ] || exit 9\n\
                  echo \"expire $* {policy}\" >> {log}\n\
                  profile=$2; shift 3\n\
                  for n in \"$@\"; do rm \"$profile-$n-link\"; done\n",
@@ -1016,6 +1034,20 @@ fn a_nearly_full_store_is_listed_however_memory_stalls() {
     step_later_until(&store, &mut guard, 0.0, &MEMORY_STRAINED, |store, _| {
         lists(store) == 1
     });
+}
+
+/// A pipe at `path` that nothing writes, which a script opens to write as
+/// well as read, so the open waits for no writer and a read with a timeout
+/// on it pauses for just that long: a pause by a builtin, with no fork.
+fn silent_pipe(path: &Path) {
+    let name = std::ffi::CString::new(path.as_os_str().as_bytes()).unwrap();
+    // SAFETY: a plain system call on a name the store owns.
+    assert_eq!(
+        unsafe { libc::mkfifo(name.as_ptr(), 0o600) },
+        0,
+        "no pipe made: {}",
+        std::io::Error::last_os_error()
+    );
 }
 
 /// This process's scheduling policy, as /proc gives it, which what the
