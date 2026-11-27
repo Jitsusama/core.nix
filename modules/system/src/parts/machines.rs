@@ -1161,6 +1161,34 @@ mod tests {
     }
 
     #[test]
+    fn a_machine_s_name_is_said_as_plain_words_and_one_left_empty_unnamed() {
+        let hidden = json!({"name": "osp\u{200b}rey\u{1b}[0m", "state": "ready"});
+        let blank = json!({"name": "\u{200b}", "state": "unreachable"});
+        let part = machines(
+            &Ok(realm(&[laptop(&[], "healthy"), hidden, blank])),
+            &Err(String::new()),
+            None,
+            None,
+        );
+        let names: Vec<&str> = part
+            .things
+            .iter()
+            .map(|thing| thing.name.as_str())
+            .collect();
+        assert_eq!(
+            names,
+            ["unnamed", "laptop", "osprey"],
+            "a machine's name is said as it reads, its hidden characters and escapes gone, \
+             and one with nothing left is said unnamed, as a builder is"
+        );
+        assert_eq!(
+            part.side,
+            ["unnamed is out of reach"],
+            "a machine that can't be named is still said when it's worth a look"
+        );
+    }
+
+    #[test]
     fn the_builders_follow_the_machines_and_a_stalled_one_is_worth_a_look() {
         let mut said = realm(&[laptop(&[], "healthy")]);
         said["Ok"]["Builders"] = json!([

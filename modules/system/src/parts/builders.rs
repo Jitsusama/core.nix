@@ -382,7 +382,16 @@ mod tests {
             { "name": "tern" },
         ]));
         let says: Vec<&str> = said.iter().map(|(_, _, says, _)| says.as_str()).collect();
-        assert_eq!(said.len(), 5, "a builder without a name is left out");
+        assert_eq!(
+            said.len(),
+            6,
+            "two builders without a name are kept as one: {said:?}"
+        );
+        assert_eq!(
+            (said[5].0.as_str(), said[5].2.as_str()),
+            ("unnamed", "runs and takes builds"),
+            "a builder without a name is said unnamed, as it stands"
+        );
         assert_eq!(
             says[2], "isn't answering (refused red der)",
             "only the first line is kept, an escape gone whole and a turn of the text gone"
@@ -425,8 +434,9 @@ mod tests {
             vec![
                 ("kite", "is lent and takes builds"),
                 ("osprey", "answers and takes builds"),
+                ("unnamed", "runs and takes builds"),
             ],
-            "a name is shown as plain words, with none left a builder without one, and a padded \
+            "a name is shown as plain words, one with none left said unnamed, and a padded \
              state or lender's word is the word this build knows"
         );
         assert!(
@@ -470,6 +480,49 @@ mod tests {
                 named,
                 vec![("kite", Health::Watch)],
                 "two builders drawn as one name are one, and a fine one never hides a failing \
+                 one: {builders}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_builder_without_a_name_is_kept_and_said_unnamed() {
+        for nameless in [
+            json!({ "name": "\u{200b}", "state": "not answering" }),
+            json!({ "name": "", "state": "not answering" }),
+            json!({ "state": "not answering" }),
+        ] {
+            let said = read(&json!([nameless, { "name": "osprey", "state": "answering" }]));
+            let named: Vec<(&str, Health, String)> = said
+                .iter()
+                .map(|(name, health, _, side)| (name.as_str(), *health, side.join(", ")))
+                .collect();
+            assert_eq!(
+                named,
+                vec![
+                    ("unnamed", Health::Watch, "not answering".to_owned()),
+                    ("osprey", Health::Good, String::new()),
+                ],
+                "a builder that can't be named is still listed, and one not answering is a look \
+                 as a named one is: {nameless}"
+            );
+        }
+    }
+
+    #[test]
+    fn builders_without_a_name_are_one_said_at_its_worst() {
+        let failing = json!({ "name": "\u{200b}", "state": "not answering" });
+        let fine = json!({ "state": "answering" });
+        for builders in [json!([failing, fine]), json!([fine, failing])] {
+            let said = read(&builders);
+            let named: Vec<(&str, Health)> = said
+                .iter()
+                .map(|(name, health, _, _)| (name.as_str(), *health))
+                .collect();
+            assert_eq!(
+                named,
+                vec![("unnamed", Health::Watch)],
+                "two builders without a name are one, and a fine one never hides a failing \
                  one: {builders}"
             );
         }
