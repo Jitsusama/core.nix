@@ -577,9 +577,8 @@ def test_the_map_draws_how_cells_connect_and_answers_a_click_in_one_window(
     )
     assert window[1] <= window[0], f"the map's page scrolls: {window[1]} px in {window[0]}"
     assert window[2] <= window[0], f"the map runs {window[2]} px down a {window[0]} px window"
-    box = page.locator('#world circle.cell[data-key="c:TERN03"]').bounding_box()
-    assert box, "the map drew no TERN03 to click"
-    page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+    left, top, right, bottom = drawn_boxes(page, ["TERN03"], "the map drew no TERN03 to click")[2]
+    page.mouse.click((left + right) / 2, (top + bottom) / 2)
     expect(page, "a click on a cell didn't open it").to_have_url(re.compile("#cell=TERN03$"))
     expect(
         page.locator('#panel-body a[href^="mycelium:cell/TERN03"][href$="/go"]'),
@@ -611,6 +610,27 @@ BOXES = """(keys) => [document.getElementById('map-view'), document.getElementBy
 DRAWN = f"(keys) => ({BOXES})(keys).every((box) => box !== null && box[2] > box[0])"
 
 
+def drawn_boxes(page: Page, cells: list[str], why: str) -> list[list[float]]:
+    """Give the view's box, the drawer's and each cell's, once every cell is drawn.
+
+    A cell that never draws, or one redrawn away between the wait and the read,
+    fails by name.
+    """
+    try:
+        page.wait_for_function(DRAWN, arg=cells, timeout=PACE_MS)
+    except PlaywrightTimeoutError as undrawn:
+        boxes = page.evaluate(BOXES, cells)[2:]
+        missing = [cell for cell, box in zip(cells, boxes, strict=True) if not box]
+        message = f"{why}: {missing or cells} undrawn"
+        raise AssertionError(message) from undrawn
+    view, drawer, *boxes = page.evaluate(BOXES, cells)
+    assert view, f"{why}: the map's view went from the page"
+    assert drawer, f"{why}: the drawer went from the page"
+    gone = [cell for cell, box in zip(cells, boxes, strict=True) if not box]
+    assert not gone, f"{why}: {gone} redrawn away once drawn"
+    return [view, drawer, *boxes]
+
+
 def strongest(page: Page, cell: str) -> float:
     """Say the alpha of the strongest mark a cell is drawn with."""
     return max(float(mark["alpha"] or 0) for mark in marks_of(page, f"c:{cell}"))
@@ -632,12 +652,7 @@ def test_a_network_opened_is_put_into_view_whole_and_what_it_joins_stands_out(
         SKIFF_TITLE
     )
     settled(page, "the skiff's network never stood still once opened")
-    try:
-        page.wait_for_function(DRAWN, arg=list(SKIFF_JOINS), timeout=PACE_MS)
-    except PlaywrightTimeoutError as undrawn:
-        message = f"opening the skiff left one of {SKIFF_JOINS} undrawn"
-        raise AssertionError(message) from undrawn
-    view, drawer, *boxes = page.evaluate(BOXES, list(SKIFF_JOINS))
+    view, drawer, *boxes = drawn_boxes(page, list(SKIFF_JOINS), "opening the skiff left cells")
     for cell, (left, top, right, bottom) in zip(SKIFF_JOINS, boxes, strict=True):
         inside = view[0] <= left and right <= view[2] and view[1] <= top and bottom <= view[3]
         assert inside, f"opening the skiff left {cell} at {left, top, right, bottom} outside {view}"
