@@ -171,3 +171,28 @@ def test_a_terminals_failure_says_its_kind(shell: Shell) -> None:
     line = line_of(said, start)
     assert MARKER not in said, f"the failure said the terminal's words: {line}"
     assert re.fullmatch(r"launcher: a terminal's do failed: [A-Z][A-Za-z]*", line), line
+
+
+def test_an_act_that_ends_something_is_never_offered_over_the_launcher_in_use(
+    shell: Shell,
+) -> None:
+    """A catalogue run of an act that ends something opens nothing over Joel's launcher.
+
+    Offered ready for Return over a launcher he's typing in, his next Return would do it as his
+    own (round 000036 on #6796, F135), so it's refused as a link is; from closed it's offered,
+    held under the link's quiet.
+    """
+    listed = cast("list[Json]", json.loads(shell.as_account(shell.ipc("list"))))
+    ending = [one for one in listed if one["kind"] == "action" and one["disruptive"]]
+    assert ending, "the catalogue lists no act that ends something"
+    run = shell.ipc("run", shlex.quote(str(ending[0]["id"])))
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    before = shell.showing()["held"]
+    in_use = {"done": False, "said": "the launcher is in use, so the link opened nothing"}
+    assert json.loads(shell.as_account(run)) == in_use, ending[0]
+    assert shell.showing()["held"] == before, shell.showing()
+    shell.close_launcher()
+    offered = json.loads(shell.as_account(run))
+    assert offered.get("offered") is True, offered
+    close_after_link(shell)
