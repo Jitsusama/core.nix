@@ -391,6 +391,7 @@ struct Waiting {
 /// system may be gone, but the read of it is still let go of only once
 /// the wait is.
 pub fn waiting_commit(config: &Config) -> Option<String> {
+    // No file, or none written whole, is no build waiting, so no read is kept for one.
     let text = fs::read_to_string(waiting_file(config)).ok()?;
     let waiting: Waiting = serde_json::from_str(&text).ok()?;
     Some(waiting.commit)
