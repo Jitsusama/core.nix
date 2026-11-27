@@ -439,6 +439,13 @@ QtObject {
             ["it was put at no time", "it has no guard", null]);
         holds("the ask takes a yes or a no, never an early key, nor one with no ask",
             ["yes", "no", "early", ""].map(Confirm.takes), [true, true, false, false]);
+        holds("an ask standing says what it says of a key, and none says nothing",
+            [Confirm.said(ask, "Return", 1300, 300), Confirm.said(ask, "j", 1299, 300),
+                Confirm.said(null, "Return", 1300, 300)], ["yes", "early", ""]);
+        holds("and takes it only where it answers, never with no ask standing",
+            [Confirm.taken(ask, "Return", 1300, 300), Confirm.taken(ask, "y", 1400, 300),
+                Confirm.taken(ask, "Return", 1299, 300),
+                Confirm.taken(null, "Return", 1300, 300)], [true, true, false, false]);
         pending(holds);
         visual(holds);
         changes(holds);
