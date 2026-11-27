@@ -425,13 +425,17 @@ QtObject {
             [Confirm.letBy(ask, "Return", undefined, 300), Confirm.letBy(timeless, "Return",
                 1400, 300), Confirm.letBy(ask, "Return", 1400, undefined),
                 Confirm.letBy(ask, "Return", 999, 300), Confirm.letBy(ask, "y", undefined, 300),
-                Confirm.letBy(timeless, "Return", undefined, 300)],
+                Confirm.letBy(timeless, "Return", undefined, 300),
+                Confirm.letBy(ask, "Return", 1000, 300)],
             ["Return came to the ask with no time, so it was let by",
                 "the ask can't be timed, as it was put at no time, so Return was let by",
                 "the ask can't be timed, as it has no guard, so Return was let by",
                 "Return was timed before its ask, so it was let by",
                 "a key came to the ask with no time, so it was let by",
-                "Return came to the ask with no time, so it was let by"]);
+                "Return came to the ask with no time, so it was let by",
+                // At the ask's own time it's early in its guard, as answer
+                // has it, never timed before its ask.
+                null]);
         // Of an ask that can't be timed as of one that can, so neither reason
         // is said of a key that answered or of a modifier alone.
         holds("never of a key early in its guard, a modifier alone, or one that answers",
@@ -451,9 +455,10 @@ QtObject {
             [Confirm.said(ask, "Return", 1300, 300), Confirm.said(ask, "j", 1299, 300),
                 Confirm.said(null, "Return", 1300, 300)], ["yes", "early", ""]);
         holds("and takes it only where it answers, never with no ask standing",
-            [Confirm.taken(ask, "Return", 1300, 300), Confirm.taken(ask, "y", 1400, 300),
-                Confirm.taken(ask, "Return", 1299, 300),
-                Confirm.taken(null, "Return", 1300, 300)], [true, true, false, false]);
+            [Confirm.said(ask, "Return", 1300, 300), Confirm.said(ask, "y", 1400, 300),
+                Confirm.said(ask, "Return", 1299, 300),
+                Confirm.said(null, "Return", 1300, 300)].map(Confirm.takes),
+            [true, true, false, false]);
         pending(holds);
         visual(holds);
         changes(holds);

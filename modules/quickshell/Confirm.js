@@ -113,16 +113,10 @@ function takes(answered) {
 
 // What the ask standing (`ask`, or null with none) makes of `key` come
 // `now`: its answer, or "" with none standing. The launcher answers by it.
+// A test with no launcher to ask times a key by takes of this, the shape
+// Launcher.qml's askSaid gives its field's answerTaken.
 function said(ask, key, now, guard) {
     return ask === null ? "" : answer(ask, key, now, guard);
-}
-
-// Whether the ask standing takes `key` come `now`, by what it says of it:
-// what the launcher's field reads, takes of askSaid, made whole for a test
-// with no launcher to ask, so the test times a key by the launcher's rule.
-// It covers the rule only: the launcher's own binding isn't read by it.
-function taken(ask, key, now, guard) {
-    return takes(said(ask, key, now, guard));
 }
 
 // What d asks over the rows it would end, each { ends, name, kind }: the
