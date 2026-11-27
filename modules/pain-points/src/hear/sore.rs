@@ -395,19 +395,28 @@ fn sentence(piece: &str) -> Sentence<'_> {
         said.asked.extend(std::iter::repeat_n(asks, words.len()));
         said.told.push((asks, words));
     }
-    // Its clauses and its parts split it only at marks no word holds, so
-    // each reads the same words; a swear past the end is read as told.
-    debug_assert_eq!(
-        said.asked.len(),
-        said.words.len(),
-        "its parts and its clauses read different words: {piece:?}"
-    );
     let exclaims = ends_in(piece, &EXCLAIMS);
     let last = clause_of.last().copied();
     said.exclaimed = clause_of
         .iter()
         .map(|&n| exclaims && Some(n) == last)
         .collect();
+    // Its clauses and its parts split it only at marks no word holds, so
+    // each reading has one entry for each word, and none is read off
+    // another word's; a swear past the end of one is read as told.
+    for (reading, entries) in [
+        ("asked", said.asked.len()),
+        ("closes", said.closes.len()),
+        ("opens", said.opens.len()),
+        ("listed", said.listed.len()),
+        ("exclaimed", said.exclaimed.len()),
+    ] {
+        debug_assert_eq!(
+            entries,
+            said.words.len(),
+            "its {reading} and its words differ in length: {piece:?}"
+        );
+    }
     said
 }
 
