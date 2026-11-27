@@ -67,6 +67,7 @@ onLinux {
     pkgs.runCommandLocal "tuple-shares-through-the-portal" { nativeBuildInputs = [ tuple ]; } ''
       ${lib.getExe pkgs.bash} ${./tests/tuple-shares-through-the-portal.sh} ${
         lib.escapeShellArgs [
+          "${./tests/tuple-in-a-folder-of-its-own.sh}"
           "${home.home.activationPackage}/activate"
           data
         ]
@@ -174,7 +175,8 @@ onLinux {
       }
       ''
         ${lib.getExe pkgs.bash} ${./tests/tuple-completes-in-zsh.sh} \
-          ${./tests/tuple-completion.zsh} ${tuple}/share/zsh/site-functions/_tuple
+          ${./tests/tuple-in-a-folder-of-its-own.sh} ${./tests/tuple-completion.zsh} \
+          ${tuple}/share/zsh/site-functions/_tuple
         touch $out
       '';
 
