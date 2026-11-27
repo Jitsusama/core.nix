@@ -179,6 +179,24 @@ onLinux {
         touch $out
       '';
 
+  # The launcher calls, joins and stars a contact after "--", so a handle
+  # that starts with a dash is a name, and a Tuple update that stopped
+  # ending its flags there would leave every such row doing nothing. Each is
+  # asked with one name too many, which the real tuple refuses by counting,
+  # in a sandbox with no network or account, so it reaches nobody
+  # (tests/tuple-ends-its-flags.sh).
+  tuple-ends-its-flags =
+    let
+      home = account graphical;
+      tuple = lib.findFirst (package: lib.getName package == "tuple") null home.home.packages;
+    in
+    pkgs.runCommandLocal "tuple-ends-its-flags" { nativeBuildInputs = [ tuple ]; } ''
+      export HOME=$PWD XDG_DATA_HOME=$PWD/data XDG_RUNTIME_DIR=$PWD/run
+      mkdir -m 700 run
+      ${lib.getExe pkgs.bash} ${./tests/tuple-ends-its-flags.sh}
+      touch $out
+    '';
+
   # A call link opened in a browser comes back as tuple://join, which only
   # the desktop entry's command takes, so the check runs it as the entry
   # does, with stand-ins for tuple and notify-send, over links like the

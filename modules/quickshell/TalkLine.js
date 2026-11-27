@@ -429,7 +429,8 @@ function ended(heard, words) {
 // How a kept talk reads under his words: `answers`, each in the words, or else `waiting`, in
 // the voice while someone has it, saying on whom, or how it otherwise `stands`; at its right,
 // `side`, when he said it, whatever came after; and at its answer's right, `by`, who answered
-// (WCJQSG [e05f6231], QCXZEB [5aab8439]).
+// (WCJQSG [e05f6231], QCXZEB [5aab8439]). A session's question (TalkAnswers.js) adds what it
+// `takes`, drawn whole under its answers; a talk has none.
 function exchange(talk, events, words, dayOf) {
     const day = typeof dayOf === "function" ? dayOf(talk.since) : "";
     const shown = { line: talk.line, answers: [], waiting: "", stands: "", by: "",

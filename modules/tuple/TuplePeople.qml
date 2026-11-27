@@ -36,7 +36,9 @@ Singleton {
 
     // Runs one of tuple's commands on someone, after "--", since tuple
     // reads an argument that begins with a dash as a flag, and an email
-    // may begin with one.
+    // may begin with one. Each command run through here is one
+    // tests/tuple-ends-its-flags.sh asks the real tuple about, so a new one
+    // goes there too.
     function act(command, contact) {
         Niri.spawn(["tuple"].concat(command, "--", who(contact)));
     }

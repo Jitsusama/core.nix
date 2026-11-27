@@ -333,6 +333,7 @@ span.mark {
   display: inline-flex;
   align-items: center;
   min-block-size: 44px;
+  overflow-wrap: anywhere;
   color: var(--strong);
   text-decoration: underline;
   text-decoration-thickness: 1px;
