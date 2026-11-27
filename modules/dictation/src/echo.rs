@@ -839,6 +839,26 @@ mod tests {
     }
 
     #[test]
+    fn his_voice_between_two_middle_levels_is_the_quieter() {
+        // Six words alone, three at -20 and three at -40 dB: judged by the
+        // louder middle, his word at -36 would be cut as 12 dB below his
+        // voice; by the quieter it's his, as a doubtful word should be.
+        let own = "Fine by me, sure then, thanks.";
+        let theirs = at_level(timed("Lunch at noon on Thursday then.", 5_000), -20.0);
+        let mut mine = timed(own, 1_000);
+        let levels = [-20.0, -40.0, -20.0, -40.0, -20.0, -40.0];
+        for (word, alone) in mine.iter_mut().zip(levels) {
+            word.level = alone;
+        }
+        mine.extend(at_level(timed("Bunch had moon", 5_050), -36.0));
+        assert_eq!(
+            cut_from(&[theirs], &[mine]),
+            [format!("{own} Bunch had moon")],
+            "a word near the quieter of his voice's two middle levels was cut"
+        );
+    }
+
+    #[test]
     fn a_word_only_joels_microphone_heard_doesnt_break_their_echo() {
         // Echo comes in quiet over his room, so his side may hear a word
         // in it theirs didn't: their "noon" must still be cut after it.
