@@ -500,7 +500,11 @@ in
               ]
             )
           }${lib.optionalString (realms != [ ]) ":${config.home.profileDirectory}/bin"}"
-        ];
+        ]
+        # The origins path.sh samples, so the hour measures each named one
+        # whether or not a sample came, a comma apart as systemd would split
+        # a space.
+        ++ lib.optional (cfg.origins != [ ]) "CADENCE_ORIGINS=${lib.concatStringsSep "," cfg.origins}";
         Slice = "background.slice";
         # The hour's ten days of journals and World's history pass through
         # this unit as file pages: at 23:10 on 19 November it peaked at
