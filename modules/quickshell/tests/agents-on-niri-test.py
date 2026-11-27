@@ -1239,6 +1239,29 @@ def test_an_orchestrators_served_acts_walked_from_outside_steer_nothing(shell: S
             path.unlink()
 
 
+def dealing_by_id_fills_nothing(shell: Shell, inbox: Path) -> None:
+    """Check Deal With It run by its catalogue id is refused, and fills no prompt.
+
+    `qs ipc call launcher run` reaches the act on a path of its own (Launcher.qml's
+    catalogueRunWalked), which no walk through `doing` crosses (round 000036 on #6796, F124).
+    """
+    listed = cast("list[Json]", json.loads(shell.as_account(shell.ipc("list"))))
+    dealing = [
+        one
+        for one in listed
+        if one["words"] == "Deal With It" and "Dealing Quest" in str(one["in"])
+    ]
+    assert dealing, "the catalogue lists no Deal With It on the want"
+    ran = json.loads(shell.as_account(shell.ipc("run", shlex.quote(str(dealing[0]["id"])))))
+    assert ran.get("done") is False, ran
+    assert str(ran.get("said", "")).endswith(f": {ACT_WALKED}"), ran
+    shell.close_launcher()
+    # Past the closed frame's wait, a second at most, and the moment after it.
+    time.sleep(2 + LINK_QUIET)
+    filled = [json.loads(one.read_text()) for one in inbox.glob("*.json")]
+    assert filled == [], filled
+
+
 def test_a_wants_acts_walked_from_outside_are_refused_as_chosen(shell: Shell) -> None:
     """A walk's Put It Off or Deal With It on a want is refused, and fills no session's prompt.
 
@@ -1276,6 +1299,7 @@ def test_a_wants_acts_walked_from_outside_are_refused_as_chosen(shell: Shell) ->
         time.sleep(2 + LINK_QUIET)
         filled = [json.loads(one.read_text()) for one in inbox.glob("*.json")]
         assert filled == [], filled
+        dealing_by_id_fills_nothing(shell, inbox)
     finally:
         shell.close_launcher()
         for one in inbox.glob("*.json"):
