@@ -169,8 +169,12 @@ let
   # after every collection, since the heap holds over twice what's live
   # straight after any sweep, so once one ended the next miss started
   # another: one opening ran two whole collections 16 s apart, each inside
-  # a key (qtdeclarative-room-after-every-sweep.patch). The heap module
-  # leaves the room through it, so dropping it means changing the module.
+  # a key (qtdeclarative-room-after-every-sweep.patch). Its ceiling of two
+  # rooms moves with what the sweeps keep, since a burst kept past it, too
+  # large for the runs they left, collected at every miss: two openings
+  # spent 1955 and 1949 ms of 3269 and 3320 in the collector. The heap
+  # module leaves the room through it, so dropping it means changing the
+  # module.
   # A sweep sorts the chunks it keeps into the free bins by what they use,
   # the fullest last, so what's made next fills them first, since in the
   # order they lay what lived long scattered over chunks nearly empty and

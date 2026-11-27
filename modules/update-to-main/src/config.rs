@@ -243,6 +243,22 @@ pub struct Busy {
     /// the ask it let through.
     #[serde(default)]
     pub refuses_at_most: Option<u64>,
+    /// What the last line it says on its error stream while busy is.
+    #[serde(default)]
+    pub says: Says,
+}
+
+/// What a busy command's last line on its error stream is, while it says
+/// busy. What one that can't tell says is the reason either way.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Says {
+    /// Something beside, left out of a refusal: a call check's caution
+    /// that a peer went unheard is no reason a call is on.
+    #[default]
+    Beside,
+    /// Why it's busy, as a Mac's readings are, so a refusal ends with it.
+    Why,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -391,6 +407,12 @@ impl Config {
     /// behind.
     pub fn behind_file(&self) -> PathBuf {
         self.state.join("behind")
+    }
+
+    /// The file holding why the machine boots the system it booted before,
+    /// from the switch whose boot check failed until one passes.
+    pub fn boots_file(&self) -> PathBuf {
+        self.state.join("boots")
     }
 
     /// The link that keeps the system being built from being collected.

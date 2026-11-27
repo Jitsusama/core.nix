@@ -209,20 +209,25 @@ onLinux {
   # For You; and no shadow runs beside it.
   pineapple-slack-goes-live-through-a-gateway =
     let
-      home = account (bareNixos [
-        {
-          home-manager.sharedModules = [
-            self.homeModules.pineapple
-            {
-              jitsusama.pineapple.gateway = {
-                url = "https://gateway.example.com/mcp";
-                signIn = pkgs.writeShellScript "stand-in-sign-in" "echo stand-in-token";
-                live = true;
-              };
-            }
-          ];
-        }
-      ]);
+      at =
+        url:
+        account (bareNixos [
+          {
+            home-manager.sharedModules = [
+              self.homeModules.pineapple
+              {
+                jitsusama.pineapple.gateway = {
+                  inherit url;
+                  signIn = pkgs.writeShellScript "stand-in-sign-in" "echo stand-in-token";
+                  live = true;
+                };
+              }
+            ];
+          }
+        ]);
+      home = at "https://gateway.example.com/mcp";
+      percent = (at "https://gateway.example.com/mcp?x=a%2Fb").systemd.user.services;
+      encoded = lib.concatStringsSep " " (lib.toList percent.pineapple-slack.Service.ExecStart);
       services = home.systemd.user.services;
       unit = services.pineapple-slack;
       command = lib.concatStringsSep " " (lib.toList unit.Service.ExecStart);
@@ -230,12 +235,13 @@ onLinux {
       waiting = "${home.xdg.stateHome}/mission/waiting/pineapple.json";
     in
     holds "pineapple-slack-goes-live-through-a-gateway"
-      "pineapple-slack over a live gateway lacks --live, the gateway or its row, is given more than its row, or runs beside a shadow."
+      "pineapple-slack over a live gateway lacks --live, the gateway or its row, mangles a URL's %, is given more than its row, or runs beside a shadow."
       (
         lib.hasInfix (
           "/bin/pineapple-slack pineapple-slack run --live"
           + " --gateway https://gateway.example.com/mcp --gateway-sign-in /nix/store/"
         ) command
+        && lib.hasInfix "mcp?x=a%%2Fb" encoded
         && environment == [ ''"SAFE_WORD_WAITING=${waiting}"'' ]
         && lib.hasInfix waiting unit.Service.ExecStopPost
         && lib.hasSuffix ", through a tool gateway" unit.Unit.Description

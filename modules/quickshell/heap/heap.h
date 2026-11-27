@@ -63,8 +63,9 @@ public:
     // in its free lists starts the collector, and its strings as many
     // more outside it, and as much again after every collection that ends
     // later, though a miss starts it no later than twice the room beyond
-    // what its chunks held at the first ask since a collection ended,
-    // whatever room it asked for, and never sooner than Qt would: up to
+    // what its chunks held at the first ask since a collection ended, and
+    // twice what its sweeps kept beyond what the last kept then, whatever room
+    // it asked for, and never sooner than Qt would: up to
     // 1024, and none for 0 or what isn't a number, in the heap from the
     // next collection on and outside it as Qt lowers its limit. Asked after the
     // closing's collection and again as an opening is asked, so the

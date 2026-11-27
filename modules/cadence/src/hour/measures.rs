@@ -148,6 +148,14 @@ fn lines(text: &str) -> impl Iterator<Item = Value> + '_ {
         .filter_map(|line| serde_json::from_str(line).ok())
 }
 
+/// The asks list's lines, each read as its ask, but for a twin: a line
+/// the keeper folded into another with the same moment and words, its id
+/// marked `~`. Every measure of the asks keeps an ask by its latest line,
+/// so a twin written after the ask it copies would stand in its place.
+fn asks(text: &str) -> impl Iterator<Item = Value> + '_ {
+    lines(text).filter(|ask| !ask["id"].as_str().is_some_and(|id| id.contains('~')))
+}
+
 fn seconds(value: &Value) -> Option<i64> {
     value
         .as_str()?
@@ -175,22 +183,22 @@ pub fn to_first_slice(text: &str, now: i64, which: Tracking) -> Measure {
     // how its latest line tracks it, since the list re-marks or puts down
     // an ask by writing it again.
     type Ask = (String, Option<i64>, Option<Tracking>);
-    let mut asks: BTreeMap<(i64, String), Ask> = BTreeMap::new();
-    for ask in lines(text) {
+    let mut by_ask: BTreeMap<(i64, String), Ask> = BTreeMap::new();
+    for ask in asks(text) {
         let Some(asked) = seconds(&ask["at"]) else {
             continue;
         };
         let reached = seconds(&ask["first"]).or_else(|| seconds(&ask["landed"]));
         let words = ask["words"].as_str().unwrap_or_default().to_owned();
         let owner = first_owner(ask["owner"].as_str().unwrap_or_default());
-        let entry = asks.entry((asked, words)).or_insert((owner, None, None));
+        let entry = by_ask.entry((asked, words)).or_insert((owner, None, None));
         entry.1 = match (entry.1, reached) {
             (Some(a), Some(b)) => Some(a.min(b)),
             (a, b) => a.or(b),
         };
         entry.2 = tracking::of(&ask);
     }
-    let counted: Vec<(i64, &str, &str, bool)> = asks
+    let counted: Vec<(i64, &str, &str, bool)> = by_ask
         .iter()
         .filter(|(_, (.., latest))| *latest == Some(which))
         .filter(|((asked, _), (_, reached, _))| {
@@ -435,6 +443,41 @@ mod tests {
     use super::*;
 
     const NOW: i64 = 1_794_700_000;
+
+    fn open_ask() -> Value {
+        serde_json::json!({"id": "0a1b2c3d", "at": super::slipped::at(NOW - 3 * 3600),
+            "words": "fold", "owner": "F"})
+    }
+
+    #[test]
+    fn a_twin_folded_into_an_ask_doesnt_take_its_wait_off_the_median() {
+        use super::slipped::{list, twin};
+        let open = open_ask();
+        let waited = to_first_slice(
+            &list(&[open.clone(), twin(&open, NOW - 60)]),
+            NOW,
+            Tracking::His,
+        );
+        assert!(
+            (waited.now - 3.0).abs() < 0.01,
+            "a twin closing an open ask took its wait off the median: {waited:?}"
+        );
+    }
+
+    #[test]
+    fn a_twin_folded_into_a_parked_ask_doesnt_unpark_it() {
+        use super::slipped::{list, twin};
+        let mut ruled = open_ask();
+        ruled["parked"] = "a ruling".into();
+        let held = parked(
+            &list(&[ruled.clone(), twin(&ruled, NOW - 60)]),
+            Tracking::His,
+        );
+        assert!(
+            (held.now - 1.0).abs() < 0.01,
+            "a twin closing a parked ask took it off the parked: {held:?}"
+        );
+    }
 
     #[test]
     fn a_machine_crowded_beside_one_with_room_is_past_its_target() {
