@@ -1580,24 +1580,27 @@ fn joined_to(point: &ObjectPath<'_>) -> Option<String> {
 /// point and failed back between the reads reads completed both times,
 /// but at two points: taken as landed at the first, the card would count
 /// as having left a point that warned it, and the landing back there
-/// would forget the warning.
+/// would forget the warning. A point that couldn't be read is none: a
+/// card landed nowhere would count as having left every point.
 fn joined_throughout(steps: [&str; 2], points: [Option<&str>; 2]) -> bool {
-    steps == ["completed"; 2] && points[0] == points[1]
+    steps == ["completed"; 2] && points[0].is_some() && points[0] == points[1]
 }
 
 /// Whether a card has landed, and the access point it's at, if any. Its
 /// step and its point are each read twice, as a move could leave for
-/// another point and fail back between two reads.
+/// another point and fail back between two reads. The point is the later
+/// read's: where the reads disagree, the first is where the card was, and
+/// recorded or held there it would be pinned to a point it has left.
 async fn landing(interface: &InterfaceProxy<'_>) -> zbus::Result<(bool, Option<OwnedObjectPath>)> {
     let before = interface.state().await?;
+    let first = interface.current_access_point().await.ok();
+    let after = interface.state().await?;
     let point = interface.current_access_point().await.ok();
     let point = point.filter(|point| joined_to(point).is_some());
-    let after = interface.state().await?;
-    let again = interface.current_access_point().await.ok();
+    let first = first.as_ref().and_then(|first| joined_to(first));
     let joined = point.as_ref().map(ToString::to_string);
-    let again = again.as_ref().and_then(|again| joined_to(again));
     let steps = [before.as_str(), after.as_str()];
-    let landed = joined_throughout(steps, [joined.as_deref(), again.as_deref()]);
+    let landed = joined_throughout(steps, [first.as_deref(), joined.as_deref()]);
     Ok((landed, point))
 }
 
@@ -4141,6 +4144,10 @@ mod tests {
         assert!(
             !joined_throughout(["4way_handshake", "completed"], [Some(HALL), Some(HALL)]),
             "a join that ended between the reads was taken as landed before its signal"
+        );
+        assert!(
+            !joined_throughout(completed, [None, None]),
+            "a card whose point couldn't be read was taken as landed nowhere"
         );
     }
 
