@@ -16,14 +16,15 @@ QtObject {
             // stages Orchestrators' talks say.
             const words = { asks: "{name} asks you", choices: "{choices}, or your own words",
                 only: "{choices}", sent: "sent", unsent: "not delivered", answered: "answered",
-                working: "working on it" };
+                working: "working on it", unheard: "not known whether it arrived" };
             // As the agents daemon serves a want (modules/agents/src/wants.rs), for the
             // session Joel was asked by from the realm's map on 24 November.
             const asked = "2. The signing pause: yes, no or partly? The commits stay unsigned "
                 + "until you say, and partly keeps the old ones as they are.";
-            const want = { title: "Sign the Commits", asked, said: asked,
-                since: new Date(2026, 10, 24, 13, 9).toISOString(),
-                answers: { want: "question@2026-11-24T18:09:00.000Z", own: true, choices: [
+            // Its id is its kind and when it began, as wants.rs names it.
+            const since = new Date(2026, 10, 24, 13, 9).toISOString();
+            const want = { title: "Sign the Commits", asked, said: asked, since,
+                answers: { want: `question@${since}`, own: true, choices: [
                     { value: "yes", label: "Yes", recommended: true },
                     { value: "no", label: "No" },
                     { value: "partly", label: "Partly" }] } };
@@ -58,6 +59,10 @@ QtObject {
             Expect.same("one blank, offering no answers, shows nothing",
                 Answers.question(asks(Object.assign({}, want, { asked: " ", said: "",
                     answers: null }), true), "S", words, dayOf), null);
+            Expect.same("one whose short line is its title but says more shows its line",
+                Answers.question(asks(Object.assign({}, want, { asked: "Sign the Commits",
+                    said: "Sign them?" }), true), "S", words, dayOf).answers,
+                ["Sign the Commits"]);
             Expect.same("one taking only its choices says only them",
                 Answers.question(asks(Object.assign({}, want, { answers: Object.assign({},
                     want.answers, { own: false }) }), true), "S", words, dayOf).takes,
@@ -75,6 +80,10 @@ QtObject {
             Expect.same("a whole question is told where its short line is the title",
                 Answers.question(asks(Object.assign({}, want, { asked: "Sign the Commits",
                     said: "", whole: wholly }), true), "S", words, dayOf).answers[0], wholly);
+            Expect.same("a whole question that is only the title says nothing of what it asks",
+                Answers.question(asks(Object.assign({}, want, { asked: "Sign the Commits",
+                    said: "", whole: "Sign the Commits" }), true), "S", words, dayOf).answers,
+                []);
             Expect.same("its first line's indentation is kept, its blank lines around dropped",
                 Answers.whole({ whole: "\n \n  - low\n- high \n" }), "  - low\n- high");
             Expect.same("no want, no whole", Answers.whole(null), "");
@@ -146,6 +155,17 @@ QtObject {
             Expect.same("not delivered alone where no why came",
                 Answers.shown(Answers.put(one, false, ""), false, words, dayOf).stands,
                 "not delivered");
+            // The agents daemon gone while it was asked: the node may have put it or not.
+            const unheard = Answers.put(one, false, "", true);
+            Expect.same("not known whether it arrived where no answer came back",
+                Answers.shown(unheard, true, words, dayOf).stands,
+                "not known whether it arrived");
+            Expect.same("never not delivered where it may have been, though a why came",
+                Answers.shown(Answers.put(one, false, "it hung up", true), false, words, dayOf)
+                    .stands, "not known whether it arrived");
+            Expect.same("one not known shows under a later ask for a quarter hour",
+                [at + 1000, at + 20 * 60 * 1000].map(nowMs =>
+                    Answers.standing([unheard], "q@2", nowMs)), [[unheard], []]);
 
             // A session's answers kept and shown (Agents.qml's answerIn and answerTalks).
             const later = Answers.said("No", at + 1000, answers.want);
@@ -159,8 +179,12 @@ QtObject {
                 Answers.kept(three, Answers.put(Answers.said("0", at, "q@2"), true, "")),
                 three);
             const shownAt = at + 20 * 60 * 1000;
+            // Read inside the quarter hour, so the other is let go for its want alone.
             Expect.same("while it asks, only answers to what it asks show",
-                Answers.standing([three[0], put], answers.want, shownAt), [put]);
+                Answers.standing([three[0], put], answers.want, at + 5 * 60 * 1000), [put]);
+            Expect.same("once it asks nothing, one said a quarter hour ago no longer shows",
+                [at + 15 * 60 * 1000 - 1, at + 15 * 60 * 1000].map(nowMs =>
+                    Answers.standing([put], "", nowMs)), [[put], []]);
             Expect.same("once it asks nothing, those said in the last quarter hour show",
                 Answers.standing([three[0], put], "", at + 10 * 60 * 1000), [three[0], put]);
             Expect.same("and none said longer ago", Answers.standing([put], "", shownAt), []);
@@ -174,6 +198,141 @@ QtObject {
                 Answers.standing([refused], null, at + 1000), [refused]);
             Expect.same("but not once a quarter hour has gone",
                 Answers.standing([refused], "q@2", shownAt), []);
+
+            // What the Talk shows answers to (Agents.qml's answerTalks).
+            Expect.same("the id of what it asks while it asks one he can answer",
+                Answers.shownWant(asks(want, true), answers), answers.want);
+            Expect.same("null while it asks one he can't answer here",
+                Answers.shownWant(asks(Object.assign({}, want, { answers: null }), true), null),
+                null);
+            Expect.same("nothing once it asks nothing, parked among them",
+                Answers.shownWant(asks(want, false), null), "");
+
+            // What his Return answers (Agents.qml's talked): what the Talk held drew, or for a
+            // walk from a terminal, which draws none, what it asks now.
+            const first = { want: "q@1", own: false, choices: [{ value: "a", label: "A" }] };
+            const second = Object.assign({}, first, { want: "q@2" });
+            Expect.same("a held Talk that drew one ask answers it though it asks another now",
+                Answers.answering("ASKS", "ASKS", { ASKS: first }, second), first);
+            Expect.same("a held Talk that drew it asking nothing to answer talks to it",
+                Answers.answering("ASKS", "ASKS", { ASKS: null }, second), null);
+            Expect.same("a walk, with no Talk held, answers what it asks now",
+                Answers.answering(undefined, "ASKS", { ASKS: first }, second), second);
+            Expect.same("as does one while another's Talk is held",
+                Answers.answering("OTHER", "ASKS", { ASKS: first }, second), second);
+            Expect.same("a held Talk that drew nothing yet answers nothing, though it asks",
+                Answers.answering("ASKS", "ASKS", {}, second), null);
+
+            // What his Return does (Agents.qml's given).
+            Expect.same("his own Return answers what the Talk drew",
+                Answers.onReturn(first, true), { act: "answer", answers: first });
+            Expect.same("a walk that would answer is refused",
+                Answers.onReturn(second, false), { act: "refused" });
+            Expect.same("his Return to a Talk that drew no question talks",
+                Answers.onReturn(null, true), { act: "talk" });
+            Expect.same("as does a walk to one asking nothing",
+                Answers.onReturn(undefined, false), { act: "talk" });
+
+            // Whether he answered an ask already (Agents.qml's answerIn).
+            Expect.same("an ask with his answer sent is answered",
+                Answers.answeredAlready([three[0], one], answers.want, at + 1000), true);
+            Expect.same("as is one with it put in the session's inbox",
+                Answers.answeredAlready([put], answers.want, at + 60 * 60 * 1000), true);
+            Expect.same("one with his answer not delivered is his to answer again",
+                Answers.answeredAlready([refused], answers.want, at + 1000), false);
+            // One not known to have arrived may have, so it holds as one sent does.
+            Expect.same("one not known to have it holds a second as long as one sent",
+                [at + 30000 - 1, at + 30000].map(nowMs =>
+                    Answers.answeredAlready([refused, unheard], answers.want, nowMs)),
+                [true, false]);
+            Expect.same("as is one whose only answers are to another ask",
+                Answers.answeredAlready(three, answers.want, at + 1000), false);
+            Expect.same("and one he never answered",
+                Answers.answeredAlready(undefined, answers.want, at + 1000), false);
+            // The daemon waits 5 seconds on the node, so one sent half a minute ago never
+            // heard back, and holds no later Return.
+            Expect.same("one sent half a minute ago and never heard of is his to answer again",
+                [at + 30000 - 1, at + 30000].map(nowMs =>
+                    Answers.answeredAlready([one], answers.want, nowMs)), [true, false]);
+
+            // Whether his words stay to be given back (Agents.qml's answerIn).
+            Expect.same("words refused under the same ask stay",
+                Answers.keepsWords(false, first, first), true);
+            Expect.same("words put go", Answers.keepsWords(true, first, first), false);
+            Expect.same("words refused once it asks another go",
+                Answers.keepsWords(false, second, first), false);
+            Expect.same("words refused once it asks nothing go",
+                Answers.keepsWords(false, null, first), false);
+            const lost = Answers.put(Answers.said("A", at, "q@1"), false, "it asks something else");
+            const lostToo = Answers.put(Answers.said("B", at, "q@1"), false, "", true);
+            const meant = Answers.put(Answers.said("C", at, "q@2"), false, "");
+            Expect.same("words kept for an ask it no longer asks are let go",
+                Answers.stale([lost, lostToo, meant, put], "q@2"), ["A", "B"]);
+            Expect.same("as are all kept once it asks nothing",
+                Answers.stale([lost, meant], ""), ["A", "C"]);
+            // His field keeps what he typed, which a choice's label may not be.
+            const typedLow = Answers.put(Answers.said("Yes", at, "q@1", " yes "), false, "");
+            Expect.same("words let go are those he typed, not the choice they matched",
+                Answers.stale([typedLow], "q@2"), ["yes"]);
+            Expect.same("and his own words are their own",
+                Answers.said(" both ", at, "q@1").typed, "both");
+            const goneOnce = Answers.letGo([lost, meant, put], "q@2");
+            Expect.same("once let go, none is let go again, so a later talk in them stays",
+                Answers.stale(goneOnce, "q@2"), []);
+            Expect.same("letting go keeps them shown, and leaves the rest as they were",
+                [goneOnce.length, goneOnce[0].stage, goneOnce[0].letGo, goneOnce[1], goneOnce[2]],
+                [3, "failed", true, meant, put]);
+
+            // What the agents daemon's reply says of an answer (Agents.qml's answerWant).
+            Expect.same("no reply where it was sent is unheard", Answers.unheard(true, null), true);
+            Expect.same("as is the node sent it but never answering (acts.rs)",
+                Answers.unheard(true, { error: { code: "unanswered", message: "hung up" } }),
+                true);
+            Expect.same("never a tell's unheard, which says nothing was sent (tell.rs)",
+                Answers.unheard(true, { error: { code: "unheard", message: "no session" } }),
+                false);
+            Expect.same("a refusal is heard",
+                Answers.unheard(true, { error: { code: "unsteered", message: "no node" } }),
+                false);
+            Expect.same("as is one put", Answers.unheard(true, { steered: {} }), false);
+            Expect.same("and none where there was no daemon to send it to",
+                Answers.unheard(false, null), false);
+
+            // Whether an answer goes at all, from any row, asked before it's kept (Agents.qml's
+            // answerKept), so a refused one never shows in its Talk as his.
+            const refusals = { answerWalked: "{name} is answered only by you",
+                answeredAlready: "you answered {name} already" };
+            const sentNow = [Answers.said("Yes", new Date(1000).toISOString(), "q@1")];
+            const firstTo = { list: [], want: "q@1", nowMs: 2000 };
+            const againTo = { list: sentNow, want: "q@1", nowMs: 2000 };
+            Expect.same("his first answer to an ask goes",
+                Answers.answerRefused(true, firstTo, refusals, "Skiff"), null);
+            Expect.same("a walk's is refused before anything else",
+                Answers.answerRefused(false, againTo, refusals, "Skiff"),
+                "Skiff is answered only by you");
+            Expect.same("a second to an ask he answered goes nowhere, For You's choices too",
+                Answers.answerRefused(true, againTo, refusals, "Skiff"),
+                "you answered Skiff already");
+            Expect.same("one to a newer ask goes",
+                Answers.answerRefused(true, { list: sentNow, want: "q@2", nowMs: 2000 },
+                    refusals, "Skiff"), null);
+            Expect.same("one with no words for why still refuses",
+                Answers.answerRefused(false, firstTo, {}, "Skiff"), "");
+            Expect.same("his own Return's answer goes",
+                Answers.walkRefused(true, "{name} is answered only by you", "Skiff"), null);
+            Expect.same("a walk's is refused, saying why",
+                Answers.walkRefused(false, "{name} is answered only by you", "Skiff"),
+                "Skiff is answered only by you");
+            Expect.same("as is one where it can't be told whose it is",
+                Answers.walkRefused(undefined, "{name}", "Skiff"), "Skiff");
+
+            // What the top rows' Talk to It does (Agents.qml's topTalk).
+            Expect.same("on the void it opens the talk line",
+                Answers.topTalkAct(true, true), "line");
+            Expect.same("on one asking what he can answer here it answers",
+                Answers.topTalkAct(false, true), "answer");
+            Expect.same("else it talks", [Answers.topTalkAct(false, false),
+                Answers.topTalkAct(undefined, undefined)], ["talk", "talk"]);
             Qt.exit(0);
         } catch (error) {
             Expect.fail(error.message);

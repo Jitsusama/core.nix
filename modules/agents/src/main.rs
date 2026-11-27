@@ -398,7 +398,11 @@ fn sprouts_for_the_shell(
         }),
     );
     // Told asks the shell's systemd who the shell is, as a sprout does.
+    // An answer waits on the node up to acts.rs's PATIENCE, so queued
+    // behind the shell's other acts it could come back after the Talk lets
+    // a second go (TalkAnswers.js's SENT_STANDS_MS).
     shared.slow(&[
+        "answer",
         "feedback",
         sprout::ASK,
         places::ASK,

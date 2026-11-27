@@ -6,13 +6,18 @@
 //! answers it offers to a single question (harness #1394), the one it
 //! recommends first, so the shell reads them rather than parsing every
 //! session's presence (KRINS0 item 2). Answering is asked of the daemon
-//! too (`answer_of`), which finds the want by the session's address, so
-//! the shell never names a want's id. Each says too whether it rings the
+//! too (`answer_of`), which finds the want by the session's address; the
+//! shell names the want it was shown, and one the session no longer asks
+//! is refused. Each says too whether it rings the
 //! shell's bell (`rings`) and who it is (`known`), by which the shell
 //! rings once for each (Sessions.qml's stopped), so the shell judges no
 //! want itself (KRINS0 item 4, ending #3853's stopgap). Joel may put one
 //! off for an hour (`PutOff`), and it says so and rings for none of it, so
 //! the shell leaves it out of what needs him until then.
+//!
+//! Long because a want's record, its putting off, its ring and the
+//! answer steered to it are each read from the same session's presence,
+//! and their cases share its stand-in sessions.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -312,12 +317,16 @@ fn answers(wants: &Value) -> Value {
 }
 
 /// The node's ask that answers a session's want, as `acts::done` takes
-/// it, from `{ "ask": "answer", "address", "value" }` or `"other"` for
-/// Joel's own words: the want found among `wants` by its address, so a
+/// it, from `{ "ask": "answer", "address", "want", "value" }` or `"other"`
+/// for Joel's own words: the want found among `wants` by its address, so a
 /// want gone or answered since is refused rather than answered, as is one
-/// other than the `want` the answer names where it names one, so words
-/// given to what he was shown never answer a newer ask. None for any
-/// other ask.
+/// naming another `want` than it asks, so words given to what he was
+/// shown never answer a newer ask. One naming none answers what it asks
+/// now, as before shells named it: this daemon restarts on a switch, and
+/// the shell before it, kept until the launcher's handed over, names none
+/// and says nothing of a refusal. Every shell since names one, so this
+/// goes once they all have (42P0R4, by Thu 3 Dec). None for any other
+/// ask.
 pub fn answer_of(said: &Value, wants: &[Value], now_ms: u128) -> Option<Result<Value, String>> {
     if said["ask"] != "answer" {
         return None;
@@ -702,17 +711,23 @@ mod tests {
         );
     }
 
-    #[test]
-    fn an_answer_is_steered_to_the_want_its_session_asks() {
-        let wants = served(&[asking(
+    /// SKIFF, running, asking a question since 05:00 that offers `high`.
+    fn skiff_asks() -> Vec<Value> {
+        served(&[asking(
             "SKIFF",
             "running",
             &json!({"kind": "question", "since": "2026-11-13T05:00:00Z",
                 "ask": {"choices": [{"value": "high"}]}}),
-        )]);
+        )])
+    }
+
+    #[test]
+    fn an_answer_is_steered_to_the_want_its_session_asks() {
+        let wants = skiff_asks();
         assert_eq!(
             answer_of(
-                &json!({"ask": "answer", "address": "skiff", "value": "high"}),
+                &json!({"ask": "answer", "address": "skiff", "value": "high",
+                    "want": "question@2026-11-13T05:00:00.000Z"}),
                 &wants,
                 0
             ),
@@ -725,7 +740,8 @@ mod tests {
         );
         assert_eq!(
             answer_of(
-                &json!({"ask": "answer", "address": "SKIFF", "other": " both "}),
+                &json!({"ask": "answer", "address": "SKIFF", "other": " both ",
+                    "want": "question@2026-11-13T05:00:00.000Z"}),
                 &wants,
                 0
             )
@@ -737,7 +753,8 @@ mod tests {
         assert!(
             matches!(
                 answer_of(
-                    &json!({"ask": "answer", "address": "BUOY", "value": "x"}),
+                    &json!({"ask": "answer", "address": "BUOY", "value": "x",
+                        "want": "question@2026-11-13T05:00:00.000Z"}),
                     &wants,
                     0
                 ),
@@ -745,13 +762,56 @@ mod tests {
             ),
             "a session asking nothing is refused"
         );
-        assert!(
-            matches!(
-                answer_of(&json!({"ask": "answer", "address": "SKIFF"}), &wants, 0),
-                Some(Err(_))
+        assert_eq!(
+            answer_of(
+                &json!({"ask": "answer", "address": "SKIFF",
+                    "want": "question@2026-11-13T05:00:00.000Z"}),
+                &wants,
+                0
             ),
+            Some(Err("an answer needs a value or Joel's own words".to_owned())),
             "an answer with no words is refused"
         );
+        assert_eq!(
+            answer_of(&json!({"ask": "talk"}), &wants, 0),
+            None,
+            "another ask is none of this"
+        );
+    }
+
+    #[test]
+    fn an_answer_naming_no_want_answers_what_its_session_asks_now() {
+        let wants = skiff_asks();
+        assert_eq!(
+            answer_of(
+                &json!({"ask": "answer", "address": "SKIFF", "value": "high"}),
+                &wants,
+                0
+            ),
+            answer_of(
+                &json!({"ask": "answer", "address": "SKIFF", "value": "high",
+                    "want": "question@2026-11-13T05:00:00.000Z"}),
+                &wants,
+                0
+            ),
+            "one naming no want answers what it asks now, as a shell before a switch names none"
+        );
+        for named in [json!(""), json!(null), json!(3)] {
+            assert_eq!(
+                answer_of(
+                    &json!({"ask": "answer", "address": "SKIFF", "value": "high",
+                        "want": named}),
+                    &wants,
+                    0
+                ),
+                answer_of(
+                    &json!({"ask": "answer", "address": "SKIFF", "value": "high"}),
+                    &wants,
+                    0
+                ),
+                "a want of {named} is one naming none"
+            );
+        }
         assert_eq!(
             answer_of(
                 &json!({"ask": "answer", "address": "SKIFF", "value": "high",
@@ -773,11 +833,6 @@ mod tests {
             ),
             Some(Err("SKIFF asks something else now".to_owned())),
             "one naming a want it no longer asks is refused"
-        );
-        assert_eq!(
-            answer_of(&json!({"ask": "talk"}), &wants, 0),
-            None,
-            "another ask is none of this"
         );
     }
 }

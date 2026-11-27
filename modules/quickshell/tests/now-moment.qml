@@ -165,6 +165,8 @@ ShellRoot {
         property var wants: ({})
         property var answered: []
         property bool puts: true
+        // Whether an answer not put went unheard: sent, with nothing said of it.
+        property bool unheard: false
         // What it gives For You, as a source's `forYou` (ForYou.js's given).
         property var forYou: []
 
@@ -172,9 +174,20 @@ ShellRoot {
             return wants[address] ?? null;
         }
 
-        function answerWant(address, fields, then) {
-            answered = answered.concat([{ address: address, fields: fields }]);
-            then(puts);
+        // Why answerKept refuses an answer (a walk's, or a second to an ask), keeping nothing,
+        // or "" where it takes it.
+        property string refuses: ""
+
+        // As Agents' answerKept, which keeps the answer among the session's before it goes,
+        // or refuses it, keeping and sending nothing.
+        function answerKept(address, fields, chose, then) {
+            if (refuses !== "") {
+                then(false, refuses, false, true);
+                return;
+            }
+            answered = answered.concat([{ address: address, fields: fields,
+                label: chose.label, want: chose.answers.want }]);
+            then(puts, "", !puts && unheard);
         }
 
         // Moved when a row's words move, as Agents' rows say they have.
@@ -232,11 +245,13 @@ ShellRoot {
         function afterFrame(then) {
             then();
         }
-        // What the foot was last told.
+        // What the foot was last told, and whether it was told it loose.
         property var said: []
+        property bool saidLoose: false
 
-        function say(keys) {
+        function say(keys, loose) {
             said = keys;
+            saidLoose = loose === true;
         }
         // What it was told failed, as toldThat's what and why, the place it
         // was last asked to open into, and how often it was asked to say a
@@ -2913,20 +2928,51 @@ ShellRoot {
         expect("an answer never put isn't said to be answered",
             agents.answered.length === 1 && theLauncher.said.length === 0,
             JSON.stringify([agents.answered, theLauncher.said]));
+        // One nothing said of may have arrived, so the foot says so, not answered.
+        agents.unheard = true;
+        inside[0].run();
+        expect("an answer nothing said of says it may not have arrived",
+            agents.answered.length === 2 && !theLauncher.saidLoose
+                && JSON.stringify(theLauncher.said) === JSON.stringify([[
+                    "Session E may not have your answer: nothing said whether it arrived", ""]]),
+            JSON.stringify([agents.answered, theLauncher.said, theLauncher.saidLoose]));
+        agents.unheard = false;
+        agents.answered = agents.answered.slice(0, 1);
+        theLauncher.said = [];
+        // Refused by answerKept, a second to an ask he answered, it says why on the foot.
+        agents.refuses = "Wanting has your answer already";
+        inside[0].run();
+        expect("a choice answerKept refuses sends nothing and says why on the foot",
+            agents.answered.length === 1 && theLauncher.saidLoose
+                && JSON.stringify(theLauncher.said)
+                    === JSON.stringify([["Wanting has your answer already", ""]]),
+            JSON.stringify([agents.answered, theLauncher.said, theLauncher.saidLoose]));
+        agents.refuses = "";
+        theLauncher.said = [];
         agents.puts = true;
         inside[0].run();
         const answered = agents.answered[1] ?? {};
-        expect("its Return asks the daemon to answer the session, and once put the foot says so",
+        // Naming the want its row was made from, so the node refuses it once the session asks
+        // something else, as it refuses a Talk's answer (wants.rs's answer_of).
+        expect("its Return asks the daemon to answer the want shown, and once put the foot says so",
             agents.answered.length === 2 && answered.address === "WANTE"
-                && JSON.stringify(answered.fields) === JSON.stringify({ value: "push" })
+                && JSON.stringify(answered.fields) === JSON.stringify({
+                    want: "question@2026-11-12T07:00:00.000Z", value: "push" })
                 && JSON.stringify(theLauncher.said) === JSON.stringify([["answered Yes, push it",
                     ""]]),
             JSON.stringify([agents.answered, theLauncher.said]));
+        // Kept among the session's answers by its label, as a Talk's is, so a Talk opened after
+        // shows it and sends no second (Agents.qml's answerKept).
+        expect("it asks Agents to keep it among the answers, by its label, to the want shown",
+            answered.label === "Yes, push it"
+                && answered.want === "question@2026-11-12T07:00:00.000Z",
+            JSON.stringify(answered));
         expect("the shell steers nothing itself", Sessions.steered.length === 0,
             JSON.stringify(Sessions.steered));
         inside[3].given("after lunch");
-        expect("his own words go as words",
-            JSON.stringify(agents.answered[2]?.fields) === JSON.stringify({ other: "after lunch" }),
+        expect("his own words go as words, to the want shown",
+            JSON.stringify(agents.answered[2]?.fields) === JSON.stringify({
+                want: "question@2026-11-12T07:00:00.000Z", other: "after lunch" }),
             JSON.stringify(agents.answered[2]));
         const named = name => inside.find(one => one.name === name);
         Sessions.wentTo = null;
@@ -2981,7 +3027,8 @@ ShellRoot {
         asked[0]?.run();
         expect("its Yes asks the daemon to answer it",
             agents.answered[3]?.address === "WANTF"
-                && JSON.stringify(agents.answered[3]?.fields) === JSON.stringify({ value: "yes" }),
+                && JSON.stringify(agents.answered[3]?.fields) === JSON.stringify({
+                    want: "approval@2026-11-12T07:00:00.000Z", value: "yes" }),
             JSON.stringify(agents.answered[3]));
         agents.answered = [];
         agents.wants = {};

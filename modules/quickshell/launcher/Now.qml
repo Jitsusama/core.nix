@@ -2204,7 +2204,7 @@ Provider {
     // the session, which answers nothing. The session
     // says it took the answer by its want leaving, which takes the row
     // out of For You. Its answers are the agents daemon's, which takes the
-    // answer too, naming the want itself; the rows are still made here
+    // answer too, naming the want this row was made from; the rows are still made here
     // until it serves For You's rows ready, as it does Agents'.
     function answerRow(made, madeFrom, asked, resting, answers) {
         const key = `on:waiting:want:${madeFrom.address}`;
@@ -2218,15 +2218,28 @@ Provider {
         // answers a question in full); "" where it says no more.
         const whole = () => TalkAnswers.whole(provider.source("agents")?.wantOf(address) ?? null);
         // Said answered only once the node has put it in the session's
-        // inbox, since one it couldn't put never reached the session.
+        // inbox, since one it couldn't put never reached the session. It names the want this
+        // row was made from (a changed one makes it anew), so the node refuses it once the
+        // session asks something else (wants.rs's answer_of), as a Talk's answer is. It's kept
+        // among the session's answers as a Talk's is (Agents.qml's answerKept), so its Talk
+        // shows it, and a Return there right after doesn't send a second.
         const answer = (fields, label) => {
             const agents = provider.source("agents");
-            const answered = put => {
-                if (put)
+            // One nothing said of may have arrived, so the foot says so rather than nothing;
+            // one refused (a second, as answerKept refuses) says why, as it never went.
+            const answered = (put, why, unheard, refused) => {
+                if (refused === true)
+                    provider.launcher?.say([[why, ""]], true);
+                else if (put)
                     provider.launcher?.say([[filledIn(said.answered ?? "", { label }), ""]]);
+                else if (unheard === true)
+                    provider.launcher?.say([[filledIn(
+                        Words.of("verb:agent:talk").said?.unheardWhy ?? "",
+                        { name: session().title ?? address }), ""]]);
             };
             if (agents)
-                agents.answerWant(address, fields, answered);
+                agents.answerKept(address, Object.assign({ want: answers.want }, fields),
+                    { label, typed: label, answers }, answered);
         };
         const named = id => ({
             verb: Words.verb(`verb:on:waiting:${id}`),

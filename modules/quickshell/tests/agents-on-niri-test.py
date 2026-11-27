@@ -4479,3 +4479,142 @@ def test_an_asking_sessions_return_goes_to_it_with_its_question_in_sight(shell: 
         (PRESENCE / "asking.json").unlink(missing_ok=True)
         shell.close_launcher()
         left_the_node("s-asking")
+
+
+def no_words_come_back(shell: Shell, drawn: Callable[[Json], bool], why: str) -> None:
+    """Hold that the field stays empty once the Talk opened again has drawn what it held.
+
+    Words kept are put back as the Talk lays out, so the wait is first for `drawn`, what
+    that Talk shows, and only then is the field read empty, on every read for a second.
+    """
+    shell.launcher_until(drawn)
+    deadline = time.monotonic() + 1
+    while time.monotonic() < deadline:
+        assert shell.showing()["typed"] == "", why
+        time.sleep(0.1)
+
+
+def answered_once(shell: Shell, inbox: Path, steered: set[Path]) -> list[Path]:
+    """Wait for Joel's answer to reach the asking cell's inbox, the Talk reading it answered.
+
+    It takes his first answer, so a second Return while it still asks goes nowhere. Gives the
+    answer's steer, alone in the inbox beside what was there before.
+    """
+    deadline = time.monotonic() + 10
+    while not (told := sorted(set(inbox.glob("*.json")) - steered)):
+        assert time.monotonic() < deadline, "no answer reached the asking cell's inbox"
+        time.sleep(0.1)
+    # The Talk says the choice his words picked, by its label, so he sees which it took.
+    shell.launcher_until(
+        lambda shown: any(
+            (one.get("line"), one.get("stands")) == ("Right", "answered")
+            for one in cast("list[Json]", shown["talks"] or [])
+        )
+    )
+    shell.launcher_until(lambda shown: shown["typed"] == "")
+    shell.send_chars("left")
+    shell.launcher_until(lambda shown: shown["typed"] == "left")
+    shell.send_key("ret")
+    shell.launcher_until(
+        lambda shown: "you answered this already" in shown["footer"].replace("\xa0", " ")
+    )
+    # Refused, nothing is kept, so the Talk still held shows his first answer and no other.
+    shown = shell.showing()
+    talks = [(one.get("line"), one.get("stands")) for one in shown["talks"] or []]
+    assert shown["asking"], shown
+    assert ("Right", "answered") in talks, talks
+    assert not [one for one in talks if one[0] == "Left"], talks
+    assert sorted(set(inbox.glob("*.json")) - steered) == told, sorted(inbox.glob("*.json"))
+    # And his words go: the field empties on any Return, so only a Talk opened again shows it.
+    shell.close_launcher()
+    did = followed(shell, "talkTo", inbox.name)
+    assert did["done"], did
+    no_words_come_back(
+        shell,
+        lambda shown: (
+            shown["asking"]
+            and any(
+                (one.get("line"), one.get("stands")) == ("Right", "answered")
+                for one in cast("list[Json]", shown["talks"] or [])
+            )
+        ),
+        "refused words came back",
+    )
+    return told
+
+
+def test_a_talk_to_an_asking_cell_shows_its_question_and_answers_it_from_return(
+    shell: Shell,
+) -> None:
+    """A Talk opened from a link on a cell asking Joel shows its ask and answers it from Return.
+
+    Joel opened a Talk on a cell asking him from the realm's map and found nothing of its
+    question there, and nothing said after he typed (13:15 on 2026-11-24: "no feedback at
+    all"). The Talk now leads with what it asks and the choices it takes; words naming none
+    are let go, the foot saying what it takes, and a choice reaches its inbox as Joel's answer
+    to the want he was shown, then reads answered.
+    """
+    # As the agents daemon writes a time (clock.rs's text_of), so the want it names is known.
+    since = datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    choices = [{"value": "left", "label": "Left"}, {"value": "right", "label": "Right"}]
+    ask = {"question": "Which way?", "choices": choices, "allowOther": False}
+    wants = {"kind": "question", "since": since, "said": "Which way?", "ask": ask}
+    lay("CHOOSE", "Choosing Quest", {"state": "listening", "busy": False, "wants": wants})
+    inbox = STEER / "CHOOSE"
+    inbox.mkdir(parents=True, exist_ok=True)
+    steered = set(inbox.glob("*.json"))
+    try:
+        shell.as_account(shell.ipc("collection", "agents"))
+        shell.launcher_ready()
+        shell.launcher_until(lambda shown: "Choosing Quest" in shown["rows"])
+        shell.close_launcher()
+        did = followed(shell, "talkTo", "CHOOSE")
+        assert did["done"], did
+
+        def first(shown: Json) -> Json:
+            return cast("Json", (shown["talks"] or [{}])[0])
+
+        shell.launcher_until(
+            lambda shown: (
+                shown["asking"]
+                and first(shown).get("line") == "Choosing Quest asks you"
+                and "Which way?" in "".join(first(shown).get("answers") or [])
+                and first(shown).get("takes") == "Left \u00b7 Right"
+                and first(shown).get("stands") == ""
+            )
+        )
+        # Words naming none of its choices answer nothing, and aren't kept to answer a later ask.
+        shell.send_chars("up")
+        shell.launcher_until(lambda shown: shown["typed"] == "up")
+        shell.send_key("ret")
+        shell.launcher_until(
+            lambda shown: "it takes only Left \u00b7 Right" in shown["footer"].replace("\xa0", " ")
+        )
+        assert set(inbox.glob("*.json")) == steered, sorted(inbox.glob("*.json"))
+        shell.launcher_until(lambda shown: shown["typed"] == "")
+        # Let go, they don't come back when the Talk opens again, as words kept would.
+        shell.close_launcher()
+        did = followed(shell, "talkTo", "CHOOSE")
+        assert did["done"], did
+        no_words_come_back(
+            shell,
+            lambda shown: (
+                shown["asking"]
+                and first(shown).get("line") == "Choosing Quest asks you"
+                and first(shown).get("takes") == "Left \u00b7 Right"
+            ),
+            "words that answered nothing came back",
+        )
+        shell.send_chars("right")
+        shell.launcher_until(lambda shown: shown["typed"] == "right")
+        shell.send_key("ret")
+        told = answered_once(shell, inbox, steered)
+        said = json.loads(told[0].read_text())
+        assert (said["act"], said["value"], said["from"]) == ("answer", "right", "joel"), said
+        assert said["want"] == f"question@{since}", said
+    finally:
+        (PRESENCE / "choose.json").unlink(missing_ok=True)
+        for one in set(inbox.glob("*.json")) - steered:
+            one.unlink()
+        shell.close_launcher()
+        left_the_node("s-choose")

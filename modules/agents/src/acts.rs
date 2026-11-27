@@ -63,12 +63,19 @@ pub fn steer_of(said: &Value, now_ms: u128) -> Option<Result<Value, String>> {
 
 /// The answer to an act: the node's own, `steered` with the machine it
 /// was put on or the node's error, or an error saying why it wasn't
-/// asked, in the form the shell reads either (Sessions.qml's steer).
+/// asked, in the form the shell reads either (Sessions.qml's steer). One
+/// the node was sent but never answered is `unanswered`, not
+/// `unsteered`, since the node may have put it; only an answer's Talk
+/// reads it yet (TalkAnswers.js's unheard), and Sessions.qml's steered
+/// still says any act not steered. Not tell.rs's `unheard`, which says
+/// nothing was sent.
 pub fn done(steer: Result<Value, String>, node: &Path) -> Value {
-    let asked = steer.map(|steer| asked(node, &steer).map_err(|why| why.to_string()));
+    let asked = steer.map(|steer| asked(node, &steer));
     match asked {
         Ok(Ok(answer)) => answer,
-        Ok(Err(why)) => refused(&format!("the node didn't answer: {why}")),
+        Ok(Err(missed)) => json!({"error": {
+            "code": if missed.sent { "unanswered" } else { "unsteered" },
+            "message": format!("the node didn't answer: {}", missed.why)}}),
         Err(why) => refused(&why),
     }
 }
@@ -77,16 +84,31 @@ fn refused(why: &str) -> Value {
     json!({"error": {"code": "unsteered", "message": why}})
 }
 
+/// Why the node gave no answer, and whether the steer had been `sent` it
+/// by then, so it may have been put.
+struct Missed {
+    sent: bool,
+    why: io::Error,
+}
+
+fn unsent(why: io::Error) -> Missed {
+    Missed { sent: false, why }
+}
+
+fn unanswered(why: io::Error) -> Missed {
+    Missed { sent: true, why }
+}
+
 /// Asks the node at `socket` for `steer`, after the hello every client of
 /// the interface opens with, and gives its answer without its id.
-fn asked(socket: &Path, steer: &Value) -> io::Result<Value> {
-    let mut stream = UnixStream::connect(socket)?;
-    stream.set_read_timeout(Some(PATIENCE))?;
+fn asked(socket: &Path, steer: &Value) -> Result<Value, Missed> {
+    let mut stream = UnixStream::connect(socket).map_err(unsent)?;
+    stream.set_read_timeout(Some(PATIENCE)).map_err(unsent)?;
     let mut ask = steer.clone();
     ask["id"] = json!(2);
-    writeln!(stream, "{}\n{ask}", json!({"id": 1, "ask": "hello"}))?;
+    writeln!(stream, "{}\n{ask}", json!({"id": 1, "ask": "hello"})).map_err(unsent)?;
     for line in BufReader::new(stream).lines() {
-        let Ok(mut answer) = serde_json::from_str::<Value>(&line?) else {
+        let Ok(mut answer) = serde_json::from_str::<Value>(&line.map_err(unanswered)?) else {
             continue;
         };
         if answer.get("id") != Some(&json!(2)) {
@@ -97,10 +119,10 @@ fn asked(socket: &Path, steer: &Value) -> io::Result<Value> {
         }
         return Ok(answer);
     }
-    Err(io::Error::new(
+    Err(unanswered(io::Error::new(
         io::ErrorKind::UnexpectedEof,
         "it hung up before answering",
-    ))
+    )))
 }
 
 #[cfg(test)]
@@ -230,6 +252,35 @@ mod tests {
                 .as_str()
                 .is_some_and(|why| why.starts_with("the node didn't answer")),
             "it says the node didn't answer: {answer}"
+        );
+        assert_eq!(
+            answer["error"]["code"],
+            json!("unsteered"),
+            "one never sent is said not done"
+        );
+    }
+
+    #[test]
+    fn an_act_sent_to_a_node_that_hung_up_is_unanswered() {
+        let socket =
+            std::env::temp_dir().join(format!("agents-acts-mute-{}.sock", std::process::id()));
+        let _ = std::fs::remove_file(&socket);
+        let listener = UnixListener::bind(&socket).expect("a socket to stand in for the node");
+        let node = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("the act asks the node");
+            let mut asks = BufReader::new(stream).lines();
+            let _hello = asks.next().expect("a hello").expect("a line");
+            // It takes the steer, then hangs up without a word.
+            asks.next().expect("a steer").expect("a line")
+        });
+        let answer = done(Ok(json!({"ask": "steer", "address": "MUTE"})), &socket);
+        let ask = node.join().expect("the node stood in");
+        let _ = std::fs::remove_file(&socket);
+        assert!(ask.contains("MUTE"), "the node was sent the steer: {ask}");
+        assert_eq!(
+            answer["error"]["code"],
+            json!("unanswered"),
+            "one sent but never answered may have gone: {answer}"
         );
     }
 }
