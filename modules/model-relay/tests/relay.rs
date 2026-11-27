@@ -229,8 +229,8 @@ struct Tls {
     _folder: Arc<tempfile::TempDir>,
 }
 
-/// How many `/held` requests the origin holds now, and the most it held
-/// at once.
+/// How many `/held` requests the origin holds now, or `/read-slowly`
+/// bodies it's still reading, and the most at once.
 #[derive(Default)]
 struct Held {
     now: AtomicUsize,
@@ -381,6 +381,34 @@ where
 /// The most of a body the relay reads, as its own constant has it.
 const BODY_AT_MOST: usize = 64 * 1024 * 1024;
 
+/// How many bodies the relay sends at once, as its own constant has it.
+const BODIES_SENT_AT_ONCE: usize = 2;
+
+/// How long the origin waits between the frames of a `/read-slowly` body.
+const READ_SLOWLY_EVERY: Duration = Duration::from_millis(2);
+
+/// A `/read-slowly` body's length: past the origin's stream window, so the
+/// relay can't hand one on whole at once, and read over about a quarter of
+/// a second.
+const READ_SLOWLY: usize = 2 * 1024 * 1024;
+
+/// `body`, read a frame at a time `READ_SLOWLY_EVERY` apart, as an origin
+/// on a narrow uplink takes one, and counted in `held` from its stream's
+/// opening until it's read.
+async fn read_slowly(mut body: Incoming, held: &Held) -> Vec<u8> {
+    let now = held.now.fetch_add(1, Ordering::SeqCst) + 1;
+    held.most.fetch_max(now, Ordering::SeqCst);
+    let mut read = Vec::new();
+    while let Some(Ok(frame)) = body.frame().await {
+        if let Ok(data) = frame.into_data() {
+            read.extend_from_slice(&data);
+        }
+        tokio::time::sleep(READ_SLOWLY_EVERY).await;
+    }
+    held.now.fetch_sub(1, Ordering::SeqCst);
+    read
+}
+
 /// The origin's answer: `/echo` hands the body back, `/held` waits a
 /// moment first, `/stream` sends its halves a gap apart and `/long` a
 /// longer one, `/sized` names its length and ends in a frame of its own,
@@ -394,8 +422,9 @@ const BODY_AT_MOST: usize = 64 * 1024 * 1024;
 /// saying to calm down, `/reset-then-calm-down` resets the first time and
 /// says to calm down after, `/drop` reads it and lets the connection fall
 /// with no word at all, `/reset-then-drop` resets the first time and
-/// drops after, and `/small-frames` streams its answer in `SMALL_FRAMES`
-/// small pieces. An echo says which of the origin's connections it came
+/// drops after, `/small-frames` streams its answer in `SMALL_FRAMES`
+/// small pieces, and `/read-slowly` reads its body as `read_slowly` does
+/// and echoes it. An echo says which of the origin's connections it came
 /// on, counted from 0.
 async fn answer(request: Request<Incoming>, served: Served) -> Result<Response<Answer>, h2::Error> {
     let Served {
@@ -407,11 +436,14 @@ async fn answer(request: Request<Incoming>, served: Served) -> Result<Response<A
         gone,
     } = served;
     let (parts, body) = request.into_parts();
-    let body = body
-        .collect()
-        .await
-        .map(|all| all.to_bytes().to_vec())
-        .unwrap_or_default();
+    let body = if parts.uri.path() == "/read-slowly" {
+        read_slowly(body, &held).await
+    } else {
+        body.collect()
+            .await
+            .map(|all| all.to_bytes().to_vec())
+            .unwrap_or_default()
+    };
     let path = parts.uri.path().to_owned();
     let heard = {
         let mut record = kept.lock().expect("the origin's record");
@@ -1082,6 +1114,45 @@ async fn many_requests_share_a_few_connections() {
     assert!(
         most > 2,
         "the origin held at most {most} requests at once, so they went one a connection"
+    );
+    drop(relay.said());
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn bodies_go_to_the_origin_a_few_at_a_time() {
+    const ASKED: usize = 8;
+    let origin = origin().await;
+    let host = origin.address.to_string();
+    let relay = Relay::start(&format!("https://{host}"), &origin.roots, 2);
+    let body: &'static [u8] = Box::leak(vec![b'x'; READ_SLOWLY].into_boxed_slice());
+
+    let asks: Vec<_> = (0..ASKED)
+        .map(|_| {
+            let (socket, host) = (relay.socket.clone(), host.clone());
+            tokio::spawn(async move { ask(&socket, request(&host, "/read-slowly", body)).await })
+        })
+        .collect();
+    for asked in asks {
+        let got = asked.await.expect("an ask");
+        assert_eq!(
+            got.status,
+            StatusCode::CREATED,
+            "a body read slowly wasn't echoed"
+        );
+        assert_eq!(
+            got.body.len(),
+            READ_SLOWLY,
+            "a body read slowly came back cut"
+        );
+    }
+
+    // Each body given its turn back once h2 holds the last of it, the next
+    // may open while the origin still reads that last window, so twice
+    // the turns may be read at once, never all of them.
+    let most = origin.held.most.load(Ordering::SeqCst);
+    assert!(
+        (1..=2 * BODIES_SENT_AT_ONCE).contains(&most),
+        "the origin was sent {most} of {ASKED} bodies at once"
     );
     drop(relay.said());
 }

@@ -65,6 +65,9 @@
 //! h2 each layer holds little ahead of one: a body goes in short frames,
 //! through few records and a kernel holding little unsent, and on a slow
 //! uplink a ping is answered in time.
+//! Bodies go two at a time over every connection together, each waiting
+//! for its turn before its stream opens, since h2 would share the uplink
+//! among every body at once, and each would arrive as late as the last.
 //!
 //! It never stands down from its origin as a whole: each request it can't
 //! carry is sent direct alone, as above, so no failing burst sends every
@@ -135,7 +138,7 @@ use hyper_util::rt::{TokioExecutor, TokioIo, TokioTimer};
 use rustls::pki_types::pem::PemObject;
 use rustls::pki_types::{CertificateDer, ServerName};
 use tokio::net::{TcpStream, UnixListener};
-use tokio::sync::{Mutex, Notify, mpsc, watch};
+use tokio::sync::{Mutex, Notify, OwnedSemaphorePermit, Semaphore, mpsc, watch};
 use tokio_rustls::TlsConnector;
 
 /// The port an https origin names when it names none.
@@ -204,6 +207,18 @@ const STREAM_WINDOW: u32 = 64 * 1024;
 /// hyper's adaptive window started it at 64 KiB, an allowance of 32 KiB,
 /// which about 300 unread frames of 150 bytes spent.
 const CONNECTION_WINDOW: u32 = 64 * 1024 * 1024;
+/// How many request bodies go to the origin at once, over every
+/// connection together, since they all share one uplink. h2 shares a
+/// connection's upload among its streams a frame at a time, so twenty
+/// bodies sent together each take twenty times as long to arrive as one
+/// sent alone, and every one of them arrives last. On 26 November the
+/// origin reset 17 of 20 bodies of 50 KiB sent together on one connection
+/// over a lane of a few megabits, and none of hundreds of small ones. In
+/// turn, the same bodies cross in the same time all told, and each takes
+/// only its own share of it. Two rather than one, so a short request waits
+/// behind at most two bodies, and one stalled body doesn't hold up every
+/// other. A request with no body takes no turn.
+const BODIES_SENT_AT_ONCE: usize = 2;
 /// The most of an error's account the journal keeps for one line, since
 /// the origin's goodbye carries debug data of its choosing.
 const SAID_AT_MOST: usize = 300;
@@ -243,6 +258,9 @@ type Sent = InPieces<Full<Bytes>>;
 struct InPieces<B> {
     body: B,
     rest: Bytes,
+    /// Its turn to be sent, if it took one, given back as its last piece
+    /// is handed on, or as it's dropped unsent or reset.
+    turn: Option<OwnedSemaphorePermit>,
 }
 
 impl<B> InPieces<B> {
@@ -251,7 +269,18 @@ impl<B> InPieces<B> {
         Self {
             body,
             rest: Bytes::new(),
+            turn: None,
         }
+    }
+
+    /// Holds `turn` until the body's last piece is handed on.
+    fn in_turn(&mut self, turn: OwnedSemaphorePermit) {
+        self.turn = Some(turn);
+    }
+
+    /// Gives back its turn, for a body that goes nowhere for now.
+    fn out_of_turn(&mut self) {
+        self.turn = None;
     }
 
     /// The next piece of what's left of the last frame read, if any is.
@@ -272,9 +301,41 @@ where
     type Error = B::Error;
 
     fn poll_frame(
-        mut self: Pin<&mut Self>,
+        self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<Option<Result<Frame<Bytes>, B::Error>>> {
+        let this = self.get_mut();
+        let polled = this.next_frame(cx);
+        // h2 has all of it once the last piece is handed on, or none will
+        // come, so the next body may begin.
+        if matches!(polled, Poll::Ready(None | Some(Err(_)))) || this.is_end_stream() {
+            this.out_of_turn();
+        }
+        polled
+    }
+
+    fn is_end_stream(&self) -> bool {
+        self.rest.is_empty() && self.body.is_end_stream()
+    }
+
+    fn size_hint(&self) -> SizeHint {
+        let left = self.body.size_hint();
+        let held = self.rest.len() as u64;
+        let mut hint = SizeHint::new();
+        hint.set_lower(left.lower().saturating_add(held));
+        if let Some(upper) = left.upper() {
+            hint.set_upper(upper.saturating_add(held));
+        }
+        hint
+    }
+}
+
+impl<B> InPieces<B>
+where
+    B: HttpBody<Data = Bytes> + Unpin,
+{
+    /// The next piece, or what the body under it says.
+    fn next_frame(&mut self, cx: &mut Context<'_>) -> Poll<Option<Result<Frame<Bytes>, B::Error>>> {
         if let Some(piece) = self.piece() {
             return Poll::Ready(Some(Ok(Frame::data(piece))));
         }
@@ -291,21 +352,6 @@ where
             }
             Err(trailers) => Poll::Ready(Some(Ok(trailers))),
         }
-    }
-
-    fn is_end_stream(&self) -> bool {
-        self.rest.is_empty() && self.body.is_end_stream()
-    }
-
-    fn size_hint(&self) -> SizeHint {
-        let left = self.body.size_hint();
-        let held = self.rest.len() as u64;
-        let mut hint = SizeHint::new();
-        hint.set_lower(left.lower().saturating_add(held));
-        if let Some(upper) = left.upper() {
-            hint.set_upper(upper.saturating_add(held));
-        }
-        hint
     }
 }
 
@@ -1311,6 +1357,8 @@ pub struct Relay {
     late: Arc<Connections>,
     counts: Arc<Counts>,
     busy: Arc<Busy>,
+    /// The turns request bodies take to be sent, `BODIES_SENT_AT_ONCE`.
+    turns: Arc<Semaphore>,
 }
 
 /// A connection just opened: what to send requests down, and the TCP
@@ -1379,6 +1427,7 @@ impl Relay {
                 now: AtomicUsize::new(0),
                 quiet_since: Held::new(Instant::now()),
             }),
+            turns: Arc::new(Semaphore::new(BODIES_SENT_AT_ONCE)),
         })
     }
 
@@ -1811,6 +1860,14 @@ impl Relay {
             // counted as cancelled here.
             let on_the_way = OnTheWay::sent(&tally, &self.counts);
             down = (at, number, tally);
+            // A body waits for its turn here, before its stream opens, so
+            // the origin sees it begin only once it can go at the lane's
+            // pace. Nothing closes the turns, so one always comes.
+            if !whole.is_empty()
+                && let Ok(turn) = Arc::clone(&self.turns).acquire_owned().await
+            {
+                request.body_mut().in_turn(turn);
+            }
             let tried = sender.try_send_request(request).await;
             let mut unread = None;
             let failed = match tried {
@@ -1849,6 +1906,9 @@ impl Relay {
                         Some(unread) if sent < SENT_AGAIN_AT_MOST => {
                             sent += 1;
                             request = unread;
+                            // Its turn goes back while it waits for a
+                            // connection, and it takes another to go.
+                            request.body_mut().out_of_turn();
                             // Reset already, it never goes back to the
                             // connection that reset it, which `sender`
                             // could hand it.
@@ -2707,6 +2767,7 @@ mod tests {
     use bytes::Bytes;
     use http_body_util::{BodyExt, Full};
     use hyper::body::Body as _;
+    use tokio::sync::Semaphore;
 
     use super::{
         BODY_WITHIN, Clocks, Counts, HELD_AHEAD_AT_MOST, InPieces, Named, Origin,
@@ -3520,6 +3581,34 @@ mod tests {
             "h2 would end the stream with pieces still held, or never end it"
         );
         assert!(sent == whole, "the body would change on its way");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_body_gives_its_turn_back_as_its_last_piece_goes_or_it_does() {
+        let turns = Arc::new(Semaphore::new(1));
+        let whole = Bytes::from(vec![0_u8; 2 * HELD_AHEAD_AT_MOST]);
+        let mut body = InPieces::new(Full::new(whole.clone()));
+        body.in_turn(Arc::clone(&turns).acquire_owned().await.expect("a turn"));
+        let mut free = Vec::new();
+
+        while let Some(frame) = body.frame().await {
+            frame.expect("a frame");
+            free.push(turns.available_permits());
+        }
+        let mut dropped = InPieces::new(Full::new(whole));
+        dropped.in_turn(Arc::clone(&turns).acquire_owned().await.expect("a turn"));
+        drop(dropped);
+
+        assert_eq!(
+            free,
+            [0, 1],
+            "a body gave its turn back before its last piece, or held it past"
+        );
+        assert_eq!(
+            turns.available_permits(),
+            1,
+            "a body dropped unsent kept its turn from the next"
+        );
     }
 
     #[test]
