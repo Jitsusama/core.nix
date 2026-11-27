@@ -479,6 +479,27 @@ mod tests {
     }
 
     #[test]
+    fn a_quest_under_systemds_100_keeps_its_weight_for_the_disk() {
+        // BFQ passes a weight at or below 100 as it stands, so a quest at 25 keeps its quarter
+        // only while nothing between the file and the call floors it at 100.
+        let mut weights = Weights::new(PathBuf::new());
+        weights.take("{\"QEST-A\": 25}");
+        let (slice, weight) = weights
+            .place("jobs-work.slice", b"PI_QUEST=QEST-A\0")
+            .expect("a listed quest is placed");
+        let call = weigh_call(&slice, weight);
+        let at = call
+            .iter()
+            .position(|arg| arg == "IOWeight")
+            .expect("IOWeight");
+        assert_eq!(
+            call[at + 2],
+            "25",
+            "the disk weighs a quest at 25 as 25, not as systemd's 100"
+        );
+    }
+
+    #[test]
     fn a_file_it_cannot_read_keeps_the_weights_it_had() {
         // A half-written file would otherwise put every quest's work back
         // in the shared slice for a look.

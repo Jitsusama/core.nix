@@ -143,8 +143,6 @@ use terminal_kit::{Exit, Failure, flags};
 /// /proc's CPU times are in `USER_HZ`, which is 100 on every Linux ABI.
 const MS_PER_TICK: u64 = 10;
 
-const CGROUPS: &str = "/sys/fs/cgroup";
-
 struct Settings {
     under: Vec<String>,
     homes: Vec<String>,
@@ -1206,8 +1204,8 @@ fn set_in_memory(kept: &[PathBuf], ranks: &mut Ranks) {
                 // The call is made under a slice that keeps writeback off too, so
                 // the window is still let go if that slice's setting is lifted; the
                 // log says what the kernel does with it now.
-                let above = || holds::kept_above(&scope, |file| fs::read_to_string(file).ok());
-                eprintln!("{}", holds::kept_said(&unit, keep, above));
+                let read = |file: &Path| fs::read_to_string(file).ok();
+                eprintln!("{}", holds::kept_said(&unit, &scope, keep, read));
             }
             Ok(output) => {
                 if !std::mem::replace(&mut ranks.in_memory.failed, true) {
@@ -3580,7 +3578,7 @@ fn sends_from(root: &Path, settings: &Settings) -> Result<Vec<PathBuf>, String> 
 fn run(settings: &Settings) -> Result<(), String> {
     let own = fs::read_to_string("/proc/self/cgroup").map_err(|e| e.to_string())?;
     let manager = manager_of(&own).ok_or("not running under a user manager")?;
-    let root = Path::new(CGROUPS).join(manager.trim_start_matches('/'));
+    let root = Path::new(holds::ROOT).join(manager.trim_start_matches('/'));
     let under: Vec<PathBuf> = settings
         .under
         .iter()
@@ -3993,7 +3991,7 @@ fn fell_for(waited: &[String], unread: &[String]) -> String {
 /// What the cpu.max of the slice at `place` in brake.rs's `BRAKED` reads,
 /// `account` being the account's manager's cgroup.
 fn braked_cpu_max(place: usize, account: &Path) -> Option<String> {
-    fs::read_to_string(brake::cgroup(place, Path::new(CGROUPS), account).join("cpu.max")).ok()
+    fs::read_to_string(brake::cgroup(place, Path::new(holds::ROOT), account).join("cpu.max")).ok()
 }
 
 /// Ranks new heavy starts under `cgroup` in `root` behind other work, when
@@ -4031,7 +4029,7 @@ fn watch_door(doorway: &mut Doorway, root: &Path, cgroup: Option<&str>, uptime: 
             let words = String::from_utf8_lossy(&words).replace('\0', " ");
             let own = fs::read_to_string(format!("/proc/{pid}/cgroup")).ok()?;
             let path = own.lines().find_map(|line| line.strip_prefix("0::"))?;
-            let scope = Path::new(CGROUPS).join(path.trim_start_matches('/'));
+            let scope = Path::new(holds::ROOT).join(path.trim_start_matches('/'));
             Some((pid, stat.start, words, scope))
         })
         .collect();

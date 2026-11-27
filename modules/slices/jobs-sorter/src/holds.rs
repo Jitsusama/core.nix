@@ -146,35 +146,60 @@ pub fn keep_call(unit: &str, keep: bool) -> Vec<String> {
 const ZSWAP_ON: &str = "/sys/module/zswap/parameters/enabled";
 
 /// The cgroups' root, which has memory.zswap.writeback too.
-const ROOT: &str = "/sys/fs/cgroup";
+pub const ROOT: &str = "/sys/fs/cgroup";
+
+/// Whether zswap is on, read through `read` as `fs::read_to_string` reads
+/// a file. While it's off the kernel lets paged-out memory go to the disk
+/// whatever memory.zswap.writeback says, a scope's own among them, so then
+/// neither a scope's setting nor a slice's keeps anything off the disk.
+fn zswap_on(read: impl Fn(&Path) -> Option<String>) -> bool {
+    read(Path::new(ZSWAP_ON)).is_some_and(|on| on.trim() == "Y")
+}
 
 /// The nearest cgroup above `scope` that keeps zswap writeback off for
 /// it, read through `read` as `fs::read_to_string` reads a file. While
 /// zswap is on the kernel reads memory.zswap.writeback up the tree, the
 /// root's among them, so under one a scope given back still keeps its
-/// paged-out memory off the disk. While zswap is off the kernel lets that
-/// memory go to the disk whatever the tree says, so none keeps it then.
-/// The walk ends where the files do, above the root.
+/// paged-out memory off the disk. While zswap is off none keeps it
+/// ([`zswap_on`]). The walk stops at the first cgroup without the file,
+/// where the memory controller's tree ends, and never goes above
+/// [`ROOT`], so a stray file outside the cgroups names nothing.
 pub fn kept_above(scope: &Path, read: impl Fn(&Path) -> Option<String>) -> Option<PathBuf> {
-    if read(Path::new(ZSWAP_ON)).is_none_or(|on| on.trim() != "Y") {
+    if !zswap_on(&read) {
         return None;
     }
     scope
         .ancestors()
         .skip(1)
+        .take_while(|cgroup| cgroup.starts_with(ROOT))
         .map_while(|cgroup| Some((cgroup, read(&cgroup.join("memory.zswap.writeback"))?)))
         .find(|(_, value)| value.trim() == "0")
         .map(|(cgroup, _)| cgroup.to_path_buf())
 }
 
-/// What the journal says of `unit` once it's kept in memory or given back.
-/// `above` is asked only on a give-back, the one case a cgroup above can
-/// still keep the window's memory off the disk ([`kept_above`]).
-pub fn kept_said(unit: &str, keep: bool, above: impl FnOnce() -> Option<PathBuf>) -> String {
+/// What the journal says of `unit`, at `scope`, once it's kept in memory
+/// or given back, with files read through `read` as `fs::read_to_string`
+/// reads them. A keep reads only whether zswap is on, as with it off the
+/// scope's own setting keeps nothing off the disk ([`zswap_on`]); a
+/// give-back reads the tree too, the one case a cgroup above can still
+/// keep the window's memory off the disk ([`kept_above`]).
+pub fn kept_said(
+    unit: &str,
+    scope: &Path,
+    keep: bool,
+    read: impl Fn(&Path) -> Option<String>,
+) -> String {
     if keep {
-        return format!("Keeping in memory {unit}, a window Joel was at within two hours.");
+        return if zswap_on(&read) {
+            format!("Keeping in memory {unit}, a window Joel was at within two hours.")
+        } else {
+            format!(
+                "Keeping {unit}, a window Joel was at within two hours, though with zswap off \
+                 it may still go to the disk."
+            )
+        };
     }
-    match above() {
+    match kept_above(scope, &read) {
         None => format!("Let go to disk {unit}, a window Joel was at within two hours."),
         Some(cgroup) => {
             let keeper = if cgroup == Path::new(ROOT) {
@@ -188,7 +213,7 @@ pub fn kept_said(unit: &str, keep: bool, above: impl FnOnce() -> Option<PathBuf>
             };
             format!(
                 "Let {unit} go, a window Joel was at within two hours, though {keeper} \
-                 still keeps it off the disk."
+                 still keeps it off the disk while zswap is on."
             )
         }
     }
@@ -373,6 +398,10 @@ impl Holding {
 mod tests {
     use super::*;
 
+    /// A window's scope in app.slice, as a kitty window outside the
+    /// session slice has.
+    const SCOPE: &str = "/sys/fs/cgroup/user.slice/app.slice/kitty-1-9.scope";
+
     /// Reads zswap's state as `zswap` gives it, and memory.zswap.writeback
     /// as `tree` gives it, by each cgroup's path; any other has no file.
     fn writeback<'a>(
@@ -492,30 +521,87 @@ mod tests {
     }
 
     #[test]
-    fn a_keep_is_said_without_reading_the_tree() {
+    fn the_walk_stops_at_the_first_cgroup_without_the_file() {
+        let tree = [
+            ("/sys/fs/cgroup", "0"),
+            ("/sys/fs/cgroup/user.slice/app.slice", "1"),
+            (SCOPE, "1"),
+        ];
         assert_eq!(
-            kept_said("kitty-1-9.scope", true, || panic!("the tree was read")),
+            kept_above(Path::new(SCOPE), writeback("Y", &tree)),
+            None,
+            "the root was read past user.slice, which has no memory.zswap.writeback"
+        );
+    }
+
+    #[test]
+    fn a_file_above_the_root_is_never_read() {
+        let tree = [
+            ("/", "0"),
+            ("/sys", "1"),
+            ("/sys/fs", "1"),
+            ("/sys/fs/cgroup", "1"),
+            ("/sys/fs/cgroup/user.slice", "1"),
+            ("/sys/fs/cgroup/user.slice/app.slice", "1"),
+            (SCOPE, "1"),
+        ];
+        assert_eq!(
+            kept_above(Path::new(SCOPE), writeback("Y", &tree)),
+            None,
+            "a stray file above the cgroups' root was named as keeping the window"
+        );
+    }
+
+    #[test]
+    fn a_keep_reads_whether_zswap_is_on_but_never_the_tree() {
+        let switch_alone = |file: &Path| {
+            assert_eq!(file, Path::new(ZSWAP_ON), "the tree was read");
+            Some("Y\n".to_owned())
+        };
+        assert_eq!(
+            kept_said("kitty-1-9.scope", Path::new(SCOPE), true, switch_alone),
             "Keeping in memory kitty-1-9.scope, a window Joel was at within two hours."
         );
     }
 
     #[test]
-    fn a_give_back_says_whether_a_cgroup_above_still_keeps_it() {
+    fn a_keep_with_zswap_off_isnt_said_as_kept_in_memory() {
+        let tree = [(SCOPE, "0")];
+        let read = writeback("N", &tree);
         assert_eq!(
-            kept_said("kitty-1-9.scope", false, || None),
+            kept_said("kitty-1-9.scope", Path::new(SCOPE), true, read),
+            "Keeping kitty-1-9.scope, a window Joel was at within two hours, though with \
+             zswap off it may still go to the disk."
+        );
+    }
+
+    #[test]
+    fn a_give_back_says_whether_a_cgroup_above_still_keeps_it() {
+        fn given_back(tree: &[(&str, &str)]) -> String {
+            let read = writeback("Y", tree);
+            kept_said("kitty-1-9.scope", Path::new(SCOPE), false, read)
+        }
+        let tree = |app: &'static str, root: &'static str| {
+            [
+                ("/sys/fs/cgroup", root),
+                ("/sys/fs/cgroup/user.slice", "1"),
+                ("/sys/fs/cgroup/user.slice/app.slice", app),
+                (SCOPE, "1"),
+            ]
+        };
+        assert_eq!(
+            given_back(&tree("1", "1")),
             "Let go to disk kitty-1-9.scope, a window Joel was at within two hours."
         );
         assert_eq!(
-            kept_said("kitty-1-9.scope", false, || {
-                Some(PathBuf::from("/sys/fs/cgroup/user.slice/app.slice"))
-            }),
+            given_back(&tree("0", "1")),
             "Let kitty-1-9.scope go, a window Joel was at within two hours, though \
-             app.slice still keeps it off the disk."
+             app.slice still keeps it off the disk while zswap is on."
         );
         assert_eq!(
-            kept_said("kitty-1-9.scope", false, || Some(PathBuf::from(ROOT))),
+            given_back(&tree("1", "0")),
             "Let kitty-1-9.scope go, a window Joel was at within two hours, though \
-             the root cgroup still keeps it off the disk."
+             the root cgroup still keeps it off the disk while zswap is on."
         );
     }
 

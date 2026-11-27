@@ -1020,13 +1020,17 @@ mod tests {
             marked: true,
             ..Signs::default()
         };
-        for signs in [viewed, marked] {
-            let rank = wanted(&attended(), signs, 10);
-            assert_ne!(
-                rank.weight,
-                low::AT,
-                "each rank tells its weight from systemd's 100"
-            );
+        let above = wanted(&attended(), viewed, 10);
+        let below = wanted(&attended(), marked, 10);
+        assert!(
+            above.weight > low::AT,
+            "the viewed host's rank is above systemd's 100"
+        );
+        assert!(
+            below.weight < low::AT,
+            "the marked host's rank is below systemd's 100"
+        );
+        for rank in [above, below] {
             let call = rank_call("pi-host-work-attended.service", &rank);
             let weight = |name: &str| {
                 let at = call.iter().position(|arg| arg == name).expect(name);
