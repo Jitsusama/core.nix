@@ -340,6 +340,23 @@ const LOOKS: Record<string, object> = {
     ...LOOK,
     choices: labelled(["\u0421lear It", "\u03a4alk", "\uff34alk", "\u0414\u0430"]),
   },
+  "choices holding letters beyond Latin no list names": {
+    ...LOOK,
+    choices: labelled([
+      "\u03f9lear It",
+      "\ua4da\ua4e1\ua4f0\ua4ee\ua4e3 \ua4f2\ua4d4",
+      "\u{1d5b3}alk",
+      `Talk ${"\uff58".repeat(12)}`,
+    ]),
+  },
+  "choices opening with an act, then Greek or Cyrillic": {
+    ...LOOK,
+    choices: labelled([
+      "Answer \u0414\u0430",
+      "Talk to \u041c\u0430\u0440\u0438\u044f",
+      "Open \u039d\u03b1\u03b9",
+    ]),
+  },
   "choices whose stop after the act the cut strips": {
     ...LOOK,
     choices: labelled([

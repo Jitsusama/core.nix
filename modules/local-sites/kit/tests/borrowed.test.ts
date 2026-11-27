@@ -1,20 +1,23 @@
-// What a name reads as once each letter it borrows from another script is
-// read as the Latin one it draws as.
+// Whether a name may draw as an act where it holds a letter from beyond
+// Latin, whichever script lends it.
 
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
-import { unborrowed } from "../borrowed.ts";
+import { drawsLike, pointsIn } from "../borrowed.ts";
 
-it("a Cyrillic or Greek letter drawing as a Latin one reads as it", () => {
-  assert.equal(unborrowed("\u0421lear \u0406t"), "clear it");
-  assert.equal(unborrowed("\u03a4alk"), "talk");
+it("a letter beyond Latin where an act's letter stands may draw as it", () => {
+  assert.equal(drawsLike("\u0441lear it", "clear it"), true);
+  assert.equal(drawsLike("\ua4da\ua4e1\ua4f0\ua4ee\ua4e3 \ua4f2\ua4d4", "clear it"), true);
+  assert.equal(drawsLike("clear \u2170t", "clear it"), true);
+  assert.equal(drawsLike("\u{1d5b3}alk", "talk"), true);
 });
 
-it("a fullwidth letter reads as its Latin one, its case kept", () => {
-  assert.equal(unborrowed("\uff34alk \uff43"), "Talk c");
+it("a Latin letter draws only as itself, and a space only as a space", () => {
+  assert.equal(drawsLike("clear at", "clear it"), false);
+  assert.equal(drawsLike("clear\u0441it", "clear it"), false);
+  assert.equal(drawsLike("\u0441lear", "clear it"), false);
 });
 
-it("a letter drawing as no Latin one, and a Latin name, are left as they are", () => {
-  assert.equal(unborrowed("\u0414\u0430"), "\u0414a");
-  assert.equal(unborrowed("Clear It"), "Clear It");
+it("a letter past U+FFFF counts once", () => {
+  assert.equal(pointsIn("\u{1d5b3}alk"), 4);
 });

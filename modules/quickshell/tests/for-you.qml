@@ -511,6 +511,34 @@ QtObject {
                 LookForm.poses("\u0414\u0430", ["Clear It", "Talk"]),
                 LookForm.poses("\u039d\u03b1\u03b9", ["Clear It", "Talk"])],
             [true, true, true, true, true, false, false]);
+        // Any letter from beyond Latin where an act's letter stands may draw as
+        // it, not only the ones a list names: Greek's lunate sigma, Komi's
+        // Sje, Lisu's capitals, Armenian's Oh, Cherokee's Tee, Roman numerals,
+        // a palochka, the dental click and a mathematical capital (#6562's
+        // thirteenth review, 177 to 187).
+        expect("a choice holding any letter beyond Latin where an act's stand poses as it",
+            [LookForm.poses("\u03f9lear It", ["Clear It"]),
+                LookForm.poses("\u050co To", ["Go To"]),
+                LookForm.poses("\ua4da\ua4e1\ua4f0\ua4ee\ua4e3 \ua4f2\ua4d4", ["Clear It"]),
+                LookForm.poses("\u0555pen", ["Open"]),
+                LookForm.poses("\u13a2alk", ["Talk"]),
+                LookForm.poses("Clear \u2160t", ["Clear It"]),
+                LookForm.poses("Ta\u217ck", ["Talk"]),
+                LookForm.poses("Clear \u04c0t", ["Clear It"]),
+                LookForm.poses("Clear \u01c0t", ["Clear It"]),
+                LookForm.poses("\ud835\uddb3alk", ["Talk"]),
+                LookForm.poses("\u0555pen a PR", ["Open"]),
+                LookForm.actOf(second({ act: "\u03f9lear It" }), ["Clear It"])],
+            [true, true, true, true, true, true, true, true, true, true, true, ""]);
+        // What follows a one-word act is read as written: a fullwidth letter
+        // stays wide, so it's not plain, while Greek's and Cyrillic's, drawing
+        // about as wide as Latin's, are weighed as its are (round 13, 176, 180).
+        expect("a fullwidth rest poses, a Greek or Cyrillic one is weighed",
+            [LookForm.poses(`Talk ${"\uff58".repeat(12)}`, ["Talk"]),
+                LookForm.poses("Answer \u0414\u0430", ["Answer"]),
+                LookForm.poses("Talk to \u041c\u0430\u0440\u0438\u044f", ["Talk"]),
+                LookForm.poses("Open \u039d\u03b1\u03b9", ["Open"])],
+            [true, false, false, false]);
         // A verb cut short where it runs out of room shows only its first
         // words, so one opening with an act's words poses as it, however
         // short what follows: the line's room isn't known where it's judged

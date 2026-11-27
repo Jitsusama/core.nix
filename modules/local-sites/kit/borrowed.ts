@@ -1,86 +1,34 @@
-// A letter another script lends that draws as a Latin one, read as the
-// letter it draws as, so a name can't pass for another by borrowing it:
-// "Clear It" with a Cyrillic Es (round 12 on #6562, F170). The kit's ask
-// row reads names through it, as LookForm.js's readAs does for For You.
+// Whether a name may draw as an act, letter by letter, where it may borrow
+// a letter from beyond Latin that draws as one: "Clear It" with a Cyrillic
+// Es (round 12 on #6562, F170), Lisu's capitals, a Roman numeral or a
+// mathematical letter. A list of the letters that draw alike never ends,
+// as three rounds on #6562 found (F170, then round 13's 177 to 187), so any
+// letter beyond Latin is read as able to be any. The kit's ask row reads
+// names through it, as LookForm.js's drawsLike does for For You.
 
-/** Greek and Cyrillic letters that draw as a Latin one, and the fullwidth forms. */
-const BORROWED = /[\u0391-\u03c7\u0405-\u04cf\u0501-\u051d\uff01-\uff5e]/gu;
-/** Each borrowed Greek or Cyrillic letter, as the Latin one it draws as. */
-const LOOKS_LATIN: Record<string, string> = {
-  "\u0391": "a",
-  "\u0392": "b",
-  "\u0395": "e",
-  "\u0396": "z",
-  "\u0397": "h",
-  "\u0399": "i",
-  "\u039a": "k",
-  "\u039c": "m",
-  "\u039d": "n",
-  "\u039f": "o",
-  "\u03a1": "p",
-  "\u03a4": "t",
-  "\u03a5": "y",
-  "\u03a7": "x",
-  "\u03b1": "a",
-  "\u03b3": "y",
-  "\u03b9": "i",
-  "\u03ba": "k",
-  "\u03bd": "v",
-  "\u03bf": "o",
-  "\u03c1": "p",
-  "\u03c4": "t",
-  "\u03c5": "u",
-  "\u03c7": "x",
-  "\u0405": "s",
-  "\u0406": "i",
-  "\u0408": "j",
-  "\u0410": "a",
-  "\u0412": "b",
-  "\u0415": "e",
-  "\u041a": "k",
-  "\u041c": "m",
-  "\u041d": "h",
-  "\u041e": "o",
-  "\u0420": "p",
-  "\u0421": "c",
-  "\u0422": "t",
-  "\u0423": "y",
-  "\u0425": "x",
-  "\u0430": "a",
-  "\u0435": "e",
-  "\u043e": "o",
-  "\u0440": "p",
-  "\u0441": "c",
-  "\u0443": "y",
-  "\u0445": "x",
-  "\u0455": "s",
-  "\u0456": "i",
-  "\u0458": "j",
-  "\u04bb": "h",
-  "\u04c0": "l",
-  "\u04cf": "l",
-  "\u0501": "d",
-  "\u051a": "q",
-  "\u051b": "q",
-  "\u051c": "w",
-  "\u051d": "w",
-};
-/** The first fullwidth form, and how far each sits above its Latin letter. */
-const FULLWIDTH_FIRST = 0xff_01;
-const FULLWIDTH_FROM = 0xfe_e0;
+/** The letters an act's are told apart from: ASCII's, and Latin's accented ones. */
+const LATIN = /[\x21-\x7e\u00c0-\u017f]/u;
 
-/** A letter as the Latin one it draws as, where it's borrowed. */
-function asLatin(each: string): string {
-  const code = each.charCodeAt(0);
-  if (code >= FULLWIDTH_FIRST) {
-    return String.fromCharCode(code - FULLWIDTH_FROM);
-  }
-  return LOOKS_LATIN[each] ?? each;
+/**
+ * Whether the first of `read`'s letters, as many as `each` has, by code
+ * point, may draw as `each`: each the act's own letter, or one not LATIN
+ * where the act has a letter. A space draws only as a space.
+ */
+function drawsLike(read: string, each: string): boolean {
+  const ours = Array.from(read);
+  const acts = Array.from(each);
+  return (
+    ours.length >= acts.length &&
+    acts.every(
+      (one, at) =>
+        ours[at] === one || (one !== " " && ours[at] !== " " && !LATIN.test(ours[at] ?? " ")),
+    )
+  );
 }
 
-/** A name with every letter it borrows read as the Latin one it draws as. */
-function unborrowed(name: string): string {
-  return name.replace(BORROWED, asLatin);
+/** How many code points `text` holds, as drawsLike counts them. */
+function pointsIn(text: string): number {
+  return Array.from(text).length;
 }
 
-export { unborrowed };
+export { drawsLike, pointsIn };

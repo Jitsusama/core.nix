@@ -22,72 +22,16 @@ const UNSEEN = /[\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff\ufff0-\ufff8]/gu;
 const UNMARKED = /[\u00ad\u061c\u180e]|\u034f/gu;
 const FILLERS = /[\u115f\u1160\u2800\u3164\uffa0]/gu;
 const STOPS = /[\s.!?,;:\u2026]+$/u;
-// The letters of Greek and Cyrillic that draw as a Latin one, and the
-// fullwidth forms, which a name may borrow to pass for another, "Clear It"
-// with a Cyrillic Es (round 12 on #6562, F170): each reads as the letter
-// it draws as.
-const BORROWED = /[\u0391-\u03c7\u0405-\u04cf\u0501-\u051d\uff01-\uff5e]/gu;
-const LOOKS_LATIN = {
-    "\u0391": "a",
-    "\u0392": "b",
-    "\u0395": "e",
-    "\u0396": "z",
-    "\u0397": "h",
-    "\u0399": "i",
-    "\u039a": "k",
-    "\u039c": "m",
-    "\u039d": "n",
-    "\u039f": "o",
-    "\u03a1": "p",
-    "\u03a4": "t",
-    "\u03a5": "y",
-    "\u03a7": "x",
-    "\u03b1": "a",
-    "\u03b3": "y",
-    "\u03b9": "i",
-    "\u03ba": "k",
-    "\u03bd": "v",
-    "\u03bf": "o",
-    "\u03c1": "p",
-    "\u03c4": "t",
-    "\u03c5": "u",
-    "\u03c7": "x",
-    "\u0405": "s",
-    "\u0406": "i",
-    "\u0408": "j",
-    "\u0410": "a",
-    "\u0412": "b",
-    "\u0415": "e",
-    "\u041a": "k",
-    "\u041c": "m",
-    "\u041d": "h",
-    "\u041e": "o",
-    "\u0420": "p",
-    "\u0421": "c",
-    "\u0422": "t",
-    "\u0423": "y",
-    "\u0425": "x",
-    "\u0430": "a",
-    "\u0435": "e",
-    "\u043e": "o",
-    "\u0440": "p",
-    "\u0441": "c",
-    "\u0443": "y",
-    "\u0445": "x",
-    "\u0455": "s",
-    "\u0456": "i",
-    "\u0458": "j",
-    "\u04bb": "h",
-    "\u04c0": "l",
-    "\u04cf": "l",
-    "\u0501": "d",
-    "\u051a": "q",
-    "\u051b": "q",
-    "\u051c": "w",
-    "\u051d": "w"
-};
-// Where the fullwidth forms stand from the letters they widen.
-const FULLWIDTH_FROM = 0xfee0;
+// The letters an act's are told apart from: ASCII's, and Latin's accented
+// ones. Any other a name holds where an act's letter stands may draw as
+// it, a Cyrillic Es as C, a Lisu letter as a Latin capital, a Roman
+// numeral as I, a fullwidth or a mathematical letter as its plain one, so
+// it's read as able to be any letter (drawsLike). A list of the letters
+// that draw alike never ends, as three rounds on #6562 found (F170, then
+// round 13's 177 to 187), so none is kept. It refuses more than it must:
+// a choice in another script, as long as an act or longer, may be held
+// back too, which a look written in English never is.
+const LATIN = /[\x21-\x7e\u00c0-\u017f]/u;
 // A digit, which goes on a word as a letter does (opensWith).
 const DIGIT = /[0-9]/u;
 // Where a verb's one line stops showing what follows: a line break, or two
@@ -102,13 +46,15 @@ const TURNS = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/u;
 // here, so a name holding one is never trusted either.
 const VARIANTS = /\u009c/u;
 // What may follow a one-word act in a choice that's still trusted to draw
-// whole: printable ASCII, Latin's accented letters, and typographic quotes
-// and dashes, whose width the row's cut can be judged by (weighed), as
-// "Open Jos\u00e9\u2019s PR". A wide glyph or a mark drawn like a stop
+// whole: printable ASCII, Latin's accented letters, Greek's and Cyrillic's
+// letters, which draw about as wide (round 13 on #6562, 180), and
+// typographic quotes and dashes, whose width the row's cut can be judged
+// by (weighed), as "Open Jos\u00e9\u2019s PR" or "Answer \u0414\u0430". A wide
+// glyph, a fullwidth letter among them, or a mark drawn like a stop
 // ("Open \u65e5\u65e5", "Talk\u2024\u2024") may draw as the act and an
 // ellipsis however few its characters.
 const PLAIN =
-    /^[\x20-\x7e\u00c0-\u00d6\u00d8-\u00f6\u00f8-\u017f\u2013\u2014\u2018\u2019\u201c\u201d]*$/u;
+    /^[\x20-\x7e\u00c0-\u017f\u0386-\u03ce\u0400-\u045f\u2013\u2014\u2018\u2019\u201c\u201d]*$/u;
 // What of it draws wider than a small letter, which weighed counts by its
 // width: about twice, "Talk " and 19 capital W's drawing as wide as 43
 // small x's, as their accented and joined kin do (WIDEST); or half as wide
@@ -173,18 +119,32 @@ function wordsOf(read) {
             .filter(part => part !== "").join("\n\n");
 }
 
-// A letter as the Latin one it draws as, where it's borrowed (BORROWED).
-function asLatin(each) {
-    const code = each.charCodeAt(0);
-    return code >= 0xff01 ? String.fromCharCode(code - FULLWIDTH_FROM)
-        : LOOKS_LATIN[each] ?? each;
+// `text` by code point, as drawnOf walks it, since Qt's engine's
+// Array.from walks a string by halves of a pair.
+function pointsOf(text) {
+    const points = [];
+    for (let at = 0; at < text.length;) {
+        const width = text.codePointAt(at) > 0xffff ? 2 : 1;
+        points.push(text.slice(at, at + width));
+        at += width;
+    }
+    return points;
+}
+
+// Whether the first of `read`'s letters, as many as `each` has, may draw as
+// `each`: each the act's own letter, or one not LATIN where the act has a
+// letter, which may draw as any. A space draws only as a space.
+function drawsLike(read, each) {
+    const ours = pointsOf(read);
+    const acts = pointsOf(each);
+    return ours.length >= acts.length && acts.every((one, at) => ours[at] === one
+        || (one !== " " && ours[at] !== " " && !LATIN.test(ours[at])));
 }
 
 // A name as it reads, to tell two apart: what draws as nothing gone, its
-// spaces one, its closing stops gone, a letter borrowed from another
-// script as the one it draws as, in small letters.
+// spaces one, its closing stops gone, in small letters.
 function readAs(name) {
-    return drawnOf(String(name)).replace(BORROWED, asLatin).replace(UNSEEN, "")
+    return drawnOf(String(name)).replace(UNSEEN, "")
         .replace(UNMARKED, "").replace(FILLERS, " ")
         .replace(SPACES, " ").replace(STOPS, "").trim().toLowerCase();
 }
@@ -194,9 +154,9 @@ function readAs(name) {
 // label, one a label opens with or opening with one, or a name another of
 // its acts goes by (`taken`), however it's
 // spaced, stopped or hides what draws as nothing, so it can't pass itself
-// off as Clear It or an answer, or turn its letters around, nor borrow
-// another script's letters that draw alike; the drawer's eyebrow says
-// whose words they are.
+// off as Clear It or an answer, or turn its letters around, nor hold,
+// where an act's letters stand, a letter from beyond Latin that may draw
+// as one (drawsLike); the drawer's eyebrow says whose words they are.
 function actOf(one, taken = []) {
     const act = secondForm(one) ? written(one.act).trim() : "";
     const read = readAs(act);
@@ -268,8 +228,14 @@ function poses(name, taken) {
         || !PLAIN.test(read.slice(each.length)) || SPACED.test(face.slice(each.length))
         || drawn(each) > WHOLE_CHOICE;
     return taken.length > 0 && (TURNS.test(String(name)) || VARIANTS.test(String(name))
-        || taken.map(readAs).some(each => each !== "" && (each === read || each === head
-            || (opensWith(read, each) && opened(each)))));
+        || taken.map(readAs).some(each => each !== "" && (reads(read, each)
+            || reads(head, each) || (opensWith(read, each) && opened(each)))));
+}
+
+// Whether `read` may draw as `each` whole: as long, by code point, and
+// each letter alike (drawsLike).
+function reads(read, each) {
+    return pointsOf(read).length === pointsOf(each).length && drawsLike(read, each);
 }
 
 // How wide the act that opens `face` draws, its first `length` characters,
@@ -301,10 +267,12 @@ function weighed(text) {
 // a case, so a letter of a script without one counts as a break, refusing
 // more rather than less.
 function opensWith(read, each) {
-    if (!read.startsWith(each) || read.length === each.length) {
+    const ours = pointsOf(read);
+    const length = pointsOf(each).length;
+    if (ours.length === length || !drawsLike(read, each)) {
         return false;
     }
-    const next = read.charAt(each.length);
+    const next = ours[length];
     return next.toLowerCase() === next.toUpperCase() && !DIGIT.test(next);
 }
 

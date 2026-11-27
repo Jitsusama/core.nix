@@ -64,7 +64,7 @@
 // Every word here is free text a session wrote, so a page draws each as
 // text, never as markup.
 
-import { unborrowed } from "./borrowed.ts";
+import { drawsLike, pointsIn } from "./borrowed.ts";
 import { type Fields, isObject } from "./records.ts";
 
 /** How many of a look's choices are offered, as Looks.js's OFFERED. */
@@ -287,7 +287,7 @@ const FILLERS = /[\u115f\u1160\u2800\u3164\uffa0]/gu;
 const TURNS = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/u;
 const VARIANTS = /\u009c/u;
 const PLAIN =
-  /^[\x20-\x7e\u00c0-\u00d6\u00d8-\u00f6\u00f8-\u017f\u2013\u2014\u2018\u2019\u201c\u201d]*$/u;
+  /^[\x20-\x7e\u00c0-\u017f\u0386-\u03ce\u0400-\u045f\u2013\u2014\u2018\u2019\u201c\u201d]*$/u;
 const WIDEST = /[MWmw@%\u2014\u00c6\u00e6\u0152\u0153\u0174\u0175]/u;
 const SPACED = /[^\S \u00a0]/u;
 const DANGLING = /(?:[\s\u00b7,;:]|\s[-|\u2013])+$/u;
@@ -316,11 +316,10 @@ function weighed(text: string): number {
 
 /**
  * A name as it reads, to tell two apart, as LookForm.js's readAs: what
- * draws as nothing gone, its spaces one, its closing stops gone, a letter
- * borrowed from another script as the one it draws as, small.
+ * draws as nothing gone, its spaces one, its closing stops gone, small.
  */
 function readAs(name: string): string {
-  return unborrowed(name)
+  return name
     .replace(UNDRAWN, "")
     .replace(UNSEEN, "")
     .replace(UNMARKED, "")
@@ -354,11 +353,17 @@ function headOf(name: string): string {
  * it", where "clearance" doesn't open with "clear".
  */
 function opensWith(read: string, each: string): boolean {
-  if (!read.startsWith(each) || read.length === each.length) {
+  const length = pointsIn(each);
+  if (pointsIn(read) === length || !drawsLike(read, each)) {
     return false;
   }
-  const next = read.charAt(each.length);
+  const next = Array.from(read)[length] ?? "";
   return next.toLowerCase() === next.toUpperCase() && !DIGIT.test(next);
+}
+
+/** Whether `read` may draw as `each` whole, as LookForm.js's reads. */
+function reads(read: string, each: string): boolean {
+  return pointsIn(read) === pointsIn(each) && drawsLike(read, each);
 }
 
 /**
@@ -407,7 +412,7 @@ function poses(name: string, taken: readonly string[]): boolean {
         .some(
           (each) =>
             each !== "" &&
-            (each === read || each === head || (opensWith(read, each) && opened(each))),
+            (reads(read, each) || reads(head, each) || (opensWith(read, each) && opened(each))),
         ))
   );
 }
