@@ -107,11 +107,13 @@ impl Store {
         let read_policy = "field_41() { shift 40; policy=$1; }\n\
                            read -r stat < /proc/$$/stat; field_41 $stat\n";
         let policy = "$policy";
-        // What a listing reads to pause, and never hears from.
+        // What a listing reads to pause, and never hears from. Only bash's
+        // `read` times out in a fraction of a second, so bash runs them.
         let never = root.join("never");
         silent_pipe(&never);
+        let bash = crate::garbage::bash();
         let script = |name: &str, body: String| {
-            crate::garbage::script(&root.join("bin").join(name), &body);
+            crate::garbage::script_in(&root.join("bin").join(name), &bash, &body);
         };
         // Linking logs apart, so the garbage's log reads as it did.
         let linked = root.join("linked");

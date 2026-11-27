@@ -19,7 +19,12 @@ pub(crate) const LISTING: &str = "--option experimental-features  --gc --print-d
 /// busy". Once it runs, no writer is left. Every script here refuses an
 /// argument it doesn't know before doing anything.
 pub(crate) fn script(path: &Path, body: &str) {
-    fs::write(path, format!("#!/bin/sh\n{body}")).unwrap();
+    script_in(path, Path::new("/bin/sh"), body);
+}
+
+/// Writes `body` as `script` does, run by `shell` rather than /bin/sh.
+pub(crate) fn script_in(path: &Path, shell: &Path, body: &str) {
+    fs::write(path, format!("#!{}\n{body}", shell.display())).unwrap();
     fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
     for _ in 0..500 {
         let tried = std::process::Command::new(path)
@@ -35,6 +40,18 @@ pub(crate) fn script(path: &Path, body: &str) {
         }
     }
     panic!("{} stayed busy", path.display());
+}
+
+/// The bash on PATH, for a script that pauses for less than a second
+/// without a fork: a Nix build's /bin/sh is busybox, whose `read` takes
+/// only whole seconds, and every build's PATH has bash.
+pub(crate) fn bash() -> std::path::PathBuf {
+    std::env::var_os("PATH")
+        .iter()
+        .flat_map(std::env::split_paths)
+        .map(|dir| dir.join("bash"))
+        .find(|bash| bash.is_file())
+        .expect("no bash on PATH, which the store's stand-ins pause in")
 }
 
 /// A `nix-store` that lists `count` dead paths, and a `nix` that tells of
