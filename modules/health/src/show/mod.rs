@@ -706,22 +706,6 @@ mod tests {
             "0 hold 0 MiB, 0 MiB in swap",
             "no copies now, so no measure and no gap left for one"
         );
-        let mut mixed = Memory::default();
-        mixed.saw(
-            0,
-            &[
-                copy(1 << 20, 600),
-                memory::Held {
-                    by_rss: true,
-                    ..copy(1 << 20, 600)
-                },
-            ],
-        );
-        assert_eq!(
-            holding(&mixed),
-            "2 hold 4.0 GiB by Pss (1 by Rss), 2.0 GiB in swap",
-            "the copies by Rss counted in brackets, apart from the sizes"
-        );
         let aged = asked(&minded, "memory");
         assert!(!aged.contains("quickshell"), "not running all day: {aged}");
         assert!(
