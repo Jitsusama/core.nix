@@ -2809,7 +2809,10 @@ Provider {
         // launcher opens next (ReopenTally.js).
         const tellAll = now => {
             const [gone, reopened] = ReopenTally.told(now, said);
-            provider.launcher?.tellOnOpen([[...gone, Theme.alert], reopened]);
+            // Each reading is the walk's running tally, so it's about the
+            // walk alone, and a newer one takes the older's place.
+            provider.launcher?.tellOnOpen([[...gone, Theme.alert], reopened], false,
+                "reopen them all");
         };
         // Its count of what failed is drawn in the alert's colour, as the
         // row that failed is, the rest as a side reads (VKCF3Z, 2026-11-07).

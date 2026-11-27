@@ -3584,11 +3584,15 @@ Scope {
     // what its row said it would be, as a folder gone between the listing
     // and Return: said once the next time it opens, until the first key,
     // as `say` says a key's word, never as a notice (VKCF3Z, 2026-11-07
-    // [4a00987e]). Each is [mark, word, colour], as the foot's keys are,
-    // kept beside when it was told (ToldShut.js): a newer word about the same
-    // mark takes its place, another's waits beside it, and one told over a
-    // quarter hour before the launcher opens lapses unsaid.
+    // [4a00987e]). Each tell's words are [mark, word, colour], as the foot's
+    // keys are, kept whole beside what it's about and when it was told
+    // (ToldShut.js): a newer tell about the same takes its place, another's
+    // waits beside it, and one told over a quarter hour before the launcher
+    // opens lapses unsaid.
     property var toldOnOpen: []
+    // The tells the opening said (sayTold), and the words it said them in,
+    // so one can be taken back from the foot while it says them still.
+    property var toldSaid: ({ tells: [], said: null })
 
     // Forgets what's told and not yet read, said in the foot or waiting
     // for the next opening, as a share begins, since it may name what the
@@ -3604,7 +3608,7 @@ Scope {
     // place held before may be an ask's step, whose name the crumb draws
     // (Steady.shareStarts says what's left).
     function untold() {
-        const forgotten = toldOnOpen.length + saying.length;
+        const forgotten = ToldShut.said(toldOnOpen).length + saying.length;
         toldOnOpen = [];
         say([]);
         forgetGone();
@@ -3649,18 +3653,37 @@ Scope {
         armed = left.armed;
         forgetLetGo();
     }
-    function tellOnOpen(told, loose) {
-        if (open)
+    // Says `told` now if the launcher is open, else keeps it for its next
+    // opening as about `about`, the session or act it answers, by default
+    // the mark its words open with (ToldShut.aboutOf).
+    function tellOnOpen(told, loose, about) {
+        if (open) {
             say(told, loose);
-        else
-            toldOnOpen = ToldShut.waiting(toldOnOpen, told, Date.now(), loose);
+            return;
+        }
+        toldOnOpen = ToldShut.waiting(toldOnOpen, { told,
+            about: about ?? ToldShut.aboutOf(told), at: Date.now(), loose: loose === true });
     }
     // Takes back the words `shown` (a tellOnOpen's), from what waits for
-    // the next opening and from the foot where it says them still.
+    // the next opening and from the foot where it says them still, alone
+    // or among what the opening said.
     function untell(shown) {
         toldOnOpen = ToldShut.without(toldOnOpen, shown);
-        if (saying === shown)
+        if (saying === shown) {
             say([]);
+            return;
+        }
+        if (toldSaid.said !== saying)
+            return;
+        const left = ToldShut.without(toldSaid.tells, shown);
+        if (left.length !== toldSaid.tells.length)
+            sayTells(left);
+    }
+    // Says `tells` in the foot, kept as what the opening said.
+    function sayTells(tells) {
+        const said = ToldShut.said(tells);
+        say(said, tells.length > 0 && tells.every(one => one.loose));
+        toldSaid = { tells, said };
     }
     // Says what waits to be told as the launcher opens, but for what lapsed,
     // which the journal counts, never its words, which a source served.
@@ -3672,7 +3695,7 @@ Scope {
                 + "told over 15 min before it opened");
         if (due.said.length === 0)
             return;
-        say(due.said, due.loose);
+        sayTells(due.tells);
         Report.say(`told ${JSON.stringify(due.said)}`);
     }
 
@@ -6436,14 +6459,14 @@ Scope {
     // mark beside it in the alert, why muted.
     function toldThat(what, why) {
         tellOnOpen(Becoming.told({ mark: Theme.glyph.failed, what, why },
-            { what: Theme.alert, why: Theme.muted }), true);
+            { what: Theme.alert, why: Theme.muted }), true, what);
     }
     // Says where words in the field came from, which nothing failed, and
     // gives what it said.
     function toldWhence(what) {
         const told = Becoming.told({ mark: Theme.glyph.link, what, why: "" },
             { what: Theme.text, why: Theme.muted });
-        tellOnOpen(told, true);
+        tellOnOpen(told, true, what);
         return told;
     }
 
