@@ -1467,9 +1467,10 @@ def opened_into(shell: Shell, place: str) -> tuple[dict[str, int], int, int]:
     """Open into the place by its chord: the rows each other source made, searches and tries.
 
     A try a closing's spots landed in counts nothing of the opening's rows, so it's closed, its
-    own spots waited for, and made again; the rows are the last try's, and the tries say how
-    many it took. The searches are the first try's whatever follows, since a closing's spots
-    search nothing and only the first chord may find home again.
+    own spots and home kept again waited for, and made again, since with home not yet kept the
+    chord opens the place whole rather than from what was kept; the rows are the last try's,
+    and the tries say how many it took. The searches are the first try's whatever follows,
+    since a closing's spots search nothing and only the first chord may find home again.
     """
     searches = 0
     for tries in range(1, REOPENINGS_TRIED + 1):
@@ -1487,6 +1488,7 @@ def opened_into(shell: Shell, place: str) -> tuple[dict[str, int], int, int]:
         closing = shell.mark()
         shell.close_launcher()
         shell.reported(SPOTS_MADE_SHUT[0], lambda _: True, closing)
+        shell.launcher_until(lambda shown: not shown["open"] and shown.get("kept"))
     else:
         pytest.fail(f"a closing's spots were made as each of {REOPENINGS_TRIED} tries opened")
     made = {
