@@ -71,7 +71,7 @@
   "modules/swayimg/checks.nix" = 3;
   "modules/theme/checks.nix" = 1;
   "modules/treefmt/checks.nix" = 1;
-  "modules/tuple/checks.nix" = 2;
+  "modules/tuple/checks.nix" = 1;
   "modules/tuple/home.nix" = 1;
   "modules/unlisted/checks.nix" = 1;
   "modules/zathura/checks.nix" = 4;
