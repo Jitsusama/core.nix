@@ -1,0 +1,34 @@
+# Cases of a machine's name, one a line, read as the address cases are;
+# ./README.md says how they read.
+is osprey
+is a
+is 9
+is 0a
+is Osprey.Local
+is repo.core-nix
+is a_b
+is a-
+is v2s-gcp-provider-s99ia2-1795647845
+is cloud
+is aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+not
+not -help
+not --version
+not .hidden
+not _x
+not os prey
+not \u{20}osprey
+not osprey\u{20}
+not osprey\u{9}
+not osprey\u{A}
+not osprey&words=x
+not osprey;rm
+not osprey/x
+not osprey:x
+not osprey@x
+not osprey%20
+not os\u{0}prey
+not osprey\u{7F}
+not ospr\u{E9}y
+not osprey\u{200B}
+not aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa

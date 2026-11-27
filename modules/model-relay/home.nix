@@ -57,6 +57,14 @@ let
   # SAYS_GO_DIRECT_WITHIN, which the check reads), five to spare, so
   # it leaves on its own and says its counts rather than being killed.
   drainsWithin = 80;
+  # How many connections it keeps to the origin: the most it takes, not
+  # its own default of four. Over the work VPN, where a lost packet costs
+  # a long round trip, one connection carries only so much at once, and
+  # bodies sharing it arrive late enough for the origin to reset them.
+  # Measured on 26 November with twenty requests of 50 KiB each: over
+  # one connection they took 10 to 17 s and some were reset, over four
+  # 7 to 9 s, and over ten 3 to 4 s with none reset.
+  connections = 16;
 in
 {
   options.jitsusama.model-relay.origin = lib.mkOption {
@@ -117,6 +125,8 @@ in
       Service = {
         ExecStart = lib.escapeShellArgs [
           (lib.getExe package)
+          "--connections"
+          (toString connections)
           "--drain-within"
           (toString drainsWithin)
           "--origin"

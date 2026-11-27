@@ -429,6 +429,15 @@ select {
   background: var(--sunken);
 }
 
+/* A field's placeholder is words to read, said in muted, which the theme
+   holds legible on the sunken shade a field sits in. The browser's own
+   fades it below that: the network's find read at 4.03:1, and Code's at
+   4.48:1. */
+::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+
 @supports (resize: none) {
   textarea {
     resize: none;

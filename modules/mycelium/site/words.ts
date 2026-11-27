@@ -184,15 +184,18 @@ export const countsOf = (cells: readonly Cell[]): Record<Standing, number> => {
   return n;
 };
 
-/** The cells, how they stand, and how many have questions waiting on them. */
+/**
+ * The cells, how they stand, and how many answers they owe between them. The answers are
+ * counted rather than the cells owing them, as a network's health counts them, so one cell
+ * owing three never reads as one answer beside a drawer saying three.
+ */
 export const countsWords = (cells: readonly Cell[]): string => {
   const n = countsOf(cells);
   const bits = STANDINGS.filter((s) => n[s]).map((s) => `${n[s]} ${STANDING_WORD[s]}`);
-  const held = cells.filter((s) => s.owes.length).length;
-  const owed = held === 1 ? "an answer" : "answers";
+  const owed = cells.reduce((sum, s) => sum + s.owes.length, 0);
   return (
     `${plural(cells.length, "cell")}${bits.length > 0 ? `: ${bits.join(", ")}` : ""}` +
-    (held ? `; ${held} owing ${owed}` : "")
+    (owed ? `; ${plural(owed, "answer")} owed` : "")
   );
 };
 

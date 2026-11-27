@@ -1684,16 +1684,18 @@ Singleton {
         // Only Reopen Them All tells each to carry on, which marks its walk.
         const walk = told === root.carryOn;
         const connectedNow = root.screensThere();
-        const places = Places.placed(placeable, connectedNow, inUse,
-            here.map(one => momentOf(one.id)).map(moment => Array.isArray(moment) ? moment : []));
+        // Placed and given by the one screens answer (Reopening.js's placedGiven).
+        const placing = Reopening.placedGiven(placeable, connectedNow, inUse, { moments:
+            here.map(one => momentOf(one.id)).map(moment => Array.isArray(moment) ? moment : []),
+            before: puttingBack?.given });
+        const places = placing.places;
         // Its windows go back by the screen in use as its own sessions are
         // placed, and to the twin connectors they're given, not as a
         // hand-over meanwhile places others, and what windows back before
         // took where the sessions' say nothing.
         if (puttingBack !== null && walk && !("inUse" in puttingBack)) {
             puttingBack.inUse = inUse;
-            puttingBack.given = Reopening.givenBy(placeable, places, puttingBack.given,
-                connectedNow);
+            puttingBack.given = placing.given;
             // So split twins can be read from the journal: with no screen
             // said, no session tells its windows which twin is its own.
             if (Object.keys(connectedNow).length === 0)
@@ -2364,15 +2366,9 @@ Singleton {
     // whoever saw it leave, since a reopen notes one minutes after.
     property var awayFrom: ({})
     function noteAway(away, id) {
-        if (!away || id === null || id === undefined)
-            return;
-        const kept = awayFrom[away.screen] ?? [];
-        if (kept.some(one => one.id === id))
-            return;
-        const next = Object.assign({}, awayFrom);
-        next[away.screen] = kept.concat([{ id, workspace: away.workspace, output: away.output,
-            others: away.others ?? {} }]);
-        awayFrom = next;
+        const next = Reopening.notedAway(awayFrom, away, id);
+        if (next !== null)
+            awayFrom = next;
     }
     // Each workspace's screen and number as last seen with that screen
     // connected, by niri's id. A screen going, as at an undock, sends its
@@ -2512,10 +2508,10 @@ Singleton {
         const inUse = Reopening.inUseFor(going.inUse, Niri.workspace()?.output ?? null, there);
         // Each window put back gives its twins' connectors, after its
         // sessions', so twin monitors on new connectors take one each:
-        // only one connected now showing its screen (givenOn), not last
-        // boot's, kept while no screen is said.
-        const kept = Places.whereKept(at, going.kept, there, { given: going.given, inUse });
-        going.given.push({ at, output: Reopening.givenOn(at.screen, kept, there) });
+        // only one connected now showing its screen (Reopening.js's keptBack).
+        const back = Reopening.keptBack(at, going.kept, there, { given: going.given, inUse });
+        const kept = back.kept;
+        going.given.push(back.gives);
         const output = found.output ?? kept.output ?? inUse;
         const where = found.make ? Object.assign({}, found, { output }) : found;
         const workspace = Niri.workspace(window.workspace_id);
