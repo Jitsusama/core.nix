@@ -39,6 +39,8 @@ interface Thing {
 interface ThingLook {
   readonly side: string;
   readonly matters: string;
+  /** How bad it is by itself, where the daemon says; its thing's otherwise. */
+  readonly health?: Health;
 }
 
 /** The ways deeper into a part. */
@@ -162,7 +164,9 @@ function looksOf(record: Fields): readonly ThingLook[] | undefined {
     if (!isObject(look) || side === undefined || side === "") {
       return [];
     }
-    return [{ side, matters: text(look, "matters") ?? "" }];
+    const health = text(look, "health");
+    const own = health === undefined ? {} : { health: healthOf(health) };
+    return [{ side, matters: text(look, "matters") ?? "", ...own }];
   });
   return read.length === looks.length ? read : undefined;
 }

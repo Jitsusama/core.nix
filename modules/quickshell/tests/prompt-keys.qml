@@ -363,8 +363,10 @@ Item {
             verify(!line.keyActed, "the register's letter, though the ask takes it");
         }
 
-        // Each operator-again case waits as long as it takes, so a slow
-        // runner can't let the second d past the guard and pass unswallowed.
+        // Each operator-again case waits as long as it takes for the second
+        // d. Here that keeps a slow runner from failing it, as a late d
+        // begins an operator j would end; in the ask's case below it keeps
+        // a slow runner from passing it whichever of the two heard d first.
         function test_theOperatorAgainIsSwallowed() {
             line.wait = 60000;
             toNormal();
@@ -419,8 +421,10 @@ Item {
             // it, rather than the key's own time, would answer later.
             line.answerTaken = (key, at) => {
                 asked.push(at);
+                // Its turns are capped too, so a clock stepped back fails
+                // the case by name rather than spinning to the check's end.
                 const until = Date.now() + 3;
-                while (Date.now() < until) {}
+                for (let turn = 0; turn < 1e7 && Date.now() < until; turn += 1) {}
                 return true;
             };
             const before = Date.now();
@@ -432,6 +436,8 @@ Item {
             compare(answered.signalArguments[0][1], asked[0], "answered at that time");
         }
 
+        // Unhurried, the ask hears d again only if it's asked before the
+        // operator is, so this fails were the two asked the other way.
         function test_anAskTakesTheOperatorAgainBeforeTheOperator() {
             line.wait = 60000;
             toNormal();

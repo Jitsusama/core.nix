@@ -368,10 +368,10 @@ mod tests {
         let mut tally = Tally::default();
         tally.key(LAPTOP, Board::Laptop, LEFT_SHIFT, 1);
         tap(&mut tally, BOARD, Board::Ergodox, A);
-        let lines = lines(&tally);
+        let written = lines(&tally);
         assert!(
-            lines.contains(&"ergodox\tcoal\t-\ta\t1\t0".to_owned()),
-            "the ergodox's a should count unshifted, in {lines:?}"
+            written.contains(&"ergodox\tcoal\t-\ta\t1\t0".to_owned()),
+            "the ergodox's a should count unshifted, in {written:?}"
         );
     }
 
@@ -381,10 +381,10 @@ mod tests {
         tally.key(BOARD, Board::Ergodox, LEFT_SHIFT, 1);
         tally.gone(BOARD);
         tap(&mut tally, BOARD, Board::Ergodox, A);
-        let lines = lines(&tally);
+        let written = lines(&tally);
         assert!(
-            lines.contains(&"ergodox\tcoal\t-\ta\t1\t0".to_owned()),
-            "a shift held as the keyboard went should be let go, in {lines:?}"
+            written.contains(&"ergodox\tcoal\t-\ta\t1\t0".to_owned()),
+            "a shift held as the keyboard went should be let go, in {written:?}"
         );
     }
 

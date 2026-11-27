@@ -44,8 +44,10 @@ pub const LOCKED: i32 = 75;
 pub enum SignIn {
     /// The sign-in it printed, trimmed.
     Token(String),
-    /// None: it couldn't be run, failed, printed nothing, as a keyring
-    /// lacking the item does, or printed what can't be a sign-in.
+    /// None: it couldn't be run, held for writing even as its patience
+    /// ran out included, since it never ran; or it failed, printed
+    /// nothing, as a keyring lacking the item does, or printed what
+    /// can't be a sign-in.
     Missing,
     /// It ended [`LOCKED`]: the keyring holding the sign-in is locked.
     Locked,
