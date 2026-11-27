@@ -50,8 +50,10 @@ pub struct Mark {
     pub block_pt: Option<f64>,
     /// How wide the page was where its distance was measured, so only a
     /// page set as wide gives one kept without its block's height that
-    /// height. A mark kept before this was written has none, and never
-    /// learns one.
+    /// height. A mark kept before this was written has none, and is
+    /// written back with none, and with no height its block was given,
+    /// until he sets it again: while it's landed it's only taken as
+    /// measured at the width the reader opened at (`Guess`).
     pub width_pt: Option<f64>,
     pub said: Said,
 }
@@ -487,15 +489,66 @@ pub fn line_in(
 /// now, and whether that's on a line of its block yet. While the mark
 /// stays where it landed it is the kept one, which a resize lands again
 /// from what was kept and closing writes back as it was read, so landing
-/// it costs nothing it was kept with.
+/// it costs nothing it was kept with. One kept without its width lands
+/// by a `guess` of it, held here alone.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Landed {
     pub kept: Mark,
     pub pt: f64,
     pub on_line: bool,
+    pub guess: Option<Guess>,
+}
+
+/// What a mark kept without its width is taken to have: measured at the
+/// width the reader opened at, since the window opens as wide as it last
+/// closed, and its block's height there once a page that wide gives it.
+/// Neither was measured, so closing writes back neither: only the mark as
+/// it was read.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Guess {
+    pub width_pt: f64,
+    pub block_pt: Option<f64>,
 }
 
 impl Landed {
+    /// The kept mark landed at `pt`, not on a line yet, taken as measured
+    /// at `opened_pt` if it was kept without its width.
+    fn of(kept: Mark, pt: f64, opened_pt: f64) -> Self {
+        let guess = kept.width_pt.is_none().then_some(Guess {
+            width_pt: opened_pt,
+            block_pt: None,
+        });
+        Landed {
+            kept,
+            pt,
+            on_line: false,
+            guess,
+        }
+    }
+
+    /// The width its distance was measured at, or is taken to be.
+    fn width_pt(&self) -> Option<f64> {
+        self.kept
+            .width_pt
+            .or(self.guess.map(|guess| guess.width_pt))
+    }
+
+    /// How tall its block stood for its distance, as kept or as learnt.
+    fn block_pt(&self) -> Option<f64> {
+        self.kept
+            .block_pt
+            .or(self.guess.and_then(|guess| guess.block_pt))
+    }
+
+    /// Takes `block_pt` as its block's height: kept, to be written back,
+    /// where its width was measured, and only guessed where it wasn't.
+    fn learns(&mut self, block_pt: Option<f64>) {
+        match self.guess.as_mut() {
+            Some(guess) => guess.block_pt = block_pt,
+            None => self.kept.block_pt = block_pt,
+        }
+    }
+
     /// Whether the mark still stands where it landed, in `marks`: one set
     /// or moved since is his own, no longer the kept one.
     fn holds(&self, marks: &HashMap<char, f64>) -> bool {
@@ -542,7 +595,7 @@ pub fn landed_again(
         .iter_mut()
         .filter_map(|one| {
             let kept = &one.kept;
-            let pt = pt_of(after, kept.block, kept.into_pt, kept.block_pt)?;
+            let pt = pt_of(after, kept.block, kept.into_pt, one.block_pt())?;
             (one.pt, one.on_line) = (pt, false);
             Some((kept.letter, pt))
         })
@@ -560,18 +613,20 @@ pub fn as_read(landed: &[Landed], letter: char, pt: f64) -> Option<&Mark> {
 }
 
 /// How kept marks are taken onto a page: `whole` when no block past the
-/// page's comes, and the page's width, which says whose distances were
-/// kept against the heights its blocks have.
+/// page's comes, the page's width, which says whose distances were kept
+/// against the heights its blocks have, and the width the reader opened
+/// at, which a mark kept without its own is taken as measured at.
 #[derive(Clone, Copy, Debug)]
 pub struct Taking {
     pub whole: bool,
     pub width_pt: f64,
+    pub opened_pt: f64,
 }
 
-/// Whether a mark's distance was measured on a page `width_pt` wide, where
-/// its block stands as tall as it did for it.
-fn measured_at(mark: &Mark, width_pt: f64) -> bool {
-    mark.width_pt
+/// Whether a landed mark's distance was measured, or is taken to be, on a
+/// page `width_pt` wide, where its block stands as tall as it did for it.
+fn measured_at(one: &Landed, width_pt: f64) -> bool {
+    one.width_pt()
         .is_some_and(|kept| (kept - width_pt).abs() < 0.01)
 }
 
@@ -582,9 +637,10 @@ fn measured_at(mark: &Mark, width_pt: f64) -> bool {
 /// as wide as its distance was measured on it takes the height its block
 /// has, once that's known; a page at another width would give it a height
 /// its distance never had. One kept without its width, before marks said
-/// it or by an older reader, was measured as far as can be told on the
-/// page it first lands on, since the window opens as wide as it closed;
-/// it would otherwise never learn its block's height.
+/// it or by an older reader, is taken as measured at the width the reader
+/// opened at, since the window opens as wide as it closed, or it would
+/// never learn its block's height; that guess and the height it learns
+/// by it stay in memory, and are never written back as measured.
 pub fn take_kept(
     kept: &mut Vec<Mark>,
     marks: &mut HashMap<char, f64>,
@@ -598,18 +654,11 @@ pub fn take_kept(
         };
         if let std::collections::hash_map::Entry::Vacant(mark) = marks.entry(one.letter) {
             mark.insert(pt);
-            let taken = Mark {
-                width_pt: one.width_pt.or(Some(taking.width_pt)),
-                ..one.clone()
-            };
-            let block_pt = taken.block_pt.or_else(|| {
-                height_of(starts, taken.block).filter(|_| measured_at(&taken, taking.width_pt))
-            });
-            landed.push(Landed {
-                kept: Mark { block_pt, ..taken },
-                pt,
-                on_line: false,
-            });
+            let mut taken = Landed::of(one.clone(), pt, taking.opened_pt);
+            if wants_height(&taken, taking.width_pt) {
+                taken.learns(height_of(starts, one.block));
+            }
+            landed.push(taken);
         }
         false
     });
@@ -620,10 +669,12 @@ pub fn take_kept(
 /// leaves every other as it was kept. One in the first screen's last block
 /// lands before the block after it is set, so it learns its height only
 /// from the whole page; without it, a resize would land it unscaled for
-/// good. Only one measured on a page as wide, `width_pt`, learns it.
+/// good. Only one measured on a page as wide, `width_pt`, learns it, or
+/// taken to be (`Guess`), which learns it in memory alone.
 pub fn heights_known(landed: &mut [Landed], starts: &[(usize, f64)], width_pt: f64) {
     for one in landed.iter_mut().filter(|one| wants_height(one, width_pt)) {
-        one.kept.block_pt = height_of(starts, one.kept.block);
+        let block_pt = height_of(starts, one.kept.block);
+        one.learns(block_pt);
     }
 }
 
@@ -634,9 +685,10 @@ pub fn heights_wanted(landed: &[Landed], width_pt: f64) -> bool {
     landed.iter().any(|one| wants_height(one, width_pt))
 }
 
-/// Whether `one`, kept without its block's height, was measured at `width_pt`.
+/// Whether `one`, kept without its block's height, was measured at
+/// `width_pt`, or is taken to be.
 fn wants_height(one: &Landed, width_pt: f64) -> bool {
-    one.kept.block_pt.is_none() && measured_at(&one.kept, width_pt)
+    one.block_pt().is_none() && measured_at(one, width_pt)
 }
 
 /// Moves `marks` for the page set again, its blocks starting at `after`:

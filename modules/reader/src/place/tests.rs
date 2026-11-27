@@ -493,6 +493,7 @@ fn a_kept_mark_goes_on_a_line_of_its_block_and_is_kept_as_read_until_he_moves_it
         kept: kept(letter, block, into_pt),
         pt,
         on_line: false,
+        guess: None,
     };
     // Block 1's lines, a top and a baseline 14 pt below it; block 3 has
     // none read yet.
@@ -548,7 +549,8 @@ fn a_kept_mark_goes_on_a_line_of_its_block_and_is_kept_as_read_until_he_moves_it
 #[test]
 fn kept_marks_are_taken_as_read_and_one_kept_without_a_height_takes_its_blocks() {
     // Each was measured on a page 400 points wide, and f, kept before a
-    // mark said how wide, is taken as measured on the page it lands on.
+    // mark said how wide, is taken as measured at the width the reader
+    // opened at, 400 too.
     let kept = |letter, block, into_pt, block_pt| Mark {
         letter,
         block,
@@ -575,6 +577,7 @@ fn kept_marks_are_taken_as_read_and_one_kept_without_a_height_takes_its_blocks()
     let first = Taking {
         whole: false,
         width_pt: 400.0,
+        opened_pt: 400.0,
     };
     take_kept(&mut waiting, &mut marks, &mut landed, &starts, first);
     let letters: Vec<char> = waiting.iter().map(|one| one.letter).collect();
@@ -592,7 +595,7 @@ fn kept_marks_are_taken_as_read_and_one_kept_without_a_height_takes_its_blocks()
     );
     let heights: Vec<(char, Option<f64>)> = landed
         .iter()
-        .map(|one| (one.kept.letter, one.kept.block_pt))
+        .map(|one| (one.kept.letter, one.block_pt()))
         .collect();
     assert_eq!(
         heights,
@@ -605,9 +608,11 @@ fn kept_marks_are_taken_as_read_and_one_kept_without_a_height_takes_its_blocks()
         "b and f take their block's height here; c's block's isn't known on the first screen"
     );
     assert_eq!(
-        landed.last().and_then(|one| one.kept.width_pt),
-        Some(400.0),
-        "f is kept as measured at the width it landed at"
+        landed
+            .last()
+            .map(|one| (one.kept.width_pt, one.kept.block_pt)),
+        Some((None, None)),
+        "f is written back as read, with no width or height it was never measured at"
     );
     // The whole page, at another width, says nothing of c's block, so
     // none is walked for it.
@@ -632,7 +637,7 @@ fn kept_marks_are_taken_as_read_and_one_kept_without_a_height_takes_its_blocks()
     heights_known(&mut landed, &whole, 400.0);
     let heights: Vec<(char, Option<f64>)> = landed
         .iter()
-        .map(|one| (one.kept.letter, one.kept.block_pt))
+        .map(|one| (one.kept.letter, one.block_pt()))
         .collect();
     assert_eq!(
         heights,
@@ -670,6 +675,7 @@ fn a_page_at_another_width_lends_no_kept_mark_its_blocks_height() {
     let wider = Taking {
         whole: true,
         width_pt: 500.0,
+        opened_pt: 500.0,
     };
     take_kept(
         &mut waiting,
@@ -692,6 +698,53 @@ fn a_page_at_another_width_lends_no_kept_mark_its_blocks_height() {
 }
 
 #[test]
+fn a_mark_kept_without_its_width_writes_back_none_it_was_never_measured_at() {
+    // f, kept by an older reader, first lands on a page 500 points wide,
+    // the window resized since the reader opened at 400.
+    let f = Mark {
+        letter: 'f',
+        block: 1,
+        into_pt: 20.0,
+        block_pt: None,
+        width_pt: None,
+        said: Said::default(),
+    };
+    let (mut waiting, mut marks, mut landed) = (vec![f.clone()], HashMap::new(), Vec::new());
+    let resized = Taking {
+        whole: true,
+        width_pt: 500.0,
+        opened_pt: 400.0,
+    };
+    let wider = [(0, 36.0), (1, 120.0), (2, 280.0)];
+    take_kept(&mut waiting, &mut marks, &mut landed, &wider, resized);
+    assert_eq!(
+        landed.first().and_then(Landed::block_pt),
+        None,
+        "f takes no height at a width it wasn't opened at"
+    );
+    assert_eq!(
+        as_read(&landed, 'f', 140.0),
+        Some(&f),
+        "f is written back without the width it landed at"
+    );
+    // Back at the width the reader opened at, it's taken as measured
+    // there and scales with its block from then on, but only in memory.
+    let opened = [(0, 36.0), (1, 120.0), (2, 200.0)];
+    heights_known(&mut landed, &opened, 400.0);
+    assert_eq!(landed.first().and_then(Landed::block_pt), Some(80.0));
+    assert_eq!(
+        landed_again(&mut landed, &marks, &wider),
+        vec![('f', 160.0)],
+        "f lands as far through its block, 40 pt into one 160 tall"
+    );
+    assert_eq!(
+        landed.first().map(|one| &one.kept),
+        Some(&f),
+        "f is still written back as read, with no width and no height"
+    );
+}
+
+#[test]
 fn a_page_set_again_lands_kept_marks_from_what_was_kept_unless_edited() {
     let kept = Mark {
         letter: 'a',
@@ -705,6 +758,7 @@ fn a_page_set_again_lands_kept_marks_from_what_was_kept_unless_edited() {
         kept,
         pt: 164.0,
         on_line: true,
+        guess: None,
     }];
     let mut marks = HashMap::from([('a', 164.0), ('z', 300.0)]);
     let after = [(0, 36.0), (1, 120.0), (2, 280.0)];
@@ -744,6 +798,7 @@ fn a_mark_taken_on_a_page_an_edit_set_lands_once_and_never_again_by_its_kept_blo
     let whole = Taking {
         whole: true,
         width_pt: 400.0,
+        opened_pt: 400.0,
     };
     let set = [(0, 36.0), (1, 120.0), (2, 200.0), (3, 260.0), (4, 300.0)];
     let resized = [(0, 36.0), (1, 120.0), (2, 200.0), (3, 400.0), (4, 440.0)];

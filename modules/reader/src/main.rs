@@ -215,6 +215,10 @@ struct App {
     /// How wide the page is set for the window: what shows, or what the
     /// reloader was last asked for when the window was resized.
     width: page::Width,
+    /// How wide the page the reader opened at was, in points: as wide as
+    /// the window last closed, so what a kept mark without its width is
+    /// taken as measured at.
+    opened_pt: f64,
     words_to: channel::Sender<(u32, Vec<text::Line>)>,
     /// A search being typed after / or ?.
     typing: Option<search::Typing>,

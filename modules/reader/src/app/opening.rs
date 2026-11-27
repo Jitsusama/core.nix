@@ -82,6 +82,7 @@ impl App {
             next_version: 1,
             reloaded: false,
             width: opening.width,
+            opened_pt: opening.width.page_pt(),
             words_to: senders.words_to,
             typing: None,
             searched: None,

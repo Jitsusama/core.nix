@@ -371,8 +371,10 @@ impl App {
     /// Takes back the kept marks whose blocks the page has, `whole` when
     /// no block past the page's comes. Only a page set as wide as a mark's
     /// distance was measured on gives one kept without its block's height
-    /// that height: one at another would pair it with a height it never
-    /// had, and closing would keep that.
+    /// that height, which closing keeps: one at another would pair it with
+    /// a height it never had. A mark kept without its width is taken as
+    /// measured at the width the reader opened at, and learns its block's
+    /// height there only in memory, so closing writes it back as read.
     fn take_kept_marks_as(&mut self, whole: bool) {
         let width_pt = self.painter.width_pt();
         if self.kept_marks.is_empty() && !place::heights_wanted(&self.landed, width_pt) {
@@ -385,7 +387,11 @@ impl App {
             &mut self.marks,
             &mut self.landed,
             &starts,
-            place::Taking { whole, width_pt },
+            place::Taking {
+                whole,
+                width_pt,
+                opened_pt: self.opened_pt,
+            },
         );
         self.marks_on_lines();
     }
