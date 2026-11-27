@@ -7328,8 +7328,8 @@
     and at once on stepping in
   '';
   wifi-names-a-network-without-a-country = ''
-    core's kernel, which every machine on it builds, records the name of the network a card
-    joined even when its access point names no country, so networkd matches that network's file
+    core's kernel, with its own patches, records the name of the network a card joined even
+    when its access point names no country, so networkd matches that network's file
   '';
   wifi-sessions-survive-fragmented-memory = ''
     the XPS 14's kernel lets Wi-Fi's block-ack reorder buffers come from vmalloc when memory is
