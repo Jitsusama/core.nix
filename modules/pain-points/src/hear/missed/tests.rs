@@ -14,6 +14,7 @@ const OFFSET: i64 = -5 * 3600;
 const NOBODY: Owning = Owning {
     lines: Vec::new(),
     keeper: None,
+    apart: Vec::new(),
 };
 
 fn sent(entry: &str, words: &str) -> Heard {
@@ -120,6 +121,27 @@ fn a_pain_sent_is_written_once_beside_the_keepers_lines() {
 }
 
 #[test]
+fn a_pain_sent_to_a_cell_kept_apart_is_not_written() {
+    let ledger = folder("apart").join("misses.jsonl");
+    let errand = sent("e1", "the budget sheet is wrong");
+    let work = Heard {
+        to: Some("GHI789".into()),
+        ..sent("e2", "the bar is the wrong colour")
+    };
+    let owning = Owning {
+        apart: vec!["abc123".into()],
+        ..NOBODY
+    };
+    write(&ledger, &[errand, work], &owning, OFFSET, 0).expect("written");
+    let lines = read(&ledger);
+    assert_eq!(
+        lines.iter().map(|l| l["pain"].clone()).collect::<Vec<_>>(),
+        [json!("s/e2")],
+        "a pain sent to a cell kept apart was written, or another wasn't"
+    );
+}
+
+#[test]
 fn a_pain_closed_since_gains_its_check_and_a_carried_one_says_so() {
     let ledger = folder("checked").join("misses.jsonl");
     let kept = [
@@ -189,7 +211,8 @@ fn only_a_named_owner_the_routes_allow_owns_a_miss() {
         owning(&ledgers, &routes(" ORCH01")),
         Owning {
             lines: lines(&[("d", "Y2YBTS")]),
-            keeper: Some("ORCH01".into())
+            keeper: Some("ORCH01".into()),
+            apart: Vec::new(),
         },
         "a blank or refused owner was kept, or a named one or the keeper wasn't trimmed"
     );
@@ -211,6 +234,7 @@ fn a_pain_carried_before_it_was_sent_is_written_to_the_owner_its_carrying_line_n
             ("the clock is out", "KP0L6A"),
         ]),
         keeper: None,
+        apart: Vec::new(),
     };
     let mut early = carried_unsent("e0", "the launcher is slow to open again");
     early.at = AT - 1;

@@ -55,8 +55,11 @@ pub struct Routes {
     #[serde(default)]
     pub told: Vec<String>,
     /// Cells whose work lies outside the ledgers, as his own errands do:
-    /// the keeper hears nothing of a pain sent to one, since its owner
-    /// carries it and the asks and misses ledgers don't hold that work.
+    /// a pain said in one goes to that cell alone, never the fallback
+    /// nor the keeper, and isn't written into the misses ledger, since
+    /// its owner carries it and the asks and misses ledgers don't hold
+    /// that work. A build from before this key refuses the file whole,
+    /// so take `apart` out of routes.json before rolling back past it.
     #[serde(default)]
     pub apart: Vec<String>,
 }
@@ -168,6 +171,8 @@ pub fn cells(printed: &str) -> BTreeMap<String, Cell> {
 
 /// The address a pain said in `session` goes to, or none for now: its own
 /// live cell, else the fallback when the session ended or is the void.
+/// A pain said in a cell kept apart goes to that cell alone, so once its
+/// session has ended it goes to no one.
 pub fn owner(
     session: &str,
     void: bool,
@@ -179,9 +184,22 @@ pub fn owner(
     let cell = cells.get(session)?;
     if cell.live && !void && !routes.refuses(&cell.address) {
         Some(cell.address.clone())
+    } else if apart(session, void, cells, routes) {
+        None
     } else {
         routes.fallback.clone()
     }
+}
+
+/// Whether a pain said in `session` is kept apart from the keeper: one
+/// said in a cell the routes keep apart, whatever its session is now,
+/// since the cell's work didn't change when its session ended. The
+/// void's pains are never kept apart.
+pub fn apart(session: &str, void: bool, cells: &BTreeMap<String, Cell>, routes: &Routes) -> bool {
+    !void
+        && cells
+            .get(session)
+            .is_some_and(|cell| routes.keeps_apart(&cell.address))
 }
 
 /// His local time of day for a moment, as HH:MM.
@@ -567,6 +585,42 @@ mod tests {
             "the fallback, though named apart"
         );
         assert!(!routes.keeps_apart("GHI789"), "a cell not named apart");
+    }
+
+    #[test]
+    fn a_pain_in_a_cell_kept_apart_goes_to_it_alone_and_once_it_ends_to_no_one() {
+        let cells = cells(SESSIONS);
+        let routes = Routes {
+            apart: vec!["abc123".into(), "def456".into()],
+            ..routes()
+        };
+        assert_eq!(
+            owner("s-live", false, &cells, &routes),
+            Some("ABC123".into()),
+            "a live cell kept apart isn't sent its own pain"
+        );
+        assert_eq!(
+            owner("s-ended", false, &cells, &routes),
+            None,
+            "an ended cell kept apart had its pain sent to the fallback"
+        );
+        assert!(
+            apart("s-ended", false, &cells, &routes),
+            "an ended cell's pain is no longer kept apart"
+        );
+        assert!(
+            !apart("s-live", true, &cells, &routes),
+            "a pain in the void was kept apart"
+        );
+        assert!(
+            !apart("s-idle", false, &cells, &routes),
+            "a cell not named apart is kept apart"
+        );
+        assert_eq!(
+            owner("s-live", true, &cells, &routes),
+            Some("ORCH01".into()),
+            "the void's pains go to the fallback, though said in a cell kept apart"
+        );
     }
 
     #[test]

@@ -73,6 +73,9 @@ pub fn write(
         .iter()
         .filter(|h| !h.void && !stalled::is(h))
         .filter_map(|h| Some((h, owner(h, owning, from_ms)?)))
+        // A cell kept apart does work the ledger doesn't hold, as his own
+        // errands, so a pain sent to one asks no one for a test.
+        .filter(|(_, owner)| !owning.apart.iter().any(|a| a.eq_ignore_ascii_case(owner)))
         .collect();
     if owed.is_empty() {
         return Ok(());
@@ -111,11 +114,13 @@ pub fn write(
 
 /// Whom a pain carried unsent may be owed to: the ledger lines naming an
 /// owner a miss may be written to, and the ledgers' keeper that carried
-/// it, for one whose carrying lines name none.
+/// it, for one whose carrying lines name none; and the cells kept apart,
+/// whose pains the ledger never holds.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Owning {
     pub lines: Vec<Line>,
     pub keeper: Option<String>,
+    pub apart: Vec<String>,
 }
 
 /// Who may own a pain carried unsent, by `ledgers` and `routes`: each
@@ -135,9 +140,16 @@ pub fn owning(ledgers: &[Line], routes: &Routes) -> Owning {
         })
         .collect();
     let keeper = routes.ledgers.as_deref().map(str::trim);
+    let apart = routes
+        .apart
+        .iter()
+        .filter(|a| routes.keeps_apart(a))
+        .cloned()
+        .collect();
     Owning {
         lines,
         keeper: keeper.filter(|k| allowed(k)).map(str::to_owned),
+        apart,
     }
 }
 

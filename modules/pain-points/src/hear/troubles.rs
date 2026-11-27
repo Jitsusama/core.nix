@@ -64,7 +64,8 @@ pub fn troubles(
     }
     if given_up > 0 {
         troubles.push(format!(
-            "gave up on {given_up} pains the node never took, after {SEND_TRIES} sends each"
+            "gave up on {given_up} pains the node never took after {SEND_TRIES} sends each, \
+             or no live cell could take in time"
         ));
     }
     if routes.sends() && no_cells {

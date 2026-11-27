@@ -61,8 +61,17 @@ const HOUR_MS: i64 = 3_600_000;
 
 /// A pain first heard longer than this after he said it goes to the
 /// ledgers' keeper alone: its cell has moved on, and a first run over a
-/// day of logs would otherwise send every cell a day of old pains.
+/// day of logs would otherwise send every cell a day of old pains. One
+/// said in a cell kept apart, which has no keeper, has `APART_MS`.
 pub const FRESH_MS: i64 = 2 * HOUR_MS;
+
+/// How long after he said it a pain in a cell kept apart from the keeper
+/// is still sent to that cell, since no keeper carries it after: longer,
+/// it's given up and said so. Bounded, so a first run, or a listener
+/// back after hours down, sends no such cell a day of old pains. A stall
+/// keeps `FRESH_MS`, as anywhere else, since one heard late has nothing
+/// for anyone to carry.
+pub const APART_MS: i64 = 6 * HOUR_MS;
 
 /// How long a quick question of the machine, its time zone, may take.
 const ASK_AT_MOST: Duration = Duration::from_secs(5);
@@ -437,9 +446,7 @@ pub fn hear_putting(
         .flatten();
     let mut hour = hour_of(&kept, ears.at);
     hour.unclosed = stood.unclosed;
-    let apart = |h: &Heard| {
-        route::owner(&h.session, h.void, &cells, &routes).is_some_and(|o| routes.keeps_apart(&o))
-    };
+    let apart = |h: &Heard| route::apart(&h.session, h.void, &cells, &routes);
     let (waiting, given_up) = unsent(&kept, ears.at, &apart);
     hour.cellless_since = cellless_since(&ears.state, ears.at, cells.is_empty() && waiting);
     hour.troubles = troubles(
@@ -559,8 +566,9 @@ fn answered(kept: &mut [Heard], session: &str, (from, at): (i64, i64), by: &str)
 /// Whether any pain of the day waits to be sent, since a node naming no
 /// sessions is a trouble only then, and how many were given up on: their
 /// owner's tries spent while they were fresh, or the keeper's after them.
-/// One whose cell is kept `apart` from the keeper is given up only once
-/// its owner's tries through the day are spent, as it's tried that long.
+/// One said in a cell kept `apart` from the keeper has no keeper after
+/// its owner, so it's given up once its owner's tries are spent or its
+/// time to be sent has passed.
 fn unsent(kept: &[Heard], at: i64, apart: &dyn Fn(&Heard) -> bool) -> (bool, usize) {
     let unsent = || {
         kept.iter()
@@ -569,11 +577,26 @@ fn unsent(kept: &[Heard], at: i64, apart: &dyn Fn(&Heard) -> bool) -> (bool, usi
     let waiting = unsent().any(|h| !h.carried);
     let given_up = unsent()
         .filter(|h| {
-            h.tries >= 2 * SEND_TRIES
-                || (h.tries >= SEND_TRIES && h.at >= at - FRESH_MS && !apart(h))
+            if apart(h) {
+                let aged = !h.carried && !stalled::is(h) && h.at < at - fresh_for(h, true);
+                h.tries >= SEND_TRIES || aged
+            } else {
+                h.tries >= 2 * SEND_TRIES || (h.tries >= SEND_TRIES && h.at >= at - FRESH_MS)
+            }
         })
         .count();
     (waiting, given_up)
+}
+
+/// How long after he said it `pain` is still sent to its own cell: while
+/// fresh, or for a pain said in a cell kept `apart`, `APART_MS`, as no
+/// keeper carries it after. A stall is sent only while fresh either way.
+fn fresh_for(pain: &Heard, apart: bool) -> i64 {
+    if apart && !stalled::is(pain) {
+        APART_MS
+    } else {
+        FRESH_MS
+    }
 }
 
 /// Points a pain heard again in a carried-on log at the session carrying
@@ -615,7 +638,9 @@ fn keep_stalls(
 
 /// Sends each pain of the last two hours not yet sent, nor carried, to its
 /// owner, one finding a cell, worst first, and gives the keys of those
-/// that went.
+/// that went. A pain said in a cell kept apart is sent for `APART_MS`.
+/// Each is tried `SEND_TRIES` times at most, so a send that went but read
+/// as failed asks no cell the same question more than that.
 fn route_waiting(
     ears: &Ears,
     routes: &Routes,
@@ -637,15 +662,8 @@ fn route_waiting(
         let Some(owner) = route::owner(&pain.session, pain.void, cells, routes) else {
             continue;
         };
-        // A cell kept apart from the keeper has no keeper to carry its
-        // pain once it's stale, so its owner is tried through the day and
-        // as often as the keeper would be, rather than it going to nobody.
-        let (tries, fresh) = if routes.keeps_apart(&owner) {
-            (2 * SEND_TRIES, DAY_MS)
-        } else {
-            (SEND_TRIES, FRESH_MS)
-        };
-        if pain.tries < tries && pain.at >= ears.at - fresh {
+        let fresh = fresh_for(pain, route::apart(&pain.session, pain.void, cells, routes));
+        if pain.tries < SEND_TRIES && pain.at >= ears.at - fresh {
             by_owner.entry(owner).or_default().push(n);
         }
     }
@@ -700,8 +718,8 @@ fn note_for_keeper(
             // would for its owner.
             !pain.carried
                 && !stalled::is(pain)
-                && route::owner(&pain.session, pain.void, cells, routes)
-                    .is_some_and(|owner| !routes.keeps_apart(&owner))
+                && !route::apart(&pain.session, pain.void, cells, routes)
+                && route::owner(&pain.session, pain.void, cells, routes).is_some()
                 && pain.routed_at.is_none()
                 && pain.tries < 2 * SEND_TRIES
                 && pain.at >= ears.at - DAY_MS
@@ -717,8 +735,10 @@ fn note_for_keeper(
                 h.to.as_ref()
                     .is_some_and(|to| to.eq_ignore_ascii_case(keeper));
             let waits = owned.contains(&h.key) || h.unnoted_since.is_some();
-            // Nor of what went to a cell whose work the ledgers don't hold.
-            let apart = h.to.as_deref().is_some_and(|to| routes.keeps_apart(to));
+            // Nor of what was said in, or went to, a cell whose work the
+            // ledgers don't hold.
+            let apart = route::apart(&h.session, h.void, cells, routes)
+                || h.to.as_deref().is_some_and(|to| routes.keeps_apart(to));
             (waits && !stalled::is(h) && !to_keeper && !apart) || late.contains(n)
         })
         // A late one went to no owner, so the keeper is asked of it,
