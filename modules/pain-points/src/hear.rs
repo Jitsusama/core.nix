@@ -378,6 +378,25 @@ pub fn hear(
     })
 }
 
+/// The lines of the keeper's ledgers, with each pain in `kept` they carry
+/// marked so. A pain the keeper has carried since it was heard is closed,
+/// though it was open on an earlier run, and one still open is looked for
+/// however old, as the keeper may carry it any day.
+fn ledgers_carrying(ears: &Ears, kept: &mut [Heard]) -> Vec<heard::Line> {
+    let ledgers: Vec<heard::Line> = ears
+        .ledgers
+        .iter()
+        .flat_map(|path| heard::ledger(&fs::read_to_string(path).unwrap_or_default()))
+        .collect();
+    for h in kept {
+        let looked = h.at >= ears.at - DAY_MS || h.closed_by.is_none();
+        if !h.carried && !stalled::is(h) && looked {
+            h.carried = heard::carried(&h.words, &ledgers);
+        }
+    }
+    ledgers
+}
+
 /// Hears what's new, sends what no one has, and says the hour. `send`
 /// takes an address, a finding's text and how it's put, and says how it
 /// came out.
@@ -400,22 +419,8 @@ pub fn hear_putting(
         .unwrap_or_default();
     let heard_at = ears.state.join("heard.jsonl");
     let mut kept = still_kept(&heard_at, ears.at);
-    let ledgers: Vec<heard::Line> = ears
-        .ledgers
-        .iter()
-        .flat_map(|path| heard::ledger(&fs::read_to_string(path).unwrap_or_default()))
-        .collect();
+    let ledgers = ledgers_carrying(ears, &mut kept);
     let cells = route::cells(cells_printed);
-    // A pain the keeper has carried since it was heard is closed, though
-    // it was open on an earlier run, and one still open is looked for
-    // however old, as the keeper may carry it any day.
-    for h in &mut kept {
-        let looked = h.at >= ears.at - DAY_MS || h.closed_by.is_none();
-        if !h.carried && !stalled::is(h) && looked {
-            h.carried = heard::carried(&h.words, &ledgers);
-        }
-    }
-
     hear_logs(
         ears,
         &mut following,
@@ -687,27 +692,16 @@ struct Through {
     words: Vec<String>,
 }
 
-/// Sends each pain of the last two hours not yet sent, nor carried, to its
-/// owner, one finding a cell, worst first, and gives the keys of those
-/// that went, with why its needs couldn't be kept, where some couldn't.
-/// A pain no
-/// live cell of its own takes goes to the least-held live holder of its
-/// subject that its hub names, kept as a need the way the harness keeps
-/// every need put to a hub, and only with no hub to take it to the
-/// fallback.
-fn route_waiting(
+/// The owner of each pain of the last two hours not yet sent, nor
+/// carried, nor out of tries: its own live cell, else the least-held live
+/// holder of its subject, else the fallback. A pain said in a session the
+/// mycelium doesn't know has none yet.
+fn owners_for(
     ears: &Ears,
     routes: &Routes,
     cells: &BTreeMap<String, Cell>,
-    kept: &mut [Heard],
-    send: &mut dyn FnMut(&str, &str) -> Sent,
-    heard_at: &Path,
-) -> (Vec<String>, Option<String>) {
-    // With no one named to send as, or no cell named never to send to,
-    // nothing is sent: a listener nobody set up hears and counts alone.
-    if !routes.sends() {
-        return (Vec::new(), None);
-    }
+    kept: &[Heard],
+) -> Owners {
     let live: BTreeSet<String> = cells
         .values()
         .filter(|cell| cell.live)
@@ -769,6 +763,48 @@ fn route_waiting(
             by_owner.entry(owner).or_default().push(n);
         }
     }
+    Owners {
+        live,
+        by_owner,
+        through,
+    }
+}
+
+/// Who each pain waiting to be sent goes to, as `route_waiting` sends it.
+struct Owners {
+    /// The live cells, by address.
+    live: BTreeSet<String>,
+    /// Each owner's pains, by their place in what's kept.
+    by_owner: BTreeMap<String, Vec<usize>>,
+    /// The hub each pain put through one went by, by its place.
+    through: BTreeMap<usize, Through>,
+}
+
+/// Sends each pain of the last two hours not yet sent, nor carried, to its
+/// owner, one finding a cell, worst first, and gives the keys of those
+/// that went, with why its needs couldn't be kept, where some couldn't.
+/// A pain no live cell of its own takes goes to the least-held live
+/// holder of its subject that its hub names, kept as a need the way the
+/// harness keeps every need put to a hub, and only with no hub to take it
+/// to the fallback.
+fn route_waiting(
+    ears: &Ears,
+    routes: &Routes,
+    cells: &BTreeMap<String, Cell>,
+    kept: &mut [Heard],
+    send: &mut dyn FnMut(&str, &str) -> Sent,
+    heard_at: &Path,
+) -> (Vec<String>, Option<String>) {
+    // With no one named to send as, or no cell named never to send to,
+    // nothing is sent: a listener nobody set up hears and counts alone.
+    if !routes.sends() {
+        return (Vec::new(), None);
+    }
+    let Owners {
+        live,
+        by_owner,
+        through,
+    } = owners_for(ears, routes, cells, kept);
     let mut owned = Vec::new();
     let (mut put, mut unkept) = (0, None);
     for (owner, mut pains) in by_owner {
