@@ -199,7 +199,8 @@ const INTERJECTIONS: [&str; 24] = [
 /// A sentence of lowered text: its words, and for each word whether its
 /// clause ends after it, whether it opens a line that opens a sentence,
 /// whether the sentence exclaims it (its clause the last, before a run
-/// of marks holding a "!"), and whether it's said in a sentence that
+/// of marks holding a "!", or one before a clause of a lone exclaimed
+/// interjection, as "and shit... ugh!" is), and whether it's said in a sentence that
 /// asks, with the parts ease and giving up are read in. Every reading of
 /// a message goes through one split into these, so no two of them
 /// disagree on where a sentence ends or what it asks.
@@ -395,12 +396,12 @@ fn sentence(piece: &str) -> Sentence<'_> {
         said.asked.extend(std::iter::repeat_n(asks, words.len()));
         said.told.push((asks, words));
     }
-    let exclaims = ends_in(piece, &EXCLAIMS);
-    let last = clause_of.last().copied();
-    said.exclaimed = clause_of
-        .iter()
-        .map(|&n| exclaims && Some(n) == last)
-        .collect();
+    let from = if ends_in(piece, &EXCLAIMS) {
+        exclaimed_from(&said.words, &clause_of)
+    } else {
+        said.words.len()
+    };
+    said.exclaimed = (0..said.words.len()).map(|at| at >= from).collect();
     // Its clauses and its parts split it only at marks no word holds, so
     // each reading has one entry for each word, and none is read off
     // another word's; a swear past the end of one is read as told.
@@ -418,6 +419,26 @@ fn sentence(piece: &str) -> Sentence<'_> {
         );
     }
     said
+}
+
+/// Where the words a sentence's "!" exclaims start: its last clause's
+/// first word, or, while that clause is a lone interjection, as "ugh!"
+/// is, the one before it's, so "it wiped my branch and shit... ugh!"
+/// exclaims its filler. Each clause is read back over once.
+fn exclaimed_from(words: &[&str], clause_of: &[usize]) -> usize {
+    let mut end = words.len();
+    let mut from = end;
+    while let Some(&clause) = clause_of[..end].last() {
+        from = clause_of[..end]
+            .iter()
+            .rposition(|&other| other != clause)
+            .map_or(0, |before| before + 1);
+        if end - from != 1 || !INTERJECTIONS.contains(&words[from]) {
+            break;
+        }
+        end = from;
+    }
+    from
 }
 
 /// The sentences of lowered text, split after stops; no mark of
@@ -880,6 +901,9 @@ mod tests {
             "it wiped my branch and shit?!",
             "it wiped my branch and shit\u{ff01}",
             "it wiped my branch and shit? !",
+            // A lone interjection exclaimed after it exclaims it too.
+            "it wiped my branch and shit... ugh!",
+            "it wiped my branch and shit, ugh, oh!",
             "it wiped my notes and wtf",
             "the costs and shit like this hit the page",
             "add the costs and damn",
