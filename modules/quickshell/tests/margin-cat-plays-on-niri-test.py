@@ -155,18 +155,22 @@ def ask(shell: Shell, play: str) -> None:
 def leaves_then_asks(shell: Shell, play: str) -> int:
     """Press a key, and once the shell has heard it, ask for `play`, giving the mark before.
 
-    Only an idle cat draws a play that moves, so the ask waits until the shell's level isn't
-    idle. Asked before the key was heard, the scene the ask draws could come up first, spending
-    the ask on a play the key then cut short, and the yarn and the puppy rest for minutes once
-    begun: on a lender running 30 builds, no yarn came in 20 s (2026-11-26).
+    The ask waits until the shell's level is typing, which only a key heard makes it: idle or
+    paused, the cat draws plays the key would cut short, and typing it draws none. Asked before
+    the key was heard, the scene the ask draws could come up first, spending the ask on a play
+    the key then cut short, and the yarn and the puppy rest for minutes once begun: on a lender
+    running 12 builds, no yarn came in 20 s (2026-11-26). A level held still fails here, since
+    the ask would be refused.
     """
     shell.send_key("F24")
     level = f"qs -p {shell.folder} ipc call cat level"
     deadline = time.monotonic() + HEARS.total_seconds()
-    while shell.as_account(level).strip() == "idle":
-        assert time.monotonic() < deadline, f"the shell never heard the key in {HEARS}"
+    while (now := shell.as_account(level).strip()) != "typing":
+        assert time.monotonic() < deadline, (
+            f"the shell never heard the key in {HEARS}, its cat left {now}:\n{shell.tail()}"
+        )
         # niri says he's no longer idle on its own time, with no word the test could wait on.
-        time.sleep(0.1)
+        time.sleep(POLL)
     since = shell.mark()
     ask(shell, play)
     return since
