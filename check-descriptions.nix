@@ -1121,6 +1121,10 @@
   disk-guard-passes-clippy = ''
     clippy finds nothing in the disk guard or its scenarios
   '';
+  disk-guard-runs-its-scenarios = ''
+    the disk guard builds and passes every scenario, from what it decides to collect and keep to
+    its command line fitting a narrow terminal, as the package runs them when it builds
+  '';
   disk-guard-stays-in-the-background = ''
     the disk guard yields to the account, and a command overrunning its memory never stops it
   '';

@@ -173,6 +173,10 @@
         touch $out
       '';
 
+  # The guard runs its scenarios as it builds, so the package is their check,
+  # named for them as repos-reads-the-disk is for repos'.
+  disk-guard-runs-its-scenarios = pkgs.callPackage ./package.nix { };
+
   # clippy finds nothing in the guard, its scenarios included.
   disk-guard-passes-clippy = passesClippy "disk-guard-passes-clippy" (
     pkgs.callPackage ./package.nix { }

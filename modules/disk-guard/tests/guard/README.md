@@ -1,7 +1,8 @@
 # The Disk Guard's Scenarios
 
 The guard's tests against the built program, one binary so they build once,
-as [`main.rs`][1] lists them.
+as [`main.rs`][1] lists them. Cargo runs them as the guard builds, in
+`disk-guard-runs-its-scenarios`.
 
 Many entries because each file holds the scenarios of the source module of
 the same name, so a change to `src/caches.rs` is proven in `caches.rs` here.
