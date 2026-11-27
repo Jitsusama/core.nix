@@ -702,13 +702,14 @@ mod tests {
 
     #[test]
     fn in_a_narrow_terminal_a_long_line_hangs_under_its_mark() {
-        // A device names itself, as long as its path, so a line can pass
-        // a narrow terminal; it wraps there, each later line under the
-        // first's words rather than under the mark.
+        // A device is named by its address and driver, as the walk writes
+        // it, and its line passes a narrow terminal. It wraps there, each
+        // later line under the first's words rather than under the mark.
+        // The first line's words with the next one come to 40 cells, so a
+        // wrap that forgot the mark's 2 would draw other lines.
         let root = OsStr::new("/nonexistent");
-        let device = "The USB controller at /sys/devices/pci0000:00/0000:00:14.0";
         let look = Look {
-            now: [format!("power\t{device}")].into(),
+            now: ["power\t0000:00:0a.0 (intel_vsec)".to_owned()].into(),
             broke: Vec::new(),
             fixed: Vec::new(),
             sleeps: Vec::new(),
@@ -716,23 +717,20 @@ mod tests {
         };
         let pen = Pen::plain();
         let caution = pen.marked("caution", "warning");
-        let said = format!("{device} failed a power change and won't wake until the next boot");
         let text = answer_text(&look, root, &pen, Room::Cells(40));
-        let lines: Vec<&str> = text.lines().collect();
-        assert!(
-            lines.len() > 1
-                && lines[0].starts_with(&caution)
-                && lines.iter().all(|line| line.chars().count() <= 40)
-                && lines[1..]
-                    .iter()
-                    .all(|line| line.starts_with("  ") && !line[2..].starts_with(' ')),
-            "a long line passed 40 cells, or didn't hang under its mark:\n{text}"
-        );
-        let words: Vec<&str> = text[caution.len()..].split_whitespace().collect();
         assert_eq!(
-            words,
-            said.split_whitespace().collect::<Vec<_>>(),
-            "a word was lost or changed in the wrap:\n{text}"
+            layout::overrun(&text, Room::Cells(40)),
+            None,
+            "a line passed 40 cells:\n{text}"
+        );
+        assert_eq!(
+            text.lines().collect::<Vec<_>>(),
+            [
+                format!("{caution}0000:00:0a.0 (intel_vsec) failed a"),
+                "  power change and won't wake until the".to_owned(),
+                "  next boot".to_owned(),
+            ],
+            "the line didn't wrap at 38 cells under its mark, each word kept:\n{text}"
         );
     }
 
