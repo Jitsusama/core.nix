@@ -29,6 +29,7 @@ let
     in
     if said == "cloud" then said else { ${kind} = lib.removePrefix "${kind}=" said; };
   needsIn = map (rule: rule // { needs = map need rule.needs; }) cfg.declares.needsIn;
+  lively = cfg.declares.keptLively;
   runsIn =
     kind:
     lib.optionalAttrs (cfg.fenceRuns != null && kind != "none") {
@@ -65,4 +66,15 @@ builtins.toJSON (
   // lib.optionalAttrs (needsIn != [ ]) { needs_in = needsIn; }
   // lib.optionalAttrs (fenced != { }) { fence = fenced; }
   // lib.optionalAttrs cfg.declares.piFencesItself { pi_fences_itself = true; }
+  // lib.optionalAttrs (lively != null) {
+    kept_lively = {
+      inherit (lively) cpu;
+    }
+    // lib.optionalAttrs (lively.memoryAvailable != null) {
+      memory_available = lively.memoryAvailable;
+    }
+    // lib.optionalAttrs (lively.memoryFull != null) {
+      memory_full = lively.memoryFull;
+    };
+  }
 )

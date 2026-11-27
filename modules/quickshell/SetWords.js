@@ -5,7 +5,7 @@
 // in Qt's own engine beside the line it's typed on (Commands.js).
 .pragma library
 .import "Commands.js" as Commands
-.import "launcher/Presented.js" as Presented
+.import "launcher/ActsSaid.js" as ActsSaid
 
 const space = /\s/;
 const number = /^[0-9]+$/;
@@ -135,16 +135,24 @@ function setting(arg, options) {
     if (words.length === 0) {
         return { changes: [{ option: "all", how: "show", value: "" }] };
     }
-    const changes = [];
+    const asked = [];
     for (const word of words) {
         const change = word === "all" ? { option: "all", how: "show", value: "" }
             : setOne(word, options);
         if (change.error !== undefined) {
             return change;
         }
-        changes.push(change);
+        asked.push(change);
     }
-    return { changes };
+    return { changes: asked };
+}
+
+// Whether :set's plans, each { steps } of { change }, change any option,
+// rather than only saying one, as :set volume? or :set all does: the
+// launcher times the line's Return as acting only then, since only then
+// does a source change.
+function changes(plans) {
+    return plans.some(plan => plan.steps.some(step => step.change.how !== "show"));
 }
 
 // What a change sets the option to, from where it stands now: { to }, or
@@ -210,7 +218,7 @@ function shown(name, now, option) {
 // commandSetSteps): { say } while the prompt still holds the keys that
 // ran it (`held`), so a refusal is said where the line was; { journal }
 // once Joel has typed on, so a late one never writes over what he's
-// doing, said in the journal instead as Presented.refusalShown says it:
+// doing, said in the journal instead as ActsSaid.refusalShown says it:
 // `refusal`'s `code` whole, the daemon's, in both modes, and its words
 // quoted only where its `whole` is true, as while reports are on, else by
 // how many letters they held, so a caller that gives neither keeps them
@@ -219,7 +227,7 @@ function later(option, words, held, refusal = {}) {
     if (words === "") {
         return null;
     }
-    const journalled = Presented.refusalShown(words, refusal.code, refusal.whole === true);
+    const journalled = ActsSaid.refusalShown(words, refusal.code, refusal.whole === true);
     return held ? { say: words }
         : { journal: `launcher: ${option} refused after Joel typed on: ${journalled}` };
 }

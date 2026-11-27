@@ -4,7 +4,6 @@
 # check fails on a file holding more, and on one holding fewer until its count
 # here is lowered, so the list only shrinks.
 {
-  "hardware/microsoft-surface-laptop-4-1958/clock/src/main.rs" = 6;
   "modules/backlight/src/curve.rs" = 11;
   "modules/backlight/src/facts.rs" = 6;
   "modules/backlight/src/follow.rs" = 20;
@@ -21,13 +20,8 @@
   "modules/cadence/src/mesh.rs" = 7;
   "modules/cadence/src/records.rs" = 5;
   "modules/cadence/src/revive.rs" = 1;
-  "modules/calls/src/lib.rs" = 5;
   "modules/chrome/open-tabs/host/src/main.rs" = 1;
   "modules/chrome/pack-extension/src/main.rs" = 1;
-  "modules/collector/src/otlp.rs" = 2;
-  "modules/collector/src/pressure.rs" = 4;
-  "modules/collector/src/when.rs" = 3;
-  "modules/collector/tests/collector.rs" = 1;
   "modules/console/font/src/main.rs" = 10;
   "modules/desk-facts/facts.rs" = 17;
   "modules/device-check/src/main.rs" = 13;
@@ -108,7 +102,6 @@
   "modules/firmware-notice/src/main.rs" = 6;
   "modules/git-engine/src/fsmonitor.rs" = 19;
   "modules/git-engine/src/main.rs" = 1;
-  "modules/git-engine/src/odb.rs" = 1;
   "modules/git-engine/src/pattern.rs" = 16;
   "modules/git-engine/src/wildmatch.rs" = 5;
   "modules/guide/src/install/memory.rs" = 4;
@@ -157,14 +150,8 @@
   "modules/hibernate/unlock/src/main.rs" = 7;
   "modules/hibernate/unlock/src/restored.rs" = 1;
   "modules/hibernate/unlock/src/zswap.rs" = 8;
-  "modules/ir-camera/src/v4l2.rs" = 6;
-  "modules/key-counts/src/tally.rs" = 5;
-  "modules/lag-watch/src/kernel.rs" = 2;
+  "modules/lag-watch/src/kernel_tests.rs" = 2;
   "modules/lid/docked/src/main.rs" = 11;
-  "modules/load-proof/src/frames.rs" = 2;
-  "modules/load-proof/src/run.rs" = 4;
-  "modules/load-proof/src/save.rs" = 1;
-  "modules/load-proof/src/sound.rs" = 1;
   "modules/machine/tests/daemon.rs" = 1;
   "modules/mic-mute-light/mic-mute-light.rs" = 13;
   "modules/network-revive/src/config.rs" = 1;
@@ -189,9 +176,6 @@
   "modules/passwords/tests/keys.rs" = 3;
   "modules/people/src/lib.rs" = 12;
   "modules/people/tests/daemon.rs" = 3;
-  "modules/pi-packages/src/inuse/macos.rs" = 4;
-  "modules/pi-packages/tests/inuse.rs" = 3;
-  "modules/plymouth/waits/src/main.rs" = 7;
   "modules/processor-telemetry/src/layout.rs" = 3;
   "modules/processor-telemetry/src/reading.rs" = 8;
   "modules/processor-telemetry/src/resting.rs" = 10;
@@ -219,7 +203,6 @@
   "modules/slack/src/messages.rs" = 4;
   "modules/slack/src/search.rs" = 1;
   "modules/slack/src/unreads.rs" = 1;
-  "modules/slack/tests/stand_in.rs" = 8;
   "modules/slices/jobs-sorter/src/low.rs" = 10;
   "modules/slices/jobs-sorter/src/main.rs" = 21;
   "modules/slices/jobs-sorter/src/quests.rs" = 3;
@@ -248,9 +231,6 @@
   "modules/spotify/spotify-recent/src/token.rs" = 9;
   "modules/spotify/spotify-recent/tests/stand_in.rs" = 5;
   "modules/systemd/shutdown-status/src/main.rs" = 1;
-  "modules/tuple/call/src/log.rs" = 3;
-  "modules/tuple/call/src/stream.rs" = 2;
-  "modules/tuple/call/tests/daemon.rs" = 1;
   "modules/tuple/people.rs" = 3;
   "modules/update-to-main/src/ask.rs" = 3;
   "modules/update-to-main/src/follow.rs" = 21;
@@ -277,11 +257,6 @@
   "modules/wifid/daemon/src/state.rs" = 18;
   "modules/wifid/daemon/src/store.rs" = 17;
   "modules/wifid/daemon/src/supplicant.rs" = 7;
-  "modules/wifid/sign-in/src/main.rs" = 6;
-  "modules/wifid/sign-in/src/socks.rs" = 4;
-  "modules/zathura/next-document/src/main.rs" = 4;
-  "tests/vm/sound/call-transcripts-vm-test.py" = 8;
-  "tests/vm/devices/desk-facts-vm-test.py" = 4;
   "tests/desktop/launcher/desktop-launcher-answers-vm-test.py" = 4;
   "tests/desktop/launcher/desktop-launcher-finds-by-name-vm-test.py" = 1;
   "tests/desktop/launcher/desktop-launcher-goes-places-vm-test.py" = 8;
@@ -289,26 +264,13 @@
   "tests/desktop/launcher/desktop-launcher-moves-windows-vm-test.py" = 1;
   "tests/desktop/launcher/desktop-launcher-waits-on-joel-vm-test.py" = 1;
   "tests/desktop/looks/desktop-looks-vm-test.py" = 2;
-  "tests/vm/disks/hibernate-vm-test.py" = 1;
-  "tests/vm/devices/idle-sleep-vm-test.py" = 2;
   "modules/quickshell/tests/launcher-on-niri-test.py" = 5;
   "tests/lib/qemu-after-its-sockets-test.py" = 3;
   "tests/lib/vm-helpers-test.py" = 3;
   "tests/lib/vm-pytest-test.py" = 1;
   "tests/vm/admin/niri-off-cpu-vm-test.py" = 1;
-  "tests/vm/sound/noise-cancelled-vm-test.py" = 2;
-  "tests/vm/sound/pebble-x-plus-vm-test.py" = 3;
-  "tests/vm/boot/plymouth-restore-vm-test.py" = 1;
   "tests/vm/network/shaper-vm-test.py" = 3;
   "tests/vm/admin/update-to-main-vm-test.py" = 1;
-  "tests/vm/devices/usb-wake-vm-test.py" = 3;
-  "tests/vm/guide/guide-install-vm-test.py" = 1;
   "tests/vm/network/wifi/wifi-joins-when-asked-vm-test.py" = 1;
-  "tools/merge-net/src/ready.rs" = 4;
-  "tools/merge-net/src/rules/mod.rs" = 17;
   "tools/merge-net/src/watch.rs" = 24;
-  "tools/merge-net/src/world.rs" = 11;
-  "tools/shell-preview/src/desktop.rs" = 3;
-  "tools/shell-preview/src/layout.rs" = 3;
-  "tools/shell-preview/tests/shell_preview.rs" = 1;
 }

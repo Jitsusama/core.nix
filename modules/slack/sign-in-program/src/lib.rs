@@ -24,7 +24,8 @@ use std::time::{Duration, Instant};
 /// than a reader's round.
 pub const PATIENCE: Duration = Duration::from_secs(30);
 
-/// How often a sign-in that has said its piece is looked at for its end.
+/// How often a sign-in that has said its piece is looked at for its end,
+/// and a program busy being written is tried again.
 const LOOK_EVERY: Duration = Duration::from_millis(20);
 
 /// The most a sign-in may print: far past any token, and short of a
@@ -43,8 +44,10 @@ pub const LOCKED: i32 = 75;
 pub enum SignIn {
     /// The sign-in it printed, trimmed.
     Token(String),
-    /// None: it couldn't be run, failed, printed nothing, as a keyring
-    /// lacking the item does, or printed what can't be a sign-in.
+    /// None: it couldn't be run, held for writing even as its patience
+    /// ran out included, since it never ran; or it failed, printed
+    /// nothing, as a keyring lacking the item does, or printed what
+    /// can't be a sign-in.
     Missing,
     /// It ended [`LOCKED`]: the keyring holding the sign-in is locked.
     Locked,
@@ -57,14 +60,7 @@ pub enum SignIn {
 #[must_use]
 pub fn token(program: &OsStr, patience: Duration) -> SignIn {
     let until = Instant::now() + patience;
-    let Ok(mut running) = Command::new(program)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        // A group of its own, so what it started is killed with it.
-        .process_group(0)
-        .spawn()
-    else {
+    let Some(mut running) = started(program, until) else {
         return SignIn::Missing;
     };
     let Some(out) = running.stdout.take() else {
@@ -105,6 +101,29 @@ pub fn token(program: &OsStr, patience: Duration) -> SignIn {
         token if ended.success() && !token.is_empty() => SignIn::Token(token.to_owned()),
         _ if ended.code() == Some(LOCKED) => SignIn::Locked,
         _ => SignIn::Missing,
+    }
+}
+
+/// `program` running, in a group of its own so what it started is killed
+/// with it, or none where it can't be run by `until`. A program still held
+/// open for writing can't be run yet (`ETXTBSY`), as one just written is
+/// while any other thread forks a child that holds it a moment, so it's
+/// tried again until it can or its time is up.
+fn started(program: &OsStr, until: Instant) -> Option<Child> {
+    loop {
+        let spawned = Command::new(program)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .process_group(0)
+            .spawn();
+        match spawned {
+            Ok(running) => return Some(running),
+            Err(error) if error.raw_os_error() == Some(libc::ETXTBSY) && Instant::now() < until => {
+                thread::sleep(LOOK_EVERY);
+            }
+            Err(_) => return None,
+        }
     }
 }
 

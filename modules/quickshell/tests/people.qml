@@ -499,7 +499,7 @@ ShellRoot {
                 const open = people.all;
                 open[0].run();
                 expect("Return steps in, never calling", launcher.entered === open[0]
-                    && Niri.spawned.length === 0, Niri.spawned.join(" "));
+                    && Niri.spawned.length === 0, ran());
                 expect("calling one who's available",
                     reach(open[0]) === argv("tuple", "call", "start", "--", "ada@example.com"),
                     ran());
@@ -551,8 +551,8 @@ ShellRoot {
                         && thanks?.side === "they wrote \u00b7 yesterday",
                     `${names(ben)} ${thanks?.side}`);
                 steps[2].run();
-                expect("their page opens", steps[2].verb === "open" && Niri.spawned.join(" ")
-                    === "xdg-open https://pages.example.com/ada", Niri.spawned.join(" "));
+                expect("their page opens", steps[2].verb === "open"
+                    && ran() === argv("xdg-open", "https://pages.example.com/ada"), ran());
                 expect("one with no page has no row for it",
                     !names(open[1].verbs()).includes("Open in"), names(open[1].verbs()));
                 const calls = live(open[3]);
@@ -563,8 +563,7 @@ ShellRoot {
                     `${names(calls)}; gone ${waiting?.gone}, side ${waiting?.side}`);
                 Niri.spawned = [];
                 waiting?.run();
-                expect("and opens nothing while dimmed", Niri.spawned.length === 0,
-                    Niri.spawned.join(" "));
+                expect("and opens nothing while dimmed", Niri.spawned.length === 0, ran());
                 // Their drawer is the daemon's, a source's facts ready in
                 // it, so showing it merges no one.
                 const merges = people.merging.merges;

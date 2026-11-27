@@ -67,12 +67,13 @@
 //! ssh-add, only when asked: ssh and git use the TPM's agent.
 
 use std::collections::{HashMap, VecDeque};
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
+use std::os::fd::AsRawFd;
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, ExitCode, Stdio};
-use std::sync::mpsc::{self, Sender};
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
@@ -80,7 +81,7 @@ mod asks;
 
 use passwords::{
     Ask, Changes, DOMAIN, DRAWER, Held, KIND, Of, PATIENCE, Said, Standing, VERSION, ask, audit,
-    cli, error, key, named, now, rows, said, standing,
+    cli, error, key, named, now, rows, said, standing, waited_until,
 };
 use ready_rows::kept::Kept;
 use secret_asks::engine::{self, Engine, Setting};
@@ -209,6 +210,9 @@ struct Daemon {
     since: u64,
     /// The copy on the clipboard now, cleared when its time is up.
     copied: Option<Child>,
+    /// Where a copier is asked to start, by the one thread that starts
+    /// them all (`copiers`).
+    copiers: Sender<Starting>,
     /// Whether an audit is running, so a second is refused rather than
     /// reading every password again beside it.
     auditing: bool,
@@ -292,6 +296,7 @@ fn daemon(managers: &str, words: Option<&str>) -> Result<(), Failure> {
             took: VecDeque::new(),
             since: now(),
             copied: None,
+            copiers: copiers(),
             auditing: false,
             kept,
             rows: Rows {
@@ -1292,33 +1297,57 @@ fn copier() -> Option<String> {
         .filter(|program| !program.is_empty())
 }
 
+/// How long the copier has to say it's ready, and then that it holds
+/// the copy, before it's ended and the copy is refused, unless
+/// `$PASSWORDS_COPIER_PATIENCE_MS` says otherwise.
+const COPIER_PATIENCE: Duration = Duration::from_secs(10);
+
+/// How long the copier has to say each thing it says.
+fn copier_patience() -> Duration {
+    std::env::var("PASSWORDS_COPIER_PATIENCE_MS")
+        .ok()
+        .and_then(|patience| patience.parse().ok())
+        .map_or(COPIER_PATIENCE, Duration::from_millis)
+}
+
 /// Puts a secret on the clipboard through wl-copy, marked sensitive so a
 /// clipboard history leaves it out, held by a wl-copy in the foreground
 /// that's ended when its time is up, which clears it; one copied over
-/// meanwhile has ended it already, so what was copied since stays.
+/// meanwhile has ended it already, so what was copied since stays. The
+/// secret is written only once the copier says it's ready, having shut the
+/// account's other processes out of its memory, and the copy is answered
+/// only once it says it holds it; one it refuses, or that says neither in
+/// time, is ended and refused with its reason.
 fn copy(shared: &Shared, value: &str) -> Result<u64, String> {
     let program = copier().ok_or_else(|| COPY_OFF.to_owned())?;
     let clears = std::env::var("PASSWORDS_CLEARS_MS")
         .ok()
         .and_then(|clears| clears.parse().ok())
         .map_or(CLEARS, Duration::from_millis);
-    let mut child = Command::new(program)
-        .args([
-            "--sensitive",
-            "--foreground",
-            "--type",
-            "text/plain;charset=utf-8",
-        ])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
+    let (told, started) = mpsc::channel();
+    lock(shared)
+        .copiers
+        .send((program, told))
+        .map_err(|_| "couldn't copy: nothing is left to start a copier".to_owned())?;
+    let mut child = started
+        .recv()
+        .map_err(|_| "couldn't copy: nothing is left to start a copier".to_owned())?
         .map_err(|why| format!("couldn't copy: {why}"))?;
-    if let Some(mut input) = child.stdin.take() {
-        input
-            .write_all(value.as_bytes())
-            .map_err(|why| format!("couldn't copy: {why}"))?;
+    let patience = copier_patience();
+    let said = said_by(&mut child);
+    if said.recv_timeout(patience).as_deref() != Ok("ready") {
+        return Err(refused_by(child, "the copier never said it was ready"));
     }
+    if let Some(input) = child.stdin.take()
+        && let Err(why) = given_within(input, value.as_bytes(), patience)
+    {
+        return Err(refused_by(child, &why));
+    }
+    if said.recv_timeout(patience).as_deref() != Ok("held") {
+        return Err(refused_by(child, "the copier never said it held the copy"));
+    }
+    // It says nothing more, and anything it says now has no one to hear.
+    drop(child.stderr.take());
     let pid = child.id();
     {
         let mut daemon = lock(shared);
@@ -1327,9 +1356,29 @@ fn copy(shared: &Shared, value: &str) -> Result<u64, String> {
             let _ = before.wait();
         }
     }
+    // Ended by the wall clock the foot and margin show it clearing by, so a
+    // copy whose time ran out while the lid was closed goes on waking, not
+    // as long after as a sleep had left.
+    let clears_at = u64::try_from(u128::from(now()) + clears.as_millis()).unwrap_or(u64::MAX);
     let shared = Arc::clone(shared);
     std::thread::spawn(move || {
-        std::thread::sleep(clears);
+        let awake_since = Instant::now();
+        // A copy something else replaced was ended as it was, so its wait
+        // stops at its next look rather than waking on to its own time.
+        let still_ours = || {
+            lock(&shared)
+                .copied
+                .as_ref()
+                .is_some_and(|child| child.id() == pid)
+        };
+        waited_until(
+            clears_at,
+            clears,
+            now,
+            || awake_since.elapsed(),
+            still_ours,
+            std::thread::sleep,
+        );
         let mut daemon = lock(&shared);
         if daemon
             .copied
@@ -1341,7 +1390,7 @@ fn copy(shared: &Shared, value: &str) -> Result<u64, String> {
             let _ = child.wait();
         }
     });
-    Ok(u64::try_from(u128::from(now()) + clears.as_millis()).unwrap_or(u64::MAX))
+    Ok(clears_at)
 }
 
 /// Why nothing is typed: no typist is named, as the checks that copy
@@ -1488,6 +1537,141 @@ const TYPIST_PATIENCE: Duration = Duration::from_secs(10);
 /// Why a secret holding a control character, such as a line break, isn't
 /// typed.
 const KEYS_IN_IT: &str = "it holds a line break or tab, which would be typed as a key";
+
+/// Writes `secret` to the copier and closes its input, refusing where the
+/// copier hasn't taken it all within `patience`, so a copier that says
+/// it's ready and never reads can't hold the ask past what a pipe holds.
+fn given_within(mut input: ChildStdin, secret: &[u8], patience: Duration) -> Result<(), String> {
+    let fd = input.as_raw_fd();
+    // SAFETY: fcntl changes only the flags of a pipe this owns.
+    if unsafe { libc::fcntl(fd, libc::F_SETFL, libc::O_NONBLOCK) } == -1 {
+        return Err(std::io::Error::last_os_error().to_string());
+    }
+    let deadline = Instant::now() + patience;
+    let mut left = secret;
+    while !left.is_empty() {
+        match input.write(left) {
+            Ok(wrote) => left = left.get(wrote..).unwrap_or_default(),
+            Err(why) if why.kind() == std::io::ErrorKind::Interrupted => {}
+            Err(why) if why.kind() == std::io::ErrorKind::WouldBlock => {
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                if remaining.is_zero() {
+                    return Err("the copier never took the whole copy".to_owned());
+                }
+                let waits = libc::c_int::try_from(remaining.as_millis())
+                    .unwrap_or(libc::c_int::MAX)
+                    .max(1);
+                let mut writable = libc::pollfd {
+                    fd,
+                    events: libc::POLLOUT,
+                    revents: 0,
+                };
+                // SAFETY: poll reads and writes only the one pollfd given.
+                unsafe { libc::poll(&raw mut writable, 1, waits) };
+            }
+            Err(why) => return Err(why.to_string()),
+        }
+    }
+    Ok(())
+}
+
+/// An ask to start the copier at a path, and where its start is told.
+type Starting = (String, Sender<std::io::Result<Child>>);
+
+/// Each line the copier says on its standard output, as it says it, until
+/// it lets go of it.
+fn said_by(child: &mut Child) -> Receiver<String> {
+    let (told, said) = mpsc::channel();
+    if let Some(output) = child.stdout.take() {
+        std::thread::spawn(move || {
+            for line in BufReader::new(output).lines() {
+                let Ok(line) = line else { break };
+                if told.send(line).is_err() {
+                    break;
+                }
+            }
+        });
+    }
+    said
+}
+
+/// Why a copier refused a copy: it's ended, and its reason is the first
+/// line it said on its standard error, or `otherwise` where it said none.
+/// A copier says nothing of the secret there, only why it couldn't hold it.
+/// Only what it said before it ended is read, so something of its own left
+/// running that holds the pipe can't hold the refusal.
+fn refused_by(mut child: Child, otherwise: &str) -> String {
+    drop(child.stdin.take());
+    let _ = child.kill();
+    let _ = child.wait();
+    let mut said = Vec::new();
+    if let Some(mut errors) = child.stderr.take() {
+        // SAFETY: fcntl changes only the flags of a pipe this owns.
+        if unsafe { libc::fcntl(errors.as_raw_fd(), libc::F_SETFL, libc::O_NONBLOCK) } != -1 {
+            let _ = errors.by_ref().take(4096).read_to_end(&mut said);
+        }
+    }
+    let said = String::from_utf8_lossy(&said);
+    let why = said.lines().map(str::trim).find(|line| !line.is_empty());
+    format!("couldn't copy: {}", why.unwrap_or(otherwise))
+}
+
+/// Starts every copier from one thread that runs as long as the daemon,
+/// each told to end as that thread does, so a copy goes with the daemon
+/// however it ends: the shell starts a new daemon at once, which knows
+/// of no copy to clear, and a copier left behind would hold the password
+/// on the clipboard while the foot and the margin say it's gone. Each
+/// ask's own thread ends as it answers, so a copier started there would
+/// end at once. Only the copier is started here: the secret is written
+/// to it by the ask that read it, and never crosses to this thread.
+fn copiers() -> Sender<Starting> {
+    let (asked, starting) = mpsc::channel::<Starting>();
+    std::thread::spawn(move || {
+        for (program, told) in starting {
+            let _ = told.send(copier_started(&program));
+        }
+    });
+    asked
+}
+
+/// The copier at `program`, holding in the foreground what it's given,
+/// marked sensitive so a clipboard history leaves it out, saying on its
+/// standard output when it's ready for it and when it holds it, and why on
+/// its standard error if it refuses it, and killed as the thread starting
+/// it ends: it has nothing to tidy, and the compositor clears the
+/// clipboard as it goes.
+fn copier_started(program: &str) -> std::io::Result<Child> {
+    let daemon = std::process::id();
+    let mut command = Command::new(program);
+    command
+        .args([
+            "--sensitive",
+            "--say-held",
+            "--foreground",
+            "--type",
+            "text/plain;charset=utf-8",
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    // SAFETY: prctl and getppid are async-signal-safe and touch only the
+    // child, and each refusal is an OS error, which allocates nothing: the
+    // daemon's other threads may hold the allocator's lock at the fork.
+    unsafe {
+        command.pre_exec(move || {
+            if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL, 0, 0, 0) != 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            // A daemon that ended before the signal was asked for sends
+            // none, so the copier holds nothing past it.
+            if u32::try_from(libc::getppid()).ok() != Some(daemon) {
+                return Err(std::io::Error::from_raw_os_error(libc::ESRCH));
+            }
+            Ok(())
+        });
+    }
+    command.spawn()
+}
 
 /// How long a manager may take to give every password: 1Password asks
 /// Joel to let it in first where its leave has lapsed, as letting in does.
