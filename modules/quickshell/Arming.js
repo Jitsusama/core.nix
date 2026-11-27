@@ -131,9 +131,12 @@ function keepsPlace(source) {
 // `source`, and by the source each of its `steps` comes from (a step's
 // row.from), so a chord naming a place otherwise than its source, its
 // lookup unfound, can't keep a never-kept one's steps. A step from no
-// source, and a name no source has, keep, as home's led places do.
+// source, and a name no source has, keep, as home's led places do. A
+// row made showing says its source by shownBy wherever it's held, as
+// For You holds an ask under Now with no from, so that counts as one.
 function keepsSteps(source, steps) {
-    return keepsPlace(source) && steps.every(step => keepsPlace(step.row?.from));
+    return keepsPlace(source)
+        && steps.every(step => keepsPlace(step.row?.from ?? step.row?.shownBy));
 }
 
 // Nothing armed.

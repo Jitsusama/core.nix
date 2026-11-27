@@ -89,6 +89,7 @@ Item {
             line.registers = false;
             line.words = false;
             line.visualOperated = null;
+            line.wait = 300;
             line.text = "";
             root.intoAsked = 0;
             root.intoGoes = false;
@@ -327,6 +328,12 @@ Item {
             compare(registered.signalArguments[0][0], "a");
             compare(line.text, "", "the register's letter typed nothing");
             verify(!line.keyActed, "the register's letter");
+            // Return, which acts in insert, is held idle only by the
+            // register's guard once Ctrl+R waits for a name.
+            keyClick(Qt.Key_R, Qt.ControlModifier);
+            keyClick(Qt.Key_Return);
+            compare(registered.count, 2, "Return names a register after Ctrl+R");
+            verify(!line.keyActed, "Return naming a register");
         }
 
         // Under an ask taking every key, so only the register's own guard
@@ -339,8 +346,9 @@ Item {
             verify(!line.keyActed, "Ctrl+R waiting for a register, though the ask takes it");
             keyClick("a");
             compare(registered.count, 1);
-            // Control, pressed alone before R, is the ask's to hear, as a
-            // key with no name, which Confirm.answer says is early.
+            // Control, pressed alone before R, is the ask's to hear as a key
+            // with no name (init's ask takes even that; the launcher's says
+            // it's early), so only named keys are held to the register.
             const heard = [];
             for (let i = 0; i < answered.count; ++i)
                 heard.push(answered.signalArguments[i][0]);
@@ -349,7 +357,10 @@ Item {
             verify(!line.keyActed, "the register's letter, though the ask takes it");
         }
 
+        // Each operator-again case waits as long as it takes, so a slow
+        // runner can't let the second d past the guard and pass unswallowed.
         function test_theOperatorAgainIsSwallowed() {
+            line.wait = 60000;
             toNormal();
             keyClick("V");
             compare(line.mode, "visual");
@@ -377,8 +388,7 @@ Item {
             line.confirming = true;
             const ask = { at: Date.now() };
             let guard = 0;
-            line.answerTaken = (key, at) => !["", "early"].includes(
-                Confirm.answer(ask, key, at, guard));
+            line.answerTaken = (key, at) => Confirm.takes(Confirm.answer(ask, key, at, guard));
             keyClick("x");
             compare(answered.count, 1);
             verify(line.keyActed, "x past the guard, answering no");
@@ -411,6 +421,7 @@ Item {
         }
 
         function test_anAskTakesTheOperatorAgainBeforeTheOperator() {
+            line.wait = 60000;
             toNormal();
             keyClick("V");
             keyClick("d");

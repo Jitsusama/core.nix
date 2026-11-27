@@ -4617,7 +4617,8 @@
     made before the share is never sent and is told as hidden, the share withholding it or, before
     niri has said, not knowing, a row held as it becomes from just before the share is held
     again hidden and as itself once the share ends, another source's hold left be, what's told
-    and unread forgotten as the share begins, and the shell's own recording of one window hides
+    and unread forgotten as the share begins, two asks hidden at once told apart by nothing but
+    their keys and when each was asked, and the shell's own recording of one window hides
     nothing
   '';
   the-asks-place-releases-through-its-daemon = ''
