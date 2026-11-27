@@ -150,7 +150,7 @@
   "modules/hibernate/unlock/src/main.rs" = 7;
   "modules/hibernate/unlock/src/restored.rs" = 1;
   "modules/hibernate/unlock/src/zswap.rs" = 8;
-  "modules/lag-watch/src/kernel.rs" = 2;
+  "modules/lag-watch/src/kernel_tests.rs" = 2;
   "modules/lid/docked/src/main.rs" = 11;
   "modules/machine/tests/daemon.rs" = 1;
   "modules/mic-mute-light/mic-mute-light.rs" = 13;
@@ -257,8 +257,6 @@
   "modules/wifid/daemon/src/state.rs" = 18;
   "modules/wifid/daemon/src/store.rs" = 17;
   "modules/wifid/daemon/src/supplicant.rs" = 7;
-  "tests/vm/sound/call-transcripts-vm-test.py" = 8;
-  "tests/vm/devices/desk-facts-vm-test.py" = 4;
   "tests/desktop/launcher/desktop-launcher-answers-vm-test.py" = 4;
   "tests/desktop/launcher/desktop-launcher-finds-by-name-vm-test.py" = 1;
   "tests/desktop/launcher/desktop-launcher-goes-places-vm-test.py" = 8;
@@ -266,20 +264,13 @@
   "tests/desktop/launcher/desktop-launcher-moves-windows-vm-test.py" = 1;
   "tests/desktop/launcher/desktop-launcher-waits-on-joel-vm-test.py" = 1;
   "tests/desktop/looks/desktop-looks-vm-test.py" = 2;
-  "tests/vm/disks/hibernate-vm-test.py" = 1;
-  "tests/vm/devices/idle-sleep-vm-test.py" = 2;
   "modules/quickshell/tests/launcher-on-niri-test.py" = 5;
   "tests/lib/qemu-after-its-sockets-test.py" = 3;
   "tests/lib/vm-helpers-test.py" = 3;
   "tests/lib/vm-pytest-test.py" = 1;
   "tests/vm/admin/niri-off-cpu-vm-test.py" = 1;
-  "tests/vm/sound/noise-cancelled-vm-test.py" = 2;
-  "tests/vm/sound/pebble-x-plus-vm-test.py" = 3;
-  "tests/vm/boot/plymouth-restore-vm-test.py" = 1;
   "tests/vm/network/shaper-vm-test.py" = 3;
   "tests/vm/admin/update-to-main-vm-test.py" = 1;
-  "tests/vm/devices/usb-wake-vm-test.py" = 3;
-  "tests/vm/guide/guide-install-vm-test.py" = 1;
   "tests/vm/network/wifi/wifi-joins-when-asked-vm-test.py" = 1;
   "tools/merge-net/src/watch.rs" = 24;
 }

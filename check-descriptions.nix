@@ -5324,7 +5324,7 @@
     it says, its note saying when it's signed out or out of reach
   '';
   the-launcher-says-a-lagging-keys-kind-on-niri = ''
-    on niri with reports off, a lagging key's journal line says an arrow whole, and a step in by
+    on niri with reports off, a lagging key's journal line says down and up whole, and a step in by
     Return, out by - and in by a word and a space by its arrow and the key of the launcher's own
     place it took, never the place's name; a key listed without the notices' answer, and their
     answer late, say what was typed by how many letters; and a program's lagging drawer is said by
@@ -6761,7 +6761,8 @@
   '';
   vm-commits-are-signed = ''
     commits are signed with the TPM's keys, PINs asked for; the agents' socket stays off until
-    their key is made, and its path unit starts it once it is
+    their key is made and listens once it is; stopped by hand, it listens again, and stays off
+    once its path unit is stopped first, until that unit starts again
   '';
   vm-desk-facts-follow-a-replug = ''
     desk-facts names a USB sound card plugged into a running machine, stops naming it once it's
