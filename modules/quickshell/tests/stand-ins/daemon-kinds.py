@@ -15,7 +15,8 @@ two records the first time, and the connection then dropped, and with one of the
 as the node's whole answer is once one went in a gap. A watch of what lapses is answered the
 same way with an ask's row and an entry, and with neither after, as the passwords child answers
 once it starts again, its asks' rows whole and its entries not yet listed. One of verdicts is
-answered with none. An ask of steps
+answered with none, and one of what's inherited with records keyed "__proto__" and "constructor",
+names every object inherits, so the test can tell a client holds them as any other. An ask of steps
 is answered in three, as wifid answers a join: two saying they aren't done, then the last.
 An unwatch is answered as wifid answers one, and each record says how many watches ahead its
 connection has unwatched, so the test can tell an emptied watch ahead was let go.
@@ -116,6 +117,11 @@ def answer(asked: dict[str, object], unwatched: int) -> list[dict[str, object]]:
         ]
     if asked.get("kind") == "verdict":
         return [{"id": asked.get("id"), "records": []}]
+    if asked.get("kind") == "inherited":
+        inherited = [
+            {"key": key, "kind": "inherited", "heard": 1} for key in ("__proto__", "constructor")
+        ]
+        return [{"id": asked.get("id"), "records": inherited}]
     kinds = kinds_of(asked)
     keys = asked.get("keys")
     named = (

@@ -210,8 +210,12 @@ Scope {
     // asked cold a second time is read afresh (Y2YBTS's review of #2433).
     property bool answeredThisWatch: false
 
-    // Every record held, by key: plain fields, read beside `revision`.
-    readonly property var held: ({})
+    // Every record held, by key: plain fields, read beside `revision`. It
+    // inherits nothing, so a record a node keys "__proto__" or
+    // "constructor" is held as any other, rather than reading as held
+    // already or setting the map's prototype and hiding from
+    // Object.values (#6848's council).
+    readonly property var held: Object.create(null)
     property int revision: 0
     // How it stands: "starting", the daemon's own word, or "not answering".
     property string state: "starting"
