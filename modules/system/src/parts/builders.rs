@@ -55,14 +55,18 @@ pub fn builders(said: &Value) -> Vec<(Thing, Vec<String>)> {
 /// lender's word this build doesn't know is worth a look, said in the
 /// node's own words, rather than passed as good: it may be a way of not
 /// building that this build was never told of. A look carries the node's
-/// reason whole, since what to do about a builder is in it.
+/// reason whole, since what to do about a builder is in it. Its name is
+/// made plain as any text the system shows, and a state or lender's word is
+/// matched once plain, so padding never turns a known word into a look.
 fn builder(said: &Value) -> Option<(Thing, Vec<String>)> {
-    let name = said.get("name").and_then(Value::as_str)?.trim();
+    let name = crate::plain::words(said.get("name").and_then(Value::as_str)?);
     if name.is_empty() {
         return None;
     }
     let word = |key: &str| said.get(key).and_then(Value::as_str);
-    let proof = word("said").filter(|said| PROOFS.contains(said));
+    let proof = word("said")
+        .map(str::trim)
+        .filter(|said| PROOFS.contains(said));
     let why = word("said").filter(|_| proof.is_none()).and_then(plain);
     let unknown = |words: String| (Health::Watch, words.clone(), Some(words));
     let lent = said.get("lent").and_then(Value::as_bool) == Some(true);
@@ -82,6 +86,7 @@ fn builder(said: &Value) -> Option<(Thing, Vec<String>)> {
         None | Some(Value::Null) => "unknown",
         Some(state) => state
             .as_str()
+            .map(str::trim)
             .filter(|state| plain(state).is_some())
             .unwrap_or("unreadable"),
     };
@@ -109,7 +114,7 @@ fn builder(said: &Value) -> Option<(Thing, Vec<String>)> {
     let looks: Vec<String> = look.iter().map(|_| says.clone()).collect();
     let thing = Thing {
         kind: "builder",
-        name: name.to_owned(),
+        name,
         health,
         says,
         looks: look
