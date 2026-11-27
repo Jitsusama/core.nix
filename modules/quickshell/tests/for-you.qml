@@ -555,6 +555,10 @@ QtObject {
             ask: " Merge it? ", ifNothing: "   " }) }], {}, now).waiting[0];
         expect("what it asks and what happens if nothing, padded or only spaces, trimmed",
             [Looks.askOf(spaced), Looks.ifNothingOf(spaced)], ["Merge it?", ""]);
+        const padded = Looks.looks([{ file: "t.json", text: lookOf({ id: "T",
+            ask: "   ", ifNothing: " It waits. " }) }], {}, now).waiting[0];
+        expect("what it asks only spaces, and what happens if nothing padded, trimmed",
+            [Looks.askOf(padded), Looks.ifNothingOf(padded)], ["", "It waits."]);
         const toldBack = JSON.parse(Looks.rewritten(told, "opened", "opened", now));
         expect("a look written back keeps who asks, what, and if nothing, as its session wrote them",
             [toldBack.asker, toldBack.ask, toldBack.ifNothing],
