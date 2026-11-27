@@ -2011,7 +2011,7 @@ def words_of(at: Locator) -> str:
 
 
 def answered_in(
-    page: Page, keys: str, answer: dict[str, str], check: Callable[[], None]
+    page: Page, keys: str, answer: dict[str, str], check: Callable[[], object]
 ) -> dict[str, float]:
     """How long the last of the keys took to be answered and painted, and the longest task.
 
