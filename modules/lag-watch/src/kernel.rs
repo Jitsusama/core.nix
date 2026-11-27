@@ -72,8 +72,11 @@ impl Sched {
     /// growth is matched to this window's first, so a sleep owed can pair
     /// only with the other count's leftover, and what's owed is let go
     /// after one window. Each unit of growth is counted at most once, so
-    /// over any run of windows the count is never more than the lesser of
-    /// the two counts' totals; around a sleep one count booked, at most
+    /// over a run of windows that starts with nothing owed, while both
+    /// counts are read and the fair one doesn't go back, the count is never
+    /// more than the lesser of the two counts' totals; a run that starts
+    /// mid-way may count what the window before it owed. Around a sleep one
+    /// count booked, at most
     /// the other's own excess in the windows either side is counted with
     /// it. What's let go is lost: a wait that spans two reads, which a
     /// wait of just over one window can, loses what the schedstat booked
@@ -168,13 +171,16 @@ pub fn sched(text: &str) -> Option<Sched> {
 /// fair count grew by at most 2 ms on each (docs/kernel.md, The Patches).
 /// None for a schedstat that can't be read.
 pub fn read_sched(schedstat: &Path) -> Option<Sched> {
-    read_sched_beside(schedstat, &text(&schedstat.with_file_name("sched")))
+    let stat_text = text(schedstat);
+    read_sched_beside(&stat_text, &text(&schedstat.with_file_name("sched")))
 }
 
-/// `read_sched`, given its `sched` already read, so a caller that reads
-/// that file for more than the wait reads it once.
-pub fn read_sched_beside(schedstat: &Path, sched_text: &str) -> Option<Sched> {
-    let mut read = sched(&text(schedstat))?;
+/// `read_sched`, given both files already read, so a caller that reads
+/// the `sched` for more than the wait reads it once. Each caller reads the
+/// schedstat first and the `sched` after it, the order the carry's tests
+/// describe.
+pub fn read_sched_beside(stat_text: &str, sched_text: &str) -> Option<Sched> {
+    let mut read = sched(stat_text)?;
     read.fair_ns = waited(sched_text);
     Some(read)
 }
@@ -244,8 +250,14 @@ pub struct Group {
     pub killed: u64,
 }
 
+/// A file under /proc or a cgroup as text, or none when it can't be read.
+/// A thread's `sched` and `stat` carry the name it gave itself, which the
+/// kernel cuts byte by byte and may leave short of UTF-8, so its bytes are
+/// taken as they come rather than losing the whole file to one bad name.
 pub fn text(path: &Path) -> String {
-    fs::read_to_string(path).unwrap_or_default()
+    fs::read(path)
+        .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+        .unwrap_or_default()
 }
 
 /// Reads a cgroup, or None for one that isn't there.

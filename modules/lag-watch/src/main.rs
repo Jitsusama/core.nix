@@ -236,7 +236,7 @@ fn snapshot(
             hidden = lowered
                 .entry(process)
                 .or_insert_with(|| {
-                    let stat = fs::read_to_string(process.join("stat")).unwrap_or_default();
+                    let stat = kernel::text(&process.join("stat"));
                     kernel::nice(&stat)
                         .is_some_and(|n| n > 0)
                         .then_some(thread.label)
@@ -245,14 +245,16 @@ fn snapshot(
         }
         // An app's thread blocked in the kernel, on a lock, a page read back or reclaim, hangs
         // its window without waiting for a CPU, so its time blocked is read beside its waits.
-        // Its sched file is read once, for both.
+        // Its sched file is read once, for both, after its schedstat, as each
+        // two-second read takes them.
+        let stat_text = kernel::text(&thread.schedstat);
         let sched_text = kernel::text(&thread.schedstat.with_file_name("sched"));
         if apps::is_app(thread)
             && let Some(ns) = kernel::blocked(&sched_text)
         {
             s.blocked.insert(thread.clone(), ns);
         }
-        if let Some(sched) = kernel::read_sched_beside(&thread.schedstat, &sched_text) {
+        if let Some(sched) = kernel::read_sched_beside(&stat_text, &sched_text) {
             if hidden {
                 s.resting.insert(thread.clone(), sched);
             } else {

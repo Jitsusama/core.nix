@@ -115,6 +115,23 @@ fn a_thread_s_own_name_never_reads_as_a_count() {
         Some(12_250_000),
         "a line in the thread's name was read as its wait"
     );
+    // Names a thread can really give itself, at most 15 bytes, that open
+    // with an empty line or a short run of dashes and end their own line,
+    // so the kernel's " (7, #threads: 1)" falls on the next: only the dash
+    // row's length tells them from the kernel's own.
+    for name in ["\nwait_sum:9e9\n", "-\nwait_sum:9e9\n", "---\nwait_sum:9\n"] {
+        assert!(name.len() <= NAME_MOST, "{name:?} is longer than a name can be");
+        let forged = format!(
+            "{name} (7, #threads: 1)\n\
+             ----------------------------------------\n\
+             wait_sum                     :         12.250000\n"
+        );
+        assert_eq!(
+            waited(&forged),
+            Some(12_250_000),
+            "the name {name:?} was read as the thread's wait"
+        );
+    }
     let no_header = "wait_sum : 2.000000\nstats.sum_block_runtime : 3.000000\n";
     assert_eq!(
         waited(no_header),
@@ -126,6 +143,26 @@ fn a_thread_s_own_name_never_reads_as_a_count() {
         None,
         "a file without its header was read"
     );
+}
+
+#[test]
+fn a_name_cut_short_of_utf8_leaves_its_counts_readable() {
+    let root = std::env::temp_dir().join(format!("lag-watch-name-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&root);
+    fs::create_dir_all(&root).unwrap();
+    let sched = root.join("sched");
+    // A name of two-byte letters the kernel cut after a first byte.
+    let mut bytes = b"caf\xc3 (7, #threads: 1)\n".to_vec();
+    bytes.extend_from_slice(
+        b"----------------------------------------\n\
+          wait_sum                     :         12.250000\n\
+          stats.sum_block_runtime      :          3.000000\n",
+    );
+    fs::write(&sched, bytes).unwrap();
+    let read = text(&sched);
+    let _ = fs::remove_dir_all(&root);
+    assert_eq!(waited(&read), Some(12_250_000), "the wait was lost to the name");
+    assert_eq!(blocked(&read), Some(3_000_000), "the time blocked was lost to the name");
 }
 
 #[test]
