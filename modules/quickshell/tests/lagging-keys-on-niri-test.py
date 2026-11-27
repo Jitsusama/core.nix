@@ -115,12 +115,13 @@ def test_down_and_up_are_each_said_whole(shell: Shell) -> None:
     the selection and none was said (2026-11-26). So each try opens the launcher, presses as
     soon as it's ready, while its opening still draws, and closes it, as the step cases do. A
     frame says only its newest key, so a try ends on the arrow it's for: down and up, then down,
-    up and down, from the first row the opening selects. No try is for its first key: in a
-    merge's run, tries of down alone and of down and up said up, a try's second key, but never
-    down, always its first (2026-11-27). A try that fails leaves the launcher closed, as every case
-    starts, so the next case fails only for its own reasons. A failure, whether the arrows went
-    unsaid or a try raised, gives where the selection stood after each try's arrows, and the
-    launcher's own lines.
+    up and down, from the first row the opening selects. No try is for its first key: the
+    launcher times a key from when its handler runs, not its press, so a first key heard late
+    after the opening can stay under the felt line and go unsaid (2026-11-27), until the took
+    line counts from the press (core.nix#7087). A try that fails leaves the launcher closed, as
+    every case starts, so the next case fails only for its own reasons. A failure, whether the
+    arrows went unsaid or a try raised, gives where the selection stood after each try's arrows,
+    and the launcher's own lines.
     """
     seen: list[tuple[object, object, object]] = []
     tries = itertools.count()
