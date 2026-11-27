@@ -577,17 +577,38 @@ fn a_run_goes_to_the_second_builder_while_root_vouches_only_for_it() {
 /// the test holds every turn at sending up for `held_for`, with how long
 /// it took.
 fn sent_up_while_the_uplink_is_taken(before: &[&str], held_for: Duration) -> (Output, Duration) {
+    sent_up_while_turns_are_taken(before, &[1, 2, 3], 0, &[], held_for)
+}
+
+/// `there` given a derivation of `bytes` the builder lacks, none when
+/// its size can't be read, run with `before` and `envs` while the test
+/// holds the turns at sending up numbered `turns` for `held_for`, with
+/// how long it took.
+fn sent_up_while_turns_are_taken(
+    before: &[&str],
+    turns: &[u32],
+    bytes: u64,
+    envs: &[(&str, &str)],
+    held_for: Duration,
+) -> (Output, Duration) {
     let folder = tempfile::tempdir().unwrap();
     let offload = folder.path().join("offload");
     fs::create_dir(&offload).unwrap();
     fs::write(offload.join("store"), STORE).unwrap();
     stand_ins(folder.path(), 0);
     fs::write(folder.path().join("says"), "/nix/store/aaaa-x.drv\n").unwrap();
-    let turns = folder.path().join("nix-offload-there");
-    fs::create_dir_all(&turns).unwrap();
-    let held: Vec<fs::File> = (1..=3)
+    if bytes > 0 {
+        fs::write(folder.path().join("closure"), "/nix/store/aaaa-x.drv\n").unwrap();
+        let held =
+            format!(r#"{{"/nix/store/aaaa-x.drv": {{"narSize": {bytes}, "signatures": []}}}}"#);
+        fs::write(folder.path().join("held"), held).unwrap();
+    }
+    let folder_of_turns = folder.path().join("nix-offload-there");
+    fs::create_dir_all(&folder_of_turns).unwrap();
+    let held: Vec<fs::File> = turns
+        .iter()
         .map(|turn| {
-            let file = fs::File::create(turns.join(format!("uplink-{turn}"))).unwrap();
+            let file = fs::File::create(folder_of_turns.join(format!("uplink-{turn}"))).unwrap();
             file.lock().unwrap();
             file
         })
@@ -602,6 +623,11 @@ fn sent_up_while_the_uplink_is_taken(before: &[&str], held_for: Duration) -> (Ou
     let ran = there_command(folder.path(), &offload, folder.path())
         .args(before)
         .args(["-L", "/nix/store/aaaa-x.drv"])
+        // Whatever marks the run testing them, no copy here is urgent
+        // but by what the test sets.
+        .env_remove("WORLD_PUSH_TURN_URGENT")
+        .env_remove("NIX_OFFLOAD_CLASSES")
+        .envs(envs.iter().copied())
         .output()
         .unwrap();
     let took = began.elapsed();
@@ -742,6 +768,66 @@ fn a_slow_copy_up_gives_its_turn_back_and_sends_only_its_closure() {
     assert!(
         calls.lines().any(|call| call == copy),
         "it sent other than its closure's lacking, once each: {calls}"
+    );
+}
+
+// On 27 November a copy of a few megabytes waited 25 minutes behind a
+// copy of 589.6 MB, so the last turn is kept for small copies.
+#[test]
+fn a_small_copy_takes_the_held_turn_while_two_large_go_up() {
+    let (ran, took) =
+        sent_up_while_turns_are_taken(&[], &[1, 2], 4_200_000, &[], Duration::from_secs(20));
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(
+        !said.contains("waits its turn to send"),
+        "a small copy waited with the held turn free: {said}"
+    );
+    assert!(
+        took < Duration::from_secs(20),
+        "a small copy waited for a large one's turn: {took:?}"
+    );
+}
+
+#[test]
+fn a_large_copy_waits_while_only_the_held_turn_is_free() {
+    let (ran, took) =
+        sent_up_while_turns_are_taken(&[], &[1, 2], 589_600_000, &[], Duration::from_secs(3));
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert_eq!(
+        said.matches(
+            "so this waits its turn to send, the last kept for copies under 100 MB or marked \
+             urgent"
+        )
+        .count(),
+        1,
+        "a large copy's wait for the turns open to it wasn't said once: {said}"
+    );
+    assert!(
+        took >= Duration::from_secs(3),
+        "a large copy took the held turn: {took:?}"
+    );
+}
+
+#[test]
+fn an_urgent_copy_takes_the_held_turn_whatever_its_size() {
+    let (ran, took) = sent_up_while_turns_are_taken(
+        &[],
+        &[1, 2],
+        589_600_000,
+        &[("WORLD_PUSH_TURN_URGENT", "0fa0627e")],
+        Duration::from_secs(20),
+    );
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(
+        !said.contains("waits its turn to send"),
+        "an urgent copy waited with the held turn free: {said}"
+    );
+    assert!(
+        took < Duration::from_secs(20),
+        "an urgent copy waited for a large one's turn: {took:?}"
     );
 }
 
