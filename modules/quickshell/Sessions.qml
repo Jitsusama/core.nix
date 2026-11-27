@@ -2880,7 +2880,7 @@ Singleton {
         // is told it came, for the same reason, within comingPatience.
         // None was told where no press held the ask.
         const still = stillSaid[named] ?? null;
-        const stillRecent = (still?.said ?? null) !== null
+        const stillRecent = still !== null
             && Date.now() - still.at < comingPatience;
         forgetAsk(named);
         if (told && recent)
