@@ -1812,6 +1812,36 @@ fn a_boot_default_set_by_hand_since_is_left_be_and_said() {
 }
 
 #[test]
+fn a_switch_cut_off_after_it_moved_the_profile_still_puts_back_the_boot_default() {
+    // update-to-main moves the profile itself before a switch ends, so a
+    // daemon cut off between the two left the profile its own, not a hand's.
+    let mut world = World::new();
+    let (zero, two) = a_switch_failing_after_a_failed_boot_check(&mut world);
+    let one = world.running();
+    let moved = [
+        world.config.profile.clone(),
+        world.root.join("boots"),
+        world.root.join("running"),
+    ];
+    for link in moved {
+        fs::remove_file(&link).unwrap();
+        std::os::unix::fs::symlink(&two, &link).unwrap();
+    }
+    fs::write(
+        world.config.state.join("switching.json"),
+        serde_json::json!({ "system": two, "previous": one }).to_string(),
+    )
+    .unwrap();
+    let (_, failed) = world.update();
+    let why = went_back(&failed);
+    assert_eq!(
+        fs::canonicalize(world.boots()).unwrap(),
+        fs::canonicalize(&zero).unwrap(),
+        "a switch cut off after moving the profile left the one that failed the boot default: {why}"
+    );
+}
+
+#[test]
 fn a_boot_default_collected_since_is_said_left_to_the_switch_that_failed() {
     let mut world = World::new();
     let (zero, two) = a_switch_failing_after_a_failed_boot_check(&mut world);
