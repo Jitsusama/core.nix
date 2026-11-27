@@ -66,7 +66,7 @@ function moves(act, line) {
 // a register, or its letter, which types (`registering`), nor the operator
 // pressed again after visual's, which is swallowed (`operated`). A key
 // while an ask stands (`answering`) acts where the ask takes it as its
-// answer (`answerTaken`, Confirm.answer), never as it repeats, even
+// answer (`answerTaken`, Confirm.takes), never as it repeats, even
 // visual's operator again, and a colon opening the command
 // line (`commands`) acts. Otherwise a key the field types itself, as a
 // letter, Shift+Left or Alt+a, a count or a sequence begun, Escape at rest

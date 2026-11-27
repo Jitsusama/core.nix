@@ -7849,9 +7849,9 @@ Scope {
 
     // What the ask standing makes of `key` come `at` (Confirm.said), or ""
     // with none standing: answerAsk answers by it, and the prompt times a
-    // key as acting by the same rule (answerTaken, Confirm.taken), each told
-    // the one time the prompt read as the key came, so the two can't
-    // disagree.
+    // key as acting by it too (answerTaken, Confirm.takes of it), each told
+    // the one time the prompt read as the key came. The ask and its guard
+    // are picked here alone, so the two can't disagree.
     function askSaid(key, at) {
         return Confirm.said(asked, key, at, askReady.interval);
     }
@@ -14729,10 +14729,9 @@ Scope {
                                 && root.fillsStart();
                         }
                         upHere: root.canGoUp
-                        // The ask takes a key as answerAsk does, timed on
-                        // the clock askOnce puts it on.
-                        answerTaken: (key, at) => Confirm.taken(root.asked, key, at,
-                            askReady.interval)
+                        // The ask takes a key as answerAsk does, through
+                        // askSaid, timed on the clock askOnce puts it on.
+                        answerTaken: (key, at) => Confirm.takes(root.askSaid(key, at))
                         keyNow: () => KeyTimes.now()
                         // A search run in the drawer puts its cursor on
                         // the match.
