@@ -324,7 +324,7 @@ const stallHanging = open("stalled-hanging", [stall.hangs]);
 await stallGate.reached;
 const stallWaiting = open("stalled-waiting", [stall.behind]);
 assert.equal(
-  await pendingAfter(lagGate.reached, 200),
+  await pendingAfter(lagGate.reached, QUEUED_MS),
   true,
   "a load didn't wait behind one holding its turn",
 );
@@ -351,24 +351,23 @@ await within(
   "a load after loads that went on without their turn never ended",
 );
 // Has `holder`, which waits at the gate `hold`, take its package's turn,
-// then expects `kept` to open meanwhile without waiting or evaluating, as
-// a factory kept for it does, though `waiting`, which must take the turn,
-// is queued for it, and `waiting` to stay queued, evaluating nothing.
+// and expects `waiting`, which must take the turn, to stay queued for it,
+// evaluating nothing, then `kept` to open meanwhile without waiting or
+// evaluating, as a factory kept for it does. `waiting` is seen queued
+// first, so what it evaluates is never laid to `kept`.
 const opensWhileHeld = async (what, holder, kept, waiting) => {
   const holdGate = gate("hold");
   const holding = open(`${what}-holding`, [holder]);
   await holdGate.reached;
   const whileHeld = evaluations();
   const waited = open(`${what}-waited`, [waiting]);
+  const settledSaid = `${what}: a load settled, by ending or failing, while another held its turn`;
+  assert.equal(await pendingAfter(waited, QUEUED_MS), true, settledSaid);
+  assert.deepEqual(evaluations(), whileHeld, `${what}: a load evaluated without waiting its turn`);
   const reopened = open(`${what}-reopened`, [kept]);
   assert.equal(await pendingAfter(reopened, SETTLES_MS), false, `${what}: a kept factory waited`);
+  assert.equal(await pendingAfter(waited, 0), true, settledSaid);
   assert.deepEqual(evaluations(), whileHeld, `${what}: a kept factory evaluated afresh`);
-  assert.equal(
-    await pendingAfter(waited, QUEUED_MS),
-    true,
-    `${what}: a load settled, by ending or failing, while another held the turn it needs`,
-  );
-  assert.deepEqual(evaluations(), whileHeld, `${what}: a load evaluated without waiting its turn`);
   holdGate.putAway();
   holdGate.open();
   const all = Promise.all([holding, reopened, waited]);

@@ -38,6 +38,7 @@ import {
   open,
   parentedPackage,
   pendingAfter,
+  QUEUED_MS,
   racingPackage,
   SETTLES_MS,
   scratch,
@@ -158,7 +159,7 @@ const racedGate = gate("raced");
 const racingLoad = open("racing-loads", [racing.loads]);
 await racedGate.reached;
 const lateRace = racingLate("raced-late");
-const lateWaited = await pendingAfter(lateRace, 200);
+const lateWaited = await pendingAfter(lateRace, QUEUED_MS);
 assert.equal(lateWaited, true, "a late import was given a module a load was still evaluating");
 const racedTwice = await evaluatedBy("raced", 2, SETTLES_MS);
 assert.equal(racedTwice, 2, "a late import waited on the load, not evaluating its own");
@@ -182,11 +183,10 @@ const lateFirst = reversedLate("raced-late");
 await racedAgain.reached;
 firstGate.putAway();
 firstGate.open();
-assert.equal(
-  await pendingAfter(reversedLoad, 200),
-  true,
-  "a load was given a module a late import was still evaluating",
-);
+const reversedSaid = "a load was given a module a late import was still evaluating";
+assert.equal(await pendingAfter(reversedLoad, QUEUED_MS), true, reversedSaid);
+// Both wait at the shut gate, so only its own count says the load didn't wait.
+assert.equal(await evaluatedBy("raced", 2, SETTLES_MS), 2, reversedSaid);
 racedAgain.putAway();
 racedAgain.open();
 const reversedLoaded = await within(reversedLoad, "a load beside a late import never ended");
@@ -452,7 +452,7 @@ const wGate = gate("overlapW");
 const runsW = running("overlap-runs-w");
 await within(wGate.reached, "a late import never reached its gated library");
 const loadsW = loaded("overlap-loads-w");
-assert.equal(await pendingAfter(loadsW, 200), true, "a late import didn't wait at the gate");
+assert.equal(await pendingAfter(loadsW, QUEUED_MS), true, "a late import didn't wait at the gate");
 wGate.putAway();
 wGate.open();
 assert.deepEqual(

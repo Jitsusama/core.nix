@@ -137,11 +137,14 @@ export const within = (promise, message, ms = 10_000) => {
   });
   return Promise.race([promise, late]).finally(() => clearTimeout(timer));
 };
+/** How long from before a load takes its package's turn a wait may last,
+ * short of the 10-second bound on a held turn. */
+export const BEFORE_THE_BOUND_MS = 8000;
 /** Called before a load that may hold its package's turn is begun: waits
- * as `within` does, but only until 8 seconds from that call, so a wait that
- * only the 10-second bound on a held turn would end fails instead. */
+ * as `within` does, but only until BEFORE_THE_BOUND_MS from that call, so a
+ * wait that only the bound on a held turn would end fails instead. */
 export const beforeTheBound = () => {
-  const deadline = Date.now() + 8000;
+  const deadline = Date.now() + BEFORE_THE_BOUND_MS;
   return (promise, message) => within(promise, message, Math.max(1, deadline - Date.now()));
 };
 /** A settling check's wait: a pass ends as it settles, well inside a held turn's 8 s. */
@@ -486,10 +489,11 @@ export const heldUpUntil = async (what, [hangs, behind, early], letGo) => {
   const lettingGo = Date.now();
   await letGo();
   const letGoMs = Date.now() - lettingGo;
-  const releaseMs = 8000 - (Date.now() - bounded);
+  const releaseMs = BEFORE_THE_BOUND_MS - (Date.now() - bounded);
   const released = await inTime(
     waiting,
-    `${what} didn't let go of a load waiting behind one that never ends within 8 s, which ` +
+    `${what} didn't let go of a load waiting behind one that never ends within ` +
+      `${BEFORE_THE_BOUND_MS} ms, which ` +
       "pays for the hung load, the queued one, letting go and the release (one load " +
       `took ${earlyMs} ms, letting go ${letGoMs} ms, leaving the release ${releaseMs} ms)`,
   );
