@@ -1186,6 +1186,29 @@ been traced to its cause, and is harmless, so nothing silences or patches it:
   and no newline, so the line runs into the next one. Upstream's main still
   prints it.
 
+### WebGPU's Checkerboard
+
+On Mesa 26.3.0 every WebGPU canvas in Chrome of most sizes showed as a
+checkerboard of misplaced tiles, as did pages built on it, such as a globe
+drawn with WebGPU. Chrome draws WebGPU with Dawn on Vulkan (anv) and
+composites the page with Skia on OpenGL (iris), and hands each frame from one
+to the other as a memory object: an opaque file descriptor with no DRM
+modifier, so each driver has to pick the same tiling from the same flags. anv
+asks ISL to prefer 4K alignment for it and gets Tile4. iris means to ask the
+same in `iris_resource_configure_main`, but on Xe2 and later a memory object
+is always `PIPE_BIND_SHARED`, so the branch before it, which only turns
+compression off, matches first, and the `else if` that asks for the
+preference never runs. ISL then takes Tile64 wherever it costs under 10% more
+memory, and iris reads Tile64 from memory anv wrote as Tile4. Mesa's main has
+the same code, and the preference came in with its 9826b6081da.
+
+`programs/iris-memory-objects-prefer-4k-tiles.patch` takes the preference out
+of that chain, and the hardware file gives the graphics drivers Mesa built
+with it. `iris-tiles-memory-objects-as-anv-does` reads the patched source, so a Mesa
+that drops the patch fails it. Chrome's `--enable-features=Vulkan`, which has
+Skia composite on anv too, also avoids it, but changes all of Chrome's drawing
+to get there. The patch comes out once Mesa's release has the fix.
+
 ### Fixed Here Until nixpkgs Fixes It
 
 Packages nixpkgs builds wrong for this laptop are overridden in [the hardware

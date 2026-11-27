@@ -1929,6 +1929,10 @@
     ir-camera keeps each sample's highest eight bits, reads and writes lines their stride apart,
     and refuses a short frame or a format it can't use
   '';
+  iris-tiles-memory-objects-as-anv-does = ''
+    the patched source of the XPS 14's Mesa has iris prefer 4K tiles for every memory object, in a
+    branch no earlier one can shadow, as anv does for the same image
+  '';
   jobs-broker-passes-clippy = ''
     clippy finds nothing in the jobs broker or its tests
   '';

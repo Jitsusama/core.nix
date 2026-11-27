@@ -1,0 +1,44 @@
+iris: always prefer 4K tiles for memory objects
+
+Chrome draws WebGPU with Dawn on anv and composites it with Skia on
+iris, and hands each frame across as a memory object, an opaque file
+descriptor with no DRM modifier. Both drivers must then pick the same
+tiling from the same flags. anv asks ISL to prefer 4K alignment for
+such an image, so it gets Tile4. iris meant to do the same, but on
+Xe2+ a memory object is always PIPE_BIND_SHARED, so the branch before
+it, which only turns compression off, matched first and the else-if
+that adds the preference never ran. ISL then took Tile64 wherever it
+cost under 10% more memory, and iris read Tile64 from memory anv wrote
+as Tile4: a checkerboard over WebGPU canvases of most sizes.
+The preference now stands apart from that chain. Mesa's main has the
+same code; 9826b6081da added the preference.
+
+diff --git a/src/gallium/drivers/iris/iris_resource.c b/src/gallium/drivers/iris/iris_resource.c
+index 35ed914..ac1d33d 100644
+--- a/src/gallium/drivers/iris/iris_resource.c
++++ b/src/gallium/drivers/iris/iris_resource.c
+@@ -915,14 +915,20 @@ iris_resource_configure_main(const struct iris_screen *screen,
+             (templ->bind & PIPE_BIND_SHARED))
+       usage |= ISL_SURF_USAGE_DISABLE_AUX_BIT;
+ 
+-   else if (!res->mod_info && res->external_format != PIPE_FORMAT_NONE) {
++   else if (templ->bind & PIPE_BIND_CONST_BW)
++      usage |= ISL_SURF_USAGE_DISABLE_AUX_BIT;
++
++   /* A memory object carries no modifier, so its tiling must be the one anv
++    * picks for the same image, which prefers 4K tiles. On Xe2+ a memory
++    * object is always PIPE_BIND_SHARED, so this can't be an else of the
++    * branch above: there it never ran, and iris read a Tile64 layout from
++    * memory anv wrote as Tile4.
++    */
++   if (!res->mod_info && res->external_format != PIPE_FORMAT_NONE) {
+       usage |= ISL_SURF_USAGE_DISABLE_AUX_BIT;
+       usage |= ISL_SURF_USAGE_PREFER_4K_ALIGNMENT;
+    }
+ 
+-   else if (templ->bind & PIPE_BIND_CONST_BW)
+-      usage |= ISL_SURF_USAGE_DISABLE_AUX_BIT;
+-
+    if (templ->usage == PIPE_USAGE_STAGING)
+       usage |= ISL_SURF_USAGE_STAGING_BIT;
+ 
