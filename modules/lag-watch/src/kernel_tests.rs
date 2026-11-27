@@ -79,10 +79,16 @@ fn a_sched_file_gives_the_time_blocked_only_while_it_is_kept() {
 
 #[test]
 fn a_sched_file_gives_the_wait_for_a_cpu_never_the_wait_for_a_disk() {
+    // In the kernel's own order, from a live file: every key beside the
+    // wait's begins or ends as its does, so a looser match takes another.
     let kept = "slack (7, #threads: 30)\n\
                 ----------------------------------------\n\
+                wait_start                   :          0.000000\n\
+                wait_max                     :         18.364358\n\
+                wait_sum                     :         12.250000\n\
+                wait_count                   :             32714\n\
                 iowait_sum                   :        900.000000\n\
-                wait_sum                     :         12.250000\n";
+                iowait_count                 :              4164\n";
     assert_eq!(
         waited(kept),
         Some(12_250_000),
