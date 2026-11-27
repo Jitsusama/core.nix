@@ -1064,7 +1064,8 @@ def test_super_shift_shows_every_layers_shortcuts_and_runs_the_desktops(  # noqa
     desktop.launcher_until(lambda shown: shown["typed"] == "")
     swipe = "swipe stop showing"
     desktop.type_in(swipe, selecting="Stop showing every workspace")
-    assert desktop.showing()["selected"]["chord"].startswith("4 ")
+    chosen = desktop.showing()["selected"]
+    assert chosen["chord"].startswith("4 "), f"a swipe's chord should name four fingers: {chosen}"
     for _ in swipe:
         machine.send_key("backspace")
     desktop.launcher_until(lambda shown: shown["typed"] == "")

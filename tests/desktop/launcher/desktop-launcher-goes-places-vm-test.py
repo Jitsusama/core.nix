@@ -810,11 +810,13 @@ def test_the_launchers_catalogue_opens_places_does_actions_and_offers_what_ends_
     # Programs lists each program, but not each one's own Quit.
     kitty = one(entries, "kitty", "Programs")
     assert kitty["kind"] == "action"
-    assert not [e for e in entries if e["in"].startswith("Programs \u203a ")]
+    assert not (quits := [e for e in entries if e["in"].startswith("Programs \u203a ")]), quits
     # Windows lists each window but not each one's own Size, and a
     # keyboard's keys, which only say what they do, aren't listed.
-    assert not [e for e in entries if e["in"].startswith("Desktop \u203a Windows \u203a ")]
-    assert not [e for e in entries if "keyboard:key:" in e["id"]]
+    assert not (
+        sizes := [e for e in entries if e["in"].startswith("Desktop \u203a Windows \u203a ")]
+    ), sizes
+    assert not (keys := [e for e in entries if "keyboard:key:" in e["id"]]), keys
     # A collection's own rows are listed, as a step into it shows them:
     # Agents' tree, a closed orchestrator inside the Closed row at its end,
     # as the agents daemon serves the top level. Waited for by its place,
@@ -835,7 +837,7 @@ def test_the_launchers_catalogue_opens_places_does_actions_and_offers_what_ends_
     # Either way will do: the reopening itself is the sessions test's. It's held 30 s for the
     # session to start (Sessions.startsWithin), so the wait is longer.
     with settled(desktop, "orchestrator:TESTQA", dt.timedelta(seconds=60)):
-        assert ran(lighthouse)["done"]
+        assert (outcome := ran(lighthouse))["done"], outcome
         machine.fail(closed)
     # A place opens there.
     assert ran(one(entries, "Power", "Machine")) == {
@@ -846,8 +848,8 @@ def test_the_launchers_catalogue_opens_places_does_actions_and_offers_what_ends_
     desktop.close_launcher()
     # One that ends something is shown ready, never done.
     reboot = one(entries, "Reboot", "Machine \u203a Power")
-    assert reboot["disruptive"]
-    assert ran(reboot)["offered"]
+    assert reboot["disruptive"], reboot
+    assert (outcome := ran(reboot))["offered"], outcome
     desktop.launcher_until(
         lambda shown: (
             shown["path"] == ["Machine", "Power"]
@@ -857,7 +859,7 @@ def test_the_launchers_catalogue_opens_places_does_actions_and_offers_what_ends_
     desktop.close_launcher()
     # A harmless one is done at once, and once it ends something, offered.
     awake = one(entries, "Keep Awake", "Machine")
-    assert not awake["disruptive"]
+    assert not awake["disruptive"], awake
     # Its outcome settles here, so the release's wait below can't be met by this one's. Either
     # outcome passes, since its 5 s hold is tight on a loaded builder; the inhibitor is what's
     # checked, and no other test says whether its row agrees with it.
@@ -867,7 +869,7 @@ def test_the_launchers_catalogue_opens_places_does_actions_and_offers_what_ends_
     # On, it keeps its name (VKCF3Z, 99c7bc98), and letting it sleep ends something.
     sleep = one(listed(), "Keep Awake", "Machine")
     assert sleep["id"] == awake["id"], "its id changed with its state"
-    assert ran(sleep)["offered"]
+    assert (outcome := ran(sleep))["offered"], outcome
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Keep Awake")
     desktop.land()
     # The last act here, so it settles before the close, where a word it's told is spent.

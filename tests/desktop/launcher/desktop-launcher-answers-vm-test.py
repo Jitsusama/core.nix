@@ -99,7 +99,8 @@ def test_the_launcher_copies_a_vendor_and_the_charge_and_steps_into_the_charger(
     charge = charged(desktop)
     desktop.answer("battery")
     desktop.shoot("launcher-battery")
-    assert yanked(desktop).startswith(f"{charge}% \u00b7 ")
+    copied = yanked(desktop)
+    assert copied.startswith(f"{charge}% \u00b7 "), f"no {charge}% leads: {copied!r}"
     # Then what feeds it: the stand-in's charger, plugged in, a step
     # into the answer's row.
     desktop.answer("charger")
@@ -150,7 +151,8 @@ def test_heat_copies_the_hottest_part_and_each_part_steps_into_its_history(
     print(machine.succeed("grep -H . /sys/class/hwmon/*/name"))
     desktop.answer("heat")
     desktop.shoot("launcher-heat")
-    assert re.search("^\\u2212?[\\d.]+ \\u00b0C at the ", yanked(desktop))
+    copied = yanked(desktop)
+    assert re.search("^\\u2212?[\\d.]+ \\u00b0C at the ", copied), f"no heat leads: {copied!r}"
     # Each part reads name first, a step in by Return; Return opens one,
     # its history first, and again once back out by -.
     desktop.answer("heat")
@@ -278,7 +280,9 @@ def test_the_lights_are_asked_and_set_and_the_keyboards_hold_their_parts(  # noq
     # The keyboards QEMU gives it, however many, and caps lock.
     desktop.answer("keyboards")
     desktop.shoot("launcher-keyboards")
-    assert re.search("^(one keyboard|[1-9]\\d* keyboards), caps lock off$", yanked(desktop))
+    copied = yanked(desktop)
+    keyboards = "^(one keyboard|[1-9]\\d* keyboards), caps lock off$"
+    assert re.search(keyboards, copied), f"the keyboards aren't said: {copied!r}"
     # The keyboards are a step into the answer, and each holds its parts,
     # named first, a step further by Return. QEMU's
     # own is the laptop's kind, with all three lock lights and a PS/2 port.
@@ -355,7 +359,8 @@ def test_the_lights_are_asked_and_set_and_the_keyboards_hold_their_parts(  # noq
     )
     machine.send_key("ret")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
-    assert re.search("^after \\d+ ms \u00b7 \\d+ Hz$", desktop.as_account("wl-paste --no-newline"))
+    copied = desktop.as_account("wl-paste --no-newline")
+    assert re.search("^after \\d+ ms \u00b7 \\d+ Hz$", copied), f"the repeat isn't said: {copied!r}"
 
 
 def test_the_disks_and_the_network_say_their_room_speed_and_round_trip(

@@ -246,11 +246,7 @@
   "modules/wifid/daemon/src/state.rs" = 18;
   "modules/wifid/daemon/src/store.rs" = 17;
   "modules/wifid/daemon/src/supplicant.rs" = 7;
-  "tests/desktop/launcher/desktop-launcher-answers-vm-test.py" = 4;
   "tests/desktop/launcher/desktop-launcher-finds-by-name-vm-test.py" = 1;
-  "tests/desktop/launcher/desktop-launcher-goes-places-vm-test.py" = 8;
-  "tests/desktop/launcher/desktop-launcher-holds-meetings-vm-test.py" = 2;
-  "tests/desktop/launcher/desktop-launcher-moves-windows-vm-test.py" = 1;
   "tests/desktop/launcher/desktop-launcher-waits-on-joel-vm-test.py" = 1;
   "tests/desktop/looks/desktop-looks-vm-test.py" = 2;
   "modules/quickshell/tests/launcher-on-niri-test.py" = 5;
