@@ -1415,7 +1415,13 @@ fn run(options: &Options) -> Result<(), Failure> {
         let (house, steady) = most.house(Instant::now());
         let ceilings = (&most.written, &house, steady);
         step_links(&mut shaped, &mut live, ceilings, (call.on, &most.lines));
-        hold_followers(&mut shaped);
+        // Until a start has read the recorder's backlog, a follower keeps
+        // the hold `start` gave it too: its leader's asked rates are still
+        // start's, which would send its download straight in (a start
+        // hears its stop round 2's F15).
+        if live.caught_up() {
+            hold_followers(&mut shaped);
+        }
         let heard = live.heard().map(|(link, mut h)| {
             h.up_tins_kbit = up_tins.kbit();
             (link, h)
