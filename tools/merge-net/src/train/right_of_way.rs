@@ -148,7 +148,8 @@ pub fn gives_way(head: &str) -> Option<String> {
         return None;
     }
     let branch = crate::git(&["symbolic-ref", "--quiet", "--short", "HEAD"]).ok()?;
-    let boarded = super::offer(head, (!branch.is_empty()).then_some(branch)?.as_str())?;
+    // One that would merge alone passed at its own head.
+    let boarded = super::offer(head, None, (!branch.is_empty()).then_some(branch)?.as_str())?;
     let since = match why {
         Yields::Held(since) => format!(
             "has held the right of way for {} minutes, since main moved beside a run of it \
