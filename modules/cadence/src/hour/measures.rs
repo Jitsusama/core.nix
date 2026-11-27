@@ -33,7 +33,7 @@ pub mod rounds;
 mod slipped;
 mod slips;
 pub mod spent;
-mod told_late;
+pub mod told_late;
 #[cfg(test)]
 mod tracked;
 pub mod unbilled;
@@ -128,13 +128,16 @@ impl Measure {
 
 /// The measure to move this hour: the first class with one past its
 /// target, and within it the one furthest past. A merge's rounds past five
-/// can't move, so they are filed to its owner apart and never lead; nor do
-/// the queues, whose worst is asked apart once a day.
+/// can't move, so they are filed to its owner apart and never lead; nor
+/// can a date already told late, which stays on the card for its day and
+/// is filed to each owner apart, but never leads, since asking its owner
+/// to steer it each hour moves nothing; nor do the queues, whose worst is asked apart once a day.
 #[must_use]
 pub fn drag(measures: &[Measure]) -> Option<&Measure> {
     measures
         .iter()
-        .filter(|m| !m.key.starts_with(rounds::FRUITLESS) && m.class != Class::Queues)
+        .filter(|m| !m.key.starts_with(rounds::FRUITLESS) && !m.key.starts_with(told_late::KEY))
+        .filter(|m| m.class != Class::Queues)
         .filter_map(|m| m.past().map(|past| (m, past)))
         .min_by(|(a, pa), (b, pb)| a.class.cmp(&b.class).then(pb.total_cmp(pa)))
         .map(|(m, _)| m)
@@ -143,6 +146,14 @@ pub fn drag(measures: &[Measure]) -> Option<&Measure> {
 fn lines(text: &str) -> impl Iterator<Item = Value> + '_ {
     text.lines()
         .filter_map(|line| serde_json::from_str(line).ok())
+}
+
+/// The asks list's lines, each read as its ask, but for a twin: a line
+/// the keeper folded into another with the same moment and words, its id
+/// marked `~`. Every measure of the asks keeps an ask by its latest line,
+/// so a twin written after the ask it copies would stand in its place.
+fn asks(text: &str) -> impl Iterator<Item = Value> + '_ {
+    lines(text).filter(|ask| !ask["id"].as_str().is_some_and(|id| id.contains('~')))
 }
 
 fn seconds(value: &Value) -> Option<i64> {
@@ -172,22 +183,22 @@ pub fn to_first_slice(text: &str, now: i64, which: Tracking) -> Measure {
     // how its latest line tracks it, since the list re-marks or puts down
     // an ask by writing it again.
     type Ask = (String, Option<i64>, Option<Tracking>);
-    let mut asks: BTreeMap<(i64, String), Ask> = BTreeMap::new();
-    for ask in lines(text) {
+    let mut by_ask: BTreeMap<(i64, String), Ask> = BTreeMap::new();
+    for ask in asks(text) {
         let Some(asked) = seconds(&ask["at"]) else {
             continue;
         };
         let reached = seconds(&ask["first"]).or_else(|| seconds(&ask["landed"]));
         let words = ask["words"].as_str().unwrap_or_default().to_owned();
         let owner = first_owner(ask["owner"].as_str().unwrap_or_default());
-        let entry = asks.entry((asked, words)).or_insert((owner, None, None));
+        let entry = by_ask.entry((asked, words)).or_insert((owner, None, None));
         entry.1 = match (entry.1, reached) {
             (Some(a), Some(b)) => Some(a.min(b)),
             (a, b) => a.or(b),
         };
         entry.2 = tracking::of(&ask);
     }
-    let counted: Vec<(i64, &str, &str, bool)> = asks
+    let counted: Vec<(i64, &str, &str, bool)> = by_ask
         .iter()
         .filter(|(_, (.., latest))| *latest == Some(which))
         .filter(|((asked, _), (_, reached, _))| {
@@ -516,6 +527,20 @@ mod tests {
             drag(&measures[2..]),
             None,
             "nothing past its target is no drag"
+        );
+    }
+
+    #[test]
+    fn a_date_told_late_never_leads_however_far_past_it_is() {
+        let measures = [
+            measure(told_late::KEY, Class::Slip, 3.0, Some(0.0)),
+            measure("dates-told-late-derived", Class::Slip, 5.0, Some(0.0)),
+            measure("far", Class::Clean, 30.0, Some(10.0)),
+        ];
+        assert_eq!(
+            drag(&measures).map(|m| m.key.as_str()),
+            Some("far"),
+            "a date told late, which no one can move now, led the hour"
         );
     }
 

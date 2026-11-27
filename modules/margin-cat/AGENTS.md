@@ -18,6 +18,7 @@ layout for it. The scripts work out everything it does, so the Qt cases in
 | `MarginCatFalls.js`  | what it does as the window under it moves or goes        |
 | `MarginCatFloats.js` | floating windows' tops as stops                          |
 | `MarginCatPlays.js`  | a play's beats, as a route on its ways                   |
+| `MarginCatPuppy.js`  | the puppy's visit: its track, and the cat's answer       |
 | `MarginCatShown.js`  | how its walks and plays reached the screen               |
 | `MarginCatTiles.js`  | niri's layout read as tiles                              |
 
@@ -113,6 +114,31 @@ cuts it.
 - Held by `margin-cat-one-screen.qml`: "up with no side over any top, it comes in at the nearest
   side's foot, unmoved"
 - Held by `margin-cat-one-screen.qml`: "told late, never ahead of niri's slide into its window"
+
+### Walk the Strip to a Column Off the Edge
+
+Joel, 2026-11-14 17:24: "is the kitty supposed to be climbing down the sides
+of windows yet? ... workspace changes, or focusing to a window off the left or
+right edge"
+
+niri lays a workspace's columns on one strip and scrolls it. While the keys
+rest on the new column it stays on the window it sat on, carried off the
+screen with it on niri's spring if that's where niri scrolls it, and back
+with it the same way if the keys come back first; then it comes back in at
+that edge head first, as between workspaces, and walks the strip to its
+seat, leaping the gap at the edge only where its window is all past it.
+
+- Held by `margin-cat-one-screen.qml`: "its window scrolled, it's carried as far"
+- Held by `margin-cat-one-screen.qml`: "drawn where it was as niri sets off, nearer as it
+  slides, there as it stops"
+- Held by `margin-cat-one-screen.qml`: "it comes in at the edge on the top there, head first"
+- Held by `margin-cat-one-screen.qml`: "then it leaps the gap at the edge onto the window inside
+  it"
+- Held by `margin-cat-one-screen.qml`: "on a window partly on the screen, it walks to its gap, then
+  leaps only the gap"
+- Held by `margin-cat-one-screen.qml`: "then it comes on facing in, never thinking again or going
+  back out"
+- Held by `margin-cat-one-screen.qml`: "and walks the tops to its seat"
 
 ### Climb, Path and Leap About the Windows
 
@@ -361,5 +387,37 @@ animals."
 - Held by `margin-cat-games.qml`: "let go on a top, it only lands and flicks an ear"
 - Held by `margin-cat-games.qml`: "a long fall moves every frame, as far each as the fastest
   fall goes"
+
+### A Little Puppy Too
+
+Joel, 2026-11-12 15:18: "I love the cat! So much! Can we have it move around
+gently in between windows, bat balls of yarn and stuff? And maybe throw in a
+little puppy too?"
+
+The puppy visits only once he's left the keys, as the cat's other moves
+come, and rests 20 to 40 minutes between visits so it stays a treat rather
+than a second animal always about. The cat answers it where it sits. A key
+ends a visit: the puppy fades where it is and the cat sits from where it's
+got to, or, with the keys on another column, goes back over the window it
+sat on until they rest there. Dozing off ends none. Under the launcher's
+card the puppy goes at once rather than fading.
+
+- Held by `margin-cat-puppy.qml`: "from just behind its column's edge, drawn only within it,
+  facing the cat"
+- Held by `margin-cat-puppy.qml`: "it bows as the cat eyes it, as long as the cat thinks
+  besides"
+- Held by `margin-cat-puppy.qml`: "the cat answers with a hop where it sits, the puppy sitting"
+- Held by `margin-cat-puppy.qml`: "then it turns and trots back behind the edge as the cat
+  watches"
+- Held by `margin-cat-puppy.qml`: "the cat never leaves its seat"
+- Held by `margin-cat-puppy.qml`: "a new drawing each three cells it covers, in the cat's order"
+- Held by `margin-cat-games.qml`: "and the puppy a few times, 20 minutes apart at the least,
+  unevenly"
+- Owed since 2026-11-12: the puppy answering his pointer as the cat does, for "engage with my
+  animals" (Play With the Mouse)
+- Owed since 2026-11-26: on nested niri, a focus moved mid-visit leaving the cat over the
+  window it sat on till the keys rest, a doze mid-visit letting the puppy trot off, and the
+  card coming up mid-visit taking the puppy at once; and a journal case that a cut visit is
+  told as the puppy's, not the walk's.
 
 [design]: ../../docs/design.md

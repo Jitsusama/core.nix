@@ -78,9 +78,11 @@ CELLS = 8
 # included, a little more with the drawer's acts and its whole question, and
 # 677.4 KB once a network's label keeps what tells it apart, and 678.2 KB
 # once a cloud machine says it's kept, a little more once a long lease counts
-# days, under the 679 KB allowed; new work's line and its hidden controls draw about 20 elements of
-# the 611.
-BUDGET = Budget(files=33, kilobytes=679, elements=620)
+# days, about 0.4 KB more once every label is kept apart and in its room, and
+# about 2.4 KB more once a machine's drawer starts new work on it, under the
+# 683 KB allowed; new work's line and its hidden controls draw about 20
+# elements of the 611.
+BUDGET = Budget(files=33, kilobytes=683, elements=620)
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000
 TWIN_NETWORKS = 200
@@ -934,6 +936,76 @@ def test_the_view_and_now_answer_their_keys(mycelium_opened: Opened) -> None:
     )
 
 
+# The map's width and the drawer's, in pixels: a fit is made for the map's width less the
+# drawer's while the drawer is open, and for the whole of it while shut.
+WIDTHS = """[document.getElementById("world").ownerSVGElement.getBoundingClientRect().width,
+  document.getElementById("panel").offsetWidth]"""
+
+
+# How far the window narrows under a view moved by hand.
+NARROWED_PX = 80
+
+
+def fitted_about(view: tuple[float, float, float], wide: float) -> float:
+    """Say which point of the map a view `wide` pixels across fits in its middle (viewOf)."""
+    tx, _, k = view
+    return (wide / 2 - tx) / k
+
+
+def test_a_fit_takes_the_whole_width_until_the_drawer_opens(mycelium_opened: Opened) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    page.locator("#map-view").focus()
+    page.keyboard.press("0")
+    shut = settled(page, "0 didn't fit the whole map")
+    whole, drawer = page.evaluate(WIDTHS)
+    middle = fitted_about(shut, whole)
+    # Opening Now opens the drawer, and a view following the whole map fits it again clear of
+    # it, about the same middle; a gutter kept while shut would put that middle a half a
+    # drawer off, and a glide stopped part way would leave it somewhere between.
+    page.keyboard.press(".")
+    expect(page.locator("#now-control"), ". didn't open Now").to_have_attribute(
+        "aria-expanded", "true"
+    )
+    opened = settled(page, "the map never stood still once Now opened")
+    clear = max(whole - drawer, whole / 2)
+    assert fitted_about(opened, clear) == pytest.approx(middle, abs=1), (
+        f"shut, the map was fitted about {middle} across {whole} px, and open about "
+        f"{fitted_about(opened, clear)} across the {clear} px the drawer leaves"
+    )
+    assert opened[2] <= shut[2], f"the map grew from {shut} as the drawer took room: {opened}"
+    page.keyboard.press(".")
+    expect(page.locator("#now-control"), ". didn't close Now").to_have_attribute(
+        "aria-expanded", "false"
+    )
+    assert settled(page, "the map never stood still once Now shut") == pytest.approx(
+        shut, abs=0.05
+    ), "shutting the drawer didn't fit the map across the whole width again"
+    # Moved by hand, the view keeps its middle through a resize by the map's own change in
+    # width, the drawer open or not: measured by the room the drawer leaves, it would jump
+    # half a drawer the first resize after the drawer opened.
+    # Unmoved, the view would follow the whole map and fit it afresh, which can shift it the same
+    # way, so the pan is checked to have landed.
+    page.keyboard.press("Shift+ArrowLeft")
+    moved = settled(page, "the map never stood still once moved")
+    assert moved == pytest.approx((shut[0] + PANNED, shut[1], shut[2]), abs=0.05), (
+        f"Shift+Left didn't pan the map {PANNED} px from {shut}: {moved}"
+    )
+    page.keyboard.press(".")
+    expect(page.locator("#now-control"), ". didn't open Now again").to_have_attribute(
+        "aria-expanded", "true"
+    )
+    held = settled(page, "the moved map never stood still once Now opened")
+    width, height = SIZES[-1]
+    page.set_viewport_size({"width": width - NARROWED_PX, "height": height})
+    resized = settled(page, "the moved map never stood still once the window narrowed")
+    narrowed, _ = page.evaluate(WIDTHS)
+    assert resized[0] - held[0] == pytest.approx((narrowed - whole) / 2, abs=1), (
+        f"the map narrowed from {whole} to {narrowed} px with the drawer open, and the view "
+        f"moved from {held} to {resized}, not by half that"
+    )
+
+
 # Node.json's cells that need the reader, as Now lists them: the one asking
 # something, then the one stuck. Node.json lists them in that order too, so
 # waits.test.ts is what proves the order; this proves the page follows it.
@@ -1324,6 +1396,14 @@ def sent_again(page: Page, want: str) -> None:
     assert handed == want, f"sent again as {handed}, not {want}"
 
 
+def sent_as(page: Page, words: str, want: str) -> None:
+    """Write `words` over new work's open line and send them, as `want`."""
+    page.locator("#sprout").fill(words)
+    page.locator("#sprout").press("Enter")
+    handed = page.evaluate("window.talkedTo")
+    assert handed == want, f"{words} was sent as {handed}, not {want}"
+
+
 def test_new_work_sends_again_from_the_cell_it_went_from(mycelium_opened: Opened) -> None:
     page = mycelium_opened.page
     the_map_stands(page, "live")
@@ -1642,6 +1722,19 @@ def test_a_basins_machines_are_drawn_as_one(browser: Browser, basins_served: Ser
         expect(
             body.locator('a[href^="mycelium:machine/"]'), "the basin linked a row it has none of"
         ).to_have_count(0)
+        # New work from it starts on any of the cloud's machines.
+        cloud = body.get_by_role("button", name="Start New Work on the Cloud")
+        expect(cloud, "the basin didn't start work on the cloud").to_have_attribute(
+            "data-sprout-on", "cloud"
+        )
+        page.evaluate(TALK_HELD)
+        cloud.click()
+        on = page.locator("#sprout-on-words")
+        expect(on, "the basin's button didn't offer the cloud").to_have_text("On the cloud")
+        page.keyboard.type("tidy")
+        page.keyboard.press("Enter")
+        handed = page.evaluate("window.talkedTo")
+        assert handed == "mycelium:sprout?words=tidy&on=cloud", f"the basin handed {handed}"
         for name in BASIN_MACHINES:
             exactly = page.locator(".name", has_text=re.compile(f"^{re.escape(name)}$"))
             row = body.locator(".health .row", has=exactly)
@@ -1651,6 +1744,11 @@ def test_a_basins_machines_are_drawn_as_one(browser: Browser, basins_served: Ser
         expect(body, "the cell lost its own machine").to_contain_text(
             f"on {BASIN_MACHINES[0]}, in the {BASIN} basin", timeout=PACE_MS
         )
+        # Words kept for the cloud go there again, though no machine is it.
+        page.locator("#map-view").focus()
+        page.keyboard.press("s")
+        expect(on, "the kept words lost the cloud").to_have_text("On the cloud")
+        page.keyboard.press("Escape")
         # Its links to the Launcher name that machine too, never the basin.
         expect(
             body.locator('a[href^="mycelium:cell/"]:not([data-go-to])'),
@@ -2238,6 +2336,92 @@ def test_a_kept_cloud_machine_says_so_and_opens_its_row(
         )
     finally:
         opened.close()
+
+
+def test_new_work_from_a_machines_drawer_starts_on_it_until_unticked(
+    mycelium_opened: Opened,
+) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    page.evaluate(TALK_HELD)
+    page.evaluate("location.hash = '#machine=osprey'")
+    expect(page.locator("#panel-title"), "osprey's drawer never opened").to_have_text("osprey")
+    here = page.locator("#panel-body").get_by_role("button", name="Start New Work Here")
+    here.click()
+    expect(page.locator("#sprout-on-words"), "osprey wasn't offered").to_have_text("On osprey")
+    expect(page.locator("#sprout-from-line"), "a machine offered a cell").to_be_hidden()
+    page.keyboard.type("tidy the rows")
+    page.keyboard.press("Enter")
+    handed = page.evaluate("window.talkedTo")
+    want = "mycelium:sprout?words=tidy%20the%20rows&on=osprey"
+    assert handed == want, f"the machine's drawer handed {handed}, not {want}"
+    expect(page.locator("#where"), "the hand-off didn't name its machine").to_have_text(
+        f"{HANDED}, on osprey{HANDED_END}"
+    )
+    expect(here, "the keys didn't go back to the drawer's button").to_be_focused()
+    # Words kept to send again go back to the machine they went to, even
+    # under another machine's drawer, as they go from the cell they did.
+    on = page.locator("#sprout-on-words")
+    page.evaluate("location.hash = '#machine=kestrel'")
+    expect(page.locator("#panel-title"), "kestrel's drawer never opened").to_have_text("kestrel")
+    page.locator("#map-view").focus()
+    page.keyboard.press("s")
+    expect(on, "the kept words lost their machine").to_have_text("On osprey")
+    # New words over them are new work, on the machine open now.
+    page.locator("#sprout").fill("fresh")
+    expect(on, "new words kept the old machine").to_have_text("On kestrel")
+    sent_as(page, "fresh", "mycelium:sprout?words=fresh&on=kestrel")
+    # Escape lets the words go, so s offers the open drawer's machine.
+    page.locator("#map-view").focus()
+    page.keyboard.press("s")
+    page.keyboard.press("Escape")
+    page.locator("#map-view").focus()
+    page.keyboard.press("s")
+    expect(on, "s didn't offer the open machine").to_have_text("On kestrel")
+    sent_as(page, "here", "mycelium:sprout?words=here&on=kestrel")
+    # A tick lets it go, so the work starts where new work does when Joel
+    # names none.
+    page.locator("#map-view").focus()
+    page.keyboard.press("s")
+    page.locator("#sprout-on").uncheck()
+    sent_as(page, "anywhere", "mycelium:sprout?words=anywhere")
+    # Words that went on no machine come back on none, under any drawer.
+    page.locator("#map-view").focus()
+    page.keyboard.press("s")
+    expect(page.locator("#sprout-on-line"), "unticked words found a machine").to_be_hidden()
+    page.keyboard.press("Escape")
+    # The whole map names no machine.
+    page.evaluate("location.hash = ''")
+    expect(page.locator("#panel-body [data-sprout-on]"), "a drawer stayed").to_have_count(0)
+    page.locator("#map-view").focus()
+    page.keyboard.press("s")
+    expect(page.locator("#sprout-on-line"), "the whole map offered a machine").to_be_hidden()
+
+
+def test_new_works_words_kept_for_a_machine_that_left_go_with_it(
+    mycelium_opened: Opened, mycelium_node: StandIn
+) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    page.evaluate(TALK_HELD)
+    page.evaluate("location.hash = '#machine=osprey'")
+    expect(page.locator("#panel-title"), "osprey's drawer never opened").to_have_text("osprey")
+    page.locator("#panel-body").get_by_role("button", name="Start New Work Here").click()
+    page.keyboard.type("last")
+    page.keyboard.press("Enter")
+    page.evaluate("location.hash = '#machine=kestrel'")
+    expect(page.locator("#panel-title"), "kestrel's drawer never opened").to_have_text("kestrel")
+    osprey = page.locator('#world [data-key="m:osprey"]')
+    expect(osprey, "the map didn't draw osprey").to_have_count(1)
+    mycelium_node.tell("machine", gone=["machine:osprey"])
+    expect(osprey, "the map kept a machine that left").to_have_count(0, timeout=PACE_MS)
+    # Sent to the machine open now, they'd start work where Joel didn't ask.
+    page.locator("#map-view").focus()
+    page.keyboard.press("s")
+    expect(page.locator("#sprout"), "words for a gone machine came back").to_have_value("")
+    expect(page.locator("#sprout-on-words"), "s didn't offer the open machine").to_have_text(
+        "On kestrel"
+    )
 
 
 def test_what_each_spent_today_is_listed_most_first(mycelium_opened: Opened) -> None:

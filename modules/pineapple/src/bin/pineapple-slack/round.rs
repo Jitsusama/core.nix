@@ -7,7 +7,7 @@ use std::path::Path;
 
 use pineapple::deaf::{Deafness, Round, Search};
 use pineapple::ears::{Ears, Unread};
-use pineapple::gate::{Asked, gate};
+use pineapple::gate::{Asked, Gate, Sent, gate};
 use pineapple::judged::{self, Judged};
 use pineapple::phone;
 use pineapple::record::{self, Source};
@@ -46,10 +46,11 @@ pub(super) struct Reader {
 /// judged. What it gave is judged as its ears say it may be: messages a
 /// second ask agreed with in full, any other only for a stop, which may
 /// come from anyone, never for a resume a writer could type. One search
-/// unasked leaves the round counted neither way, though the other's
-/// messages are judged, unless it waits on a later page while the other's
-/// answer can't be read, which is said as that search deaf. Either way the next round asks both
-/// again, with no rest a poster could stretch.
+/// unasked leaves the round read in part, counted neither way, though the
+/// other's messages are judged, unless it waits on a later page while the
+/// other's answer can't be read, which is said as that search deaf; only
+/// both unasked, neither waiting, is a round unasked. Either way the next
+/// round asks both again, with no rest a poster could stretch.
 pub(super) fn round(
     ears: &mut dyn Ears,
     reader: &Reader,
@@ -82,23 +83,25 @@ pub(super) fn round(
     let unread = Round::Deaf(Deafness::Unreadable);
     let answers = [(PHRASE, &phrase), (tag.as_str(), &tagged)];
     let partly = in_part(ears, reader, account, state, &joel, judged, answers);
-    // One search unasked says nothing new of the other, so the round
-    // counts neither way, but the other's stops are heard as it read them,
-    // as is what the first read in part, and it has read as far as they
-    // reach; when Slack was read whole stays as it was.
+    // One search unasked says nothing new of the other, so the round is
+    // read in part and counts neither way, but the other's stops are
+    // heard as it read them, as is what the first read in part, and it has
+    // read as far as they reach; when Slack was read whole stays as it was.
+    // The round names the search left unasked unless it waits on a later
+    // page, which its ears count.
     let alone = match (&phrase, &tagged) {
-        (Ok(read), Err(Round::Unasked)) => Some((PHRASE, read)),
-        (Err(Round::Unasked), Ok(read)) => Some((tag.as_str(), read)),
+        (Ok(read), Err(Round::Unasked)) => Some((PHRASE, read, Search::Tag, tag.as_str())),
+        (Err(Round::Unasked), Ok(read)) => Some((tag.as_str(), read, Search::Phrase, PHRASE)),
         _ => None,
     };
-    if let Some((query, read)) = alone {
+    if let Some((query, read, unasked, its)) = alone {
         let heard = read.iter().chain(&partly);
         judge_each(ears, reader, account, state, &joel, judged, heard);
         judged.reached(query, read.last());
         if let Err(error) = judged::write(state, judged, judged::read_at(state)) {
             eprintln!("<3>couldn't keep how far it has read: {error}");
         }
-        return Round::Unasked;
+        return Round::Partly((!ears.waiting(its)).then_some(unasked));
     }
     let (phrase, tagged, deaf) = match (phrase, tagged) {
         (Ok(phrase), Ok(tagged)) => (phrase, tagged, None),
@@ -125,16 +128,31 @@ pub(super) fn round(
                 }
             }
             // A refusal is said first, then a sign-in none could give.
-            // Both unasked, one blinking beside the other unreadable, or
-            // one beside the other's refused sign-in, say nothing new, so
-            // only both unread are told as both.
+            // One unasked beside the other unreadable, waiting on no later
+            // page, heard nothing either, so the round is deaf of both;
+            // each search is counted on its own, so one blink doesn't
+            // widen a row, and one failing every round is told. Of the
+            // rest, only both unasked, neither waiting, is a round no
+            // search was answered in, which a gateway's reader counts.
+            let unasked = Some(Round::Unasked);
+            let unreadable = failed.contains(&Some(unread));
+            let left = |search: Search, query: &str, answer: Option<Round>| {
+                (answer == unasked && !ears.waiting(query)).then_some(search)
+            };
+            let blinked = match (
+                left(Search::Phrase, PHRASE, failed[0]),
+                left(Search::Tag, &tag, failed[1]),
+            ) {
+                (Some(_), Some(_)) => Round::Unasked,
+                (one, other) => Round::Partly(one.or(other)),
+            };
             return [
                 Round::Deaf(Deafness::Refused),
                 Round::Deaf(Deafness::NoSignIn),
-                Round::Unasked,
             ]
             .into_iter()
             .find(|round| failed.contains(&Some(*round)))
+            .or_else(|| (failed.contains(&unasked) && !unreadable).then_some(blinked))
             .unwrap_or(unread);
         }
     };
@@ -304,7 +322,8 @@ fn judge(
         edited: message.edited,
         age: read_at.saturating_sub(said_at),
     };
-    let gated = gate(&asked, &sent, read_at, replies_off(state));
+    let mute = account.is_none() && !reader.shadow;
+    let gated = reply_gate(&asked, &sent, (read_at, state), mute);
     let entry = record::line(&source, &decision, gated, now, reader.shadow);
     if agreed && let Err(error) = record::append(&state.join("decisions.jsonl"), &entry) {
         eprintln!("<3>couldn't write a decision down: {error}");
@@ -427,7 +446,9 @@ fn resume_as_joel(stops: &Path, reaches: &[Target], at: (u64, u128), link: &str,
 
 /// Say a reply the rules let through, and whether it counts as said: in
 /// shadow each does, said or not, so the rules are tried as they will be;
-/// out of it, only one Slack took.
+/// out of it, only one Slack took. With no sign-in of Slack's own, as a
+/// reader over a gateway has, none is said, since the gateway sends to
+/// Joel alone.
 fn answer(
     reader: &Reader,
     account: Option<&Account>,
@@ -439,7 +460,10 @@ fn answer(
         return true;
     }
     let Some(account) = account else {
-        eprintln!("<3>no sign-in to say a reply with: {}", message.link);
+        eprintln!(
+            "<5>a reply isn't said, as the gateway sends to Joel alone: {}",
+            message.link
+        );
         return false;
     };
     let Some(post) = post else {
@@ -458,6 +482,22 @@ fn answer(
             eprintln!("<3>Slack didn't take a reply: {why}");
             false
         }
+    }
+}
+
+/// The rule held to tell no thread anything, live over a gateway, which
+/// sends to Joel alone, as the GitHub reader holds its replies.
+const NO_REPLIES: &str = "no-replies-here";
+
+/// The rule `asked`'s reply is held by at `read_at`, with `state` saying
+/// whether replies are switched off, as [`gate`] says; one it lets
+/// through is held by [`NO_REPLIES`] when the reader is `mute`, as none
+/// can be said, so what's written down never says a reply went.
+fn reply_gate(asked: &Asked<'_>, sent: &[Sent], read: (u64, &Path), mute: bool) -> Gate {
+    let (read_at, state) = read;
+    match gate(asked, sent, read_at, replies_off(state)) {
+        Gate::Through(_) if mute => Gate::Held(NO_REPLIES),
+        gated => gated,
     }
 }
 

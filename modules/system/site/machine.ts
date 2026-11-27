@@ -335,8 +335,8 @@ function power(charge: number, onBattery: boolean | undefined): string {
 
 /**
  * A machine's last update, as a sentence, when its node says one, with why
- * when it didn't all go ahead: beside a refusal, a failure or a done update
- * whose system isn't the one it boots, as the system command says it
+ * when it didn't all go ahead: beside a refusal, a failure, or a done or
+ * unchanged update whose system isn't the one it boots, as the system command says it
  * (said.rs `updated`), so a why beside a step a newer node knows, which an
  * earlier attempt may have left, is never said as this one's. A why may end
  * in its own mark, so the sentence ends once.
@@ -351,7 +351,9 @@ function updated(figures: Figures, when: (at: string) => string): string | undef
     case "done":
       return why === undefined ? `Updated ${at}.` : stopped(`Updated ${at}, but ${why}`);
     case "unchanged":
-      return `Unchanged at its update ${at}.`;
+      return why === undefined
+        ? `Unchanged at its update ${at}.`
+        : stopped(`Unchanged at its update ${at}, but ${why}`);
     // A node too old to say its step, or one whose step couldn't be read,
     // which the daemon leaves out: either way, not known to have gone ahead.
     case undefined:

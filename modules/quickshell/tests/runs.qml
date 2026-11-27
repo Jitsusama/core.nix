@@ -9,7 +9,8 @@
 // cost, and how long it ran; the session that started one is named beside
 // it, and Return goes to its window; stepping in lists its participants,
 // and one with an answer opens it in a terminal; while the screen is
-// shared no amount shows; and typing finds a run by the change or its id.
+// shared no amount shows; and typing finds a run by the change or its id,
+// typing on looking through only what the letters before it matched.
 // It exits 0 once every case holds, and otherwise 1, saying which didn't.
 import qs
 import Quickshell
@@ -162,6 +163,26 @@ ShellRoot {
                 hidden.every(row => !row.side.includes("$"))
                     && hidden[0].verbs().every(row => !row.side.includes("$")),
                 hidden.map(row => row.side).join(", "));
+
+            // Typing on looks through only what the letters before matched:
+            // with those kept cut to one, a letter typed on finds only it.
+            const typedOn = names(runs.search("fle").rows);
+            expect("what the letters matched, kept", typedOn === "fleet-live, fleet-dead"
+                && names(runs.lastMatched.rows) === typedOn, names(runs.lastMatched.rows));
+            runs.lastMatched = Object.assign({}, runs.lastMatched,
+                { rows: runs.lastMatched.rows.slice(0, 1) });
+            const narrowed = names(runs.search("flee").rows);
+            expect("typing on looks only through them", narrowed === "fleet-live", narrowed);
+            // One its id alone matches is kept as typing goes on.
+            runs.search("2026");
+            const byIdOn = names(runs.search("202610").rows);
+            expect("one found by its id, typed on", byIdOn === "council on core.nix#380", byIdOn);
+            // A run coming makes the rows anew, which are looked through whole.
+            runs.search("fle");
+            runs.records = root.records.concat([{ key: "run:fleet.fleet-new", kind: "run",
+                id: "fleet.fleet-new", about: "fleet-new", parent: "s-gone", state: "done" }]);
+            const since = names(runs.search("flee").rows);
+            expect("a run come since is found", since.includes("fleet-new"), since);
 
             // A run's own kind, where the harness wrote it beside the node's.
             runs.records = [{ key: "run:review.r7-1", kind: "run", "run.kind": "judge",

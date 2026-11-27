@@ -11,8 +11,10 @@
 // once it's drawn; one whose pace is lifted, as the launcher opens, is
 // asked again once its frame is drawn; a search's answer is given to it and never held; one no
 // source knows any more is let go; the keys it watches ahead come to be
-// held, asked ahead; a get is answered by id, asked as a step-in; the
-// daemon stopping is said, keeping what was held and giving a get none,
+// held, asked ahead; a get is answered by id, asked as a step-in; one
+// the shell lets go with an ask in flight goes, its ask given none, and
+// says so as let go, read from the log; the daemon stopping is said,
+// keeping what was held and giving a get none,
 // unless the client is one that lets what it held go in a gap; and once
 // it starts again, the client connects again by itself, asks ahead
 // again, and the one that let go holds again. A client of a daemon
@@ -35,9 +37,8 @@
 // reads when its line was heard, and one of a watch's whole answer, or one
 // it puts off, reads none. Each daemon's lines and their length are
 // counted by its name, for the launcher's census, and begun again once
-// said. A going says the asks it left unanswered, apart where the shell
-// let the connection go itself, which a client let go with an ask in
-// flight says as let go, read from the log. A client
+// said. A going says the asks it left unanswered, said as let go where the
+// shell let the connection go itself. A client
 // holding its wire watches neither its socket nor its folder. A socket that refuses is tried again twice as late
 // each time, a minute at most, counted again from its next answer. Each
 // step waits on what the client says, at most ten seconds.
@@ -102,6 +103,10 @@ ShellRoot {
         kind: "person"
     }
     property bool letGo: false
+    // Whether the daemon's starting step has connected the let-go link again.
+    property bool relinked: false
+    // What its ask in flight was given as it went: undefined until then.
+    property var letGoGiven: undefined
 
     // Letting what it held go while the daemon isn't answering.
     Daemon {
@@ -381,6 +386,8 @@ ShellRoot {
             + `, kinds ${JSON.stringify(kinds.held)}`
             + `, lapsing ${wholeFor.state} ${root.heldLapsing} ${JSON.stringify(wholeFor.held)}`
             + `, answered ${JSON.stringify(root.answered)}`
+            + `, letting go ${lettingGo.state} ${root.letGo} ${JSON.stringify(root.letGoGiven)}`
+            + ` awaiting ${Object.keys(lettingGo.awaited).length}`
             + `, the census heard ${root.heardSaid} of ${root.heardLines.join(" and ")}`);
         Qt.exit(1);
     }
@@ -414,7 +421,22 @@ ShellRoot {
             run: () => {
                 peopleRunning.running = true;
             },
-            holds: () => people.state === "answering" && "slack" in people.sources
+            // The let-go link shares this daemon's socket through a symlink,
+            // whose target appearing its file watch may not see, and its own
+            // tries end 14 s in, so a daemon slower than that to start on a
+            // busy builder could leave it unconnected. Once the daemon
+            // answers, the link is connected again here, once, and waited for
+            // as long as a restart's, rather than inside the let-go step's ten
+            // seconds.
+            polls: 400,
+            holds: () => {
+                const answering = people.state === "answering" && "slack" in people.sources;
+                if (answering && lettingGo.wire === null && !root.relinked) {
+                    root.relinked = true;
+                    lettingGo.connectAgain();
+                }
+                return answering && lettingGo.wire !== null;
+            }
         },
         {
             what: "a watch narrowed to those listed holds them alone",
@@ -489,6 +511,33 @@ ShellRoot {
             },
             holds: () => root.answered?.records?.[0]?.key === root.grace
                 && root.heldWay(root.grace) === "step"
+        },
+        {
+            // The socket's own handler may say its going before
+            // onConnectsChanged does: a going read from who called it was
+            // said as one gone wrong (#6513's F1). Which runs first isn't
+            // pinned here, since connectAgain sets the loader's `active`,
+            // which drops its binding. This step only lets it go: what its
+            // going said, and at what level, checks/shell.nix reads from the
+            // log. It comes before the daemon stops, while the link holds
+            // the connection the daemon's start waited for: after the restart,
+            // when it connects again rests on its watch of a symlinked
+            // socket or on its tries, which no step waits on. It asks for
+            // Grace, whom the step before held as a step-in, since a get is
+            // a step-in told to the daemon at once, and one for Ada would
+            // turn the way she's held, which the next step reads.
+            what: "a connection the shell lets go with an ask in flight goes, its ask given none",
+            holds: () => {
+                if (!root.letGo && lettingGo.wire !== null) {
+                    lettingGo.get([root.grace], 5000, answer => {
+                        root.letGoGiven = answer;
+                    });
+                    lettingGo.connects = false;
+                    root.letGo = true;
+                }
+                return root.letGo && lettingGo.wire === null
+                    && Object.keys(lettingGo.awaited).length === 0 && root.letGoGiven === null;
+            }
         },
         {
             what: "the daemon stopping is said, and what was held stays unless let go",
@@ -738,21 +787,6 @@ ShellRoot {
                 if (!watchesCounted.running)
                     watchesCounted.running = true;
                 return root.watches === 0;
-            }
-        },
-        {
-            // The loaders' bindings follow connects, so its socket may go
-            // and say so before onConnectsChanged runs: a going read from
-            // who called it was said as one gone wrong (#6513's F1).
-            what: "a connection the shell lets go with an ask in flight is said let go",
-            holds: () => {
-                if (!root.letGo && lettingGo.wire !== null) {
-                    lettingGo.get([root.ada], 5000, () => {});
-                    lettingGo.connects = false;
-                    root.letGo = true;
-                }
-                return root.letGo && lettingGo.wire === null
-                    && Object.keys(lettingGo.awaited).length === 0;
             }
         },
         {

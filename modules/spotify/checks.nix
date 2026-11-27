@@ -1,6 +1,6 @@
 # The checks of spotify, which checks.nix gathers with every other folder's;
 # its opening comment says what each kind of check proves.
-{
+args@{
   account,
   graphical,
   lib,
@@ -10,6 +10,19 @@
   shellFolderLint,
   ...
 }:
+let
+  # Copies Spotify's program in the launcher with the shell's files it
+  # takes by type, Provider and Words, and everything each of those and its
+  # own files import, guarded by imports.nix (quickshell's helpers.nix).
+  # It takes no other of the roots the reader's, mpv's and Inkscape's steps
+  # are drawn from, since it isn't reached through Applications.qml.
+  inherit (import ../quickshell/checks/helpers.nix args) programStepWith;
+  spotifyStep = programStepWith (import ../quickshell/checks/imports.nix) [
+    "Words.qml"
+    "launcher/Provider.qml"
+    "launcher/words.json"
+  ];
+in
 onLinux {
   # spotify-recent's tests run as it builds: what played lately is one row
   # a playlist, album or show, each with its size, repeats dropped, a track
@@ -74,18 +87,10 @@ onLinux {
     pkgs.runCommandLocal "the-launcher-plays-from-spotify" { } ''
       mkdir launcher
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
-      cp ${../quickshell/Fuzzy.js} Fuzzy.js
-      cp ${../quickshell/ProgramGlyphs.js} ProgramGlyphs.js
-      cp ${../quickshell/Words.qml} Words.qml
-      cp ${(import ../quickshell/launcher/words.nix).file} launcher/words.json
-      cp ${../quickshell/launcher/Provider.qml} launcher/Provider.qml
-      cp ${../quickshell/launcher/Asking.js} launcher/Asking.js
-      cp ${../quickshell/launcher/HeldWindows.js} launcher/HeldWindows.js
-      cp ${../quickshell/launcher/Member.js} launcher/Member.js
-      cp ${../quickshell/launcher/Numbers.js} launcher/Numbers.js
-      cp ${../quickshell/launcher/Ago.js} launcher/Ago.js
-      cp ${./SpotifyProgram.qml} launcher/SpotifyProgram.qml
-      cp ${./Spotify.js} launcher/Spotify.js
+      ${spotifyStep {
+        "launcher/SpotifyProgram.qml" = ./SpotifyProgram.qml;
+        "launcher/Spotify.js" = ./Spotify.js;
+      }}
       cp ${playing} launcher/Playing.qml
       cp ${niri} Niri.qml
       cp ${./tests/spotify-program.qml} shell.qml

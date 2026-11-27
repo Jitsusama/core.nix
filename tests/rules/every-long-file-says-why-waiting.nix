@@ -50,7 +50,6 @@
   "modules/spend-watch/src/standing.rs"
   "modules/spend-watch/src/tokens.rs"
   "modules/tuple/people.rs"
-  "modules/update-to-main/src/run.rs"
   "modules/update-to-main/src/system.rs"
   "modules/update-to-main/tests/update/main.rs"
   "modules/wifid/daemon/src/detail.rs"
