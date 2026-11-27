@@ -19,6 +19,10 @@ pub const TOO_LITTLE: &str = "Too little was said to sum up.";
 pub const TOO_LITTLE_HEARD: &str =
     "Too little was heard to sum up: the speech model failed on part of the call.";
 
+/// What a call none of which was heard gets in place of a summary.
+pub const NOTHING_HEARD: &str =
+    "Nothing was heard to sum up: the speech model failed on all of the call.";
+
 /// Fewer words than this, each counted once and greetings and thanks
 /// left out, is too little to sum up. A question and its answer, the
 /// shortest exchange worth a summary, say more.
@@ -166,6 +170,12 @@ mod tests {
             in_place_of_a_summary(&unheard),
             Some(TOO_LITTLE_HEARD),
             "a call the speech model failed on read as one where little was said"
+        );
+        let none = crate::unheard::and(None, 0).note_with_none_heard();
+        assert_eq!(
+            in_place_of_a_summary(&format!("# Transcript\n\n{none}")),
+            Some(NOTHING_HEARD),
+            "a call none of which was heard read as one where part was"
         );
     }
 }

@@ -253,7 +253,7 @@ pub fn hear(
             } => {
                 let writing = calls
                     .entry(key.clone())
-                    .or_insert_with(|| taken_up(&mut ended, book, &key, me));
+                    .or_insert_with(|| taken_up(&mut ended, book, &key, me, &mut told));
                 let parakeet = match loaded(settings, &mut speech) {
                     Ok(parakeet) => parakeet,
                     Err(why) => {
@@ -295,7 +295,7 @@ pub fn hear(
             Job::Done { key, side } => {
                 let writing = calls
                     .entry(key.clone())
-                    .or_insert_with(|| taken_up(&mut ended, book, &key, me));
+                    .or_insert_with(|| taken_up(&mut ended, book, &key, me, &mut told));
                 writing.done.insert(side);
                 if writing.done.len() == 2 {
                     tell_apart(book, &key, writing, me);
@@ -723,7 +723,13 @@ fn title_of(book: &Shared, key: &str) -> String {
 
 /// A call taken up again: as this run held it when it ended, embeddings
 /// and all, so a rejoin is told apart whole; else as its file has it.
-fn taken_up(ended: &mut Vec<(String, Writing)>, book: &Shared, key: &str, me: &str) -> Writing {
+fn taken_up(
+    ended: &mut Vec<(String, Writing)>,
+    book: &Shared,
+    key: &str,
+    me: &str,
+    _told: &mut HashSet<String>,
+) -> Writing {
     match ended.iter().position(|(kept, _)| kept == key) {
         Some(at) => ended.remove(at).1,
         None => resumed(book, key, me),

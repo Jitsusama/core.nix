@@ -32,6 +32,12 @@ pub fn and(unheard: Option<Unheard>, start: usize) -> Unheard {
 }
 
 impl Unheard {
+    /// The note the transcript of a call none of which was heard says it
+    /// with.
+    pub fn note_with_none_heard(self) -> String {
+        self.note()
+    }
+
     /// The note the transcript says it with.
     pub fn note(self) -> String {
         let at = transcript::clock(self.first);
@@ -96,11 +102,34 @@ mod tests {
             let said = format!("# Transcript\n\n{}\n\n**Joel**, 0:00: Hi.", unheard.note());
             assert_eq!(Unheard::read(&said), Some(unheard), "{said}");
         }
+        // The note is read back across a restart, by whichever build
+        // then runs, so its words are pinned here as written.
+        let written = "# Transcript\n\nPart of the call wasn't heard: the speech model failed \
+            on 3 stretches of it, the first at 12:30.\n\n**Joel**, 0:00: Hi.";
+        let three = Unheard {
+            stretches: 3,
+            first: 12 * MINUTE + 30 * RATE,
+        };
+        assert_eq!(Unheard::read(written), Some(three), "{written}");
         assert_eq!(
             Unheard::read("# Transcript\n\n**Joel**, 0:00: Part of the call wasn't heard."),
             None,
             "a line saying so was read as the note"
         );
+    }
+
+    #[test]
+    fn a_call_none_of_which_was_heard_says_so() {
+        let unheard = and(Some(and(None, 2 * RATE)), 14 * MINUTE);
+        let note = unheard.note_with_none_heard();
+        assert_eq!(
+            note,
+            "None of the call was heard: the speech model failed on 2 stretches of it, the \
+             first at 0:02.",
+            "a call none of which was heard was said to be heard in part"
+        );
+        let said = format!("# Transcript\n\n{note}");
+        assert_eq!(Unheard::read(&said), Some(unheard), "{said}");
     }
 
     #[test]

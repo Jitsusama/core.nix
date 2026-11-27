@@ -695,6 +695,38 @@ fn a_call_none_of_which_was_heard_has_a_file_saying_so() {
         unheard,
         "a call with no line heard had no file saying it wasn't heard"
     );
+    let file = std::fs::read_to_string(folder.path().join(TRANSCRIPT)).unwrap();
+    assert!(
+        file.contains("None of the call was heard"),
+        "a call none of which was heard was said to be heard in part: {file}"
+    );
+}
+
+#[test]
+fn a_call_whose_file_says_part_wasnt_heard_isnt_told_again_after_a_restart() {
+    // Its file says so, and the notice raised before the restart stays
+    // up, so a restart mid-call doesn't raise a second for the same call.
+    let folder = tempfile::tempdir().unwrap();
+    let book = Shared::new(Book::default());
+    book.lock().put(Record {
+        folder: folder.path().to_path_buf(),
+        ..record(&[], None)
+    });
+    let part = || notices::not_all_heard("Planning", "the encoder failed");
+    let lose = |key: &str, at: usize, writing: &mut Writing, told: &mut HashSet<String>| {
+        not_heard(&book, key, writing, "Joel", at, told, part)
+    };
+    let before = lose("call:e1", 0, &mut Writing::default(), &mut HashSet::new());
+    assert!(before.is_some(), "the call's first failure wasn't told");
+    let mut told = HashSet::new();
+    let mut writing = taken_up(&mut Vec::new(), &book, "call:e1", "Joel", &mut told);
+    assert!(
+        lose("call:e1", SECOND, &mut writing, &mut told).is_none(),
+        "a call was told again after a restart that its file already said"
+    );
+    let mut writing = taken_up(&mut Vec::new(), &book, "call:e2", "Joel", &mut told);
+    let other = lose("call:e2", 0, &mut writing, &mut told);
+    assert!(other.is_some(), "a call never told was taken for one told");
 }
 
 #[test]
