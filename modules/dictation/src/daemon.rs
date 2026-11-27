@@ -217,9 +217,11 @@ mod tests {
         watches.tell("a", &json!({"key": "a"}));
         let line: Value = serde_json::from_str(&heard.recv().unwrap()).unwrap();
         assert_eq!(line, json!({"id": 7, "changed": [{"key": "a"}]}));
-        assert!(heard.try_recv().is_err());
+        heard
+            .try_recv()
+            .expect_err("a change to a key not named was heard");
         watches.gone(1);
-        assert!(watches.is_empty());
+        assert!(watches.is_empty(), "the watch outlived its client");
     }
 
     #[test]

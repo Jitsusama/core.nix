@@ -242,9 +242,14 @@ mod tests {
 
     #[test]
     fn the_scale_turns_at_a_kilohertz() {
-        assert!((hz_to_mel(1000.0) - 15.0).abs() < 1e-12);
+        let kilohertz = hz_to_mel(1000.0);
+        assert!(
+            (kilohertz - 15.0).abs() < 1e-12,
+            "1000 Hz came to {kilohertz} mel, not 15"
+        );
         for hz in [0.0, 440.0, 1000.0, 3000.0, 8000.0] {
-            assert!((mel_to_hz(hz_to_mel(hz)) - hz).abs() < 1e-6);
+            let back = mel_to_hz(hz_to_mel(hz));
+            assert!((back - hz).abs() < 1e-6, "{hz} Hz came back as {back}");
         }
     }
 

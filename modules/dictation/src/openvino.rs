@@ -784,16 +784,5 @@ fn half(h: u16) -> f32 {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::half;
-
-    #[test]
-    fn halves_read_as_singles() {
-        assert!((half(0x3c00) - 1.0).abs() < f32::EPSILON);
-        assert!((half(0xc000) + 2.0).abs() < f32::EPSILON);
-        assert!((half(0x3555) - 0.333_251_95).abs() < 1e-7);
-        assert!(half(0x0000).abs() < f32::EPSILON);
-        assert!((half(0x0001) - 5.960_464_5e-8).abs() < 1e-12);
-        assert!(half(0x7c00).is_infinite());
-    }
-}
+#[path = "openvino_tests.rs"]
+mod tests;

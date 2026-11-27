@@ -240,14 +240,26 @@ mod tests {
     #[test]
     fn a_point_between_pixels_is_their_mix() {
         let picture = Picture::from_rgb(2, 1, vec![0, 0, 0, 200, 100, 50]);
-        assert!(near(picture.between(0.5, 0.0), [100.0, 50.0, 25.0]));
-        assert!(near(picture.between(1.0, 0.0), [200.0, 100.0, 50.0]));
+        let halfway = picture.between(0.5, 0.0);
+        assert!(
+            near(halfway, [100.0, 50.0, 25.0]),
+            "halfway came to {halfway:?}"
+        );
+        let right = picture.between(1.0, 0.0);
+        assert!(
+            near(right, [200.0, 100.0, 50.0]),
+            "the right pixel came to {right:?}"
+        );
     }
 
     #[test]
     fn a_point_past_the_edge_takes_the_edge() {
         let picture = Picture::from_rgb(1, 1, vec![9, 8, 7]);
-        assert!(near(picture.between(-3.0, 5.0), [9.0, 8.0, 7.0]));
+        let past = picture.between(-3.0, 5.0);
+        assert!(
+            near(past, [9.0, 8.0, 7.0]),
+            "past the edge came to {past:?}"
+        );
     }
 
     #[test]
@@ -260,7 +272,8 @@ mod tests {
                 made.as_chunks::<3>()
                     .0
                     .iter()
-                    .all(|&pixel| near(pixel, [10.0, 120.0, 250.0]))
+                    .all(|&pixel| near(pixel, [10.0, 120.0, 250.0])),
+                "the colour changed at {width} by {height}"
             );
         }
     }
@@ -298,10 +311,17 @@ mod tests {
 
     #[test]
     fn a_jpeg_and_a_png_are_both_pictures() {
-        assert!(readable(Path::new("/a/b.png")));
-        assert!(readable(Path::new("/a/b.JPG")));
-        assert!(readable(Path::new("/a/b.jpeg")));
-        assert!(!readable(Path::new("/a/b.mp4")));
-        assert!(!readable(Path::new("/a/png")));
+        for picture in ["/a/b.png", "/a/b.JPG", "/a/b.jpeg"] {
+            assert!(
+                readable(Path::new(picture)),
+                "{picture} wasn't taken for a picture"
+            );
+        }
+        for other in ["/a/b.mp4", "/a/png"] {
+            assert!(
+                !readable(Path::new(other)),
+                "{other} was taken for a picture"
+            );
+        }
     }
 }

@@ -89,13 +89,25 @@ mod tests {
 
     #[test]
     fn dictation_or_a_call_recording_holds_embedding_back() {
-        assert!(records(&json!([node("dictation")])));
-        assert!(records(&json!([node("chrome")])));
+        assert!(
+            records(&json!([node("dictation")])),
+            "dictation recording wasn't seen"
+        );
+        assert!(
+            records(&json!([node("chrome")])),
+            "a call recording in Chrome wasn't seen"
+        );
     }
 
     #[test]
     fn a_graph_with_nothing_recording_lets_it_run() {
-        assert!(!records(&json!([])));
-        assert!(!records(&json!([node("noise-cancelled")])));
+        assert!(
+            !records(&json!([])),
+            "an empty graph was taken for recording"
+        );
+        assert!(
+            !records(&json!([node("noise-cancelled")])),
+            "the noise canceller alone was taken for recording"
+        );
     }
 }

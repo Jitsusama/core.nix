@@ -129,7 +129,10 @@ mod tests {
     #[test]
     fn a_meaning_is_made_a_unit_long() {
         let made = unit(&[3.0, 4.0]);
-        assert!((made[0] - 0.6).abs() < 1e-6 && (made[1] - 0.8).abs() < 1e-6);
+        assert!(
+            (made[0] - 0.6).abs() < 1e-6 && (made[1] - 0.8).abs() < 1e-6,
+            "came to {made:?}, not [0.6, 0.8]"
+        );
         assert_eq!(unit(&[0.0, 0.0]), vec![0.0, 0.0]);
     }
 
@@ -137,8 +140,20 @@ mod tests {
     fn nearness_is_the_cosine_of_two_units() {
         let a = unit(&[1.0, 0.0]);
         let b = unit(&[1.0, 1.0]);
-        assert!((near(&a, &a) - 1.0).abs() < 1e-6);
-        assert!((near(&a, &b) - std::f32::consts::FRAC_1_SQRT_2).abs() < 1e-6);
-        assert!(near(&a, &unit(&[0.0, 1.0])).abs() < 1e-6);
+        let itself = near(&a, &a);
+        assert!(
+            (itself - 1.0).abs() < 1e-6,
+            "a unit's nearness to itself came to {itself}, not 1"
+        );
+        let slant = near(&a, &b);
+        assert!(
+            (slant - std::f32::consts::FRAC_1_SQRT_2).abs() < 1e-6,
+            "45 degrees apart came to {slant}, not 1/sqrt(2)"
+        );
+        let square = near(&a, &unit(&[0.0, 1.0]));
+        assert!(
+            square.abs() < 1e-6,
+            "a right angle apart came to {square}, not 0"
+        );
     }
 }
