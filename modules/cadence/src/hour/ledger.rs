@@ -36,8 +36,10 @@ pub struct Seen {
 
 /// The measures read from the asks list, by key, each of Joel's and the
 /// list's own, its `-derived` twin: each reads an unread list's empty text
-/// as none of his dates slipped, at risk or told late.
-const FROM_ASKS: [&str; 6] = [
+/// as none of his dates slipped, at risk or told late, or none of his asks
+/// landed unproven.
+const FROM_ASKS: [&str; 7] = [
+    "asks-unproven",
     "slips",
     "slips-parked",
     "ask-to-first-slice",

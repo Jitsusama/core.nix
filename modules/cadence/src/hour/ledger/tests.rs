@@ -360,6 +360,7 @@ fn every_measure_the_asks_list_feeds_is_one_it_says_unread() {
         measures::at_risk::at_risk("", NOW, Tracking::Derived, &|_| Ok(Vec::new()), &|_| {
             Ok(Vec::new())
         }),
+        measures::unproven::unproven("", Ok(""), Ok(""), &|_, _, _| None, NOW),
     ];
     for measure in &fed {
         let key = measure.key.strip_suffix("-derived").unwrap_or(&measure.key);

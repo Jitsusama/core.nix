@@ -4,7 +4,7 @@
 //! work reads which merges, checks, dates or quests the count is made of
 //! without opening the files it came from.
 
-use super::measures::{Class, Measure, SAID_NONE, parked, queues, rounds, spent};
+use super::measures::{Class, Measure, SAID_NONE, parked, queues, rounds, spent, unproven};
 
 /// How many of the things behind a figure the card names before it
 /// counts the rest.
@@ -50,12 +50,13 @@ fn line(m: &Measure) -> String {
 /// since the card shows them for that reason to be read, and the asks
 /// parked on each ruling, so a parking is read while it stands. The merges past
 /// five rounds are named whatever the median reads, each with what its
-/// rounds past five caught, as WCJQSG asked.
+/// rounds past five caught, as WCJQSG asked, and so are the asks unproven
+/// that only cadence's sight leaves unjudged, as each stays on the card.
 fn behind(m: &Measure) -> Vec<String> {
     if m.key == spent::KEY || m.key == SAID_NONE || m.key.starts_with(parked::KEY) {
         return m.behind.iter().map(|line| format!("  {line}")).collect();
     }
-    let named_within = m.key == rounds::KEY;
+    let named_within = m.key == rounds::KEY || (m.key == unproven::KEY && unproven::sightless(m));
     if matches!(m.class, Class::Miss | Class::Clean)
         || (m.past().is_none() && !named_within)
         || m.behind.is_empty()
@@ -172,6 +173,21 @@ mod tests {
             shown_lines(Class::Slip, &[&two])[1],
             "  the pager · XY9H5C; a lock · 16V6F4",
             "every one of a few wasn't named"
+        );
+    }
+
+    #[test]
+    fn asks_only_cadences_sight_leaves_unjudged_are_named_on_the_card() {
+        let mut blind = measure(Class::Functional, 0.0, &["show the card · A"]);
+        blind.key = unproven::KEY.to_owned();
+        blind.target = None;
+        blind.says = "his asks (cadence can't tell whether 1 of them are live)".to_owned();
+        assert_eq!(
+            shown_lines(Class::Functional, &[&blind])
+                .get(1)
+                .map(String::as_str),
+            Some("  show the card · A"),
+            "an ask only cadence's sight holds went off the card"
         );
     }
 

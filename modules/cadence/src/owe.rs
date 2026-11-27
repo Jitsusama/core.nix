@@ -175,14 +175,24 @@ pub fn settle(ledger: &mut [Entry], key: &str) -> bool {
         .is_some()
 }
 
+/// Where every ask unproven's key starts, as the hour files it.
+const UNPROVEN: &str = "hour:asks-unproven:";
+
 /// Closes the must filed as `key` at `now`, or says the finding filed as
 /// `key` was fixed by `fix`, saying which; a finding with no fix said is
 /// refused, since its figure gone quiet shows no fix. A drag closed this
 /// way keeps when, and the fix its owner named; so does a class of cause
 /// the hour already closed, when its fix is named, since a root fix often
 /// lands after its class dips under the bar, and its old cases still
-/// count. Another drag the hour closed holds nothing, so it is unfiled.
-fn done(ledger: &mut [Entry], key: &str, fix: Option<&str>, now: i64) -> Result<String, Failure> {
+/// count. An ask unproven its cell closed is its cell's to restate, and
+/// one the hour closed holds nothing, as it says; another drag the hour
+/// closed holds nothing, so it is unfiled.
+pub(crate) fn done(
+    ledger: &mut [Entry],
+    key: &str,
+    fix: Option<&str>,
+    now: i64,
+) -> Result<String, Failure> {
     if let Some(entry) = ledger
         .iter_mut()
         .find(|e| e.open && e.kind.is_some() && e.key == key)
@@ -198,6 +208,12 @@ fn done(ledger: &mut [Entry], key: &str, fix: Option<&str>, now: i64) -> Result<
         // than reading "done" as the week's hold.
         return Ok(match fix {
             Some(fix) => format!("cadence: {key} is done, by {fix}"),
+            // An ask unproven closed with no why is asked again next hour,
+            // so its cell isn't told it's done.
+            None if key.starts_with(UNPROVEN) => format!(
+                "cadence: {key} is closed, but asked again next hour unless its probe passes \
+                 by then; say why it can't pass after its key to hold it"
+            ),
             None if drag && hour::held_when_fixed(key) => format!(
                 "cadence: {key} is done, but with no fix named the next hour that still \
                  finds it asks again"
@@ -211,10 +227,41 @@ fn done(ledger: &mut [Entry], key: &str, fix: Option<&str>, now: i64) -> Result<
             format!("no open must or finding is filed as {key}"),
         )
     };
-    let settled =
-        ledger.iter_mut().rev().find(|e| e.key == key).filter(|e| {
-            !e.open && e.kind.as_deref() == Some("drag") && hour::held_when_fixed(&e.key)
+    let settled = ledger.iter_mut().rev().find(|e| e.key == key).filter(|e| {
+        !e.open
+            && e.kind.as_deref() == Some("drag")
+            && (hour::held_when_fixed(&e.key) || e.key.starts_with(UNPROVEN))
+    });
+    // An ask unproven the hour closed has passed or left the week, so a why
+    // given after holds nothing, and the same failure coming back is asked.
+    // The hour's close never sets `closed`, and the hour clears a cell's
+    // once its line is gone, so one still set is the cell's own, standing,
+    // and its why is taken.
+    if settled
+        .as_ref()
+        .is_some_and(|e| e.key.starts_with(UNPROVEN) && e.closed.is_none())
+    {
+        return Ok(format!(
+            "cadence: {key} was closed already, as its line went, so nothing is held"
+        ));
+    }
+    // A bare close of one its cell holds changes nothing, and says so; the
+    // why held is another's text, so it reaches the terminal on one line.
+    // A bare close again of one closed bare is told what the first was.
+    if fix.is_none()
+        && let Some(entry) = settled.as_ref().filter(|e| e.key.starts_with(UNPROVEN))
+    {
+        return Ok(match entry.fixed.as_deref() {
+            Some(held) => format!(
+                "cadence: {key} is held by {}; give a why after its key to restate it",
+                terminal_kit::layout::one_line(held)
+            ),
+            None => format!(
+                "cadence: {key} is closed, but asked again next hour unless its probe passes \
+                 by then; say why it can't pass after its key to hold it"
+            ),
         });
+    }
     if let (Some(entry), Some(fix)) = (settled, fix) {
         entry.closed = Some(now);
         entry.fixed = Some(fix.to_owned());

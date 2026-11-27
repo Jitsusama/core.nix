@@ -284,7 +284,7 @@ pub fn changes(pr: &str) -> Vec<(Repo, u32)> {
 
 /// The first part of `pr` that names no change that can be found, as
 /// [`changes`] reads it.
-fn unfound(pr: &str) -> Option<&str> {
+pub(super) fn unfound(pr: &str) -> Option<&str> {
     parts(pr)
         .into_iter()
         .find_map(|(part, change)| change.is_none().then_some(part))
