@@ -731,7 +731,7 @@ def test_on_the_disk_slices_weigh_as_on_the_cpu(jobs: Account) -> None:
     """On the disk, slices weigh as they do on the CPU."""
     for path, weight in [
         (f"{ACCOUNT}/session.slice", 1000),
-        (f"{ACCOUNT}/app.slice", 100),
+        (f"{ACCOUNT}/app.slice", 1000),
         (JOBS, 1),
         (TIMED, 10000),
         (f"{JOBS}/jobs-awaited.slice", 1000),

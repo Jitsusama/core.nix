@@ -4188,7 +4188,7 @@
   '';
   sessions-sit-beside-the-programs = ''
     agents' sessions have a slice beside Joel's programs, which outweigh it ten times over on the
-    processor, and the sorter watches both
+    processor and the disk, and the sorter watches both
   '';
   agents-work-keeps-off-the-performance-cores = ''
     a machine naming its efficient cores holds agents' work and builds to them, not Joel's own

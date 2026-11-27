@@ -133,16 +133,25 @@ let
   # within it, and the account ten times the system's other slices. Without
   # io.cost they do nothing, so a machine that names no disk keeps targets.
   #
-  # Name a disk only once io.cost has been shown to beat the targets on it,
-  # with the same synced write beside the same writers. On the XPS 14's,
-  # which has no DRAM of its own, it didn't. Beside two buffered writers in
-  # jobs, an app's worst synced save in four runs took 55 to 170 ms under the
-  # targets, and 76 to 492 ms under every io.cost setting tried: its
-  # automatic one, a 5 or 10 ms latency goal, and a goal held to the model.
-  # io.cost let the writers run at two to two and a half times the model's
-  # write rate. The disk's cache taking them quickly, with a sync then
-  # waiting behind them, is the suspected cause, not yet measured. So that
-  # disk keeps its targets.
+  # Name a disk with a model measured on it, never the kernel's guess: in
+  # VM runs a model three times faster than the disk was the worst of
+  # every control tried, and io.cost at the disk's true rates gave the
+  # quickest first reads and synced saves. On 24 October, on the XPS 14's
+  # disk, which has no DRAM of its own, io.cost lost to the targets then
+  # set on Joel's own slices: beside two buffered writers in jobs, an
+  # app's worst synced save in four runs took 55 to 170 ms under them, and
+  # 76 to 492 ms under every io.cost setting tried, its automatic one, a 5
+  # or 10 ms latency goal, and a goal held to the model. io.cost let the
+  # writers run at two to two and a half times the model's write rate.
+  # Those targets are gone since, for the reason above, so on such a disk
+  # the choice is now io.cost against no order inside the account. Naming
+  # a disk drops user.slice's target over the system's builds too, where
+  # io.cost shares the disk by user.slice's weight of 1000 against the
+  # system's 100 instead. The VM
+  # runs measured a qos of 10 ms at the 95th percentile both ways, ranging
+  # from 50 to 150% of the model; a max of 100 alone was never measured,
+  # and would hold every read to the model. Whether it holds on a disk
+  # like that one is measured on the machine that names it.
   disks = config.jitsusama.slices.disks;
   latency = lib.optionalAttrs (disks == { }) { IODeviceLatencyTargetSec = "/home 1ms"; };
   settings = attrs: lib.concatStringsSep " " (lib.mapAttrsToList (k: v: "${k}=${toString v}") attrs);
@@ -409,7 +418,8 @@ in
       The disks shared by the slices' weights, by their names under
       /sys/class/block, each with the model io.cost measured on it. Naming
       any drops user.slice's latency target, so the disk behind /home belongs here,
-      and only once io.cost has measured better than the targets on it.
+      with a model measured on it and the qos the VM runs measured: 10 ms at
+      the 95th percentile both ways, from 50 to 150% of the model.
       The name is the kernel's, which follows the order disks are found in:
       on a machine with two of a kind, the model can land on the other one.
     '';
@@ -439,9 +449,11 @@ in
             default = { };
             example = {
               rpct = 95;
-              rlat = 5000;
+              rlat = 10000;
               wpct = 95;
-              wlat = 5000;
+              wlat = 10000;
+              min = 50;
+              max = 150;
             };
             description = "io.cost.qos's settings beside enable, the kernel's own where unset.";
           };
@@ -549,8 +561,13 @@ in
     # CPU wait fell from 3.6 ms a second to 1.1 at a load under 20, and
     # from 8.9 to 4.3 above it. A busy app takes only what it uses, so the
     # sessions lose little: his programs used 0.04 of a core of their 1.6.
+    # The disk's weight is ten times too, as session.slice's is, since
+    # io.cost on a measured disk shares it by weight: at systemd's 100 his
+    # programs would get no more of it than agents' sessions. The latency
+    # target a disk with no model keeps ignores it.
     systemd.user.slices.app.sliceConfig = {
       CPUWeight = 1000;
+      IOWeight = 1000;
       MemoryMin = apps;
       MemoryLow = appsSoft;
     };
