@@ -1077,9 +1077,9 @@ mod tests {
                 run with --ignored and TMPDIR on a Btrfs folder"]
     fn a_folder_s_pool_read_by_statx_is_the_one_btrfs_s_ioctl_names() {
         let dir = tempfile::tempdir().unwrap();
-        // Read as pool reads it on 6.10 and later, so a fallback to the
-        // ioctl, which would agree with the ioctl whatever statx said,
-        // can't pass this case.
+        // Worked out here from statx's own read, as pool works it out on
+        // 6.10 and later, since pool's fallback to the ioctl would agree
+        // with the ioctl whatever statx said.
         let subvolume = rustix::fs::StatxFlags::from_bits_retain(super::STATX_SUBVOL);
         let read = rustix::fs::statx(
             rustix::fs::CWD,
@@ -1093,11 +1093,19 @@ mod tests {
             0,
             "this kernel doesn't say a file's subvolume"
         );
+        let fsid = rustix::fs::statvfs(dir.path()).unwrap().f_fsid;
+        let by_statx = pool_of(super::statfs_halves(fsid, read.stx_subvol));
         let ioctl = super::btrfs_id(dir.path()).map(|id| pool_of(fsid_halves(id)));
         assert_eq!(
-            super::pool(dir.path()).ok(),
+            Some(by_statx),
             ioctl.ok(),
             "{} by statx and by the ioctl",
+            dir.path().display()
+        );
+        assert_eq!(
+            super::pool(dir.path()).ok(),
+            Some(by_statx),
+            "{} as pool reads it",
             dir.path().display()
         );
     }
