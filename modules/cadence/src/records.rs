@@ -508,7 +508,11 @@ mod tests {
             "a revert that ended unmerged was read as still landing"
         );
         let reverting = "{\"at\":1,\"bad_pr\":7,\"revert_commit\":\"ab\",\"test\":\"vm-a\"}";
-        assert!(net_hold(reverting).is_some_and(|h| h.reverting));
+        let held = net_hold(reverting);
+        assert!(
+            held.as_ref().is_some_and(|h| h.reverting),
+            "a revert commit read as no revert: {held:?}"
+        );
         assert_eq!(net_hold(""), None);
         assert_eq!(
             net_held("{\"at\":1794602830,\"why\":\"a reboot\"}"),
@@ -535,8 +539,8 @@ mod tests {
             last_commit: None,
             files: vec!["docs/delivery.md".into(), "modules/x/checks.nix".into()],
         };
-        assert!(merge.tests_only());
-        assert!(!merge.boot());
+        assert!(merge.tests_only(), "docs alone are tests only: {merge:?}");
+        assert!(!merge.boot(), "docs alone aren't boot");
     }
 
     #[test]
@@ -712,7 +716,7 @@ mod tests {
     #[test]
     fn a_switch_put_off_for_a_call_is_a_meeting() {
         let journal = "1.0 h u[1]: asking at core@aa\n2.0 h u[1]: {\"step\":\"waiting\",\"why\":\"a meeting or a call\"}\n";
-        assert!(parse_follower(journal).meeting);
+        assert!(parse_follower(journal).meeting, "put off for a call");
     }
 
     #[test]
@@ -721,7 +725,7 @@ mod tests {
                     not json\n{\"at\":1,\"on\":\"nix-offload\",\"seconds\":9,\"status\":1}\n";
         let runs = parse_runs(text, 2);
         assert_eq!(runs.len(), 1);
-        assert!(runs[0].vm());
+        assert!(runs[0].vm(), "not a VM's run: {:?}", runs[0]);
         assert_eq!(runs[0].waited, Some(30.0));
     }
 

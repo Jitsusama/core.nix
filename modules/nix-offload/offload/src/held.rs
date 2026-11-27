@@ -463,7 +463,8 @@ mod tests {
             planned(said),
             set(&["/nix/store/a.drv", "/nix/store/b.drv", "/nix/store/d.drv"])
         );
-        assert!(planned("error: something\n  /nix/store/e.drv\n").is_empty());
+        let errored = planned("error: something\n  /nix/store/e.drv\n");
+        assert!(errored.is_empty(), "an error plans nothing: {errored:?}");
     }
 
     #[test]
@@ -557,7 +558,8 @@ mod tests {
             "/nix/store/libc": {"narSize": 300, "ca": null, "deriver": "/nix/store/libc.drv"},
             "/nix/store/patch": {"narSize": 2, "ca": "fixed:r:sha256:00", "deriver": null}});
         let closure = described(&info);
-        assert!(closure["/nix/store/weights"].fixed && !closure["/nix/store/model"].fixed);
+        let (weights, model) = (&closure["/nix/store/weights"], &closure["/nix/store/model"]);
+        assert_eq!((weights.fixed, model.fixed), (true, false));
         // The builder would build the model and its weights, and has libc.
         // This store recorded the weights as another derivation's, which
         // downloads the same bytes, so they're known by their path.
@@ -585,7 +587,8 @@ mod tests {
                         "deriver": "weights.drv"},
             "a.drv": {"narSize": 1, "ca": {"method": "text", "hash": "sha256-AA"}}}});
         let closure = described(&info);
-        assert!(closure["/nix/store/weights"].fixed && !closure["/nix/store/a.drv"].fixed);
+        let (weights, text) = (&closure["/nix/store/weights"], &closure["/nix/store/a.drv"]);
+        assert_eq!((weights.fixed, text.fixed), (true, false));
         assert_eq!(
             closure["/nix/store/weights"].deriver.as_deref(),
             Some("/nix/store/weights.drv")

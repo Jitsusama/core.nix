@@ -56,29 +56,26 @@ fn snapshots_are_named_for_the_process_that_made_them() {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_secs_f64();
-    assert!((found[1].born - now).abs() < 60.0);
+    let off = (found[1].born - now).abs();
+    assert!(off < 60.0, "dated {off}s from now, not within 60");
 }
 
 #[test]
 fn a_snapshot_whose_process_runs_is_kept() {
     let processes = [running(42, 2_000.0, "/nix/store/abc-monobus/bin/monobus")];
-    assert!(!orphaned(
-        &snapshot(42, 3_000.0),
-        &processes,
-        &["monobus"],
-        BOOT
-    ));
+    assert!(
+        !orphaned(&snapshot(42, 3_000.0), &processes, &["monobus"], BOOT),
+        "its maker still runs, yet it was orphaned"
+    );
 }
 
 #[test]
 fn a_snapshot_whose_process_is_gone_is_orphaned() {
     let processes = [running(7, 2_000.0, "/nix/store/abc-monobus/bin/monobus")];
-    assert!(orphaned(
-        &snapshot(42, 3_000.0),
-        &processes,
-        &["monobus"],
-        BOOT
-    ));
+    assert!(
+        orphaned(&snapshot(42, 3_000.0), &processes, &["monobus"], BOOT),
+        "no process has its pid, yet it was kept"
+    );
 }
 
 #[test]
@@ -86,9 +83,15 @@ fn a_reused_pid_keeps_nothing_alive() {
     // Another program now has the pid, or the same program started after
     // the snapshot was made, so it can't be the one that made it.
     let other = [running(42, 2_000.0, "/usr/bin/vim")];
-    assert!(orphaned(&snapshot(42, 3_000.0), &other, &["monobus"], BOOT));
+    assert!(
+        orphaned(&snapshot(42, 3_000.0), &other, &["monobus"], BOOT),
+        "the pid, now another program's, kept it"
+    );
     let later = [running(42, 4_000.0, "/nix/store/abc-monobus/bin/monobus")];
-    assert!(orphaned(&snapshot(42, 3_000.0), &later, &["monobus"], BOOT));
+    assert!(
+        orphaned(&snapshot(42, 3_000.0), &later, &["monobus"], BOOT),
+        "a process started after it kept it"
+    );
 }
 
 #[test]
@@ -98,12 +101,10 @@ fn a_process_that_cant_be_read_keeps_its_snapshot() {
         readable: false,
         ..Default::default()
     };
-    assert!(!orphaned(
-        &snapshot(42, 3_000.0),
-        &[hidden],
-        &["monobus"],
-        BOOT
-    ));
+    assert!(
+        !orphaned(&snapshot(42, 3_000.0), &[hidden], &["monobus"], BOOT),
+        "a process it can't read was ruled out as its maker"
+    );
 }
 
 #[test]
@@ -113,12 +114,10 @@ fn a_wrapped_program_is_known_by_its_own_name() {
         2_000.0,
         "/nix/store/abc-monobus/bin/.monobus-wrapped",
     )];
-    assert!(!orphaned(
-        &snapshot(42, 3_000.0),
-        &wrapped,
-        &["monobus"],
-        BOOT
-    ));
+    assert!(
+        !orphaned(&snapshot(42, 3_000.0), &wrapped, &["monobus"], BOOT),
+        "its wrapper's name hid monobus, so it was orphaned"
+    );
 }
 
 #[test]

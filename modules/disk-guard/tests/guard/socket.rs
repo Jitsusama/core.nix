@@ -79,7 +79,7 @@ fn a_request_is_answered_and_its_asker_known() {
 #[test]
 fn an_asker_may_ask_once_a_second() {
     let (_dir, path, _asked, _) = serving(Duration::from_secs(60), 2);
-    assert!(ask(&path, &roots(), SECOND).is_ok());
+    ask(&path, &roots(), SECOND).expect("its first ask was refused");
     let refused = ask(&path, &roots(), SECOND).unwrap_err();
     assert!(refused.to_string().contains("too soon"), "{refused}");
 }
@@ -90,7 +90,7 @@ fn each_kind_of_request_waits_its_own_turn() {
     let watching = Request::Watching {
         paths: vec![PathBuf::from("/home")],
     };
-    assert!(ask(&path, &roots(), SECOND).is_ok());
+    ask(&path, &roots(), SECOND).expect("its first ask of processes was refused");
     assert_eq!(
         ask(&path, &watching, SECOND).unwrap(),
         Reply::Collects(vec![PathBuf::from("/home")]),
@@ -146,7 +146,11 @@ fn an_asker_that_says_nothing_cant_hold_the_server() {
         ask(&path, &roots(), Duration::from_secs(5)).unwrap(),
         Reply::Answer(told())
     );
-    assert!(started.elapsed() < Duration::from_secs(3));
+    let took = started.elapsed();
+    assert!(
+        took < Duration::from_secs(3),
+        "the silent one held it {took:?}"
+    );
 }
 
 /// A guard told to stop while it waits on a reply leaves at once, rather
@@ -187,7 +191,8 @@ fn an_ask_waiting_on_its_reply_gives_up_once_a_stop_waits() {
 #[test]
 fn no_server_is_an_error_at_once() {
     let dir = tempfile::tempdir().unwrap();
-    assert!(ask(&dir.path().join("socket"), &roots(), SECOND).is_err());
+    let path = dir.path().join("socket");
+    ask(&path, &roots(), SECOND).expect_err("answered with no server");
 }
 
 #[test]
@@ -195,5 +200,5 @@ fn a_stale_socket_is_replaced() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("socket");
     drop(Server::bind(&path, Duration::ZERO).unwrap());
-    assert!(Server::bind(&path, Duration::ZERO).is_ok());
+    Server::bind(&path, Duration::ZERO).expect("the stale socket kept it from binding");
 }

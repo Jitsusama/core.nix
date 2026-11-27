@@ -96,7 +96,7 @@ mod tests {
 
     #[test]
     fn only_work_a_builder_could_take_wants_one() {
-        assert!(!wants(&queue(""), NOW));
+        assert!(!wants(&queue(""), NOW), "no jobs, no builder");
         for job in [
             job("vm-test", "running"),
             job("vm-test", "waiting"),
@@ -109,20 +109,22 @@ mod tests {
     #[test]
     fn one_job_wanting_is_enough() {
         let jobs = [job("vm-test", "running"), job("vm-check", "waiting")].join(",");
-        assert!(wants(&queue(&jobs), NOW));
+        assert!(wants(&queue(&jobs), NOW), "the vm-check wants one: {jobs}");
     }
 
     #[test]
     fn a_queue_that_stopped_writing_wants_nothing() {
         let waiting = job("build", "waiting");
-        assert!(!wants(&queue_at("2026-10-29T14:57:00.000Z", &waiting), NOW));
-        assert!(!wants(&format!(r#"{{"jobs":[{waiting}]}}"#), NOW));
+        let stale = queue_at("2026-10-29T14:57:00.000Z", &waiting);
+        assert!(!wants(&stale, NOW), "three minutes old: {stale}");
+        let undated = format!(r#"{{"jobs":[{waiting}]}}"#);
+        assert!(!wants(&undated, NOW), "no time: {undated}");
     }
 
     #[test]
     fn a_queue_that_cant_be_read_wants_nothing() {
-        assert!(!wants("", NOW));
-        assert!(!wants(r#"{"v":1}"#, NOW));
+        assert!(!wants("", NOW), "an empty file");
+        assert!(!wants(r#"{"v":1}"#, NOW), "no time and no jobs");
     }
 
     #[test]

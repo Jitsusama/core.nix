@@ -40,7 +40,11 @@ fn a_user_config_is_read() {
     let config = Config::parse(USER).unwrap();
     assert_eq!(config.scope, Scope::User);
     assert_eq!(config.bands.filling, Size::Percent(15.0));
-    assert!(config.notify && config.status_file);
+    assert_eq!(
+        (config.notify, config.status_file),
+        (true, true),
+        "notify and status_file"
+    );
     assert_eq!(
         config.sources["trees"],
         Source::Cargo {
@@ -217,7 +221,8 @@ fn a_system_config_carries_its_own_sections() {
         r#"{"version": 1, "scope": "system", "boot": "/boot",
             "dedupe": {"systemd_run": "bin/systemd-run"}, "sources": {}}"#,
     );
-    assert!(relative.unwrap_err().contains("bin/systemd-run"));
+    let refused = relative.unwrap_err();
+    assert!(refused.contains("bin/systemd-run"), "{refused}");
     assert_eq!(
         config.nix.profiles,
         Some(PathBuf::from("/nix/var/nix/profiles")),

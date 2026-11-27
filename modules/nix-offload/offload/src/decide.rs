@@ -360,14 +360,14 @@ mod tests {
 
     #[test]
     fn one_handed_over_is_given_back_once_nothing_reaches_it_or_its_time_is_up() {
-        assert!(!leaves(100, 200, false, false));
-        assert!(leaves(100, 200, true, false));
+        assert!(!leaves(100, 200, false, false), "still reached, it stays");
+        assert!(leaves(100, 200, true, false), "it leaves once gone");
         assert!(
             !leaves(100, 200, true, true),
             "a run outliving its caller holds it"
         );
-        assert!(leaves(200, 200, true, true));
-        assert!(leaves(200, 200, false, false));
+        assert!(leaves(200, 200, true, true), "its time is up, run or not");
+        assert!(leaves(200, 200, false, false), "its time is up");
     }
 
     #[test]
@@ -481,10 +481,13 @@ mod tests {
 
     #[test]
     fn a_lender_only_for_there_wants_nothing_the_queue_holds() {
-        assert!(!wants(true, || true, false));
-        assert!(wants(true, || panic!("the queue isn't read"), true));
-        assert!(wants(false, || true, false));
-        assert!(!wants(false, || false, false));
+        assert!(!wants(true, || true, false), "it lends only to there");
+        assert!(
+            wants(true, || panic!("the queue isn't read"), true),
+            "a there build waits"
+        );
+        assert!(wants(false, || true, false), "the queue holds work");
+        assert!(!wants(false, || false, false), "nothing waits");
     }
 
     const HOURS: Hours = Hours {
@@ -712,11 +715,23 @@ mod tests {
     #[test]
     fn a_builder_is_asked_about_runs_outliving_their_callers_only_when_idle_within_its_time() {
         let noon = at(12 * 3600, false);
-        assert!(!asks_outliving(HOURS, noon, noon.now - 60, LATER));
-        assert!(asks_outliving(HOURS, noon, noon.now - IDLE, LATER));
-        assert!(!asks_outliving(HOURS, noon, noon.now - IDLE, noon.now));
+        assert!(
+            !asks_outliving(HOURS, noon, noon.now - 60, LATER),
+            "one used a minute ago isn't idle"
+        );
+        assert!(
+            asks_outliving(HOURS, noon, noon.now - IDLE, LATER),
+            "one idle within its time is asked"
+        );
+        assert!(
+            !asks_outliving(HOURS, noon, noon.now - IDLE, noon.now),
+            "one whose time is up isn't asked"
+        );
         let late = at(20 * 3600, false);
-        assert!(!asks_outliving(HOURS, late, late.now - IDLE, LATER));
+        assert!(
+            !asks_outliving(HOURS, late, late.now - IDLE, LATER),
+            "one past the day's deadline isn't asked"
+        );
     }
 
     #[test]

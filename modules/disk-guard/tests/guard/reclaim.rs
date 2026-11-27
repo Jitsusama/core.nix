@@ -296,10 +296,19 @@ fn deleting_in_place_that_fails_part_way_has_taken_the_fingerprints() {
     fs::create_dir_all(&deep).unwrap();
     fs::create_dir_all(path.join("x86_64-unknown-linux-gnu/release/.fingerprint/app")).unwrap();
     let anchor = Dir::open(&path).unwrap();
-    assert!(remove_in_place(&anchor, &["criterion"]).is_err());
-    assert!(!path.join("debug/.fingerprint").exists());
-    assert!(!path.join("x86_64-unknown-linux-gnu").exists());
-    assert!(path.join("criterion/base/estimates.json").exists());
+    remove_in_place(&anchor, &["criterion"]).expect_err("a tree too deep was removed");
+    assert!(
+        !path.join("debug/.fingerprint").exists(),
+        "debug's fingerprints are left"
+    );
+    assert!(
+        !path.join("x86_64-unknown-linux-gnu").exists(),
+        "the triple's profile is left"
+    );
+    assert!(
+        path.join("criterion/base/estimates.json").exists(),
+        "what it was told to keep is gone"
+    );
 }
 
 #[test]

@@ -339,11 +339,16 @@ mod tests {
     fn eero_refusing_a_read_or_giving_it_no_data_is_refused() {
         let missing = json!({"meta": {"code": 404, "error": "error.network.missing"}});
 
-        assert!(matches!(failure(404, &missing), Some(Failure::Refused(_))));
-        assert!(matches!(
-            failure(200, &json!({"data": null})),
-            Some(Failure::Refused(_))
-        ));
+        let refused = failure(404, &missing);
+        assert!(
+            matches!(refused, Some(Failure::Refused(_))),
+            "a 404 isn't refused: {refused:?}"
+        );
+        let empty = failure(200, &json!({"data": null}));
+        assert!(
+            matches!(empty, Some(Failure::Refused(_))),
+            "a read with no data isn't refused: {empty:?}"
+        );
     }
 
     #[test]

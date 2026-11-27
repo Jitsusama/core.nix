@@ -153,7 +153,8 @@ mod tests {
         assert_eq!(network.name, "home");
         assert_eq!(network.online, Some(true));
         assert_eq!(network.down_mbps, Some(76.8));
-        assert!((network.up_mbps.unwrap() - 12.4).abs() < 1e-9);
+        let up = network.up_mbps.unwrap();
+        assert!((up - 12.4).abs() < 1e-9, "12,400 Kbps read as {up} Mbps");
         assert_eq!(network.tested.as_deref(), Some("2026-10-25T18:00:00.000Z"));
         assert_eq!(network.sqm, Some(false));
         assert_eq!(
@@ -183,12 +184,12 @@ mod tests {
 
     #[test]
     fn a_setting_counts_as_taken_only_once_eero_reads_it_back() {
-        assert!(taken(true, Some(true)).is_ok());
+        taken(true, Some(true)).expect("read back as asked");
         assert_eq!(
             taken(true, Some(false)).unwrap_err(),
             "eero took the change but still says conferencing off"
         );
-        assert!(taken(false, None).is_err());
+        taken(false, None).expect_err("never read back");
     }
 
     #[test]
@@ -212,20 +213,20 @@ mod tests {
         let aged = json!({"meta": {"code": 401, "error": "error.session.refresh"}});
         let invalid = json!({"meta": {"code": 401, "error": "error.session.invalid"}});
         let other = json!({"meta": {"code": 401, "error": "error.auth.forbidden"}});
-        assert!(session_expired(401, &aged));
-        assert!(session_expired(401, &invalid));
-        assert!(!session_expired(401, &other));
-        assert!(!session_expired(500, &aged));
+        assert!(session_expired(401, &aged), "a session to refresh is aged");
+        assert!(session_expired(401, &invalid), "an invalid one is aged");
+        assert!(!session_expired(401, &other), "a forbidden ask isn't aged");
+        assert!(!session_expired(500, &aged), "a 500 isn't aged");
     }
 
     #[test]
     fn an_answer_without_data_says_what_eero_said() {
         let refused =
             json!({"meta": {"code": 404, "error": "error.network.missing"}, "data": null});
+        let said = data(&refused).unwrap_err();
         assert!(
-            data(&refused)
-                .unwrap_err()
-                .contains("error.network.missing")
+            said.contains("error.network.missing"),
+            "eero's error went unsaid: {said}"
         );
         assert_eq!(data(&json!({"data": {"a": 1}})).unwrap(), &json!({"a": 1}));
     }

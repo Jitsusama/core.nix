@@ -66,22 +66,28 @@ mod tests {
     #[test]
     fn a_gain_past_drift_is_a_sleep_and_drift_is_not() {
         // Asleep from 23:31 to 09:35, the boot clock gained ten hours.
-        assert!(slept(36_283.0 + 20.0, 20.0));
-        assert!(!slept(20.4, 20.0));
-        assert!(!slept(20.0, 20.0 + 900.0));
+        assert!(slept(36_283.0 + 20.0, 20.0), "a ten-hour gain is a sleep");
+        assert!(!slept(20.4, 20.0), "0.4 s is drift");
+        assert!(!slept(20.0, 20.0 + 900.0), "falling behind is no sleep");
     }
 
     #[test]
     fn just_woken_lasts_a_few_minutes() {
-        assert!(just_woke(Some(1_000), 1_000 + WAKING));
-        assert!(!just_woke(Some(1_000), 1_001 + WAKING));
-        assert!(!just_woke(None, 1_000));
+        assert!(
+            just_woke(Some(1_000), 1_000 + WAKING),
+            "one woken WAKING seconds ago is just woken"
+        );
+        assert!(
+            !just_woke(Some(1_000), 1_001 + WAKING),
+            "a second past WAKING is too late"
+        );
+        assert!(!just_woke(None, 1_000), "it never woke");
     }
 
     #[test]
     fn a_machine_that_never_slept_never_woke() {
         let mut sleep = Sleep::default();
-        assert!(!sleep.woke(1_000));
-        assert!(!sleep.woke(1_020));
+        assert!(!sleep.woke(1_000), "a first reading sees no sleep");
+        assert!(!sleep.woke(1_020), "readings an instant apart see none");
     }
 }

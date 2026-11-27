@@ -86,7 +86,10 @@ fn nothing_above_a_root_is_reached() {
 fn a_file_is_not_a_directory() {
     let root = sandbox();
     fs::write(root.path().join("f"), "x").unwrap();
-    assert!(Dir::open(&root.path().join("f")).is_err());
+    assert!(
+        Dir::open(&root.path().join("f")).is_err(),
+        "a file opened as a directory"
+    );
     let dir = Dir::open(root.path()).unwrap();
     for (how, child) in BOTH {
         assert!(child(&dir, Path::new("f")).is_err(), "{how}");
@@ -366,7 +369,9 @@ fn a_directory_that_took_the_name_meanwhile_keeps_its_own_mode() {
     let detached = dir.detach(&["criterion"]).unwrap();
     fs::create_dir(target.join("sealed")).unwrap();
     fs::set_permissions(target.join("sealed"), fs::Permissions::from_mode(0o750)).unwrap();
-    assert!(detached.restore().is_err());
+    detached
+        .restore()
+        .expect_err("restored over a directory that took the name");
     assert_eq!(mode(&target.join("sealed")), 0o750);
     assert_eq!(mode(&target.join("shut")), 0o000);
 }
@@ -379,7 +384,9 @@ fn restoring_never_overwrites_a_file_that_took_the_name() {
     let detached = dir.detach(&["criterion"]).unwrap();
     let trash = target.join(detached.name());
     fs::write(target.join("CACHEDIR.TAG"), "theirs").unwrap();
-    assert!(detached.restore().is_err());
+    detached
+        .restore()
+        .expect_err("restored over a file that took the name");
     assert_eq!(
         fs::read_to_string(target.join("CACHEDIR.TAG")).unwrap(),
         "theirs"

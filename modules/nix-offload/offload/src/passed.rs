@@ -432,8 +432,8 @@ mod tests {
 
     #[test]
     fn only_a_whole_commit_names_where_a_flake_is() {
-        assert!(At::new(COMMIT, None).is_some());
-        assert!(At::new(&"a".repeat(64), None).is_some());
+        At::new(COMMIT, None).expect("40 hex digits are a whole commit");
+        At::new(&"a".repeat(64), None).expect("64 hex digits are a whole commit");
         for short in ["abc", &COMMIT[..39], &COMMIT.to_uppercase(), "main"] {
             assert!(At::new(short, None).is_none(), "{short}");
         }

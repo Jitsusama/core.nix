@@ -207,7 +207,7 @@ fn a_pass_reclaims_down_to_the_target_and_stops() {
     assert_eq!(run.end, End::Reached);
     assert_eq!(run.taken.len(), 6);
     assert_eq!(run.free, 20 * GIB);
-    assert!(run.settles >= 1);
+    assert!(run.settles >= 1, "the pass never let the disk settle");
 }
 
 #[test]
@@ -463,7 +463,8 @@ fn a_candidate_kept_at_the_last_moment_is_passed_over() {
     );
     assert_eq!(run.end, End::Reached);
     assert_eq!(run.taken.len(), 6);
-    assert!(!run.taken.contains(&candidates[0].path));
+    let first = &candidates[0].path;
+    assert!(!run.taken.contains(first), "the kept {first:?} was taken");
 }
 
 #[test]
@@ -485,7 +486,11 @@ fn a_fill_that_outruns_the_plan_is_planned_for_again() {
         "took {}",
         run.taken.len()
     );
-    assert!(run.free >= 20 * GIB);
+    assert!(
+        run.free >= 20 * GIB,
+        "{} bytes free, under 20 GiB",
+        run.free
+    );
 }
 
 #[test]

@@ -792,7 +792,7 @@ fn a_daemon_refuses_another_scopes_config_and_a_second_of_itself() {
 
     write_file(&machine.env.config, GOOD);
     let held = disk_guard::serve::hold(&machine.env.state).unwrap();
-    assert!(held.is_some());
+    assert!(held.is_some(), "something else holds the state's lock");
     let (code, _, err) = machine.run("user");
     assert_eq!(code, 75, "a second daemon may try again later: {err}");
     assert!(err.contains("already"), "{err}");
@@ -927,7 +927,7 @@ fn plan_shows_what_a_pass_would_take() {
         row[0].ends_with("old.txt") && row[1] == "trash" && row[2..4] == ["4.0", "KiB"],
         "the row under the heading isn't the path, its kind and its size: {out}"
     );
-    assert!(trash.join("files/old.txt").exists());
+    assert!(trash.join("files/old.txt").exists(), "a plan took old.txt");
     assert!(
         !machine.env.state.join("journal.jsonl").exists(),
         "a plan journals nothing"

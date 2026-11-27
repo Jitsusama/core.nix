@@ -86,7 +86,7 @@ fn a_place_is_sized_as_it_takes_the_disk() {
     };
     assert!(size("fix-1") >= 65 * 1024, "{measured:?}");
     assert!(size("QEST-20261026-ABCDEF") >= 32 * 1024, "{measured:?}");
-    assert!(size("fix-1") > size("QEST-20261026-ABCDEF"));
+    assert!(size("fix-1") > size("QEST-20261026-ABCDEF"), "{measured:?}");
 }
 
 fn place(path: &str, kind: Kind, name: &str) -> Place {
@@ -145,12 +145,16 @@ fn each_holder_says_whose_it_is_and_why_the_guard_may_clear_none_of_it() {
         ],
         "biggest first, and an empty one says nothing"
     );
-    assert!(!said[0].clearable);
+    assert!(!said[0].clearable, "a worktree a build uses was clearable");
     assert_eq!(
         said[0].why.as_deref(),
         Some("a build is using it (process 4242)")
     );
-    assert!(said[2].clearable && said[2].why.is_none());
+    assert!(
+        said[2].clearable && said[2].why.is_none(),
+        "fix-2: {:?}",
+        said[2]
+    );
     let json = serde_json::to_value(&said[1]).unwrap();
     assert_eq!(json["owner"]["kind"], "quest");
     assert_eq!(json["owner"]["name"], "QEST-20261026-ABCDEF");
@@ -167,7 +171,7 @@ fn a_holder_measured_before_any_survey_says_the_guard_hasnt_looked_yet() {
         40 * GIB,
     )];
     let said = holders(&measured, None, &[], &Grown::new(), None);
-    assert!(!said[0].clearable);
+    assert!(!said[0].clearable, "clearable before any survey");
     assert_eq!(
         said[0].says,
         "The worktree fix-1 holds 40.0 GiB; the guard hasn't yet looked at what of it \
@@ -321,12 +325,12 @@ fn a_holder_being_cleared_says_so_until_its_clear_ends() {
     let offered = [offered("/home/u/trees/fix-2/target", 12 * GIB, true)];
     let offered = Offers::new(offered.to_vec());
     let mut said = holders(&measured, Some(&offered), &[], &Grown::new(), None);
-    assert!(!said[0].clearing);
+    assert!(!said[0].clearing, "clearing before any clear was asked");
     let asked = [PathBuf::from("/home/u/trees/fix-2/target")];
     mark(&mut said, &Keeps::new(), &asked, None);
     assert!(said[0].clearing, "a clear of part of it is a clear of it");
     mark(&mut said, &Keeps::new(), &[], None);
-    assert!(!said[0].clearing);
+    assert!(!said[0].clearing, "still clearing once its clear ended");
 }
 
 #[test]
@@ -455,33 +459,43 @@ fn last() -> LastMeasure {
 
 #[test]
 fn a_first_measure_is_due_at_once() {
-    assert!(due(None, 0.0, &used(&[(1, 500 * GIB)])));
+    assert!(
+        due(None, 0.0, &used(&[(1, 500 * GIB)])),
+        "a first measure wasn't due"
+    );
 }
 
 #[test]
 fn no_measure_is_taken_within_half_an_hour_of_the_last_however_the_disk_moves() {
-    assert!(!due(Some(&last()), 0.4 * HOUR, &used(&[(1, 600 * GIB)])));
+    assert!(
+        !due(Some(&last()), 0.4 * HOUR, &used(&[(1, 600 * GIB)])),
+        "due within half an hour"
+    );
 }
 
 #[test]
 fn after_half_an_hour_a_disk_moved_by_a_gibibyte_is_measured_again() {
-    assert!(due(
-        Some(&last()),
-        0.5 * HOUR,
-        &used(&[(1, 500 * GIB + MOVED)])
-    ));
-    assert!(due(
-        Some(&last()),
-        0.5 * HOUR,
-        &used(&[(1, 500 * GIB - MOVED)])
-    ));
+    assert!(
+        due(Some(&last()), 0.5 * HOUR, &used(&[(1, 500 * GIB + MOVED)])),
+        "a disk a gibibyte fuller wasn't due"
+    );
+    assert!(
+        due(Some(&last()), 0.5 * HOUR, &used(&[(1, 500 * GIB - MOVED)])),
+        "a disk a gibibyte emptier wasn't due"
+    );
 }
 
 #[test]
 fn a_disk_that_held_still_is_measured_again_only_after_six_hours() {
     let still = used(&[(1, 500 * GIB + MOVED - 1)]);
-    assert!(!due(Some(&last()), 5.9 * HOUR, &still));
-    assert!(due(Some(&last()), 6.0 * HOUR, &still));
+    assert!(
+        !due(Some(&last()), 5.9 * HOUR, &still),
+        "a still disk was due before six hours"
+    );
+    assert!(
+        due(Some(&last()), 6.0 * HOUR, &still),
+        "a still disk wasn't due at six hours"
+    );
 }
 
 /// A walk of every holder took 6 to 12 minutes of a core at a time on 9
