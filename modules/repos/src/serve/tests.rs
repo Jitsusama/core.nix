@@ -352,11 +352,11 @@ fn a_first_reading_that_never_answers_is_said_late_once_and_its_answer_once() {
     // why, as it does for a reading that stops, but as none that ever
     // answered. Grown old past SAMPLED, as the daemon's three paces are,
     // the first take waits SAMPLED out still young, and says nothing;
-    // one past `old` is late and waits on nothing. What holds the
-    // reading up is named only where one is, which a stand-in reading
-    // never is, so the line is the late one whole. It's heard where the
-    // daemon says it, as `take` tells it, and the thread says nothing
-    // while its first walk is held.
+    // one past `old` is late and waits on nothing. A stand-in names the
+    // process the walk is held up reading, as the real walk would, so
+    // the late line names it, whole, and no take after it names it
+    // again. It's heard where the daemon says it, as `take` tells it,
+    // and the thread says nothing while its first walk is held.
     let old = YOUNG_PAST_A_WAIT;
     let (free, freed) = mpsc::channel::<()>();
     let freed = std::sync::Mutex::new(freed);
@@ -370,7 +370,7 @@ fn a_first_reading_that_never_answers_is_said_late_once_and_its_answer_once() {
             let _ = freed.lock().map(|freed| freed.recv_timeout(SAMPLED * 8));
             Sample::default()
         },
-        || None,
+        || Some(4_242),
         move |said| {
             let _ = tell.send(said);
         },
@@ -390,7 +390,10 @@ fn a_first_reading_that_never_answers_is_said_late_once_and_its_answer_once() {
         "a take after the first waited {waited:?}"
     );
     let said: Vec<String> = told.try_iter().collect();
-    let unread = " s, so what works in each repository is said unread until it answers";
+    let unread = concat!(
+        " s, held up reading the memory of process 4242,",
+        " so what works in each repository is said unread until it answers",
+    );
     let seconds = said
         .first()
         .and_then(|said| said.strip_prefix("no reading of /proc has answered in "))
@@ -403,9 +406,16 @@ fn a_first_reading_that_never_answers_is_said_late_once_and_its_answer_once() {
                 .is_some_and(|seconds| (old.as_secs()..=(old + LATE).as_secs()).contains(&seconds)),
         "the journal wasn't told once that no reading answered: {said:?}"
     );
+    // Still held up on the same process, a take after names it no more.
+    working.take(folders.clone());
+    let again: Vec<String> = told.try_iter().collect();
+    assert!(
+        again.is_empty(),
+        "a holder the late line named was named again: {again:?}"
+    );
 
     // Freed, the held walk lands already old, and the next answers: said
-    // once, and not as answering again, as none had.
+    // once, and not as answering again, as none had, nor held up.
     drop(free);
     let answers = |said: &String| said.starts_with("the reading of /proc answers");
     let mut heard = Vec::new();
@@ -456,8 +466,13 @@ fn a_first_reading_that_lands_old_is_said_as_none_answering_and_then_at_last() {
     // says the share unmeasured from the second on, which the case
     // doesn't judge. The first walk's age counts from its own start, so
     // the case times `old` from when the walk says it began, however late
-    // its thread started.
+    // its thread started. A stand-in names a process the second walk is
+    // held up reading, as the real walk would, yet the landing take names
+    // none, as the reading it found was held up by nothing; the stand-in
+    // stops before the second walk is freed, so no take after names it.
     let old = YOUNG_PAST_A_WAIT;
+    let holder = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(4_242));
+    let held = std::sync::Arc::clone(&holder);
     let (walking, walked) = mpsc::channel::<Instant>();
     let (free, freed) = mpsc::channel::<()>();
     let (again, freed_again) = mpsc::channel::<()>();
@@ -480,7 +495,10 @@ fn a_first_reading_that_lands_old_is_said_as_none_answering_and_then_at_last() {
             }
             Sample::default()
         },
-        || None,
+        move || {
+            let pid = held.load(std::sync::atomic::Ordering::Relaxed);
+            (pid != 0).then_some(pid)
+        },
         move |said| {
             let _ = tell.send(said);
         },
@@ -504,7 +522,12 @@ fn a_first_reading_that_lands_old_is_said_as_none_answering_and_then_at_last() {
         said.len() == 1 && said[0].starts_with("no reading of /proc has answered in "),
         "a first reading landing old wasn't said once as none answering: {said:?}"
     );
+    assert!(
+        !said[0].contains("held up") && !said[0].contains("process"),
+        "a reading that landed named what held up the walk after it: {said:?}"
+    );
 
+    holder.store(0, std::sync::atomic::Ordering::Relaxed);
     drop(again);
     let mut heard = Vec::new();
     let until = Instant::now() + LATE;
