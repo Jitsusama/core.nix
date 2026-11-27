@@ -476,38 +476,35 @@ impl History {
             return Err(kept_by_newer(path, shape));
         }
         let existing = path.exists();
-        let history = History::connect(path)?;
-        let read = history
-            .db
-            .query_row("SELECT value FROM meta WHERE key = 'schema'", [], |row| {
-                row.get::<_, String>(0)
-            })
-            .optional();
-        // Only a history that doesn't read is set aside; any other failure
-        // fails the open, named, since SQLite's words alone don't say which
-        // read it was. A busy one keeps its words, so it's tried again.
-        if let Err(error) = &read
-            && !unreadable(error)
-        {
-            return Err(format!("couldn't read the history's shape: {error}"));
-        }
-        let schema: Option<i64> = read.ok().flatten().and_then(|value| value.parse().ok());
+        // A file that isn't a database, or whose schema is damaged, fails as
+        // the connection first reads it, before any shape is read, so the
+        // connection's error is asked the same question as the shape's.
+        let history = match History::connected(path) {
+            Ok(history) => Some(history),
+            Err(error) if unreadable(&error) => None,
+            Err(error) => return Err(sql(error)),
+        };
+        let schema = match &history {
+            Some(history) => history.shaped(path)?,
+            None => None,
+        };
         // The look before the connection takes any error for no answer, so
         // a history busy then passes it unread; a newer shape read here is
         // as much the newer spend-watch's, and is left as it is all the same.
         if let Some(shape) = schema.filter(|shape| *shape > SCHEMA) {
             return Err(kept_by_newer(path, shape));
         }
-        if schema == Some(SCHEMA) {
-            history.index_sessions()?;
-            return Ok(history);
+        if let Some(history) = history {
+            if schema == Some(SCHEMA) {
+                history.index_sessions()?;
+                return Ok(history);
+            }
+            if let Some(from) = schema.filter(|from| (1..SCHEMA).contains(from)) {
+                history.upgrade(from)?;
+                history.index_sessions()?;
+                return Ok(history);
+            }
         }
-        if let Some(from) = schema.filter(|from| (1..SCHEMA).contains(from)) {
-            history.upgrade(from)?;
-            history.index_sessions()?;
-            return Ok(history);
-        }
-        drop(history);
         if existing {
             let aside = History::aside(path, schema.unwrap_or(0));
             for suffix in ["", "-wal", "-shm"] {
@@ -526,6 +523,31 @@ impl History {
             )
             .map_err(sql)?;
         Ok(history)
+    }
+
+    /// The shape this history says it has, or none when it says none or
+    /// says it in a way that doesn't read. Only a history that doesn't read
+    /// is taken as having none; any other failure fails the open, named,
+    /// since SQLite's words alone don't say which read it was. A busy one
+    /// keeps its words, so it's tried again. One that fails the same way
+    /// every time keeps the watch down, so the error says where the history
+    /// is and the step out of it.
+    fn shaped(&self, path: &Path) -> Result<Option<i64>, String> {
+        let read = self
+            .db
+            .query_row("SELECT value FROM meta WHERE key = 'schema'", [], |row| {
+                row.get::<_, String>(0)
+            })
+            .optional();
+        match read {
+            Ok(value) => Ok(value.and_then(|value| value.parse().ok())),
+            Err(error) if unreadable(&error) => Ok(None),
+            Err(error) => Err(format!(
+                "couldn't read the history's shape: {error}. If it fails the same way \
+                 again, moving {} aside lets spend-watch start a new one beside it",
+                path.display()
+            )),
+        }
     }
 
     /// Indexes which session each log holds, in a history kept before the
@@ -631,26 +653,29 @@ impl History {
     }
 
     fn connect(path: &Path) -> Result<History, String> {
-        let db = Connection::open(path).map_err(sql)?;
-        db.busy_timeout(WAIT).map_err(sql)?;
-        db.pragma_update(None, "journal_mode", "WAL").map_err(sql)?;
-        db.pragma_update(None, "journal_size_limit", WAL_LIMIT)
-            .map_err(sql)?;
-        db.pragma_update(None, "synchronous", "NORMAL")
-            .map_err(sql)?;
+        History::connected(path).map_err(sql)
+    }
+
+    /// A connection to the history at `path`, with SQLite's own error for
+    /// one that can't be made, so the open can tell a file that doesn't
+    /// read from one it can't reach for now.
+    fn connected(path: &Path) -> Result<History, rusqlite::Error> {
+        let db = Connection::open(path)?;
+        db.busy_timeout(WAIT)?;
+        db.pragma_update(None, "journal_mode", "WAL")?;
+        db.pragma_update(None, "journal_size_limit", WAL_LIMIT)?;
+        db.pragma_update(None, "synchronous", "NORMAL")?;
         // A pass's picture sorts and groups more turns than SQLite keeps in
         // memory, and by default it spills them to files in the temporary
         // folder: four of them, about 62 MB, every pass. Writeback reaches
         // them before they're deleted, so on a busy day the watch wrote
         // about 200 GB to the disk, ahead of Joel's own saves in its queue.
         // In memory they cost about that much RAM for the length of a pass.
-        db.pragma_update(None, "temp_store", "MEMORY")
-            .map_err(sql)?;
+        db.pragma_update(None, "temp_store", "MEMORY")?;
         // Without the table, the schema reads as none.
         db.execute_batch(
             "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);",
-        )
-        .map_err(sql)?;
+        )?;
         Ok(History { db })
     }
 
@@ -1180,7 +1205,8 @@ mod tests {
                 .db
                 .execute_batch(
                     "DROP TABLE meta; CREATE TABLE gone (key TEXT, value TEXT); \
-                     CREATE VIEW meta AS SELECT key, value FROM gone; DROP TABLE gone;",
+                     CREATE VIEW meta AS SELECT key, value FROM gone; DROP TABLE gone; \
+                     CREATE TABLE only_kept (x);",
                 )
                 .unwrap();
         }
@@ -1191,20 +1217,49 @@ mod tests {
             "a shape that failed to read didn't fail the open, named: {why:?}"
         );
         assert!(
+            why.contains(&path.display().to_string()) && why.contains("aside"),
+            "a shape that fails at every open didn't say where the history is and \
+             the step out: {why:?}"
+        );
+        assert!(
             !dir.path().join("history.db.schema-0").exists(),
             "a history whose shape failed to read was set aside"
         );
+        // Only the kept history has this table: one built again doesn't.
         let kept = Connection::open(&path).unwrap();
         let tables: i64 = kept
             .query_row(
-                "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'files'",
+                "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'only_kept'",
                 [],
                 |row| row.get(0),
             )
             .unwrap();
+        assert_eq!(tables, 1, "the history was built again rather than kept");
+    }
+
+    // A file that isn't a database fails as the connection first reads it,
+    // before any shape is read, and is set aside all the same.
+    #[test]
+    fn a_file_that_isnt_a_database_is_set_aside_and_built_again() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("history.db");
+        let words = "not a database, though it sits where the history goes".repeat(100);
+        fs::write(&path, &words).unwrap();
+        let history = History::open(&path);
+        let why = history.as_ref().err().cloned().unwrap_or_default();
+        assert!(
+            history.is_ok(),
+            "a file that isn't a database failed the open: {why:?}"
+        );
         assert_eq!(
-            tables, 1,
-            "the history's tables didn't stay where they were"
+            history.unwrap().meta("schema"),
+            Some(SCHEMA.to_string()),
+            "the history wasn't built again at this shape"
+        );
+        assert_eq!(
+            fs::read_to_string(dir.path().join("history.db.schema-0")).unwrap_or_default(),
+            words,
+            "the file that isn't a database wasn't set aside as it was"
         );
     }
 
