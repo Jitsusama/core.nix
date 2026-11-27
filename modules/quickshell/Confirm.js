@@ -79,6 +79,27 @@ function untimed(ask, guard) {
     return Number.isFinite(guard) ? null : "it has no guard";
 }
 
+// Why the ask let `key` by come `now`, as the launcher journals it, or
+// null where it needn't say: for a key that came with no time, an ask
+// that can't be timed (untimed), or a key timed before its ask, as a
+// clock gone back or another clock would give. Each holds the Return for
+// as long as it lasts, while the foot says the ask is ready, so each is
+// said whether or not reports are on. A key early in the guard as it
+// should be, a modifier alone, or a key that answers says nothing here.
+function letBy(ask, key, now, guard) {
+    if (key === "" || answer(ask, key, now, guard) !== "early") {
+        return null;
+    }
+    if (!Number.isFinite(now)) {
+        return `${key} came to the ask with no time, so it was let by`;
+    }
+    const cannot = untimed(ask, guard);
+    if (cannot !== null) {
+        return `the ask can't be timed, as ${cannot}, so ${key} was let by`;
+    }
+    return now < ask.at ? `${key} was timed before its ask, so it was let by` : null;
+}
+
 // Whether an ask takes a key, by what `answer` said of it, or "" where no
 // ask stands: a yes or a no, never an early key. The launcher's field and
 // its test both ask this, so they can't read an answer otherwise.

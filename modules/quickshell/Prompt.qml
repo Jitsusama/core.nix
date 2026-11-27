@@ -239,8 +239,10 @@ Item {
     signal answered(string key, real at)
     // When a key comes, in ms, as the ask and visual's operator time it: the
     // launcher gives KeyTimes' monotonic clock, which its ask is put on too,
-    // so a wall clock stepped back can't make every key early. A prompt
-    // given none keeps the wall clock, as it puts no ask.
+    // so a wall clock stepped back can't make every key early. A link's
+    // quiet (linked) is timed on it too, so such a step can't drop every
+    // key, Escape among them, for as long as it went back. A prompt given
+    // none keeps the wall clock, as it puts no ask.
     property var keyNow: () => Date.now()
     // How soon after visual's operator the same key again is taken with
     // it (Operators.takenWith), as his Neovim's timeoutlen
@@ -287,7 +289,7 @@ Item {
     // having maybe given way to another word since.
     signal endWaited
     function linked(offered) {
-        quietUntil = Date.now() + linkQuiet;
+        quietUntil = keyNow() + linkQuiet;
         quietDropped = 0;
         returnWaits = true;
         endWaits = offered === true;
@@ -300,7 +302,7 @@ Item {
         endWaits = false;
     }
     function heldForLink(event) {
-        if (Date.now() < quietUntil) {
+        if (keyNow() < quietUntil) {
             if (!event.isAutoRepeat)
                 quietDropped += 1;
             return true;

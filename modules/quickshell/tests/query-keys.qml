@@ -408,12 +408,31 @@ QtObject {
         holds("and a modifier alone lets no such ask go",
             [Confirm.answer(timeless, "", 1400, 300), Confirm.answer(ask, "", 1400, NaN)],
             ["early", "early"]);
+        // Return before its ask was early before the rule too, as its gap is
+        // under the guard; this holds it against a looser rule, one reading
+        // the gap whole (Math.abs), which would answer it yes. The Escape
+        // case after it is the one the rule turns from early to no.
         holds("a key timed before its ask, as a clock gone back gives, holds its Return",
             [Confirm.answer(ask, "Return", 999, 300), Confirm.answer(ask, "Return", -5000, 300)],
             ["early", "early"]);
         holds("while any other key still lets that ask go, Escape among them",
             ["Escape", "y", "n"].map(key => Confirm.answer(ask, key, 999, 300)),
             ["no", "no", "no"]);
+        holds("but a key at the ask's own time is in its guard, as one typed on from it",
+            ["Escape", "Return"].map(key => Confirm.answer(ask, key, 1000, 300)),
+            ["early", "early"]);
+        holds("a key let by says why where its Return can't answer, and only there",
+            [Confirm.letBy(ask, "Return", undefined, 300), Confirm.letBy(timeless, "Return",
+                1400, 300), Confirm.letBy(ask, "Return", 1400, undefined),
+                Confirm.letBy(ask, "Return", 999, 300)],
+            ["Return came to the ask with no time, so it was let by",
+                "the ask can't be timed, as it was put at no time, so Return was let by",
+                "the ask can't be timed, as it has no guard, so Return was let by",
+                "Return was timed before its ask, so it was let by"]);
+        holds("never of a key early in its guard, a modifier alone, or one that answers",
+            [Confirm.letBy(ask, "Return", 1100, 300), Confirm.letBy(ask, "", 999, 300),
+                Confirm.letBy(ask, "Escape", 999, 300), Confirm.letBy(ask, "Return", 1400,
+                    300)], [null, null, null, null]);
         holds("and such an ask says why it can't be timed, where a timed one says nothing",
             [Confirm.untimed(timeless, 300), Confirm.untimed(ask, undefined),
                 Confirm.untimed(ask, 300)],

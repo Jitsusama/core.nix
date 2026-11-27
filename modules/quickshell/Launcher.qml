@@ -7809,10 +7809,15 @@ Scope {
 
     // Asks once, `yes` done on Return and `no` on any other key, or as the
     // launcher closes, `covering` the places of the rows it covers, or none.
-    // It's put on KeyTimes' clock, the one the prompt times its keys on
-    // (its keyNow), so a wall clock stepped back can't hold every key early.
+    // It's put on the clock the prompt times its keys on, read from the
+    // prompt itself (its keyNow, KeyTimes' monotonic clock as given below),
+    // so a wall clock stepped back can't hold every key early, and the ask
+    // and its keys can never be timed on two clocks: were the prompt's
+    // clock lost, both would fall back to the wall's together, rather than
+    // a key on the wall's reading as far past an ask on KeyTimes', which
+    // would let the Return that asked, bounced, answer yes.
     function askOnce(question, yes, no, covering) {
-        asked = Confirm.asked(question, yes, no ?? (() => {}), KeyTimes.now());
+        asked = Confirm.asked(question, yes, no ?? (() => {}), prompt.keyNow());
         askedOver = covering ?? [];
         askTaking = false;
         askReady.restart();
@@ -7821,19 +7826,17 @@ Scope {
 
     // A key while the ask stands, as Prompt.qml hands it over, with when
     // it came. It answers only as the field times it (Confirm.takes). A
-    // key let by as it came with no time, or as its ask can't be timed, is
-    // journalled, naming it, whether or not reports are on, as neither can
-    // answer yes; a key that answers is said by the answer alone, and a
-    // modifier alone, early to every ask, isn't journalled.
+    // key let by as it came with no time, as its ask can't be timed, or as
+    // it was timed before its ask, is journalled, naming it, whether or not
+    // reports are on, as none can answer yes (Confirm.letBy); a key that
+    // answers is said by the answer alone, and a modifier alone, early to
+    // every ask, isn't journalled.
     function answerAsk(key, at) {
         const ask = asked;
         const said = askSaid(key, at);
-        const untimed = ask === null ? null : Confirm.untimed(ask, askReady.interval);
-        const letBy = said === "early" && key !== "";
-        if (letBy && !Number.isFinite(at))
-            console.info(`launcher: ${key} came to the ask with no time, so it was let by`);
-        else if (letBy && untimed !== null)
-            console.info(`launcher: the ask can't be timed, as ${untimed}, so ${key} was let by`);
+        const why = ask === null ? null : Confirm.letBy(ask, key, at, askReady.interval);
+        if (why !== null)
+            console.info(`launcher: ${why}`);
         if (ask === null || !Confirm.takes(said))
             return;
         asked = null;
