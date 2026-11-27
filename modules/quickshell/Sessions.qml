@@ -4058,7 +4058,7 @@ Singleton {
     function stillLostTo(pid) {
         const now = Date.now();
         const gone = Object.keys(stillSaid).filter(named =>
-            (stillSaid[named].under ?? "") !== "" && stillSaid[named].under !== pid);
+            stillSaid[named].under !== pid);
         const lost = gone.filter(named => (stillSaid[named].said ?? null) !== null
                 && now - stillSaid[named].at < comingPatience)
             .map(named => ({ named, said: stillSaid[named].said }));
