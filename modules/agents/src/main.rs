@@ -76,7 +76,7 @@ use serde_json::{Value, json};
 // Which asks are Joel's acts, which the shell's check holds and what a
 // refused one is told, in a file of their own beside this one.
 mod joels_acts;
-use joels_acts::{answered, held_to_the_shell, joels, not_as_joel};
+use joels_acts::{AS_JOEL, answered, held_to_the_shell, joels, not_as_joel};
 
 /// The daemon as the launcher knows it: Agents' ready rows, how its
 /// sessions stand together, each session's drawer, and the sessions
