@@ -269,7 +269,7 @@ QtObject {
         expect("turned down 20 s after its first refusal, the ask let go", late, ["yarn", ""]);
     }
 
-    // The yarn drawn once a look (MarginCat.yarnLooks), as the screen draws
+    // The yarn drawn once a look (MarginCat.companionLooks), as the screen draws
     // it, lights the same device pixels as the drawing it made afresh each
     // frame before, at a cell of 1 and of 2, every frame of a play either
     // way and at whatever it faces (VKCF3Z, f3ca0bb2), the theme's own
@@ -282,7 +282,8 @@ QtObject {
             return all;
         }, []).join(",");
         const afresh = yarn => MarginCat.turned(Drawings.pixels[yarn.pose] ?? [], yarn.facing);
-        const once = yarn => MarginCat.yarnDrawn(MarginCat.yarnLooks(yarn), Drawings.pixels);
+        const once = yarn => MarginCat.companionDrawn(MarginCat.companionLooks(yarn),
+            Drawings.pixels);
         const rolled = [Games.play("yarn", Seated.sat()), Games.play("yarn", Seated.sat({
             seat: { x: 500, y: 20 }, column: { left: 0, top: 30, width: 528 } }))]
             .reduce((all, played) => all.concat(frames(played)), [])
@@ -298,8 +299,8 @@ QtObject {
             [lit(once({ pose: "yarn", facing: 1 }), 2).length > 0,
                 lit(once({ pose: "yarn", facing: 1 }), 1)
                     !== lit(once({ pose: "yarn", facing: -1 }), 1)], [true, true]);
-        expect("none where there's no yarn", MarginCat.yarnDrawn(MarginCat.yarnLooks(null),
-            Drawings.pixels), []);
+        expect("none where there's no yarn",
+            MarginCat.companionDrawn(MarginCat.companionLooks(null), Drawings.pixels), []);
     }
 
     // A pounce at nothing it's sure of: it eyes it, crouches, wiggles,

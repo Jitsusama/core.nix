@@ -109,7 +109,10 @@ DELETE = 0x7F
 
 
 def css_character(each: str) -> str:
-    """Return `each` as a CSS string holds it: a quote or backslash escaped, a control by code."""
+    """Return `each` as a CSS string holds it: a quote or backslash escaped, a control by code.
+
+    Given a NUL, CSS reads its escape as U+FFFD, so no selector finds an id holding one.
+    """
     if each in '\\"':
         return "\\" + each
     if ord(each) <= LAST_C0 or ord(each) == DELETE:
@@ -335,7 +338,8 @@ FARTHEST = """(from) => {
   boxes.sort((a, b) => far(b) - far(a));
   return boxes[0] === origin ? null : boxes[0].dataset.id;
 }"""
-# The view scrolled from its corner just far enough to show `id`, as a jump to it would.
+# The view scrolled back to its top, keeping where it stands side to side, then just far enough to
+# show `id`, down or across, with none of a jump's padding.
 TO_SHOW = """(id) => {
   const view = document.querySelector("#map-view");
   view.scrollTo(view.scrollLeft, 0);
@@ -545,6 +549,80 @@ def test_the_network_page_keeps_to_its_budget(network_opened: Opened) -> None:
     every_device_drawn(network_opened.page)
     network_opened.keeps_to(BUDGET)
     says_it_stands(network_opened.page, "live")
+
+
+# What the find's placeholder is drawn in, beside the muted it should be
+# drawn in, as the browser computes both.
+PLACEHOLDER = """() => {
+  const said = getComputedStyle(document.querySelector("#find"), "::placeholder");
+  const probe = document.createElement("span");
+  probe.style.color = "var(--muted)";
+  document.body.append(probe);
+  const muted = getComputedStyle(probe).color;
+  probe.remove();
+  return { colour: said.color, opacity: said.opacity, muted };
+}"""
+
+
+@pytest.mark.parametrize("look", LOOKS)
+def test_the_find_says_what_it_takes_in_words_that_read(
+    browser: Browser, network_served: Served, look: str
+) -> None:
+    root, _ = network_served
+    opened = Opened(browser, f"{root}network/", SIZES[0], look)
+    try:
+        says_it_stands(opened.page, "live")
+        said = opened.page.evaluate(PLACEHOLDER)
+        assert said["colour"] == said["muted"], (
+            f"the find's placeholder wasn't drawn in muted in the {look} look: {said}"
+        )
+        assert said["opacity"] == "1", (
+            f"the find's placeholder was faded below muted in the {look} look: {said}"
+        )
+    finally:
+        opened.close()
+
+
+# The find's placeholder beside the page's text and its typed words, as the
+# browser computes them once the reader has picked a look on the page.
+PLACEHOLDER_PICKED = """(look) => {
+  document.documentElement.dataset.theme = look;
+  const find = document.querySelector("#find");
+  const said = getComputedStyle(find, "::placeholder");
+  const probe = document.createElement("span");
+  probe.style.color = "var(--text)";
+  document.body.append(probe);
+  const text = getComputedStyle(probe).color;
+  probe.remove();
+  const typed = getComputedStyle(find).fontStyle;
+  return { colour: said.color, style: said.fontStyle, typed, text };
+}"""
+
+
+@pytest.mark.parametrize("look", LOOKS)
+def test_more_contrast_raises_the_finds_words_in_a_look_picked_on_the_page(
+    browser: Browser, network_served: Served, look: str
+) -> None:
+    """A reader asking for more contrast gets it in a look picked on the page too.
+
+    The theme's colours for a picked look stood above the kit's more-contrast
+    rule, so muted words stayed faint for whoever had chosen a look. Raised to
+    the text's colour, a placeholder is told from typed words by its slant.
+    """
+    root, _ = network_served
+    opened = Opened(browser, f"{root}network/", SIZES[0], look)
+    try:
+        says_it_stands(opened.page, "live")
+        opened.page.emulate_media(contrast="more")
+        said = opened.page.evaluate(PLACEHOLDER_PICKED, look)
+        assert said["colour"] == said["text"], (
+            f"more contrast left the find's placeholder muted in the picked {look} look: {said}"
+        )
+        assert said["style"] != said["typed"], (
+            f"more contrast drew the find's placeholder as typed words in the {look} look: {said}"
+        )
+    finally:
+        opened.close()
 
 
 @pytest.mark.parametrize("look", LOOKS)
