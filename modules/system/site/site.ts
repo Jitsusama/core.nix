@@ -47,6 +47,7 @@ const title = element("#headline", HTMLParagraphElement);
 const looks = element("#looks", HTMLDivElement);
 const standingLine = element("#standing", HTMLParagraphElement);
 const standingWords = element("#standing-words", HTMLSpanElement);
+const readAt = element("#read-at", HTMLSpanElement);
 const bridge = element("#bridge", HTMLElement);
 const places = element("#places", HTMLElement);
 const note = element("#note", HTMLParagraphElement);
@@ -141,10 +142,8 @@ function sayWhen(): void {
   const words: string[] = [];
   if (system !== undefined) {
     const at = Date.parse(system.readAt);
-    words.push(
-      system.machine,
-      Number.isNaN(at) ? "read at an unknown time" : `read ${clockTime(at)}`,
-    );
+    words.push(system.machine);
+    readAt.textContent = Number.isNaN(at) ? " Read at an unknown time." : ` Read ${clockTime(at)}.`;
   }
   if (now !== undefined) {
     words.push(now.state === "live" ? "live" : said(now));

@@ -210,6 +210,31 @@ function unreadSaid(count: number): string {
   return `${plural(count, "thing")} net told couldn't be read, and may be worth a look.`;
 }
 
+/**
+ * How many things net told that the page couldn't read, each maybe worth a
+ * look: the records in `network` it couldn't make out, and the watches that
+ * sent a line it couldn't read at all, as a line that isn't JSON or a record
+ * with no key, which never reaches the network. The lede and the panel both
+ * count this.
+ */
+function unreadCount(network: Network, unheard: number): number {
+  return unreadOf(network).length + unheard;
+}
+
+/**
+ * The words Worth a Look says beneath its rows, or alone when it has none:
+ * how much couldn't be read, or that nothing needs a look.
+ */
+function worthHint(context: Context): string | undefined {
+  const { network } = context;
+  const unread = unreadCount(network, context.unheard ?? 0);
+  if (unread > 0) {
+    return unreadSaid(unread);
+  }
+  const { worth, quiet } = worthOf(network);
+  return worth.length === 0 && quiet.length === 0 ? "Nothing needs a look." : undefined;
+}
+
 /** How many devices use the network: every one read, less the eeros and the modem. */
 function users(context: Context): number {
   const { network, shape } = context;
@@ -228,10 +253,9 @@ function asksOf(network: Network, told: boolean, unheard: number): string {
   }
   const { worth, quiet } = worthOf(network);
   // A concern or a source the page couldn't read may be one worth a look,
-  // so it's counted as one rather than read as an all-clear; so may one the
-  // watch couldn't read at all, as a line that isn't JSON or a record with
-  // no key, which never reaches the network. The panel counts the same.
-  const looks = worth.length + quiet.length + unreadOf(network).length + unheard;
+  // so it's counted as one rather than read as an all-clear, as the panel
+  // counts it.
+  const looks = worth.length + quiet.length + unreadCount(network, unheard);
   return looks === 0 ? "and nothing needs a look" : `and ${plural(looks, "thing")} worth a look`;
 }
 
@@ -338,10 +362,10 @@ function sayStandsNow(
 function worthALook(context: Context): Child[] {
   const { network } = context;
   const { worth, quiet } = worthOf(network);
-  const unread = unreadOf(network).length + (context.unheard ?? 0);
-  const said = unread > 0 ? [h("p", { class: "hint" }, unreadSaid(unread))] : [];
+  const hint = worthHint(context);
+  const said = hint === undefined ? [] : [h("p", { class: "hint" }, hint)];
   if (worth.length === 0 && quiet.length === 0) {
-    return said.length > 0 ? said : [h("p", { class: "hint" }, "Nothing needs a look.")];
+    return said;
   }
   const rows = worth.length > 0 ? concernRows(context, worth) : h("ul", { class: "rows" });
   rows.prepend(...quiet.map((source) => quietRow(network, source)));
@@ -422,4 +446,5 @@ export {
   UNANSWERED,
   UNREACHED,
   unreadSaid,
+  worthHint,
 };

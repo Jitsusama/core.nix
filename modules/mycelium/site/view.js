@@ -4947,6 +4947,15 @@ import {
       draw();
     }
   };
+  // One step of a first drawing the first path gave up on, logged when it
+  // throws rather than failing the reading.
+  const firstStep = (what, step) => {
+    try {
+      step();
+    } catch (err) {
+      console.error(`mycelium: couldn't ${what} on the first drawing`, err?.stack || err);
+    }
+  };
   const take = (now) => {
     try {
       // Each redraw is measured, so its cost at any size can be read from
@@ -4973,14 +4982,17 @@ import {
         // way is drawn as a first again by the next, rather than left half set.
         first = false;
       } else if (!drawnWhole) {
-        // A first path given up on never chose the address's cell or heard
-        // the node's messages as already said, so the first reading drawn
-        // whole here does both, and its cells are heard as a first.
+        // A first path given up on never judged what changed since the last
+        // look, chose the address's cell or heard the node's messages as
+        // already said, so the first reading drawn here does each, its cells
+        // heard as a first. Each is tried alone, so one that always throws
+        // leaves the rest drawn and the ordinary path to the next reading.
         const was = spots;
+        firstStep("judge what changed", judgeChanged);
         chooseFromAddress();
-        noteLives(was);
-        hear(false);
-        panel();
+        firstStep("hear its cells", () => noteLives(was));
+        firstStep("hear its messages as said", () => hear(false));
+        firstStep("write its drawer", panel);
       } else {
         if (chosen && !knows(chosen)) chosen = null;
         const was = spots;

@@ -16,6 +16,12 @@
 
 import { type Fields, Held, isObject, type Moved } from "./records.ts";
 
+/**
+ * How the feed begins what it says of an answer to another ask, never this
+ * watch's, so a page can tell it from a line that may have hidden a record.
+ */
+const STRAY = "an answer to no ask of this page";
+
 /** How a watch stands: what a page says above what it draws. */
 type State = "connecting" | "live" | "stale" | "broken";
 
@@ -226,7 +232,7 @@ class Follower {
     } else if (answer["id"] === WATCH) {
       this.#heard(answer);
     } else if (answer["id"] !== HELLO) {
-      this.#hearing.problem(`an answer to no ask of this page: ${JSON.stringify(answer)}`);
+      this.#hearing.problem(`${STRAY}: ${JSON.stringify(answer)}`);
     } else if (answer["error"] !== undefined) {
       this.#refused(answer["error"]);
     }
@@ -267,4 +273,4 @@ function follow(watching: Watching, hearing: Hearing, reaching: Reaching = {}): 
 }
 
 export type { Clock, Following, Hearing, Reaching, Socket, Standing, State, Watching };
-export { feedAddress, follow, waitBefore };
+export { feedAddress, follow, STRAY, waitBefore };
