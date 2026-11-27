@@ -158,7 +158,8 @@ pub fn landings(text: &str, since: i64, tallies: &mut Tallies) {
 
 /// The week's messages, by sender. A question counts as unanswered when
 /// no message answers it and it was asked before `until`, in seconds, so
-/// one asked a moment ago isn't held against its sender.
+/// one asked a moment ago isn't held against its sender; one of cadence's
+/// own a day before it, as its hourly questions give their owners a day.
 pub fn messages(notes: &[Note], until: i64, tallies: &mut Tallies) {
     let answered: BTreeSet<&str> = notes.iter().filter_map(|n| n.re.as_deref()).collect();
     let mut sorted: Vec<&Note> = notes.iter().collect();
@@ -167,7 +168,12 @@ pub fn messages(notes: &[Note], until: i64, tallies: &mut Tallies) {
     for note in sorted {
         let tally = tallies.entry(("messages", note.from.clone())).or_default();
         tally.said += 1;
-        let asked_before = mesh::stamped_at(&note.id).is_some_and(|ms| ms < until * 1000);
+        let by = if note.from == crate::FROM {
+            until - crate::DAY
+        } else {
+            until
+        };
+        let asked_before = mesh::stamped_at(&note.id).is_some_and(|ms| ms < by * 1000);
         if note.intent == "question" && asked_before && !answered.contains(note.id.as_str()) {
             tally.unacted += 1;
         }
@@ -314,6 +320,29 @@ mod tests {
             tally(&tallies, "messages", "BBBBBB").said,
             1,
             "the answer counts to its own sender"
+        );
+    }
+
+    #[test]
+    fn a_question_of_cadences_is_held_against_it_only_once_a_day_old() {
+        let until = SINCE + 2 * crate::DAY;
+        let question = |ago: i64, tag: &str, said: u64| Note {
+            id: format!("{}-{}-1-{tag}", (until - ago) * 1000, crate::FROM),
+            intent: "question".to_owned(),
+            from: crate::FROM.to_owned(),
+            said,
+            ..Note::default()
+        };
+        let notes = vec![
+            question(2 * 3600, "a", 1),
+            question(crate::DAY + 60, "b", 2),
+        ];
+        let mut tallies = Tallies::new();
+        messages(&notes, until, &mut tallies);
+        assert_eq!(
+            tally(&tallies, "messages", crate::FROM).unacted,
+            1,
+            "cadence's question two hours old was held against it, or its day-old one wasn't"
         );
     }
 }

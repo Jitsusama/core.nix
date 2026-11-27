@@ -87,6 +87,11 @@ pub struct Entry {
     /// against it yet: a line closes when its measure is back in.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub asked: Option<String>,
+    /// What the hour's line named as its owner's when last asked, each
+    /// cell, file, miss or date by the name that stays while it's red, so
+    /// fewer of the same aren't asked again within the day.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub names: Vec<String>,
 }
 
 /// Whether a count is nought, so a line never reopened stays as it was.
@@ -229,6 +234,7 @@ pub fn update(
                 back: None,
                 fixed: None,
                 asked: None,
+                names: Vec::new(),
             });
         }
     }

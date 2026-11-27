@@ -30,7 +30,8 @@ pub struct Sources {
     pub day: Option<Day>,
     /// The systemd units failed now, one a line.
     pub failed: String,
-    /// The mesh's messages of the last day, and its presences that say
+    /// The mesh's messages of the last two days, so a question of
+    /// cadence's a day old is there to count, and its presences that say
     /// live for a pi that's gone.
     pub messages: Vec<Note>,
     pub ghosts: Option<usize>,
@@ -272,29 +273,50 @@ fn quality(s: &Sources) -> Axis {
     axis("quality", readings)
 }
 
-fn collaboration(s: &Sources) -> Axis {
-    let all = s.messages.len();
-    let fyi = s.messages.iter().filter(|m| m.intent == "fyi").count();
-    let answered: BTreeSet<&str> = s.messages.iter().filter_map(|m| m.re.as_deref()).collect();
-    let asked_by = (s.now - 30 * 60) * 1000;
-    // Cadence's hourly questions give their owners a day, so each of its
-    // questions counts once a day has passed unanswered, rather than half
-    // an hour. Its wakes and alarms wait as long, as only a hash of what a
-    // message said is kept to tell them apart.
-    let ours_by = (s.now - DAY) * 1000;
-    let unanswered = s
-        .messages
+/// How far back the mesh's messages are read, in seconds: two days, so a
+/// question of cadence's left a day is there to count.
+const MESSAGES_FOR: i64 = 2 * DAY;
+
+/// Whether `m` is cadence's own, by its sender and the sender its id was
+/// stamped with, so a `from` written alone doesn't claim a day's grace.
+fn ours(m: &Note) -> bool {
+    m.from == crate::FROM && m.id.split('-').nth(1) == Some(crate::FROM)
+}
+
+/// The questions of `messages` with no answer from any peer: another's
+/// asked in the last day, more than half an hour before `now`, and one of
+/// cadence's asked more than a day before it, within the two days read.
+/// Cadence's hourly questions give their owners a day; its wakes and
+/// alarms wait as long, as only a hash of what a message said is kept to
+/// tell them apart.
+fn unanswered(messages: &[Note], now: i64) -> usize {
+    let answered: BTreeSet<&str> = messages.iter().filter_map(|m| m.re.as_deref()).collect();
+    let (day, asked_by) = ((now - DAY) * 1000, (now - 30 * 60) * 1000);
+    messages
         .iter()
         .filter(|m| m.intent == "question" && !answered.contains(m.id.as_str()))
         .filter(|m| {
-            let by = if m.from == crate::FROM {
-                ours_by
-            } else {
-                asked_by
-            };
-            mesh::stamped_at(&m.id).is_some_and(|at| at < by)
+            mesh::stamped_at(&m.id).is_some_and(|at| {
+                if ours(m) {
+                    at < day
+                } else {
+                    (day..asked_by).contains(&at)
+                }
+            })
         })
-        .count();
+        .count()
+}
+
+fn collaboration(s: &Sources) -> Axis {
+    let day = (s.now - DAY) * 1000;
+    let recent: Vec<&Note> = s
+        .messages
+        .iter()
+        .filter(|m| mesh::stamped_at(&m.id).is_some_and(|at| at >= day))
+        .collect();
+    let all = recent.len();
+    let fyi = recent.iter().filter(|m| m.intent == "fyi").count();
+    let unanswered = unanswered(&s.messages, s.now);
     let read = all > 0;
     axis(
         "collaboration",
@@ -613,7 +635,7 @@ pub fn gather(folder: &Path, state_home: &Path, now: i64) -> Sources {
         let messages = s.spawn(|| {
             messages::read(
                 &mesh.root,
-                now - DAY,
+                now - MESSAGES_FOR,
                 Some(&cache_home().join("cadence/mesh-notes.json")),
             )
         });
@@ -767,28 +789,43 @@ The net tests 6f8501688 (9 merges behind main), merged 28 min ago.
                     from: crate::FROM.into(),
                     ..note(format!("{old}-CADENCE-1-ee"), "question", None)
                 },
-                // One of cadence's left a day unanswered counts.
-                Note {
-                    from: crate::FROM.into(),
-                    ..note(
-                        format!("{}-CADENCE-1-ff", (NOW - DAY - 60) * 1000),
-                        "question",
-                        None,
-                    )
-                },
             ],
             ..Sources::default()
         };
         // The agents he corrected come first, from health; the mesh's two
         // follow.
         let readings = collaboration(&s).readings;
-        assert_eq!(readings[1].now, Some(100.0 / 6.0), "one fyi of six");
-        // B and cadence's day-old one: A was answered, C was asked under
-        // 30 min ago, and the hour's own an hour ago has its day.
+        assert_eq!(readings[1].now, Some(20.0), "one fyi of five");
+        // B alone: A was answered, C was asked under 30 min ago, and the
+        // hour's own an hour ago has its day.
+        assert_eq!(readings[2].now, Some(1.0), "B alone is unanswered");
+    }
+
+    #[test]
+    fn a_question_of_cadences_read_from_the_mesh_counts_once_a_day_old() {
+        const NOW: i64 = 1_794_441_600;
+        let root = tempfile::tempdir().expect("a scratch folder");
+        let folder = root.path().join("mesh-workflow/messages");
+        std::fs::create_dir_all(&folder).expect("the messages folder");
+        let write = |id: &str, from: &str| {
+            let body = format!(r#"{{"id":"{id}","intent":"question","from":"{from}"}}"#);
+            std::fs::write(folder.join(format!("{id}.json")), body).expect("a message");
+        };
+        let stamp =
+            |ago: i64, from: &str, tag: &str| format!("{}-{from}-1-{tag}", (NOW - ago) * 1000);
+        // Cadence's 25 h old counts; its hour old doesn't yet; another's
+        // 25 h old is past the day the others are counted over; and one
+        // saying it's cadence's under another's stamp gets no day.
+        write(&stamp(DAY + 3600, crate::FROM, "aa"), crate::FROM);
+        write(&stamp(3600, crate::FROM, "bb"), crate::FROM);
+        write(&stamp(DAY + 3600, "BBBBBB", "cc"), "BBBBBB");
+        write(&stamp(3600, "BBBBBB", "dd"), crate::FROM);
+        let read = messages::read(root.path(), NOW - MESSAGES_FOR, None);
+        assert_eq!(read.len(), 4, "the reader didn't keep two days: {read:?}");
         assert_eq!(
-            readings[2].now,
-            Some(2.0),
-            "B and cadence's day-old question weren't the unanswered"
+            unanswered(&read, NOW),
+            2,
+            "cadence's day-old question and the forged one weren't the two unanswered"
         );
     }
 
