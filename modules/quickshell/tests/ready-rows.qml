@@ -1,8 +1,8 @@
 // How the shell takes a place's rows as its daemon serves them ready,
 // run in Qt's own JavaScript engine, the one the shell runs it in. The
 // `the-launcher-words-each-ready-row-it-is-served` check copies the
-// launcher's files this imports, with what each imports in turn as
-// checks/imports.nix says (checks/helpers.nix's copied), and
+// launcher's files checks/ready-rows.nix names, with what each imports in
+// turn as checks/imports.nix says (checks/helpers.nix's copied), and
 // tests/lib/Expect.js beside this file, and runs `qml -platform offscreen ready-rows.qml` over
 // records made up here in the crate's wrapped form. Long because every
 // case holds one form, the ready rows' (attachments' ready-rows.md), which

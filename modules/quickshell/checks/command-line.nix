@@ -136,7 +136,7 @@
   # A modal Prompt.qml says a key acted exactly where its own handlers did
   # something with it, keys sent through Qt as the launcher's field takes them
   # (modules/quickshell/tests/prompt-keys.qml), and the command line names the
-  # key that let it go, which the launcher times as acting
+  # key that let it go, which the launcher times as a move
   # (modules/quickshell/tests/command-line-keys.qml), in Qt's test runner. The
   # account's Theme.qml is made a plain singleton, as Quickshell's isn't
   # there, Lights.qml a stand-in with caps lock off, and Quickshell a module
@@ -171,6 +171,8 @@
       cp ${../tests/command-line-keys.qml} command-line-keys.qml
       ${copied [
         "CommandLine.qml"
+        # prompt-keys.qml's own import, which Prompt.qml's brings too.
+        "Confirm.js"
         "Prompt.qml"
         "TextMeasure.qml"
       ]}

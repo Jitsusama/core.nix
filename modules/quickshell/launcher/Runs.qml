@@ -63,10 +63,9 @@ Provider {
         const round = bare.replace(/-.*$/, "");
         return {
             id: bare,
-            // Made a string, so a node's key of any other kind can't throw
-            // where the launcher reads a found row's key as one
-            // (Launcher.qml's startsWith on it).
-            key: String(record.key ?? `run:${id}`),
+            // A string, as Launcher.qml's startsWith on a found row's key
+            // needs: Daemon.qml's took() holds no record whose key isn't.
+            key: record.key ?? `run:${id}`,
             kind: record["run.kind"]
                 ?? (id.startsWith("fleet.") ? "fleet" : kinds[round] ? round : "review"),
             about: record.about ?? "",

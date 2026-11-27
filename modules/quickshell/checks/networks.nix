@@ -16,10 +16,44 @@
   ...
 }:
 let
+  # What Qt says of a line that threw or a value it couldn't assign: any error
+  # a file's line threw, as Quickshell says one, and the words Qt's own use.
+  # A binding that quietly comes out undefined into a `var` says nothing, so
+  # it passes unseen.
+  threw = pkgs.lib.concatStringsSep "|" [
+    ''\.(qml|js)\[[0-9-]+:[0-9-]+\]: [A-Za-z]*Error:''
+    "TypeError"
+    "ReferenceError"
+    "Unable to assign"
+  ];
+
+  # Sets `failed` where `said` holds a line Qt says threw, and stops the build
+  # where grep itself fails, as on a pattern an edit broke, so a guard that
+  # can't read is never taken for one that found nothing.
+  judged = ''
+    found=0
+    grep -aE '${threw}' said || found=$?
+    case $found in
+      0)
+        echo "a line threw, named nothing or couldn't be assigned while the cases ran"
+        failed=1
+        ;;
+      1) ;;
+      *)
+        echo "what the shell said couldn't be read for a throw (grep exited $found)"
+        exit 2
+        ;;
+    esac
+  '';
+
   # A Wi-Fi case run through the real Wireless.qml, ReadyRows.qml and
   # Daemon.qml, with the launcher stood in by the case itself and Wifi's card
-  # and the sign-in stood in here. Where `heard` names a script, it reads
-  # what the shell said once the case has passed.
+  # and the sign-in stood in here. A line that threw, a name that resolved to
+  # nothing or a value Qt couldn't assign ran on something a stand-in lacks,
+  # so it fails the case, which could otherwise pass on code that never ran
+  # as in the shell. What the shell said is read whatever the run ended in,
+  # a case failed or timed out included, and where `heard` names a script it
+  # reads it too, so no one failure hides another.
   wifiCase =
     name: case: heard:
     let
@@ -40,6 +74,10 @@ let
       signIn = singleton "SignIn.qml" ''
         readonly property string network: ""
         function open() {}
+      '';
+      # What the shell said, read whatever the run ended in, failing the case on a miss.
+      reading = pkgs.lib.optionalString (heard != null) ''
+        ${pkgs.lib.getExe pkgs.bash} ${heard} said || failed=1
       '';
     in
     # Kept in Nix because each line copies a file Nix gives it beside the
@@ -64,16 +102,22 @@ let
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
-      ${
-        if heard == null then
-          "timeout 60 ${qs} -p shell.qml"
-        else
-          ''
-            set -o pipefail
-            timeout 60 ${qs} -p shell.qml 2>&1 | tee said
-            ${pkgs.lib.getExe pkgs.bash} ${heard} said
-          ''
-      }
+      set -o pipefail
+      ran=0
+      timeout 60 ${qs} -p shell.qml 2>&1 | tee said || ran=$?
+      failed=0
+      if [ "$ran" -eq 124 ]; then
+        echo "the cases were still running after 60 s"
+        failed=1
+      elif [ "$ran" -ne 0 ]; then
+        echo "the cases ended failed (exit $ran)"
+        failed=1
+      fi
+      ${judged}
+      ${reading}
+      if [ "$failed" -ne 0 ]; then
+        exit 1
+      fi
       touch $out
     '';
 in
@@ -281,6 +325,29 @@ in
   wifi-holds-the-network-joined-ahead =
     wifiCase "wifi-holds-the-network-joined-ahead" ../tests/wifi-ahead.qml
       null;
+
+  # The Wi-Fi cases' throw guard fails a run whose shell said a line threw, in
+  # each shape it names, and passes one saying only the launcher's own lines,
+  # so an edit that broke its pattern can't switch it off while the cases stay
+  # green. Kept in Nix because it runs the very guard the cases are built with.
+  the-wifi-cases-fail-on-a-throw = pkgs.runCommandLocal "the-wifi-cases-fail-on-a-throw" { } ''
+    judge() {
+      printf '%s\n' "$2" > said
+      failed=0
+      ${judged}
+      if [ "$failed" -ne "$1" ]; then
+        echo "judged $failed, not $1: $2"
+        exit 1
+      fi
+    }
+    judge 1 "WARN scene: @launcher/Wireless.qml[131:-1]: TypeError: Cannot read property walked"
+    judge 1 "WARN scene: @launcher/ReadyRows.qml[917:9]: ReferenceError: Presented is not defined"
+    judge 1 "WARN scene: @launcher/Presented.js[42:5]: RangeError: Maximum call stack size exceeded"
+    judge 1 "WARN scene: @launcher/Wireless.qml[88:5]: Unable to assign [undefined] to QString"
+    judge 0 "INFO launcher: took 12 ms to draw down, heard 3 ms after its press"
+    judge 0 "INFO launcher: a join refused by its code, and an Error: in no file's line"
+    touch $out
+  '';
 
   # A network wanting a sign-in is told of once, and its notice taken back once
   # it stops wanting one, even a notice arriving only after that

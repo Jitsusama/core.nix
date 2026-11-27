@@ -990,12 +990,13 @@ fn opened_in_turn(path: &Path, by: Instant) -> Result<History, String> {
 }
 
 /// Whether a history's error is another connection's write: SQLite's
-/// words for `SQLITE_BUSY` and `SQLITE_LOCKED`, the two `History::open`
-/// keeps from setting a history aside, as `history::sql` gives them,
-/// since the history's errors reach here only as words. A test holds a
-/// real write to pin the first.
+/// words for `SQLITE_BUSY`, as `history::sql` gives them, since the
+/// history's errors reach here only as words. Not `SQLITE_LOCKED`'s:
+/// without a shared cache that's a clash inside one connection, which no
+/// other connection's write ends, so waiting on one is no answer. A test
+/// holds a real write to pin it.
 pub(crate) fn busy(why: &str) -> bool {
-    why.contains("database is locked") || why.contains("database table is locked")
+    why.contains("database is locked")
 }
 
 /// The history at `path`, said in the journal as it's brought up from an
@@ -1079,9 +1080,7 @@ pub fn run(config: &Config) -> Result<(), String> {
                 hub: &hub,
             };
             match pass(&history, config, told, &mut kept, now, &mut steps) {
-                Ok(shown) => {
-                    last_status = Some((steps.cleared(shown), Instant::now(), Instant::now()));
-                }
+                Ok(shown) => steps.cleared(&mut last_status, shown),
                 Err(error) => eprintln!("a pass failed: {error}"),
             }
             last_pass = Instant::now();
@@ -1288,11 +1287,14 @@ impl Steps {
     }
 
     /// A pass that worked let go of what it held, which is a step too:
-    /// under swap, freeing its picture faults it back in. Hands back
-    /// `shown`, what the pass said, so the loop ends it where it takes it.
-    fn cleared<T>(&mut self, shown: T) -> T {
+    /// under swap, freeing its picture faults it back in. The status the
+    /// pass before it said, `kept`, is let go of inside the step as well,
+    /// before it ends, and only then does `shown`, what this pass said,
+    /// take its place, said and worked now.
+    fn cleared<T>(&mut self, kept: &mut Option<(T, Instant, Instant)>, shown: T) {
+        drop(kept.take());
         self.ended("cleared");
-        shown
+        *kept = Some((shown, Instant::now(), Instant::now()));
     }
 
     /// The step `name` ended now.
@@ -1555,6 +1557,8 @@ fn take(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::Cell;
+    use std::rc::Rc;
 
     // The watch says which folder it heard written in, and forgets a
     // folder gone, so one made again by that name is watched afresh.
@@ -2053,9 +2057,18 @@ mod tests {
             !busy("no such table: meta"),
             "a history that doesn't read was taken for a busy one"
         );
+        for locked in [
+            "couldn't make the sessions index: database table is locked",
+            "couldn't read the history's shape: database schema is locked: main",
+        ] {
+            assert!(
+                !busy(locked),
+                "a lock no other connection's write ends read as busy: {locked}"
+            );
+        }
         assert!(
-            busy("database table is locked"),
-            "a locked table, which the history's open keeps too, didn't read as busy"
+            busy(&format!("couldn't read the history's shape: {why}")),
+            "a busy shape read, named, wasn't tried again"
         );
     }
 
@@ -2161,10 +2174,48 @@ mod tests {
         );
     }
 
+    // A pass that worked ends a step that lets go of the status the pass
+    // before it said, so freeing that one is charged to the step and the
+    // line ends there, with no time said as a step that didn't end.
+    #[test]
+    fn a_cleared_pass_lets_go_of_the_last_status_inside_its_step() {
+        struct Freed(Rc<Cell<Option<Instant>>>);
+        impl Drop for Freed {
+            fn drop(&mut self) {
+                self.0.set(Some(Instant::now()));
+            }
+        }
+        let old = Rc::new(Cell::new(None));
+        let new = Rc::new(Cell::new(None));
+        let mut kept = Some((Freed(Rc::clone(&old)), Instant::now(), Instant::now()));
+        let mut steps = Steps::begun();
+        steps.ended("picture");
+        steps.cleared(&mut kept, Freed(Rc::clone(&new)));
+        let freed = old.get().expect("the last status wasn't let go of");
+        assert!(
+            freed <= steps.last.at,
+            "the last status was let go of after the cleared step ended"
+        );
+        assert!(new.get().is_none(), "the pass's own status was let go of");
+        assert!(kept.is_some(), "the pass's status wasn't kept");
+        let said = steps.said(steps.last.at);
+        assert!(
+            said.rsplit("; ")
+                .next()
+                .is_some_and(|last| last.starts_with("cleared ")),
+            "a cleared pass's line didn't end with its clearing: {said}"
+        );
+        assert!(
+            !said.contains("didn't end"),
+            "a cleared pass's line said a step that didn't end: {said}"
+        );
+    }
+
     // A mark reads the pass's own thread's reads and faults where the
     // kernel keeps them, so a path or field mistyped leaves them unread and
-    // fails here rather than dropping from every journal line unseen. The swap-ins need the service's own
-    // memory counts, which the build's sandbox doesn't mount.
+    // fails here rather than dropping from every journal line unseen. The
+    // swap-ins need the service's own memory counts, which the build's
+    // sandbox doesn't mount.
     #[cfg(target_os = "linux")]
     #[test]
     fn a_mark_reads_its_threads_reads_and_faults() {
