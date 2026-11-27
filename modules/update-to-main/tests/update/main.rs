@@ -2417,6 +2417,52 @@ fn the_socket_is_only_its_groups_to_write() {
     assert_eq!(meta.gid(), unsafe { libc::getgid() });
 }
 
+/// A 404 from main's host says it doesn't know a held commit only when the
+/// same token shows it main's head: a token that can't see the repository
+/// is answered 404 for every commit, so a token command giving one to the
+/// hold's ask alone would lift a hold of main's own commit.
+#[test]
+fn a_token_that_cant_see_main_lifts_no_hold_of_main_s_commit() {
+    let world = api_on(World::hosted_from(following(), blinded_token));
+    let pinned = world.core_commit("pinned", true);
+    let zero = world.hosted_commit("zero", Some(&pinning(&pinned)));
+    let one = world.hosted_commit("one", Some(&pinning(&pinned)));
+    world.answer();
+    world.system(&one);
+    assert_eq!(world.update().1, following_done(&one, &pinned));
+    // Core's copy holds main's history, as a push of it into core's
+    // repository would leave it, so the hold is one an input's copy has.
+    let origin = format!("file://{}", world.origin.display());
+    let copy = world.config.follows_folder().join("core.git");
+    git(&copy, &["fetch", "--quiet", &origin, "main"]);
+    held::ask(&world.config, &format!("hold {zero}"), Some(1000));
+    let two = world.hosted_commit("two", Some(&pinning(&pinned)));
+    world.answer();
+    world.system(&two);
+    fs::write(world.root.join("blind"), format!("{zero} {two}")).unwrap();
+    let Line::Refused { why, .. } = world.update().1 else {
+        panic!("a token that couldn't see main lifted the hold of main's own commit")
+    };
+    assert!(
+        why.contains("couldn't be told"),
+        "a hold judged with a token that couldn't see main was refused for another reason: {why}"
+    );
+}
+
+/// A token command that gives a token, and once the world's `blind` file
+/// names a held commit and a head, gives every ask after the first one a
+/// token that can't see main: the host's answers for that head, and for
+/// how it stands with the held commit, are gone.
+fn blinded_token(world_root: &Path) -> String {
+    let root = world_root.display();
+    format!(
+        "if [ -e {root}/blind ]; then if [ -e {root}/seen ]; then \
+         read -r held head < {root}/blind; \
+         rm -f {root}/api/git/commits/$head {root}/api/compare/$held...$head; \
+         else touch {root}/seen; fi; fi; echo a-token"
+    )
+}
+
 /// A token command that counts its asks and gives a token.
 fn counted_token(world_root: &Path) -> String {
     format!(
