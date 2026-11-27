@@ -646,11 +646,6 @@ def strongest(page: Page, cell: str) -> float:
     return max(float(mark["alpha"] or 0) for mark in marks_of(page, f"c:{cell}"))
 
 
-def disc_of(page: Page, cell: str) -> list[float]:
-    """Where a cell's disc is drawn on the page, failing when it isn't."""
-    return drawn_at(page, f'#world circle.cell[data-key="c:{cell}"]', cell)
-
-
 def drawn_at(page: Page, selector: str, what: str) -> list[float]:
     """Where a mark on the map is drawn on the page, failing when it isn't."""
     box: list[float] | None = page.evaluate(MARK_BOX, selector)
