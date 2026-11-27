@@ -940,6 +940,24 @@ mod tests {
     }
 
     #[test]
+    fn a_swear_like_a_filler_but_not_one_swears() {
+        // Each is said in a message that asks, so only the filler's own
+        // rules can spare it: a filler's word running on into a file's
+        // name, a swear that only starts as a filler's word does, and
+        // three words between the join and the filler.
+        for hurt in [
+            "consider this. i read the logs and crap.log is huge",
+            "add the docs, they're long and shitty",
+            "add the deductions and all that other crap",
+        ] {
+            assert!(
+                kinds(hurt, AT, &[]).contains(&"swore"),
+                "a swear that is no list's filler was taken for one: {hurt}"
+            );
+        }
+    }
+
+    #[test]
     fn a_filler_is_spared_only_in_a_message_that_asks() {
         let none: Vec<&str> = Vec::new();
         // A filler in a message asking for nothing is a hurt, his own
