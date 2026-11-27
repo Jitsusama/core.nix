@@ -2007,6 +2007,37 @@ def test_an_answered_talk_is_counted_at_home_until_joel_reads_it_in_its_drawer(
         talk.unlink()
 
 
+def test_a_go_to_asked_from_outside_marks_no_answer_heard(shell: Shell) -> None:
+    """A link's Go To goes to a session, but leaves the answer it holds for Joel unheard.
+
+    Go To marks a session's answer heard as it goes, as his own Return means he's seen it; a
+    link any program of his may follow means nothing of the kind, and the daemon takes the
+    shell's heard as his (Agents.qml's heard; round 000022 on #6796, F49).
+    """
+    replies = STEER / "LISTEN" / "replies"
+    replies.mkdir(parents=True, exist_ok=True)
+    talk = replies / "talk-1794414593810.jsonl"
+    lines = [
+        {"stage": "delivered", "at": "2026-11-11T21:00:00.000Z", "session": "s-listen",
+         "from": "joel", "text": "is the tide in?"},
+        {"stage": "replied", "at": "2026-11-11T21:01:00.000Z", "text": "Not until four."},
+    ]  # fmt: skip
+    talk.write_text("".join(json.dumps(line) + "\n" for line in lines))
+    try:
+        shell.close_launcher()
+        shell.as_account(shell.ipc("toggle"))
+        shell.launcher_ready()
+        shell.launcher_until(lambda _: " \u00b7 1 answer \u00b7 " in agents_at_home(shell))
+        shell.close_launcher()
+        shell.as_account(shell.ipc("goTo", "LISTEN"))
+        time.sleep(PAST_A_STAY)
+        assert '"stage":"read"' not in talk.read_text(), talk.read_text()
+    finally:
+        time.sleep(LINK_QUIET)
+        shell.close_launcher()
+        talk.unlink()
+
+
 def test_no_words_however_long_leave_their_room_or_lie_on_anothers(shell: Shell) -> None:
     """Words of any length stay inside their room and the card, and off each other's ink.
 
