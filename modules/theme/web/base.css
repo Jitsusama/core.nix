@@ -516,11 +516,15 @@ select {
   }
 }
 
+/* Thrice the root, above a picked look's :root[data-theme]; a raised placeholder slants. */
 @media (prefers-contrast: more) {
-  :root {
+  :root:root:root {
     --muted: var(--text);
     --rule: var(--muted);
     --field: var(--text);
+  }
+  ::placeholder {
+    font-style: italic;
   }
 }
 
