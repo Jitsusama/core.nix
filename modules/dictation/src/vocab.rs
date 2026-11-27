@@ -223,12 +223,16 @@ mod tests {
 
     #[test]
     fn a_character_no_byte_is_refused() {
-        assert!(Vocab::parse(r#"{"\u4e00": 0}"#).is_err());
+        assert!(
+            Vocab::parse(r#"{"\u4e00": 0}"#).is_err(),
+            "a character standing for no byte was read"
+        );
     }
 
     #[test]
     fn a_broken_object_is_refused() {
-        assert!(Vocab::parse(r#"{"a": 0 "b": 1}"#).is_err());
-        assert!(Vocab::parse(r#"{"a": }"#).is_err());
+        for broken in [r#"{"a": 0 "b": 1}"#, r#"{"a": }"#] {
+            assert!(Vocab::parse(broken).is_err(), "{broken} was read");
+        }
     }
 }

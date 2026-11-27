@@ -789,11 +789,32 @@ mod tests {
 
     #[test]
     fn halves_read_as_singles() {
-        assert!((half(0x3c00) - 1.0).abs() < f32::EPSILON);
-        assert!((half(0xc000) + 2.0).abs() < f32::EPSILON);
-        assert!((half(0x3555) - 0.333_251_95).abs() < 1e-7);
-        assert!(half(0x0000).abs() < f32::EPSILON);
-        assert!((half(0x0001) - 5.960_464_5e-8).abs() < 1e-12);
-        assert!(half(0x7c00).is_infinite());
+        let one = half(0x3c00);
+        assert!(
+            (one - 1.0).abs() < f32::EPSILON,
+            "0x3c00 came to {one}, not 1"
+        );
+        let minus_two = half(0xc000);
+        assert!(
+            (minus_two + 2.0).abs() < f32::EPSILON,
+            "0xc000 came to {minus_two}, not -2"
+        );
+        let third = half(0x3555);
+        assert!(
+            (third - 0.333_251_95).abs() < 1e-7,
+            "0x3555 came to {third}, not 0.33325195"
+        );
+        let zero = half(0x0000);
+        assert!(zero.abs() < f32::EPSILON, "0x0000 came to {zero}, not 0");
+        let least = half(0x0001);
+        assert!(
+            (least - 5.960_464_5e-8).abs() < 1e-12,
+            "the least subnormal came to {least}, not 2^-24"
+        );
+        let infinity = half(0x7c00);
+        assert!(
+            infinity.is_infinite(),
+            "0x7c00 came to {infinity}, not infinity"
+        );
     }
 }
