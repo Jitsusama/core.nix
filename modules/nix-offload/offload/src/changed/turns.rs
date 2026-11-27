@@ -691,7 +691,7 @@ mod tests {
 
     #[test]
     fn a_waiting_run_says_how_many_are_ahead_and_how_long_is_likely() {
-        let minutes = |m| Duration::from_secs(m * 60);
+        let minutes = |m: u64| Duration::from_secs(m * 60);
         assert_eq!(
             standing(0, 3, minutes(20)),
             "this run is next for a turn, after 20 min waiting"
