@@ -216,8 +216,10 @@ fn joels_word_under_a_take_of_theirs_with_no_words_is_left_out() {
 fn an_echo_cut_for_their_sound_is_told_by_how_far_under_it_it_was() {
     assert_eq!(
         joel_under_a_wordless_take().untold_cuts(),
-        ["call-transcripts: 1 of Joel's words at 1:01 cut as their echo, 30 dB under \
-          their sound"],
+        [
+            "call-transcripts: 1 of Joel's words at 1:01 cut as their echo, 30 dB under \
+          their sound"
+        ],
         "the cut under their sound wasn't told, or was told with the call's words"
     );
 }

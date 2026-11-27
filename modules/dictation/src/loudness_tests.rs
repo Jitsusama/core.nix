@@ -8,7 +8,10 @@ const SECOND: usize = RATE;
 /// `samples` of a sine whose power is full scale's, as a word's level is
 /// measured, so it reads 0 dB, each sample scaled by `shape` of its
 /// share of the way through.
-#[expect(clippy::cast_precision_loss, reason = "a test's few seconds of samples")]
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "a test's few seconds of samples"
+)]
 fn sine(samples: usize, shape: impl Fn(f32) -> f32) -> Vec<f32> {
     (0..samples)
         .map(|i| {

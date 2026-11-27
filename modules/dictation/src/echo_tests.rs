@@ -101,10 +101,7 @@ fn worded(side: Side, words: &[Word]) -> Line {
 
 /// A line of each side's for each of its words as they were heard,
 /// theirs first, and the words by line.
-fn lines_heard(
-    theirs: &[Vec<Word>],
-    mine: &[Vec<Word>],
-) -> (Vec<Line>, HashMap<usize, Vec<Word>>) {
+fn lines_heard(theirs: &[Vec<Word>], mine: &[Vec<Word>]) -> (Vec<Line>, HashMap<usize, Vec<Word>>) {
     let mut lines = Vec::new();
     let mut words = HashMap::new();
     for (side, said) in [(Side::Theirs, theirs), (Side::Mine, mine)] {
@@ -119,7 +116,9 @@ fn lines_heard(
 /// `lines` with their echo cut by `words`, none of their sound known,
 /// and what's left of each untidied.
 fn cut_untidied(lines: &[Line], words: &HashMap<usize, Vec<Word>>) -> (Vec<Line>, Vec<Cut>) {
-    cut_echoes(lines, words, &Track::default(), |left| Some(left.to_owned()))
+    cut_echoes(lines, words, &Track::default(), |left| {
+        Some(left.to_owned())
+    })
 }
 
 /// Joel's lines as written once their echo is cut from them, each
@@ -612,7 +611,10 @@ fn a_run_of_cuts_splits_where_the_rule_cutting_it_changes() {
         .collect();
     assert_eq!(
         told,
-        [("Lunch at noon", Rule::Spelling), ("in Tuesday", Rule::Level(22.0))],
+        [
+            ("Lunch at noon", Rule::Spelling),
+            ("in Tuesday", Rule::Level(22.0))
+        ],
         "a run cut by spelling, then by level, was told as cut by one rule"
     );
 }
