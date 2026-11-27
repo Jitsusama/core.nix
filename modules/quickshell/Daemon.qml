@@ -628,7 +628,8 @@ Scope {
             waiting[id](null);
     }
 
-    // How many times it's been refused since it last answered.
+    // How many times it has backed off to try again since it last answered, whether its socket
+    // refused, dropped it or wasn't there, so one short of its tries when nothing answered.
     property int refusals: 0
 
     // The QLocalSocket error its link's last try failed with, null since it last connected, so a
