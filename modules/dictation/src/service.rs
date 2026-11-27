@@ -769,9 +769,15 @@ fn notice(summary: &str, body: &str) {
         .and_then(|mut child| child.wait());
 }
 
-/// notify-send's arguments for a notice of `summary` and `body`.
+/// notify-send's arguments for a notice of `summary` and `body`, after
+/// `--` so neither is read as an option, and the body, which a notice
+/// reads as markup, with its markup escaped.
 fn notifying(summary: &str, body: &str) -> Vec<String> {
-    ["--app-name=Dictation", "--expire-time=2000", summary, body]
+    let body = body
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;");
+    ["--app-name=Dictation", "--expire-time=2000", "--", summary, &body]
         .map(str::to_owned)
         .to_vec()
 }
