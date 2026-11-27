@@ -130,8 +130,7 @@ fn run(
         Err(failure) => return failed(last, failure),
     };
     let last_followed = follows::last(config);
-    let kept = kept_asks(config, &last_followed);
-    let followed = match follows::heads(config, &head, &kept, at) {
+    let followed = match follows::heads(config, &head, &kept_asks(config, &last_followed), at) {
         Ok(Ok(followed)) => followed,
         Ok(Err(why)) => return Line::Refused { commit: last, why },
         Err(failure) => return failed(last, failure),
