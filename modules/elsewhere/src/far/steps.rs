@@ -14,6 +14,8 @@ use super::{
     MOST_FILES, TREE, UNTAKEN, quoted,
 };
 use crate::settings::Kind;
+use std::ffi::OsStr;
+use std::path::{Path, PathBuf};
 
 /// The far line's watch on the job's archives as they cross: `arrived`,
 /// once the list is whole and each archive on it is its listed size, with
@@ -247,9 +249,20 @@ fi"#
 pub(super) const RUN: &str = ".run";
 
 /// The far line's first step, finding the cache its scratches lie in as
-/// `scratches` does here: a relative one, as the XDG spec says, is none.
-pub(super) const CACHE: &str =
-    "cache=${XDG_CACHE_HOME:-}; case $cache in /*) ;; *) cache=$HOME/.cache ;; esac";
+/// [`cache`] does here, leaving it empty where none is found.
+pub(super) const CACHE: &str = "cache=${XDG_CACHE_HOME:-}; case $cache in /*) ;; *) cache=; \
+     case ${HOME:-} in /*) cache=$HOME/.cache ;; esac ;; esac";
+
+/// The cache the quests' scratches lie in, from the environment's
+/// `XDG_CACHE_HOME` and `HOME`: a relative cache, as the XDG spec says,
+/// is none, and a home that isn't absolute gives none either, rather than
+/// one found from wherever the line runs or from the root.
+pub(super) fn cache(xdg: Option<&OsStr>, home: Option<&OsStr>) -> Option<PathBuf> {
+    let absolute = |it: &&OsStr| Path::new(it).is_absolute();
+    xdg.filter(absolute)
+        .map(PathBuf::from)
+        .or_else(|| home.filter(absolute).map(|home| Path::new(home).join(".cache")))
+}
 
 /// The far line's step defining `cleared`, which takes each path it is
 /// given away whole, its folders made the far line's own to enter and

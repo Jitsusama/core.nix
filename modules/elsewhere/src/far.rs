@@ -99,15 +99,10 @@ pub fn plain_quest(quest: &str) -> bool {
 const WORKSPACE: &str = "pi/agentic-harness.pi/quest-workspace";
 
 /// The folder holding each quest's scratch, as the harness and mycelium
-/// both find it: a relative cache, as the XDG spec says, is no cache.
-pub fn scratches() -> PathBuf {
-    let cache = std::env::var_os("XDG_CACHE_HOME")
-        .filter(|it| Path::new(it).is_absolute())
-        .map_or_else(
-            || PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".cache"),
-            PathBuf::from,
-        );
-    cache.join(WORKSPACE)
+/// both find it, or none where no cache is found ([`steps::cache`]).
+pub fn scratches() -> Option<PathBuf> {
+    let (xdg, home) = (std::env::var_os("XDG_CACHE_HOME"), std::env::var_os("HOME"));
+    steps::cache(xdg.as_deref(), home.as_deref()).map(|cache| cache.join(WORKSPACE))
 }
 
 /// The tree a kind copies for a job in `folder`: the folder, or the
@@ -307,6 +302,9 @@ mine= place= tab=$(printf '\t')
 {copying}
 # Each word for the near side on a line of its own, whatever came before.
 say() {{ printf '\n%s\n' "$1"; }}
+# With no cache found, no quest's scratch is either.
+[ -n "$cache" ] || {{ printf 'elsewhere: no cache is found here\n' >&2
+  say {refused}; exit {REFUSES}; }}
 {stopping}
 {sweeping}
 {waiting}

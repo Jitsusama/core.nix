@@ -249,27 +249,40 @@ fn what_is_left_over_several_archives_is_said_to_take_them_all() {
 }
 
 #[test]
-fn the_far_line_takes_a_cache_that_isn_t_absolute_as_none() {
-    let line = format!("{}\nprintf %s \"$cache\"", crate::far::steps::CACHE);
+fn both_sides_take_a_cache_or_home_that_isn_t_absolute_as_none() {
+    use crate::far::steps::{CACHE, cache};
+    use std::ffi::OsStr;
+    use std::path::PathBuf;
+    let line = format!("{CACHE}\nprintf %s \"$cache\"");
     // The gate names dash, the strictest sh a far machine may have.
     let sh = std::env::var("ELSEWHERE_FAR_SH").unwrap_or_else(|_| "sh".to_owned());
-    for (cache, found) in [
-        (Some("rel/cache"), "/h/.cache"),
-        (Some(""), "/h/.cache"),
-        (None, "/h/.cache"),
-        (Some("/c"), "/c"),
+    for (xdg, home, found) in [
+        (Some("rel/cache"), Some("/h"), "/h/.cache"),
+        (Some(""), Some("/h"), "/h/.cache"),
+        (None, Some("/h"), "/h/.cache"),
+        (Some("/c"), Some("/h"), "/c"),
+        (Some("/c"), None, "/c"),
+        (None, Some(""), ""),
+        (None, Some("rel"), ""),
+        (Some("rel/cache"), None, ""),
     ] {
         let mut far = std::process::Command::new(&sh);
-        far.args(["-c", &line]).env("HOME", "/h");
-        match cache {
-            Some(cache) => far.env("XDG_CACHE_HOME", cache),
-            None => far.env_remove("XDG_CACHE_HOME"),
-        };
+        far.args(["-c", &line]);
+        for (name, value) in [("XDG_CACHE_HOME", xdg), ("HOME", home)] {
+            match value {
+                Some(value) => far.env(name, value),
+                None => far.env_remove(name),
+            };
+        }
         let said = far.output().unwrap().stdout;
+        let here = cache(xdg.map(OsStr::new), home.map(OsStr::new));
         assert_eq!(
-            String::from_utf8_lossy(&said),
-            found,
-            "a cache of {cache:?} wasn't found where the near side finds it"
+            (String::from_utf8_lossy(&said).into_owned(), here),
+            (
+                found.to_owned(),
+                Some(found).filter(|it| !it.is_empty()).map(PathBuf::from)
+            ),
+            "a cache of {xdg:?} and a home of {home:?} weren't found where the line finds them"
         );
     }
 }
