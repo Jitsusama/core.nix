@@ -20,6 +20,7 @@
 //! quotings they answer would drift.
 
 use std::collections::{HashMap, HashSet};
+use std::fmt::Write as _;
 use std::time::Duration;
 
 use serde_json::{Value, json};
@@ -262,45 +263,105 @@ pub fn tell_self(gateway: &mut Gateway, alert: Alert) -> Result<String, Missed> 
 /// that quotes a body already quoted as JSON inside its own.
 const ESCAPED_DEEPEST: usize = 3;
 
-/// Whether a failing says what `word` looks for in every reading of it
-/// that holds it whole, each without any line of `said` it quotes, as
-/// written or as JSON would write it: the title and where are still from
-/// Slack, so a name in them can't be read as the gateway's own word. A
-/// reading reads the failing's escapes back once to [`ESCAPED_DEEPEST`]
-/// times, taking the lines out only after or also before each, so a name
-/// holding a backslash of its own, or holding another line, goes in at
-/// least one, while the gateway's own word, outside any quote, stays. Only
-/// a reading holding the word before any line goes out is asked, as one
-/// read back too few times or too many cuts it in two: `\nratelimited`
-/// quoted twice is whole only once read back twice, and `\\rate_limited`
-/// only before its `\r` is read as a carriage return.
+/// Whether a failing says what `word` looks for in any reading of it, once
+/// each line of `said` it quotes is out: the title and where are still
+/// from Slack, so a name in them can't be read as the gateway's own word.
+/// A reading reads the failing's escapes back none to [`ESCAPED_DEEPEST`]
+/// times, and each line goes out in every form that reading may hold it
+/// in ([`forms`]), taken out only after or also before each read-back, so
+/// a name holding another line goes in at least one; the word must be left
+/// in both. A reading read back too few times or too many may cut the
+/// gateway's own word in two (`\nratelimited` quoted twice is whole only
+/// once read back twice, and `\\rate_limited` only before its `\r` is read
+/// as a carriage return), so it's enough that one reading holds it. No
+/// form can take part of that word, as each line opens with words of its
+/// own, so where a quote goes unseen the failing reads as nothing sent,
+/// and the alert is tried again rather than let go.
 fn says(why: &str, said: &str, word: fn(&str) -> bool) -> bool {
-    let lines: Vec<&str> = said
+    let mut taken: Vec<String> = said
         .lines()
         .filter(|line| !line.trim().is_empty())
+        .flat_map(forms)
+        .filter(|form| !form.trim().is_empty())
         .collect();
+    // The longest first, so a line holding another goes out whole.
+    taken.sort_by(|one, other| other.len().cmp(&one.len()).then_with(|| one.cmp(other)));
+    taken.dedup();
     let without = |mut left: String| {
-        for line in &lines {
-            let json = serde_json::to_string(line).unwrap_or_default();
-            let inner = json.get(1..json.len().saturating_sub(1)).unwrap_or(line);
-            left = left.replace(line, "").replace(inner, "");
+        for form in &taken {
+            left = left.replace(form.as_str(), "");
         }
         left
     };
     let (mut read, mut between) = (why.to_owned(), without(why.to_owned()));
-    let mut whole = false;
-    for _ in 0..ESCAPED_DEEPEST {
-        read = unescaped(&read);
-        between = without(unescaped(&between));
-        if !word(&read) {
-            continue;
+    for deep in 0..=ESCAPED_DEEPEST {
+        if deep > 0 {
+            read = unescaped(&read);
+            between = without(unescaped(&between));
         }
-        if !word(&without(read.clone())) || !word(&between) {
-            return false;
+        if word(&without(read.clone())) && word(&between) {
+            return true;
         }
-        whole = true;
     }
-    whole
+    false
+}
+
+/// A JSON writer, by what it spells as `\uXXXX` beyond what serde does.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Writer {
+    /// serde's: only what JSON must.
+    Serde,
+    /// Python's: what isn't ASCII too.
+    Ascii,
+    /// Go's and PHP's, and more: what isn't ASCII, `&`, `<` and `>`, and
+    /// `/` as `\/`.
+    Every,
+}
+
+/// Each form a reading of a failing may hold `line` in: as it is, as each
+/// [`Writer`] quotes it once to [`ESCAPED_DEEPEST`] times, one inside
+/// another, and read back once to as many times too far, as a name holding
+/// a backslash of its own is.
+fn forms(line: &str) -> Vec<String> {
+    let mut forms = vec![line.to_owned()];
+    let mut quoted = vec![line.to_owned()];
+    let mut read = line.to_owned();
+    for _ in 0..ESCAPED_DEEPEST {
+        quoted = quoted
+            .iter()
+            .flat_map(|one| {
+                [Writer::Serde, Writer::Ascii, Writer::Every].map(|by| written(one, by))
+            })
+            .collect();
+        forms.extend(quoted.iter().cloned());
+        read = unescaped(&read);
+        forms.push(read.clone());
+    }
+    forms
+}
+
+/// `text` inside a JSON string as `by` writes it.
+fn written(text: &str, by: Writer) -> String {
+    let json = serde_json::to_string(text).unwrap_or_default();
+    let inner = json.get(1..json.len().saturating_sub(1)).unwrap_or(text);
+    let mut out = String::with_capacity(inner.len());
+    for each in inner.chars() {
+        let spelled = match by {
+            Writer::Serde => false,
+            Writer::Ascii => !each.is_ascii(),
+            Writer::Every => !each.is_ascii() || matches!(each, '&' | '<' | '>'),
+        };
+        if by == Writer::Every && each == '/' {
+            out.push_str("\\/");
+        } else if spelled {
+            for unit in each.encode_utf16(&mut [0; 2]) {
+                write!(out, "\\u{unit:04x}").expect("a String takes any text");
+            }
+        } else {
+            out.push(each);
+        }
+    }
+    out
 }
 
 /// `why` with each of JSON's escapes read back, from left to right: `\\`,
@@ -614,12 +675,6 @@ mod tests {
     fn the_gateways_own_word_just_after_an_escape_counts() {
         // What judges a failing for one word.
         type Judge = fn(&str) -> bool;
-        let said = text(Alert {
-            title: "A stop in owner/name",
-            words: WORDS_NOT_TAKEN,
-            link: "https://x.slack.com/archives/C1/p1",
-        });
-        let json = serde_json::to_string(&said).expect("text as JSON");
         let quoted = |body: &str| serde_json::to_string(body).expect("a body as JSON");
         let words: [(&str, Judge); 4] = [
             ("\\nratelimited", spent),
@@ -627,17 +682,30 @@ mod tests {
             ("\\tinvalid_auth", refuses_the_sign_in),
             ("\\\\rate_limited", spent),
         ];
-        for (word, judged) in words {
-            let body = format!("{{\"message\":\"Slack said:{word}\"}}");
-            // As the gateway says it, and quoted once more inside its own.
-            for why in [
-                format!("{body}, for {json}"),
-                format!("{{\"error\":{}}}, for {json}", quoted(&body)),
-            ] {
-                assert!(
-                    says(&why, &said, judged),
-                    "read back, the gateway's word counts: {why}"
-                );
+        // A title naming nothing of Slack's, and one naming its words whole
+        // in each reading where the gateway's own is cut.
+        for title in [
+            "A stop in owner/name",
+            "A stop in owner/rate_limited#invalid_auth",
+        ] {
+            let said = text(Alert {
+                title,
+                words: WORDS_NOT_TAKEN,
+                link: "https://x.slack.com/archives/C1/p1",
+            });
+            let json = serde_json::to_string(&said).expect("text as JSON");
+            for (word, judged) in words {
+                let body = format!("{{\"message\":\"Slack said:{word}\"}}");
+                // As the gateway says it, and quoted once more inside its own.
+                for why in [
+                    format!("{body}, for {json}"),
+                    format!("{{\"error\":{}}}, for {json}", quoted(&body)),
+                ] {
+                    assert!(
+                        says(&why, &said, judged),
+                        "read back, the gateway's word counts: {why}"
+                    );
+                }
             }
         }
     }
@@ -740,8 +808,17 @@ mod tests {
             (said, quoted)
         };
         let holding = "In owner/rate_Said: \"(the words are at the link)\"limited & caf\u{e9}";
+        // Holding another line, and naming the word whole beside it.
+        let both =
+            "In owner/rate_Said: \"(the words are at the link)\"limited rate_limited & caf\u{e9}";
         let named = "A stop in owner/rate_limited & caf\u{e9}";
-        for (said, quoted) in [quoting(holding, 1), quoting(named, 2), quoting(named, 3)] {
+        for (said, quoted) in [
+            quoting(holding, 1),
+            quoting(both, 1),
+            quoting(both, 2),
+            quoting(named, 2),
+            quoting(named, 3),
+        ] {
             let why = format!("could not post {quoted}");
             assert!(
                 !says(&why, &said, spent),
@@ -756,8 +833,19 @@ mod tests {
 
     #[test]
     fn a_name_holding_a_backslash_of_its_own_is_left_out_however_quoted() {
+        for title in [
+            "A stop in x/\\u0072ate_limited#12 caf\u{e9}",
+            // Holding another line too, so it can't go out as a whole.
+            "A stop in x/\\u0072ate_limited Said: \"(the words are at the link)\" caf\u{e9}",
+        ] {
+            a_name_holding_a_backslash_is_left_out(title);
+        }
+    }
+
+    /// That a `title` holding a backslash is left out, however quoted.
+    fn a_name_holding_a_backslash_is_left_out(title: &str) {
         let said = text(Alert {
-            title: "A stop in x/\\u0072ate_limited#12 caf\u{e9}",
+            title,
             words: WORDS_NOT_TAKEN,
             link: "https://x.slack.com/archives/C1/p1",
         });
