@@ -341,8 +341,7 @@ pub fn retrying(shown: &str) -> (Vec<u32>, bool) {
 pub fn paired(journal: &str, at: i64, show: impl Fn(&str) -> String) -> Read {
     let mut said: BTreeMap<String, String> = BTreeMap::new();
     let mut shown_of = |unit: &str| {
-        said
-            .entry(unit.to_owned())
+        said.entry(unit.to_owned())
             .or_insert_with(|| show(unit))
             .clone()
     };
