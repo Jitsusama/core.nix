@@ -23,11 +23,11 @@
 //! [`Timed::short_of`], naming the fixed time the wrong behaviour takes,
 //! and its bound stretches only to [`SLACK`] short of it.
 //!
-//! The load average is the host's, a build sandbox not hiding it. Linux
-//! says it in `/proc/loadavg` and a Mac through `sysctl vm.loadavg`, as
-//! Python's `os.getloadavg`, which `vm_helpers` reads, takes it on each.
-//! Where it can't be read the pace is one and the bound is the idle one
-//! plus the slack.
+//! The load average is the host's. Linux says it in `/proc/loadavg`, which
+//! a build sandbox doesn't hide; a Mac says it to `getloadavg(3)`, read in
+//! the process, as Python's `os.getloadavg`, which `vm_helpers` reads,
+//! takes it on each. Where it can't be read the pace is one and the bound
+//! is the idle one plus the slack.
 
 use std::thread;
 use std::time::{Duration, Instant};
@@ -46,11 +46,6 @@ pub const SLACK: Duration = Duration::from_millis(250);
 /// minute first.
 #[cfg(not(target_os = "macos"))]
 const LOAD_AVERAGE: &str = "/proc/loadavg";
-
-/// What says a Mac's load averages, over the last minute first, as
-/// `{ 2.10 1.98 1.85 }`.
-#[cfg(target_os = "macos")]
-const SYSCTL: &str = "/usr/sbin/sysctl";
 
 /// A timed step of a test, begun when it was started.
 #[derive(Debug, Clone, Copy)]
@@ -156,37 +151,37 @@ pub fn busyness() -> f64 {
         .ok()
         .and_then(|count| u32::try_from(count.get()).ok())
         .unwrap_or(1);
-    load_averages()
-        .and_then(|said| ready_each_minute(&said))
-        .map_or(0.0, |ready| ready / f64::from(processors))
+    ready_last_minute().map_or(0.0, |ready| ready / f64::from(processors))
 }
 
-/// What the host says of its load averages, or none where it can't.
+/// How many tasks were ready to run over the last minute, or none where
+/// the host won't say.
 #[cfg(not(target_os = "macos"))]
-fn load_averages() -> Option<String> {
-    std::fs::read_to_string(LOAD_AVERAGE).ok()
+fn ready_last_minute() -> Option<f64> {
+    ready_each_minute(&std::fs::read_to_string(LOAD_AVERAGE).ok()?)
 }
 
-/// What the host says of its load averages, or none where it can't.
+/// How many tasks were ready to run over the last minute, or none where
+/// the host won't say. A Mac says it to `getloadavg(3)`, from inside the
+/// process, so a build sandbox that can't run `sysctl` still reads it and
+/// a step judged every few milliseconds starts no process to do so.
 #[cfg(target_os = "macos")]
-fn load_averages() -> Option<String> {
-    let said = std::process::Command::new(SYSCTL)
-        .args(["-n", "vm.loadavg"])
-        .output()
-        .ok()?;
-    said.status
-        .success()
-        .then(|| String::from_utf8_lossy(&said.stdout).into_owned())
+fn ready_last_minute() -> Option<f64> {
+    unsafe extern "C" {
+        fn getloadavg(averages: *mut f64, count: std::ffi::c_int) -> std::ffi::c_int;
+    }
+    let mut averages = [0.0_f64; 1];
+    // SAFETY: getloadavg writes at most `count` doubles into `averages`,
+    // which holds exactly one, and keeps no pointer past the call.
+    let said = unsafe { getloadavg(averages.as_mut_ptr(), 1) };
+    (said == 1).then_some(averages[0])
 }
 
 /// The tasks ready to run over the last minute, from what Linux's
-/// `/proc/loadavg` or a Mac's `sysctl -n vm.loadavg` says.
+/// `/proc/loadavg` says, the first of its words.
 #[must_use]
 pub fn ready_each_minute(said: &str) -> Option<f64> {
-    said.split_whitespace()
-        .find(|word| *word != "{")?
-        .parse()
-        .ok()
+    said.split_whitespace().next()?.parse().ok()
 }
 
 #[cfg(test)]

@@ -4832,7 +4832,9 @@ fn an_evaluator_that_names_nothing_is_left_on_its_clock() {
     )
     .unwrap();
     fs::write(changed.bin.join("evaluates-forever"), "").unwrap();
-    let asked = test_pace::Timed::start();
+    // Held short of the stand-in evaluator's 120 s sleep, so a run that
+    // waits it out fails however busy the machine.
+    let asked = test_pace::Timed::start().short_of(std::time::Duration::from_secs(120));
     let (ran, sent) = changed.run(&["--no-vm"]);
     assert!(
         asked.within(std::time::Duration::from_secs(60)),
@@ -5760,7 +5762,9 @@ fn asked_to_build_here_when_idle_it_builds_here_only_while_this_machine_is_idle(
         pressure.display().to_string(),
     )
     .unwrap();
-    let began = test_pace::Timed::start();
+    // Held short of the stand-in build's 30 s, so a build that never gives
+    // way fails however busy the machine.
+    let began = test_pace::Timed::start().short_of(std::time::Duration::from_secs(30));
     let (_, sent, said) = run("checks.x.a", ("2.00", "4.50"));
     assert!(sent, "begun idle, it kept building here once busy: {said}");
     assert!(

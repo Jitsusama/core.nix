@@ -140,14 +140,6 @@ fn a_bound_held_short_still_allows_its_idle_time_and_stretches_below_the_wrong_o
 }
 
 #[test]
-fn a_macs_load_averages_say_the_last_minute_first_too() {
-    assert_eq!(
-        ready_each_minute("{ 2.10 1.98 1.85 }\n").map(f64::to_bits),
-        Some(2.10_f64.to_bits())
-    );
-}
-
-#[test]
 fn what_a_failure_says_names_both_bounds() {
     let timed = Timed {
         began: Instant::now(),

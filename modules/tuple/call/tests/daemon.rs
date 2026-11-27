@@ -458,6 +458,10 @@ fn a_sign_in_tuple_finishes_once_it_reaches_its_servers_is_heard() {
 
 #[test]
 fn tuple_starting_is_followed_at_once() {
+    // The daemon looks once as it starts and again five seconds on, so a
+    // start heard only at that next look comes five seconds after this at
+    // the least: held short of that, it fails however busy the machine.
+    let looked = Timed::start().short_of(Duration::from_secs(5));
     let mut running = Running::start("starts", false);
     let mut client = running.client();
     client.watch();
@@ -469,9 +473,7 @@ fn tuple_starting_is_followed_at_once() {
          \"rooms\":{\"personal\":[{\"http_value\":\"https://tuple.app/c/listed\",\
          \"created_at\":\"2026-07-31T12:00:00Z\"}]}}}",
     );
-    // Held short of the five seconds to the daemon's next look, so a
-    // start heard only then fails however busy the machine.
-    let began = Timed::start().short_of(Duration::from_secs(5));
+    let began = Timed::start();
     running.logs(&logged(now(), "daemon loop started, waiting for events..."));
     // What Tuple's state said is heard before that Tuple answers, so a
     // client acting on its answering holds the room already.
@@ -488,8 +490,13 @@ fn tuple_starting_is_followed_at_once() {
     assert_eq!(room, "https://tuple.app/c/listed");
     assert!(
         began.within(Duration::from_secs(3)),
-        "followed only at the next look: it {}",
+        "followed slowly: it {}",
         began.said(Duration::from_secs(3))
+    );
+    assert!(
+        looked.within(Duration::from_millis(4500)),
+        "followed only at the next look: since the daemon started it {}",
+        looked.said(Duration::from_millis(4500))
     );
     assert_eq!(running.read("bin/followed").len(), 1);
 }

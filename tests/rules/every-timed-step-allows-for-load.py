@@ -107,7 +107,9 @@ def main() -> None:
             said.append(
                 f"{path} holds {bounds(len(held))}, {waiting.get(path, 0)} of them waiting: "
                 "start the step with test_pace::Timed::start() and judge it with its within, "
-                "or in Python multiply the bound by vm_helpers.pace(vm_helpers.busyness())."
+                "or in Python multiply the bound by vm_helpers.pace(vm_helpers.busyness()). "
+                "Where the wrong behaviour takes a fixed time, hold the bound short of it "
+                "(Timed::start().short_of(wrong)), or it passes the wrong one when busy."
             )
             said.extend(f"  {bound}" for bound in held)
     said.extend(
