@@ -96,8 +96,9 @@ CELLS = 8
 # drawer: the watch for a waiting look, and the part it fills, whose rows
 # load only once one waits; 689.2 KB in all as the gate measured it. A
 # machine's drawer starting new work on it added 3.1 KB as the gate measured
-# it beneath, about 692.3 KB, so 693 until the gate measures it.
-BUDGET = Budget(files=37, kilobytes=693, elements=627)
+# it beneath, about 692.3 KB, so 693 until the gate measures it, and three
+# elements, which it counted beneath as 626, so 630 with the asks' four.
+BUDGET = Budget(files=37, kilobytes=693, elements=630)
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000
 TWIN_NETWORKS = 200
