@@ -989,6 +989,32 @@ fn a_claim_split_by_a_line_break_or_odd_spacing_is_read_whole() {
     );
 }
 
+/// A list's item, a heading or a label stands on its own line, so the
+/// line beside it never runs on into a claim, and a he in the half of a
+/// wrapped sentence before Joel is named may be anyone: neither backs a
+/// claim with another's date. A he after his name, across a real wrap,
+/// still does.
+#[test]
+fn a_claim_is_backed_across_a_line_break_only_by_a_sentence_it_wraps() {
+    for text in [
+        "Sam asked for it and he said on 25 Nov\n- Joel wants the bar green.",
+        "Sam asked for it and he said on 25 Nov\n2. Joel wants the bar green.",
+        "# Sam asked for it and he said on 25 Nov\n## Joel wants the bar green.",
+        "**Sam asked for it and he said on 25 Nov:**\nJoel wants the bar green.",
+        "Sam asked for it and he said on 25 Nov that\nJoel wants the bar green.",
+    ] {
+        assert!(
+            unbacked(text).is_some(),
+            "a claim was backed by another line's date of someone else's saying: {text:?}"
+        );
+    }
+    assert_eq!(
+        unbacked("Joel wants the bar green, he said\non 25 Nov."),
+        None,
+        "a claim whose own sentence, wrapped, dates his saying was counted"
+    );
+}
+
 /// The card and the ask open on a claim's own words, a few before it, so
 /// a claim late in a long report is shown rather than cut off, with three
 /// dots for the words left out on either side.

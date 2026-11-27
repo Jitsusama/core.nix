@@ -254,35 +254,47 @@ fn close(entry: &mut Entry, fix: Option<&str>, now: i64) -> bool {
 }
 
 /// Closes every open must whose key opens with `prefix`, at `now`, each as
-/// its own key would close it, saying how many. The hour files an ask a
+/// its own key would close it, naming each. The hour files an ask a
 /// message about each claim of his rule, so settling a backlog, or the
-/// measure's revert, would otherwise take a `--done` for every one. A
-/// finding of cadence's own under it is left open, since each closes only
-/// on its own fix.
+/// measure's revert, would otherwise take a `--done` for every one. Only
+/// that family closes this way, as [`hour::closed_together`] holds it,
+/// since a prefix such as `hour:` would close every owner's musts, each
+/// told nothing. A finding of cadence's own under it is left open, since
+/// each closes only on its own fix.
 fn done_under(
     ledger: &mut [Entry],
     prefix: &str,
     fix: Option<&str>,
     now: i64,
 ) -> Result<String, Failure> {
-    let mut closed = 0;
+    if !hour::closed_together(prefix) {
+        return Err(wrongly(
+            "owe",
+            format!(
+                "{prefix} closes nothing at once: only the asks about claims of his rule do, \
+                 so close each must under it by its own key"
+            ),
+        ));
+    }
+    let mut closed = Vec::new();
     for entry in ledger
         .iter_mut()
         .filter(|e| e.open && e.kind.is_some() && e.key.starts_with(prefix))
     {
         close(entry, fix, now);
-        closed += 1;
+        closed.push(entry.key.clone());
     }
-    if closed == 0 {
+    if closed.is_empty() {
         return Err(Failure::new(
             Exit::NotFound,
             format!("no open must is filed under {prefix}"),
         ));
     }
-    let are = if closed == 1 { "is" } else { "are" };
+    let (count, named) = (closed.len(), closed.join(", "));
+    let are = if count == 1 { "is" } else { "are" };
     Ok(match fix {
-        Some(fix) => format!("cadence: {closed} open under {prefix} {are} done, by {fix}"),
-        None => format!("cadence: {closed} open under {prefix} {are} done"),
+        Some(fix) => format!("cadence: {count} open under {prefix} {are} done, by {fix}: {named}"),
+        None => format!("cadence: {count} open under {prefix} {are} done: {named}"),
     })
 }
 
@@ -652,8 +664,11 @@ mod tests {
         let said = done(&mut ledger, prefix, None, 2 * DAY).map_err(|f| f.exit);
         assert_eq!(
             said,
-            Ok(format!("cadence: 2 open under {prefix} are done")),
-            "a key ending in a colon didn't close every must under it, or didn't say how many"
+            Ok(format!(
+                "cadence: 2 open under {prefix} are done: {prefix}T6E7X6:0000000a, \
+                 {prefix}5UTLKM:0000000b"
+            )),
+            "a key ending in a colon didn't close every must under it, or didn't name each"
         );
         let open: Vec<&str> = ledger
             .iter()
@@ -686,6 +701,39 @@ mod tests {
             (exact, ledger[2].open, ledger[3].open),
             (Ok("cadence: hour:slips is done".to_owned()), true, false),
             "an exact key didn't close itself alone"
+        );
+    }
+
+    /// A key ending in `:` closes at once only the asks about claims of his
+    /// rule, every sender's or one sender's, so a prefix such as `hour:` is
+    /// refused rather than closing every owner's musts, and closes nothing.
+    #[test]
+    fn only_the_asks_about_claims_close_under_a_prefix() {
+        let mut ledger = Vec::new();
+        for key in [
+            "hour:rulings-unsourced:T6E7X6:0000000a",
+            "hour:rulings-unsourced:5UTLKM:0000000b",
+            "hour:slips",
+        ] {
+            owe(&mut ledger, owed(key, DUE), "d1", DAY);
+        }
+        for prefix in [
+            "hour:",
+            "hour:rulings",
+            "hour:rulings-unsourced:T6E7X6:0000000a:",
+        ] {
+            let said = done(&mut ledger, prefix, None, 2 * DAY).map_err(|f| f.exit);
+            assert!(
+                said.is_err() && ledger.iter().all(|e| e.open),
+                "a prefix outside the asks about claims closed a must: {prefix}"
+            );
+        }
+        let one = done(&mut ledger, "hour:rulings-unsourced:T6E7X6:", None, 2 * DAY);
+        let open: Vec<bool> = ledger.iter().map(|e| e.open).collect();
+        assert_eq!(
+            (one.is_ok(), open),
+            (true, vec![false, true, true]),
+            "one sender's prefix didn't close that sender's asks alone"
         );
     }
 

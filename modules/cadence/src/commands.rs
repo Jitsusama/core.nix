@@ -147,7 +147,7 @@ fn owe() -> Help {
     .example("cadence owe --done K", "closes the must K once it's met")
     .example(
         "cadence owe --done hour:rulings-unsourced:",
-        "a key ending in : closes every open must whose key opens with it",
+        "closes every open ask about a claim of his rule; only that family closes at once",
     )
     .example(
         "cadence owe --done K 'core #6000'",

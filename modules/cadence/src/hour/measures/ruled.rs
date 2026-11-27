@@ -588,7 +588,9 @@ fn about(ask: &str) -> Option<&str> {
 /// own, so joined they would claim, deny or date across lines what they
 /// never did. A claim the break cuts in two is found in the two halves
 /// joined, and a claim beside a break is backed by the sentence the two
-/// halves make as well as by its neighbours.
+/// halves make as well as by its neighbours. In that sentence he stands
+/// for Joel only once he's named, since the half before may be another
+/// line's words about anyone, as "Sam asked, and he said so on 25 Nov".
 #[must_use]
 pub fn unbacked(text: &str) -> Option<String> {
     let plain = plain(text);
@@ -615,7 +617,10 @@ pub fn unbacked(text: &str) -> Option<String> {
                 .into_iter()
                 .flatten()
                 .filter_map(joined)
-                .any(|whole| dated_by_him(&whole, true))
+                .any(|whole| {
+                    dated_by_him(&whole, false)
+                        || from_his_name(&whole).is_some_and(|his| dated_by_him(&his, true))
+                })
     };
     (0..said.len()).find_map(|at| {
         if claims(said[at]) {
@@ -629,21 +634,46 @@ pub fn unbacked(text: &str) -> Option<String> {
 
 /// The sentences of `text`, as [`sentences`] splits them, each with
 /// whether a line break cut it: whether it ends a line that ends in no
-/// stop, with a line of words just after.
+/// stop and heads nothing, with a line of words just after that opens no
+/// piece of its own. A label such as "Files:" heads the lines under it,
+/// and a list's item or a heading stands alone, so neither runs on into
+/// the line beside it.
 fn wrapped(text: &str) -> (Vec<&str>, Vec<bool>) {
     let lines: Vec<&str> = text.lines().collect();
     let mut said = Vec::new();
     let mut cut = Vec::new();
     for (at, &line) in lines.iter().enumerate() {
         let these = sentences(line);
-        let goes_on = !line.trim_end().ends_with(['.', '?', '!'])
+        let ends = line.trim_end().trim_end_matches(['*', '_']);
+        let goes_on = !ends.ends_with(['.', '?', '!', ':'])
             && lines
                 .get(at + 1)
-                .is_some_and(|next| !next.trim().is_empty());
+                .is_some_and(|next| !next.trim().is_empty() && !opens_alone(next));
         cut.extend((1..=these.len()).map(|n| goes_on && n == these.len()));
         said.extend(these);
     }
     (said, cut)
+}
+
+/// Whether `line` opens a piece of its own, which no sentence runs on
+/// into: a list's item, bulleted or numbered, a heading, a quote or a
+/// table's row.
+fn opens_alone(line: &str) -> bool {
+    let first = line.split_whitespace().next().unwrap_or_default();
+    let numbered = first
+        .strip_suffix(['.', ')'])
+        .is_some_and(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()));
+    numbered || ["-", "*", "+", "\u{2022}"].contains(&first) || first.starts_with(['#', '>', '|'])
+}
+
+/// `sentence` from the first word naming Joel on, where a he after it
+/// may stand for him; none when it names him nowhere.
+fn from_his_name(sentence: &str) -> Option<String> {
+    let words: Vec<&str> = sentence.split_whitespace().collect();
+    let at = words
+        .iter()
+        .position(|word| bare(word).starts_with("joel"))?;
+    Some(words[at..].join(" "))
 }
 
 /// `text` with its curly apostrophes made straight, its quoted blocks put

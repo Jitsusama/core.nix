@@ -362,6 +362,17 @@ fn ruled_asked(m: &Measure) -> Vec<Filed> {
         .collect()
 }
 
+/// Whether `prefix` names musts `cadence owe --done` may close at once:
+/// the asks [`ruled_asked`] files, every sender's or one sender's, since
+/// it files one a message. Any other prefix is refused, since one such as
+/// `hour:` would close every owner's musts, each told nothing.
+#[must_use]
+pub fn closed_together(prefix: &str) -> bool {
+    prefix
+        .strip_prefix(&format!("hour:{}:", ruled::KEY))
+        .is_some_and(|owner| owner.split(':').count() <= 2)
+}
+
 /// The ask to each class's owner about a cause found on three or more
 /// changes in a week, filed class by class, so each owner fixes the cause
 /// once rather than each change's reviewer fixing it again. It closes once
