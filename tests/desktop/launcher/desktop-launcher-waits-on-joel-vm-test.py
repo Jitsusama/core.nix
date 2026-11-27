@@ -1253,6 +1253,14 @@ def test_a_safe_word_stop_resumes_only_on_a_second_return(desktop: Desktop) -> N
         waiting_opened(desktop)
         desktop.step_in("ret")
         picked(desktop, title)
+        # It's a thing, so its drawer is out, saying what was said.
+        desktop.launcher_until(
+            lambda shown: (
+                (shown.get("drawer") or {}).get("out") is True
+                and shown["drawer"]["title"] == title
+                and "pineapple override" in shown["drawer"].get("values", [])
+            )
+        )
         # Return on the stop opens where it was said, so its verbs are gone into.
         desktop.follow()
         desktop.launcher_until(lambda shown: "Resume" in shown["rows"])

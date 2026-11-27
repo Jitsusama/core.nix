@@ -100,6 +100,9 @@ Provider {
             glyph: Words.glyph("for-you:source:pineapple"),
             hue: one.what === "stop" ? "strong" : "action",
             stays: true,
+            // A thing, so the launcher draws its drawer (Launcher.qml's
+            // detailed): who said it, what and where.
+            thing: true,
             drawer: () => provider.drawerOf(one),
             verbs: () => verbs,
             targets: () => verbs,
