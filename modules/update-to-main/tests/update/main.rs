@@ -3783,6 +3783,48 @@ fn a_hold_on_a_commit_a_stale_copy_lacks_is_judged_in_its_own_repository() {
     );
 }
 
+/// A held commit of an input's that another copy has been made to hold
+/// still has the input's stale copy fetched: what one copy holds never
+/// settles whether another repository builds it.
+#[test]
+fn a_held_commit_planted_in_main_s_copy_still_fetches_the_stale_input() {
+    let world = asking_nested(World::new());
+    let pinned = world.commit_in("mycelium", "pinned", true);
+    let core = "c".repeat(40);
+    fs::write(
+        world.origin.join("flake.lock"),
+        pinning_nested(&core, &pinned),
+    )
+    .unwrap();
+    git(&world.origin, &["add", "flake.lock"]);
+    let one = world.signed("one");
+    world.system(&one);
+    assert_eq!(world.update().1, done(&one), "main wasn't built");
+    let later = world.commit_in("mycelium", "later", true);
+    held::ask(&world.config, &format!("hold {later}"), Some(1000));
+    let mycelium = world.root.join("mycelium").display().to_string();
+    git(
+        &world.config.repository_copy(),
+        &["fetch", "--quiet", &mycelium, "main:refs/heads/planted"],
+    );
+    let after = world.commit_in("mycelium", "after", true);
+    fs::write(
+        world.origin.join("flake.lock"),
+        pinning_nested(&core, &after),
+    )
+    .unwrap();
+    git(&world.origin, &["add", "flake.lock"]);
+    let two = world.signed("two");
+    world.system(&two);
+    let Line::Refused { why, .. } = world.update().1 else {
+        panic!("a held commit planted in main's copy kept mycelium's stale copy unfetched")
+    };
+    assert!(
+        why.contains(&format!("main at {} holds it", &two[..12])),
+        "a held commit planted in main's copy wasn't judged in mycelium: {why}"
+    );
+}
+
 #[test]
 fn an_input_asked_for_is_held_to_the_lock_of_the_core_built_with_it() {
     let world = asking_nested(following());
