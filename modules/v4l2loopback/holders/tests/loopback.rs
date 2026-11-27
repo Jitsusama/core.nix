@@ -7,8 +7,9 @@
 //! its camera goes or its watch stops, the node file goes only once its
 //! nobody is written, and one it couldn't remove as its camera went is
 //! tried again; and a stop tries once more what's still owed; and a camera
-//! it moves to is said held by nobody while its node file still says the
-//! camera before.
+//! it moves to is said held while its node file still says the camera
+//! before, its holders file written again when a USB camera's run removes
+//! it.
 
 use std::fs::{self, File, Permissions};
 use std::os::unix::fs::{PermissionsExt, symlink};
@@ -675,9 +676,20 @@ fn a_gone_cameras_node_file_stays_until_its_nobody_is_written() {
     );
 }
 
-#[test]
-fn a_camera_moved_to_is_said_held_while_its_node_file_says_the_one_before() {
-    let watch = Watch::owned("moved");
+/// A watch moved to another camera while its node file still says the one
+/// before: the node files' folder, locked, and the camera moved to, held
+/// by the test.
+struct Moved {
+    devices: PathBuf,
+    writing: PathBuf,
+    other: PathBuf,
+    _holding: File,
+}
+
+/// Moves the watch, its camera held, to another camera the test holds,
+/// so that its node file can't be replaced or removed, and waits for its
+/// complaints of both.
+fn moved(watch: &Watch) -> Moved {
     let camera = watch.root.join("camera");
     watch.until(
         |watch| ready(&watch.read("log")) == 1,
@@ -710,7 +722,7 @@ fn a_camera_moved_to_is_said_held_while_its_node_file_says_the_one_before() {
     fs::remove_file(&camera).unwrap();
     drop(held);
     // Once for the node file it couldn't remove, once for the node it
-    // couldn't say, each said after the look's holders file is written.
+    // couldn't say, each said before the look's holders file is written.
     watch.until(
         |watch| complaints_of(watch, &watch.device()) == 2,
         "a node file it couldn't remove, or a node it couldn't say, went unsaid",
@@ -719,21 +731,69 @@ fn a_camera_moved_to_is_said_held_while_its_node_file_says_the_one_before() {
         watch.named(),
         "the node file stopped saying the camera before while it couldn't be replaced"
     );
-    assert!(
-        !fs::read_to_string(watch.file()).unwrap().is_empty(),
-        "the camera it moved to was said off while held, as its node file said the one before"
-    );
-    fs::set_permissions(&devices, Permissions::from_mode(0o755)).unwrap();
-    fs::remove_dir(&writing).unwrap();
+    Moved {
+        devices,
+        writing,
+        other,
+        _holding: holding,
+    }
+}
+
+#[test]
+fn a_camera_moved_to_is_said_held_while_its_node_file_says_the_one_before() {
+    let watch = Watch::owned("moved");
+    let moved = moved(&watch);
+    // Waited for, as the look that complained of the node writes the
+    // holders file only after; nobody, said as the camera before went,
+    // stays if the camera moved to is said off.
     watch.until(
-        |watch| watch.names(&other),
+        |watch| fs::read_to_string(watch.file()).is_ok_and(|said| !said.is_empty()),
+        "the camera it moved to was said off while held, as its node file said the one before",
+    );
+    fs::set_permissions(&moved.devices, Permissions::from_mode(0o755)).unwrap();
+    fs::remove_dir(&moved.writing).unwrap();
+    watch.until(
+        |watch| watch.names(&moved.other),
         "the camera it moved to wasn't named once it could be",
     );
     watch.until(
         |watch| fs::read_to_string(watch.file()).is_ok_and(|said| !said.is_empty()),
         "the camera it moved to wasn't said held once it was named",
     );
-    drop(holding);
+}
+
+#[test]
+fn a_moved_cameras_holders_file_a_usb_cameras_run_removed_is_written_again() {
+    let watch = Watch::owned("forgotten");
+    let moved = moved(&watch);
+    watch.until(
+        |watch| fs::read_to_string(watch.file()).is_ok_and(|said| !said.is_empty()),
+        "the camera it moved to was said off while held",
+    );
+    // A USB camera given the node the camera before had, whose run forgets
+    // the files saying it, as it does when its unit stops: the holders
+    // file goes, and the node file stays, its folder locked.
+    let forgot = Command::new(env!("CARGO_BIN_EXE_loopback-holders"))
+        .arg("--sysfs")
+        .arg(watch.root.join("sys"))
+        .args(["--usb", "--forget", "/dev/random"])
+        .arg(&watch.folder)
+        .output()
+        .unwrap();
+    assert!(forgot.status.success(), "the forget failed: {forgot:?}");
+    // Its complaint of the node file it couldn't remove comes only after
+    // the holders file went, which the watch may already have written again.
+    assert!(
+        String::from_utf8_lossy(&forgot.stderr).contains(".devices/Stand-in"),
+        "the forget didn't find the node file saying the camera before: {forgot:?}"
+    );
+    // The camera moved to is still held, so its watch looks every two
+    // seconds, its holders the same as when it last wrote them.
+    watch.until(
+        |watch| fs::read_to_string(watch.file()).is_ok_and(|said| !said.is_empty()),
+        "a holders file removed under its watch wasn't written again",
+    );
+    fs::set_permissions(&moved.devices, Permissions::from_mode(0o755)).unwrap();
 }
 
 #[test]
