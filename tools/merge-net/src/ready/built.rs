@@ -14,7 +14,9 @@
 //! Core names no machine, so it builds none: the machine repository's own
 //! command builds its system with core at the head, on a builder, and
 //! `merge-net built DRV` records the derivation it built under the head, in
-//! `built/` under the net's state folder, `{at, drv}`. A record at an
+//! `built/` under the net's state folder, `{at, drv}`, once the system's
+//! outputs are in this machine's store, so an evaluation alone proves
+//! nothing. A record at an
 //! earlier commit of the same change speaks for a rebased head, as a pass
 //! does.
 
@@ -38,7 +40,7 @@ pub fn built(drv: &str) -> Result<ExitCode, String> {
         );
     }
     let head = git(&["rev-parse", "HEAD"])?;
-    let drv = said_drv(drv, &|path| Path::new(path).exists())?;
+    let drv = said_drv(drv, &outputs_here)?;
     let root = state::State::from_env().root;
     keep(&root, &head, &drv, state::now())
         .map_err(|error| format!("{drv} wasn't recorded in {}: {error}", root.display()))?;
@@ -49,22 +51,51 @@ pub fn built(drv: &str) -> Result<ExitCode, String> {
     Ok(ExitCode::SUCCESS)
 }
 
-/// `drv` as a system's derivation in the store, which `present` says is
-/// there, or why it isn't one.
-fn said_drv(drv: &str, present: &dyn Fn(&str) -> bool) -> Result<String, String> {
+/// Whether every output of `drv` is in this machine's store, so the
+/// system was built, or fetched once built, rather than only evaluated,
+/// which leaves the derivation alone.
+fn outputs_here(drv: &str) -> bool {
+    let Ok(asked) = std::process::Command::new("nix-store")
+        .args(["--query", "--outputs", drv])
+        .output()
+    else {
+        return false;
+    };
+    let said = String::from_utf8_lossy(&asked.stdout);
+    let outputs: Vec<&str> = said.lines().filter(|line| !line.is_empty()).collect();
+    asked.status.success()
+        && !outputs.is_empty()
+        && std::process::Command::new("nix-store")
+            .arg("--check-validity")
+            .args(&outputs)
+            .stderr(std::process::Stdio::null())
+            .status()
+            .is_ok_and(|status| status.success())
+}
+
+/// `drv` as a system's derivation, whose outputs `built` says are in the
+/// store, or why it isn't one.
+fn said_drv(drv: &str, built: &dyn Fn(&str) -> bool) -> Result<String, String> {
     let name = drv
         .strip_prefix("/nix/store/")
         .filter(|name| !name.contains('/'))
         .and_then(|name| name.strip_suffix(".drv"))
         .ok_or_else(|| format!("{drv} isn't a derivation in /nix/store"))?;
-    if !name.contains("-system-") {
+    // Named past its hash, so a system's parts, such as system-path or
+    // system-units, aren't taken for the system.
+    let named = name.split_once('-').map_or("", |(_, named)| named);
+    if !named.starts_with("nixos-system-") && !named.starts_with("darwin-system-") {
         return Err(format!(
             "{drv} isn't a machine's system, whose derivation is named for it, as \
              nixos-system-NAME or darwin-system-NAME is"
         ));
     }
-    if !present(drv) {
-        return Err(format!("{drv} isn't in this machine's store"));
+    if !built(drv) {
+        return Err(format!(
+            "{drv}'s system isn't in this machine's store, so it was evaluated but not built \
+             here; fetch its outputs from the builder that built it, or build it, and record \
+             it again"
+        ));
     }
     Ok(drv.to_owned())
 }
@@ -144,6 +175,19 @@ mod tests {
             "a kernel's derivation was taken for a system's"
         );
         assert!(
+            said_drv("/nix/store/0123abcd-system-path.drv", &there).is_err(),
+            "a system's part was taken for a system"
+        );
+        assert!(
+            said_drv("/nix/store/0123abcd-etc-darwin-system-x.drv", &there).is_err(),
+            "a derivation naming a system past its own name was taken for one"
+        );
+        assert_eq!(
+            said_drv("/nix/store/0123abcd-darwin-system-26.05.drv", &there),
+            Ok("/nix/store/0123abcd-darwin-system-26.05.drv".to_owned()),
+            "a Mac's system wasn't taken"
+        );
+        assert!(
             said_drv("/tmp/0123abcd-nixos-system-skiff.drv", &there).is_err(),
             "a derivation outside the store was taken"
         );
@@ -153,7 +197,7 @@ mod tests {
         );
         assert!(
             said_drv(DRV, &|_| false).is_err(),
-            "a derivation missing from the store was taken"
+            "a system evaluated but never built was taken"
         );
     }
 
