@@ -279,6 +279,7 @@ fn score_meeting(speech: &mut Parakeet, meeting: &Meeting) -> Result<(Scored, Ti
             taken.text
         );
     }
+    lab_kept(name, mine, reference, &lines, &word_times);
     let written = transcript::read(&markdown(&cut, "Me", None, None), "Me");
     for side in [Side::Mine, Side::Theirs] {
         let heard: Vec<String> = written
@@ -310,6 +311,44 @@ fn score_meeting(speech: &mut Parakeet, meeting: &Meeting) -> Result<(Scored, Ti
     scored.cut_by_word = Errors::count(&spoken(Side::Mine), &cut_by_word);
     println!("{}", report(name, &scored));
     Ok((scored, judged))
+}
+
+/// Lab only: Joel's words left uncut, by why the level rule kept each,
+/// counted apart for those said inside only their reference lines (echo
+/// left in) and inside only his (his own words), with how far below
+/// theirs and below his voice each was, in 5 dB steps.
+fn lab_kept(
+    name: &str,
+    mine: &str,
+    reference: &[Said],
+    lines: &[Line],
+    words: &HashMap<usize, Vec<Word>>,
+) {
+    let inside = |side: Side, t: f64, margin: f64| {
+        reference
+            .iter()
+            .filter(|line| whose(line, mine) == side)
+            .any(|line| line.start - margin <= t && t <= line.end + margin)
+    };
+    let mut counts: std::collections::BTreeMap<(String, &str), usize> =
+        std::collections::BTreeMap::new();
+    for (at, why, below, voice) in echo::kept(lines, words) {
+        let t = at as f64 / RATE as f64;
+        let whose = match (inside(Side::Theirs, t, 0.0), inside(Side::Mine, t, 0.5)) {
+            (true, false) => "echo",
+            (false, true) => "his",
+            (true, true) => "both",
+            (false, false) => "neither",
+        };
+        let step = |db: f32| ((db / 5.0).floor() * 5.0) as i32;
+        let voice = voice.map_or("unknown".to_owned(), |v| step(v).to_string());
+        let key = format!("{whose} kept, {why}, below theirs {} voice {voice}", step(below));
+        *counts.entry((key, why)).or_default() += 1;
+        *counts.entry((format!("{whose} kept, {why}"), "")).or_default() += 1;
+    }
+    for ((key, _), count) in counts {
+        println!("{name} lab: {key}: {count}");
+    }
 }
 
 /// The meetings `sides` names in `set`, each refused when its line,

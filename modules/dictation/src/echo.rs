@@ -377,6 +377,71 @@ pub fn cut_echoes<S: BuildHasher>(
     (cut, cuts)
 }
 
+/// Lab only: each of Joel's words in `lines` left uncut, with when it
+/// was heard, why the level rule kept it, how far below the loudest of
+/// theirs around it it was, and how far below his voice there, in dB.
+pub fn kept<S: BuildHasher>(
+    lines: &[Line],
+    words: &HashMap<usize, Vec<Word>, S>,
+) -> Vec<(usize, &'static str, f32, Option<f32>)> {
+    let mut theirs: Vec<Word> = lines
+        .iter()
+        .enumerate()
+        .filter(|(_, line)| line.side == Side::Theirs)
+        .filter_map(|(index, _)| words.get(&index))
+        .flatten()
+        .cloned()
+        .collect();
+    theirs.sort_by_key(|word| word.at);
+    let his = alone(
+        lines
+            .iter()
+            .enumerate()
+            .filter(|(_, line)| line.side == Side::Mine)
+            .filter_map(|(index, _)| words.get(&index))
+            .flatten(),
+        &theirs,
+    );
+    let mut kept = Vec::new();
+    for (index, line) in lines.iter().enumerate() {
+        let Some(mine) = words.get(&index).filter(|_| line.side == Side::Mine) else {
+            continue;
+        };
+        let by_spelling = echoes_of(mine, &theirs);
+        let by_level = drowned(mine, &theirs, &his);
+        for (i, word) in mine.iter().enumerate() {
+            if by_spelling[i].is_some() || by_level[i].is_some() {
+                continue;
+            }
+            let near = around(word, &theirs);
+            let Some(loudest) = near
+                .clone()
+                .max_by(|&a, &b| theirs[a].level.total_cmp(&theirs[b].level))
+            else {
+                kept.push((word.at, "none of theirs around", 0.0, None));
+                continue;
+            };
+            let below = theirs[loudest].level - word.level;
+            let voice = voice(&his, word.at).map(|his| his - word.level);
+            let on = theirs[near.end..]
+                .first()
+                .is_some_and(|said| said.at <= word.at + LAG);
+            let echoing = i > 0 && by_level[i - 1].is_some() && mine[i - 1].at + LAG >= word.at;
+            let why = if below < DROWNED {
+                "near their level"
+            } else if voice.is_some_and(|under| under < QUIETER) {
+                "near his voice"
+            } else if !(on || echoing) {
+                "their line ended"
+            } else {
+                "unknown"
+            };
+            kept.push((word.at, why, below, voice));
+        }
+    }
+    kept
+}
+
 /// How many samples `heard` comes after `said`, before it if negative.
 fn later(heard: usize, said: usize) -> isize {
     let by = |from: usize, to: usize| isize::try_from(to - from).unwrap_or(isize::MAX);
