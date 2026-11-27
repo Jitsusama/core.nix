@@ -361,7 +361,10 @@ mod tests {
         let tree = [
             ("/sys/fs/cgroup/user.slice", "1"),
             ("/sys/fs/cgroup/user.slice/session.slice", "1"),
-            ("/sys/fs/cgroup/user.slice/session.slice/kitty-1-9.scope", "0"),
+            (
+                "/sys/fs/cgroup/user.slice/session.slice/kitty-1-9.scope",
+                "0",
+            ),
         ];
         assert_eq!(
             kept_above(

@@ -1211,9 +1211,9 @@ fn set_in_memory(kept: &[PathBuf], ranks: &mut Ranks) {
                     (true, _) => eprintln!(
                         "Keeping in memory {unit}, a window Joel was at within two hours."
                     ),
-                    (false, None) => eprintln!(
-                        "Let go to disk {unit}, a window Joel was at within two hours."
-                    ),
+                    (false, None) => {
+                        eprintln!("Let go to disk {unit}, a window Joel was at within two hours.")
+                    }
                     (false, Some(slice)) => eprintln!(
                         "Gave back {unit}, a window Joel was at within two hours, which {} \
                          still keeps in memory.",
