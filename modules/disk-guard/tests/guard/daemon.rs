@@ -963,6 +963,49 @@ fn a_filling_disk_whose_passes_twice_running_leave_nothing_to_clear_rests_an_hou
 }
 
 #[test]
+fn a_guard_started_within_an_emptied_disk_s_hour_rests_it_for_what_is_left() {
+    // On 27 November a switch restarted the guard minutes after a pass
+    // found nothing left on a filling disk, and the new guard walked every
+    // source again, reading 40 GB in ten minutes to find the same.
+    let home = Home::new();
+    fs::create_dir_all(home.root.join("scratch")).unwrap();
+    let passes = || {
+        home.journal()
+            .iter()
+            .filter(|line| line["event"] == "pass")
+            .count()
+    };
+    let begun = wall();
+    let at = |wall: f64, monotonic: f64| Tick {
+        wall: begun + wall,
+        monotonic,
+        ..tick()
+    };
+    {
+        let mut first = home.guard(home.config("100%", "100%"));
+        first.step(&at(0.0, 3600.0), &CALM).unwrap();
+        first.step(&at(70.0, 3670.0), &CALM).unwrap();
+    }
+    assert_eq!(passes(), 2, "the first guard didn't pass twice");
+    let mut next = home.guard(home.config("100%", "100%"));
+    let mut seen = Vec::new();
+    for (wall, monotonic) in [(130.0, 3730.0), (3000.0, 6600.0), (3800.0, 7400.0)] {
+        next.step(&at(wall, monotonic), &CALM).unwrap();
+        seen.push(passes());
+    }
+    assert_eq!(
+        seen,
+        [2, 2, 3],
+        "a guard started within the hour an emptied disk rests didn't rest it until the hour ended"
+    );
+    assert_eq!(
+        home.status()["filesystems"][0]["exhausted"],
+        true,
+        "the next guard didn't say the disk has cleared all it may"
+    );
+}
+
+#[test]
 fn passes_kept_short_by_an_unheard_system_daemon_never_rest_a_filling_disk_an_hour() {
     // What they kept wanted only the system daemon's word, which a restart
     // of it gives back in a minute or two, so they found nothing left only

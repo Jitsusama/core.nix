@@ -52,6 +52,13 @@ pub struct Memory {
     /// upkeep due, even across a restart.
     #[serde(default)]
     pub owners: Option<Owners>,
+    /// Each filling disk left with nothing to clear twice running, by
+    /// where it's mounted, and the wall time its hour of rest ends. A guard
+    /// started meanwhile rests it too: on 27 November one restarted by a
+    /// switch walked every source again, reading 40 GB in ten minutes to
+    /// find the nothing its last pass had found.
+    #[serde(default)]
+    pub emptied: std::collections::BTreeMap<PathBuf, f64>,
     /// What a newer guard wrote that this one doesn't know.
     #[serde(flatten)]
     pub rest: serde_json::Map<String, serde_json::Value>,
@@ -71,6 +78,7 @@ impl Default for Memory {
             frozen: Vec::new(),
             spared: Vec::new(),
             owners: None,
+            emptied: std::collections::BTreeMap::new(),
             rest: serde_json::Map::new(),
         }
     }

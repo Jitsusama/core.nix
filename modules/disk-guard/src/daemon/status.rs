@@ -414,7 +414,7 @@ impl Guard {
         fresh: bool,
     ) -> io::Result<(Option<f64>, Vec<Preview>)> {
         self.memory.awake.observe(tick);
-        self.watch();
+        self.watch(tick);
         let kept = if fresh {
             None
         } else {

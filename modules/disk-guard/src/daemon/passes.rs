@@ -116,7 +116,7 @@ impl Guard {
     /// Notes every filesystem a source or the store lies on, keeping what
     /// was seen of those already watched. A user daemon watches the store
     /// when it looks after an account's generations, which free it.
-    pub(super) fn watch(&mut self) {
+    pub(super) fn watch(&mut self, tick: &Tick) {
         let mut seen = BTreeMap::new();
         let store = (self.config.system.is_some() || self.config.nix.profiles.is_some())
             .then_some(self.config.nix.store.as_path());
@@ -133,17 +133,37 @@ impl Guard {
             if !meta.is_dir() || seen.contains_key(&device) {
                 continue;
             }
-            let watched = self.watched.remove(&device).unwrap_or_else(|| Watched {
-                path: mounted(path, device),
-                band: Band::Healthy,
-                fill: Fill::default(),
-                space: None,
-                rest: None,
-                backing: crate::pool::backed_by(path),
+            let watched = self.watched.remove(&device).unwrap_or_else(|| {
+                let at = mounted(path, device);
+                let rest = self.emptied_before(tick, &at);
+                Watched {
+                    path: at,
+                    band: Band::Healthy,
+                    fill: Fill::default(),
+                    space: None,
+                    rest,
+                    backing: crate::pool::backed_by(path),
+                }
             });
             seen.insert(device, watched);
         }
         self.watched = seen;
+    }
+
+    /// The hour of rest an earlier guard gave the disk mounted at `path`,
+    /// left with nothing to clear, for what's left of it now. A rest
+    /// that ended, or that reads as longer than an hour, as a wall clock
+    /// set back would make it, is none.
+    fn emptied_before(&self, tick: &Tick, path: &Path) -> Option<Rest> {
+        let left = self.memory.emptied.get(path)? - tick.wall;
+        (left > 0.0 && left <= EMPTY_REST).then(|| Rest {
+            until: tick.monotonic + left,
+            seconds: EMPTY_REST,
+            band: Band::Filling,
+            unvouched: false,
+            exhausted: true,
+            emptied: true,
+        })
     }
 
     /// Whether what's freed on the watched filesystem `on` is freed on
@@ -269,7 +289,8 @@ impl Guard {
             // From when the pass ended, on the step's clock: one ran 24
             // minutes on 25 November, and a rest counted from its start was
             // over before it ended.
-            let ended = tick.monotonic + self.stepped.elapsed().as_secs_f64();
+            let since = self.stepped.elapsed().as_secs_f64();
+            let ended = tick.monotonic + since;
             if let Some(watched) = self.watched.get_mut(&device) {
                 let unvouched = unheard && !watched.rest.is_some_and(|rest| rest.unvouched);
                 // A pass that gave way to a disk shorter of room, to a
@@ -308,6 +329,12 @@ impl Guard {
                         emptied,
                     }
                 });
+                if emptied {
+                    let until = tick.wall + since + EMPTY_REST;
+                    self.memory.emptied.insert(watched.path.clone(), until);
+                } else {
+                    self.memory.emptied.remove(&watched.path);
+                }
             }
         }
         Ok(())

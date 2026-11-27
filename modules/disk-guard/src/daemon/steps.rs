@@ -150,7 +150,7 @@ impl Guard {
     /// it, and how it's in use now. Nothing is taken.
     pub fn explain(&mut self, tick: &Tick, path: &Path) -> io::Result<Explained> {
         self.memory.awake.observe(tick);
-        self.watch();
+        self.watch(tick);
         let (mut scan, offers, _) = self.offers(tick, None)?;
         let holds = |held: &Path| path.starts_with(held);
         let offered = offers
@@ -226,7 +226,7 @@ impl Guard {
             self.resume(tick)?;
         }
         self.memory.awake.observe(tick);
-        self.watch();
+        self.watch(tick);
         if let Some(disks) = &mut self.disks {
             disks.observe(tick);
         }
