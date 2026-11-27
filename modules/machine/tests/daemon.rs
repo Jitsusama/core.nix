@@ -416,7 +416,11 @@ fn a_disk_says_its_rates_sensors_link_and_file_systems() {
         .collect();
     assert_eq!(mounts, [&json!("/mnt/system"), &json!("/mnt/boot")]);
     assert_eq!(disk["file_systems"][0]["device"], "dm-0");
-    assert!(disk["file_systems"][0]["size_b"].as_u64().is_some());
+    assert!(
+        disk["file_systems"][0]["size_b"].as_u64().is_some(),
+        "the system's file system had no size in bytes: {}",
+        disk["file_systems"][0]
+    );
 }
 
 /// A fan chip, a USB-C port's chip, a thermal zone and its trip points,
@@ -1739,6 +1743,9 @@ fn nothing_is_read_once_nothing_is_watched() {
             .len()
     };
     let before = reads(&mut client);
+    // Nothing happening is what's proven, so this waits it out: one and a
+    // half times the second between a watched kind's reads, long enough for
+    // a read left going to come.
     std::thread::sleep(Duration::from_millis(1500));
     assert_eq!(reads(&mut client), before, "it read with nothing watched");
 }
