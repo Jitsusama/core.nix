@@ -535,6 +535,7 @@ fn watch(
     // What the file holds, as last written.
     let mut said = None;
     let mut pids = HashSet::new();
+    let mut held = false;
     loop {
         let mut troubles = Vec::new();
         // A read that fails writes nobody, which is a guess, so only a
@@ -550,19 +551,21 @@ fn watch(
                 (BTreeSet::new(), false)
             }
         };
-        let anyone = !names.is_empty();
+        // A read that failed says nothing of who holds the camera, so it's
+        // looked at as often as the last read that worked found it held.
+        if seen {
+            held = !names.is_empty();
+        }
+        let anyone = held;
         // The node first, so a reader that finds a holder can find the
         // camera by it, and a run killed between the two leaves the node
         // file that finds the holders file, as the removals keep it.
         let found = run.name(output);
-        // A node file still saying the camera before, which it couldn't
-        // replace or remove, would put these holders on that camera, so
-        // until this node is said the file says nobody.
-        let shown = if found || !says_another(output, node) {
-            listed(names, sysfs, node)
-        } else {
-            BTreeSet::new()
-        };
+        // Said even while the node file still says the camera before, which
+        // it couldn't replace or remove, since a camera held never reads as
+        // off. Until it's right, only the PipeWire readers its node file
+        // finds for a reader may be that camera's.
+        let shown = listed(names, sysfs, node);
         let right = said.as_ref() == Some(&shown)
             || match write(output, &shown) {
                 Ok(()) => true,
@@ -667,16 +670,6 @@ fn usb(events: &mut Events, options: &Options, run: &mut Run) -> Result<(), Fail
 /// How a node file says its node.
 fn said_as(node: &Path) -> String {
     format!("{}\n", node.display())
-}
-
-/// Whether the node file beside the holders file says a node other than
-/// this one, as a loopback's says the camera it had before, when it
-/// couldn't be removed as that one went.
-fn says_another(output: &Path, node: &Path) -> bool {
-    let Some(said) = device_file(output).and_then(|file| fs::read_to_string(file).ok()) else {
-        return false;
-    };
-    said != said_as(&fs::canonicalize(node).unwrap_or_else(|_| node.to_owned()))
 }
 
 /// Removes what says a USB camera's node, as its unit stops: its own run
