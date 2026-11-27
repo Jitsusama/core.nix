@@ -153,7 +153,7 @@ fixed:
 | `homeModules`                | home-manager modules and roles                                  |
 | `darwinModules`              | nix-darwin modules and roles                                    |
 | `nixosModules`               | NixOS modules, roles and hardware                               |
-| `packages`                   | what core builds itself, for x86_64-linux: the kernel, the guide and its stick |
+| `packages`                   | what core builds itself: the kernel, the guide and its stick for x86_64-linux, the Apple silicon stick for aarch64-linux, the guide for aarch64-darwin |
 | `checks`                     | every module and role evaluated, the examples, formatting       |
 | `formatter`                  | treefmt, for `nix fmt`                                          |
 | `treefmtModules`             | the linters core holds itself to, for a repository's `nix fmt`  |
