@@ -194,6 +194,9 @@ QtObject {
             [seeded.map(one => one.output), Places.whereKept(twins[1], twins, bothBack,
                 { given: seeded, inUse: "Virtual-3" }).output],
             [["Virtual-3", "Virtual-4"], "Virtual-3"]);
+        expect("placing's options may be left out, as whereKept's may",
+            [Reopening.placedGiven([twins[1]], bothBack, "Virtual-3").given.length,
+                Reopening.keptBack(twins[1], twins, bothBack).gives.at === twins[1]], [1, true]);
         const twinFirst = Reopening.placedGiven([twins[1]], bothBack, "Virtual-3",
             { moments: [twins], before: early }).given;
         expect("nor keeps a connector the other twin's sessions were given",
@@ -582,6 +585,19 @@ QtObject {
             { moves: [{ output: "Virtual-1", id: 20, there: true }],
                 waiting: { [twin]: [Object.assign({}, byTwin[twin][1],
                     { others: { "Virtual-1": twin } })] } });
+        // Names from data are keys like any other, though one is __proto__:
+        // a screen so named still waits, and a twin's connector so named
+        // still keeps the one held off it.
+        const protoWaits = Places.homeward(Places.byName({ ["__proto__"]: [{ id: 21, workspace: 1,
+            output: "Virtual-2", others: {} }] }), { "Virtual-1": qemu }, onTheFirst);
+        const protoSibling = [{ id: 20, workspace: 1, output: "__proto__",
+            others: { "Virtual-2": twin } },
+            { id: 21, workspace: 2, output: "Virtual-2", others: {} }];
+        const protoHeld = Places.homeward({ [twin]: protoSibling }, { "Virtual-1": twin },
+            bothOnTheFirst).waiting[twin] ?? [];
+        expect("a screen or a twin's connector named __proto__ is kept by name",
+            [Object.keys(protoWaits.waiting), protoHeld.map(one => Object.keys(one.others))],
+            [["__proto__"], [["Virtual-1", "__proto__"]]]);
         const three = { [qemu]: [{ id: 21, workspace: 2, output: "Virtual-2",
             others: { "Virtual-1": qemu, "Virtual-3": qemu } }] };
         expect("a third alike screen isn't the one it left",
