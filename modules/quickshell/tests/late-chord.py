@@ -3,11 +3,12 @@
 It listens on the launcher's socket, as the old shell does, and sends a chord
 down it as launcher-say would, then says it was sent. Only after LATE does it
 read the chord, as a shell busy on a loaded machine does, saying the launcher
-is open as the real one would once its line is read. A handover that took the
-socket aside and waited a fixed moment had ended the old shell under that
-opening (a gate, 2026-11-15).
+is opening as the real one would once its line is read: drawn from what it
+kept, on the screen but not yet open. A handover that took the socket aside
+and waited a fixed moment had ended the old shell under that opening (a gate,
+2026-11-15), and one that read open alone did so again (a gate of af931a2d).
 
-Usage: late-chord.py SOCKET OPEN SENT
+Usage: late-chord.py SOCKET OPENING SENT
 """
 
 import socket
@@ -22,7 +23,7 @@ LATE = 0.5
 
 def main() -> None:
     """Listen, send a chord to it, and read it only once LATE has passed."""
-    path, opened, sent = (Path(each) for each in sys.argv[1:])
+    path, opening, sent = (Path(each) for each in sys.argv[1:])
     with socket.socket(socket.AF_UNIX) as listening:
         listening.bind(str(path))
         listening.listen()
@@ -32,11 +33,11 @@ def main() -> None:
         sent.write_text("sent\n")
         time.sleep(LATE)
         heard, _ = listening.accept()
-        # Open before the connection closes, as the real shell answers its IPC only once the
-        # handler that read the line has opened it.
+        # Opening before the connection closes, as the real shell answers its IPC only once the
+        # handler that read the line has begun the opening (Launcher.qml's beginOpening).
         with heard:
             heard.recv(4096)
-            opened.write_text("true\n")
+            opening.write_text("true\n")
         # Listening on, as a shell does, until the case ends it.
         while True:
             time.sleep(1)
