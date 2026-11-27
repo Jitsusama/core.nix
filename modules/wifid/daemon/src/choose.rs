@@ -708,6 +708,14 @@ impl Chooser {
         }
     }
 
+    /// Forgets the access point the card was found on, as a choice found
+    /// it unjoined: a rejoin to that point, as after a drop, sends no
+    /// echoes for a moment either, so its span is young again (`young`).
+    /// All else the chooser knows stays with the card.
+    pub fn unjoined(&mut self) {
+        self.joined = None;
+    }
+
     /// Whether the card's span on its access point is younger than `SPAN`,
     /// counted from the first choice that found it there.
     fn young(&mut self, now: Instant, point: &str) -> bool {
@@ -2153,6 +2161,21 @@ pub(crate) mod tests {
             whole,
             Choice::Try("6c:ae:f6:ba:85:87".into()),
             "55 a span on is half of them unsent"
+        );
+    }
+
+    #[test]
+    fn a_card_found_unjoined_is_young_again_back_on_its_point() {
+        let (start, point) = (Instant::now(), "6c:ae:f6:ba:85:86");
+        let mut chooser = Chooser::default();
+        assert!(chooser.young(start, point), "a first span wasn't young");
+        assert!(!chooser.young(start + SPAN, point), "a whole span on was still young");
+
+        chooser.unjoined();
+
+        assert!(
+            chooser.young(start + SPAN, point),
+            "a rejoin to its point after a drop counted its echoes as sent"
         );
     }
 

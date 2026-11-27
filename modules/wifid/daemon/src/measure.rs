@@ -405,6 +405,11 @@ pub async fn follow(
                 // it roams, or dropped a moment, is still the card that gave
                 // way, spurned and kept off, so it keeps all it knows.
                 choosers.retain(|card, _| state.borrow().has_card(card));
+                for (card, chooser) in &mut choosers {
+                    if !joined.iter().any(|on| on.card == *card) {
+                        chooser.unjoined();
+                    }
+                }
                 forget_the_forgotten(&mut learned, &state.borrow().saved_names());
                 for on in joined {
                     let carried = measures.of(&on.point, now);
