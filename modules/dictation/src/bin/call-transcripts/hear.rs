@@ -770,7 +770,9 @@ fn resumed(book: &Shared, key: &str, me: &str) -> Writing {
 /// says in its record where it is, how it opens and whether it's still
 /// being written. The summary is the record's, so writing the
 /// transcript again keeps it; a call that's still on has none, since
-/// a rejoin lets the last one go.
+/// a rejoin lets the last one go. A call with nothing to say yet, no
+/// line heard and no take failed, has no file; one whose every take
+/// failed has one saying so, which a restart reads back.
 fn write(book: &Shared, key: &str, writing: &Writing, me: &str, transcribing: bool) {
     let mut book = book.lock();
     let Some(record) = book.record(key).cloned() else {
@@ -778,7 +780,7 @@ fn write(book: &Shared, key: &str, writing: &Writing, me: &str, transcribing: bo
     };
     let file = record.folder.join(TRANSCRIPT);
     let mut opening = record.opening.clone();
-    if !writing.lines.is_empty() {
+    if !writing.lines.is_empty() || writing.unheard.is_some() {
         let them = record.them(me);
         let note = record.note(me);
         let said = transcript_of(writing, me, them.as_deref(), note.as_deref());
