@@ -203,7 +203,9 @@ pub fn blocked(text: &str) -> Option<u64> {
 }
 
 /// The longest name a thread can give itself, in bytes: the kernel's
-/// `TASK_COMM_LEN` less its closing nul.
+/// `TASK_COMM_LEN`, 16, less the nul that ends it. `sched_stats` tells the
+/// kernel's row of dashes from one a name forges only by its length, so that
+/// guard holds only while names stay this short.
 const NAME_MOST: usize = 15;
 
 /// The lines of a `sched` past its header. The header opens with the

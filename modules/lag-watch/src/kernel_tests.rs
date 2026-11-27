@@ -105,6 +105,24 @@ fn a_sched_file_gives_the_wait_for_a_cpu_never_the_wait_for_a_disk() {
 }
 
 #[test]
+fn a_wait_under_an_older_kernel_s_dotted_key_is_read_as_the_same_wait() {
+    // Older kernels print the fair count with the prefix of the struct that
+    // holds it, as stats.wait_sum, where 7.3 prints it bare. Reading both
+    // keeps the fair count, and so the lesser of the two, on such a kernel.
+    // The disk's wait comes first, since its key ends as the CPU's does but
+    // for the dot.
+    let dotted = "slack (7, #threads: 30)\n\
+                  ----------------------------------------\n\
+                  stats.iowait_sum             :        900.000000\n\
+                  stats.wait_sum               :         12.250000\n";
+    assert_eq!(
+        waited(dotted),
+        Some(12_250_000),
+        "the wait wasn't read from its dotted line"
+    );
+}
+
+#[test]
 fn a_thread_s_own_name_never_reads_as_a_count() {
     let forged = "wait_sum: 9000000\n (7, #threads: 1)\n\
                   ----------------------------------------\n\

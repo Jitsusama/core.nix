@@ -105,16 +105,19 @@ fn a_tab_its_app_lowered_is_counted_and_kept_only_as_where_the_next_window_start
 fn an_app_thread_s_time_blocked_is_read_shown_or_hidden_and_no_one_else_s() {
     let dir = std::env::temp_dir().join(format!("lag-watch-blocked-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
-    let thread = |label: &'static str, pid: &str, nice: i64, blocked: Option<&str>| {
+    // What each thread's sched keeps, in milliseconds: its time blocked and its fair
+    // scheduler's wait, each unlike the other so neither is read for it.
+    let thread = |label: &'static str, pid: &str, nice: i64, kept: Option<(&str, &str)>| {
         let at = dir.join(format!("{pid}/task/{pid}"));
         fs::create_dir_all(&at).unwrap();
         fs::write(at.join("schedstat"), "10 20 3\n").unwrap();
         let stat = format!("{pid} (slack) S 70 1 1 0 -1 0 1 0 0 0 5 6 0 0 20 {nice} 30 0\n");
         fs::write(at.join("stat"), &stat).unwrap();
         fs::write(dir.join(pid).join("stat"), &stat).unwrap();
-        if let Some(ms) = blocked {
+        if let Some((blocked, waited)) = kept {
             let sched = format!(
-                "slack ({pid}, #threads: 9)\n----------------\nstats.sum_block_runtime : {ms}\n"
+                "slack ({pid}, #threads: 9)\n----------------\n\
+                 wait_sum : {waited}\nstats.sum_block_runtime : {blocked}\n"
             );
             fs::write(at.join("sched"), sched).unwrap();
         }
@@ -125,20 +128,85 @@ fn an_app_thread_s_time_blocked_is_read_shown_or_hidden_and_no_one_else_s() {
             call: false,
         }
     };
-    let shown = thread("slack-ui", "81", 0, Some("12.500000"));
-    let hidden = thread("chrome-ui", "82", 5, Some("3.000000"));
+    let shown = thread("slack-ui", "81", 0, Some(("12.500000", "40.000000")));
+    let hidden = thread("chrome-ui", "82", 5, Some(("3.000000", "6.000000")));
     let unkept = thread("slack-ui", "83", 0, None);
-    let niri = thread("niri", "84", 0, Some("7.000000"));
+    let niri = thread("niri", "84", 0, Some(("7.000000", "9.000000")));
     let s = snapshot(
         &dir,
         &dir,
         &[shown.clone(), hidden.clone(), unkept, niri],
         BTreeMap::new(),
     );
+    // The sched read once for the time blocked gives the fair count too, to
+    // a thread read and to one resting alike, so each window takes the
+    // lesser of the two counts for both.
+    assert_eq!(
+        s.threads.get(&shown).and_then(|sched| sched.fair_ns),
+        Some(40_000_000),
+        "the shown thread's fair count wasn't read from its sched: {:?}",
+        s.threads
+    );
+    assert_eq!(
+        s.resting.get(&hidden).and_then(|sched| sched.fair_ns),
+        Some(6_000_000),
+        "the resting thread's fair count wasn't read from its sched: {:?}",
+        s.resting
+    );
     assert_eq!(
         s.blocked,
         BTreeMap::from([(shown, 12_500_000), (hidden, 3_000_000)]),
         "only the apps' threads, shown or hidden, had their time blocked read"
+    );
+    fs::remove_dir_all(&dir).unwrap();
+}
+
+// The kernel cuts a name at 15 bytes, byte by byte, so a name in letters of
+// more than one byte can end partway through one, and the process's stat is
+// then not UTF-8. Its nice, past the name, must still be read, or a hidden
+// tab's sleeps would be counted as waits.
+#[test]
+fn a_lowered_tab_whose_name_the_kernel_cut_mid_letter_still_rests() {
+    let dir = std::env::temp_dir().join(format!("lag-watch-cut-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    // "chrome ", two letters of three bytes, and the first two of a third.
+    let mut stat = b"72 (chrome \xe2\x98\x95\xe2\x98\x95\xe2\x98".to_vec();
+    stat.extend_from_slice(b") S 70 1 1 0 -1 0 1 0 0 0 5 6 0 0 20 5 30 0\n");
+    assert!(
+        std::str::from_utf8(&stat).is_err(),
+        "the forged stat is UTF-8, so it tests nothing"
+    );
+    fs::create_dir_all(dir.join("72")).unwrap();
+    fs::write(dir.join("72/stat"), stat).unwrap();
+    let threads: Vec<kernel::Thread> = ["72", "73"]
+        .into_iter()
+        .map(|tid| {
+            let at = dir.join(format!("72/task/{tid}"));
+            fs::create_dir_all(&at).unwrap();
+            fs::write(at.join("schedstat"), "10 20 3\n").unwrap();
+            kernel::Thread {
+                label: "chrome-ui",
+                name: "chrome".into(),
+                schedstat: at.join("schedstat"),
+                call: false,
+            }
+        })
+        .collect();
+    let s = snapshot(&dir, &dir, &threads, BTreeMap::new());
+    assert!(
+        s.threads.is_empty(),
+        "the tab whose name was cut was read: {:?}",
+        s.threads
+    );
+    assert_eq!(
+        s.resting.keys().collect::<Vec<_>>(),
+        threads.iter().collect::<Vec<_>>(),
+        "the tab's threads didn't rest"
+    );
+    assert_eq!(
+        s.lowered,
+        BTreeMap::from([("chrome-ui".to_string(), 1)]),
+        "the tab's nice wasn't read past its cut name"
     );
     fs::remove_dir_all(&dir).unwrap();
 }
