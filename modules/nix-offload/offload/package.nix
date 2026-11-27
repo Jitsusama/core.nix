@@ -103,8 +103,8 @@ rustPlatform.buildRustPackage (
     # Its tests bundle a real git tree's commits, and start a run apart with
     # setsid as a builder does, in dash as well, since most builders' sh is
     # dash (src/command.rs), and send a run far through zsh, a Mac's login
-    # shell (src/there.rs), and find a Mac's own update to main with pgrep,
-    # as a Mac does with its own.
+    # shell (src/there.rs), and find a Mac's own update to main in ps's
+    # command lines, as a Mac does with its own.
     nativeCheckInputs = [
       dash
       git

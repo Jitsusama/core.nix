@@ -5637,7 +5637,9 @@ impl Load {
 /// 27 November the Mac lane asked that a lent build never go beside it,
 /// since the two together are what took a Mac to swapping before. It's
 /// found by its command line, which any account may read, where the
-/// build's pid, root's, isn't one `kill -0` may ask about. A test names
+/// build's pid, root's, isn't one `kill -0` may ask about. It's read with
+/// `ps` and `grep` rather than `pgrep`, which nixpkgs' procps for a Mac
+/// doesn't have, where every procps has `ps`. A test names
 /// another in `NIX_OFFLOAD_OWN_UPDATE`, since a Mac's own update runs
 /// these tests outside a sandbox, beside the very build they'd count.
 pub fn building_read() -> String {
@@ -5650,15 +5652,17 @@ pub fn building_read() -> String {
          if [ -n \"$boot\" ] && [ \"${{holder#* }}\" = \"$boot\" ] && \
          kill -0 \"$pid\" 2>/dev/null; then building=$((building + 1)); fi; done; \
          own=\"${{NIX_OFFLOAD_OWN_UPDATE:-{OWN_UPDATE_SEEN}}}\"; \
-         if pgrep -f \"$own\" >/dev/null 2>&1; then building=$((building + 1)); fi; \
+         if ps -A -o args= 2>/dev/null | grep -q -e \"$own\"; then \
+         building=$((building + 1)); fi; \
          echo \"$building\""
     )
 }
 
 /// The out link a machine's own update to main builds into, the home
-/// zone's update-to-main, as `pgrep -f` looks for it: its last letter bracketed,
-/// so the pattern matches the build's command line but not the shell
-/// reading it, whose own command line holds the pattern as written.
+/// zone's update-to-main, as `grep` looks for it in `ps`'s command lines:
+/// its last letter bracketed, so the pattern matches the build's command
+/// line but not the `grep` or the shell reading it, whose own command lines
+/// hold the pattern as written.
 const OWN_UPDATE_SEEN: &str = "update-to-main/buildin[g]";
 
 /// What a Mac runs to say its memory ([`Memory::parse`]): the share free,
