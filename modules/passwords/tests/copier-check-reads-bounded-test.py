@@ -41,7 +41,8 @@ def loaded(path: str) -> ModuleType:
         raise SystemExit(why)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    module.PATIENCE = PATIENCE
+    # A module's type reads any name but sets none, so the patience is set in its namespace.
+    vars(module)["PATIENCE"] = PATIENCE
     return module
 
 
