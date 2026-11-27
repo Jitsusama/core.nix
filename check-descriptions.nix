@@ -6416,8 +6416,10 @@
   update-to-main-follows-on-a-mac = ''
     a Mac's follower is its primary user's launchd agent, started again whenever follow ends and
     naming no store path; a Mac refuses an update during a call, refuses the follower's ask alone
-    while mac-room.sh says it's short of memory, for two hours at most, and the follower's switch
-    waits while someone is at the Mac, for 45 minutes at most
+    while mac-room.sh says it's short of memory, for two hours at most, ending that refusal with
+    the readings it judged and a call's without the call check's cautions, as the config the Mac's
+    daemon serves by says too; and the follower's switch waits while someone is at the Mac, for 45
+    minutes at most
   '';
   update-to-main-opens-enough-files-on-a-mac = ''
     a Mac's update-to-main daemon and its follower may each open 8192 files, not launchd's 256, so
