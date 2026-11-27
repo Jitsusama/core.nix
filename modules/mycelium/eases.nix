@@ -1,7 +1,7 @@
 # What the home realm's node may do to ease the machine when it's over its
 # room and another has some (home.nix's `easesSleep`, `easesCarry` and
-# `easesOnto`), and the arguments that tell the node so. It changes only when what easing may
-# act on does, apart from how the node is run.
+# `easesOnto`), and the arguments that tell the node so. It changes only
+# when what easing may act on does, apart from how the node is run.
 {
   config,
   lib,
@@ -37,8 +37,9 @@ in
         what it carries: one parked session at a time, off the screen and
         part way through nothing, into a fence no weaker and behind no door
         wider than here's, as each machine declares them, spaced apart and
-        capped each day by mycelium's own terms. Only a parked session is carried, so with `easesSleep` off it
-        carries only those the harness parked once its own rule held. The
+        capped each day by mycelium's own terms. Only a parked session is
+        carried, so with `easesSleep` off it carries only those the harness
+        parked once its own rule held. The
         session's harness must take a carry from the node, or the carry is
         kept and told but never made. It never carries a session the person
         has written in or one leading others, nor one whose harness doesn't

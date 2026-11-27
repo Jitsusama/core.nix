@@ -525,6 +525,7 @@ in
               // {
                 easesSleep = true;
                 easesCarry = true;
+                easesOnto = [ "tern" ];
               }
             )).systemd.user.services.mycelium-other.Service.ExecStart
         ))
@@ -532,19 +533,14 @@ in
         && !(lib.hasInfix "--eases-carry" linuxNode)
         && !(lib.hasInfix "--eases-carry" sleepingNode)
         && !(lib.hasInfix "--eases-onto" linuxNode)
-        && lib.hasInfix "--eases --eases-onto tern --eases-onto osprey" (ontoNode [
-          "tern"
+        && lib.hasInfix "--eases --eases-onto tern-2 --eases-onto osprey" (ontoNode [
+          "tern-2"
           "osprey"
         ])
-        && !(lib.hasInfix "--eases-onto" (
+        && lib.hasInfix "--eases-onto tern" (
           toString
-            (linux (
-              both
-              // {
-                easesOnto = [ "tern" ];
-              }
-            )).systemd.user.services.mycelium-other.Service.ExecStart
-        ))
+            (mac (easing // { easesOnto = [ "tern" ]; })).launchd.agents.mycelium.config.ProgramArguments
+        )
         && lib.all (wrong: !(builtins.tryEval (ontoNode [ wrong ])).success) [
           "Tern"
           "tern osprey"
@@ -861,6 +857,7 @@ in
           sleepingNode
           carryingNode
           carryingAloneNode
+          (ontoNode [ "tern" ])
           apartAgentsNode
           (viaNode "/bin/cell:cell-1")
           (providerNode "/bin/cell")
