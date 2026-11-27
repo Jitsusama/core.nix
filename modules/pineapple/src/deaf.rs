@@ -334,19 +334,21 @@ impl Deaf {
 
     /// What a round read in part changes, `alone` the search it left
     /// unasked, if one, and `whole` whether the search it answered was read
-    /// whole rather than only to a later page. The gateway answered it, so
-    /// a row saying it's unreached is taken away, as is one saying only the
-    /// search it read whole can't be read; a deafness after is a time of
-    /// its own, told anew even where Joel marked that row done. A row
-    /// saying it's unreached, though, is narrowed to the search still left
-    /// unasked rather than taken away, since that search is still unheard,
-    /// unless the round just before narrowed it to the other: each was
-    /// answered. A row left from before, by a reader since restarted or an
-    /// untelling that wasn't written, goes once this round and the one just
-    /// before each read whole the search the other left unasked, as Slack
-    /// was read whole across the two. A search read only to a later page
-    /// may still hold what can't be read past it, so that round is no turn
-    /// of the two, either side.
+    /// whole rather than only to a later page. The gateway answered it, with
+    /// the sign-in it was given, so a row saying it's unreached, that the
+    /// sign-in was refused or that there's none to read is taken away, as
+    /// is one saying only the search it read whole can't be read; a
+    /// deafness after is a time of its own, told anew even where Joel
+    /// marked that row done, as after a round heard whole. A row saying
+    /// it's unreached, though, is narrowed to the search still left unasked
+    /// rather than taken away, since that search is still unheard, unless
+    /// the round just before narrowed it to the other: each was answered.
+    /// A row saying both searches can't be read, or one left from before,
+    /// by a reader since restarted or an untelling that wasn't written,
+    /// goes once this round and the one just before each read whole the
+    /// search the other left unasked, as Slack was read whole across the
+    /// two. A search read only to a later page may still hold what can't be
+    /// read past it, so that round is no turn of the two, either side.
     fn answered(
         &mut self,
         alone: Option<Search>,
@@ -370,10 +372,10 @@ impl Deaf {
         }
         let turned = whole && alone.zip(before).is_some_and(|(now, then)| now != then);
         let reached = match self.told {
-            Some(Deafness::Unreached) => true,
             Some(Deafness::Unread(told)) => whole && alone.is_some_and(|left| left != told),
+            Some(Deafness::Unreadable) => turned,
             None => self.left && turned,
-            _ => false,
+            Some(Deafness::Unreached | Deafness::Refused | Deafness::NoSignIn) => true,
         };
         if reached {
             self.left = false;

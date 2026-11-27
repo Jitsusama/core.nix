@@ -491,6 +491,49 @@ fn a_search_read_only_to_a_later_page_is_never_heard_whole() {
 }
 
 #[test]
+fn a_round_read_in_part_takes_away_a_row_its_answers_show_wrong() {
+    let round = |n: u32| AT + u64::from(n) * 30_000;
+    let readers: [(&str, fn() -> Deaf); 2] = [
+        ("the keyring reader", Deaf::new),
+        ("the gateway reader", Deaf::through_gateway),
+    ];
+    let tag = Search::Tag;
+    let told = |new: fn() -> Deaf, why: Deafness| {
+        let mut deaf = new();
+        let _ = deaf.heard(Round::Heard, round(0));
+        let _ = deaf.heard(Round::Deaf(why), round(1));
+        let tell = deaf.heard(Round::Deaf(why), round(2));
+        (deaf, tell)
+    };
+    for (reader, new) in readers {
+        for why in [Deafness::Refused, Deafness::NoSignIn] {
+            for part in [Round::Partly(Some(tag)), Round::Waiting(tag)] {
+                let (mut deaf, tell) = told(new, why);
+                assert!(matches!(tell, Change::Tell(_)), "{reader}: {why:?} told");
+                assert_eq!(
+                    deaf.heard(part, round(3)),
+                    Change::Untell,
+                    "{reader}: {part:?} answered with the sign-in, so the {why:?} row goes \
+                     though a search was left unasked"
+                );
+            }
+        }
+        let (mut deaf, tell) = told(new, Deafness::Unreadable);
+        assert!(matches!(tell, Change::Tell(_)), "{reader}: unreadable told");
+        assert_eq!(
+            deaf.heard(Round::Partly(Some(tag)), round(3)),
+            Change::Keep,
+            "{reader}: the phrase read whole says nothing of the tag's, so the row stands"
+        );
+        assert_eq!(
+            deaf.heard(Round::Partly(Some(Search::Phrase)), round(4)),
+            Change::Untell,
+            "{reader}: the tag read whole the very next round reads Slack whole across the two"
+        );
+    }
+}
+
+#[test]
 fn a_search_left_unasked_is_never_told_as_alone_while_the_gateway_answers_nothing() {
     let round = |n: u32| AT + u64::from(n) * 30_000;
     let mut deaf = Deaf::through_gateway();
