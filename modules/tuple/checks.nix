@@ -56,8 +56,8 @@ onLinux {
   # Tuple shares a screen through the portal: the switch writes the setting
   # where Tuple keeps it, and Tuple, which ignores a folder it doesn't know
   # and a value not written as it writes one, has to read it back. So the
-  # check runs the switch's own steps, with the data folder moved here
-  # (tests/tuple-shares-through-the-portal.sh).
+  # check runs the switch's own steps, with the data folder moved into a
+  # folder of its own (tests/tuple-shares-through-the-portal.sh).
   tuple-shares-through-the-portal =
     let
       home = account graphical;
@@ -158,7 +158,8 @@ onLinux {
   # The tuple command completes in zsh with Tuple's own completion, which
   # only shows when Tab offers nothing, so the check completes commands
   # in a real line editor with the real tuple (tests/tuple-completion.zsh),
-  # held to a time (tests/tuple-completes-in-zsh.sh).
+  # held to a time, in a folder of its own whose daemon alone it stops
+  # (tests/tuple-completes-in-zsh.sh).
   tuple-completes-in-zsh =
     let
       home = account graphical;
