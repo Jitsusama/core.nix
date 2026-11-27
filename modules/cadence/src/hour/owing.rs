@@ -1569,6 +1569,59 @@ mod tests {
     }
 
     #[test]
+    fn a_why_given_after_a_bare_close_or_a_quiet_move_holds_what_the_line_says_now() {
+        let card = "show the card, asked 2026-11-26T09:00:00Z";
+        let key = format!("hour:{}:1JQPPC:{card}", unproven::KEY);
+        let unrun = format!("{card}; its probe hasn't run since it landed · 1JQPPC");
+        let failed = format!("{card}; its probe failed after switch 1200 · 1JQPPC");
+        let hour = |ledger: &mut Vec<Entry>, line: &str, at: i64| {
+            let mut m = measure(unproven::KEY, Class::Functional, 1.0, Some(0.0));
+            m.behind = vec![line.to_owned()];
+            file(ledger, &[m], "2026-11-26", at)
+        };
+        let mut ledger = Vec::new();
+        assert_eq!(hour(&mut ledger, &unrun, 1000).len(), 1, "it wasn't asked");
+        // Its state moves while open, unsaid; a why then holds the state
+        // its line says now.
+        assert!(
+            hour(&mut ledger, &failed, 4600).is_empty(),
+            "a move while open asked again"
+        );
+        // A bare close isn't told it's done, and a why after it, before
+        // the next hour, is taken.
+        let bare = owe::done(&mut ledger, &key, None, 5000).map_err(|f| f.exit);
+        assert!(
+            bare.as_ref()
+                .is_ok_and(|said| said.contains("asked again next hour")),
+            "a bare close was told it's done: {bare:?}"
+        );
+        let why = owe::done(&mut ledger, &key, Some("needs his login"), 5100).map_err(|f| f.exit);
+        assert!(
+            why.as_ref().is_ok_and(|said| said.contains("now held by")),
+            "a why after a bare close was dropped: {why:?}"
+        );
+        let told = hour(&mut ledger, &failed, 8200);
+        assert!(
+            told.is_empty(),
+            "a why on the state its line says was asked again: {told:?}"
+        );
+        // Restated while it holds, its why is taken again, not refused.
+        let restated = owe::done(
+            &mut ledger,
+            &key,
+            Some("needs his login and a switch"),
+            8300,
+        )
+        .map_err(|f| f.exit);
+        assert!(
+            restated
+                .as_ref()
+                .is_ok_and(|said| said.contains("now held by")),
+            "a restated why was refused as though its line had gone: {restated:?}"
+        );
+    }
+
+    #[test]
     fn the_weeks_asks_naming_no_probe_are_their_keepers_to_write_once_while_any_is_left() {
         let mut unproven = measure(unproven::KEY, Class::Functional, 3.0, Some(0.0));
         let keeper = unproven::KEEPER;

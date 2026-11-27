@@ -172,6 +172,9 @@ pub fn settle(ledger: &mut [Entry], key: &str) -> bool {
         .is_some()
 }
 
+/// Where every ask unproven's key starts, as the hour files it.
+const UNPROVEN: &str = "hour:asks-unproven:";
+
 /// Closes the must filed as `key` at `now`, or says the finding filed as
 /// `key` was fixed by `fix`, saying which; a finding with no fix said is
 /// refused, since its figure gone quiet shows no fix. A drag closed this
@@ -195,6 +198,12 @@ pub(crate) fn done(
         }
         return Ok(match fix {
             Some(fix) => format!("cadence: {key} is done, by {fix}"),
+            // An ask unproven closed with no why is asked again next hour,
+            // so its cell isn't told it's done.
+            None if key.starts_with(UNPROVEN) => format!(
+                "cadence: {key} is closed, but asked again next hour unless its probe passes \
+                 by then; say why it can't pass after its key to hold it"
+            ),
             None => format!("cadence: {key} is done"),
         });
     }
@@ -211,9 +220,12 @@ pub(crate) fn done(
         .filter(|e| !e.open && e.kind.as_deref() == Some("drag"));
     // An ask unproven the hour closed has passed or left the week, so a why
     // given after holds nothing, and the same failure coming back is asked.
+    // The hour's close never sets `closed`, and the hour clears a cell's
+    // once its line is gone, so one still set is the cell's own, standing,
+    // and its why is taken.
     if settled
         .as_ref()
-        .is_some_and(|e| e.key.starts_with("hour:asks-unproven:"))
+        .is_some_and(|e| e.key.starts_with(UNPROVEN) && e.closed.is_none())
     {
         return Ok(format!(
             "cadence: {key} was closed already, as its line went, so nothing is held"

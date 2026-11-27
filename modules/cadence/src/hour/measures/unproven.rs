@@ -13,6 +13,7 @@ use std::path::Path;
 
 use serde_json::Value;
 
+use super::at_risk::{self, Repo};
 use super::{Class, DAY, Measure, count, first_owner, lines, seconds, short};
 use crate::tracking::{self, Tracking};
 
@@ -25,6 +26,10 @@ pub const KEY: &str = "asks-unproven";
 /// a run is taken as its keeper's probe runner wrote it; who may write one
 /// is that runner's to hold, as a cell is asked to run the probe itself.
 pub const PROBES: &str = "mission/probes.jsonl";
+
+/// Why the probe runs are unread when none has been written yet, which
+/// is no tear to mend.
+const NONE_KEPT: &str = "none kept";
 
 /// Who keeps the asks list and writes each ask's probe, so answers for an
 /// ask with no cell named and for the probes not yet written.
@@ -50,9 +55,9 @@ const SINCE: i64 = 7 * DAY;
 #[must_use]
 pub fn read(state_home: &Path, asks: &str, switches: &str, now: i64) -> Measure {
     let probes = match fs::read_to_string(state_home.join(PROBES)) {
-        Ok(text) if text.trim().is_empty() => Err("none kept".to_owned()),
+        Ok(text) if text.trim().is_empty() => Err(NONE_KEPT.to_owned()),
         Ok(text) => Ok(text),
-        Err(err) if err.kind() == io::ErrorKind::NotFound => Err("none kept".to_owned()),
+        Err(err) if err.kind() == io::ErrorKind::NotFound => Err(NONE_KEPT.to_owned()),
         Err(err) => Err(err.to_string()),
     };
     unproven(
@@ -118,14 +123,20 @@ pub fn unproven(text: &str, probes: Result<&str, &str>, switches: &str, now: i64
     }
     let named = latest.values().any(names_probe);
     let runs = probes.map_err(ToOwned::to_owned).and_then(runs);
-    if let Err(why) = &runs {
-        eprintln!("cadence: the probe runs are unread, {why}; a tear its keeper must mend");
+    match &runs {
+        Err(why) if why == NONE_KEPT => {}
+        Err(why) => eprintln!("cadence: the probe runs are unread, {why}; its keeper must mend it"),
+        Ok(_) => {}
     }
     let by_ask = runs.as_ref().ok();
-    let switched: Vec<i64> = lines(switches).filter_map(|s| seconds(&s["at"])).collect();
+    let switch_times: Vec<i64> = lines(switches).filter_map(|s| seconds(&s["at"])).collect();
+    // A record holding lines but no time read is one in another shape, not
+    // none, so no pass is taken on it as if no switch had come.
+    let switches_unread =
+        switch_times.is_empty() && switches.lines().any(|line| !line.trim().is_empty());
     let (older, week): (Vec<_>, Vec<_>) = latest
         .values()
-        .filter_map(|ask| Some((ask, unproven_ask(ask, by_ask, &switched, now)?)))
+        .filter_map(|ask| Some((ask, unproven_ask(ask, by_ask, &switch_times, now)?)))
         .partition(|(_, (landed, _, _))| *landed < now - SINCE);
     let (unnamed, mut open): (Vec<_>, Vec<_>) =
         week.into_iter().partition(|(ask, _)| !names_probe(ask));
@@ -149,6 +160,7 @@ pub fn unproven(text: &str, probes: Result<&str, &str>, switches: &str, now: i64
     let unjudged = match (&runs, named) {
         (Err(why), _) => Some(format!("the probe runs unread: {}", clean(why))),
         (Ok(_), false) => Some("no ask names a probe yet".to_owned()),
+        (Ok(_), true) if switches_unread => Some("the switch record unread".to_owned()),
         (Ok(_), true) => None,
     };
     Measure {
@@ -207,15 +219,17 @@ fn runs(probes: &str) -> Result<BTreeMap<String, Vec<Run>>, String> {
 /// runs, as its keeper writes the id on every line it writes a probe on;
 /// with the `runs` unread, none is said to have run. One landed after every
 /// switch in `switched` isn't live yet, so its cell knows to chase the
-/// switch rather than the code, and a pass from before the first switch
+/// switch rather than the code, and a run from before the first switch
 /// since it landed proves nothing, as it ran on what doesn't carry it; with
-/// no switch record, any pass since it landed proves it.
+/// no switch record, or for an ask only the harness's install carries, any
+/// run since it landed counts.
 fn unproven_ask(
     ask: &Value,
     runs: Option<&BTreeMap<String, Vec<Run>>>,
     switched: &[i64],
     now: i64,
 ) -> Option<Unproven> {
+    let switched = if installed(ask) { &[] } else { switched };
     let landed = seconds(&ask["landed"])?;
     // Any `closed` puts it out: a twin folded into the ask that carries its
     // probe, one superseded or answered, or one an older pass closed done.
@@ -235,18 +249,20 @@ fn unproven_ask(
         // A run dated past now would stay the latest whatever runs after.
         .filter(|run| run.at >= landed && run.at <= now)
         .max_by_key(|run| run.at);
-    let live_from = switched.iter().copied().filter(|&at| at >= landed).min();
-    let unswitched = if !switched.is_empty() && live_from.is_none() {
+    let first_switch = switched.iter().copied().filter(|&at| at >= landed).min();
+    let unswitched = if !switched.is_empty() && first_switch.is_none() {
         ", not live yet, as no switch has come since it landed"
     } else {
         ""
     };
-    let live = |run: &Run| switched.is_empty() || live_from.is_some_and(|at| run.at >= at);
+    let on_switch = |run: &Run| switched.is_empty() || first_switch.is_some_and(|at| run.at >= at);
     let state = match (!names_probe(ask), last) {
-        (_, Some(run)) if run.passed && live(run) => return None,
-        (_, Some(run)) if run.passed => {
-            "its probe passed before a switch could carry it".to_owned()
-        }
+        (_, Some(run)) if run.passed && on_switch(run) => return None,
+        // A failure there says no more of the change than a pass does.
+        (_, Some(run)) if !on_switch(run) => format!(
+            "its probe {} before a switch could carry it",
+            if run.passed { "passed" } else { "failed" }
+        ),
         (true, _) => "it names no probe".to_owned(),
         (false, None) if runs.is_none() => "its probe runs unread".to_owned(),
         (false, None) => "its probe hasn't run since it landed".to_owned(),
@@ -258,7 +274,15 @@ fn unproven_ask(
     let owner = [&ask["answers"], &ask["owner"]]
         .into_iter()
         .filter_map(Value::as_str)
-        .map(|owner| first_owner(owner).replace(':', "?"))
+        // Only what an address can hold, so nothing in it can split its
+        // key, close the span its close command is given in, or reach a
+        // terminal.
+        .map(|owner| {
+            first_owner(owner)
+                .chars()
+                .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '#' | '-' | '_'))
+                .collect::<String>()
+        })
         .find(|owner| !owner.is_empty())
         .unwrap_or_else(|| KEEPER.to_owned());
     // Cleaned once shortened, as shortening turns any space into a plain one.
@@ -280,6 +304,13 @@ fn clean(text: &str) -> String {
         text = text.replace("; ", ";?").replace(" · ", " ? ");
     }
     text
+}
+
+/// Whether every change `ask`'s `pr` names is the harness's, which reaches
+/// the machine by its install rather than a switch.
+fn installed(ask: &Value) -> bool {
+    let named = at_risk::changes(ask["pr"].as_str().unwrap_or_default());
+    !named.is_empty() && named.iter().all(|(repo, _)| *repo == Repo::Harness)
 }
 
 /// Whether an ask names a probe: a field missing, null, false, blank or an

@@ -589,7 +589,91 @@ fn words_cant_forge_the_separators_a_line_is_split_on() {
         "an ask's words added a separator: {line}"
     );
     assert!(
-        line.ends_with(" · A?B"),
+        line.ends_with(" · AB"),
         "an owner's colon would split its key: {line}"
+    );
+}
+
+#[test]
+fn nothing_in_an_asks_words_or_cell_can_close_the_span_its_close_command_is_in() {
+    let ago = 3 * 3600;
+    let m = read(
+        &[landed(
+            "use `nix fmt` \"strictly\"",
+            ago,
+            "A`B\"C\u{1b}",
+            &json!({}),
+        )],
+        &[],
+    );
+    let line = &m.behind[0];
+    assert!(
+        !line.contains(['`', '"', '\u{1b}']),
+        "a backtick, double quote or escape reached the line: {line}"
+    );
+    assert!(
+        line.starts_with("use 'nix fmt' 'strictly', asked ") && line.ends_with(" · ABC"),
+        "the words or the cell were cleaned past reading: {line}"
+    );
+}
+
+#[test]
+fn a_run_before_the_switch_that_carries_it_is_said_so_whether_it_passed_or_failed() {
+    let ago = 3 * 3600;
+    let asks = list(&[landed("early", ago, "A", &json!({}))]);
+    let switches = [ago + 60, 1800]
+        .map(|before| json!({"at": at(NOW - before)}).to_string())
+        .join("\n");
+    let m = unproven(&asks, Ok(&run("early", 3600, false, 1199)), &switches, NOW);
+    assert!(
+        m.behind.first().is_some_and(|line| {
+            line.contains("; its probe failed before a switch could carry it · A")
+        }),
+        "a failure on what doesn't carry it read as the change failing: {:?}",
+        m.behind
+    );
+}
+
+#[test]
+fn an_ask_only_the_harness_carries_counts_a_pass_with_no_switch_since() {
+    let ago = 3 * 3600;
+    let harness = json!({"pr": "agentic-harness.pi#2326"});
+    let core = json!({"pr": "agentic-harness.pi#2326, core.nix#6835"});
+    let asks = list(&[
+        landed("installed", ago, "A", &harness),
+        landed("switched", ago, "B", &core),
+    ]);
+    let before = json!({"at": at(NOW - ago - 60)}).to_string();
+    let passes = [
+        run("installed", 600, true, 1199),
+        run("switched", 600, true, 1199),
+    ];
+    let m = unproven(&asks, Ok(&passes.join("\n")), &before, NOW);
+    assert_eq!(
+        m.behind
+            .iter()
+            .map(|line| line.split(", asked ").next())
+            .collect::<Vec<_>>(),
+        [Some("switched")],
+        "a harness ask waited on a switch, or one a switch carries didn't"
+    );
+}
+
+#[test]
+fn a_switch_record_in_another_shape_leaves_the_measure_unjudged() {
+    let ago = 3 * 3600;
+    let asks = list(&[landed("waits", ago, "A", &json!({}))]);
+    let passed = run("waits", 600, true, 1199);
+    let m = unproven(
+        &asks,
+        Ok(&passed),
+        &json!({"at": 1_794_000_000}).to_string(),
+        NOW,
+    );
+    assert_eq!(
+        (m.target, m.says.contains("the switch record unread")),
+        (None, true),
+        "a switch record read as none let any pass count: {}",
+        m.says
     );
 }
