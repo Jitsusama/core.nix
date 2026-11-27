@@ -246,27 +246,31 @@ fn a_send_whose_pass_asked_nothing_is_never_sent_again_without_its_words() {
 
 #[test]
 fn a_name_from_slack_quoted_back_in_a_failing_holds_no_alert_back() {
-    let dir = scratch("tell-self-quoted-name");
-    let (url, _) = gateway(|one: &Seen, _| match one.method.as_str() {
-        "initialize" => opened("s1"),
-        "tools/call" => tool(
-            &format!("could not post {}", one.params["arguments"]["message"]),
-            true,
-        ),
-        _ => status(202),
-    });
-    let mut gateway = Gateway::new(&url, sign_in(&dir).as_os_str());
-    let alert = Alert {
-        title: "Someone stopped agents in owner/rate_limited",
-        words: "stop",
-        link: "https://example.slack.com/archives/C1/p1",
-    };
-    let told = tell_self(&mut gateway, alert);
-    assert!(
-        matches!(told, Err(Missed::Unsure(_))),
-        "a failing quoting the title is the tool's failing, never a rate spent: {told:?}"
-    );
-    let _ = fs::remove_dir_all(&dir);
+    // Slack's word for a rate spent, and its word for a sign-in refused.
+    for word in ["rate_limited", "invalid_auth"] {
+        let dir = scratch(&format!("tell-self-quoted-{word}"));
+        let (url, _) = gateway(|one: &Seen, _| match one.method.as_str() {
+            "initialize" => opened("s1"),
+            "tools/call" => tool(
+                &format!("could not post {}", one.params["arguments"]["message"]),
+                true,
+            ),
+            _ => status(202),
+        });
+        let mut gateway = Gateway::new(&url, sign_in(&dir).as_os_str());
+        let title = format!("Someone stopped agents in owner/{word}");
+        let alert = Alert {
+            title: &title,
+            words: "stop",
+            link: "https://example.slack.com/archives/C1/p1",
+        };
+        let told = tell_self(&mut gateway, alert);
+        assert!(
+            matches!(told, Err(Missed::Unsure(_))),
+            "a failing quoting {word} in the title is the tool's failing: {told:?}"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
 }
 
 #[test]
