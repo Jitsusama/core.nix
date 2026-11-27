@@ -319,26 +319,34 @@ fn paused(config: &Config, following: &dyn Fn() -> bool) -> Option<String> {
     held::paused(config).filter(|_| following())
 }
 
-/// Each asked input a build waiting for a hold was built at. An ask at an
+/// Each asked input a build waiting for a hold was built at, and each one a
+/// switch left unended was for, since what that switch followed was never
+/// remembered. An ask at an
 /// input that moves only when asked is one whose move most often waits for
 /// a hold, and its commit is remembered only once it switches: without
 /// this, the next update builds that input at its pin, and its switch, or
 /// a newer wait, spends the ask. It's kept, never a floor, since it never
 /// ran, so a later ask may still step behind it. One a hold keeps off is
 /// let go, so the hold stops that ask rather than every update of main's.
+/// A switch cut off, as a Mac's activation cuts its daemon, would otherwise
+/// be undone by the next update, restarting what it restarted twice.
 fn waited_asks(config: &Config) -> follows::Followed {
-    waited(config)
-        .map(|waiting| {
-            waiting
-                .followed
-                .into_iter()
-                .filter(|(name, commit)| {
-                    config.follows.get(name).is_some_and(|f| f.asked)
-                        && !held::keeps_off(config, name, commit)
-                })
-                .collect()
-        })
-        .unwrap_or_default()
+    let waiting = waited(config)
+        .map(|waiting| waiting.followed)
+        .unwrap_or_default();
+    let left = begun(config)
+        .map(|begun| begun.followed)
+        .unwrap_or_default();
+    let mut asks = follows::Followed::new();
+    for (name, commit) in waiting.into_iter().chain(left) {
+        if !asks.contains_key(&name)
+            && config.follows.get(&name).is_some_and(|f| f.asked)
+            && !held::keeps_off(config, &name, &commit)
+        {
+            asks.insert(name, commit);
+        }
+    }
+    asks
 }
 
 /// Remembers main at `head` and its inputs at `followed` as what runs,
@@ -541,6 +549,7 @@ fn switch(
             system: left,
             previous: Some(previous),
             failed: Some(why),
+            ..
         }) if fs::canonicalize(&left).ok() == fs::canonicalize(built.system).ok() => {
             // Going back from this very system didn't finish, cut off as
             // a Mac's is when going back reloads its daemon too, or
@@ -588,6 +597,7 @@ fn switch(
         system: built.system.to_path_buf(),
         previous: previous.clone(),
         failed: None,
+        followed: followed.clone(),
     };
     if let Err(failure) = begin(config, &begun) {
         return failed(last, failure);
@@ -621,6 +631,11 @@ struct Begun {
     /// back cut off is finished rather than the switch made again.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     failed: Option<String>,
+    /// The inputs the switch builds at their followed commits, which are
+    /// remembered only once it ends, so an ask a cut-off switch was for is
+    /// kept by the next update. None while going back, which asks nothing.
+    #[serde(default, skip_serializing_if = "follows::Followed::is_empty")]
+    followed: follows::Followed,
 }
 
 fn begun_file(config: &Config) -> std::path::PathBuf {
@@ -741,6 +756,7 @@ fn going_back(
         system: system.to_path_buf(),
         previous: Some(previous.clone()),
         failed: Some(failure.why.clone()),
+        followed: follows::Followed::new(),
     };
     if let Err(unmarked) = begin(config, &begun) {
         eprintln!("{}", unmarked.why);
