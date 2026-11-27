@@ -84,10 +84,11 @@ type Unproven = (i64, String, String);
 /// Each ask is read from its latest line by its id, else when it was asked
 /// and its words, as the list writes an ask whole each time; a line with no
 /// id is the same ask as one with an id and its time and words. One he
-/// confirmed himself needs no probe, nor does one put down; one landed
-/// waits on no ruling, as the parked measure reads it, so a ruling it was parked on
-/// before can't keep it out. Each line names who answers for the ask's whole result, its
-/// `answers`, else its owner, else the list's keeper. Until any ask in the
+/// confirmed himself, whatever `confirmed` says, needs no probe, nor does
+/// one put down or closed in any other way; one landed waits on no ruling,
+/// as the parked measure reads it, so a ruling it was parked on before
+/// can't keep it out. Each line names who answers for the ask's whole
+/// result, its `answers`, else its owner, else the list's keeper. Until any ask in the
 /// list names a probe, or while the runs can't be read, the measure says so
 /// and goes unjudged, so no ask is asked for a probe its keeper hasn't
 /// written yet and an unread record never reads as none passed.
@@ -216,8 +217,12 @@ fn unproven_ask(
     now: i64,
 ) -> Option<Unproven> {
     let landed = seconds(&ask["landed"])?;
+    // Any `closed` puts it out: a twin folded into the ask that carries its
+    // probe, one superseded or answered, or one an older pass closed done.
+    // No open ask is ever closed.
     let waits = tracking::of(ask) == Some(Tracking::His)
         && unset(&ask["confirmed"])
+        && unset(&ask["closed"])
         && landed <= now - GRACE;
     if !waits {
         return None;

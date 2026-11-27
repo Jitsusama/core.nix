@@ -172,6 +172,62 @@ fn an_ask_he_confirmed_put_down_derived_or_still_open_needs_no_probe() {
 }
 
 #[test]
+fn a_landed_ask_closed_in_any_form_or_confirmed_in_words_needs_no_probe() {
+    let ago = 3 * 3600;
+    let closed = |words: &str, why: &str| landed(words, ago, "A", &json!({"closed": why}));
+    let m = read(
+        &[
+            closed(
+                "twin",
+                "folded into its identical twin x at 2026-11-26T09:00:00-05:00: same",
+            ),
+            closed("superseded", "superseded (by another)"),
+            closed("answered", "answered (in the thread)"),
+            closed("done", "2026-11-26T09:00:00-05:00"),
+            landed("agreed", ago, "B", &json!({"confirmed": true})),
+            landed(
+                "said so",
+                ago,
+                "B",
+                &json!({"confirmed": "agent: he said it works"}),
+            ),
+            landed("still owed", ago, "C", &json!({})),
+        ],
+        &[],
+    );
+    assert_eq!(
+        m.behind
+            .iter()
+            .map(|line| line.split(", asked ").next())
+            .collect::<Vec<_>>(),
+        [Some("still owed")],
+        "a closed or confirmed ask was asked, or the one still owed wasn't"
+    );
+}
+
+#[test]
+fn an_ask_landed_at_his_own_offset_is_read_at_its_true_time() {
+    // The list writes every time with -05:00, never Z; one landed an hour
+    // ago by the clock there is an hour old, not inside the grace.
+    let five = 5 * 3600;
+    let local = |ago: i64| {
+        let at = jiff::Timestamp::from_second(NOW - ago - five).expect("a time");
+        format!("{}-05:00", at.strftime("%Y-%m-%dT%H:%M:%S"))
+    };
+    let late = landed("late", 3600, "A", &json!({"landed": local(3600)}));
+    let old = landed("old", 3 * 3600, "A", &json!({"landed": local(3 * 3600)}));
+    let m = read(&[late, old], &[]);
+    assert_eq!(
+        m.behind
+            .iter()
+            .map(|line| line.split(", asked ").next())
+            .collect::<Vec<_>>(),
+        [Some("old")],
+        "an offset time was misread, so the grace slipped by five hours"
+    );
+}
+
+#[test]
 fn an_ask_parked_on_a_ruling_before_it_landed_is_still_asked_once_landed() {
     let parked = landed("parked", 3 * 3600, "B", &json!({"parked": "b95ea57b"}));
     let m = read(&[parked], &[]);
