@@ -581,6 +581,32 @@ def test_the_map_draws_before_the_node_says_what_passed(
     opened.close()
 
 
+# Messages that never answer leave the map drawn, and past ten seconds it
+# says it is still waiting on them rather than reading them for good. A
+# busy node took 14 s on 26 November, so a slow one is said as waited on too.
+WAITING_TALK = "Still waiting on what passed between cells."
+TALK_PATIENCE_MS = 10_000
+
+
+def test_the_map_says_it_still_waits_on_messages_that_never_answer(
+    browser: Browser, slow_talk_served: Served
+) -> None:
+    root, _ = slow_talk_served
+    opened = Opened(browser, f"{root}mycelium/", SIZES[-1], "dark")
+    page = opened.page
+    the_map_stands(page, "live")
+    asof = page.locator("#asof")
+    expect(asof, "the map didn't say it was reading what passed").to_contain_text(READING_TALK)
+    expect(asof, "the map still said it was reading what never answered").to_contain_text(
+        WAITING_TALK, timeout=TALK_PATIENCE_MS + PACE_MS
+    )
+    expect(asof, "the map said it was reading and waiting at once").not_to_contain_text(
+        READING_TALK
+    )
+    expect(asof, "a map waiting on its messages wasn't said live").to_contain_text("Live from")
+    opened.close()
+
+
 # The networks node.json's realm leads, each drawn as a hub, and the one
 # branching from another, as a mind map branches.
 NETWORKS = ("orchestration.skiff1", "orchestration.tern01", "orchestration.heron1")
