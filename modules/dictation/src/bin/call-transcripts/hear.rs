@@ -50,6 +50,8 @@ use crate::presence::{self, Present, Spoke, Who};
 use crate::split::{self, Piece};
 use crate::{notices, said};
 
+mod journal;
+
 /// How long Parakeet is kept once the last call is written, so a call
 /// rejoined soon after needn't load it again.
 const UNUSED: Duration = Duration::from_mins(2);
@@ -86,12 +88,8 @@ pub enum Job {
 /// say who the voices left numbered may be, once it's told apart; they
 /// aren't in its lines, so a restart loses them. Its first `read` lines
 /// were read back from its file, their echoes already left out. Its
-/// `told` are the echo cuts from Joel's words journaled and not since
-/// written back, how many words each, by the sample the cut starts at,
-/// and `left` the lines of his already journaled as left out whole, by
-/// the sample each starts at: splitting their takes by voice moves his
-/// lines' indices on but never their times, so what's told stays told
-/// across a rejoin. Its `sound` is how loud each take of theirs heard
+/// `told` is what the journal was told of Joel's side left out as their
+/// echo (journal.rs). Its `sound` is how loud each take of theirs heard
 /// was, words or none, so his words far under it are cut as their echo; one
 /// taken up from its file starts with none, since sound is never kept.
 #[derive(Default)]
@@ -105,8 +103,7 @@ struct Writing {
     takes: usize,
     whole: bool,
     guesses: Option<String>,
-    told: HashMap<usize, usize>,
-    left: HashSet<usize>,
+    told: journal::Told,
     sound: Track,
 }
 
@@ -115,62 +112,6 @@ struct Writing {
 type Embedded = (Vec<f32>, usize, usize);
 
 impl Writing {
-    /// What's newly left out of Joel's side as the others' echo, or
-    /// written back, a journal line each, said once: for words cut from a
-    /// line, how many, when and what they were cut by (`Cut::by`); for
-    /// words told cut that the call written again keeps, as it may once
-    /// more of his words are heard alone, how many and when; for a line
-    /// left out whole, how many words and when. Never the words, since a
-    /// call's words stay out of the journal. What's wrongly left out is
-    /// gone from the file, so this is all that says where to listen for
-    /// it.
-    fn untold_cuts(&mut self) -> Vec<String> {
-        let (cut, cuts) = echo::cut_echoes(&self.lines, &self.words, &self.sound, said::spoken);
-        let cutting: HashSet<usize> = cuts.iter().map(|cut| cut.at).collect();
-        let mut back: Vec<(usize, usize)> = Vec::new();
-        self.told.retain(|at, words| {
-            let still = cutting.contains(at);
-            if !still {
-                back.push((*at, *words));
-            }
-            still
-        });
-        back.sort_unstable();
-        let mut untold: Vec<String> = back
-            .into_iter()
-            .map(|(at, words)| {
-                format!(
-                    "call-transcripts: {words} of Joel's words at {} written back",
-                    transcript::clock(at),
-                )
-            })
-            .collect();
-        for cut in cuts {
-            let words = cut.text.split_whitespace().count();
-            if self.told.insert(cut.at, words).is_none() {
-                untold.push(format!(
-                    "call-transcripts: {words} of Joel's words at {} cut as their echo, {}",
-                    transcript::clock(cut.at),
-                    cut.by(),
-                ));
-            }
-        }
-        let mut left: Vec<usize> = split::echoing(&cut, &self.pieces, self.read)
-            .into_iter()
-            .filter(|&index| self.left.insert(self.lines[index].start))
-            .collect();
-        left.sort_unstable();
-        untold.extend(left.into_iter().map(|index| {
-            format!(
-                "call-transcripts: a line of Joel's, {} words at {}, left out whole as \
-                 their echo",
-                cut[index].text.split_whitespace().count(),
-                transcript::clock(cut[index].start),
-            )
-        }));
-        untold
-    }
-
     /// What the daemon goes on with from a take of `side`'s, `start` samples
     /// into the call, `heard` from its `samples` (`heard_or_left_out`),
     /// keeping how loud it was when it's theirs and heard, words or none,
