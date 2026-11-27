@@ -1178,7 +1178,8 @@
     what's inert or held by a role that flattens its children unheard, while another banner,
     heading or live region counts wherever a browser may draw or hear it, in SVG, MathML or
     fallback, shown again under visibility, drawn clear or styled past reading, and no shadow
-    root is attached: its one banner, holding none,
+    root is attached, nothing marks aria-owns and no iframe, embed or object with data draws
+    another document: its one banner, holding none,
     by tag or role, inside no other and in no section by tag or role, its title the first
     heading of any level, each part drawn and heard, an eyebrow of two phrases drawn and heard
     split by the kit's one dot, the title, a lede, the standing line and the quiet row in that
