@@ -4,17 +4,17 @@
 //!
 //! The trees a cargo or installs source walks to, and the budget a cargo
 //! source's builds are held to, are in `builds`; what every other kind of
-//! source offers is in `offers`. What they all share, the offer itself,
+//! source offers is in `sources`. What they all share, the offer itself,
 //! what a survey judges by, and how an entry is sized, is here.
 
 mod builds;
-mod offers;
+mod sources;
 
 pub use builds::{
     BUDGET_LOOKS_EVERY, BUDGET_RECENT, BUDGET_UNHEARD, REPLACED_UNUSED, budget_bytes, past_budget,
 };
 use builds::{Walks, hold_to_budget, trees_under};
-use offers::{
+use sources::{
     Worked, offer_cache, offer_coredumps, offer_git, offer_logs, offer_nix_builds, offer_podman,
     offer_producer, offer_scratch, offer_snapshots, offer_store_roots, offer_temp, offer_trash,
     offer_workspaces,
