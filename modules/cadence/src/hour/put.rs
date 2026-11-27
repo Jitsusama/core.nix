@@ -63,24 +63,30 @@ pub fn asks(told: Vec<(String, String)>) -> Vec<(String, String)> {
 /// The states a session mirrored from another machine says it's there in.
 const THERE: [&str; 3] = ["busy", "listening", "parked"];
 
-/// When `presence` says it was written, in seconds, if it says so readably.
-fn said_at(presence: &Presence) -> Option<i64> {
+/// When `presence` says it was written, if it says so readably, to the
+/// fraction of a second it says.
+fn written(presence: &Presence) -> Option<jiff::Timestamp> {
     presence
         .at
         .as_str()
         .and_then(|t| t.parse::<jiff::Timestamp>().ok())
-        .map(jiff::Timestamp::as_second)
+}
+
+/// When `presence` says it was written, in seconds, if it says so readably.
+fn said_at(presence: &Presence) -> Option<i64> {
+    written(presence).map(jiff::Timestamp::as_second)
 }
 
 /// The newest presence of the session going by `address`, in any case,
 /// by the moment each says it was written: one with no readable moment
 /// ranks below every dated one, so a file missing its time can't decide
-/// where a question goes.
+/// where a question goes; two in one second are told apart by its
+/// fraction, never by which was read last.
 pub fn newest<'a>(presences: &'a [Presence], address: &str) -> Option<&'a Presence> {
     presences
         .iter()
         .filter(|p| p.addresses.iter().any(|a| a.eq_ignore_ascii_case(address)))
-        .max_by_key(|p| said_at(p))
+        .max_by_key(|p| written(p))
 }
 
 /// Whether the mesh can reach the session going by `address` at `now`, in
