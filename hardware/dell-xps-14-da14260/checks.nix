@@ -471,26 +471,15 @@ in
   # and later, never asked for the 4K tiles anv draws a memory object in.
   # Read from the source of the Mesa the XPS 14's graphics drivers are,
   # with its patches, that preference no longer hangs off the branch every
-  # memory object takes first.
+  # memory object takes first (tests/iris-tiles-memory-objects-as-anv-does.sh).
   iris-tiles-memory-objects-as-anv-does =
     let
       mesa = (bareNixos [ self.nixosModules.dell-xps-14-da14260 ]).config.hardware.graphics.package;
       resource = "src/gallium/drivers/iris/iris_resource.c";
-      memoryObject = "(!res->mod_info && res->external_format != PIPE_FORMAT_NONE) {";
+      file = "${patched mesa.src mesa.patches [ resource ]}/${resource}";
     in
     pkgs.runCommandLocal "iris-tiles-memory-objects-as-anv-does" { } ''
-      cd ${patched mesa.src mesa.patches [ resource ]}
-      fail() {
-        echo "iris $1, so WebGPU canvases in Chrome show as a checkerboard."
-        exit 1
-      }
-      grep -qxF '   if ${memoryObject}' ${resource} ||
-        fail "has no branch of its own for a memory object where this check looks"
-      ! grep -qF 'else if ${memoryObject}' ${resource} ||
-        fail "prefers 4K tiles for a memory object only when no branch before it matched"
-      grep -A2 -F '   if ${memoryObject}' ${resource} |
-        grep -qF 'ISL_SURF_USAGE_PREFER_4K_ALIGNMENT' ||
-        fail "doesn't prefer 4K tiles for a memory object"
+      ${lib.getExe pkgs.bash} ${./tests/iris-tiles-memory-objects-as-anv-does.sh} ${file}
       touch $out
     '';
 
