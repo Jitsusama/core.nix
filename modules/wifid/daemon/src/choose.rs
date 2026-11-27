@@ -1068,12 +1068,31 @@ impl Chooser {
 
     /// Whether the card may give way during a call now: not within
     /// `fading::BETWEEN` of its last move, whether it gave way or was
-    /// chosen, so it races no move under way, nor while a refusal or a
-    /// second miss holds it, the second unless its link is `gone`.
+    /// chosen, so it races no move under way; nor while its last give-way
+    /// is still followed, so the next can't take its place unjudged; nor
+    /// while a refusal or a second miss holds it, the second unless its
+    /// link is `gone`.
     pub fn may_give_way(&self, now: Instant, gone: bool) -> bool {
         let refused = self.refusal_holds.is_some_and(|from| now < from);
         let missed = !gone && self.gives_way_from.is_some_and(|from| now < from);
-        !self.lately_moved(now) && !refused && !missed
+        !self.lately_moved(now) && !self.following(now) && !refused && !missed
+    }
+
+    /// Whether the last give-way is still followed (`followed`): not found
+    /// where it went, and not yet answered or answered within
+    /// `fading::BETWEEN`. A move to a point unheard answers only once its
+    /// look ends, up to `acts::LOOKING` after the ask, so a hold counted
+    /// from the ask alone let the next give-way take the place of one not
+    /// yet judged, and a point out of reach was asked for again each
+    /// `fading::BETWEEN`, never kept off. Every move answers, as each wait
+    /// it makes ends.
+    fn following(&self, now: Instant) -> bool {
+        self.gave.as_ref().is_some_and(|gave| {
+            !gave.stood
+                && gave.answered.is_none_or(|answered| {
+                    now.saturating_duration_since(answered) < fading::BETWEEN
+                })
+        })
     }
 
     /// Whether the call's give-ways began being held a settle, as a
@@ -3438,6 +3457,35 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_give_way_answered_late_holds_the_next_until_it_is_judged() {
+        let mut chooser = Chooser::default();
+        let start = Instant::now();
+        chooser.gave_way(start, (DESK, HALL), LOSING);
+        // A move to a point unheard answers once its look ends, 15 s at most.
+        let answered = start + Duration::from_secs(15);
+        chooser.answered(answered, HALL, start);
+        let asked_again = start + fading::BETWEEN;
+        chooser.followed(asked_again, DESK);
+        let held = !chooser.may_give_way(asked_again, false);
+        let judged = answered + fading::BETWEEN;
+        chooser.followed(judged, DESK);
+
+        assert!(
+            held,
+            "a give-way not yet judged could be replaced by the next, never keeping its point off"
+        );
+        assert_eq!(
+            chooser.unreached(),
+            Some((HALL.into(), SPURNED)),
+            "a give-way BETWEEN past its answer wasn't judged never reached"
+        );
+        assert!(
+            chooser.may_give_way(judged, false),
+            "a give-way judged still held the next"
+        );
+    }
+
+    #[test]
     fn a_second_give_way_never_reached_within_an_hour_holds_give_ways_a_settle() {
         let mut chooser = Chooser::default();
         let start = Instant::now();
@@ -3511,9 +3559,15 @@ pub(crate) mod tests {
         // A call then gives way once and misses, well within the hour.
         let call = back + SETTLE;
         chooser.gave_way(call, (DESK, NEAR), LOSING);
+        chooser.answered(call, NEAR, call);
         let missed = call + fading::BETWEEN;
         chooser.followed(missed, DESK);
 
+        assert_eq!(
+            chooser.unreached(),
+            Some((NEAR.into(), SPURNED)),
+            "the give-way was never judged, so its miss proves nothing"
+        );
         assert!(
             chooser.may_give_way(missed, false),
             "a trial's miss and one give-way's held the call's give-ways a settle"
