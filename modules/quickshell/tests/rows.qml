@@ -1473,6 +1473,22 @@ ShellRoot {
                 .map(pair => `"${pair.one.text}" ${pair.one.face} to ${pair.now}`);
             expect("filling a field turns no text's face", turned.length === 0,
                 turned.join("; "));
+            // A walk from outside holds what the field shows unread until Joel types a key,
+            // dropping none of his keys, and a modifier alone is no key typed (round 000036 on
+            // #6796, F141).
+            filled.unlinked();
+            filled.walked();
+            const key = name => ({ key: Qt[name], isAutoRepeat: false });
+            expect("a field a walk opened is unread", filled.readWaits, "it reads as read");
+            expect("a walk drops no key", !filled.heldForLink(key("Key_Shift")),
+                "Shift was dropped");
+            expect("a modifier alone leaves it unread", filled.readWaits, "Shift read it");
+            expect("nor a letter", !filled.heldForLink(key("Key_A")), "a letter was dropped");
+            expect("a key typed reads it", !filled.readWaits, "a letter left it unread");
+            filled.walked();
+            filled.unlinked();
+            expect("a field put away holds nothing unread", !filled.readWaits,
+                "it stayed unread");
             const plainRow = root.setting(plainSaid, root.voice);
             const voicedRow = root.setting(voicedSaid, root.voice);
             expect("a row's words in the voice, on the mono's baseline",

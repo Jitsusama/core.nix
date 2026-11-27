@@ -252,7 +252,15 @@ Item {
     // Whether what the line shows counts as read by Joel only once he's typed a key in it,
     // as Return waits: any process of the account's can open one by a link, and an answer
     // under a field nobody's at is nobody's reading (round 000022 on #6796, F58).
-    readonly property bool readWaits: returnWaits
+    readonly property bool readWaits: returnWaits || walkHeld
+    // Whether a walk from outside opened what the line shows, which holds it unread until Joel
+    // types a key, as a link's does, but drops none of his keys: a walk opens on a place, not
+    // under his next Return, and an answer left in sight by one is nobody's reading (round
+    // 000036 on #6796, F141).
+    property bool walkHeld: false
+    function walked() {
+        walkHeld = true;
+    }
     // How many keys the quiet dropped since the line opened, which Super+S's line and the
     // launcher's field each say in the launcher's showing, so a check knows which of its keys
     // came inside it however late they landed. A press repeated because its release came late
@@ -278,6 +286,7 @@ Item {
         quietUntil = 0;
         quietDropped = 0;
         returnWaits = false;
+        walkHeld = false;
         endWaits = false;
     }
     function heldForLink(event) {
@@ -291,12 +300,15 @@ Item {
             endWaited();
             return true;
         }
+        // A modifier pressed alone is no key typed.
+        const typed = !KeyNames.alone(event.key, Qt);
+        if (typed)
+            walkHeld = false;
         if (!returnWaits)
             return false;
         if (returning)
             return true;
-        // A modifier pressed alone is no key typed.
-        if (!KeyNames.alone(event.key, Qt))
+        if (typed)
             returnWaits = false;
         return false;
     }

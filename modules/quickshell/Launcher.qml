@@ -1825,6 +1825,8 @@ Scope {
         if (Catalogue.kindOf(target) === "place") {
             open = true;
             goTo({ trail: ids, spot: "" });
+            // What it shows isn't Joel's reading until he types (Prompt.qml's walked).
+            prompt.walked();
             // Said opened only where the walk got (launcher/Reached.js).
             if (!Reached.reached(held.map(step => steadyId(step.row)), ids))
                 return { done: false, said: `${said} didn't open` };
@@ -2116,6 +2118,7 @@ Scope {
         if (Catalogue.kindOf(target) === "place") {
             open = true;
             goTo({ trail: ids, spot: "" });
+            prompt.walked();
             // A place that refused its step, as Passwords does while it's
             // walked from outside, is `unopened`, which the terminal says in
             // its own words, never that it opened.
