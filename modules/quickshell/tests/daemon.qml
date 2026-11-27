@@ -37,8 +37,8 @@
 // reads when its line was heard, and one of a watch's whole answer, or one
 // it puts off, reads none. Each daemon's lines and their length are
 // counted by its name, for the launcher's census, and begun again once
-// said. A going says the asks it left unanswered, apart where the shell
-// let the connection go itself. A client
+// said. A going says the asks it left unanswered, said as let go where the
+// shell let the connection go itself. A client
 // holding its wire watches neither its socket nor its folder. A socket that refuses is tried again twice as late
 // each time, a minute at most, counted again from its next answer. Each
 // step waits on what the client says, at most ten seconds.
@@ -103,6 +103,8 @@ ShellRoot {
         kind: "person"
     }
     property bool letGo: false
+    // Whether the daemon's starting step has connected the let-go link again.
+    property bool relinked: false
     // What its ask in flight was given as it went: undefined until then.
     property var letGoGiven: undefined
 
@@ -419,13 +421,22 @@ ShellRoot {
             run: () => {
                 peopleRunning.running = true;
             },
-            // The let-go link shares this daemon's socket through a symlink
-            // and may connect only on its tries, the last of its first three
-            // 14 s in, so it's waited for here, as long as a restart's, rather
-            // than inside the let-go step's ten seconds.
+            // The let-go link shares this daemon's socket through a symlink,
+            // whose target appearing its file watch may not see, and its own
+            // tries end 14 s in, so a daemon slower than that to start on a
+            // busy builder could leave it unconnected. Once the daemon
+            // answers, the link is connected again here, once, and waited for
+            // as long as a restart's, rather than inside the let-go step's ten
+            // seconds.
             polls: 400,
-            holds: () => people.state === "answering" && "slack" in people.sources
-                && lettingGo.wire !== null
+            holds: () => {
+                const answering = people.state === "answering" && "slack" in people.sources;
+                if (answering && lettingGo.wire === null && !root.relinked) {
+                    root.relinked = true;
+                    lettingGo.connectAgain();
+                }
+                return answering && lettingGo.wire !== null;
+            }
         },
         {
             what: "a watch narrowed to those listed holds them alone",

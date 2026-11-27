@@ -16,8 +16,21 @@ const CELL = "cell/";
 /** A session's address on the mesh: capitals and digits, twelve at most. */
 const ADDRESS = /^[A-Z0-9]{1,12}$/u;
 
-/** A machine's name: letters, digits, dots, hyphens and underscores, a letter or digit first. */
-const MACHINE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u;
+/**
+ * A name a link may carry, a machine's or a network's, as mycelium-link's
+ * `named` lets one through: up to 64 letters, digits, dots, hyphens and
+ * underscores, a letter or digit first.
+ */
+const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u;
+
+/**
+ * Whether `name` is one a mycelium link may carry, as a machine or a
+ * network. The map's tests hold it to mycelium-link's own cases
+ * (modules/mycelium/site/tests/machines.txt).
+ */
+function isNamed(name: string): boolean {
+  return NAME.test(name);
+}
 
 /** What may follow a cell's name in its link: a step such as `/go`, a query or an anchor. */
 const AFTER = /[/?#]/u;
@@ -42,7 +55,7 @@ function addressIn(named: string): string | null {
   const [name = ""] = rest.split(AFTER);
   const at = name.indexOf("@");
   const address = at === -1 ? name : name.slice(0, at);
-  const placed = at === -1 || MACHINE.test(name.slice(at + 1));
+  const placed = at === -1 || isNamed(name.slice(at + 1));
   return placed && ADDRESS.test(address) ? address : null;
 }
 
@@ -55,8 +68,8 @@ function cellLink(address: string, machine?: string | null): string | null {
   if (!ADDRESS.test(address)) {
     return null;
   }
-  const on = machine !== undefined && machine !== null && MACHINE.test(machine);
+  const on = machine !== undefined && machine !== null && isNamed(machine);
   return on ? `${SCHEME}${CELL}${address}@${machine}` : `${SCHEME}${CELL}${address}`;
 }
 
-export { addressIn, cellLink };
+export { addressIn, cellLink, isNamed };
