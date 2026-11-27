@@ -26,6 +26,7 @@ a folder.
 | `offload-lines-gcloud.sh`                        | that test's stand-in gcloud, saying what it lent                 |
 | `pi-conversations-come-back.nix`, `-vm-test.py`  | a pi host's conversations back after a kill -9 and a reboot      |
 | `pi-conversations-come-back-ask.mjs`             | that test's request to a pi host's socket                        |
+| `pi_conversations_read.py`, `-read-test.py`      | how that test's failures say what they read, and its cases       |
 | `pi-hosts-recover.nix`, `-vm-test.py`            | a wedged pi host restarted, one always crashing left down        |
 | `pi-hosts-recover-host.sh`                       | that test's stand-in node, ready and pinging as a host is        |
 | `switch-outruns-home-manager.nix`, `-vm-test.py` | a switch starting what it stopped while an account's setup hangs |

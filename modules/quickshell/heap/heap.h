@@ -144,12 +144,14 @@ public:
     // through every other property of the objects those reach. Every other
     // holder stays as it is, so memory it shares with another is kept by
     // that other. What an object nothing reaches holds, the sweep's
-    // anyway, isn't counted. It counts the heap's own items: the text a
-    // string keeps outside the heap, and what C++ keeps for an object the
-    // collector would delete, aren't counted, nor is the storage of an
-    // object of the holder's own file that only the holder keeps, a few
-    // bytes each, though all its values reach is. `held`, whether any property
-    // so named holds a value the heap keeps; `freed`, its megabytes;
+    // anyway, isn't counted. It counts the heap's own items, and the text
+    // their strings keep outside the heap, as weigh()'s `outside` counts it,
+    // where no other QString shares it, since shared text isn't freed. What
+    // C++ keeps for an object the collector would delete isn't counted, nor
+    // is the storage of an object of the holder's own file that only the
+    // holder keeps, a few bytes each, though all its values reach is.
+    // `held`, whether any property so named holds a value the heap keeps;
+    // `freed`, its megabytes; `outside`, the megabytes of that text;
     // `count`; `ms`; `said`, one line naming it, or saying no property
     // holds anything so named; and, only when one holds something,
     // `holder`. It marks with the collector's own marks and clears them, so
