@@ -3,10 +3,12 @@
 # commit made over pipes is signed with the agents' key and asks nothing; one
 # made at a terminal is signed with Joel's key, after its PIN and a
 # confirmation; a refused confirmation leaves no commit, and one left
-# unanswered holds up no harness's commit. git verifies each
-# signature against the key that should have made it, and trusts the signers
-# the module lists without losing how it signs. The tests are
-# signing-vm-test.py, run under pytest.
+# unanswered holds up no harness's commit. The agents' socket stays off until
+# their key is made and listens once it is; stopped by hand, it listens again
+# until its path unit is stopped first, and starting that unit brings it back.
+# git verifies each signature against the key that should have made it, and
+# trusts the signers the module lists without losing how it signs. The tests
+# are signing-vm-test.py, run under pytest.
 { self, pkgs }:
 let
   pin = "2468";

@@ -455,8 +455,9 @@ fn told_as(row: &Value) -> String {
 }
 
 /// Tells each row new since the last: a notice for a live one, and for
-/// every one a line in would-tell.jsonl, written as it first appears,
-/// which Joel's phone is told from (src/bin/pineapple-slack/alerts.rs).
+/// every one a line in would-tell.jsonl, written as it first appears and
+/// before any notice of the look is knocked, which Joel's phone is told
+/// from (src/bin/pineapple-slack/alerts.rs).
 /// What's told is kept only for rows standing, so it never grows past
 /// them, and the notice of one that no longer stands is closed. A live
 /// row whose notice couldn't be sent isn't told yet: `unknocked` keeps
@@ -483,6 +484,15 @@ fn tell_new(
         stands
     });
     let mut moved = told.len() != before;
+    // Every new row is written down first, so Joel's phone is held up by
+    // no notices server slow to answer, for this row or one before it.
+    let mut written = BTreeSet::new();
+    for row in served.iter().chain(shadow) {
+        let key = told_as(row);
+        if !told.contains_key(&key) && !unknocked.contains_key(&key) && written.insert(key) {
+            write_down(state, row, row["shadow"] == false);
+        }
+    }
     for row in served.iter().chain(shadow) {
         let key = told_as(row);
         if told.contains_key(&key) {
@@ -493,11 +503,6 @@ fn tell_new(
             continue;
         }
         let live = row["shadow"] == false;
-        // Written before its knock, so Joel's phone isn't held up by a
-        // notices server slow to answer.
-        if tried.is_none() {
-            write_down(state, row, live);
-        }
         let knock = match knocking.notify {
             Some(program) if live => Some(notice(program, row)),
             _ => None,
@@ -835,6 +840,61 @@ mod tests {
             written.lines().count(),
             1,
             "written down only at its first look: {written}"
+        );
+        fs::remove_dir_all(&state).expect("the state folder goes");
+    }
+
+    #[test]
+    fn a_look_writes_every_new_row_down_before_it_knocks_any() {
+        use std::os::unix::fs::PermissionsExt;
+        let state =
+            std::env::temp_dir().join(format!("pineapple-written-first-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&state);
+        fs::create_dir_all(&state).expect("a state folder");
+        let would = state.join("would-tell.jsonl");
+        // Knocks only once both rows are written down, so a knock run
+        // before either is refused and kept to try again.
+        let notify = state.join("notify-send");
+        let script = format!(
+            "#!/bin/sh\ncase $(cat {}) in *slack:C5:1.0*slack:C6:1.0*) exit 0 ;; esac\nexit 1\n",
+            would.display()
+        );
+        fs::write(&notify, script).expect("a stand-in is written");
+        fs::set_permissions(&notify, fs::Permissions::from_mode(0o755)).expect("it runs");
+        let knocking = Knocking {
+            notify: Some(&notify),
+            busctl: None,
+            again: Duration::from_secs(10),
+        };
+        let row = |key: &str| {
+            json!({"key": key, "saying": "pineapple override", "shadow": false,
+                "title": "Someone stopped agents", "words": "w", "link": "l"})
+        };
+        let (mut told, mut unknocked) = (BTreeMap::new(), BTreeMap::new());
+        let live = [
+            row("slack:C5:1.0"),
+            row("slack:C6:1.0"),
+            row("slack:C5:1.0"),
+        ];
+        let now = Instant::now();
+        tell_new(
+            &state,
+            &live,
+            &[],
+            &knocking,
+            &mut told,
+            &mut unknocked,
+            now,
+        );
+        assert!(
+            told.len() == 2 && unknocked.is_empty(),
+            "each knocked at its first try, both written down by then: {told:?} {unknocked:?}"
+        );
+        let written = fs::read_to_string(&would).unwrap_or_default();
+        assert_eq!(
+            written.lines().count(),
+            2,
+            "a row standing twice is written down once: {written}"
         );
         fs::remove_dir_all(&state).expect("the state folder goes");
     }
