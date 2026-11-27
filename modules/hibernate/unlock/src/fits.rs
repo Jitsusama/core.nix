@@ -272,7 +272,11 @@ mod tests {
             ..zones
         };
         let fit = |zones| Fit::of(memory, zones, GIB, swap_room(SWAPS));
-        assert_eq!(fit(zones).least - fit(more).least, 100 * PAGE);
+        assert_eq!(
+            fit(zones).least.checked_sub(fit(more).least),
+            Some(100 * PAGE),
+            "the parked pages weren't counted as free"
+        );
         assert_eq!(fit(zones).most, fit(more).most);
     }
 
@@ -337,7 +341,11 @@ mod tests {
         let memory = Memory::parse(LAPTOP).unwrap();
         let zones = Zones::parse(ZONES);
         let room = |room| Fit::of(memory, zones, GIB, room).least;
-        assert_eq!(room(100 * PAGE) - room(8 * GIB), memory.anon - 100 * PAGE);
+        assert_eq!(
+            room(100 * PAGE).checked_sub(room(8 * GIB)),
+            memory.anon.checked_sub(100 * PAGE),
+            "anonymous memory past the swap's room wasn't kept in use"
+        );
     }
 
     #[test]
@@ -397,6 +405,10 @@ mod tests {
     fn anonymous_memory_swap_has_no_room_for_stays() {
         let memory = Memory::parse(LAPTOP).unwrap();
         let without = Fit::of(memory, Zones::parse(ZONES), GIB, 0);
-        assert_eq!(without.least - laptop(GIB).least, 734_216_192);
+        assert_eq!(
+            without.least.checked_sub(laptop(GIB).least),
+            Some(734_216_192),
+            "anonymous memory with no swap room wasn't kept in use"
+        );
     }
 }
