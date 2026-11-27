@@ -6,17 +6,21 @@
 # act on; the build sandbox has no network and no account either, so even a
 # tuple that went further could reach nobody. A dash-led name counted among
 # the names shows "--" still ends tuple's flags. The same names without "--"
-# must be refused as a flag. They come with two names more, so a tuple that
-# stopped reading flags, or read the name as a flag taking a value, still
-# has too many names and refuses them by count rather than going on.
+# must be refused as a flag. They come with names enough more that a tuple
+# that stopped reading flags, or read the name as a flag taking a value,
+# the next word with the long form, still has too many names and refuses
+# them by count rather than going on.
 set -euo pipefail
 
 # The check stops Tuple's daemon as it ends, and on a machine signed in to
-# Tuple that would be the person's own, so the script runs only in the
-# build its check makes, where HOME and XDG_RUNTIME_DIR are the build's
-# folder and the daemon it reaches is the one the probes started.
-if [[ -z ${NIX_BUILD_TOP:-} ]]; then
-  echo "tuple-ends-its-flags.sh runs only in its check's build: it stops Tuple's daemon" >&2
+# Tuple that would be the person's own. Tuple finds its daemon by HOME and
+# XDG_RUNTIME_DIR, so the script runs only where both are in the folder it
+# runs in, as its check sets them, and the daemon it reaches is the one the
+# probes started. A shell of the repository's, or any shell of the
+# person's, has neither there.
+if [[ ${HOME:-} != "$PWD" || ${XDG_RUNTIME_DIR:-} != "$PWD"/* ]]; then
+  echo "tuple-ends-its-flags.sh stops Tuple's daemon, so it runs only in its check's build:" \
+    "build checks.<system>.tuple-ends-its-flags instead" >&2
   exit 1
 fi
 
@@ -36,8 +40,11 @@ refuses() {
     exit 1
   else
     local status=$?
+    # 124 is the limit's SIGTERM, and 137 a SIGKILL, the limit's five
+    # seconds on or anything else's, as an out-of-memory kill.
     if [[ $status -eq 124 || $status -eq 137 ]]; then
-      echo "tuple $* went on past ten seconds rather than refusing; it said \"$(< "$said")\"" >&2
+      echo "tuple $* was cut off (status $status) rather than refusing; it said" \
+        "\"$(< "$said")\"" >&2
       exit 1
     fi
   fi
@@ -57,4 +64,4 @@ for name in -dashed@example.com --dashed@example.com; do
   refuses "received 2" contacts unfavorite -- "$name" another
 done
 refuses "unknown shorthand flag" call start -dashed@example.com another more
-refuses "unknown flag" call start --dashed@example.com another more
+refuses "unknown flag" call start --dashed@example.com another more still

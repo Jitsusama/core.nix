@@ -6292,7 +6292,8 @@
   tuple-ends-its-flags = ''
     The real tuple takes a name that starts with a dash after "--" as a name, never a flag, for each
     command the launcher runs on a contact: call start, call join, and contacts favorite and
-    unfavorite
+    unfavorite; and its script, which stops Tuple's daemon, reaches no tuple from a shell outside
+    its build
   '';
   tuple-keeps-its-logs = ''
     Tuple's service keeps the daemon's last three logs, newest first, before it starts, and an empty
