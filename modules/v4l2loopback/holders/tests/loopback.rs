@@ -771,8 +771,8 @@ fn a_moved_cameras_holders_file_a_usb_cameras_run_removed_is_written_again() {
         "the camera it moved to was said off while held",
     );
     // A USB camera given the node the camera before had, whose run forgets
-    // the files saying it, as it does when its unit stops: the holders
-    // file goes, and the node file stays, its folder locked.
+    // the files saying it, as it does when its unit stops: both go, since
+    // the watch widened the node files' folder before its last write.
     let forgot = Command::new(env!("CARGO_BIN_EXE_loopback-holders"))
         .arg("--sysfs")
         .arg(watch.root.join("sys"))
@@ -781,10 +781,10 @@ fn a_moved_cameras_holders_file_a_usb_cameras_run_removed_is_written_again() {
         .output()
         .unwrap();
     assert!(forgot.status.success(), "the forget failed: {forgot:?}");
-    // Its complaint of the node file it couldn't remove comes only after
-    // the holders file went, which the watch may already have written again.
+    // Said only once both its files went, the holders file first, which
+    // the watch may already have written again.
     assert!(
-        String::from_utf8_lossy(&forgot.stderr).contains(".devices/Stand-in"),
+        String::from_utf8_lossy(&forgot.stdout).contains("forgot \"Stand-in\""),
         "the forget didn't find the node file saying the camera before: {forgot:?}"
     );
     // The camera moved to is still held, so its watch looks every two

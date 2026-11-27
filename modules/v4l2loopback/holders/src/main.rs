@@ -627,10 +627,7 @@ fn watch(
 /// read failed, what it was last meant to say, since a camera held is
 /// never said to be off (modules/machine's camera.rs); nobody only when
 /// nothing was meant yet.
-fn to_say(
-    listed: Option<BTreeSet<String>>,
-    meant: Option<&BTreeSet<String>>,
-) -> BTreeSet<String> {
+fn to_say(listed: Option<BTreeSet<String>>, meant: Option<&BTreeSet<String>>) -> BTreeSet<String> {
     listed.or_else(|| meant.cloned()).unwrap_or_default()
 }
 
