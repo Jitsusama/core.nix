@@ -321,12 +321,33 @@ mod tests {
 
     #[test]
     fn one_whose_row_cant_be_written_is_let_go_at_its_last_held_try() {
+        assert_eq!(
+            UNTOLD, 24,
+            "a rows file that stays broken holds a thread twelve tries past its last"
+        );
         let rows = Rows::new("untold");
         std::fs::write(&rows.home, "").expect("a file where the rows' home would be");
-        let before = [owed(14, 100, UNTOLD - 1, 0)];
+        let before = [owed(14, 100, UNTOLD - 2, 0)];
         let threads = list(Vec::new(), vec![(thread(14), 100, 100)], &before);
-        let owing = kept(&rows.left, &threads, (&[0], &[], 1), &before, 900);
+        let mut owing = kept(&rows.left, &threads, (&[0], &[], 1), &before, 900);
+        assert_eq!(
+            owing,
+            [owed(14, 100, UNTOLD - 1, 31)],
+            "a try before its last held try, it's owed still, at the longest wait"
+        );
 
+        // Its wait counts down in rounds that don't list it.
+        for round in 1..=31 {
+            let threads = list(Vec::new(), Vec::new(), &owing);
+            owing = kept(&rows.left, &threads, (&[], &[], 0), &owing, 900 + round);
+        }
+        assert_eq!(
+            owing,
+            [owed(14, 100, UNTOLD - 1, 0)],
+            "its wait over, it's due"
+        );
+        let threads = list(Vec::new(), vec![(thread(14), 100, 100)], &owing);
+        let owing = kept(&rows.left, &threads, (&[0], &[], 1), &owing, 940);
         assert!(
             owing.is_empty(),
             "a rows file that stays broken holds it no longer, the journal alone saying so"
