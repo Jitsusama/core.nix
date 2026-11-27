@@ -3420,9 +3420,9 @@ fn an_ask_waiting_for_a_hold_is_kept_by_the_next_update_and_switched_when_grante
     );
 }
 
-/// A hold of a commit of an input left at its lock's pin can't be told
-/// from main, whose host knows no other repository's commits, nor from
-/// the pin, which isn't read for holds, so it stops the update and says so.
+/// A hold of a commit of an input left at its lock's pin is judged in its
+/// own repository, by whether the pin holds it: main's host knows no other
+/// repository's commits.
 #[test]
 fn a_hold_on_an_input_left_at_its_pin_is_judged_in_its_own_repository() {
     let world = asking_nested(World::new());
@@ -3456,8 +3456,78 @@ fn a_hold_on_an_input_left_at_its_pin_is_judged_in_its_own_repository() {
         panic!("a hold of mycelium's commit, under a pin that holds it, let main through")
     };
     assert!(
-        why.contains("lock's pin"),
-        "a hold of mycelium's commit was judged by something other than its pin: {why}"
+        why.contains(&format!("main at {} holds it", &two[..12])),
+        "a hold of mycelium's commit wasn't said held by its pin: {why}"
+    );
+}
+
+/// A hold of an input's commit its pin doesn't hold yet keeps that commit
+/// off the machine, not main: every merge of main's still lands while the
+/// input waits for its fix.
+#[test]
+fn a_hold_on_an_input_ahead_of_its_pin_stops_no_update() {
+    let world = asking_nested(World::new());
+    let pinned = world.commit_in("mycelium", "pinned", true);
+    let ahead = world.commit_in("mycelium", "ahead", true);
+    let core = "c".repeat(40);
+    fs::write(
+        world.origin.join("flake.lock"),
+        pinning_nested(&core, &pinned),
+    )
+    .unwrap();
+    git(&world.origin, &["add", "flake.lock"]);
+    held::ask(&world.config, &format!("hold {ahead}"), Some(1000));
+    let one = world.signed("one");
+    world.system(&one);
+    assert_eq!(
+        world.update().1,
+        done(&one),
+        "a hold of a commit mycelium's pin doesn't hold stopped main"
+    );
+}
+
+/// A hold of one of main's own commits is judged in main, whatever an
+/// input's repository has been made to hold: anyone who can push there,
+/// signed or not, could otherwise put the commit in it and have main never
+/// asked.
+#[test]
+fn a_hold_on_main_s_commit_pushed_into_an_input_s_repository_still_stops_main() {
+    let world = asking_nested(World::new());
+    let pinned = world.commit_in("mycelium", "pinned", true);
+    let wanted = world.commit_in("mycelium", "wanted", true);
+    let core = "c".repeat(40);
+    fs::write(
+        world.origin.join("flake.lock"),
+        pinning_nested(&core, &pinned),
+    )
+    .unwrap();
+    git(&world.origin, &["add", "flake.lock"]);
+    let one = world.signed("one");
+    world.system(&format!("{one}+{wanted}"));
+    assert_eq!(
+        world.update_at(NESTED, &wanted),
+        done_following(&one, &[(NESTED, &wanted)]),
+        "the ask at mycelium wasn't built"
+    );
+    held::ask(&world.config, &format!("hold {one}"), Some(1000));
+    let mycelium = world.root.join("mycelium");
+    let origin = world.origin.display().to_string();
+    git(&mycelium, &["fetch", "--quiet", &origin, "main"]);
+    let tree = format!("{wanted}^{{tree}}");
+    let parents = ["-p", &wanted, "-p", &one];
+    let pushed = git(
+        &mycelium,
+        &[&["commit-tree", &tree][..], &parents, &["-m", "pushed"]].concat(),
+    );
+    git(&mycelium, &["update-ref", "refs/heads/main", &pushed]);
+    let two = world.signed("two");
+    world.system(&format!("{two}+{wanted}"));
+    let Line::Refused { why, .. } = world.update().1 else {
+        panic!("a held commit of main's, pushed into mycelium's repository, let main through")
+    };
+    assert!(
+        why.contains(&format!("main at {} holds it", &two[..12])),
+        "a held commit of main's wasn't judged in main: {why}"
     );
 }
 
@@ -3526,8 +3596,46 @@ fn a_kept_ask_whose_lock_and_repository_drop_it_fails_no_update() {
     );
 }
 
+/// A hold is judged only in what the build reads: an input its lock
+/// dropped, whose repository went with it, is neither asked nor fetched,
+/// so a hold of its commit stops no update.
+#[test]
+fn a_hold_on_an_input_the_lock_dropped_stops_no_update() {
+    let world = asking_nested(World::new());
+    let pinned = world.commit_in("mycelium", "pinned", true);
+    let wanted = world.commit_in("mycelium", "wanted", true);
+    let core = "c".repeat(40);
+    fs::write(
+        world.origin.join("flake.lock"),
+        pinning_nested(&core, &pinned),
+    )
+    .unwrap();
+    git(&world.origin, &["add", "flake.lock"]);
+    let one = world.signed("one");
+    world.system(&format!("{one}+{wanted}"));
+    assert_eq!(
+        world.update_at(NESTED, &wanted),
+        done_following(&one, &[(NESTED, &wanted)]),
+        "the ask at mycelium wasn't built"
+    );
+    held::ask(&world.config, &format!("hold {wanted}"), Some(1000));
+    let gone = world.commit_in("mycelium", "gone", true);
+    held::ask(&world.config, &format!("hold {gone}"), Some(1000));
+    fs::write(world.origin.join("flake.lock"), pinning(&core)).unwrap();
+    git(&world.origin, &["add", "flake.lock"]);
+    fs::remove_dir_all(world.root.join("mycelium")).unwrap();
+    let two = world.signed("two");
+    world.system(&two);
+    assert_eq!(
+        world.update().1,
+        done(&two),
+        "a hold of a commit of an input the lock dropped stopped main"
+    );
+}
+
 /// A hold of a commit an input's copy hasn't fetched yet is still its
-/// repository's: the copy is fetched before the hold is judged elsewhere.
+/// repository's: the copy is fetched before the hold is judged, so a pin
+/// that moved past it is seen to hold it.
 #[test]
 fn a_hold_on_a_commit_a_stale_copy_lacks_is_judged_in_its_own_repository() {
     let world = asking_nested(World::new());
@@ -3544,14 +3652,21 @@ fn a_hold_on_a_commit_a_stale_copy_lacks_is_judged_in_its_own_repository() {
     assert_eq!(world.update().1, done(&one), "main wasn't built");
     let later = world.commit_in("mycelium", "later", true);
     held::ask(&world.config, &format!("hold {later}"), Some(1000));
+    let after = world.commit_in("mycelium", "after", true);
+    fs::write(
+        world.origin.join("flake.lock"),
+        pinning_nested(&core, &after),
+    )
+    .unwrap();
+    git(&world.origin, &["add", "flake.lock"]);
     let two = world.signed("two");
     world.system(&two);
     let Line::Refused { why, .. } = world.update().1 else {
         panic!("a hold of a commit mycelium's copy hadn't fetched let main through")
     };
     assert!(
-        why.contains("lock's pin"),
-        "a hold of a commit the copy lacked was judged by something other than its pin: {why}"
+        why.contains(&format!("main at {} holds it", &two[..12])),
+        "a hold of a commit the copy lacked wasn't said held by the pin past it: {why}"
     );
 }
 
