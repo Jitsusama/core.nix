@@ -31,13 +31,30 @@ pub struct Probed {
     pub by: String,
 }
 
-/// The record's lines that are text, or nothing before any probe has
-/// run, so one torn byte costs only its own line.
-#[must_use]
-pub fn gather(state_home: &Path) -> String {
-    fs::read(state_home.join("mission/probes.jsonl"))
-        .map(|bytes| text_lines(&bytes).0)
-        .unwrap_or_default()
+/// The record whole, or nothing before any probe has run; or why it's
+/// unread: it couldn't be read, or a line of it isn't text or isn't a run.
+/// Any line lost may be an ask's newest run, so reading the rest would
+/// take the run before it as how that probe stands, a failing probe read
+/// as passing (round 3 on #6875, F42).
+///
+/// # Errors
+///
+/// Why the record is unread, in words that follow "as".
+pub fn gather(state_home: &Path) -> Result<String, String> {
+    let bytes = match fs::read(state_home.join("mission/probes.jsonl")) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(String::new()),
+        Err(error) => return Err(format!("it couldn't be read: {error}")),
+    };
+    let (text, first_not) = text_lines(&bytes);
+    if let Some(line) = first_not {
+        return Err(format!("its line {line} isn't text"));
+    }
+    match unread(&text) {
+        0 => Ok(text),
+        1 => Err("a line of it isn't a run".to_owned()),
+        lines => Err(format!("{lines} lines of it aren't runs")),
+    }
 }
 
 /// One run as a line of the record gives it: its ask, when, whether it
@@ -112,6 +129,32 @@ fn seconds(at: &Value) -> Option<i64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_record_with_a_line_lost_is_unread_rather_than_read_without_it() {
+        let home = tempfile::tempdir().expect("a home");
+        let record = home.path().join("mission/probes.jsonl");
+        assert_eq!(
+            gather(home.path()),
+            Ok(String::new()),
+            "no record is no runs yet"
+        );
+        fs::create_dir_all(record.parent().expect("its folder")).expect("its folder made");
+        let passed = r#"{"ask": "a1", "at": "2026-11-26T12:00:00-05:00", "passed": true}"#;
+        fs::write(&record, format!("{passed}\n")).expect("written");
+        assert_eq!(gather(home.path()), Ok(format!("{passed}\n")));
+        // A fail torn as it was appended, which may be a1's newest run.
+        let torn = r#"{"ask": "a1", "at": "2026-11-26T13:00:00-05:00", "passed": fal"#;
+        fs::write(&record, format!("{passed}\n{torn}\n")).expect("written");
+        assert_eq!(
+            gather(home.path()),
+            Err("a line of it isn't a run".to_owned())
+        );
+        let mut bytes = format!("{passed}\n").into_bytes();
+        bytes.extend_from_slice(b"{\"ask\": \"a1\", \xff}\n");
+        fs::write(&record, bytes).expect("written");
+        assert_eq!(gather(home.path()), Err("its line 2 isn't text".to_owned()));
+    }
 
     #[test]
     fn the_newest_run_is_how_a_probe_stands() {

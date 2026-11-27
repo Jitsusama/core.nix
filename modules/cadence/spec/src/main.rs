@@ -225,7 +225,9 @@ fn made(asking: &Asking, place: &Place) -> Option<(Vec<Value>, Value)> {
 /// holding the pipe can't either. It runs in a process group of its own,
 /// so stopping it stops what it started too: cadence's hangs are in its
 /// own `git` and `niri msg`, which would otherwise be left running, one
-/// more on each read that hung (round 2, F21).
+/// more on each read that hung (round 2, F21). Its group is stopped once
+/// it ends too, however it ended, before it's reaped, so nothing it left
+/// keeps running or holds the pipe (round 3, F35).
 fn within(command: &mut Command, deadline: Duration) -> Result<Vec<u8>, String> {
     let program = command.get_program().to_string_lossy().into_owned();
     let mut child = command
@@ -242,27 +244,24 @@ fn within(command: &mut Command, deadline: Duration) -> Result<Vec<u8>, String> 
         let _ = sent.send(out.read_to_end(&mut printed).map(|_| printed));
     });
     let started = Instant::now();
-    let status = loop {
-        let waited = child.try_wait();
-        if matches!(waited, Ok(None)) && started.elapsed() < deadline {
-            thread::sleep(Duration::from_millis(20));
-            continue;
-        }
-        match waited {
-            Ok(Some(status)) => break status,
-            Ok(None) => {
-                stopped(&mut child);
+    loop {
+        match ended(&child) {
+            Ok(false) if started.elapsed() < deadline => thread::sleep(Duration::from_millis(20)),
+            Ok(false) => {
+                let _ = stopped(&mut child);
                 return Err(format!(
                     "{program} ran past {} s, so it was stopped",
                     deadline.as_secs()
                 ));
             }
+            Ok(true) => break,
             Err(why) => {
-                stopped(&mut child);
+                let _ = stopped(&mut child);
                 return Err(format!("{program} couldn't be waited on: {why}"));
             }
         }
-    };
+    }
+    let status = stopped(&mut child).map_err(|why| format!("{program} wasn't reaped: {why}"))?;
     if !status.success() {
         return Err(format!("cadence ended {status}"));
     }
@@ -276,16 +275,38 @@ fn within(command: &mut Command, deadline: Duration) -> Result<Vec<u8>, String> 
     }
 }
 
+/// Whether `child` has ended, seen without reaping it, so the number of
+/// the group it leads stays its own until its group is stopped.
+fn ended(child: &Child) -> std::io::Result<bool> {
+    // SAFETY: siginfo_t is plain data, for which all zeroes is a value.
+    let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
+    // SAFETY: a plain system call on the child's own number, `info` ours
+    // and as large as it asks; WNOWAIT leaves the child to be reaped.
+    let asked = unsafe {
+        libc::waitid(
+            libc::P_PID,
+            child.id(),
+            &raw mut info,
+            libc::WEXITED | libc::WNOHANG | libc::WNOWAIT,
+        )
+    };
+    if asked != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    // SAFETY: waitid filled `info`, whose si_pid is 0 while none ended.
+    Ok(unsafe { info.si_pid() } != 0)
+}
+
 /// Stops `child` and everything it started, its whole process group, and
-/// reaps it, so nothing it left is a zombie.
-fn stopped(child: &mut Child) {
+/// reaps it, so nothing it left is a zombie, saying how it ended.
+fn stopped(child: &mut Child) -> std::io::Result<std::process::ExitStatus> {
     if let Ok(group) = libc::pid_t::try_from(child.id()) {
         // SAFETY: a plain system call, to the group the child leads
         // (process_group(0)), signalled before the child is reaped, so its
         // number can't have gone to another.
         unsafe { libc::kill(-group, libc::SIGKILL) };
     }
-    let _ = child.wait();
+    child.wait()
 }
 
 /// The rows and headline in what cadence printed for `place`, the
@@ -399,6 +420,45 @@ mod tests {
         let mut failing = Command::new(&shell);
         failing.args(["-c", "exit 3"]).stdout(Stdio::piped());
         assert!(within(&mut failing, Duration::from_secs(5)).is_err());
+    }
+
+    #[test]
+    fn what_a_read_left_holding_its_output_is_stopped_once_it_ends() {
+        let shell = std::env::var("BASH").unwrap_or_else(|_| "sh".to_owned());
+        let folder = std::env::temp_dir().join(format!("cadence-spec-left-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).expect("a folder for the left child's number");
+        let numbered = folder.join("left");
+        // It ends at once, leaving a child of its own holding its output.
+        let mut leaving = Command::new(&shell);
+        leaving
+            .args([
+                "-c",
+                &format!("sleep 30 & echo $! > {}", numbered.display()),
+            ])
+            .stdout(Stdio::piped());
+        let started = Instant::now();
+        let read = within(&mut leaving, Duration::from_secs(5));
+        assert_eq!(read, Ok(Vec::new()), "read once what it left is stopped");
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "never waiting on what it left to let go of the pipe"
+        );
+        let left = std::fs::read_to_string(&numbered).expect("the left child's number");
+        let proc = format!("/proc/{}/stat", left.trim());
+        let ended = || match std::fs::read_to_string(&proc) {
+            Err(_) => true,
+            Ok(stat) => stat.split(' ').nth(2) == Some("Z"),
+        };
+        let mut gone = ended();
+        for _ in 0..50 {
+            if gone {
+                break;
+            }
+            thread::sleep(Duration::from_millis(20));
+            gone = ended();
+        }
+        let _ = std::fs::remove_dir_all(&folder);
+        assert!(gone, "what it left is stopped, not left running");
     }
 
     #[test]

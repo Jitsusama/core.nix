@@ -25,6 +25,11 @@
 //! asks gone, so cadence-spec keeps the last rows; one the hour never saw
 //! and not there holds no asks yet; and the hour's record unreadable leaves
 //! the list unread, as the hour reads it then too (round 2, F9 and F20).
+//! A list where the hour has kept no record at all, as on a machine whose
+//! hour sends nothing and so keeps nothing, is unread too, since nothing
+//! could tell it written over (round 3, F30). A date moved is counted from
+//! the dates the hour reads in an ask (hour/measures/promised.rs), and a
+//! probes record with a line lost reads every probe unread (probes.rs).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
@@ -36,7 +41,7 @@ use terminal_kit::Failure;
 use super::probes::{self, Probed};
 use super::spec::{launcher_words, quests, titled};
 use super::words::Words;
-use crate::hour::{Kept, first_owner, ledger};
+use crate::hour::{Kept, first_owner, ledger, promised};
 use crate::tracking::{self, Tracking};
 use crate::{failed, folders, now_ms, wrongly};
 
@@ -52,24 +57,28 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<(), Failure> {
     let (home, state_home, folder) = folders().map_err(failed)?;
     let now = now_ms() / 1000;
     // Read, never written: the hour alone keeps what it saw.
-    let mut hour = Kept::last(&folder.join("hour.json"));
-    let (asks, unread) = ledger::whole(&state_home.join("mission/asks.jsonl"), &mut hour.asks, now);
+    let kept = folder.join("hour.json");
+    let list = state_home.join("mission/asks.jsonl");
+    if !kept.exists() && list.exists() {
+        return Err(failed(
+            "the asks list is unread, as the hour has kept no record to read it against",
+        ));
+    }
+    let mut hour = Kept::last(&kept);
+    let (asks, unread) = ledger::whole(&list, &mut hour.asks, now);
     if let Some(why) = hour.unread.or(unread) {
         return Err(failed(format!("the asks list is unread, as {why}")));
     }
     let open = open(&asks);
     let owners: BTreeSet<&str> = open.iter().map(|ask| ask.answers.as_str()).collect();
     let titles = titled(&quests(&home), &owners);
-    let runs = probes::gather(&state_home);
-    let unrun = probes::unread(&runs);
-    if unrun > 0 {
-        eprintln!(
-            "cadence: {unrun} lines of the probes record aren't runs, so their asks read as \
-             not run"
-        );
-    }
-    let probed = probes::read(&runs);
-    let made = made(&open, &probed, &titles, &words, now);
+    let probed = probes::gather(&state_home)
+        .inspect_err(|why| {
+            eprintln!("cadence: the probes record is unread, as {why}, so every probe reads so");
+        })
+        .ok()
+        .map(|runs| probes::read(&runs));
+    let made = made(&open, probed.as_ref(), &titles, &words, now);
     println!("{}", json!({"rows": made.0, "head": made.1}));
     Ok(())
 }
@@ -119,9 +128,7 @@ fn open(text: &str) -> Vec<Ask> {
                 words: one_line(ask["words"].as_str().unwrap_or("")),
                 answers,
                 expected: time(&ask["expected"]),
-                moved: ask["promised"]
-                    .as_array()
-                    .map_or(0, |given| given.len().saturating_sub(1)),
+                moved: promised(&ask).len().saturating_sub(1),
                 change: ask["pr"].as_str().unwrap_or("").to_owned(),
                 probed: ask["probe"].is_object(),
             })
@@ -134,10 +141,20 @@ fn one_line(words: &str) -> String {
     words.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-/// The rows in the order shown and the place's headline, at `now`.
+/// How an ask's probe reads: by its newest run, not run yet, or the
+/// record unread, so a lost newest run never reads as the one before it.
+#[derive(Clone, Copy)]
+enum Probe<'a> {
+    Ran(&'a Probed),
+    NotRun,
+    Unread,
+}
+
+/// The rows in the order shown and the place's headline, at `now`, each
+/// probe by `probed`, or none read where the probes record is unread.
 fn made(
     open: &[Ask],
-    probed: &BTreeMap<String, Probed>,
+    probed: Option<&BTreeMap<String, Probed>>,
     titles: &BTreeMap<String, String>,
     words: &Words,
     now: i64,
@@ -153,7 +170,12 @@ fn made(
         .count();
     let rows = ordered
         .into_iter()
-        .map(|ask| row(ask, probed.get(&ask.id), titles, words, now))
+        .map(|ask| {
+            let probe = probed.map_or(Probe::Unread, |probed| {
+                probed.get(&ask.id).map_or(Probe::NotRun, Probe::Ran)
+            });
+            row(ask, probe, titles, words, now)
+        })
         .collect();
     let (count, late_count) = (open.len().to_string(), late.to_string());
     let said = if open.is_empty() {
@@ -181,7 +203,7 @@ fn timed(said: &str, at: i64, form: &str) -> Value {
 
 fn row(
     ask: &Ask,
-    probe: Option<&Probed>,
+    probe: Probe<'_>,
     titles: &BTreeMap<String, String>,
     words: &Words,
     now: i64,
@@ -198,17 +220,18 @@ fn row(
         || json!({"said": words.said("asked:due", "undated", &[])}),
         |due| timed("", due, "dated"),
     );
-    let failing = probe.is_some_and(|probe| !probe.passed);
+    let failing = matches!(probe, Probe::Ran(ran) if !ran.passed);
     // The side says "probe" in each phrase, the drawer's Probe by its name.
     let probe_in = |id: &str| match probe {
-        Some(probe) if probe.passed => json!({"said": words.said(id, "passes", &[])}),
-        Some(probe) => timed(
+        Probe::Ran(ran) if ran.passed => json!({"said": words.said(id, "passes", &[])}),
+        Probe::Ran(ran) => timed(
             &words.said(id, "fails", &[]),
-            probe.since.unwrap_or(probe.at),
+            ran.since.unwrap_or(ran.at),
             "moment",
         ),
-        None if ask.probed => json!({"said": words.said(id, "unrun", &[])}),
-        None => json!({"said": words.said(id, "unprobed", &[])}),
+        _ if !ask.probed => json!({"said": words.said(id, "unprobed", &[])}),
+        Probe::Unread => json!({"said": words.said(id, "unread", &[])}),
+        Probe::NotRun => json!({"said": words.said(id, "unrun", &[])}),
     };
     let probe_said = probe_in("asked:row");
     let owner = titles
@@ -242,7 +265,7 @@ fn row(
         json!({"label": "id", "value": ask.id}),
         json!({"label": "answers", "value": ask.answers}),
     ];
-    if let Some(probe) = probe {
+    if let Probe::Ran(probe) = probe {
         nerd.push(json!({"label": "probed by", "value": probe.by}));
         if let Some(switch) = probe.switch {
             nerd.push(json!({"label": "switch", "value": switch.to_string()}));
@@ -404,7 +427,7 @@ mod tests {
         .join("\n");
         let (rows, head) = made(
             &open(&text),
-            &BTreeMap::new(),
+            Some(&BTreeMap::new()),
             &BTreeMap::new(),
             &words(),
             NOON,
@@ -461,7 +484,7 @@ mod tests {
         .join("\n");
         let (rows, _) = made(
             &open(&text),
-            &probes::read(&runs),
+            Some(&probes::read(&runs)),
             &BTreeMap::new(),
             &words(),
             NOON,
@@ -491,6 +514,17 @@ mod tests {
         );
         assert_eq!(by("u3")["side"][1]["said"], "probe not run yet");
         assert_eq!(by("n4")["side"][1]["said"], "no probe yet");
+        // The record unread, a probe that passed reads unread, never as the
+        // run before a lost one; one with no probe still says so.
+        let (rows, _) = made(&open(&text), None, &BTreeMap::new(), &words(), NOON);
+        let side = |key: &str| {
+            rows.iter()
+                .find(|row| row["key"] == format!("row:asked:{key}"))
+                .expect("its row")["side"][1]["said"]
+                .clone()
+        };
+        assert_eq!(side("p1"), "probe can't be read");
+        assert_eq!(side("n4"), "no probe yet");
     }
 
     #[test]
@@ -500,10 +534,20 @@ mod tests {
             "2026-11-26T09:00:00-05:00",
             // A line break as JSON writes one, which a row draws as a space.
             "the\\nlauncher   view",
-            r#", "pr": "core.nix#6846", "promised": [{}, {}, {}]"#,
+            concat!(
+                r#", "pr": "core.nix#6846", "expected": "2026-11-27T09:00:00-05:00","#,
+                r#" "promised": [{"expected": "2026-11-26T15:00:00-05:00"}, "a", {},"#,
+                r#" {"expected": "2026-11-26T18:00:00-05:00"}]"#,
+            ),
         );
         let titles = BTreeMap::from([("Y2YBTS".to_owned(), "Launcher".to_owned())]);
-        let (rows, _) = made(&open(&text), &BTreeMap::new(), &titles, &words(), NOON);
+        let (rows, _) = made(
+            &open(&text),
+            Some(&BTreeMap::new()),
+            &titles,
+            &words(),
+            NOON,
+        );
         assert_eq!(
             rows[0]["name"], "the launcher view",
             "one line, as a row draws it"
@@ -515,13 +559,19 @@ mod tests {
             facts
                 .iter()
                 .any(|fact| fact["name"] == "Date Moved" && fact["said"] == "2 times"),
-            "three dates given is two moves: {facts:?}"
+            "three dates, as the hour reads them, is two moves: {facts:?}"
         );
     }
 
     #[test]
     fn nothing_open_says_so() {
-        let (rows, head) = made(&[], &BTreeMap::new(), &BTreeMap::new(), &words(), NOON);
+        let (rows, head) = made(
+            &[],
+            Some(&BTreeMap::new()),
+            &BTreeMap::new(),
+            &words(),
+            NOON,
+        );
         assert_eq!(rows, Vec::<Value>::new());
         assert_eq!(head["said"], "nothing you asked for is open");
         assert!(head.get("glyph").is_none());

@@ -19,6 +19,7 @@
         "passes": "probe passes",
         "fails": "probe fails since {time}",
         "unrun": "probe not run yet",
+        "unread": "probe can't be read",
         "unprobed": "no probe yet"
       }
     },
@@ -56,6 +57,7 @@
         "passes": "passes",
         "fails": "fails since {time}",
         "unrun": "not run yet",
+        "unread": "can't be read",
         "unprobed": "none yet"
       }
     },
