@@ -3,8 +3,9 @@
 // New Work with his words filled in, from the cell it is started from
 // where one is open, and on the machine it is started on where a machine's
 // drawer asked, `cloud` for any of the cloud's. A page reads and never
-// acts, so the map can't ask the node to sprout; the launcher's own Return, pressed by him, is what starts
-// anything, as it is when he types there himself. What follows shapes only
+// acts, so the map can't ask the node to sprout; the launcher's own
+// Return, pressed by him, is what starts anything, as it is when he types
+// there himself. What follows shapes only
 // the links this page writes: any page can write one, so mycelium-link and
 // the launcher hold their own bounds on what a link may carry.
 
@@ -57,6 +58,15 @@ export const keptOnStands = (on: string | null, names: readonly string[]): boole
   on === null || on === CLOUD || names.includes(on);
 
 /**
+ * What the map says when `on`, the machine the open line would start work
+ * on, left the map before Return. It lets the machine go rather than send
+ * there, so the next Return starts the work where new work starts.
+ */
+export const leftWords = (on: string): string =>
+  `${placeWords(on)} has left the map, so the work won't start there; ` +
+  "Return starts it where new work starts.";
+
+/**
  * The words as one line, spaces between them, or "" when there are none,
  * with what the launcher leaves out left out here too, so words it would
  * refuse as empty are never said as sent, and cut at LONGEST_WORDS as the
@@ -100,8 +110,8 @@ export const unsprouted = (typed: string, on: string | null): string | null => {
  * typed, since Start New Work opened empty asks nothing of it. An address
  * that isn't one is left out rather than sent for the launcher to refuse,
  * so the work still starts, from nowhere. An empty machine names none, and
- * a misshaped one gives null too, as mycelium-link refuses one: work started anywhere but where Joel
- * asked is worse than none.
+ * a misshaped one gives null too, as mycelium-link refuses one: work
+ * started anywhere but where Joel asked is worse than none.
  */
 export const sproutLink = (
   typed: string,

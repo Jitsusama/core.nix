@@ -24,6 +24,7 @@ let
     ./host-patches/pi-host-freezes-context-without-a-set.patch
     ./host-patches/pi-host-names-handlers-that-hold.patch
     ./host-patches/pi-host-draws-before-it-binds.patch
+    ./host-patches/pi-host-extension-modules-keyed-shared.patch
   ];
 in
 pkgs.pi-coding-agent.overrideAttrs (old: {

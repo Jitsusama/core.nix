@@ -4,12 +4,14 @@
 //! him alone, and once more with the words left at the link if it refuses
 //! them; no reply is said and Slack's own API is never asked; and a search
 //! it reads on past is said in a row beside his row in For You. A second
-//! reader started on the folder it keeps ends at once.
+//! reader started on the folder it keeps ends at once, beside the keyring's
+//! reader too, an alert left untold for its ten minutes is said to be let
+//! go, once, and searches failing round after round write Joel's row.
 
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
 
@@ -22,6 +24,8 @@ use super::{
 /// Where For You's row of what waits goes, under a case's home, as the
 /// unit names it.
 const WAITING: &str = "state/mission/waiting/pineapple.json";
+/// Where the alert waiting links to.
+const LINK: &str = "https://example.slack.com/archives/C1/p1";
 
 /// The reader over the gateway at `url`, live, in `home`, telling For You
 /// where its unit would.
@@ -111,10 +115,9 @@ fn a_reader_over_a_gateway_live_stops_agents_and_tells_joel_alone() {
         asked.lock().expect("what was asked").is_empty(),
         "Slack's own API is never asked"
     );
-    assert!(
-        journal(&home).contains("a reply isn't said, as the gateway sends to Joel alone"),
-        "no reply is said, and the journal says why: {}",
-        journal(&home)
+    assert_eq!(
+        decided[0]["gate"], "held:no-replies-here",
+        "no reply is said, and its decision says it's held, not that one went"
     );
     assert!(
         !kept.join("replies.jsonl").exists(),
@@ -237,7 +240,7 @@ fn live_for_rounds(home: &Path, url: &str, called: &super::Called, more: usize) 
 fn an_alert_slacks_spent_rate_holds_back_goes_whole_the_next_round() {
     static SENDS: AtomicUsize = AtomicUsize::new(0);
     let (url, called) = serving(|tool, _, now| {
-        if tool == "slack_send_message_to_self" && SENDS.fetch_add(1, Ordering::SeqCst) == 0 {
+        if tool == "slack_send_message_to_self" && SENDS.fetch_add(1, Ordering::SeqCst) < 2 {
             format!("{}Slack said: ratelimited", super::FAILS)
         } else {
             said(tool, now)
@@ -248,11 +251,13 @@ fn an_alert_slacks_spent_rate_holds_back_goes_whole_the_next_round() {
     live_for_rounds(&home, &url, &called, 12);
     let sent = sent_to_self(&called);
     assert!(
-        sent.len() == 2
-            && sent
+        sent.len() == 3
+            && sent[1].contains(WORDS_NOT_TAKEN)
+            && [&sent[0], &sent[2]]
                 .iter()
                 .all(|it| it.contains("Said: \"pineapple override\"")),
-        "a spent rate sent nothing, so the next round sends it whole, words and all: {sent:?}"
+        "a failing is asked again without the words, and that one's spent rate sent \
+         nothing, so the next round sends it whole, words and all: {sent:?}"
     );
     let phoned = phoned(&home);
     assert!(
@@ -361,10 +366,189 @@ fn a_second_reader_on_a_folder_held_ends_at_once_saying_why() {
 }
 
 #[test]
+fn a_reader_over_a_gateway_beside_the_keyrings_ends_at_once_saying_why() {
+    let (origin, _) = stand_in();
+    let (url, _) = gateway();
+    let home = home();
+    let mut first = crate::reader(&home, &origin);
+    crate::until_decided(&home, 1);
+    let mut second = live(&home, &origin, &url);
+    let began = Instant::now();
+    let ended = loop {
+        if let Some(status) = second
+            .try_wait()
+            .expect("the gateway's reader is asked after")
+        {
+            break status;
+        }
+        assert!(
+            began.elapsed() < PATIENCE,
+            "a reader over the gateway beside the keyring's goes on: {}",
+            journal(&home)
+        );
+        thread::sleep(Duration::from_millis(20));
+    };
+    assert!(
+        !ended.success() && journal(&home).contains("another Slack reader keeps"),
+        "a reader over the gateway started on the keyring reader's folder ends, saying \
+         another keeps it, so the two never both tell Joel's phone: {}",
+        journal(&home)
+    );
+    assert!(
+        first
+            .try_wait()
+            .expect("the keyring's reader is asked after")
+            .is_none(),
+        "the keyring's reader goes on: {}",
+        journal(&home)
+    );
+    drop(first);
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+/// Ages the alert waiting in `home` into one for each of `ages`, keyed
+/// and in minutes, so each is that old as the reader starts, and each
+/// links to its own message, the original's with `-` and its key.
+fn aged(home: &Path, ages: &[(&str, u64)]) {
+    let waiting = home.join("state/pineapple/would-tell.jsonl");
+    let alert: Value = serde_json::from_str(
+        std::fs::read_to_string(&waiting)
+            .expect("the alert waiting")
+            .trim(),
+    )
+    .expect("the alert reads");
+    let at = alert["at"].as_u64().expect("when it was written");
+    let each: Vec<String> = ages
+        .iter()
+        .map(|(key, minutes)| {
+            let mut one = alert.clone();
+            one["key"] = json!(key);
+            one["at"] = json!(at - minutes * 60 * 1000);
+            one["link"] = json!(format!("{LINK}-{key}"));
+            one.to_string()
+        })
+        .collect();
+    std::fs::write(&waiting, each.join("\n") + "\n").expect("the alerts made old");
+}
+
+/// The time `minutes` ago, in milliseconds.
+fn minutes_ago(minutes: u64) -> u64 {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("a time after 1970");
+    u64::try_from(now.as_millis()).expect("a time in range") - minutes * 60 * 1000
+}
+
+/// The keys of what phoned.jsonl in `home` keeps as let go.
+fn let_go(home: &Path) -> Vec<Value> {
+    phoned(home)
+        .into_iter()
+        .filter(|line| line["sent"] == "given-up")
+        .map(|line| line["key"].clone())
+        .collect()
+}
+
+#[test]
+fn an_alert_untold_for_its_ten_minutes_is_said_let_go_once() {
+    let (url, called) = gateway();
+    let home = home();
+    an_alert_waits(&home);
+    aged(
+        &home,
+        &[("untold", 15), ("older", 30), ("unsure", 12), ("twice", 13)],
+    );
+    let unsure = |key: &str| {
+        json!({
+            "at": minutes_ago(3),
+            "key": key,
+            "saying": "stopped",
+            "sent": "unsure",
+            "shadow": false,
+        })
+    };
+    std::fs::write(
+        home.join("state/pineapple/phoned.jsonl"),
+        format!(
+            "{}\n{}\n{}\n",
+            unsure("unsure"),
+            unsure("twice"),
+            unsure("twice")
+        ),
+    )
+    .expect("sends that may have gone");
+    live_for_rounds(&home, &url, &called, 12);
+    assert!(
+        sent_to_self(&called).is_empty(),
+        "an alert past its ten minutes isn't sent"
+    );
+    assert_eq!(
+        let_go(&home),
+        [json!("untold"), json!("unsure"), json!("twice")],
+        "each past its ten minutes is kept as let go, once, however many rounds pass, even \
+         one left after two sends that may have gone, but one from twenty minutes before \
+         the phone was last told isn't: {:?}",
+        phoned(&home)
+    );
+    let journal = journal(&home);
+    assert!(
+        journal.contains(&format!(
+            "Joel's phone alert is let go, untold after ten minutes: {LINK}-untold"
+        )) && journal.contains(&format!(
+            "after ten minutes, its one send that may have gone unanswered: {LINK}-unsure"
+        )) && journal.contains(&format!(
+            "after ten minutes, each send that may have gone unanswered: {LINK}-twice"
+        )),
+        "and the journal says so, and which may have gone: {journal}"
+    );
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+#[test]
+fn a_live_keyring_reader_says_an_alert_let_go_too_while_signed_out() {
+    let (origin, _) = stand_in();
+    let home = home();
+    std::fs::remove_file(home.join("config/agentic-harness/slack/credentials.json"))
+        .expect("the sign-in taken away");
+    an_alert_waits(&home);
+    aged(&home, &[("untold", 15)]);
+    let mut reader = crate::reader_with(&home, &origin, &["--live"]);
+    let began = Instant::now();
+    while let_go(&home).is_empty() && began.elapsed() < PATIENCE {
+        thread::sleep(Duration::from_millis(50));
+    }
+    reader.kill().expect("the reader stops");
+    reader.wait().expect("the reader is gone");
+    assert_eq!(
+        let_go(&home),
+        [json!("untold")],
+        "a live keyring reader signed out says an alert past its ten minutes let go too: {}",
+        journal(&home)
+    );
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+#[test]
 fn a_reader_over_a_gateway_live_with_no_sign_in_writes_joels_row() {
     let (origin, _) = stand_in();
     let (url, called) = gateway();
     let home = home();
+    an_alert_waits(&home);
+    aged(
+        &home,
+        &[("untold", 15), ("while-down", 40), ("just-before", 75)],
+    );
+    let told = json!({
+        "at": minutes_ago(60),
+        "key": "told",
+        "saying": "stopped",
+        "sent": "pineapple: an earlier stop",
+        "shadow": false,
+    });
+    std::fs::write(
+        home.join("state/pineapple/phoned.jsonl"),
+        format!("{told}\n"),
+    )
+    .expect("Joel's phone last told an hour ago");
     let program = sign_in(&home, true);
     let program = program.to_str().expect("a path in UTF-8");
     let mut reader = reading(
@@ -397,6 +581,46 @@ fn a_reader_over_a_gateway_live_with_no_sign_in_writes_joels_row() {
     assert!(
         tools(&called).is_empty(),
         "no tool is called without a sign-in"
+    );
+    assert_eq!(
+        let_go(&home),
+        [json!("untold"), json!("while-down"), json!("just-before")],
+        "with no sign-in an alert past its ten minutes is still said let go, and one \
+         written while no reader ran, or untold for its ten minutes as his phone was last \
+         told: {}",
+        journal(&home)
+    );
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+#[test]
+fn a_reader_over_a_gateway_whose_searches_always_fail_writes_joels_row() {
+    let (origin, _) = stand_in();
+    let (url, _) = serving(|tool, _, now| {
+        if tool == "slack_search_public_and_private" {
+            format!("{}Slack said: fatal_error", super::FAILS)
+        } else {
+            said(tool, now)
+        }
+    });
+    let home = home();
+    let mut reader = live(&home, &origin, &url);
+    let began = Instant::now();
+    while !home.join(WAITING).exists() && began.elapsed() < PATIENCE {
+        thread::sleep(Duration::from_millis(20));
+    }
+    reader.kill().expect("the reader stops");
+    reader.wait().expect("the reader is gone");
+    let row: Value = std::fs::read_to_string(home.join(WAITING))
+        .ok()
+        .and_then(|said| serde_json::from_str(&said).ok())
+        .unwrap_or_default();
+    assert!(
+        row["items"][0]["why"]
+            .as_str()
+            .is_some_and(|why| why.contains("isn't answering its searches")),
+        "a gateway whose searches fail each round, past its rounds, writes Joel's row: {row} {}",
+        journal(&home)
     );
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }

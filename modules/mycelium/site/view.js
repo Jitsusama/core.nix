@@ -23,7 +23,6 @@
 // A cell's link, and the cell a link or a hash names, are the kit's cell.ts,
 // the one way every site names a cell.
 import { addressIn, cellLink, isNamed } from "../../local-sites/kit/cell.js";
-import { tell } from "../../local-sites/kit/status.js";
 import { asksOrFinds, cellDoing as cellDoingAt, fedWords, groupDoing as groupDoingAt, sensesDoing, talkLineWords } from "./doing.js";
 import {
   contextWords,
@@ -72,11 +71,11 @@ import {
   sow as sowSeeds,
 } from "./layout.js";
 import { askedOf, cellActs } from "./acts.js";
-import { grownOf, oneCopyEach } from "./lineage.js";
+import { grewWords, grownOf, oneCopyEach, originsOf, splitSaid } from "./lineage.js";
 import { drawnWidth } from "./lines.js";
 import { durationOf, easedInOut, goneAndBack } from "./motion.js";
 import { shapeOf as shapeOfReading } from "./shape.js";
-import { CLOUD, FULL_WORDS, handedWords, isAddress, isMachine, keptOnStands, LONGEST_WORDS, onWords, sproutLink, unsprouted } from "./sprout.js";
+import { CLOUD, FULL_WORDS, handedWords, isAddress, isMachine, keptOnStands, LONGEST_WORDS, leftWords, onWords, sproutLink, unsprouted } from "./sprout.js";
 import { EVERY_TREE_STEP, hasKids as hangsAny, kidsOf, openedTo, rootsOf, rowsOf, rowWords, upOf, walked, worstFirst } from "./outline.js";
 import {
   allCells,
@@ -153,7 +152,6 @@ import {
   const svg = document.getElementById("map-draw");
   const world = document.getElementById("world");
   const labelsEl = document.getElementById("labels");
-  const asof = document.getElementById("asof");
   const panelBody = document.getElementById("panel-body");
   const find = document.getElementById("find");
   const findLine = document.getElementById("find-line");
@@ -173,10 +171,12 @@ import {
   // The machine new work would start on, the one whose drawer opened it.
   let sproutOn = null;
   // The words last handed on, the cell they went from and the machine
-  // they went to, kept to send again, and whether the line offers those
-  // now.
+  // they went to, kept to send again, and whether the line offers that
+  // cell, and that machine, now: apart, since a cell can leave the map
+  // while the machine its words went on, or none, still stands.
   let sproutKept = null;
   let sproutKeptFromOffered = false;
+  let sproutKeptOnOffered = false;
   let sproutOpener = null;
   // The keys down now, by code, and those down as the line last opened,
   // closed or sent, whose repeats go nowhere until each comes up.
@@ -600,18 +600,20 @@ import {
     // A network the node sets within none grows out of the network whose
     // cells started more of its cells than any other, as a hypha branches
     // from another: who started each cell comes from its own record, else
-    // its forage, and which grows out of which is lineage.ts's to say. A
-    // starter is known only while it is drawn, since its network is where
-    // it is drawn.
+    // its forage, else what its forage says it split from, and which grows
+    // out of which is lineage.ts's to say. A starter is known only while it
+    // is drawn, since its network is where it is drawn.
     const startedBy = new Map(now.started.map((x) => [x.cell, x.by]));
+    const splitFrom = new Map((now.split || []).map((x) => [x.cell, x.from]));
     const cellNamed = new Map(cells.map((s) => [s.address, s]));
     const hubOf = new Map(cells.filter((s) => s.hub).map((s) => [s.address, s.hub.key]));
     const networks = [...hubs.values()].map((h) => ({ key: h.key, name: h.name, within: h.within, cells: h.cells.map((s) => s.address) }));
-    for (const [key, grown] of grownOf(networks, hubOf, now.started)) {
+    for (const [key, grown] of grownOf(networks, hubOf, originsOf(now.started, now.split || []))) {
       const h = hubs.get(key);
       const parent = hubs.get(grown.from);
       h.within = parent.key;
-      h.grown = { by: grown.by.map((a) => cellNamed.get(a)).sort((a, b) => collate(a.short, b.short)), cells: grown.cells };
+      const named = (addresses) => addresses.map((a) => cellNamed.get(a)).sort((a, b) => collate(a.short, b.short));
+      h.grown = { by: named(grown.by), cells: grown.cells, started: grown.started, split: grown.split ? { from: named(grown.split.from), cells: grown.split.cells } : null };
       parent.children.push(h);
     }
     for (const h of loose.values()) hubs.set(h.key, h);
@@ -655,7 +657,7 @@ import {
     // A feeding is drawn only where both its ends are, as a tie is.
     const fed = Array.isArray(now.fed) ? now.fed.filter((f) => byAddress.has(f.receptor) && byAddress.has(f.cell)) : null;
     const foraged = new Set(now.foraged || []);
-    return { at: now.at, hubs, cells, byAddress, byId, startedBy, foraged, shared, machines, builders: now.builders || [], standOf, messages: now.messages || [], judged: Array.isArray(now.waits), balance: now.balance || null, ties: Array.isArray(now.ties) ? now.ties : null, fed, repositories };
+    return { at: now.at, hubs, cells, byAddress, byId, startedBy, splitFrom, foraged, shared, machines, builders: now.builders || [], standOf, messages: now.messages || [], judged: Array.isArray(now.waits), balance: now.balance || null, ties: Array.isArray(now.ties) ? now.ties : null, fed, repositories };
   };
 
   // ---- Places that never move. ----
@@ -3365,10 +3367,15 @@ import {
   const cellPanel = (s) => {
     const m = current;
     const u = s.usage || {};
+    const from = splitSaid(m.splitFrom.get(s.address), m.startedBy.get(s.address));
     const facts = [
       ["Repository", s.repo],
       // Who started it, as its record or forage says, by name where it is drawn.
       ["Started", [s.since ? atWords(s.since) : "", m.startedBy.has(s.address) ? `by ${m.byAddress.get(m.startedBy.get(s.address))?.short || m.startedBy.get(s.address)}` : ""].filter(Boolean).join(", ")],
+      // What its purpose split from, as its forage says, where it names a
+      // cell its start doesn't or says it once the start is let go: a split
+      // from the cell that started it is said once, as the network's drawer does.
+      ["Split from", from ? m.byAddress.get(from)?.short || from : ""],
       ["Last turn", u.last_turn ? agoWords(u.last_turn) : ""],
     ].filter(([, v]) => v);
     // Its machine as drawn, a basin for a basin's machine; and the machine
@@ -3542,15 +3549,18 @@ import {
     return `A network of ${plural(h.cells.length, "cell")}${branches}${fed}.`;
   };
   // A branch grown out of another network says which, and whose start in
-  // it grew it: the cells there that started its own, each one a button.
+  // it grew it: the cells there that started its own, each one a button,
+  // and apart from them the cells its own split from where nobody is said
+  // to have started them, since a split is not a start.
   // Each is a line of its own, as who leads is, since a name in a led line
   // is a whole target and a sentence wrapping round two reads as two.
   const grownWords = (h, up) => {
-    const named = h.grown.by.map((s) => `<button type="button" class="inline" data-go="cell=${esc(s.address)}">${esc(s.short)}</button>`);
-    const who = named.length > 1 ? `${named.slice(0, -1).join(", ")} and ${named.at(-1)}` : named[0];
-    const n = h.grown.cells;
-    const of = n === h.cells.length ? (n === 1 ? "its cell" : `all ${NUMBER.format(n)} of its cells`) : `${NUMBER.format(n)} of its ${plural(h.cells.length, "cell")}`;
-    return [`Grown out of <button type="button" class="inline" data-go="net=${esc(up.key)}">${esc(up.name)}</button>`, `Started by ${who}: ${of}`];
+    const whoOf = (cells) => {
+      const named = cells.map((s) => `<button type="button" class="inline" data-go="cell=${esc(s.address)}">${esc(s.short)}</button>`);
+      return named.length > 1 ? `${named.slice(0, -1).join(", ")} and ${named.at(-1)}` : named[0];
+    };
+    const outOf = `<button type="button" class="inline" data-go="net=${esc(up.key)}">${esc(up.name)}</button>`;
+    return [`Grown out of ${outOf}`, ...grewWords(h.grown, h.cells.length, whoOf)];
   };
   const networkPurpose = (h) => {
     if (h.alone) return "Each its own: these cells work alone, and each one's drawer says what it is for.";
@@ -3717,6 +3727,8 @@ import {
   // cell is, with a tick that lets go of it so the work starts where new
   // work does when none is named.
   const drawerOn = () => panelBody.querySelector("[data-sprout-on]")?.dataset.sproutOn ?? null;
+  // The machines the map has now, by name.
+  const mapMachines = () => current?.machines.map((x) => x.name) ?? [];
   const offerOn = (on, { kept = false } = {}) => {
     sproutOn = isMachine(on) && (kept || on === drawerOn()) ? on : null;
     sproutOnLine.hidden = sproutOn === null;
@@ -3734,6 +3746,7 @@ import {
       if (named) {
         sproutOpener = document.activeElement;
         sproutKeptFromOffered = false;
+        sproutKeptOnOffered = false;
         if (from === sproutFrom) sproutFromBox.checked = true;
         else offerFrom(from);
         if (on === sproutOn) sproutOnBox.checked = true;
@@ -3747,17 +3760,19 @@ import {
     sproutOpener = document.activeElement;
     closeFind({ said: false });
     // Words kept for a machine that has left the map go with it. Others go
-    // from the cell they went from while it is still on the map, and on
-    // the machine they went to, unless a drawer's button names its own.
-    if (sproutKept && !keptOnStands(sproutKept.on, current?.machines.map((x) => x.name) ?? [])) {
+    // on the machine they went to, or on none, unless a drawer's button
+    // names its own, and from the cell they went from while it is still on
+    // the map, else from the one open now. A cell that leaves never sends
+    // its words on the open drawer's machine, where they never went.
+    if (sproutKept && !keptOnStands(sproutKept.on, mapMachines())) {
       sproutKept = null;
       sproutInput.value = "";
     }
     const kept = sproutKept?.from;
-    sproutKeptFromOffered =
-      sproutKept !== null && !named && (kept === null || !!current?.byAddress.has(kept));
+    sproutKeptOnOffered = sproutKept !== null && !named;
+    sproutKeptFromOffered = sproutKeptOnOffered && (kept === null || !!current?.byAddress.has(kept));
     offerFrom(sproutKeptFromOffered ? kept : from, { kept: sproutKeptFromOffered });
-    offerOn(sproutKeptFromOffered ? sproutKept.on : on, { kept: sproutKeptFromOffered });
+    offerOn(sproutKeptOnOffered ? sproutKept.on : on, { kept: sproutKeptOnOffered });
     trail.inert = true;
     sproutLine.hidden = false;
     sproutControl.setAttribute("aria-expanded", "true");
@@ -3791,6 +3806,7 @@ import {
       sproutKept = null;
     }
     sproutKeptFromOffered = false;
+    sproutKeptOnOffered = false;
     sproutInput.setCustomValidity("");
     sproutLine.hidden = true;
     trail.inert = false;
@@ -3809,6 +3825,16 @@ import {
     e.preventDefault();
     const from = sproutFrom !== null && sproutFromBox.checked ? sproutFrom : null;
     const on = sproutOn !== null && sproutOnBox.checked ? sproutOn : null;
+    // A machine that left the map while the line was open is let go of
+    // and said, so the work never goes to a machine the map no longer
+    // has, and the next Return starts it where new work starts. The
+    // Return is held, so its repeat never sends before Joel has read why.
+    if (!keptOnStands(on, mapMachines())) {
+      holdKeysDown();
+      offerOn(null);
+      where.textContent = leftWords(on);
+      return;
+    }
     const link = sproutLink(sproutInput.value, from, on);
     // No words, or a machine no link can name, is said where the words go,
     // in the field's own bubble, and once to a screen reader, until a word
@@ -3838,11 +3864,14 @@ import {
     if (sproutInput.value.length - replaced + adds.length > LONGEST_WORDS) where.textContent = FULL_WORDS;
   });
   // New words over kept ones are new work, so they go from the cell open
-  // now, as a fresh line's would; a tick Joel cleared stays cleared.
+  // now, as a fresh line's would; a tick Joel cleared stays cleared. Kept
+  // words offer their cell only when they offer their machine, so the
+  // machine's flag says whether anything kept is offered.
   sproutInput.addEventListener("input", () => {
     sproutInput.setCustomValidity("");
-    if (sproutKeptFromOffered && sproutInput.value !== sproutKept?.words) {
+    if (sproutKeptOnOffered && sproutInput.value !== sproutKept?.words) {
       sproutKeptFromOffered = false;
+      sproutKeptOnOffered = false;
       const ticked = sproutFromBox.checked;
       const onTicked = sproutOnBox.checked;
       offerFrom(chosen?.kind === "cell" ? chosen.id : null);
@@ -3851,9 +3880,10 @@ import {
       sproutOnBox.checked = onTicked;
     }
   });
-  // A tick changed changes what Return would send, so why it sent nothing
-  // is said again only at the next Return: unticking a machine no link can
-  // name lets the words go, as its bubble says.
+  // A tick changed changes what Return would send, so why it last sent
+  // nothing is said again only at the next Return. NO_MACHINE can't come
+  // from a tick, since the map offers only names isMachine passes; what
+  // this clears is NO_WORDS.
   for (const box of [sproutFromBox, sproutOnBox]) {
     box.addEventListener("change", () => sproutInput.setCustomValidity(""));
   }
@@ -4932,8 +4962,9 @@ import {
       // The next change brings the next reading, which is drawn whole: a
       // draw cut short leaves no shape behind for that reading to match.
       drawnFor = null;
-      // Through the kit, broken, so the line's glyph says it as its words do.
-      tell(asof, `The map couldn't draw: ${err?.message || err}. It tries again with the next change.`, "broken");
+      // The page says why on the standing line, broken, until a reading is
+      // drawn whole, whatever a feed's standing says meanwhile (site.ts).
+      document.dispatchEvent(new CustomEvent("mycelium:undrawn", { detail: { why: `${err?.message || err}` } }));
     }
   };
   document.addEventListener("mycelium:now", (e) => take(e.detail));

@@ -289,7 +289,10 @@ function keepRoom(forgets: () => readonly Room[]): (everyFeed: boolean) => void 
       ]),
     );
     try {
-      localStorage.setItem("code-room", JSON.stringify({ width: innerWidth, heights }));
+      // Under a name of its own since the kit's head took the lede, so a visit kept before then,
+      // its heights taken of other parts, is never put back; that one is let go.
+      localStorage.setItem("code-rooms", JSON.stringify({ width: innerWidth, heights }));
+      localStorage.removeItem("code-room");
     } catch {
       // A browser that keeps nothing draws the next load from nothing, shifting as it did.
     }
