@@ -95,7 +95,7 @@ CELLS = 8
 # the markup, whose tag for it and the note on why it runs first are longer
 # than the script they replace; about 688.8 KB, so 690 until the gate
 # measures it.
-BUDGET = Budget(files=36, kilobytes=690, elements=623)
+BUDGET = Budget(files=36, kilobytes=1, elements=623)
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000
 TWIN_NETWORKS = 200
