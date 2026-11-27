@@ -42,7 +42,7 @@ use std::io::{self, Read};
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::os::unix::net::UnixStream;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::sync::{Mutex, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -232,18 +232,24 @@ fn shells_main_pid() -> io::Result<u32> {
         "--value",
         SHELL_UNIT,
     ]);
-    main_pid_of(&mut asked, MANAGER_PATIENCE)
+    main_pid_of(asking(&mut asked)?, MANAGER_PATIENCE)
 }
 
-/// The main process `command` says, as `systemctl show --value` says it,
-/// within `patience`, the command killed and reaped where it doesn't end
-/// in time or can't be waited on.
-fn main_pid_of(command: &mut Command, patience: Duration) -> io::Result<u32> {
-    let mut asked = command
+/// `command` started, its words piped to be read and nothing to read.
+fn asking(command: &mut Command) -> io::Result<Child> {
+    command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .spawn()?;
+        .spawn()
+}
+
+/// The main process `asked` says, as `systemctl show --value` says it,
+/// within `patience`, the command killed and reaped where it doesn't end
+/// in time or can't be waited on. Its words are read once it ends, only
+/// as far as they are written: a process it left behind holding its
+/// pipes would otherwise hold the read past any patience.
+fn main_pid_of(mut asked: Child, patience: Duration) -> io::Result<u32> {
     let deadline = Instant::now() + patience;
     let status = loop {
         let ended = asked.try_wait();
@@ -269,14 +275,18 @@ fn main_pid_of(command: &mut Command, patience: Duration) -> io::Result<u32> {
     };
     // Its words are a line each, well inside a pipe's buffer, so it never
     // waits on them being read before it ends.
-    let mut said = String::new();
-    let mut why = String::new();
-    if let Some(mut out) = asked.stdout.take() {
-        out.read_to_string(&mut said)?;
-    }
-    if let Some(mut err) = asked.stderr.take() {
-        err.read_to_string(&mut why)?;
-    }
+    let said = asked
+        .stdout
+        .take()
+        .map(written)
+        .transpose()?
+        .unwrap_or_default();
+    let why = asked
+        .stderr
+        .take()
+        .map(written)
+        .transpose()?
+        .unwrap_or_default();
     if !status.success() {
         return Err(io::Error::other(format!(
             "systemd couldn't say the shell's main process: {}",
@@ -286,6 +296,38 @@ fn main_pid_of(command: &mut Command, patience: Duration) -> io::Result<u32> {
     said.trim()
         .parse()
         .map_err(|_| io::Error::other("systemd named no main process for the shell"))
+}
+
+/// What an ended command wrote to `pipe`, read without waiting: what's
+/// in it now, up to its end or to what a process still holding it hasn't
+/// written yet.
+fn written(pipe: impl Into<OwnedFd>) -> io::Result<String> {
+    let pipe: OwnedFd = pipe.into();
+    let fd = pipe.as_raw_fd();
+    // SAFETY: fcntl reading the status flags of a descriptor this process
+    // owns.
+    let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+    if flags < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: fcntl setting the status flags of the same descriptor.
+    let set = unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) };
+    if set < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    let mut read = std::fs::File::from(pipe);
+    let mut bytes = Vec::new();
+    let mut chunk = [0_u8; 512];
+    loop {
+        match read.read(&mut chunk) {
+            Ok(0) => break,
+            Ok(got) => bytes.extend_from_slice(&chunk[..got]),
+            Err(why) if why.kind() == io::ErrorKind::WouldBlock => break,
+            Err(why) if why.kind() == io::ErrorKind::Interrupted => {}
+            Err(why) => return Err(why),
+        }
+    }
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
 /// Whether `exe`, as `/proc/<pid>/exe` points, is quickshell's own
@@ -571,26 +613,23 @@ mod tests {
         );
     }
 
-    /// A manager stood in by `sh`, saying what `script` does.
-    fn manager(script: &str) -> Command {
+    /// A manager stood in by `sh`, started, saying what `script` does.
+    fn manager(script: &str) -> Child {
         let mut said = Command::new("sh");
         said.args(["-c", script]);
-        said
+        asking(&mut said).expect("sh starts")
     }
 
     #[test]
     fn the_managers_main_process_is_read_from_what_it_says() {
         let patience = Duration::from_secs(5);
         assert_eq!(
-            main_pid_of(&mut manager("echo 4106561"), patience).expect("said"),
+            main_pid_of(manager("echo 4106561"), patience).expect("said"),
             4_106_561
         );
         // 0 is a unit with no main process, which no peer's pid is.
-        assert_eq!(
-            main_pid_of(&mut manager("echo 0"), patience).expect("said"),
-            0
-        );
-        let unread = main_pid_of(&mut manager("echo active"), patience).expect_err("no pid");
+        assert_eq!(main_pid_of(manager("echo 0"), patience).expect("said"), 0);
+        let unread = main_pid_of(manager("echo active"), patience).expect_err("no pid");
         assert!(
             unread.to_string().contains("named no main process"),
             "{unread}"
@@ -600,7 +639,7 @@ mod tests {
     #[test]
     fn a_manager_that_fails_says_why_in_its_own_words() {
         let failed = main_pid_of(
-            &mut manager("echo 'no such unit' >&2; exit 1"),
+            manager("echo 'no such unit' >&2; exit 1"),
             Duration::from_secs(5),
         )
         .expect_err("it failed");
@@ -611,23 +650,35 @@ mod tests {
     fn a_manager_out_of_time_is_ended_within_its_patience() {
         let patience = Duration::from_secs(1);
         let began = Instant::now();
-        // It writes its pid first, so whether it was killed can be read.
-        let pid_file = std::env::temp_dir().join(format!("wedged-{}", std::process::id()));
-        let script = format!("echo $$ > {}; exec sleep 30", pid_file.display());
-        let late = main_pid_of(&mut manager(&script), patience).expect_err("out of time");
+        // Its pid is known as it starts, so whether it was killed can be
+        // read however late a loaded machine runs it.
+        let wedged = manager("exec sleep 30");
+        let pid = wedged.id().to_string();
+        let late = main_pid_of(wedged, patience).expect_err("out of time");
         assert!(late.to_string().contains("within 1s"), "{late}");
         assert!(
             began.elapsed() < Duration::from_secs(5),
             "it waited {:?}",
             began.elapsed()
         );
-        let pid = std::fs::read_to_string(&pid_file).expect("it said its pid");
-        let _ = std::fs::remove_file(&pid_file);
         // Killed and reaped, it is no process at all, not even a zombie.
         assert!(
-            !Path::new(&format!("/proc/{}", pid.trim())).exists(),
-            "the wedged manager {} still runs",
-            pid.trim()
+            !Path::new(&format!("/proc/{pid}")).exists(),
+            "the wedged manager {pid} still runs"
+        );
+    }
+
+    #[test]
+    fn a_manager_ended_is_read_without_waiting_on_what_it_left_behind() {
+        let began = Instant::now();
+        // It ends at once, leaving a process holding its pipes open.
+        let said = main_pid_of(manager("echo 7; sleep 5 &"), Duration::from_secs(1))
+            .expect("said before it ended");
+        assert_eq!(said, 7);
+        assert!(
+            began.elapsed() < Duration::from_secs(3),
+            "its words were read for {:?}, as long as what it left held them",
+            began.elapsed()
         );
     }
 
