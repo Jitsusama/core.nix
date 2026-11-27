@@ -494,6 +494,12 @@ const SLOW: [&str; 6] = [
 /// would leave amounts served on it, and the shell never says it again
 /// (round 000056 on #6796, F31 and F36). Its end shows them, so it is
 /// the shell's alone.
+///
+/// So any process may hide the amounts, and they stay hidden until the
+/// shell next says how its screen stands: at its next share's start or
+/// end, or once it connects again (round 000011, F106). That is the
+/// trade made on purpose: an agent can keep Joel from seeing amounts for
+/// a while, which he notices, but never show them on a shared screen.
 fn hides_only(said: &Value) -> bool {
     said["ask"] == "sharing" && said["sharing"] == true
 }
