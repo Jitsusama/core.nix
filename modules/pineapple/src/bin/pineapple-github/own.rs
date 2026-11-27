@@ -50,16 +50,39 @@ const SEARCHES: usize = 2;
 /// The words that stop, as the journal names them.
 const SAFE_WORD: &str = "pineapple override";
 
+/// How many rounds that move on hold a span the search left out while
+/// Joel's row saying so can't be written, each trying it again, before
+/// the journal alone says so: 360, about three hours at a round each half
+/// minute, about as long as a thread whose row can't be written is owed
+/// (owed.rs). A site searched by author never searches for his words, so
+/// never holds one. A round whose search fails doesn't move on, so holds
+/// it longer.
+const UNTOLD_ROUNDS: u32 = 360;
+
 /// Where Joel's own words were last searched from whole, which a failed
 /// search leaves where it was; when each pull request or issue that
 /// search found had last changed, so one is read again only once it has;
-/// how far back a first start may judge; and which of his words too old
-/// to judge the journal has already named.
+/// how far back a first start may judge; which of his words too old to
+/// judge the journal has already named; and each span its searches
+/// left out whose row in For You couldn't yet be written, held only in
+/// memory, so a restart lets them go to the journal alone, as nothing of
+/// theirs is kept across one (src/progress.rs).
 pub(super) struct Searched {
     from: u64,
     floor: u64,
     read: HashMap<String, String>,
     told: HashSet<String>,
+    untold: Vec<Untold>,
+}
+
+/// What `login`'s search left out, changed from `from` to `to`, in
+/// seconds, whose row couldn't be written in the `rounds` that tried it.
+#[derive(Debug, PartialEq, Eq)]
+struct Untold {
+    login: String,
+    from: u64,
+    to: u64,
+    rounds: u32,
 }
 
 /// What one search found: each pull request or issue to read, when each
@@ -91,6 +114,7 @@ impl Searched {
             floor,
             read: HashMap::new(),
             told: HashSet::new(),
+            untold: Vec::new(),
         }
     }
 
@@ -213,24 +237,59 @@ impl Searched {
     /// read owed (owed.rs), and says in the journal what its searches left
     /// out, from where the next round reaches, which only moving on
     /// settles, and tells Joel in a row of its own (left.rs), as nothing
-    /// searches it again.
+    /// searches it again. A span whose row can't be written is held and
+    /// tried again first in each round that moves on, for up to
+    /// [`UNTOLD_ROUNDS`].
     pub(super) fn moved_on(&mut self, began: u64, found: Found, tell: &Left) {
-        if found.answered {
-            let reach = self.reach();
-            self.from = began;
-            self.read = found.seen;
-            let next = github::stamp(self.reach());
-            for (left, to) in found.left {
-                eprintln!("{left} searched again only from {next}, where the next round reaches");
-                // A thread changed again from where the next round reaches
-                // is found again, but what was said on it before then is
-                // older than that round judges, so the row runs to the
-                // oldest the search gave, as far as a stop it missed may be.
-                if let Some(to) = github::seconds(&to) {
-                    tell.own(&found.login, reach, to);
-                }
+        if !found.answered {
+            return;
+        }
+        let reach = self.reach();
+        self.from = began;
+        self.read = found.seen;
+        for untold in std::mem::take(&mut self.untold) {
+            self.tell_of(untold, tell);
+        }
+        let next = github::stamp(self.reach());
+        for (left, to) in found.left {
+            eprintln!("{left} searched again only from {next}, where the next round reaches");
+            // A thread changed again from where the next round reaches
+            // is found again, but what was said on it before then is
+            // older than that round judges, so the row runs to the
+            // oldest the search gave, as far as a stop it missed may be.
+            if let Some(to) = github::seconds(&to) {
+                let login = found.login.clone();
+                let untold = Untold {
+                    login,
+                    from: reach,
+                    to,
+                    rounds: 0,
+                };
+                self.tell_of(untold, tell);
             }
         }
+    }
+
+    /// Tells Joel of what `untold` names in its row, held to try again
+    /// the next round that moves on while it can't be written, until
+    /// [`UNTOLD_ROUNDS`] have tried it, when the journal alone says so.
+    fn tell_of(&mut self, untold: Untold, tell: &Left) {
+        if tell.own(&untold.login, untold.from, untold.to) {
+            return;
+        }
+        let rounds = untold.rounds + 1;
+        if rounds < UNTOLD_ROUNDS {
+            self.untold.push(Untold { rounds, ..untold });
+            return;
+        }
+        eprintln!(
+            "<3>couldn't write Joel's row in {rounds} rounds saying {}'s search for what he said \
+             left out threads changed from {} to {}, so only the journal says so: search there \
+             for a stop",
+            untold.login,
+            github::stamp(untold.from),
+            github::stamp(untold.to)
+        );
     }
 
     /// Says in the journal, once a run, Joel's own stop a read found from
@@ -279,10 +338,13 @@ fn oldest(given: &[(Thread, String)]) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use pineapple::github::Thread;
+    use std::collections::HashMap;
+
+    use pineapple::github::{self, Thread};
     use pineapple::progress::Own;
 
-    use super::{OWN_LAG, Searched, oldest};
+    use super::{Found, OWN_LAG, Searched, UNTOLD_ROUNDS, Untold, oldest};
+    use crate::left::Rows;
 
     /// When the reader's rounds begin in these cases, in seconds.
     const SINCE: u64 = 100_000;
@@ -349,6 +411,73 @@ mod tests {
             oldest(&given[1..2]),
             None,
             "none where none says, so the search before bounds it"
+        );
+    }
+
+    /// A search that moves on, leaving out what changed before `oldest`,
+    /// if anything, as one cut short twice does.
+    fn moving_on(oldest: Option<u64>) -> Found {
+        let said = "<4>GitHub's search for what Joel said found 2001 but gave 2000";
+        Found {
+            threads: Vec::new(),
+            seen: HashMap::new(),
+            answered: true,
+            left: oldest
+                .map(|oldest| (said.to_owned(), github::stamp(oldest)))
+                .into_iter()
+                .collect(),
+            login: "joel.example".to_owned(),
+        }
+    }
+
+    #[test]
+    fn a_span_whose_row_cant_be_written_is_held_until_it_is() {
+        // Its rows' home is a file, so nothing can be written under it.
+        let rows = Rows::new("own-unwritten");
+        std::fs::write(&rows.home, "").expect("a file where the rows' home would be");
+        let mut searched = Searched::new(SINCE, None, false, LAG);
+        searched.moved_on(SINCE + 30, moving_on(Some(SINCE - 60)), &rows.left);
+        let held = Untold {
+            login: "joel.example".to_owned(),
+            from: SINCE - OWN_LAG,
+            to: SINCE - 60,
+            rounds: 1,
+        };
+        assert_eq!(searched.untold, [held], "held while its row can't be written");
+
+        std::fs::remove_file(&rows.home).expect("the rows' home freed");
+        searched.moved_on(SINCE + 60, moving_on(None), &rows.left);
+        let written = std::fs::read_to_string(rows.home.join("pineapple/missed-github.json"))
+            .unwrap_or_default();
+        let named = format!(
+            "pineapple-github-missed-own-{}-{}",
+            (SINCE - OWN_LAG) * 1000,
+            (SINCE - 60) * 1000
+        );
+        assert!(
+            searched.untold.is_empty() && written.contains(&named),
+            "the next round that moves on writes it, from where it was left out: {written}"
+        );
+    }
+
+    #[test]
+    fn a_span_whose_row_stays_unwritten_is_let_go_after_its_rounds() {
+        let rows = Rows::new("own-untold");
+        std::fs::write(&rows.home, "").expect("a file where the rows' home would be");
+        let mut searched = Searched::new(SINCE, None, false, LAG);
+        searched.moved_on(SINCE + 30, moving_on(Some(SINCE - 60)), &rows.left);
+        for round in 2..UNTOLD_ROUNDS {
+            searched.moved_on(SINCE + 30 * u64::from(round), moving_on(None), &rows.left);
+        }
+        assert_eq!(
+            searched.untold.iter().map(|held| held.rounds).collect::<Vec<_>>(),
+            [UNTOLD_ROUNDS - 1],
+            "held a round short of its last"
+        );
+        searched.moved_on(SINCE + 30 * u64::from(UNTOLD_ROUNDS), moving_on(None), &rows.left);
+        assert!(
+            searched.untold.is_empty(),
+            "a rows file that stays broken holds it no longer, the journal alone saying so"
         );
     }
 

@@ -220,28 +220,7 @@ pub(super) fn kept(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// GitHub's rows in shadow, in a folder of `case`'s own in this test
-    /// run, removed once they're dropped, as cases run at once.
-    struct Rows {
-        home: std::path::PathBuf,
-        left: Left,
-    }
-
-    impl Rows {
-        fn new(case: &str) -> Self {
-            let home =
-                std::env::temp_dir().join(format!("pineapple-owed-{}-{case}", std::process::id()));
-            let left = Left::new("github", "GitHub", "https://api.github.com", true, &home);
-            Self { home, left }
-        }
-    }
-
-    impl Drop for Rows {
-        fn drop(&mut self) {
-            drop(std::fs::remove_dir_all(&self.home).or_else(|_| std::fs::remove_file(&self.home)));
-        }
-    }
+    use crate::left::Rows;
 
     /// example/shop's pull request `number`.
     fn thread(number: u64) -> Thread {

@@ -51,13 +51,15 @@ impl Left {
 
     /// Tells Joel his own words in what `login` takes part in, changed from
     /// `from` to `to`, in seconds, went unsearched, as a search cut short
-    /// or failing left them, so a stop of his there wasn't heard.
-    pub(super) fn own(&self, login: &str, from: u64, to: u64) {
+    /// or failing left them, so a stop of his there wasn't heard, and
+    /// whether it's written: the search holds one that isn't (own.rs), as
+    /// nothing searches that span again.
+    pub(super) fn own(&self, login: &str, from: u64, to: u64) -> bool {
         let at = now();
         let (from, to) = (from.saturating_mul(1000), to.saturating_mul(1000));
         let say =
             |from: Option<u64>, to: u64, whole: bool| self.own_row(login, from, to, at, whole);
-        self.keep(say(Some(from), to, true), at, say);
+        self.keep(say(Some(from), to, true), at, say)
     }
 
     /// Tells Joel what was said on `thread` from `from`, in seconds, until
@@ -173,6 +175,32 @@ fn fnv(key: &str) -> u64 {
     key.bytes().fold(0xcbf2_9ce4_8422_2325, |hash, byte| {
         (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
     })
+}
+
+/// GitHub's rows in shadow, in a folder of `case`'s own in this test run,
+/// removed once they're dropped, as cases run at once. A file written
+/// where the folder would be keeps any row from being written.
+#[cfg(test)]
+pub(super) struct Rows {
+    pub(super) home: PathBuf,
+    pub(super) left: Left,
+}
+
+#[cfg(test)]
+impl Rows {
+    pub(super) fn new(case: &str) -> Self {
+        let home =
+            std::env::temp_dir().join(format!("pineapple-left-{}-{case}", std::process::id()));
+        let left = Left::new("github", "GitHub", "https://api.github.com", true, &home);
+        Self { home, left }
+    }
+}
+
+#[cfg(test)]
+impl Drop for Rows {
+    fn drop(&mut self) {
+        drop(std::fs::remove_dir_all(&self.home).or_else(|_| std::fs::remove_file(&self.home)));
+    }
 }
 
 #[cfg(test)]
