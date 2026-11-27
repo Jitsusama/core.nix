@@ -848,7 +848,15 @@ mod tests {
         );
         assert_eq!(standing.default, "proxy");
         let probe = &standing.budgets[3];
-        assert!(probe.undeclared && probe.kind.is_none() && probe.providers.is_empty());
+        assert_eq!(
+            (
+                probe.undeclared,
+                probe.kind.is_none(),
+                probe.providers.is_empty()
+            ),
+            (true, true, true),
+            "the probe should stand undeclared, with no kind or provider: {probe:?}"
+        );
         // The plan's week has no reading yet, and is still an allowance.
         let claude = &standing.budgets[0];
         let allowances: Vec<&str> = claude
@@ -869,17 +877,33 @@ mod tests {
     fn the_whole_is_billed_spend() {
         let standing = standing_now(None);
         let claude = &standing.budgets[0];
-        assert!(claude.spent["today"].dollars.abs() < 1e-9);
+        let billed = claude.spent["today"].dollars;
+        assert!(
+            billed.abs() < 1e-9,
+            "the plan's turns should bill nothing, not {billed}"
+        );
         assert_eq!(claude.value.as_ref().unwrap()["7 days"].shown, "$84");
         let total = &standing.total;
         assert_eq!(total.words, "billed spend");
         // October has 31 days, so a day's share of $31 is $1.
-        assert!((total.periods["today"].dollars - (18_400.0 + 310.0 + 1.0 + 1.0)).abs() < 1e-9);
-        assert!((total.periods["this month"].dollars - (18_711.0 + 31.0)).abs() < 1e-9);
+        let today = total.periods["today"].dollars;
+        assert!(
+            (today - (18_400.0 + 310.0 + 1.0 + 1.0)).abs() < 1e-9,
+            "today's whole should be $18,712, not {today}"
+        );
+        let month = total.periods["this month"].dollars;
+        assert!(
+            (month - (18_711.0 + 31.0)).abs() < 1e-9,
+            "this month's whole should be $18,742, not {month}"
+        );
         let json = serde_json::to_value(&standing).unwrap();
         assert_eq!(json["total"]["today"]["shown"], "$18,712");
         assert_eq!(json["budgets"][1]["allowances"][0]["unit"], "dollars");
-        assert!(json["budgets"][0]["allowances"][0].get("spent").is_none());
+        let five = &json["budgets"][0]["allowances"][0];
+        assert!(
+            five.get("spent").is_none(),
+            "a plan's allowance says no spend: {five}"
+        );
         assert_eq!(json["budgets"][0]["kind"], "plan");
         assert_eq!(json["budgets"][0]["providers"][0], "claude-code");
     }
@@ -906,7 +930,11 @@ mod tests {
         // The week has no reading yet, so no standing, but it still says
         // its window and where it warns.
         let week = &claude["allowances"][1];
-        assert!(week.get("standing").is_none() && week.get("nearest").is_none());
+        assert_eq!(
+            (week.get("standing"), week.get("nearest")),
+            (None, None),
+            "a week with no reading should have no standing"
+        );
         assert_eq!(week["said"]["window"], "a week");
         assert_eq!(week["said"]["warns"], "at 80%");
         assert_eq!(

@@ -661,7 +661,11 @@ mod tests {
         let found = outliers(&sessions, 0.05, 25.0);
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].work.session, "costly");
-        assert!(found[0].times > 3.0);
+        assert!(
+            found[0].times > 3.0,
+            "the costly session should be over three times the usual, not {}",
+            found[0].times
+        );
     }
 
     #[test]

@@ -58,15 +58,21 @@ mod tests {
     fn the_same_seed_repeats() {
         let mut one = Random::seeded(7);
         let mut other = Random::seeded(7);
-        assert!((0..100).all(|_| one.next_u64() == other.next_u64()));
+        let ones: Vec<u64> = (0..100).map(|_| one.next_u64()).collect();
+        let others: Vec<u64> = (0..100).map(|_| other.next_u64()).collect();
+        assert_eq!(ones, others, "one seed should draw the same numbers");
     }
 
     #[test]
     fn units_stay_in_range_and_centre() {
         let mut random = Random::seeded(1);
         let draws: Vec<f64> = (0..10_000).map(|_| random.unit()).collect();
-        assert!(draws.iter().all(|u| (0.0..1.0).contains(u)));
+        let outside = draws.iter().find(|u| !(0.0..1.0).contains(*u));
+        assert_eq!(outside, None, "every unit should be in [0, 1)");
         let mean = crate::stats::mean(&draws);
-        assert!((mean - 0.5).abs() < 0.02);
+        assert!(
+            (mean - 0.5).abs() < 0.02,
+            "units should centre on 0.5, not {mean}"
+        );
     }
 }
