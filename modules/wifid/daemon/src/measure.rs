@@ -401,16 +401,7 @@ pub async fn follow(
                 let (now, hour) = (Instant::now(), learn::hour_here());
                 let joined = state.borrow().joined();
                 let call = calling.borrow().on(now);
-                // A chooser goes only with its card: one between points as
-                // it roams, or dropped a moment, is still the card that gave
-                // way, spurned and kept off, so it keeps all it knows, but
-                // for its holds once on another network (`chooser_of`).
-                choosers.retain(|card, _| state.borrow().has_card(card));
-                for (card, chooser) in &mut choosers {
-                    if !joined.iter().any(|on| on.card == *card) {
-                        chooser.unjoined();
-                    }
-                }
+                keep_with_cards(&mut choosers, &joined, |card| state.borrow().has_card(card));
                 forget_the_forgotten(&mut learned, &state.borrow().saved_names());
                 for on in joined {
                     let carried = measures.of(&on.point, now);
@@ -460,6 +451,25 @@ pub async fn follow(
                     call,
                 );
             }
+        }
+    }
+}
+
+/// Drops the chooser of each card no longer `there`, and has each of a
+/// card there but not `joined` forget the point it was found on
+/// (`Chooser::unjoined`). A chooser goes only with its card: one between
+/// points as it roams, or dropped a moment, is still the card that gave
+/// way, spurned and kept off, so it keeps all it knows, but for its holds
+/// once on another network (`chooser_of`).
+fn keep_with_cards(
+    choosers: &mut HashMap<String, Chooser>,
+    joined: &[Joined],
+    there: impl Fn(&str) -> bool,
+) {
+    choosers.retain(|card, _| there(card));
+    for (card, chooser) in choosers {
+        if !joined.iter().any(|on| on.card == *card) {
+            chooser.unjoined();
         }
     }
 }
@@ -997,6 +1007,7 @@ fn per_hundred(part: usize, whole: usize) -> f64 {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+    use crate::choose::tests::{found_on, found_on_at};
 
     const DESK: &str = "6c:ae:f6:c1:84:26";
     const HALL: &str = "6c:ae:f6:c1:84:28";
@@ -1877,6 +1888,36 @@ pub(crate) mod tests {
             (measured.failed - 0.2).abs() < 1e-9,
             "2 lost of 1,000: {}",
             measured.failed
+        );
+    }
+
+    #[test]
+    fn each_minute_a_chooser_goes_with_its_card_and_forgets_where_it_was_found_unjoined() {
+        let (desk, hall) = ("02:00:00:00:01:00", "02:00:00:00:02:00");
+        let start = Instant::now();
+        let mut choosers = HashMap::from([
+            ("wlan2".to_owned(), found_on_at(desk, start)),
+            ("wlan3".to_owned(), found_on_at(hall, start)),
+            ("wlan4".to_owned(), found_on_at(hall, start)),
+        ]);
+
+        keep_with_cards(&mut choosers, &[joined(desk)], |card| card != "wlan4");
+
+        let joined_on = choosers.get("wlan2").map(found_on);
+        let unjoined_on = choosers.get("wlan3").map(found_on);
+        assert_eq!(
+            joined_on,
+            Some(Some(desk)),
+            "a joined card's chooser forgot the point it was found on"
+        );
+        assert_eq!(
+            unjoined_on,
+            Some(None),
+            "an unjoined card's chooser still held the point it was found on"
+        );
+        assert!(
+            !choosers.contains_key("wlan4"),
+            "the chooser of a card gone stayed"
         );
     }
 

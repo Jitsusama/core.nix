@@ -4437,6 +4437,19 @@ pub(crate) mod tests {
         (chooser, again)
     }
 
+    /// A chooser that first found its card on `point` at `since`.
+    pub(crate) fn found_on_at(point: &str, since: Instant) -> Chooser {
+        Chooser {
+            joined: Some((point.to_owned(), since)),
+            ..Chooser::default()
+        }
+    }
+
+    /// The point a chooser found its card on, while it holds one.
+    pub(crate) fn found_on(chooser: &Chooser) -> Option<&str> {
+        chooser.joined.as_ref().map(|(on, _)| on.as_str())
+    }
+
     /// A chooser that has just sent the card back from the hall to the
     /// desk a second time within the hour for carrying worse only than the
     /// desk usually does, why not yet said, and when.
