@@ -171,13 +171,21 @@ impl Writing {
         untold
     }
 
-    /// Keeps how loud a take of `side`'s was, `start` samples into the
-    /// call, when it's theirs, whether or not Parakeet heard words in it,
-    /// since its sound reaches Joel's microphone all the same.
-    fn hear_sound(&mut self, side: Side, start: usize, samples: &[f32]) {
+    /// What the daemon goes on with from a take of `side`'s, `start` samples
+    /// into the call, `heard` from its `samples` (`heard_or_left_out`),
+    /// keeping how loud it was when it's theirs, worded or not, since its
+    /// sound reaches Joel's microphone all the same.
+    fn take_heard(
+        &mut self,
+        side: Side,
+        start: usize,
+        samples: &[f32],
+        heard: dictation::openvino::Result<(Option<String>, Vec<Word>)>,
+    ) -> (Option<String>, Vec<Word>) {
         if side == Side::Theirs {
             self.sound.hear(start, samples);
         }
+        heard_or_left_out(heard)
     }
 
     /// Keeps the embedding of each piece of a take of theirs embedded,
@@ -293,11 +301,11 @@ pub fn hear(
                 let writing = calls
                     .entry(key.clone())
                     .or_insert_with(|| taken_up(&mut ended, book, &key, me));
-                writing.hear_sound(side, start, &samples);
                 let Some(parakeet) = loaded(settings, &mut speech, book, &key, &mut told) else {
                     continue;
                 };
-                let (text, words) = heard_or_left_out(transcribe_take(parakeet, start, &samples));
+                let heard = transcribe_take(parakeet, start, &samples);
+                let (text, words) = writing.take_heard(side, start, &samples, heard);
                 // Embedded once Parakeet has heard it, so a call's first
                 // line never waits on the speaker model's loading.
                 if side == Side::Theirs {

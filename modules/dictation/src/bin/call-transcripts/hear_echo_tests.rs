@@ -199,9 +199,36 @@ fn an_echo_cut_for_its_level_is_told_by_how_far_below_theirs_it_was() {
 /// down as a word of his, 61 s in.
 fn joel_under_a_wordless_take() -> Writing {
     let mut writing = ada_then_bo();
-    writing.hear_sound(Side::Theirs, 60 * SECOND, &vec![1.0; 2 * SECOND]);
+    let wordless = Ok((None, Vec::new()));
+    writing.take_heard(Side::Theirs, 60 * SECOND, &vec![1.0; 2 * SECOND], wordless);
     joel_says(&mut writing, 61_000, "Yeah.", -30.0);
     writing
+}
+
+#[test]
+fn joels_word_under_a_take_of_theirs_that_wasnt_heard_is_his_own() {
+    let mut writing = ada_then_bo();
+    let failed = Err("the encoder failed".to_owned());
+    writing.take_heard(Side::Theirs, 60 * SECOND, &vec![1.0; 2 * SECOND], failed);
+    joel_says(&mut writing, 61_000, "Yeah.", -30.0);
+    assert_eq!(
+        joels_written(&writing),
+        ["Yeah."],
+        "Joel's word was cut under the sound of a take of theirs Parakeet never heard"
+    );
+}
+
+#[test]
+fn joels_word_under_a_loud_take_of_his_own_is_his_own() {
+    let mut writing = ada_then_bo();
+    let wordless = Ok((None, Vec::new()));
+    writing.take_heard(Side::Mine, 60 * SECOND, &vec![1.0; 2 * SECOND], wordless);
+    joel_says(&mut writing, 61_000, "Yeah.", -30.0);
+    assert_eq!(
+        joels_written(&writing),
+        ["Yeah."],
+        "Joel's word was cut under the sound of a take of his own"
+    );
 }
 
 #[test]
