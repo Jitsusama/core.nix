@@ -259,6 +259,7 @@ fn a_copy_copied_over_stays_past_the_time_the_one_before_it_clears() {
     let mut client = running.client();
     client.ask(&json!({"id": 1, "ask": "list", "asked": true}));
     let (first, first_clears) = held(&running, &mut client, 2);
+    // Two of the first copy's 5 s pass, so the second's time falls 2 s past it.
     std::thread::sleep(std::time::Duration::from_secs(2));
     let (second, second_clears) = held(&running, &mut client, 3);
     assert!(
