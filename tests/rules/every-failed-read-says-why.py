@@ -13,15 +13,19 @@ on a line of its own just above them, says why.
 
 A read's expression is the chain of calls on its result, followed out of a
 closure or call it sits in, up to a `?`, a `;`, a `,` or a block. It takes
-a failure as nothing when a link of that chain defaults the error
-(`unwrap_or_default`, `unwrap_or`, `unwrap_or_else` unless it panics or
-exits, `map_or`, `map_or_else`), drops it (`ok`) or judges it as false
-(`is_ok`, `is_ok_and`, `is_err`); when its statement opens with `let Ok(`,
-as `if let` and `let else` do; or when a `match` on it has an `Err(_)` or
-`_` arm. A default given in a later statement isn't seen. Test code (a
-tests folder, a `tests.rs` or `*_tests.rs` file, an item marked
-`#[cfg(test)]`, and the file of a module declared so) is left out, since a
-test's own fixture missing fails the test anyway.
+a failure as nothing when a link of that chain, outside the arguments of
+another, defaults the error (`unwrap_or_default`, `unwrap_or`,
+`unwrap_or_else` unless it panics or exits with a code other than nought,
+`map_or`, `map_or_else`, `or`), drops it (`ok`, `iter`, `into_iter`) or
+judges it as false (`is_ok`, `is_ok_and`, `is_err`); when its statement
+opens with `let Ok(`, as `if let` and `let else` do, but for a `let else`
+whose block fails loudly or returns an error; or when a `match` on it has an
+arm of its own taking any error (`Err(_)`, `Err(_name)`, `Err(..)` or
+`_`). A `let else` says why with a comment on its block's first line too.
+A default given in a later statement isn't seen. Test code (a tests
+folder, a `tests.rs` or `*_tests.rs` file, an item marked `#[cfg(test)]`,
+and the file of a module declared so) is left out, since a test's own
+fixture missing fails the test anyway.
 
 WAITING is JSON naming, for each file that held such reads before the rule,
 how many it holds while each says why or says it couldn't read. A file
@@ -42,17 +46,29 @@ if TYPE_CHECKING:
 READ = re.compile(r"\bfs::(read_to_string|read)\s*\(")
 # The links of a read's chain that take its failure as nothing.
 DEFAULTED = re.compile(
-    r"\.(unwrap_or_default|unwrap_or|unwrap_or_else|map_or|map_or_else|ok|is_ok|is_ok_and"
-    r"|is_err)\s*\("
+    r"\.(unwrap_or_default|unwrap_or|unwrap_or_else|map_or|map_or_else|or|ok|iter|into_iter"
+    r"|is_ok|is_ok_and|is_err)\s*\("
 )
-# An `unwrap_or_else` that ends the program rather than giving a default.
+# An `unwrap_or_else` that ends the program rather than giving a default;
+# an exit is loud only with a code other than nought, since an exit of
+# nought tells its caller the run was fine.
 LOUD = re.compile(
-    r"\.unwrap_or_else\(\s*\|[^|]*\|\s*\{?\s*(panic!|unreachable!|todo!|(std::)?process::exit)"
+    r"\.unwrap_or_else\(\s*\|[^|]*\|\s*\{?\s*(panic!|unreachable!|todo!"
+    r"|(std::)?process::exit\(\s*([1-9]|-))"
 )
 LET_OK = re.compile(r"\blet\s+Ok\s*\(")
+LET_ELSE = re.compile(r"\belse\s*$")
+# A `let else` block that fails loudly or returns an error says it couldn't read.
+FAILS = re.compile(
+    r"\b(return\s+Err\s*\(|Err\s*\(|panic!|unreachable!|todo!|bail!"
+    r"|(std::)?process::exit\(\s*([1-9]|-))"
+)
 MATCH = re.compile(r"\bmatch\b")
 # A match arm taking any error as one more case.
-ANY_ERROR = re.compile(r"\bErr\(\s*_\s*\)|(^|[{,])\s*_\s*(if\b[^=]*)?=>")
+ANY_ERROR = re.compile(
+    r"\bErr\(\s*(_\w*|\.\.)\s*\)\s*(if\b(?:(?!=>).)*)?=>|(^|[{},])\s*_\s*(if\b(?:(?!=>).)*)?=>",
+    re.DOTALL,
+)
 TEST_ITEM = re.compile(r"#\[cfg\(test\)\]")
 ATTRIBUTE = re.compile(r"\s*#!?\[")
 TEST_MODULE = re.compile(r"\s*(pub(\([^)]*\))?\s+)?mod\s+(\w+)\s*;")
@@ -133,8 +149,13 @@ def test_items(code: str) -> Iterator[tuple[int, int, str | None]]:
             if char == "{" and depth == 0:
                 end = closing(code, index)
                 break
-            if char == ";" and depth == 0:
+            # A field, a variant or an argument ends at its comma, or at
+            # the bracket closing what holds it.
+            if char in ";," and depth == 0:
                 end = index + 1
+                break
+            if char in CLOSES and depth == 0:
+                end = index
                 break
             depth += (char in OPENS) - (char in CLOSES)
         declared = TEST_MODULE.match(code[at:end])
@@ -171,6 +192,29 @@ def chain_end(code: str, index: int) -> int:
     return len(code)
 
 
+def outermost(code: str, opens: str = OPENS) -> str:
+    """Blank what sits inside the brackets of `opens` a piece of code opens, keeping them.
+
+    So a link of a read's chain is seen only where it is the chain's own,
+    not in a closure or argument of another, and a match's arm only where
+    it is the match's own, not one of a match in an arm's body. A bracket
+    closing one opened before the piece is kept as it is.
+    """
+    closes = "".join(CLOSES[OPENS.index(bracket)] for bracket in opens)
+    out: list[str] = []
+    depth = 0
+    for char in code:
+        if char in closes and depth > 0:
+            depth -= 1
+        if depth > 0 and char != "\n":
+            out.append(char if char in opens + closes else " ")
+        else:
+            out.append(char)
+        if char in opens:
+            depth += 1
+    return "".join(out)
+
+
 def statement_start(code: str, index: int) -> int:
     """Give the index the statement holding `index` starts at: past the last `;`, `{` or `}`."""
     starts = [code.rfind(mark, 0, index) for mark in ";{}"]
@@ -183,11 +227,21 @@ def defaulted(code: str, read: re.Match[str]) -> tuple[int, int] | None:
     end = chain_end(code, after)
     start = statement_start(code, read.start())
     head = code[start : read.start()]
-    chain = LOUD.sub("", code[after:end])
-    if DEFAULTED.search(chain) or (LET_OK.search(head) and code[end : end + 1] != "?"):
+    chain = outermost(LOUD.sub("", code[after:end]))
+    if DEFAULTED.search(chain):
+        return start, end
+    if LET_OK.search(head) and code[end : end + 1] != "?":
+        if code[end : end + 1] == "{" and LET_ELSE.search(code[after:end]):
+            if FAILS.search(code[end : closing(code, end)]):
+                return None
+            # The block's first line is the statement's too, where a
+            # `let else` says why.
+            first = code.find("\n", code.find("\n", end) + 1)
+            return start, len(code) if first < 0 else first
         return start, end
     in_a_match = MATCH.search(head) and code[end : end + 1] == "{"
-    if in_a_match and ANY_ERROR.search(code[end : closing(code, end)]):
+    arms = outermost(code[end + 1 : closing(code, end) - 1], "{")
+    if in_a_match and ANY_ERROR.search(arms):
         return start, end
     return None
 

@@ -112,3 +112,79 @@ mod tests {
 fn after_the_tests(path: &Path) -> String {
     fs::read_to_string(path).unwrap_or_default()
 }
+
+// A field marked as test code ends at its comma, never hiding what follows.
+struct Held {
+    #[cfg(test)]
+    seen: u8,
+    kept: u8,
+}
+
+fn after_a_test_field(path: &Path) -> String {
+    fs::read_to_string(path).unwrap_or_default()
+}
+
+fn iterated(path: &Path) -> Vec<String> {
+    fs::read_to_string(path).into_iter().collect()
+}
+
+fn matched_to_a_named_error(path: &Path) -> String {
+    match fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(_error) => String::new(),
+    }
+}
+
+fn matched_to_any_error(path: &Path) -> String {
+    match fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(..) => String::new(),
+    }
+}
+
+fn matched_to_anything_after_a_block(path: &Path) -> usize {
+    match fs::read(path) {
+        Ok(bytes) => {
+            let count = bytes.len();
+            count
+        }
+        _ => 0,
+    }
+}
+
+fn matched_inside_an_arm(path: &Path) -> std::io::Result<usize> {
+    match fs::read_to_string(path) {
+        Ok(text) => match text.trim().parse::<usize>() {
+            Ok(count) => Ok(count),
+            Err(_) => Ok(0),
+        },
+        Err(error) => Err(error),
+    }
+}
+
+fn let_else_failing(path: &Path) -> std::io::Result<usize> {
+    let Ok(text) = fs::read_to_string(path) else {
+        return Err(std::io::Error::other("unread"));
+    };
+    Ok(text.len())
+}
+
+fn let_else_said_in_its_block(path: &Path) -> usize {
+    let Ok(text) = fs::read_to_string(path) else {
+        // A file never written yet holds nothing.
+        return 0;
+    };
+    text.len()
+}
+
+fn exited_as_fine(path: &Path) -> String {
+    fs::read_to_string(path).unwrap_or_else(|_| std::process::exit(0))
+}
+
+fn exited_as_failed(path: &Path) -> String {
+    fs::read_to_string(path).unwrap_or_else(|_| std::process::exit(1))
+}
+
+fn defaulted_in_an_argument(path: &Path, other: &Path) -> std::io::Result<String> {
+    fs::read_to_string(path).map(|text| text + &fs::read_to_string(other).unwrap_or_default())
+}

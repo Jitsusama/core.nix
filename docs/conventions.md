@@ -181,11 +181,14 @@ couldn't read, as an error or as a measure left unjudged, and takes a
 failure as nothing only where that's true, such as a file not yet written,
 with a comment saying why. `every-failed-read-says-why` holds Rust to it:
 a `fs::read_to_string` or `fs::read` outside its tests whose failure its
-expression takes as nothing (a default, an option, a false, a `let Ok(` or
-an `Err(_)` arm) says why on its statement or on a line of its own just
-above it. A default given in a later statement isn't seen. Those before the rule
-wait, counted by file, in `tests/rules/every-failed-read-says-why-waiting.nix`,
-and a count only falls.
+expression takes as nothing (a default, an option, an iterator, a false, a
+`let Ok(` whose `else` neither fails nor returns an error, or a match's
+own arm taking any error) says why on its statement, on a line of its own
+just above it, or on a `let else` block's first line. A default given in
+a later statement, or inside another call's argument, isn't seen. Those
+before the rule wait, counted by file, in
+`tests/rules/every-failed-read-says-why-waiting.nix`, and a count only
+falls.
 
 ## Checks Before Switches
 

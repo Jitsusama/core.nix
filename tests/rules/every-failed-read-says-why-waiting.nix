@@ -183,7 +183,6 @@
   "modules/passwords/src/typing.rs" = 4;
   "modules/pi-keys/src/context.rs" = 1;
   "modules/pi-keys/src/main.rs" = 7;
-  "modules/pi-packages/src/check.rs" = 1;
   "modules/pi-packages/src/inuse/mod.rs" = 3;
   "modules/pi-packages/src/loaded.rs" = 1;
   "modules/pi-packages/src/version.rs" = 1;
@@ -243,7 +242,7 @@
   "modules/shaper/src/proof/load.rs" = 1;
   "modules/shaper/src/proof/lock.rs" = 1;
   "modules/shaper/src/record.rs" = 1;
-  "modules/shaper/src/status.rs" = 3;
+  "modules/shaper/src/status.rs" = 2;
   "modules/shaper/src/waiting.rs" = 2;
   "modules/slack/src/lib.rs" = 2;
   "modules/slices/jobs-sorter/src/door.rs" = 1;
@@ -271,9 +270,7 @@
   "modules/system/src/main.rs" = 1;
   "modules/terminal-kit/src/environment.rs" = 1;
   "modules/terminal-kit/src/ink.rs" = 1;
-  "modules/to-do/src/looked.rs" = 1;
   "modules/to-do/src/main.rs" = 1;
-  "modules/to-do/src/settle.rs" = 1;
   "modules/to-do/src/sources.rs" = 1;
   "modules/to-do/src/stream.rs" = 1;
   "modules/to-do/src/todo.rs" = 1;

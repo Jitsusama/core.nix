@@ -107,6 +107,7 @@ impl Root {
             .lock()
             .expect("the tally of reads is whole")
             .push(path.to_owned());
+        // None is the caller's "couldn't read", never an empty file.
         std::fs::read_to_string(self.path(path)).ok()
     }
 
