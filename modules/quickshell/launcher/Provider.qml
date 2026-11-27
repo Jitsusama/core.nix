@@ -336,11 +336,17 @@ Scope {
         return undefined;
     }
 
-    // What an act asked wasn't done, said in its own words, lowercase; ""
-    // when it was, which says nothing.
-    function refused(key, why) {
+    // What an act asked of its row `key` wasn't done, said in its own words,
+    // lowercase; "" when it was, which says nothing. A row drawn becoming is
+    // taken back, named as becomes named it; one no act drew is said in the
+    // foot by `asked`, { name, act }: the row's name, and the verb whose
+    // words.json field.becoming.did says what wasn't done. A source gives
+    // them, rather than the launcher finding its row by the key, since an
+    // act's own word is on no row and the row may be gone or never shown:
+    // End on a timer the daemon no longer keeps, or a typed timer's start.
+    function refused(key, why, asked) {
         if (why !== "")
-            launcher?.becameNot(key, why);
+            launcher?.becameNot(key, why, asked);
     }
 
     function answer(typed) {

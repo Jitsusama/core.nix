@@ -104,14 +104,21 @@ Provider {
         return { verb: Words.verb("verb:timer:again"), run: () => provider.ask("again", record) };
     }
 
+    // A timer's asks by the act a refusal says wasn't done, where the ask's
+    // own word would say another's: Add is a minute given, not an add.
+    readonly property var timerDid: ({ add: "addMinute" })
+
     // Asks the daemon to change it by its own key, saying in the foot why
-    // when it won't, by its row's key, as the launcher holds what a row
-    // becomes.
+    // when it won't. The refusal goes by its row's key, which the launcher
+    // would take back were it holding the row becoming, and otherwise is
+    // said by the timer's name and the act, as nothing holds a timer's row
+    // drawn ahead of its daemon (Provider.qml's refused).
     function ask(act, record) {
         const then = answer => {
             if (answer?.error !== undefined)
                 provider.refused(Presented.keyServed(record.key),
-                    said[answer.reason] ?? answer.error);
+                    said[answer.reason] ?? answer.error,
+                    { name: provider.named(record), act: provider.timerDid[act] ?? act });
         };
         switch (act) {
         case "pause":
@@ -212,6 +219,9 @@ Provider {
 
     // What the stopwatch's rows say, in the vocabulary's words.
     readonly property var watchSaid: Words.of("stopwatch").said ?? {}
+    // The stopwatch's asks by the act its row names, as a refusal says
+    // what wasn't done: Run is Start and Stop is Pause.
+    readonly property var watchDid: ({ run: "start", stop: "pause" })
 
     // The stopwatch's count now, as it shows it.
     function watchCount(watch) {
@@ -229,11 +239,13 @@ Provider {
     }
 
     // Asks the daemon to change the stopwatch, saying in the foot why when
-    // it won't.
+    // it won't, by its name and what was asked, as a timer's refusal is: its
+    // Stop is the Pause its row says.
     function watchAsk(act) {
         const then = answer => {
             if (answer?.error !== undefined)
-                provider.refused("stopwatch", watchSaid[answer.reason] ?? answer.error);
+                provider.refused("stopwatch", watchSaid[answer.reason] ?? answer.error,
+                    { name: Words.name("stopwatch"), act: provider.watchDid[act] ?? act });
         };
         switch (act) {
         case "run":
@@ -413,7 +425,8 @@ Provider {
             run: () => HeldTimers.start(asking.span, asking.name, record => {
                 if (record === null || record.error !== undefined) {
                     provider.refused("command:timer", record === null ? said.away ?? ""
-                        : said[record.reason] ?? record.error);
+                        : said[record.reason] ?? record.error,
+                        { name: provider.named(asking), act: "start" });
                     return;
                 }
                 provider.started = { typed: typed, key: record.key };

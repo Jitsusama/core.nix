@@ -6377,12 +6377,17 @@ Scope {
         refreshed(from, "a row becoming");
     }
 
-    // Its source wouldn't do what the row was to become, saying why in its
-    // own words, or "" for no word yet.
-    function becameNot(key, why) {
-        const one = becoming[key];
-        if (one)
-            takenBack(one, why);
+    // Its source wouldn't do what was asked of its row `key`, saying why in
+    // its own words, or "" for no word yet. A row held becoming is taken
+    // back; one held nowhere is said by `asked`, { name, act }, as its source
+    // gives them, rather than dropped: a timer's Pause refused was never
+    // said (Becoming.js's refusal).
+    function becameNot(key, why, asked) {
+        const refusal = Becoming.refusal(becoming, key, asked);
+        if (refusal?.held)
+            takenBack(refusal.held, why);
+        else if (refusal?.told)
+            toldNot(refusal.told.name, refusal.told.act, why);
     }
 
     function takenBack(one, why) {

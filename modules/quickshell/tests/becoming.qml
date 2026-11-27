@@ -175,6 +175,21 @@ QtObject {
         check(failures, "nor one an object holds of its own",
             Becoming.did(did, "toString", "done"), "done");
 
+        // A refusal takes back the row held becoming, and with none held is
+        // told by the name and act its source gave, so it's never dropped.
+        const refused = (key, asked) => JSON.stringify(Becoming.refusal(left, key, asked));
+        check(failures, "a refusal of a held row takes it back",
+            refused("lantern", { name: "Lantern", act: "off" }),
+            JSON.stringify({ held: left.lantern }));
+        check(failures, "one of a row nothing holds is told",
+            refused("row:place:x", { name: "Tea", act: "pause" }),
+            JSON.stringify({ told: { name: "Tea", act: "pause" } }));
+        check(failures, "and one its source gave no name is neither",
+            refused("row:place:x", { act: "pause" }), "null");
+        check(failures, "nor is a key an object holds of its own held",
+            refused("toString", { name: "Tea", act: "pause" }),
+            JSON.stringify({ told: { name: "Tea", act: "pause" } }));
+
         for (const failure of failures)
             console.warn(failure);
         Qt.exit(failures.length === 0 ? 0 : 1);

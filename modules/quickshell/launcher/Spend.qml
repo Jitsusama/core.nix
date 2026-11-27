@@ -188,7 +188,8 @@ Provider {
             run: () => machine.ask({ ask: "act", act: "restart-unit",
                 unit: "spend-watch.service" }, answer => {
                 const unanswered = answer === null || answer.error;
-                provider.refused("spend:start", unanswered ? downNote : "");
+                provider.refused("spend:start", unanswered ? downNote : "",
+                    { name: Words.field.becoming?.objects?.spendWatch ?? "", act: "start" });
             })
         });
     }
