@@ -515,7 +515,7 @@ Provider {
 
     function tellSharing() {
         if (rowsKind?.state === "answering")
-            rowsKind.ask({ ask: "sharing", sharing: Quiet.sharing });
+            rowsKind.askTillTaken(() => ({ ask: "sharing", sharing: Quiet.sharing }));
     }
     Connections {
         target: Quiet
@@ -1158,7 +1158,7 @@ Provider {
     // asked.
     function heard(address) {
         if (Sprouting.fromJoel(launcher))
-            rowsKind?.ask({ ask: "heard", address });
+            rowsKind?.askTillTaken({ ask: "heard", address });
     }
 
     // What the foot says once words have gone to a session.
@@ -1587,11 +1587,13 @@ Provider {
     // agent's among them, nor a link's goTo. The daemon takes the shell's asks as his and
     // can't tell the two apart, so this is their only guard and fails closed
     // (Sprouting.fromJoel); one a walk leaves to run once the launcher's gone keeps that it
-    // was walked (Launcher.qml's runOnceGone). The shell's own steers to the node are
-    // guarded where they carry words (Now.qml's dealWith); a wake, as Go and a link's
-    // goTo send, says nothing as him. Refused, the walk is told why, and only the
-    // journal says it, as a refused sprout's is: a notice would let any
-    // program put one on his screen.
+    // was walked (Launcher.qml's runOnceGone). The shell's own steers to the node, which the
+    // node judges as the person's by its peer (mycelium's asker::may_say), are each a row's
+    // `joelsOnly` too, refused to a walk as it's chosen (Launcher.qml's joelsOnlyWhy): For
+    // You's Deal With It, the disk guard's Talk, Ask's Talk It Over and Tokens' Pause. A
+    // wake, as Go and a link's goTo send, says nothing as him. Refused, the walk is told why,
+    // and only the journal says it, as a refused sprout's is: a notice would let any program
+    // put one on his screen.
     function joelsOwn(act) {
         if (Sprouting.fromJoel(launcher))
             return true;
@@ -2788,7 +2790,7 @@ Provider {
         const one = landingRecord(key)?.landed;
         if (!one || one.read !== null || !Sprouting.fromJoel(launcher))
             return;
-        rowsKind.ask({ ask: "read", keys: [key] });
+        rowsKind.askTillTaken({ ask: "read", keys: [key] });
     }
     // Joel's words on a landing go to the quest that landed it, or its
     // session, as a finding the agents daemon sends and keeps

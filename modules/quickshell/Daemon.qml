@@ -650,4 +650,43 @@ Scope {
         interval: 2000
         onTriggered: daemon.connectAgain()
     }
+
+    // Asks what's lost if it's refused for now: the agents daemon refuses an act it does as
+    // Joel when it can't yet tell the shell asked, as while its user manager is slow through
+    // a switch, and nothing else would say so or send it again, so his Forget It or a kept
+    // place went undone (round 000038 on #6796, F90). Refused (`code: refused`), it's asked
+    // again a little later, as `said` gives it then, so a share's end or a place kept since
+    // goes rather than the one overtaken, at most `refusedTries` times in all.
+    function askTillTaken(said) {
+        askedTillTaken(said, refusedTries);
+    }
+    function askedTillTaken(said, tries) {
+        ask(typeof said === "function" ? said() : said, answer => {
+            if (answer?.error?.code !== "refused")
+                return;
+            if (tries <= 1) {
+                console.warn(`${socket}: still refused, so asked no more: ${answer.error.message}`);
+                return;
+            }
+            refusedAgain = refusedAgain.concat([{ said: said, tries: tries - 1 }]);
+            if (!askAgain.running)
+                askAgain.start();
+        });
+    }
+    // Past the agents daemon's own wait on its manager (asker.rs's MANAGER_PATIENCE, 3 s),
+    // so each try is a fresh look, and five of them outlast a switch's restart.
+    readonly property int refusedTries: 5
+    property var refusedAgain: []
+
+    Timer {
+        id: askAgain
+
+        interval: 4000
+        onTriggered: {
+            const due = daemon.refusedAgain;
+            daemon.refusedAgain = [];
+            for (const one of due)
+                daemon.askedTillTaken(one.said, one.tries);
+        }
+    }
 }

@@ -1834,6 +1834,10 @@ Scope {
         }
         // What Return does with it, as it does from the rows.
         const act = returnOf(target);
+        if (act.joelsOnly) {
+            console.info(`launcher: refused from outside, Joel's own: ${said}`);
+            return refused(joelsOnlyWhy());
+        }
         // Said done only where nothing refused it as it ran (walkedRun).
         const ran = why => why === "" ? { done: true, said: said }
             : { done: false, said: `${said}: ${why}` };
@@ -1871,6 +1875,16 @@ Scope {
     // Only what's told as the act runs counts: a daemon's refusal coming
     // after the walk has answered is told on Joel's next opening instead.
     property var walkTold: null
+
+    // Why a walk is refused an act only Joel's own Return does (a row's
+    // `joelsOnly`): one that steers a session or sends it words as his,
+    // through the node or the agents daemon, neither of which can tell a
+    // walk from him. Refused as it's chosen, so the walk is told, rather
+    // than told done and refused once it runs, as a `later` act was
+    // (round 000038 on #6796, F69 and F89).
+    function joelsOnlyWhy() {
+        return String((Words.of("agents").said ?? {}).actWalked ?? "");
+    }
     function walkRefused(why) {
         if (walkTold !== null)
             walkTold = walkTold.concat([why]);
@@ -2107,6 +2121,10 @@ Scope {
             return { done: true, opened: true, in: names };
         }
         const act = returnOf(target);
+        if (act.joelsOnly) {
+            console.info(`launcher: refused from a terminal, Joel's own: ${names.join(" > ")}`);
+            return refused(joelsOnlyWhy());
+        }
         // A terminal asks before whatever changes and can't be put back,
         // costly or not, since what types there is as often an agent as
         // Joel, and --yes says it's sure; the launcher's own keys ask only

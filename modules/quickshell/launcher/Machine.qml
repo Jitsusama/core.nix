@@ -483,6 +483,8 @@ Provider {
             const talking = agents?.talking(session.address, session.title) ?? null;
             rows.push(act("talk", {
                 key: `verb:disk:talk:${holder.path}:${session.address}`,
+                // Its words go to the session as Joel's, so a walk is refused it.
+                joelsOnly: true,
                 side: sided.map(item => item.said).join(" \u00b7 "),
                 sideItems: sided,
                 // The ask names who it's told to (VKCF3Z, 2026-11-08).

@@ -200,6 +200,8 @@ Provider {
             glyph: Words.glyph("verb:ask:talk"),
             hue: "action",
             stays: true,
+            // Its words go to the session as Joel's, so a walk is refused it.
+            joelsOnly: true,
             run: () => {
                 Sessions.talk(session.address, carried(question, answered));
                 // By the id the launcher holds it by, its session's.

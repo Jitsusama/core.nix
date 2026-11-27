@@ -950,6 +950,7 @@ Provider {
         const deal = one => WaitingOnYou.session(one) === null ? null : act(one, "deal", {
             side: WaitingOnYou.session(one).title,
             later: true,
+            joelsOnly: true,
             run: () => provider.dealWith(one)
         });
         // Its quest, said as the act it is (VKCF3Z, 2026-11-08: acts are
@@ -2179,6 +2180,7 @@ Provider {
         const inside = () => [
             thing(Object.assign(named("deal"), {
                 key: `verb:on:waiting:deal:${key}`,
+                joelsOnly: true,
                 run: () => dealWithWant(address, asked, session())
             })),
             talkTo(session()),
@@ -2221,7 +2223,7 @@ Provider {
             gap: true,
             stays: true,
             run: () => {
-                if (joelsOwn("Not Now"))
+                if (joelsOwn("Put It Off"))
                     Sessions.putOffWant(address, known);
             }
         });
@@ -2306,6 +2308,7 @@ Provider {
                 key: `verb:on:waiting:deal:${key}`,
                 gap: true,
                 later: true,
+                joelsOnly: true,
                 run: () => dealWithWant(address, asked, session())
             }))
         ], answers.own ? [thing(Object.assign(named("own"), {
@@ -3257,6 +3260,9 @@ Provider {
             // One that changes how things stand, such as Let It Sleep,
             // keeps the launcher, which shows it changed (Piece.qml).
             stays: action.stays ?? false,
+            // One that steers a session as Joel is his own Return's alone (Launcher.qml's
+            // joelsOnlyWhy), as Tokens' Pause is.
+            joelsOnly: action.joelsOnly ?? false,
             // The piece's act as it is when run, since its row may be kept
             // while the act was made again saying the same.
             run: () => ((now().every ?? now().actions)[at] ?? action).run(provider.shell)

@@ -275,6 +275,19 @@ def closed_side(address: str) -> str:
     return f"closed {ended:%H:%M}" if today else f"closed {ended:%a %H:%M}"
 
 
+def node_record(key: str) -> Json | None:
+    """Give the node's record of `key` whole, ended or not, asked over its daemon interface."""
+    with socket.socket(socket.AF_UNIX) as node:
+        node.connect(str(NODE))
+        node.sendall(b'{"id": 1, "ask": "hello"}\n{"id": 2, "ask": "list", "kind": "session"}\n')
+        said = node.makefile()
+        while True:
+            answer = json.loads(said.readline())
+            if answer.get("id") == 2:  # noqa: PLR2004
+                records = cast("list[Json]", answer.get("records", []))
+                return next((one for one in records if one.get("key") == key), None)
+
+
 def held_by_node() -> list[str]:
     """Give the sessions the node holds alive, by their keys, asked over its daemon interface."""
     with socket.socket(socket.AF_UNIX) as node:
@@ -1144,12 +1157,13 @@ def test_an_orchestrators_served_acts_walked_from_outside_steer_nothing(shell: S
             path.unlink()
 
 
-def test_a_want_walked_from_outside_is_dealt_with_only_once_joel_returns(shell: Shell) -> None:
-    """A walk's Deal With It fills no session's prompt, though it runs once the walk has ended.
+def test_a_wants_acts_walked_from_outside_are_refused_as_chosen(shell: Shell) -> None:
+    """A walk's Put It Off or Deal With It on a want is refused, and fills no session's prompt.
 
     Deal With It waits for the launcher to be gone (Launcher.qml's runOnceGone), and ran after
     the walk had cleared what said it was one, so its words went into the session's prompt as
-    Joel's (round 000056 on #6796, F12 and F29). It now runs as the walk chose it, refused.
+    Joel's (round 000056 on #6796, F12 and F29). It's Joel's own Return's alone (a row's
+    joelsOnly), so a walk is refused it as it chooses it.
     """
     wants = {"kind": "approval", "since": datetime.now(UTC).isoformat(), "said": "May I?"}
     lay("DEALER", "Dealing Quest", {"state": "listening", "busy": False, "wants": wants})
@@ -1169,8 +1183,9 @@ def test_a_want_walked_from_outside_is_dealt_with_only_once_joel_returns(shell: 
         shell.close_launcher()
         walked = {"steps": ["now", "For You", "Dealing Quest", "Deal With It"], "sure": True}
         did = json.loads(shell.as_account(shell.ipc("doing", shlex.quote(json.dumps(walked)))))
-        # The walk reached Deal With It, which runs once it's gone, so nothing's refused yet.
-        assert did.get("done") is True, did
+        # Deal With It runs once the launcher's gone, so it's refused as it's chosen, and the
+        # walk is told, rather than told done and refused once it runs (round 000038, F69).
+        assert did.get("refused") == ACT_WALKED, did
         # Past the closed frame's wait, a second at most, and the moment after it.
         time.sleep(2 + LINK_QUIET)
         filled = [json.loads(one.read_text()) for one in inbox.glob("*.json")]
@@ -1186,6 +1201,18 @@ def test_a_want_walked_from_outside_is_dealt_with_only_once_joel_returns(shell: 
         while "session:s-dealer" in held_by_node():
             assert time.monotonic() < deadline, "the node still holds the asking session"
             time.sleep(0.1)
+        # The node letting it go isn't enough: Agents stood it first, still needing his yes, for
+        # the whole of the paused case after this one (OSPHT4's run of 767ebf92). So the case
+        # waits for Agents too, and says what the node holds of it, ended or not, if it stays.
+        shell.as_account(shell.ipc("collection", "agents"))
+        shell.launcher_ready()
+        try:
+            shell.launcher_until(lambda shown: "Dealing Quest" not in shown["rows"])
+        except AssertionError as failed:
+            message = f"{failed}\nthe node holds of it: {node_record('session:s-dealer')}"
+            raise AssertionError(message) from failed
+        finally:
+            shell.close_launcher()
 
 
 def test_a_paused_sessions_return_lands_on_resume_and_a_second_sends_it(shell: Shell) -> None:

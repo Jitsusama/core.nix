@@ -577,7 +577,7 @@ Singleton {
     // Joel forgets one of them, which the daemon keeps, since restore.json
     // is the harness's to write.
     function forgetReopen(lost) {
-        reopenKind.ask({ ask: "forget", session: lost.id });
+        reopenKind.askTillTaken({ ask: "forget", session: lost.id });
     }
 
     // One of them, in its own folder only: when that's gone, nothing is
@@ -721,7 +721,7 @@ Singleton {
     // Joel says Not Now to the last boot's, which the daemon keeps, so they
     // stay put off however often the shell starts on this boot.
     function putOffLastBoot() {
-        reopenKind.ask({ ask: "put-off" });
+        reopenKind.askTillTaken({ ask: "put-off" });
     }
 
     // Joel says Not Now to what a session asks him, which the daemon puts
@@ -730,7 +730,8 @@ Singleton {
     // It names the ask he saw (`known`), so a newer one the session asks
     // meanwhile is refused and still needs him.
     function putOffWant(address, known) {
-        reopenKind.ask({ ask: "not-now", address: String(address), known: String(known ?? "") });
+        reopenKind.askTillTaken({ ask: "not-now", address: String(address),
+            known: String(known ?? "") });
     }
     // Who the daemon says the want of the session at `address` is, or "".
     function wantKnown(address) {
@@ -3140,7 +3141,8 @@ Singleton {
     }
     function keepPlaces(kept) {
         keptPlaces = kept;
-        reopenKind.ask({ ask: "keep-places", places: kept });
+        // Asked again as they're kept then, should it be refused for now.
+        reopenKind.askTillTaken(() => ({ ask: "keep-places", places: keptPlaces }));
     }
     // The place viewKept let go as it asked for each viewer, by app id,
     // and the kitty's pid as it asked (`under`), so one no kitty took is
