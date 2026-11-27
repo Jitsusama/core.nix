@@ -163,6 +163,14 @@ QtObject {
                 { "eDP-1": panel, "Virtual-2": twin },
                 { "eDP-1": panel, "Virtual-1": twin }
             ]);
+        // A twin's connector connected but not heard yet ("") is its twin
+        // still, as the boot's moment says, not a screen undescribed; heard
+        // as another screen, as one plugged in there since, it's that.
+        const twinOthers = virtual2 => Places.placed([twins[0]],
+            { "eDP-1": panel, "Virtual-2": virtual2 }, "eDP-1", [twins])[0].away?.others ?? null;
+        expect("a twin's connector is among the others as its twin until heard as another",
+            [twinOthers(""), twinOthers(monitor)],
+            [{ "eDP-1": panel, "Virtual-2": twin }, { "eDP-1": panel, "Virtual-2": monitor }]);
         // One alike twin of the two kept back: the place kept on it stays,
         // and the other's screen is gone, rather than both taken for it.
         expect("a twin kept beside another isn't taken for it",
