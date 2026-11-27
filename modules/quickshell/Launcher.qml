@@ -5259,22 +5259,13 @@ Scope {
             const chosen = step.rows.find(one => one.key === act.key) ?? act;
             // Timed as acting only where run acts at once: one that only
             // asks is timed by the key that answers, as commandRan says.
-            if (!onlyAsks(chosen))
+            const still = heldWhyOf([chosen], chosen.returns) !== null;
+            if (!Arming.changesNone(chosen, held.length > 0, still))
                 acting();
             run(chosen, false);
             return;
         }
         commandAsked(entry, [{ act, thing }], 1, read.bang, acting);
-    }
-
-    // Whether run, given `choice` from inside a step, only asks for a target
-    // or for words, changing no source, as run's own steps read it: no
-    // start or Return's act before them, then a verb needing a target with
-    // no run of its own (or more), or one needing words.
-    function onlyAsks(choice) {
-        return choice.start === undefined && !choice.returns
-            && ((held.length > 0 && !!choice.targets && (!choice.run || choice.verb === "more"))
-                || !!choice.given);
     }
 
     // Times the command line's key, `from`, as keyActs does an outside
@@ -7827,11 +7818,14 @@ Scope {
     }
 
     // A key while the ask stands, as Prompt.qml hands it over, with when
-    // it came.
+    // it came. It answers only as the field times it (Confirm.takes), and
+    // one that came with no time is said, as it can never answer.
     function answerAsk(key, at) {
         const ask = asked;
         const said = askSaid(key, at);
-        if (ask === null || said === "early")
+        if (ask !== null && !Number.isFinite(at))
+            Report.say("a key came to the ask with no time, so it was let by");
+        if (ask === null || !Confirm.takes(said))
             return;
         asked = null;
         Report.say(`answered ${said}`);
@@ -8588,6 +8582,9 @@ Scope {
             picks.picked(Rank.stepped(step.key, typed), choice.key, null);
     }
 
+    // Arming.changesNone reads this order up to the words asked for, to
+    // time a line's key as acting, so a step added or moved there is said
+    // there too, with its case in tests/arming.qml.
     function run(choice, below) {
         if (!choice) {
             open = false;

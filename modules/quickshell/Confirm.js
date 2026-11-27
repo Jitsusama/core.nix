@@ -48,11 +48,14 @@ const YES = ["Return", "Enter"];
 // Return that asked, doubled or bounced, and a key typed on from it
 // neither answer nor reach the line, or for no key at all, as a modifier
 // alone; "yes" for Return; and "no" for any other, Escape, - and y among
-// them, as any other key lets an armed row go. A time that isn't a
-// number, as a caller that leaves it out, is early too: the guard holds
-// back a costly act, so a slip costs one dropped key, never an unasked yes.
+// them, as any other key lets an armed row go. A key's time, the ask's
+// or the guard that isn't a number, as a caller that leaves one out, is
+// early too: the guard holds back a costly act, so a slip costs one
+// dropped key, never an unasked yes. Each is asked whole, as a comparison
+// with a missing one comes out false either way round.
 function answer(ask, key, now, guard) {
-    if (key === "" || !Number.isFinite(now) || now - ask.at < guard) {
+    const timed = [now, ask.at, guard].every(Number.isFinite);
+    if (key === "" || !timed || now - ask.at < guard) {
         return "early";
     }
     return YES.includes(key) ? "yes" : "no";

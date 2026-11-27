@@ -141,6 +141,12 @@ Item {
             line.pressed(held(Qt.Key_H, Qt.ControlModifier));
             compare(letGo.count, 0, "a held key's repeat lets nothing go");
             compare(ran.count, 0, "nor runs the line");
+            // The same event pressed fresh does, so the repeat reaches the
+            // guard it's checked against rather than dropping before it.
+            const fresh = (key, modifiers) => Object.assign(held(key, modifiers),
+                { isAutoRepeat: false });
+            line.pressed(fresh(Qt.Key_Escape, Qt.NoModifier));
+            compare(letGo.count, 1, "Escape pressed fresh lets the line go");
         }
 
         function test_aRegistersKeyPutsTheClipboardAndLetsNothingGo() {

@@ -386,8 +386,11 @@ QtObject {
         holds("and no key at all, as a modifier alone, is let by",
             Confirm.answer(ask, "", 1400, 300), "early");
         holds("and a Return given no time, or not a number, is let by, never a yes",
-            [undefined, NaN, null, "1400"].map(now => Confirm.answer(ask, "Return", now, 300)),
-            ["early", "early", "early", "early"]);
+            [undefined, NaN, null, "1400", Infinity].map(now => Confirm.answer(ask, "Return",
+                now, 300)), ["early", "early", "early", "early", "early"]);
+        holds("and so is a Return to an ask put at no time, or with no guard",
+            [Confirm.answer(Confirm.asked("Close Notes?", run, run, undefined), "Return", 1400,
+                300), Confirm.answer(ask, "Return", 1400, undefined)], ["early", "early"]);
         holds("the ask takes a yes or a no, never an early key, nor one with no ask",
             ["yes", "no", "early", ""].map(Confirm.takes), [true, true, false, false]);
         pending(holds);
