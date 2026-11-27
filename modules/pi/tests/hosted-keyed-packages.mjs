@@ -274,11 +274,12 @@ export const opensWhileHeld = async (what, holder, kept, waiting) => {
   const holdGate = gate("hold");
   const holding = open(`${what}-holding`, [holder]);
   await holdGate.reached;
+  const held = evaluations();
   const reopened = open(`${what}-reopened`, [kept]);
   const waited = open(`${what}-waited`, [waiting]);
-  const keptWaited = await pendingAfter(reopened, SETTLES_MS);
-  assert.equal(keptWaited, false, `${what}: a kept factory waited a turn`);
-  assert.equal(await pendingAfter(waited, 200), true, `${what}: a load didn't wait its turn`);
+  assert.equal(await pendingAfter(reopened, SETTLES_MS), false, `${what}: a kept factory waited`);
+  assert.equal(await pendingAfter(waited, 200), true, `${what}: a load waiting its turn ended`);
+  assert.deepEqual(evaluations(), held, `${what}: a load didn't wait its turn`);
   holdGate.putAway();
   holdGate.open();
   const all = Promise.all([holding, reopened, waited]);
@@ -471,21 +472,21 @@ export const mixedPackage = (where) => {
  * bound on a held turn could let it go on, evaluating afresh what the
  * package had finished, so only `letGo` can end the wait. */
 export const heldUpUntil = async (what, [hangs, behind, early], letGo) => {
+  const startedEarly = Date.now();
   await within(open(`${what}-early`, [early]), `a load before ${what} never ended`);
+  const earlyMs = Date.now() - startedEarly;
   const hangGate = gate("hang");
   const inTime = beforeTheBound();
   const hanging = open(`${what}-hanging`, [hangs]);
   await hangGate.reached;
   const waiting = open(`${what}-waiting`, [behind]);
-  assert.equal(
-    await pendingAfter(waiting, 200),
-    true,
-    `a load didn't wait behind one that never ends, before ${what}`,
-  );
+  const queued = await pendingAfter(waiting, 200);
+  assert.equal(queued, true, `a load didn't wait behind one that never ends, before ${what}`);
   await letGo();
   const released = await inTime(
     waiting,
-    `${what} didn't let go of a load waiting behind one that never ends`,
+    `${what} didn't let go of a load waiting behind one that never ends within 8 s ` +
+      `(a fresh load here took ${earlyMs} ms; a builder that slow can fail this)`,
   );
   assert.equal(await released("behind-version"), "behind", `a load ${what} let go of failed`);
   assert.equal(

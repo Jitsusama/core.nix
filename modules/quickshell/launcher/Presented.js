@@ -7,8 +7,8 @@
 //   needs to be kept to the same performance requirements as everything else").
 //   ChangesPresented.js says a daemon's changes with these.
 // - What a line may say with reports off (Options.reports), by the shapes and words KeysSaid.js
-//   holds: a key by its kind, words typed by how many letters, and a daemon's refusal by its code
-//   and length, since each may carry what Joel typed, a window's title or a daemon's words.
+//   holds: a key by its kind and words typed by how many letters, since each may carry what Joel
+//   typed or a window's title. ActsSaid.js says an act, a daemon's refusal and its error so.
 .pragma library
 .import "KeysSaid.js" as KeysSaid
 
@@ -276,7 +276,7 @@ function keyMade(row, key) {
 
 // A program's own id, as a power profile's hold names it: whole where `whole`, else where it's
 // shaped as an app's, and otherwise as app, since a program may give any words as its id; bare,
-// with what quoting escapes escaped, as actShown's, so a line break in it can't forge a line.
+// with what quoting escapes escaped, as ActsSaid.js's actShown, so a line break can't forge one.
 function appShown(app, whole) {
     const text = String(app ?? "");
     return whole ? quoted(text).slice(1, -1)
@@ -294,14 +294,14 @@ function kindsLed(parts, kinds) {
 // A row's key as a line in the journal may say it: whole where `whole`, as while reports are on;
 // otherwise its kind, after a record's `row:`, as wifid's `row:wifi:network:<name>` is `wifi`,
 // since most keys carry what someone else wrote, a network's name or a window's title. The
-// launcher's own ids are whole, and an own kind's key holding more than an id is said by that
-// kind alone. `window:<app>:<title>` is `window:<app>`, and the launcher's own
-// `program:<desktop entry's id>` whole, so each program's drawer is timed apart (RTOIMQ,
-// 2026-11-24), each only where its id is shaped as an app's and else by its kind. A `verb:` key,
-// its daemon's own words, goes to its kind, and its act where that's one of KeysSaid's actWords:
-// `verb:agent:close` whole, `verb:disk:nvme0:/home` as `verb:disk`, `verb:notice:offer:<id>` as
-// `verb:notice:offer`. A new kind says nothing more until it's named here, and a first part that
-// isn't a kind's word, as a name with a colon in it, nothing at all. A number is read as text.
+// launcher's own ids are whole, and an own kind's key holding more than an id is said by that kind
+// alone. `window:<app>:<title>` is `window:<app>`, and the programs daemon's `program:<id>` whole,
+// so each program's drawer is timed apart (RTOIMQ, 2026-11-24), only where its id is shaped as an
+// app's and else by its kind, as another daemon's so keyed. A `verb:` key, its daemon's own words,
+// goes to its kind, and its act where that's one of KeysSaid's actWords: `verb:agent:close` whole,
+// `verb:disk:nvme0:/home` as `verb:disk`, `verb:notice:offer:<id>` as `verb:notice:offer`. A new
+// kind says nothing more until it's named here, and a first part that isn't a kind's word, as a
+// name with a colon in it, nothing at all. A number is read as text.
 function keyShown(key, whole) {
     const text = String(key);
     if (whole) {
@@ -393,97 +393,6 @@ function answeredLateSaid(place, typed, { late, waited, whole }) {
 // does, and the row quoted, by its key as a drawer's is.
 function typedInSaid(typed, within, whole) {
     return `${typedShown(typed, whole)} typed in ${quoted(rowShown({ key: within }, whole))}`;
-}
-
-// An act's key as its lines say it: as rowShown says a row's, or a daemon's own act of a kind, as
-// `displays:sleep`, by its kind and act where its act is one of KeysSaid's actWords, never
-// more, though a key of one word, perhaps a record's name, as a row; and a record's, a window's
-// or a verb's as keyShown says it; bare, as the desktop's tests read it, with what quoting
-// escapes escaped, so a line break can't forge another line.
-function actShown(key, whole) {
-    const said = rowShown({ key }, whole);
-    const parts = String(key).split(":").slice(0, 2);
-    const kinds = whole || KeysSaid.keysSaidByKind.test(String(key)) || parts.length < 2 ? ""
-        : kindsLed(parts, 1).join(":");
-    return quoted(kinds.length > said.length ? kinds : said).slice(1, -1);
-}
-
-// A refusal come after its line was done, as the journal says it: the daemon's code where it gave
-// one (codeShown), whatever the reports setting, since it names no one and tells a daemon refusing
-// from one gone, then its words quoted while reports are on, otherwise by how many letters.
-function refusalShown(why, code, whole) {
-    return `${code ? `${code}, ` : ""}${typedShown(why, whole)}`;
-}
-
-// A daemon's code for a refusal, as wifid's WrongPassword, said whole whatever the reports setting
-// since it names no one, escaped as actShown escapes a key; "no answer" where none came, and
-// "no code" where one came without.
-function codeShown(answer) {
-    const code = answer ? (answer.error?.refused ?? answer.error?.code ?? "no code") : "no answer";
-    return quoted(String(code)).slice(1, -1);
-}
-
-// The fields of a daemon's error that are codes, no one's words, so said whole whatever the
-// reports setting: its code, its kind, and a refusal's own, as wifid's WrongPassword.
-const errorCodes = new Set(["code", "kind", "refused"]);
-
-// A daemon's error as a line in the journal may say it, quoted as JSON: whole where `whole`, and
-// otherwise its codes, numbers and truths whole and each of its words as typedShown says typed
-// words, since a daemon's own words can name a row, as "couldn't join Harbour House" (Y2YBTS,
-// 2026-11-20, 41ca61c4). An error that's words alone, against the contract, is said as those are.
-function errorShown(error, whole) {
-    if (whole || error === null || typeof error !== "object") {
-        const words = typeof error === "string" && !whole;
-        return quoted(words ? typedShown(error, false) : (error ?? null));
-    }
-    const told = {};
-    for (const [field, value] of Object.entries(error)) {
-        const plain = value === null || typeof value === "number" || typeof value === "boolean";
-        told[field] = errorCodes.has(field) || plain ? value
-            : typedShown(typeof value === "string" ? value : JSON.stringify(value), false);
-    }
-    return quoted(told);
-}
-
-// Whom a link from outside named, as TalkTo.js's whom gives it: whole where `whole`, and
-// otherwise by its kind and how many letters the name it gave has, since a page wrote it.
-function whomShown(whom, whole) {
-    if (whole) {
-        return quoted(whom);
-    }
-    const named = whom?.address ?? whom?.name ?? whom?.said;
-    return named === undefined ? String(whom?.to) : `${whom?.to}, ${typedShown(named, false)}`;
-}
-
-// The session new work a link offered is from, by its address as Sprouting.js's offered gives it:
-// whole where `whole`, and otherwise by how many letters, as whomShown says a link's session, or
-// as none where the link named no session here. Sprouting.js gives only an address it found, but
-// it's escaped as actShown's are all the same, so no address could break the line.
-function whenceShown(address, whole) {
-    if (address === undefined) {
-        return "from no session here";
-    }
-    return whole ? `from ${quoted(String(address)).slice(1, -1)}`
-        : `from a session, ${typedShown(address, false)}`;
-}
-
-// The rows a walk from outside or a terminal took, by their names where `whole`, and otherwise
-// each by its kind as rowShown says it, since a source named them, escaped as actShown's are,
-// though a key said whole is an id's letters alone (keyShown), so that's only a fail-safe.
-function pathShown(rows, whole) {
-    return whole ? quoted(rows.map(row => row.name).join(" \u203a "))
-        : quoted(rows.map(row => rowShown(row, false)).join(" \u203a ")).slice(1, -1);
-}
-
-// The shell's own failure, as the engine threw it: whole where `whole`, and otherwise by its
-// error's name, since its message may quote what it failed on, or by letters where it has none.
-const errorName = /^[A-Z][A-Za-z]*$/;
-function failureShown(error, whole) {
-    if (whole) {
-        return quoted(String(error));
-    }
-    const name = error?.name;
-    return errorName.test(name ?? "") ? name : typedShown(String(error), false);
 }
 
 // The drawers presented since the launcher opened, a line a place, as a place's changes are, each

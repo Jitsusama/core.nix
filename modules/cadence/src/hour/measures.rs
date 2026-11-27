@@ -17,6 +17,7 @@ mod balanced;
 mod broken;
 mod card;
 mod carried;
+pub mod causes;
 mod cells;
 pub mod cited;
 pub mod holds;
@@ -38,11 +39,12 @@ pub mod told_late;
 mod tracked;
 pub mod unbilled;
 pub mod unresolved;
+pub mod way_out;
 pub mod wifi;
 
 pub use balanced::balanced;
 pub use broken::{Main, broken, failed_in};
-pub use card::{card_if_fresh, card_median, merge_to_on};
+pub use card::{card_if_fresh, commit_to_merge, merge_to_on};
 pub use carried::carried;
 pub use cells::{Quest, cells, mapped, mid_resume, quest};
 pub use locked::read as unlocked;
@@ -126,17 +128,32 @@ impl Measure {
     }
 }
 
+/// `measure`, read from nothing since what it reads couldn't be read,
+/// unjudged and saying `why`, so a file lost or torn isn't counted as
+/// none past its target and closed as fixed.
+#[must_use]
+pub fn unread(mut measure: Measure, why: &str) -> Measure {
+    measure.target = None;
+    measure.says = format!("{} (unread: {why})", measure.says);
+    measure
+}
+
 /// The measure to move this hour: the first class with one past its
 /// target, and within it the one furthest past. A merge's rounds past five
 /// can't move, so they are filed to its owner apart and never lead; nor
 /// can a date already told late, which stays on the card for its day and
 /// is filed to each owner apart, but never leads, since asking its owner
-/// to steer it each hour moves nothing; nor do the queues, whose worst is asked apart once a day.
+/// to steer it each hour moves nothing; nor do the queues, whose worst is asked apart once a day,
+/// nor a cause found again and again, each class of which is filed with its own owner apart.
+/// Nor does a count of the way the calls go out (the relay, pi's calls and
+/// the path), filed to its keeper apart each hour it is past, so it never
+/// takes the place of what else drags.
 #[must_use]
 pub fn drag(measures: &[Measure]) -> Option<&Measure> {
     measures
         .iter()
         .filter(|m| !m.key.starts_with(rounds::FRUITLESS) && !m.key.starts_with(told_late::KEY))
+        .filter(|m| m.key != causes::KEY && !way_out::on_the_way(&m.key))
         .filter(|m| m.class != Class::Queues)
         .filter_map(|m| m.past().map(|past| (m, past)))
         .min_by(|(a, pa), (b, pb)| a.class.cmp(&b.class).then(pb.total_cmp(pa)))
@@ -437,12 +454,57 @@ fn strings(list: &Value) -> impl Iterator<Item = &str> {
         .filter_map(Value::as_str)
 }
 
+/// The measure under `key` among those a source gave, for its tests to
+/// read one by one.
+#[cfg(test)]
+fn by_key<'a>(measures: &'a [Measure], key: &str) -> &'a Measure {
+    measures
+        .iter()
+        .find(|m| m.key == key)
+        .unwrap_or_else(|| panic!("no {key}"))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::card::CARD_FRESH_FOR;
+    use super::card::{CARD_FRESH_FOR, card_median};
     use super::*;
 
     const NOW: i64 = 1_794_700_000;
+
+    fn open_ask() -> Value {
+        serde_json::json!({"id": "0a1b2c3d", "at": super::slipped::at(NOW - 3 * 3600),
+            "words": "fold", "owner": "F"})
+    }
+
+    #[test]
+    fn a_twin_folded_into_an_ask_doesnt_take_its_wait_off_the_median() {
+        use super::slipped::{list, twin};
+        let open = open_ask();
+        let waited = to_first_slice(
+            &list(&[open.clone(), twin(&open, NOW - 60)]),
+            NOW,
+            Tracking::His,
+        );
+        assert!(
+            (waited.now - 3.0).abs() < 0.01,
+            "a twin closing an open ask took its wait off the median: {waited:?}"
+        );
+    }
+
+    #[test]
+    fn a_twin_folded_into_a_parked_ask_doesnt_unpark_it() {
+        use super::slipped::{list, twin};
+        let mut ruled = open_ask();
+        ruled["parked"] = "a ruling".into();
+        let held = parked(
+            &list(&[ruled.clone(), twin(&ruled, NOW - 60)]),
+            Tracking::His,
+        );
+        assert!(
+            (held.now - 1.0).abs() < 0.01,
+            "a twin closing a parked ask took it off the parked: {held:?}"
+        );
+    }
 
     #[test]
     fn a_machine_crowded_beside_one_with_room_is_past_its_target() {
@@ -541,6 +603,20 @@ mod tests {
             drag(&measures).map(|m| m.key.as_str()),
             Some("far"),
             "a date told late, which no one can move now, led the hour"
+        );
+    }
+
+    #[test]
+    fn a_count_of_the_way_out_never_leads_however_far_past_it_is() {
+        let measures = [
+            measure("relay:answered-502", Class::Functional, 704.0, Some(50.0)),
+            measure("path:tls:forge.example", Class::Functional, 20.0, Some(1.0)),
+            measure("broken", Class::Functional, 4.0, Some(0.0)),
+        ];
+        assert_eq!(
+            drag(&measures).map(|m| m.key.as_str()),
+            Some("broken"),
+            "the relay, filed apart, took broken main's place as the lead"
         );
     }
 
