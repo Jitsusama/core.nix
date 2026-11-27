@@ -19,6 +19,8 @@ Singleton {
     property var wanting: []
     property var toReopen: []
     property var wentTo: null
+    // Whether Go To goes, false as the real one says where it told why it couldn't.
+    property bool goes: true
     property var woke: null
     property var steered: []
     property bool puts: true
@@ -54,6 +56,7 @@ Singleton {
 
     function goTo(session) {
         wentTo = session;
+        return goes;
     }
 
     function parkedAs(address) {
@@ -62,9 +65,11 @@ Singleton {
             .some(each => String(each).toUpperCase() === upper)) ?? null;
     }
 
-    // Keeps whom it woke, as the real one wakes only one parked (resting).
+    // Keeps whom it woke, as the real one wakes only one parked (resting),
+    // and says it went where goTo does or it woke one parked here, as the
+    // real one does: one woken elsewhere opens no window here.
     function wakeToGo(resting, session) {
         woke = resting;
-        goTo(session);
+        return goTo(session) || Boolean(resting) && resting.here !== false;
     }
 }
