@@ -14,7 +14,6 @@ import {
   isMachine,
   keptOnStands,
   LONGEST_WORDS,
-  leftWords,
   NO_MACHINE,
   NO_WORDS,
   offered,
@@ -347,11 +346,25 @@ it("offers only the kept words' machine or the open drawer's, in every combinati
   }
 });
 
-it("says a machine that left before Return, and where the work starts instead", () => {
-  assert.equal(
-    leftWords("osprey"),
-    "osprey has left the map, so the work won't start there; " +
-      "Return starts it where new work starts.",
+it("never offers a name no link carries, nor a cell the open drawer doesn't", () => {
+  const unnamed = "kestrel basin";
+  const map = { ...onMap(null), machines: [unnamed], drawerOn: unnamed };
+  const kept = { ...keptWords, on: unnamed };
+  assert.deepEqual(
+    offered(askedOn(null, { kept, typed: kept.words }), map),
+    { from: "EGRET2", on: null, kept: true },
+    "kept words should never go on a name no link carries",
+  );
+  assert.deepEqual(
+    offered(askedOn(null, { on: unnamed }), map),
+    { from: null, on: null, kept: false },
+    "a drawer should never offer a name no link carries",
+  );
+  const gone = { ...keptWords, from: "TERN02" };
+  assert.deepEqual(
+    offered(askedOn("HERON1", { from: "EGRET2", kept: gone, typed: gone.words }), onMap("HERON1")),
+    { from: null, on: "kestrel", kept: true },
+    "a gone cell's words should never go from a cell the open drawer doesn't offer",
   );
 });
 
