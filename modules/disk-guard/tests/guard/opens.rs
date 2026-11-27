@@ -183,6 +183,17 @@ fn a_watch_makes_no_group_past_its_most() {
     watch
         .watch(&root.path().join("tree-0"))
         .expect("a folder under an id already marked was refused once the most was reached");
+    // An empty subvolume goes as a folder does, and with it the only
+    // folder its group watched, so the next id takes its place.
+    fs::remove_dir(root.path().join("tree-1")).unwrap();
+    if let Err(error) = watch.watch(&root.path().join("past")) {
+        panic!("a subvolume wasn't marked once one marked before had gone: {error}");
+    }
+    assert_eq!(
+        watch.groups(),
+        MOST_GROUPS,
+        "the gone subvolume's group wasn't given back for the next"
+    );
 }
 
 #[test]

@@ -13,16 +13,17 @@
 //! A group that names files by handle marks folders of one filesystem id
 //! alone, and the kernel refuses a mark under another with EXDEV. Each
 //! Btrfs subvolume has an id of its own, and every work tree is one, so a
-//! watch keeps a group for each id it marks under.
+//! watch keeps a group for each id it marks under, and gives one back once
+//! none of the folders it watched under that id is there any more.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ffi::{CString, OsStr};
 use std::io;
 use std::mem::size_of;
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, PoisonError};
+use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 use std::time::Duration;
 
 /// What a watch saw.
@@ -36,10 +37,10 @@ pub enum Seen {
 /// Fanotify groups hearing opens in the directories they watch.
 pub struct Watch {
     /// A group for each filesystem id marked under, by that id, and one
-    /// made before any mark, which the first id takes. A group is never
-    /// closed while the watch lives, so [`Watch::wait`] may poll them
+    /// made before any mark, which the first id takes. A group given back
+    /// closes once [`Watch::wait`] no longer holds it, which polls them
     /// unlocked.
-    groups: Mutex<Vec<Group>>,
+    groups: Mutex<Vec<Arc<Group>>>,
     /// Each watched directory, by its filesystem's id and file handle, the
     /// way events name it.
     dirs: Mutex<HashMap<Vec<u8>, PathBuf>>,
@@ -49,8 +50,17 @@ pub struct Watch {
 /// One fanotify group, and the filesystem id its marks are under, once it
 /// has one.
 struct Group {
-    fsid: Option<[u8; 8]>,
+    fsid: OnceLock<[u8; 8]>,
     fd: OwnedFd,
+}
+
+impl Group {
+    fn new(fsid: Option<[u8; 8]>) -> io::Result<Group> {
+        Ok(Group {
+            fsid: fsid.map_or_else(OnceLock::new, OnceLock::from),
+            fd: group()?,
+        })
+    }
 }
 
 /// The longest file handle the kernel gives (`MAX_HANDLE_SZ`).
@@ -102,10 +112,7 @@ impl Watch {
     /// fanotify is known at once.
     pub fn new() -> io::Result<Watch> {
         Ok(Watch {
-            groups: Mutex::new(vec![Group {
-                fsid: None,
-                fd: group()?,
-            }]),
+            groups: Mutex::new(vec![Arc::new(Group::new(None)?)]),
             dirs: Mutex::new(HashMap::new()),
             // The kernel reports pids as signed, and gives none past i32::MAX.
             me: std::process::id().cast_signed(),
@@ -117,28 +124,32 @@ impl Watch {
     /// [`handle`] of the folder the mark landed on: both are read through
     /// one descriptor of it, so a folder swapped in at the path between
     /// them can't pass as the one marked. A folder under a filesystem id
-    /// no group marks yet gets a group of its own, up to [`MOST_GROUPS`].
+    /// no group marks yet gets a group of its own, up to [`MOST_GROUPS`],
+    /// once the groups of ids whose folders have all gone are given back.
     pub fn watch(&self, dir: &Path) -> io::Result<Vec<u8>> {
         let folder = folder(dir)?;
         let key = key(&folder)?;
         let fsid: [u8; 8] = key[..8].try_into().map_err(io::Error::other)?;
         let mut groups = self.groups.lock().unwrap_or_else(PoisonError::into_inner);
-        if let Some(found) = groups.iter().find(|group| group.fsid == Some(fsid)) {
+        if let Some(found) = groups.iter().find(|group| group.fsid.get() == Some(&fsid)) {
             mark(&found.fd, &folder)?;
-        } else if let Some(unused) = groups.iter_mut().find(|group| group.fsid.is_none()) {
-            mark(&unused.fd, &folder)?;
-            unused.fsid = Some(fsid);
-        } else if groups.len() >= MOST_GROUPS {
-            return Err(io::Error::other(format!(
-                "its subvolume would need a fanotify group past the {MOST_GROUPS} a watch keeps"
-            )));
         } else {
-            let fd = group()?;
-            mark(&fd, &folder)?;
-            groups.push(Group {
-                fsid: Some(fsid),
-                fd,
+            self.give_back(&mut groups, |dir, key| {
+                handle(dir).is_ok_and(|now| now == key)
             });
+            if let Some(unused) = groups.iter().find(|group| group.fsid.get().is_none()) {
+                mark(&unused.fd, &folder)?;
+                // Under the groups' lock, so no other id took it meanwhile.
+                let _ = unused.fsid.set(fsid);
+            } else if groups.len() >= MOST_GROUPS {
+                return Err(io::Error::other(format!(
+                    "its subvolume would need a fanotify group past the {MOST_GROUPS} a watch keeps"
+                )));
+            } else {
+                let made = Group::new(Some(fsid))?;
+                mark(&made.fd, &folder)?;
+                groups.push(Arc::new(made));
+            }
         }
         drop(groups);
         self.dirs
@@ -146,6 +157,19 @@ impl Watch {
             .unwrap_or_else(PoisonError::into_inner)
             .insert(key.clone(), dir.to_owned());
         Ok(key)
+    }
+
+    /// Forgets each watched folder that `still` says is no longer the one
+    /// marked, by its path and key, and gives back every group under an id
+    /// none of the folders left lies under. Closing a group drops its
+    /// marks, which hold their inodes. A watch that kept every group it
+    /// made would have work trees removed hours before still take a group
+    /// each, and run out of its 64 within a daemon's life.
+    fn give_back(&self, groups: &mut Vec<Arc<Group>>, still: impl Fn(&Path, &[u8]) -> bool) {
+        let mut dirs = self.dirs.lock().unwrap_or_else(PoisonError::into_inner);
+        dirs.retain(|key, dir| still(dir, key));
+        let live: HashSet<&[u8]> = dirs.keys().filter_map(|key| key.get(..8)).collect();
+        groups.retain(|group| group.fsid.get().is_none_or(|fsid| live.contains(&fsid[..])));
     }
 
     /// How many fanotify groups the watch holds.
@@ -159,10 +183,14 @@ impl Watch {
     /// What was seen in any group, waiting up to `within` for something.
     /// A group made meanwhile is heard from the next wait on.
     pub fn wait(&self, within: Duration) -> io::Result<Vec<Seen>> {
-        let mut polls: Vec<libc::pollfd> = self
+        // Held to the end of the wait, so a group given back meanwhile
+        // closes only once nothing here polls or reads it.
+        let held: Vec<Arc<Group>> = self
             .groups
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
+            .clone();
+        let mut polls: Vec<libc::pollfd> = held
             .iter()
             .map(|group| libc::pollfd {
                 fd: group.fd.as_raw_fd(),
@@ -173,7 +201,7 @@ impl Watch {
         let millis = i32::try_from(within.as_millis()).unwrap_or(i32::MAX);
         let count = libc::nfds_t::try_from(polls.len()).map_err(io::Error::other)?;
         // SAFETY: the pollfds are counted as they are, and each descriptor
-        // stays open while the watch lives, since no group is closed.
+        // stays open while `held` keeps its group.
         if unsafe { libc::poll(polls.as_mut_ptr(), count, millis) } < 0 {
             let error = io::Error::last_os_error();
             return if error.kind() == io::ErrorKind::Interrupted {
@@ -188,6 +216,7 @@ impl Watch {
         for poll in polls.iter().filter(|poll| poll.revents != 0) {
             self.read_out(poll.fd, &mut buffer, &mut seen)?;
         }
+        drop(held);
         Ok(seen)
     }
 
@@ -354,10 +383,53 @@ mod tests {
     use super::{Seen, Watch};
     use std::collections::HashMap;
     use std::os::fd::OwnedFd;
-    use std::path::PathBuf;
-    use std::sync::Mutex;
+    use std::path::{Path, PathBuf};
+    use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 
     const HANDLE: [u8; 8] = [1, 2, 3, 4, 5, 6, 7, 8];
+
+    /// A group under `fsid` that holds `/dev/null` rather than fanotify.
+    fn stand_in(fsid: Option<[u8; 8]>) -> super::Group {
+        super::Group {
+            fsid: fsid.map_or_else(OnceLock::new, OnceLock::from),
+            fd: OwnedFd::from(std::fs::File::open("/dev/null").unwrap()),
+        }
+    }
+
+    #[test]
+    fn a_group_goes_back_once_every_folder_under_its_id_has_gone() {
+        let watch = watch();
+        let kept = 7_u64.to_ne_bytes();
+        let went = 9_u64.to_ne_bytes();
+        let mut key = went.to_vec();
+        key.extend_from_slice(&HANDLE);
+        watch
+            .dirs
+            .lock()
+            .unwrap()
+            .insert(key, PathBuf::from("/gone"));
+        let mut groups = vec![
+            Arc::new(stand_in(None)),
+            Arc::new(stand_in(Some(kept))),
+            Arc::new(stand_in(Some(went))),
+        ];
+        watch.give_back(&mut groups, |dir, _| dir != Path::new("/gone"));
+        let ids: Vec<_> = groups
+            .iter()
+            .map(|group| group.fsid.get().copied())
+            .collect();
+        assert_eq!(
+            ids,
+            [None, Some(kept)],
+            "a group was kept with every folder under its id gone, or given back with one left"
+        );
+        let dirs = watch.dirs.lock().unwrap_or_else(PoisonError::into_inner);
+        assert_eq!(
+            dirs.values().collect::<Vec<_>>(),
+            [&PathBuf::from("/w")],
+            "a folder gone since it was marked was still watched"
+        );
+    }
 
     /// A watch over `/w`, by [`HANDLE`], that reads what it's given and
     /// holds no fanotify group.
@@ -366,10 +438,7 @@ mod tests {
         key.extend_from_slice(&1_i32.to_ne_bytes());
         key.extend_from_slice(&HANDLE);
         Watch {
-            groups: Mutex::new(vec![super::Group {
-                fsid: None,
-                fd: OwnedFd::from(std::fs::File::open("/dev/null").unwrap()),
-            }]),
+            groups: Mutex::new(vec![Arc::new(stand_in(None))]),
             dirs: Mutex::new(HashMap::from([(key, PathBuf::from("/w"))])),
             me: 0,
         }
