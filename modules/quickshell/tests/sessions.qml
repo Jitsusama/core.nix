@@ -2505,15 +2505,18 @@ ShellRoot {
         Sessions.goTo(unansweredRow);
         untell();
         Sessions.windowHeard({ id: 131, pid: 4242, opened: unansweredNamed });
-        expect("a window come past comingPatience, or for a press since, is told nothing",
+        expect("a window past comingPatience, or for a press past answerPatience, is told nothing",
             pastComing === "  x0" && heard() === "  x0", `${pastComing} / ${heard()}`);
         Sessions.forgetAsk(unansweredNamed);
         // A kitty started again can't draw what the one before was asked,
         // so a press told its window may yet come of that one is told it
-        // didn't, and a window come since is told nothing. A word that the
-        // same kitty started, as a repeat of it says, ends nothing.
+        // didn't, its focus let go, and a window come since is told
+        // nothing. A word that the same kitty started, as a repeat of it
+        // says, ends nothing.
         Sessions.goTo(unansweredRow);
         Sessions.untaken(unansweredNamed, String(Date.now()), "unanswered");
+        Sessions.goTo(unansweredRow);
+        const heldGoingTo = Sessions.goingTo?.app;
         untell();
         Sessions.kittyStarted?.();
         const sameKitty = heard();
@@ -2526,6 +2529,9 @@ ShellRoot {
         expect("a press told its window may yet come is told it didn't, its kitty started again",
             sameKitty === "  x0" && anotherKitty === "UNANSWERED untaken x1" && heard() === "  x0",
             `${sameKitty} / ${anotherKitty} / ${heard()}`);
+        expect("and the focus its held press took is let go",
+            heldGoingTo === unansweredNamed && Sessions.goingTo?.app !== unansweredNamed,
+            `${heldGoingTo} ${JSON.stringify(Sessions.goingTo)}`);
         Sessions.forgetAsk(unansweredNamed);
         kittyPidFile.setText("4242\n");
         Sessions.readKittyPid();
@@ -2539,6 +2545,7 @@ ShellRoot {
         untell();
         Sessions.goTo(unansweredRow);
         const pressedStill = `${heard()} ${spawnsOf(unansweredNamed, stillFrom)}`;
+        const stillTook = Sessions.goingTo?.app;
         const stillHad = Sessions.stillSaid[unansweredNamed];
         Sessions.stillSaid = Object.assign({}, Sessions.stillSaid, { [unansweredNamed]:
             Object.assign({}, stillHad, { at: Date.now() - Sessions.answerPatience - 1 }) });
@@ -2548,7 +2555,75 @@ ShellRoot {
         expect("a press soon after its kitty didn't answer asks it nothing more, said may yet come",
             pressedStill === "UNANSWERED stillComing x1 0" && pressedPast === "  x0 1",
             `${pressedStill} / ${pressedPast}`);
+        expect("and takes the focus", stillTook === unansweredNamed, String(stillTook));
         Sessions.forgetAsk(unansweredNamed);
+        // Nor does any other asker, Reopen Them All's walk, viewKept or a
+        // wake, all of which ask through viewWith.
+        Sessions.goTo(unansweredRow);
+        Sessions.untaken(unansweredNamed, String(Date.now()), "unanswered");
+        const askedFrom = Niri.spawns.length;
+        const askedStill = Sessions.viewWith(unansweredRow.attach, unansweredNamed, null,
+            "held");
+        const askedStillSpawns = spawnsOf(unansweredNamed, askedFrom);
+        const stillKept = unansweredNamed in Sessions.stillSaid;
+        expect("a viewer whose kitty didn't answer moments ago is asked for by no other asker",
+            !askedStill && askedStillSpawns === 0 && stillKept,
+            `${askedStill} ${askedStillSpawns} ${stillKept}`);
+        Sessions.forgetAsk(unansweredNamed);
+        // Held only for the kitty that didn't answer: one whose pid the file
+        // says now, its word it started not yet heard, is asked afresh, as
+        // is any where no kitty's pid was known at the give-up.
+        Sessions.goTo(unansweredRow);
+        Sessions.untaken(unansweredNamed, String(Date.now()), "unanswered");
+        kittyPidFile.setText("7676\n");
+        const newerFrom = Niri.spawns.length;
+        Sessions.goTo(unansweredRow);
+        const pressedNewer = spawnsOf(unansweredNamed, newerFrom);
+        Sessions.forgetAsk(unansweredNamed);
+        kittyPidFile.setText("");
+        Sessions.kittyPidRead = "";
+        Sessions.readKittyPid();
+        Sessions.goTo(unansweredRow);
+        Sessions.untaken(unansweredNamed, String(Date.now()), "unanswered");
+        const unknownFrom = Niri.spawns.length;
+        Sessions.goTo(unansweredRow);
+        const pressedUnknown = spawnsOf(unansweredNamed, unknownFrom);
+        Sessions.forgetAsk(unansweredNamed);
+        kittyPidFile.setText("4242\n");
+        Sessions.readKittyPid();
+        expect("a press is held only for a kitty known, the one that didn't answer",
+            pressedNewer === 1 && pressedUnknown === 1, `${pressedNewer} ${pressedUnknown}`);
+        // A kept viewer whose kitty didn't answer is kept again under it
+        // (keepAgain), so a kitty started since asks for it (viewKept): the
+        // press holding it, which a held press took over, is told it was
+        // asked for again, its focus kept, as the viewer is on its way,
+        // rather than that the ask is over while it's made again.
+        const restartNamed = "pi-hosted.s-kept-restart";
+        const keptBeforeRestart = Sessions.keptPlaces;
+        Sessions.keepPlaces({ "s-kept-restart": keptOne("s-kept-restart") });
+        const restartFrom = Niri.spawns.length;
+        Sessions.viewKept();
+        const restartRow = { presence: { hosted: true, session: "s-kept-restart" },
+            attach: keptOne("s-kept-restart").waiting, here: true };
+        Sessions.goTo(Object.assign({ address: "RESTART" }, restartRow));
+        Sessions.untaken(restartNamed, String(Sessions.attaching[restartNamed]), "unanswered");
+        const restartKept = keptUnderOf("s-kept-restart");
+        Sessions.goTo(Object.assign({ address: "RESTARTED" }, restartRow));
+        const restartGoing = Sessions.goingTo;
+        kittyPidFile.setText("7777\n");
+        untell();
+        Sessions.kittyStarted?.();
+        expect("a held press whose kept viewer a kitty started since asks for is told asked again",
+            restartKept === "4242" && spawnsOf(restartNamed, restartFrom) === 2
+            && heard() === "RESTARTED askedAgain x1" && restartGoing?.app === restartNamed
+            && Sessions.goingTo === restartGoing
+            && Sessions.pressedFor[restartNamed]?.address === "RESTARTED",
+            `${restartKept} ${spawnsOf(restartNamed, restartFrom)} ${heard()} `
+                + `${JSON.stringify(Sessions.goingTo)}`);
+        Sessions.forgetAsk(restartNamed);
+        Sessions.keepPlaces(keptBeforeRestart);
+        kittyPidFile.setText("4242\n");
+        Sessions.readKittyPid();
         Niri.windows = unforged;
         const unansweredStart = "pi-hosted.s-unanswered-start";
         Sessions.viewStarted("harbour-attended", "s-unanswered-start", unansweredStart, "Reef",
@@ -2640,12 +2715,16 @@ ShellRoot {
         // A give-up's cause is kept only as long as its repeat can come,
         // so callers naming endless viewers grow nothing.
         const causedStale = "pi-hosted.s-caused-stale";
+        // Another's heard moments ago stays, as its repeat may yet come.
+        const causedOther = "pi-hosted.s-caused-other";
         Sessions.causedAsks = Object.assign({}, Sessions.causedAsks, { [causedStale]:
-            { asked: "1", at: Date.now() - Sessions.answerPatience - 1 } });
+            { asked: "1", at: Date.now() - Sessions.answerPatience - 1 },
+            [causedOther]: { asked: "2", at: Date.now() - 1000 } });
         Sessions.untaken("pi-hosted.s-caused-fresh", String(Date.now()), "none");
         expect("a give-up's cause is let go once its repeat can't come",
             !(causedStale in Sessions.causedAsks)
-            && "pi-hosted.s-caused-fresh" in Sessions.causedAsks,
+            && "pi-hosted.s-caused-fresh" in Sessions.causedAsks
+            && Sessions.causedAsks[causedOther]?.asked === "2",
             JSON.stringify(Object.keys(Sessions.causedAsks)));
         Sessions.forgetAsk(unansweredRefused);
         // A press disowned as the kitty didn't answer is told the window
