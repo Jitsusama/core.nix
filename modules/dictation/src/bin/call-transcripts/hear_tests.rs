@@ -664,6 +664,32 @@ fn a_take_not_heard_is_written_down_at_once_and_read_back_after_a_restart() {
 }
 
 #[test]
+fn a_call_none_of_which_was_heard_has_a_file_saying_so() {
+    // A call whose every take failed from its start, or whose model
+    // never loaded, had no file, so a restart before a line was heard
+    // left it reading whole from the restart on.
+    let folder = tempfile::tempdir().unwrap();
+    let book = Shared::new(Book::default());
+    book.lock().put(Record {
+        folder: folder.path().to_path_buf(),
+        ..record(&[], None)
+    });
+    let mut writing = Writing::default();
+    let mut told = HashSet::new();
+    let load = || notices::not_transcribed("Planning", "The speech model didn't load: x");
+    not_heard(&book, "call:e1", &mut writing, "Joel", 0, &mut told, load);
+    let unheard = Some(Unheard {
+        stretches: 1,
+        first: 0,
+    });
+    assert_eq!(
+        resumed(&book, "call:e1", "Joel").unheard,
+        unheard,
+        "a call with no line heard had no file saying it wasn't heard"
+    );
+}
+
+#[test]
 fn a_call_rejoined_in_this_run_is_told_apart_whole() {
     let mut writing = sitting(Vec::new(), true);
     give_voices(&mut writing, None);
