@@ -147,10 +147,17 @@ it("a machine's looks are read with their whys, and none from a record listing n
     [osprey, looks, "a list whose look without a why is kept with none"],
     [{ ...osprey, looks: undefined }, undefined, "an old daemon's record, listing none"],
     [{ ...osprey, health: "good", looks: [], side: [] }, [], "a fine machine's"],
-    [{ ...osprey, side: "out of reach" }, looks, "a side the page can't read beside a list"],
   ] as const) {
     assert.deepEqual(looksOf(record)?.[1], listed, `${why} is read from its list`);
     assert.deepEqual(ospreyAs(record)?.unread, [], `${why} is said as read`);
+  }
+  const sideNotRead = ["machine:osprey's side, so the page goes by its looks alone"];
+  for (const [record, listed, why] of [
+    [{ ...osprey, side: "out of reach" }, looks, "a side the page can't read beside a list"],
+    [{ ...osprey, looks: [], side: [7] }, [], "a side the page can't read beside none"],
+  ] as const) {
+    assert.deepEqual(looksOf(record)?.[1], listed, `${why} is read from its list`);
+    assert.deepEqual(ospreyAs(record)?.unread, sideNotRead, `${why} is said as not read`);
   }
   const notRead = ["machine:osprey's looks, so the page goes by its side alone, with no whys"];
   for (const [record, why] of [
