@@ -1190,7 +1190,10 @@
     not built with localSite from a path in the tree, or naming no page but the shared kit,
     failing for the reason each of its rules, run over localSite itself,
     is seen to; Home is the page the home is
-    built from; and the gate passes sites.md's own head and names each way a page strays from it
+    built from; the gate passes sites.md's own head and names each way a page strays from it;
+    and the check localSite runs over a site's pages passes one whose scripts are files or data,
+    reads no page below its top, and names by line a script written in, a handler attribute or
+    a javascript: address however it's cased or spaced
   '';
   each-machine-signs-with-its-hardware = ''
     a Linux workstation signs through its TPM, one with no TPM with Joel's key on his YubiKey and
@@ -2270,9 +2273,12 @@
   local-sites-serves-its-sites = ''
     the local sites' server serves the documents and a mount, answers a file the browser holds by
     its tag alone and sends one written since again, even at the same size and time, refuses a
-    stranger's host name and a stranger's page, has two pages share one watch on a daemon with
-    each told every change trimmed to the feed's fields, refuses an act before it reaches the
-    daemon, and says a missing daemon broken with why
+    stranger's host name and a stranger's page, sends a browser going to a page by another of
+    its names on to the first while a tool is answered there, renews a swept browser's mark on
+    each page, answers a head its cookies outgrew with 431 whole, clearing the cookies only under
+    the names a document's reach, has two pages share one watch on a daemon with each told every
+    change trimmed to the feed's fields, refuses an act before it reaches the daemon, and says a
+    missing daemon broken with why
   '';
   locking-asked-wrongly-does-nothing = ''
     lock-screen, lock-for-sleep and swayidle-away answer --help and refuse an unknown word with

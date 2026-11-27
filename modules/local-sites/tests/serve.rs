@@ -184,7 +184,7 @@ fn started(folder: &Path, socket: &Path) -> (Child, u16) {
         .port();
     let config = json!({
         "listen": format!("127.0.0.1:{port}"),
-        "names": ["localhost"],
+        "names": ["localhost", "127.0.0.1"],
         "documentsName": DOCUMENTS,
         "documents": documents,
         "home": folder.join("home"),
@@ -529,6 +529,48 @@ fn a_page_goes_to_the_origin_of_whoever_made_it_and_nowhere_else() {
 }
 
 #[test]
+fn a_browser_at_another_of_the_sites_names_goes_on_to_the_first() {
+    let served = served("settled");
+    let (first, other) = (
+        format!("localhost:{}", served.port),
+        format!("127.0.0.1:{}", served.port),
+    );
+    let going = "Sec-Fetch-Dest: document\r\n";
+    let (status, headers, _) = asked(served.port, &other, "GET /kit/?at=2", going);
+    assert_eq!(
+        (status.as_str(), header(&headers, "location")),
+        (
+            "HTTP/1.1 307 Temporary Redirect",
+            Some(format!("http://{first}/kit/?at=2").as_str())
+        ),
+        "a browser going to a page by 127.0.0.1 should go on to localhost, path whole"
+    );
+    let (status, headers, _) = asked(served.port, &other, "GET /mycelium/", going);
+    assert_eq!(
+        (status.as_str(), header(&headers, "location")),
+        (
+            "HTTP/1.1 307 Temporary Redirect",
+            Some(format!("http://{DOCUMENTS}:{}/mycelium/", served.port).as_str())
+        ),
+        "a document asked by 127.0.0.1 should go straight to its own name"
+    );
+    // A tool names no destination, and a page's sheet names its own, so
+    // each is answered where it asked; and the first name is where to stay.
+    for (host, path, extra) in [
+        (&other, "/kit/", ""),
+        (&other, "/kit/theme.css", "Sec-Fetch-Dest: style\r\n"),
+        (&first, "/kit/", going),
+    ] {
+        let (status, headers, _) = asked(served.port, host, &format!("GET {path}"), extra);
+        assert_eq!(
+            (status.as_str(), header(&headers, "location")),
+            ("HTTP/1.1 200 OK", None),
+            "{path} at {host} with {extra:?} should be answered there"
+        );
+    }
+}
+
+#[test]
 fn a_sessions_script_is_never_served_by_the_sites_names() {
     let served = served("script");
     let script = served.folder.join("sites/notes.js");
@@ -694,12 +736,64 @@ fn a_browser_is_swept_once_by_the_first_page_of_the_sites_own() {
         None,
         "a browser was swept twice"
     );
+    assert_eq!(
+        header(&headers, "set-cookie"),
+        Some(cookie),
+        "a swept browser's mark would lapse after its year"
+    );
+    let (_, picture, _) = asked(served.port, &host, "GET /kit/theme.css", &after);
+    assert_eq!(
+        header(&picture, "set-cookie"),
+        None,
+        "a page's part marked the browser"
+    );
+    // A session's page is never the sites' own: under their name it's sent
+    // on to the documents' (no page a session wrote is served there), and
+    // under the documents' it's served; neither sweeps.
     let documents = format!("{DOCUMENTS}:{}", served.port);
-    for (host, path) in [(&host, "/mycelium/"), (&documents, "/mycelium/")] {
-        let (_, document, _) = asked(served.port, host, &format!("GET {path}"), "");
+    let moved = "HTTP/1.1 307 Temporary Redirect";
+    for (host, sent) in [(&host, moved), (&documents, "HTTP/1.1 200 OK")] {
+        let (status, document, _) = asked(served.port, host, "GET /mycelium/", "");
+        assert_eq!(status, sent, "a document at {host} was answered otherwise");
         let swept = header(&document, "clear-site-data");
         assert_eq!(swept, None, "a document at {host} swept the browser");
     }
+}
+
+#[test]
+fn a_head_its_cookies_outgrew_is_answered_and_cleared_where_a_document_planted_them() {
+    let served = served("crumbs");
+    // Past what one head may hold, and past what the server drops after
+    // answering, so an answer sent before it's read is reset under it.
+    let planted = format!("Cookie: crumbs={}\r\n", "x".repeat(200 * 1024));
+    let too_long = "HTTP/1.1 431 Request Header Fields Too Large";
+    let documents = format!("{DOCUMENTS}:{}", served.port);
+    let (status, headers, _) = asked(served.port, &documents, "GET /mycelium/", &planted);
+    assert_eq!(status, too_long, "under the documents' name");
+    assert_eq!(
+        header(&headers, "clear-site-data"),
+        Some("\"cookies\""),
+        "what a document planted was kept"
+    );
+    // The name just above the documents', as sites.localhost is live.
+    let above = format!("localhost:{}", served.port);
+    let (status, headers, _) = asked(served.port, &above, "GET /kit/", &planted);
+    assert_eq!(status, too_long, "under the name above the documents'");
+    assert_eq!(
+        header(&headers, "clear-site-data"),
+        Some("\"cookies\""),
+        "the home's name kept what a document planted for it"
+    );
+    let address = format!("127.0.0.1:{}", served.port);
+    let (status, headers, _) = asked(served.port, &address, "GET /kit/", &planted);
+    assert_eq!(status, too_long, "under 127.0.0.1");
+    assert_eq!(
+        header(&headers, "clear-site-data"),
+        None,
+        "a name no document reaches was cleared"
+    );
+    let (status, _, _) = asked(served.port, &address, "GET /kit/", "Cookie: crumbs=few\r\n");
+    assert_eq!(status, "HTTP/1.1 200 OK", "a head of a few cookies");
 }
 
 #[test]

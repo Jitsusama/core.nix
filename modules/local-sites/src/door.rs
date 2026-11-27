@@ -75,6 +75,32 @@ impl Door {
         };
         Some(format!("http://{name}:{}{path}", self.port))
     }
+
+    /// The address of `path` under the first of the sites' names, where
+    /// `host` names them by another: each name is an origin of its own, with
+    /// its own kept look and room, so a browser kept to one sees one set of
+    /// them whichever name a visit began at. None where `host` is the first
+    /// already, or names no page of the sites' own.
+    pub fn settled(&self, host: &str, path: &str) -> Option<String> {
+        let first = self.names.first()?;
+        let (name, _) = host.rsplit_once(':')?;
+        let other = self.side(host) == Some(Side::Sites) && !name.eq_ignore_ascii_case(first);
+        (other && path.starts_with('/')).then(|| format!("http://{first}:{}{path}", self.port))
+    }
+
+    /// Whether a cookie a document planted reaches what's asked under `host`:
+    /// a document may set one for its own name or the name just above it, as
+    /// `sites.localhost` is above `documents.sites.localhost`, so only under
+    /// those two. Never under another, as `localhost`, whose cookies every
+    /// server on it shares and no document may set.
+    pub fn planted(&self, host: &str) -> bool {
+        let Some((name, _)) = host.rsplit_once(':') else {
+            return false;
+        };
+        let name = name.to_ascii_lowercase();
+        let above = self.documents.split_once('.').map(|(_, above)| above);
+        self.side(host).is_some() && (name == self.documents || above == Some(name.as_str()))
+    }
 }
 
 #[cfg(test)]
@@ -114,6 +140,23 @@ mod tests {
     }
 
     #[test]
+    fn a_documents_cookies_reach_its_name_and_the_one_above_alone() {
+        let door = Door::new(
+            &["sites.localhost".to_owned(), "localhost".to_owned()],
+            "documents.sites.localhost",
+            8484,
+        );
+        assert!(
+            door.planted("Documents.Sites.Localhost:8484"),
+            "its own name"
+        );
+        assert!(door.planted("sites.localhost:8484"), "the name above it");
+        assert!(!door.planted("localhost:8484"), "every server's name");
+        assert!(!door.planted("sites.localhost:9000"), "another server");
+        assert!(!door.planted("sites.localhost"), "no port");
+    }
+
+    #[test]
     fn another_name_another_port_or_none_is_not() {
         assert_eq!(door().side("evil.example:8484"), None, "a rebound name");
         assert_eq!(door().side("sites.localhost:9000"), None, "another port");
@@ -138,6 +181,41 @@ mod tests {
             !door().admits("http://documents.sites.localhost:8484"),
             "a session's document"
         );
+    }
+
+    #[test]
+    fn another_of_the_sites_names_settles_on_the_first() {
+        assert_eq!(
+            door()
+                .settled("127.0.0.1:8484", "/notes/?at=2#end")
+                .as_deref(),
+            Some("http://sites.localhost:8484/notes/?at=2#end"),
+            "a visit by another of the sites' names should move to the first, path whole"
+        );
+        assert_eq!(
+            door()
+                .settled("127.0.0.1:8484", "//evil.example/")
+                .as_deref(),
+            Some("http://sites.localhost:8484//evil.example/"),
+            "a path that reads as another host should stay on this server"
+        );
+        assert_eq!(
+            door().settled("127.0.0.1:8484", "@evil.example/"),
+            None,
+            "only a path from the root should be taken"
+        );
+        for host in [
+            "sites.localhost:8484",
+            "SITES.localhost:8484",
+            "documents.sites.localhost:8484",
+            "127.0.0.1:9999",
+        ] {
+            assert_eq!(
+                door().settled(host, "/"),
+                None,
+                "{host} is the first name, or none of the sites', so stays"
+            );
+        }
     }
 
     #[test]

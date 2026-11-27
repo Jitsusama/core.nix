@@ -6,7 +6,15 @@
 //! of itself, which retires an old worker at its next update check and
 //! keeps a new one from standing. What it stored is cleared once, by the
 //! first page of the sites' own a browser navigates to, marked done by a
-//! cookie no other host can set.
+//! cookie no other host can set, and marked again by each page after, so
+//! the mark outlives its year for a browser that keeps coming back.
+//!
+//! What it can't reach: a browser keeping no cookie for the sites, or not
+//! holding a loopback name over plain HTTP as secure and so refusing the
+//! mark, is swept by every page, though one that clears its cookies clears
+//! its storage with them, so it loses nothing it kept; and a worker standing from
+//! before still answers the first navigation in its scope, whose update
+//! check, which every navigation makes, then retires it.
 
 /// The script every worker's script is answered with: it takes its place
 /// at once and lets go of its registration, so no page keeps a worker.
@@ -41,12 +49,33 @@ pub struct Asked<'a> {
 /// never for another site's, which would wipe what the sites keep from a
 /// picture of it. A browser saying neither, as a test's socket, is swept.
 pub fn due(asked: &Asked) -> bool {
-    let swept = asked
-        .cookies
-        .is_some_and(|cookies| cookies.split(';').any(|cookie| cookie.trim() == SWEPT));
+    !swept(asked) && navigated_here(asked)
+}
+
+/// Whether a page of the sites' own, asked for as `asked` says, marks a
+/// browser already swept again, for the same navigations the sweep takes.
+pub fn marked_again(asked: &Asked) -> bool {
+    swept(asked) && navigated_here(asked)
+}
+
+/// Whether `asked` carries the server's mark of a sweep. A browser joins
+/// its cookies with `; `, so only a plain space is trimmed: a cookie named
+/// with another space before `__Host-` isn't the prefixed one, and the
+/// documents' name may set it.
+fn swept(asked: &Asked) -> bool {
+    asked.cookies.is_some_and(|cookies| {
+        cookies
+            .split(';')
+            .any(|cookie| cookie.trim_matches(' ') == SWEPT)
+    })
+}
+
+/// Whether `asked` is a navigation of Joel's own: one a browser makes to
+/// show the page, from no other site.
+fn navigated_here(asked: &Asked) -> bool {
     let navigated = asked.dest.is_none_or(|dest| dest == "document");
     let own = asked.site.is_none_or(|site| site != "cross-site");
-    !swept && navigated && own
+    navigated && own
 }
 
 #[cfg(test)]
@@ -79,12 +108,34 @@ mod tests {
     fn a_browser_marked_swept_is_swept_no_more() {
         let marked = navigated("none", Some("theme=dark; __Host-sites-swept=1"));
         assert!(!due(&marked), "marked by the server's cookie");
+        assert!(marked_again(&marked), "its mark would lapse");
+        assert!(
+            !marked_again(&navigated("none", None)),
+            "an unswept browser was marked"
+        );
+        let pictured = Asked {
+            cookies: Some("__Host-sites-swept=1"),
+            site: Some("cross-site"),
+            dest: Some("image"),
+        };
+        assert!(!marked_again(&pictured), "marked by another site's picture");
     }
 
     #[test]
     fn a_plain_cookie_another_host_could_set_marks_nothing() {
         let planted = navigated("same-site", Some("sites-swept=1"));
         assert!(due(&planted), "a cookie the documents' name could set");
+        // A name led by a space no browser trims isn't the prefixed one, so
+        // a browser lets the documents' name set it.
+        let wide = char::from_u32(0x2000).expect("an en quad is a char");
+        let spaced = format!("theme=dark; {wide}{SWEPT}");
+        let led = navigated("same-site", Some(&spaced));
+        assert!(due(&led), "a prefixed name led by a Unicode space");
+        let joined = navigated("same-site", Some("theme=dark; __Host-sites-swept=1"));
+        assert!(
+            !due(&joined),
+            "the mark after another cookie, as a browser joins them"
+        );
     }
 
     #[test]
