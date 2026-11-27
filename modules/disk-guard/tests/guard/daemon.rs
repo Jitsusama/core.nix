@@ -429,6 +429,12 @@ fn a_clear_in_a_subvolume_under_a_writers_hold_says_it_clears() {
 #[test]
 fn a_clear_that_fails_under_a_writers_hold_leaves_its_disk_waiting() {
     use std::os::unix::fs::PermissionsExt;
+    // SAFETY: geteuid only reads the process's own credentials.
+    let as_root = unsafe { libc::geteuid() } == 0;
+    assert!(
+        !as_root,
+        "root removes from a folder whatever its mode, so this runs only as another account"
+    );
     let home = Home::new();
     let (mut guard, scratch) = clear_asked_under_a_hold(&home);
     // Its ask can't be taken back, so the clear fails once it has run.
