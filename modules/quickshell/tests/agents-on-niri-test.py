@@ -4809,3 +4809,41 @@ def test_a_talk_to_an_asking_cell_shows_its_question_and_answers_it_from_return(
             one.unlink()
         shell.close_launcher()
         left_the_node("s-choose")
+
+
+def test_a_for_you_choice_walked_from_outside_is_told_to_the_walk_alone(shell: Shell) -> None:
+    """A walk choosing a For You answer is refused, told why, and says nothing in Joel's foot.
+
+    An answer goes as Joel's, so a walk is refused it; the refusal was also said in the foot,
+    where a terminal's walk would write over what Joel reads (round 000035 on #6796, F2).
+    """
+    since = datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    choices = [{"value": "left", "label": "Left"}, {"value": "right", "label": "Right"}]
+    ask = {"question": "Which way?", "choices": choices, "allowOther": False}
+    wants = {"kind": "question", "since": since, "said": "Which way?", "ask": ask}
+    lay("WALKAN", "Walked Quest", {"state": "listening", "busy": False, "wants": wants})
+    inbox = STEER / "WALKAN"
+    inbox.mkdir(parents=True, exist_ok=True)
+    steered = set(inbox.glob("*.json"))
+    walked_words = "what Walked Quest asks is answered only from your own Return in the launcher"
+    try:
+        in_for_you(shell)
+        shell.launcher_until(lambda shown: "Walked Quest" in shown["rows"])
+        shell.close_launcher()
+        walked = {"steps": ["now", "For You", "Walked Quest", "Left"], "sure": True}
+        did = json.loads(shell.as_account(shell.ipc("doing", shlex.quote(json.dumps(walked)))))
+        assert did.get("refused") == walked_words, did
+        shell.close_launcher()
+        # The next opening's foot says nothing of it, and nothing reached the session.
+        in_for_you(shell)
+        shell.launcher_until(lambda shown: "Walked Quest" in shown["rows"])
+        footer = shell.showing()["footer"].replace("\xa0", " ")
+        assert "only from your own Return" not in footer, footer
+        time.sleep(LINK_QUIET)
+        assert set(inbox.glob("*.json")) == steered, sorted(inbox.glob("*.json"))
+    finally:
+        (PRESENCE / "walkan.json").unlink(missing_ok=True)
+        for one in set(inbox.glob("*.json")) - steered:
+            one.unlink()
+        shell.close_launcher()
+        left_the_node("s-walkan")

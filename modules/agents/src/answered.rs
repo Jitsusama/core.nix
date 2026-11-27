@@ -153,6 +153,18 @@ pub fn answers<'a>(
     newest(talks, live).filter_map(answer_of).collect()
 }
 
+/// Which of `answers` Joel read by opening the drawer of the session at
+/// `address` at `seen`, in milliseconds since 1970 by the shell's clock:
+/// its unread answer, unless it came after he opened it. The shell asks
+/// again until the daemon takes it, so a late ask would otherwise mark
+/// read an answer that came since and he never saw (round 000035 on
+/// #6796, F19). One that says no time is taken as shown, as before.
+pub fn opened<'a>(answers: &'a [Answer], address: &str, seen: i64) -> Option<&'a Answer> {
+    answers
+        .iter()
+        .find(|one| one.address == address && !one.read && one.at.is_none_or(|at| at <= seen))
+}
+
 /// Joel's talks still on their way to an answer, one at most a session,
 /// as `answers` finds them.
 pub fn waiting<'a>(
@@ -587,5 +599,39 @@ mod tests {
             "the read line follows the talk's own"
         );
         assert!(refused, "a talk named by a path is refused");
+    }
+
+    #[test]
+    fn an_opening_reads_only_an_answer_that_came_before_it() {
+        let answer = |address: &str, at: Option<i64>, read: bool| Answer {
+            address: address.to_owned(),
+            talk: "talk-1".to_owned(),
+            asked: String::new(),
+            answer: String::new(),
+            at,
+            read,
+        };
+        let answers = [
+            answer("LAMPLT", Some(5), false),
+            answer("BEACON", Some(10), true),
+            answer("GONEAW", None, false),
+        ];
+        assert_eq!(
+            opened(&answers, "LAMPLT", 5),
+            Some(&answers[0]),
+            "one that came as he opened it is read"
+        );
+        assert_eq!(
+            opened(&answers, "LAMPLT", 4),
+            None,
+            "one that came after he opened it, as a late ask's, isn't"
+        );
+        assert_eq!(opened(&answers, "BEACON", 20), None, "one read isn't again");
+        assert_eq!(
+            opened(&answers, "GONEAW", 0),
+            Some(&answers[2]),
+            "one that says no time is taken as shown"
+        );
+        assert_eq!(opened(&answers, "ELSEWH", 20), None, "nor another's");
     }
 }

@@ -396,9 +396,10 @@ fn the_daemons_socket_acts_as_joel_for_no_one_but_the_shell() {
         asked.try_recv().is_err(),
         "none was done for a program that isn't the shell"
     );
-    // A share's start hides Joel's amounts from him, so it's the shell's
-    // alone too: the shell asks it again till taken, and at each opening
-    // (round 000036 on #6796, F121 and F133).
+    // A share's end is the shell's alone, above, as it shows amounts on
+    // what may be a shared screen; its start only hides them, so it's
+    // taken from anyone, as a slow user manager would otherwise leave them
+    // shown (round 000035 on #6796, F20).
     writeln!(
         &asking,
         "{}",
@@ -409,11 +410,15 @@ fn the_daemons_socket_acts_as_joel_for_no_one_but_the_shell() {
     reading.read_line(&mut line).expect("an answer");
     let answer: Value = serde_json::from_str(&line).expect("one line of JSON");
     assert_eq!(
-        answer["error"]["code"],
-        json!("refused"),
-        "a share's start is refused to a program that isn't the shell: {answer}"
+        answer["done"],
+        json!(true),
+        "a share's start is taken from a program that isn't the shell: {answer}"
     );
-    assert!(asked.try_recv().is_err(), "no share's start was done");
+    assert_eq!(
+        asked.try_recv().ok(),
+        Some(json!("sharing")),
+        "the share's start was done"
+    );
     let _ = std::fs::remove_dir_all(&folder);
 }
 
@@ -434,4 +439,42 @@ fn joels_acts_are_the_shells_alone_and_answered_in_order() {
     for ask in SLOW {
         assert!(SHELLS_ALONE.contains(&ask), "{ask} is the shell's alone");
     }
+}
+
+/// Each of Joel's acts is held to the shell but a share's start, which
+/// only hides his amounts (round 000035 on #6796, F20).
+#[test]
+fn each_act_as_joel_is_held_to_the_shell_but_a_shares_start() {
+    for act in AS_JOEL {
+        assert!(
+            held_to_the_shell(&json!({"ask": act, "sharing": false})),
+            "{act} is held"
+        );
+    }
+    assert!(
+        !held_to_the_shell(&json!({"ask": "sharing", "sharing": true})),
+        "a share's start isn't"
+    );
+    assert!(
+        held_to_the_shell(&json!({"ask": "sharing", "sharing": "true"})),
+        "nor one saying it in words, which the daemon reads as an end"
+    );
+    assert!(
+        !held_to_the_shell(&json!({"ask": "rows"})),
+        "nor an ask that isn't Joel's act"
+    );
+}
+
+/// What a refused ask named is journalled cut short, however long the
+/// asker made it (round 000035 on #6796, F13).
+#[test]
+fn what_a_refused_ask_named_is_journalled_cut_short() {
+    let long = json!("P".repeat(NAMED_AT_MOST * 4));
+    assert_eq!(named(&long).chars().count(), NAMED_AT_MOST);
+    assert_eq!(named(&json!("P9R1KI")), "\"P9R1KI\"", "a short one whole");
+    assert_eq!(
+        named(&json!("a\nb")),
+        "\"a\\nb\"",
+        "a line break said as JSON says it, so no ask writes a second line"
+    );
 }
