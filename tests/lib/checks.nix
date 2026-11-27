@@ -220,9 +220,18 @@ in
 // onMacos {
   # macosTools runs a script with /usr/bin's tr, sed and find, and tr there
   # refuses a byte that isn't UTF-8 unless LC_ALL=C says to read bytes, as a
-  # Mac's account runs it and stdenv's GNU tr doesn't.
-  a-mac-check-runs-macos-own-tools = macosTools {
-    name = "a-mac-check-runs-macos-own-tools";
-    script = ./macos-tools-test.sh;
-  };
+  # Mac's terminal runs it and stdenv's GNU tr doesn't. A Mac whose sandbox
+  # is false builds it outside the sandbox whatever it asks, so its asking
+  # is held here, as it's evaluated, for a Mac whose sandbox is relaxed.
+  a-mac-check-runs-macos-own-tools =
+    let
+      check = macosTools {
+        name = "a-mac-check-runs-macos-own-tools";
+        script = ./macos-tools-test.sh;
+        args = [ "a b'c" ];
+      };
+      asksOut = check.drvAttrs.__noChroot or false;
+    in
+    assert pkgs.lib.assertMsg asksOut "${check.name} doesn't ask to build outside the sandbox.";
+    check;
 }
