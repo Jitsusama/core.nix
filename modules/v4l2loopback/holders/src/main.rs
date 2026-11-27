@@ -11,7 +11,8 @@
 //! while no program has it open; it's replaced whole, so a reader never
 //! sees half of it. A process in an ignored unit, such as the relay that
 //! fills the camera, is left out; a unit is a cgroup no program can put
-//! itself in, as it can take any name. With --card, only a loopback of
+//! itself in, as it can take any name, so long as it's one the system's
+//! manager placed rather than a person's own. With --card, only a loopback of
 //! that name counts, so a node number another camera has since been given
 //! isn't taken for this one.
 //!

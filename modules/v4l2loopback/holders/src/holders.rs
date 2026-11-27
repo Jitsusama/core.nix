@@ -107,13 +107,22 @@ fn own_name(proc: &Path) -> io::Result<String> {
     Ok(name)
 }
 
-/// Whether a process is in one of the units, by its cgroup, which no
-/// program can put itself in as it can take any name.
+/// Whether a process is in one of the system's units, by its cgroup.
+/// A program can take any name, and a person's own manager can start a
+/// unit of any name too, but only under user@UID.service; so the unit
+/// counts only where the system's manager puts it, as the first part of
+/// the path that isn't a slice. Only the unified hierarchy's line is read,
+/// since a legacy hierarchy can be shaped by whoever it's delegated to,
+/// and a process with no such line is never left out: naming the relay
+/// shows the camera on, while leaving out a reader would show it off.
 pub fn ignored(cgroup: &str, units: &[String]) -> bool {
     cgroup.lines().any(|line| {
-        let path = line.rsplit_once(':').map_or(line, |(_, path)| path);
+        let Some(path) = line.strip_prefix("0::/") else {
+            return false;
+        };
         path.split('/')
-            .any(|part| units.iter().any(|unit| unit == part))
+            .find(|part| !part.ends_with(".slice"))
+            .is_some_and(|part| units.iter().any(|unit| unit == part))
     })
 }
 
@@ -213,11 +222,49 @@ mod tests {
     fn only_a_unit_in_the_cgroup_path_is_ignored() {
         let units = ["stand-in.service".to_owned()];
         assert!(ignored("0::/system.slice/stand-in.service\n", &units));
+        assert!(ignored("0::/system.slice/stand-in.service/relay\n", &units));
+        assert!(ignored("0::/a.slice/a-b.slice/stand-in.service\n", &units));
         assert!(!ignored(
             "0::/user.slice/user-1000.slice/app.slice/x.scope\n",
             &units
         ));
         assert!(!ignored("0::/system.slice/stand-in.service.d\n", &units));
+    }
+
+    #[test]
+    fn a_unit_a_person_starts_by_the_same_name_is_not_ignored() {
+        // Anyone can run systemd-run --user --unit=stand-in.service, or
+        // make a cgroup by that name in the subtree their manager is given.
+        let units = ["stand-in.service".to_owned()];
+        let user = "0::/user.slice/user-1000.slice/user@1000.service";
+        assert!(!ignored(
+            &format!("{user}/app.slice/stand-in.service\n"),
+            &units
+        ));
+        assert!(!ignored(&format!("{user}/stand-in.service\n"), &units));
+        assert!(!ignored(
+            &format!("{user}/app.slice/x.service/stand-in.service\n"),
+            &units
+        ));
+        assert!(!ignored(
+            "0::/system.slice/x.service/stand-in.service\n",
+            &units
+        ));
+    }
+
+    #[test]
+    fn only_the_unified_hierarchy_says_a_unit() {
+        let units = ["stand-in.service".to_owned()];
+        assert!(!ignored(
+            "1:name=systemd:/system.slice/stand-in.service\n",
+            &units
+        ));
+        assert!(!ignored("0::/\n", &units));
+        assert!(!ignored("", &units));
+        assert!(ignored(
+            "1:name=systemd:/user.slice\n0::/system.slice/stand-in.service\n",
+            &units
+        ));
     }
 
     #[test]

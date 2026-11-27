@@ -100,9 +100,10 @@ in
                 type = lib.types.listOf lib.types.str;
                 default = [ ];
                 description = ''
-                  Units whose processes are left out, such as the relay's that
-                  fills the camera. By unit rather than by name, since a
-                  program can take any name but can't join a unit.
+                  System units whose processes are left out, such as the
+                  relay's that fills the camera. By unit rather than by name,
+                  since a program can take any name but can't join a system
+                  unit; a person's own unit of the same name doesn't count.
                 '';
               };
             };
