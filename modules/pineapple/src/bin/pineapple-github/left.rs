@@ -61,12 +61,14 @@ impl Left {
     }
 
     /// Tells Joel what was said on `thread` from `from`, in seconds, until
-    /// it was let go, went unread, with its link, so he reads it himself.
-    pub(super) fn thread(&self, thread: &Thread, from: u64) {
+    /// it was let go, went unread, with its link, so he reads it himself,
+    /// and whether it's written: one that isn't is owed still, so nothing
+    /// is let go that he wasn't told of.
+    pub(super) fn thread(&self, thread: &Thread, from: u64) -> bool {
         let at = now();
         let say =
             |from: Option<u64>, to: u64, whole: bool| self.thread_row(thread, from, to, at, whole);
-        self.keep(say(Some(from.saturating_mul(1000)), at, true), at, say);
+        self.keep(say(Some(from.saturating_mul(1000)), at, true), at, say)
     }
 
     /// The row saying what `login`'s search never read, from `from` to
@@ -134,15 +136,22 @@ impl Left {
     }
 
     /// Keeps `row`, raised `at`, said with the rows it meets as `say` makes
-    /// them, and says in the journal what Joel reads, or why he can't.
-    fn keep(&self, row: Value, at: u64, say: impl FnOnce(Option<u64>, u64, bool) -> Value) {
+    /// them, says in the journal what Joel reads, or why he can't, and
+    /// whether it's written.
+    fn keep(&self, row: Value, at: u64, say: impl FnOnce(Option<u64>, u64, bool) -> Value) -> bool {
         let why = row["why"].as_str().unwrap_or_default().to_owned();
         match missed::keep(&self.file, &self.prefix, row, at, say) {
-            Ok(written) => eprintln!("<5>wrote Joel's row in {}: {written}", self.file.display()),
-            Err(error) => eprintln!(
-                "<3>couldn't write Joel's row in {}: {why}: {error}",
-                self.file.display()
-            ),
+            Ok(written) => {
+                eprintln!("<5>wrote Joel's row in {}: {written}", self.file.display());
+                true
+            }
+            Err(error) => {
+                eprintln!(
+                    "<3>couldn't write Joel's row in {}: {why}: {error}",
+                    self.file.display()
+                );
+                false
+            }
         }
     }
 }

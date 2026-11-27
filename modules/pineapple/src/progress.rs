@@ -15,7 +15,8 @@
 //! owing writes the file back without what's owed, so going back to one
 //! lets that go unnamed, its `since` already past it. One owed that GitHub
 //! won't read again holds when it was last read whole back for the hours
-//! until it's let go, so it reads as a reader that isn't reading.
+//! until it's let go, and on while what notifies Joel owes it afresh, so
+//! it reads as a reader that isn't reading, which there it isn't.
 
 use std::path::Path;
 

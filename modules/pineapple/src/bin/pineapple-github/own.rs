@@ -219,10 +219,15 @@ impl Searched {
             let reach = self.reach();
             self.from = began;
             self.read = found.seen;
-            let next = github::stamp(self.reach());
+            let next = self.reach();
+            let stamp = github::stamp(next);
             for (left, to) in found.left {
-                eprintln!("{left} searched again only from {next}, where the next round reaches");
-                if let Some(to) = github::seconds(&to) {
+                eprintln!("{left} searched again only from {stamp}, where the next round reaches");
+                // What changed from where the next round reaches is
+                // searched again, so only what's before it is unread.
+                if let Some(to) = github::seconds(&to).map(|to| to.min(next))
+                    && to > reach
+                {
                     tell.own(&found.login, reach, to);
                 }
             }
