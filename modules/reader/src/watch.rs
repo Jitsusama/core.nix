@@ -6,6 +6,8 @@
 //! its name is heard once it's closed, not when it's made: an editor saving
 //! by a new file makes it empty and writes it after, and a page set from it
 //! between the two would move every mark on it as if its words were gone.
+//! A link made at its name is heard when it's made, since a link is never
+//! written: as `ln -s` makes one where the file was taken away.
 
 use std::ffi::{OsStr, OsString};
 use std::mem::MaybeUninit;
@@ -16,10 +18,12 @@ use std::sync::{Arc, Mutex};
 
 use rustix::fs::inotify::{self, CreateFlags, ReadFlags, WatchFlags};
 
-/// The file heard: its folder's watch and its name in that folder.
+/// The file heard: its folder's watch, its name in that folder, and its
+/// path, to ask whether what was made at its name is a link.
 struct Heard {
     folder: i32,
     name: OsString,
+    path: PathBuf,
 }
 
 /// A watch on one file's saves, which can be moved to another file.
@@ -45,8 +49,13 @@ fn watch_folder(fd: &OwnedFd, folder: &Path) -> std::io::Result<i32> {
     Ok(inotify::add_watch(
         fd,
         folder,
-        WatchFlags::CLOSE_WRITE | WatchFlags::MOVED_TO,
+        WatchFlags::CLOSE_WRITE | WatchFlags::MOVED_TO | WatchFlags::CREATE,
     )?)
+}
+
+/// Whether `path` is a link, not followed.
+fn linked(path: &Path) -> bool {
+    std::fs::symlink_metadata(path).is_ok_and(|it| it.file_type().is_symlink())
 }
 
 /// Calls `saved` each time the file watched is saved, from a thread of its
@@ -61,6 +70,7 @@ pub fn saves(
     let heard = Arc::new(Mutex::new(Heard {
         folder: watch_folder(&fd, &folder)?,
         name,
+        path: file.to_path_buf(),
     }));
     let reading = Arc::clone(&fd);
     let hearing = Arc::clone(&heard);
@@ -86,7 +96,10 @@ pub fn saves(
                             let written = event
                                 .events()
                                 .intersects(ReadFlags::CLOSE_WRITE | ReadFlags::MOVED_TO);
-                            ours |= named && written;
+                            // Only a link counts as made: a file made
+                            // is heard once closed, written.
+                            let made = event.events().contains(ReadFlags::CREATE);
+                            ours |= named && (written || (made && linked(&heard.path)));
                         }
                         Err(rustix::io::Errno::INTR) => {}
                         Err(_) => return,
@@ -117,7 +130,11 @@ impl Watch {
         if heard.folder != wd {
             let _ = inotify::remove_watch(&*self.fd, heard.folder);
         }
-        *heard = Heard { folder: wd, name };
+        *heard = Heard {
+            folder: wd,
+            name,
+            path: file.to_path_buf(),
+        };
         Ok(())
     }
 }
@@ -182,6 +199,27 @@ mod tests {
         assert!(
             hearing.recv_timeout(Duration::from_secs(5)).is_ok(),
             "a file made anew is heard once closed"
+        );
+        std::fs::remove_dir_all(&dir).expect("cleaned");
+    }
+
+    #[test]
+    fn a_link_made_where_the_file_was_is_heard() {
+        let dir = place("link");
+        let file = dir.join("page.md");
+        let other = dir.join("other.md");
+        std::fs::write(&file, "one").expect("the file");
+        std::fs::write(&other, "two").expect("the file linked to");
+        let (heard, hearing) = mpsc::channel();
+        let _watch = saves(&file, move || heard.send(()).is_ok()).expect("a watch");
+
+        // As `rm page.md; ln -s other.md page.md` does: nothing is written
+        // or moved over, only a link made at its name.
+        std::fs::remove_file(&file).expect("taken away");
+        std::os::unix::fs::symlink(&other, &file).expect("a link made");
+        assert!(
+            hearing.recv_timeout(Duration::from_secs(5)).is_ok(),
+            "a link made at its name is heard"
         );
         std::fs::remove_dir_all(&dir).expect("cleaned");
     }
