@@ -48,7 +48,18 @@ impl StandIn {
     fn new(test: &str) -> Self {
         let folder =
             std::env::temp_dir().join(format!("shell-preview-{}-{test}", std::process::id()));
-        let _ = fs::remove_dir_all(&folder);
+        if let Err(error) = fs::remove_dir_all(&folder) {
+            assert_eq!(
+                error.kind(),
+                std::io::ErrorKind::NotFound,
+                "{} should be cleared: {error}",
+                folder.display()
+            );
+        }
+        // Made afresh, so a folder planted there fails the test rather
+        // than hold the stand-ins it runs.
+        fs::create_dir(&folder)
+            .unwrap_or_else(|error| panic!("{} should be made afresh: {error}", folder.display()));
         let stand_in = Self { folder };
         for (name, script) in [
             ("git", GIT),

@@ -449,8 +449,9 @@ qint64 sweepsOf(const QJSEngine &engine) {
 
 // Whether a burst kept past twice the room, growing the chunks by
 // BURST_ROOMS rooms, collects at least once and no more than once for
-// each room it grows by, with `litter` objects made and dropped after a
-// collection and before the first ask since it, on a heap holding over
+// each room it grows by and once besides, with `litter` objects made
+// and dropped after a collection and before the first ask since it, on
+// a heap holding over
 // twice what's live in runs too small for it, as Joel's shell held 201
 // to 209 MB for 63 to 68 live. With none, its ask stands for the
 // closing's, straight after the closing's collection. With some, it
@@ -520,7 +521,8 @@ bool pacesABurstPastTheRoom(int litter) {
     if (!made || !unswept || !holedThrough || grown.chunks < upTo || !paced)
         std::fprintf(stderr,
                      "FAIL a burst kept past twice the room collects at least once and no more "
-                     "than once for each room it grows by, with %d dropped before the ask: "
+                     "than once for each room it grows by and once besides, with %d dropped "
+                     "before the ask: "
                      "%lld collections over %.2f to %.2f MB of chunks, up to %.2f, swept %.2f "
                      "then %.2f MB, collecting at %.2f then %.2f MB, %.2f MB unswept at the "
                      "ask; made %s, unswept %s, holed throughout %s\n",
@@ -538,7 +540,7 @@ bool pacesABurstPastTheRoom(int litter) {
 // did; sweeps that keep less cap it there too rather than wrapping past
 // it; and each slot kept beyond moves it by two, as Qt lets what's used
 // grow.
-bool roomCapsWhatsKept() {
+bool ceilingFollowsWhatsKept() {
     QJSEngine engine;
     Heap heap(&engine);
     const QJSValue few = keepScattered(engine);
@@ -564,6 +566,9 @@ bool roomCapsWhatsKept() {
     const double slotMb = static_cast<double>(QV4::Chunk::SlotSize) / mb;
     const double cap =
         static_cast<double>(manager->slotsHeldWhenRoomLeft) * slotMb + 2 * SMALL_ROOM_MB;
+    // Where standing() says the rooms alone cap the chunks, which a
+    // closing's line puts beside where the collector starts.
+    const double roomsAt = heap.standing().value(QStringLiteral("roomsCapAt")).toDouble();
     QStringList values;
     for (int each = 0; each < BURST_VALUES; each++)
         values << QStringLiteral("v%1: i").arg(each);
@@ -594,7 +599,8 @@ bool roomCapsWhatsKept() {
     engine.collectGarbage();
     const double moved = 2 * static_cast<double>(beyond) * slotMb;
     const bool holds = made && fromTheSweep && grown >= upTo && std::abs(same - cap) < SAME_MB &&
-                       std::abs(less - cap) < SAME_MB && std::abs(more - cap - moved) < SAME_MB;
+                       std::abs(less - cap) < SAME_MB && std::abs(more - cap - moved) < SAME_MB &&
+                       std::abs(roomsAt - cap) < SAME_MB;
     if (!holds)
         std::fprintf(stderr,
                      "FAIL the ceiling is twice the room past what was held at the ask, and "
@@ -602,11 +608,11 @@ bool roomCapsWhatsKept() {
                      "%.2f MB at the ask, %.2f kept by the last sweep of %.2f in use, grown "
                      "to %.2f; "
                      "collecting at %.2f, %.2f and %.2f MB for sweeps keeping as much, half "
-                     "and %.2f MB more, against %.2f, %.2f and %.2f; made %s, from the sweep "
-                     "%s\n",
+                     "and %.2f MB more, against %.2f, %.2f and %.2f; the rooms alone at %.2f; "
+                     "made %s, from the sweep %s\n",
                      asked.chunks, sweptAskedMb, usedAtAsk, grown, same, less, more, moved / 2, cap,
-                     cap,
-                     cap + moved, made ? "yes" : "no", fromTheSweep ? "yes" : "no");
+                     cap, cap + moved, roomsAt, made ? "yes" : "no",
+                     fromTheSweep ? "yes" : "no");
     return holds;
 }
 
@@ -2419,7 +2425,7 @@ int main(int argc, char **argv) {
     const bool ownLimits = roomKeepsQtsOwnLimits();
     const bool burstPaced = pacesABurstPastTheRoom(0);
     const bool litterPaced = pacesABurstPastTheRoom(LITTER);
-    const bool capped = roomCapsWhatsKept();
+    const bool capped = ceilingFollowsWhatsKept();
     const bool follows = allocatorFollows(heap);
     const bool given = givesBack();
     const bool lent = lendsBack();
