@@ -259,9 +259,10 @@ impl Tin {
         self.flows += other.flows;
     }
 
-    /// What a VPN's CAKE has counted this tin sending: its bytes, and the
-    /// header it counts each packet with, as `counted_bytes` reads the
-    /// whole CAKE's.
+    /// What a VPN's CAKE has counted coming in to this tin: its bytes, and
+    /// the header it counts each packet with, as `counted_bytes` reads
+    /// the whole CAKE's. A tin counts a packet as it comes in, so those it
+    /// then drops count too, where the whole CAKE's count what it sent.
     pub fn counted_bytes(&self) -> u64 {
         self.bytes + u64::from(VPN_OVERHEAD) * self.packets
     }

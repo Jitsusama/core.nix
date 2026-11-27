@@ -1597,10 +1597,13 @@ fn read_vpns(
     }
 }
 
-/// Takes in what each VPN's CAKE's tins have sent, `each`, read at `t`
+/// Takes in what each VPN's CAKE's tins have counted, `each`, read at `t`
 /// seconds, summed over the VPNs tin by tin: their bytes to `tins`, and
 /// what their CAKEs counted, the header with each packet, to `counted`,
-/// which their holds are a rate of. A VPN whose read failed has no four
+/// which their holds are a rate of. A CAKE counts a tin's packets as they
+/// come in, those it drops after too, so both read what reached the VPNs'
+/// queues, not what left them (trace says what the VPN sent round 3's
+/// F35). A VPN whose read failed has no four
 /// tins, and `counted` says nothing that second and keeps the bytes
 /// before, rather than reading under by that VPN's part, then over by
 /// all it ever sent once it's read again.
@@ -2202,29 +2205,29 @@ fn traced(
     second: trace::Line,
     shaped: &BTreeMap<String, Shaped>,
     house: &HouseHolds,
-    (vpn_sent, vpns): (Option<qdisc::Tins>, &BTreeMap<String, Vpn>),
+    (vpn_offered, vpns): (Option<qdisc::Tins>, &BTreeMap<String, Vpn>),
 ) -> trace::Line {
     let its = shaped.get(&second.link);
     let network = its.map(|s| s.network.clone());
     let mut line = second.held(its.map_or(trace::Held::WHOLE, Shaped::held));
     house_traced(&mut line, network.as_deref(), house);
     line.room = its.and_then(|s| s.room.held());
-    (line.vpn_sent, line.vpn_up) = vpn_traced(vpn_sent, vpns);
+    (line.vpn_offered, line.vpn_up) = vpn_traced(vpn_offered, vpns);
     line
 }
 
-/// What the VPNs' CAKEs counted sending up, `sent`, each tin's rate, and
-/// the rates they were held to, summed, for a traced second: none while
-/// no VPN is held.
+/// What the VPNs' CAKEs counted coming in to go up, `offered`, each tin's
+/// rate, and the rates they were held to, summed, for a traced second:
+/// none while no VPN is held.
 fn vpn_traced(
-    sent: Option<qdisc::Tins>,
+    offered: Option<qdisc::Tins>,
     vpns: &BTreeMap<String, Vpn>,
 ) -> (Option<u64>, Option<u64>) {
     if vpns.is_empty() {
         return (None, None);
     }
     (
-        sent.map(|k| k.bulk + k.best + k.video + k.voice),
+        offered.map(|k| k.bulk + k.best + k.video + k.voice),
         Some(vpns.values().map(|v| v.up).sum()),
     )
 }
