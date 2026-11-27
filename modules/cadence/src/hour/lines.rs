@@ -4,7 +4,10 @@
 //! work reads which merges, checks, dates or quests the count is made of
 //! without opening the files it came from.
 
+use std::collections::BTreeSet;
+
 use super::measures::{Class, Measure, SAID_NONE, parked, queues, rounds, ruled, spent};
+use super::owing::RULED_HOURLY;
 
 /// How many of the things behind a figure the card names before it
 /// counts the rest.
@@ -51,8 +54,8 @@ fn line(m: &Measure) -> String {
 /// parked on each ruling, so a parking is read while it stands. The merges past
 /// five rounds are named whatever the median reads, each with what its
 /// rounds past five caught, as WCJQSG asked. The claims of his rule are
-/// one a message, not one a cell, so only each sender's oldest is named,
-/// the one it's asked about in turn, and the rest counted.
+/// one a message, not one a cell, so only some senders are named, as
+/// [`ruled_named`] picks them, and the rest counted.
 fn behind(m: &Measure) -> Vec<String> {
     if m.key == spent::KEY || m.key == SAID_NONE || m.key.starts_with(parked::KEY) {
         return m.behind.iter().map(|line| format!("  {line}")).collect();
@@ -64,22 +67,14 @@ fn behind(m: &Measure) -> Vec<String> {
     {
         return Vec::new();
     }
+    if m.key == ruled::KEY {
+        return ruled_named(&m.behind);
+    }
     if m.class == Class::Cells {
         let mut lines: Vec<&String> = m.behind.iter().collect();
         // Sorting is stable, so each owner's keep the order they were read in.
         lines.sort_by_key(|line| line.rsplit_once(" · ").map_or("", |(_, owner)| owner));
-        if m.key == ruled::KEY {
-            // The ones each sender is asked about, as owing asks them in
-            // turn, so many senders an hour and each once a day.
-            lines = ruled::asked_of_each(lines);
-        }
-        let rest = m.behind.len() - lines.len();
-        let more = (rest > 0).then(|| format!("  and {rest} more from the same senders"));
-        return lines
-            .into_iter()
-            .map(|line| format!("  {line}"))
-            .chain(more)
-            .collect();
+        return lines.into_iter().map(|line| format!("  {line}")).collect();
     }
     let mut named: Vec<String> = m.behind.iter().take(NAMED).cloned().collect();
     let rest = m.behind.len().saturating_sub(NAMED);
@@ -87,6 +82,48 @@ fn behind(m: &Measure) -> Vec<String> {
         named.push(format!("and {rest} more"));
     }
     vec![format!("  {}", named.join("; "))]
+}
+
+/// The claims of his rule the card names: each sender's oldest, as
+/// [`ruled::asked_of_each`] gives them, oldest first, for at most
+/// [`RULED_HOURLY`] senders, the most an hour asks, and the rest counted
+/// in one line. A day's backlog held a few dozen senders on 26 November,
+/// and a line for each made the card too long to read. The card is
+/// composed before the hour reads its ledger, so it can name senders
+/// already asked within the day, whom the hour passes over for the next;
+/// the count says nothing of when the rest are asked.
+fn ruled_named(behind: &[String]) -> Vec<String> {
+    let mut named: Vec<&str> = Vec::new();
+    let mut lines = Vec::new();
+    for line in ruled::asked_of_each(behind) {
+        let from = sender(line);
+        if !named.contains(&from) {
+            if named.len() == RULED_HOURLY {
+                continue;
+            }
+            named.push(from);
+        }
+        lines.push(format!("  {line}"));
+    }
+    let others: BTreeSet<&str> = behind
+        .iter()
+        .map(String::as_str)
+        .map(sender)
+        .filter(|from| !named.contains(from))
+        .collect();
+    let rest = behind.len() - lines.len();
+    lines.extend(match others.len() {
+        0 if rest > 0 => Some(format!("  and {rest} more from the same senders")),
+        0 => None,
+        1 => Some("  and 1 more sender".to_owned()),
+        n => Some(format!("  and {n} more senders")),
+    });
+    lines
+}
+
+/// The sender a claim's line names, last, after its ` · `.
+fn sender(line: &str) -> &str {
+    line.rsplit_once(" · ").map_or("", |(_, owner)| owner)
 }
 
 /// A class's lines on the card. Clean zones read some sixty measures, so
@@ -256,11 +293,38 @@ mod tests {
         assert_eq!(
             shown_lines(Class::Cells, &[&claims])[1..],
             [
-                "  [0000000b] Joel wants more. · 5UTLKM",
                 "  [0000000a] Joel wants it. · T6E7X6",
+                "  [0000000b] Joel wants more. · 5UTLKM",
                 "  and 2 more from the same senders",
             ],
-            "the card named every claim, or not each sender's oldest"
+            "the card named every claim, or not each sender's oldest, oldest first"
+        );
+    }
+
+    /// A day's backlog held a few dozen senders, so the card names only
+    /// as many as an hour asks, by their oldest claims, and counts the
+    /// rest of the senders in one line.
+    #[test]
+    fn the_claims_of_his_rule_name_only_so_many_senders_the_oldest_first() {
+        let senders = RULED_HOURLY + 2;
+        let lines: Vec<String> = (0..senders)
+            .map(|n| format!("[0000000{n}] Joel wants it. · SENDER{}", senders - n))
+            .chain(["[000000ff] Joel wants more. · SENDER1".to_owned()])
+            .collect();
+        let mut claims = measure(Class::Cells, 9.0, &[]);
+        claims.key = ruled::KEY.to_owned();
+        claims.behind.clone_from(&lines);
+        let mut wanted: Vec<String> = lines
+            .iter()
+            .take(RULED_HOURLY)
+            .map(|line| format!("  {line}"))
+            .collect();
+        wanted.push("  and 2 more senders".to_owned());
+        assert_eq!(
+            shown_lines(Class::Cells, &[&claims])[1..],
+            wanted,
+            "the card named more senders than an hour asks, not the oldest claims' first, or \
+             didn't count the rest in one line"
         );
     }
 

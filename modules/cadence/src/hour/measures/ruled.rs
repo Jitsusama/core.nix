@@ -203,9 +203,9 @@ const EACH: usize = 1;
 
 /// The lines of `lines`, as the measure gives them, of the claims each
 /// sender is asked about: its first [`EACH`], in the order given. The card
-/// names these and the asks go for these, so the two never part, though
-/// the hour asks only so many senders, and each once a day, so a sender
-/// named may be asked in an hour to come.
+/// names those of its first senders and the asks go for these, so the two
+/// never part, though the hour asks only so many senders, and each once a
+/// day, so a sender named may be asked in an hour to come.
 #[must_use]
 pub fn asked_of_each<'a>(lines: impl IntoIterator<Item = &'a String>) -> Vec<&'a String> {
     let mut asked: BTreeMap<&str, usize> = BTreeMap::new();

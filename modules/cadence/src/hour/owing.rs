@@ -39,7 +39,7 @@ const RULED_DUE: i64 = 7 * DAY;
 /// the measure starts finds a day's backlog, some few dozen senders on
 /// 26 November, and each ask wakes its cell if it's parked, so the wakes
 /// are spread over the hours rather than sent at once.
-const RULED_HOURLY: usize = 6;
+pub(super) const RULED_HOURLY: usize = 6;
 
 /// One drag as the ledger files it: its key, owner, words, and what its
 /// owner is told.
