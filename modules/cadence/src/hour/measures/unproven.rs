@@ -154,12 +154,7 @@ pub fn unproven(text: &str, probes: Result<&str, &str>, switches: &str, now: i64
             .map_or_else(|| says.to_owned(), |why| format!("{says} ({why})")),
         now: figure,
         target: unjudged.is_none().then_some(0.0),
-        // An unread record is its keeper's to mend, not any ask's cell's.
-        owner: if runs.is_err() {
-            KEEPER.to_owned()
-        } else {
-            open.first().map(|(_, _, o)| o.clone()).unwrap_or_default()
-        },
+        owner: open.first().map(|(_, _, o)| o.clone()).unwrap_or_default(),
         behind: open.into_iter().map(|(_, line, _)| line).collect(),
     }
 }
@@ -177,20 +172,25 @@ fn runs(probes: &str) -> Result<BTreeMap<String, Vec<Run>>, String> {
         }
         let line: Value = serde_json::from_str(text)
             .map_err(|err| format!("line {} won't parse: {err}", n + 1))?;
-        let (Some(ask), Some(at), Some(passed)) = (
+        // A switch it names is a number, or a later failure would read as
+        // the one its cell closed.
+        let switch = &line["switch"];
+        let (Some(ask), Some(at), Some(passed), true) = (
             line["ask"].as_str(),
             seconds(&line["at"]),
             line["passed"].as_bool(),
+            switch.is_null() || switch.is_i64(),
         ) else {
             return Err(format!(
-                "line {} isn't a run naming its ask, when it ran and whether it passed",
+                "line {} isn't a run naming its ask, when it ran, whether it passed and \
+                 any switch by number",
                 n + 1
             ));
         };
         by_ask.entry(ask.to_owned()).or_default().push(Run {
             at,
             passed,
-            switch: line["switch"].as_i64(),
+            switch: switch.as_i64(),
         });
     }
     Ok(by_ask)

@@ -384,6 +384,10 @@ fn a_line_that_parses_but_isnt_a_run_leaves_the_runs_unread_rather_than_skipped(
             json!({"ask_id": "odd", "at": at(NOW - 3600), "passed": false}),
             "no ask",
         ),
+        (
+            json!({"ask": "odd", "at": at(NOW - 3600), "passed": false, "switch": "abc1"}),
+            "a switch by rev",
+        ),
         (json!(null), "no record"),
     ] {
         let probes = [run("odd", 7200, true, 1199), odd.to_string()];

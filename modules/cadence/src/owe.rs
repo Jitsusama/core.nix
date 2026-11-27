@@ -178,7 +178,12 @@ pub fn settle(ledger: &mut [Entry], key: &str) -> bool {
 /// way keeps when, and the fix its owner named; so does one the hour
 /// already closed, when its fix is named, since a root fix often lands
 /// after its class dips under the bar, and its old cases still count.
-fn done(ledger: &mut [Entry], key: &str, fix: Option<&str>, now: i64) -> Result<String, Failure> {
+pub(crate) fn done(
+    ledger: &mut [Entry],
+    key: &str,
+    fix: Option<&str>,
+    now: i64,
+) -> Result<String, Failure> {
     if let Some(entry) = ledger
         .iter_mut()
         .find(|e| e.open && e.kind.is_some() && e.key == key)

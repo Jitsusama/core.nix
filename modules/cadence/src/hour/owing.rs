@@ -306,26 +306,34 @@ fn unproven_asked(m: &Measure, says: &str) -> Vec<Filed> {
         .iter()
         .filter_map(|line| line.rsplit_once(" · "))
         .filter_map(|(ask, owner)| Some((ask.rsplit_once("; ")?, owner)))
-        .map(|((ask, state), owner)| Filed {
-            key: format!("hour:{}:{owner}:{ask}", m.key),
-            says: format!("{says}, yours: {ask}; {state}"),
-            text: if ask == unproven::UNNAMED {
-                format!(
-                    "cadence hour: {says}, and these are yours to write probes for: {ask}; \
-                     {state}. No cell can prove what it was asked without one. Please write \
-                     each one's probe, or reply with why it can't have one. It closes by \
-                     itself once none is left."
-                )
-            } else {
-                format!(
-                    "cadence hour: {says}, and this one's result is yours: {ask}; {state}. A \
-                     merge isn't done until he has what he asked for. Please run its probe, \
-                     fix what it shows, or reply with why it can't pass and close it, which \
-                     holds until its state moves. It closes by itself once its probe passes \
-                     here, or once it's a week landed and left to the backfill."
-                )
-            },
-            owner: owner.to_owned(),
+        .map(|((ask, state), owner)| {
+            let key = format!("hour:{}:{owner}:{ask}", m.key);
+            // His words are in the key, so it's quoted to stay one word,
+            // and nothing in it runs, when pasted.
+            let done = causes::shell_quoted(&key);
+            Filed {
+                says: format!("{says}, yours: {ask}; {state}"),
+                text: if ask == unproven::UNNAMED {
+                    format!(
+                        "cadence hour: {says}, and these are yours to write probes for: \
+                         {ask}; {state}. No cell can prove what it was asked without one. \
+                         Please write each one's probe, or say why they can't have one with \
+                         `cadence owe --done {done} WHY`, which holds until their count \
+                         moves. It closes by itself once none is left."
+                    )
+                } else {
+                    format!(
+                        "cadence hour: {says}, and this one's result is yours: {ask}; \
+                         {state}. A merge isn't done until he has what he asked for. Please \
+                         run its probe and fix what it shows, or say why it can't pass yet \
+                         with `cadence owe --done {done} WHY`, which holds until its state \
+                         moves. It closes by itself once its probe passes here, or once it's \
+                         a week landed and left to the backfill."
+                    )
+                },
+                key,
+                owner: owner.to_owned(),
+            }
         })
         .collect()
 }
@@ -543,18 +551,37 @@ fn fixed_lately(ledger: &[Entry], key: &str, now: i64) -> bool {
 }
 
 /// Whether the ask unproven filed as `one` was closed by its cell, with
-/// `cadence owe --done`, while its line said what it says now: the cell has
-/// said why it can't pass yet, so it isn't asked again until the line's
-/// state moves. One the hour closed as its line went holds nothing, so a
-/// pass then the same failure is asked again; nor does the measure's
-/// figure, which moves with every other ask.
+/// `cadence owe --done KEY WHY`, while its line said what it says now: the
+/// cell has said why it can't pass yet, so it isn't asked again until the
+/// line's state moves. A bare `--done`, which says no why, holds nothing;
+/// nor does a close the hour made as its line went, or one whose line has
+/// gone since (`unheld`), so a pass then the same failure is asked again;
+/// nor does the measure's figure, which moves with every other ask.
 fn held(ledger: &[Entry], one: &Filed) -> bool {
     let own = |says: &str| says.split_once(", yours: ").map(|(_, own)| own.to_owned());
     ledger
         .iter()
         .rev()
         .find(|e| e.key == one.key)
-        .is_some_and(|e| !e.open && e.closed.is_some() && own(&e.words) == own(&one.says))
+        .is_some_and(|e| {
+            !e.open && e.closed.is_some() && e.fixed.is_some() && own(&e.words) == own(&one.says)
+        })
+}
+
+/// Lets go each cell's close of an ask unproven whose line is gone from
+/// the measure, read: its probe passed, or it left the week, so what it
+/// said no longer holds, and the same failure after is asked again.
+fn unheld(ledger: &mut [Entry], measures: &[Measure]) {
+    let ours = format!("hour:{}:", unproven::KEY);
+    for entry in ledger.iter_mut() {
+        if !entry.open
+            && entry.closed.is_some()
+            && entry.key.starts_with(&ours)
+            && back_in(&entry.key, measures)
+        {
+            entry.closed = None;
+        }
+    }
 }
 
 /// Files the hour's drag in the loop's ledger as a must of kind `drag`,
@@ -587,6 +614,7 @@ pub fn file(
     for key in closing {
         owe::settle(ledger, &key);
     }
+    unheld(ledger, measures);
     let rest: Vec<Measure> = measures
         .iter()
         .filter(|m| m.class != Class::Apps)
@@ -1423,6 +1451,13 @@ mod tests {
             "the cell wasn't told which ask was theirs, while a miss led: {told:?}"
         );
         assert!(
+            card_told.contains(&format!(
+                "`cadence owe --done 'hour:{}:1JQPPC:{card}' WHY`",
+                unproven::KEY
+            )),
+            "the cell wasn't told how to close it: {card_told}"
+        );
+        assert!(
             told.iter().any(|(to, _)| to == "Y2YBTS"),
             "each ask's cell wasn't asked apart: {told:?}"
         );
@@ -1458,58 +1493,64 @@ mod tests {
             [format!("hour:{}:1JQPPC:{card}", unproven::KEY)],
             "an ask closed while its line stood, or stayed open once it was gone"
         );
-        // Its cell closes it, saying why it can't pass, as `cadence owe
-        // --done` does: it isn't asked again while its line says the same,
-        // whatever other asks do to the figure.
+    }
+
+    #[test]
+    fn a_cells_close_with_its_why_holds_while_its_line_stands_and_no_longer() {
+        let card = "show the card, asked 2026-11-26T09:00:00Z";
         let key = format!("hour:{}:1JQPPC:{card}", unproven::KEY);
-        assert!(owe::settle(&mut ledger, &key), "its cell couldn't close it");
-        if let Some(closed) = ledger.iter_mut().rev().find(|e| e.key == key) {
-            closed.closed = Some(9000);
-        }
-        unproven
-            .behind
-            .push(format!("{map}; its probe failed · Y2YBTS"));
-        unproven.now = 2.0;
-        let told = file(
-            &mut ledger,
-            std::slice::from_ref(&unproven),
-            "2026-11-26",
-            11800,
-        );
+        let failed = format!("{card}; its probe failed · 1JQPPC");
+        let other = "fix the map, asked 2026-11-26T08:00:00Z; its probe failed · Y2YBTS";
+        let with = |lines: &[&str]| {
+            let mut m = measure(unproven::KEY, Class::Functional, 1.0, Some(0.0));
+            m.behind = lines.iter().map(|&line| line.to_owned()).collect();
+            m.now = f64::from(u32::try_from(lines.len()).unwrap_or(u32::MAX));
+            m
+        };
+        let asked = |told: &[(String, String)]| told.iter().any(|(to, _)| to == "1JQPPC");
+        let mut ledger = Vec::new();
+        let hour = |ledger: &mut Vec<Entry>, lines: &[&str], at: i64| {
+            file(ledger, &[with(lines)], "2026-11-26", at)
+        };
         assert!(
-            !told.iter().any(|(to, _)| to == "1JQPPC"),
-            "an ask its cell closed was asked again as the figure moved: {told:?}"
+            asked(&hour(&mut ledger, &[&failed], 1000)),
+            "it wasn't asked"
         );
-        // Once its state moves it is asked again.
-        let failed = format!("{card}; its probe failed after switch 1201 · 1JQPPC");
-        unproven.behind[0].clone_from(&failed);
-        let told = file(
-            &mut ledger,
-            std::slice::from_ref(&unproven),
-            "2026-11-26",
-            15400,
-        );
+        // A bare close says no why, so holds nothing.
+        let bare = owe::done(&mut ledger, &key, None, 2000).map_err(|f| f.exit);
+        assert!(bare.is_ok(), "its cell couldn't close it: {bare:?}");
         assert!(
-            told.iter()
-                .any(|(to, text)| to == "1JQPPC" && text.contains("switch 1201")),
-            "an ask its cell closed wasn't asked again once its probe failed anew: {told:?}"
+            asked(&hour(&mut ledger, &[&failed], 4600)),
+            "a bare close held it"
         );
-        // Its probe passes, so the hour closes it; the same failure after
-        // is asked again, as only its cell's close holds.
-        unproven.behind.remove(0);
-        unproven.now = 1.0;
-        file(
-            &mut ledger,
-            std::slice::from_ref(&unproven),
-            "2026-11-26",
-            19000,
-        );
-        unproven.behind.insert(0, failed);
-        unproven.now = 2.0;
-        let told = file(&mut ledger, &[unproven], "2026-11-26", 22600);
+        // Closed with its why, it holds while its line says the same,
+        // whatever other asks do to the figure.
+        let why = owe::done(&mut ledger, &key, Some("needs his login"), 5000);
         assert!(
-            told.iter().any(|(to, _)| to == "1JQPPC"),
-            "a pass then the same failure wasn't asked again: {told:?}"
+            why.is_ok(),
+            "its cell couldn't close it: {:?}",
+            why.err().map(|f| f.exit)
+        );
+        let told = hour(&mut ledger, &[&failed, other], 8200);
+        assert!(
+            !asked(&told),
+            "a close with its why was asked again: {told:?}"
+        );
+        // Its state moves, so it is asked again.
+        let moved = format!("{card}; its probe failed after switch 1201 · 1JQPPC");
+        assert!(
+            asked(&hour(&mut ledger, &[&moved], 11800)),
+            "a close held once its state moved"
+        );
+        // Closed again with its why, then its probe passes and the same
+        // failure comes back: what it said no longer holds.
+        let again = owe::done(&mut ledger, &key, Some("needs his login"), 12000);
+        assert!(again.is_ok(), "its cell couldn't close it again");
+        hour(&mut ledger, &[other], 15400);
+        let told = hour(&mut ledger, &[&moved], 19000);
+        assert!(
+            asked(&told),
+            "a cell's close held through a pass, so the same failure went unasked: {told:?}"
         );
     }
 
