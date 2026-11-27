@@ -24,6 +24,7 @@ pub struct Run {
     recorded: Option<Value>,
     named: Option<usize>,
     built: Option<Value>,
+    red_first: Option<Value>,
 }
 
 /// One side's evaluation, chunk by chunk, as it goes.
@@ -54,6 +55,7 @@ impl Run {
             recorded: None,
             named: None,
             built: None,
+            red_first: None,
         }
     }
 
@@ -97,6 +99,12 @@ impl Run {
         }));
     }
 
+    /// Note red first's verdict of the change, so a day's runs say how many
+    /// it judged, would refuse or left unjudged, and why.
+    pub fn red_first(&mut self, verdict: Value) {
+        self.red_first = Some(verdict);
+    }
+
     /// Note that the build ran on the lent builder, sending it this many
     /// bytes, where ssh said.
     pub fn lent(&mut self, sent: Option<u64>) {
@@ -117,6 +125,7 @@ impl Run {
             "recorded": self.recorded,
             "named": self.named,
             "built": self.built,
+            "red_first": self.red_first,
         })
     }
 

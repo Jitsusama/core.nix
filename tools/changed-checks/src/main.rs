@@ -327,10 +327,6 @@ fn changed(options: &Options, out: &Pen) -> Result<(), Failure> {
             Exit::Failed,
             "a check the change touched failed",
         )),
-        Compared::Unred => Err(Failure::new(
-            Exit::Failed,
-            "a check passes with the change's tests laid over the base's code",
-        )),
     }
 }
 
@@ -342,8 +338,6 @@ enum Compared {
     Broken,
     /// A check it built failed.
     Failed,
-    /// A check passes with the change's tests over the base's code.
-    Unred,
 }
 
 /// Keep `head`'s checks where runs are sent, from the keeper's own clone,
@@ -617,14 +611,19 @@ fn compare(
     if build.as_ref().is_some_and(|build| !build.sent.passed) {
         return Ok(Compared::Failed);
     }
-    let asked = options.build.then(|| comparison.to_build(options.vm));
-    let at = red_first::At { root, base, system };
-    let red = red_first::judged(&at, asked, commit.is_some(), (&before, &after), noted);
-    Ok(if red {
-        Compared::Passed
-    } else {
-        Compared::Unred
-    })
+    let at = red_first::At::of(root, base, commit.as_deref(), system);
+    let asked = options.build.then(|| unheld(&comparison, options.vm, held));
+    red_first::judged(&at, asked, commit.is_some(), (&before, &after), noted);
+    Ok(Compared::Passed)
+}
+
+/// The checks a run built that main's quarantine doesn't hold, the ones
+/// red first asks to fail over the base: a check the quarantine holds fails
+/// there for its own reasons, which would read as the change's tests failing.
+fn unheld<'a>(comparison: &'a checks::Comparison, vm: bool, held: &[Held]) -> Vec<&'a str> {
+    let mut built = comparison.to_build(vm);
+    built.retain(|name| quarantine::find(held, name).is_none());
+    built
 }
 
 /// Evaluate the tree's ordinary checks, giving the base's derivation to

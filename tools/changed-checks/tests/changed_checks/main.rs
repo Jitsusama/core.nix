@@ -40,11 +40,10 @@ fn starting() -> MutexGuard<'static, ()> {
 /// is `diff`, and the base holds the paths `based` lists.
 ///
 /// Asked of the change as red first asks it, its commits and their
-/// Red-first trailers are `log`, its own commits off its merges are `own`
-/// (one, without it), its files with renames found are `diff.whole`, the
+/// Red-first trailers are `log`, its files with renames found are `diff.whole`, the
 /// lines each adds and takes are `diff.counted` (one added to each file
 /// asked, without it), and its added lines are `diff.lines`. Laying its tests
-/// over the base, each file it lists is a blob of HEAD's, what it indexes
+/// over the base, each file it lists is a blob of the head's, what it indexes
 /// is added to `indexed`, and each commit it makes is added to `commits`
 /// and is `a1a1` for the tests alone and `b0b0` with files nothing names.
 const GIT: &str = r#"#!/bin/sh
@@ -84,8 +83,9 @@ case "$1" in
           printf 'committer someone <a@b> 7 +0000\n\nbase\n'
         else grep -qxF "${5#*:}" "$STAND_IN/based" 2>/dev/null; fi ;;
       log) cat "$STAND_IN/log" 2>/dev/null || : ;;
-      rev-list) cat "$STAND_IN/own" 2>/dev/null || echo c0c0c0c0c0c0c0c0c0c0 ;;
-      read-tree|write-tree) echo laidtree ;;
+      read-tree|write-tree)
+        if [ -e "$STAND_IN/unwritable" ]; then exit 1; fi
+        echo laidtree ;;
       ls-tree) shift 6; for file in "$@"; do printf '100644 blob 1111\t%s\0' "$file"; done ;;
       update-index) tr '\0' '\n' >> "$STAND_IN/indexed" ;;
       hash-object)
@@ -356,6 +356,8 @@ impl StandIn {
             // No stall, whatever the machine running the tests holds.
             .env("CHANGED_CHECKS_PRESSURE", self.folder.join("pressure"))
             .env("CHANGED_CHECKS_STRACE", self.folder.join("bin/strace"))
+            // A run is the train's candidate only where a case says so.
+            .env_remove("CHANGED_CHECKS_CANDIDATE")
             .envs(told.iter().copied())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())

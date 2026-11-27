@@ -1,3 +1,4 @@
+use super::telling::is_test;
 use super::*;
 
 #[test]
@@ -8,6 +9,8 @@ fn a_test_is_told_by_its_folder_or_its_name_alone() {
         "modules/quickshell/tests/refusal-lines.qml",
         "modules/quickshell/checks/agents.nix",
         "modules/wifid/checks.nix",
+        "modules/pi/host-checks.nix",
+        "modules/local-sites/ask_checks.nix",
         "modules/agents/src/arrangement/tests.rs",
         "modules/agents/src/main_tests.rs",
         "modules/backlight/saves-while-open-test.sh",
@@ -36,6 +39,7 @@ fn a_change_lays_its_added_and_edited_tests_over_the_base_and_no_other() {
                 M\tmodules/y/src/lib.rs\n\
                 M\tmodules/y/src/lib_tests.rs\n\
                 A\tmodules/y/tests/new/cases.rs\n\
+                M\tmodules/y/tests/new/main.rs\n\
                 D\tmodules/z/old.rs\n\
                 R087\tmodules/q/One.qml\tmodules/q/Two.qml\n\
                 M\tmodules/e/src/far/tests.rs\n\
@@ -48,9 +52,10 @@ fn a_change_lays_its_added_and_edited_tests_over_the_base_and_no_other() {
             tests: vec![
                 "tools/x/tests/new.rs".to_owned(),
                 "modules/y/src/lib_tests.rs".to_owned(),
-                "modules/y/tests/new/cases.rs".to_owned(),
+                "modules/y/tests/new/main.rs".to_owned(),
                 "modules/e/src/far/tests.rs".to_owned(),
                 "modules/y/tests/link.sh".to_owned(),
+                "modules/y/tests/new/cases.rs".to_owned(),
                 "modules/e/src/far/tests/leaking.rs".to_owned(),
             ],
             apart: Vec::new(),
@@ -73,6 +78,7 @@ fn a_test_the_head_has_otherwise_than_laid_is_said_apart() {
                 R062\tmodules/q/tests/c.qml\tmodules/q/tests/d.qml\n\
                 R095\tmodules/q/src/a.rs\tmodules/q/src/b/tests.rs\n\
                 A\tmodules/y/src/new/tests.rs\n\
+                A\tmodules/lid-hinge/lid-hinge_tests.rs\n\
                 A\t\"modules/y/tests/caf\\303\\251.rs\"\n";
 
     assert_eq!(
@@ -93,6 +99,7 @@ fn a_test_the_head_has_otherwise_than_laid_is_said_apart() {
             ),
             Apart::Quoted("\"modules/y/tests/caf\\303\\251.rs\"".to_owned()),
             Apart::Declared("modules/y/src/new/tests.rs".to_owned()),
+            Apart::Declared("modules/lid-hinge/lid-hinge_tests.rs".to_owned()),
         ],
         "a test removed, moved, quoted or declared only by code wasn't said apart"
     );
@@ -139,12 +146,36 @@ fn a_test_added_among_code_is_found_by_its_added_lines() {
                 --- /dev/null\n\
                 +++ b/c.py\n\
                 @@ -0,0 +1 @@\n\
-                +def test_reads(): pass\n";
+                +def test_reads(): pass\n\
+                diff --git a/src/d.rs b/src/d.rs\n\
+                --- a/src/d.rs\n\
+                +++ b/src/d.rs\n\
+                @@ -5,0 +6,3 @@\n\
+                +++ counted\n\
+                +    #[tokio::test(start_paused = true)]\n\
+                +    async fn waits() {}\n\
+                diff --git a/src/e.rs b/src/e.rs\n\
+                --- a/src/e.rs\n\
+                +++ b/src/e.rs\n\
+                @@ -1,0 +2,2 @@\n\
+                +// a #[test] here is only named\n\
+                +const MARKS: [&str; 1] = [\"#[test]\"];\n\
+                diff --git a/docs/testing.md b/docs/testing.md\n\
+                --- a/docs/testing.md\n\
+                +++ b/docs/testing.md\n\
+                @@ -1,0 +2 @@\n\
+                +#[cfg(test)] marks a module of tests.\n\
+                diff --git a/src/f.rs b/src/f.rs\n\
+                --- a/src/f.rs\n\
+                +++ b/src/f.rs\n\
+                @@ -1,0 +2 @@\n\
+                +#[cfg(all(test, target_os = \"linux\"))]\n";
 
     assert_eq!(
         inline_tests(diff),
-        ["c.py", "src/a.rs"],
-        "a test added among code went unfound, or one taken away was found"
+        ["c.py", "src/a.rs", "src/d.rs", "src/f.rs"],
+        "a test added among code went unfound, one taken away or only quoted was found, or \
+         a line reading ++ was taken for a file's"
     );
 }
 

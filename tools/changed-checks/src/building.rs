@@ -132,10 +132,7 @@ pub fn build(
 
 /// Build `targets` from this machine, through its standing builders where
 /// it has them, each from the derivation `after` evaluated for it, or from
-/// `flake` where the store has collected that since. A flake no commit of
-/// origin's holds, such as the change's tests laid over its base
-/// (`red_first.rs`), is built so, since the lent builder fetches only
-/// origin's commits.
+/// `flake` where the store has collected that since.
 pub fn build_here(
     flake: &str,
     system: &str,
@@ -156,7 +153,10 @@ pub fn build_here(
     })
 }
 
-/// The nix build `build_here` runs, which a caller may hear otherwise.
+/// The nix build `build_here` runs, which a caller may hear otherwise. Red
+/// first (`red_first.rs`) runs it itself for a flake no commit of origin's
+/// holds, the change's tests laid over its base, since the lent builder
+/// fetches only origin's commits, and so keeps nix's log out of the run's.
 pub fn building_here(flake: &str, system: &str, targets: &[&str], after: &Derivations) -> Command {
     let mut nix = Command::new("nix");
     nix.args(["build", "--no-link", "--keep-going", "-L"])

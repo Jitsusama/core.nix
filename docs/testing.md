@@ -38,8 +38,13 @@ makes the loop slow, and the load it adds is what makes VM tests time out.
 A test proves a change only if it fails without it, so once a committed
 change's checks pass, `changed-checks` builds again each it built that the
 change's added or edited tests reach, with those tests laid over the
-base's code, and refuses the change if every one still passes there,
-naming the checks and the tests. One failing there is enough, since a
+base's code, and says the change would be refused if every one still
+passes there, naming the checks and the tests. A check main's quarantine
+holds isn't asked. For now it only says so and passes the change, since
+each review of it found another edge where a path's being a test or code
+refused a tested change; refusing waits for a day of gated runs whose
+verdicts, noted under `red_first` in each run's line of `runs.jsonl`,
+show it refuses none wrongly. One failing over the base is enough, since a
 system carrying a package whose source holds its tests passes there by
 design, so the example systems and VM tests are built there last, and a
 check that doesn't evaluate there counts as failing. It judges on Linux
@@ -47,22 +52,30 @@ alone, where core's checks run their tests. On 26 November the most
 common cause behind review findings, across 42 changes, was a test that
 passed with its fix undone. Tests are told from code by path: a `tests`,
 `test` or `checks` folder, a `checks.nix`, or a name starting `test_` or
-ending `_test`, `-test`, `.test` or `tests`, though the root's
-`tests/lib` and `checks.nix` are harness, and count as code. It judges a
+ending `_test`, `-test`, `.test`, `tests`, `_checks` or `-checks`, as
+`host-checks.nix`, though the root's `tests/lib` and `checks.nix` are
+harness, and count as code. It judges a
 change only when it can lay the change's whole test side over the base
 as the head has it, so a test file removed or moved, a new Rust test
-file among a crate's sources that only the change's code declares, a
-path git quotes, or a test added among code is said, and the change isn't
-judged. A change of tests alone, one only taking lines from its tests, a
-lint (`-passes-clippy`, `-passes-qmllint`, `-compiles-for-macos`), a check
-coming out over the base as at the head, a check reading the whole tree,
+file only the change's code declares (one directly in a crate's `tests`
+folder, which cargo finds alone, is laid), a path git quotes, or a test
+added among code (a line starting `#[test]`, `#[tokio::test` or a
+`#[cfg(` naming `test` in Rust, or `def test_` in Python) is said, and
+the change isn't judged. So a new module's `tests.rs`, the usual home of
+a unit test, leaves its change unjudged, and a weak `holds` of the
+root's `checks.nix` goes unrefused, coming out over the base as at the
+head. It judges the commit the run evaluated. A change of tests alone,
+one only taking lines from its tests, a lint (`-passes-clippy`,
+`-passes-qmllint`, `-compiles-for-macos`), a check coming out over the
+base as at the head, a check reading the whole tree,
 a check that isn't there over the base, checks that don't evaluate there
 at all, a build over the base that failed with no builder failing it, and
 red first itself failing are said rather than refused. A revert is
-excused, and so is the train's candidate, whose riders were each judged
-at their own heads. Nix's log of
-the builds over the base is kept out of the run's, since one failing
-there as it should says nix's words for a failed build. A test that pins
+excused, and so is the train's candidate, marked by
+`CHANGED_CHECKS_CANDIDATE=1`, whose riders were each judged at their own
+heads. Nix's log of the builds over the base is kept out of the run's,
+since one failing there as it should says nix's words for a failed build.
+A test that pins
 behaviour already right passes on the base by design: a commit saying
 `Red-first: none, <why>` excuses its change, and the run says so.
 

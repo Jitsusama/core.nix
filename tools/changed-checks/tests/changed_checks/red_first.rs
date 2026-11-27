@@ -41,17 +41,23 @@ fn over_the_base(stand_in: &StandIn) -> String {
     )
 }
 
+/// What a run says where red first would refuse the change, while it
+/// only says so.
+const SAID_ONLY: &str = "red first only says so for now and passes the change";
+
+/// The verdict red first noted in the stand-in's one run.
+fn verdict(stand_in: &StandIn) -> serde_json::Value {
+    stand_in.runs()[0]["red_first"].clone()
+}
+
 #[test]
-fn a_new_test_that_passes_on_the_base_is_refused_naming_the_check_and_its_tests() {
+fn a_new_test_that_passes_on_the_base_is_said_refused_naming_the_check_and_its_tests() {
     let stand_in = committed("red-passes", CHANGE, "a3.drv");
 
     let ran = stand_in.run(&["--system", "x86_64-linux"]);
 
-    assert!(
-        !ran.status.success(),
-        "a test passing on the base went through"
-    );
     let said = text(&ran.stderr);
+    assert!(ran.status.success(), "a refusal failed the run: {said}");
     assert!(
         said.contains(
             "a passes with the change's tests laid over the base's code \
@@ -59,9 +65,16 @@ fn a_new_test_that_passes_on_the_base_is_refused_naming_the_check_and_its_tests(
         ),
         "{said}"
     );
-    assert!(
-        said.contains("a check passes with the change's tests laid over the base's code"),
-        "{said}"
+    assert!(said.contains(SAID_ONLY), "{said}");
+    assert_eq!(
+        verdict(&stand_in),
+        serde_json::json!({
+            "head": "fedcba9876543210fedc",
+            "verdict": "would refuse",
+            "checks": ["a"],
+            "tests": ["modules/a/tests/new.rs"],
+        }),
+        "the run's line didn't note the refusal red first would make"
     );
     assert!(
         said.lines()
@@ -100,6 +113,17 @@ fn a_new_test_that_fails_on_the_base_and_passes_at_the_head_goes_through() {
         text(&ran.stderr)
             .contains("a fails with the change's tests laid over the base, as it should"),
         "{}",
+        text(&ran.stderr)
+    );
+    assert_eq!(
+        verdict(&stand_in)["verdict"],
+        "red",
+        "the run's line didn't note the tests as proven: {}",
+        verdict(&stand_in)
+    );
+    assert!(
+        !text(&ran.stderr).contains(SAID_ONLY),
+        "a proven change was said as refused: {}",
         text(&ran.stderr)
     );
     assert!(
@@ -171,16 +195,19 @@ fn a_check_failing_over_the_base_leaves_the_rest_unbuilt_there() {
 }
 
 #[test]
-fn a_change_whose_every_check_passes_over_the_base_is_refused_naming_each() {
+fn a_change_whose_every_check_passes_over_the_base_is_said_refused_naming_each() {
     let stand_in = both_moved("red-both-pass");
 
     let ran = stand_in.run(&["--system", "x86_64-linux"]);
 
-    assert!(
-        !ran.status.success(),
-        "tests passing on the base went through"
-    );
     let said = text(&ran.stderr);
+    assert!(ran.status.success(), "a refusal failed the run: {said}");
+    assert_eq!(
+        verdict(&stand_in)["checks"],
+        serde_json::json!(["a", "b"]),
+        "the run's line didn't note each check passing there: {}",
+        verdict(&stand_in)
+    );
     for name in ["a", "b"] {
         assert!(
             said.contains(&format!(
@@ -338,19 +365,43 @@ fn a_macs_run_leaves_the_tests_to_linux_and_builds_nothing_over_the_base() {
 }
 
 #[test]
-fn a_train_candidate_of_merges_alone_is_not_judged_again() {
+fn a_train_candidate_the_train_marks_is_not_judged_again() {
     let stand_in = committed("red-train", CHANGE, "a3.drv");
-    fs::write(stand_in.path("own"), "").expect("written");
 
-    let ran = stand_in.run(&["--system", "x86_64-linux"]);
+    let told = [("CHANGED_CHECKS_CANDIDATE", "1")];
+    let ran = stand_in.run_told(&["--system", "x86_64-linux"], &told);
 
     assert!(ran.status.success(), "{}", text(&ran.stderr));
     assert!(
-        text(&ran.stderr).contains("every commit since the base merges a change judged"),
+        text(&ran.stderr).contains("the train's candidate merges changes each judged"),
         "{}",
         text(&ran.stderr)
     );
     assert!(!stand_in.built().contains("?rev="), "{}", stand_in.built());
+}
+
+#[test]
+fn red_first_failing_for_its_own_reasons_is_said_and_refuses_nothing() {
+    let stand_in = committed("red-unwritable", CHANGE, "a3.drv");
+    fs::write(stand_in.path("unwritable"), "").expect("written");
+
+    let ran = stand_in.run(&["--system", "x86_64-linux"]);
+
+    let said = text(&ran.stderr);
+    assert!(
+        ran.status.success(),
+        "red first's own failure failed the run: {said}"
+    );
+    assert!(
+        said.contains("red first couldn't judge the change (git read-tree"),
+        "{said}"
+    );
+    assert_eq!(
+        verdict(&stand_in)["why"],
+        "couldn't judge",
+        "{}",
+        verdict(&stand_in)
+    );
 }
 
 #[test]
@@ -405,7 +456,8 @@ fn a_change_of_tests_alone_is_said_and_builds_nothing_over_the_base() {
 #[test]
 fn a_test_added_among_code_is_said_since_no_path_tells_it_apart() {
     let stand_in = committed("red-inline", "M\tmodules/a/src/lib.rs\n", "a3.drv");
-    let lines = "+++ b/modules/a/src/lib.rs\n@@ -1,0 +2 @@\n+#[test]\n";
+    let lines = "diff --git a/modules/a/src/lib.rs b/modules/a/src/lib.rs\n\
+                 +++ b/modules/a/src/lib.rs\n@@ -1,0 +2 @@\n+    #[test]\n";
     fs::write(stand_in.path("diff.lines"), lines).expect("written");
 
     let ran = stand_in.run(&["--system", "x86_64-linux"]);
@@ -512,11 +564,11 @@ fn a_lint_passing_over_the_base_is_never_named_in_a_refusal() {
 
     let ran = stand_in.run(&["--system", "x86_64-linux"]);
 
-    assert!(
-        !ran.status.success(),
-        "a test passing on the base went through"
-    );
     let said = text(&ran.stderr);
+    assert!(
+        said.contains("changed-checks: a passes with the change's tests"),
+        "a test passing on the base wasn't said: {said}"
+    );
     assert!(
         !said.contains("a-passes-clippy passes with the change's tests"),
         "a lint was named in the refusal: {said}"

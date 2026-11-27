@@ -8,7 +8,7 @@ use std::process::{Command, Stdio};
 
 use super::At;
 
-/// A commit holding the base's tree with HEAD's `files` laid over it, and
+/// A commit holding the base's tree with the head's `files` laid over it, and
 /// an empty file at each of `empty`, made with git's plumbing alone, so
 /// nothing is checked out, no ref moves and nothing is signed. It takes
 /// the base's author and committer, so it differs from the base only in
@@ -24,7 +24,7 @@ pub fn laid_over(
     git(at.root, &["read-tree", at.base], None, &indexed)?;
     let mut listing = Vec::new();
     if !files.is_empty() {
-        let mut asked = vec!["ls-tree", "-z", "HEAD", "--"];
+        let mut asked = vec!["ls-tree", "-z", at.head, "--"];
         asked.extend(files.iter().map(String::as_str));
         listing.extend(git(at.root, &asked, None, &[])?.into_bytes());
         if !listing.is_empty() && !listing.ends_with(b"\0") {
@@ -80,7 +80,9 @@ impl Drop for Index {
 }
 
 /// Run git in the repository at `root`, given `input` and these variables,
-/// and give what it printed, trimmed of its last line's end.
+/// and give what it printed, trimmed of its last line's end. Each path is
+/// taken as it's written, so a file named `*` or `:(exclude)x` names
+/// itself, not the files a pattern would.
 pub fn git(
     root: &str,
     arguments: &[&str],
@@ -92,6 +94,7 @@ pub fn git(
         .arg("-C")
         .arg(Path::new(root))
         .args(arguments)
+        .env("GIT_LITERAL_PATHSPECS", "1")
         .envs(told.iter().copied())
         .stdin(if input.is_some() {
             Stdio::piped()
