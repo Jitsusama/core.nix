@@ -162,6 +162,13 @@ in
         DeviceAllow = [ "/dev/rfkill rw" ];
         PrivateTmp = true;
         ProtectClock = true;
+        # Read-only, in the host's cgroup namespace: an asker's path is read
+        # from /proc as wifid sees it (calling.rs), and a namespace of its
+        # own, as `private` or `strict` give, would say each relative to
+        # wifid's, as `../backdoor.service` or `../../user.slice/...`. For
+        # the same line, PrivateUsers and PrivatePIDs stay off: the first
+        # would say every asker but root as uid 65534, and the second would
+        # give every asker pid 0, whose cgroup can't be read.
         ProtectControlGroups = true;
         ProtectHome = true;
         ProtectHostname = true;
