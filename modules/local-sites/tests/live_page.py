@@ -90,19 +90,28 @@ PAGE_CHECKS = ["gate.js", "layout.js", "svgtext.js"]
 WIDE_DESK = (1920, 1080)
 # Each of the head's parts, by its id, laid out with the words index.html opens with, with the
 # words drawn live, and with each of `forms`: their heights in pixels and the part's line
-# height. Each is put in for a moment and the live words put back, so all are laid out in the
-# same box, and only once the webfonts each of them uses are in, so no fallback face is
-# measured. It asks for the page once more, and makes each part's nodes again from its live
-# markup, losing any focus or listener they held, so a test measures after it counts requests
-# or acts on the head. It fails saying why when the page can't be had again in WAITED_MS, a
-# face doesn't load or loads too slowly, or `forms` names a part not in `ids`, or none.
+# height, and as `bare` the opening's and the live words' heights without the box the page's
+# styles hold the part to. Each is put in for a moment and the live words put back, so all are
+# laid out in the same box, and only once the webfonts each of them uses are in, so no fallback
+# face is measured; then put in again and measured in one task, so a draw of the page's own
+# can't land between, and a draw that came while the faces did is taken as its live words. It
+# asks for the page once more, and makes each part's nodes again from its live markup, losing
+# any focus or listener they held, so a test measures after it counts requests or acts on the
+# head. It fails saying why when the page can't be had again in WAITED_MS, a face doesn't load
+# or loads too slowly, a part isn't on the page or the one it opens on, `forms` names a part
+# not in `ids` or none for one that is, or the page keeps drawing a part anew.
 WAITED_MS = 10_000
 HEAD_HEIGHTS = f"""async ([ids, forms]) => {{
   const waited = (promise, what) => Promise.race([promise, new Promise((_, failed) =>
     setTimeout(() => failed(new Error(`${{what}} took past {WAITED_MS} ms`)), {WAITED_MS}))]);
   const unknown = Object.keys(forms).filter((id) => !ids.includes(id));
-  if (unknown.length > 0 || ids.every((id) => (forms[id] ?? []).length === 0)) {{
-    throw new Error(`the forms name ${{unknown.join(", ") || "no part"}} of ${{ids.join(", ")}}`);
+  const formless = ids.filter((id) => (forms[id] ?? []).length === 0);
+  const wrong = [
+    unknown.length > 0 ? `name ${{unknown.join(", ")}}, not among ${{ids.join(", ")}}` : "",
+    formless.length > 0 ? `hold none for ${{formless.join(", ")}}` : "",
+  ].filter((each) => each !== "");
+  if (wrong.length > 0) {{
+    throw new Error(`the forms ${{wrong.join(" and ")}}`);
   }}
   const asked = await waited(fetch(location.href), "asking for the page again");
   if (!asked.ok) {{
@@ -112,27 +121,51 @@ HEAD_HEIGHTS = f"""async ([ids, forms]) => {{
   const said = {{}};
   for (const id of ids) {{
     const part = document.getElementById(id);
-    const live = part.innerHTML;
-    const tall = async (words) => {{
+    const first = opening.getElementById(id);
+    if (part === null || first === null) {{
+      throw new Error(`#${{id}} isn't on the ${{part === null ? "page" : "page it opens on"}}`);
+    }}
+    let live = part.innerHTML;
+    const tall = async (words, box = "") => {{
+      part.style.minBlockSize = box;
       part.innerHTML = words;
+      const put = part.innerHTML;
       // Laid out first, since a face is only asked for once layout needs it.
       part.getBoundingClientRect();
       await waited(document.fonts.ready, `the faces of ${{id}}'s words`);
       const failed = [...document.fonts].filter((face) => face.status === "error");
       if (failed.length > 0) {{
-        throw new Error(`${{failed.map((face) => face.family).join(", ")}} didn't load`);
+        throw new Error(`the faces ${{failed.map((face) => face.family).join(", ")}} didn't load`);
       }}
-      return Math.round(part.getBoundingClientRect().height);
+      if (part.innerHTML !== put) {{
+        live = part.innerHTML;
+        part.innerHTML = words;
+      }}
+      const height = Math.round(part.getBoundingClientRect().height);
+      part.style.removeProperty("min-block-size");
+      return height;
     }};
-    const opened = await tall(opening.getElementById(id).innerHTML);
+    const drawnLive = async (box) => {{
+      for (let tries = 0; tries < 3; tries += 1) {{
+        const words = live;
+        const height = await tall(words, box);
+        if (live === words) {{
+          return height;
+        }}
+      }}
+      throw new Error(`the page kept drawing #${{id}} anew while it was measured`);
+    }};
+    const bare = {{ opening: await tall(first.innerHTML, "0"), live: await drawnLive("0") }};
+    const opened = await tall(first.innerHTML);
     const drawn = [];
-    for (const words of forms[id] ?? []) {{
+    for (const words of forms[id]) {{
       drawn.push(await tall(words));
     }}
     said[id] = {{
       opening: opened,
       forms: drawn,
-      live: await tall(live),
+      live: await drawnLive(""),
+      bare,
       line: parseFloat(getComputedStyle(part).lineHeight),
     }};
   }}

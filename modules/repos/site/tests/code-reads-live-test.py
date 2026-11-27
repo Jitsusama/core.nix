@@ -780,6 +780,9 @@ def test_the_opening_words_take_the_lines_the_head_will(
         forms = page.evaluate(HEAD_FORMS)
         heights = page.evaluate(HEAD_HEIGHTS, [["title", "lede"], forms])
         for part, said in heights.items():
+            # The words themselves take the lines, for a browser the box doesn't reach.
+            bare = {words: px for words, px in said["bare"].items() if px != said["opening"]}
+            assert not bare, f"at {size} the {part}'s words alone take {bare} px, not two lines"
             assert abs(said["opening"] - HEAD_LINES * said["line"]) < LAID_WITHIN, (
                 f"at {size} the {part} opens {said['opening']} px, not {HEAD_LINES} lines"
             )
