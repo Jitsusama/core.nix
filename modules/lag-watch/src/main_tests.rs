@@ -324,6 +324,93 @@ fn a_hidden_tab_is_left_out_on_the_paths_the_watch_finds_its_threads_by() {
     fs::remove_dir_all(&proc).unwrap();
 }
 
+/// A snapshot at `at` seconds holding one Slack thread, read, with its
+/// schedstat's wait, its fair count and its slices.
+fn reading(at: f64, wait_ns: u64, fair_ns: u64, slices: u64) -> Snapshot {
+    let mut s = Snapshot {
+        at,
+        ..Snapshot::default()
+    };
+    s.threads.insert(
+        slack(),
+        kernel::Sched {
+            run_ns: 0,
+            wait_ns,
+            slices,
+            fair_ns: Some(fair_ns),
+            owed: (0, 0),
+        },
+    );
+    s
+}
+
+/// The Slack thread these windows hold.
+fn slack() -> kernel::Thread {
+    kernel::Thread {
+        label: "slack-ui",
+        name: "slack".into(),
+        schedstat: "/proc/81/task/81/schedstat".into(),
+        call: false,
+    }
+}
+
+/// The window from `then` to `now`, as the watch closes it, with niri's
+/// answers, its end and the window before left out as none.
+fn closed(then: &Snapshot, now: &mut Snapshot) -> Window {
+    close_window(then, now, Answers::default(), 0, "gen", None)
+}
+
+/// The window's mean wait a turn for Slack's threads, in microseconds.
+fn slack_waited(w: &Window) -> f64 {
+    w.waits["slack-ui"].mean_us
+}
+
+// The schedstat books a 5 ms wait by the first window's read, the fair
+// count only after it: the first window has only one count's, so counts
+// none, and the second takes what the first was owed.
+#[test]
+fn a_wait_one_count_booked_before_the_read_and_one_after_is_counted_once_in_the_next() {
+    let start = reading(0.0, 0, 0, 0);
+    let mut first = reading(10.0, 5_000_000, 0, 1000);
+    let w = closed(&start, &mut first);
+    assert!(
+        slack_waited(&w).abs() < 1e-9,
+        "the wait only the schedstat had was counted at once: {:?}",
+        w.waits
+    );
+    let mut second = reading(20.0, 5_000_000, 5_000_000, 2000);
+    let w = closed(&first, &mut second);
+    assert!(
+        (slack_waited(&w) - 5.0).abs() < 1e-9,
+        "the wait owed from the window before wasn't counted once: {:?}",
+        w.waits
+    );
+}
+
+// The minute's look takes a fresh snapshot, owed nothing, as the next
+// window's start: a thread still read keeps what the window that ended
+// was owed, and the next window counts it.
+#[test]
+fn what_is_owed_survives_the_minute_s_look() {
+    let start = reading(0.0, 0, 0, 0);
+    let mut ended = reading(10.0, 5_000_000, 0, 1000);
+    closed(&start, &mut ended);
+    let mut fresh = reading(10.0, 5_000_000, 0, 1000);
+    look_again(&mut fresh, &ended);
+    assert_eq!(
+        fresh.threads[&slack()].owed,
+        ended.threads[&slack()].owed,
+        "a thread still read lost what it was owed"
+    );
+    let mut next = reading(20.0, 5_000_000, 5_000_000, 2000);
+    let read = closed(&fresh, &mut next);
+    assert!(
+        (slack_waited(&read) - 5.0).abs() < 1e-9,
+        "a thread still read lost its wait to the minute's look: {:?}",
+        read.waits
+    );
+}
+
 #[test]
 fn the_account_is_the_manager_in_the_watch_s_own_cgroup() {
     let own = "0::/user.slice/user-1000.slice/user@1000.service/session.slice/lag-watch.service\n";
