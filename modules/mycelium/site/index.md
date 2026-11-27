@@ -37,12 +37,24 @@ Nothing on it acts on the network.
   So does a network grown out of another, one whose cells were started by
   cells of the other: it branches from the network whose cells started
   more of its cells than any other, and its drawer names them. A branch
-  lasts only while the cell that started it is on the map, since that
-  cell's network is known from where it is drawn. Who started a cell is
+  lasts only while the cell that started it, or that it split from, is on
+  the map, since that cell's network is known from where it is drawn. Who started a cell is
   said by the node that started it and carried to every machine, so a
   branch grows across machines alike. A node too old to say so of its
   cells says it only of its own machine's, so a realm with such a node in
   it grows branches from that machine's cells only on that machine's map.
+  A cell whose purpose split from another's, as a cell sprouted from
+  another's work does, counts toward a branch as a start does, so it grows
+  one where no start is said, or where its start grows none, as one from a
+  receptor, from inside its own network or from a branch of it. A cell
+  started from one network and split from another counts toward both, and
+  the drawer of the network it grows out of says how it came. Both drawers
+  say it split rather than that anybody started it, since a split is not a
+  start, and a cell's drawer says a split from the cell that started it
+  only once. Only a forage here says a split, and
+  only of a cell with a forage here, so only this machine's splits are
+  drawn, and a network can grow out of one network here and another on a
+  machine that can't read its splits.
 - **Lines thin as the map steps out past its own size.** What each line
   carries past a hairline thins with the zoom, as the cells shrink with
   it, so the cells read first: a heavier line still reads heavier than a
@@ -150,7 +162,9 @@ Nothing on it acts on the network.
   opening one, talk to it in the Launcher and start new work from it;
   one that asks you something leads with those acts, then says what it
   asks, whole, and one with a forage opens the forage page on it,
-  saying what it is for and how far its plans have come.
+  saying what it is for and how far its plans have come. A machine's
+  drawer opens its row in the Launcher's Machines and starts new work
+  on it; a basin's starts it on any of the cloud's machines.
 - **Signal against noise** is said in Now: of the latest messages,
   how many asked or found something, against how many were for context
   only; a network's details count the messages that touch it. A cell's
@@ -231,9 +245,17 @@ The keyboard comes first and the pointer works too.
 - **s** opens new work's line in the find line's place: say the work
   in your words, and Return hands them to the Launcher's Start New
   Work, from the cell open as the line opened unless its tick is
-  cleared. The page starts nothing itself: the Launcher opens with the
-  words filled in, and only your Return there starts the work. Words
-  handed on come back with s, from the same cell, to send again. Escape
+  cleared, and on the machine whose drawer is open, under the same
+  kind of tick. The page starts nothing itself: the Launcher opens
+  with the words filled in, and only your Return there starts the
+  work. Words handed on come back with s, to send again, on the
+  machine they went to, or on none, and from the same cell if it is
+  still on the map as the line opens, else from the one open now.
+  Words for a machine that has left go with it, so s opens an empty
+  line, and a machine that leaves while the line is open is let go of
+  at Return, which sends nothing and says so; the next Return starts
+  the work where new work starts. A drawer's own Start New Work
+  button offers its own cell or machine, over any kept words. Escape
   closes the line, and the control beside Now opens it too.
 - **Now holds the same network as a tree**, for a screen reader and
   for anyone who would rather walk a list: j and k step, l opens a branch,

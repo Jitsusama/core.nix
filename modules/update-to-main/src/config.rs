@@ -243,6 +243,22 @@ pub struct Busy {
     /// the ask it let through.
     #[serde(default)]
     pub refuses_at_most: Option<u64>,
+    /// What the last line it says on its error stream while busy is.
+    #[serde(default)]
+    pub says: Says,
+}
+
+/// What a busy command's last line on its error stream is, while it says
+/// busy. What one that can't tell says is the reason either way.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Says {
+    /// Something beside, left out of a refusal: a call check's caution
+    /// that a peer went unheard is no reason a call is on.
+    #[default]
+    Beside,
+    /// Why it's busy, as a Mac's readings are, so a refusal ends with it.
+    Why,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -393,6 +409,12 @@ impl Config {
         self.state.join("behind")
     }
 
+    /// The file holding why the machine boots the system it booted before,
+    /// from the switch whose boot check failed until one passes.
+    pub fn boots_file(&self) -> PathBuf {
+        self.state.join("boots")
+    }
+
     /// The link that keeps the system being built from being collected.
     pub fn building_link(&self) -> PathBuf {
         self.state.join("building")
@@ -466,6 +488,34 @@ mod tests {
         assert_eq!(Config::program_in(&path), None, "not JSON");
         let (_dir, path) = written(r#"{"program": null}"#);
         assert_eq!(Config::program_in(&path), None, "a program of none");
+    }
+
+    // system.nix writes says as "why" or "beside"; a word this enum
+    // reads otherwise would refuse every config the module writes.
+    #[test]
+    fn a_busy_command_says_what_the_module_writes() {
+        let read = |says: &str| {
+            serde_json::from_str::<Busy>(&format!(r#"{{"command": ["x"], "why": "y"{says}}}"#))
+        };
+        assert_eq!(
+            read(r#", "says": "why""#).expect("why reads").says,
+            Says::Why,
+            "why is why"
+        );
+        assert_eq!(
+            read(r#", "says": "beside""#).expect("beside reads").says,
+            Says::Beside,
+            "beside is beside"
+        );
+        assert_eq!(
+            read("").expect("none reads").says,
+            Says::Beside,
+            "none is beside"
+        );
+        assert!(
+            read(r#", "says": "Why""#).is_err(),
+            "a word it doesn't know is refused"
+        );
     }
 
     #[test]

@@ -1639,14 +1639,28 @@ impl Guard {
         if asks.is_empty() {
             return Ok(false);
         }
-        // Joel asks most as the disk fills, when the status may not fit:
-        // the clear goes on, and so does every pass after it.
-        if let Err(error) = self.write_status(tick.wall) {
+        // Told as at work from before its survey, which walks for minutes:
+        // under a writers' hold the disk otherwise says it waits, as if
+        // the clear Joel asked for never started.
+        // Disks are known by their pool, as a Btrfs subvolume's own device
+        // number names none of them.
+        let first = asks.iter().find_map(|(_, ask)| {
+            let watched = self.watched.get(&pool(&ask.path).ok()?)?;
+            Some((watched.path.clone(), watched.band))
+        });
+        if let Some((path, band)) = first {
+            self.tell_passing(tick, &path, band, Why::Clear);
+        } else if let Err(error) = self.write_status(tick.wall) {
+            // Joel asks most as the disk fills, when the status may not
+            // fit: the clear goes on, and so does every pass after it.
             say!("disk-guard: writing the status before a clear: {error}");
         }
         let folders: Vec<PathBuf> = asks.iter().map(|(_, ask)| ask.path.clone()).collect();
         let scoped = crate::survey::within(&self.config, &folders);
-        let (mut scan, offers, surveyed) = self.offers(tick, Some(&scoped))?;
+        let (mut scan, offers, surveyed) = self
+            .offers(tick, Some(&scoped))
+            .inspect_err(|_| self.stop_telling(tick))?;
+        let mut ended = Ok(());
         for (file, ask) in asks {
             // A source's root may be named through a link, and an ask's
             // folder never is.
@@ -1662,9 +1676,15 @@ impl Guard {
             let cleared = self.clear_on(tick, &inside, &mut scan, surveyed);
             // Ended whatever the pass did, since one that failed would
             // fail again, each step surveying everything to.
-            crate::clears::done(&file)?;
-            cleared?;
+            ended = crate::clears::done(&file).and(cleared);
+            if ended.is_err() {
+                break;
+            }
         }
+        // A clear that found nothing inside its folder ran no pass to end
+        // the telling, and its disk would say it clears until the next.
+        self.stop_telling(tick);
+        ended?;
         self.remeasure = true;
         Ok(true)
     }
@@ -3048,6 +3068,16 @@ impl Guard {
     /// a step that fails before its next status leaves none told.
     fn end_passing(&mut self) {
         no_pass_at_work(&mut self.passing, &self.beaten);
+    }
+
+    /// Ends the telling of a clear and writes the status again, since a
+    /// held disk's waiting is judged by whether a pass is told on it: the
+    /// status the clear left says it neither waits nor clears.
+    fn stop_telling(&mut self, tick: &Tick) {
+        self.end_passing();
+        if let Err(error) = self.write_status(tick.wall) {
+            say!("disk-guard: writing the status after a clear: {error}");
+        }
     }
 
     /// Runs a pass over what lies on the watched filesystem `device` and

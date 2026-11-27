@@ -397,6 +397,13 @@ impl Running {
         self.daemon.id()
     }
 
+    /// Ends the daemon at once, as a crash or the kernel's out-of-memory
+    /// killer does, with no chance to tidy anything up.
+    pub fn kill(&mut self) {
+        self.daemon.kill().unwrap();
+        self.daemon.wait().unwrap();
+    }
+
     /// Whether the daemon has ended.
     pub fn ended(&mut self) -> bool {
         self.daemon.try_wait().unwrap().is_some()

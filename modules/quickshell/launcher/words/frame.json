@@ -21,19 +21,17 @@
         "windows:this",
         "windows",
         "tabs",
-        "displays",
         "clipboard",
         "selection",
         "timers",
         "capture",
         "dictation",
         "session:recording",
+        "media",
         "emoji",
         "session:quiet"
       ],
       "commands": [
-        "command:brightness",
-        "command:desk",
         "command:time",
         "command:timer",
         "command:weather",
@@ -61,14 +59,16 @@
         "energy",
         "session:awake",
         "bluetooth",
+        "displays",
         "sound",
-        "media",
         "cameras",
         "light",
         "firmware",
         "machines"
       ],
       "commands": [
+        "command:brightness",
+        "command:desk",
         "command:volume"
       ]
     },
@@ -373,7 +373,7 @@
       "E73": "E73: Tag stack empty",
       "letGo": "let go, as the screen may be shared",
       "closedUnder": "again acts here, as the step closed by itself",
-      "closedBroken": "acts here after another key, as the step couldn't close"
+      "closedBroken": "acts here after a move or another key, as the step couldn't close"
     },
     "listed": {
       "eyebrow": "Keys",

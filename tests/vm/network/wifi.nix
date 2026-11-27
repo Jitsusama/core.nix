@@ -24,7 +24,10 @@
 # network or forget one, though never one Nix declares; on the launcher's
 # rows socket it can move the card to another access point of its network,
 # and the card still knows its neighbours there, forgetting them only on a
-# network of another name; a move to one gone takes it back to the one it
+# network of another name; a point warning it drops the card has it moved
+# where the point names, looking over that one's channel first when it isn't
+# heard and ending a look under way, or let go when that one doesn't answer
+# or the whole network drops it, never sent back; a move to one gone takes it back to the one it
 # left within wifid's 2 s for a way back, past any wait that one bids, or
 # leaves it free to join any network when it can't get back either. The
 # tests are in wifi/, an area to a file, each run in order through pytest
@@ -84,11 +87,15 @@ let
     ${lanternKey}
   '';
 
-  # Lantern's second access point, heard only when a test starts it.
+  # Lantern's second access point, heard only when a test starts it. It
+  # can ask a card to move, as a mesh router's points do, through its
+  # control socket.
   lanternTwo = accessPoint "lantern-two" ''
     interface=wlan5
     bridge=lantern
     channel=9
+    bss_transition=1
+    ctrl_interface=/run/hostapd-lantern-two
     ${lanternKey}
   '';
 
@@ -392,6 +399,8 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
         pkgs.nftables
         # For asking acts on the launcher's rows socket as the launcher does.
         pkgs.socat
+        # For an access point's ask to move a card, by hostapd_cli.
+        pkgs.hostapd
       ];
     };
 
