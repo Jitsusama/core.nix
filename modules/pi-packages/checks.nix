@@ -13,12 +13,12 @@
   ...
 }:
 {
-  # Each of pi's git packages is updated at a switch, before pi's settings
-  # name its link, and in the background every fifteen minutes: by a user
-  # timer in background.slice on Linux, which a switch doesn't restart, and
-  # by a launchd agent on a Mac, each run swapping at most once an hour
-  # (src/run.rs), so a held commit lands within fifteen minutes of the
-  # hour. Each change to what a pi says it loaded
+  # Each of pi's git packages is installed at a switch, before pi's
+  # settings name its link. On Linux it updates only at a switch, which
+  # starts the service in background.slice without waiting on it, and no
+  # timer swaps a version in between, so a new version rides the switch.
+  # A Mac updates every fifteen minutes by a launchd agent. Each run swaps
+  # at most once an hour (src/run.rs). Each change to what a pi says it loaded
   # starts a sweep, on Linux by a path unit watching every package's
   # `loaded/` folder and on a Mac by a launchd agent watching the same; a
   # burst of them, as every pi reloading at once makes, never stops it.
@@ -27,18 +27,19 @@
       home = account workstation;
       mac = account macWorkstation;
       service = home.systemd.user.services.pi-packages;
-      timer = home.systemd.user.timers.pi-packages.Timer;
+      startsAtASwitch = lib.hasInfix "--user start --no-block pi-packages.service" home.home.activation.piPackagesInstall.data;
       settings = home.home.activation.piTakesCoresSettings;
       sweep = home.systemd.user.services.pi-packages-sweep;
       watched = home.systemd.user.paths.pi-packages-sweep.Path.PathChanged;
       harness = "${home.jitsusama.pi-packages.root}/github.com/Jitsusama/agentic-harness.pi/loaded";
     in
     holds "pi-packages-swap-in-the-background"
-      "pi's packages aren't updated before pi's settings are written, or not in the background on Linux and on a Mac, or a pi's start or end doesn't remove the versions no pi runs, or a burst of them stops the sweep."
+      "pi's packages aren't updated before pi's settings are written, or a Linux switch doesn't start an update, or a timer swaps one in between switches, or a Mac doesn't update in the background, or a pi's start or end doesn't remove the versions no pi runs, or a burst of them stops the sweep."
       (
         service.Service.Slice == "background.slice"
         && service.Unit.X-RestartIfChanged == false
-        && timer.OnUnitActiveSec == "15min"
+        && startsAtASwitch
+        && !(home.systemd.user.timers ? pi-packages)
         && home.home.activation ? piPackagesInstall
         && lib.elem "piPackagesInstall" settings.after
         && mac.launchd.agents.pi-packages.config.StartInterval == 900

@@ -5,9 +5,13 @@
 # that way, so `pi update` can't reach it either.
 #
 # It installs a package with no version yet at a switch, before pi's
-# settings are written, and updates every fifteen minutes in the
-# background, a switch starting a run without waiting on it;
-# `pi-packages update` runs it now, after a merge, and `pi-packages status`
+# settings are written. On Linux it updates only at a switch, which
+# starts a run in the background without waiting on it, so a new
+# version rides the switch. Through 27 November a timer every fifteen
+# minutes swapped versions in between switches, and every swap that
+# day pushed the next switch back (A210E4CA). A Mac, whose switch starts
+# no run once each package has a version, still updates every fifteen
+# minutes. `pi-packages update` runs it now, after a merge, and `pi-packages status`
 # says where each package is. A swap happens at most once an hour across
 # every package, since each one costs every running pi a rewrite of its
 # prompt cache (src/run.rs): a run inside the hour builds nothing and says
@@ -181,14 +185,6 @@ in
         ExecStart = command;
         Slice = "background.slice";
       };
-    };
-    systemd.user.timers.pi-packages = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
-      Unit.Description = "Updates pi's packages every fifteen minutes";
-      Timer = {
-        OnBootSec = "5min";
-        OnUnitActiveSec = "15min";
-      };
-      Install.WantedBy = [ "timers.target" ];
     };
 
     # A pi starting, reloading or ending changes what it says it loaded,
