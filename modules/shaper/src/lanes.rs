@@ -542,18 +542,26 @@ fn need(carried: f64) -> f64 {
     carried * HEADROOM + JOEL_LEAST
 }
 
+/// The most what goes ahead of bulk lifts the VPN's hold, in kbit/s: the
+/// 3 Mbit/s the model relay carried unshaped on 27 November, with Joel's
+/// least past it. What fills best effort fills whatever it's given, so a
+/// floor that followed what it carried would climb to the whole lane in a
+/// few seconds, and no hold could keep the tunnel's queue in the CAKE
+/// again (model calls ahead round 1's F16).
+const AHEAD_MOST: f64 = 4_000.0;
+
 /// What the VPN's own CAKE is held to, in kbit/s: under its lane's rate,
 /// at the share the VPN's own hold leaves it, but never under what its
-/// tins ahead of bulk carried, `carried`, with Joel's headroom past it.
-/// Those carry Joel's own and agents' model calls (shaper.nft says why),
-/// so the hold takes back only what bulk sends inside the VPN. On 27
-/// November from 14:08 a hold read the air's round trip as a queue in
-/// the tunnel and held the VPN at 1 to 2.6 Mbit/s for five minutes,
-/// under the 3 Mbit/s the model relay carried; about one model call in
-/// five failed from 14:10.
+/// tins ahead of bulk carried, `carried`, with Joel's headroom past it, up
+/// to `AHEAD_MOST`. Those carry Joel's own and agents' model calls
+/// (shaper.nft says why), so a hold that misreads the tunnel takes back
+/// only bulk until that floor. On 27 November from 14:08 a hold read the
+/// air's round trip as a queue in the tunnel and held the VPN at 1 to 2.6
+/// Mbit/s for five minutes, under the 3 Mbit/s the model relay carried;
+/// about one model call in five failed from 14:10.
 pub fn vpn_held(lane: f64, share: f64, carried: f64) -> f64 {
     let whole = lane * VPN_HELD;
-    (whole * share).max(need(carried).min(whole))
+    (whole * share).max(need(carried).min(AHEAD_MOST).min(whole))
 }
 
 /// Agents' lane's class, under which their CAKE stands.
@@ -739,10 +747,24 @@ mod tests {
 
     #[test]
     fn the_vpn_s_hold_never_takes_what_is_ahead_of_bulk() {
-        let held = vpn_held(10_000.0, 0.25, 3_000.0);
+        let held = vpn_held(10_000.0, 0.25, 2_000.0);
         assert!(
-            (held - 4_600.0).abs() < 1e-9,
-            "a hold to a quarter left {held} kbit/s for 3,000 ahead of bulk"
+            (held - 3_400.0).abs() < 1e-9,
+            "a hold to a quarter left {held} kbit/s for 2,000 ahead of bulk"
+        );
+    }
+
+    #[test]
+    fn what_fills_best_effort_never_lifts_the_hold_past_its_most() {
+        // Best effort that fills what it's given carries about what the
+        // CAKE was held to the second before.
+        let mut held = vpn_held(RATE, 0.25, 0.0);
+        for _ in 0..30 {
+            held = vpn_held(RATE, 0.25, held * 0.98);
+        }
+        assert!(
+            (held - AHEAD_MOST).abs() < 1e-9,
+            "a hold to a quarter of {RATE} climbed to {held} kbit/s, not {AHEAD_MOST}"
         );
     }
 

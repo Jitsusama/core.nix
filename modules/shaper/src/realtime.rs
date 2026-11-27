@@ -5,7 +5,9 @@ use crate::rate::float;
 
 /// Packets a second in the video tins, both ways together, that say a call
 /// or a screen share runs: a call's audio alone is about 50 a second each
-/// way, where nothing else is classed there.
+/// way, where nothing else is classed there but a turn Joel typed while no
+/// call is on (classes.rs's `place_typed`), which the status then reads
+/// as real-time for `LIVE_HOLD_S`; nothing but the status reads it.
 const LIVE_PACKETS: f64 = 20.0;
 /// How long after its last such second real-time traffic still counts as
 /// flowing, so a pause in talk doesn't put the floor back mid-call.

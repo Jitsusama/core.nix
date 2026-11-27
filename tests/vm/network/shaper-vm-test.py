@@ -65,9 +65,6 @@ LOCAL_LEAST = 500
 SHAPING = dt.timedelta(seconds=15)
 # How long a set may take to hold a slice held open for it.
 HOLDING = dt.timedelta(seconds=10)
-# How long a unit made to send waits first, so its cgroup is in its set: the
-# shaper reads the cgroups each step and writes a set once it changes.
-NAMED_S = 6
 # How long the client may take to boot to its first queues, or a tunnel or a
 # plugged-in link to come up.
 COMING_UP = dt.timedelta(seconds=30)
@@ -443,7 +440,10 @@ def test_apps(connection: Connection) -> None:
 
 
 def test_pi_sessions(connection: Connection) -> None:
-    """A pi window running a turn nobody typed goes in bulk, and one a person typed doesn't.
+    """A pi window running a turn nobody typed goes in bulk, and one a person typed as video.
+
+    A typed turn goes as video while no call is on, as here, ahead of agents' model calls,
+    which go as best effort to the same origin.
 
     The harness keeps /run/user/<uid>/pi/typed/<pid> while a pi runs a typed turn, so
     the shaper reads it through its sandbox. A send is run inside the window's cgroup, as
@@ -490,10 +490,8 @@ def test_pi_sessions(connection: Connection) -> None:
     connection.still("eth1")
     client.succeed(f"mkdir -p /run/user/1000/pi/typed && touch /run/user/1000/pi/typed/{pid}")
     client.wait_until_fails(listed, timeout=HOLDING)
-    connection.reaches(
-        "best effort", "a typed pi's open connection", send_again, "eth1", LEAST_TRANSFER
-    )
-    connection.reaches("best effort", "a typed pi", send, "eth1", LEAST_TRANSFER)
+    connection.reaches("video", "a typed pi's open connection", send_again, "eth1", LEAST_TRANSFER)
+    connection.reaches("video", "a typed pi", send, "eth1", LEAST_TRANSFER)
     client.succeed(f"rm /run/user/1000/pi/typed/{pid}")
     client.wait_until_succeeds(listed, timeout=HOLDING)
     client.succeed("systemctl -M alice@ --user stop pi-window.service")
@@ -651,18 +649,24 @@ def test_tunnel(tunnel: Connection) -> None:
 
     Agents' model relay sits in background with their bulk, but goes as best effort: held
     inside a VPN as bulk, it waited behind agents' uploads until the origin gave its calls
-    up. It waits a moment before sending, so its unit's cgroup is in its set by then.
+    up. The stand-in waits to send until the set holds its unit.
     """
     inner = f"{BIN}/head -c 1000000 /dev/zero > /dev/tcp/10.9.0.2/5201"
     tunnel.lands("bulk", "jobs.slice", inner, dev="wg0")
     tunnel.lands("best effort", "app.slice", inner, dev="wg0")
-    named = f"{BIN}/sleep {NAMED_S}; {inner}"
+    client = tunnel.client
+    client.succeed(
+        "systemd-run -M alice@ --user --slice=background.slice --unit=model-relay-agents"
+        f" {BIN}/bash -c 'until [ -e /tmp/call-models ]; do {BIN}/sleep 0.1; done; {inner}'"
+    )
+    client.wait_until_succeeds(
+        "nft list set inet shaper models5 | grep -q model-relay-agents", timeout=HOLDING
+    )
 
     def call_models() -> None:
-        tunnel.client.succeed(
-            "systemd-run -M alice@ --user --wait --collect --slice=background.slice"
-            f" --unit=model-relay-agents {BIN}/bash -c '{named}'"
-        )
+        """Let the stand-in send, and wait until it's done."""
+        client.succeed("touch /tmp/call-models")
+        client.wait_until_fails("systemctl -M alice@ --user is-active model-relay-agents")
 
     tunnel.reaches("best effort", "model-relay-agents", call_models, "wg0", LEAST_TRANSFER)
     inner_down = f"exec 3<>/dev/tcp/10.9.0.2/5202; {BIN}/cat <&3 > /dev/null"
