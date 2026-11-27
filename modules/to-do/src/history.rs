@@ -282,9 +282,12 @@ fn row(done: &Done, words: &Words) -> Value {
         .filter(|(_, value)| !value.is_empty())
         .map(|(fact, value)| json!({ "label": words.fact(fact), "value": value }))
         .collect();
-    // Why, then the ask, to act on hours on (Joel, 2026-11-11).
+    // Why, then the ask, to act on hours on (Joel, 2026-11-11), each
+    // trimmed as For You's drawer reads them (LookForm.js's wordsOf), so
+    // words only of spaces leave no blank.
     let body = [text("why"), text("ask")]
         .into_iter()
+        .map(str::trim)
         .filter(|part| !part.is_empty())
         .collect::<Vec<_>>()
         .join("\n\n");
@@ -305,7 +308,7 @@ fn row(done: &Done, words: &Words) -> Value {
     });
     json!({
         "key": format!("row:{PLACE}:{id}"), "thing": format!("look:{id}"), "place": PLACE,
-        "kind": "look", "name": text("title"), "note": text("why"), "glyph": glyph(kind),
+        "kind": "look", "name": text("title"), "note": text("why").trim(), "glyph": glyph(kind),
         "hue": "muted", "side": [side],
         "drawer": {
             "title": text("title"), "facts": facts, "nerd": nerd, "body": body, "prose": true,
@@ -373,6 +376,33 @@ mod tests {
             })],
             "every field the shell's row and drawer made"
         );
+    }
+
+    #[test]
+    fn a_look_s_words_are_trimmed_as_for_you_s_drawer_trims_them() {
+        let drawn = |why: &str, ask: &str| {
+            let look = json!({"v": 1, "id": "b1", "kind": "pr", "title": "Fix the drawer",
+                "state": "opened", "target": "https://github.com/Jitsusama/core.nix/pull/4368",
+                "why": why, "ask": ask, "at": NOW - 3 * HOUR, "resolvedAt": NOW - 2 * HOUR});
+            let (rows, _) = made(&[look], &words(), NOW);
+            (rows[0]["drawer"]["body"].clone(), rows[0]["note"].clone())
+        };
+        let cases = [
+            (
+                ("It flickers.", " Merge it? "),
+                ("It flickers.\n\nMerge it?", "It flickers."),
+            ),
+            (("It flickers.", "   "), ("It flickers.", "It flickers.")),
+            (("   ", "Merge it?"), ("Merge it?", "")),
+            ((" ", " "), ("", "")),
+        ];
+        for ((why, ask), (body, note)) in cases {
+            assert_eq!(
+                drawn(why, ask),
+                (json!(body), json!(note)),
+                "a why of {why:?} and an ask of {ask:?} weren't trimmed as For You's"
+            );
+        }
     }
 
     #[test]

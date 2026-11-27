@@ -95,9 +95,10 @@ onLinux {
       mkdir -p launcher share/applications
       cp ${entry} share/applications/org.inkscape.Inkscape.desktop
       cp ${home.xdg.configFile."quickshell/Theme.qml".source} Theme.qml
-      ${programStep}
-      cp ${./InkscapeProgram.qml} launcher/InkscapeProgram.qml
-      cp ${./Inkscape.js} launcher/Inkscape.js
+      ${programStep {
+        "launcher/InkscapeProgram.qml" = ./InkscapeProgram.qml;
+        "launcher/Inkscape.js" = ./Inkscape.js;
+      }}
       cp ${./tests/inkscape-program.qml} shell.qml
       cp ${../../tests/lib/Expect.js} Expect.js
       cp ${../../tests/lib/Frames.js} Frames.js
