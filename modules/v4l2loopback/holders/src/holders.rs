@@ -1,6 +1,7 @@
 //! Which processes hold a camera's node, and the programs they are, read
 //! from /proc.
 
+use std::cell::OnceCell;
 use std::collections::{BTreeSet, HashSet};
 use std::ffi::OsStr;
 use std::fs;
@@ -155,31 +156,83 @@ pub fn maps(mapped: &[u8], node: &Path, inode: u64) -> bool {
     })
 }
 
-/// Whether a process has the node open, under any name: a by-id link, or
-/// /dev/videoN. A process in a mount namespace of its own, as a sandboxed
-/// app is, still reads as /dev, its own namespace's path. Only a node
-/// bound somewhere outside any /dev is missed, since telling it apart
-/// would mean asking every open file what it is, and one on a network or
-/// FUSE filesystem that hangs would hang the watch for every camera.
+/// The mount an open file is on, by the `mnt_id` line of its fdinfo.
+fn mount_id(fdinfo: &[u8]) -> Option<u64> {
+    fdinfo
+        .split(|byte| *byte == b'\n')
+        .find_map(|line| line.strip_prefix(b"mnt_id:"))
+        .and_then(|id| std::str::from_utf8(id).ok()?.trim().parse().ok())
+}
+
+/// The filesystem type of a mount, by its id, as a process's mountinfo
+/// says: the id is a line's first field, and the type is the first field
+/// after the lone dash that ends the optional ones. A path there has its
+/// spaces escaped, so splitting at spaces never cuts one.
+fn mount_type(mountinfo: &[u8], id: u64) -> Option<&[u8]> {
+    mountinfo.split(|byte| *byte == b'\n').find_map(|line| {
+        let mut fields = line.split(|byte| *byte == b' ');
+        let own: u64 = std::str::from_utf8(fields.next()?).ok()?.parse().ok()?;
+        if own != id {
+            return None;
+        }
+        fields.skip_while(|field| *field != b"-").nth(1)
+    })
+}
+
+/// Whether an open file is on a devtmpfs mount, by what the kernel says
+/// of the descriptor and of the process's mounts, never by the file. The
+/// mounts are read the first time a process needs them, and kept for its
+/// other descriptors; a descriptor or mounts that can't be read say no.
+fn on_devtmpfs(proc: &Path, fd: &OsStr, mountinfo: &OnceCell<Option<Vec<u8>>>) -> bool {
+    let Some(id) = fs::read(proc.join("fdinfo").join(fd))
+        .ok()
+        .as_deref()
+        .and_then(mount_id)
+    else {
+        return false;
+    };
+    mountinfo
+        .get_or_init(|| fs::read(proc.join("mountinfo")).ok())
+        .as_deref()
+        .and_then(|mounts| mount_type(mounts, id))
+        .is_some_and(|kind| kind == b"devtmpfs")
+}
+
+/// Whether a process has the node open, under any name: a by-id link,
+/// /dev/videoN, or the node bound anywhere else. A process in a mount
+/// namespace of its own, as a sandboxed app is, still reads as /dev, its
+/// own namespace's path. A link outside /dev is followed only when the
+/// kernel puts its descriptor on a devtmpfs mount, as a bind of the node
+/// is: a user namespace can't make a device node, and a tmpfs it mounts
+/// can't hold one that opens, so devtmpfs is the one place a camera's
+/// node comes from. Which mount it is comes from the descriptor's fdinfo
+/// and the process's mountinfo, read only for such a link, rather than
+/// from the file itself, since one on a network or FUSE filesystem that
+/// hangs would hang the watch for every camera. A descriptor whose fdinfo
+/// or mountinfo can't be read is skipped, as one that's closed is.
 fn holds(proc: &Path, device: u64) -> io::Result<bool> {
+    let mountinfo = OnceCell::new();
     for fd in fs::read_dir(proc.join("fd"))? {
-        let fd = fd?.path();
-        let Ok(link) = fs::read_link(&fd) else {
+        let fd = fd?;
+        let path = fd.path();
+        let Ok(link) = fs::read_link(&path) else {
             continue;
         };
-        if !link.as_os_str().as_bytes().starts_with(b"/dev/") {
+        if !link.as_os_str().as_bytes().starts_with(b"/dev/")
+            && !on_devtmpfs(proc, &fd.file_name(), &mountinfo)
+        {
             continue;
         }
-        if fs::metadata(&fd).is_ok_and(|status| status.rdev() == device) {
+        if fs::metadata(&path).is_ok_and(|status| status.rdev() == device) {
             return Ok(true);
         }
     }
     Ok(false)
 }
 
-/// The programs holding the node, and their processes. It fails only
-/// when the node itself has gone; a process can end at any point while
-/// it's read, and whatever it does, it costs only itself.
+/// The programs holding the node, and their processes. It fails when the
+/// node has gone, or when it or /proc can't be read; a process can end at
+/// any point while it's read, and whatever it does, it costs only itself.
 pub fn holders(
     node: &Path,
     units: &[String],
@@ -406,13 +459,46 @@ mod tests {
         }
     }
 
+    /// The mount a fake process's descriptor 3 is on, in its fdinfo, and
+    /// the process's mountinfo saying that mount is of the kind given, or
+    /// no mountinfo when there's none. A devtmpfs mount whose id starts
+    /// with the same digits comes first, so only the whole id finds it.
+    fn fake_mount(root: &Path, pid: u32, kind: Option<&str>) {
+        let proc = root.join(pid.to_string());
+        fs::create_dir_all(proc.join("fdinfo")).unwrap();
+        let fdinfo = "pos:\t0\nflags:\t0100000\nmnt_id:\t42\n";
+        fs::write(proc.join("fdinfo/3"), fdinfo).unwrap();
+        if let Some(kind) = kind {
+            let mounts = format!(
+                "421 1 0:5 / /dev rw,nosuid shared:2 - devtmpfs devtmpfs rw,mode=755\n\
+                 42 421 0:5 /video0 /home/someone/v rw,nosuid shared:2 - {kind} {kind} rw\n"
+            );
+            fs::write(proc.join("mountinfo"), mounts).unwrap();
+        }
+    }
+
+    /// A link outside /dev, in the fake folder, that leads to /dev/null, so
+    /// following it finds the camera's device as a bind of its node would.
+    fn bound(root: &Path) -> std::path::PathBuf {
+        let outside = root.join("video0");
+        std::os::unix::fs::symlink("/dev/null", &outside).unwrap();
+        outside
+    }
+
     /// What a walk of the fake folder names as holding /dev/null, with the
     /// stand-in unit the one left out. The folder is removed after, even
     /// when the walk fails. The walk follows descriptor links and compares
     /// devices, so /dev/null stands in for a camera and none is ever opened.
     fn walked(root: &Path) -> (BTreeSet<String>, HashSet<u32>) {
+        walked_after(root, &HashSet::new())
+    }
+
+    /// What a walk of the fake folder names, as walked does, when the
+    /// processes given held the camera at the walk before, so their maps
+    /// are read too.
+    fn walked_after(root: &Path, before: &HashSet<u32>) -> (BTreeSet<String>, HashSet<u32>) {
         let units = ["stand-in.service".to_owned()];
-        let found = holders_in(root, Path::new("/dev/null"), &units, &HashSet::new());
+        let found = holders_in(root, Path::new("/dev/null"), &units, before);
         fs::remove_dir_all(root).unwrap();
         found.unwrap()
     }
@@ -466,21 +552,67 @@ mod tests {
     }
 
     #[test]
-    fn a_process_that_holds_nothing_under_dev_is_not_named() {
-        // The link leads to /dev/null by way of a file outside /dev, so the
-        // device alone would match; only the walk's filter on /dev leaves
-        // it out. A reader beside it shows the walk saw the folder.
-        let root = fake_proc("outside-dev");
-        let outside = root.join("null");
-        std::os::unix::fs::symlink("/dev/null", &outside).unwrap();
+    fn a_node_bound_outside_dev_from_devtmpfs_is_named() {
+        // A person can bind the camera's node anywhere in a mount namespace
+        // of their own, and missing its reader would show a camera in use
+        // as off.
+        let root = fake_proc("bound");
+        let outside = bound(&root);
         let cgroup = b"0::/user.slice/user-1000.slice\n";
         fake_process(&root, 4_000_001, &outside, Some(cgroup));
+        fake_mount(&root, 4_000_001, Some("devtmpfs"));
+        let (names, pids) = walked(&root);
+        assert_eq!(
+            names,
+            BTreeSet::from(["reader".to_owned()]),
+            "a reader of a node bound outside /dev is named"
+        );
+        assert_eq!(pids, HashSet::from([4_000_001]), "its process is seen");
+    }
+
+    #[test]
+    fn a_link_outside_dev_on_another_kind_of_mount_is_not_named() {
+        // The link leads to /dev/null, so the device alone would match; only
+        // its mount's kind leaves it out. A reader beside it shows the walk
+        // saw the folder.
+        let root = fake_proc("other-mount");
+        let outside = bound(&root);
+        let cgroup = b"0::/user.slice/user-1000.slice\n";
+        fake_process(&root, 4_000_001, &outside, Some(cgroup));
+        fake_mount(&root, 4_000_001, Some("tmpfs"));
         fake_process(&root, 4_000_002, Path::new("/dev/null"), Some(cgroup));
         let (_, pids) = walked(&root);
         assert_eq!(
             pids,
             HashSet::from([4_000_002]),
             "only the process whose link is under /dev is seen"
+        );
+    }
+
+    #[test]
+    fn a_descriptor_whose_mount_cant_be_read_is_skipped_without_failing_the_walk() {
+        // Each link leads to /dev/null, so following one would name its
+        // process. The odd processes have no fdinfo, the even ones no
+        // mountinfo; the ones that held the camera before still map it,
+        // and are named only if skipping the link left their walk going.
+        let root = fake_proc("unreadable-mount");
+        let outside = bound(&root);
+        let cgroup = b"0::/user.slice/user-1000.slice\n";
+        let inode = fs::metadata("/dev/null").unwrap().ino();
+        let mapped = format!("7f00-7f10 rw-s 00000000 00:06 {inode} /dev/null\n");
+        for pid in 4_000_001..=4_000_004 {
+            fake_process(&root, pid, &outside, Some(cgroup));
+        }
+        fake_mount(&root, 4_000_002, None);
+        fake_mount(&root, 4_000_004, None);
+        for pid in [4_000_003, 4_000_004] {
+            fs::write(root.join(pid.to_string()).join("maps"), &mapped).unwrap();
+        }
+        let (_, pids) = walked_after(&root, &HashSet::from([4_000_003, 4_000_004]));
+        assert_eq!(
+            pids,
+            HashSet::from([4_000_003, 4_000_004]),
+            "only the processes that still map the camera are seen"
         );
     }
 }
