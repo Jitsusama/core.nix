@@ -65,7 +65,8 @@ fn slack_people_reads_nothing_of_whoever_runs_it_but_what_the_case_sets() {
             ("SIGN_IN_KEYRING", None),
             ("LAUNCHER_WORDS", None),
             ("NOTIFY_SOCKET", None)
-        ]
+        ],
+        "a case setting nothing hands slack-people none of these"
     );
     let mut words = program("http://origin", &path);
     words.env("LAUNCHER_WORDS", WORDS);
@@ -579,7 +580,11 @@ fn handed_the_launchers_words_it_says_their_facts_and_how_to_write_to_them() {
 fn with_no_sign_in_it_says_so_and_slack_is_never_asked() {
     let stand_in = StandIn::new(slack);
     let missing = no_sign_in("people-none");
-    let said = told(&stand_in, &missing, "ada@example.com\n?grace@example.com\n");
+    let said = told(
+        &stand_in,
+        &missing.path(),
+        "ada@example.com\n?grace@example.com\n",
+    );
     assert_eq!(said, [r#"{"signedIn":false}"#; 2]);
     let heard = stand_in.heard();
     assert!(
