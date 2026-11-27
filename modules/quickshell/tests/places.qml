@@ -93,7 +93,7 @@ QtObject {
             Places.placed(older, { "eDP-1": panel, "DP-4": monitor }, "DP-4")
                 .map(at => [at.output, at.workspace]), [["eDP-1", 2]]);
         // Only a connector niri said is one: a prototype's name never is, so
-        // a place kept on one is gone, and noted away from it (noteAway).
+        // a place kept on one is gone, and says it's away from it (away).
         expect("a place kept on a prototype's name is gone, to the screen in use",
             Places.placed([{ output: "constructor", workspace: 2, column: 1, tile: 1 }],
                 { "eDP-1": panel }, "eDP-1").map(at => [at.output, at.away?.screen ?? null]),

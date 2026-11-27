@@ -207,7 +207,7 @@ function wayBack(one, screen, screens, claimed) {
     if (alike.includes(one.output)) {
         return one.output;
     }
-    const others = one.others ?? {};
+    const others = byName(one.others);
     const notIt = name => name in others && (others[name] === screen || others[name] === "");
     return alike.find(name => !notIt(name) && !claimed.includes(name)) ?? null;
 }

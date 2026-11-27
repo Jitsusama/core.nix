@@ -3,9 +3,10 @@
 // In what order and how fast Reopen Them All may go (Sessions.qml): leaders
 // first, each once, when it may begin the next session, which of those
 // begun to tell to carry on, from the machine queue's own verdict, and
-// what each walk found gone (tallyOf). Where
-// each goes back is Places.js's, but for a named workspace's (namedBack);
-// tests/places.qml holds both to their cases.
+// what each walk found gone (tallyOf). Where each goes back is Places.js's;
+// here are a named workspace's (namedBack), the connectors sessions give
+// their windows from one screens answer (placedGiven, keptBack), and what's
+// noted away (notedAway). tests/places.qml holds both to their cases.
 
 // How much of the disk's time may be stalled, as the share of the last ten
 // seconds some task waited on it, before the next session waits too: past
