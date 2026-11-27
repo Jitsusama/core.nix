@@ -23,6 +23,10 @@ const HANG: Duration = Duration::from_secs(5);
 /// so a loaded builder can't cut it off before the child is running.
 const SETTLED: Duration = Duration::from_secs(2);
 
+/// How soon a case takes an answer to have come at once: far under the
+/// patience it gives, however loaded the machine.
+const AT_ONCE: Duration = Duration::from_secs(2);
+
 /// Taken by each case for its whole run. A program written while another
 /// case's thread forks can be held open for writing in that child, and
 /// running it then fails with ETXTBSY; one case at a time can't race so.
@@ -170,7 +174,7 @@ fn sign_in_that_cant_be_run_gives_no_token() {
     std::fs::remove_dir_all(&at).expect("the case's folder goes");
     assert_eq!(answer, SignIn::Missing, "a missing program is no token");
     assert!(
-        took < SETTLED,
+        took < AT_ONCE,
         "and is told at once, not tried again as a busy one is: {took:?}"
     );
 }
@@ -180,6 +184,8 @@ fn sign_in_held_for_writing_past_its_patience_gives_no_token() {
     let _turn = turn();
     let at = folder("held");
     let path = program(&at, "echo stand-in-token");
+    // Running it fails with ETXTBSY for as long as this hold stands,
+    // which is past its patience.
     let held = std::fs::OpenOptions::new()
         .write(true)
         .open(&path)
@@ -195,6 +201,10 @@ fn sign_in_held_for_writing_past_its_patience_gives_no_token() {
     assert!(
         took >= SHORT,
         "it was tried for its whole patience: {took:?}"
+    );
+    assert!(
+        took < SHORT + AT_ONCE,
+        "and given up on once it was spent: {took:?}"
     );
 }
 
