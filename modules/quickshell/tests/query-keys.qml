@@ -1902,8 +1902,8 @@ QtObject {
             standing = read.standing;
         }
         return KeyActs.acts(read, Object.assign({ alone: false, registering: false,
-            answering: false, answerTaken: true, operated: false, commands: false,
-            drawerHere: false, intoHere: true, upHere: true, reselectHere: true, mode,
+            answering: false, answerTaken: true, repeated: false, operated: false, commands: false,
+            drawerHere: false, intoHere: () => true, upHere: true, reselectHere: true, mode,
             text: "slack" }, line));
     }
 
@@ -1920,9 +1920,9 @@ QtObject {
             ["or to its start", ["Home"], "find", {}],
             ["or right", ["Right"], "find", {}],
             ["or to its end", ["End"], "find", {}],
-            ["Ctrl+H on a find with words, as Backspace", ["Ctrl+h"], "find", {}],
+            ["Ctrl+H on a find holding text, as Backspace", ["Ctrl+h"], "find", {}],
             ["Ctrl+Y completing the find", ["Ctrl+y"], "find", {}],
-            ["Backspace on a find with words", ["Backspace"], "find", {}],
+            ["Backspace on a find holding text", ["Backspace"], "find", {}],
             ["Ctrl+W on the find", ["Ctrl+w"], "find", {}],
             ["Ctrl+U on the find", ["Ctrl+u"], "find", {}],
             ["Backspace on an empty line in insert", ["Backspace"], "insert", { text: "" }],
@@ -1940,10 +1940,14 @@ QtObject {
             ["q in the drawer", ["q"], "page", {}],
             ["x in the drawer, which only says E21", ["x"], "page", {}],
             ["Tab in normal on a row with nothing to go into", ["Tab"], "normal",
-                { intoHere: false }],
+                { intoHere: () => false }],
             ["- with nothing above", ["-"], "normal", { upHere: false }],
             ["gv on the rows with nothing to take back", ["g", "v"], "normal",
                 { reselectHere: false }],
+            // The drawer's gv asks the word as Prompt.qml does, so a swap of
+            // what reselectHere reads fails here as well as in reselectsHere.
+            ["gv in the drawer with nothing chosen", ["g", "v"], "page",
+                { reselectHere: KeyActs.reselectHere("page", true, "") }],
             ["l moving the caret on a prompt's words", ["l"], "normal", { words: true }],
             ["or w", ["w"], "normal", { words: true }],
             ["or 0", ["0"], "normal", { words: true }],
@@ -1953,12 +1957,25 @@ QtObject {
             ["u undoing an edit of them", ["u"], "normal", { words: true }],
             ["the operator again, swallowed after visual's", ["d"], "normal",
                 { operated: true }],
+            // d and y read as begun on their own, so these hold the guards
+            // by a key that would act without them.
+            ["or j, swallowed as it", ["j"], "normal", { operated: true }],
             ["a key before an ask takes answers", ["y"], "normal",
                 { answering: true, answerTaken: false }],
+            ["or j", ["j"], "normal", { answering: true, answerTaken: false }],
             ["a modifier alone, as the line asks", ["y"], "normal",
                 { alone: true, answering: true }],
             ["Return naming a register after Ctrl+R", ["Return"], "insert",
-                { registering: true }]
+                { registering: true }],
+            // Where two guards disagree, the one first in acts' order
+            // wins, as Prompt.qml's modalKey hands the key on: what an ask
+            // leaves before a colon opening the command line.
+            ["a key the ask leaves, though it opens the command line", [":"], "normal",
+                { answering: true, answerTaken: false, commands: true }],
+            // A held key's repeats never answer an ask (modalKey), so one
+            // held from before the ask was ready does nothing as it repeats.
+            ["a held key's repeat, which the ask never takes", ["n"], "normal",
+                { answering: true, repeated: true }]
         ];
         for (const [what, keys, mode, line] of idle)
             holds(`${what} acts on nothing`, acting(keys, mode, line), false);
@@ -1971,9 +1988,15 @@ QtObject {
             ["j in normal", ["j"], "normal", {}],
             ["Tab in normal into a row with parts", ["Tab"], "normal", {}],
             ["Tab on the find, which goes in or on to the next row", ["Tab"], "find",
-                { intoHere: false }],
+                { intoHere: () => false }],
+            // Where Tab goes is asked only of Tab, as the launcher runs a
+            // search held back before it answers (Launcher.qml's intoHere).
+            ["j, asking nothing of where Tab would go", ["j"], "normal",
+                { intoHere: () => { throw new Error("intoHere asked of j"); } }],
             ["- going up", ["-"], "normal", {}],
             ["gv taking a selection back", ["g", "v"], "normal", {}],
+            ["gv in the drawer taking its last choice back", ["g", "v"], "page",
+                { reselectHere: KeyActs.reselectHere("page", false, "pageVisual") }],
             ["j on a prompt's words, still the rows'", ["j"], "normal", { words: true }],
             ["cw on a prompt's words, going into insert as i does", ["c", "w"], "normal",
                 { words: true }],
@@ -1985,7 +2008,18 @@ QtObject {
             ["a key the ask takes, whatever it is", ["Alt+z"], "normal",
                 { answering: true }],
             ["a key opening the command line, whatever the table reads it as", ["a"],
-                "find", { commands: true }]
+                "find", { commands: true }],
+            // An ask taking a key, or a colon opening the line, acts before
+            // the key's word is read, so neither says only E21 nor has
+            // nowhere to go.
+            ["q the ask takes, though q only says how to close", ["q"], "normal",
+                { answering: true }],
+            // The ask answers before visual's operator is let go, as
+            // modalKey does, so the operator again is the ask's answer.
+            ["the operator again, which the ask takes as its answer", ["d"], "normal",
+                { operated: true, answering: true }],
+            ["a colon opening the line from Tab with nowhere to go", ["Tab"], "normal",
+                { commands: true, intoHere: () => false }]
         ];
         for (const [what, keys, mode, line] of acted)
             holds(`${what} acts`, acting(keys, mode, line), true);

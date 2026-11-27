@@ -194,10 +194,12 @@ Item {
         if (!drawerHere && QueryKeys.paged(mode))
             mode = "normal";
     }
-    // Whether Tab in normal goes into the selected row, and - up from
-    // where the rows stand (Launcher.qml's goesIn and canGoUp), so a key
-    // that only says it can't is read as acting on nothing (KeyActs.acts).
-    property bool intoHere: true
+    // Whether Tab in normal goes into the selected row, asked only of Tab
+    // so the launcher can run a search held back first, and whether - goes
+    // up from where the rows stand (Launcher.qml's goesIn and canGoUp), so
+    // a key that only says it can't is read as acting on nothing
+    // (KeyActs.acts).
+    property var intoHere: () => true
     property bool upHere: true
     // The mode typing goes back to: the find, or insert on words.
     readonly property string typingMode: words ? "insert" : "find"
@@ -735,6 +737,7 @@ Item {
             registering: takesRegister(event, key),
             answering: confirming,
             answerTaken: confirming && answerTaken(key),
+            repeated: event.isAutoRepeat,
             operated,
             commands: QueryKeys.opensCommands(key, mode, input.text),
             drawerHere,

@@ -444,6 +444,41 @@ mod tests {
 
     const NOW: i64 = 1_794_700_000;
 
+    fn open_ask() -> Value {
+        serde_json::json!({"id": "0a1b2c3d", "at": super::slipped::at(NOW - 3 * 3600),
+            "words": "fold", "owner": "F"})
+    }
+
+    #[test]
+    fn a_twin_folded_into_an_ask_doesnt_take_its_wait_off_the_median() {
+        use super::slipped::{list, twin};
+        let open = open_ask();
+        let waited = to_first_slice(
+            &list(&[open.clone(), twin(&open, NOW - 60)]),
+            NOW,
+            Tracking::His,
+        );
+        assert!(
+            (waited.now - 3.0).abs() < 0.01,
+            "a twin closing an open ask took its wait off the median: {waited:?}"
+        );
+    }
+
+    #[test]
+    fn a_twin_folded_into_a_parked_ask_doesnt_unpark_it() {
+        use super::slipped::{list, twin};
+        let mut ruled = open_ask();
+        ruled["parked"] = "a ruling".into();
+        let held = parked(
+            &list(&[ruled.clone(), twin(&ruled, NOW - 60)]),
+            Tracking::His,
+        );
+        assert!(
+            (held.now - 1.0).abs() < 0.01,
+            "a twin closing a parked ask took it off the parked: {held:?}"
+        );
+    }
+
     #[test]
     fn a_machine_crowded_beside_one_with_room_is_past_its_target() {
         let answer = r#"{"Ok":{"Machines":[

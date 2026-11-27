@@ -47,7 +47,7 @@
   "modules/panel/refresh.sh" = 7;
   "modules/passwords/tests/keeping-manager.sh" = 1;
   "modules/pi/ask.sh" = 6;
-  "modules/pi/claude.sh" = 5;
+  "modules/pi/claude/claude.sh" = 5;
   "modules/pi/settings.sh" = 3;
   "modules/pi/tests/pi-keeps-its-own-settings.sh" = 5;
   "modules/plymouth/tests/the-splash-prompt-is-the-locks.sh" = 3;
