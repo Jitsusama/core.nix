@@ -59,6 +59,27 @@ fn now() -> f64 {
         .as_secs_f64()
 }
 
+std::thread_local! {
+    /// When this thread's case made its store, from which its later
+    /// moments are told.
+    static BEGUN: std::cell::Cell<Option<f64>> = const { std::cell::Cell::new(None) };
+}
+
+/// The moment `seconds` after the case made its store. Told from the
+/// present instead, a moment floated with whatever the builder spent
+/// before it was asked for, and a failed listing rests nine times its
+/// length: a listing heard 7 s late on a loaded builder, at a moment 7 s
+/// later, rested 63 s longer, past the 60 s a case looked beyond its rest.
+fn later(seconds: f64) -> f64 {
+    BEGUN.with(|begun| {
+        begun.get().unwrap_or_else(|| {
+            let now = now();
+            begun.set(Some(now));
+            now
+        })
+    }) + seconds
+}
+
 fn tick() -> Tick {
     Tick {
         wall: now(),
@@ -83,6 +104,7 @@ impl Store {
     /// it deleted and leaves, as what an evaluation registers again; while `listing-slow` is
     /// there, every listing after the first waits on it.
     fn new() -> Store {
+        BEGUN.with(|begun| begun.set(Some(now())));
         let dir = tempfile::tempdir().unwrap();
         let root = fs::canonicalize(dir.path()).unwrap();
         for sub in [
@@ -750,7 +772,7 @@ fn kept(store: &Store) -> Option<f64> {
     serde_json::from_str::<serde_json::Value>(&text).ok()?["listed_at"].as_f64()
 }
 
-/// Steps `guard` at `seconds` past now until `done` holds of the store and
+/// Steps `guard` at [`later`]`(seconds)` until `done` holds of the store and
 /// that moment, as the listing runs apart. A machine busy with other
 /// builds can take a while to start one, so this waits on what it sees.
 fn step_later_until(
@@ -761,7 +783,7 @@ fn step_later_until(
     done: impl Fn(&Store, f64) -> bool,
 ) {
     let at = Tick {
-        wall: now() + seconds,
+        wall: later(seconds),
         ..tick()
     };
     let started = Instant::now();
@@ -781,7 +803,7 @@ fn step_later_until(
     }
 }
 
-/// Steps `guard` at `seconds` past now until it keeps a listing begun then.
+/// Steps `guard` at [`later`]`(seconds)` until it keeps a listing begun then.
 /// JSON can bring a moment back a hair off, so near enough is the same.
 fn listed_later(store: &Store, guard: &mut Guard, seconds: f64, senses: &Senses) {
     step_later_until(store, guard, seconds, senses, |store, at| {
@@ -789,12 +811,12 @@ fn listed_later(store: &Store, guard: &mut Guard, seconds: f64, senses: &Senses)
     });
 }
 
-/// Steps `guard` at `seconds` past now long enough for a listing begun to
+/// Steps `guard` at [`later`]`(seconds)` long enough for a listing begun to
 /// say so. That it said nothing is borne out by the next `listed_later`,
 /// which waits for a listing begun at its own moment rather than this one.
 fn step_later(guard: &mut Guard, seconds: f64, senses: &Senses) {
     let at = Tick {
-        wall: now() + seconds,
+        wall: later(seconds),
         ..tick()
     };
     for _ in 0..10 {
@@ -803,7 +825,7 @@ fn step_later(guard: &mut Guard, seconds: f64, senses: &Senses) {
     }
 }
 
-/// Steps `guard` at `seconds` past now until it hears the listing it has
+/// Steps `guard` at [`later`]`(seconds)` until it hears the listing it has
 /// out, which counts as ending then. A listing let go ends once the fake
 /// Nix next looks and exits, which a loaded builder can take past the
 /// moment [`step_later`] gives it: heard a step later, at a later moment,
@@ -811,7 +833,7 @@ fn step_later(guard: &mut Guard, seconds: f64, senses: &Senses) {
 /// it was to fail could even succeed.
 fn heard_later(guard: &mut Guard, seconds: f64, senses: &Senses) {
     let at = Tick {
-        wall: now() + seconds,
+        wall: later(seconds),
         ..tick()
     };
     let started = Instant::now();
@@ -2351,7 +2373,7 @@ fn a_listings_rest_holds_for_the_next_guard() {
 /// too, so a pass that fell short has rested for as long.
 fn step_awake_later(guard: &mut Guard, seconds: f64) {
     let at = Tick {
-        wall: now() + seconds,
+        wall: later(seconds),
         monotonic: tick().monotonic + seconds,
         ..tick()
     };
