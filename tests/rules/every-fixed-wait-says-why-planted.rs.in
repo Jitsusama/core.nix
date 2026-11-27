@@ -1,0 +1,49 @@
+// The planted tree's Rust test, one shape of sleep each. Only two neither
+// poll nor say why; the rest are told apart by reading code alone, past
+// what the strings and characters beside them hold.
+use std::thread::sleep;
+use std::time::Duration;
+
+const SETTLED: Duration = Duration::from_millis(10);
+
+fn bare() {
+    let _ = 1;
+    sleep(Duration::from_millis(10));
+}
+
+fn after_a_string_naming_a_loop() {
+    let said = "while it waits {";
+    sleep(Duration::from_millis(10));
+    let _ = said;
+}
+
+fn in_a_loop_over_addresses() {
+    for address in ["http://a", "http://b"] {
+        let _ = address;
+        sleep(Duration::from_millis(10));
+    }
+}
+
+fn in_a_loop_past_a_closing_brace() {
+    loop {
+        let closing = ("}", '}');
+        let _ = closing;
+        sleep(Duration::from_millis(10));
+        break;
+    }
+}
+
+fn naming_a_sleep() {
+    let said = "sleep(10) is a sleep only in a string";
+    let _ = said;
+}
+
+fn for_a_constant() {
+    let _ = 1;
+    sleep(SETTLED);
+}
+
+fn saying_why() {
+    // Nothing is heard for this long.
+    sleep(Duration::from_millis(10));
+}

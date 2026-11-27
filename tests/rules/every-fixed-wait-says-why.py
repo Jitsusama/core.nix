@@ -25,6 +25,8 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from rust_source import rust_code
+
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
@@ -92,12 +94,13 @@ def rust_sleeps(text: str) -> Iterator[tuple[int, bool]]:
     """Give each Rust sleep's line, and whether it polls or sleeps for a constant.
 
     A block counts as a loop's when `loop`, `while` or `for` came before its
-    brace, so a sleep inside one, however deep, polls.
+    brace, so a sleep inside one, however deep, polls. Only code is read, so
+    a word or a brace in a string or a comment neither starts a loop nor
+    closes one, and a sleep named in a string isn't one.
     """
     blocks: list[bool] = []
     looping = False
-    for number, line in enumerate(text.splitlines(), 1):
-        code = line.split("//", 1)[0]
+    for number, code in enumerate(rust_code(text).splitlines(), 1):
         sleep = re.search(r"\bsleep\((.*)", code)
         if sleep:
             named = re.search(r"\b[A-Z][A-Z0-9_]+\b", sleep.group(1)) is not None

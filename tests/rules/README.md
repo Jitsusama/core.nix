@@ -16,6 +16,12 @@ matches, each named.
 `checks.nix` runs all fifteen on core itself.
 Many entries because each rule keeps its three files side by side, where a
 reader opening one finds the others, rather than in a folder of its own.
+`rust_source.py` is no rule: it reads Rust as code alone, past its strings and
+comments, for `every-assert-says-what-was-wrong` and `every-fixed-wait-says-why`,
+whose checks each take it beside the rule as one folder. The second first sees
+itself name just the bare sleeps of a planted Rust test,
+`every-fixed-wait-says-why-planted.rs.in`, which isn't named `.rs` so the rule
+doesn't count it among core's own tests.
 `every-script-finds-what-it-imports` first sees itself fail a planted tree
 and pass it once what it imports is on mypy's path, which
 `every-script-finds-what-it-imports.sh` writes, and runs on Linux, as the

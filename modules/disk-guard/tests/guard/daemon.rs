@@ -3278,6 +3278,7 @@ fn listening(reads: &'static [Read]) -> Option<Listening> {
     let read = Arc::new(AtomicUsize::new(0));
     let (turns, reading) = (Arc::clone(&turned), Arc::clone(&read));
     guard.listen_to(Arc::new(watch), move |within| {
+        // A read waits out its deadline as a quiet watch's does, at most 20 ms.
         std::thread::sleep(within.min(std::time::Duration::from_millis(20)));
         if !turns.load(Ordering::SeqCst) {
             return Ok(Vec::new());

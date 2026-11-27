@@ -4943,7 +4943,16 @@ fn a_run_that_never_asks_leaves_its_twin_be_and_ends_as_not_taken() {
     fs::write(changed.bin.join("evaluates-for"), "3").unwrap();
     let (first, second) = std::thread::scope(|scope| {
         let first = scope.spawn(|| changed.run(&["--name-only"]).0);
-        std::thread::sleep(std::time::Duration::from_secs(1));
+        // The first holds the tree once the evaluator hears from it.
+        let begun = changed.bin.join("evaluating-at-once-far");
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        while !begun.exists() {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the first run never began evaluating"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
         let second = changed.run_after(&["--never-ask"], &["--name-only"]).0;
         (first.join().unwrap(), second)
     });
