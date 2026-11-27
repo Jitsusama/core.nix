@@ -2,8 +2,8 @@
 
 memory-tune.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py).
 An account in wheel sets the watermarks' spacing, transparent huge pages, the multi-gen LRU,
-swappiness, swap's read-ahead, proactive compaction, the free memory floor and defrag_mode to a
-listed value, as an agent measuring them under load would, outside any session. An account outside
+swappiness, swap's read-ahead, proactive compaction, the free memory floor, defrag_mode and
+zswap's shrinker to a listed value, as an agent measuring them under load would, outside any session. An account outside
 wheel can't, and an administrator can't set a value the rules don't list.
 Each test puts what it changed back as it ends, so any runs alone.
 """
@@ -27,6 +27,7 @@ PAGE_CLUSTER = "/proc/sys/vm/page-cluster"
 COMPACTION = "/proc/sys/vm/compaction_proactiveness"
 MIN_FREE = "/proc/sys/vm/min_free_kbytes"
 DEFRAG = "/proc/sys/vm/defrag_mode"
+ZSWAP_SHRINKER = "/sys/module/zswap/parameters/shrinker_enabled"
 
 
 def start(machine: BaseMachine, account: str, unit: str) -> tuple[int, str]:
@@ -56,7 +57,9 @@ def reverted(machine: BaseMachine) -> Iterator[BaseMachine]:
     compaction = read(machine, COMPACTION)
     min_free = read(machine, MIN_FREE)
     defrag = read(machine, DEFRAG)
+    zswap_shrinker = read(machine, ZSWAP_SHRINKER)
     yield machine
+    machine.succeed(f"echo {zswap_shrinker} > {ZSWAP_SHRINKER}")
     machine.succeed(f"sysctl -w vm.defrag_mode={defrag}")
     machine.succeed(f"sysctl -w vm.min_free_kbytes={min_free}")
     machine.succeed(f"sysctl -w vm.compaction_proactiveness={compaction}")
@@ -136,6 +139,21 @@ def test_an_administrator_turns_defrag_mode_on_and_off_without_a_password(
         assert read(reverted, DEFRAG) == mode, f"defrag_mode wasn't set to {mode}"
 
 
+def test_the_machine_boots_with_zswaps_shrinker_off(reverted: BaseMachine) -> None:
+    shrinker = read(reverted, ZSWAP_SHRINKER)
+    assert shrinker == "N", f"booted with zswap's shrinker at {shrinker}"
+
+
+def test_an_administrator_turns_zswaps_shrinker_on_and_off_without_a_password(
+    reverted: BaseMachine,
+) -> None:
+    for given, said_back in (("y", "Y"), ("n", "N")):
+        status, said = start(reverted, "someone", f"memory-zswap-shrinker@{given}")
+        assert status == 0, said
+        shrinker = read(reverted, ZSWAP_SHRINKER)
+        assert shrinker == said_back, f"zswap's shrinker read {shrinker} after {given}"
+
+
 def test_an_account_outside_wheel_is_refused(reverted: BaseMachine) -> None:
     before = read(reverted, SCALE)
     status, said = start(reverted, "other", "memory-watermarks@100")
@@ -155,3 +173,12 @@ def test_a_defrag_mode_the_rules_dont_list_needs_a_password(reverted: BaseMachin
     status, said = start(reverted, "someone", "memory-defrag-mode@2")
     assert status != 0, said
     assert read(reverted, DEFRAG) == before, "an unlisted defrag_mode was written"
+
+
+def test_a_zswap_shrinker_value_the_rules_dont_list_needs_a_password(
+    reverted: BaseMachine,
+) -> None:
+    before = read(reverted, ZSWAP_SHRINKER)
+    status, said = start(reverted, "someone", "memory-zswap-shrinker@0")
+    assert status != 0, said
+    assert read(reverted, ZSWAP_SHRINKER) == before, "an unlisted shrinker value was written"
