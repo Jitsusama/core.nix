@@ -41,10 +41,14 @@ function ospreyAs(record: Record<string, unknown>) {
   return systemOf(told([summary]), told([machines]), told([kestrel, record]));
 }
 
-/** What the page reads osprey as, beside what it says it couldn't read. */
+/**
+ * What the page reads osprey as, beside what it says it couldn't read. Osprey is found by its
+ * name, so a case dropping it from the part finds nothing rather than reading another thing.
+ */
 function readAs(record: Record<string, unknown>) {
   const system = ospreyAs(record);
-  return { osprey: system?.parts[0]?.things[1], unread: system?.unread };
+  const found = system?.parts[0]?.things.find((thing) => thing.name === "osprey");
+  return { osprey: found, unread: system?.unread };
 }
 
 it("a machine's looks are read with their whys, and none from a record listing none", () => {
@@ -52,19 +56,23 @@ it("a machine's looks are read with their whys, and none from a record listing n
   const untold = (what: string) => [
     `machine:osprey's ${what}, so whether anything there is worth a look can't be told`,
   ];
-  for (const [record, listed, why, unread] of [
-    [osprey, looks, "a list whose look without a why is kept with none", []],
-    [{ ...osprey, looks: undefined }, undefined, "an old daemon's record, listing none", []],
-    [{ ...osprey, health: "good", looks: [], side: [] }, [], "a fine machine's", []],
-    [{ ...osprey, side: null }, looks, "a null side beside a list", []],
-    [{ ...osprey, side: "out of reach" }, looks, "an unreadable side beside a list", noSide],
-    [{ ...osprey, looks: [], side: [7] }, [], "an unreadable side beside none", untold("side")],
-    [{ ...osprey, looks: undefined, side: 7 }, undefined, "a lone bad side", untold("side")],
-    [{ ...osprey, looks: 1, side: 7 }, undefined, "both unreadable", untold("looks and side")],
-    [{ ...osprey, looks: 1, side: undefined }, undefined, "lone bad looks", untold("looks")],
+  const lostSide = untold("side");
+  const lostBoth = untold("looks and side");
+  const lostLooks = untold("looks");
+  for (const [record, listed, said, why, unread] of [
+    [osprey, looks, side, "a list whose look without a why is kept with none", []],
+    [{ ...osprey, looks: undefined }, undefined, side, "an old daemon's record, listing none", []],
+    [{ ...osprey, health: "good", looks: [], side: [] }, [], [], "a fine machine's", []],
+    [{ ...osprey, side: null }, looks, side, "a null side beside a list", []],
+    [{ ...osprey, side: "out of reach" }, looks, side, "an unreadable side beside a list", noSide],
+    [{ ...osprey, looks: [], side: [7] }, [], [], "an unreadable side beside none", lostSide],
+    [{ ...osprey, looks: undefined, side: 7 }, undefined, [], "a lone bad side", lostSide],
+    [{ ...osprey, looks: 1, side: 7 }, undefined, [], "both unreadable", lostBoth],
+    [{ ...osprey, looks: 1, side: undefined }, undefined, [], "lone bad looks", lostLooks],
   ] as const) {
     const read = readAs(record);
     assert.deepEqual(read.osprey?.looks, listed, `${why} is read from its list`);
+    assert.deepEqual(read.osprey?.side, said, `${why} is said as ${read.osprey?.side}`);
     assert.deepEqual(read.unread, unread, `${why} says only what it can't read`);
   }
 });
@@ -101,6 +109,19 @@ it("a side said from many looks is cut to three, as the daemon cuts one", () => 
   const read = readAs({ ...osprey, side: 7, looks: five.map((one) => ({ side: one })) });
   const cut = ["out of reach", "code failing", "and 3 more worth a look"];
   assert.deepEqual(read.osprey?.side, cut, "a side from five looks wasn't cut as the daemon's");
+});
+
+it("a side said from exactly three looks keeps all three, with nothing said of more", () => {
+  const three = ["out of reach", "code failing", "disk filling"];
+  const read = readAs({ ...osprey, side: 7, looks: three.map((one) => ({ side: one })) });
+  assert.deepEqual(read.osprey?.side, three, "a side from three looks wasn't kept whole");
+});
+
+it("a side said from one look past three is cut, the cut said as the daemon says it", () => {
+  const four = ["out of reach", "code failing", "disk filling", "on battery"];
+  const read = readAs({ ...osprey, side: 7, looks: four.map((one) => ({ side: one })) });
+  const cut = ["out of reach", "code failing", "and 2 more worth a look"];
+  assert.deepEqual(read.osprey?.side, cut, "a side from four looks wasn't cut as the daemon's");
 });
 
 it("a looks list the page can't read, or torn from its side, leaves it to the side", () => {
