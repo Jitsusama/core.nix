@@ -427,6 +427,12 @@ fn a_first_reading_that_never_answers_is_said_late_once_and_its_answer_once() {
     );
 }
 
+/// Whether `said` is a line of the reading's age, as `take` says it,
+/// rather than the share's, as the thread says it of each walk.
+fn of_the_reading(said: &str) -> bool {
+    said.contains("reading of /proc")
+}
+
 /// How old a reading may grow in a case whose first take must wait out
 /// SAMPLED and still be young: a wake a whole LATE late leaves it LATE of
 /// room yet.
@@ -438,7 +444,9 @@ fn a_first_reading_that_lands_old_is_said_as_none_answering_and_then_at_last() {
     // already old: none has answered yet, so the journal says so, as the
     // next walk's answer says it answers at last. The second walk holds
     // until the case has taken the first, telling `landed` that the
-    // first was put in the slot.
+    // first was put in the slot. Each walk reads nothing, so the thread
+    // says the share unmeasured from the second on, which the case
+    // doesn't judge.
     let old = YOUNG_PAST_A_WAIT;
     let (free, freed) = mpsc::channel::<()>();
     let (again, freed_again) = mpsc::channel::<()>();
@@ -473,7 +481,10 @@ fn a_first_reading_that_lands_old_is_said_as_none_answering_and_then_at_last() {
         .recv_timeout(LATE)
         .expect("the first walk never landed");
     working.take(folders.clone());
-    let said: Vec<String> = told.try_iter().collect();
+    let said: Vec<String> = told
+        .try_iter()
+        .filter(|said| of_the_reading(said))
+        .collect();
     assert!(
         said.len() == 1 && said[0].starts_with("no reading of /proc has answered in "),
         "a first reading landing old wasn't said once as none answering: {said:?}"
@@ -485,7 +496,7 @@ fn a_first_reading_that_lands_old_is_said_as_none_answering_and_then_at_last() {
     while heard.is_empty() && Instant::now() < until {
         std::thread::sleep(BRISK);
         working.take(folders.clone());
-        heard.extend(told.try_iter());
+        heard.extend(told.try_iter().filter(|said| of_the_reading(said)));
     }
     assert_eq!(
         heard,
@@ -520,7 +531,10 @@ fn a_first_reading_slower_than_a_wait_that_answers_young_says_nothing() {
         working.take(folders.clone());
     }
     assert!(!working.unread(), "the first reading never answered");
-    let said: Vec<String> = told.try_iter().collect();
+    let said: Vec<String> = told
+        .try_iter()
+        .filter(|said| of_the_reading(said))
+        .collect();
     assert!(
         said.is_empty(),
         "a young answer after a wait was said: {said:?}"
