@@ -2406,6 +2406,32 @@ ShellRoot {
                 && theLauncher.walkTold[0].includes("steered only from your own Return"),
             JSON.stringify([Sessions.putOffAsked, theLauncher.walkTold]));
         theLauncher.walkTold = [];
+        // Deal With It fills the session's prompt as Joel's, so it's his Return's alone: its
+        // row says so, which a walk is refused as it chooses (Launcher.qml's joelsOnlyWhy),
+        // and a walk that reaches its run fills nothing and goes nowhere (round 000038 on
+        // #6796, F71 and F75).
+        const wantDeal = () => forYou().find(row => row.key === "on:waiting:want:WANTB")
+            .verbs().find(act => act.key.startsWith("verb:on:waiting:deal:"));
+        const dealFrom = Sessions.steered.length;
+        theLauncher.cataloguing = true;
+        wantDeal().run();
+        theLauncher.cataloguing = false;
+        expect("a want's Deal With It is Joel's alone, and a walk's fills nothing and goes nowhere",
+            wantDeal().joelsOnly === true && Sessions.steered.length === dealFrom
+                && Sessions.wentTo === null && theLauncher.walkTold.length === 1
+                && theLauncher.walkTold[0].includes("steered only from your own Return"),
+            JSON.stringify([wantDeal().joelsOnly, Sessions.steered.slice(dealFrom),
+                theLauncher.walkTold]));
+        theLauncher.walkTold = [];
+        // From his own Return, it fills the prompt with his readiness and goes to it.
+        wantDeal().run();
+        const dealt = Sessions.steered.slice(dealFrom);
+        expect("Joel's own Deal With It on a want fills its prompt and goes to it",
+            dealt.length === 1 && dealt[0].address === "WANTB" && dealt[0].fields.act === "fill"
+                && Sessions.wentTo?.address === "WANTB" && theLauncher.walkTold.length === 0,
+            JSON.stringify([dealt, Sessions.wentTo?.address]));
+        Sessions.steered = Sessions.steered.slice(0, dealFrom);
+        Sessions.wentTo = null;
         Sessions.knowns = {};
         // Two asking stand together in Agents Asking, never loose among the
         // to-dos (Joel, 2026-11-18 10:18), ahead of them, since each blocks
@@ -2487,6 +2513,29 @@ ShellRoot {
             JSON.stringify(formActs) === JSON.stringify(
                 [["Deal With It", ""], ["talk", "ACTED"], ["Go To", ""]]),
             JSON.stringify(formActs));
+        // Its Deal With It fills the session's prompt as Joel's, so it's his Return's alone,
+        // and a walk that reaches its run fills nothing (round 000038 on #6796, F75).
+        const formDeal = () => forYou().find(row => row.key === formKey).verbs()
+            .find(act => act.name === "Deal With It");
+        const formFrom = Sessions.steered.length;
+        theLauncher.walkTold = [];
+        theLauncher.cataloguing = true;
+        formDeal().run();
+        theLauncher.cataloguing = false;
+        expect("a to-do's Deal With It is Joel's alone, and a walk's fills nothing",
+            formDeal().joelsOnly === true && Sessions.steered.length === formFrom
+                && theLauncher.walkTold.length === 1,
+            JSON.stringify([formDeal().joelsOnly, Sessions.steered.slice(formFrom),
+                theLauncher.walkTold]));
+        theLauncher.walkTold = [];
+        formDeal().run();
+        const formDealt = Sessions.steered.slice(formFrom);
+        expect("Joel's own Deal With It on a to-do fills its session's prompt",
+            formDealt.length === 1 && formDealt[0].address === "ACTED"
+                && formDealt[0].fields.act === "fill"
+                && formDealt[0].fields.text.includes("Sign The Form"),
+            JSON.stringify(formDealt));
+        Sessions.steered = Sessions.steered.slice(0, formFrom);
         WaitingOnYou.now = [Object.assign({}, form, { window: "forms" })];
         const ownActs = actsOf();
         expect("one done in a window of its own leads with Go To, then Deal With It and Talk",

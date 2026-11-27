@@ -437,3 +437,19 @@ fn joels_acts_are_the_shells_alone_and_only_feedback_goes_apart() {
         assert!(SHELLS_ALONE.contains(&ask), "{ask} is the shell's alone");
     }
 }
+
+/// Of every ask the daemon names, the node is steered as Joel for those in
+/// acts.rs's `ACTS` and no other, so a branch added to `steer_of` and not to
+/// `ACTS` fails here rather than going unheld (round 000038 on #6796, F79).
+#[test]
+fn of_every_ask_named_only_the_acts_steer_as_joel() {
+    let others = ["fill", "answer", "rows", "hello"];
+    for ask in SHELLS_ALONE.iter().chain(&others) {
+        let said = json!({"ask": ask, "address": "P", "text": "hi"});
+        assert_eq!(
+            acts::steer_of(&said, 7).is_some(),
+            acts::ACTS.contains(ask),
+            "{ask} steers as Joel exactly when it's among the acts"
+        );
+    }
+}

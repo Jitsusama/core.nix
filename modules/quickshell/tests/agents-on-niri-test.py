@@ -1236,6 +1236,10 @@ def test_a_wants_acts_walked_from_outside_are_refused_as_chosen(shell: Shell) ->
         did = json.loads(shell.as_account(shell.ipc("doing", shlex.quote(json.dumps(walked)))))
         assert did.get("refused") == ACT_WALKED, did
         shell.close_launcher()
+        # A put-off sent would come back over the daemon's watch in milliseconds, so For You
+        # is opened again only past the link's quiet: one showing the want then means it
+        # stayed, not that the put-off hadn't arrived yet (round 000038 on #6796, F80).
+        time.sleep(LINK_QUIET)
         in_for_you(shell)
         shell.launcher_until(lambda shown: "Dealing Quest" in shown["rows"])
         shell.close_launcher()
