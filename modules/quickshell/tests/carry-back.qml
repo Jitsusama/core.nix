@@ -3,7 +3,9 @@
 // `carry-back-asks-the-node-only-a-carry` check copies
 // modules/quickshell/launcher/CarryBack.js and tests/lib/Expect.js beside
 // this file and runs it offscreen. That Return on a carried row sends it
-// is tests/agents-on-niri-test.py's.
+// is tests/agents-on-niri-test.py's, whose carries' things claim no kind of
+// the launcher's own and match their keys, so the key a carried row reads
+// as carrying back under is pinned here.
 import QtQuick
 import "Expect.js" as Expect
 import "launcher/CarryBack.js" as CarryBack
@@ -60,5 +62,13 @@ QtObject {
             { done: false, why: "its refusal couldn't be read" });
         Expect.same("no answer at all says its machine didn't answer",
             CarryBack.ended(null, said), { done: false, why: "its machine didn't answer" });
+
+        Expect.same("a carried row is keyed by its thing, as ReadyRows keyed it",
+            CarryBack.keyed({ thing: "carry:7", key: "carry:other" }, "carry:other"),
+            "carry:7");
+        Expect.same("one with no thing by its record's key, not the key it was served with",
+            CarryBack.keyed({ key: "carry:served" }, "carry:7"), "carry:7");
+        Expect.same("and one whose thing claims the launcher's own place stays under row:",
+            CarryBack.keyed({ thing: "place:Harbour" }, "carry:7"), "row:place:Harbour");
     }
 }

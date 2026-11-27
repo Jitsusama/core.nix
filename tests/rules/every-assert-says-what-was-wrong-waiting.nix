@@ -239,7 +239,7 @@
   "modules/update-to-main/src/system.rs" = 11;
   "modules/update-to-main/tests/update/main.rs" = 11;
   "modules/v4l2loopback/holders/src/camera.rs" = 5;
-  "modules/v4l2loopback/holders/src/holders.rs" = 7;
+  "modules/v4l2loopback/holders/src/holders.rs" = 4;
   "modules/v4l2loopback/holders/src/main.rs" = 4;
   "modules/v4l2loopback/holders/src/wait.rs" = 3;
   "modules/v4l2loopback/holders/tests/usb.rs" = 1;
