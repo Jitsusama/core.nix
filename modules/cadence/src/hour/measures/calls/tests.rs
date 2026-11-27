@@ -36,7 +36,7 @@ fn logged(at_ms: i64, error: Option<&str>) -> String {
 
 #[test]
 fn each_failed_call_counts_and_weighs_against_every_call() {
-    let mut turns: Vec<Turn> = (0..48).map(|n| turn_at(n * 60, None)).collect();
+    let mut turns: Vec<Turn> = (1..=48).map(|n| turn_at(n * 60, None)).collect();
     turns.push(turn_at(
         30,
         Some("Connection error.: other side closed (UND_ERR_SOCKET)"),
@@ -75,15 +75,16 @@ fn a_turn_outside_the_hour_counts_for_nothing() {
 fn each_is_past_its_ceiling_only_above_it() {
     let failing = |failed: i64, of: i64| -> Vec<Turn> {
         (0..of)
-            .map(|n| turn_at(n % 3600, (n < failed).then_some("Request timed out.")))
+            .map(|n| turn_at(1 + n % 3599, (n < failed).then_some("Request timed out.")))
             .collect()
     };
     let at_most = calls(Some(&failing(100, 5000)), NOW);
     assert_eq!(by_key(&at_most, FAILED).past(), None, "100 is the most");
     assert_eq!(by_key(&at_most, SHARE).past(), None, "2% is the most");
-    let past = calls(Some(&failing(101, 5000)), NOW);
-    assert!(by_key(&past, FAILED).past().is_some(), "101 is past 100");
-    assert!(by_key(&past, SHARE).past().is_some(), "2.02% is past 2%");
+    // The share is said to a tenth, so 2.02% reads 2% and isn't past it.
+    let past = calls(Some(&failing(105, 5000)), NOW);
+    assert!(by_key(&past, FAILED).past().is_some(), "105 is past 100");
+    assert!(by_key(&past, SHARE).past().is_some(), "2.1% is past 2%");
 }
 
 #[test]

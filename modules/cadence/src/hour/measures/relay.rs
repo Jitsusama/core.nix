@@ -95,7 +95,7 @@ struct Tally {
     asked: u64,
     resets_tallied: usize,
     /// Its last tally's requests asked, and the resets counted by then.
-    last_tally: Option<(u64, usize)>,
+    previous: Option<(u64, usize)>,
     reset_why: BTreeMap<String, usize>,
     direct_why: BTreeMap<String, usize>,
     answered_why: BTreeMap<String, usize>,
@@ -251,7 +251,7 @@ fn tallied(journal: &str) -> Tally {
             *tally.answered_why.entry(cause.to_owned()).or_default() += 1;
         }
         if let Some(asked) = tallied_asked(line) {
-            if let Some((before, resets_then)) = tally.last_tally {
+            if let Some((before, resets_then)) = tally.previous {
                 // A tally below the last is a relay started again, which
                 // counts from nought.
                 tally.asked += if asked >= before {
@@ -261,7 +261,7 @@ fn tallied(journal: &str) -> Tally {
                 };
                 tally.resets_tallied += tally.resets - resets_then;
             }
-            tally.last_tally = Some((asked, tally.resets));
+            tally.previous = Some((asked, tally.resets));
         }
     }
     tally
