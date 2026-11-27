@@ -3,6 +3,10 @@
 //! told to be the same change. From 17 to 19 November 240 of 429 reviewed
 //! pull requests merged at a head no round had read, a fix pushed after
 //! the council going to main unread.
+//!
+//! Long because more than half of it is the tests beside it, which build
+//! real repos for each way a head is told read; the code itself changes
+//! for one reason, which rounds speak for a head.
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -47,6 +51,9 @@ pub fn read_by_a_round(commit: &str, main: &str, files: &[String]) -> Result<(),
 /// put a pin's questions to. Rounds that can't be read are taken as
 /// reading nothing, so a pin is still asked after, and a pin turned down
 /// is refused naming both why the rounds didn't do and why it doesn't.
+///
+/// Whether a base is on main is asked once a base for the whole call, the
+/// mirrors' second ask and folding's included, since each is a git.
 fn read_in_repo(
     repo: &Path,
     (commit, main, files): (&str, &str, &[String]),
@@ -54,20 +61,25 @@ fn read_in_repo(
     mirrors: impl FnOnce() -> seen::Mirrored,
     asks: &impl pins::Asks,
 ) -> Result<(), String> {
+    let mut on_main = on_main_at(repo, main);
     let read = rounds().and_then(|rounds| {
         here_or_mirrored(rounds, mirrors, |rounds| {
             read_in(
                 commit,
                 rounds,
-                on_main_at(repo, main),
+                &mut on_main,
                 |witnessed| candidates_at(repo, commit, main, files, witnessed).unwrap_or_default(),
                 |read| same_patch(repo, commit, main, read, read_patch_id),
             )
             .or_else(|unread| {
-                let said = folded::read(repo, commit, main, rounds, on_main_at(repo, main))
-                    .ok_or(unread)?;
-                eprintln!("merge-net: {said}");
-                Ok(())
+                match folded::read(repo, commit, main, rounds, &mut on_main) {
+                    folded::Folded::Read(said) => {
+                        eprintln!("merge-net: {said}");
+                        Ok(())
+                    }
+                    folded::Folded::Refused(why) => Err(format!("{unread}; {why}")),
+                    folded::Folded::Silent => Err(unread),
+                }
             })
         })
     });
@@ -410,6 +422,72 @@ mod tests {
         assert!(
             asks.asked().is_empty(),
             "a rebase of a pin a round read was asked after"
+        );
+        fs::remove_dir_all(&repo).unwrap();
+    }
+
+    /// A repo of its own for a test named `name`, with `main` at one
+    /// commit, a change of two on it, and a commit on a branch beside it,
+    /// giving the change's lower commit, its tip and the one beside.
+    fn stacked(name: &str) -> (std::path::PathBuf, [String; 3]) {
+        let repo = env::temp_dir().join(format!("merge-net-gate-{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&repo);
+        fs::create_dir_all(&repo).unwrap();
+        git_in(&repo, &["init", "-q", "-b", "main"]);
+        fs::write(repo.join("w"), "a\n").unwrap();
+        fs::write(repo.join("v"), "a\n").unwrap();
+        git_in(&repo, &["add", "w", "v"]);
+        git_in(&repo, &["commit", "-qm", "base"]);
+        git_in(&repo, &["checkout", "-qb", "beside"]);
+        let beside = commit(&repo, "beside\n");
+        git_in(&repo, &["checkout", "-qb", "change", "main"]);
+        let lower = commit(&repo, "lower\n");
+        fs::write(repo.join("v"), "tip\n").unwrap();
+        git_in(&repo, &["commit", "-qam", "tip"]);
+        let tip = git_in(&repo, &["rev-parse", "HEAD"]);
+        (repo, [lower, tip, beside])
+    }
+
+    // A change one commit below a stack's tip, which a stack round read,
+    // passes on that round, with GitHub and Nix asked nothing for a pin.
+    #[test]
+    fn a_change_below_a_stack_rounds_tip_passes_asking_nothing() {
+        let (repo, [lower, tip, _]) = stacked("stack");
+        let asks = unmerged();
+        let rounds = HashSet::from([seen::Read {
+            commit: tip,
+            from: None,
+            stack: true,
+        }]);
+        assert_eq!(
+            gated_with(&repo, &lower, Ok(rounds), &[], &asks),
+            Ok(()),
+            "a change below a stack round's tip was refused"
+        );
+        assert!(
+            asks.asked().is_empty(),
+            "a change below a stack round's tip was asked after as a pin"
+        );
+        fs::remove_dir_all(&repo).unwrap();
+    }
+
+    // Where folding finds no round near a head, its refusal reaches the
+    // caller as it was; where it finds one that doesn't speak for the
+    // head, the refusal says why after it.
+    #[test]
+    fn a_refusal_says_why_folding_didnt_read_the_head_only_when_it_could_have() {
+        let (repo, [lower, tip, beside]) = stacked("folded");
+        let unread = seen::unread(short(&tip));
+        assert_eq!(
+            gated(&repo, &tip, &[&beside], &unmerged()),
+            Err(unread.clone()),
+            "a head no round came near wasn't refused as unread, alone"
+        );
+        let refused = gated(&repo, &tip, &[&lower], &unmerged()).unwrap_err();
+        assert!(
+            refused.starts_with(&format!("{unread}; "))
+                && refused.contains(&format!("{} after it touches v", short(&tip))),
+            "a code commit after a read one wasn't named in the refusal: {refused}"
         );
         fs::remove_dir_all(&repo).unwrap();
     }
