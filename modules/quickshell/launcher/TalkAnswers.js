@@ -85,21 +85,27 @@ function whole(want) {
 // What the session asks, in TalkLine.js's exchange shape, as the talk's first: who asks,
 // muted, with since when at its right, then what it asks, whole where the want says more than
 // its short line, and what it takes where it offers answers, from `now`'s want while it's
-// `asking` (Agents.qml's answersOf). Null while it asks nothing, or says nothing of what: the
-// daemon's `asked` is then the session's title, which says nothing it asks.
+// `asking` (Agents.qml's answersOf). Null while it asks nothing, or says nothing of what nor
+// offers answers: the daemon's `asked` is then the session's title, or blank, which says
+// nothing it asks.
 function question(now, name, words, dayOf) {
     const want = now?.want ?? null;
     const asking = now?.asking === true;
     const what = whole(want) || String(want?.asked ?? "").trim();
     const untold = whole(want) === "" && String(want?.said ?? "").trim() === ""
         && what === String(want?.title ?? "");
-    if (!asking || what === "" || untold) {
+    const answers = asked(want, asking);
+    const unsaid = untold || what === "";
+    if (!asking || (unsaid && answers === null)) {
         return null;
     }
-    const answers = asked(want, asking);
+    // What it takes goes in `takes`, apart from the question, which TalkSpoken.qml draws
+    // whole under it, wrapped and never elided, so his Return never answers choices he
+    // can't see; one that says nothing of what it asks still says what it takes.
     return { line: filled(words.asks, { name: String(name ?? "") }),
-        answers: [what].concat(answers === null ? [] : [takes(answers, words)]),
-        waiting: "", stands: "", by: "", side: sideOf(want?.since, dayOf) };
+        answers: unsaid ? [] : [what], waiting: "", stands: "", by: "",
+        takes: answers === null ? "" : takes(answers, words),
+        side: sideOf(want?.since, dayOf) };
 }
 
 // An answer said in this shell to the want `want`: his words, when, and how it stands:

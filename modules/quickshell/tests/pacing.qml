@@ -1126,6 +1126,8 @@ QtObject {
             Presented.keyShown("program:", false), "program");
         check(failures, "or one whose id was read as null",
             Presented.keyShown("program:null", false), "program");
+        check(failures, "or as undefined",
+            Presented.keyShown("program:undefined", false), "program");
         check(failures, "and a daemon's record keyed as a program is said by its kind alone",
             Presented.keyShown("row:program:Harbour", false), "program");
         check(failures, "a row named but with no key is said only as an answer with reports off",
@@ -1195,6 +1197,40 @@ QtObject {
             Presented.timedShown("pirate", "", false), "6 letters");
         check(failures, "and a step is quoted whole while they're on",
             Presented.timedShown("\u2192 Harbour", "\u2192 Harbour", true), '"\u2192 Harbour"');
+        // A step into a program's page, or a place of the launcher's own,
+        // says the row by its key as a drawer's line does, so each page is
+        // timed apart (RTOIMQ, 2026-11-26); any other row is counted.
+        check(failures, "a step into a program says its desktop entry's id, never its name",
+            Presented.timedShown("\u2192 Bank statement - Chrome",
+                "\u2192 Bank statement - Chrome", false, "program:google-chrome"),
+            "\u2192 program:google-chrome");
+        check(failures, "and a step out of one says it too",
+            Presented.timedShown("\u2190 Slack", "\u2190 Slack", false, "program:slack"),
+            "\u2190 program:slack");
+        check(failures, "and a step into a place of the launcher's own says its id",
+            Presented.timedShown("\u2192 Programs", "\u2192 Programs", false,
+                "collection:applications"), "\u2192 collection:applications");
+        check(failures, "but an own kind holding more than an id counts the row",
+            Presented.timedShown("\u2192 Harbour House", "\u2192 Harbour House", false,
+                "place:wifi:Harbour House"), "\u2192 13 letters");
+        check(failures, "and a window's step, which holds its title, counts the row",
+            Presented.timedShown("\u2192 Bank statement", "\u2192 Bank statement", false,
+                "window:kitty:Bank statement"), "\u2192 14 letters");
+        check(failures, "and a daemon's record keyed as a program counts the row",
+            Presented.timedShown("\u2192 Slack", "\u2192 Slack", false, "row:program:slack"),
+            "\u2192 5 letters");
+        check(failures, "and a program's key with more past its id counts the row",
+            Presented.timedShown("\u2192 Spotify", "\u2192 Spotify", false,
+                "program:media:spotify"), "\u2192 7 letters");
+        check(failures, "and a key said whole that's neither a program nor its own counts the row",
+            Presented.timedShown("\u2192 Details", "\u2192 Details", false, "verb:details"),
+            "\u2192 7 letters");
+        check(failures, "and a step whose row has no key counts it",
+            Presented.timedShown("\u2192 Harbour", "\u2192 Harbour", false, ""),
+            "\u2192 7 letters");
+        check(failures, "and a step is quoted whole while they're on, its key aside",
+            Presented.timedShown("\u2192 Slack", "\u2192 Slack", true, "program:slack"),
+            '"\u2192 Slack"');
         check(failures, "words typed in a row say the row by its kind with reports off",
             Presented.typedInSaid("door", "wifi:Harbour House", false),
             '4 letters typed in "wifi"');
