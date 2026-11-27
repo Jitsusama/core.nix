@@ -2,7 +2,8 @@
 //! blinks: only a round that waited on a later page is heard beside a
 //! search that can't be read, the phrase's wait as the tag's is in
 //! pages.rs, and a blink between two waits neither counts nor ends their
-//! row, so the tenth still comes.
+//! row, so the tenth still comes. A search waiting beside one that
+//! blinked reads neither whole, so a row saying it can't be read stands.
 
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
@@ -145,6 +146,63 @@ fn the_phrases_first_page_blinking_beside_a_tag_that_cant_be_read_leaves_the_row
         "the phrase's search whose first page blinks, waiting on no later page, isn't heard, \
          so the row still says both can't be read: {}",
         came.why
+    );
+}
+
+#[test]
+fn a_tag_waiting_on_a_later_page_beside_the_phrase_blinking_leaves_its_row_standing() {
+    static PHRASES: AtomicUsize = AtomicUsize::new(0);
+    static TAGS: AtomicUsize = AtomicUsize::new(0);
+    static BEGAN: AtomicU64 = AtomicU64::new(0);
+    let came = hearing(
+        |tool, asked, now| {
+            let began = began(&BEGAN, now);
+            if tool != "slack_search_public_and_private" {
+                return said(tool, now);
+            } else if asked.get("before").is_some() {
+                return format!("{FAILS}Slack said: ratelimited");
+            }
+            // Each search counts its own rounds, so they keep in step.
+            let rounds = if asked["query"] == "pineapple" {
+                &PHRASES
+            } else {
+                &TAGS
+            };
+            let round = if opens(asked) {
+                rounds.fetch_add(1, Ordering::SeqCst) + 1
+            } else {
+                rounds.load(Ordering::SeqCst)
+            };
+            // The tag can't be read three rounds while the phrase is read
+            // whole, so the row says the tag can't be read; then the tag
+            // waits on its second page every round as the phrase's first
+            // page blinks.
+            match (asked["query"] == "pineapple", round) {
+                (true, 1..=3) => nothing(),
+                (true, _) => format!("{FAILS}Slack said: ratelimited"),
+                (false, 1..=3) => poisoned(),
+                (false, _) => bounded(asked, &paged(began, "a word"), 3, true),
+            }
+        },
+        // Told, then rounds enough for the waits to have untold it.
+        &Until {
+            judging: 0,
+            asks: 24,
+            read_at: None,
+        },
+    );
+    assert!(
+        TAGS.load(Ordering::SeqCst) >= 6,
+        "three rounds waited after the row was told: {}",
+        came.journal
+    );
+    assert!(
+        came.why
+            .contains("search of Slack for your tag can't be read"),
+        "a tag read only to a later page beside a phrase that blinked reads neither whole, \
+         so the row saying the tag can't be read stands: {:?}\n{}",
+        came.why,
+        came.journal
     );
 }
 

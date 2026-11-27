@@ -12,6 +12,12 @@ set -euo pipefail
 # data folder is only text to find in its steps.
 activate=$(realpath -- "$2")
 data=$3
+# An empty one would match every step's folder and move none of them, so
+# the steps would write into the person's own Tuple folder.
+if [[ -z $data ]]; then
+  echo "the data folder to find in the steps is empty" >&2
+  exit 64
+fi
 # The library is handed in by its store path; shellcheck reads it from here.
 # shellcheck source=SCRIPTDIR/tuple-in-a-folder-of-its-own.sh
 source "$1"
@@ -20,7 +26,7 @@ source "$1"
 while IFS= read -r line; do
   if [[ $line == "run "* && $line == *"$data/tuple/"* ]]; then
     step=${line#run }
-    printf '%s\n' "${step//"$data"/"$here/data"}"
+    printf '%s\n' "${step//"$data"/"$XDG_DATA_HOME"}"
   fi
 done < "$activate" > steps
 if [[ ! -s steps ]]; then

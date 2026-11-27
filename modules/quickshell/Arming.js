@@ -188,14 +188,17 @@ function holds(armed, id, keysTaken) {
 // press with no key between, which does it; or "" for one so soon after
 // arming (within `wait`, in ms) that it's the arming press doubled, a key
 // bounced, which does nothing and leaves it armed, as a landing's doubled
-// Return does.
+// Return does. `now` is the monotonic clock's, as the launcher's other
+// doubled-key guards read; a press whose time can't be told from the
+// arming's, as one not a number, is held as doubled, so a slip there
+// costs the press, never a session ended.
 function pressed(armed, id, how) {
     const again = armed.key !== "" && armed.key === id
         && how.keysTaken - armed.keys === how.counted;
     if (!again) {
         return { act: "armed", armed: { key: id, keys: how.keysTaken, at: how.now } };
     }
-    if (how.now - armed.at < how.wait) {
+    if (!(how.now - armed.at >= how.wait)) {
         return { act: "", armed: { key: armed.key, keys: how.keysTaken, at: armed.at } };
     }
     return { act: "ends", armed: rest() };

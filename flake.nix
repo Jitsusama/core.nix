@@ -579,6 +579,11 @@
       # check that the package passes, with its lints and core's settings.
       lib.clippy = pkgs: pkgs.callPackage ./modules/clippy/clippy.nix { };
 
+      # How a repository built on core builds pi as a windowed session runs
+      # it, with core's windowed patches: `core.lib.windowedPi pkgs` is that
+      # pi, built from the pi pkgs gives.
+      lib.windowedPi = pkgs: import ./modules/pi/windowed-pi { inherit pkgs; };
+
       # How a repository built on core holds its docs to naming only what
       # exists, as core does: `core.lib.docsNameWhatExists pkgs { src = ./.;
       # exempt = [ ... ]; }` is a check that fails on a link or a backticked
@@ -620,6 +625,14 @@
       # poll nor say what passes while they wait than it waits with, and on one
       # holding fewer until its count is lowered.
       lib.everyFixedWaitSaysWhy = pkgs: pkgs.callPackage ./tests/rules/every-fixed-wait-says-why.nix { };
+
+      # How a repository built on core keeps a failed file read from passing as
+      # nothing, as core does: `core.lib.everyFailedReadSaysWhy pkgs { src =
+      # ./.; waiting = { ... }; }` is a check that fails on a file holding more
+      # Rust reads that turn their error into a default without saying why
+      # than it waits with, and on one holding fewer until its count is lowered.
+      lib.everyFailedReadSaysWhy =
+        pkgs: pkgs.callPackage ./tests/rules/every-failed-read-says-why.nix { };
 
       # How a repository built on core keeps its failing assertions saying what
       # was wrong, as core does: `core.lib.everyAssertSaysWhatWasWrong pkgs { src
