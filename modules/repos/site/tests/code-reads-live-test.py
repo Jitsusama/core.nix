@@ -75,9 +75,10 @@ KINDS = ["reading", "repository", "checkout", "tree", "change", "using"]
 # element is each drawer's way to its row in the launcher, where its acts are. Three of the files
 # and four of the kilobytes are what keeps a draw light: its pace, the trees a drawer lists and
 # the foot's reasons. One kilobyte is the theme's 12 px floor on each step of its type, which
-# every page reads, and one keeps a name with nowhere to wrap inside its stand and the find's
-# placeholder upright under more contrast.
-BUDGET = Budget(files=37, kilobytes=537, elements=276)
+# every page reads, one keeps a name with nowhere to wrap inside its stand and the find's
+# placeholder upright under more contrast, and one is the head's opening words and the lines it
+# holds for its live ones.
+BUDGET = Budget(files=37, kilobytes=538, elements=276)
 CELLS_SITE = "cells/"
 
 
