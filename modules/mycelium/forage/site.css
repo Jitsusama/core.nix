@@ -74,8 +74,8 @@
 /* The lines the longest lede the model writes takes, held from the first
    paint, so nothing under it moves as the node answers. Its words grow with
    the window and stop widening at the kit's 36rem, so below 64rem it takes
-   at most four lines, and above, three. Nothing is cut: a longer lede grows
-   the box. */
+   at most four lines on a 390 px phone, and above, three. Nothing is cut: a
+   narrower phone, where the widest names take a fifth line, grows the box. */
 .page-head .lede {
   min-block-size: 4lh;
 }
