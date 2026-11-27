@@ -14,7 +14,6 @@ drawer is timed apart.
 
 from __future__ import annotations
 
-import itertools
 import re
 import time
 from typing import TYPE_CHECKING
@@ -30,6 +29,9 @@ if TYPE_CHECKING:
 # How many times a kind of key is pressed for one of them to be slow enough to be said: the
 # nested niri's software frames take longer than FELT_MS for nearly every key.
 TRIES = 6
+# How many arrows are pressed, one a try, for down and up to be said: six of each, as the six
+# pairs pressed before each try's arrow was its own.
+ARROW_TRIES = 2 * TRIES
 # How long a key's line has to reach the shell's log after its frame, in seconds.
 WRITTEN_WITHIN = 2.0
 # A lagging key's line, holding what it said of the key.
@@ -76,16 +78,19 @@ def keys_said(shell: Shell, mark: int) -> list[str]:
 
 
 def said_by(
-    shell: Shell, press: Callable[[], None], enough: Callable[[list[str]], bool]
+    shell: Shell,
+    press: Callable[[], None],
+    enough: Callable[[list[str]], bool],
+    tries: int = TRIES,
 ) -> list[str]:
-    """Press as `press` does, TRIES times at most, until the keys said are `enough`.
+    """Press as `press` does, `tries` times at most, until the keys said are `enough`.
 
     Give every key said since the first press, which a case reads whole, so a key said wrongly
     fails it whichever try said it.
     """
     mark = shell.mark()
     said: list[str] = []
-    for _ in range(TRIES):
+    for _ in range(tries):
         press()
         deadline = time.monotonic() + WRITTEN_WITHIN
         while time.monotonic() < deadline:
@@ -96,41 +101,48 @@ def said_by(
     return said
 
 
-def where(shell: Shell) -> tuple[object, int]:
-    """Give the name of the row the launcher has selected, and how many rows it lists."""
-    shown = shell.showing()
-    return (shown["selected"] or {}).get("name"), len(shown["rows"])
+def where(shell: Shell) -> tuple[object, object, object]:
+    """Give the place the launcher has selected, its row's name, and how many it lists in all.
+
+    The count takes in any headings, which nearly no list has. A launcher that can't be read
+    gives why in place of the name, so the case's failure still says what it saw.
+    """
+    try:
+        shown = shell.showing()
+    except (AssertionError, ValueError) as unread:
+        return None, f"unread: {unread}", None
+    return shown["current"], (shown["selected"] or {}).get("name"), shown["count"]
 
 
 def test_an_arrow_is_said_whole(shell: Shell) -> None:
     """Down and up are each said as themselves, since the launcher names them and nobody typed.
 
-    A try presses one arrow, down and up in turn, each given WRITTEN_WITHIN to be said before the
-    next, until both have been. An arrow that moves nothing is never timed (Launcher.qml's
-    arrowed), so the case waits for a second row first. Pressed two a try, back to back, no try
+    A try presses one arrow, given WRITTEN_WITHIN to be said before the next, until both have
+    been. An arrow that moves nothing is never timed (Launcher.qml's arrowed), so the case waits
+    for a second row, and a try presses down from the first place and up from any other, which
+    moves the selection unless rows arriving put it back. Pressed two a try, back to back, no try
     in six said an arrow on a loaded lender (#6855's merge run, 2026-11-26), where alone the
-    case passed five times in five, and why isn't known. So a failure gives the row selected
-    and the rows listed before each press and after the last, and the launcher's own lines.
+    case passed five times in five, and why isn't known. So a failure gives where the selection
+    stood before each press and after the last, and the launcher's own lines.
     """
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
-    shell.launcher_until(lambda shown: len(shown["rows"]) >= ROWS_TO_MOVE)
-    arrows = itertools.cycle(["down", "up"])
-    seen: list[tuple[object, int]] = []
+    shell.launcher_until(lambda shown: shown["count"] >= ROWS_TO_MOVE)
+    seen: list[tuple[object, object, object]] = []
     mark = shell.mark()
 
     def an_arrow() -> None:
         seen.append(where(shell))
-        shell.send_key(next(arrows))
+        shell.send_key("down" if seen[-1][0] == 0 else "up")
 
-    said = said_by(shell, an_arrow, lambda keys: set(keys) >= ARROWS)
+    said = said_by(shell, an_arrow, lambda keys: set(keys) >= ARROWS, ARROW_TRIES)
     seen.append(where(shell))
-    shell.close_launcher()
     logged = launcher_on_niri.logged_since(shell, mark).splitlines()
     lines = "\n".join([line for line in logged if "launcher: " in line][-LINES_GIVEN:])
-    unsaid = f"an arrow went unsaid as itself: {said}\nselected, of rows listed: {seen}\n{lines}"
-    assert set(said) >= ARROWS, unsaid
+    stood = f"place, row and count before each arrow and after the last: {seen}"
+    assert set(said) >= ARROWS, f"an arrow went unsaid as itself: {said}\n{stood}\n{lines}"
     assert "1 letter" not in said, f"an arrow was counted as typed: {said}"
+    shell.close_launcher()
 
 
 def test_a_step_in_and_out_says_its_arrow_and_the_places_key(shell: Shell) -> None:
