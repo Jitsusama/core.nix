@@ -74,6 +74,28 @@ it("an unreadable side is said from the looks listed beside it", () => {
   assert.deepEqual(read.osprey?.side, side, "the side wasn't said from the looks beside it");
 });
 
+it("a side absent or null is said from the looks listed beside it, and none is unread", () => {
+  const { side: _side, ...unsided } = osprey;
+  for (const [record, why] of [
+    [{ ...osprey, side: null }, "a null side"],
+    [unsided, "an absent side"],
+  ] as const) {
+    const read = readAs(record);
+    assert.deepEqual(read.osprey?.side, side, `${why} wasn't said from the looks beside it`);
+    assert.deepEqual(read.unread, [], `${why} was said as not read`);
+  }
+});
+
+it("a side absent beside many looks is cut to three, as the daemon cuts one", () => {
+  const five = ["out of reach", "code failing", "disk filling", "on battery", "running hot"];
+  const { side: _side, ...unsided } = osprey;
+  const read = readAs({ ...unsided, looks: five.map((one) => ({ side: one })) });
+  const cut = ["out of reach", "code failing", "and 3 more worth a look"];
+  const why = "an absent side from five looks wasn't cut as the daemon's";
+  assert.deepEqual(read.osprey?.side, cut, why);
+  assert.deepEqual(read.unread, [], "an absent side beside five looks was said as not read");
+});
+
 it("a side said from many looks is cut to three, as the daemon cuts one", () => {
   const five = ["out of reach", "code failing", "disk filling", "on battery", "running hot"];
   const read = readAs({ ...osprey, side: 7, looks: five.map((one) => ({ side: one })) });
