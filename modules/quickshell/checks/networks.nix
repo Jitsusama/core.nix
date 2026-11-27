@@ -18,7 +18,7 @@
 let
   # What Qt says of a line that threw or a value it couldn't assign: any error
   # a file's line threw, as Quickshell says one, and the words Qt's own use,
-  # which also catch its unbracketed "file:///…/X.qml:12: TypeError:" and a
+  # which also catch its unbracketed "file:///.../X.qml:12: TypeError:" and a
   # throw said with no file at all. A binding that quietly comes out undefined
   # into a `var` says nothing, so it passes unseen.
   threw = pkgs.lib.concatStringsSep "|" [
