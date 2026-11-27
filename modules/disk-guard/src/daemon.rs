@@ -2798,6 +2798,13 @@ impl Guard {
         self.uses_now().unheard
     }
 
+    /// Whether a listing of Nix's garbage is out, begun and not yet heard.
+    /// A listing counts as ending at the step that hears it, so this says
+    /// whether that step has come.
+    pub fn lists_garbage(&self) -> bool {
+        self.listing_out.is_some()
+    }
+
     /// Forgets what earlier guards watched, for a daemon that can't hear
     /// opens: their dates stop where it starts, so an older build would
     /// otherwise look unopened for every hour it ran deaf.
