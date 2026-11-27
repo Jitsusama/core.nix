@@ -437,6 +437,33 @@ fn unreadable(error: &rusqlite::Error) -> bool {
     )
 }
 
+/// Whether `error` says the file isn't a database at all: its header isn't
+/// SQLite's. Damage is the other half of `unreadable`, but a connection's
+/// first read of the schema says damaged too for a schema this SQLite
+/// can't parse, as an older system booted again would read a newer
+/// spend-watch's, so only this half sets a history aside as it connects.
+fn not_a_database(error: &rusqlite::Error) -> bool {
+    error.sqlite_error_code() == Some(rusqlite::ErrorCode::NotADatabase)
+}
+
+/// Why a history that failed to `read` is kept, naming where it is. A
+/// busy or locked one keeps SQLite's words alone, since another connection
+/// holding it is waited out rather than stepped past, and moving a history
+/// another connection writes would split what it writes. Any other failure
+/// may come again at every start, so it names the step out, the history
+/// with the two files a write-ahead log keeps beside it.
+fn kept(read: &str, path: &Path, error: &rusqlite::Error) -> String {
+    let locked = error.sqlite_error_code() == Some(rusqlite::ErrorCode::DatabaseLocked);
+    if held(error) || locked {
+        return format!("couldn't {read} {}: {error}", path.display());
+    }
+    format!(
+        "couldn't {read} {}: {error}. If it fails the same way again, moving it and its \
+         -wal and -shm aside lets spend-watch start a new one beside them",
+        path.display()
+    )
+}
+
 /// Runs `step` with SQLite's sorts going through files, then puts them back
 /// in memory whether it worked or not. A step sorts every turn at once,
 /// unlike a pass, and once rather than every few minutes: on a history of
@@ -476,13 +503,15 @@ impl History {
             return Err(kept_by_newer(path, shape));
         }
         let existing = path.exists();
-        // A file that isn't a database, or whose schema is damaged, fails as
-        // the connection first reads it, before any shape is read, so the
-        // connection's error is asked the same question as the shape's.
+        // A file that isn't a database fails as the connection first reads
+        // it, before any shape is read, so it's set aside here. A schema
+        // that doesn't parse fails here too, as damage, but so does one a
+        // newer SQLite wrote, which `newer` can't read either, so that
+        // history is kept and named rather than lost to a rollback.
         let history = match History::connected(path) {
             Ok(history) => Some(history),
-            Err(error) if unreadable(&error) => None,
-            Err(error) => return Err(sql(error)),
+            Err(error) if not_a_database(&error) => None,
+            Err(error) => return Err(kept("open the history at", path, &error)),
         };
         let schema = match &history {
             Some(history) => history.shaped(path)?,
@@ -504,6 +533,9 @@ impl History {
                 history.index_sessions()?;
                 return Ok(history);
             }
+            // Closed before it's set aside, so its last close folds the
+            // write-ahead log into the file that's moved.
+            drop(history);
         }
         if existing {
             let aside = History::aside(path, schema.unwrap_or(0));
@@ -528,10 +560,7 @@ impl History {
     /// The shape this history says it has, or none when it says none or
     /// says it in a way that doesn't read. Only a history that doesn't read
     /// is taken as having none; any other failure fails the open, named,
-    /// since SQLite's words alone don't say which read it was. A busy one
-    /// keeps its words, so it's tried again. One that fails the same way
-    /// every time keeps the watch down, so the error says where the history
-    /// is and the step out of it.
+    /// since SQLite's words alone don't say which read it was, by `kept`.
     fn shaped(&self, path: &Path) -> Result<Option<i64>, String> {
         let read = self
             .db
@@ -542,11 +571,7 @@ impl History {
         match read {
             Ok(value) => Ok(value.and_then(|value| value.parse().ok())),
             Err(error) if unreadable(&error) => Ok(None),
-            Err(error) => Err(format!(
-                "couldn't read the history's shape: {error}. If it fails the same way \
-                 again, moving {} aside lets spend-watch start a new one beside it",
-                path.display()
-            )),
+            Err(error) => Err(kept("read the shape of the history at", path, &error)),
         }
     }
 
@@ -1213,7 +1238,7 @@ mod tests {
         let opened = History::open(&path);
         let why = opened.as_ref().err().cloned().unwrap_or_default();
         assert!(
-            why.contains("couldn't read the history's shape") && why.contains("gone"),
+            why.contains("couldn't read the shape of the history") && why.contains("gone"),
             "a shape that failed to read didn't fail the open, named: {why:?}"
         );
         assert!(
@@ -1235,6 +1260,78 @@ mod tests {
             )
             .unwrap();
         assert_eq!(tables, 1, "the history was built again rather than kept");
+    }
+
+    // A schema that doesn't parse fails as the connection first reads it,
+    // as damage, the same as one a newer SQLite wrote reads to an older
+    // one, so it's kept as it is and named, where setting it aside would
+    // lose a newer system's bill to a rollback.
+    #[test]
+    fn a_schema_that_doesnt_parse_as_it_connects_keeps_the_history() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("history.db");
+        drop(History::open(&path).unwrap());
+        {
+            let db = Connection::open(&path).unwrap();
+            db.execute_batch(
+                "PRAGMA writable_schema = ON; \
+                 UPDATE sqlite_master SET sql = 'a newer shape' WHERE name = 'files'; \
+                 PRAGMA writable_schema = OFF;",
+            )
+            .unwrap();
+        }
+        let before = fs::read(&path).unwrap();
+        let opened = History::open(&path);
+        let why = opened.as_ref().err().cloned().unwrap_or_default();
+        assert!(
+            opened.is_err(),
+            "a schema that doesn't parse opened rather than kept the history"
+        );
+        assert!(
+            why.contains(&path.display().to_string()) && why.contains("aside"),
+            "a history kept at every open didn't say where it is and the step out: {why:?}"
+        );
+        assert!(
+            !dir.path().join("history.db.schema-0").exists(),
+            "a schema that didn't parse as it connected was set aside"
+        );
+        assert_eq!(
+            fs::read(&path).unwrap(),
+            before,
+            "a history whose schema didn't parse wasn't left as it was"
+        );
+    }
+
+    // A writer holding the history is waited out, so its words say where the
+    // history is but never to move it; any other failure names the step out.
+    #[test]
+    fn only_a_history_nobody_holds_is_told_to_be_moved() {
+        let path = Path::new("/kept/history.db");
+        let failed = |code| rusqlite::Error::SqliteFailure(rusqlite::ffi::Error::new(code), None);
+        for code in [rusqlite::ffi::SQLITE_BUSY, rusqlite::ffi::SQLITE_LOCKED] {
+            let why = kept("open the history at", path, &failed(code));
+            assert!(
+                why.contains("/kept/history.db") && !why.contains("aside"),
+                "a history another connection holds, code {code}, was told to be moved: {why}"
+            );
+        }
+        assert!(
+            crate::daemon::busy(&kept(
+                "open the history at",
+                path,
+                &failed(rusqlite::ffi::SQLITE_BUSY)
+            )),
+            "a busy history, named, wasn't tried again"
+        );
+        let why = kept(
+            "open the history at",
+            path,
+            &failed(rusqlite::ffi::SQLITE_IOERR),
+        );
+        assert!(
+            why.contains("/kept/history.db") && why.contains("-wal and -shm aside"),
+            "a failure that may come at every start didn't name the step out: {why}"
+        );
     }
 
     // A file that isn't a database fails as the connection first reads it,

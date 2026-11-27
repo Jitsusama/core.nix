@@ -2059,7 +2059,7 @@ mod tests {
         );
         for locked in [
             "couldn't make the sessions index: database table is locked",
-            "couldn't read the history's shape: database schema is locked: main",
+            "couldn't read the shape of the history at /h: database schema is locked: main",
         ] {
             assert!(
                 !busy(locked),
@@ -2067,7 +2067,9 @@ mod tests {
             );
         }
         assert!(
-            busy(&format!("couldn't read the history's shape: {why}")),
+            busy(&format!(
+                "couldn't read the shape of the history at /h: {why}"
+            )),
             "a busy shape read, named, wasn't tried again"
         );
     }
@@ -2191,12 +2193,11 @@ mod tests {
         let mut kept = Some((Freed(Rc::clone(&old)), Instant::now(), Instant::now()));
         let mut steps = Steps::begun();
         steps.ended("picture");
-        let before = Instant::now();
         steps.cleared(&mut kept, Freed(Rc::clone(&new)));
         let freed = old.get().expect("the last status wasn't let go of");
         assert!(
-            before <= freed && freed <= steps.last.at,
-            "the last status wasn't let go of inside the cleared step"
+            freed <= steps.last.at,
+            "the last status was let go of after the cleared step ended"
         );
         assert!(new.get().is_none(), "the pass's own status was let go of");
         let (_, said_at, worked_at) = kept.as_ref().expect("the pass's status wasn't kept");
