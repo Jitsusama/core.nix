@@ -5516,8 +5516,10 @@ pub struct Memory {
 
 /// The share of a Mac's memory free below which it has no room, by
 /// velocity's line for a start there: 35 until its ruling of 26
-/// November raised it to 40, read twice (`changed::mac::room_held`).
-const FREE_AT_LEAST: u32 = 40;
+/// November raised it to 40, and 55 from 27 November, when one lent run
+/// with a `cargo test` in it, sent at 51% free, took a Mac to 26% within
+/// a minute. It's read twice (`changed::mac::room_held`).
+const FREE_AT_LEAST: u32 = 55;
 
 impl Memory {
     /// Whether the Mac is short of memory: under [`FREE_AT_LEAST`] free,
@@ -5631,6 +5633,23 @@ impl Load {
 /// builds none. It counts [`TURNS_COUNTED`] of them, past
 /// [`NEARBY_AT_ONCE`], since a run sent by an older nix-offload, from
 /// before 26 November, may hold a second.
+///
+/// A machine's own update to main, root's build into its out link
+/// `update-to-main/building`, counts as one more: it holds no turn, and at 05:10 on
+/// 27 November the Mac lane asked that a lent build never go beside it,
+/// since the two together are what took a Mac to swapping before. It's
+/// found by its command line, which any account may read, where the
+/// build's pid, root's, isn't one `kill -0` may ask about. It's read with
+/// `ps` and `grep` rather than `pgrep`, which nixpkgs' procps for a Mac
+/// doesn't have, where every procps has `ps`. A Mac's own `/bin/ps` reads
+/// it, where there is one: it's setuid, so it reads root's arguments,
+/// which a `ps` from the store can't. `-ww` keeps a line whole, past any
+/// width. A `ps` that fails counts as an update, since the Mac lane asked
+/// that a lent build never go beside one, and a reading that can't tell
+/// must not let it. A test names another pattern in
+/// `NIX_OFFLOAD_OWN_UPDATE`, and another `ps` in `NIX_OFFLOAD_PS`, since a
+/// Mac's own update runs these tests outside a sandbox, beside the very
+/// build they'd count, and its setuid `ps` refuses a build user.
 pub fn building_read() -> String {
     format!(
         "{TURNS_READ} \
@@ -5640,9 +5659,21 @@ pub fn building_read() -> String {
          case \"$pid\" in ''|*[!0-9]*|0*|????????*) continue;; esac; \
          if [ -n \"$boot\" ] && [ \"${{holder#* }}\" = \"$boot\" ] && \
          kill -0 \"$pid\" 2>/dev/null; then building=$((building + 1)); fi; done; \
+         own=\"${{NIX_OFFLOAD_OWN_UPDATE:-{OWN_UPDATE_SEEN}}}\"; \
+         ps=ps; if [ -x /bin/ps ]; then ps=/bin/ps; fi; ps=\"${{NIX_OFFLOAD_PS:-$ps}}\"; \
+         if ! all=$(\"$ps\" -A -ww -o args= 2>/dev/null); then building=$((building + 1)); \
+         elif printf '%s\\n' \"$all\" | grep -q -e \"$own\"; then \
+         building=$((building + 1)); fi; \
          echo \"$building\""
     )
 }
+
+/// The out link a machine's own update to main builds into, the home
+/// zone's update-to-main, as `grep` looks for it in `ps`'s command lines:
+/// its last letter bracketed, so the pattern matches the build's command
+/// line but not the `grep` or the shell reading it, whose own command lines
+/// hold the pattern as written.
+const OWN_UPDATE_SEEN: &str = "update-to-main/buildin[g]";
 
 /// What a Mac runs to say its memory ([`Memory::parse`]): the share free,
 /// then the swap-outs since the newest reading it kept at least a minute
@@ -6264,16 +6295,7 @@ mod tests {
         // killed however the test ends.
         let mut read = Vec::new();
         for shell in ["dash", "zsh"] {
-            let counted = |turns: &Path| {
-                Command::new(shell)
-                    .args(["-c", &building_read()])
-                    .env("NIX_OFFLOAD_TURNS", turns)
-                    .output()
-                    .map_or_else(
-                        |error| format!("{error}"),
-                        |said| String::from_utf8_lossy(&said.stdout).into_owned(),
-                    )
-            };
+            let counted = |turns: &Path| counted_in(shell, turns, NO_UPDATE);
             for (holder, building, what) in &holders {
                 let _ = fs::remove_file(turns.join("1"));
                 std::os::unix::fs::symlink(holder, turns.join("1")).unwrap();
@@ -6305,6 +6327,135 @@ mod tests {
         }
     }
 
+    /// A pattern no process's command line matches, for the counts that
+    /// aren't about a machine's own update: a Mac's own update runs these
+    /// tests outside a sandbox, beside the very build the default finds.
+    const NO_UPDATE: &str = "nix-offload-test-no-update/buildin[g]";
+
+    /// What [`building_read`] says in `shell` over `turns`, finding a
+    /// machine's own update by `update`, or why it couldn't be run. This
+    /// test's PATH is set by the script: in a Mac's package build,
+    /// nix-darwin's /etc/zshenv puts /bin first, and its setuid ps refuses
+    /// a build user, so zsh counted nothing there (67FEB45D, 27 November).
+    fn counted_in(shell: &str, turns: &Path, update: &str) -> String {
+        let path = std::env::var("PATH").unwrap_or_default();
+        Command::new(shell)
+            .args([
+                "-c",
+                &format!("PATH='{path}'; export PATH; {}", building_read()),
+            ])
+            .env("NIX_OFFLOAD_TURNS", turns)
+            .env("NIX_OFFLOAD_OWN_UPDATE", update)
+            .env("NIX_OFFLOAD_PS", "ps")
+            .output()
+            .map_or_else(
+                |error| format!("{error}"),
+                |said| String::from_utf8_lossy(&said.stdout).into_owned(),
+            )
+    }
+
+    #[test]
+    fn a_macs_own_update_to_main_counts_as_a_build_beside_its_turns() {
+        let folder = tempfile::tempdir().unwrap();
+        let turns = folder.path().join("turns");
+        fs::create_dir_all(&turns).unwrap();
+        let boot = Command::new("sh").args(["-c", BOOT_READ]).output().unwrap();
+        let boot = String::from_utf8(boot.stdout).unwrap().trim().to_owned();
+        // The update stands in as a shell whose command line ends in its
+        // out link, below a folder named for this test alone, so a Mac's
+        // real update beside these tests is never what's found.
+        let unique = format!("nix-offload-test-{}", std::process::id());
+        let link = folder.path().join(&unique).join("update-to-main/building");
+        let seen = format!("{unique}/update-to-main/buildin[g]");
+        let mut update = Command::new("sh")
+            .args(["-c", "sleep 30; :"])
+            .arg(&link)
+            .spawn()
+            .unwrap();
+        let mut live = Command::new("sleep").arg("30").spawn().unwrap();
+        // Every count is read before any is judged, so the live shells are
+        // killed however the test ends.
+        let mut read = Vec::new();
+        for shell in ["dash", "zsh"] {
+            let none = folder.path().join("none");
+            read.push((
+                counted_in(shell, &none, &seen),
+                "1\n",
+                format!("{shell}: a Mac's own update to main wasn't counted as a build"),
+            ));
+            std::os::unix::fs::symlink(format!("{} {boot}", live.id()), turns.join("1")).unwrap();
+            read.push((
+                counted_in(shell, &turns, &seen),
+                "2\n",
+                format!("{shell}: a run sent beside a Mac's own update wasn't counted apart"),
+            ));
+            fs::remove_file(turns.join("1")).unwrap();
+        }
+        update.kill().unwrap();
+        update.wait().unwrap();
+        live.kill().unwrap();
+        live.wait().unwrap();
+        for shell in ["dash", "zsh"] {
+            read.push((
+                counted_in(shell, &folder.path().join("none"), &seen),
+                "0\n",
+                format!("{shell}: a Mac's update to main was counted after it ended"),
+            ));
+        }
+        for (counted, building, why) in read {
+            assert_eq!(counted, building, "{why}");
+        }
+    }
+
+    #[test]
+    fn the_default_update_pattern_finds_the_out_link_but_not_its_reader() {
+        // The reading shell's own command line holds the pattern as
+        // written, which must not match, where the update's holds its link.
+        let lines = format!(
+            "{}\nnix build --out-link /var/lib/update-to-main/building .#x\n",
+            building_read()
+        );
+        let said = Command::new("grep")
+            .args(["-c", "-e", OWN_UPDATE_SEEN])
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .and_then(|mut grep| {
+                use std::io::Write as _;
+                grep.stdin.take().unwrap().write_all(lines.as_bytes())?;
+                grep.wait_with_output()
+            })
+            .unwrap();
+        assert_eq!(
+            String::from_utf8_lossy(&said.stdout),
+            "1\n",
+            "the default pattern matched the reader, or missed the update's link"
+        );
+    }
+
+    #[test]
+    fn a_ps_that_fails_counts_as_an_update() {
+        let folder = tempfile::tempdir().unwrap();
+        for shell in ["dash", "zsh"] {
+            let path = std::env::var("PATH").unwrap_or_default();
+            let said = Command::new(shell)
+                .args([
+                    "-c",
+                    &format!("PATH='{path}'; export PATH; {}", building_read()),
+                ])
+                .env("NIX_OFFLOAD_TURNS", folder.path().join("none"))
+                .env("NIX_OFFLOAD_OWN_UPDATE", NO_UPDATE)
+                .env("NIX_OFFLOAD_PS", "false")
+                .output()
+                .unwrap();
+            assert_eq!(
+                String::from_utf8_lossy(&said.stdout),
+                "1\n",
+                "{shell}: a ps that failed let a lent build go beside the update"
+            );
+        }
+    }
+
     #[test]
     fn a_macs_load_is_read_whole_and_counted_only_once_said() {
         use std::os::unix::fs::PermissionsExt;
@@ -6324,6 +6475,8 @@ mod tests {
                 let said = Command::new(shell)
                     .args(["-c", &reading])
                     .env("NIX_OFFLOAD_TURNS", folder.path().join("none"))
+                    .env("NIX_OFFLOAD_OWN_UPDATE", NO_UPDATE)
+                    .env("NIX_OFFLOAD_PS", "ps")
                     .output()
                     .unwrap();
                 String::from_utf8(said.stdout).unwrap()

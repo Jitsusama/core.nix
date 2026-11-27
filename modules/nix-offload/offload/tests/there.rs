@@ -2068,7 +2068,7 @@ case "$2" in
     exit ;;
   *"sysctl -n vm.loadavg hw.ncpu"*)
     echo "$1" >> "$here/load-was-asked"
-    cat "$here/load" 2>/dev/null || printf '{ 1.00 1.00 1.00 }\n12\n0\n50 0 60\n'
+    cat "$here/load" 2>/dev/null || printf '{ 1.00 1.00 1.00 }\n12\n0\n70 0 60\n'
     exit 0 ;;
 esac
 printf '%s\n%s\n' "$1" "$2" >> "$here/ssh-was-given"
@@ -2133,7 +2133,7 @@ fn a_nearby_machine_is_sent_a_folder_flake_and_builds_its_systems() {
     let said = String::from_utf8_lossy(&ran.stderr);
     assert!(
         said.contains(
-            "mac has room, at 50% free and 0 swap-outs over 60 s and load 1.0 over a minute \
+            "mac has room, at 70% free and 0 swap-outs over 60 s and load 1.0 over a minute \
              and 1.0 over five on 12 processors"
         ),
         "a Mac sent its part didn't say the load it went at: {said}"
@@ -2207,8 +2207,8 @@ struct Asking {
 /// A busy Mac's load, as its `sysctl` says it.
 const BUSY: &str = "{ 20.00 60.00 80.00 }\n12\n";
 
-/// A quiet Mac's load, with half its memory free and nothing swapped.
-const QUIET: &str = "{ 1.00 1.00 1.00 }\n12\n0\n50 0 60\n";
+/// A quiet Mac's load, with 70% of its memory free and nothing swapped.
+const QUIET: &str = "{ 1.00 1.00 1.00 }\n12\n0\n70 0 60\n";
 
 impl Default for Asking {
     fn default() -> Self {
@@ -2483,7 +2483,7 @@ case "$2" in
   true) exit 255 ;;
   *"sysctl -n vm.loadavg hw.ncpu"*)
     echo "$1" >> "$here/load-was-asked"
-    printf '{ 1.00 1.00 1.00 }\n12\n0\n50 0 60\n'
+    printf '{ 1.00 1.00 1.00 }\n12\n0\n70 0 60\n'
     exit 0 ;;
 esac
 printf '%s\n%s\n' "$1" "$2" >> "$here/ssh-was-given"
@@ -3712,7 +3712,7 @@ impl Changed {
         .unwrap();
         let load = self.bin.join("load-mac");
         if !load.exists() {
-            fs::write(load, "{ 1.00 1.00 1.00 }\n12\n0\n50 0 60\n").unwrap();
+            fs::write(load, "{ 1.00 1.00 1.00 }\n12\n0\n70 0 60\n").unwrap();
         }
     }
 
@@ -4224,7 +4224,7 @@ fn a_change_a_macs_checks_read_is_compared_on_the_mac_too() {
     // Busy, but within its room.
     fs::write(
         changed.bin.join("load-mac"),
-        "{ 30.10 28.00 25.00 }\n12\n0\n50 0 60\n",
+        "{ 30.10 28.00 25.00 }\n12\n0\n70 0 60\n",
     )
     .unwrap();
 
@@ -4245,7 +4245,7 @@ fn a_change_a_macs_checks_read_is_compared_on_the_mac_too() {
     assert!(
         String::from_utf8_lossy(&ran.stderr).contains(
             "modules/zsh/home.nix is read by a Mac's checks, so they're compared there too: mac \
-             has room, at 50% free and 0 swap-outs over 60 s and load 30.1 over a minute and \
+             has room, at 70% free and 0 swap-outs over 60 s and load 30.1 over a minute and \
              28.0 over five on 12 processors"
         ),
         "{ran:?}"
@@ -4311,8 +4311,8 @@ fn a_gates_mac_comparison_waits_while_the_mac_builds_another_kept_as_skipped() {
         !sent.contains("aarch64-darwin"),
         "a comparison went beside another's build: {sent}"
     );
-    let because = "mac has no room, building 1 run sent to it already, at load 20.0 over a \
-                   minute and 35.0 over five on 12 processors";
+    let because = "mac has no room, building 1 run already, its own update or sent to it, at \
+                   load 20.0 over a minute and 35.0 over five on 12 processors";
     let kept = changed.kept_at(&head);
     assert!(
         kept.iter().any(|line| line["because"] == because),
@@ -4404,8 +4404,9 @@ fn a_build_for_a_mac_already_building_another_waits_though_its_load_has_room() {
     assert_eq!(ran.status.code(), Some(69), "{ran:?}");
     assert!(
         String::from_utf8_lossy(&ran.stderr).contains(
-            "mac has no room, building 1 run sent to it already, at load 20.0 over a minute \
-             and 35.0 over five on 12 processors, so a run for its system waits"
+            "mac has no room, building 1 run already, its own update or sent to it, at load \
+             20.0 over a minute and 35.0 over five on 12 processors, so a run for its system \
+             waits"
         ),
         "it never said the build it waited on: {ran:?}"
     );
@@ -4427,7 +4428,7 @@ fn a_build_for_a_mac_with_room_says_the_load_it_went_at() {
     fs::write(changed.bin.join("says"), "changed  a\n").unwrap();
     fs::write(
         changed.bin.join("load-mac"),
-        "{ 20.00 30.00 10.00 }\n12\n0\n50 0 60\n",
+        "{ 20.00 30.00 10.00 }\n12\n0\n70 0 60\n",
     )
     .unwrap();
 
@@ -4439,7 +4440,7 @@ fn a_build_for_a_mac_with_room_says_the_load_it_went_at() {
     );
     assert!(
         String::from_utf8_lossy(&ran.stderr).contains(
-            "mac has room, at 50% free and 0 swap-outs over 60 s and load 20.0 over a minute \
+            "mac has room, at 70% free and 0 swap-outs over 60 s and load 20.0 over a minute \
              and 30.0 over five on 12 processors, held over 0 seconds, so a run for its \
              system goes"
         ),
