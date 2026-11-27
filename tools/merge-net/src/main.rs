@@ -320,8 +320,7 @@ fn ready(commit: &str) -> Result<ExitCode, String> {
         }
         eprintln!(
             "merge-net: {} doesn't sit on origin's main as it is now, {}, and its base \
-             lacks main's newest rules for which VM tests run (must-run.txt, lock-after.txt, \
-             fates.txt), \
+             lacks main's newest rules for which VM tests run (must-run.txt, lock-after.txt), \
              so what needs said of it can't speak for them; rebase onto origin/main, push, \
              and merge again",
             short(&commit),
@@ -380,9 +379,8 @@ fn may_merge(commit: &str, main: &str, passes: &[&str], files: &[String], said: 
     }
     eprintln!(
         "merge-net: merge-net needs wasn't asked at {}, nor at an earlier commit of the same \
-         change on a base holding main's rules for it (must-run.txt, lock-after.txt, \
-         fates.txt), so no \
-         one has heard which VM tests run before it merges; run merge-net needs there, run \
+         change on a base holding main's rules for it (must-run.txt, lock-after.txt), so \
+         no one has heard which VM tests run before it merges; run merge-net needs there, run \
          what it names, and merge again",
         short(commit)
     );
@@ -456,10 +454,10 @@ fn run_again(commit: &str) -> String {
 }
 
 /// The newest commit on `main` to change the rules for which VM tests run
-/// before a merge, the inputs a lock may move alone among them, or the
-/// folders that share a fate, or nothing when git can't say. The fates
-/// are built into the program, so a merge-net built from a head lacking
-/// main's newest would judge it by fewer fates than main holds.
+/// before a merge, the inputs a lock may move alone among them, or
+/// nothing when git can't say. The folders that share a fate aren't among
+/// them: a head is judged by main's `fates.txt` as well as its own
+/// (`rules::fates::judging`), so an edit of it sends no head to rebase.
 fn newest_rules(main: &str) -> String {
     git(&[
         "log",
@@ -469,7 +467,6 @@ fn newest_rules(main: &str) -> String {
         "--",
         "tools/merge-net/must-run.txt",
         rules::lock::LOCK_AFTER,
-        rules::fates::FATES_TXT,
     ])
     .unwrap_or_default()
 }
