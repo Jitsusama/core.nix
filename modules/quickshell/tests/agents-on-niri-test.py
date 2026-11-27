@@ -1091,8 +1091,10 @@ def test_a_sessions_acts_walked_from_outside_steer_nothing_and_say_why(shell: Sh
     """A walk from outside, as an agent's `launcher do` is, steers no session as Joel.
 
     The agents daemon takes the shell's asks as Joel's and can't tell a walk from his Return,
-    so the shell refuses it (Agents.qml's joelsOwn): a sure Resume or Talk walked to a session
-    reaches none of its inbox, and the walk is told why.
+    so the shell refuses it (Agents.qml's joelsOwn): a sure Resume or Pause walked to a session
+    reaches none of its inbox, and the walk is told why. Pause, not Talk: a session under an
+    orchestration offers Talk only while it waits on Joel (top.rs's member_acts), and Listening
+    Quest doesn't; a walk's Talk is the orchestrator case's.
     """
     fold = ["agents", ORCHESTRATING, FOLD]
     inboxes = [STEER / "PAUSED", STEER / "LISTEN"]
@@ -1100,7 +1102,7 @@ def test_a_sessions_acts_walked_from_outside_steer_nothing_and_say_why(shell: Sh
     try:
         for steps, words in (
             ([*fold, "Paused Quest", "Resume"], ""),
-            ([*fold, "Listening Quest", "Talk"], "how goes it?"),
+            ([*fold, "Listening Quest", "Pause"], ""),
         ):
             walked = {"steps": steps, "words": words, "sure": True}
             did = json.loads(shell.as_account(shell.ipc("doing", shlex.quote(json.dumps(walked)))))
