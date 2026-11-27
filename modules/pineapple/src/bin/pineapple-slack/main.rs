@@ -37,9 +37,17 @@
 //!
 //! Given `--gateway URL` and `--gateway-sign-in PROGRAM`, it hears Slack
 //! through that tool gateway instead (src/ears.rs), signed in by what
-//! the program prints, and only in shadow: it tells no phone, as the
-//! gateway's Slack is only read, so it can run beside the reader that
-//! acts and its decisions be held against that one's.
+//! the program prints. In shadow it keeps to a folder of its own,
+//! `pineapple-gateway`, its rows of what waits on Joel included, and
+//! tells no phone, so it can run beside the reader that acts and its
+//! decisions be held against that one's. Live, it takes that reader's
+//! place: its folder, its row in For You, and his phone, told through the
+//! gateway's one tool that sends to him alone. Its rows saying what it
+//! never read go beside that row, in pineapple-missed.json, which its
+//! stop leaves. It says no reply, as the gateway sends to nobody else.
+//! Two readers never keep one folder: each holds the folder it keeps
+//! while it runs, and one started on a folder already held ends at once,
+//! rather than judging, recording and telling his phone twice.
 //!
 //! Which messages it has judged is kept in judged.json beside the log
 //! (src/judged.rs), so a restart neither judges a message twice nor
@@ -47,6 +55,7 @@
 //! begins ten minutes back rather than judging Slack's whole history.
 
 use std::ffi::{OsStr, OsString};
+use std::fs::{File, TryLockError};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -137,7 +146,7 @@ fn help() -> Help {
             )
             .option(
                 "--gateway URL",
-                "hears Slack through that tool gateway, in shadow only",
+                "hears Slack through that tool gateway instead",
             )
             .option(
                 "--gateway-sign-in PROGRAM",
@@ -243,13 +252,7 @@ fn run_options(rest: &[String]) -> Result<Run, Failure> {
     }
     let gateway = match (gateway, sign_in) {
         (None, None) => None,
-        (Some(url), Some(program)) if shadow => Some((url, OsString::from(program))),
-        (Some(_), Some(_)) => {
-            return Err(
-                Failure::new(Exit::Usage, "--live isn't taken with --gateway")
-                    .because("a reader over a tool gateway only writes down what it hears"),
-            );
-        }
+        (Some(url), Some(program)) => Some((url, OsString::from(program))),
         _ => {
             return Err(
                 Failure::new(Exit::Usage, "--gateway and --gateway-sign-in go together")
@@ -284,12 +287,48 @@ fn env_dir(var: &str, fallback: &str) -> PathBuf {
 }
 
 /// The folder, under the state home, where the reader over a gateway
-/// keeps all it writes, beside the live reader's `pineapple`.
+/// keeps all it writes in shadow, beside the live reader's `pineapple`.
 const GATEWAY_STATE: &str = "pineapple-gateway";
+
+/// The file in a reader's folder it holds locked while it runs.
+const HELD: &str = "slack-reader.lock";
+
+/// The file, beside the one holding For You's row of what waits on Joel,
+/// where a live reader over a gateway keeps its rows saying what it never
+/// read: For You reads each file there, and the reader's stop takes away
+/// only the other.
+const MISSED_LIVE: &str = "pineapple-missed.json";
 
 /// Where it keeps its log, its stops and what it has judged.
 fn state() -> PathBuf {
     env_dir("XDG_STATE_HOME", ".local/state").join("pineapple")
+}
+
+/// The folder a reader keeps, held for as long as the file it gives
+/// stays open, or a failure saying another reader holds it already.
+fn hold(state: &Path) -> Result<File, Failure> {
+    let failed = |error: std::io::Error| {
+        Failure::new(Exit::Failed, format!("couldn't hold {}", state.display()))
+            .because(error.to_string())
+    };
+    std::fs::create_dir_all(state).map_err(failed)?;
+    let file = File::options()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(state.join(HELD))
+        .map_err(failed)?;
+    match file.try_lock() {
+        Ok(()) => Ok(file),
+        Err(TryLockError::WouldBlock) => Err(Failure::new(
+            Exit::Failed,
+            format!(
+                "another Slack reader keeps {}, so this one doesn't",
+                state.display()
+            ),
+        )),
+        Err(TryLockError::Error(error)) => Err(failed(error)),
+    }
 }
 
 /// The harness's old Slack sign-in file, read only when the keyring
@@ -462,6 +501,7 @@ fn tell_missed(file: &Path, search: Search, skipped: Skipped) -> bool {
 fn run(how: &Run) -> Result<(), Failure> {
     let credentials = credentials();
     let state = state();
+    let _held = hold(&state)?;
     let slack = Slack::new(&how.origin);
     let reader = Reader {
         origin: how.origin.clone(),
@@ -481,7 +521,9 @@ fn run(how: &Run) -> Result<(), Failure> {
     // A locked keyring doesn't end a sign-in, so stops are still heard.
     let mut last = LastSignIn::new();
     let mut deaf = Deaf::new();
+    let let_go_from = alerts::let_go_from(&state);
     loop {
+        phone.give_up(&state, let_go_from);
         let now = Instant::now();
         let signed = Account::signed(&credentials, patience, rest);
         match &signed {
@@ -529,29 +571,44 @@ fn run(how: &Run) -> Result<(), Failure> {
     }
 }
 
-/// The reader over a tool gateway, in shadow, until its service stops it.
-/// Whose Slack it reads, the gateway says once; until it does, nothing is.
-/// It keeps to its own folder, its row of what waits included, however it
-/// was started, so nothing the live reader reads is ever written; and it
-/// leaves the environment as it was, for the sign-in program it runs.
+/// The reader over a tool gateway, until its service stops it. Whose
+/// Slack it reads, the gateway says once; until it does, nothing is. In
+/// shadow it keeps to its own folder, its rows of what waits included,
+/// however it was started, so nothing the live reader reads is ever
+/// written. Live, it keeps the live reader's folder and rows, and tells
+/// Joel's phone through the gateway. Either way it leaves the environment
+/// as it was, for the sign-in program it runs.
 fn hear_through(how: &Run, url: &str, program: &OsStr) -> Result<(), Failure> {
-    let state = env_dir("XDG_STATE_HOME", ".local/state").join(GATEWAY_STATE);
+    let state = if how.shadow {
+        env_dir("XDG_STATE_HOME", ".local/state").join(GATEWAY_STATE)
+    } else {
+        state()
+    };
+    let _held = hold(&state)?;
     let reader = Reader {
         origin: how.origin.clone(),
         words: Words::from_object(REPLIES).unwrap_or_default(),
-        shadow: true,
+        shadow: how.shadow,
     };
     let mut judged = begin(&state);
-    // Named here rather than as the live reader's is, whose fallback for a
-    // name that isn't whole is For You's own row.
-    let waiting = Waiting {
-        file: state.join("waiting.json"),
-        refused: None,
+    // In shadow, named here rather than as the live reader's is, whose
+    // fallback for a name that isn't whole is For You's own row.
+    let waiting = if how.shadow {
+        Waiting {
+            file: state.join("waiting.json"),
+            refused: None,
+        }
+    } else {
+        told_in(std::env::var_os("SAFE_WORD_WAITING").as_deref())
     };
     // Beside it, what a search read on past, which nothing takes away:
     // a gap is read on only once its row is written there. In shadow it's
     // the reader's own record, which For You never reads.
-    let missed = state.join("missed.json");
+    let missed = if how.shadow {
+        state.join("missed.json")
+    } else {
+        waiting.file.with_file_name(MISSED_LIVE)
+    };
     let record = move |query: &str, skipped: Skipped| {
         let search = if query == round::PHRASE {
             Search::Phrase
@@ -562,12 +619,21 @@ fn hear_through(how: &Run, url: &str, program: &OsStr) -> Result<(), Failure> {
     };
     let mut through = Through::new(Gateway::new(url, program), Box::new(record));
     let mut me: Option<String> = None;
-    let mut deaf = Deaf::new();
+    let mut deaf = Deaf::through_gateway();
+    let let_go_from = alerts::let_go_from(&state);
     loop {
+        // In shadow it tells no phone, so lets no alert go.
+        if !how.shadow {
+            alerts::give_up_through(&state, let_go_from);
+        }
         let heard = match me.clone().map_or_else(|| through.me(), Ok) {
             Ok(user) => {
                 let heard = round(&mut through, &reader, (&user, None), &state, &mut judged);
                 me = Some(user);
+                // In shadow it tells no phone, which the live reader does.
+                if !how.shadow {
+                    alerts::tell_through(through.gateway(), &state);
+                }
                 heard
             }
             Err(round) => round,

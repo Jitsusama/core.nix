@@ -192,12 +192,12 @@ fn sweep(folder: &Path) {
 /// mycelium couldn't wait for it to before starting this.
 const CROSSING: Duration = Duration::from_mins(2);
 
-/// The gate's folder once its request and bundle are there, waited for
-/// at most [`CROSSING`].
-fn arrived(quest: &str, commit: &str) -> Option<GateFolder> {
+/// The gate's folder under `scratches` once its request and bundle are
+/// there, waited for at most [`CROSSING`].
+fn arrived(scratches: &Path, quest: &str, commit: &str) -> Option<GateFolder> {
     let since = std::time::Instant::now();
     loop {
-        if let Ok(gate) = GateFolder::open(&super::scratches(), quest, commit)
+        if let Ok(gate) = GateFolder::open(scratches, quest, commit)
             && gate.holds(REQUEST)
             && gate.holds(BUNDLE)
         {
@@ -550,12 +550,21 @@ pub fn answer(arguments: &[String], state: &Path) -> Result<(), Failure> {
             crate::ended::usage("answer takes a quest's id and a full commit hash").try_this(HELP),
         );
     }
-    let Some(gate) = arrived(quest, commit) else {
+    let Some(scratches) = super::scratches() else {
+        return Err(
+            Failure::new(Exit::Config, "answer has no gate to find").because(super::NO_SCRATCH)
+        );
+    };
+    let Some(gate) = arrived(&scratches, quest, commit) else {
         return Err(Failure::new(
             Exit::NotFound,
             format!(
                 "answer found no gate at {}, or found a link on the way to it",
-                super::folder(quest, commit).display()
+                scratches
+                    .join(quest)
+                    .join(super::GATES)
+                    .join(commit)
+                    .display()
             ),
         )
         .because("`nix-offload ask` on the machine asking leaves it there and starts this"));

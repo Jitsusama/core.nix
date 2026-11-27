@@ -72,6 +72,18 @@ onLinux {
           exit 1
         }
         wait $viewfinder
+        # Each key pressed is in its log, in order, before ZZ closes it, since
+        # a miss in vm-desktop-captures is read by which of these are absent
+        # (round 1 on #7055, 4; its final round, 16 and 22).
+        heard=$(
+          grep -a -o 'viewfinder: \(heard .*\|ZZ closes\)' camera-viewfinder.log | tr '\n' '|'
+        )
+        meant='viewfinder: heard TAB|viewfinder: heard ESC|viewfinder: heard q|'
+        meant+='viewfinder: heard Z|viewfinder: heard Z|viewfinder: ZZ closes|'
+        if [ "$heard" != "$meant" ]; then
+          echo "the viewfinder's log said $heard, not $meant"
+          exit 1
+        fi
         touch $out
       '';
 }

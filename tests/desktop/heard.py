@@ -9,7 +9,7 @@ change to it moves only the desktop's areas.
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -159,3 +159,59 @@ def until_heard(
         return heard[0]
     message = f"{who} nothing that passed before the wait stopped hearing\n{who}, {last()}"
     raise AssertionError(message)
+
+
+# The fewest reads that can show a word moving, and the most moved words a shot's
+# failure names before saying how many more (moved_over).
+TWO_READS = 2
+MOVED_NAMED = 30
+
+
+def flattened(value: object, at: str = "") -> dict[str, object]:
+    """Give each leaf of a JSON value by its path, as rows[2].words[0].text, to compare two."""
+    if isinstance(value, dict):
+        pairs = cast("dict[str, object]", value).items()
+        return {k: v for key, one in pairs for k, v in flattened(one, f"{at}.{key}").items()}
+    if isinstance(value, list):
+        items = enumerate(cast("list[object]", value))
+        return {k: v for n, one in items for k, v in flattened(one, f"{at}[{n}]").items()}
+    return {at.lstrip("."): value}
+
+
+def whole(said: str) -> object:
+    """Give what a read said as JSON, or nothing for one empty, cut short or thrown.
+
+    The launcher answers a call that threw with {"threw": why} (Held.js), which is no
+    reading of what it shows, so it's passed over as one cut short is, rather than kept as a
+    read whose every path then reads as moved (round 2 on #6998, 39).
+    """
+    try:
+        read = json.loads(said)
+    except ValueError:
+        return {}
+    return {} if isinstance(read, dict) and "threw" in read else read
+
+
+def moved_over(seen: list[dict[str, object]]) -> str:
+    """Say which paths' values differ between any two of `seen`, each a read flattened.
+
+    A path one read lacks, as a list grown shorter, says "absent" there, apart from one that
+    is null; each moved path says its values in the order they were read, once each.
+    """
+    if len(seen) < TWO_READS:
+        return "the launcher's laidOut couldn't be read twice to say what moved"
+    paths = sorted({path for one in seen for path in one})
+
+    def worded(one: dict[str, object], path: str) -> str:
+        return repr(one[path]) if path in one else "absent"
+
+    moved = [
+        f"{path}: {' / '.join(dict.fromkeys(worded(one, path) for one in seen))}"
+        for path in paths
+        if len({worded(one, path) for one in seen}) > 1
+    ]
+    if not moved:
+        return f"none of the launcher's laid-out words moved over {len(seen)} reads"
+    shown = "; ".join(moved[:MOVED_NAMED])
+    more = f" and {len(moved) - MOVED_NAMED} more" if len(moved) > MOVED_NAMED else ""
+    return f"the launcher's laid-out words that moved over {len(seen)} reads: {shown}{more}"

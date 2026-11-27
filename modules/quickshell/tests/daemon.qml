@@ -33,15 +33,17 @@
 // go never said as changed, and a whole answer says only the keys whose
 // records differ from what was held and those it dropped, so a rewatch
 // answered with the same records hears nothing, and lets go nothing
-// watched ahead, which it never names. A handler of a told change
+// watched ahead, which it never names. Records keyed as names every
+// object inherits, "__proto__" among them, are held as any other, and
+// one never held is never said as let go. A handler of a told change
 // reads when its line was heard, and one of a watch's whole answer, or one
 // it puts off, reads none. Each daemon's lines and their length are
 // counted by its name, for the launcher's census, and begun again once
-// said. A going says the asks it left unanswered, apart where the shell
-// let the connection go itself. A client
-// holding its wire watches neither its socket nor its folder. A socket that refuses is tried again twice as late
-// each time, a minute at most, counted again from its next answer. Each
-// step waits on what the client says, at most ten seconds.
+// said. A going says the asks it left unanswered, said as let go where the
+// shell let the connection go itself. A client holding its wire watches
+// neither its socket nor its folder. A socket that refuses is tried again
+// twice as late each time, a minute at most, counted again from its next
+// answer. Each step waits on what the client says, at most ten seconds.
 // It exits 0 once every case holds, and otherwise 1, saying which didn't.
 // Its stand-ins are in modules/quickshell/tests/stand-ins. Long because
 // its cases run in turn against one real people daemon and its stand-ins,
@@ -103,6 +105,8 @@ ShellRoot {
         kind: "person"
     }
     property bool letGo: false
+    // Whether the daemon's starting step has connected the let-go link again.
+    property bool relinked: false
     // What its ask in flight was given as it went: undefined until then.
     property var letGoGiven: undefined
 
@@ -199,6 +203,22 @@ ShellRoot {
         }
     }
     property int rewatchHeard: -1
+
+    // Told records keyed by names every object inherits, as a node could
+    // key one: each is held, not read as held already or set as the
+    // map's prototype.
+    Daemon {
+        id: inheriting
+
+        socket: `${root.runtime}/daemons/kinds.sock`
+        kind: "inherited"
+        onHeard: (changed, gone) => {
+            root.inheritedGone = root.inheritedGone.concat(gone);
+        }
+    }
+    // What it said it let go: none, since its answer's gone "toString" was
+    // never held, though a map that inherits reads it as held.
+    property var inheritedGone: []
 
     // Answered whole and watching a key ahead that its kind's whole answer never names, as a
     // place's ready rows watch a drawer served apart: watched again, as each opening watches.
@@ -386,8 +406,20 @@ ShellRoot {
             + `, answered ${JSON.stringify(root.answered)}`
             + `, letting go ${lettingGo.state} ${root.letGo} ${JSON.stringify(root.letGoGiven)}`
             + ` awaiting ${Object.keys(lettingGo.awaited).length}`
+            + `, relinked ${root.relinked}, backed off ${lettingGo.refusals} times`
+            + `, its last try ${root.failure(lettingGo.failedWith)}`
             + `, the census heard ${root.heardSaid} of ${root.heardLines.join(" and ")}`);
         Qt.exit(1);
+    }
+
+    // A link's last failure in words, by QLocalSocket's LocalSocketError, so a FAIL line read
+    // from any step says it without Qt's enum beside it.
+    function failure(code) {
+        if (code === null)
+            return "none failed since it last connected or was relinked, if it tried at all";
+        const named = { "-1": "unknown", 0: "refused", 1: "closed by the daemon",
+            2: "found nothing there", 3: "not allowed" }[code];
+        return `failed with ${code}${named === undefined ? "" : `, ${named}`}`;
     }
 
     function heldWay(key) {
@@ -405,7 +437,10 @@ ShellRoot {
     readonly property var steps: [
         {
             what: "no daemon is said as not answering",
+            // The let-go link's socket is a symlink to the daemon's, not there yet, so its
+            // first try says it found nothing, as its FAIL line's words would.
             holds: () => people.state === "not answering" && !none.answered
+                && lettingGo.failedWith === lettingGo.serverNotFound
         },
         {
             what: "a get with no daemon is given none at once",
@@ -419,13 +454,30 @@ ShellRoot {
             run: () => {
                 peopleRunning.running = true;
             },
-            // The let-go link shares this daemon's socket through a symlink
-            // and may connect only on its tries, the last of its first three
-            // 14 s in, so it's waited for here, as long as a restart's, rather
-            // than inside the let-go step's ten seconds.
+            // The let-go link shares this daemon's socket through a symlink,
+            // whose target appearing its file watch may not see, and its own
+            // tries end 14 s in, so a daemon slower than that to start on a
+            // busy builder could leave it unconnected. Once the daemon
+            // answers, the link is connected again here, once, and waited for
+            // as long as a restart's from then, rather than what's left of this
+            // step or inside the let-go step's ten seconds. Its tries count
+            // afresh, as the file watch's do, so a refused relink is tried again
+            // 2 s on rather than 16 s, and one finding no socket is tried again
+            // at all, 2, 6 and 14 s on, each inside the 20 s it's given. What
+            // its tries failed with counts afresh too, so a FAIL line names
+            // only the relink's, and it's said gone once the relink connects.
             polls: 400,
-            holds: () => people.state === "answering" && "slack" in people.sources
-                && lettingGo.wire !== null
+            holds: () => {
+                const answering = people.state === "answering" && "slack" in people.sources;
+                if (answering && lettingGo.wire === null && !root.relinked) {
+                    root.relinked = true;
+                    root.left = 400;
+                    lettingGo.refusals = 0;
+                    lettingGo.failedWith = null;
+                    lettingGo.connectAgain();
+                }
+                return answering && lettingGo.wire !== null && lettingGo.failedWith === null;
+            }
         },
         {
             what: "a watch narrowed to those listed holds them alone",
@@ -677,6 +729,16 @@ ShellRoot {
             }
         },
         {
+            what: "records keyed as names every object inherits are held as any other",
+            holds: () => Object.keys(inheriting.held).sort().join(" ")
+                === "__proto__ constructor"
+                && inheriting.held["__proto__"]?.heard === 1
+                && inheriting.held["constructor"]?.heard === 1
+                && !("toString" in inheriting.held) && root.inheritedGone.length === 0,
+            shows: () => `held ${Object.keys(inheriting.held).sort().join(" ")},`
+                + ` let go ${JSON.stringify(root.inheritedGone)}`
+        },
+        {
             what: "a handler of a change reads when its line was heard, one of a watch's"
                 + " whole answer and one put off read none",
             holds: () => root.wholeMarkedAt === 0 && root.markedAt > 0 && root.markedAt <= root.markedThen
@@ -712,7 +774,7 @@ ShellRoot {
                 if (root.heardSaid === null) {
                     root.heardLines = [heardBy([people, listed, forgetting, refreshed, paced]),
                         heardBy([kinds, differing, flat, whole, wholeFor, rewatched, wholeAhead,
-                            marked, repaced, none])];
+                            inheriting, marked, repaced, none])];
                     root.heardSaid = Hearing.heardMost(99).said;
                 }
                 const peopleSaid = /(?:^|, )people ([0-9]+) lines?, ([0-9]+) characters/
@@ -755,8 +817,8 @@ ShellRoot {
             // once nothing needs it, was said as one gone wrong (#6287's
             // F31), so a journal read for a daemon's faults found ones
             // nobody had.
-            what: "a going says its asks unanswered, apart where the shell let the"
-                + " connection go, and nothing where none was",
+            what: "a going says its asks unanswered, as let go where the shell let"
+                + " the connection go, and nothing where none was",
             holds: () => {
                 const ids = Array.from({ length: 9 }, (_, at) => String(at + 1));
                 return Hearing.goneSaid("people", ["7"], false)
@@ -817,9 +879,22 @@ ShellRoot {
                 root.left -= 1;
                 if (root.left === 0) {
                     stop();
-                    root.fail(now.what);
+                    root.fail(now.shows ? `${now.what} (${now.shows()})` : now.what);
                 }
             }
+        }
+    }
+
+    // The whole run ends here, short of the check's 150 s timeout, so a run slowed past it
+    // fails with its FAIL line, naming the step it was on, rather than killed with none. This
+    // counts from the file loading, the timeout from the shell starting, so the 40 s between
+    // are the shell's own start as well as the FAIL line's.
+    Timer {
+        running: true
+        interval: 110000
+        onTriggered: {
+            waiting.stop();
+            root.fail(`${root.steps[root.step]?.what ?? "its end"}, still waiting at 110 s`);
         }
     }
 

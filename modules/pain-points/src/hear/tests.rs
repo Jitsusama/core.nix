@@ -12,6 +12,7 @@ use std::io::Write;
 
 mod answered;
 mod apart;
+mod hubs;
 mod sends;
 mod standing;
 mod troubles;
@@ -52,7 +53,26 @@ impl Place {
             asks_end: Instant::now() + Duration::from_secs(3600),
             at: AT,
             offset_s: -5 * 3600,
+            hubs: Vec::new(),
+            hubless: None,
+            mesh: self.root.join("mesh"),
         }
+    }
+
+    /// The needs this place's listener kept as put to hubs, from every day.
+    fn needs(&self) -> Vec<serde_json::Value> {
+        let Ok(days) = fs::read_dir(self.root.join("mesh/mesh-workflow/needs")) else {
+            return Vec::new();
+        };
+        days.flatten()
+            .flat_map(|day| {
+                fs::read_to_string(day.path())
+                    .unwrap_or_default()
+                    .lines()
+                    .filter_map(|line| serde_json::from_str(line).ok())
+                    .collect::<Vec<_>>()
+            })
+            .collect()
     }
 
     fn routes(&self) {

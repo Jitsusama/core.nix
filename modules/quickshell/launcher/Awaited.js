@@ -44,6 +44,15 @@ function next(now, waitingOn) {
     return { due: timed, waited: now.typing ? null : now.held };
 }
 
+// What a held key whose bound ran out leaves late, so each source still to
+// answer says how late it came: what was typed, those sources and when
+// they were asked. Null where the launcher closed first, since closing
+// doesn't stop the wait and nobody waits on answers once it's shut, so
+// none is late and no key was listed without them (Launcher.qml).
+function lateOf(waited, open) {
+    return open ? { text: waited.text, sources: waited.sources, began: waited.began } : null;
+}
+
 // How long a held key waited for its answers, from when they were asked
 // (`held.began`) to `now`, and how much of that came past its `bound`
 // when the bound's timer ended it (`timedOut`): a timer fires only once
