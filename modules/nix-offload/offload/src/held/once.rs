@@ -56,9 +56,9 @@ pub fn sending_once(
         .iter()
         // A store path's name is exact, so `.DRV` names no derivation.
         .filter(|path| {
-            !Path::new(path)
+            Path::new(path)
                 .extension()
-                .is_some_and(|extension| extension == "drv")
+                .is_none_or(|extension| extension != "drv")
         })
         .filter_map(|path| store_key(path))
         .collect();
