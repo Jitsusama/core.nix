@@ -195,7 +195,11 @@ Scope {
     function say(fact, was, raising) {
         const piece = fact.piece;
         const mark = fact.entry.mark;
-        const actions = piece.actions;
+        // An act only Joel may choose (`joelsOnly`, as Tokens' Pause) isn't offered: the
+        // notices daemon takes an action's invoke from any process of the account, so its
+        // choice can't be told from his click (round 000011 on #6796, F96). It stays on
+        // Now's own row, refused there to a walk.
+        const actions = piece.actions.filter(action => !action.joelsOnly);
         const asking = notice.createObject(root, {
             actions,
             mark,

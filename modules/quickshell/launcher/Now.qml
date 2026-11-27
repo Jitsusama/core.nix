@@ -3319,6 +3319,9 @@ Provider {
             hue: Marks.tone(piece),
             plain: !holding && actions.length === 0,
             stays: !holding && actions.length > 0 && actions[0].stays,
+            // Its Return runs its first act, so it's Joel's own as that act is, whatever order
+            // its source lays them in (round 000011 on #6796, F98 and F107).
+            joelsOnly: !holding && actions.length > 0 && actions[0].joelsOnly,
             // Return's act leads the right arrow, then the rest, so every
             // act is there; a piece standing for things holds them instead,
             // and with no act of its own, Return steps in to them too.
