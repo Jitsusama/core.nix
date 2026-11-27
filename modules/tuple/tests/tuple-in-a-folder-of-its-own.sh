@@ -14,6 +14,9 @@ here=$(mktemp -d)
 export HOME=$here XDG_DATA_HOME=$here/data XDG_RUNTIME_DIR=$here/run \
   XDG_CONFIG_HOME=$here/.config XDG_CACHE_HOME=$here/.cache \
   XDG_STATE_HOME=$here/.local/state
+# A person's session bus and displays would lead a tuple run by hand to
+# their desktop, which a build never has.
+unset DBUS_SESSION_BUS_ADDRESS DISPLAY WAYLAND_DISPLAY
 # Made before the trap too, so the stop never meets a runtime folder that
 # isn't there and falls back to another.
 if ! mkdir -m 700 "$here/run"; then
@@ -22,19 +25,23 @@ if ! mkdir -m 700 "$here/run"; then
 fi
 
 # A trap's own failure would end a passing run as failed, so the stop and
-# the removal each say what went wrong instead. A stop cut off keeps the
-# folder, since its daemon finds it there, and says how to stop it by hand;
-# in a build, the build's end takes the daemon with it.
+# the removal each say what went wrong instead, and even saying it, to a
+# closed stderr, can't fail the trap under the script's set -e. A stop cut
+# off keeps the folder, since its daemon finds it there, and gives the
+# lines that stop it by hand, quoted to paste; in a build, the build's end
+# takes the daemon with it.
 leave() {
   local stopped=0
   timeout -k 5 10 tuple stop > /dev/null 2>&1 || stopped=$?
   if [[ $stopped -eq 124 || $stopped -eq 137 ]]; then
-    echo "tuple stop was cut off (status $stopped), so $here is kept for its daemon;" \
-      "stop it with HOME=$here XDG_RUNTIME_DIR=$here/run XDG_DATA_HOME=$here/data" \
-      "tuple stop, then remove $here" >&2
+    printf '%s\n  %s\n  %s\n' \
+      "tuple stop was cut off (status $stopped), so its folder is kept for its daemon:" \
+      "$(printf 'HOME=%q XDG_RUNTIME_DIR=%q XDG_DATA_HOME=%q tuple stop' \
+        "$here" "$here/run" "$here/data")" \
+      "$(printf 'rm -rf -- %q' "$here")" >&2 || :
     return
   fi
-  rm -rf "$here" || echo "couldn't remove $here" >&2
+  rm -rf "$here" || echo "couldn't remove $here" >&2 || :
 }
 trap leave EXIT
 cd "$here" || exit

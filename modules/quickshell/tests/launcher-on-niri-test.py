@@ -2772,11 +2772,9 @@ def test_emoji_makes_a_row_only_for_an_emoji_it_shows(shell: Shell) -> None:
     assert moved - made <= launcher_on_niri.LATELY_KEPT, (
         f"moving to the next group made {moved - made} rows: {shell.made_lately('emoji')}"
     )
-    made_moving = shell.made_since("emoji", before + made)
-    emoji = [key for key in made_moving if not key.startswith(EMOJI_GROUP_KEY)]
-    assert not emoji, (
-        f"moving to the next group made {len(emoji)} of its emoji: {shell.made_lately('emoji')}"
-    )
+    made_moving = shell.rows_made_since("emoji", before + made)
+    emoji = [row for row in made_moving if not row.startswith(EMOJI_GROUP_KEY)]
+    assert not emoji, f"moving to the next group made {len(emoji)} of its emoji: {', '.join(emoji)}"
     shell.send_chars("k")
     shell.launcher_until(lambda shown: (shown.get("selected") or {}).get("name") == FIRST_GROUP)
     shell.step_in()
@@ -2823,6 +2821,10 @@ def test_emoji_finds_a_whole_word_typed_in_it(shell: Shell) -> None:
 # found (Launcher.qml's narrowed, which showing() gives as `found`).
 FOUND_OF = re.compile(r"(\d+) of (\d+) found")
 
+# The most emoji the history's answer holds where the ask names no most, as Emoji's doesn't
+# (clipboard/src/search.rs's FOUND).
+EMOJI_ANSWERED_MOST = 100
+
 
 def test_emoji_says_how_many_it_found_past_those_it_answers(shell: Shell) -> None:
     """A find in Emoji the history answers with its first hundred says how many it found.
@@ -2839,27 +2841,39 @@ def test_emoji_says_how_many_it_found_past_those_it_answers(shell: Shell) -> Non
     # Emoji lists nothing for an f until the history answers, which type_in takes as settled.
     shell.launcher_until(lambda shown: shown["count"] > 0)
     shell.normal()
-    # The head judged is the one the wait passed on, as a later showing() could come after the
-    # answer was let go and say nothing.
-    heads: list[Json] = []
-
-    def says_found(shown: Json) -> bool:
-        heads.append(shown)
-        return cast("str", shown["found"]) != ""
-
-    shell.launcher_until(says_found)
-    said = cast("str", heads[-1]["found"])
-    answer = json.loads(shell.searching("emoji"))
+    # The head and the history's answer are judged as they stood together: the answer read
+    # between two heads saying the same, so one let go as a row moves (ReadyRows' letFoundGo),
+    # and asked again, is read again rather than judged against a head drawn from another.
+    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+    while True:
+        said = cast("str", shell.showing()["found"])
+        answer = json.loads(shell.searching("emoji"))
+        again = cast("str", shell.showing()["found"])
+        standing = answer is not None and answer["foundWords"] == "f"
+        if said != "" and standing and again == said:
+            break
+        assert time.monotonic() < deadline, (
+            f"Emoji's head and the history's answer to f never stood together: the head said"
+            f" {said!r} then {again!r}, Emoji's search {answer}"
+        )
+        time.sleep(launcher_on_niri.POLL)
     shell.close_launcher()
+    # An f finds past a hundred, so the answer holds the history's first hundred; one holding
+    # fewer, none among them, is the history's to answer for, said before the head is read.
+    assert answer["keysHeld"] == EMOJI_ANSWERED_MOST, (
+        f"the history should give its first {EMOJI_ANSWERED_MOST} for f: {answer}"
+    )
     counted = FOUND_OF.fullmatch(said)
     assert counted, f"Emoji's head never said how many it found past those it shows: {said}"
     shown, found = (int(part) for part in counted.groups())
     # N and M are both counted from the launcher's own list, so each is held to the history's
-    # answer instead: M past N is what it found past the keys it gave, every one made a row,
-    # and M past what it found is Emoji's groups matching, no more than it has.
-    past, groups = answer["all"] - answer["held"], found - answer["all"]
+    # answer instead: M past N is what it found past the keys it gave, every one made a row.
+    # M past what it found is what the launcher listed beside the answer: Emoji's words name no
+    # parts and the history finds no group (clipboard/src/search.rs keeps only emoji), so only a
+    # row acted on and still offered (Launcher.qml's stillActed), at most one.
+    past, beside = answer["foundAll"] - answer["keysHeld"], found - answer["foundAll"]
     assert found - shown == past, f"the head said {said}, the history {answer}"
-    assert 0 <= groups <= EMOJI_MADE_MOST, f"the head said {said}, the history {answer}"
+    assert 0 <= beside <= 1, f"the head listed {beside} beside the answer: {said}, {answer}"
 
 
 def test_a_cheap_drawer_comes_in_its_keys_own_frame(shell: Shell) -> None:

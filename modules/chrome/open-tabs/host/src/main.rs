@@ -526,7 +526,7 @@ mod tests {
     #[test]
     fn a_length_past_what_chrome_sends_is_refused() {
         let mut input: &[u8] = &(LONGEST + 1).to_ne_bytes();
-        assert!(read_message(&mut input).is_err());
+        read_message(&mut input).expect_err("a length past what Chrome sends was read");
     }
 
     #[test]

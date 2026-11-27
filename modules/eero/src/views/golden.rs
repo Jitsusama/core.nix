@@ -570,7 +570,11 @@ fn the_profile_and_event_slices_hold_them_whole() {
         profile["profile"],
         serde_json::to_value(&model.profiles[1]).unwrap()
     );
-    assert!(profile["devices"].is_array());
+    assert!(
+        profile["devices"].is_array(),
+        "a profile's slice should list its devices, not {}",
+        profile["devices"]
+    );
     let events = slice(&View::Events);
     assert_eq!(
         events["events"],
