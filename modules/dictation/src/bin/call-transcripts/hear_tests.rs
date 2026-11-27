@@ -703,9 +703,10 @@ fn a_call_none_of_which_was_heard_has_a_file_saying_so() {
 }
 
 #[test]
-fn a_call_whose_file_says_part_wasnt_heard_isnt_told_again_after_a_restart() {
-    // Its file says so, and the notice raised before the restart stays
-    // up, so a restart mid-call doesn't raise a second for the same call.
+fn a_call_taken_up_again_is_told_anew_after_a_restart_or_a_rejoin() {
+    // Nothing says the notice raised before is still up: it may have
+    // been put away, or gone with the daemon before it was shown. So a
+    // second notice is raised, rather than none at all.
     let folder = tempfile::tempdir().unwrap();
     let book = Shared::new(Book::default());
     book.lock().put(Record {
@@ -721,14 +722,13 @@ fn a_call_whose_file_says_part_wasnt_heard_isnt_told_again_after_a_restart() {
     let mut told = HashSet::new();
     let mut writing = taken_up(&mut Vec::new(), &book, "call:e1", "Joel", &mut told);
     assert!(
-        lose("call:e1", SECOND, &mut writing, &mut told).is_none(),
-        "a call was told again after a restart that its file already said"
+        lose("call:e1", SECOND, &mut writing, &mut told).is_some(),
+        "a call its file said wasn't heard in part wasn't told anew after a restart"
     );
-    let mut writing = taken_up(&mut Vec::new(), &book, "call:e2", "Joel", &mut told);
-    let other = lose("call:e2", 0, &mut writing, &mut told);
-    assert!(other.is_some(), "a call never told was taken for one told");
-    // A call this run held was told until it ended, so a rejoin is a
-    // stretch of its own, told anew.
+    assert!(
+        lose("call:e1", 2 * SECOND, &mut writing, &mut told).is_none(),
+        "a call was told twice in one sitting"
+    );
     let held = Writing {
         unheard: Some(unheard::and(None, 0)),
         ..Writing::default()

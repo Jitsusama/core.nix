@@ -150,5 +150,14 @@ mod tests {
             let said = format!("{OPENS}a stretch of it, at {at}.");
             assert_eq!(Unheard::read(&said), None, "{said}");
         }
+        // Nor does a count no note is written with read as one.
+        for stretches in ["0", "1"] {
+            let said = format!("{OPENS}{stretches} stretches of it, the first at 0:02.");
+            assert_eq!(Unheard::read(&said), None, "{said}");
+        }
+        // And a count as high as one can be stays there with one more.
+        let most = format!("{OPENS}{} stretches of it, the first at 0:02.", usize::MAX);
+        let read = Unheard::read(&most);
+        assert_eq!(and(read, 0).stretches, usize::MAX, "{most}");
     }
 }

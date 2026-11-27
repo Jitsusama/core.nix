@@ -171,18 +171,28 @@ mod tests {
     fn a_call_mostly_not_heard_says_so_in_place_of_a_summary() {
         assert_eq!(in_place_of_a_summary(SHORT), None);
         assert_eq!(in_place_of_a_summary(HELLOS), Some(TOO_LITTLE));
-        let note = crate::unheard::and(None, 0).note();
-        let unheard = format!("{note}\n\n{HELLOS}");
+        let part = crate::unheard::and(None, 0).note();
+        // As a file has it: the note opens the Transcript section.
+        let opened = format!("# Transcript\n\n{part}\n\n");
+        let unheard = HELLOS.replacen("# Transcript\n\n", &opened, 1);
         assert_eq!(
             in_place_of_a_summary(&unheard),
             Some(TOO_LITTLE_HEARD),
             "a call the speech model failed on read as one where little was said"
         );
-        let none = crate::unheard::and(None, 0).note_with_none_heard();
+        let nothing = crate::unheard::and(None, 0).note_with_none_heard();
         assert_eq!(
-            in_place_of_a_summary(&format!("# Transcript\n\n{none}")),
+            in_place_of_a_summary(&format!("# Transcript\n\n{nothing}")),
             Some(NOTHING_HEARD),
             "a call none of which was heard read as one where part was"
+        );
+        // No line may come of takes heard as well as of takes failed on,
+        // so it says no more than that some were failed on.
+        assert_eq!(
+            NOTHING_HEARD,
+            "Nothing was heard to sum up: no words of the call were heard, and the speech \
+             model failed on some of it.",
+            "a call with no line was said to be failed on whole"
         );
     }
 }
