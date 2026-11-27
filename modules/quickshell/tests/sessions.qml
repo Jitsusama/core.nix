@@ -2613,6 +2613,15 @@ ShellRoot {
         Sessions.forgetAsk(unansweredNamed);
         expect("a viewer no press held, its kitty quiet moments ago, is asked for by no press",
             pressedAfterWalk === "  x0 / UNANSWERED stillComing x1 1", pressedAfterWalk);
+        // Its window coming tells nobody, as nobody was told it may yet come.
+        Sessions.viewWith(unansweredRow.attach, unansweredNamed, null, "walked");
+        Sessions.untaken(unansweredNamed, String(Date.now()), "unanswered");
+        untell();
+        Sessions.windowHeard({ id: 133, pid: 4242, opened: unansweredNamed });
+        const walkCame = heard();
+        Sessions.forgetAsk(unansweredNamed);
+        expect("a window no press waited on, its kitty quiet, tells nobody as it comes",
+            walkCame === "  x0", walkCame);
         // Held only for the kitty that didn't answer: one whose pid the file
         // says now, its word it started not yet heard, is asked afresh, as
         // is any where no kitty's pid was known at the give-up.
