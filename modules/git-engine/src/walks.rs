@@ -203,4 +203,32 @@ mod tests {
         assert_eq!(second.newest_level(local), Some((newer, 7)));
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    // Held open for reading, the FIFO lets the count's writer open it
+    // without waiting, so only the check that it's a file keeps the count
+    // from going to whoever reads it.
+    #[test]
+    fn a_count_isnt_written_to_a_fifo_another_reader_holds_open() {
+        use std::io::Read;
+        let dir = crate::pack_index::tests::unique("walks-fifo");
+        let file = dir.join("git-engine/walks");
+        crate::regular_file::tests::fifo(&file);
+        let mut reader = OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NONBLOCK)
+            .open(&file)
+            .expect("a FIFO opens for reading without waiting");
+        let mut walks = Walks::new(Some(dir.clone()), Path::new("/one/.git"));
+        walks.put(Oid([1; 20]), Oid([2; 20]), (1, 2));
+        // Whatever was written is kept, even where the read then finds the
+        // FIFO empty and would wait.
+        let mut heard = Vec::new();
+        let _ = reader.read_to_end(&mut heard);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(
+            String::from_utf8_lossy(&heard),
+            "",
+            "a count was written to a FIFO rather than kept for a file"
+        );
+    }
 }

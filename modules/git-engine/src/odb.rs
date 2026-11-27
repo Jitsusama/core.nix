@@ -62,6 +62,20 @@ struct Pack {
     index: Option<Index>,
 }
 
+impl Pack {
+    /// The pack beside the index `name` in `pack_dir`, or None where either
+    /// won't open, the pack opened only once its index has and only where
+    /// it's a file, so a FIFO in its place holds nothing up.
+    fn indexed(pack_dir: &Path, name: &str) -> Option<Pack> {
+        let index = Index::open(&pack_dir.join(name)).ok()?;
+        let data = crate::regular_file::present(&pack_dir.join(name.replace(".idx", ".pack")));
+        Some(Pack {
+            data: data.ok()?,
+            index: Some(index),
+        })
+    }
+}
+
 /// One object store: its packs and the folder of loose objects.
 struct Store {
     dir: PathBuf,
@@ -89,8 +103,9 @@ impl Store {
         if let Some(midx) = &midx {
             for name in &midx.packs {
                 let data = pack_dir.join(name.replace(".idx", ".pack"));
-                // A pack the index names but that's gone ends the index's use.
-                match File::open(&data) {
+                // A pack the index names but that's gone, or isn't a file,
+                // ends the index's use.
+                match crate::regular_file::present(&data) {
                     Ok(data) => packs.push(Pack { data, index: None }),
                     Err(_) => {
                         return Store::without_midx(dir);
@@ -111,13 +126,9 @@ impl Store {
             .unwrap_or_default();
         names.sort();
         for name in names {
-            let index = Index::open(&pack_dir.join(&name));
-            let data = File::open(pack_dir.join(name.replace(".idx", ".pack")));
-            if let (Ok(index), Ok(data)) = (index, data) {
-                packs.push(Pack {
-                    data,
-                    index: Some(index),
-                });
+            // The pack is opened only once its index has, and only as a file.
+            if let Some(pack) = Pack::indexed(&pack_dir, &name) {
+                packs.push(pack);
             }
         }
         Store {
@@ -147,14 +158,7 @@ impl Store {
         names.sort();
         let packs = names
             .into_iter()
-            .filter_map(|name| {
-                let index = Index::open(&pack_dir.join(&name)).ok()?;
-                let data = File::open(pack_dir.join(name.replace(".idx", ".pack"))).ok()?;
-                Some(Pack {
-                    data,
-                    index: Some(index),
-                })
-            })
+            .filter_map(|name| Pack::indexed(&pack_dir, &name))
             .collect();
         Store {
             dir: dir.to_path_buf(),
@@ -600,7 +604,10 @@ impl Odb {
         let mut at = 0;
         while at < dirs.len() && dirs.len() < 16 {
             let alternates = dirs[at].join("info/alternates");
-            if let Ok(text) = std::fs::read_to_string(&alternates) {
+            // Read only as a file, as every other file of git's is.
+            if let Ok(Some(bytes)) = crate::regular_file::read(&alternates)
+                && let Ok(text) = String::from_utf8(bytes)
+            {
                 for line in text
                     .lines()
                     .map(str::trim)

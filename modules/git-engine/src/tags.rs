@@ -112,7 +112,8 @@ impl Tags {
 /// whole: what it points at is asked only its kind, as git's `peel_object`
 /// asks, so a tag on a large blob costs the blob's headers.
 fn peel(odb: &mut Odb, mut oid: Oid) -> Peeled {
-    let settled = |oid, error: std::io::Error| {
+    // Only data that won't read settles; anything else is tried again.
+    let stopped = |oid, error: std::io::Error| {
         if error.kind() == std::io::ErrorKind::InvalidData {
             Peeled::Corrupt(oid)
         } else {
@@ -124,12 +125,12 @@ fn peel(odb: &mut Odb, mut oid: Oid) -> Peeled {
             Ok(Some(Kind::Tag)) => {}
             Ok(Some(_)) => break,
             Ok(None) => return Peeled::Missing(oid),
-            Err(error) => return settled(oid, error),
+            Err(error) => return stopped(oid, error),
         }
         let object = match odb.read(&oid) {
             Ok(Some(object)) => object,
             Ok(None) => return Peeled::Missing(oid),
-            Err(error) => return settled(oid, error),
+            Err(error) => return stopped(oid, error),
         };
         if object.kind != Kind::Tag {
             break;

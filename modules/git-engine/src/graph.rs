@@ -525,4 +525,35 @@ mod tests {
         );
         assert_eq!(known.bytes(), 0);
     }
+
+    // A single commit-graph a FIFO, and a chain whose layer is one, each
+    // opened apart, since a reader waiting on one would wait for ever.
+    #[test]
+    fn a_graph_or_a_layer_that_isnt_a_file_is_passed_over_without_waiting() {
+        use crate::regular_file::tests::{apart, fifo};
+        let single = crate::pack_index::tests::unique("fifo-graph");
+        fifo(&single.join("info/commit-graph"));
+        let chained = crate::pack_index::tests::unique("fifo-graph-chain");
+        let layer = "3333333333333333333333333333333333333333";
+        fifo(&chained.join(format!("info/commit-graphs/graph-{layer}.graph")));
+        std::fs::write(
+            chained.join("info/commit-graphs/commit-graph-chain"),
+            format!("{layer}\n"),
+        )
+        .expect("the temp folder takes a file");
+        let (one, chain) = (single.clone(), chained.clone());
+        let layers = apart(move || {
+            (
+                Graph::open(&one).layers.len(),
+                Graph::open(&chain).layers.len(),
+            )
+        });
+        let _ = std::fs::remove_dir_all(&single);
+        let _ = std::fs::remove_dir_all(&chained);
+        assert_eq!(
+            layers.expect("a commit-graph that isn't a file was still waited on after 30 s"),
+            (0, 0),
+            "a commit-graph, or a chain's layer, that isn't a file was read as a layer"
+        );
+    }
 }
