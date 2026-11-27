@@ -1,10 +1,10 @@
-//! A red candidate whose every failed check is no rider's lands rather than
-//! splits. On 26 November main's own formatting red (Presented.js, past
-//! biome's 500 lines after #6727) split candidate a8f33ede, and the train
-//! was stopped by hand so it wouldn't send riders back to run alone for it;
-//! on 26 November too #6524 touched no margin-cat file and its gate failed
-//! the-margin-cat-follows-the-keys-on-niri, a launcher check on a live
-//! compositor that had failed now and then on main.
+//! A red candidate whose every failed check is no rider's lands rather
+//! than splits. On 26 November main's own formatting red (Presented.js,
+//! past biome's 500 lines after #6727) split candidate a8f33ede, and the
+//! train was stopped by hand so it wouldn't send riders back to run alone
+//! for it; on 26 November too #6524 touched no margin-cat file and its gate
+//! failed the-margin-cat-follows-the-keys-on-niri, a launcher check on a
+//! live compositor that had failed now and then on main.
 //!
 //! Each check the gate's words say a builder failed is built once more, at
 //! the commit the candidate was cut on, on a lent builder, so like is
@@ -13,127 +13,57 @@
 //! fails there too, its builder saying nothing at the candidate it didn't
 //! say there, is main's own red, unless the riders moved what a rule runs
 //! (`moves_a_rule`), since the candidate builds its own copy of the rule.
-//! Only those: a check that stops at its first error says the same at both
-//! whatever the riders broke after it, so a rider's break would land hidden
-//! behind main's. So `formatting`, which began this, isn't one: treefmt
-//! stops at the first file no formatter reads, zsh-parses at the first file
-//! it can't parse, and the check diffs what the formatters rewrote only
-//! once all of them pass, so main's formatting red still splits. One that
-//! passes there is built once more at the candidate itself: passing at the
-//! same commit it failed at, it is a flake, whatever kind of check it is,
-//! and a second red there is the riders'. Which files a check reads isn't
-//! asked: the train's gate builds no VM tests, which are all that `owners`
-//! reads, and it counts a role's test against the role's folder alone, on
-//! purpose, so it can't say a check is untouched.
+//! Only those: a check that stops at its
+//! first error says the same at both whatever the riders broke after it,
+//! so a rider's break would land hidden behind main's. So `formatting`,
+//! which began this, isn't one: treefmt stops at the first file no
+//! formatter reads, zsh-parses at the first file it can't parse, and the
+//! check diffs what the formatters rewrote only once all of them pass, so
+//! main's formatting red still splits. One that passes
+//! there is built once more at the candidate itself: passing
+//! at the same commit it failed at, it is a flake, whatever kind of check
+//! it is, and a second red there is the riders'. Which files a check reads
+//! isn't asked: the train's gate builds no VM tests, which are all that
+//! `owners` reads, and it counts a role's test against the role's folder
+//! alone, on purpose, so it can't say a check is untouched.
 //!
-//! A red the gate didn't build whole, a part no builder took beside it, is
-//! never excused, nor one whose words say an error nix or changed-checks
+//! A red the gate didn't build whole, a part no builder took beside it,
+//! is never excused, nor one whose words say an error nix or changed-checks
 //! didn't explain as a failed build. Before one lands, every check the gate
 //! built but main's own reds is built once more together at the candidate,
 //! so each is known built: a nix killed mid-run says nothing of the checks
 //! it never reached, and a failed derivation named like a check may have
-//! been another's; the VM tests changed-checks lists but never builds for
-//! the gate are left to the net, as ever. Nor is a red excused whose gate
-//! ran again on its own base, whose words name a check with anything but
-//! ASCII letters, digits, `-`, `_` and `'`, which could reach Nix as
-//! another's path, as a dot does, or splice an expression into its
-//! evaluation, or whose rule crashed, which said nothing of what it never
-//! reached. A derivation that failed for another reason than its builder or
-//! a dependency, one no check names, a check that no longer evaluates, a
-//! check the riders added, whose flake is theirs to fix before it reaches
-//! main, a build no builder took, more failed checks than `MOST_REBUILT`, and a
-//! check excused as a flake twice already in the ride count as the riders',
-//! so the train splits on them as before, its log saying why of each, so a
-//! judging that couldn't finish reads apart from a rider's break. Each
-//! check excused is told to its owner as a finding naming the gate's log
-//! and the rebuild's, and each flake is a line in the train's log, naming
-//! the check and both commits, so flakes can be counted.
+//! been another's; the VM tests changed-checks lists but never builds
+//! for the gate are left to the net, as ever. Nor is a red excused whose
+//! gate ran again on its own base, whose words name a check with a dot,
+//! which Nix would read as another's path, or whose rule crashed, which
+//! said nothing of what it never reached. A derivation that failed for another reason than its
+//! builder or a dependency, one no check names, a check that no longer evaluates, a
+//! build no builder took, more failed checks than `MOST_REBUILT`, and a
+//! check excused as a flake twice already in the ride count as the
+//! riders', so the train splits on them as before. Each check excused is
+//! told to its owner as a finding, and each flake is a line in the train's
+//! log, naming the check and both commits, so flakes can be counted.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use serde_json::json;
+use serde_json::{Value, json};
 
-pub(super) use self::lent::{Lenders, Lent};
-use checks_said::{added, built, held_at, quarantined};
-use owner::{MOST_OWNER_MERGES, owner_in};
-
-use super::gated::{CHANGED_FAILED, Gated, RUNS_AGAIN, gated};
+use super::gated::{Gated, RUNS_AGAIN, gated, words_of};
 use crate::state::{State, now, short};
 
-/// Whose a failed check's red is. Only a flake's and main's land; each
-/// other is taken as the riders', but says why, so a red judging couldn't
-/// finish reads apart from one a rider broke.
+/// Whose a failed check's red is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Blame {
-    /// It passed at the base and failed again at the candidate, or fails
-    /// at the base otherwise than at the candidate: the riders broke it.
+    /// The riders broke it, so the train splits as before.
     Riders,
-    /// It fails at the base too, but may stop at its first error, so a
-    /// rider's break could hide behind main's red.
-    Masked,
-    /// It fails at the base too, but the riders moved what a rule runs,
-    /// so their copy of the rule may print main's lines over a break.
-    RuleMoved,
-    /// No builder took a build that would judge it.
-    Untaken,
-    /// The ride excused it as a flake `MOST_EXCUSED` times already.
-    Spent,
-    /// It wasn't built again, since a check before it was the riders'.
-    Unbuilt,
-    /// The riders added it, so its red, flake or break, is theirs.
-    Added,
     /// It passed at the base, and at the candidate when built again.
     Flaky,
     /// It fails at the base too, and only as it fails there.
     Main,
-}
-
-impl Blame {
-    /// Whether a red of this check lands rather than splits.
-    fn lands(self) -> bool {
-        matches!(self, Self::Flaky | Self::Main)
-    }
-}
-
-/// Why a red wasn't judged check by check, so it is the riders'.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Declined {
-    /// Nix said an error no failed build explains, or named no failed
-    /// derivation.
-    Unexplained,
-    /// More checks failed than `MOST_REBUILT`.
-    TooMany,
-    /// A check the riders touched no longer evaluates.
-    NoLongerEvaluates,
-    /// The gate ran again on its own base, or its words say it did.
-    RanAgain,
-    /// changed-checks didn't say its builds ended with a failed check.
-    NoVerdict,
-    /// The gate built a check named with more than a plain name.
-    NotPlain,
-    /// A failed derivation is no check the gate built.
-    Unplaced,
-    /// The checks the gate built didn't all build again together.
-    WholeRed,
-}
-
-impl Declined {
-    /// How the train says why it declined.
-    fn said(self) -> &'static str {
-        match self {
-            Self::Unexplained => "nix said an error no failed build explains",
-            Self::TooMany => "more checks failed than the train builds again",
-            Self::NoLongerEvaluates => "a check the change touched no longer evaluates",
-            Self::RanAgain => "its gate's words say it ran again on its own base",
-            Self::NoVerdict => "changed-checks didn't say a check it built failed",
-            Self::NotPlain => "a check it built isn't plainly named",
-            Self::Unplaced => "a failed derivation is no check its gate built",
-            Self::WholeRed => "the checks its gate built didn't all build again",
-        }
-    }
 }
 
 /// How a red is judged: what each part asks of the world.
@@ -151,8 +81,6 @@ pub(super) struct Judging<'a> {
     pub excused_before: &'a dyn Fn(&str) -> usize,
     /// Whether the riders moved what a rule runs, as `moves_a_rule` says.
     pub rules_moved: bool,
-    /// The checks main's quarantine excuses whole at the base.
-    pub held: &'a BTreeSet<String>,
 }
 
 /// The names of the derivations whose builders failed, as the gate's
@@ -250,6 +178,24 @@ pub(super) fn moves_a_rule(files: Option<&[String]>) -> bool {
 fn runs_a_rule(file: &str) -> bool {
     file.starts_with("tests/rules/") || ["flake.nix", "flake.lock", "checks.nix"].contains(&file)
 }
+
+/// The checks the gate's `words` name as added or changed, which it built,
+/// a row each of changed-checks' table: its kind, then its name.
+pub(super) fn built(words: &str) -> Vec<String> {
+    words
+        .lines()
+        .filter_map(|line| {
+            let mut words = line.split_whitespace();
+            let kind = words.next()?;
+            let name = words.next()?;
+            matches!(kind, "added" | "changed").then(|| name.to_owned())
+        })
+        .collect()
+}
+
+/// What changed-checks says when the builds it ran ended and one failed:
+/// the one way it gives up for which each failure is a build's.
+const CHANGED_FAILED: &str = "\u{2715} a check the change touched failed";
 
 /// What changed-checks says when a check the riders touched no longer
 /// evaluates, which no derivation's failure names, so it is theirs.
@@ -384,87 +330,61 @@ pub(super) fn fails_as_at_base(words: &str, base: &str, derivation: &str) -> boo
 
 /// Whose the red of `check`, which `derivation` builds, is, when the
 /// candidate's gate said `words`: built again at the base, then, if it
-/// passes there, at the candidate. A check the ride can excuse no more
-/// is built at the base only where its red there could still be main's.
+/// passes there, at the candidate.
 fn blame(words: &str, check: &str, derivation: &str, judging: &mut Judging<'_>) -> Blame {
-    // No commit but the riders' holds a check they added, so none else can
-    // own its red, and a flake of it would reach main with them.
-    if added(words).contains(check) {
-        return Blame::Added;
-    }
-    let rule = REPORTS_EVERY_FAILURE.contains(&check);
-    let spent = (judging.excused_before)(check) >= MOST_EXCUSED;
-    if spent && !rule {
-        return Blame::Spent;
-    }
     let (at_base, base_words) = (judging.at_base)(check);
     match at_base {
-        Gated::Red if !rule => Blame::Masked,
-        Gated::Red if judging.rules_moved => Blame::RuleMoved,
-        Gated::Red if fails_as_at_base(words, &base_words, derivation) => Blame::Main,
-        Gated::Red => Blame::Riders,
-        Gated::Unsent => Blame::Untaken,
-        Gated::Passed if spent => Blame::Spent,
-        Gated::Passed => match (judging.again)(check) {
-            Gated::Passed => Blame::Flaky,
-            Gated::Red => Blame::Riders,
-            Gated::Unsent => Blame::Untaken,
-        },
+        Gated::Red
+            if REPORTS_EVERY_FAILURE.contains(&check)
+                && !judging.rules_moved
+                && fails_as_at_base(words, &base_words, derivation) =>
+        {
+            Blame::Main
+        }
+        Gated::Passed if (judging.excused_before)(check) < MOST_EXCUSED => {
+            if (judging.again)(check) == Gated::Passed {
+                Blame::Flaky
+            } else {
+                Blame::Riders
+            }
+        }
+        Gated::Red | Gated::Passed | Gated::Unsent => Blame::Riders,
     }
 }
 
 /// Each check the candidate failed, as its gate's whole `words` say, with
-/// whose red it is; or why it wasn't judged check by check, the words
-/// naming no failed check or one no check builds, so the red is the
-/// riders' as before. Once one is the riders', the red is, so those after
-/// it are counted theirs unbuilt.
-pub(super) fn judge(
-    words: &str,
-    judging: &mut Judging<'_>,
-) -> Result<Vec<(String, Blame)>, Declined> {
-    // It builds nothing then, so no failed build would say why.
-    if words.contains(NO_LONGER_EVALUATES) {
-        return Err(Declined::NoLongerEvaluates);
-    }
-    let quarantined = quarantined(words, judging.held);
-    let failed: Vec<String> = failed_derivations(words)
-        .map(|failed| {
-            failed
-                .into_iter()
-                .filter(|name| !quarantined.contains(name.strip_prefix(VM_RUN).unwrap_or(name)))
-                .collect()
-        })
-        .filter(|failed: &Vec<String>| !failed.is_empty())
-        .ok_or(Declined::Unexplained)?;
-    if failed.len() > MOST_REBUILT {
-        return Err(Declined::TooMany);
-    }
+/// whose red it is; none when the words name no failed check, or one no
+/// check builds, so the red is the riders' as before. Once one is the
+/// riders', the red is, so those after it are counted theirs unbuilt.
+pub(super) fn judge(words: &str, judging: &mut Judging<'_>) -> Option<Vec<(String, Blame)>> {
+    let failed = failed_derivations(words)?;
     // A gate that ran again on its own base said twice what it built,
     // and a rider's build may print the words that say so to cut its
     // own break out of what is judged; the train's gates never replay.
-    if words.contains(RUNS_AGAIN) {
-        return Err(Declined::RanAgain);
-    }
-    if !words.lines().any(|line| line == CHANGED_FAILED) {
-        return Err(Declined::NoVerdict);
+    if failed.is_empty()
+        || failed.len() > MOST_REBUILT
+        || words.contains(NO_LONGER_EVALUATES)
+        || words.contains(RUNS_AGAIN)
+        || !words.lines().any(|line| line == CHANGED_FAILED)
+    {
+        return None;
     }
     let gate_built = built(words);
-    // A name of more than ASCII letters, digits, `-`, `_` and `'` could
-    // reach Nix as another check's path, as a dot does, or as an expression.
+    // A check named with a dot would reach Nix as another check's path.
     if !gate_built.iter().all(|check| plainly_named(check)) {
-        return Err(Declined::NotPlain);
+        return None;
     }
-    let checks = checks_of(&failed, &gate_built, judging.named).ok_or(Declined::Unplaced)?;
+    let checks = checks_of(&failed, &gate_built, judging.named)?;
     let mut riders = false;
     let judged: Vec<(String, Blame)> = checks
         .into_iter()
         .zip(&failed)
         .map(|(check, derivation)| {
             if riders {
-                return (check, Blame::Unbuilt);
+                return (check, Blame::Riders);
             }
             let blamed = blame(words, &check, derivation, judging);
-            riders = !blamed.lands();
+            riders = blamed == Blame::Riders;
             (check, blamed)
         })
         .collect();
@@ -476,21 +396,19 @@ pub(super) fn judge(
         };
         let rest: Vec<String> = gate_built
             .into_iter()
-            .filter(|check| {
-                !mains(check) && !check.starts_with(VM_TEST) && !quarantined.contains(check)
-            })
+            .filter(|check| !mains(check) && !check.starts_with(VM_TEST))
             .collect();
         if !rest.is_empty() && (judging.whole)(&rest) != Gated::Passed {
-            return Err(Declined::WholeRed);
+            return None;
         }
     }
-    Ok(judged)
+    Some(judged)
 }
 
 /// Whether a red whose failed checks are `judged` so is excused: some
-/// failed, and each of them is main's or a flake's.
+/// failed, and none of them is the riders'.
 pub(super) fn excused(judged: &[(String, Blame)]) -> bool {
-    !judged.is_empty() && judged.iter().all(|(_, blamed)| blamed.lands())
+    !judged.is_empty() && judged.iter().all(|(_, blamed)| *blamed != Blame::Riders)
 }
 
 /// The reds of each check a ride has excused as flakes.
@@ -517,95 +435,77 @@ impl Flakes {
     }
 }
 
-/// The candidate a red is judged for: where it was cut, and what its gate
-/// said.
-pub(super) struct Red<'a> {
+/// The candidate a red is judged for: where it was cut.
+struct Red<'a> {
     /// The train's checkout, at the candidate.
-    pub checkout: &'a Path,
+    checkout: &'a Path,
     /// The commit the candidate was cut on.
-    pub base: &'a str,
+    base: &'a str,
     /// The candidate.
-    pub candidate: &'a str,
-    /// Where the candidate's gate wrote its words.
-    pub log: &'a Path,
+    candidate: &'a str,
 }
 
-/// After the `red` candidate failed its gate, under the net's state
-/// folder `root`: whether every check it failed is main's or a flake's,
-/// each built again on a builder `lent`, so it lands rather than splits.
-/// The base is the repository at `url`'s; `flakes` counts this ride's.
-/// Each check excused is told to its owner as a finding.
+/// After the `candidate` cut on `base` in the train's `checkout` failed
+/// its gate, whose words are in `log`, under the net's state folder
+/// `root`: whether every check it failed is main's or a flake's, each
+/// built again on a lent builder, so it lands rather than splits. The
+/// base is the repository at `url`'s; `flakes` counts this ride's. Each
+/// check excused is told to its owner as a finding.
 pub(super) fn excuses(
     root: &Path,
     url: &str,
-    red: &Red<'_>,
+    checkout: &Path,
+    base: &str,
+    candidate: &str,
+    log: &Path,
     flakes: &mut Flakes,
-    lent: &mut dyn Lent,
 ) -> bool {
+    let red = &Red {
+        checkout,
+        base,
+        candidate,
+    };
     // All the gate said, not only what follows a replay, so a replay's
     // words, real or printed by a rider's build, are seen and refused.
-    let words = String::from_utf8_lossy(&fs::read(red.log).unwrap_or_default()).into_owned();
+    let words = String::from_utf8_lossy(&fs::read(log).unwrap_or_default()).into_owned();
     let flake = format!("github:{}/{}", super::slug_of(url), red.base);
-    // Each build asks the builders in turn, never two at once.
-    let lent = std::cell::RefCell::new(lent);
     let mut base_build = |check: &str| {
         let log = built_log(root, red.candidate, check, "at-base");
-        let (code, words) = lent
-            .borrow_mut()
-            .build(red.checkout, &flake, &log, &[check], red.base);
+        let (code, words) = build(red.checkout, &flake, &log, &[check], red.base);
         (at_base(code, &words), words)
     };
     let mut again = |check: &str| {
         let log = built_log(root, red.candidate, check, "again");
-        let (code, words) =
-            lent.borrow_mut()
-                .build(red.checkout, ".", &log, &[check], red.candidate);
+        let (code, words) = build(red.checkout, ".", &log, &[check], red.candidate);
         gated(code, &words)
     };
     let mut whole = |checks: &[String]| {
         let log = built_log(root, red.candidate, "every-check", "again");
         let checks: Vec<&str> = checks.iter().map(String::as_str).collect();
-        let (code, words) =
-            lent.borrow_mut()
-                .build(red.checkout, ".", &log, &checks, red.candidate);
+        let (code, words) = build(red.checkout, ".", &log, &checks, red.candidate);
         gated(code, &words)
     };
     let counted = |check: &str| flakes.of(check);
-    // Named at the candidate, whose build named the failed derivations,
-    // so a check the riders added doesn't sink the evaluation.
-    let named = |checks: &[String]| lent.borrow().named(red.checkout, ".", checks);
-    let held = held_at(red.checkout, red.base);
     let mut judging = Judging {
-        named: &named,
+        named: &|checks| named_at(red.checkout, &flake, checks),
         at_base: &mut base_build,
         again: &mut again,
         whole: &mut whole,
         excused_before: &counted,
         rules_moved: moves_a_rule(moved_between(red.checkout, red.base, red.candidate).as_deref()),
-        held: &held,
     };
-    let judged = judge(&words, &mut judging);
-    let shown = short(red.candidate);
-    let judged = match judged {
-        Ok(judged) => judged,
-        Err(declined) => {
-            println!(
-                "merge-net: the candidate {shown}'s red wasn't judged check by check: {}, \
-                 so it's its riders'",
-                declined.said()
-            );
-            return false;
-        }
+    let Some(judged) = judge(&words, &mut judging) else {
+        return false;
     };
     let said = judged
         .iter()
         .map(|(check, blamed)| format!("{check} {}", said(*blamed)))
         .collect::<Vec<_>>()
         .join("; ");
+    let shown = short(red.candidate);
     if excused(&judged) {
         // Only a red that lands is told: one that splits is its riders'.
         tell(root, url, red, &judged);
-        super::excused::keep(root, red, &judged);
         for check in flakes.count(&judged) {
             println!(
                 "merge-net: flake {check} at {} on {}: red, then passed when built again",
@@ -629,7 +529,8 @@ fn tell(root: &Path, url: &str, red: &Red<'_>, judged: &[(String, Blame)]) {
     let failed: Vec<String> = judged.iter().map(|(check, _)| check.clone()).collect();
     let state = State::at(root.to_path_buf());
     for (check, blamed) in judged {
-        let (kind, rebuilt) = match blamed {
+        let (kind, log) = match blamed {
+            Blame::Riders => continue,
             // Kinds of the train's own, since the watch takes a `flaky`
             // or `failed-before` finding at a commit as its own already
             // made there, and would then list nothing.
@@ -641,37 +542,14 @@ fn tell(root: &Path, url: &str, red: &Red<'_>, judged: &[(String, Blame)]) {
                 "train-failed-before",
                 built_log(root, red.candidate, check, "at-base"),
             ),
-            Blame::Riders
-            | Blame::Masked
-            | Blame::RuleMoved
-            | Blame::Untaken
-            | Blame::Spent
-            | Blame::Unbuilt
-            | Blame::Added => {
-                continue;
-            }
         };
-        // Told already at this base, by an earlier ride: its owner isn't
-        // looked for again, since each merge looked at costs evaluations.
-        if state.found(kind, check, red.base) {
-            continue;
-        }
-        let owner = owner_in(root, url, red, check, &failed);
-        if owner.is_none() {
-            println!(
-                "merge-net: no merge of the last {MOST_OWNER_MERGES} since the last passed head \
-                 owns {check}"
-            );
-        }
-        // The red's own words are the gate's: a flake's rebuild passed.
         let finding = json!({
             "kind": kind,
             "test": check,
             "commit": red.base,
             "candidate": red.candidate,
-            "owner_pr": owner,
-            "log": red.log.display().to_string(),
-            "rebuilt_log": rebuilt.display().to_string(),
+            "owner_pr": owner_in(root, url, red.base, check, &failed),
+            "log": log.display().to_string(),
             "at": now(),
         });
         if let Err(why) = state.find(&finding) {
@@ -680,24 +558,30 @@ fn tell(root: &Path, url: &str, red: &Red<'_>, judged: &[(String, Blame)]) {
     }
 }
 
+/// The PR that owns `check`, failed beside `failed`, as the net's watch
+/// reads an owner: the newest merge from the head it last passed to the
+/// candidate's `base` that moved the check, at the repository `url`, under
+/// the state folder `root`; none where it passed nothing yet, or finds no
+/// such merge.
+fn owner_in(root: &Path, url: &str, base: &str, check: &str, failed: &[String]) -> Option<u64> {
+    let passed = State::at(root.to_path_buf()).heads().0?;
+    let world = crate::world::Real {
+        state: root.to_path_buf(),
+        url: url.to_owned(),
+        system: crate::SYSTEM.to_owned(),
+        booted: 0,
+        branch: "main".to_owned(),
+        moving: std::sync::Mutex::new(()),
+        dropped: std::sync::Mutex::default(),
+        follow: None,
+    };
+    crate::watch::owner_of(&world, &passed, base, check, failed)
+}
+
 /// How the train says whose a red is.
 fn said(blamed: Blame) -> &'static str {
     match blamed {
         Blame::Riders => "is its riders'",
-        Blame::Masked => {
-            "fails at the base too, but may stop at its first error, so it's taken as its \
-             riders'"
-        }
-        Blame::RuleMoved => {
-            "fails at the base too, but its riders moved what the rules run, so it's taken as \
-             its riders'"
-        }
-        Blame::Untaken => "wasn't built again, no builder taking it, so it's taken as its riders'",
-        Blame::Spent => {
-            "was excused as a flake as often as a ride excuses one, so it's taken as its riders'"
-        }
-        Blame::Unbuilt => "wasn't built again, a check before it being its riders'",
-        Blame::Added => "was added by its riders, so it's theirs",
         Blame::Flaky => "passed at the base and when built again, so it's a flake",
         Blame::Main => "fails at the base too, and only as it fails there, so it's main's",
     }
@@ -730,10 +614,51 @@ fn built_log(root: &Path, candidate: &str, check: &str, how: &str) -> PathBuf {
     super::folder(root).join(format!("{candidate}-{check}-{how}.log"))
 }
 
+/// Build `checks` of `flake`, at `commit`, from the train's `checkout`, on
+/// a lent builder only, their words in `log`: its exit code and its words.
+fn build(
+    checkout: &Path,
+    flake: &str,
+    log: &Path,
+    checks: &[&str],
+    commit: &str,
+) -> (Option<i32>, String) {
+    let Ok(words) = fs::File::create(log) else {
+        return (None, String::new());
+    };
+    let Ok(errors) = words.try_clone() else {
+        return (None, String::new());
+    };
+    let named = match checks {
+        [one] => (*one).to_owned(),
+        many => format!("its {} checks", many.len()),
+    };
+    println!(
+        "merge-net: the train builds {named} again at {}, its words in {}",
+        short(commit),
+        log.display()
+    );
+    let ran = Command::new("nix-offload")
+        .args(["there", "--lent-only", "-L", flake])
+        .args(
+            checks
+                .iter()
+                .map(|check| format!("checks.{}.{check}", crate::SYSTEM)),
+        )
+        .current_dir(checkout)
+        .env_remove("SSH_AUTH_SOCK")
+        .stdout(words)
+        .stderr(errors)
+        .status();
+    let code = ran.ok().and_then(|status| status.code());
+    (code, words_of(log))
+}
+
 /// How a check built at the base ended, from its exit `code` and `words`:
 /// red only where a builder failed, since then main itself fails it. Any
 /// other failure, an evaluation's or a fetch's, says nothing of main's
-/// check, so it reads as unsent and the red stays the riders'.
+/// check, and a check the riders add isn't at the base to evaluate, so it
+/// reads as untaken and the red stays the riders'.
 pub(super) fn at_base(code: Option<i32>, words: &str) -> Gated {
     match code {
         Some(0) => Gated::Passed,
@@ -751,23 +676,36 @@ fn plainly_named(check: &str) -> bool {
             .all(|character| character.is_ascii_alphanumeric() || "-_'".contains(character))
 }
 
-#[path = "flaky/checks_said.rs"]
-mod checks_said;
-#[path = "flaky/lent.rs"]
-mod lent;
-#[path = "flaky/owner.rs"]
-mod owner;
+/// The check each derivation name of `checks` builds at `flake`, read on
+/// a lent builder; nothing where it can't be read, or a check isn't
+/// plainly named.
+fn named_at(checkout: &Path, flake: &str, checks: &[String]) -> BTreeMap<String, String> {
+    if !checks.iter().all(|check| plainly_named(check)) {
+        return BTreeMap::new();
+    }
+    let names: Vec<String> = checks
+        .iter()
+        .map(|check| Value::from(check.as_str()).to_string())
+        .collect();
+    let apply = format!(
+        "checks: builtins.listToAttrs (map (check: \
+         {{ name = checks.${{check}}.name; value = check; }}) [ {} ])",
+        names.join(" ")
+    );
+    let attribute = format!("{flake}#checks.{}", crate::SYSTEM);
+    Command::new("nix-offload")
+        .args(crate::world::eval_args(
+            &attribute,
+            &["--json", "--apply", &apply],
+        ))
+        .current_dir(checkout)
+        .output()
+        .ok()
+        .filter(|ran| ran.status.success())
+        .and_then(|ran| serde_json::from_slice::<BTreeMap<String, String>>(&ran.stdout).ok())
+        .unwrap_or_default()
+}
 
-#[cfg(test)]
-#[path = "flaky/owner_tests.rs"]
-mod owner_tests;
-
-#[cfg(test)]
-#[path = "flaky/checks_said_tests.rs"]
-mod checks_said_tests;
 #[cfg(test)]
 #[path = "flaky/tests.rs"]
 mod tests;
-#[cfg(test)]
-#[path = "flaky/whole_tests.rs"]
-mod whole_tests;
