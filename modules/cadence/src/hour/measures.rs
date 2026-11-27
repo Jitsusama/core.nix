@@ -1,6 +1,10 @@
 //! What the hour measures, each against its target, read from text the
 //! machine already keeps, so every rule here is tested without a machine.
 //! Every target is a most: lower is better for each of them.
+//!
+//! Long because the rules every measure shares (which leads the hour,
+//! which is held by a miss, how the asks list is read) sit with their
+//! cases, and splitting them would part each rule from its tests.
 
 use std::collections::{BTreeMap, BTreeSet};
 
