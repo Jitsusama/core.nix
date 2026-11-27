@@ -28,10 +28,12 @@ const HEX = 16;
  * in another order show), in a run after the first that ends nothing (so
  * a pattern rewriting only the first run shows), and against a name it
  * could pass for or by a turn pose as: a two-word act, and a one-word act,
- * whose choices are judged by what follows it and how long they run.
+ * whose choices are judged by what follows it and how long they draw, at
+ * the edge, where `c` weighing more than a small letter poses and one
+ * weighing as one doesn't, so each copy's weights are held to the other's.
  */
 function alike(form: Script, c: string): boolean {
-  const talking = [`Talk${c}to it`, `Talk${c}${c}to it`, `Talk ${c}${"x".repeat(19)}`].every(
+  const talking = [`Talk${c}to it`, `Talk${c}${c}to it`, `Talk ${c}${"x".repeat(18)}`].every(
     (name) => poses(name, ["Talk"]) === form.poses(name as never, ["Talk"] as never),
   );
   return (

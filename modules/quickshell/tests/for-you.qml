@@ -565,6 +565,26 @@ QtObject {
                 LookForm.poses("Answer \u201cyes\u201d", ["Answer"]),
                 LookForm.poses("Talk \u2014 later", ["Talk"])],
             [true, true, true, "", false, false, false, false, false]);
+        // Weighed only as far as its line, cut at a word, shows: the act and
+        // the word after it and an ellipsis, so a Title Case choice too long
+        // to draw whole still shows past its act and is offered. A capital
+        // weighs half again (13 X's pose, 12 don't), Ł's as A's, and W's
+        // kin Ŵ twice, as m does (10 pose); a tab or a wide space the read
+        // folds poses, and what draws as nothing weighs nothing, as the
+        // web's copy weighs it (#6562's ninth review).
+        expect("a one-word act's choice is weighed as far as its line is cut",
+            [LookForm.poses("Talk With Mom Tomorrow", ["Talk"]),
+                LookForm.poses("Answer With A Follow-Up", ["Answer"]),
+                LookForm.poses(`Talk ${"X".repeat(13)}`, ["Talk"]),
+                LookForm.poses(`Talk ${"X".repeat(12)}`, ["Talk"]),
+                LookForm.poses(`Talk ${"\u0141".repeat(13)}`, ["Talk"]),
+                LookForm.poses(`Talk ${"m".repeat(10)}`, ["Talk"]),
+                LookForm.poses(`Talk ${"x".repeat(19)}`, ["Talk"]),
+                LookForm.poses(`Talk ${"\u0174".repeat(19)}`, ["Talk"]),
+                LookForm.poses(`Talk x\t${"y".repeat(15)}`, ["Talk"]),
+                LookForm.poses(`Talk\u2003${"x".repeat(19)}`, ["Talk"]),
+                LookForm.poses(`Talk ${"x".repeat(18)}\udb40\udc01`, ["Talk"])],
+            [false, false, true, false, true, true, false, true, true, true, false]);
         // And a look's own act can't pass for a choice, nor a choice for it,
         // once either is cut short; a one-word choice its short act opens
         // with draws whole beside it, so both stay.
