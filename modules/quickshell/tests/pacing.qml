@@ -1126,6 +1126,8 @@ QtObject {
             Presented.keyShown("program:", false), "program");
         check(failures, "or one whose id was read as null",
             Presented.keyShown("program:null", false), "program");
+        check(failures, "or as undefined",
+            Presented.keyShown("program:undefined", false), "program");
         check(failures, "and a daemon's record keyed as a program is said by its kind alone",
             Presented.keyShown("row:program:Harbour", false), "program");
         check(failures, "a row named but with no key is said only as an answer with reports off",

@@ -177,8 +177,9 @@ in
   # With reports off, a lagging key's line says an arrow whole and a step by
   # its arrow and the launcher's own place it took, by key, as each of
   # keyTimed's callers in Launcher.qml says its key is, a key listed without
-  # an answer and the answer late count its letters, and a program's lagging drawer says its
-  # desktop entry's id where that's shaped as an app's, and program otherwise
+  # an answer and the answer late count its letters, and a program's lagging
+  # drawer says its desktop entry's id, never its name; pacing.qml holds the
+  # ids said as program
   # (modules/quickshell/tests/lagging-keys-on-niri-test.py).
   the-launcher-says-a-lagging-keys-kind-on-niri = launcherOnNiri {
     name = "the-launcher-says-a-lagging-keys-kind-on-niri";
