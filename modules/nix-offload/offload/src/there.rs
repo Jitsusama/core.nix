@@ -761,7 +761,8 @@ fn held_here(fetched: &[(String, String)], nix: &str) -> Vec<String> {
 }
 
 /// Sends `lent` the store paths the flake takes from this machine alone,
-/// when it takes any, its ssh given the keepalive `alive`.
+/// when it takes any, its ssh given the keepalive `alive`, within
+/// [`inputs_within`].
 fn inputs_up(
     inputs: &kept::Inputs,
     lent: &Builder,
@@ -782,7 +783,26 @@ fn inputs_up(
         inputs.sent.join(", "),
         lent.host
     );
-    sent_up(&inputs.sent, lent, nix, send_within(0), alive)
+    sent_up(
+        &inputs.sent,
+        lent,
+        nix,
+        inputs_within(&inputs.sent, nix),
+        alive,
+    )
+}
+
+/// How long the inputs `sent` may take to go up: [`send_within`] of what
+/// they and their references hold here, the most `nix copy` can send.
+/// Leased as a send of nothing, a source of a few gigabytes was stopped at
+/// 15 minutes however it was going, and the run it fed went nowhere. A
+/// closure this store can't read is leased for the least, as before.
+fn inputs_within(sent: &[String], nix: &str) -> std::time::Duration {
+    send_within(stored_size(
+        Command::new(nix)
+            .args(["path-info", "--recursive", "--json"])
+            .args(sent),
+    ))
 }
 
 /// What the builder's shell is sent to build `asked`: its command, and the
@@ -6602,6 +6622,35 @@ mod tests {
             args(&alone),
             Vec::<String>::new(),
             "as it is, with no systemd"
+        );
+    }
+
+    #[test]
+    fn a_runs_inputs_are_leased_for_all_they_hold_here_not_for_nothing() {
+        use std::os::unix::fs::PermissionsExt;
+        let folder = tempfile::tempdir().unwrap();
+        let nix = folder.path().join("nix");
+        let says = |printed: &str| {
+            fs::write(&nix, format!("#!/bin/sh\n{printed}\n")).unwrap();
+            fs::set_permissions(&nix, fs::Permissions::from_mode(0o755)).unwrap();
+            inputs_within(
+                &["/nix/store/aaaa-source".to_owned()],
+                &nix.to_string_lossy(),
+            )
+        };
+        // A 3 GB source with what it references goes at a megabyte a
+        // second, after the two minutes any send is given to start.
+        let held = r#"echo '{"/nix/store/aaaa-source": {"narSize": 2000000000},
+            "/nix/store/bbbb-dep": {"narSize": 1000000000}}'"#;
+        assert_eq!(
+            says(held),
+            Duration::from_secs(120 + 3000),
+            "the lease didn't count every path the copy can send"
+        );
+        assert_eq!(
+            says("exit 1"),
+            Duration::from_mins(15),
+            "a closure this store can't read wasn't leased for the least"
         );
     }
 
