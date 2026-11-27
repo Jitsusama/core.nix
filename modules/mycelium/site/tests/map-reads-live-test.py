@@ -2636,6 +2636,8 @@ def test_new_works_words_from_a_gone_cell_never_take_the_open_machine(
     expect(page.locator("#sprout-on-words"), "new words didn't take the open machine").to_have_text(
         "On kestrel"
     )
+    page.evaluate("window.talkedTo = null")
+    sent_as(page, "mended", "mycelium:sprout?words=mended&on=kestrel")
 
 
 def test_new_works_machine_that_leaves_while_the_line_is_open_is_let_go_at_return(
