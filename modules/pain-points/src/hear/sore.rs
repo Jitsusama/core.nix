@@ -846,8 +846,8 @@ mod tests {
             );
         }
         assert!(
-            kinds("the costs and shit... it wiped my branch!", AT, &[]).contains(&"swore"),
-            "a swear exclaimed after a run of stops went unheard"
+            kinds("add the costs... and shit!", AT, &[]).contains(&"swore"),
+            "a filler exclaimed in its own clause after a run of stops went unheard"
         );
     }
 
