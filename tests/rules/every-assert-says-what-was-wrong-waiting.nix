@@ -150,7 +150,7 @@
   "modules/hibernate/unlock/src/main.rs" = 7;
   "modules/hibernate/unlock/src/restored.rs" = 1;
   "modules/hibernate/unlock/src/zswap.rs" = 8;
-  "modules/lag-watch/src/kernel.rs" = 2;
+  "modules/lag-watch/src/kernel_tests.rs" = 2;
   "modules/lid/docked/src/main.rs" = 11;
   "modules/machine/tests/daemon.rs" = 1;
   "modules/mic-mute-light/mic-mute-light.rs" = 13;
