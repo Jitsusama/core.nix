@@ -78,6 +78,28 @@ it("an id too long to leave its name room is the label alone, clipped to the roo
   assert.equal(labels.get(long), "(SKIFF-OF-THE-NORTH-SHORE-AND-THE-BAY)");
 });
 
+it("a name keeps a place beside its id while eight of its characters fit, and no fewer", () => {
+  const name = "Rig the Skiff for the Whole of the Coming Season";
+  const pair = (ids: readonly string[]) =>
+    labelledApart(
+      ids.map((id, at) => ({ key: `orchestration.${id}`, name, carries: `Mend gauges ${at}` })),
+    );
+  // Each id is 29 characters, its hint 31, which leaves the name 8.
+  const fits = pair(["skiff-of-the-north-shore-ab-1", "skiff-of-the-north-shore-ab-2"]);
+  assert.equal(
+    fits.get("orchestration.skiff-of-the-north-shore-ab-1"),
+    "Rig t... (SKIFF-OF-THE-NORTH-SHORE-AB-1)",
+    "a name with eight characters of room lost its place beside its id",
+  );
+  // One character more leaves it 7, so the id is the label alone.
+  const over = pair(["skiff-of-the-north-shore-abc-1", "skiff-of-the-north-shore-abc-2"]);
+  assert.equal(
+    over.get("orchestration.skiff-of-the-north-shore-abc-1"),
+    "(SKIFF-OF-THE-NORTH-SHORE-ABC-1)",
+    "a name with seven characters of room kept a place beside its id",
+  );
+});
+
 it("two ids too long for the room that clip alike are numbered apart", () => {
   const name = "Rig the Skiff for the Season";
   const shore = "orchestration.skiff-of-the-north-shore-and-the-whole-bay";
