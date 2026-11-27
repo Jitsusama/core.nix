@@ -124,12 +124,18 @@ class Host:
 
     def reading(self, command: str) -> str:
         """Give what a command run as root printed, for a failure, or why it couldn't be read."""
+        # Its errors too, since a read that fails says why only there.
         try:
-            status, out = self.machine.execute(command, timeout=READING_SECONDS)
+            status, out = self.machine.execute(
+                f"{{ {command}; }} 2>&1",
+                timeout=READING_SECONDS,
+            )
         except Exception as error:  # noqa: BLE001 # A failure's read mustn't hide what failed.
             return f"nothing, as reading it failed: {error!r}"
         said = " | ".join(line for line in out.strip().splitlines() if line)
-        return said if status == 0 else f"nothing, as it exited {status}: {said!r}"
+        if status != 0:
+            return f"nothing, as it exited {status}: {said or 'saying nothing'}"
+        return said or "nothing at all"
 
     def standing(self) -> str:
         """Say how the unit stands, for a failure: its states, its result and its status line."""
@@ -138,6 +144,15 @@ class Host:
         fields = "ActiveState,SubState,Result,MainPID,StatusText"
         command = f"export XDG_RUNTIME_DIR=/run/user/1000; systemctl --user show -p {fields} {UNIT}"
         return self.reading(f"su - alice -c {shlex.quote(command)}")
+
+    def unit_journal(self) -> str:
+        """Give the command reading the unit's last journal lines this boot, for a failure."""
+        # The manager's lines about the unit and the host's own, each naming its process, so
+        # a host that never came back says why: it failed to start, or was started again.
+        return (
+            f"journalctl --no-pager -o short-precise -n {JOURNAL_LINES} -b"
+            f" _UID=1000 USER_UNIT={UNIT} + _UID=1000 _SYSTEMD_USER_UNIT={UNIT}"
+        )
 
     def waited(self, what: str, wait: Callable[[], object], journal: str = "") -> None:
         """Wait, and should it fail, say what the host never did and how it stands."""
@@ -160,6 +175,7 @@ class Host:
                 f" | grep -qxE {shlex.quote(HOLDING_BOTH)}",
                 timeout,
             ),
+            self.unit_journal(),
         )
 
     def until_started_again(self, killed: str) -> None:
@@ -172,6 +188,7 @@ class Host:
                 f"pid=$(systemctl --user show -p MainPID --value {UNIT});"
                 f' test "$pid" -ne 0 && test "$pid" -ne {killed}',
             ),
+            self.unit_journal(),
         )
         started = self.show("MainPID")
         self.waited(
@@ -180,7 +197,7 @@ class Host:
                 f"journalctl --no-pager _PID={started} | grep -qE {shlex.quote(HOLDING_BOTH)}",
                 timeout=COMING_BACK,
             ),
-            f"journalctl --no-pager -o cat -n {JOURNAL_LINES} _PID={started}",
+            f"journalctl --no-pager -o short-precise -n {JOURNAL_LINES} -b _PID={started}",
         )
 
     def until_said_holding_both(self) -> None:
@@ -194,8 +211,7 @@ class Host:
                 f" | grep -qE {shlex.quote(HOLDING_BOTH)}",
                 timeout=COMING_BACK,
             ),
-            f"journalctl --no-pager -o cat -n {JOURNAL_LINES} -b _UID=1000"
-            f" _SYSTEMD_USER_UNIT={UNIT}",
+            self.unit_journal(),
         )
 
     def record(self, name: str) -> bytes:
