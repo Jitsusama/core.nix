@@ -125,3 +125,7 @@ fn run_of(cut: &Cut, words: &HashMap<usize, Vec<Word>>) -> Run {
         by: cut.by(),
     }
 }
+
+#[cfg(test)]
+#[path = "journal_tests.rs"]
+mod tests;
