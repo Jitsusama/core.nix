@@ -2169,7 +2169,10 @@ pub(crate) mod tests {
         let (start, point) = (Instant::now(), "6c:ae:f6:ba:85:86");
         let mut chooser = Chooser::default();
         assert!(chooser.young(start, point), "a first span wasn't young");
-        assert!(!chooser.young(start + SPAN, point), "a whole span on was still young");
+        assert!(
+            !chooser.young(start + SPAN, point),
+            "a whole span on was still young"
+        );
 
         chooser.unjoined();
 
