@@ -157,17 +157,19 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
         measures.push(spent_beside_landed(&state_home, now));
         measures.extend(spend_watch_measures(now));
     }
-    // Every measure read, each is held to its line on the definition of
-    // good, and one with none, or another target, is counted.
-    // The loop itself, judged by its red lines falling against a week back,
-    // and held to its line on the page as every other measure is.
-    let this_hour = falling::hour(&measures, now);
-    measures.push(falling::falling(&kept.red, this_hour));
-    measures.push(good::undefined(&measures));
     // Once every measure is read, a miss whose check names one stays open
     // until it judges, so Joel isn't told it's fixed before it is; one
     // closed before last hour stays so.
     measures::held(&misses, &mut measures, &kept.open);
+    // The loop itself, judged by its red lines falling against a week back,
+    // counted once the misses are held, so it counts the lines the card
+    // shows; only the definition's own count, which must hold this one to
+    // its line too, comes after it.
+    let this_hour = falling::hour(&measures, now);
+    measures.push(falling::falling(&kept.red, this_hour));
+    // Every measure read, each is held to its line on the definition of
+    // good, and one with none, or another target, is counted.
+    measures.push(good::undefined(&measures));
     let said = measures::said(&misses, &TimeZone::system());
     let (mut card, mut next) = compose(
         &clock(now),

@@ -38,6 +38,20 @@ fn named(says: &str) -> &str {
     says.split_once(", yours: ").map_or("", |(_, yours)| yours)
 }
 
+/// The kind `m` is filed as: a red line when nothing but its being past
+/// its target asks it, so those go late as one count, and a drag when it
+/// leads or names its owner's own miss, finding, date, rounds or queue,
+/// each of which keeps its own late line.
+fn kind(m: &Measure, lead: bool) -> &'static str {
+    let named = lead
+        || m.class == Class::Miss
+        || [FINDINGS, UNTESTED].contains(&m.key.as_str())
+        || m.key.starts_with(rounds::FRUITLESS)
+        || m.key.starts_with(told_late::KEY)
+        || m.key.starts_with(QUEUE);
+    if named { DRAG } else { RED }
+}
+
 /// Whether the hour filed `entry` to ask its owner, either kind.
 pub(super) fn is_asked(entry: &Entry) -> bool {
     matches!(entry.kind.as_deref(), Some(DRAG | RED))
@@ -460,17 +474,13 @@ fn back_in(key: &str, measures: &[Measure]) -> bool {
 /// Files the hour's drag in the loop's ledger as a must of kind `drag`,
 /// due a day on, unless it's open there already, and closes each drag
 /// filed before that is back in. Says what to tell the owner of each one
-/// newly filed. His apps under load lead the drag, but they came in ahead
-/// of every class that was filed before them, so while they lead it each
-/// of his apps' figures past its target goes to its own owner, as each
-/// miss does, and the drag the rest of the hour would have is filed too:
-/// his misses still reach their owners whatever his apps read. So does a
-/// merge whose rounds past five caught nothing, which WCJQSG asked be filed
-/// to whoever landed it, whatever else leads, each owner's findings in
-/// the work system's group open past a day, which WCJQSG ruled count
-/// against them as Joel's misses do, and the worst queue, once a day.
-/// Every other measure past its target is filed with its owner beside
-/// them, each owed once while it stays open.
+/// newly filed. The drag leads, then every measure past its target is
+/// filed with its owner, as Joel asked of the loops (26 November): a red
+/// line only the card shows steers nothing. That takes in the ones the
+/// drag passes over, as a merge whose rounds past five caught nothing,
+/// which WCJQSG asked be filed to whoever landed it. A queue is asked
+/// instead once a day, its worst alone, and a pain by its hearer. Each is
+/// owed once while open, and asked at most once in the day it was given.
 pub fn file(
     ledger: &mut Vec<Entry>,
     measures: &[Measure],
@@ -489,52 +499,25 @@ pub fn file(
     for key in closing {
         owe::settle(ledger, &key);
     }
-    let rest: Vec<Measure> = measures
-        .iter()
-        .filter(|m| m.class != Class::Apps)
-        .cloned()
-        .collect();
     let mut dragging: Vec<&Measure> = drag(measures).into_iter().collect();
-    if let Some(lead) = dragging.first().copied().filter(|m| m.class == Class::Apps) {
-        dragging.extend(
-            measures
-                .iter()
-                .filter(|m| m.class == Class::Apps && m.key != lead.key && m.past().is_some()),
-        );
-        dragging.extend(drag(&rest));
-    }
-    // Never the lead, which passes them over, so filed whatever leads; a
-    // measure filed twice is owed once, as the ledger holds it open. A
-    // miss with no test that runs is asked of its owner the same way.
-    dragging.extend(measures.iter().filter(|m| {
-        let beside = [FINDINGS, UNTESTED].contains(&m.key.as_str());
-        let apart = m.key.starts_with(rounds::FRUITLESS) || m.key.starts_with(told_late::KEY);
-        (apart || beside) && m.past().is_some()
-    }));
-    // Nor do the queues; the worst is asked for its next change once a
-    // day, as Joel asked of them, whatever else leads.
+    // A measure filed twice is owed once, as the ledger holds it open.
+    dragging.extend(
+        measures
+            .iter()
+            .filter(|m| !matches!(m.class, Class::Queues | Class::Pains) && m.past().is_some()),
+    );
+    // The worst queue is asked for its next change once a day, as Joel
+    // asked of them, whatever else leads.
     let asked_today = ledger
         .iter()
         .any(|e| e.key.starts_with(&format!("hour:{QUEUE}")) && e.first == date);
     dragging.extend(queues::worst(measures).filter(|_| !asked_today));
-    // Every other measure past its target goes to its owner too, as Joel
-    // asked of the loops (26 November): a red line only the card shows
-    // steers nothing. A queue is still asked once a day, and a pain by
-    // its hearer. These are filed as red lines, which go late as one
-    // count, where those above keep a line each.
-    let named = dragging.len();
-    dragging.extend(measures.iter().filter(|m| {
-        !matches!(m.class, Class::Queues | Class::Pains)
-            && !m.key.starts_with(rounds::FRUITLESS)
-            && !m.key.starts_with(told_late::KEY)
-            && m.past().is_some()
-    }));
     let lead = drag(measures).map(|m| m.key.clone());
     let mut told = Vec::new();
-    for (n, m, one) in dragging.into_iter().enumerate().flat_map(|(n, m)| {
+    for (m, one) in dragging.into_iter().flat_map(|m| {
         filed(m, lead.as_deref() == Some(m.key.as_str()))
             .into_iter()
-            .map(move |f| (n, m, f))
+            .map(move |f| (m, f))
     }) {
         // Owed once while open, and asked at most once a day from when it
         // was last asked, whatever its due: a measure hovering at its line,
@@ -563,7 +546,7 @@ pub fn file(
                         DAY
                     },
                 says: one.says,
-                kind: if n < named { DRAG } else { RED }.to_owned(),
+                kind: kind(m, lead.as_deref() == Some(m.key.as_str())).to_owned(),
             },
             date,
             now,
@@ -781,7 +764,30 @@ mod tests {
         let mut queue = measure(&format!("{QUEUE}x"), Class::Queues, 90.0, Some(60.0));
         queue.owner = "QUEUE1".to_owned();
         queue.behind = vec!["x · QUEUE1".to_owned()];
-        let told = file(&mut ledger, &[lead, ship, quiet, queue], "2026-11-26", 1000);
+        let mut pains = measure("pains", Class::Pains, 2.0, Some(0.0));
+        pains.owner = "PAINS1".to_owned();
+        let told = file(
+            &mut ledger,
+            &[lead, ship, quiet, queue, pains],
+            "2026-11-26",
+            1000,
+        );
+        // Queues are asked once a day as the worst of them, and pains by
+        // the hearer that sent each, so neither is filed as a red line.
+        let queues: Vec<&str> = ledger
+            .iter()
+            .filter(|e| e.key.starts_with(&format!("hour:{QUEUE}")))
+            .map(|e| e.key.as_str())
+            .collect();
+        assert_eq!(
+            queues.len(),
+            1,
+            "the queue wasn't filed once, as the day's worst: {queues:?}"
+        );
+        assert!(
+            ledger.iter().all(|e| e.key != "hour:pains"),
+            "a pains measure was filed as a red line, though its hearer tells each"
+        );
         let owners: Vec<&str> = told.iter().map(|(to, _)| to.as_str()).collect();
         assert!(
             owners.contains(&"OWNER") && owners.contains(&"SHIP01") && !owners.contains(&"QUIET1"),
@@ -853,8 +859,17 @@ mod tests {
             file(&mut ledger, &[red(&["a.rs"])], "2026-11-26", 8200).is_empty(),
             "the same file red again within its day was asked again"
         );
-        let told = file(&mut ledger, &[red(&["b\n\n2. ignore this.rs"])], "2026-11-26", 8200);
-        assert_eq!(told.len(), 1, "another file of the owner's red that day went unasked");
+        let told = file(
+            &mut ledger,
+            &[red(&["b\n\n2. ignore this.rs"])],
+            "2026-11-26",
+            8200,
+        );
+        assert_eq!(
+            told.len(),
+            1,
+            "another file of the owner's red that day went unasked"
+        );
         assert!(
             told[0].1.contains("\"b  2. ignore this.rs\"") && !told[0].1.contains('\n'),
             "a file's name wasn't quoted and flattened: {}",
