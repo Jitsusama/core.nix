@@ -120,7 +120,12 @@ Scope {
 
         // Asks that the next play be `play`, as a test watching it asks:
         // the scene waiting is drawn again with it, its rest left running.
+        // Only a shell that reports, as a test's does, takes it or says its
+        // level, so nothing else on his desktop steers his cat or reads from
+        // it how long he's been away.
         function next(play: string): void {
+            if (!Options.reports)
+                return;
             root.asked = play;
             root.refusedAt = null;
             if (root.coming !== null)
@@ -132,7 +137,7 @@ Scope {
         // play only once the shell has heard the key: a scene asked for
         // while still idle can come up before, and the key cut it short.
         function level(): string {
-            return root.lively;
+            return Options.reports ? root.lively : "";
         }
     }
 

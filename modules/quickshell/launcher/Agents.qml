@@ -52,7 +52,6 @@ import "Moment.js" as Moment
 import "Numbers.js" as Numbers
 import "Openings.js" as Openings
 import "Order.js" as Order
-import "Presented.js" as Presented
 import "ReopenTally.js" as ReopenTally
 import "SessionDrawer.js" as SessionDrawer
 import "SessionRow.js" as SessionRow
@@ -288,9 +287,7 @@ Provider {
 
     function carryBack(key, row, ask) {
         const said = Words.of("verb:carry:back").said ?? {};
-        // Keyed as ReadyRows keyed the row, from its record's key (Presented.js's keyMade), so
-        // what it becomes is that row.
-        const shown = Presented.keyMade(row, key);
+        const shown = CarryBack.keyed(row, key);
         let answered = false;
         provider.becomes(shown, {
             side: said.carrying ?? "",

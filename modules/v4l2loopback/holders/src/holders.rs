@@ -107,14 +107,37 @@ fn own_name(proc: &Path) -> io::Result<String> {
     Ok(name)
 }
 
-/// Whether a process is in one of the units, by its cgroup, which no
-/// program can put itself in as it can take any name.
+/// Whether a process is in one of the system's units, by its cgroup.
+/// A program can take any name, and a person's own manager can start a
+/// unit of any name too, but only under user@UID.service; so the unit
+/// counts only where the system's manager puts it, as the first part of
+/// the path that isn't a slice. Only the unified hierarchy's line is read,
+/// since a legacy hierarchy can be shaped by whoever it's delegated to,
+/// and a process with no such line is never left out: naming the relay
+/// shows the camera on, while leaving out a reader would show it off.
 pub fn ignored(cgroup: &str, units: &[String]) -> bool {
     cgroup.lines().any(|line| {
-        let path = line.rsplit_once(':').map_or(line, |(_, path)| path);
+        let Some(path) = line.strip_prefix("0::/") else {
+            return false;
+        };
         path.split('/')
-            .any(|part| units.iter().any(|unit| unit == part))
+            .find(|part| {
+                part.rsplit_once('.')
+                    .is_none_or(|(_, kind)| kind != "slice")
+            })
+            .is_some_and(|part| units.iter().any(|unit| unit == part))
     })
+}
+
+/// Whether a process is left out, by what reading its cgroup file gave.
+/// It's read as bytes, since a person can name a cgroup of their own with
+/// any byte but a slash or a newline; and a file that can't be read names
+/// the process rather than leaving it out, as one that has ended fails to
+/// be named anyway.
+pub fn left_out(cgroup: &io::Result<Vec<u8>>, units: &[String]) -> bool {
+    cgroup
+        .as_ref()
+        .is_ok_and(|text| ignored(&String::from_utf8_lossy(text), units))
 }
 
 /// Whether a process's maps still hold the node's buffers, as a reader
@@ -178,7 +201,7 @@ pub fn holders(
             if !held && before.contains(&pid) {
                 held = maps(&fs::read(proc.join("maps"))?, node, status.ino());
             }
-            if !held || ignored(&fs::read_to_string(proc.join("cgroup"))?, units) {
+            if !held || left_out(&fs::read(proc.join("cgroup")), units) {
                 return Ok(None);
             }
             program(&proc).map(Some)
@@ -209,15 +232,87 @@ mod tests {
         assert_eq!(unwrapped(".hidden"), ".hidden");
     }
 
-    #[test]
-    fn only_a_unit_in_the_cgroup_path_is_ignored() {
+    /// Holds each cgroup file to whether its process is left out.
+    fn each_left_out(cases: &[(&str, bool)]) {
         let units = ["stand-in.service".to_owned()];
-        assert!(ignored("0::/system.slice/stand-in.service\n", &units));
-        assert!(!ignored(
-            "0::/user.slice/user-1000.slice/app.slice/x.scope\n",
-            &units
-        ));
-        assert!(!ignored("0::/system.slice/stand-in.service.d\n", &units));
+        for (cgroup, out) in cases {
+            assert_eq!(
+                ignored(cgroup, &units),
+                *out,
+                "whether {cgroup:?} is left out"
+            );
+        }
+    }
+
+    #[test]
+    fn only_a_system_unit_in_the_cgroup_path_is_ignored() {
+        each_left_out(&[
+            ("0::/system.slice/stand-in.service\n", true),
+            ("0::/system.slice/stand-in.service/relay\n", true),
+            ("0::/a.slice/a-b.slice/stand-in.service\n", true),
+            ("0::/user.slice/user-1000.slice/app.slice/x.scope\n", false),
+            ("0::/system.slice/stand-in.service.d\n", false),
+        ]);
+    }
+
+    #[test]
+    fn a_unit_a_person_starts_by_the_same_name_is_not_ignored() {
+        // Anyone can run systemd-run --user --unit=stand-in.service, or
+        // make a cgroup by that name in the subtree their manager is given.
+        let user = "0::/user.slice/user-1000.slice/user@1000.service";
+        each_left_out(&[
+            (&format!("{user}/app.slice/stand-in.service\n"), false),
+            (&format!("{user}/stand-in.service\n"), false),
+            (
+                &format!("{user}/app.slice/x.service/stand-in.service\n"),
+                false,
+            ),
+            ("0::/system.slice/x.service/stand-in.service\n", false),
+        ]);
+    }
+
+    #[test]
+    fn only_the_unified_hierarchy_says_a_unit() {
+        each_left_out(&[
+            ("1:name=systemd:/system.slice/stand-in.service\n", false),
+            (
+                "1:name=systemd:/user.slice\n0::/system.slice/stand-in.service\n",
+                true,
+            ),
+        ]);
+    }
+
+    #[test]
+    fn a_process_in_no_unit_is_never_left_out() {
+        // Only root can put a process straight in a slice, or at the root,
+        // but either has no unit to leave out.
+        each_left_out(&[
+            ("0::/\n", false),
+            ("0::/system.slice\n", false),
+            ("0::/user.slice/user-1000.slice\n", false),
+            ("", false),
+        ]);
+    }
+
+    #[test]
+    fn a_cgroup_file_that_cant_be_read_as_text_never_leaves_out() {
+        let units = ["stand-in.service".to_owned()];
+        let user = b"0::/user.slice/user-1000.slice/user@1000.service";
+        let odd = Ok([&user[..], b"/\xff/stand-in.service\n"].concat());
+        assert!(
+            !left_out(&odd, &units),
+            "a cgroup named with a byte that isn't text is named"
+        );
+        let gone = Err(io::Error::from(io::ErrorKind::NotFound));
+        assert!(
+            !left_out(&gone, &units),
+            "a cgroup file that can't be read is named"
+        );
+        let relay = Ok(b"0::/system.slice/stand-in.service/\xff\n".to_vec());
+        assert!(
+            left_out(&relay, &units),
+            "a relay's own odd cgroup is still left out"
+        );
     }
 
     #[test]
