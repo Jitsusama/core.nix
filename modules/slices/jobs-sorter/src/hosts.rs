@@ -1022,7 +1022,11 @@ mod tests {
         };
         for signs in [viewed, marked] {
             let rank = wanted(&attended(), signs, 10);
-            assert_ne!(rank.weight, low::AT, "each rank tells its weight from systemd's 100");
+            assert_ne!(
+                rank.weight,
+                low::AT,
+                "each rank tells its weight from systemd's 100"
+            );
             let call = rank_call("pi-host-work-attended.service", &rank);
             let weight = |name: &str| {
                 let at = call.iter().position(|arg| arg == name).expect(name);
