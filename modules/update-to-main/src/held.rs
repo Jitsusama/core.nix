@@ -239,67 +239,54 @@ pub fn keeps_off(config: &Config, name: &str, commit: &str) -> bool {
 /// Why `hold` stops main at `head`, its inputs at `built`, if it does.
 fn stopped_by(config: &Config, head: &str, built: &Followed, hold: &Hold) -> Option<String> {
     let main = Repo::main(config);
-    // A commit is judged in main and in every input whose copy has it, and
+    // A commit is judged in main and in every input the build reads, and
     // held if any of them builds it: anyone who can push to one repository,
-    // signed or not, can put another's commit in it, so no one copy having
-    // it settles whose it is. Copies are fetched only where that can't be
-    // told without: every input's, when no copy has the commit, since a
-    // stale one would read it as nobody's, and one that has it but not
-    // what the build reads of it. So a repository out of reach fails a
-    // hold only when the commit may be its own.
-    let inputs: Vec<(Repo, &String)> = built
-        .iter()
-        .filter_map(|(name, commit)| {
-            let follow = config.follows.get(name)?;
-            Some((Repo::followed(config, name, follow), commit))
-        })
-        .collect();
-    let main_has = git::has(&main, &hold.commit);
-    let nobody_has = !main_has && inputs.iter().all(|(repo, _)| !git::has(repo, &hold.commit));
+    // signed or not, can put another's commit in it, so no copy having it
+    // or lacking it settles whose it is. Each input is judged in its own
+    // copy alone, fetched first when it lacks the commit the build reads:
+    // one holding that commit holds its whole history, so lacking the held
+    // one proves the input doesn't build it, and nothing another copy holds
+    // spares the fetch. So a repository out of reach fails a hold only when
+    // its copy is behind what the build reads of it.
     let mut unknown = None;
-    let mut unreached = None;
-    let mut theirs = Vec::new();
-    for (repo, commit) in &inputs {
-        let has = git::has(repo, &hold.commit);
-        if (nobody_has || (has && !git::has(repo, commit)))
-            && let Err(failure) = git::fetch(repo)
+    let mut theirs = false;
+    let mut in_followed = false;
+    for (name, commit) in built {
+        let Some(follow) = config.follows.get(name) else {
+            continue;
+        };
+        let repo = Repo::followed(config, name, follow);
+        if !git::has(&repo, commit)
+            && let Err(failure) = git::fetch(&repo)
         {
-            if has {
-                unknown.get_or_insert(failure.why);
-            } else {
-                unreached.get_or_insert(failure.why);
-            }
+            unknown.get_or_insert(failure.why);
             continue;
         }
-        if git::has(repo, &hold.commit) {
-            theirs.push((repo, *commit));
+        if !git::has(&repo, commit) {
+            unknown.get_or_insert(format!(
+                "{} hasn't got {}, which the build reads",
+                repo.called,
+                git::short(commit)
+            ));
+            continue;
+        }
+        if git::has(&repo, &hold.commit) {
+            theirs = true;
+            in_followed |= judged(git::descends(&repo, &hold.commit, commit), &mut unknown);
         }
     }
-    // The commit may be an input's out of reach only while no copy has it.
-    if theirs.is_empty() && !main_has {
-        unknown = unknown.or(unreached);
-    }
-    let mut judged = |seen: Result<bool, Failure>| match seen {
-        Ok(true) => true,
-        Ok(false) => false,
-        Err(failure) => {
-            unknown = Some(failure.why);
-            false
-        }
-    };
-    let in_followed = theirs
-        .iter()
-        .any(|(repo, commit)| judged(git::descends(repo, &hold.commit, commit)));
     // A copy of main reads a commit it lacks as not in main, so it is
     // always asked. Main's host is asked too, since a hosted copy may lack
-    // main's latest merges; it knows no other repository's commits, so
-    // its failing for one an input's copy has is that input's, not untold.
+    // main's latest merges. It answers 404 for a commit it doesn't know, as
+    // another repository's is; only that, for a commit an input's copy has,
+    // says main doesn't hold it. A rate limit or a host that's down leaves
+    // it untold.
     let in_main = match &config.hosted {
         Some(hosted) => match hosted::holds(config, hosted, &hold.commit, head) {
-            Err(_) if !theirs.is_empty() => false,
-            seen => judged(seen),
+            Err(failure) if theirs && unknown_to_host(&failure) => false,
+            seen => judged(seen, &mut unknown),
         },
-        None => judged(git::descends(&main, &hold.commit, head)),
+        None => judged(git::descends(&main, &hold.commit, head), &mut unknown),
     };
     if in_main || in_followed {
         return Some(format!(
@@ -318,9 +305,45 @@ fn stopped_by(config: &Config, head: &str, built: &Followed, hold: &Hold) -> Opt
     })
 }
 
+/// What `seen` says, with a failure kept in `unknown` and read as no.
+fn judged(seen: Result<bool, Failure>, unknown: &mut Option<String>) -> bool {
+    seen.unwrap_or_else(|failure| {
+        unknown.get_or_insert(failure.why);
+        false
+    })
+}
+
+/// Whether an ask of main's host failed by its saying it knows no such
+/// commit: curl's own line for each failed answer names its HTTP code.
+fn unknown_to_host(failure: &Failure) -> bool {
+    failure
+        .lines
+        .iter()
+        .any(|line| line.trim_end().ends_with(" answered 404"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_a_host_s_404_says_it_knows_no_such_commit() {
+        let failed = |line: &str| Failure {
+            why: "reading main's folder from the host failed".into(),
+            lines: vec![line.to_owned()],
+        };
+        let compare = "https://api.example/repos/kestrel/core/compare/a...b";
+        assert!(
+            unknown_to_host(&failed(&format!("{compare} answered 404"))),
+            "a 404 wasn't read as a commit the host doesn't know"
+        );
+        for code in ["429", "500", "000", "4040"] {
+            assert!(
+                !unknown_to_host(&failed(&format!("{compare} answered {code}"))),
+                "a {code} was read as a commit the host doesn't know"
+            );
+        }
+    }
 
     #[test]
     fn a_pause_holds_until_resumed_and_keeps_who_asked_first() {
