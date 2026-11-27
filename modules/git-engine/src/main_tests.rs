@@ -50,26 +50,30 @@ fn lets_go_of_a_repository_whose_packs_changed() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-#[test]
-fn a_repository_started_afresh_after_an_error_keeps_the_copies_its_store_marked() {
-    let dir = repository("marked");
-    let name = [7; 20];
+/// One pack holding `entry` alone, as git writes it.
+fn pack_of(entry: &[u8]) -> Vec<u8> {
+    [b"PACK\0\0\0\x02\0\0\0\x01", entry, &[0; 20]].concat()
+}
+
+/// A repository named `name` whose HEAD's one copy is of a kind git has
+/// none of, and an engine that was refused its answer and then the
+/// repository's opening, with whether each answered nothing and how many
+/// copies each store it kept has marked.
+fn marked(name: &str) -> (PathBuf, Engine, (bool, bool, Vec<usize>)) {
+    let dir = repository(name);
+    let oid = [7; 20];
     std::fs::write(
         dir.join(".git/refs/heads/main"),
-        format!("{}\n", hash::Oid(name).hex()),
+        format!("{}\n", hash::Oid(oid).hex()),
     )
     .unwrap();
-    // HEAD's one copy, first of a kind git has none of, then rewritten
-    // in place as a blob, which moves none of the stamps the store
-    // watches; a store opened again reads it, one kept passes it over.
-    let pack = |entry: &[u8]| [b"PACK\0\0\0\x02\0\0\0\x01", entry, &[0; 20]].concat();
     let packs = dir.join(".git/objects/pack");
     std::fs::write(
         packs.join("pack-00.idx"),
-        pack_index::tests::version_2_at(&[name], &[12]),
+        pack_index::tests::version_2_at(&[oid], &[12]),
     )
     .unwrap();
-    std::fs::write(packs.join("pack-00.pack"), pack(&[0x51, 0])).unwrap();
+    std::fs::write(packs.join("pack-00.pack"), pack_of(&[0x51, 0])).unwrap();
     settled(&dir);
     let mut engine = Engine::default();
     let refused = engine.ask(&dir, &options(&[]), false).is_none();
@@ -79,23 +83,41 @@ fn a_repository_started_afresh_after_an_error_keeps_the_copies_its_store_marked(
     std::fs::write(&config, "[extensions]\n\trefStorage = reftable\n").unwrap();
     let unopened = engine.ask(&dir, &options(&[]), false).is_none();
     std::fs::remove_file(&config).unwrap();
+    let marks = engine.kept.values().map(odb::Odb::marks).collect();
+    (dir, engine, (refused, unopened, marks))
+}
+
+#[test]
+fn a_repository_started_afresh_after_an_error_keeps_the_copies_its_store_marked() {
+    let (dir, mut engine, (refused, unopened, marks)) = marked("marked");
+    std::fs::write(dir.join(".git/objects/pack/pack-new.idx"), b"").unwrap();
+    engine.let_go_of_changed();
+    assert_eq!(
+        (refused, unopened, marks, engine.kept.len()),
+        (true, true, vec![1], 0),
+        "a repository started afresh dropped its store or the copy it marked when its \
+         refs wouldn't open, or kept the store past a change to the packs"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_store_kept_after_an_error_reads_its_copy_once_the_pack_is_rewritten_in_place() {
+    let (dir, mut engine, kept) = marked("rewritten");
+    // Rewritten in place as a blob, as `cp` copies, which moves the pack's
+    // own stamp but not its folder's.
     let blob = [
         &[0x31][..],
         &miniz_oxide::deflate::compress_to_vec_zlib(b"a", 1),
     ]
     .concat();
-    std::fs::write(packs.join("pack-00.pack"), pack(&blob)).unwrap();
-    let again = engine.ask(&dir, &options(&[]), false).is_none();
-    let kept = engine.kept.len();
-    let afresh = Engine::default().ask(&dir, &options(&[]), false).is_some();
-    std::fs::write(packs.join("pack-new.idx"), b"").unwrap();
-    engine.let_go_of_changed();
+    std::fs::write(dir.join(".git/objects/pack/pack-00.pack"), pack_of(&blob)).unwrap();
+    let read = engine.ask(&dir, &options(&[]), false).is_some();
     assert_eq!(
-        (refused, unopened, again, kept, afresh, engine.kept.len()),
-        (true, true, true, 1, true, 0),
-        "a repository started afresh unpacked a copy its store had marked again, \
-         dropped its store when its refs wouldn't open, or kept it past a change to \
-         the packs"
+        (kept, read, engine.kept.len()),
+        ((true, true, vec![1]), true, 0),
+        "a store kept after an error went on passing over a copy whose pack was \
+         rewritten in place, or stayed kept once it read it"
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -291,17 +313,14 @@ fn a_tag_whose_object_is_missing_is_read_once_a_pack_brings_it() {
 
 #[test]
 fn a_tag_whose_object_wouldnt_read_leaves_the_others_settled() {
-    use std::os::unix::fs::PermissionsExt;
     let (commit, tag) = ([15; 20], [16; 20]);
     let (dir, loose, zlib) = tagged("one-unread", commit, tag);
     let hex = |oid: [u8; 20]| hash::Oid(oid).hex();
-    // v1's object is sound but closed to its reader, a fault that
-    // passes, so v1 is peeled again each answer; w0, after it by name,
-    // names the commit too.
-    let object = loose.join(&hex(tag)[2..]);
-    std::fs::write(&object, zlib).unwrap();
-    let opened = |mode| std::fs::set_permissions(&object, std::fs::Permissions::from_mode(mode));
-    opened(0o000).expect("the object closed");
+    // v1's object is sound, but this thread is held to too little memory
+    // to read it, a fault that passes, so v1 is peeled again each answer;
+    // w0, after it by name, names the commit too. A file closed to its
+    // reader would do the same for any user but root, who reads through.
+    std::fs::write(loose.join(&hex(tag)[2..]), zlib).unwrap();
     let w0 = dir.join(".git/refs/tags/w0");
     std::fs::write(&w0, format!("{}\n", hex(commit))).unwrap();
     crate::stamp::tests::ahead(3);
@@ -311,17 +330,18 @@ fn a_tag_whose_object_wouldnt_read_leaves_the_others_settled() {
             .ask(&dir, &options(&[]), false)
             .map(|answer| answer.tag)
     };
+    crate::odb::starve(Some(16));
     let first = tag_said();
     // w0 rewritten in place to name another commit, which moves no
     // stamp, so only tags read again for v1's sake would lose it.
     std::fs::write(&w0, format!("{}\n", hex([17; 20]))).unwrap();
     let second = tag_said();
-    // Opened again in place, which moves no stamp either: only a tag
+    // The memory given back, which moves no stamp either: only a tag
     // left unread is read again to find it.
-    opened(0o644).expect("the object opened");
-    let opened_again = tag_said();
+    crate::odb::starve(None);
+    let fed = tag_said();
     assert_eq!(
-        (first, second, opened_again),
+        (first, second, fed),
         (Some("w0".into()), Some("w0".into()), Some("v1".into())),
         "a tag whose object wouldn't read had every other tag read again, or was \
          settled as one that won't read till its file is written again"

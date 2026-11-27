@@ -87,6 +87,22 @@ struct Store {
     /// The own indexes of the packs the multi-pack-index covers, in its
     /// order, read only once it can't answer a lookup.
     covered: OnceLock<Vec<Option<Index>>>,
+    /// Each pack's .idx and .pack, opened or not, stamped before it was,
+    /// since a file rewritten in place moves its own stamp but not its
+    /// folder's, and a copy marked while the packs hold is read again
+    /// only once the store opens afresh.
+    stamps: Stamps,
+}
+
+/// The stamps of each index among `names` in `pack_dir`, and its pack's.
+fn stamps_of<'a>(pack_dir: &Path, names: impl IntoIterator<Item = &'a String>) -> Stamps {
+    let files = names.into_iter().flat_map(|name| {
+        [
+            pack_dir.join(name),
+            pack_dir.join(name.replace(".idx", ".pack")),
+        ]
+    });
+    files.map(|file| (file.clone(), Stamp::of(&file))).collect()
 }
 
 impl Store {
@@ -100,6 +116,7 @@ impl Store {
         let mut packs = Vec::new();
         let mut covered = std::collections::HashSet::new();
         let mut midx_packs = 0;
+        let mut stamps = stamps_of(&pack_dir, midx.iter().flat_map(|midx| &midx.packs));
         if let Some(midx) = &midx {
             for name in &midx.packs {
                 let data = pack_dir.join(name.replace(".idx", ".pack"));
@@ -125,6 +142,7 @@ impl Store {
             })
             .unwrap_or_default();
         names.sort();
+        stamps.extend(stamps_of(&pack_dir, &names));
         for name in names {
             // The pack is opened only once its index has, and only as a file.
             if let Some(pack) = Pack::indexed(&pack_dir, &name) {
@@ -137,6 +155,7 @@ impl Store {
             packs,
             midx_packs,
             covered: OnceLock::new(),
+            stamps,
         }
     }
 
@@ -156,6 +175,7 @@ impl Store {
             })
             .unwrap_or_default();
         names.sort();
+        let stamps = stamps_of(&pack_dir, &names);
         let packs = names
             .into_iter()
             .filter_map(|name| Pack::indexed(&pack_dir, &name))
@@ -166,6 +186,7 @@ impl Store {
             packs,
             midx_packs: 0,
             covered: OnceLock::new(),
+            stamps,
         }
     }
 
@@ -631,8 +652,10 @@ impl Odb {
                 stamps.push((watched.clone(), Stamp::of(&watched)));
             }
         }
+        let stores: Vec<Store> = dirs.iter().map(|dir| Store::open(dir)).collect();
+        stamps.extend(stores.iter().flat_map(|store| store.stamps.iter().cloned()));
         Odb {
-            stores: dirs.iter().map(|dir| Store::open(dir)).collect(),
+            stores,
             stamps,
             bases: HashMap::new(),
             base_bytes: 0,
@@ -670,7 +693,7 @@ impl Odb {
     }
 
     /// The stamps of the packs every store watches, which move once one is
-    /// added or taken away.
+    /// added, taken away or rewritten in place.
     pub fn pack_stamps(&self) -> Stamps {
         self.stamps.clone()
     }
