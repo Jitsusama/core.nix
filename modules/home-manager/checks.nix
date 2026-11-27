@@ -450,6 +450,9 @@ onLinux {
         passAsFile = [ "table" ];
         inherit table;
       }
+      # Kept in Nix because it is this check's whole body, run only inside
+      # this derivation on the table Nix builds from timed.nix above, with
+      # passAsFile's tablePath and the build's out as its only inputs.
       ''
         wrong=0
         while IFS=$'\t' read -r core ends spelling; do
