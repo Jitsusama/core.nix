@@ -59,13 +59,17 @@ fn gave(name: &str, machine: &str, gift: Gift) -> Carried {
 }
 
 /// How many times mycelium was asked to run something on the Mac, in the
-/// root, which every account there may enter.
+/// shared scratch folder, which every account there may enter.
 fn runs_on_mac(here: &Machine) -> usize {
-    asked_with(here, "mycelium run --need machine=mac --folder / -- sh -c").len()
+    asked_with(
+        here,
+        "mycelium run --need machine=mac --folder /tmp -- sh -c",
+    )
+    .len()
 }
 
 fn on_mac(script: &str) -> String {
-    format!("mycelium run --need machine=mac --folder / -- sh -c {script}")
+    format!("mycelium run --need machine=mac --folder /tmp -- sh -c {script}")
 }
 
 #[test]

@@ -296,7 +296,10 @@ fn a_stop_says_everything_stops_and_pauses_only_agents_work() {
          demo's: {:?}",
         here.asked
     );
-    let mac = asked_with(&here, "mycelium run --need machine=mac --folder / -- sh -c");
+    let mac = asked_with(
+        &here,
+        "mycelium run --need machine=mac --folder /tmp -- sh -c",
+    );
     assert_eq!(
         mac.len(),
         1,

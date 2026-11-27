@@ -56,10 +56,12 @@ const OWN_FAILURE: u8 = 70;
 /// The folder a stop's run there starts in. Unnamed, a run asks for the
 /// folder pineapple runs in here, Joel's home, which another machine may
 /// hold under that name but keep from whoever runs there, such as a
-/// room's own account, which can't start a shell in it. The script reads
-/// and writes only by whole paths, so the root, which every account may
-/// enter, serves on every machine.
-pub(super) const FOLDER: &str = "/";
+/// room's own account, which can't start a shell in it. The root won't
+/// do either, since a fenced run there refuses a folder holding the
+/// home. The script reads and writes only by whole paths, so the shared
+/// scratch folder, which every account may enter, serves on every
+/// machine.
+pub(super) const FOLDER: &str = "/tmp";
 
 /// What `mycelium` is asked to run `script` on `machine`, in `realm` or
 /// its own, in [`FOLDER`].
