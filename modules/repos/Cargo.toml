@@ -34,6 +34,10 @@ inotify = { version = "0.11", default-features = false, optional = true }
 # whatever sits there never holds the daemon (src/homes.rs).
 libc = { version = "0.2", optional = true }
 
+[dev-dependencies]
+# How long a timed step may take on a machine as busy as the one testing.
+test-pace = { path = "../test-pace" }
+
 [features]
 default = ["github"]
 # Asking GitHub, serving the daemon and saying the receptor, which only the
