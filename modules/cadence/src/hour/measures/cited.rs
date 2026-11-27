@@ -458,11 +458,19 @@ fn timed_uncited<'a>(
             continue;
         }
         let switch = said.iter().any(|w| w.starts_with("switch"));
+        // The citation and the message it names must give the one time,
+        // so a line on the dial isn't backed by a citation of the morning
+        // that cites the evening.
         let gives = |cite: &&Cite, clock: &Clock| {
-            let told = senders.get(&cite.msgid).map(|sent| sent.text.as_str());
-            let says = |text: &str| clock_times(text).iter().any(|c| c.is(clock));
-            says(&cite.item)
-                && told.is_some_and(says)
+            let Some(told) = senders.get(&cite.msgid) else {
+                return false;
+            };
+            let told = clock_times(&told.text);
+            let quoted = clock_times(&cite.item);
+            quoted
+                .iter()
+                .filter(|q| q.is(clock))
+                .any(|q| told.iter().any(|t| t.is(clock) && t.is(q)))
                 && (!switch || cite.owner.eq_ignore_ascii_case(SWITCHES))
         };
         if !clocks
@@ -665,7 +673,13 @@ fn sentences(text: &str) -> Vec<&str> {
         let mut chars = line.char_indices().peekable();
         while let Some((at, c)) = chars.next() {
             let next_is_space = chars.peek().is_none_or(|(_, next)| next.is_whitespace());
-            if matches!(c, '.' | '?' | '!') && next_is_space {
+            // The stop closing "a.m." or "p.m." ends the time's half of
+            // the day, not its sentence.
+            let ends_half = c == '.' && {
+                let before = line[..at].to_ascii_lowercase();
+                before.ends_with("a.m") || before.ends_with("p.m")
+            };
+            if matches!(c, '.' | '?' | '!') && next_is_space && !ends_half {
                 found.push(line[start..=at].trim());
                 start = at + 1;
             }
@@ -688,18 +702,18 @@ fn words(text: &str) -> BTreeSet<String> {
 /// one of the 12-hour dial's, from 1 to 12 with no "am" or "pm" and no
 /// nought before it, which could be either half of the day; "09:05" is
 /// written to the 24-hour clock's two digits, so it is the morning's.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct Clock {
-    pub hour: u32,
-    pub minute: u32,
-    pub dial: bool,
+#[derive(Debug, Clone, Copy)]
+struct Clock {
+    hour: u32,
+    minute: u32,
+    dial: bool,
 }
 
 impl Clock {
     /// Whether two clock times can be the one time: lines to Joel say
     /// "10:45" where the owner said "22:45", but "22:45" is never "10:45"
     /// in the morning, nor "10:45 am" the evening's.
-    pub fn is(self, other: &Self) -> bool {
+    fn is(self, other: &Self) -> bool {
         let turned = |hour: u32| (hour + 12) % 24;
         self.minute == other.minute
             && (self.hour == other.hour
@@ -755,22 +769,30 @@ fn clock_times(text: &str) -> Vec<Clock> {
 
 /// Whether what follows a clock time's minutes names the half of the
 /// day, past any seconds: `Some(true)` for "pm" or "p.m.", `Some(false)`
-/// for "am" or "a.m.", in either case and after any space, the narrow
-/// one a formatter puts there included, and `None` when it names neither.
-/// Only the few letters that could name it are read.
+/// for "am" or "a.m.", in either case, its last stop or not, and after
+/// any space on its line, the narrow one a formatter puts there included,
+/// and `None` when it names neither. A word on the next line is that
+/// line's. Only the few letters that could name it are read.
 fn half(after: &str) -> Option<bool> {
     let seconds = after
         .strip_prefix(':')
         .filter(|s| s.len() >= 2 && s.as_bytes()[..2].iter().all(u8::is_ascii_digit));
     let rest = seconds
         .map_or(after, |s| &s[2..])
-        .trim_start_matches(char::is_whitespace);
+        .trim_start_matches(|c: char| c.is_whitespace() && c != '\n' && c != '\r');
     let low = rest
         .chars()
         .take(5)
         .collect::<String>()
         .to_ascii_lowercase();
-    let named = [("a.m.", false), ("p.m.", true), ("am", false), ("pm", true)];
+    let named = [
+        ("a.m.", false),
+        ("p.m.", true),
+        ("a.m", false),
+        ("p.m", true),
+        ("am", false),
+        ("pm", true),
+    ];
     named.iter().find_map(|&(word, pm)| {
         let tail = low.strip_prefix(word)?;
         (!tail.starts_with(|c: char| c.is_alphanumeric())).then_some(pm)

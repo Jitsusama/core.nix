@@ -219,6 +219,9 @@ fn two_times_twelve_hours_apart_are_one_only_when_one_is_on_the_dial() {
         ("22:45", "10:45"),
         ("12:30", "0:30"),
         ("9:05", "9:05"),
+        ("09:05", "9:05"),
+        ("9:05", "9:05 a.m"),
+        ("22:45", "10:45\nAm I late?"),
     ] {
         assert!(one(a, b), "{a} wasn't taken as {b}");
     }
@@ -230,6 +233,10 @@ fn two_times_twelve_hours_apart_are_one_only_when_one_is_on_the_dial() {
         ("10:45", "10:15"),
         ("09:05", "21:05"),
         ("21:05", "09:05"),
+        ("10:45", "11:45"),
+        ("10:45", "9:45"),
+        ("22:45", "10:45 A.M"),
+        ("22:45", "10:45 a.m."),
     ] {
         assert!(!one(a, b), "{a} was taken as {b}");
     }
@@ -252,6 +259,34 @@ fn a_time_said_on_a_12_hour_clock_is_backed_by_its_owner_s_24_hour_one() {
     assert!(
         (judged(&line, "", &other, &by).now - 1.0).abs() < f64::EPSILON,
         "10:45 was taken as backed by a citation of 22:15"
+    );
+}
+
+#[test]
+fn a_dial_time_is_backed_only_where_the_citation_and_its_message_give_one_half() {
+    let line = said("Its owner now says it goes live about 10:45.");
+    let by = sent(&[("aa11bb22", "16V6F4", "goes live about 22:45")]);
+    let ago = NOW - 300;
+    let morning = cited(&[(ago, "16V6F4", "aa11bb22", "live about 10:45 am")]);
+    assert!(
+        (judged(&line, "", &morning, &by).now - 1.0).abs() < f64::EPSILON,
+        "a citation of the morning backed a line by a message of the evening"
+    );
+    let evening = cited(&[(ago, "16V6F4", "aa11bb22", "live about 10:45 pm")]);
+    assert!(
+        judged(&line, "", &evening, &by).behind.is_empty(),
+        "a citation of the evening didn't back a line by a message of the evening"
+    );
+}
+
+#[test]
+fn a_time_after_a_p_m_in_the_same_line_is_still_judged() {
+    let line = said("It went live at 10:45 p.m. and then 23:30 for the rest.");
+    let by = sent(&[("aa11bb22", "16V6F4", "live at 22:45")]);
+    let only_first = cited(&[(NOW - 300, "16V6F4", "aa11bb22", "live at 22:45")]);
+    assert!(
+        (judged(&line, "", &only_first, &by).now - 1.0).abs() < f64::EPSILON,
+        "the 23:30 after a p.m. went unjudged, read as a sentence of its own"
     );
 }
 
