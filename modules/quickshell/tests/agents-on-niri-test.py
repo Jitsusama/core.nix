@@ -275,17 +275,28 @@ def closed_side(address: str) -> str:
     return f"closed {ended:%H:%M}" if today else f"closed {ended:%a %H:%M}"
 
 
-def node_record(key: str) -> Json | None:
-    """Give the node's record of `key` whole, ended or not, asked over its daemon interface."""
-    with socket.socket(socket.AF_UNIX) as node:
-        node.connect(str(NODE))
-        node.sendall(b'{"id": 1, "ask": "hello"}\n{"id": 2, "ask": "list", "kind": "session"}\n')
-        said = node.makefile()
-        while True:
-            answer = json.loads(said.readline())
-            if answer.get("id") == 2:  # noqa: PLR2004
-                records = cast("list[Json]", answer.get("records", []))
-                return next((one for one in records if one.get("key") == key), None)
+def node_record(key: str) -> Json | str | None:
+    """Give the node's record of `key` whole, ended or not, or why the node couldn't say.
+
+    It explains a failure, when the node is likeliest to be unwell, so it waits a few
+    seconds at most and says why it has nothing rather than raising in the failure's place.
+    """
+    try:
+        with socket.socket(socket.AF_UNIX) as node:
+            node.settimeout(5)
+            node.connect(str(NODE))
+            node.sendall(
+                b'{"id": 1, "ask": "hello"}\n{"id": 2, "ask": "list", "kind": "session"}\n'
+            )
+            said = node.makefile()
+            while line := said.readline():
+                answer = json.loads(line)
+                if answer.get("id") == 2:  # noqa: PLR2004
+                    records = cast("list[Json]", answer.get("records", []))
+                    return next((one for one in records if one.get("key") == key), None)
+    except (OSError, ValueError) as why:
+        return f"the node couldn't say: {why!r}"
+    return "the node couldn't say: it hung up before listing its sessions"
 
 
 def held_by_node() -> list[str]:
