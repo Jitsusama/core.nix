@@ -46,6 +46,8 @@ WENT_BACK = re.compile(r"within ([0-9]+) ms, so may join any network")
 # Lantern's access points, the first as loud as the second is quiet.
 FIRST = "02:00:00:00:00:00"
 SECOND = "02:00:00:00:05:00"
+# How long after a move wifid gives way to none during a call, as fading::BETWEEN says.
+MOVE_SETTLES = timedelta(seconds=30)
 # When Lantern's second warns it drops a card, in milliseconds: its 50 beacons of 102.4 ms.
 DROPS_IN_MS = 5120
 
@@ -368,16 +370,24 @@ def gives_way_as_it_loses(machine: BaseMachine, wifid: Wifid) -> None:
         timeout=timedelta(seconds=30),
     )
     machine.log(machine.succeed("wpa_cli -i wlan2 scan_results | grep Lantern"))
-    machine.succeed("wpa_cli -i wlan2 status | grep -qx bssid=02:00:00:00:00:00")
+    machine.succeed(f"wpa_cli -i wlan2 status | grep -qx bssid={FIRST}")
     # On trial, not yet shown: the give-way below now and then fails with status 53, or an auth
     # timeout to the second, as the card offers it a PMKSA kept from a subtest before. Flushed
-    # here, the card keys there afresh, as one new to it would.
+    # here, the card keys there afresh, as one new to it would. The flush takes the first's key
+    # too, which ends the card's link there, and wpa_supplicant then joined the second
+    # (2026-11-27), so the card is held back to the first, keying it afresh as well.
     machine.succeed("wpa_cli -i wlan2 pmksa_flush | grep -qx OK")
+    retry(lambda _: held_to(machine, wifid, FIRST), timeout=timedelta(seconds=60))
+    held = time.monotonic()
     # The looks just asked lost echoes as they took the card off its channel. wifid leaves
     # out a look's first 6 s, a whole look on a real card, but one here ran 16 s on a quiet
     # link (2026-11-23), and its later losses moved the card as the call began. The call
     # waits out its 10 s window, so what moves it is the loss below alone.
     machine.sleep(timedelta(seconds=10))
+    # wifid gives way to none within 30 s of a move (fading::BETWEEN), and holding the card
+    # back was one, so the loss waits out what's left of it.
+    settled = MOVE_SETTLES.total_seconds() - (time.monotonic() - held)
+    machine.sleep(timedelta(seconds=max(0.0, settled)))
     quiet = wifid.journal_now()
     answer = wifid.acting({"act": "calling", "on": True})
     assert answer == {"id": 1, "done": True}, answer
