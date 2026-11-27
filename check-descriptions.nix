@@ -17,11 +17,12 @@
     as room runs short, the keys list's and Return's staying
   '';
   a-check-copies-what-each-file-imports = ''
-    the shell's checks copy every file a root reaches through imports.nix, a row listing its
-    imports in another order copies the same files, and a row left empty is refused, naming
-    its file and imports.nix by its path, each case taking its file from imports.nix as it is;
-    a program's own file importing that file copies what copying it does, and one importing
-    a file the shell's folder doesn't hold is refused, naming it
+    the shell's checks copy every file a root reaches through imports.nix and nothing else, a
+    row past the root listing its imports in another order copies the same files, and one left
+    empty or dropped, or one past the root's own row naming an import more, is refused,
+    copying nothing and naming it, each case taking its file from imports.nix as it is; a
+    program's own file importing that file copies what copying it does and nothing else, and
+    one importing a file the shell's folder doesn't hold is refused, naming it
   '';
   a-claimed-chord-is-refused = ''
     a chord two layers claim, or one claims twice, is refused
@@ -301,11 +302,13 @@
     timer naming its service, or running a template's instance, sets them on that service
   '';
   a-talk-answers-what-its-session-asks = ''
-    Talk to It on a session asking shows what it asks whole with what it takes; words answer it
-    by a choice's label, else its value, or as its own words where it takes them, and read sent,
-    then answered or working, or not delivered and why, kept newest first, only those to what it
-    asks while it asks, with any not delivered in the last quarter hour, and all of that quarter
-    hour once it asks nothing; one asking what Talk can't answer shows only those not delivered
+    Talk to It on a session asking shows what it asks whole, with what it takes in a field of
+    its own apart from the question, and that alone where it says nothing of what, or only
+    spaces; words answer it by a choice's label, else its value, or as its own words where it
+    takes them, and read sent, then answered or working, or not delivered and why, kept newest
+    first, only those to what it asks while it asks, with any not delivered in the last quarter
+    hour, and all of that quarter hour once it asks nothing; one asking what Talk can't answer
+    shows only those not delivered
   '';
   a-talks-words-outlive-the-shell = ''
     what's typed to talk to a session is kept by its address with its caret for a week and read
@@ -3542,6 +3545,25 @@
     keep a copy for each folder, so a pairing made in one folder never reaches another; a reload,
     and a moved link, load afresh, and a load begun before a reload caches nothing
   '';
+  pi-hosted-shares-keyed-modules = ''
+    pi built with the host's patches, applied exactly, evaluates each module a package declaring
+    its per-session state keyed reaches once for all of its extensions, while another keyed package
+    and each extension of an unkeyed one evaluate their own, and puts none in Node's module cache;
+    a reload or a moved link reads the files afresh, a load begun before a reload hands a later
+    load nothing, loads take turns, a reload or a moved link lets go of loads queued behind one
+    that never ends, which evaluate afresh what the package finished, keeping none it let go of
+    for the copy it moved to, and a turn held too long lets loads go on without it, sharing only
+    what the package finished and keeping every factory, until it ends and loads wait again;
+    a failed load's retry evaluates afresh every module, however deep, that the failed load
+    evaluated and none another extension finished, and is shared after; an import made as an
+    extension runs is given only finished modules, so one that threw, or whose throw its load
+    caught, is evaluated afresh by its own import or require again, a sibling's and a later load,
+    a load and a late import racing each evaluate their own, an import during its own load shares
+    what that load finished, is given part-way what it is still evaluating and fails with it, as
+    does what a failed load's modules import after it, however deep, two late imports of one
+    module at once share one evaluation, and a builtin, a data URL, JSON and a module jiti leaves
+    to Node are jiti's own, evaluated no second time
+  '';
   pi-hosted-keeps-each-conversations-keys = ''
     pi built with the host's patches, applied exactly, marks a model runtime that reads keys and
     headers through an auth context, gives each runtime the key, provider headers, model headers
@@ -3613,6 +3635,25 @@
     and told so, left running through a switch, its host's restart and the kernel killing one
     of its commands for memory, and a Mac gets none
   '';
+  pi-conversations-set-heap-growth = ''
+    a realm's conversationHeapGrowingPercent reaches each of its conversations' own processes,
+    attended and background, as V8's --heap-growing-percent after their heap and before the
+    harness's program, with the build proving the realm's node takes it, while its hosts and
+    every process of a realm that names none keep V8's own growth, and 10 and 100 percent are
+    taken while 9 and 101 are refused outright
+  '';
+  pi-conversations-refuse-a-node-without-growth = ''
+    a realm whose node refuses --heap-growing-percent as a bad option fails the build its
+    conversations' unit names, saying the realm, the percent and the node, one whose node fails
+    another way or can't be run fails saying which, node 22, which pi is built with, takes it,
+    and a machine built elsewhere has the proof stand unproven
+  '';
+  pi-conversations-take-heap-growth = ''
+    node 22, which pi is built with, and the tree's own node, each started with the word a realm's
+    conversation is given for a growth of 70 percent, grow every heap limit they trace by a
+    factor of 1.7, more than V8's slow modes ever give, while the same program without it grows
+    by a factor of V8's own
+  '';
   pi-hosts-start-with-the-session = ''
     each realm a machine names gets an attended and a background pi host, started with the
     account's session where the harness is installed, run by the host's pi and its own node, its
@@ -3658,8 +3699,9 @@
     LD_PRELOAD, LD_AUDIT, LD_LIBRARY_PATH, OPENSSL_CONF or OPENSSL_MODULES, which their unit
     clears so none opens the host's inspector or runs code as the host, fails evaluation naming
     the realm and only the ones it gave, joined as written and spoken of as it or each, then
-    names each of the eight again where it says how they load code, and that a command needing
-    one sets it itself, rather than having them dropped unseen, while a variable that loads nothing passes beside them unnamed
+    names each of the eight again where it says how they load code, the options a conversation's
+    own node takes instead, and that a command needing one sets it itself, rather than having
+    them dropped unseen, while a variable that loads nothing passes beside them unnamed
   '';
   pi-rings-low = ''
     the account's ding rings loud for seconds, as the harness's done chime plays it, and the
@@ -3699,8 +3741,9 @@
   '';
   pineapple-slack-goes-live-through-a-gateway = ''
     a machine saying its tool gateway's reader is live runs it as the Slack reader for the safe
-    word, live, given the gateway and its sign-in rather than pi's keyring, still taking its row in
-    For You with it as it stops, with no shadow reader beside it
+    word, live, given the gateway and its sign-in rather than pi's keyring, its URL's percent
+    signs reaching systemd as written, still taking its row in For You with it as it stops, with
+    no shadow reader beside it
   '';
   pineapple-slack-hears-a-gateway-in-shadow = ''
     a machine naming a tool gateway hears Slack through it with a second reader for the safe word,
@@ -4559,9 +4602,11 @@
     profile's applications so the portal opens them without asking, which asks the launcher to talk
     to the cell or show the network a link names, by its name alone, a notice's whole cell link
     by its address wherever it says the cell runs, and new work a sprout link offers with its words
-    decoded and its cell only as an address, each after a fixed word, and asks nothing for a link
-    naming none of them, an address not in capitals, a name qs could take for a flag, a sprout's
-    words missing or said twice, or a second link within a few seconds
+    decoded and its cell only as an address, each after a fixed word, on the machine it names
+    through newWorkOn, and asks nothing for a link naming none of them, an address not in
+    capitals, a name qs could take for a flag, a sprout's words missing or said twice, or a second
+    link within a few seconds, and calls only functions the launcher's IpcHandler has, each
+    taking as many arguments as it passes
   '';
   mycelium-link-passes-clippy = ''
     clippy finds nothing in mycelium-link, which opens a mycelium: link in the launcher, or its
@@ -4919,7 +4964,7 @@
   the-screens-go-off-on-niri = ''
     on niri, Turn Every Screen Off closes the launcher and then asks niri to power its monitors
     off, and :set noscreens asks it too, as read on the way to niri's socket; a :setl scale
-    niri refuses says niri's words for why on the : line; and Screens, inside Desktop, says
+    niri refuses says niri's words for why on the : line; and Screens, inside Machine, says
     how many screens there are as the windows daemon counts them
   '';
   the-newest-surface-takes-the-keys-on-niri = ''
@@ -5203,10 +5248,11 @@
   '';
   the-launcher-says-a-lagging-keys-kind-on-niri = ''
     on niri with reports off, a lagging key's journal line says an arrow whole, and a step in by
-    Return, out by - and in by a word and a space by its arrow and how many letters its row's name
-    has, never the name; a key listed without the notices' answer, and their answer late, say
-    what was typed by how many letters; and a program's lagging drawer is said by its desktop
-    entry's id where that's shaped as an app's, and as program otherwise, never by its name
+    Return, out by - and in by a word and a space by its arrow and the key of the launcher's own
+    place it took, never the place's name; a key listed without the notices' answer, and their
+    answer late, say what was typed by how many letters; and a program's lagging drawer is said by
+    its desktop entry's id where that's shaped as an app's, and as program otherwise, never by its
+    name
   '';
   the-launcher-says-asks-from-outside-by-kind-on-niri = ''
     on niri with reports off, a link to a session, a network, a machine or a repository says in
@@ -5546,7 +5592,8 @@
     account, started at boot once the store is mounted and again after a failure, given 150 s
     to park and 8192 open files, naming no store path a switch would restart it for, with no
     log launchd opens as root, and becoming node under a name mycelium tells as an agent's, as
-    its own kind with a log of its own, on a Mac that evaluates whole; a Mac naming none gets none
+    its own kind with a log of its own, keeping V8's own heap growth though its realm names a
+    percent for conversations, on a Mac that evaluates whole; a Mac naming none gets none
   '';
   the-mac-pi-host-starts-as-its-account = ''
     a Mac's pi host start, run under dash and bash with the Mac's programs stood in for, passes
@@ -6290,6 +6337,11 @@
     Tab in zsh offers tuple's commands and subcommands, through Tuple's own completion and the real
     tuple, among them every command core runs against it and the flags its followers pass
   '';
+  tuple-ends-its-flags = ''
+    The real tuple takes a name that starts with a dash after "--" as a name, never a flag, for each
+    command the launcher runs on a contact: call start, call join, and contacts favorite and
+    unfavorite
+  '';
   tuple-keeps-its-logs = ''
     Tuple's service keeps the daemon's last three logs, newest first, before it starts, and an empty
     log pushes none out
@@ -6327,10 +6379,6 @@
     from a level of the theme's type; nor does the reader's page or its foot say a size, a
     weight, a tracking or an axis of their own in the Typst they set
   '';
-  update-to-main-asks-what-nix-offload-answers = ''
-    the question a Mac asks before it updates, whether it's over its load, is one the nix-offload
-    it names answers as a question does, with 0, 1 or 69, not words it refuses as asked wrongly
-  '';
   update-to-main-outlives-its-switch = ''
     neither NixOS nor nix-darwin restarts update-to-main while it switches them: the service never
     restarts on a switch, the Mac's daemon names no store path, both start it from the running
@@ -6339,7 +6387,7 @@
   update-to-main-follows-on-a-mac = ''
     a Mac's follower is its primary user's launchd agent, started again whenever follow ends and
     naming no store path; a Mac refuses an update during a call, refuses the follower's ask alone
-    while nix-offload says it's over its load, for two hours at most, and the follower's switch
+    while mac-room.sh says it's short of memory, for two hours at most, and the follower's switch
     waits while someone is at the Mac, for 45 minutes at most
   '';
   update-to-main-opens-enough-files-on-a-mac = ''
@@ -6348,6 +6396,12 @@
   '';
   update-to-main-passes-clippy = ''
     clippy finds nothing in update-to-main or its tests
+  '';
+  update-to-main-waits-for-a-macs-memory = ''
+    a Mac has room for its update only from two readings a minute apart, both at 35% free or over
+    with nothing swapped out between; a first, too close, stale or future reading, a share under
+    the floor, a swap-out or a count started again is short, and what it can't read or keep can't
+    tell, never room
   '';
   update-to-main-updates-to-signed-main = ''
     update-to-main builds and switches to a main signed by a key it was given and descended from what
@@ -7323,6 +7377,10 @@
     something in it held, or a find from the root showing a row of its, the launcher open, or a
     terminal's show walked into it; never open on another place, at home or on another's find,
     and at once on stepping in
+  '';
+  wifi-names-a-network-without-a-country = ''
+    the XPS 14's kernel records the name of the network a card joined even when its access point
+    names no country, so networkd matches that network's file
   '';
   wifi-sessions-survive-fragmented-memory = ''
     the XPS 14's kernel lets Wi-Fi's block-ack reorder buffers come from vmalloc when memory is

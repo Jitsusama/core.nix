@@ -442,7 +442,7 @@ fn still_passes(checkout: &Path, candidate: &str, main: &str) -> bool {
     };
     let judged = crate::earlier::judged(candidate, main, &on_main);
     let _ = std::env::set_current_dir(here);
-    judged.is_ok_and(|judged| matches!(judged.before, crate::ready::Before::Clean(_)))
+    judged.is_ok_and(|judged| judged.before.speaks_for_the_head())
 }
 
 #[cfg(test)]

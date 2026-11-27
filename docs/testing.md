@@ -251,12 +251,16 @@ louder: no run saw what main moved since, and on 2026-11-26 a change that
 passed at two commits merged as it stood after main moved a file it
 shared, and formatting went red on main. Where main moves faster than a
 run, the change boards the merge train, whose run checks the merged tree.
-Two changes sharing a
-file merge in the order their gates started, so the one nearly through
-isn't the one made to run again: `nix-offload there --changed` says each
-gate going in `nix-offload/running/<pid>.json` and keeps its start with its
-pass, and `ready` refuses a head while a gate that started before its own,
-in another tree, still runs and changes one of its files other than the
+Each pass `ready` reads there costs a diff of what main moved since its
+base, so it reads at most two of a change's passes that share files with
+main's moves; a clean pass past those goes unread, which costs a run at
+the head, or the train's run of the merged tree, and never lets a stale
+pass merge. Two changes sharing a file merge in the order their gates
+started, so the one nearly through isn't the one made to run again:
+`nix-offload there --changed` says each gate going in
+`nix-offload/running/<pid>.json` and keeps its start with its pass, and
+`ready` refuses a head while a gate that started before its own, in
+another tree, still runs and changes one of its files other than the
 lists. A gate whose process is gone, or that started three hours ago, holds
 nothing back. A change run again after a merge left its pass stale keeps
 its tree's place, the start of the first gate `ready` saw there in the last
