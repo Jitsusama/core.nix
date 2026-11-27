@@ -3206,7 +3206,7 @@ Singleton {
             + (said !== null ? "; its press is told" : ""));
         if (again)
             pressedAgain(named, said, going);
-        else if (unanswered) {
+        else if (unanswered && said !== null) {
             if (said !== null)
                 unhosted(said, said.startedInHost ? "startedStillComing" : "stillComing");
             stillSaid = Object.assign({}, stillSaid,
