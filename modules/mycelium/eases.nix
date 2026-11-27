@@ -54,7 +54,8 @@ in
       '';
     };
     easesOnto = lib.mkOption {
-      type = lib.types.listOf (lib.types.strMatching "[a-z0-9-]+");
+      # A name opening with a dash would read as the node's next flag.
+      type = lib.types.listOf (lib.types.strMatching "[a-z0-9][a-z0-9-]*");
       default = [ ];
       example = [ "tern" ];
       description = ''
