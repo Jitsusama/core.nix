@@ -1315,13 +1315,15 @@ mod tests {
                 "a history another connection holds, code {code}, was told to be moved: {why}"
             );
         }
+        // SQLite's own words for a busy history, which the daemon waits on.
+        let busy = rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_BUSY),
+            Some("database is locked".to_owned()),
+        );
+        let why = kept("open the history at", path, &busy);
         assert!(
-            crate::daemon::busy(&kept(
-                "open the history at",
-                path,
-                &failed(rusqlite::ffi::SQLITE_BUSY)
-            )),
-            "a busy history, named, wasn't tried again"
+            crate::daemon::busy(&why),
+            "a busy history, named, wasn't tried again: {why}"
         );
         let why = kept(
             "open the history at",
