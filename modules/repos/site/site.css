@@ -484,8 +484,9 @@ code,
   }
 
   /* On a phone the grove stays one picture above the list, four trees to a
-     row, drawn at two thirds, so a long name without a dot or dash to wrap
-     at still fits its own; the list below says each name in full. */
+     row, each crown drawn smaller, and a name may take its stand's whole
+     width, so a long one without a dot or dash to wrap at still fits its
+     own; the list below says each name in full. */
   .grove {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -503,7 +504,7 @@ code,
   /* Smaller on a phone, though never under the 12 px the kit holds its
      own type to: 0.72rem alone was 10.8 px where a phone's root is 15. */
   .stand .nm {
-    max-inline-size: 64px;
+    max-inline-size: 100%;
     font-size: max(0.72rem, 12px);
   }
 
