@@ -211,13 +211,27 @@ pub fn stops(config: &Config, head: &str, followed: &Followed) -> Option<String>
         // that moves only when asked is mostly left at its lock's pin, and
         // a hold of its commit is still its repository's. That pin isn't
         // read here, so such a hold can't be told, and stops the build.
+        // Such a copy isn't fetched with the build, so one that lacks the
+        // commit is fetched first: a stale copy would otherwise read the
+        // commit as main's, which hasn't got it, and let it through. A
+        // fetch that fails leaves the hold untold, so it stops.
+        let mut unknown = None;
         let theirs: Vec<(&String, Option<&String>)> = config
             .follows
             .iter()
-            .filter(|(name, follow)| git::has(&Repo::followed(config, name, follow), &hold.commit))
+            .filter(|(name, follow)| {
+                let repo = Repo::followed(config, name, follow);
+                git::has(&repo, &hold.commit)
+                    || match git::fetch(&repo) {
+                        Ok(_) => git::has(&repo, &hold.commit),
+                        Err(failure) => {
+                            unknown.get_or_insert(failure.why);
+                            false
+                        }
+                    }
+            })
             .map(|(name, _)| (name, followed.get(name)))
             .collect();
-        let mut unknown = None;
         let mut judged = |seen: Result<bool, Failure>| match seen {
             Ok(true) => true,
             Ok(false) => false,

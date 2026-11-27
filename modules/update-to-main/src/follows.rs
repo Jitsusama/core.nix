@@ -35,11 +35,14 @@ pub type Followed = BTreeMap<String, String>;
 /// again: holding an ask against a lock gone another way would refuse
 /// every update, and no ask could clear it. A follow whose lock no longer
 /// has its input is left out, asked or not, since the build no longer
-/// reads it.
+/// reads it. An ask in `waited`, built and waiting for a hold, is kept as
+/// one followed is, but only what `last` followed is a floor no ask may
+/// step behind, since a commit that only waited never ran.
 pub fn heads(
     config: &Config,
     head: &str,
     last: &Followed,
+    waited: &Followed,
     at: &Followed,
 ) -> Result<Result<Followed, String>, Failure> {
     let mut followed = Followed::new();
@@ -55,13 +58,13 @@ pub fn heads(
     // A name sorts before its own inputs' (core before core/mycelium), so
     // an input's parent is settled before its pin is read from it.
     for (name, follow) in &config.follows {
-        let kept = last.get(name);
+        let kept = waited.get(name).or_else(|| last.get(name));
         if follow.asked && kept.is_none() && !at.contains_key(name) {
             continue;
         }
-        let repo = Repo::followed(config, name, follow);
-        git::keyring(&repo)?;
-        let main = git::fetch(&repo)?;
+        // The lock is read before anything is fetched, so an input it
+        // dropped, whose repository may have gone with it, can't fail the
+        // update.
         let Some((pinned, pins)) = pinned(config, &lock, name, &followed)? else {
             // A lock that no longer has the input builds without it, so
             // there is nothing to override, nor for a kept ask to stand
@@ -75,32 +78,41 @@ pub fn heads(
                 "{name} isn't in the lock the build reads, so no ask may name a commit of it"
             )));
         };
-        let commit = match at.get(name) {
-            None if follow.asked => match kept {
-                Some(kept)
-                    if git::descends(&repo, &pinned, kept)?
-                        && !git::descends(&repo, kept, &pinned)? =>
-                {
-                    kept.clone()
+        let repo = Repo::followed(config, name, follow);
+        git::keyring(&repo)?;
+        let commit = match (at.get(name), kept) {
+            // A kept ask needs its main only when the copy lacks what it
+            // compares, so a repository out of reach fails no update that
+            // the copy alone can settle.
+            (None, Some(kept)) if follow.asked => {
+                if !git::has(&repo, kept) || !git::has(&repo, &pinned) {
+                    git::fetch(&repo)?;
                 }
-                _ => continue,
-            },
-            None => main,
-            Some(asked) if git::descends(&repo, asked, &main)? => asked.clone(),
-            Some(asked) => {
-                return Ok(Err(format!(
-                    "{name} at {} isn't on its main, at {}, so it isn't taken",
-                    git::short(asked),
-                    git::short(&main)
-                )));
+                if !git::descends(&repo, &pinned, kept)? || git::descends(&repo, kept, &pinned)? {
+                    continue;
+                }
+                kept.clone()
+            }
+            (None, _) => git::fetch(&repo)?,
+            (Some(asked), _) => {
+                let main = git::fetch(&repo)?;
+                if !git::descends(&repo, asked, &main)? {
+                    return Ok(Err(format!(
+                        "{name} at {} isn't on its main, at {}, so it isn't taken",
+                        git::short(asked),
+                        git::short(&main)
+                    )));
+                }
+                asked.clone()
             }
         };
         if let Err(why) = git::signed(&repo, &commit)? {
             return Ok(Err(format!("{}: {why}", repo.called)));
         }
+        let ran = last.get(name).map(String::as_str);
         let behind = [
             (Some(pinned.as_str()), pins.as_str()),
-            (kept.map(String::as_str), "this machine last followed"),
+            (ran, "this machine last followed"),
         ];
         for (older, what) in behind.into_iter().filter_map(|(o, w)| Some((o?, w))) {
             if !git::descends(&repo, older, &commit)? {
