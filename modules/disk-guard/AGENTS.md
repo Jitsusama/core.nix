@@ -622,7 +622,14 @@ or launchd, and [`home.nix`][2] the account's.
 | `src/linux/pool.rs`       | the Btrfs pool and subvolume a file lies in              |
 | `src/procargs.rs`, `pmset.rs`, `memorystatus.rs` | what macOS says, parsed for Linux's tests |
 | `src/daemon.rs`, `serve.rs` | a daemon's step and its loop                           |
-| `src/daemon/`             | the step's duties, one file each, from hearing to status |
+| `src/daemon/asked.rs`     | the clears asked for, and the collects run for them      |
+| `src/daemon/hearing.rs`   | marking builds for fanotify, and what says a path is in use |
+| `src/daemon/nix_garbage.rs` | Nix's garbage, generations and linking as the guard runs them |
+| `src/daemon/passes.rs`    | which passes are due, how each runs, and a disk's rest after one |
+| `src/daemon/runaways.rs`  | who holds a disk, and freezing a runaway until there is room |
+| `src/daemon/status.rs`    | the status file, its heartbeat, and the previews it answers |
+| `src/daemon/steps.rs`     | the guard's making and its step, and what it resumes after a sleep |
+| `src/daemon/surveying.rs` | walking a disk's sources for offers, and learning from a pass |
 | `src/socket.rs`, `vouch.rs` | what the two daemons say to each other                 |
 | `src/garbage.rs`, `generations.rs`, `dedupe.rs` | Nix's garbage, generations and linking |
 | `src/garbage/`            | running Nix's commands, its refused nix.conf lines left out |

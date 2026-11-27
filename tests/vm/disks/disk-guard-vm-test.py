@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 STATUS = "/run/user/1000/disk-guard/status.json"
 # The guard, on the machine's path.
 GUARD = "/run/current-system/sw/bin/disk-guard"
-# A runaway's rate, a mebibyte a second over the last minute, as the guard's daemon.rs has it.
+# A runaway's rate, a mebibyte a second over the last minute, as src/daemon/runaways.rs has it.
 RUNAWAY = 1 << 20
 # How long a band or a deletion may take to follow the disk: a pass, its heartbeat and a step.
 FOLLOWING = timedelta(minutes=5)
