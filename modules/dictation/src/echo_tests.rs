@@ -612,7 +612,7 @@ fn a_run_of_cuts_splits_where_the_rule_cutting_it_changes() {
         .collect();
     assert_eq!(
         told,
-        [("Lunch at noon", None), ("in Tuesday", Some(22.0))],
+        [("Lunch at noon", Rule::Spelling), ("in Tuesday", Rule::Level(22.0))],
         "a run cut by spelling, then by level, was told as cut by one rule"
     );
 }
