@@ -2637,6 +2637,16 @@ ShellRoot {
         Sessions.untaken(unansweredRefused, noneAt, "none");
         expect("a refusal ends with no kitty to ask",
             !(unansweredRefused in Sessions.refusedAsks), JSON.stringify(Sessions.refusedAsks));
+        // A give-up's cause is kept only as long as its repeat can come,
+        // so callers naming endless viewers grow nothing.
+        const causedStale = "pi-hosted.s-caused-stale";
+        Sessions.causedAsks = Object.assign({}, Sessions.causedAsks, { [causedStale]:
+            { asked: "1", at: Date.now() - Sessions.answerPatience - 1 } });
+        Sessions.untaken("pi-hosted.s-caused-fresh", String(Date.now()), "none");
+        expect("a give-up's cause is let go once its repeat can't come",
+            !(causedStale in Sessions.causedAsks)
+            && "pi-hosted.s-caused-fresh" in Sessions.causedAsks,
+            JSON.stringify(Object.keys(Sessions.causedAsks)));
         Sessions.forgetAsk(unansweredRefused);
         // A press disowned as the kitty didn't answer is told the window
         // came as long as a press told its window may yet come is
