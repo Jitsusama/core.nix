@@ -82,13 +82,21 @@ pub struct Call {
     pub freezes: Option<f64>,
     /// How long the far end was frozen, in seconds, over the call.
     pub frozen_s: Option<f64>,
-    /// When each freeze had ended, in whole seconds since the epoch: the
-    /// time of the far sample whose count of freezes rose, once for each
-    /// freeze it rose by, so a freeze can be laid beside lag-watch's
-    /// ten-second rows to say what the machine was doing. Cut down to the
-    /// second, as lag-watch's own row ends are, so a freeze falls in the
-    /// row that held it. A stream that restarted still times its freezes
-    /// here, though their count and length can't be told then.
+    /// When each freeze had ended, in whole seconds since the epoch, so a
+    /// freeze can be laid beside lag-watch's ten-second rows to say what
+    /// the machine was doing. Each is the time of the far sample whose
+    /// count of freezes rose, once for each freeze it rose by, and is the
+    /// latest the freeze could have ended: the sample comes up to one
+    /// sample gap after it, a second or more under load, so the row before
+    /// may be the one that held the frame. Cut down to the second, as
+    /// lag-watch's own row ends are, a time can also sit up to a second
+    /// before its sample. A count that fell between two samples is taken
+    /// as a stream restarted from 0, and all it holds are timed. A restart
+    /// whose count comes back at or above the old one reads as no restart,
+    /// so only the rise past the old count is timed, and as many of its
+    /// freezes as the old count go untimed. Times are kept even when a
+    /// fall leaves `freezes` and `frozen_s` unread, so a restarted
+    /// stream's freezes may show only here.
     pub frozen_at: Vec<f64>,
     /// A click on the call's own tab to its next frame, in ms.
     pub clicks_p50: Option<f64>,
@@ -257,14 +265,18 @@ pub fn call(mine: &[Value], far: &[Value], clicks: &[f64]) -> Call {
         .collect();
     // Chrome counts a freeze once its next frame comes, so the sample
     // whose count rose is the one by which it had ended, and a count that
-    // rose by two between samples ended two.
+    // rose by two between samples ended two. A count that fell is taken as
+    // a stream restarted from 0, so all it holds are freezes since: the
+    // page keeps one inbound video stream's figures a sample, though not
+    // always the same stream's, and a switch between two reads as a
+    // restart too.
     let frozen_at = frozen
         .windows(2)
         .flat_map(|pair| {
             let risen = pair[1]["in"]["freezeCount"]
                 .as_u64()
                 .zip(pair[0]["in"]["freezeCount"].as_u64())
-                .map_or(0, |(b, a)| b.saturating_sub(a));
+                .map_or(0, |(b, a)| if b < a { b } else { b - a });
             let at = pair[1]["t"].as_f64().map(|ms| (ms / 1000.0).floor());
             std::iter::repeat_n(at, usize::try_from(risen).unwrap_or(0)).flatten()
         })
@@ -516,6 +528,26 @@ mod tests {
             (restarted.freezes, restarted.frozen_s),
             (None, None),
             "a restarted stream's counts read as a figure"
+        );
+        assert_eq!(
+            restarted.frozen_at,
+            vec![44.0, 66.0],
+            "a restarted stream's freeze wasn't timed"
+        );
+        // A stream that restarted between samples, the old one at 3 and
+        // the new one's first sample at 1, still times that one freeze.
+        for (t, row) in far.iter_mut().enumerate() {
+            let count = match t {
+                40..50 => 3,
+                50.. => 1,
+                _ => 0,
+            };
+            row["in"]["freezeCount"] = json!(count);
+        }
+        assert_eq!(
+            call(&mine, &far, &[]).frozen_at,
+            vec![44.0, 44.0, 44.0, 55.0],
+            "the freeze a restarted stream's first sample counted wasn't timed"
         );
     }
 

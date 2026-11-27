@@ -92,7 +92,7 @@ the queue and conclude. The trees, checkouts and changes agents work in are
 
 | Word | Means | Not | In code |
 | ---- | ----- | --- | ------- |
-| agent | a model working for Joel, as a session or a subagent | AI, assistant, bot | |
+| agent | a model working for Joel, as a session or a subagent; For You's Agents holds what they raise | AI, assistant, bot, agents asking | `for-you:kind:agent` |
 | sandbox | the fence around a command an agent runs: what it may read, write, reach and be told | | `PI_SANDBOX`, landrun |
 | broker | a program outside the sandbox holding a credential or a door the sandbox shuts, which hands what's inside only a short-lived or narrow part of it | | `github-broker`, `gcloud-broker`, `jobs-broker` |
 | quest | a piece of Joel's work, with its own folder, README and documents | task, project, todo | `QEST-` ids, the `quest` tool |
@@ -109,11 +109,12 @@ the queue and conclude. The trees, checkouts and changes agents work in are
 | Journey | a quest's dated log of what happened | | `quest journal` |
 | session | a pi working for Joel on a quest, in a window of its own | | `agents` in the launcher |
 | carry | moving a quest's work and its session to another machine; Agents lists the day's in a row of their own, each by its session's title, else its quest's, how it stands, where it went and when it was ordered, and since a carry asks nothing of Joel, none stands in For You | | `carry`, `agents:carried` |
-| stuck | the node's word for work standing still: a carry it judges stuck, by its own rule, said in alert in Agents' row of carries with the node's reason, or a network's cell standing paused, which the node counts stuck in that network's counts and its site draws stuck | | a carry's `stuck`, a network's `stuck` count |
+| stuck | the node's word for work standing still: a carry it judges stuck, by its own rule, said in alert in Agents' row of carries with the node's reason, or a network's cell standing paused and wanting nothing at all, which the node counts stuck in that network's counts and its site draws stuck; Agents' row of that network moves some cells into stuck or out of it: one whose want Joel put off, one whose want waits on someone else, and a lead wearing Joel's mark for a session under it | | a carry's `stuck`, a network's `stuck` count, `networks.rs`'s `as_marked` |
 | orchestrator | a session whose quest holds other quests: it hands out their work and gathers what waits on Joel | steward | `orchestrator: true` |
 | orchestration | an orchestrator and every session on a quest below it | | `#orchestration/<address>` |
 | talk | Joel's words to an orchestrator or a session, typed in its field from outside its window | steer | `steer/<ADDRESS>/` |
 | offered work | words a page's mycelium: link puts in Start New Work's From a Link, which start only on Joel's own Return once he has checked them; the session the page says they're from is its claim, never vouched for | suggested work | `newWork`, Sprouting.js's `offered` |
+| the Cloud | where Start New Work's In the Cloud starts work: a machine that costs money, one already up with room or one the node's providers make for it, which the node picks | | the need `cloud`, Cloud.js |
 | talk line | one line at the top of the screen, on Super+S, to say something to the focused window's session, else The Void, without opening the launcher | | `agents:line`, TalkLine.qml |
 | pause | Joel stopping a session after its turn, from outside its window, until he resumes it, talks to it or types in it | | presence `paused` |
 | resume | Joel letting a paused session carry on where it left off | | |
@@ -257,7 +258,7 @@ be read, marked unread and archived.
 | join | going into a meeting's call, or a call another sends | | |
 | cancel | taking a meeting Joel holds off everyone's calendar, Google telling each guest | delete | |
 | Slack message | a message in Slack, found by searching Slack and opened in its conversation | | the Slack daemon's `slack-message` |
-| Media | the place holding every player and what each is playing, beside Sound, which holds the devices it plays through | | `program:media` |
+| Media | the place in Desktop holding every player and what each is playing, apart from Sound in Machine, which holds the devices it plays through | | `program:media` |
 | player | a program playing sound or video that the desktop can pause, skip and go to, such as Spotify or a browser's tab | | MPRIS, `Playing.qml` |
 | track | what a player is playing: one song, episode or video, with its artist and album | | MPRIS's `xesam` metadata |
 | link | the web address a track, a page or a message opens at, which Copy the Link copies | | MPRIS's `xesam:url` |
@@ -289,30 +290,21 @@ written to, called, met with and made a favourite.
 ## Desktop
 
 The screen and everything on it around the windows, the launcher among them.
-A window can be gone to, closed, floated or tiled, moved and sized; a screen's
-brightness, scale and rotation can be set; an item in a list, such as a notice
-or a copy, can be opened, copied or forgotten.
+A window can be gone to, closed, floated or tiled, moved and sized; an item in
+a list, such as a notice or a copy, can be opened, copied or forgotten. The
+screens themselves are the machine's, in Machine.
 
 | Word | Means | Not | In code |
 | ---- | ----- | --- | ------- |
 | desktop | the screen and everything on it around the windows: the launcher, notices, the margin and niri's workspaces | | niri, Quickshell |
-| screen | a monitor, built in or plugged in | display, monitor | niri's outputs |
 | screen sharing | the screen shown to others, in a call or a cast, which niri tells the desktop of | screencast | niri's casts |
-| screen mode | a size and refresh rate a screen can run at: the one it runs at now, and the ones it offers | | niri's `modes` |
-| colour depth | how many bits a screen gives each of its red, green and blue | | the EDID's bit depth |
-| colours | the range of colour a screen can show, said against sRGB's, apart from the theme's colour | | the EDID's gamut |
-| white point | the white a screen's panel gives of itself, in kelvin and where it sits, apart from warmth, the white the desktop sets it to | | the EDID's white |
-| primaries | where a screen's red, green and blue sit, the corners of its colours | | the EDID's primaries |
-| brightness | how bright a screen is, which follows the room's light | | the `backlight` program |
-| warmth | how warm a light's white is, in kelvin: a screen's, which follows the room's light or the night light, or the desk light's, apart from a panel's white point | | the `backlight` program's colour temperature |
-| night light | a screen warmed to a set white from sunset to sunrise, wherever the machine is, whatever the room's light | | the `backlight` program's night |
 | workspace | one of niri's rows of windows on a screen | | |
 | overview | niri's view of every workspace and its windows, on Super+A | | |
 | window | a program's rectangle on the screen | | |
 | This Window | the launcher's first row in Desktop: the window Joel is in | | |
 | wallpaper | the picture behind every window | painting | |
 | notice | what a program said, on the arrival line as it comes and after in Now's Desktop, but Slack's in Slack's row and only while Slack's daemon can't answer, and the shell's own for a to-do or pi in neither | notification | `Notifications.qml`, `org.freedesktop.Notifications` |
-| Now's Desktop | Lately's row, which reads "Desktop" on screen, for every notice but Slack's and the shell's own (a to-do's and pi's): those unread inside it and those read in its History; never home's Desktop, the place for the screens and windows | | `Lately.js`'s `desktop` |
+| Now's Desktop | Lately's row, which reads "Desktop" on screen, for every notice but Slack's and the shell's own (a to-do's and pi's): those unread inside it and those read in its History; never home's Desktop, the place for the windows and what's made or played on them | | `Lately.js`'s `desktop` |
 | arrival line | one line at the top of the screen, where the launcher stands, showing the notice that waits on Joel as it comes, without taking the keys | | `NoticeLine.qml` |
 | notice kind | what a notice is about, as its program files it, said in its drawer's eyebrow: message, mail, device, network, status or transfer, with failed or bounced after it when it went wrong | | `notices:kind`, the notification's `category` hint |
 | Do Not Disturb | the setting that holds notices back while it's on, and on by itself while the screen may be shared | dnd, quiet | `session:quiet` |
@@ -350,7 +342,6 @@ or a copy, can be opened, copied or forgotten.
 | to-do | what only Joel can do, raised by the session that needs him and listed in For You | Needs You item, waiting on you | `WaitingOnYou.qml` |
 | to-do daemon | what finds a to-do done or ready by itself, running its check and hearing its signal | the desktop's daemon | `modules/to-do`, `verdicts.json` |
 | check | the command that settles a to-do, which succeeds once it's done, apart from the checks core.nix holds | | `doneWhen.check` |
-| agents asking | For You's row gathering the sessions waiting on Joel, once two are, the most pressing first | | `for-you:kind:agent` |
 | look | something a session points Joel at to see, a pull request, a page, a file, a diff or a terminal, kept in For You until he opens or clears it | | `on:waiting:look`, the looks folder |
 | asker | who a look comes from, in plain words: what its session writes, else its quest's name without its id, said in its row's note and its drawer's eyebrow | the quest's title, its id | a look's `asker` |
 | ask | what a look asks of Joel, at its row's side, with its choices first in its step, each answered by one Return once Joel has stepped in; Return on the row opens it and never answers | | a look's `ask` |
@@ -382,7 +373,8 @@ or a copy, can be opened, copied or forgotten.
 
 ## Machine
 
-The computer and its parts, its power and its sleep. A Bluetooth device is
+The computer and its parts, its screens, its power and its sleep. A screen's
+brightness, scale and rotation can be set. A Bluetooth device is
 paired, connected, disconnected and forgotten in Bluetooth, and used in its
 kind's place, such as a headset's volume in Sound; a setting can be set,
 raised and lowered; the machine can sleep, lock, log out, reboot and power
@@ -406,6 +398,15 @@ off.
 | NPU | the processor's part that runs models on the machine | | the `intel_vpu` driver |
 | media engine | the processor's part that encodes and decodes video | | |
 | display engine | the processor's part that sends each screen its picture | | |
+| screen | a monitor, built in or plugged in | display, monitor | niri's outputs |
+| screen mode | a size and refresh rate a screen can run at: the one it runs at now, and the ones it offers | | niri's `modes` |
+| colour depth | how many bits a screen gives each of its red, green and blue | | the EDID's bit depth |
+| colours | the range of colour a screen can show, said against sRGB's, apart from the theme's colour | | the EDID's gamut |
+| white point | the white a screen's panel gives of itself, in kelvin and where it sits, apart from warmth, the white the desktop sets it to | | the EDID's white |
+| primaries | where a screen's red, green and blue sit, the corners of its colours | | the EDID's primaries |
+| brightness | how bright a screen is, which follows the room's light, or how bright the desk light shines | | the `backlight` program; Litra's `brightness` |
+| warmth | how warm a light's white is, in kelvin: a screen's, which follows the room's light or the night light, or the desk light's, apart from a panel's white point | | the `backlight` program's colour temperature |
+| night light | a screen warmed to a set white from sunset to sunrise, wherever the machine is, whatever the room's light | | the `backlight` program's night |
 | chipset | the chip beside the processor that reaches the disk, USB and the rest | | the PCH |
 | power controller | the processor's part that sets its power and clocks | | |
 | held back | the processor kept below the speed it asked for, by a power or heat limit, and for how long, apart from what an update or a sleep is blocked by | | `HeldBack` |
@@ -447,7 +448,7 @@ off.
 | charger | the power cable, and what it's plugged into | mains | AC |
 | Keep Awake | the setting that keeps the machine from sleeping or locking while it's on | Caffeinate | |
 | sleep | the machine paused with its memory kept, until it wakes | suspend | `systemctl suspend`, s2idle |
-| wake | coming back from sleep, as the machine does, or from a park, as a session does | | |
+| wake | coming back from sleep, as the machine does, from a park, as a session does, or from standby, as a television does when net wakes it | | `net devices NAME wake` |
 | idle | of the machine, every session left untouched past the screens going off, and nothing holding it awake | inactive | logind's `IdleHint` |
 | idle sleep | the sleep a laptop falls into left idle on battery, never on the charger | autosuspend | `idle-sleep`, logind's `IdleAction` |
 | hibernate | the machine off with its memory written to the swap file, until it starts again from it | | `systemctl hibernate` |
@@ -479,7 +480,6 @@ off.
 | image processor | the part turning the built-in camera's raw picture into an image | ISP, IPU | |
 | IR camera | the infrared camera beside the built-in camera, for signing in by face | | `ir-camera`, Howdy |
 | desk light | the light on the screen, lit while a camera is in use | | Litra |
-| brightness | how bright the desk light shines, apart from a screen's brightness | | Litra's `brightness` |
 | console | the text screen the machine starts on, and the ones past Ctrl+Alt+F2 | | kmscon |
 | splash | the picture shown while the machine starts and stops | boot screen | Plymouth |
 | device check | the program that tells Joel a device stopped working | | `device-check`, smartd |
@@ -520,6 +520,7 @@ signed in to and forgotten; Wi-Fi's radio can be turned off.
 | firewall | what keeps others' connections out | | nftables |
 | shaper | the program that keeps the network's queue on the machine, sorted by slice, so a call stays quick | | `shaper`, CAKE |
 | house | of the shaper, another machine on the same line out, which says each second what it sends up; this machine keeps the most the two may send between them, and holds its own upload under what the other leaves of it | | `jitsusama.shaper.networks.<router>.house`, `house.rs` |
+| download line | of the shaper, what a network's connection carries down, as declared, or what one of this machine's links reaches it at, under which a call's download is held | | `jitsusama.shaper.networks.<router>.down`, `links.<link>.down`, `networks::Line`, `networks::line_of` |
 | home network | the network at home, the eero's, its nodes and the devices on them, and its place in the launcher | eero network, mesh network | `eero` |
 | node | one eero of the home network | satellite, extender | `eeros` |
 | gateway node | the node the internet comes in through | base station, primary node | `gateway` |
@@ -668,6 +669,7 @@ The words core.nix is built from. Never a launcher place.
 | age key | the file that opens what was sealed to it with age | age identity | |
 | theme | the look every program Joel sees shares | | `jitsusama.theme` |
 | terminal kit | the library every Rust command builds on for its shared flags, ink, layout, help, errors and exit codes | | `modules/terminal-kit/` |
+| subject hubs | the library cadence and pain-points read the mycelium's hubs through, each a subject's cells, and keep each need they put to one | | `modules/subject-hubs/` |
 | crate reach | which of core's Rust crates read which, by their manifests' paths, so merge-net and a gate's replay judge alike what main moved beside a change | | `modules/crate-reach/` |
 | colour | what a colour means in the theme, such as the accent, apart from a screen's colours | colour role | `jitsusama.theme.colours`, a theme file's `[colours]` |
 | face | one of the theme's typefaces, named by its kind: mono, sans, serif or script | typeface | `jitsusama.theme.font` |
@@ -694,7 +696,7 @@ says which module broke.
 | ---- | ----- | --- | ------- |
 | check | a check that `nix flake check` builds, one promise held | | `checks.x86_64-linux.<name>` |
 | VM test | a check that boots machines in VMs | | a `vm-` name |
-| subtest | one of a VM test's pytest tests, as the driver's log names it, which can run alone | | `test_` functions in a `*-vm-test.py` |
+| subtest | one of a VM test's pytest tests, named by its function, which can run alone; the driver's log heads its part with its docstring's first line | | `test_` functions in a `*-vm-test.py` |
 | example machine | a whole machine built only from core's outputs, as a machine repository would | | `example-nixos`, `example-laptop`, `example-apple-laptop`, `example-darwin` |
 | bare machine | the least machine of a class that evaluates, which a check adds one module to, for checks only | | `lib.bareNixosModule`, `lib.bareDarwinModule`, `bareNixos` |
 | stand-in | something standing in for a real program or device in a check | fake | |

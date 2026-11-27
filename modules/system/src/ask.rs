@@ -4,7 +4,6 @@
 //! the clock each leave an answer saying why, never a hang.
 
 use std::io::{self, Read};
-use std::iter::Peekable;
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::{self, Receiver};
 use std::thread;
@@ -12,6 +11,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::Value;
 use system::parts::Answer;
+use system::plain;
 
 /// How long an owner may take. Each answers from what it holds in well
 /// under a second; `repos` reads every checkout's git files, about two
@@ -32,6 +32,9 @@ const COMPLAINT_KEPT: u64 = 4096;
 /// left, and that's given only a moment, past the clock if need be, so an
 /// owner ending right at it still has its answer read.
 const STREAMS_AFTER_IT_ENDS: Duration = Duration::from_secs(1);
+/// The one key a later line of an answer may add: `mycelium machines`
+/// writes its builders after its machines.
+const BUILDERS: &str = "Builders";
 
 /// Each command's answer, in the order asked.
 pub fn all(commands: &[&[&str]]) -> Vec<Answer> {
@@ -97,7 +100,7 @@ fn one(words: &[String], clock: Duration) -> Answer {
     }
     let answer = gathered(&reading, until);
     match answer.end {
-        Some(Ok(())) => first(&said, &answer.bytes),
+        Some(Ok(())) => whole(&said, &answer.bytes),
         Some(Err(error)) => Err(format!("{said}'s answer couldn't be read: {error}")),
         // It ended well, but something it left holds its answer open, so
         // what it wrote may not be the whole of it.
@@ -187,7 +190,7 @@ fn failed(said: &str, code: Option<i32>, complaint: &[u8]) -> String {
     let complaint = String::from_utf8_lossy(complaint);
     let line = complaint
         .lines()
-        .map(|line| plain(&reason(line)))
+        .map(|line| plain::words(&reason(line)))
         .find(|line| !line.is_empty());
     match line {
         Some(line) => {
@@ -218,94 +221,35 @@ fn reason(line: &str) -> String {
     }
 }
 
-/// `line` as plain words: a terminal's escape sequences gone whole, as a
-/// coloured or linked complaint writes them, and with them every control
-/// character and the format characters that turn, hide or break text, so a
-/// row reads as it's written.
-fn plain(line: &str) -> String {
-    let mut kept = String::new();
-    let mut chars = line.chars().peekable();
-    while let Some(each) = chars.next() {
-        match each {
-            '\u{1b}' => escape(&mut chars),
-            // The one-character forms of a control sequence and a string,
-            // as characters; written as raw bytes, they were never UTF-8
-            // and reach here as a replacement character, which is harmless.
-            '\u{9b}' => control_sequence(&mut chars),
-            '\u{90}' | '\u{98}' | '\u{9d}' | '\u{9e}' | '\u{9f}' => string(&mut chars),
-            each if hides(each) || each.is_control() => {}
-            each => kept.push(each),
-        }
-    }
-    kept.trim().to_owned()
-}
-
-/// Passes over an escape sequence's rest, its escape already taken: a
-/// control sequence such as a colour, a string such as a title or a link,
-/// or one that runs through intermediates to its final character, such as
-/// a character set chosen; any other takes the one character after it.
-fn escape(chars: &mut Peekable<std::str::Chars>) {
-    match chars.next() {
-        Some('[') => control_sequence(chars),
-        Some(']' | 'P' | 'X' | '^' | '_') => string(chars),
-        Some(' '..='/') => {
-            chars.find(|end| ('0'..='~').contains(end));
-        }
-        _ => {}
-    }
-}
-
-/// Passes over a control sequence's rest, to its final character.
-fn control_sequence(chars: &mut Peekable<std::str::Chars>) {
-    chars.find(|end| ('@'..='~').contains(end));
-}
-
-/// Passes over a string's rest, to the bell or string terminator ending it.
-fn string(chars: &mut Peekable<std::str::Chars>) {
-    while let Some(each) = chars.next() {
-        match each {
-            '\u{7}' | '\u{9c}' => return,
-            '\u{1b}' => {
-                chars.next_if_eq(&'\\');
-                return;
-            }
-            _ => {}
-        }
-    }
-}
-
-/// Whether `each` is a format character that turns, hides or breaks text:
-/// a soft hyphen, direction marks and overrides, joiners and invisible
-/// operators, a line or paragraph separator, annotation marks, and tags.
-fn hides(each: char) -> bool {
-    matches!(
-        each,
-        '\u{ad}'
-            | '\u{61c}'
-            | '\u{180e}'
-            | '\u{200b}'..='\u{200f}'
-            | '\u{2028}'..='\u{202e}'
-            | '\u{2060}'..='\u{206f}'
-            | '\u{feff}'
-            | '\u{fff9}'..='\u{fffb}'
-            | '\u{e0000}'..='\u{e007f}'
-    )
-}
-
-/// The document an owner's answer opens with. An owner may say more on
-/// the lines after it, as `mycelium machines` says the builders it sends
-/// to, and none of that is what its part is judged by.
-fn first(said: &str, bytes: &[u8]) -> Answer {
-    serde_json::Deserializer::from_slice(bytes)
-        .into_iter::<Value>()
+/// The document an owner's answer opens with, and the builders a later
+/// one adds to its `Ok`: `mycelium machines` says its machines, then the
+/// builders it sends to on a line of their own. A later `Ok` object adds
+/// only its `Builders`, and only where nothing earlier said them, so no
+/// later line can change what the machines are. A later document that
+/// isn't an `Ok` object adds nothing and is passed over, and reading stops
+/// at the first words that aren't JSON.
+fn whole(said: &str, bytes: &[u8]) -> Answer {
+    let mut documents = serde_json::Deserializer::from_slice(bytes).into_iter::<Value>();
+    let mut answer = documents
         .next()
         .and_then(Result::ok)
-        .ok_or_else(|| format!("{said} said something not JSON"))
+        .ok_or_else(|| format!("{said} said something not JSON"))?;
+    if let Some(ok) = answer.get_mut("Ok").and_then(Value::as_object_mut) {
+        for later in documents.map_while(Result::ok) {
+            let Some(Value::Object(adds)) = later.get("Ok").cloned() else {
+                continue;
+            };
+            if let Some(builders) = adds.get(BUILDERS) {
+                ok.entry(BUILDERS).or_insert_with(|| builders.clone());
+            }
+        }
+    }
+    Ok(answer)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{COMPLAINT_KEPT, failed, first, gathered, one, reader};
+    use super::{COMPLAINT_KEPT, failed, gathered, one, reader, whole};
     use serde_json::json;
     use std::time::{Duration, Instant};
 
@@ -491,19 +435,58 @@ mod tests {
     }
 
     #[test]
-    fn an_answer_followed_by_another_line_is_read_as_its_first() {
+    fn an_answer_takes_in_what_its_later_lines_add() {
         let said = b"{\"Ok\":{\"Machines\":[]}}\n{\"Ok\":{\"Builders\":[]}}\n";
         assert_eq!(
-            first("mycelium machines", said),
-            Ok(json!({ "Ok": { "Machines": [] } })),
+            whole("mycelium machines", said),
+            Ok(json!({ "Ok": { "Machines": [], "Builders": [] } })),
             "mycelium machines writes its builders on a line after its machines"
+        );
+        let over = b"{\"Ok\":{\"Machines\":[1]}}\n{\"Ok\":{\"Machines\":[2]}}";
+        assert_eq!(
+            whole("mycelium machines", over),
+            Ok(json!({ "Ok": { "Machines": [1] } })),
+            "a later line never overwrites what the first said"
+        );
+        let other = b"{\"Ok\":{\"Machines\":[]}}\n{\"Ok\":{\"Cells\":[1],\"Builders\":[2]}}";
+        assert_eq!(
+            whole("mycelium machines", other),
+            Ok(json!({ "Ok": { "Machines": [], "Builders": [2] } })),
+            "a later line adds only its builders"
+        );
+        let failed = b"{\"Ok\":{\"Machines\":[]}}\n{\"Err\":{\"Builders\":[9]}}\n\
+            {\"Ok\":[]}\n7\n{\"Ok\":{\"Builders\":[3]}}\n{\"Ok\":{\"Builders\":[4]}}";
+        assert_eq!(
+            whole("mycelium machines", failed),
+            Ok(json!({ "Ok": { "Machines": [], "Builders": [3] } })),
+            "a later Err, or anything not an Ok object, is passed over, and the first builders \
+             stay"
+        );
+        let stopped = b"{\"Ok\":{\"Machines\":[]}}\nnot json\n{\"Ok\":{\"Builders\":[9]}}";
+        assert_eq!(
+            whole("mycelium machines", stopped),
+            Ok(json!({ "Ok": { "Machines": [] } })),
+            "nothing past words that aren't JSON is read"
+        );
+        assert_eq!(
+            whole(
+                "mycelium machines",
+                b"{\"Ok\":[]}\n{\"Ok\":{\"Builders\":[1]}}"
+            ),
+            Ok(json!({ "Ok": [] })),
+            "an Ok that isn't an object takes in nothing"
+        );
+        assert_eq!(
+            whole("net --json", b"{\"Err\":\"down\"}\n{\"Ok\":{\"B\":1}}"),
+            Ok(json!({ "Err": "down" })),
+            "an answer that isn't an Ok takes in nothing"
         );
     }
 
     #[test]
     fn an_answer_that_opens_with_no_document_is_not_json() {
         assert_eq!(
-            first("net --json", b"warning: stale\n{}"),
+            whole("net --json", b"warning: stale\n{}"),
             Err("net --json said something not JSON".to_owned()),
             "words before the document aren't read past"
         );

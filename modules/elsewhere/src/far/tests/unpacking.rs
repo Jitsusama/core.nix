@@ -244,7 +244,7 @@ fn an_archive_that_isn_t_plain_ustar_is_refused_before_it_is_read() {
 /// Runs the far line over `files` as `list` lists them, its job touching
 /// `ran` beside its copy, with `programs` and a tar that writes down each
 /// time it is run in the home's `read`, ahead on its path.
-fn reading(
+pub(super) fn reading(
     list: &str,
     files: &[(&str, &str)],
     programs: &[(&str, &str)],
@@ -293,9 +293,14 @@ fn refused_as_not_plain(
     let _ = std::fs::remove_dir_all(home);
 }
 
-/// An archive the near side writes of one file, `name` holding `text`.
-fn archive_of(name: &str, text: &str) -> String {
-    let made = scratch(&format!("archive-of-{name}"));
+/// An archive the near side writes of one file, `name` holding `text`,
+/// each made in a folder of its own, since tests run at once.
+pub(super) fn archive_of(name: &str, text: &str) -> String {
+    static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+    let made = scratch(&format!(
+        "archive-of-{name}-{}",
+        NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ));
     std::fs::write(made.join(name), text).unwrap();
     archive::write(&made, [name], &made, 1 << 20, u64::MAX).unwrap();
     let archive = std::fs::read_to_string(made.join("0.tar")).unwrap();
@@ -305,7 +310,7 @@ fn archive_of(name: &str, text: &str) -> String {
 
 /// Where the job's first archive lies in a far run's home, as its shell
 /// names it from `$HOME`.
-const FIRST: &str = ".cache/pi/agentic-harness.pi/quest-workspace/QEST-20261115-ABC123/\
+pub(super) const FIRST: &str = ".cache/pi/agentic-harness.pi/quest-workspace/QEST-20261115-ABC123/\
                      handover/elsewhere/1/tree/0.tar";
 
 #[test]

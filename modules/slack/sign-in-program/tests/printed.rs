@@ -138,12 +138,64 @@ fn sign_in_that_prints_nothing_gives_no_token() {
 }
 
 #[test]
+fn sign_in_still_held_for_writing_is_run_once_let_go() {
+    let _turn = turn();
+    let at = folder("busy");
+    let path = program(&at, "echo stand-in-token");
+    // Held as a child forked mid-write holds it: running it fails with
+    // ETXTBSY until the hold is let go.
+    let held = std::fs::OpenOptions::new()
+        .write(true)
+        .open(&path)
+        .expect("the program held for writing");
+    let letting_go = thread::spawn(move || {
+        thread::sleep(SHORT);
+        drop(held);
+    });
+    let (answer, _) = asked(path, AMPLE);
+    letting_go.join().expect("the hold is let go");
+    std::fs::remove_dir_all(&at).expect("the case's folder goes");
+    assert_eq!(
+        answer,
+        SignIn::Token("stand-in-token".into()),
+        "a program busy being written is run once it can be"
+    );
+}
+
+#[test]
 fn sign_in_that_cant_be_run_gives_no_token() {
     let _turn = turn();
     let at = folder("absent");
-    let (answer, _) = asked(at.join("no-such-program"), AMPLE);
+    let (answer, took) = asked(at.join("no-such-program"), AMPLE);
     std::fs::remove_dir_all(&at).expect("the case's folder goes");
     assert_eq!(answer, SignIn::Missing, "a missing program is no token");
+    assert!(
+        took < SETTLED,
+        "and is told at once, not tried again as a busy one is: {took:?}"
+    );
+}
+
+#[test]
+fn sign_in_held_for_writing_past_its_patience_gives_no_token() {
+    let _turn = turn();
+    let at = folder("held");
+    let path = program(&at, "echo stand-in-token");
+    let held = std::fs::OpenOptions::new()
+        .write(true)
+        .open(&path)
+        .expect("the program held for writing");
+    let (answer, took) = asked(path, SHORT);
+    drop(held);
+    std::fs::remove_dir_all(&at).expect("the case's folder goes");
+    assert_eq!(
+        answer,
+        SignIn::Missing,
+        "a program never run is no token, not one that ran over"
+    );
+    assert!(
+        took >= SHORT,
+        "it was tried for its whole patience: {took:?}"
+    );
 }
 
 #[test]

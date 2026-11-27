@@ -54,8 +54,14 @@
 //! 64 MiB, before it goes, from pi on this machine, and holds it until its
 //! answer begins. After the machine sleeps, the connections it held are
 //! retired and opened afresh, since the network they ran on may be gone
-//! and pings would take their time to say so. A ping is what finds a lost
-//! connection, and an unanswered one fails every request on it, so below
+//! and pings would take their time to say so, and the kernel probes each
+//! one still carrying an answer, however it was retired, so one whose
+//! network has gone fails about ten seconds after its first probe, for pi
+//! to ask again, and one that survived carries on. One with data
+//! unacknowledged, an unanswered ping's included, isn't probed and waits
+//! on its ping.
+//! A ping is what finds a lost connection, and an unanswered one
+//! fails every request on it, so below
 //! h2 each layer holds little ahead of one: a body goes in short frames,
 //! through few records and a kernel holding little unsent, and on a slow
 //! uplink a ping is answered in time.
@@ -113,7 +119,7 @@ use std::net::SocketAddr;
 use std::path::Path;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex as Held, PoisonError};
+use std::sync::{Arc, Mutex as Held, PoisonError, Weak};
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant, SystemTime};
 
@@ -803,6 +809,10 @@ enum Unreachable {
     Late,
     /// It was refused, or failed on the way.
     Refused,
+    /// The origin's name couldn't be looked up, as when the network the
+    /// machine looks names up through is down, so pi's person reads that,
+    /// not the origin, as what failed.
+    Unnamed,
     /// It was reached, but not as this relay can carry a request to it:
     /// its certificate isn't one the relay trusts, or it doesn't speak
     /// HTTP/2. pi reaches it directly instead, as it would with no relay.
@@ -821,6 +831,10 @@ impl Unreachable {
             Unreachable::Refused => said(
                 StatusCode::BAD_GATEWAY,
                 "this relay couldn't reach its origin\n",
+            ),
+            Unreachable::Unnamed => said(
+                StatusCode::BAD_GATEWAY,
+                "this relay couldn't look up its origin's name\n",
             ),
             Unreachable::Unfit => said(StatusCode::MISDIRECTED_REQUEST, CANT_CARRY),
         }
@@ -925,6 +939,231 @@ trait Sender: Clone {
 impl Sender for SendRequest<Sent> {
     fn is_closed(&self) -> bool {
         SendRequest::is_closed(self)
+    }
+}
+
+/// How soon after the machine wakes the kernel first probes a connection
+/// still open, once it has heard nothing on it for this long. A
+/// stream whose network went while the machine slept hears nothing more,
+/// and hyper's ping, timed on a clock that stopped while it slept, would
+/// wait until `PING_EVERY` had passed awake, then `PING_ANSWERED_WITHIN`.
+const PROBED_AFTER_A_SLEEP: Duration = Duration::from_secs(1);
+/// How often the kernel probes such a connection again while unanswered.
+const PROBED_EVERY_AFTER_A_SLEEP: Duration = Duration::from_secs(2);
+/// How many probes go unanswered before the kernel ends the connection,
+/// about ten seconds after the first, for pi to ask again. Long enough for
+/// a network and its tunnel to come back, as one did within five seconds
+/// of waking on 25 November, so an answer that survived isn't cut. The
+/// kernel counts the probes alone, since no user timeout is set: tcp(7)
+/// says one would override this count, from the last segment heard before
+/// the sleep.
+const PROBES_AFTER_A_SLEEP: u32 = 5;
+/// How long after a sleep the kernel is asked to stop probing, past the
+/// end of a connection no probe was answered on, so one that survived is
+/// left to its pings again and a later lapse doesn't end it in seconds.
+const PROBED_FOR_AFTER_A_SLEEP: Duration = Duration::from_secs(15);
+
+/// The TCP connections to the origin a relay has put in its slots, each
+/// held weakly so it still closes once hyper lets it go, to be probed once
+/// the machine has slept; and how many times it has slept.
+///
+/// Its lock is taken before any slot's, never after, so a connection goes
+/// into its slot and here under it, and a sleep retires every slot under
+/// it too. The relay's runtime has one thread, and nothing awaits between
+/// a connection opening and its keeping, which holds that already; the
+/// nesting keeps it holding on a runtime of several.
+#[derive(Default)]
+struct Probes {
+    watched: Held<Vec<Watched>>,
+    sleeps: AtomicU64,
+}
+
+/// A connection watched to be probed: its name, and the sleep that last
+/// had it probed, if one has.
+struct Watched {
+    named: Named,
+    tcp: Weak<TcpStream>,
+    probed_by: Option<u64>,
+}
+
+/// The connections one sleep had probed, to say which and to stop
+/// probing once it has done its work.
+struct Probing {
+    named: Vec<Named>,
+    sleep: u64,
+}
+
+impl Probes {
+    /// Watches `tcp`, `named`, to be probed after a sleep, as `keeping` puts
+    /// it in its slot, forgetting those closed since. A sleep finds it
+    /// both watched here and in its slot, or neither.
+    fn keep<T>(&self, named: Named, tcp: &Arc<TcpStream>, keeping: impl FnOnce() -> T) -> T {
+        let mut watching = self.watched.lock().unwrap_or_else(PoisonError::into_inner);
+        watching.retain(|watched| watched.tcp.strong_count() > 0);
+        watching.push(Watched {
+            named,
+            tcp: Arc::downgrade(tcp),
+            probed_by: None,
+        });
+        keeping()
+    }
+
+    /// Has `retiring` retire every connection, then the kernel probe each
+    /// watched one still open, once it has gone `PROBED_AFTER_A_SLEEP` unheard,
+    /// so one whose network went while the machine slept fails in seconds
+    /// and one that survived carries on.
+    ///
+    /// Each still open carries an answer or soon closes, whether this
+    /// sleep retired it or a reset, a goodbye or a sleep before did. The
+    /// kernel probes only while all that was sent has been acknowledged,
+    /// so one with data in flight, as an upload or an unanswered ping has,
+    /// lasts until its ping fails, as it did before. One still opening as
+    /// the machine slept isn't watched yet, so isn't probed: it takes
+    /// requests.
+    fn probe(&self, retiring: impl FnOnce()) -> Probing {
+        let soon = socket2::TcpKeepalive::new()
+            .with_time(PROBED_AFTER_A_SLEEP)
+            .with_interval(PROBED_EVERY_AFTER_A_SLEEP)
+            .with_retries(PROBES_AFTER_A_SLEEP);
+        let mut watching = self.watched.lock().unwrap_or_else(PoisonError::into_inner);
+        retiring();
+        let sleep = self.sleeps.fetch_add(1, Ordering::SeqCst) + 1;
+        let mut named = Vec::new();
+        for watched in watching.iter_mut() {
+            let Some(tcp) = watched.tcp.upgrade() else {
+                continue;
+            };
+            // Marked either way, since a failure may come once keepalive is
+            // on, partway through its settings, and only a stop turns it off.
+            watched.probed_by = Some(sleep);
+            match socket2::SockRef::from(&*tcp).set_tcp_keepalive(&soon) {
+                Ok(()) => named.push(watched.named),
+                // It then lasts until its ping fails, as it would have.
+                Err(why) => eprintln!("model-relay: {} couldn't be probed: {why}", watched.named),
+            }
+        }
+        Probing { named, sleep }
+    }
+
+    /// Has the kernel stop probing those still open that `probing` began
+    /// on, as a connection opened does, and says how many of those it
+    /// named. One whose probe failed is stopped too, in case it failed
+    /// partway, but isn't counted, since the sleep didn't say it probed it.
+    /// One a later sleep had probed again is left to that sleep's own end.
+    fn stop(&self, probing: &Probing) -> usize {
+        let mut watching = self.watched.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut stopped = 0;
+        for watched in watching
+            .iter_mut()
+            .filter(|watched| watched.probed_by == Some(probing.sleep))
+        {
+            watched.probed_by = None;
+            let Some(tcp) = watched.tcp.upgrade() else {
+                continue;
+            };
+            match socket2::SockRef::from(&*tcp).set_keepalive(false) {
+                Ok(()) if probing.named.contains(&watched.named) => stopped += 1,
+                Ok(()) => {}
+                Err(why) => eprintln!(
+                    "model-relay: {}'s probes couldn't be stopped: {why}",
+                    watched.named
+                ),
+            }
+        }
+        stopped
+    }
+}
+
+impl Probing {
+    /// How many connections are probed.
+    fn len(&self) -> usize {
+        self.named.len()
+    }
+}
+
+impl fmt::Display for Probing {
+    /// Which connections are probed, as the log names them after what it
+    /// says of them, or nothing when none is.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (index, named) in self.named.iter().enumerate() {
+            let between = if index == 0 { ": " } else { ", " };
+            write!(f, "{between}{named}")?;
+        }
+        Ok(())
+    }
+}
+
+/// A TCP connection to the origin, shared with the `Probes` that may
+/// probe it, so the relay can reach its socket while TLS and hyper own
+/// the stream. It closes once this is dropped, as the probes hold it
+/// weakly.
+struct Probed(Arc<TcpStream>);
+
+impl tokio::io::AsyncRead for Probed {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        loop {
+            std::task::ready!(self.0.poll_read_ready(cx))?;
+            match self.0.try_read(buf.initialize_unfilled()) {
+                Ok(read) => {
+                    buf.advance(read);
+                    return Poll::Ready(Ok(()));
+                }
+                // Readiness was stale, and trying cleared it.
+                Err(why) if why.kind() == io::ErrorKind::WouldBlock => {}
+                Err(why) => return Poll::Ready(Err(why)),
+            }
+        }
+    }
+}
+
+impl tokio::io::AsyncWrite for Probed {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<io::Result<usize>> {
+        loop {
+            std::task::ready!(self.0.poll_write_ready(cx))?;
+            match self.0.try_write(buf) {
+                // Readiness was stale, and trying cleared it.
+                Err(why) if why.kind() == io::ErrorKind::WouldBlock => {}
+                written => return Poll::Ready(written),
+            }
+        }
+    }
+
+    // TLS writes its records as several buffers at once, which would
+    // otherwise go one write, and with no delay one segment, each.
+    fn poll_write_vectored(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        bufs: &[io::IoSlice<'_>],
+    ) -> Poll<io::Result<usize>> {
+        loop {
+            std::task::ready!(self.0.poll_write_ready(cx))?;
+            match self.0.try_write_vectored(bufs) {
+                // Readiness was stale, and trying cleared it.
+                Err(why) if why.kind() == io::ErrorKind::WouldBlock => {}
+                written => return Poll::Ready(written),
+            }
+        }
+    }
+
+    fn is_write_vectored(&self) -> bool {
+        true
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<io::Result<()>> {
+        // A socket holds nothing of its own to flush.
+        Poll::Ready(Ok(()))
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<io::Result<()>> {
+        Poll::Ready(socket2::SockRef::from(&*self.0).shutdown(std::net::Shutdown::Write))
     }
 }
 
@@ -1054,9 +1293,13 @@ pub struct Relay {
     next: AtomicUsize,
     /// When an attempt to open a connection last failed, and why.
     failed: Held<Option<(Instant, Unreachable)>>,
-    /// The relay's clock and the wall's when a request was last taken, or a
-    /// connection last asked for, to tell when the machine slept between.
+    /// The relay's clock and the wall's when a request was last taken, a
+    /// connection last asked for, or the machine last checked on for a
+    /// sleep, to tell when it slept between.
     asked_at: Held<(Instant, SystemTime)>,
+    /// The connections it has kept to the origin, to probe once the
+    /// machine has slept.
+    probes: Arc<Probes>,
     /// Whether it has begun to leave, when a request is sent direct.
     leaving: AtomicBool,
     connections: Arc<Connections>,
@@ -1070,9 +1313,13 @@ pub struct Relay {
     busy: Arc<Busy>,
 }
 
+/// A connection just opened: what to send requests down, and the TCP
+/// connection beneath, to be probed after a sleep once it's kept.
+type Opened = (SendRequest<Sent>, Arc<TcpStream>);
+
 /// Which connection one opened is, as it's said: by its slot and its
 /// number there.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 struct Named {
     at: usize,
     number: u64,
@@ -1122,6 +1369,7 @@ impl Relay {
             next: AtomicUsize::new(0),
             failed: Held::new(None),
             asked_at: Held::new((Instant::now(), SystemTime::now())),
+            probes: Arc::new(Probes::default()),
             leaving: AtomicBool::new(false),
             connections: Arc::new(Connections::default()),
             kept: Arc::new(Connections::default()),
@@ -1159,6 +1407,7 @@ impl Relay {
         );
         let relay = Arc::new(self);
         tokio::spawn(say_counts(Arc::clone(&relay.counts)));
+        tokio::spawn(notice_sleeps(Arc::downgrade(&relay)));
         let (leave, leaving) = watch::channel(Leave::Not);
         let was_stopped = loop {
             let stopping = tokio::select! {
@@ -1843,7 +2092,9 @@ impl Relay {
     /// relay's own since it was last asked or heard, as it does while the machine
     /// sleeps: the network they ran on may be gone, and their pings would
     /// take up to `PING_EVERY` and `PING_ANSWERED_WITHIN` to say so. An
-    /// answer already streaming on one carries on.
+    /// answer already streaming on one carries on, while the kernel probes
+    /// its connection for `PROBED_FOR_AFTER_A_SLEEP`, so it fails about ten
+    /// seconds after the first probe if that network has gone.
     fn retire_after_a_sleep(&self) {
         let now = (Instant::now(), SystemTime::now());
         let then = std::mem::replace(
@@ -1853,15 +2104,32 @@ impl Relay {
         if !slept(then, now) {
             return;
         }
-        eprintln!("model-relay: the machine slept, so its connections are opened afresh");
-        self.retire_every();
+        let probing = self.probes.probe(|| self.retire_every());
+        eprintln!(
+            "model-relay: the machine slept, so its connections are opened afresh, and the {} \
+             still open are probed{probing}",
+            probing.len()
+        );
+        let probes = Arc::clone(&self.probes);
+        tokio::spawn(async move {
+            tokio::time::sleep(PROBED_FOR_AFTER_A_SLEEP).await;
+            let stopped = probes.stop(&probing);
+            if stopped > 0 {
+                eprintln!(
+                    "model-relay: the {stopped} probed after the sleep are left to their pings"
+                );
+            }
+        });
     }
 
     /// Retires every connection, so each is opened afresh when next asked
     /// for. An answer already streaming on one carries on.
     fn retire_every(&self) {
         for slot in &self.slots {
-            *slot.open.lock().unwrap_or_else(PoisonError::into_inner) = None;
+            slot.open
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .take();
         }
     }
 
@@ -1912,9 +2180,12 @@ impl Relay {
     async fn open_now(&self, at: usize) -> Result<Kept, Unreachable> {
         let number = self.slots[at].next_number();
         let tally = Arc::new(Tally::of(at, number));
-        match self.connect(Named { at, number }).await {
-            Ok(sender) => {
-                let kept = self.slots[at].keep(number, sender, tally);
+        let named = Named { at, number };
+        match self.connect(named).await {
+            Ok((sender, tcp)) => {
+                let kept = self
+                    .probes
+                    .keep(named, &tcp, || self.slots[at].keep(number, sender, tally));
                 // The origin is back, so others may be opened behind.
                 *self.failed.lock().unwrap_or_else(PoisonError::into_inner) = None;
                 Ok(kept)
@@ -1929,20 +2200,29 @@ impl Relay {
 
     /// Opens a connection to the origin, saying so as it's `named`, and
     /// says when it's retired, counting it as one taking requests.
-    async fn connect(&self, named: Named) -> Result<SendRequest<Sent>, Unreachable> {
+    async fn connect(&self, named: Named) -> Result<Opened, Unreachable> {
         let within = self.clocks.connect_within;
+        let looked_up = AtomicBool::new(false);
         let opening = async {
             let on_the_way = |why: io::Error| {
-                let unreachable = if why.kind() == io::ErrorKind::TimedOut {
+                let unreachable = if why
+                    .get_ref()
+                    .is_some_and(<dyn std::error::Error + Send + Sync>::is::<Unnamed>)
+                {
+                    Unreachable::Unnamed
+                } else if why.kind() == io::ErrorKind::TimedOut {
                     Unreachable::Late
                 } else {
                     Unreachable::Refused
                 };
                 (why, unreachable)
             };
-            let tcp = reach(&self.origin.host, self.origin.port, within)
+            let tcp = reach(&self.origin.host, self.origin.port, within, &looked_up)
                 .await
+                .map(Arc::new)
                 .map_err(on_the_way)?;
+            let probed = Arc::clone(&tcp);
+            let tcp = Probed(tcp);
             let name = ServerName::try_from(self.origin.host.clone())
                 .map_err(|why| (io::Error::other(why), Unreachable::Unfit))?;
             let held_ahead = |tls: &mut rustls::ClientConnection| {
@@ -1979,9 +2259,10 @@ impl Relay {
                 .initial_connection_window_size(CONNECTION_WINDOW)
                 .handshake(TokioIo::new(tls))
                 .await
+                .map(|(sender, connection)| (sender, connection, probed))
                 .map_err(|why| (io::Error::other(why), Unreachable::Refused))
         };
-        let (sender, connection) = match tokio::time::timeout(within, opening).await {
+        let (sender, connection, tcp) = match tokio::time::timeout(within, opening).await {
             Ok(Ok(opened)) => opened,
             Ok(Err((why, unreachable))) => {
                 eprintln!(
@@ -1991,14 +2272,7 @@ impl Relay {
                 );
                 return Err(unreachable);
             }
-            Err(_) => {
-                eprintln!(
-                    "model-relay: {} wasn't made within {} ms",
-                    named.tried(),
-                    within.as_millis()
-                );
-                return Err(Unreachable::Late);
-            }
+            Err(_) => return Err(unmade(named, within, &looked_up)),
         };
         self.counts.opened.fetch_add(1, Ordering::Relaxed);
         let open = self.counts.open.fetch_add(1, Ordering::Relaxed) + 1;
@@ -2023,7 +2297,7 @@ impl Relay {
                 }
             }
         });
-        Ok(sender)
+        Ok((sender, tcp))
     }
 }
 
@@ -2158,13 +2432,75 @@ fn with_causes(why: &dyn std::error::Error) -> String {
     said
 }
 
-/// A TCP connection to `host`'s `port`, from the first address the name
-/// resolves to that answers.
-async fn reach(host: &str, port: u16, within: Duration) -> io::Result<TcpStream> {
-    let addresses: Vec<SocketAddr> = tokio::net::lookup_host((host, port)).await?.collect();
-    if addresses.is_empty() {
-        return Err(io::Error::other(format!("{host} resolved to no address")));
+/// What `named`, not made `within` its time, is said as. A lookup that
+/// hangs rather than fails is the name's doing too, so one that hadn't
+/// resolved by then is said as that, and lateness only once it had.
+fn unmade(named: Named, within: Duration, looked_up: &AtomicBool) -> Unreachable {
+    if looked_up.load(Ordering::Relaxed) {
+        eprintln!(
+            "model-relay: {} wasn't made within {} ms",
+            named.tried(),
+            within.as_millis()
+        );
+        Unreachable::Late
+    } else {
+        eprintln!(
+            "model-relay: {} wasn't made within {} ms, before its origin's name resolved",
+            named.tried(),
+            within.as_millis()
+        );
+        Unreachable::Unnamed
     }
+}
+
+/// A name that couldn't be looked up, and why, if the lookup said.
+#[derive(Debug)]
+struct Unnamed {
+    /// The name looked up.
+    host: String,
+    /// What the lookup failed with; none when it found no address.
+    why: Option<io::Error>,
+}
+
+impl fmt::Display for Unnamed {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.why {
+            Some(_) => write!(f, "{} couldn't be looked up", self.host),
+            None => write!(f, "{} resolved to no address", self.host),
+        }
+    }
+}
+
+impl std::error::Error for Unnamed {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.why
+            .as_ref()
+            .map(|why| why as &(dyn std::error::Error + 'static))
+    }
+}
+
+/// A TCP connection to `host`'s `port`, from the first address the name
+/// resolves to that answers, marking `looked_up` once the name has resolved.
+async fn reach(
+    host: &str,
+    port: u16,
+    within: Duration,
+    looked_up: &AtomicBool,
+) -> io::Result<TcpStream> {
+    let unnamed = |why| {
+        io::Error::other(Unnamed {
+            host: host.to_owned(),
+            why,
+        })
+    };
+    let addresses: Vec<SocketAddr> = tokio::net::lookup_host((host, port))
+        .await
+        .map_err(|why| unnamed(Some(why)))?
+        .collect();
+    if addresses.is_empty() {
+        return Err(unnamed(None));
+    }
+    looked_up.store(true, Ordering::Relaxed);
     let tcp = reach_any(&addresses, within).await?;
     fit(&tcp)?;
     Ok(tcp)
@@ -2199,7 +2535,9 @@ async fn reach_any(addresses: &[SocketAddr], within: Duration) -> io::Result<Tcp
 /// clock and the wall's: the wall ran more than `SLEPT_AT_LEAST` ahead.
 /// This takes `Instant` to stand still in a suspend, as Linux's monotonic
 /// clock does; a wall clock set back is no sleep. One stepped forward
-/// reads as one, which costs only connections opened afresh.
+/// reads as one, which costs connections opened afresh, and a few probes
+/// on those still carrying an answer, which a healthy one replies to at
+/// once.
 fn slept(then: (Instant, SystemTime), now: (Instant, SystemTime)) -> bool {
     let on_the_wall = now.1.duration_since(then.1).unwrap_or_default();
     on_the_wall > now.0.duration_since(then.0) + SLEPT_AT_LEAST
@@ -2319,6 +2657,23 @@ async fn stopped(stops: &mut mpsc::Receiver<()>) {
     }
 }
 
+/// How often a relay reads the clocks for a sleep while nothing asks it
+/// anything, so an answer streaming as the machine slept is probed soon
+/// after it wakes, not at the next request.
+const SLEEPS_NOTICED_EVERY: Duration = Duration::from_secs(2);
+
+/// Retires and probes `relay`'s connections whenever the machine has slept,
+/// for as long as the relay is there.
+async fn notice_sleeps(relay: Weak<Relay>) {
+    loop {
+        tokio::time::sleep(SLEEPS_NOTICED_EVERY).await;
+        let Some(relay) = relay.upgrade() else {
+            return;
+        };
+        relay.retire_after_a_sleep();
+    }
+}
+
 /// Says the counts every `COUNTS_EVERY`, when any has moved since.
 async fn say_counts(counts: Arc<Counts>) {
     loop {
@@ -2354,9 +2709,11 @@ mod tests {
     use hyper::body::Body as _;
 
     use super::{
-        BODY_WITHIN, Counts, HELD_AHEAD_AT_MOST, InPieces, Origin, Retiring, SAID_AT_MOST,
-        SLEPT_AT_LEAST, Sender, Slot, Unread, fails_the_path, goes_again, goes_direct,
-        goes_once_more, reach, reach_any, read_whole, slept, with_causes,
+        BODY_WITHIN, Clocks, Counts, HELD_AHEAD_AT_MOST, InPieces, Named, Origin,
+        PROBED_AFTER_A_SLEEP, PROBED_EVERY_AFTER_A_SLEEP, PROBED_FOR_AFTER_A_SLEEP,
+        PROBES_AFTER_A_SLEEP, Probed, Probes, Probing, Relay, Retiring, Roots, SAID_AT_MOST,
+        SLEPT_AT_LEAST, Sender, Slot, Unnamed, Unreachable, Unread, fails_the_path, goes_again,
+        goes_direct, goes_once_more, reach, reach_any, read_whole, slept, unmade, with_causes,
     };
 
     /// How the origin ends a request it hasn't answered.
@@ -2843,6 +3200,62 @@ mod tests {
         );
     }
 
+    #[test]
+    fn a_name_no_lookup_finds_is_unnamed_and_never_marked_looked_up() {
+        let looked_up = AtomicBool::new(false);
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("a runtime");
+
+        // The trailing dot makes the name whole, so no search domain the
+        // machine's resolver adds can turn it into one that resolves.
+        let reaching = reach(
+            "model-relay.invalid.",
+            443,
+            Duration::from_secs(2),
+            &looked_up,
+        );
+        // The budget given to reach bounds the connection, not the lookup,
+        // which the relay bounds from outside; this bounds it here. The
+        // lookup runs on a blocking thread a runtime's drop would wait on,
+        // so the runtime is let go in the background, and a resolver that
+        // never answers fails the test at the bound rather than hangs it.
+        let outcome = runtime.block_on(async {
+            // A timer is made within the runtime it runs on.
+            tokio::time::timeout(Duration::from_secs(10), reaching).await
+        });
+        runtime.shutdown_background();
+        let failed =
+            outcome.expect("the machine's resolver took over 10 s to fail a name under .invalid");
+
+        let unnamed = failed
+            .err()
+            .and_then(std::io::Error::into_inner)
+            .is_some_and(|why| why.is::<Unnamed>());
+        assert!(unnamed, "a name no lookup finds wasn't said as unnamed");
+        assert!(
+            !looked_up.load(Ordering::Relaxed),
+            "a name no lookup finds was marked as looked up"
+        );
+    }
+
+    #[test]
+    fn a_connection_not_made_in_time_before_its_name_resolved_is_the_names_doing() {
+        // Once the name resolved it is late instead, which the 504
+        // integration test already shows end to end.
+        let unresolved = unmade(
+            Named { at: 0, number: 0 },
+            Duration::from_secs(10),
+            &AtomicBool::new(false),
+        );
+
+        assert!(
+            matches!(unresolved, Unreachable::Unnamed),
+            "a lookup outlasting the budget wasn't said as the name's"
+        );
+    }
+
     #[tokio::test(flavor = "current_thread")]
     async fn a_connection_to_the_origin_holds_few_bytes_unsent() {
         let origin = tokio::net::TcpListener::bind("127.0.0.1:0")
@@ -2850,9 +3263,14 @@ mod tests {
             .expect("a port");
         let port = origin.local_addr().expect("its address").port();
 
-        let tcp = reach("127.0.0.1", port, Duration::from_secs(2))
-            .await
-            .expect("a connection");
+        let tcp = reach(
+            "127.0.0.1",
+            port,
+            Duration::from_secs(2),
+            &AtomicBool::new(false),
+        )
+        .await
+        .expect("a connection");
 
         assert_eq!(
             socket2::SockRef::from(&tcp)
@@ -2866,6 +3284,210 @@ mod tests {
             tcp.nodelay().ok(),
             Some(true),
             "a small frame would wait on the one before"
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn each_connection_watched_and_still_open_is_probed_then_left_to_its_pings() {
+        let origin = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("a port");
+        let at = origin.local_addr().expect("its address");
+        let first = tokio::net::TcpStream::connect(at)
+            .await
+            .map(Arc::new)
+            .expect("a connection");
+        let second = tokio::net::TcpStream::connect(at)
+            .await
+            .map(Arc::new)
+            .expect("a connection");
+        let _far = (origin.accept().await, origin.accept().await);
+        let watching = Probes::default();
+        let (named, other) = (Named { at: 0, number: 0 }, Named { at: 1, number: 0 });
+        watching.keep(named, &first, || ());
+        watching.keep(other, &second, || ());
+        let mut retired = false;
+
+        let probing = watching.probe(|| retired = true);
+
+        let socket = socket2::SockRef::from(&*second);
+        let asked = (
+            socket.keepalive().ok(),
+            socket.tcp_keepalive_time().ok(),
+            socket.tcp_keepalive_interval().ok(),
+            socket.tcp_keepalive_retries().ok(),
+            socket.tcp_user_timeout().ok(),
+        );
+        assert!(retired, "the sleep didn't retire the connections it probed");
+        assert_eq!(
+            probing.named,
+            [named, other],
+            "the sleep didn't probe each connection watched and still open"
+        );
+        assert_eq!(
+            asked,
+            (
+                Some(true),
+                Some(PROBED_AFTER_A_SLEEP),
+                Some(PROBED_EVERY_AFTER_A_SLEEP),
+                Some(PROBES_AFTER_A_SLEEP),
+                Some(None)
+            ),
+            "the kernel wasn't asked to probe it as the relay means to, by count alone"
+        );
+        let stopped = watching.stop(&probing);
+        assert_eq!(
+            (
+                stopped,
+                socket.keepalive().ok(),
+                socket2::SockRef::from(&*first).keepalive().ok()
+            ),
+            (2, Some(false), Some(false)),
+            "the kernel went on probing once the sleep's probes were done"
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_sleep_soon_after_another_keeps_its_probes_past_the_first_ones_end() {
+        let origin = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("a port");
+        let tcp = tokio::net::TcpStream::connect(origin.local_addr().expect("its address"))
+            .await
+            .map(Arc::new)
+            .expect("a connection");
+        let _far = origin.accept().await.expect("the far end");
+        let watching = Probes::default();
+        watching.keep(Named { at: 0, number: 0 }, &tcp, || ());
+        let socket = socket2::SockRef::from(&*tcp);
+
+        let first = watching.probe(|| ());
+        let second = watching.probe(|| ());
+        let first_ended = (watching.stop(&first), socket.keepalive().ok());
+        let second_ended = (watching.stop(&second), socket.keepalive().ok());
+
+        assert_eq!(
+            first_ended,
+            (0, Some(true)),
+            "the first sleep's probes ending stopped the second's"
+        );
+        assert_eq!(
+            second_ended,
+            (1, Some(false)),
+            "the second sleep's probes went on past their own end"
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_connection_marked_but_not_named_is_stopped_but_not_counted() {
+        let origin = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("a port");
+        let tcp = tokio::net::TcpStream::connect(origin.local_addr().expect("its address"))
+            .await
+            .map(Arc::new)
+            .expect("a connection");
+        let _far = origin.accept().await.expect("the far end");
+        let watching = Probes::default();
+        watching.keep(Named { at: 0, number: 0 }, &tcp, || ());
+        // A sleep whose probe of a connection failed marks it but doesn't name it. Making the
+        // kernel refuse a setting isn't portable, so a probe that went well marks it and a sleep
+        // naming nothing stands in, which shows the stop's half alone.
+        let probing = watching.probe(|| ());
+        let failed = Probing {
+            named: Vec::new(),
+            sleep: probing.sleep,
+        };
+
+        let stopped = watching.stop(&failed);
+
+        assert_eq!(
+            (stopped, socket2::SockRef::from(&*tcp).keepalive().ok()),
+            (0, Some(false)),
+            "a connection marked but not named wasn't stopped, or was counted as probed"
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn a_relay_probes_what_it_watches_after_a_sleep_until_its_last_sleeps_end() {
+        let relay = Relay::new(
+            Origin::parse("https://model-relay.invalid").expect("an origin"),
+            1,
+            Roots::public(),
+            Clocks::default(),
+        )
+        .expect("a relay");
+        let origin = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("a port");
+        let tcp = tokio::net::TcpStream::connect(origin.local_addr().expect("its address"))
+            .await
+            .map(Arc::new)
+            .expect("a connection");
+        let _far = origin.accept().await.expect("the far end");
+        relay.probes.keep(Named { at: 0, number: 0 }, &tcp, || ());
+        let socket = socket2::SockRef::from(&*tcp);
+        let sleep = || {
+            let then = SystemTime::now()
+                .checked_sub(SLEPT_AT_LEAST * 2)
+                .expect("a time before now");
+            *relay.asked_at.lock().expect("its clocks") = (Instant::now(), then);
+            relay.retire_after_a_sleep();
+        };
+        let (gap, past) = (Duration::from_secs(5), Duration::from_secs(1));
+        let began = tokio::time::Instant::now();
+
+        sleep();
+        let probed = socket.keepalive().ok();
+        // The clock is paused, so these waits pass at once, in order with
+        // the relay's own.
+        tokio::time::sleep_until(began + gap).await;
+        sleep();
+        tokio::time::sleep_until(began + PROBED_FOR_AFTER_A_SLEEP + past).await;
+        let past_the_first = socket.keepalive().ok();
+        tokio::time::sleep_until(began + gap + PROBED_FOR_AFTER_A_SLEEP + past).await;
+        let past_the_second = socket.keepalive().ok();
+
+        assert_eq!(
+            (probed, past_the_first, past_the_second),
+            (Some(true), Some(true), Some(false)),
+            "a relay that found the machine slept twice didn't probe the connection it watches \
+             until the second sleep's probes ended"
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_connection_let_go_once_probed_is_held_open_no_longer() {
+        use tokio::io::AsyncReadExt as _;
+
+        let origin = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("a port");
+        let tcp = tokio::net::TcpStream::connect(origin.local_addr().expect("its address"))
+            .await
+            .map(Arc::new)
+            .map(Probed)
+            .expect("a connection");
+        let (mut far, _) = origin.accept().await.expect("the far end");
+        let watching = Probes::default();
+        watching.keep(Named { at: 0, number: 0 }, &tcp.0, || ());
+        let probing = watching.probe(|| ());
+
+        drop(tcp);
+        let mut byte = [0; 1];
+        // A close reaches the far end at once over loopback; the bound only
+        // keeps a socket held open from hanging the test.
+        let read = tokio::time::timeout(Duration::from_secs(5), far.read(&mut byte)).await;
+
+        assert_eq!(probing.len(), 1, "the connection wasn't probed");
+        assert!(
+            matches!(read, Ok(Ok(0))),
+            "the probes held a connection let go open: {read:?}"
+        );
+        assert_eq!(
+            (watching.stop(&probing), watching.probe(|| ()).len()),
+            (0, 0),
+            "a connection let go was still probed"
         );
     }
 

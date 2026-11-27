@@ -66,6 +66,7 @@ let
         budget = "models";
         also = [ ];
         requests_a_day = 500;
+        usd_a_day = 25;
       }
     ];
     budgets = {
@@ -76,6 +77,15 @@ let
         auth_header = "authorization";
         key = [ "${modelsKey}" ];
         kind = "models";
+        # Every field set, so the file the module writes is this one.
+        prices.a-model = {
+          input = 3;
+          output = 15;
+          cache_write = 3.75;
+          cache_read = 0.3;
+          most_output = 64000;
+        };
+        spend_watch = "models";
       };
       keyless = {
         upstream = "other-relay/agents.sock";
@@ -212,6 +222,17 @@ let
   carryingAloneNode =
     toString
       (linux (links // { easesCarry = true; })).systemd.user.services.mycelium.Service.ExecStart;
+  # The home realm's node for a machine naming the machines lent for agents
+  # it may ease onto,
+  # forced whole so a name the option's type refuses fails here.
+  ontoNode =
+    onto:
+    let
+      words =
+        toString
+          (linux (links // { easesOnto = onto; })).systemd.user.services.mycelium.Service.ExecStart;
+    in
+    builtins.deepSeq words words;
   # The home realm's node for a machine naming one via, forced whole so a
   # value the option's type refuses fails here.
   viaNode =
@@ -493,7 +514,7 @@ in
   # harness's pi-carry, which a carry runs by name.
   mycelium-links-what-a-machine-names =
     holds "mycelium-links-what-a-machine-names"
-      "A machine's links, over SSH or through a provider's program, don't each get dialled in its realm, its providers' programs aren't each asked, a via or a provider naming its program by no path or a place it could misread evaluates, Linux's node signs in with a key that may ask for a PIN or not the one its realm names, or through an agent the account's SSH config names, a Mac's node starts sessions whose commits wait on its sensor or finds the system's ssh after the account's programs or none of them, Linux's node isn't given a soft 65536 and a hard 524288 open files, or a Mac's a soft 10240 and no hard limit of its own, the home realm's node doesn't write how it would ease the machine or a further realm's does, it asks the harness to park sessions or makes its carries though its machine doesn't say to or doesn't where it does, on Linux or a Mac, a machine in a realm naming none runs no node, or one in none runs one."
+      "A machine's links, over SSH or through a provider's program, don't each get dialled in its realm, its providers' programs aren't each asked, a via or a provider naming its program by no path or a place it could misread evaluates, Linux's node signs in with a key that may ask for a PIN or not the one its realm names, or through an agent the account's SSH config names, a Mac's node starts sessions whose commits wait on its sensor or finds the system's ssh after the account's programs or none of them, Linux's node isn't given a soft 65536 and a hard 524288 open files, or a Mac's a soft 10240 and no hard limit of its own, the home realm's node doesn't write how it would ease the machine or a further realm's does, it doesn't name each machine lent for agents it may ease onto, or names one where none is set, in a further realm's node, or by a name it could misread, it asks the harness to park sessions or makes its carries though its machine doesn't say to or doesn't where it does, on Linux or a Mac, a machine in a realm naming none runs no node, or one in none runs one."
       (
         lib.hasInfix "--realm personal node --ssh one --ssh two" linuxNode
         && lib.hasInfix "--health-socket %t/daemons/system.sock --eases" linuxNode
@@ -505,12 +526,28 @@ in
               // {
                 easesSleep = true;
                 easesCarry = true;
+                easesOnto = [ "tern" ];
               }
             )).systemd.user.services.mycelium-other.Service.ExecStart
         ))
         && !(lib.hasInfix "--eases-sleep" linuxNode)
         && !(lib.hasInfix "--eases-carry" linuxNode)
         && !(lib.hasInfix "--eases-carry" sleepingNode)
+        && !(lib.hasInfix "--eases-onto" linuxNode)
+        && lib.hasInfix "--eases --eases-onto tern-2 --eases-onto osprey" (ontoNode [
+          "tern-2"
+          "osprey"
+        ])
+        && lib.hasInfix "--eases-onto tern" (
+          toString
+            (mac (easing // { easesOnto = [ "tern" ]; })).launchd.agents.mycelium.config.ProgramArguments
+        )
+        && lib.all (wrong: !(builtins.tryEval (ontoNode [ wrong ])).success) [
+          "Tern"
+          "tern osprey"
+          "--eases-carry"
+          "tern%h"
+        ]
         && lib.hasInfix "--eases --eases-carry --eases-sleep" carryingNode
         && lib.hasInfix "--eases --eases-carry" carryingAloneNode
         && !(lib.hasInfix "--eases-sleep" carryingAloneNode)
@@ -821,6 +858,7 @@ in
           sleepingNode
           carryingNode
           carryingAloneNode
+          (ontoNode [ "tern" ])
           apartAgentsNode
           (viaNode "/bin/cell:cell-1")
           (providerNode "/bin/cell")
@@ -948,6 +986,18 @@ in
           holds = "It Asks You"
           ${says}
         '';
+      # A help that wraps inside the phrase its act holds, as mycelium's
+      # 60 columns may, so the check must read across the line.
+      wrapped = act "wrapped" ''
+        [act.cli.has]
+        command = "steer"
+        holds = "pause, resume, stop or close"
+        [act.launcher]
+        waived = "none"
+      '';
+      wraps = pkgs.writeShellScript "mycelium" ''
+        printf '%s\n' 'Or it does something, as its act: pause, resume,' '  stop or close; fill, putting its text'
+      '';
       # Each way of straying the check has to catch, with what it says.
       strays = [
         {
@@ -1177,6 +1227,11 @@ in
         cat said
         exit 1
       fi
+      if ! ${check} ${wrapped} ${root} ${wraps} > said; then
+        echo "The surfaces check refused a phrase its help wraps across a line."
+        cat said
+        exit 1
+      fi
       ${lib.concatMapStrings (stray: ''
         strays ${stray.table} ${lib.escapeShellArg stray.says}
       '') strays}
@@ -1194,14 +1249,27 @@ in
         touch $out
       '';
 
+  # Every realm's node runs among the sessions, and what it swaps out stays
+  # compressed in memory rather than going to disk, as the sessions' kitty's
+  # does, so a wake after a quiet spell faults back from memory. On
+  # 2026-11-26 a node held 1.43 GB in swap, 25 KB of it in zswap, the kernel
+  # having reclaimed it past its floor 3,986,771 times; while the disk was
+  # busiest, 12 of 41 calls to it took 1.8 to 44 s. With writeback off, 38
+  # of 40 calls took under 0.7 s through the same load, and none hung.
   mycelium-runs-among-the-sessions =
     holds "mycelium-runs-among-the-sessions"
-      "A mycelium node runs outside agents.slice, where its wakeups preempt Joel's programs."
+      "A mycelium node runs outside agents.slice, where its wakeups preempt Joel's programs, or writes its swapped memory out to disk, where a wake waits to read it back."
       (
-        lib.all (node: (node.Service.Slice or null) == "agents.slice") [
-          bothLinux.mycelium
-          bothLinux.mycelium-other
-        ]
+        lib.all
+          (
+            node:
+            (node.Service.Slice or null) == "agents.slice"
+            && (node.Service.MemoryZSwapWriteback or true) == false
+          )
+          [
+            bothLinux.mycelium
+            bothLinux.mycelium-other
+          ]
       );
 
   mycelium-serves-the-harness-files =
@@ -1466,7 +1534,7 @@ in
   # One that declares nothing has no file, which mycelium reads as unknown.
   mycelium-declares-what-a-machine-says =
     holds "mycelium-declares-what-a-machine-says"
-      "What a machine declares, its probes of either kind included, isn't written in mycelium's shape, its node doesn't say whether a call is on there with a-call-is-on asked about that machine alone, a held session's outlives isn't each system's, a fence it doesn't say is written, whether pi fences itself isn't written only when a Mac says so beside its fences or isn't refused on Linux, doors it accepts for another machine aren't or take a machine no realm could name, an agent's run in a fenced or strict fence isn't said to start through its system's launcher, an unfenced one's is, one is when runs are refused, a machine of either system can't declare every fence, or a machine declaring nothing gets a file anyway."
+      "What a machine declares, its probes of either kind included, isn't written in mycelium's shape, its node doesn't say whether a call is on there with a-call-is-on asked about that machine alone, a held session's outlives isn't each system's, a fence it doesn't say is written, whether pi fences itself isn't written only when a Mac says so beside its fences or isn't refused on Linux, doors it accepts for another machine aren't or take a machine no realm could name, an agent's run in a fenced or strict fence isn't said to start through its system's launcher, an unfenced one's is, one is when runs are refused, a machine of either system can't declare every fence, a machine kept lively doesn't say its ceiling or one not kept lively says one, or a machine declaring nothing gets a file anyway."
       (
         declared linux == {
           reach = [ "internet" ];
@@ -1496,6 +1564,30 @@ in
         && !((declared linux) ? hosts)
         && !((declared linux) ? fence)
         && !((declared linux) ? pi_fences_itself)
+        && !((declared linux) ? kept_lively)
+        && (declaredAs { keptLively.cpu = 28; }).kept_lively or null == { cpu = 28; }
+        && (
+          (declaredAs {
+            keptLively = {
+              cpu = 28;
+              memoryAvailable = 1024;
+            };
+          }).kept_lively or null == {
+            cpu = 28;
+            memory_available = 1024;
+          }
+        )
+        && (
+          (declaredAs {
+            keptLively = {
+              cpu = 28;
+              memoryFull = 3;
+            };
+          }).kept_lively or null == {
+            cpu = 28;
+            memory_full = 3;
+          }
+        )
         && !((launching mac everyKind) ? pi_fences_itself)
         && (saidBy (selfFenced mac)).pi_fences_itself or false
         && (saidBy (selfFenced mac)).fence.strict.runs or null == macLauncher
@@ -1561,6 +1653,250 @@ in
         && refusesAgents (saying {
           elsewhere = "an-agent";
         })
+      );
+
+  # What work begun in some folders or naming some words needs is written
+  # in mycelium's words, each need as mycelium reads it from the words
+  # `--need` takes, and left out where nothing is said. A need mycelium
+  # couldn't read fails here rather than reading as none. The kinds are
+  # read from the locked mycelium's own Need, so one it gains, loses or
+  # renames fails here, as does a line of it the scan can't read. Its
+  # declaration must take fields it doesn't know, or a node on the lock
+  # would refuse the whole file, and once it reads needs_in, its field
+  # names and its rule's are pinned to those written here.
+  mycelium-declares-what-work-needs =
+    holds "mycelium-declares-what-work-needs"
+      "What a machine declares work begun in some folders or naming some words needs isn't written in mycelium's words, a cloud need isn't written alone or a kind=value one as its kind keyed to its value, one is written where nothing is said, the kinds the locked mycelium's Need has, read from a scan failing on any line it can't read, aren't those taken, the locked declaration refuses fields it doesn't know or reads needs_in or its rule by other names, or a need mycelium can't match, a machine no realm could name, a rule naming no folder or word, a folder from ~ or $, with an empty, . or .. part or space at an end, or an empty word is taken."
+      (
+        let
+          rule = {
+            folders = [ "src/inner" ];
+            words = [ "forge.example" ];
+            needs = [
+              "reach=inner"
+              "system=linux"
+              "arch=x86_64"
+              "machine=box-1"
+              "tool=gcloud"
+              "accelerator=gpu"
+              "cloud"
+            ];
+          };
+          taken =
+            extra:
+            (builtins.tryEval (builtins.deepSeq (declaredAs { needsIn = [ (rule // extra) ]; }) true)).success;
+          locked = "${self.inputs.mycelium}/src";
+          linesOf = file: lib.splitString "\n" (builtins.readFile "${locked}/${file}");
+          # What the locked source's items hold, read failing closed.
+          rust = import ./rust-items.nix { inherit lib; };
+          need = rust.enumIn (linesOf "placement.rs") "Need";
+          accelerators = rust.enumIn (linesOf "facts.rs") "AcceleratorKind";
+          declaration = rust.structIn (linesOf "declared.rs") "Declared";
+          # needs_in's field, or null on a lock from before it.
+          needsIn = lib.findFirst (field: field.name == "needs_in") null (declaration.fields or [ ]);
+          rule' = rust.structIn (linesOf "declared.rs") "NeedsIn";
+          kinds = map (variant: variant.name) (need.variants or [ ]);
+          # Rust's lines as a fixture gives them.
+          fixture = text: lib.splitString "\n" text;
+          # A field and an enum the reader takes, each changed by one line
+          # in the cases below to show it refuses what it can't read.
+          fields = over: body: ''
+
+            ${over}
+            pub struct Rule {
+                /// Its folders.
+            ${body}
+                pub needs: Vec<Need>,
+            }
+          '';
+          variants = over: body: ''
+
+            ${over}
+            pub enum Need {
+                /// A network.
+                Reach(String),
+            ${body}
+            }
+          '';
+          derived = "#[derive(Debug, Deserialize)]";
+          words = "    pub words: Vec<String>,";
+          read = over: body: rust.structIn (fixture (fields over body)) "Rule";
+          readEnum = over: body: rust.enumIn (fixture (variants over body)) "Need";
+          said =
+            kind: if kind == "cloud" then kind else "${kind}=${if kind == "accelerator" then "gpu" else "a"}";
+        in
+        (declaredAs { needsIn = [ rule ]; }).needs_in or null == [
+          {
+            inherit (rule) folders words;
+            needs = [
+              { reach = "inner"; }
+              { system = "linux"; }
+              { arch = "x86_64"; }
+              { machine = "box-1"; }
+              { tool = "gcloud"; }
+              { accelerator = "gpu"; }
+              "cloud"
+            ];
+          }
+        ]
+        # Every kind the type takes, no more and no fewer, each holding what
+        # the declaration writes of it, cloud nothing, and each taken.
+        && need.serde or null == [ "#[serde(rename_all = \"snake_case\")]" ]
+        &&
+          need.variants or null == [
+            {
+              name = "machine";
+              holds = "String";
+            }
+            {
+              name = "system";
+              holds = "String";
+            }
+            {
+              name = "arch";
+              holds = "String";
+            }
+            {
+              name = "reach";
+              holds = "String";
+            }
+            {
+              name = "accelerator";
+              holds = "AcceleratorKind";
+            }
+            {
+              name = "tool";
+              holds = "String";
+            }
+            {
+              name = "cloud";
+              holds = null;
+            }
+          ]
+        && lib.all (kind: taken { needs = [ (said kind) ]; }) kinds
+        && accelerators.serde or null == [ "#[serde(rename_all = \"lowercase\")]" ]
+        &&
+          accelerators.variants or null == [
+            {
+              name = "gpu";
+              holds = null;
+            }
+            {
+              name = "npu";
+              holds = null;
+            }
+          ]
+        && taken { needs = [ "accelerator=npu" ]; }
+        # A lock from before needs_in takes it unread only while nothing
+        # over Declared refuses a field; one with it names it, its type
+        # and its rule's fields and types as written here, which pins them
+        # from the lock that first does.
+        && declaration != null
+        && !lib.any (lib.hasInfix "deny_unknown_fields") declaration.over
+        && (needsIn == null) == (rule' == null)
+        && (needsIn == null || needsIn.type == "Vec<NeedsIn>")
+        && (
+          rule' == null
+          ||
+            map (field: { inherit (field) name type; }) rule'.fields == [
+              {
+                name = "folders";
+                type = "Vec<PathBuf>";
+              }
+              {
+                name = "words";
+                type = "Vec<String>";
+              }
+              {
+                name = "needs";
+                type = "Vec<Need>";
+              }
+            ]
+        )
+        # The reader reads what it's shown, multi-line attributes joined,
+        # and gives null for each kind of line it can't read.
+        &&
+          read derived "    #[serde(\n        default,\n    )]\n    pub folders: Vec<PathBuf>," == {
+            over = [ derived ];
+            serde = [ ];
+            fields = [
+              {
+                name = "folders";
+                type = "Vec<PathBuf>";
+                serde = [ "default," ];
+              }
+              {
+                name = "needs";
+                type = "Vec<Need>";
+                serde = [ ];
+              }
+            ];
+          }
+        &&
+          (read "#[serde(\n    deny_unknown_fields,\n)]\n${derived}" words).serde or null == [
+            "#[serde(deny_unknown_fields,)]"
+          ]
+        && read derived words != null
+        && read "#[derive(Debug)]" words == null
+        && read "// a note\n${derived}" words == null
+        && read "#[repr(C)]\n${derived}" words == null
+        && read derived "    #[serde(\n        default," == null
+        && read derived "    #[serde(rename = \"dirs\")]\n    pub folders: Vec<PathBuf>," == null
+        && read derived "    #[serde(alias = \"dirs\")]\n    pub folders: Vec<PathBuf>," == null
+        && read derived "    folders: Vec<PathBuf>," == null
+        && read derived "    pub folders:\n        Vec<PathBuf>," == null
+        && read derived "    // a note" == null
+        &&
+          (readEnum derived "    Cloud,").variants or null == [
+            {
+              name = "reach";
+              holds = "String";
+            }
+            {
+              name = "cloud";
+              holds = null;
+            }
+          ]
+        && readEnum "#[derive(Debug)]" "    Cloud," == null
+        && readEnum derived "    #[serde(skip)]\n    Cloud," == null
+        && readEnum derived "    Cloud { at: String }," == null
+        && readEnum derived "    Cloud(String, String)," == null
+        && readEnum derived "    CloudRoom," == null
+        && !((declared linux) ? needs_in)
+        && taken { }
+        && taken { words = [ ]; }
+        && taken { folders = [ ]; }
+        && !taken {
+          folders = [ ];
+          words = [ ];
+        }
+        && !taken { needs = [ "reach" ]; }
+        && !taken { needs = [ "colour=blue" ]; }
+        && !taken { needs = [ "reach=" ]; }
+        && !taken { needs = [ "reach=a=b" ]; }
+        && !taken { needs = [ "reach=Inner" ]; }
+        && !taken { needs = [ "reach=inner net" ]; }
+        && !taken { needs = [ "accelerator=tpu" ]; }
+        && taken { needs = [ "reach=office_vpn" ]; }
+        && !taken { needs = [ "machine=box_1" ]; }
+        && !taken { needs = [ "machine=-box" ]; }
+        && !taken { needs = [ "system=Linux" ]; }
+        && taken { folders = [ "/srv/inner" ]; }
+        && taken { folders = [ "src/an inner" ]; }
+        && !taken { folders = [ "." ]; }
+        && !taken { folders = [ "./src/inner" ]; }
+        && !taken { folders = [ "src/../inner" ]; }
+        && !taken { folders = [ "src//inner" ]; }
+        && !taken { folders = [ "src/inner/." ]; }
+        && !taken { folders = [ "$HOME/src/inner" ]; }
+        && !taken { folders = [ "src/$HOME" ]; }
+        && !taken { folders = [ " src/inner" ]; }
+        && !taken { needs = [ ]; }
+        && !taken { folders = [ "" ]; }
+        && !taken { folders = [ "~/src/inner" ]; }
+        && !taken { folders = [ "src/inner/" ]; }
+        && !taken { folders = [ "/" ]; }
+        && !taken { words = [ "" ]; }
       );
 
   # Each realm's node on either system reads what its machine declares from
@@ -1692,7 +2028,7 @@ in
   # would refuse or read wider than meant is refused as the machine builds.
   mycelium-lends-from-the-store =
     holds "mycelium-lends-from-the-store"
-      "A lending NixOS machine doesn't evaluate, its home realm node isn't given its lend as a store file holding it, the lend's fields aren't the locked mycelium's own by name and type, from structs serde reads plainly and the lender parses the file into, the lender doesn't join a relative upstream onto its runtime folder, the struct scan takes a struct serde reads otherwise, the kind scan takes an enum serde reads otherwise, the budget kinds lend.nix takes or its default aren't the words serde takes for the lender's Kind, a lend leaving a machine's also and a budget's kind unsaid, beside a forge budget a machine names, isn't written with their defaults, a budget with no key says one, a further realm's node or a machine lending nothing is given a lend, a Mac's lend isn't refused and kept from its node, a lend with plain prefixes, dotted paths or a key package is refused, or a lend with no realm, naming a budget it lacks, with overlapping or empty prefixes, a key outside the store, climbing out of it, named as text or empty, a whole upstream or one with a dot part, a host with a scheme, a header with a space, a budget of a kind the lender has none of, or a path lending everything or nothing is taken."
+      "A lending NixOS machine doesn't evaluate, its home realm node isn't given its lend as a store file holding it, the lend's fields aren't the locked mycelium's own by name and type, from structs serde reads plainly and the lender parses the file into, the lender doesn't join a relative upstream onto its runtime folder, the struct scan takes a struct serde reads otherwise, the kind scan takes an enum serde reads otherwise, the budget kinds lend.nix takes or its default aren't the words serde takes for the lender's Kind, a lend leaving a machine's also and a budget's kind unsaid, beside a forge budget a machine names, isn't written with their defaults, a lend capping no spend and pricing no model isn't written without them and warned of, its prices aren't read as defaulted, a budget naming no spend-watch budget or pricing none isn't warned of, a priced one or a machine lending only a forge is warned of, a model priced at nothing is taken, a budget with no key says one, a further realm's node or a machine lending nothing is given a lend, a Mac's lend isn't refused and kept from its node, a lend with plain prefixes, dotted paths or a key package is refused, or a lend with no realm, naming a budget it lacks, with overlapping or empty prefixes, a key outside the store, climbing out of it, named as text or empty, a whole upstream or one with a dot part, a host with a scheme, a header with a space, a budget of a kind the lender has none of, or a path lending everything or nothing is taken."
       (
         let
           # The machine whole, for its own pkgs, and its account.
@@ -1802,8 +2138,8 @@ in
               # Each body line a doc line, the one field attribute serde
               # may carry, or a field of one line.
               field = builtins.match "    ([a-z_][a-z0-9_]*): (.*),";
-              defaulted = "    #[serde(default)]";
-              plain = line: lib.hasPrefix "    ///" line || line == defaulted || field line != null;
+              attribute = "    #[serde(default)]";
+              plain = line: lib.hasPrefix "    ///" line || line == attribute || field line != null;
               fail = why: { failed = "struct ${struct} ${why}"; };
             in
             if from == null || to == null then
@@ -1820,6 +2156,19 @@ in
               fail "has a line in its body other than a doc line, a field or #[serde(default)]"
             else
               {
+                # Each field serde reads as its type's default where the
+                # file leaves it out: one whose nearest line above it, past
+                # its doc lines, is the one attribute a field may carry.
+                defaulted = lib.concatLists (
+                  lib.imap0 (
+                    at: line:
+                    let
+                      matched = field line;
+                      over = lib.filter (above: !lib.hasPrefix "    ///" above) (lib.take at body);
+                    in
+                    lib.optional (matched != null && over != [ ] && lib.last over == attribute) (lib.head matched)
+                  ) body
+                );
                 read = lib.listToAttrs (
                   lib.concatMap (
                     line:
@@ -1840,6 +2189,7 @@ in
               };
           fields = scan lines;
           named = struct: lib.attrNames (fields struct);
+          defaults = struct: (structScan lines struct).defaulted or [ ];
           # A struct laid out as the lender's are, which the scan reads,
           # and with each change that has serde read it otherwise, or that
           # the scan can't read, in place of its line AT.
@@ -1980,8 +2330,9 @@ in
           ];
           # Each field's JSON shape as the module writes it: a keyless
           # budget with no key, read as none only while the key is
-          # optional, a key and paths as lists of words, and a daily cap
-          # any positive Nix integer fits.
+          # optional, a key and paths as lists of words, a daily cap any
+          # positive Nix integer fits, and prices and spend any Nix number
+          # fits, each optional field read as none where it is left out.
           shapes = {
             Written = {
               vms = "Vec<Vm>";
@@ -1992,6 +2343,7 @@ in
               budget = "String";
               also = "Vec<String>";
               requests_a_day = "u64";
+              usd_a_day = "Option<f64>";
             };
             Budget = {
               upstream = "PathBuf";
@@ -2000,6 +2352,16 @@ in
               auth_header = "String";
               key = "Option<Vec<String>>";
               kind = "Kind";
+              prices = "BTreeMap<String, Price>";
+              spend_watch = "Option<String>";
+            };
+            # Prices any Nix number fits, and a most any positive integer.
+            Price = {
+              input = "f64";
+              output = "f64";
+              cache_write = "Option<f64>";
+              cache_read = "Option<f64>";
+              most_output = "u64";
             };
           };
           # Refused by the assertion whose message starts so, and by it.
@@ -2226,6 +2588,85 @@ in
             given (linux (both // { inherit lend; })).systemd.user.services.mycelium
             == "${machine.pkgs.writeText "mycelium-lend.json" (builtins.toJSON written)}";
           sorted = lib.sort lib.lessThan;
+          # A lend capping no machine's spend and pricing no model: written
+          # without them, which mycelium reads as lending no model, and
+          # warned of rather than refused, so the machine still evaluates.
+          uncapped = lending // {
+            vms = [ (removeAttrs vm [ "usd_a_day" ]) ];
+            budgets = lending.budgets // {
+              models = removeAttrs lending.budgets.models [ "prices" ];
+            };
+          };
+          warnings = lend: (linux (both // { inherit lend; })).warnings;
+          warnsOf = lend: start: lib.any (lib.hasPrefix start) (warnings lend);
+          warns = warnsOf uncapped;
+          # A models budget pricing models but naming no spend-watch budget,
+          # and one pricing none, each refused by mycelium as one pricing
+          # nothing is.
+          unwatched = lending // {
+            budgets = lending.budgets // {
+              models = removeAttrs lending.budgets.models [ "spend_watch" ];
+            };
+          };
+          unpriced = lending // {
+            budgets = lending.budgets // {
+              models = lending.budgets.models // {
+                prices = { };
+              };
+            };
+          };
+          # A lend whose every models budget is priced and watched, and whose
+          # machine is capped.
+          priced = lending // {
+            budgets = removeAttrs lending.budgets [ "keyless" ];
+          };
+          # A machine lending models only beside a forge, uncapped.
+          alsoModels = lending // {
+            vms = [
+              (
+                removeAttrs vm [ "usd_a_day" ]
+                // {
+                  budget = "forge";
+                  also = [ "models" ];
+                }
+              )
+            ];
+            budgets = lending.budgets // {
+              forge = forge // {
+                kind = "forge";
+              };
+            };
+          };
+          # A model priced without its cache's prices, which are left out.
+          cacheUnpriced = withModels {
+            prices.a-model = removeAttrs lending.budgets.models.prices.a-model [
+              "cache_write"
+              "cache_read"
+            ];
+          };
+          # A machine lending only a forge, whose spend no dollar caps.
+          forgeOnly = lending // {
+            vms = [ (removeAttrs vm [ "usd_a_day" ] // { budget = "forge"; }) ];
+            budgets = lending.budgets // {
+              forge = forge // {
+                kind = "forge";
+              };
+            };
+          };
+          # A model with a price of nothing, refused as the machine builds,
+          # since it would spend past any daily cap: each price alike.
+          freeOf = price: {
+            budgets = lending.budgets // {
+              models = lending.budgets.models // {
+                prices.a-model = lending.budgets.models.prices.a-model // {
+                  ${price} = 0;
+                };
+              };
+            };
+          };
+          budgetWarned = "jitsusama.mycelium.lend.budgets.models names no prices";
+          vmWarned = "jitsusama.mycelium.lend.vms'";
+          lendWarned = lend: lib.filter (lib.hasPrefix "jitsusama.mycelium.lend") (warnings lend);
         in
         evaluates home
         && given home.systemd.user.services.mycelium == holding
@@ -2241,11 +2682,62 @@ in
         && named "Written" == lib.attrNames lending
         && named "Vm" == lib.attrNames vm
         && named "Budget" == lib.attrNames lending.budgets.models
+        && named "Price" == lib.attrNames lending.budgets.models.prices.a-model
+        # The module leaves out a budget's prices where it has none, and
+        # serde reads every other field it leaves out, each an Option, as
+        # none without being told.
+        && lib.elem "prices" (defaults "Budget")
+        # Only the field whose own line above is the attribute, past its
+        # doc lines, is read as defaulted.
+        && (structScan plainVm "Vm").defaulted == [ "requests_a_day" ]
+        &&
+          (structScan (changedVm 6 [
+            "    #[serde(default)]"
+            "    /// Counted a day."
+          ]) "Vm").defaulted == [ "requests_a_day" ]
+        &&
+          (structScan (changedVm 7 [
+            "    requests_a_day: u64,"
+            "    most: u64,"
+          ]) "Vm").defaulted == [ "requests_a_day" ]
+        && (structScan (changedVm 6 [ ]) "Vm").defaulted == [ ]
         && lib.all (struct: fields struct == shapes.${struct}) (lib.attrNames shapes)
         && sorted kindOption.type.functor.payload.values == sorted kinds.words
         && kindOption.default == kinds.unwritten
         && takes unsaid
         && writes unsaid filled
+        && writes uncapped uncapped
+        && warns "jitsusama.mycelium.lend.vms' agents- names no usd_a_day"
+        && warns "${budgetWarned},"
+        && warnsOf unwatched "jitsusama.mycelium.lend.budgets.models names no spend_watch,"
+        && warnsOf unpriced "${budgetWarned},"
+        && warnsOf alsoModels "jitsusama.mycelium.lend.vms' agents- names no usd_a_day"
+        && !warnsOf forgeOnly vmWarned
+        && !warnsOf forgeOnly "jitsusama.mycelium.lend.budgets.forge"
+        # Each lend warned of still meets every assertion, so its machine
+        # builds and lends what it can.
+        && lib.all (lend: evaluates (linux (both // { inherit lend; }))) [
+          uncapped
+          unwatched
+          unpriced
+          alsoModels
+          forgeOnly
+        ]
+        &&
+          lendWarned lending == [
+            (
+              "jitsusama.mycelium.lend.budgets.keyless names no prices and no spend_watch, "
+              + "so mycelium refuses every model lent through it."
+            )
+          ]
+        && lendWarned priced == [ ]
+        && writes cacheUnpriced cacheUnpriced
+        && lib.all (price: typeRefuses (lending // freeOf price)) [
+          "input"
+          "output"
+          "cache_write"
+          "cache_read"
+        ]
         && reading (kindScan plainKind) == plainKinds
         && lib.all (refusedFor kindScan) unreadKinds
         # A kind the type takes, beside one it refuses, so the refusal is

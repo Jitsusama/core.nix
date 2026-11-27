@@ -75,6 +75,13 @@ function shareTurns(saying, heldSaying) {
     return { quiet: letsHeldGo(saying, heldSaying), armed: rest() };
 }
 
+// Whether `armed` still stood with the line at `keysTaken`, so a share's
+// turn letting it go (shareTurns, Launcher.qml's untold) is one the
+// journal says went: an arm a key since already let go of isn't.
+function stood(armed, keysTaken) {
+    return holds(armed, armed.key, keysTaken);
+}
+
 // What Return does on the selected row, from what `how` says of it: an
 // answer being given is given, a Return doubling a landing does nothing
 // more, a gone row is only run, and a held row is held before anything else, as every other
@@ -109,6 +116,35 @@ function returnAct(how) {
     return how.lands ? "landed" : "ran";
 }
 
+// Whether Launcher.qml's run, given `choice`, changes no source, read in
+// run's own order, so the line's key that runs it from inside a step is
+// timed as acting only where it acts (commandRan). `inside` says a step
+// is held, and `heldStill` that run holds the row still (heldWhyOf). A
+// gone row does nothing, and one held still says why and stays; a start
+// put in the field leaves the place, so it acts; a Return's act that asks
+// for words only asks (ranReturn), and any other may do anything; a
+// category or group steps in; then a verb needing a target asks for it,
+// inside a step and with no run of its own (or more), and one needing
+// words asks for them. Anything else may act. A category whose step-in
+// is refused runs on past it in run, which is taken as the step-in here,
+// as no category has a run of its own.
+function changesNone(choice, inside, heldStill) {
+    if (choice.gone || heldStill) {
+        return true;
+    }
+    if (choice.start !== undefined) {
+        return false;
+    }
+    if (choice.returns) {
+        return !!choice.returns.given;
+    }
+    if (choice.category || choice.group) {
+        return true;
+    }
+    return (inside && !!choice.targets && (!choice.run || choice.verb === "more"))
+        || !!choice.given;
+}
+
 // Whether the place a source `source` lists may be kept, to draw at once
 // at the next opening (Launcher.qml's keepPlace): never one that says its
 // rows are never kept, as Asks does. A kept place's rows aren't drawn
@@ -118,6 +154,22 @@ function returnAct(how) {
 // name an ask from before one.
 function keepsPlace(source) {
     return source?.keptNever !== true;
+}
+
+// Whether a place may be kept, judged by the source its name finds,
+// `source`, and by the source each of its `steps` comes from (a step's
+// row.from), so a chord naming a place otherwise than its source, its
+// lookup unfound, can't keep a never-kept one's steps. A step from no
+// source, and a name no source has, keep, as home's led places do. A
+// row made showing says its source by shownBy wherever it's held, as
+// For You holds an ask under Now with no from, so that counts as one,
+// and a row saying both keeps only where neither says never. A row held
+// still keeps nothing either, as an ask made hidden under a share says
+// neither (secret-asks' Asks.qml), so its step can't be kept by saying
+// no source.
+function keepsSteps(source, steps) {
+    return keepsPlace(source) && steps.every(step => step.row?.still !== true
+        && keepsPlace(step.row?.from) && keepsPlace(step.row?.shownBy));
 }
 
 // Nothing armed.

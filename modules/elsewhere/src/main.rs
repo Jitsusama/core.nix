@@ -148,7 +148,11 @@ fn place(settings: &Settings, kind: &Kind, stay: bool, send: bool) -> Place {
         return told(Some(first));
     }
     let mut ask = Command::new(&settings.mycelium);
-    ask.args(room::asking(&kind.needs, kind.lasts.as_deref()));
+    ask.args(room::asking(
+        &kind.needs,
+        &holding(settings),
+        kind.lasts.as_deref(),
+    ));
     if let Some(realm) = &settings.realm {
         ask.args(["--realm", realm]);
     }
@@ -163,6 +167,22 @@ fn place(settings: &Settings, kind: &Kind, stay: bool, send: bool) -> Place {
             why: Why::NotHeard(problem),
         },
     }
+}
+
+/// The machines it may send to that already hold some of this session's
+/// quest, as mycelium's ledger of it says: none with no quest, or where no
+/// ledger is read.
+fn holding(settings: &Settings) -> Vec<String> {
+    let quest = std::env::var("PI_QUEST")
+        .ok()
+        .filter(|quest| far::plain_quest(quest));
+    let (Some(quest), Some(ledgers)) = (quest, &settings.ledgers) else {
+        return Vec::new();
+    };
+    fs::read_to_string(ledgers.join(format!("{quest}.json"))).map_or_else(
+        |_| Vec::new(),
+        |text| room::holders(&text, &settings.machines),
+    )
 }
 
 /// Why a job goes where it goes, in words.
@@ -414,7 +434,13 @@ fn there(settings: &Settings, kind: &Kind, asked: &Asked, machine: &str) -> Resu
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |since| since.as_nanos())
     );
-    let scratches = far::scratches();
+    let Some(scratches) = far::scratches() else {
+        return Ok(Sent::Stayed(
+            Exit::Config,
+            "neither XDG_CACHE_HOME nor HOME is absolute, so no quest's handover is here"
+                .to_owned(),
+        ));
+    };
     let handover = scratches.join(&quest).join(far::HANDOVER);
     let cleared = far::spent::clear(&scratches, &handover, &here(), std::time::SystemTime::now());
     let gone = cleared.gone;
@@ -431,6 +457,7 @@ fn there(settings: &Settings, kind: &Kind, asked: &Asked, machine: &str) -> Resu
     }
     let job = Job {
         handover: handover.join(&id),
+        scratch: scratches.join(&quest),
         quest,
         id,
         root,
@@ -446,10 +473,11 @@ fn there(settings: &Settings, kind: &Kind, asked: &Asked, machine: &str) -> Resu
 }
 
 /// A job on its way: the quest carrying it, its id there, the tree its
-/// files are from and its folder within it, and where in the quest's
-/// handover it's left.
+/// files are from and its folder within it, the quest's scratch, and
+/// where in its handover it's left.
 struct Job {
     quest: String,
+    scratch: PathBuf,
     id: String,
     root: PathBuf,
     files: Vec<String>,
@@ -512,7 +540,7 @@ fn send(
     // Started in the quest's scratch, which mycelium finds at the same
     // place under the far home: a strict fence there writes only the
     // folder a command starts in, and refuses to start one in the home.
-    run.arg("--folder").arg(far::scratches().join(quest));
+    run.arg("--folder").arg(&job.scratch);
     let child = run
         .args(["--", "sh", "-c", &script])
         .stdout(std::process::Stdio::piped())

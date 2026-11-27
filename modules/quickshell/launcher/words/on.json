@@ -565,8 +565,8 @@
     {
       "id": "for-you:kind:agent",
       "in": "on:waiting",
-      "name": "Agents Asking",
-      "term": "Desktop/agents asking",
+      "name": "Agents",
+      "term": "Agents/agent",
       "glyph": "agent"
     },
     {
@@ -659,6 +659,7 @@
         "asked": "Nothing stopped. Stop it yourself if they meant it.",
         "joke": "Nothing stopped. Stop it yourself if it wasn't a joke.",
         "no-tag": "Nothing stopped, since only a tag of you counts. Stop it yourself if they meant it.",
+        "unopened": "Nothing stopped, since your account's words count only when they open with the safe word. Stop it yourself if you meant it.",
         "resume": "Only you resume. Resume it if you agree."
       },
       "said": {
@@ -680,6 +681,7 @@
         "asked": "{who} asked you to stop your agents, without the safe word",
         "joke": "{who} said the safe word as a joke, so nothing stopped",
         "noTag": "{who} said the safe word without tagging you, so nothing stopped",
+        "unopened": "{who} named the safe word without opening with it, so nothing stopped",
         "resumeAsked": "{who} asked you to resume {reach}",
         "reach:everything": "everything",
         "reach:pr": "pull request {repo}#{number}",

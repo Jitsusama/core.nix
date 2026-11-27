@@ -53,7 +53,16 @@ const ties = {
 };
 
 function machine(name: string, health: Thing["health"], side: string[] = []): Thing {
-  return { name, health, says: "", side, address: undefined, ties: tiesOf(ties) };
+  return {
+    kind: "machine",
+    name,
+    health,
+    says: "",
+    side,
+    looks: undefined,
+    address: undefined,
+    ties: tiesOf(ties),
+  };
 }
 
 function system(things: Thing[], others: Part[] = []): System {
@@ -66,6 +75,7 @@ function system(things: Thing[], others: Part[] = []): System {
     things,
     named: things.map((thing) => thing.name),
     untold: 0,
+    machinesUntold: 0,
     deeper,
   };
   return {
@@ -282,6 +292,71 @@ it("itself says its disk, then its processor, memory, power and update", () => {
       aside: "Fully charged and plugged in. Unchanged at its update at 02:38.",
     },
   );
+  const refused = tiesOf({
+    figures: {
+      updated_at: "2026-11-18T02:40:03Z",
+      update_step: "refused",
+      update_why: "the Mac is over its room",
+    },
+  });
+  assert.deepEqual(
+    itselfSaid(refused, (at) => `at ${at.slice(11, 16)}`),
+    {
+      said: "Its disk not said",
+      aside: "Its update at 02:40 says refused: the Mac is over its room.",
+    },
+    "an update put off says why",
+  );
+  const asideOf = (figures: Record<string, unknown>): string =>
+    itselfSaid(
+      tiesOf({ figures: { updated_at: "2026-11-18T02:40:03Z", ...figures } }),
+      (at) => `at ${at.slice(11, 16)}`,
+    ).aside;
+  assert.equal(
+    asideOf({}),
+    "Its last update was at 02:40.",
+    "an update whose step isn't known, or couldn't be read, isn't said to have gone ahead",
+  );
+  assert.equal(
+    asideOf({ update_step: "done", update_why: "the boot check failed" }),
+    "Updated at 02:40, but the boot check failed.",
+    "a done update that didn't all go ahead says why",
+  );
+  assert.equal(
+    asideOf({ update_step: "unchanged", update_why: "the boot check failed" }),
+    "Unchanged at its update at 02:40, but the boot check failed.",
+    "an unchanged update after one that didn't all go ahead still says why",
+  );
+  assert.equal(
+    asideOf({ update_step: "building" }),
+    "Its update at 02:40 says building.",
+    "an update with no why says how it stands",
+  );
+  assert.equal(
+    asideOf({ update_step: "building", update_why: "left over" }),
+    "Its update at 02:40 says building.",
+    "a why beside a step that carries none is left unsaid, as the system command leaves it",
+  );
+  assert.equal(
+    asideOf({ update_step: "refused", update_why: "" }),
+    "Its update at 02:40 says refused.",
+    "an empty why is none",
+  );
+  assert.equal(
+    asideOf({ update_step: "failed", update_why: "attribute 'x' missing" }),
+    "Its update at 02:40 says failed: attribute 'x' missing.",
+    "a failed update says its error",
+  );
+  assert.equal(
+    asideOf({ update_step: "refused", update_why: "make /run/given and\u2026" }),
+    "Its update at 02:40 says refused: make /run/given and\u2026",
+    "a why cut short keeps its mark and gains no stop",
+  );
+  assert.equal(
+    asideOf({ update_step: "refused", update_why: "is the modem on?" }),
+    "Its update at 02:40 says refused: is the modem on?",
+    "a why ending in its own mark ends once",
+  );
   const away = tiesOf({ figures: { charge: 12, on_battery: true } });
   assert.deepEqual(
     itselfSaid(away, (at) => at),
@@ -321,7 +396,7 @@ it("machines not told yet are said not read, never none known", () => {
   assert.deepEqual(machineHeadline(noPart), notRead);
   const awaited: System = {
     ...read,
-    parts: read.parts.map((each) => ({ ...each, untold: 2 })),
+    parts: read.parts.map((each) => ({ ...each, untold: 2, machinesUntold: 2 })),
   };
   assert.deepEqual(machineHeadline(awaited), notRead);
 });
@@ -330,7 +405,7 @@ it("counts machines whose records haven't come, and says them not read", () => {
   const read = system([machine("kestrel", "good")]);
   const partial: System = {
     ...read,
-    parts: read.parts.map((each) => ({ ...each, untold: 1 })),
+    parts: read.parts.map((each) => ({ ...each, untold: 1, machinesUntold: 1 })),
   };
   assert.deepEqual(machineHeadline(partial), {
     machines: "Two machines",

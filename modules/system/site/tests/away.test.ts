@@ -19,13 +19,16 @@ const deeper = { command: "mycelium machines", site: "mycelium/", launcher: "Mac
 
 /** A machine the node reaches, standing as `health` says, worth a look for `side`. */
 function reached(name: string, health: Thing["health"], side: string[] = []): Thing {
-  return { name, health, says: "", side, address: undefined, ties: tiesOf({ reached: true }) };
+  const ties = tiesOf({ reached: true });
+  const kind = "machine";
+  return { kind, name, health, says: "", side, looks: undefined, address: undefined, ties };
 }
 
 /** A machine out of reach, last heard at `heard`, as the daemon says one (machines.rs). */
 function away(name: string, heard?: string): Thing {
   const ties = tiesOf({ reached: false, ...(heard === undefined ? {} : { heard_at: heard }) });
   return {
+    kind: "machine",
     name,
     health: "bad",
     says: "is out of reach",
@@ -57,6 +60,7 @@ function system(things: readonly Thing[]): System {
     things,
     named: things.map((thing) => thing.name),
     untold: 0,
+    machinesUntold: 0,
     deeper,
   };
   return {

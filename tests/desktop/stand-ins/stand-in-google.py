@@ -578,19 +578,29 @@ class Account:
             if (seen or went) and not watch.say({"id": watch.id, "changed": seen, "gone": went}):
                 self.watches.remove(watch)
 
+    def told(self, asked: dict[str, object]) -> dict[str, object]:
+        """Answer a hello, or a list of one kind as src/daemon.rs's listed() gives it."""
+        sources = {"google": "signed-out" if SIGNED_OUT else "answering"}
+        if asked.get("ask") == "hello":
+            return {
+                "id": asked.get("id"),
+                "version": 1,
+                "domain": "google",
+                "state": "answering",
+                "since": self.heard,
+                "sources": sources,
+            }
+        # The camera guard and call-under-load's calendar read ask for their meetings this way.
+        kind = asked.get("kind")
+        records = [record for record in self.said.values() if record["kind"] == kind]
+        return {"id": asked.get("id"), "records": records, "read": self.heard, "sources": sources}
+
     def answer(self, shell: socket.socket, asked: dict[str, object]) -> dict[str, object] | None:
         """Answer one ask, or give none once a watch's answer is sent."""
         id_ = asked.get("id")
         with self.lock:
-            if asked.get("ask") == "hello":
-                return {
-                    "id": id_,
-                    "version": 1,
-                    "domain": "google",
-                    "state": "answering",
-                    "since": self.heard,
-                    "sources": {"google": "signed-out" if SIGNED_OUT else "answering"},
-                }
+            if asked.get("ask") in {"hello", "list"}:
+                return self.told(asked)
             if asked.get("ask") == "watch":
                 watch = Watch(shell, id_, asked)
                 self.watches = [one for one in self.watches if not watch.replaces(one)]

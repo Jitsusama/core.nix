@@ -13,7 +13,7 @@ use std::collections::BTreeMap;
 
 use serde_json::Value;
 
-use super::{Class, Measure, count, lines, seconds};
+use super::{Class, Measure, asks, count, seconds};
 use crate::tracking::{self, Tracking};
 
 /// The key of Joel's parked asks; the list's own add their kind to it.
@@ -36,7 +36,7 @@ pub fn ruling(ask: &Value) -> Option<&str> {
 #[must_use]
 pub fn parked(text: &str, which: Tracking) -> Measure {
     let mut latest: BTreeMap<[String; 2], Option<String>> = BTreeMap::new();
-    for ask in lines(text) {
+    for ask in asks(text) {
         let ours = tracking::of(&ask) == Some(which) && seconds(&ask["landed"]).is_none();
         let asked = [ask["at"].to_string(), ask["words"].to_string()];
         latest.insert(asked, ruling(&ask).filter(|_| ours).map(str::to_owned));
@@ -65,7 +65,7 @@ pub fn parked(text: &str, which: Tracking) -> Measure {
 mod tests {
     use serde_json::json;
 
-    use super::super::slipped::at;
+    use super::super::slipped::{at, list};
     use super::super::slips;
     use super::*;
 
@@ -80,13 +80,6 @@ mod tests {
             ask.extend(more.clone());
         }
         ask
-    }
-
-    fn list(asks: &[Value]) -> String {
-        asks.iter()
-            .map(ToString::to_string)
-            .collect::<Vec<_>>()
-            .join("\n")
     }
 
     #[test]

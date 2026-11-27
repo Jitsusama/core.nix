@@ -5,6 +5,13 @@ use jiff::tz::TimeZone;
 
 const NOW: i64 = 1_795_600_000;
 
+/// The dates at risk of the kind `which` in an empty asks list.
+fn at_risk(which: Tracking) -> Measure {
+    let none = |_: u32| -> measures::at_risk::Shared { Ok(Vec::new()) };
+    let no_branch = |_: &str| -> measures::at_risk::Shared { Ok(Vec::new()) };
+    measures::at_risk::at_risk("", NOW, which, &none, &no_branch)
+}
+
 /// A measure the hour would show under `key`, held to `target`.
 fn held(key: &str, target: Option<f64>) -> Measure {
     Measure {
@@ -34,6 +41,8 @@ fn every_measure_the_hour_shows_has_a_line_that_holds_it_to_its_target() {
         measures::slips("", NOW, Tracking::Derived),
         measures::parked("", Tracking::His),
         measures::parked("", Tracking::Derived),
+        measures::told_late("", NOW, Tracking::His),
+        measures::told_late("", NOW, Tracking::Derived),
         measures::to_first_slice("", NOW, Tracking::His),
         measures::to_first_slice("", NOW, Tracking::Derived),
         measures::undated("", "2026-11-24", "OWNER"),
@@ -45,8 +54,31 @@ fn every_measure_the_hour_shows_has_a_line_that_holds_it_to_its_target() {
         measures::unresolved::unresolved(None, None, NOW, "OWNER"),
         measures::carried(&[], &[], "here"),
         measures::mapped(None, "", "OWNER"),
+        measures::cited::unread(""),
+        measures::holds::holds(&[], "", NOW),
+        at_risk(Tracking::His),
+        at_risk(Tracking::Derived),
     ];
     shown.extend(measures::apps::apps(None, NOW));
+    // Each of the relay's four judged, the share between two tallies.
+    shown.extend(measures::way_out::relay::relay(Some(
+        "model-relay: 10 asked, 0 refused, 0 failed\nmodel-relay: 19 asked, 0 refused, 0 failed",
+    )));
+    // The calls judged with one call in the hour, and a path of three samples.
+    let call = measures::way_out::calls::Turn {
+        at_ms: NOW * 1000 - 60_000,
+        error: None,
+    };
+    shown.extend(measures::way_out::calls::calls(Some(&[call]), NOW));
+    let sample = |ago: i64| {
+        serde_json::json!({"at": NOW - ago, "origin": "forge.example", "tls_s": 0.25}).to_string()
+    };
+    let samples = [sample(60), sample(660), sample(1260)].join("\n");
+    shown.extend(measures::way_out::path::path(
+        &samples,
+        &["forge.example".to_owned()],
+        NOW,
+    ));
     let said = serde_json::json!({"none": "no pain", "none_at_ms": NOW * 1000});
     shown.extend(measures::said_none(&said.to_string(), NOW));
     // Those read from a machine's records, under the keys and targets the

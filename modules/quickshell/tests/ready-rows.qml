@@ -1,17 +1,16 @@
 // How the shell takes a place's rows as its daemon serves them ready,
 // run in Qt's own JavaScript engine, the one the shell runs it in. The
-// `the-launcher-words-each-ready-row-it-is-served` check copies
-// launcher/ReadyRows.js, launcher/Found.js, launcher/Beneath.js and
-// launcher/EmojiSearch.js, the When.js ReadyRows.js and the Fuzzy.js
-// EmojiSearch.js read from beside the launcher's folder, launcher/Ago.js,
-// launcher/Interfaces.js and tests/lib/Expect.js
-// beside this file and runs `qml -platform offscreen ready-rows.qml` over
+// `the-launcher-words-each-ready-row-it-is-served` check copies the
+// launcher's files checks/ready-rows.nix names, with what each imports in
+// turn as checks/imports.nix says (checks/helpers.nix's copied), and
+// tests/lib/Expect.js beside this file, and runs `qml -platform offscreen ready-rows.qml` over
 // records made up here in the crate's wrapped form. Long because every
 // case holds one form, the ready rows' (attachments' ready-rows.md), which
 // changes as one, a copy asked for at Return with it.
 import QtQuick
 import "launcher/Found.js" as Found
 import "launcher/ReadyRows.js" as Ready
+import "launcher/Presented.js" as Presented
 import "launcher/ActForms.js" as Forms
 import "launcher/Moved.js" as Moved
 import "launcher/Beneath.js" as Beneath
@@ -698,6 +697,20 @@ QtObject {
         Expect.same("going to a program is done once the launcher's gone",
             Ready.leaving({ key: "verb:go", go: "kitty" }),
             { stays: false, now: false, later: true });
+        // A row is made with its thing, else its key, as its daemon wrote
+        // them, but never as one of the launcher's own kinds, whose keys
+        // the journal says whole as the launcher's ids (Presented.keyShown).
+        Expect.same("a served row is made with its thing",
+            Presented.keyMade({ thing: "mail:7" }, "row:mail:7"), "mail:7");
+        Expect.same("or its key where it has none", Presented.keyMade({}, "row:wifi:eduroam"),
+            "row:wifi:eduroam");
+        Expect.same("but a thing claiming a place is kept under its daemon's row:",
+            Presented.keyMade({ thing: "place:eduroam" }, "row:wifi:eduroam"),
+            "row:place:eduroam");
+        Expect.same("as is a key claiming a collection",
+            Presented.keyMade({}, "collection:Harbour"), "row:collection:Harbour");
+        Expect.same("or a category", Presented.keyMade({ thing: "category:x" }, "k"),
+            "row:category:x");
         Expect.same("an ask is read by its act's words in the key language",
             Ready.wordsOf({ key: "verb:firmware:install", ask: { ask: "install" } }),
             "verb:firmware:install");

@@ -4,7 +4,7 @@ use disk_guard::decide::{
     Ahead, COLLECTING_UNDER, Decision, Fill, Forecast, Situation, calm, decide, overloaded, roomy,
     spare,
 };
-use disk_guard::moments::{Power, Pressure, Stall};
+use disk_guard::moments::{MemoryLevel, MemoryRoom, Power, Pressure, Stall};
 use disk_guard::units::{float, whole};
 
 const GIB: u64 = 1 << 30;
@@ -477,7 +477,67 @@ fn stalling(io: f64, memory: f64, cpu: f64) -> Pressure {
         io: stall(io),
         memory: stall(memory),
         cpu: stall(cpu),
+        memory_room: None,
     }
+}
+
+/// A Mac's moment: no stall averages, only its kernel's word on memory.
+fn mac(free_percent: u8, level: MemoryLevel) -> Pressure {
+    Pressure {
+        memory_room: Some(MemoryRoom {
+            free_percent,
+            level,
+        }),
+        ..Pressure::default()
+    }
+}
+
+#[test]
+fn a_mac_has_room_with_35_percent_free_and_memory_its_kernel_calls_normal() {
+    // As the laptop read on 25 November at 18:3x, with its heavy work's
+    // own bar at 35% free.
+    assert!(roomy(mac(35, MemoryLevel::Normal)), "at its bar");
+    assert!(!roomy(mac(34, MemoryLevel::Normal)), "short of its bar");
+    assert!(
+        !roomy(mac(60, MemoryLevel::Warning)),
+        "a warning however much is free"
+    );
+    assert!(
+        !roomy(mac(60, MemoryLevel::Critical)),
+        "critical however much is free"
+    );
+}
+
+#[test]
+fn a_mac_is_calm_only_while_its_kernel_calls_memory_normal() {
+    assert!(
+        calm(mac(20, MemoryLevel::Normal)),
+        "a normal Mac wasn't calm"
+    );
+    assert!(
+        !calm(mac(60, MemoryLevel::Warning)),
+        "a warned Mac was calm"
+    );
+    assert!(
+        !calm(mac(60, MemoryLevel::Critical)),
+        "a critical Mac was calm"
+    );
+}
+
+#[test]
+fn a_mac_whose_kernel_calls_memory_critical_is_overloaded() {
+    assert!(
+        overloaded(mac(5, MemoryLevel::Critical)),
+        "a critical Mac wasn't overloaded"
+    );
+    assert!(
+        !overloaded(mac(5, MemoryLevel::Warning)),
+        "a warned Mac was overloaded"
+    );
+    assert!(
+        !overloaded(mac(5, MemoryLevel::Normal)),
+        "a normal Mac was overloaded"
+    );
 }
 
 #[test]

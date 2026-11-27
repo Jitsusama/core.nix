@@ -12,7 +12,8 @@
 //! asks the card's chooser whether another of the network's access points
 //! would carry better and moves the card there. What each carried is
 //! learned by the hour too (learn.rs), for those the card hasn't been on
-//! in the span.
+//! in the span. During a call it's asked each second too whether the
+//! card's link is fading, and moves.rs has it give way at once.
 //!
 //! Each second's echo goes twice, once unmarked and once in Wi-Fi's video
 //! queue (echo.rs), and the chooser and the hours are handed the worse of
@@ -45,6 +46,7 @@ use crate::air::Heard;
 use crate::calling::Calling;
 use crate::choose::{self, Chooser};
 use crate::echo::{Class, Echoer, LOST, Late};
+use crate::fading;
 use crate::learn::{self, Here, Learned};
 use crate::moves;
 use crate::nl80211::{Nl80211, Station};
@@ -55,6 +57,13 @@ use crate::state::{Joined, State};
 /// one echo a second to mean something, short enough to follow a move to
 /// another room.
 pub const SPAN: Duration = Duration::from_secs(120);
+
+/// How far back the minute a trial is judged by reaches: a minute, less
+/// half a second, so a minute read on time shares no echo with the one
+/// before. A minute's tick waits behind a measure, up to about 2 s where
+/// echoes go unanswered, so one echo of a minute's sixty may be read in
+/// both, or in neither, which can tip only a minute already at the bar.
+const MINUTE: Duration = Duration::from_millis(59_500);
 
 /// What the gateway said to one echo.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -72,6 +81,8 @@ pub struct Counts {
     pub retries: u32,
     pub failed: u32,
     pub signal: Option<i32>,
+    /// The kernel's average of the signal, steadier than one frame's.
+    pub average: Option<i32>,
     /// Bytes received and sent since the card joined, where the kernel
     /// says both.
     pub moved: Option<u64>,
@@ -136,6 +147,17 @@ struct Point {
     echoes: VecDeque<(Instant, Echo)>,
     video: VecDeque<(Instant, Echo)>,
     counts: VecDeque<(Instant, Counts)>,
+    /// When each echo taken within `fading::LOOK` of its card beginning a
+    /// look for networks ended, so a call's fading is judged without them.
+    looking: VecDeque<(Instant, ())>,
+    /// The look the card was last seen in, by how many it had begun, and
+    /// when it was first seen in it.
+    look: Option<(u32, Instant)>,
+    /// When each echo couldn't be sent as the card's link was down, kept
+    /// apart from the echoes: lost to a call's link, they say nothing of
+    /// how the point carries, and right after a resume, a join or a roam
+    /// they'd read as a failing minute, learned for its hour.
+    unsent: VecDeque<(Instant, ())>,
 }
 
 impl Measures {
@@ -200,8 +222,32 @@ impl Measures {
     /// What the access point's video echoes carried over the span up to
     /// now, if any were sent in it.
     pub fn video_of(&self, point: &str, now: Instant) -> Option<Video> {
-        let echoes: Vec<Echo> = within(&self.points.get(point)?.video, now).collect();
+        let echoes: Vec<Echo> = within(&self.points.get(point)?.video, now, SPAN).collect();
         video(&echoes)
+    }
+
+    /// Takes in that a best-effort echo through the access point couldn't
+    /// be sent then, as the card's link was down.
+    pub fn unsent(&mut self, point: &str, at: Instant) {
+        let kept = self.points.entry(point.to_owned()).or_default();
+        kept.unsent.push_back((at, ()));
+        forget_before(&mut kept.unsent, at);
+    }
+
+    /// Takes in that the echo sent then was taken while its card
+    /// was in this look for networks, by how many it had begun. It's left
+    /// out of a call's fading only within `fading::LOOK` of the look.
+    pub fn looked(&mut self, point: &str, at: Instant, look: u32) {
+        let kept = self.points.entry(point.to_owned()).or_default();
+        let began = match kept.look {
+            Some((seen, began)) if seen == look => began,
+            _ => at,
+        };
+        kept.look = Some((look, began));
+        if at.duration_since(began) <= fading::LOOK {
+            kept.looking.push_back((at, ()));
+            forget_before(&mut kept.looking, at);
+        }
     }
 
     /// Takes in the station's counts, read on the access point.
@@ -211,29 +257,74 @@ impl Measures {
         forget_before(&mut kept.counts, at);
     }
 
+    /// How many best-effort echoes through the access point were lost
+    /// within `within` of now, those taken while its card looked for
+    /// networks aside and those that couldn't be sent as its link was down
+    /// among them, and its signal as the kernel last said it within then,
+    /// its average where it says one, for whether a call's link is fading
+    /// (fading.rs). A reading older than that says nothing of the link
+    /// now.
+    pub fn lately(&self, point: &str, now: Instant, within: Duration) -> (usize, Option<i32>) {
+        let Some(kept) = self.points.get(point) else {
+            return (0, None);
+        };
+        let looking = |at: &Instant| kept.looking.iter().any(|(looked, ())| looked == at);
+        let lost = kept
+            .echoes
+            .iter()
+            .filter(|(at, echo)| now.duration_since(*at) <= within && *echo == Echo::Lost)
+            .filter(|(at, _)| !looking(at))
+            .count();
+        let unsent = kept
+            .unsent
+            .iter()
+            .filter(|(at, ())| now.duration_since(*at) <= within)
+            .count();
+        let lost = lost + unsent;
+        let signal = kept
+            .counts
+            .back()
+            .filter(|(at, _)| now.duration_since(*at) <= within)
+            .and_then(|(_, counts)| counts.average.or(counts.signal));
+        (lost, signal)
+    }
+
     /// The access point's figures over the span up to now, each the worse
     /// class's, if anything was measured of it in it.
     pub fn of(&self, point: &str, now: Instant) -> Option<Measured> {
-        self.figures(point, now, true)
+        self.figures(point, now, true, SPAN)
+    }
+
+    /// The access point's figures over the minute up to now alone, each
+    /// the worse class's, as a trial is judged early by single minutes
+    /// rather than spans of two.
+    pub fn minute_of(&self, point: &str, now: Instant) -> Option<Measured> {
+        self.figures(point, now, true, MINUTE)
     }
 
     /// The access point's figures over the span up to now in best effort
     /// alone, as logged, if anything was measured of it in it.
     pub fn best_effort_of(&self, point: &str, now: Instant) -> Option<Measured> {
-        self.figures(point, now, false)
+        self.figures(point, now, false, SPAN)
     }
 
-    fn figures(&self, point: &str, now: Instant, weighing_video: bool) -> Option<Measured> {
+    fn figures(
+        &self,
+        point: &str,
+        now: Instant,
+        weighing_video: bool,
+        over: Duration,
+    ) -> Option<Measured> {
         let kept = self.points.get(point)?;
-        let echoes: Vec<Echo> = within(&kept.echoes, now).collect();
-        let counts: Vec<Counts> = within(&kept.counts, now).collect();
+        let echoes: Vec<Echo> = within(&kept.echoes, now, over).collect();
+        let counts: Vec<Counts> = within(&kept.counts, now, over).collect();
         if echoes.is_empty() && counts.is_empty() {
             return None;
         }
         let (times, lost) = timed(&echoes);
         let (mut p50, mut p95) = (percentile(&times, 50), percentile(&times, 95));
         let mut lost = per_hundred(lost, echoes.len());
-        let video_echoes: Vec<Echo> = within(&kept.video, now).collect();
+        let video_echoes: Vec<Echo> = within(&kept.video, now, over).collect();
         if let Some(video) = video(&video_echoes).filter(|_| weighing_video) {
             lost = lost.max(video.held);
             if video.timed() {
@@ -295,7 +386,15 @@ pub async fn follow(
             _ = each.tick() => {
                 let joined = state.borrow().joined();
                 echoers.retain(|card, _| joined.iter().any(|on| on.card == *card));
-                measure(&joined, &mut echoers, &mut kernel, &mut measures).await;
+                measure(&joined, &mut echoers, &mut kernel, &mut measures, &state).await;
+                let now = Instant::now();
+                if calling.borrow().on(now) {
+                    for on in &joined {
+                        let chooser = choosers.entry(on.card.clone()).or_default();
+                        let with = (&asks, &state, &looked);
+                        moves::give_way(chooser, now, on, &measures, with);
+                    }
+                }
             }
             _ = told.tick() => {
                 let (now, hour) = (Instant::now(), learn::hour_here());
@@ -314,11 +413,13 @@ pub async fn follow(
                     let around = state.borrow().around(&on.card);
                     learn_from(&mut learned, &on, &carried, &around, hour);
                     let chooser = choosers.entry(on.card.clone()).or_default();
+                    if let Some(minute) = measures.minute_of(&on.point, now) {
+                        chooser.took_minute(now, &on.point, &minute);
+                    }
                     moves::choose(
                         chooser,
                         (now, hour),
                         (&on, &carried),
-                        &around,
                         (&measures, &learned),
                         (&asks, &state, &looked),
                         call,
@@ -335,14 +436,12 @@ pub async fn follow(
                 let Some(carried) = measures.of(&on.point, now) else {
                     continue;
                 };
-                let around = state.borrow().around(&on.card);
                 let chooser = choosers.entry(on.card.clone()).or_default();
                 chooser.looked_over(now);
                 moves::choose(
                     chooser,
                     (now, hour),
                     (&on, &carried),
-                    &around,
                     (&measures, &learned),
                     (&asks, &state, &looked),
                     call,
@@ -462,19 +561,25 @@ async fn echo_on(
 /// card's station. A socket that can't be opened, or errs, is passed over
 /// until the next second, and opened again then; a card best effort's echo
 /// couldn't be sent on goes unmeasured that second, its video echo and its
-/// station too, though late answers to earlier echoes still count.
+/// station too, though late answers to earlier echoes still count. A
+/// best-effort echo sent while its card looked for networks, or across a
+/// look begun and ended between the reads either side of it, is marked as
+/// taken in that look, for a call's fading.
 async fn measure(
     joined: &[Joined],
     echoers: &mut HashMap<String, Echoers>,
     kernel: &mut Option<Nl80211>,
     measures: &mut Measures,
+    state: &watch::Receiver<State>,
 ) {
     let mut echoing = JoinSet::new();
     let mut cards = HashMap::new();
+    let mut before = HashMap::new();
     let mut echoed_on = Vec::new();
     for on in joined {
         let mut sockets = echoers.remove(&on.card).unwrap_or_default();
         sockets.open(&on.card);
+        before.insert(on.card.clone(), state.borrow().looking(&on.card));
         let on = on.clone();
         let card = on.card.clone();
         let task = echoing.spawn(async move {
@@ -497,6 +602,17 @@ async fn measure(
         // The late answers are taken before a failing socket is let go, as
         // what it heard late before failing is heard all the same.
         if measures.took_in(&on.point, sockets.late(), &echoed) {
+            let after = state.borrow().looking(&on.card);
+            let looked = before
+                .get(&on.card)
+                .is_some_and(|before| before.looked_until(after));
+            let sent = echoed.iter().find_map(|(class, echoed)| match echoed {
+                Ok((at, _)) if *class == Class::BestEffort => Some(*at),
+                _ => None,
+            });
+            if let (true, Some(at)) = (looked, sent) {
+                measures.looked(&on.point, at, after.begun);
+            }
             echoed_on.push(on.clone());
         }
         for (class, echoed) in echoed {
@@ -509,6 +625,14 @@ async fn measure(
                         on.card,
                         class.name()
                     );
+                    // A best-effort echo that couldn't be sent as the link
+                    // is down is lost to a call as surely as one
+                    // unanswered, so a call's fading counts it, and nothing
+                    // else does. Refused for another reason, as by a
+                    // firewall, it says nothing of the link.
+                    if class == Class::BestEffort && link_down(&error) {
+                        measures.unsent(&on.point, Instant::now());
+                    }
                     sockets.close(class);
                 }
             }
@@ -543,6 +667,7 @@ fn counted(station: &Station) -> Option<Counts> {
         retries: station.retries?,
         failed: station.failed?,
         signal: station.signal,
+        average: station.average,
         moved: station
             .received
             .bytes
@@ -643,6 +768,15 @@ fn said(
     )
 }
 
+/// Whether an echo couldn't be sent as the card's link was down, rather
+/// than refused for another reason.
+fn link_down(error: &std::io::Error) -> bool {
+    matches!(
+        error.raw_os_error(),
+        Some(libc::ENETDOWN | libc::ENETUNREACH | libc::EHOSTUNREACH | libc::ENODEV)
+    )
+}
+
 /// Lets go of what was measured before the span ending at `now`.
 fn forget_before<T>(kept: &mut VecDeque<(Instant, T)>, now: Instant) {
     while kept
@@ -653,10 +787,14 @@ fn forget_before<T>(kept: &mut VecDeque<(Instant, T)>, now: Instant) {
     }
 }
 
-/// What was measured in the span ending at `now`.
-fn within<T: Copy>(kept: &VecDeque<(Instant, T)>, now: Instant) -> impl Iterator<Item = T> {
+/// What was measured in the stretch this long ending at `now`.
+fn within<T: Copy>(
+    kept: &VecDeque<(Instant, T)>,
+    now: Instant,
+    over: Duration,
+) -> impl Iterator<Item = T> {
     kept.iter()
-        .filter(move |(at, _)| now.duration_since(*at) <= SPAN)
+        .filter(move |(at, _)| now.duration_since(*at) <= over)
         .map(|(_, measured)| *measured)
 }
 
@@ -805,6 +943,7 @@ pub(crate) mod tests {
             retries,
             failed,
             signal: Some(-47),
+            average: None,
             moved: None,
             link: None,
         }
@@ -828,6 +967,121 @@ pub(crate) mod tests {
         seconds
             .map(|second| (second, bytes + (second - first) * 12_500_000))
             .collect()
+    }
+
+    #[test]
+    fn lately_counts_the_echoes_lost_within_its_window_and_the_last_signal() {
+        let start = Instant::now();
+        let mut kept = Measures::default();
+        let lost_at = [0, 5, 12, 14];
+        for second in 0..=15 {
+            let echo = if lost_at.contains(&second) {
+                Echo::Lost
+            } else {
+                Echo::Answered(Duration::from_millis(5))
+            };
+            kept.echoed(DESK, start + Duration::from_secs(second), echo);
+        }
+        kept.counted(DESK, start + Duration::from_secs(15), counts(10, 0, 0));
+        let now = start + Duration::from_secs(15);
+
+        let lately = kept.lately(DESK, now, Duration::from_secs(10));
+        let unmeasured = kept.lately("6c:ae:f6:ba:85:86", now, Duration::from_secs(10));
+
+        assert_eq!(
+            lately,
+            (3, Some(-47)),
+            "those from 5 s on, and the kernel's signal"
+        );
+        assert_eq!(unmeasured, (0, None), "nothing of a point not measured");
+    }
+
+    #[test]
+    fn lately_says_the_kernel_s_average_signal_and_none_from_an_old_reading() {
+        let start = Instant::now();
+        let mut kept = Measures::default();
+        let averaged = Counts {
+            average: Some(-70),
+            ..counts(10, 0, 0)
+        };
+        kept.counted(DESK, start, averaged);
+        let within = Duration::from_secs(10);
+
+        let fresh = kept.lately(DESK, start + Duration::from_secs(10), within);
+        let old = kept.lately(DESK, start + Duration::from_secs(11), within);
+
+        assert_eq!(fresh, (0, Some(-70)), "the average, not one frame's -47");
+        assert_eq!(old, (0, None), "a reading 11 s old says nothing of now");
+    }
+
+    #[test]
+    fn lately_leaves_out_the_echoes_lost_while_the_card_looked() {
+        let start = Instant::now();
+        let mut kept = Measures::default();
+        for second in 0..10 {
+            let at = start + Duration::from_secs(second);
+            kept.echoed(DESK, at, Echo::Lost);
+            if second != 4 {
+                kept.looked(DESK, at, 1);
+            }
+        }
+        let now = start + Duration::from_secs(9);
+
+        let (lost, _) = kept.lately(DESK, now, Duration::from_secs(10));
+
+        // Seconds 0 to 3 and 5 and 6 are the look's first 6 s; 7 to 9 run
+        // past them, as a fading link's look does.
+        assert_eq!(
+            lost, 4,
+            "the one lost between and those past the look's first 6 s"
+        );
+    }
+
+    #[test]
+    fn each_look_has_its_own_first_seconds_left_out() {
+        let start = Instant::now();
+        let mut kept = Measures::default();
+        for second in 0..10 {
+            let at = start + Duration::from_secs(second);
+            kept.echoed(DESK, at, Echo::Lost);
+            kept.looked(DESK, at, if second < 5 { 1 } else { 2 });
+        }
+        let now = start + Duration::from_secs(9);
+
+        let (lost, _) = kept.lately(DESK, now, Duration::from_secs(10));
+
+        assert_eq!(lost, 0, "two looks of 5 s each are both left out whole");
+    }
+
+    #[test]
+    fn an_echo_unsent_as_the_link_was_down_is_lost_to_a_call_alone() {
+        let start = Instant::now();
+        let mut kept = Measures::default();
+        for second in 0..10 {
+            let at = start + Duration::from_secs(second);
+            if second < 3 {
+                kept.unsent(DESK, at);
+            } else {
+                kept.echoed(DESK, at, Echo::Answered(Duration::from_millis(5)));
+            }
+        }
+        let now = start + Duration::from_secs(9);
+
+        let (lost, _) = kept.lately(DESK, now, Duration::from_secs(10));
+        let minute = kept.of(DESK, now).expect("answered echoes were measured");
+
+        assert_eq!(lost, 3, "a call's link lost all three");
+        assert_eq!(minute.echoes, 7, "the minute holds only the echoes sent");
+        assert!(minute.lost < f64::EPSILON, "and lost none of them");
+    }
+
+    #[test]
+    fn only_an_echo_refused_for_a_link_down_counts_as_unsent() {
+        let down = std::io::Error::from_raw_os_error(libc::ENETUNREACH);
+        let refused = std::io::Error::from_raw_os_error(libc::EPERM);
+
+        assert!(link_down(&down), "no route is the link down");
+        assert!(!link_down(&refused), "a firewall's refusal isn't");
     }
 
     #[test]
@@ -1042,6 +1296,35 @@ pub(crate) mod tests {
         let measured = measured.expect("an access point echoed through is measured");
         assert_eq!(measured.echoes, 1, "the echo before the span is let go");
         assert_eq!(measured.p95, Some(ms(5)), "and says nothing of now");
+    }
+
+    #[test]
+    fn a_minute_alone_holds_none_of_the_minute_before() {
+        let start = Instant::now();
+        let mut kept = Measures::default();
+        echoed(&mut kept, DESK, start, &[Some(5)]);
+        echoed_in_video(&mut kept, DESK, start, &[Some(500)]);
+        let minute = start + Duration::from_secs(60);
+        echoed(&mut kept, DESK, minute, &[Some(5)]);
+        echoed_in_video(&mut kept, DESK, minute, &[Some(5)]);
+        let alone = kept
+            .minute_of(DESK, minute)
+            .expect("the minute was measured");
+        let span = kept.of(DESK, minute).expect("the span was measured");
+        assert_eq!(
+            alone.echoes, 1,
+            "the echo a minute back is the minute before's"
+        );
+        assert_eq!(
+            alone.p95,
+            Some(ms(5)),
+            "and its held video says nothing of this one"
+        );
+        assert_eq!(
+            (span.echoes, span.p95),
+            (2, Some(ms(500))),
+            "the span holds both, video's too"
+        );
     }
 
     #[test]
