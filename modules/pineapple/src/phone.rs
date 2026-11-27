@@ -257,29 +257,42 @@ pub fn tell_self(gateway: &mut Gateway, alert: Alert) -> Result<String, Missed> 
 }
 
 /// A failing's words without any line of `said` it quotes, as written or
-/// as JSON would write it, whatever it escapes as `\uXXXX`: the title and
+/// as JSON would write it, however its writer escapes it: the title and
 /// where are still from Slack, so a name in them can't be read as the
-/// gateway's own word for a rate spent.
+/// gateway's own word for a rate spent. Each line is taken out before the
+/// failing's escapes are read back and again after, so a name holding a
+/// backslash of its own is found quoted as written and as escaped.
 fn unquoted(why: &str, said: &str) -> String {
-    let mut why = unescaped(why);
-    for line in said.lines().filter(|line| !line.trim().is_empty()) {
-        let json = serde_json::to_string(line).unwrap_or_default();
-        let inner = json.get(1..json.len().saturating_sub(1)).unwrap_or(line);
-        why = why.replace(line, "").replace(inner, "");
-    }
-    why
+    let lines: Vec<&str> = said
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .collect();
+    let without = |mut left: String| {
+        for line in &lines {
+            let json = serde_json::to_string(line).unwrap_or_default();
+            let inner = json.get(1..json.len().saturating_sub(1)).unwrap_or(line);
+            left = left.replace(line, "").replace(inner, "");
+        }
+        left
+    };
+    without(unescaped(&without(why.to_owned())))
 }
 
-/// `why` with each `\uXXXX` escape read back as its character, a surrogate
-/// pair as one, since JSON writers other than serde's escape so what isn't
-/// ASCII, or `&`, `<` and `>`; what names no character is left as it was.
+/// `why` with each of JSON's escapes read back, from left to right: `\\`,
+/// `\"`, `\/`, the control characters' and `\uXXXX`, a surrogate pair as
+/// one, since JSON writers other than serde's escape so what isn't ASCII,
+/// `&`, `<`, `>` or `/`. What names no character is left as it was.
 fn unescaped(why: &str) -> String {
     let mut out = String::with_capacity(why.len());
     let mut rest = why;
-    while let Some(at) = rest.find("\\u") {
+    while let Some(at) = rest.find('\\') {
         out.push_str(&rest[..at]);
         rest = &rest[at..];
-        let (read, taken) = escape(rest);
+        let (read, taken) = match rest.as_bytes().get(1) {
+            Some(b'u') => escape(rest),
+            Some(&mark) => short(mark).map_or((None, 1), |read| (Some(read), 2)),
+            None => (None, 1),
+        };
         match read {
             Some(read) => out.push(read),
             None => out.push_str(&rest[..taken]),
@@ -288,6 +301,22 @@ fn unescaped(why: &str) -> String {
     }
     out.push_str(rest);
     out
+}
+
+/// The character a backslash and `mark` name in JSON, where `mark` isn't
+/// `u`; none where they name none.
+fn short(mark: u8) -> Option<char> {
+    Some(match mark {
+        b'"' => '"',
+        b'\\' => '\\',
+        b'/' => '/',
+        b'b' => '\u{8}',
+        b'f' => '\u{c}',
+        b'n' => '\n',
+        b'r' => '\r',
+        b't' => '\t',
+        _ => return None,
+    })
 }
 
 /// The character the `\uXXXX` escape opening `at` names, two escapes for a
@@ -442,6 +471,8 @@ pub fn told_as(line: &Value) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::fmt::Write as _;
+
     use serde_json::json;
 
     use super::*;
@@ -587,15 +618,17 @@ mod tests {
             link: "https://x.slack.com/archives/C1/p1",
         });
         // As Python's JSON writes it, and Go's: whatever isn't ASCII, and
-        // `&`, `<` and `>`, as `\uXXXX`.
+        // `&`, `<` and `>`, as `\uXXXX`; and `/` as PHP's writes it.
         let json = serde_json::to_string(&said).expect("text as JSON");
         let mut escaped = String::new();
         for each in json.chars() {
-            if each.is_ascii() && !matches!(each, '&' | '<' | '>') {
+            if each == '/' {
+                escaped.push_str("\\/");
+            } else if each.is_ascii() && !matches!(each, '&' | '<' | '>') {
                 escaped.push(each);
             } else {
                 for unit in each.encode_utf16(&mut [0; 2]) {
-                    escaped.push_str(&format!("\\u{unit:04x}"));
+                    write!(escaped, "\\u{unit:04x}").expect("a String takes any text");
                 }
             }
         }
@@ -614,6 +647,29 @@ mod tests {
             "\u{e9} \u{1f34d} \\ud83c \\u12 \\uzzzz",
             "what names no character is left as it was"
         );
+        assert_eq!(
+            unescaped(r#"\\u0072 \/ \" \n \q \"#),
+            "\\u0072 / \" \n \\q \\",
+            "read from left to right, an escaped backslash opens no escape"
+        );
+    }
+
+    #[test]
+    fn a_name_holding_a_backslash_of_its_own_is_left_out_however_quoted() {
+        let said = text(Alert {
+            title: "A stop in x/\\u0072ate_limited#12 caf\u{e9}",
+            words: WORDS_NOT_TAKEN,
+            link: "https://x.slack.com/archives/C1/p1",
+        });
+        let json = serde_json::to_string(&said).expect("text as JSON");
+        let ascii = json.replace('\u{e9}', r"\u00e9");
+        for quoted in [said.as_str(), json.as_str(), ascii.as_str()] {
+            let why = format!("could not post {quoted}");
+            assert!(
+                !spent(&unquoted(&why, &said)),
+                "left out, quoted as {quoted}, it reads as no rate spent"
+            );
+        }
     }
 
     #[test]
