@@ -1,6 +1,8 @@
 //! What the safe word's Slack reader read on past and never read, said
 //! to Joel in rows of their own: as minutes before each was raised, kept a
 //! week, and one search's spans within ten minutes said as one row.
+//! Slack's rows are kept by pineapple's `missed` as every reader's are, so
+//! these cases pin its rules as well as Slack's names, byte for byte.
 
 use std::path::Path;
 use std::slice;
@@ -400,5 +402,31 @@ fn a_row_meets_one_said_after_it_only_within_ten_minutes_and_unknowns_only_their
         2,
         "two whose starts can't be told, ending even a minute apart, stay their own: \
          {unknowns:?}"
+    );
+}
+
+#[test]
+fn rows_of_the_phrase_search_met_are_said_as_its_own() {
+    let phrase =
+        |from: u64, to: u64| missed(Search::Phrase, Some(AT - from), Some(AT - to), AT - to);
+    let rows = kept_after(
+        "phrase-met",
+        &[phrase(30 * MINUTE, 20 * MINUTE)],
+        phrase(25 * MINUTE, 10 * MINUTE),
+    );
+    assert_eq!(
+        rows.iter().map(|row| row["id"].clone()).collect::<Vec<_>>(),
+        [serde_json::json!(format!(
+            "pineapple-slack-missed-phrase-{}-{}",
+            AT - 30 * MINUTE,
+            AT - 10 * MINUTE
+        ))],
+        "two of its spans that overlap are one row, named for its search: {rows:?}"
+    );
+    assert!(
+        rows[0]["why"]
+            .as_str()
+            .is_some_and(|why| why.contains("said pineapple in Slack without tagging you")),
+        "and said as its search's: {rows:?}"
     );
 }
