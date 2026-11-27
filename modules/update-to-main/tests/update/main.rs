@@ -3063,7 +3063,39 @@ fn a_held_commit_the_checkout_lacks_is_asked_of_the_host() {
     let Line::Refused { why, .. } = &ending else {
         panic!("a main holding a held commit the checkout lacks wasn't refused: {ending:?}")
     };
-    assert!(why.contains("is held"), "refused for another reason: {why}");
+    assert!(
+        why.contains(&format!("main at {} holds it", &two[..12])),
+        "refused without the host saying main holds it: {why}"
+    );
+}
+
+/// With no host to ask, a copy that can't walk between two commits it
+/// holds says so, rather than that main went another way: on 26 November
+/// that refusal read as a rewritten main and hid the copy's gap.
+#[test]
+fn a_copy_that_cant_walk_with_no_host_to_ask_says_so() {
+    let world = World::hosted_from(World::new(), counted_token);
+    let one = world.hosted_commit("one", None);
+    world.system(&one);
+    assert_eq!(world.update().1, done(&one), "the first head wasn't read");
+    let between = world.hosted_commit("between", None);
+    let two = world.hosted_commit("two", None);
+    let checkout = &world.config.hosted.as_ref().unwrap().checkout;
+    git(
+        checkout,
+        &["fetch", "--quiet", "origin", "+main:refs/whole"],
+    );
+    let object = checkout
+        .join(".git/objects")
+        .join(&between[..2])
+        .join(&between[2..]);
+    fs::remove_file(&object).expect("the commit between wasn't a loose object to remove");
+    world.system(&two);
+    let ending = world.update().1;
+    assert!(
+        matches!(&ending, Line::Failed { why, .. } if why.contains("main's history")),
+        "a copy that couldn't walk between the two was said to show another way: {ending:?}"
+    );
 }
 
 /// A copy holding both commits that can't walk the history between them
