@@ -67,6 +67,12 @@ const WORDS_SHOWN: usize = 300;
 /// finds one in Joel's IM.
 const OPENING: &str = "pineapple: ";
 
+/// How the alert's line of the words said begins.
+const SAID: &str = "Said: ";
+
+/// How the alert's line of where they were said begins.
+const WHERE: &str = "Where: ";
+
 /// Whether `text`, written as Joel, is one of these alerts: it quotes what
 /// others said, so the reader must never judge it as his own saying, or
 /// words made to slip out of its quotation marks would resume as him.
@@ -86,7 +92,7 @@ pub fn text(alert: Alert) -> String {
         words.push_str("...");
     }
     format!(
-        "{OPENING}{}\nSaid: \"{}\"\nWhere: {}",
+        "{OPENING}{}\n{SAID}\"{}\"\n{WHERE}{}",
         escaped(alert.title),
         escaped(&words),
         escaped(alert.link)
@@ -244,7 +250,9 @@ pub fn tell_self(gateway: &mut Gateway, alert: Alert) -> Result<String, Missed> 
     let Err(called) = sent else {
         return Ok(said);
     };
-    let nothing_ran = |why: &str| says(why, &said, spent) || says(why, &said, refuses_the_sign_in);
+    let taken = taken(&said);
+    let nothing_ran =
+        |why: &str| says(why, &taken, spent) || says(why, &taken, refuses_the_sign_in);
     Err(match called {
         Called::Unreachable(why) | Called::Unreadable(why) | Called::Failed(why) if !put => {
             Missed::NotSent(why)
@@ -263,10 +271,48 @@ pub fn tell_self(gateway: &mut Gateway, alert: Alert) -> Result<String, Missed> 
 /// that quotes a body already quoted as JSON inside its own.
 const ESCAPED_DEEPEST: usize = 3;
 
+/// Every form a reading of a failing may hold a line of `said` in
+/// ([`forms`]), the longest first, so a line holding another goes out
+/// whole. Built once for each alert, since a failing is judged by it for
+/// each word it may say.
+fn taken(said: &str) -> Vec<String> {
+    let mut taken: Vec<String> = lines_of(said)
+        .iter()
+        .filter(|line| !line.trim().is_empty())
+        .flat_map(|line| forms(line))
+        .filter(|form| !form.trim().is_empty())
+        .collect();
+    taken.sort_by(|one, other| other.len().cmp(&one.len()).then_with(|| one.cmp(other)));
+    taken.dedup();
+    taken
+}
+
+/// The alert's lines, each opening with words of its own ([`OPENING`],
+/// [`SAID`] or [`WHERE`]) and running on over any line break in what
+/// Slack gave it: a title or words holding one can't then make a line of
+/// only a name of Slack's, such as `rate_limited`, whose forms would take
+/// the gateway's own word out.
+fn lines_of(said: &str) -> Vec<String> {
+    let mut lines: Vec<String> = Vec::new();
+    for line in said.split('\n') {
+        let opens = [OPENING, SAID, WHERE]
+            .iter()
+            .any(|opening| line.starts_with(opening));
+        match lines.last_mut() {
+            Some(last) if !opens => {
+                last.push('\n');
+                last.push_str(line);
+            }
+            _ => lines.push(line.to_owned()),
+        }
+    }
+    lines
+}
+
 /// Whether a failing says what `word` looks for in any reading of it, once
-/// each line of `said` it quotes is out: the title and where are still
-/// from Slack, so a name in them can't be read as the gateway's own word.
-/// A reading reads the failing's escapes back none to [`ESCAPED_DEEPEST`]
+/// each line of the alert it quotes is out (`taken`, from [`taken`]): the
+/// title and where are still from Slack, so a name in them can't be read as
+/// the gateway's own word. A reading reads the failing's escapes back none to [`ESCAPED_DEEPEST`]
 /// times, and each line goes out in every form that reading may hold it
 /// in ([`forms`]), taken out only after or also before each read-back, so
 /// a name holding another line goes in at least one; the word must be left
@@ -277,19 +323,12 @@ const ESCAPED_DEEPEST: usize = 3;
 /// form can take part of that word, as each line opens with words of its
 /// own, so where a quote goes unseen the failing reads as nothing sent,
 /// and the alert is tried again rather than let go.
-fn says(why: &str, said: &str, word: fn(&str) -> bool) -> bool {
-    let mut taken: Vec<String> = said
-        .lines()
-        .filter(|line| !line.trim().is_empty())
-        .flat_map(forms)
-        .filter(|form| !form.trim().is_empty())
-        .collect();
-    // The longest first, so a line holding another goes out whole.
-    taken.sort_by(|one, other| other.len().cmp(&one.len()).then_with(|| one.cmp(other)));
-    taken.dedup();
+fn says(why: &str, taken: &[String], word: fn(&str) -> bool) -> bool {
     let without = |mut left: String| {
-        for form in &taken {
-            left = left.replace(form.as_str(), "");
+        for form in taken {
+            if left.contains(form.as_str()) {
+                left = left.replace(form.as_str(), "");
+            }
         }
         left
     };
@@ -306,17 +345,30 @@ fn says(why: &str, said: &str, word: fn(&str) -> bool) -> bool {
     false
 }
 
-/// A JSON writer, by what it spells as `\uXXXX` beyond what serde does.
+/// A JSON writer, by what it spells as `\uXXXX` beyond what serde does,
+/// each as its language's own writer does by default.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Writer {
-    /// serde's: only what JSON must.
+    /// serde's, and JavaScript's: only what JSON must.
     Serde,
     /// Python's: what isn't ASCII too.
     Ascii,
-    /// Go's and PHP's, and more: what isn't ASCII, `&`, `<` and `>`, and
-    /// `/` as `\/`.
+    /// Go's: `&`, `<` and `>`, and the line and paragraph separators.
+    Go,
+    /// PHP's: what isn't ASCII, and `/` as `\/`.
+    Php,
+    /// One escaping all of those at once.
     Every,
 }
+
+/// Each [`Writer`], as a failing may have been quoted by any of them.
+const WRITERS: [Writer; 5] = [
+    Writer::Serde,
+    Writer::Ascii,
+    Writer::Go,
+    Writer::Php,
+    Writer::Every,
+];
 
 /// Each form a reading of a failing may hold `line` in: as it is, as each
 /// [`Writer`] quotes it once to [`ESCAPED_DEEPEST`] times, one inside
@@ -329,10 +381,11 @@ fn forms(line: &str) -> Vec<String> {
     for _ in 0..ESCAPED_DEEPEST {
         quoted = quoted
             .iter()
-            .flat_map(|one| {
-                [Writer::Serde, Writer::Ascii, Writer::Every].map(|by| written(one, by))
-            })
+            .flat_map(|one| WRITERS.map(|by| written(one, by)))
             .collect();
+        // Writers that quote a line alike give one form, quoted on once.
+        quoted.sort();
+        quoted.dedup();
         forms.extend(quoted.iter().cloned());
         read = unescaped(&read);
         forms.push(read.clone());
@@ -346,12 +399,14 @@ fn written(text: &str, by: Writer) -> String {
     let inner = json.get(1..json.len().saturating_sub(1)).unwrap_or(text);
     let mut out = String::with_capacity(inner.len());
     for each in inner.chars() {
+        let html = matches!(each, '&' | '<' | '>' | '\u{2028}' | '\u{2029}');
         let spelled = match by {
             Writer::Serde => false,
-            Writer::Ascii => !each.is_ascii(),
-            Writer::Every => !each.is_ascii() || matches!(each, '&' | '<' | '>'),
+            Writer::Ascii | Writer::Php => !each.is_ascii(),
+            Writer::Go => html,
+            Writer::Every => !each.is_ascii() || html,
         };
-        if by == Writer::Every && each == '/' {
+        if matches!(by, Writer::Php | Writer::Every) && each == '/' {
             out.push_str("\\/");
         } else if spelled {
             for unit in each.encode_utf16(&mut [0; 2]) {
@@ -563,6 +618,11 @@ mod tests {
 
     const JOEL: &str = "U0JOEL0001";
 
+    /// Whether a failing says `word` once each form of `said` is out.
+    fn says(why: &str, said: &str, word: fn(&str) -> bool) -> bool {
+        super::says(why, &taken(said), word)
+    }
+
     fn phoned(key: &str, sent: &Value) -> Value {
         json!({"key": key, "saying": "stopped", "sent": sent})
     }
@@ -715,7 +775,7 @@ mod tests {
             words: WORDS_NOT_TAKEN,
             link: "https://x.slack.com/archives/C1/p1",
         });
-        let escaped = as_python_writes(&serde_json::to_string(&said).expect("text as JSON"));
+        let escaped = with_every_escape(&serde_json::to_string(&said).expect("text as JSON"));
         for quoted in [said.as_str(), escaped.as_str()] {
             let why = format!("could not post {quoted}");
             assert!(
@@ -737,9 +797,9 @@ mod tests {
         );
     }
 
-    /// JSON text as Python's writer gives it, and Go's: whatever isn't
-    /// ASCII, and `&`, `<` and `>`, as `\uXXXX`; and `/` as PHP's does.
-    fn as_python_writes(json: &str) -> String {
+    /// JSON text with every escape a writer may make at once: whatever
+    /// isn't ASCII, and `&`, `<` and `>`, as `\uXXXX`, and `/` as `\/`.
+    fn with_every_escape(json: &str) -> String {
         let mut escaped = String::new();
         for each in json.chars() {
             if each == '/' {
@@ -762,7 +822,7 @@ mod tests {
             words: WORDS_NOT_TAKEN,
             link: "https://x.slack.com/archives/C1/p1",
         });
-        let escaped = as_python_writes(&serde_json::to_string(&said).expect("text as JSON"));
+        let escaped = with_every_escape(&serde_json::to_string(&said).expect("text as JSON"));
         let why = format!("could not post {escaped}");
         assert!(spent(&why), "quoted, the name reads as Slack's word");
         assert!(
@@ -790,6 +850,93 @@ mod tests {
         );
     }
 
+    /// JSON text as Go's writer gives it by default: `&`, `<` and `>`, and
+    /// the line and paragraph separators, as `\u00XX` and `\u20XX`.
+    fn as_go_writes(json: &str) -> String {
+        json.replace('&', "\\u0026")
+            .replace('<', "\\u003c")
+            .replace('>', "\\u003e")
+            .replace('\u{2028}', "\\u2028")
+            .replace('\u{2029}', "\\u2029")
+    }
+
+    /// JSON text as PHP's writer gives it by default: whatever isn't ASCII
+    /// as `\uXXXX`, a surrogate pair beyond the first plane, and `/` as
+    /// `\/`.
+    fn as_php_writes(json: &str) -> String {
+        let mut escaped = String::new();
+        for each in json.chars() {
+            match each {
+                '/' => escaped.push_str("\\/"),
+                ascii if ascii.is_ascii() => escaped.push(ascii),
+                other => {
+                    for unit in other.encode_utf16(&mut [0; 2]) {
+                        write!(escaped, "\\u{unit:04x}").expect("a String takes any text");
+                    }
+                }
+            }
+        }
+        escaped
+    }
+
+    #[test]
+    fn a_name_quoted_as_go_or_php_writes_is_left_out_too() {
+        // What quotes JSON text as one language's writer does.
+        type Writes = fn(&str) -> String;
+        let said = text(Alert {
+            title: "A stop in owner/rate_limited & caf\u{e9} \u{2028}",
+            words: WORDS_NOT_TAKEN,
+            link: "https://x.slack.com/archives/C1/p1",
+        });
+        let json = serde_json::to_string(&said).expect("text as JSON");
+        let writers: [(&str, Writes); 2] = [("Go", as_go_writes), ("PHP", as_php_writes)];
+        for (writer, writes) in writers {
+            let once = writes(&json);
+            let twice = writes(&serde_json::to_string(&once).expect("text as JSON"));
+            for quoted in [once, twice] {
+                let why = format!("could not post {quoted}");
+                assert!(
+                    spent(&why),
+                    "quoted by {writer}, the name reads as Slack's word"
+                );
+                assert!(
+                    !says(&why, &said, spent),
+                    "left out, quoted by {writer} as {quoted}, it reads as no rate spent"
+                );
+                assert!(
+                    says(&format!("rate_limited, for {quoted}"), &said, spent),
+                    "the gateway's own word beside it, quoted by {writer}, still counts"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_name_on_a_line_of_its_own_in_what_slack_gave_takes_no_word_out() {
+        let said = text(Alert {
+            title: "A stop in owner/x\nrate_limited",
+            words: "stop\nrate_limited",
+            link: "https://x.slack.com/archives/C1/p1",
+        });
+        let json = serde_json::to_string(&said).expect("text as JSON");
+        for why in [
+            "{\"ok\":false,\"error\":\"rate_limited\"}".to_owned(),
+            "Slack said: rate_limited".to_owned(),
+            format!("rate_limited, for {json}"),
+        ] {
+            assert!(
+                says(&why, &said, spent),
+                "the gateway's word counts beside a name on a line of its own: {why}"
+            );
+        }
+        for quoted in [said.as_str(), json.as_str()] {
+            assert!(
+                !says(&format!("could not post {quoted}"), &said, spent),
+                "the name goes out with the line it runs on from: {quoted}"
+            );
+        }
+    }
+
     #[test]
     fn a_name_holding_another_line_or_quoted_deep_is_left_out() {
         let quoting = |title: &'static str, deep: usize| {
@@ -799,7 +946,7 @@ mod tests {
                 link: "https://x.slack.com/archives/C1/p1",
             });
             let json = serde_json::to_string(&said).expect("text as JSON");
-            let mut quoted = as_python_writes(&json);
+            let mut quoted = with_every_escape(&json);
             for _ in 1..deep {
                 quoted = serde_json::to_string(&quoted).expect("text as JSON");
             }
