@@ -3150,13 +3150,13 @@ Singleton {
         if (why !== given)
             console.info(`sessions: ${named}'s give-up gave a cause it doesn't know, `
                 + `${JSON.stringify(given.slice(0, 40))}, so it's taken as untaken`);
-        if (given === "" && causedAsks[named] === String(asked)) {
+        if (given === "" && causedAsks[named]?.asked === String(asked)) {
             console.info(`sessions: ${named}'s give-up heard again without its cause, `
                 + "taken once");
             return;
         }
         if (given !== "")
-            causedAsks = Object.assign({}, causedAsks, { [named]: String(asked) });
+            causedAsks = causedKept(named, String(asked));
         if (attaching[named] === undefined) {
             refusedUntaken(named, Number(asked), why);
             return;
@@ -3193,8 +3193,21 @@ Singleton {
             : "no sessions kitty took it");
     }
     // The time of the give-up last heard with a cause, by each viewer's app
-    // id, so its repeat without one is taken once (untaken).
+    // id, with when it was heard, so its repeat without one is taken once
+    // (untaken).
     property var causedAsks: ({})
+    // causedAsks with viewer `named`'s give-up of `asked` heard now, and
+    // only those heard within answerPatience: the repeat comes within the
+    // script's 5 s cut, and a caller naming endless viewers grows nothing.
+    function causedKept(named, asked) {
+        const now = Date.now();
+        const kept = { [named]: { asked, at: now } };
+        for (const other of Object.keys(causedAsks)) {
+            if (other !== named && now - causedAsks[other].at < answerPatience)
+                kept[other] = causedAsks[other];
+        }
+        return kept;
+    }
     // Reopen Them All's walk waits on viewer `named` no more once its
     // window came refused (heardWindow) or no kitty took it (untaken),
     // since none can come for that ask: it goes on as its patience would,
