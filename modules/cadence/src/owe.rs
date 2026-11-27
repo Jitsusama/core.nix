@@ -177,17 +177,18 @@ pub fn settle(ledger: &mut [Entry], key: &str) -> bool {
 /// refused, since its figure gone quiet shows no fix. A drag closed this
 /// way keeps when, and the fix its owner named; so does one the hour
 /// already closed, when its fix is named, since a root fix often lands
-/// after its class dips under the bar, and its old cases still count.
+/// after its class dips under the bar, and its old cases still count. A
+/// key ending in `:` closes every open must under it, as [`done_under`]
+/// does.
 fn done(ledger: &mut [Entry], key: &str, fix: Option<&str>, now: i64) -> Result<String, Failure> {
+    if key.ends_with(':') {
+        return done_under(ledger, key, fix, now);
+    }
     if let Some(entry) = ledger
         .iter_mut()
         .find(|e| e.open && e.kind.is_some() && e.key == key)
     {
-        entry.open = false;
-        if entry.kind.as_deref() == Some("drag") {
-            entry.closed = Some(now);
-            entry.fixed = fix.map(str::to_owned);
-        }
+        close(entry, fix, now);
         return Ok(match fix {
             Some(fix) => format!("cadence: {key} is done, by {fix}"),
             None => format!("cadence: {key} is done"),
@@ -227,6 +228,50 @@ fn done(ledger: &mut [Entry], key: &str, fix: Option<&str>, now: i64) -> Result<
         )),
         None => Err(unfiled()),
     }
+}
+
+/// Closes the open must `entry` at `now`; a drag keeps when, and the fix
+/// its owner named, so one its measure counts over a week isn't filed
+/// again from the cases the fix came after.
+fn close(entry: &mut Entry, fix: Option<&str>, now: i64) {
+    entry.open = false;
+    if entry.kind.as_deref() == Some("drag") {
+        entry.closed = Some(now);
+        entry.fixed = fix.map(str::to_owned);
+    }
+}
+
+/// Closes every open must whose key opens with `prefix`, at `now`, each as
+/// its own key would close it, saying how many. The hour files an ask a
+/// message about each claim of his rule, so settling a backlog, or the
+/// measure's revert, would otherwise take a `--done` for every one. A
+/// finding of cadence's own under it is left open, since each closes only
+/// on its own fix.
+fn done_under(
+    ledger: &mut [Entry],
+    prefix: &str,
+    fix: Option<&str>,
+    now: i64,
+) -> Result<String, Failure> {
+    let mut closed = 0;
+    for entry in ledger
+        .iter_mut()
+        .filter(|e| e.open && e.kind.is_some() && e.key.starts_with(prefix))
+    {
+        close(entry, fix, now);
+        closed += 1;
+    }
+    if closed == 0 {
+        return Err(Failure::new(
+            Exit::NotFound,
+            format!("no open must is filed under {prefix}"),
+        ));
+    }
+    let are = if closed == 1 { "is" } else { "are" };
+    Ok(match fix {
+        Some(fix) => format!("cadence: {closed} open under {prefix} {are} done, by {fix}"),
+        None => format!("cadence: {closed} open under {prefix} {are} done"),
+    })
 }
 
 /// Runs `cadence owe` on the ledger in cadence's folder at `now`, once
@@ -561,5 +606,68 @@ mod tests {
             "a fix named after the hour closed the drag wasn't kept"
         );
         assert!(!ledger[0].open, "naming the fix opened the drag again");
+    }
+
+    /// The hour files an ask a message about each claim of his rule, so a
+    /// key ending in `:` closes every open must under it at once, and
+    /// nothing outside it, while an exact key still closes itself alone.
+    #[test]
+    fn a_key_ending_in_a_colon_closes_every_open_must_under_it() {
+        let prefix = "hour:rulings-unsourced:";
+        let mut ledger = Vec::new();
+        for key in [
+            "hour:rulings-unsourced:T6E7X6:0000000a",
+            "hour:rulings-unsourced:5UTLKM:0000000b",
+            "hour:rulings-unsourcedness",
+            "hour:slips",
+        ] {
+            let drag = Owed {
+                kind: "drag".to_owned(),
+                ..owed(key, DUE)
+            };
+            owe(&mut ledger, drag, "d1", DAY);
+        }
+        let mut own = ledger[0].clone();
+        own.key = format!("{prefix}A2VLJN:0000000c");
+        own.kind = None;
+        ledger.push(own);
+        let said = done(&mut ledger, prefix, None, 2 * DAY).map_err(|f| f.exit);
+        assert_eq!(
+            said,
+            Ok(format!("cadence: 2 open under {prefix} are done")),
+            "a key ending in a colon didn't close every must under it, or didn't say how many"
+        );
+        let open: Vec<&str> = ledger
+            .iter()
+            .filter(|e| e.open)
+            .map(|e| e.key.as_str())
+            .collect();
+        assert_eq!(
+            open,
+            [
+                "hour:rulings-unsourcedness",
+                "hour:slips",
+                "hour:rulings-unsourced:A2VLJN:0000000c",
+            ],
+            "a must under the key stayed open, or one outside it, or a finding of cadence's own \
+             under it, closed"
+        );
+        assert_eq!(
+            ledger[0].closed,
+            Some(2 * DAY),
+            "a drag closed under its key's opening didn't keep when"
+        );
+        let again = done(&mut ledger, prefix, None, 2 * DAY).map_err(|f| f.exit);
+        assert_eq!(
+            again,
+            Err(Exit::NotFound),
+            "a key ending in a colon with no must open under it was said done"
+        );
+        let exact = done(&mut ledger, "hour:slips", None, 2 * DAY).map_err(|f| f.exit);
+        assert_eq!(
+            (exact, ledger[2].open, ledger[3].open),
+            (Ok("cadence: hour:slips is done".to_owned()), true, false),
+            "an exact key didn't close itself alone"
+        );
     }
 }

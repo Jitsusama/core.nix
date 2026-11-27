@@ -146,6 +146,10 @@ fn owe() -> Help {
     )
     .example("cadence owe --done K", "closes the must K once it's met")
     .example(
+        "cadence owe --done hour:rulings-unsourced:",
+        "a key ending in : closes every open must whose key opens with it",
+    )
+    .example(
         "cadence owe --done K 'core #6000'",
         "the finding K fixed by core #6000, closing once its figure is back",
     )
@@ -162,7 +166,7 @@ fn owe() -> Help {
     .exit(Exit::Usage, "a key, flag or value missing or wrong")
     .exit(
         Exit::NotFound,
-        "no open must or finding is filed as that key",
+        "no open must or finding is filed as that key, or under it",
     )
     .exit(Exit::Failed, "the ledger couldn't be kept")
 }
