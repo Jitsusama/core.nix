@@ -610,7 +610,9 @@ class Camera:
 
         Twice on the 26th of November a ZZ pressed as the viewfinder appeared left it open
         (the net, b084c578 and 3155eae4), each time the step where Escape and q come first,
-        so what mpv was doing then is printed, to say whether it was stuck or never heard.
+        so what mpv was doing then is printed (said): its state, to say whether it was stuck
+        quitting, and the viewfinder's own lines on each Z, to say whether the Zs were heard
+        as a pair, as two lone ones too far apart, or not at all.
         """
         try:
             self.machine.wait_until_fails(
@@ -665,12 +667,23 @@ class Camera:
             raise
 
     def said(self) -> None:
-        """Print what the recording and its programs were doing, for a wait that ran out."""
-        print(self.machine.execute("ps -eww -o pid,stat,wchan:32,args | grep -aE 'ffmpeg|mpv'")[1])
-        print(self.machine.execute(f"ls -la /run/user/1000 {self.videos}")[1])
-        print(self.machine.execute("cat /run/user/1000/camera-recording.log")[1])
-        print(self.desktop.as_account("pw-top -b -n 2 || true"))
-        print(self.desktop.as_account("journalctl --user --no-pager -n 60 -o cat"))
+        """Print what the recording and its programs were doing, for a wait that ran out.
+
+        Each read goes through diagnosis, which never raises and is bounded, since a session
+        gone bad is when these fail too, and their error would be reported in place of the
+        failure they explain. The journal is read for the viewfinder's lines on its keys
+        (camera.lua's z) as well as its last lines.
+        """
+        quick = timedelta(seconds=20)
+        for command in (
+            "ps -eww -o pid,stat,wchan:32,args | grep -aE 'ffmpeg|mpv'",
+            f"ls -la /run/user/1000 {self.videos}",
+            "cat /run/user/1000/camera-recording.log",
+            "timeout 10 pw-top -b -n 2",
+            "journalctl --user --no-pager -o cat -g 'viewfinder:' -n 40",
+            "journalctl --user --no-pager -n 60 -o cat",
+        ):
+            print(self.desktop.diagnosis(command, quick))
 
     def likeness(self, picture: str, turn: str) -> float:
         """Give how alike a picture kept and the camera's own are, the camera's turned so."""
@@ -736,6 +749,10 @@ def test_the_camera_takes_a_picture_and_a_video_by_the_keys(desktop: Desktop) ->
         machine.send_key(key)
     camera.gone()
     assert machine.succeed(f"ls {camera.pictures} {camera.videos}") == kept
+    # And said so where a miss's print reads it (Camera.said), so a miss says what its Zs did.
+    said = "journalctl --user --no-pager -o cat -g 'viewfinder: ZZ closes' || true"
+    closed = desktop.as_account(said)
+    assert closed.strip(), "the viewfinder's ZZ wasn't said in the journal"
 
     # A picture is kept as others see Joel, not mirrored as the viewfinder
     # shows him: it matches what the camera gives better than its mirror.

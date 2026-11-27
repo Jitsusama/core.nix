@@ -501,28 +501,37 @@ local function close()
     finish()
     draw()
   else
+    mp.msg.info('viewfinder: quits, the camera ' .. (ready and 'shown' or 'not yet shown'))
     mp.command('quit')
   end
 end
 
 -- A Z waits 300 ms, his Neovim's timeoutlen, for the second that closes,
--- and alone does nothing; any other key lets it go.
+-- and alone does nothing; any other key lets it go. Each Z says in mpv's
+-- log what became of it, so a ZZ that left the viewfinder open says
+-- whether it was heard as two lone Zs, as one, or not at all (the
+-- captures test's misses of 26 Nov).
 local first_z = nil
 
 local function forget_z()
   if first_z then
     first_z:kill()
     first_z = nil
+    mp.msg.info('viewfinder: a Z let go by another key')
   end
 end
 
 local function z()
   if first_z then
-    forget_z()
+    first_z:kill()
+    first_z = nil
+    mp.msg.info('viewfinder: ZZ closes')
     close()
   else
+    mp.msg.info('viewfinder: a Z waits 300 ms for another')
     first_z = mp.add_timeout(0.3, function()
       first_z = nil
+      mp.msg.info('viewfinder: a lone Z lapsed')
     end)
   end
 end
