@@ -12433,7 +12433,7 @@ Scope {
 
     // Its first frame drawn, the opening is timed to it; drawn at its size,
     // it's filled in.
-    function openShown(begun, frame, heard) {
+    function openShown(begun, frame, swappedAt) {
         if (!opening)
             return;
         const sized = drawnAsAsked();
@@ -12447,7 +12447,7 @@ Scope {
             presentedSized(frame);
         openFramesWaited += 1;
         if (openFirstDrawn < 0) {
-            openFirstDrawn = heard ?? KeyTimes.now();
+            openFirstDrawn = swappedAt ?? KeyTimes.now();
             openFirstSplit = frameSplit({ frame, begun }, openFirstDrawn);
             openFirstMade = tallies();
             openFirstWeighings = keysWeighings;
@@ -12461,7 +12461,7 @@ Scope {
         // left shut, and said, since it shows at a size it wasn't asked.
         if (openFramesSized === 0)
             Report.say(`filled an opening not at its size, after ${openFramesWaited} frames`);
-        openDrawn(undefined, undefined, heard);
+        openDrawn(undefined, undefined, swappedAt);
         // Filled once niri has presented that frame, not as it's swapped:
         // filled at once, niri presented the kept frame a median 132 ms
         // after it was drawn, against 33 ms for a letter's, since the
@@ -13261,9 +13261,9 @@ Scope {
         openWorkedClocks = feltClocks();
         openWorked = KeyTimes.now() - openAsked;
     }
-    // Told when its frame was heard swapped (`heard`), or timed as it's
-    // called where it wasn't waiting on a frame.
-    function openDrawn(beganAt, frame, heard) {
+    // Told when its frame was heard swapped (`swappedAt`), or timed as
+    // it's called where it wasn't waiting on a frame.
+    function openDrawn(beganAt, frame, swappedAt) {
         const asked = openAsked;
         openAsked = -1;
         // Shut before its frame, an opening makes no record, so what
@@ -13277,7 +13277,7 @@ Scope {
         }
         if ((!open && !opening) || asked < 0)
             return;
-        const sized = heard ?? KeyTimes.now();
+        const sized = swappedAt ?? KeyTimes.now();
         const drawn = openFirstDrawn < 0 ? sized : openFirstDrawn;
         const took = Math.round(sized - asked);
         // Joel's wait runs from his chord to the frame niri shows at the
