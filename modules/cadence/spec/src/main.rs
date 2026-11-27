@@ -22,7 +22,10 @@
 //! 4443be2d). Each place's read has a deadline of its own, past which
 //! cadence is stopped with all it started and the place keeps its last
 //! rows, so a Spec read that hangs, on a git lock or a niri that doesn't
-//! answer, holds Asked For back for no longer than Spec's deadline. The
+//! answer, holds Asked For back for no longer than Spec's deadline. A
+//! place whose words say an unread headline, as Asked For's do, serves it
+//! over those rows, so a read that stopped vouches for no row late or due.
+//! The
 //! places are read one after the other, Asked For first, so both watched
 //! at once see Asked For's rows before Spec's read begins; Asked For
 //! watched while a Spec read is already going waits out that read, its
@@ -207,21 +210,23 @@ struct Made {
 
 /// Whether what cadence made of a place moved what it serves, taken into
 /// that place's own `kept`: its rows, or the last it served where it said
-/// keep, beside its new headline. Where cadence made nothing of a place
-/// that has served no headline yet, the headline saying its list is unread
-/// (`unread`) is served alone, so a place that waits on its headline, as
-/// Asked For does, stops asking (round 5, F91); one served a headline
-/// before keeps all it served.
+/// keep, beside its new headline. Where cadence made nothing of a place,
+/// the headline saying its list is unread (`unread`) is served beside the
+/// last rows it served, if any: a place that waits on its headline, as
+/// Asked For does, stops asking (round 5, F91), and one whose rows say
+/// what's late doesn't go on saying it in normal colours from a read that
+/// stopped (#6875's eighth round, 147). A place whose words say no unread
+/// headline, as Spec's don't, keeps all it served.
 fn took(kept: &mut Kept, made: Option<Made>, unread: impl FnOnce() -> Option<Value>) -> bool {
     match made {
         Some(Made { rows, head }) => {
             let rows = rows.unwrap_or_else(|| last_rows(kept));
             !kept.take(rows, vec![head]).is_empty()
         }
-        None if !kept.all().any(|record| record["kind"] == "head") => {
-            unread().is_some_and(|head| !kept.take(Vec::new(), vec![head]).is_empty())
-        }
-        None => false,
+        None => unread().is_some_and(|head| {
+            let rows = last_rows(kept);
+            !kept.take(rows, vec![head]).is_empty()
+        }),
     }
 }
 
@@ -501,7 +506,7 @@ mod tests {
     }
 
     #[test]
-    fn a_place_cadence_made_nothing_of_is_headed_unread_only_before_its_first_headline() {
+    fn a_place_cadence_made_nothing_of_is_headed_unread_beside_the_rows_it_served() {
         let unread = || {
             Some(json!({"key": "head:asked", "kind": "head",
             "head": {"said": "can't read the list now", "glyph": "failed"}}))
@@ -522,12 +527,35 @@ mod tests {
             vec![json!({"key": "head:asked", "kind": "head", "head": {"said": "1 open"}})],
         );
         assert!(
-            !took(&mut headed, None, unread),
-            "one headed keeps all it served"
+            took(&mut headed, None, unread),
+            "one headed before is headed unread too"
         );
         assert_eq!(
-            headed.get("head:asked").expect("its headline")["head"]["said"],
-            "1 open"
+            headed.get("head:asked").expect("its headline")["head"]["glyph"],
+            "failed",
+            "a read that stopped says so rather than the last headline"
+        );
+        let rows: Vec<Value> = last_rows(&headed)
+            .iter()
+            .map(|row| row["key"].clone())
+            .collect();
+        assert_eq!(rows, ["row:asked:a"], "beside the rows it served");
+        assert!(
+            !took(&mut headed, None, unread),
+            "a second stopped read moves nothing"
+        );
+        let mut spec = Kept::default();
+        spec.take(
+            vec![json!({"key": "row:spec:a"})],
+            vec![json!({"key": "head:spec", "kind": "head", "head": {"said": "1 due"}})],
+        );
+        assert!(
+            !took(&mut spec, None, || None),
+            "a place with no unread words keeps all it served"
+        );
+        assert_eq!(
+            spec.get("head:spec").expect("its headline")["head"]["said"],
+            "1 due"
         );
     }
 
