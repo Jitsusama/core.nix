@@ -40,8 +40,10 @@ public:
     // Where the heap stands against the collector, as weigh() says it but
     // without walking a chunk, so it's cheap enough to read as an opening
     // is asked: `chunks`, `collectsAt`, `outside` and `collectsOutsideAt`,
-    // in megabytes, and `collecting`, whether a collection is under way
-    // between its slices. Openings whose longest stall the collector ran
+    // in megabytes; `roomsCapAt`, where the rooms alone cap the chunks
+    // before what the sweeps keep moves it, or -1 with no room left; and
+    // `collecting`, whether a collection is under way between its slices.
+    // Openings whose longest stall the collector ran
     // in say it, read once their room is left: the room each limit had
     // as they began, which nothing else says.
     Q_INVOKABLE QVariantMap standing() const;
@@ -144,12 +146,14 @@ public:
     // through every other property of the objects those reach. Every other
     // holder stays as it is, so memory it shares with another is kept by
     // that other. What an object nothing reaches holds, the sweep's
-    // anyway, isn't counted. It counts the heap's own items: the text a
-    // string keeps outside the heap, and what C++ keeps for an object the
-    // collector would delete, aren't counted, nor is the storage of an
-    // object of the holder's own file that only the holder keeps, a few
-    // bytes each, though all its values reach is. `held`, whether any property
-    // so named holds a value the heap keeps; `freed`, its megabytes;
+    // anyway, isn't counted. It counts the heap's own items, and the text
+    // their strings keep outside the heap, as weigh()'s `outside` counts it,
+    // where no other QString shares it, since shared text isn't freed. What
+    // C++ keeps for an object the collector would delete isn't counted, nor
+    // is the storage of an object of the holder's own file that only the
+    // holder keeps, a few bytes each, though all its values reach is.
+    // `held`, whether any property so named holds a value the heap keeps;
+    // `freed`, its megabytes; `outside`, the megabytes of that text;
     // `count`; `ms`; `said`, one line naming it, or saying no property
     // holds anything so named; and, only when one holds something,
     // `holder`. It marks with the collector's own marks and clears them, so
