@@ -40,7 +40,7 @@ pub const CARRIED_MS: u64 = 5_000;
 /// second into a start waited behind it past the unit's 15 s and was
 /// killed. At that pace 4 MiB take about 600 ms, so a stop is heard within
 /// a second and the whole is read in about as long as before; until it
-/// is, the recorder reads as silent and the link isn't held.
+/// is, the poll answers no link, as before the recorder names one.
 const READ_AT_MOST: u64 = 4 << 20;
 
 /// What the controller last heard of its link's second, and what it made
@@ -434,6 +434,8 @@ pub struct Live {
     partial: Vec<u8>,
     /// How many bytes a poll reads at most (`READ_AT_MOST`).
     at_most: u64,
+    /// Whether today's file has been read to its end since the start.
+    caught_up: bool,
     follow: Follow,
     /// A call's round trip through the VPN riding the link.
     vpn: Probe,
@@ -450,6 +452,7 @@ impl Live {
             file: (day_file(folder, yesterday), 0),
             partial: Vec::new(),
             at_most: READ_AT_MOST,
+            caught_up: false,
             follow: Follow {
                 from_ms: ms(now),
                 ..Follow::new()
@@ -527,12 +530,20 @@ impl Live {
     /// Reads what the recorder wrote since, up to `at_most` bytes of it,
     /// and answers the link it follows and the rates to hold it to. A
     /// day's file is read to its end before the next day's is begun.
+    /// Until a start has read today's to its end it answers no link: a
+    /// link named in an older line may be one the recorder no longer
+    /// follows, such as a cable since unplugged.
     pub fn poll(&mut self, now: SystemTime) -> Option<(&str, Rates)> {
         let today = day_file(&self.folder, now);
-        if self.read_on() && self.file.0 != today {
-            self.file = (today, 0);
+        let mut ended = self.read_on();
+        if ended && self.file.0 != today {
+            self.file = (today.clone(), 0);
             self.partial.clear();
-            self.read_on();
+            ended = self.read_on();
+        }
+        self.caught_up |= ended && self.file.0 == today;
+        if !self.caught_up {
+            return None;
         }
         self.follow.now(ms(now))
     }
@@ -1380,7 +1391,11 @@ mod tests {
         let started = SystemTime::UNIX_EPOCH + Duration::from_millis(NOV3);
         let mut live = Live::new(&folder, started);
         live.at_most = 2 * longest;
-        let _ = live.poll(today);
+        let mut answered = live.poll(today).map(|(l, r)| (l.to_string(), r));
+        assert!(
+            answered.is_none(),
+            "a poll answered {answered:?} before the lines were read"
+        );
         assert_eq!(
             live.file.0, yesterday,
             "today's file was begun before yesterday's was read"
@@ -1392,18 +1407,25 @@ mod tests {
             live.at_most
         );
         let mut polls = 1;
-        while live.follow.last_ms < NOV3 + 6_000 && polls < 1_000 {
-            let _ = live.poll(today);
+        while answered.is_none() && polls < 1_000 {
+            answered = live.poll(today).map(|(l, r)| (l.to_string(), r));
             polls += 1;
         }
+        assert_eq!(
+            live.follow.last_ms,
+            NOV3 + 6_000,
+            "a poll answered before the last line"
+        );
         assert!(
             polls > 2,
             "{polls} polls read every line under a two-line bound"
         );
         assert_eq!(live.file.0, path, "the polls never came to today's file");
         assert_eq!(
-            live.follow.now(NOV3 + 6_000).map(|(_, r)| r),
-            followed(&lines).now(NOV3 + 6_000).map(|(_, r)| r),
+            answered,
+            followed(&lines)
+                .now(NOV3 + 6_000)
+                .map(|(l, r)| (l.to_string(), r)),
             "read over {polls} polls, the stay differed from one read whole"
         );
         let _ = fs::remove_dir_all(&folder);
