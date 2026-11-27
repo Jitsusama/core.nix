@@ -78,24 +78,25 @@ fn each_span_never_read_is_kept_a_week_beside_the_others() {
     let week = 7 * 24 * 60 * MINUTE;
     let row = |search, at| missed(search, Some(at - MINUTE), Some(at), at);
     assert!(
-        keep_missed(&file, row(Search::Tag, AT), AT).is_err()
+        keep_missed(&file, Search::Tag, row(Search::Tag, AT), AT).is_err()
             && std::fs::read_to_string(&file).is_ok_and(|kept| kept == "not JSON"),
         "a file it can't read may hold rows, so it isn't written over"
     );
     std::fs::write(&file, r#"{"v":2}"#).expect("a file holding no rows it can read");
     assert!(
-        keep_missed(&file, row(Search::Tag, AT), AT).is_err()
+        keep_missed(&file, Search::Tag, row(Search::Tag, AT), AT).is_err()
             && std::fs::read_to_string(&file).is_ok_and(|kept| kept == r#"{"v":2}"#),
         "nor is one that reads but holds no rows, as it may be a newer shape"
     );
     std::fs::remove_file(&file).expect("taken away");
     let first = AT - week - 1;
-    keep_missed(&file, row(Search::Tag, first), first).expect("written where none was");
-    keep_missed(&file, row(Search::Phrase, AT - week), AT - week).expect("written");
+    let keep = |search, row, at| keep_missed(&file, search, row, at);
+    keep(Search::Tag, row(Search::Tag, first), first).expect("written where none was");
+    keep(Search::Phrase, row(Search::Phrase, AT - week), AT - week).expect("written");
     let ending_sooner = missed(Search::Tag, Some(AT - MINUTE), Some(AT - 5), AT - 5);
-    keep_missed(&file, ending_sooner, AT - 5).expect("written");
-    keep_missed(&file, row(Search::Tag, AT), AT).expect("written in its place");
-    keep_missed(&file, row(Search::Tag, AT), AT).expect("written again");
+    keep(Search::Tag, ending_sooner, AT - 5).expect("written");
+    keep(Search::Tag, row(Search::Tag, AT), AT).expect("written in its place");
+    keep(Search::Tag, row(Search::Tag, AT), AT).expect("written again");
     let read: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&file).expect("read")).expect("JSON");
     let ids: Vec<_> = read["items"]
@@ -140,16 +141,17 @@ fn a_busy_stretch_read_on_round_after_round_is_said_in_one_row() {
     assert_eq!(MEET, 10 * MINUTE, "the nearness this case is written for");
     let tag = |from: u64, to: u64| missed(Search::Tag, Some(AT - from), Some(AT - to), AT - to);
     let far = tag(100 * MINUTE, 90 * MINUTE);
-    keep_missed(&file, far.clone(), AT - 90 * MINUTE).expect("written");
+    let keep = |search, row, at| keep_missed(&file, search, row, at);
+    keep(Search::Tag, far.clone(), AT - 90 * MINUTE).expect("written");
     let phrase = missed(
         Search::Phrase,
         Some(AT - 30 * MINUTE),
         Some(AT - 25 * MINUTE),
         AT,
     );
-    keep_missed(&file, phrase.clone(), AT - 25 * MINUTE).expect("written");
-    keep_missed(&file, tag(30 * MINUTE, 25 * MINUTE), AT - 25 * MINUTE).expect("written");
-    keep_missed(&file, tag(26 * MINUTE, 20 * MINUTE), AT - 20 * MINUTE).expect("written");
+    keep(Search::Phrase, phrase.clone(), AT - 25 * MINUTE).expect("written");
+    keep(Search::Tag, tag(30 * MINUTE, 25 * MINUTE), AT - 25 * MINUTE).expect("written");
+    keep(Search::Tag, tag(26 * MINUTE, 20 * MINUTE), AT - 20 * MINUTE).expect("written");
     let overlapping = rows_in(&file);
     assert_eq!(
         (
@@ -168,7 +170,7 @@ fn a_busy_stretch_read_on_round_after_round_is_said_in_one_row() {
         ),
         "spans that overlap are one, said whole: {overlapping:?}"
     );
-    keep_missed(&file, tag(15 * MINUTE, 12 * MINUTE), AT - 12 * MINUTE).expect("written");
+    keep(Search::Tag, tag(15 * MINUTE, 12 * MINUTE), AT - 12 * MINUTE).expect("written");
     let rows = rows_in(&file);
     assert_eq!(
         rows.iter().map(|row| row["id"].clone()).collect::<Vec<_>>(),
@@ -192,7 +194,7 @@ fn a_busy_stretch_read_on_round_after_round_is_said_in_one_row() {
         "a read stretch lies between, so it's said as parts, raised as the newest was"
     );
     assert_eq!(rows[2]["whole"], false, "and kept so as written again");
-    keep_missed(&file, tag(13 * MINUTE, 10 * MINUTE), AT - 10 * MINUTE).expect("written");
+    keep(Search::Tag, tag(13 * MINUTE, 10 * MINUTE), AT - 10 * MINUTE).expect("written");
     let again = rows_in(&file);
     assert!(
         again.len() == 3 && again[2]["whole"] == false,
@@ -201,10 +203,11 @@ fn a_busy_stretch_read_on_round_after_round_is_said_in_one_row() {
     let _ = std::fs::remove_dir_all(&folder);
 }
 
-/// What `kept` rows, then `row` kept at `AT`, leave in a file of their own,
-/// saying as it's kept what the row it wrote says.
+/// What `kept` rows, then `row`, made for `search`, kept at `AT`, leave in
+/// a file of their own, saying as it's kept what the row it wrote says.
 fn kept_after(
     name: &str,
+    search: Search,
     kept: &[serde_json::Value],
     row: serde_json::Value,
 ) -> Vec<serde_json::Value> {
@@ -217,7 +220,7 @@ fn kept_after(
     std::fs::create_dir_all(&folder).expect("the folder is made");
     let earlier = serde_json::json!({"v": 2, "items": kept});
     std::fs::write(&file, earlier.to_string()).expect("the earlier rows are written");
-    let said = keep_missed(&file, row, AT).expect("written");
+    let said = keep_missed(&file, search, row, AT).expect("written");
     let rows = rows_in(&file);
     let _ = std::fs::remove_dir_all(&folder);
     assert_eq!(
@@ -234,6 +237,7 @@ fn spans_meet_up_to_ten_minutes_apart_and_an_unknown_start_meets_only_itself() {
     let earlier = tag(30 * MINUTE, 20 * MINUTE);
     let met = kept_after(
         "edge",
+        Search::Tag,
         slice::from_ref(&earlier),
         tag(10 * MINUTE, 5 * MINUTE),
     );
@@ -243,6 +247,7 @@ fn spans_meet_up_to_ten_minutes_apart_and_an_unknown_start_meets_only_itself() {
     );
     let apart = kept_after(
         "past",
+        Search::Tag,
         slice::from_ref(&earlier),
         tag(10 * MINUTE - 1, 5 * MINUTE),
     );
@@ -253,6 +258,7 @@ fn spans_meet_up_to_ten_minutes_apart_and_an_unknown_start_meets_only_itself() {
     );
     let touching = kept_after(
         "touch",
+        Search::Tag,
         slice::from_ref(&earlier),
         tag(20 * MINUTE, 10 * MINUTE),
     );
@@ -262,7 +268,12 @@ fn spans_meet_up_to_ten_minutes_apart_and_an_unknown_start_meets_only_itself() {
     );
     let mut legacy = earlier.clone();
     legacy.as_object_mut().expect("a row").remove("whole");
-    let old = kept_after("legacy", &[legacy], tag(25 * MINUTE, 10 * MINUTE));
+    let old = kept_after(
+        "legacy",
+        Search::Tag,
+        &[legacy],
+        tag(25 * MINUTE, 10 * MINUTE),
+    );
     assert!(
         old.len() == 1 && old[0]["whole"] == true,
         "a row written before rows met is taken as whole: {old:?}"
@@ -271,16 +282,27 @@ fn spans_meet_up_to_ten_minutes_apart_and_an_unknown_start_meets_only_itself() {
     let days = 3 * 24 * 60 * MINUTE;
     let dated = tag(days + 10 * MINUTE, days);
     let unknown = missed(Search::Tag, None, Some(AT - MINUTE), AT);
-    let both = kept_after("unknown", slice::from_ref(&dated), unknown.clone());
+    let both = kept_after(
+        "unknown",
+        Search::Tag,
+        slice::from_ref(&dated),
+        unknown.clone(),
+    );
     assert_eq!(
         both.iter().map(|row| row["id"].clone()).collect::<Vec<_>>(),
         [dated["id"].clone(), unknown["id"].clone()],
         "one whose start can't be told takes in no dated row"
     );
-    let again = kept_after("unknown-again", slice::from_ref(&unknown), unknown.clone());
+    let again = kept_after(
+        "unknown-again",
+        Search::Tag,
+        slice::from_ref(&unknown),
+        unknown.clone(),
+    );
     assert_eq!(again.len(), 1, "though it's the same row written again");
     let after = kept_after(
         "after-unknown",
+        Search::Tag,
         &[missed(
             Search::Tag,
             None,
@@ -301,6 +323,7 @@ fn rows_written_before_rows_met_are_folded_into_one() {
     let tag = |from: u64, to: u64| missed(Search::Tag, Some(AT - from), Some(AT - to), AT - to);
     let rows = kept_after(
         "chain",
+        Search::Tag,
         &[
             tag(60 * MINUTE, 45 * MINUTE),
             tag(46 * MINUTE, 30 * MINUTE),
@@ -328,6 +351,7 @@ fn rows_met_are_whole_by_what_they_span_not_the_order_theyre_met_in() {
     let tag = |from: u64, to: u64| missed(Search::Tag, Some(AT - from), Some(AT - to), AT - to);
     let rows = kept_after(
         "order",
+        Search::Tag,
         &[tag(30 * MINUTE, 20 * MINUTE), tag(21 * MINUTE, 9 * MINUTE)],
         tag(10 * MINUTE, 0),
     );
@@ -338,6 +362,7 @@ fn rows_met_are_whole_by_what_they_span_not_the_order_theyre_met_in() {
     );
     let gap = kept_after(
         "order-gap",
+        Search::Tag,
         &[tag(30 * MINUTE, 22 * MINUTE), tag(21 * MINUTE, 9 * MINUTE)],
         tag(10 * MINUTE, 0),
     );
@@ -347,6 +372,7 @@ fn rows_met_are_whole_by_what_they_span_not_the_order_theyre_met_in() {
     );
     let nested = kept_after(
         "nested",
+        Search::Tag,
         &[tag(30 * MINUTE, 10 * MINUTE), tag(28 * MINUTE, 25 * MINUTE)],
         tag(12 * MINUTE, 0),
     );
@@ -357,6 +383,7 @@ fn rows_met_are_whole_by_what_they_span_not_the_order_theyre_met_in() {
     );
     let starts = kept_after(
         "starts",
+        Search::Tag,
         &[tag(40 * MINUTE, 35 * MINUTE), tag(20 * MINUTE, 15 * MINUTE)],
         tag(36 * MINUTE, 0),
     );
@@ -372,6 +399,7 @@ fn a_row_meets_one_said_after_it_only_within_ten_minutes_and_unknowns_only_their
     let tag = |from: u64, to: u64| missed(Search::Tag, Some(AT - from), Some(AT - to), AT - to);
     let later = kept_after(
         "later",
+        Search::Tag,
         &[tag(9 * MINUTE, 5 * MINUTE)],
         tag(30 * MINUTE, 20 * MINUTE),
     );
@@ -383,12 +411,14 @@ fn a_row_meets_one_said_after_it_only_within_ten_minutes_and_unknowns_only_their
     );
     let edge = kept_after(
         "later-edge",
+        Search::Tag,
         &[tag(10 * MINUTE, 5 * MINUTE)],
         tag(30 * MINUTE, 20 * MINUTE),
     );
     assert_eq!(edge.len(), 1, "one ten minutes after meets: {edge:?}");
     let unknowns = kept_after(
         "unknowns",
+        Search::Tag,
         &[missed(
             Search::Tag,
             None,
@@ -411,6 +441,7 @@ fn rows_of_the_phrase_search_met_are_said_as_its_own() {
         |from: u64, to: u64| missed(Search::Phrase, Some(AT - from), Some(AT - to), AT - to);
     let rows = kept_after(
         "phrase-met",
+        Search::Phrase,
         &[phrase(30 * MINUTE, 20 * MINUTE)],
         phrase(25 * MINUTE, 10 * MINUTE),
     );

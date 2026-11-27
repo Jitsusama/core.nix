@@ -639,22 +639,19 @@ fn said(search: Search, from: Option<u64>, to: Option<u64>, at: u64, whole: bool
     )
 }
 
-/// Adds `row`, raised `at` in milliseconds, to the rows in `file` saying
-/// what Slack's searches never read, as pineapple's `missed` keeps every
-/// reader's: its search's rows whose spans come within [`MEET`] of its own
-/// are said with it as one row, whole or in parts. What the row written
-/// says is given back, so the journal says what Joel reads.
+/// Adds `row`, one [`missed()`] made for `search`, raised `at` in
+/// milliseconds, to the rows in `file` saying what Slack's searches never
+/// read, as pineapple's `missed` keeps every reader's: its search's rows
+/// whose spans come within [`MEET`] of its own are said with it as one
+/// row, whole or in parts. The search is given, not read from the row's
+/// name, as its caller knows it and a guess would say an odd row as a
+/// tag row. What the row written says is given back, so the journal says
+/// what Joel reads.
 ///
 /// # Errors
 ///
 /// Why it couldn't be read or written.
-pub fn keep_missed(file: &Path, row: Value, at: u64) -> std::io::Result<String> {
-    let phrase = format!("{MISSED}phrase-");
-    let search = if row["id"].as_str().is_some_and(|id| id.starts_with(&phrase)) {
-        Search::Phrase
-    } else {
-        Search::Tag
-    };
+pub fn keep_missed(file: &Path, search: Search, row: Value, at: u64) -> std::io::Result<String> {
     missed::keep(file, MISSED, row, at, |from, to, whole| {
         said(search, from, Some(to), at, whole)
     })
