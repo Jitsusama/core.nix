@@ -715,7 +715,6 @@
       "said": {
         "count": "{count} moved",
         "ofMoved": "of {count} that moved",
-        "ask": "1 ask",
         "asks": "{count} asks"
       }
     },
