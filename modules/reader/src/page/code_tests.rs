@@ -135,6 +135,86 @@ fn a_stretch_of_wide_characters_past_the_eighth_is_still_measured() {
     );
 }
 
+#[test]
+fn a_stretch_with_a_tab_past_the_eighth_is_still_measured() {
+    // Thirty stretches of as many clusters as the one with the tab come
+    // before it, so counting a tab as one would never measure it; raw sets
+    // a tab two cells wide, so it's the widest, and the column needs it.
+    let code = format!("{}-\tl-x", ["ll"; 30].join("-"));
+    let pieces = held(&code, 360.0);
+    assert!(pieces.ends_with('!'), "the span is unboxed: {pieces}");
+    let [counted, tabbed, narrow] = counted_widths(&code, ["\tl-", "ll-"]);
+    assert!(
+        tabbed > narrow,
+        "the test theme sets the tab's stretch ({tabbed} pt) no wider than ll- ({narrow} pt), so \
+         this shows nothing"
+    );
+    assert!(
+        counted >= tabbed - 0.01,
+        "least-code counts {counted} pt, under the tab's stretch's {tabbed} pt"
+    );
+}
+
+#[test]
+fn least_code_measures_eight_stretches_between_the_first_and_last() {
+    // A stretch of accents counts each twice, so éééé- counts ahead of
+    // lllllll-, which is wider: past seven of them lllllll- is still among
+    // the eight measured, and past eight it's left out, as the cap leaves
+    // it, so the column counts only the accents' width.
+    let code = |accented: usize| {
+        format!(
+            "{}-{}-lllllll-x",
+            ["l"; 40].join("-"),
+            vec!["éééé"; accented].join("-")
+        )
+    };
+    for accented in [7, 8] {
+        let pieces = held(&code(accented), 360.0);
+        assert!(pieces.ends_with('!'), "the span is unboxed: {pieces}");
+    }
+    let [seven, wide, narrow] = counted_widths(&code(7), ["lllllll-", "éééé-"]);
+    let [eight, ..] = counted_widths(&code(8), ["lllllll-", "éééé-"]);
+    assert!(
+        wide > narrow,
+        "the test theme sets lllllll- ({wide} pt) no wider than éééé- ({narrow} pt), so this shows \
+         nothing"
+    );
+    assert!(
+        seven >= wide - 0.01,
+        "past seven, least-code counts {seven} pt, under lllllll-'s {wide} pt"
+    );
+    assert!(
+        eight < wide - 0.01,
+        "past eight, least-code counts {eight} pt, measuring lllllll- ({wide} pt) past its cap"
+    );
+}
+
+/// The widths, in a 360 pt window, of what least-code counts for `code`,
+/// and of each of `stretches` set as code.
+fn counted_widths(code: &str, stretches: [&str; 2]) -> [f64; 3] {
+    let set: Vec<String> = stretches
+        .iter()
+        .map(|stretch| format!("raw({})", crate::walk::literal(stretch)))
+        .collect();
+    let widths = probed(
+        &format!(
+            r#"text(size: 2pt, (least-code(s), {}).map(c => str(calc.round(measure(c).width.pt(), digits: 2))).join(" "))"#,
+            set.join(", ")
+        ),
+        code,
+        360.0,
+    )
+    .join(" ");
+    let parsed: Vec<f64> = widths
+        .split(' ')
+        .map(|width| width.parse::<f64>().unwrap_or(f64::NAN))
+        .collect();
+    let [counted, first, second] = parsed[..] else {
+        panic!("three widths, not {widths:?}")
+    };
+    [counted, first, second]
+}
+
 /// The widths, in a 360 pt window, of what least-code counts for `code`,
 /// of the Typst string `joined` set as code, and of "i-" and "l-".
 fn narrow_widths(joined: &str, code: &str) -> [f64; 4] {

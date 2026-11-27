@@ -280,8 +280,10 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
       // likely widest are measured. In the mono an ASCII character takes
       // one cell, and one beyond ASCII, a CJK character or an emoji in its
       // colour face, about two, so each such cluster counts twice, as
-      // does a tab, which raw sets at its tab size of two; a stretch of
-      // accents counted twice is only measured sooner.
+      // does a tab, which raw sets at its tab size of two. A stretch of
+      // accents counted twice is measured sooner, so eight of them ahead
+      // of a wider stretch leave it unmeasured. The code tests guard the
+      // cap and these counts.
       let texts = p.piece.matches(unbroken).map(m => m.text).filter(t => t != "")
       if texts.len() == 0 { texts = ("",) }
       let middle = texts.slice(1, calc.max(1, texts.len() - 1))
