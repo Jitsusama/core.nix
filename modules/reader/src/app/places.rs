@@ -249,6 +249,7 @@ impl App {
             && (incoming.page.frame.size().x.to_pt() - self.painter.width_pt()).abs() >= 0.01;
         let edited = incoming.edited && incoming.opens.is_none();
         let again = incoming.opens.is_none() && (reflowed || edited || !self.landed.is_empty());
+        let most_before_pt = self.painter.height_pt();
         let before = if again {
             place::starts(&self.painter.page().frame)
         } else {
@@ -267,6 +268,7 @@ impl App {
                 now: &incoming.lines,
                 ends: &ends,
                 most_pt: self.painter.height_pt(),
+                most_before_pt,
                 said: std::cell::OnceCell::new(),
             };
             place::set_again(&mut self.landed, &mut self.marks, &after, edited, |pt| {
@@ -589,6 +591,7 @@ mod tests {
             now: &now,
             ends: &ends,
             most_pt: 500.0,
+            most_before_pt: 500.0,
             said: std::cell::OnceCell::new(),
         };
         let spot = |file: &str, pt, aim| Spot {
@@ -628,6 +631,7 @@ mod tests {
             now: &now,
             ends: &ends,
             most_pt: 500.0,
+            most_before_pt: 500.0,
             said: std::cell::OnceCell::new(),
         };
         assert_eq!(moving.moved(0.0), 10.0, "a mark lands on the first line");

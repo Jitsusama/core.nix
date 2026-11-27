@@ -443,13 +443,17 @@ pub fn moved_by_block(
 }
 
 /// The block a line lands in, in the block `now` says its block is after,
-/// and where in it, as far through it as it was.
+/// and where in it, as far through it as it was. None from a page with no
+/// blocks, as an empty file's, where it stood in none.
 fn by_block(
     before: &[(usize, f64)],
     after: &[(usize, f64)],
     line: (f64, f64),
     now: impl FnOnce(usize) -> usize,
 ) -> Option<(usize, f64)> {
+    if before.is_empty() {
+        return None;
+    }
     let (block, into_pt) = line_at(before, line);
     let into = now(block);
     Some((into, pt_of(after, into, into_pt, height_of(before, block))?))

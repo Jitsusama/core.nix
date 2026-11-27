@@ -90,7 +90,9 @@ type BlocksSaid = (Vec<(usize, String)>, Vec<(usize, String)>);
 /// another width (`reflowed`), where its blocks started `before` and start
 /// `after`, the lines it was set from (`was`) and is set from now
 /// (`now`, and their tops and baselines, `ends`), and the most a point goes:
-/// the new page's height, past which no line stands. A jump's place, a
+/// the new page's height, past which no line stands, and went on the page
+/// set before (`most_before_pt`), past which only a point a shorter page
+/// held stands, in no block of it. A jump's place, a
 /// view's top, may land past the most the view goes, which `leap` holds.
 /// What its blocks say is read once, at the first point that asks (`said`,
 /// empty to start), however many marks and jumps move.
@@ -103,6 +105,7 @@ pub struct Moving<'a> {
     pub now: &'a [Line],
     pub ends: &'a [(f64, f64)],
     pub most_pt: f64,
+    pub most_before_pt: f64,
     pub said: std::cell::OnceCell<BlocksSaid>,
 }
 
@@ -114,8 +117,10 @@ impl Moving<'_> {
     /// edit, in the block saying what its block said, or where the edit
     /// changed that, numbered as the nearest block saying the same is, and
     /// by its number only where no block does. At the same width with no
-    /// edit, nowhere; after an edit there with its words gone, no further
-    /// than the page goes.
+    /// edit, nowhere, and nowhere either where the new page has no block
+    /// to land it in, or it stood past the page set before, in none: a
+    /// page set from a file emptied or half written holds a mark where
+    /// the whole file, set again, has it back.
     pub fn moved(&self, pt: f64) -> f64 {
         self.moved_as(pt, |line, now| {
             place::moved_into(self.before, self.after, line, self.ends, now)
@@ -158,8 +163,9 @@ impl Moving<'_> {
         words
             .or_else(|| {
                 // At the same width unedited, every block stands where it
-                // stood, so nothing moves by its block.
-                if !(self.reflowed || self.edited) {
+                // stood, so nothing moves by its block; and a point a
+                // shorter page held, past this one, stood in none of it.
+                if !(self.reflowed || self.edited) || pt > self.most_before_pt {
                     return None;
                 }
                 let line = moves::line_topped(self.was, pt);
@@ -171,11 +177,7 @@ impl Moving<'_> {
                     }
                 })
             })
-            .unwrap_or(if self.edited {
-                pt.min(self.most_pt)
-            } else {
-                pt
-            })
+            .unwrap_or(pt)
     }
 
     /// The block on the edited page that `block` on the page set `before`
@@ -356,6 +358,7 @@ mod tests {
             now,
             ends,
             most_pt: 500.0,
+            most_before_pt: 500.0,
             said: std::cell::OnceCell::new(),
         }
     }
@@ -656,5 +659,56 @@ mod tests {
         let new = [line(30.0, "one")];
         assert_eq!(carried(&[], &new, 0.0, 120.0, false, 500.0), Some(120.0));
         assert_eq!(carried(&[], &new, 0.0, 120.0, false, 80.0), Some(80.0));
+    }
+
+    #[test]
+    fn a_mark_a_page_set_from_an_emptied_file_had_nowhere_for_comes_back_with_it() {
+        // The whole file: a paragraph, and the marked line in a block of
+        // its own; the first block starts 8 pt down, as a page's does.
+        let whole = [line(18.0, "intro"), line(58.0, "marked")];
+        let starts = [(0, 8.0), (1, 48.0)];
+        let ends: Vec<(f64, f64)> = whole.iter().map(moves::ends_of).collect();
+        // Saved empty, as an editor writing it over does first: no lines,
+        // no blocks, and a page nothing tall.
+        let mut emptied = set_again(true, false, &starts, &[], &whole, &[], &[]);
+        emptied.most_pt = 0.0;
+        assert_eq!(
+            emptied.moved(48.0),
+            48.0,
+            "the mark is held, not put on the page's end"
+        );
+        // Then the whole file again, from a page with no block to be in.
+        let again = set_again(true, false, &[], &starts, &[], &whole, &ends);
+        assert_eq!(again.moved(48.0), 48.0, "the mark is back on its line");
+    }
+
+    #[test]
+    fn a_mark_a_page_set_from_a_half_written_file_had_nowhere_for_comes_back_with_it() {
+        let whole = [line(18.0, "intro"), line(58.0, "marked")];
+        let starts = [(0, 8.0), (1, 48.0)];
+        let ends: Vec<(f64, f64)> = whole.iter().map(moves::ends_of).collect();
+        // Saved with only its paragraph written yet, on a page 28 pt tall.
+        let (half, half_starts) = ([line(18.0, "intro")], [(0, 8.0)]);
+        let half_ends: Vec<(f64, f64)> = half.iter().map(moves::ends_of).collect();
+        let mut halved = set_again(
+            true,
+            false,
+            &starts,
+            &half_starts,
+            &whole,
+            &half,
+            &half_ends,
+        );
+        halved.most_pt = 28.0;
+        assert_eq!(
+            halved.moved(48.0),
+            48.0,
+            "the mark is held past the page's end"
+        );
+        // Then the whole file again: past the half page, the mark stood in
+        // none of its blocks, and isn't put on its paragraph's line.
+        let mut again = set_again(true, false, &half_starts, &starts, &half, &whole, &ends);
+        again.most_before_pt = 28.0;
+        assert_eq!(again.moved(48.0), 48.0, "the mark is back on its line");
     }
 }
