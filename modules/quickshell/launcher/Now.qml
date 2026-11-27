@@ -1036,6 +1036,8 @@ Provider {
             note: rows.map(one => one.name).join(", "),
             empty: Words.of("on:moved").empty,
             nested: true,
+            thing: true,
+            drawer: () => provider.movedDrawer(rows),
             verbs: () => rows,
             targets: () => rows,
             stepped: () => {
@@ -1045,6 +1047,34 @@ Provider {
             run: () => provider.launcher?.enter(provider.movedRow)
         });
     })
+
+    // What Moved's drawer: how many of the asks that moved landed, and the
+    // workstream where most moved, since its note already names each one
+    // (Joel, 2026-11-11 22:00: every row has a drawer giving a little more
+    // than its line). Holding none, once he's stepped in and it was all
+    // looked at elsewhere, it says nothing moved. A fact the daemon gave
+    // no count for is left out rather than said as nought.
+    function movedDrawer(rows) {
+        const title = Words.name("on:moved");
+        if (rows.length === 0)
+            return { title, body: Words.of("on:moved").empty ?? "" };
+        const said = Words.of("on:moved").said ?? {};
+        const asks = rows.map(row => row.movedAsks ?? { landed: 0, moved: 0 });
+        const total = which => asks.reduce((sum, one) => sum + one[which], 0);
+        const busiest = asks.reduce((most, one, at) => one.moved > asks[most].moved ? at : most,
+            0);
+        const counted = count => ForYou.filled(count === 1 ? said.ask : said.asks, { count });
+        const facts = [total("moved") === 0 ? null : {
+            label: Words.name("on:moved:landed"),
+            value: String(total("landed")),
+            qualifier: ForYou.filled(said.ofMoved, { count: total("moved") })
+        }, asks[busiest].moved === 0 ? null : {
+            label: Words.name("on:moved:busiest"),
+            value: rows[busiest].name,
+            qualifier: counted(asks[busiest].moved)
+        }].filter(fact => fact !== null);
+        return facts.length === 0 ? null : { title, facts };
+    }
 
     // For You's own rows, Later and For You itself, each kept while what
     // it says reads the same: each was made anew as anything it counts
