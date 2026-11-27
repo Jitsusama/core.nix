@@ -192,11 +192,14 @@ fn felt(feel: &[Pain], figures: &mut BTreeMap<String, f64>) {
 /// looks, when it was seen running, beside the share of those looks that
 /// counted every copy by its Pss. The share marks the scale the typical
 /// and heavy copy are on: under 100 on a day partly by Rss, so a fall
-/// back to Rss reads as that, not a regression. It's absent where the
-/// day's looks began before they were counted, in a file written before
-/// this count or by an older health, whose scale isn't known. The most
-/// held is one look's, not a mean, so on a mixed day the share doesn't
-/// say which measure that look took.
+/// back to Rss reads as that, not a regression. A day of unknown count
+/// rolled back to a build holding the count plainly and forward again
+/// reads its looks before the rollback as by Rss too, as
+/// `Memory::looks_by_pss` says. It's absent where the day's looks began
+/// before they were counted, in a file written before this count or by
+/// an older health, whose scale isn't known. The most held is one look's,
+/// not a mean, so on a mixed day the share doesn't say which measure that
+/// look took.
 #[expect(
     clippy::cast_precision_loss,
     reason = "a figure only needs to be near: mebibytes and counts"
