@@ -391,7 +391,7 @@ pub async fn follow(
                 let now = Instant::now();
                 if calling.borrow().on(now) {
                     for on in &joined {
-                        let chooser = choosers.entry(on.card.clone()).or_default();
+                        let chooser = chooser_of(&mut choosers, on);
                         let with = (&asks, &state, &back);
                         moves::give_way(chooser, now, on, &measures, with);
                     }
@@ -403,7 +403,8 @@ pub async fn follow(
                 let call = calling.borrow().on(now);
                 // A chooser goes only with its card: one between points as
                 // it roams, or dropped a moment, is still the card that gave
-                // way, spurned and kept off, so it keeps all it knows.
+                // way, spurned and kept off, so it keeps all it knows, but
+                // for its holds once on another network (`chooser_of`).
                 choosers.retain(|card, _| state.borrow().has_card(card));
                 for (card, chooser) in &mut choosers {
                     if !joined.iter().any(|on| on.card == *card) {
@@ -421,7 +422,7 @@ pub async fn follow(
                     println!("<6>{}", said(&on, (&best, &carried), video, call));
                     let around = state.borrow().around(&on.card);
                     learn_from(&mut learned, &on, &carried, &around, hour);
-                    let chooser = choosers.entry(on.card.clone()).or_default();
+                    let chooser = chooser_of(&mut choosers, &on);
                     if let Some(minute) = measures.minute_of(&on.point, now) {
                         chooser.took_minute(now, &on.point, &minute);
                     }
@@ -448,7 +449,7 @@ pub async fn follow(
                 let Some(carried) = measures.of(&on.point, now) else {
                     continue;
                 };
-                let chooser = choosers.entry(on.card.clone()).or_default();
+                let chooser = chooser_of(&mut choosers, &on);
                 chooser.looked_over(now);
                 moves::choose(
                     chooser,
@@ -461,6 +462,15 @@ pub async fn follow(
             }
         }
     }
+}
+
+/// The chooser of the card `on` names, made for a card first found, and
+/// started afresh for one found on another network than it was last
+/// (`Chooser::on_network`).
+fn chooser_of<'a>(choosers: &'a mut HashMap<String, Chooser>, on: &Joined) -> &'a mut Chooser {
+    let chooser = choosers.entry(on.card.clone()).or_default();
+    chooser.on_network(&on.network);
+    chooser
 }
 
 /// Hands what came back of a move to its card's chooser, and gives back

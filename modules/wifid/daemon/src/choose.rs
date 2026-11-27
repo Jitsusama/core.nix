@@ -290,10 +290,11 @@ pub struct Chooser {
     /// each time (`SPURNED_MOST`). Every back that keeps a point off counts:
     /// carrying worse than the point left, slower under load, badly for a
     /// wider band's room, or worse than the usual a second time, as each
-    /// is a trial that didn't pay. Like `spurned`, it lives only as long as
-    /// the card's chooser: a restart of wifid, or a minute's tick finding
-    /// the card unjoined, as on a resume, starts every point afresh. Its
-    /// times are awake time, as `Instant` doesn't count a suspend.
+    /// is a trial that didn't pay. Like `spurned`, it lives as long as the
+    /// card's chooser, through a drop, a resume and a change of network, as
+    /// points are named by address: only a restart of wifid starts every
+    /// point afresh. Its times are awake time, as `Instant` doesn't count a
+    /// suspend.
     struck: HashMap<String, Struck>,
     /// What the card's access point carried over each of the last
     /// `JUDGED_MINUTES` minutes alone, where, and whether badly, as a trial
@@ -383,6 +384,8 @@ pub struct Chooser {
     /// Whether the call's link was last found fading with nowhere to give
     /// way to, so that's said once a spell.
     stranded: bool,
+    /// The network the card was last found on (`on_network`).
+    network: Option<String>,
 }
 
 /// A give-way during a call, which isn't judged against what it left as a
@@ -714,6 +717,28 @@ impl Chooser {
             })
         } else {
             !self.settled(now)
+        }
+    }
+
+    /// Takes in the network the card is found on. One the card has joined
+    /// since it was last found on another starts the chooser afresh but for
+    /// what it knows of each point by its address (`spurned`, `struck` and
+    /// `usually`): its moves, give-ways, trials and the holds after them are
+    /// of the last network's points, and a hold after two missed give-ways
+    /// at home would otherwise hold a call's give-ways on a phone's hotspot.
+    pub fn on_network(&mut self, network: &str) {
+        match self.network.as_deref() {
+            Some(last) if last == network => {}
+            Some(_) => {
+                *self = Self {
+                    spurned: std::mem::take(&mut self.spurned),
+                    struck: std::mem::take(&mut self.struck),
+                    usually: std::mem::take(&mut self.usually),
+                    network: Some(network.to_owned()),
+                    ..Self::default()
+                };
+            }
+            None => self.network = Some(network.to_owned()),
         }
     }
 
@@ -3520,6 +3545,36 @@ pub(crate) mod tests {
         assert!(
             !chooser.settled(second + SETTLE - Duration::from_secs(1)),
             "nor the chooser's own moves, as `judge` holds them"
+        );
+    }
+
+    #[test]
+    fn another_network_lifts_a_hold_but_keeps_each_point_kept_off() {
+        let mut chooser = Chooser::default();
+        chooser.on_network("home");
+        let start = Instant::now();
+        chooser.gave_way(start, (DESK, HALL), LOSING);
+        chooser.answered(start, HALL, start);
+        let first = start + fading::BETWEEN;
+        chooser.followed(first, DESK);
+        chooser.gave_way(first, (DESK, NEAR), LOSING);
+        chooser.answered(first, NEAR, first);
+        let second = first + fading::BETWEEN;
+        chooser.followed(second, DESK);
+        let later = second + fading::BETWEEN;
+        chooser.on_network("home");
+        let held_at_home = !chooser.may_give_way(later, false);
+
+        chooser.on_network("hotspot");
+
+        assert!(held_at_home, "the same network's name lifted the hold");
+        assert!(
+            chooser.may_give_way(later, false),
+            "two missed give-ways on one network held a call's on another"
+        );
+        assert!(
+            chooser.keeps_off(HALL, later),
+            "a point kept off by its address was forgotten with the network"
         );
     }
 
