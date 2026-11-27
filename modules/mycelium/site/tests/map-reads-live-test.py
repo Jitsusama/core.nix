@@ -710,6 +710,45 @@ def test_the_message_watch_asks_for_as_many_as_the_map_keeps(
     opened.close()
 
 
+# A node too old to serve ties gives the map its talk only from its messages,
+# so there the map waits for them before it draws, as every map did before it
+# learnt to draw ahead of them: a map drawn without them would say nobody
+# talked rather than that it hadn't heard yet.
+@pytest.fixture
+def tieless_node(tmp_path: Path) -> Iterator[StandIn]:
+    stand_in = StandIn(tmp_path / "tieless.sock", "node", talking()).start()
+    stand_in.withhold("message")
+    yield stand_in
+    stand_in.leave()
+
+
+@pytest.fixture
+def tieless_served(tmp_path: Path, tieless_node: StandIn) -> Iterator[Served]:
+    yield from serve(tmp_path, tieless_node)
+
+
+def test_a_node_serving_no_ties_has_the_map_wait_for_its_messages(
+    browser: Browser, tieless_served: Served, tieless_node: StandIn
+) -> None:
+    root, _ = tieless_served
+    opened = Opened(browser, f"{root}mycelium/", SIZES[-1], "dark")
+    page = opened.page
+    for kind in ("network", "cell", "machine"):
+        asked_of(tieless_node, kind)
+    # Past one hand-over a map that drew without its messages would show.
+    page.wait_for_timeout(REDRAWN_MS)
+    expect(
+        page.locator("#world .hub"), "the map drew before the messages it draws talk from"
+    ).to_have_count(0)
+    expect(
+        page.locator("#asof"), "a map not yet drawn said it was reading what passed"
+    ).not_to_contain_text(READING_TALK)
+    tieless_node.answer("message")
+    the_map_counts(page, COUNTED, "the map never drew once its messages answered")
+    expect(page.locator("#world .hub").first, "the map drew no network").to_be_visible()
+    opened.close()
+
+
 # The networks node.json's realm leads, each drawn as a hub, and the one
 # branching from another, as a mind map branches.
 NETWORKS = ("orchestration.skiff1", "orchestration.tern01", "orchestration.heron1")
