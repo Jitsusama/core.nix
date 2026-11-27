@@ -530,7 +530,10 @@ mod tests {
         .stdout(Stdio::piped());
         let started = Instant::now();
         let stopped = within(&mut hung, Duration::from_millis(500));
-        assert!(stopped.is_err_and(|why| why.contains("ran past")));
+        assert!(
+            stopped.as_ref().is_err_and(|why| why.contains("ran past")),
+            "a hung cadence is said to have run past its time, not {stopped:?}"
+        );
         assert!(
             started.elapsed() < Duration::from_secs(5),
             "a hung read is stopped at its deadline, not waited out"
@@ -557,7 +560,10 @@ mod tests {
         );
         let mut failing = Command::new(&shell);
         failing.args(["-c", "exit 3"]).stdout(Stdio::piped());
-        assert!(within(&mut failing, Duration::from_secs(5)).is_err());
+        assert!(
+            within(&mut failing, Duration::from_secs(5)).is_err(),
+            "a cadence ending in failure is no answer"
+        );
     }
 
     #[test]

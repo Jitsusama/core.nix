@@ -349,11 +349,7 @@ fn row(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn words() -> Words {
-        let text = include_str!("../../tests/words.json");
-        Words::new(&serde_json::from_str(text).expect("the test's words are JSON"))
-    }
+    use crate::axes::words::tested as words;
 
     /// 12:00 on 26 November 2026, Toronto time, in seconds.
     const NOON: i64 = 1_795_712_400;
@@ -646,6 +642,6 @@ mod tests {
         );
         assert_eq!(rows, Vec::<Value>::new());
         assert_eq!(head["said"], "nothing you asked for is open");
-        assert!(head.get("glyph").is_none());
+        assert_eq!(head.get("glyph"), None, "nothing late wears no glyph");
     }
 }

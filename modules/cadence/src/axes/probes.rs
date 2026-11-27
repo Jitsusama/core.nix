@@ -173,7 +173,7 @@ mod tests {
         assert_eq!(a1.since, None, "a passing probe fails since nothing");
         assert_eq!(a1.switch, Some(1201));
         assert_eq!(a1.by, "J7XHQN");
-        assert!(!probed["b2"].passed);
+        assert!(!probed["b2"].passed, "a probe run only failing has failed");
     }
 
     #[test]
@@ -226,7 +226,10 @@ mod tests {
             "",
         ]
         .join("\n");
-        assert!(read(&text).is_empty());
+        assert!(
+            read(&text).is_empty(),
+            "no line lacking an ask, a time or a verdict is a run"
+        );
         assert_eq!(
             unread(&text),
             5,
