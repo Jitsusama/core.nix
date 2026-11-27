@@ -2602,16 +2602,16 @@
     latest with either copy's networks, its drawing, reach and starter all read from that copy,
     reach judging it by both copies' networks in either order, a cell with no name the map
     can't draw found unreachable and said as words, with its machine, rather than lost,
-    a network the node sets within none growing out of the one whose cells started more of its
-    cells than any other, a tie going to starts and then by name, where the node sets a network
-    standing, no start from inside it counting, of two that started each other's cells the
-    stronger the trunk and no branch looping back round, every network's choices settled
-    strongest first so a choice left over from a loop waits behind stronger ones, a cell's
-    forage saying what it split from, else the first
-    forage listing a cell with a forage here, growing a branch where no start is said or the
-    start grows none or would loop, counting toward the trunk as a start does and counted
-    apart from the starts, a cell started and split from two networks counting toward each,
-    the drawer saying a branch's starts and splits each out of its cells, what each key asks of
+    a network the node sets within none growing out of the one whose cells started or split
+    more of its cells than any other, a tie going to starts and then by name, where the node
+    sets a network standing, no start from inside it counting, of two that started each other's
+    cells the stronger the trunk and no branch looping back round, every network's choices
+    settled strongest first so a choice left over from a loop waits behind stronger ones, a
+    cell's forage saying what it split from, else the first forage listing it, for a cell with
+    a forage here, growing a branch where no start is said or the start grows none or would
+    loop, counting toward the trunk as a start does and counted apart from the starts, a cell
+    started and split from two networks counting toward each, the drawer saying a branch's
+    starts and splits each out of its cells, what each key asks of
     the map, its tree, its find line, the
     page and the theme switch, chords, typing and a key named after an object's own asking
     nothing, the tree's networks and branches by name under a machine or a network and the
@@ -2638,7 +2638,9 @@
     while the node is away with the realm
     kept drawn and live once it's back, stale once the server goes with the realm kept, a record's
     words drawn as words and never as markup, what each spent today listed most first in Now, a
-    machine's drawer and a network's, what waits on a cell and what holds stand said as the node
+    machine's drawer and a network's, a network two machines feed listing each with the cells it
+    draws there, its branch's counted in, what waits on a cell and what holds stand said as the
+    node
     judges them, every cell drawn a step out from the whole map and folded only once too small to
     read, every line thinned as the map steps out past its own size, the talk between two networks
     drawn as one line as warm as its warmest pair until it or a cell it touches opens, a receptor's

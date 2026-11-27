@@ -2478,6 +2478,36 @@ def test_a_machines_drawer_opens_its_row_in_the_launcher(mycelium_opened: Opened
     )
 
 
+# The skiff's network as two machines feed it in node.json, each cell
+# counted where it is drawn: TERN01 is listed in the skiff and in its
+# branch but drawn in the branch, so the skiff draws SKIFF1, TERN02 and
+# GULL01 as its own. kestrel runs two of those and both of the branch's,
+# osprey runs GULL01.
+FED_NETWORK = "orchestration.skiff1"
+FED_BY = ["kestrel", "feeds it 4 cells", "osprey", "feeds it 1 cell"]
+
+
+def test_a_network_fed_by_two_machines_lists_each_with_its_cells(
+    mycelium_opened: Opened,
+) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    page.evaluate(f"location.hash = '#net={FED_NETWORK}'")
+    body = page.locator("#panel-body")
+    expect(body, "the skiff's drawer miscounted its cells or machines").to_contain_text(
+        "A network of 3 cells, with 2 more in 1 branch, fed by 2 machines.", timeout=PACE_MS
+    )
+    # A network belongs to no machine, so its drawer lists every one that
+    # feeds it, its branch's cells counted in.
+    rows = body.locator("h3:text-is('Its Machines') + ul.rows li")
+    expect(rows, "the skiff's drawer didn't list both machines").to_have_count(2)
+    lines = [line for row in rows.all_inner_texts() for line in row.splitlines() if line]
+    assert lines == FED_BY, f"Its Machines read {lines}, not {FED_BY}"
+    # Each opens that machine's own drawer.
+    rows.nth(1).get_by_role("button").click()
+    expect(page.locator("#panel-title"), "osprey's row didn't open osprey").to_have_text("osprey")
+
+
 def test_a_kept_cloud_machine_says_so_and_opens_its_row(
     browser: Browser, lent_served: Served
 ) -> None:
