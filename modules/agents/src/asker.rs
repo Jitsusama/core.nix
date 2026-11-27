@@ -74,7 +74,7 @@ const SO_PEERPIDFD: libc::c_int = 77;
 /// to be its own, or the kernel names no peer by pidfd.
 #[cfg(not(feature = "walks"))]
 pub fn the_shell(stream: &UnixStream) -> Result<(), String> {
-    let (pidfd, seen) = peer_of(stream).map_err(untold)?;
+    let (pidfd, seen) = peer_of(stream).map_err(|why| untold(&why))?;
     // SAFETY: getuid has no failure and touches no memory.
     let uid = unsafe { libc::getuid() };
     judged(&TAKEN, pidfd, &seen, uid, || {
@@ -158,7 +158,7 @@ fn judged(
     if taken_already(taken(kept).as_ref(), seen.pid) && alive(&pidfd) {
         return Ok(());
     }
-    if !takes(seen, uid, main_pid).map_err(untold)? {
+    if !takes(seen, uid, main_pid).map_err(|why| untold(&why))? {
         // Who it was is journalled, quoted as the kernel read it, so an
         // agent asking as Joel can be traced to its own process and unit.
         let unit = seen
