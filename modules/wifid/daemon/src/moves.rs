@@ -1278,7 +1278,11 @@ mod tests {
         let on = joined(HALL);
 
         let unwarned = given_hearing(&mut Chooser::default(), start, &on, &air, LOSING);
-        air.warned_off("wlan2", DESK, (Some(start), start + Duration::from_secs(600)));
+        air.warned_off(
+            "wlan2",
+            DESK,
+            (Some(start), start + Duration::from_secs(600)),
+        );
         let warned = given_hearing(&mut Chooser::default(), start, &on, &air, LOSING);
 
         assert_eq!(
@@ -1301,7 +1305,11 @@ mod tests {
         air.at("wlan2", Some("/Interfaces/0/BSSs/2".into()));
         let start = Instant::now();
         let on = joined(HALL);
-        air.warned_off("wlan2", HALL, (Some(start), start + Duration::from_secs(600)));
+        air.warned_off(
+            "wlan2",
+            HALL,
+            (Some(start), start + Duration::from_secs(600)),
+        );
 
         // The kernel's own reading, as a look's is stale by the end.
         let losing = (2, Some(-60));

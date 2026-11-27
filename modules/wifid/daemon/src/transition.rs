@@ -643,7 +643,10 @@ mod tests {
             Heed::Unproven,
         ];
         for heed in left {
-            assert!(!heed.moves(), "{heed:?}, which wifid doesn't move, was said to");
+            assert!(
+                !heed.moves(),
+                "{heed:?}, which wifid doesn't move, was said to"
+            );
         }
     }
 
