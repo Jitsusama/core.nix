@@ -375,7 +375,9 @@ fn heard_or_left_out(
 
 /// A take `start` samples into `key`'s call that wasn't heard, its model
 /// not loading or failing on it: counted in what the call's file says
-/// wasn't heard, and `notice` for it, unless the call was told already.
+/// wasn't heard, the file written at once so a restart before another
+/// line is heard reads it back, and `notice` for it, unless the call
+/// was told already.
 fn not_heard(
     book: &Shared,
     key: &str,
@@ -386,6 +388,7 @@ fn not_heard(
     notice: impl FnOnce() -> Notice,
 ) -> Option<Notice> {
     writing.unheard = Some(unheard::and(writing.unheard, start));
+    write(book, key, writing, me, true);
     told_once(told, key, notice)
 }
 
