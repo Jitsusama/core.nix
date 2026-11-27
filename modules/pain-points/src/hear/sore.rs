@@ -195,8 +195,9 @@ const INTERJECTIONS: [&str; 24] = [
 /// clause ends after it, whether it opens a line that opens a sentence,
 /// whether the sentence exclaims it (its clause the last, before a run
 /// of marks holding a "!"), and whether it's said in a sentence that
-/// asks. Every reading of a message goes through one split into these,
-/// so no two of them disagree on where a sentence ends or what it asks.
+/// asks, with the parts ease and giving up are read in. Every reading of
+/// a message goes through one split into these, so no two of them
+/// disagree on where a sentence ends or what it asks.
 struct Sentence<'a> {
     words: Vec<&'a str>,
     closes: Vec<bool>,
@@ -207,6 +208,9 @@ struct Sentence<'a> {
     listed: Vec<bool>,
     exclaimed: Vec<bool>,
     asked: Vec<bool>,
+    /// Its parts, split at each run of stops as well, each with whether
+    /// it asks and its words, as ease and giving up are read.
+    told: Vec<(bool, Vec<&'a str>)>,
 }
 
 /// Whether the swear at `at` in a sentence closes a list rather than
@@ -253,12 +257,12 @@ fn shortened(before: &str) -> bool {
 
 /// The pieces of lowered text, each ending after a run of the marks that
 /// end a sentence, spaces between them taken in, so "?!" and "? !" end
-/// one sentence, not two. When `joined`, a stop that runs on into a
-/// letter ("e.g", "core.nix"), one of several ("..."), or one after a
-/// word shortened ("etc.") ends none, as a list runs across them; ease
-/// and giving up are read without that join, since "shit, it's fine...
-/// can you check the logs?" eases before it asks.
-fn pieces(low: &str, joined: bool) -> Vec<&str> {
+/// one sentence, not two. A stop that runs on into a letter ("e.g",
+/// "core.nix"), or one after a word shortened ("etc."), ends none. When
+/// `runs`, nor does a run of stops ("..."), as a list runs across one;
+/// asks, ease and giving up are read with each run ending a piece, since
+/// "shit, it's fine... can you check the logs?" eases before it asks.
+fn pieces(low: &str, runs: bool) -> Vec<&str> {
     let mut out = Vec::new();
     let mut start = 0;
     let mut run = None;
@@ -281,7 +285,8 @@ fn pieces(low: &str, joined: bool) -> Vec<&str> {
         let marks = low[from..end].replace(' ', "");
         let stops_only = marks.chars().all(|m| m == '.');
         let runs_on = rest.starts_with(char::is_alphanumeric);
-        if joined && stops_only && (marks.len() > 1 || runs_on || shortened(&low[..from])) {
+        let lone = marks.len() == 1 && (runs_on || shortened(&low[..from]));
+        if stops_only && (lone || (runs && marks.len() > 1)) {
             run = None;
             continue;
         }
@@ -332,9 +337,10 @@ fn clauses(piece: &str) -> Vec<(&str, bool)> {
     out
 }
 
-/// A piece read as a sentence. Its words are asked by the sentence they
-/// stand in when split at every run of ending marks, so "shit, it's
-/// fine... can you check the logs?" asks only after its stops.
+/// A piece read as a sentence. Its words are asked by the part they
+/// stand in when split at each run of stops too, so "shit, it's fine...
+/// can you check the logs?" asks only after its stops, and "why the fuck
+/// is it in core.nix?" asks all through.
 fn sentence(piece: &str) -> Sentence<'_> {
     let mut said = Sentence {
         words: Vec::new(),
@@ -343,6 +349,7 @@ fn sentence(piece: &str) -> Sentence<'_> {
         listed: Vec::new(),
         exclaimed: Vec::new(),
         asked: Vec::new(),
+        told: Vec::new(),
     };
     let mut clause_of = Vec::new();
     let mut opening = false;
@@ -367,8 +374,9 @@ fn sentence(piece: &str) -> Sentence<'_> {
     }
     for part in pieces(piece, false) {
         let asks = ends_in(part, &ASKS);
-        said.asked
-            .extend(std::iter::repeat_n(asks, words_of(part).len()));
+        let words = words_of(part);
+        said.asked.extend(std::iter::repeat_n(asks, words.len()));
+        said.told.push((asks, words));
     }
     let exclaims = ends_in(piece, &EXCLAIMS);
     let last = clause_of.last().copied();
@@ -429,23 +437,20 @@ fn swearing(said: &[Sentence]) -> Vec<bool> {
 /// that doesn't put the agent at ease by a sentence not asked, nor asks
 /// with a swear, nor gives up on the agent. Each is read from the one
 /// split of its sentences, so an asked swear is judged with the praise
-/// after it as every swear is.
+/// after it as every swear is, and ease said in "core.nix?" is asked.
 fn swears(low: &str) -> bool {
-    let swearing = swearing(&sentences(low));
+    let heard = sentences(low);
+    let swearing = swearing(&heard);
     if swearing.is_empty() {
         return false;
     }
-    let told: Vec<(bool, Vec<&str>)> = pieces(low, false)
-        .into_iter()
-        .map(|part| (ends_in(part, &ASKS), words_of(part)))
-        .collect();
-    let eased = told
-        .iter()
-        .any(|(asks, words)| !asks && REASSURING.iter().any(|ease| said(words, ease)));
+    let told = || heard.iter().flat_map(|sentence| &sentence.told);
+    let eased =
+        told().any(|(asks, words)| !asks && REASSURING.iter().any(|ease| said(words, ease)));
     let asked_swearing = swearing.contains(&true);
     let each = words_of(low);
-    let gave_up = GIVING_UP.iter().any(|up| said(&each, up))
-        || told.iter().any(|(_, words)| whatever_then(words));
+    let gave_up =
+        GIVING_UP.iter().any(|up| said(&each, up)) || told().any(|(_, words)| whatever_then(words));
     !eased || asked_swearing || gave_up
 }
 
@@ -961,6 +966,10 @@ mod tests {
             "shit. that's fine?",
             "shit, that's fine\u{ff1f}",
             "that's fine. why the fuck is it slow?",
+            // A stop that ends no sentence ends no ask, nor the ease in it.
+            "that's fine. why the fuck is it in core.nix?",
+            "shit, it's fine in core.nix?",
+            "shit. it's fine in core.nix?",
             "it's fine. how'd it wipe my branch and shit?!",
             "it's fine. how'd it wipe my branch and shit!?",
             "it's fine. how'd it wipe my branch and shit\u{ff1f}\u{ff01}",
