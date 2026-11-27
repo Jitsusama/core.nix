@@ -374,6 +374,35 @@ fn lab_kept(
             .filter(|line| whose(line, mine) == side)
             .any(|line| line.start - margin <= t && t <= line.end + margin)
     };
+    // Where the far end's own transcript has them: their lines, and
+    // the time of each word in them.
+    let their_lines: Vec<(usize, usize)> = lines
+        .iter()
+        .filter(|line| line.side == Side::Theirs)
+        .map(|line| (line.start, line.end))
+        .collect();
+    let their_words: Vec<usize> = lines
+        .iter()
+        .enumerate()
+        .filter(|(_, line)| line.side == Side::Theirs)
+        .filter_map(|(index, _)| words.get(&index))
+        .flatten()
+        .map(|word| word.at)
+        .collect();
+    let nearest = |at: usize| {
+        let apart = their_words
+            .iter()
+            .map(|&theirs| theirs.abs_diff(at))
+            .min()
+            .unwrap_or(usize::MAX);
+        match apart {
+            n if n < RATE / 10 => "under 0.1 s",
+            n if n < RATE / 4 => "under 0.25 s",
+            n if n < RATE / 2 => "under 0.5 s",
+            n if n < RATE => "under 1 s",
+            _ => "1 s or more",
+        }
+    };
     let mut counts: std::collections::BTreeMap<(String, &str), usize> =
         std::collections::BTreeMap::new();
     for (at, why, below, voice) in echo::kept(lines, words) {
@@ -400,6 +429,21 @@ fn lab_kept(
             *counts.entry((key, "")).or_default() += 1;
             let key = format!("{whose} kept, sound above {above} voice {voice}");
             *counts.entry((key, "")).or_default() += 1;
+            if above >= 15 {
+                let lined = if their_lines
+                    .iter()
+                    .any(|&(start, end)| (start..end).contains(&at))
+                {
+                    "in"
+                } else {
+                    "out of"
+                };
+                let key = format!(
+                    "{whose} near, sound above {above}, {lined} their lines, their word {}",
+                    nearest(at)
+                );
+                *counts.entry((key, "")).or_default() += 1;
+            }
         }
     }
     for ((key, _), count) in counts {
