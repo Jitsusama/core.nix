@@ -4805,7 +4805,8 @@
     below a case's hard limit, says so once with the hard limit in force, what would fit and
     ulimit's reason, and runs no case; the check fails where that can't be shown; a case
     whose limits are refused as it is run fails unrun rather than running with none; and a run
-    that can't make both its scratch files stops before any case, leaving neither behind
+    that can't make both its scratch files stops before any case, saying mktemp's reason and
+    leaving neither behind, while one that makes both lets both go as it ends
   '';
   the-cats-walk-is-read-only-from-its-lists = ''
     the cat's code is read as no walk, by the rule it breaks, when WALKS holds anything but
