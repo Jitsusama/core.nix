@@ -449,8 +449,9 @@ fn his_voice_is_the_middle_level_of_his_words_heard_alone() {
 #[test]
 fn his_voice_between_two_middle_levels_is_the_quieter() {
     // Six words alone, three at -20 and three at -40 dB: judged by the
-    // louder middle, his word at -36 would be cut as 12 dB below his
-    // voice; by the quieter it's his, as a doubtful word should be.
+    // louder middle, or by the two middles' mean, -30, his word at -42
+    // would be cut as 12 dB below his voice; by the quieter it's his, as
+    // a doubtful word should be.
     let own = "Fine by me, sure then, thanks.";
     let theirs = at_level(timed("Lunch at noon on Thursday then.", 5_000), -20.0);
     let mut mine = timed(own, 1_000);
@@ -458,7 +459,7 @@ fn his_voice_between_two_middle_levels_is_the_quieter() {
     for (word, alone) in mine.iter_mut().zip(levels) {
         word.level = alone;
     }
-    mine.extend(at_level(timed("Bunch had moon", 5_050), -36.0));
+    mine.extend(at_level(timed("Bunch had moon", 5_050), -42.0));
     assert_eq!(
         cut_from(&[theirs], &[mine]),
         [format!("{own} Bunch had moon")],
@@ -642,8 +643,9 @@ fn his_voice_follows_a_new_microphone_from_six_of_his_words_heard_alone_on_it() 
         ("Can you all hear me now?", true),
     ] {
         let written = over_them_after(laptop, 60_000, 70_100);
+        let joels = written.first().expect("none of Joel's line was written");
         assert_eq!(
-            written[0].ends_with("Hang on, wait."),
+            joels.ends_with("Hang on, wait."),
             kept,
             "Joel over them after {laptop:?} on a quieter microphone was judged wrongly"
         );
@@ -656,9 +658,34 @@ fn his_voice_is_taken_from_his_words_alone_just_after_as_well_as_before() {
     // just after, and was on a headset long before: his voice is the
     // laptop's, nearest in time, though every earlier word is louder.
     let written = over_them_after("Sorry, I've moved to my laptop just now.", 34_000, 30_100);
+    let joels = written.first().expect("none of Joel's line was written");
     assert!(
-        written[0].contains("Hang on, wait."),
+        joels.contains("Hang on, wait."),
         "Joel over them was judged by his headset long before, not his laptop just after"
+    );
+}
+
+#[test]
+fn his_voice_is_taken_from_no_more_than_the_eleven_of_his_words_alone_nearest() {
+    // Nearest his words over theirs are five of his alone on the laptop,
+    // then six on a headset 20 dB louder, then one more on the laptop,
+    // furthest out. From the eleven nearest his voice is the headset's,
+    // so his words over theirs are cut; from twelve, it would be the
+    // quieter of two middles, the laptop's, and they'd be kept.
+    let headset = "Morning all, I'm on my headset.";
+    let laptop = "Can you hear me now?";
+    let mut mine = at_level(timed(headset, 0), -20.0);
+    mine.extend(at_level(timed(laptop, 20_000), -40.0));
+    mine.extend(at_level(timed("Hang on, wait.", 22_000), -40.0));
+    mine.extend(at_level(timed("Thanks.", 50_000), -40.0));
+    let theirs = at_level(
+        timed("We could meet next week if that suits", 21_900),
+        -20.0,
+    );
+    assert_eq!(
+        cut_from(&[theirs], &[mine]),
+        [format!("{headset} {laptop} Thanks.")],
+        "Joel over them was judged by more than the eleven of his words alone nearest"
     );
 }
 
