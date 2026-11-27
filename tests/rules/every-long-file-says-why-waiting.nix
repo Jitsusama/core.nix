@@ -53,7 +53,6 @@
   "modules/wifid/daemon/src/service.rs"
   "modules/wifid/daemon/src/state.rs"
   "modules/quickshell/tests/command-line.qml"
-  "tests/desktop/desktop.nix"
   "tests/desktop/launcher/desktop-launcher-answers-vm-test.py"
   "tests/desktop/launcher/desktop-launcher-finds-by-name-vm-test.py"
   "tests/desktop/launcher/desktop-launcher-finds-sessions-vm-test.py"
