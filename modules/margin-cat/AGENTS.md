@@ -170,8 +170,10 @@ emptied, it comes in at that edge along the floor.
 - Held by `margin-cat-one-screen.qml`: "a pixel on the left, it comes straight down"
 - Owed since 2026-11-25: on nested niri, a walk caught by a scroll off the edge rides its
   window, and a floor came to from off the edge.
-- Owed since 2026-11-26: a Qt case that no play, stroll or pet starts during a ride; the
-  view's `still`, `play()` and `stroll()` each check `carry`, which nothing pins.
+- Owed since 2026-11-26: a Qt case that no play, wander or pet starts during a ride; the
+  view's `still`, `play()` and `strollsNot()` each check `carry`, which nothing pins. A key's
+  walk back home (`stroll("")`) and a stroll's walk back over its column are let through
+  mid-ride, from where the cat is drawn as niri's spring slides; no case holds that either.
 - Owed since 2026-11-27: a case of the view's own wiring, that follow() gives backOn
   `held` only for the seat a scroll held it short of, and `heldShortOn` is cleared once it
   plays; the choices are pinned in MarginCatCarried.js, not what the view passes them.
@@ -443,9 +445,9 @@ ends a visit: the puppy fades where it is and the cat sits from where it's
 got to, or, with the keys on another column, goes back over the window it
 sat on until they rest there. Dozing off ends none by itself. A scroll that
 carries the window it sat on away ends one too, dozing or not: the puppy
-fades and the cat rides to its seat on that window, never left on the air
-where the window was. Under the launcher's card the puppy goes at once
-rather than fading.
+fades and the cat goes to its seat on that window, riding niri's scroll or
+there at once as a drag carries it, never left on the air where the window
+was. Under the launcher's card the puppy goes at once rather than fading.
 
 - Held by `margin-cat-puppy.qml`: "from just behind its column's edge, drawn only within it,
   facing the cat"
@@ -455,6 +457,11 @@ rather than fading.
 - Held by `margin-cat-puppy.qml`: "then it turns and trots back behind the edge as the cat
   watches"
 - Held by `margin-cat-puppy.qml`: "the cat never leaves its seat"
+- Held by `margin-cat-one-screen.qml`: "its window scrolled away, it rides to its seat"
+- Held by `margin-cat-one-screen.qml`: "cut mid-hop as a drag carries it, it sits on its seat
+  at once"
+- Held by `margin-cat-one-screen.qml`: "scrolled wholly off the right, it rides as far as
+  niri carried it"
 - Held by `margin-cat-puppy.qml`: "a new drawing each three cells it covers, in the cat's order"
 - Held by `margin-cat-games.qml`: "and the puppy a few times, 20 minutes apart at the least,
   unevenly"
@@ -464,5 +471,10 @@ rather than fading.
   window it sat on till the keys rest, a doze mid-visit letting the puppy trot off, and the
   card coming up mid-visit taking the puppy at once; and a journal case that a cut visit is
   told as the puppy's, not the walk's.
+- Owed since 2026-11-27: a case of the view's wiring, that follow() ends a visit as niri
+  carries its window, and passes visitCut that window's seat; the choice is pinned in
+  MarginCatCarried.js, not what the view gives it. Nor does a case say where the puppy fades
+  as its window is carried off, or what a key cutting a hop before niri's scroll is heard
+  does.
 
 [design]: ../../docs/design.md
