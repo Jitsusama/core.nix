@@ -387,6 +387,7 @@ fn on_the_way_asked(m: &Measure, what: &str, says: String) -> Filed {
              figure is back in."
         ),
         says,
+        names: Vec::new(),
     }
 }
 
