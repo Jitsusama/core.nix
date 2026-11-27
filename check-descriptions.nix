@@ -3304,9 +3304,10 @@
     it, pastes it whole on Joel's display, offered marked secret, makes nothing under TMPDIR,
     runs nothing from PATH, typed or not, can't be read through /proc and holds as much of it
     in locked memory as the secret is long, says it's ready only once it can't be read and held
-    once it holds the copy, pastes whole and keeps locked a secret that outgrows its first page,
-    pastes whole a secret of exactly its cap of a MiB, and refuses a standard input it can't
-    read or one a byte past that cap, never saying it held either
+    once Joel's display has the copy, one paste then pasting it whole, pastes whole and keeps
+    locked a secret that outgrows its first page, pastes whole a secret of exactly its cap of a
+    MiB, refuses a standard input it can't read or one a byte past that cap, never saying it
+    held either, and refuses to say ready or held for a copy that isn't sensitive
   '';
   passwords-holds-no-secret = ''
     the passwords daemon holds every entry each password manager lists without a secret, even one
@@ -3314,12 +3315,13 @@
     held list or get without asking a manager, gives a secret only to the ask for it, never to a
     watch, or to the clipboard marked sensitive and cleared when its time is up, writes it to the
     copier only once the copier says it's ready and answers it copied only once the copier says it
-    holds it, answering a refused copy with the copier's reason, ends the copy it holds as it
-    ends itself, killed or not, refuses a copy
-    before reading any secret while no copier is named, types a password only into the niri
-    window it was asked for once the launcher has let go of the keys and while that window still
-    has them, refusing a second while one is under way, never into one an agent's process is
-    behind, above or below (pi, pi-spawner,
+    holds it, answering a copy the copier refuses, before it's ready, partway through or once
+    it has it all, with the copier's first line of reason, read no further than 4 KiB, or its
+    own where the copier says none, ends the copy it holds as it ends itself, killed or not,
+    refuses a copy before reading any secret while no copier is named, types a password only
+    into the niri window it was asked for once the launcher has let go of the keys and while
+    that window still has them, refusing a second while one is under way, never into one an
+    agent's process is behind, above or below (pi, pi-spawner,
     mycelium, the hosted runtime, or the agents' or jobs' slices), nor a kitty whose foreground
     runs one or a multiplexer or that can't say, and writes one journal line for each type
     naming no secret, can't be read through /proc by the
@@ -3698,10 +3700,11 @@
     a realm whose node refuses --heap-growing-percent as a bad option fails the build its
     conversations' unit names, saying the realm, the percent, the node and what to do, as node 22
     and the tree's own node refuse an option they don't know, one whose node fails another way,
-    never ends or can't be run, a package's folder among them, fails saying which and what to do,
-    node 22, which pi is built with, takes it and the rendered unit files name that proof, and a
-    machine cross-built for another platform has the proof stand unproven and warns of it, where
-    one built on its own platform doesn't
+    never ends, ignores being told to end, is killed before its limit or can't be run, a package's
+    folder among them, fails saying which and what to do, node 22, which pi is built with, takes
+    it and the rendered unit files name that proof, and a machine cross-built for another platform
+    has the proof stand unproven and warns of it unless its realm accepts that, where one built on
+    its own platform doesn't
   '';
   pi-conversations-take-heap-growth = ''
     node 22, which pi is built with, and the tree's own node, each started with the word a realm's
@@ -4799,8 +4802,9 @@
     says every case's time, and stops at a hang, naming the cases it left unrun; it refuses
     limits that aren't whole seconds before any case runs, and, where the builder holds the run
     below a case's hard limit, says so once with the hard limit in force, what would fit and
-    ulimit's reason, and runs no case; the check fails where that can't be shown; and a case
-    whose limits are refused as it is run fails unrun rather than running with none
+    ulimit's reason, and runs no case; the check fails where that can't be shown; a case
+    whose limits are refused as it is run fails unrun rather than running with none; and a run
+    that can't make both its scratch files stops before any case, leaving neither behind
   '';
   the-cats-walk-is-read-only-from-its-lists = ''
     the cat's code is read as no walk, by the rule it breaks, when WALKS holds anything but
@@ -5881,8 +5885,8 @@
     refused saying why the next time the launcher opens, types an entry's password on Return
     into the window the launcher opened over, landing on the row from the find first, copies it
     by Copy the Password through the daemon and Passwords' own wl-copy to the clipboard as the
-    launcher goes, the
-    margin wearing the clipboard's mark and the foot, opened again, counting to its clearing,
+    launcher goes, the margin wearing the clipboard's mark and the foot, opened again, counting
+    to its clearing,
     nothing on screen saying it, reads an entry in full as the selection rests on it, never as
     Joel's own ask, its drawer never saying its password, and holds its acts in the design's order
     once it's stepped into, Open the Website handing a stand-in Chrome its website as the
@@ -5922,6 +5926,10 @@
     breached then reused at its side, each left out at none, and is weighed as a thing to do
     ready now; and while the place is off, its one row opens the browser a manager fills, else
     a manager's own app, else nothing, its note saying which
+  '';
+  the-patches-from-linux-next-apply-exactly = ''
+    each patch the XPS 14 takes from linux-next applies to its kernel's source, after every patch
+    applied before it, with no offset or fuzz, as next.nix says they do
   '';
   the-people-are-one-person-each = ''
     every source's people join into one person per email address, a source that knows two
@@ -6424,7 +6432,8 @@
     command the launcher runs on a contact: call start, call join, and contacts favorite and
     unfavorite; and its script, which stops Tuple's daemon, refuses before reaching tuple from a
     person's shell in their home or a checkout, the repository's dev shell, a bare environment,
-    the root, and shells holding only some of the build's folders
+    the root, a home holding its own runtime folder, and shells holding only some of the build's
+    folders
   '';
   tuple-keeps-its-logs = ''
     Tuple's service keeps the daemon's last three logs, newest first, before it starts, and an empty
@@ -6534,8 +6543,9 @@
     goes only once its nobody is written, and as its camera goes, one it couldn't remove is tried
     again until it can be; and a stop tries its nobody and node file once more, whether it comes
     with no camera or just as its camera went; and a loopback with no camera is said ready only
-    once its node file is
-    gone or can't be there
+    once its node file is gone or can't be there; and a camera a loopback moves to is said held
+    while its node file still says the camera before; and a wrong file nobody holds is tried twice
+    as long each time, up to sixteen seconds, while a held camera is looked at each interval
   '';
   usb-camera-holders-forget-a-killed-run = ''
     each USB camera watch's unit, the relayed one's too, forgets what says its node in the folder it
@@ -6749,7 +6759,8 @@
     sets the clock from the machine's servers past it when it's silent
   '';
   vm-commits-are-signed = ''
-    commits are signed with the TPM's keys, PINs asked for
+    commits are signed with the TPM's keys, PINs asked for; the agents' socket stays off until
+    their key is made, and its path unit starts it once it is
   '';
   vm-desk-facts-follow-a-replug = ''
     desk-facts names a USB sound card plugged into a running machine, stops naming it once it's
@@ -7475,6 +7486,10 @@
     something in it held, or a find from the root showing a row of its, the launcher open, or a
     terminal's show walked into it; never open on another place, at home or on another's find,
     and at once on stepping in
+  '';
+  wifi-names-a-network-without-a-country = ''
+    core's kernel, which every machine on it builds, records the name of the network a card
+    joined even when its access point names no country, so networkd matches that network's file
   '';
   wifi-sessions-survive-fragmented-memory = ''
     the XPS 14's kernel lets Wi-Fi's block-ack reorder buffers come from vmalloc when memory is

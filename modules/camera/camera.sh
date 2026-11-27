@@ -63,12 +63,17 @@ done
 # (modules/mpv): its Vim keys bind Z, Escape and Space as camera.lua does,
 # and of two scripts binding a key, the one that loads last takes it, so
 # the viewfinder's keys were its own only some of the time.
+#
+# Its log goes to a file beside the recording's, written over each time,
+# since niri gives what it starts nowhere to write: camera.lua says there
+# what became of each Z, which a missed ZZ is told apart by.
+log=${XDG_RUNTIME_DIR:-/tmp}/camera-viewfinder.log
 exec mpv "av://v4l2:$device" --load-scripts=no \
   --vo=gpu-next,wlshm --gpu-context=wayland \
   --title="$titled · Camera" --wayland-app-id=camera --force-window=yes \
   --profile=low-latency --untimed --cache=no --hwdec=no --aid=no \
   --vf=hflip --osc=no --input-default-bindings=no \
   --keep-open=no --idle=yes --save-position-on-quit=no --resume-playback=no \
-  --screenshot-png-compression=0 \
+  --screenshot-png-compression=0 --log-file="$log" \
   --script="$script" \
   --script-opts="$look",camera-mode="$mode",camera-device="$device"

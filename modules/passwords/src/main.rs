@@ -1362,12 +1362,21 @@ fn copy(shared: &Shared, value: &str) -> Result<u64, String> {
     let clears_at = u64::try_from(u128::from(now()) + clears.as_millis()).unwrap_or(u64::MAX);
     let shared = Arc::clone(shared);
     std::thread::spawn(move || {
-        let started = Instant::now();
+        let awake_since = Instant::now();
+        // A copy something else replaced was ended as it was, so its wait
+        // stops at its next look rather than waking on to its own time.
+        let still_ours = || {
+            lock(&shared)
+                .copied
+                .as_ref()
+                .is_some_and(|child| child.id() == pid)
+        };
         waited_until(
             clears_at,
             clears,
             now,
-            || started.elapsed(),
+            || awake_since.elapsed(),
+            still_ours,
             std::thread::sleep,
         );
         let mut daemon = lock(&shared);

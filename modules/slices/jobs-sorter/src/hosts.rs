@@ -1009,6 +1009,28 @@ mod tests {
     }
 
     #[test]
+    fn the_disk_weighs_a_host_as_the_processor_does() {
+        let rank = Rank {
+            weight: 400,
+            floor: 0,
+            hard: 0,
+            writeback: true,
+            preference: "none".to_string(),
+        };
+        let call = rank_call("pi-host-work-attended.service", &rank);
+        let weight = |name: &str| {
+            let at = call.iter().position(|arg| arg == name).expect(name);
+            call[at + 2].clone()
+        };
+        assert_eq!(weight("CPUWeight"), "400");
+        assert_eq!(
+            weight("IOWeight"),
+            "400",
+            "the disk follows the rank, not systemd's 100"
+        );
+    }
+
+    #[test]
     fn the_call_sets_all_six_properties() {
         let call = rank_call(
             "pi-host-work-attended.service",

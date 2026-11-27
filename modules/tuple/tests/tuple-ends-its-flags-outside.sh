@@ -9,12 +9,15 @@
 set -euo pipefail
 
 probe=$1
-# As the probe will see it: a shell started bare takes its folder from
-# the kernel, past any link.
-here=$(pwd -P)
-mkdir -p bin home/checkout run-user
-printf '#!%s\ntouch %q\n' "$BASH" "$here/reached" > bin/tuple
-chmod +x bin/tuple
+# Its own scratch folder, so run anywhere it leaves nothing behind. Taken
+# as the probe will see it: a shell started bare takes its folder from the
+# kernel, past any link.
+here=$(mktemp -d)
+here=$(cd "$here" && pwd -P)
+trap 'rm -rf "$here"' EXIT
+mkdir -p "$here/bin" "$here/home/checkout" "$here/run-user"
+printf '#!%s\ntouch %q\n' "$BASH" "$here/reached" > "$here/bin/tuple"
+chmod +x "$here/bin/tuple"
 
 # Runs the probe from a folder, with the environment given, and fails unless
 # it refuses before reaching tuple.
@@ -35,19 +38,25 @@ refused() {
   fi
 }
 
-refused "a person's shell in a checkout" home/checkout \
+refused "a person's shell in a checkout" "$here/home/checkout" \
   HOME="$here/home" XDG_RUNTIME_DIR="$here/run-user"
 # Its home is the folder it runs in, as the build's is, but not its
 # runtime folder.
-refused "a person's shell in their home" home \
+refused "a person's shell in their home" "$here/home" \
   HOME="$here/home" XDG_RUNTIME_DIR="$here/run-user"
-refused "the repository's dev shell" home/checkout \
+refused "the repository's dev shell" "$here/home/checkout" \
   HOME="$here/home" XDG_RUNTIME_DIR="$here/run-user" NIX_BUILD_TOP="$here" IN_NIX_SHELL=impure
-refused "a bare environment" home/checkout
+refused "a bare environment" "$here/home/checkout"
 # Nor is the runtime folder alone enough: the daemon is found by both, and
 # Tuple's account and log are kept in its data folder.
-refused "a shell with only its runtime folder in the folder" home \
+refused "a shell with only its runtime folder in the folder" "$here/home" \
   HOME="$here" XDG_RUNTIME_DIR="$here/home/run"
-refused "a shell whose data folder is the person's" home \
+refused "a shell whose data folder is the person's" "$here/home" \
   HOME="$here/home" XDG_RUNTIME_DIR="$here/home/run" XDG_DATA_HOME="$here/data"
+# With no data folder set, Tuple keeps it under the person's home, so a
+# home holding its own runtime folder is still the person's.
+refused "a person's home holding its runtime folder" "$here/home" \
+  HOME="$here/home" XDG_RUNTIME_DIR="$here/home/run"
+# At the root, the folder's paths would begin with two slashes, which no
+# runtime folder does, so that half alone refuses it.
 refused "a shell at the root" / HOME=/ XDG_RUNTIME_DIR=/run
