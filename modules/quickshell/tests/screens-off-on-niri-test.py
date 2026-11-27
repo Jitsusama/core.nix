@@ -163,10 +163,16 @@ def shell(proxy: Proxy) -> Iterator[Shell]:
 
 @pytest.fixture(autouse=True)
 def screens_back_on(shell: Shell) -> Iterator[None]:
-    """Turn the screens back on and close the launcher after each test."""
+    """Turn the screens back on and close the launcher after each test.
+
+    The launcher is closed even when the screens fail to come back on, whose failure is said
+    after, so the next test never starts with it left open.
+    """
     yield
-    shell.as_account("niri msg action power-on-monitors")
-    shell.launcher_left_closed()
+    try:
+        shell.as_account("niri msg action power-on-monitors")
+    finally:
+        shell.launcher_left_closed()
 
 
 def niri_asked(proxy: Proxy, mark: int, asked: bytes = b'"PowerOffMonitors"') -> None:

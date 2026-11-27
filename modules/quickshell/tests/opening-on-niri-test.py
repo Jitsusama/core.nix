@@ -225,12 +225,15 @@ def home_kept_after(shell: Shell) -> Iterator[None]:
     """Close the launcher after each test, and wait until it has kept home for the next.
 
     Home is put back a turn after the card has faded out, so the next test's opening would
-    otherwise race it, and one failing with the launcher open fails alone.
+    otherwise race it, and one failing with the launcher open fails alone. Home is waited for
+    even when the close fails, whose failure is said after, so the next test never races it.
     """
     yield
-    shell.launcher_left_closed()
-    shell.unshared()
-    shell.launcher_until(lambda shown: shown.get("kept"))
+    try:
+        shell.launcher_left_closed()
+    finally:
+        shell.unshared()
+        shell.launcher_until(lambda shown: shown.get("kept"))
 
 
 def openings(shell: Shell) -> list[Json]:
