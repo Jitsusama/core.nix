@@ -55,20 +55,20 @@ QtObject {
 
     // An opening's chord is felt from as its frame was heard, however late
     // openDrawn runs after it, so the keys' and the acts' handlers before
-    // it never lengthen the chord's figure (Pacing.chordBefore).
+    // it never lengthen the chord's figure (Presented.chordBefore).
     function chordBefore(failures) {
         // The chord at wall 1000, the frame heard at mono 5040, and the
         // two clocks read 30 ms after it, at wall 1070 and mono 5070.
         check(failures, "a chord is felt to its frame as heard, not to now",
-            Pacing.chordBefore(1000, 5040, 1070, 5070), 40);
+            Presented.chordBefore(1000, 5040, 1070, 5070), 40);
         check(failures, "read as the frame is heard, the chord's time is all of it",
-            Pacing.chordBefore(1000, 5070, 1070, 5070), 70);
+            Presented.chordBefore(1000, 5070, 1070, 5070), 70);
         check(failures, "read later, the chord's time holds",
-            Pacing.chordBefore(1000, 5040, 1500, 5500), 40);
-        check(failures, "with no chord, none is felt", Pacing.chordBefore(-1, 5040, 1070, 5070),
-            -1);
+            Presented.chordBefore(1000, 5040, 1500, 5500), 40);
+        check(failures, "with no chord, none is felt",
+            Presented.chordBefore(-1, 5040, 1070, 5070), -1);
         check(failures, "a fraction of a millisecond is rounded",
-            Pacing.chordBefore(1000, 5040.4, 1070, 5070), 40);
+            Presented.chordBefore(1000, 5040.4, 1070, 5070), 40);
     }
 
     // An opening says what its own work went on, slowest first, so the

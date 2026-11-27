@@ -408,19 +408,6 @@ function feltBegun(now, clocks = {}) {
         thread: clocks.thread ?? { ran: 0, waited: 0 }, stallThread: { ran: 0, waited: 0 } };
 }
 
-// How many whole ms Joel's chord came before an opening's frame at
-// `sized`, on the monotonic clock (KeyTimes.now) that frame is read on;
-// -1 with no chord (`chordAt` below 0). The chord is a wall time
-// (Date.now), so it's taken across by `wall` and `mono`, the two clocks
-// read side by side now, and the time since the frame, `mono - sized`,
-// comes off: the frame is heard as its swap began, before the keys' and
-// the acts' handlers ran, and a wall read after them alone put the chord
-// that much early, adding their work to the 50 ms bar's figure that the
-// frame's own time left out (stack-20261127T221006270, F1).
-function chordBefore(chordAt, sized, wall, mono) {
-    return chordAt < 0 ? -1 : Math.round(wall - chordAt - (mono - sized));
-}
-
 function feltTicked(felt, now, pace, clocks = {}) {
     if (felt.usable >= 0) {
         return felt;

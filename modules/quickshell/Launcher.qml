@@ -13283,7 +13283,7 @@ Scope {
         // Joel's wait runs from his chord to the frame niri shows at the
         // card's size, so it's felt from here, not from the first frame,
         // and from as that frame was heard, however late this runs.
-        const felt = Pacing.chordBefore(chordAt, sized, Date.now(), KeyTimes.now());
+        const felt = Presented.chordBefore(chordAt, sized, Date.now(), KeyTimes.now());
         feltBegin(felt < 0 ? asked : sized - felt, felt >= 0);
         const heard = Math.round(chordHeardAfter);
         chordAt = -1;
