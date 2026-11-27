@@ -2,6 +2,10 @@
 //! scopes are set, so each is set once and given back once it ages out:
 //! the user manager's runtime properties, through busctl. Which windows
 //! those are is `src/focus.rs`'s to say.
+//!
+//! Long because its tests pin each call busctl is given, and each slice a
+//! give-back names as keeping a window off disk swap, beside the code that
+//! makes them; the code itself is under 400 lines.
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
