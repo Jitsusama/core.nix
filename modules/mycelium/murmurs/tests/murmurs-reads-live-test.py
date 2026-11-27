@@ -75,7 +75,7 @@ HEADLINES = [
 # words at their 84, which must fit the four lines the lede's box holds.
 LEDES = [
     (
-        "Newest in the air, from Keep Optimus Fast and Whole Through Every Switch: the forage "
+        "Newest in the air, from Keep Mycelia Fast and Whole Through Every Switch: the forage "
         "page's title now holds the lines its count takes on a phone, so nothing..."
     ),
     (
