@@ -1,7 +1,5 @@
 //! Whose a red candidate's failed checks are, read from its gate's words.
 
-use serde_json::Value;
-
 use super::*;
 
 /// What a builder says when `name` fails, as nix's `-L` prefixes it.
@@ -689,99 +687,6 @@ fn words_naming_no_failed_derivation_say_nothing_of_whose_the_red_is() {
         Err(Declined::NoLongerEvaluates),
         "unmarked words that a check no longer evaluates were passed over beside a flake"
     );
-}
-
-/// Lent builders that keep each build asked of them, as (flake, checks,
-/// commit), and pass each.
-#[derive(Default)]
-struct Asked(Vec<(String, Vec<String>, String)>);
-
-impl Lent for Asked {
-    fn build(
-        &mut self,
-        _: &Path,
-        flake: &str,
-        _: &Path,
-        checks: &[&str],
-        commit: &str,
-    ) -> (Option<i32>, String) {
-        let checks = checks.iter().map(|check| (*check).to_owned()).collect();
-        self.0.push((flake.to_owned(), checks, commit.to_owned()));
-        (Some(0), String::new())
-    }
-
-    fn named(&self, _: &Path, _: &str, _: &[String]) -> BTreeMap<String, String> {
-        BTreeMap::new()
-    }
-}
-
-/// Which commit each build is at is the whole of the scheme's safety: a
-/// rider's red rebuilt at the base would pass, and land as a flake.
-#[test]
-fn a_flake_is_built_at_the_base_then_at_the_candidate_and_its_finding_names_the_red() {
-    let root = std::env::temp_dir().join(format!("merge-net-excuses-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&root);
-    let (base, candidate) = ("b".repeat(40), "c".repeat(40));
-    let log = super::super::folder(&root).join(format!("{candidate}.log"));
-    fs::create_dir_all(super::super::folder(&root)).unwrap();
-    State::at(root.clone()).make().unwrap();
-    fs::write(&log, words(&["a", "other"], &["a"])).unwrap();
-    let red = Red {
-        checkout: &root,
-        base: &base,
-        candidate: &candidate,
-        log: &log,
-    };
-    let mut asked = Asked::default();
-    let landed = excuses(
-        &root,
-        "https://github.com/someone/core.git",
-        &red,
-        &mut Flakes::default(),
-        &mut asked,
-    );
-    assert!(
-        landed,
-        "a flake, passing at the base and again, split the train"
-    );
-    let at = |flake: &str, checks: &[&str], commit: &str| {
-        (
-            flake.to_owned(),
-            checks
-                .iter()
-                .map(|check| (*check).to_owned())
-                .collect::<Vec<_>>(),
-            commit.to_owned(),
-        )
-    };
-    assert_eq!(
-        asked.0,
-        [
-            at(&format!("github:someone/core/{base}"), &["a"], &base),
-            at(".", &["a"], &candidate),
-            at(".", &["a", "other"], &candidate),
-        ],
-        "a build wasn't at the commit its judging needs"
-    );
-    let findings: Vec<Value> = fs::read_dir(root.join("findings"))
-        .unwrap()
-        .map(|entry| serde_json::from_slice(&fs::read(entry.unwrap().path()).unwrap()).unwrap())
-        .collect();
-    assert_eq!(findings.len(), 1, "a flake's finding wasn't written once");
-    assert_eq!(findings[0]["kind"], "train-flaky");
-    assert_eq!(
-        findings[0]["log"],
-        log.display().to_string(),
-        "a flake's finding didn't name the gate's log, which holds its red"
-    );
-    assert_eq!(
-        findings[0]["rebuilt_log"],
-        built_log(&root, &candidate, "a", "again")
-            .display()
-            .to_string(),
-        "a flake's finding didn't name the rebuild that passed"
-    );
-    fs::remove_dir_all(&root).unwrap();
 }
 
 #[test]

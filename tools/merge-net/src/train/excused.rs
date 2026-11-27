@@ -5,9 +5,16 @@
 //! riding again. nix-offload writes its record only on a pass, so before
 //! these an excused red never recut, and its riders were built again.
 //!
-//! The records sit in the train's own folder, apart from nix-offload's,
-//! which `ready` and `needs` read, so nothing outside the train takes an
-//! excused red for a pass.
+//! The records sit in the train's own folder, `<state>/train/excused`,
+//! apart from nix-offload's, which `ready` and `needs` read, so nothing
+//! outside the train takes an excused red for a pass. Only the train
+//! writes them, through `keep` once it excuses a red, running under the
+//! net's own account in the net's state folder, which nothing else
+//! writes; so a record there is believed as the train's own word.
+//!
+//! A record is read for a day (`KEPT_FOR`) and never after. One past its
+//! day stays on disk until the train next excuses a red, when `keep`
+//! removes it; until then neither `recent` nor `record` reads it.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -67,16 +74,24 @@ pub(super) fn recent(checkout: &Path) -> Vec<String> {
     kept.into_iter().map(|(_, name)| name).collect()
 }
 
-/// The record the train kept of `candidate` beside its `checkout`, or
-/// nothing.
+/// The record the train kept of `candidate` beside its `checkout` within
+/// its day, as `recent` lists them; nothing for one past its day, which
+/// `keep` hasn't removed yet, as no pass speaks for longer.
 pub(super) fn record(checkout: &Path, candidate: &str) -> String {
     if candidate.len() != COMMIT_LENGTH {
+        return String::new();
+    }
+    let file = beside(checkout).join(candidate);
+    let fresh = fs::metadata(&file)
+        .and_then(|kept| kept.modified())
+        .is_ok_and(within_its_day);
+    if !fresh {
         return String::new();
     }
     // Most candidates were never excused, so they have no record, and one
     // that can't be read speaks for no pass either: the recut is then built
     // again, as a red with no record always is.
-    fs::read_to_string(beside(checkout).join(candidate)).unwrap_or_default()
+    fs::read_to_string(file).unwrap_or_default()
 }
 
 /// The folder of records beside the train's `checkout`, which `ride_from`

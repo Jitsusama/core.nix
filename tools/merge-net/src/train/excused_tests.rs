@@ -71,7 +71,11 @@ fn a_record_past_its_day_is_neither_read_nor_kept() {
     let folder = super::super::folder(&root).join("excused");
     fs::create_dir_all(&folder).unwrap();
     let old = folder.join(OLDER);
-    fs::write(&old, "{\"dir\":null,\"run\":[\"--base\",\"x\"]}\n").unwrap();
+    fs::write(
+        &old,
+        format!("{{\"dir\":null,\"run\":[\"--base\",\"{BASE}\"]}}\n"),
+    )
+    .unwrap();
     let day_and_an_hour = Duration::from_hours(25);
     fs::File::options()
         .write(true)
@@ -83,6 +87,11 @@ fn a_record_past_its_day_is_neither_read_nor_kept() {
         recent(&checkout),
         Vec::<String>::new(),
         "a record past its day was read"
+    );
+    assert_eq!(
+        record(&checkout, OLDER),
+        "",
+        "a record past its day was read as a pass, though no excuse kept since removed it"
     );
     let log = root.join("gate.log");
     keep(

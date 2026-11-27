@@ -458,4 +458,6 @@ fn still_passes(checkout: &Path, candidate: &str, main: &str) -> bool {
 }
 
 #[cfg(test)]
+mod still_passes_tests;
+#[cfg(test)]
 mod tests;

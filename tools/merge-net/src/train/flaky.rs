@@ -58,7 +58,7 @@ use serde_json::json;
 
 pub(super) use self::lent::{Lenders, Lent};
 use checks_said::{added, built, held_at, quarantined};
-use owner::{MOST_OWNER_MERGES, owner_in};
+use owner::owner_in;
 
 use super::gated::{CHANGED_FAILED, Gated, RUNS_AGAIN, gated};
 use crate::state::{State, now, short};
@@ -74,14 +74,18 @@ pub(super) enum Blame {
     /// It fails at the base too, but may stop at its first error, so a
     /// rider's break could hide behind main's red.
     Masked,
-    /// It fails at the base too, but the riders moved what a rule runs,
-    /// so their copy of the rule may print main's lines over a break.
+    /// It fails at the base too, but the riders moved a file
+    /// `moves_a_rule` names, or git couldn't list what they moved, so
+    /// their copy of a rule may print main's lines over a break.
     RuleMoved,
-    /// No builder took a build that would judge it.
+    /// No builder passed or failed a build that would judge it: none took
+    /// it, or nix stopped before one could, as an evaluation or a fetch
+    /// that fails at the base does.
     Untaken,
     /// The ride excused it as a flake `MOST_EXCUSED` times already.
     Spent,
-    /// It wasn't built again, since a check before it was the riders'.
+    /// It wasn't built again, since a check before it was taken as the
+    /// riders', for whichever reason that one says.
     Unbuilt,
     /// The riders added it, so its red, flake or break, is theirs.
     Added,
@@ -656,13 +660,9 @@ fn tell(root: &Path, url: &str, red: &Red<'_>, judged: &[(String, Blame)]) {
         if state.found(kind, check, red.base) {
             continue;
         }
-        let owner = owner_in(root, url, red, check, &failed);
-        if owner.is_none() {
-            println!(
-                "merge-net: no merge of the last {MOST_OWNER_MERGES} since the last passed head \
-                 owns {check}"
-            );
-        }
+        let owner = owner_in(root, url, red, check, &failed)
+            .inspect_err(|unowned| println!("merge-net: {}", unowned.said(check)))
+            .ok();
         // The red's own words are the gate's: a flake's rebuild passed.
         let finding = json!({
             "kind": kind,
@@ -689,14 +689,17 @@ fn said(blamed: Blame) -> &'static str {
              riders'"
         }
         Blame::RuleMoved => {
-            "fails at the base too, but its riders moved what the rules run, so it's taken as \
-             its riders'"
+            "fails at the base too, but its riders moved tests/rules, the flake or checks.nix, \
+             or git couldn't list what they moved, so it's taken as its riders'"
         }
-        Blame::Untaken => "wasn't built again, no builder taking it, so it's taken as its riders'",
+        Blame::Untaken => {
+            "wasn't judged, a build of it ending with no builder passing or failing it, so it's \
+             taken as its riders'"
+        }
         Blame::Spent => {
             "was excused as a flake as often as a ride excuses one, so it's taken as its riders'"
         }
-        Blame::Unbuilt => "wasn't built again, a check before it being its riders'",
+        Blame::Unbuilt => "wasn't built again, as a check before it was taken as its riders'",
         Blame::Added => "was added by its riders, so it's theirs",
         Blame::Flaky => "passed at the base and when built again, so it's a flake",
         Blame::Main => "fails at the base too, and only as it fails there, so it's main's",
@@ -765,6 +768,9 @@ mod owner_tests;
 #[cfg(test)]
 #[path = "flaky/checks_said_tests.rs"]
 mod checks_said_tests;
+#[cfg(test)]
+#[path = "flaky/excuses_tests.rs"]
+mod excuses_tests;
 #[cfg(test)]
 #[path = "flaky/tests.rs"]
 mod tests;

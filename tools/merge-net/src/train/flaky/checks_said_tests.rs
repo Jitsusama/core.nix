@@ -15,10 +15,13 @@ use crate::world::QUARANTINE;
 const HELD: &str = "the-launcher-lists-inkscapes-drawings-lately";
 
 /// What changed-checks says of `check` when the quarantine excuses its
-/// failure.
+/// failure, word for word as its `building::built` prints it for an entry
+/// holding the whole test, its why from `Held::said` and its reason as the
+/// quarantine list words one, so the fixture is a line it really prints.
 fn excused_by_quarantine(check: &str) -> String {
     format!(
-        "changed-checks: {check} failed, but main's quarantine holds it, so it blocks nothing\n"
+        "changed-checks: {check} failed, but main quarantines it (failed, then passed, at \
+         042387bc604a; #3304 owns it), so it blocks nothing\n"
     )
 }
 
