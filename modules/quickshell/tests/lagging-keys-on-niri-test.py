@@ -20,9 +20,10 @@ import time
 from typing import TYPE_CHECKING
 
 import launcher_on_niri
+import pytest
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
 
     from launcher_on_niri import Json, Shell
 
@@ -52,9 +53,21 @@ PROGRAMS_DRAWER = re.compile(r'drawer for "program:([A-Za-z0-9][A-Za-z0-9.-]*)"'
 # Any program's drawer line, shaped as PROGRAMS_DRAWER or said by its kind alone, but not one of
 # another kind that begins with program's word.
 A_PROGRAMS_DRAWER = re.compile(r'drawer for "program[:"]')
+# How many of the launcher's newest lines a case that fails gives, since the check prints only
+# the shell log's tail, which a later case's lines fill (#6855's merge run, 2026-11-26).
+LINES_GIVEN = 30
+# How many rows the launcher lists for an arrow to have somewhere to move the selection.
+ROWS_TO_MOVE = 2
 
 # The shell, started once for the file's cases.
 shell = launcher_on_niri.shell
+
+
+@pytest.fixture(autouse=True)
+def launcher_closed_after(shell: Shell) -> Iterator[None]:
+    """Close the launcher after each case, so one failing with it open fails alone."""
+    yield
+    shell.launcher_left_closed()
 
 
 def keys_said(shell: Shell, mark: int) -> list[str]:
@@ -83,29 +96,40 @@ def said_by(
     return said
 
 
-def test_an_arrow_is_said_whole(shell: Shell) -> None:
-    """An arrow is said as itself, since the launcher names it and nobody typed it.
+def where(shell: Shell) -> tuple[object, int]:
+    """Give the name of the row the launcher has selected, and how many rows it lists."""
+    shown = shell.showing()
+    return (shown["selected"] or {}).get("name"), len(shown["rows"])
 
-    A try presses one arrow, down and up in turn, and gives it WRITTEN_WITHIN to be said before
-    the next. Pressed two a try, back to back, no try in six said an arrow on a loaded lender
-    (#6855's merge run, 2026-11-26), where alone the case passed five times in five. Why isn't
-    known: two arrows heard in one turn, or drawn in one frame, are a hypothesis no run has
-    shown, and one arrow a try is neither while its frame comes within WRITTEN_WITHIN. The row
-    selected before each press is kept, so a failure says whether the arrows moved it at all.
+
+def test_an_arrow_is_said_whole(shell: Shell) -> None:
+    """Down and up are each said as themselves, since the launcher names them and nobody typed.
+
+    A try presses one arrow, down and up in turn, each given WRITTEN_WITHIN to be said before the
+    next, until both have been. An arrow that moves nothing is never timed (Launcher.qml's
+    arrowed), so the case waits for a second row first. Pressed two a try, back to back, no try
+    in six said an arrow on a loaded lender (#6855's merge run, 2026-11-26), where alone the
+    case passed five times in five, and why isn't known. So a failure gives the row selected
+    and the rows listed before each press and after the last, and the launcher's own lines.
     """
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
+    shell.launcher_until(lambda shown: len(shown["rows"]) >= ROWS_TO_MOVE)
     arrows = itertools.cycle(["down", "up"])
-    selected: list[object] = []
+    seen: list[tuple[object, int]] = []
+    mark = shell.mark()
 
     def an_arrow() -> None:
-        selected.append((shell.showing()["selected"] or {}).get("name"))
+        seen.append(where(shell))
         shell.send_key(next(arrows))
 
-    said = said_by(shell, an_arrow, lambda keys: bool(ARROWS & set(keys)))
+    said = said_by(shell, an_arrow, lambda keys: set(keys) >= ARROWS)
+    seen.append(where(shell))
     shell.close_launcher()
-    unsaid = f"no arrow was said as itself: {said}, the row selected before each: {selected}"
-    assert ARROWS & set(said), unsaid
+    logged = launcher_on_niri.logged_since(shell, mark).splitlines()
+    lines = "\n".join([line for line in logged if "launcher: " in line][-LINES_GIVEN:])
+    unsaid = f"an arrow went unsaid as itself: {said}\nselected, of rows listed: {seen}\n{lines}"
+    assert set(said) >= ARROWS, unsaid
     assert "1 letter" not in said, f"an arrow was counted as typed: {said}"
 
 
