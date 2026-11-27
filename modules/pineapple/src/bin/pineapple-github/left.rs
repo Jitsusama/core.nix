@@ -72,7 +72,12 @@ impl Left {
         let at = now();
         let say =
             |from: Option<u64>, to: u64, whole: bool| self.thread_row(thread, from, to, at, whole);
-        self.keep(say(Some(from.saturating_mul(1000)), at, true), at, say, aloud)
+        self.keep(
+            say(Some(from.saturating_mul(1000)), at, true),
+            at,
+            say,
+            aloud,
+        )
     }
 
     /// The row saying what `login`'s search never read, from `from` to

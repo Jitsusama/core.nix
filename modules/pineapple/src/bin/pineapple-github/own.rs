@@ -549,8 +549,7 @@ mod tests {
     #[test]
     fn a_span_whose_row_stays_unwritten_is_let_go_after_its_rounds() {
         assert_eq!(
-            UNTOLD_ROUNDS,
-            360,
+            UNTOLD_ROUNDS, 360,
             "a rows file that stays broken holds a span about three hours"
         );
         let rows = Rows::new("own-untold");
