@@ -488,16 +488,19 @@ fn withdrawals(mut kept: BTreeSet<String>, heard: &[(Message, i64)]) -> BTreeSet
 
 /// Of those `withdrawn`, the ones kept for later hours, as of `now` in
 /// seconds: each as long as the line it withdraws could be, since that
-/// may be written here later. One stamped over an hour past now, or
-/// running long, would only grow the kept file every hour, so it is let
-/// go; it was applied to this hour's lines all the same.
+/// may be written here later. One stamped up to a day past now is kept,
+/// since a sender whose clock runs more than an hour fast may have its
+/// line relayed here late, and that line must still stay out. One
+/// stamped further ahead, or running long, would only grow the kept file
+/// every hour, so it is let go; it was applied to this hour's lines all
+/// the same.
 fn kept_withdrawals(withdrawn: &BTreeSet<String>, now: i64) -> BTreeSet<String> {
     withdrawn
         .iter()
         .filter(|id| {
             id.len() <= WITHDRAWAL_AT_MOST
                 && stamped_at(id)
-                    .is_some_and(|ms| ms > (now - KEPT_FOR) * 1000 && ms <= now * 1000 + SLACK_MS)
+                    .is_some_and(|ms| ms > (now - KEPT_FOR) * 1000 && ms <= (now + DAY) * 1000)
         })
         .cloned()
         .collect()
