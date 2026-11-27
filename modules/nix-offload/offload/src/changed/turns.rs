@@ -14,6 +14,9 @@
 //! whichever waiter looked first taking a freed turn, three runs waited
 //! out their callers' 90-minute limits while later runs went ahead, and
 //! none said how long it might be.
+//!
+//! Long because its cases are over half of it: each holds real locks on
+//! the turns' and the line's files, which only a folder of its own shows.
 
 use std::fs;
 use std::io;
@@ -130,8 +133,9 @@ fn turn_of(
     full: &str,
 ) -> io::Result<Option<fs::File>> {
     // A free turn is taken at once only while no run waits in line, so a
-    // run that has just come never goes ahead of one that's waited.
-    let (turn, unusable) = if Ticket::waiting(turns, name, None)? == 0 {
+    // run that has just come never goes ahead of one that's waited. A line
+    // that can't be read is no line, so the turns still bound the runs.
+    let (turn, unusable) = if Ticket::waiting(turns, name, None).unwrap_or(0) == 0 {
         free(turns, name, count)?
     } else {
         (None, Vec::new())
@@ -160,14 +164,29 @@ const SAID_EVERY: Duration = Duration::from_mins(5);
 
 /// One of `count` turns named `name` once one is free and no run that
 /// came before this one still waits for it, looking again every half
-/// second, and saying every [`SAID_EVERY`] how many wait ahead.
+/// second, and saying every [`SAID_EVERY`] how many wait ahead. Where the
+/// line can't be used, said once, the first to look takes a freed turn,
+/// as before there was a line, rather than the run going out uncounted.
 fn waited(turns: &Path, name: &str, count: u32) -> io::Result<fs::File> {
-    let ticket = Ticket::taken(turns, name)?;
+    let ticket = Ticket::taken(turns, name)
+        .inspect_err(|error| {
+            eprintln!(
+                "nix-offload: the line for the turns named {name} can't be used ({error}), so \
+                 this takes the first turn freed"
+            );
+        })
+        .ok();
+    let ahead_of = |ticket: &Option<Ticket>| {
+        ticket.as_ref().map_or(0, |ticket| {
+            ticket.looked();
+            Ticket::waiting(turns, name, Some(ticket)).unwrap_or(0)
+        })
+    };
     let began = Instant::now();
-    let first = Ticket::waiting(turns, name, Some(&ticket))?;
+    let first = ahead_of(&ticket);
     let mut said = began;
     loop {
-        let ahead = Ticket::waiting(turns, name, Some(&ticket))?;
+        let ahead = ahead_of(&ticket);
         if ahead == 0
             && let (Some(turn), _) = free(turns, name, count)?
         {
@@ -192,16 +211,51 @@ fn standing(ahead: usize, first: usize, waited: Duration) -> String {
     if ahead == 0 {
         return format!("this run is next for a turn, after {minutes} min waiting");
     }
+    let runs = if ahead == 1 {
+        "1 run waits".to_owned()
+    } else {
+        format!("{ahead} runs wait")
+    };
     if gone == 0 {
-        return format!(
-            "{ahead} runs wait ahead of this one, and none has had its turn in {minutes} min"
-        );
+        return format!("{runs} ahead of this one, and none has had its turn in {minutes} min");
     }
     let likely = waited.as_secs() * ahead as u64 / gone as u64 / 60;
     format!(
-        "{ahead} runs wait ahead of this one; at the pace since it came, its turn is about \
-         {likely} min off"
+        "{runs} ahead of this one; at the pace since it came, its turn is about {likely} min \
+         off"
     )
+}
+
+/// How long a waiting run's ticket may go unlooked at before it stops
+/// counting: a run stopped while it waits, as by a ^Z, keeps its lock but
+/// doesn't look, and would otherwise hold every run behind it while turns
+/// sat free. It counts again once it looks, so it keeps its place.
+const LOOKED_WITHIN: Duration = Duration::from_secs(30);
+
+/// The folder of the line for `name`, refused when it's a link, so no run
+/// clears plain files in a folder a link names.
+fn line_of(turns: &Path, name: &str) -> io::Result<PathBuf> {
+    let line = turns.join(format!("{name}.line"));
+    match fs::symlink_metadata(&line) {
+        Ok(found) if !found.is_dir() => Err(io::Error::other(format!(
+            "{} isn't a folder of its own",
+            line.display()
+        ))),
+        Ok(_) => Ok(line),
+        Err(error) => Err(error),
+    }
+}
+
+/// Whether `named` is a ticket's name, as [`Ticket::taken`] makes them:
+/// when it came, in 24 digits, then the run's process and its count, so
+/// nothing else in the line's folder is ever counted or cleared.
+fn is_ticket(named: &str) -> bool {
+    let parts: Vec<_> = named.split('-').collect();
+    parts.len() == 3
+        && parts[0].len() == 24
+        && parts
+            .iter()
+            .all(|part| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit()))
 }
 
 /// A run's place in the line for the turns named `name`: a file in
@@ -211,7 +265,7 @@ fn standing(ahead: usize, first: usize, waited: Duration) -> String {
 #[derive(Debug)]
 struct Ticket {
     at: PathBuf,
-    _held: fs::File,
+    held: fs::File,
 }
 
 impl Ticket {
@@ -219,8 +273,8 @@ impl Ticket {
     fn taken(turns: &Path, name: &str) -> io::Result<Self> {
         /// Tells apart tickets one process takes in the same nanosecond.
         static TAKEN: AtomicU64 = AtomicU64::new(0);
-        let line = turns.join(format!("{name}.line"));
-        fs::create_dir_all(&line)?;
+        fs::create_dir_all(turns.join(format!("{name}.line")))?;
+        let line = line_of(turns, name)?;
         let came = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
@@ -234,34 +288,53 @@ impl Ticket {
         let held = crate::there::open_turn(&making, true).map_err(io::Error::other)?;
         held.lock()?;
         let at = line.join(named);
-        fs::rename(&making, &at)?;
-        Ok(Self { at, _held: held })
+        fs::rename(&making, &at).inspect_err(|_| {
+            let _ = fs::remove_file(&making);
+        })?;
+        Ok(Self { at, held })
+    }
+
+    /// Marks the ticket looked at now, so it keeps counting ([`LOOKED_WITHIN`]).
+    fn looked(&self) {
+        let _ = self.held.set_modified(SystemTime::now());
     }
 
     /// How many runs wait in line for `name`, of those before `mine` when
-    /// it's given: a ticket counts while its run holds its lock, and one
-    /// left by a run that died is cleared as it's found.
+    /// it's given: a ticket counts while its run holds its lock and has
+    /// looked within [`LOOKED_WITHIN`], and one left by a run that died is
+    /// cleared as it's found.
     fn waiting(turns: &Path, name: &str, mine: Option<&Self>) -> io::Result<usize> {
-        let line = turns.join(format!("{name}.line"));
-        let tickets = match fs::read_dir(&line) {
-            Ok(tickets) => tickets,
+        let line = match line_of(turns, name) {
+            Ok(line) => line,
             Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(0),
             Err(error) => return Err(error),
         };
+        let tickets = fs::read_dir(&line)?;
         let mine = mine.and_then(|mine| mine.at.file_name().map(ToOwned::to_owned));
         let mut ahead = 0;
         for ticket in tickets.flatten() {
             let named = ticket.file_name();
             let before = mine.as_ref().is_none_or(|mine| named < *mine);
-            if named.to_string_lossy().starts_with('.') || !before {
+            if !is_ticket(&named.to_string_lossy()) || !before {
                 continue;
             }
             // A ticket that's a link or can't be read is no run's.
             let Ok(file) = crate::there::open_turn(&ticket.path(), false) else {
                 continue;
             };
-            match file.try_lock() {
-                Err(fs::TryLockError::WouldBlock) => ahead += 1,
+            // Shared, so a ticket another run is clearing still reads as
+            // no live run's rather than one that waits.
+            match file.try_lock_shared() {
+                Err(fs::TryLockError::WouldBlock) => {
+                    let looked = file.metadata().and_then(|found| found.modified());
+                    let lately = looked
+                        .ok()
+                        .and_then(|at| at.elapsed().ok())
+                        .is_none_or(|since| since < LOOKED_WITHIN);
+                    if lately {
+                        ahead += 1;
+                    }
+                }
                 Ok(()) => {
                     let _ = fs::remove_file(ticket.path());
                 }
@@ -689,12 +762,72 @@ mod tests {
         assert!(!dead.exists(), "a dead run's ticket was left in line");
     }
 
+    // A run stopped while it waits keeps its lock but doesn't look, so its
+    // ticket stops holding the line, and holds it again once it looks.
+    #[test]
+    fn a_ticket_not_looked_at_lately_doesnt_hold_the_line() {
+        let turns = tempfile::tempdir().unwrap();
+        let line = turns.path().join("changed-builder.line");
+        fs::create_dir_all(&line).unwrap();
+        let stopped = fs::File::create(line.join(format!("{:024}-1-0", 1))).unwrap();
+        stopped.lock().unwrap();
+        stopped
+            .set_modified(SystemTime::now() - LOOKED_WITHIN * 2)
+            .unwrap();
+        assert!(
+            matches!(sending(turns.path(), "builder", true, false), Turn::Had(_)),
+            "a stopped run's ticket held the line while every turn was free"
+        );
+        stopped.set_modified(SystemTime::now()).unwrap();
+        assert!(
+            matches!(sending(turns.path(), "builder", true, false), Turn::Full),
+            "a run went ahead of one that waits and has just looked"
+        );
+    }
+
+    // A line that's a link is no line: nothing in the folder it names is
+    // cleared, and the turns still bound the runs.
+    #[test]
+    fn a_line_that_is_a_link_clears_nothing_where_it_points() {
+        let turns = tempfile::tempdir().unwrap();
+        let elsewhere = turns.path().join("elsewhere");
+        fs::create_dir_all(&elsewhere).unwrap();
+        let kept = [
+            elsewhere.join("notes"),
+            elsewhere.join(format!("{:024}-1-0", 1)),
+        ];
+        for file in &kept {
+            fs::write(file, "").unwrap();
+        }
+        std::os::unix::fs::symlink(&elsewhere, turns.path().join("changed-builder.line")).unwrap();
+        let held: Vec<_> = (0..EACH)
+            .map(|_| sending(turns.path(), "builder", true, false))
+            .collect();
+        assert!(
+            held.iter()
+                .all(|turn| matches!(turn, Turn::Had(files) if files.len() == 1)),
+            "a run lost its turn to a line that's a link: {held:?}"
+        );
+        assert!(
+            matches!(sending(turns.path(), "builder", true, false), Turn::Full),
+            "a fifth run went to a builder running four past a linked line"
+        );
+        assert!(
+            kept.iter().all(|file| file.exists()),
+            "a file the linked line names was cleared"
+        );
+    }
+
     #[test]
     fn a_waiting_run_says_how_many_are_ahead_and_how_long_is_likely() {
         let minutes = |m: u64| Duration::from_secs(m * 60);
         assert_eq!(
             standing(0, 3, minutes(20)),
             "this run is next for a turn, after 20 min waiting"
+        );
+        assert_eq!(
+            standing(1, 1, minutes(5)),
+            "1 run waits ahead of this one, and none has had its turn in 5 min"
         );
         assert_eq!(
             standing(4, 4, minutes(10)),
