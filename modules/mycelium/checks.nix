@@ -1537,13 +1537,14 @@ in
   # mycelium's to keep, not this check's. An unfenced one says none, so mycelium
   # refuses it. A machine kept lively says its ceiling, which the locked
   # mycelium reads as a Lively whose fields are pinned to the names and
-  # types written here, memory_full from the lock that first has it;
-  # nothing over Lively may refuse a field it doesn't know, or a node on a
-  # lock from before memory_full would drop the whole ceiling naming it.
+  # types written here, memory_full, then io_full, then io_full_from from
+  # the lock that first has each; nothing over Lively may refuse a field it
+  # doesn't know, or a node on a lock from before one would drop the whole
+  # ceiling naming it.
   # One that declares nothing has no file, which mycelium reads as unknown.
   mycelium-declares-what-a-machine-says =
     holds "mycelium-declares-what-a-machine-says"
-      "What a machine declares, its probes of either kind included, isn't written in mycelium's shape, its node doesn't say whether a call is on there with a-call-is-on asked about that machine alone, a held session's outlives isn't each system's, a fence it doesn't say is written, whether pi fences itself isn't written only when a Mac says so beside its fences or isn't refused on Linux, doors it accepts for another machine aren't or take a machine no realm could name, an agent's run in a fenced or strict fence isn't said to start through its system's launcher, an unfenced one's is, one is when runs are refused, a machine of either system can't declare every fence, a machine kept lively doesn't say its ceiling, a memory_full of 0 included, or one not kept lively says one, the locked mycelium doesn't read the ceiling as kept_lively, an Option<Lively> of cpu as u32, memory_available as Option<u64> and, once it has it, memory_full as Option<u32>, read from a scan failing on any line it can't read, or something over Lively refuses fields it doesn't know, or a machine declaring nothing gets a file anyway."
+      "What a machine declares, its probes of either kind included, isn't written in mycelium's shape, its node doesn't say whether a call is on there with a-call-is-on asked about that machine alone, a held session's outlives isn't each system's, a fence it doesn't say is written, whether pi fences itself isn't written only when a Mac says so beside its fences or isn't refused on Linux, doors it accepts for another machine aren't or take a machine no realm could name, an agent's run in a fenced or strict fence isn't said to start through its system's launcher, an unfenced one's is, one is when runs are refused, a machine of either system can't declare every fence, a machine kept lively doesn't say its ceiling, a memory_full or io_full of 0 and the groups io_full is read from included, one not kept lively says one or one naming no groups names some, the locked mycelium doesn't read the ceiling as kept_lively, an Option<Lively> of cpu as u32, memory_available as Option<u64> and, once it has each, memory_full and io_full as Option<u32> and io_full_from as Vec<String>, read from a scan failing on any line it can't read, or something over Lively refuses fields it doesn't know, or a machine declaring nothing gets a file anyway."
       (
         let
           # The locked ceiling's fields, and the field Declared reads it
@@ -1567,6 +1568,22 @@ in
             name = "memory_full";
             type = "Option<u32>";
           };
+          ioFull = {
+            name = "io_full";
+            type = "Option<u32>";
+          };
+          ioFullFrom = {
+            name = "io_full_from";
+            type = "Vec<String>";
+          };
+          newest = held ++ [
+            memoryFull
+            ioFull
+            ioFullFrom
+          ];
+          # Each shape a lock has read it in, oldest first: the held fields,
+          # then each the one before with the next part it gained.
+          shapes = map (count: lib.take count newest) (lib.range (lib.length held) (lib.length newest));
         in
         declared linux == {
           reach = [ "internet" ];
@@ -1634,13 +1651,52 @@ in
             memory_full = 0;
           }
         )
+        && (
+          (declaredAs {
+            keptLively = {
+              cpu = 28;
+              ioFull = 1;
+            };
+          }).kept_lively or null == {
+            cpu = 28;
+            io_full = 1;
+          }
+        )
+        # A ceiling of no disk stall at all is written, not taken for none,
+        # and naming no groups to read it from names none.
+        && (
+          (declaredAs {
+            keptLively = {
+              cpu = 28;
+              ioFull = 0;
+              ioFullFrom = [ ];
+            };
+          }).kept_lively or null == {
+            cpu = 28;
+            io_full = 0;
+          }
+        )
+        && (
+          (declaredAs {
+            keptLively = {
+              cpu = 28;
+              ioFull = 1;
+              ioFullFrom = [ "agents.slice" ];
+            };
+          }).kept_lively or null == {
+            cpu = 28;
+            io_full = 1;
+            io_full_from = [ "agents.slice" ];
+          }
+        )
         # The lock reads it as written: kept_lively an Option<Lively>, each
-        # field its name and type here, memory_full from the lock that first
-        # has it, and nothing over Lively refusing a field it doesn't know.
+        # field its name and type here, memory_full, io_full and
+        # io_full_from each from the lock that first has it, and nothing
+        # over Lively refusing a field it doesn't know.
         && keptLively.type or null == "Option<Lively>"
         && lively != null
         && !lib.any (lib.hasInfix "deny_unknown_fields") lively.over
-        && (ceiling == held || ceiling == held ++ [ memoryFull ])
+        && lib.elem ceiling shapes
         && !((launching mac everyKind) ? pi_fences_itself)
         && (saidBy (selfFenced mac)).pi_fences_itself or false
         && (saidBy (selfFenced mac)).fence.strict.runs or null == macLauncher
