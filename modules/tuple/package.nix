@@ -1,9 +1,15 @@
 # Tuple's Linux alpha, newer than nixpkgs' v2026_09_16.1: v2026_11_25.0.
-# tuple-completes-in-zsh fails unless Tab offers its call, contacts,
-# state and webcam commands, among them call join, leave, mute, unmute
-# and start, and webcam start. Nothing checks the other commands run
-# against it: share, call accept and state follow from tuple-call,
-# contacts follow from tuple-people, and contacts favorite from the shell.
+# tuple-completes-in-zsh fails unless Tab offers each command core runs
+# against it, and each flag tuple-call and tuple-people pass as they
+# follow it. That shows they're there, not that they do as before.
+# tuple-ends-its-flags fails unless "--" still ends tuple's flags before a
+# contact, which the launcher's call, join and star rows rely on. No check
+# reads the other arguments they take. On v2026_11_25.0, `tuple help <cmd>`
+# printed a command's arguments without running it, where `tuple new --help`
+# failed with "too many cmdline args"; no check holds either, so read the
+# help in the build sandbox, not on a machine signed in. This build calls
+# new and share deprecated, which tuple-call runs to open Joel's room and
+# share his screen, so a later one may drop them.
 # New strings say a camera's or a video's colour space isn't handled, one
 # adding that it's converted as BT.601 limited; nobody has yet seen Tuple
 # say them. The log lines and stream keys tuple-call reads, the contacts'

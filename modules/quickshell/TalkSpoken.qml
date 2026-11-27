@@ -105,9 +105,11 @@ Item {
                     readonly property int saidLines: line.lineCount
                     readonly property int answerLines: answers.visible
                         ? answers.lineCount : 0
+                    readonly property int takeLines: takes.visible ? takes.lineCount : 0
 
                     width: spoken.width
-                    height: (saidLines + answerLines + (stands.visible ? 1 : 0)) * pitch
+                    height: (saidLines + answerLines + takeLines + (stands.visible ? 1 : 0))
+                        * pitch
                     // The one text column every answer holds, up to where a time
                     // stands, whoever answered, so no answer is pushed in by a long
                     // name (Joel at 17:49 on 2026-11-13, [0adc518f]).
@@ -205,13 +207,34 @@ Item {
                         onXChanged: answers.forceLayout()
                     }
 
+                    // What a session's question takes, under it in the answers' face, wrapped
+                    // and never elided, however long the question or its choices, so Return
+                    // never answers by a choice cut from view.
+                    Text {
+                        id: takes
+                        visible: text !== ""
+                        x: spoken.textAt
+                        y: (told.saidLines + told.answerLines + 1) * told.pitch
+                            - baselineOffset
+                        width: told.column
+                        text: told.modelData.takes ?? ""
+                        textFormat: Text.PlainText
+                        color: Theme.text
+                        wrapMode: Text.Wrap
+                        lineHeight: told.pitch
+                        lineHeightMode: Text.FixedHeight
+                        font.family: Theme.level.words.family
+                        font.pointSize: Theme.level.words.pointSize
+                        font.variableAxes: Theme.level.words.variableAxes
+                    }
+
                     Text {
                         id: stands
                         readonly property bool waits: told.modelData.waiting !== ""
                         visible: text !== ""
                         x: spoken.textAt
-                        y: (told.saidLines + told.answerLines + 1) * told.pitch
-                            - baselineOffset
+                        y: (told.saidLines + told.answerLines + told.takeLines + 1)
+                            * told.pitch - baselineOffset
                         width: told.width - x
                         text: waits ? told.modelData.waiting : told.modelData.stands
                         textFormat: Text.PlainText

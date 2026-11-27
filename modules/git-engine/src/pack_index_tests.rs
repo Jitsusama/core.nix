@@ -56,6 +56,15 @@ fn file(name: &str, bytes: &[u8]) -> std::path::PathBuf {
     path
 }
 
+/// What `open` makes of `bytes` in a file of their own, which goes once
+/// it's opened: a reader keeps its file open, so it reads on.
+fn opened<T>(name: &str, bytes: &[u8], open: impl FnOnce(&Path) -> T) -> T {
+    let path = file(name, bytes);
+    let opened = open(&path);
+    std::fs::remove_file(&path).expect("the temp file goes");
+    opened
+}
+
 /// Git ends each index with the checksums of its pack and of itself,
 /// which nothing here reads but a window of names may run into.
 fn trailed(mut bytes: Vec<u8>) -> Vec<u8> {
@@ -85,13 +94,19 @@ fn version_1(names: &[[u8; 20]]) -> Vec<u8> {
 }
 
 pub(crate) fn version_2(names: &[[u8; 20]]) -> Vec<u8> {
+    version_2_at(names, &offsets(names))
+}
+
+/// A version 2 index saying each of `names`, sorted, lies at its offset
+/// in `at`.
+pub(crate) fn version_2_at(names: &[[u8; 20]], at: &[u64]) -> Vec<u8> {
     let mut bytes = b"\xfftOc".to_vec();
     bytes.extend(be32(2));
     bytes.extend(fanout(names));
     bytes.extend(names.concat());
     bytes.extend(vec![0; 4 * names.len()]);
     let mut large: Vec<u64> = Vec::new();
-    for offset in offsets(names) {
+    for &offset in at {
         if let Ok(small) = u32::try_from(offset)
             && small & 0x8000_0000 == 0
         {
@@ -175,7 +190,7 @@ fn found(index: &Index) -> Vec<Option<u64>> {
 #[test]
 fn a_version_1_index_finds_each_name_where_its_pack_holds_it() {
     let names = sorted();
-    let index = Index::open(&file("v1.idx", &version_1(&names))).expect("it opens");
+    let index = opened("v1.idx", &version_1(&names), Index::open).expect("it opens");
     // Version 1 holds four bytes of offset, so a larger one reads as
     // the fixture writes it in their place.
     let mut want: Vec<Option<u64>> = offsets(&names)
@@ -206,7 +221,7 @@ fn names_too_many_to_scan_at_once_are_found_by_guessing_where_they_lie() {
     // More than two windows under one first byte, so the search guesses
     // rather than reading the whole span.
     let names = crowded(WINDOW * 5);
-    let index = Index::open(&file("crowded.idx", &version_2(&names))).expect("it opens");
+    let index = opened("crowded.idx", &version_2(&names), Index::open).expect("it opens");
     for (name, offset) in names.iter().zip(offsets(&names)) {
         assert_eq!(
             index.offset(&Oid(*name)).expect("the index reads"),
@@ -227,7 +242,7 @@ fn names_too_many_to_scan_at_once_are_found_by_guessing_where_they_lie() {
 #[test]
 fn a_version_2_index_finds_an_offset_past_four_bytes_in_its_large_table() {
     let names = sorted();
-    let index = Index::open(&file("v2.idx", &version_2(&names))).expect("it opens");
+    let index = opened("v2.idx", &version_2(&names), Index::open).expect("it opens");
     let mut want: Vec<Option<u64>> = offsets(&names).into_iter().map(Some).collect();
     want.push(None);
     assert_eq!(found(&index), want);
@@ -236,7 +251,7 @@ fn a_version_2_index_finds_an_offset_past_four_bytes_in_its_large_table() {
 #[test]
 fn a_multi_pack_index_says_which_pack_holds_each_name_and_where() {
     let packs = ["pack-a.idx", "pack-b.idx"];
-    let midx = Midx::open(&file("multi-pack-index", &midx(&packs, 2, None))).expect("it opens");
+    let midx = opened("multi-pack-index", &midx(&packs, 2, None), Midx::open).expect("it opens");
     assert_eq!(midx.packs, packs);
     let names = sorted();
     let located: Vec<_> = names
@@ -257,7 +272,7 @@ fn a_multi_pack_index_says_which_pack_holds_each_name_and_where() {
 
 /// Why `bytes` aren't taken as a multi-pack-index, as its error says.
 fn refusal(name: &str, bytes: &[u8]) -> String {
-    match Midx::open(&file(name, bytes)) {
+    match opened(name, bytes, Midx::open) {
         Ok(midx) => panic!("{name} was taken, naming {:?}", midx.packs),
         Err(error) => error.to_string(),
     }
@@ -290,6 +305,38 @@ fn a_multi_pack_index_naming_a_file_outside_the_pack_folder_is_refused() {
         "multi-pack-index pack name",
         "a pack name that isn't UTF-8 wasn't refused for its name"
     );
+}
+
+#[test]
+fn pack_names_past_one_read_are_read_whole_across_its_edge() {
+    // A hundred names of 50 bytes each, NUL and all, take 5000, past one
+    // read, with a name lying across its edge; at 64 bytes each, a NUL
+    // ends the first read exactly.
+    for (digits, across, edge) in [(40, true, "a name across"), (54, false, "a NUL ending")] {
+        let owned: Vec<String> = (0..100)
+            .map(|at| format!("pack-{at:0digits$}.idx"))
+            .collect();
+        let ends: Vec<u64> = owned
+            .iter()
+            .scan(0, |end, name| {
+                *end += name.len() as u64 + 1;
+                Some(*end)
+            })
+            .collect();
+        let lies_there = if across {
+            ends.windows(2)
+                .any(|pair| pair[0] < NAMES_READ && pair[1] > NAMES_READ)
+        } else {
+            ends.contains(&NAMES_READ)
+        };
+        assert!(lies_there, "no {edge} a read's edge, so it goes untried");
+        let packs: Vec<&str> = owned.iter().map(String::as_str).collect();
+        let midx = opened("many-packs", &midx(&packs, 100, None), Midx::open).expect("it opens");
+        assert_eq!(
+            midx.packs, owned,
+            "the names were read wrong with {edge} a read's edge"
+        );
+    }
 }
 
 #[test]
@@ -342,7 +389,7 @@ fn a_multi_pack_index_naming_a_pack_past_what_a_file_name_holds_is_refused() {
     for (len, taken) in [(255, true), (256, false), (300, false)] {
         let long = format!("{}.idx", "x".repeat(len - 4));
         let bytes = midx(&["pack-a.idx", &long], 2, None);
-        match Midx::open(&file("names-long", &bytes)) {
+        match opened("names-long", &bytes, Midx::open) {
             Ok(_) => assert!(taken, "a pack name of {len} bytes was taken"),
             Err(error) => assert!(
                 !taken && error.to_string() == "multi-pack-index pack name",
@@ -428,7 +475,8 @@ fn a_large_offset_past_its_chunk_is_refused_rather_than_read_from_the_next() {
     // with the object names' chunk after it rather than the checksum.
     let names_at = chunk_at(&whole, 2) as u64;
     for (at, held) in [(body, 0), (body - 4, 0), (body - 8, 1), (names_at - 8, 1)] {
-        let midx = Midx::open(&file("loff-short", &moved(whole.clone(), 4, at))).expect("it opens");
+        let midx =
+            opened("loff-short", &moved(whole.clone(), 4, at), Midx::open).expect("it opens");
         let refused = midx.locate(&last).err().map(|error| error.to_string());
         assert_eq!(
             refused.as_deref(),

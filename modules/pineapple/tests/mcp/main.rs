@@ -1,6 +1,7 @@
 //! A tool gateway's tools called over HTTP, against a fake gateway on a
 //! port of this machine's own: what it is asked, in what order, with which
-//! session and sign-in, and what the caller is told.
+//! session and sign-in, and what the caller is told. What Joel's phone is
+//! told through the tool that sends to him alone is in phone.rs.
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
@@ -14,6 +15,8 @@ use pineapple::mcp::{Called, Gateway};
 use pineapple::sign_in::SignIn;
 use serde_json::{Value, json};
 
+mod phone;
+
 /// One request the fake gateway took.
 #[derive(Clone, Debug)]
 struct Seen {
@@ -26,6 +29,7 @@ struct Seen {
 
 /// What the fake gateway answers: its status, the session it names and
 /// its body, with the type the body is sent as.
+#[derive(Clone)]
 struct Reply {
     status: u16,
     session: Option<&'static str>,
@@ -586,7 +590,13 @@ fn an_answer_that_isnt_json_rpc_is_unreadable_unless_the_gateway_is_down_or_busy
         ("text/html", "<html>sign in</html>"),
         ("application/json", r#"{"message":"slow down"}"#),
     ];
-    for (code, unreadable) in [(200, true), (400, true), (429, false), (502, false)] {
+    for (code, said) in [
+        (200, "unreadable"),
+        (400, "unreadable"),
+        (429, "not reached"),
+        (503, "not reached"),
+        (502, "unreachable"),
+    ] {
         for (at, (kind, page)) in pages.into_iter().enumerate() {
             let dir = scratch(&format!("not-json-rpc-{code}-{at}"));
             let (url, _) = gateway(move |one, _| match one.method.as_str() {
@@ -600,14 +610,18 @@ fn an_answer_that_isnt_json_rpc_is_unreadable_unless_the_gateway_is_down_or_busy
             });
             let mut gateway = Gateway::new(&url, sign_in(&dir).as_os_str());
             let called = gateway.call("slack_who_am_i", &json!({}));
-            assert!(
-                if unreadable {
-                    matches!(called, Err(Called::Unreadable(_)))
-                } else {
-                    matches!(called, Err(Called::Unreachable(_)))
-                },
+            let heard = match called {
+                Err(Called::Unreadable(_)) => "unreadable",
+                Err(Called::NotReached(_)) => "not reached",
+                Err(Called::Unreachable(_)) => "unreachable",
+                _ => "something else",
+            };
+            assert_eq!(
+                heard, said,
                 "a {kind} page in a {code} is unreadable, a cause that lasts, unless it's the \
-             gateway's own failing or a spent rate: {called:?}"
+                 gateway's own failing, which may have done what was asked, or a spent rate or \
+                 a server saying it can't take it now, either taken to have done nothing: \
+                 {called:?}"
             );
             let _ = fs::remove_dir_all(&dir);
         }
@@ -662,7 +676,43 @@ fn a_gateway_passing_on_slacks_refusal_counts_as_refused() {
 }
 
 #[test]
-fn a_gateway_not_there_is_unreachable() {
+fn a_session_that_wont_open_is_not_reached_since_the_tool_was_never_asked() {
+    let failing = |message: &str| {
+        json_reply(&json!({ "jsonrpc": "2.0", "id": 1, "error": { "message": message } }))
+    };
+    for (at, (opening, said)) in [
+        (status(502), "not reached"),
+        (status(503), "not reached"),
+        (failing("unsupported version"), "not reached"),
+        (failing("invalid_auth"), "failed"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let dir = scratch(&format!("wont-open-{at}"));
+        let (url, _) = gateway(move |one, _| match one.method.as_str() {
+            "initialize" => opening.clone(),
+            _ => status(202),
+        });
+        let mut gateway = Gateway::new(&url, sign_in(&dir).as_os_str());
+        let called = gateway.call("slack_send_message_to_self", &json!({"message": "hi"}));
+        let heard = match called {
+            Err(Called::NotReached(_)) => "not reached",
+            Err(Called::Failed(_)) => "failed",
+            _ => "something else",
+        };
+        assert_eq!(
+            heard, said,
+            "a gateway failing as a session opens never saw the tool asked, but one naming a \
+             sign-in refused is still said as failing, so the reader can tell Joel of it: \
+             {called:?}"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+}
+
+#[test]
+fn a_gateway_not_there_is_not_reached() {
     let dir = scratch("unreachable");
     let port = TcpListener::bind("127.0.0.1:0")
         .and_then(|listener| listener.local_addr())
@@ -671,9 +721,9 @@ fn a_gateway_not_there_is_unreachable() {
     assert!(
         matches!(
             gateway.call("slack_who_am_i", &json!({})),
-            Err(Called::Unreachable(_))
+            Err(Called::NotReached(_))
         ),
-        "a gateway nobody answers for is said as unreachable"
+        "a gateway nobody answers for is said as not reached, so nothing it was asked was done"
     );
     let _ = fs::remove_dir_all(&dir);
 }
