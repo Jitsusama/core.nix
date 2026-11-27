@@ -466,8 +466,10 @@ PanelWindow {
                 // cat goes as far as niri carries it, as carried() does.
                 tell("puppy");
                 halt();
+                // The screen read through `present`, since an event woke
+                // this; never null here, as `there` is null once it goes.
                 const cut = Carried.visitCut(seat(tile(sat)), place, by,
-                    { wide: size, across: modelData.width, scrolling: slides(sat) });
+                    { wide: size, across: present.width, scrolling: slides(sat) });
                 if (cut?.how === "rides")
                     rideTo(cut.to);
                 else if (cut !== null)
