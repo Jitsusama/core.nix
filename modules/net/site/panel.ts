@@ -309,10 +309,12 @@ class Standings {
  * What the lede says, from the worst of net's feeds and the network read so
  * far, so words said of an earlier standing never outlast it. While the map
  * draws a device it counts them, saying what's worth a look only while the
- * feeds are live and each has told its records since: a page reconnecting
- * to a server that restarted is told connecting and no records, then live,
- * and only then the records that make what it holds current again. A page
- * opened while net is down is given the records the
+ * feeds are live and each has told its records since. A page reconnecting
+ * to a server that made its watch anew is told connecting and no records,
+ * then live, and only then the records that make what it holds current
+ * again; one rejoining a watch the server still holds is told that hold
+ * and then how it stands, current if live and from before if broken. A
+ * page opened while net is down is given the records the
  * server still holds, and draws them, so the lede counts them too rather
  * than saying none is drawn. With none drawn, the counts are never said: a
  * page joining a watch the server holds as broken is told every kind empty,

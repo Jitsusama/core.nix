@@ -39,6 +39,24 @@ it("holds records told while a watch stood broken stale once it goes live", () =
   assert.equal(hearing.now().fresh, true);
 });
 
+// A page rejoining after its feed stood stale is told the server's hold
+// before how that watch stands (upstream.rs), with nothing between.
+it("holds records told on rejoining a watch the server holds live current", () => {
+  const hearing = heardLive();
+  hearing.stands("concern", "stale");
+  hearing.moved("concern", true);
+  hearing.stands("concern", "live");
+  assert.equal(hearing.now().fresh, true, "the server's hold was taken for what the page kept");
+});
+
+it("holds records told on rejoining a watch the server holds broken from before", () => {
+  const hearing = heardLive();
+  hearing.stands("concern", "stale");
+  hearing.moved("concern", true);
+  hearing.stands("concern", "broken");
+  assert.equal(hearing.now().fresh, false, "records a broken watch held were current");
+});
+
 // A page joining is told a watch's records before the state.
 it("holds records told on joining current once the watch stands live", () => {
   const hearing = new Hearing(KINDS);

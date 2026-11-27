@@ -25,7 +25,7 @@ class Hearing {
   // The watches whose unread lines may have held a record, until a whole answer comes.
   readonly #hiding = new Set<string>();
   readonly #raising = new Set<string>();
-  readonly #stopped = new Set<string>();
+  readonly #broken = new Set<string>();
   readonly #fresh = new Set<string>();
 
   constructor(kinds: readonly string[]) {
@@ -34,12 +34,13 @@ class Hearing {
 
   /**
    * The watch of `kind` handed over records, all of them when `whole`. A
-   * page joining is told them before the state, so they count as current
-   * unless told while the watch stood stale or broken, when they're only
-   * what it held from before.
+   * page joining, or rejoining after its feed stood stale, is told the
+   * server's hold before the state, so they count as current unless told
+   * while the watch stood broken, when they're only what it held from
+   * before. A broken state told after them puts them back to before.
    */
   moved(kind: string, whole: boolean): void {
-    if (!this.#stopped.has(kind)) {
+    if (!this.#broken.has(kind)) {
       this.#fresh.add(kind);
     }
     if (whole && !this.#raising.has(kind)) {
@@ -50,10 +51,10 @@ class Hearing {
 
   /** The watch of `kind` now stands as `state`. */
   stands(kind: string, state: string): void {
-    if (state === "stale" || state === "broken") {
-      this.#stopped.add(kind);
+    if (state === "broken") {
+      this.#broken.add(kind);
     } else {
-      this.#stopped.delete(kind);
+      this.#broken.delete(kind);
     }
     if (state !== "live") {
       this.#fresh.delete(kind);
