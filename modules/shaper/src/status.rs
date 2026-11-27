@@ -712,28 +712,21 @@ mod tests {
                     .all(|line| !line.contains('\u{1b}') && !line.contains('\u{7}')),
                 "into {room:?} a control was drawn: {lines:#?}"
             );
-            // The why's own lines, so the round trips' hang can't stand in,
-            // and its last word, past the control, on a line it hangs, or
-            // piped, on the why's one line.
+            // The why's own lines, so the round trips' hang can't stand in, and
+            // its last word, past the control, hung under it, or piped on one.
             let at = lines
                 .iter()
                 .position(|line| line.starts_with("  Upload"))
                 .expect("the why is said");
-            if room == Room::Unbounded {
-                assert!(
-                    lines[at].contains("cleared"),
-                    "piped, the why wasn't one line: {lines:#?}"
-                );
-            } else {
-                let hung = lines[at + 1..]
-                    .iter()
-                    .take_while(|line| line.starts_with("    "))
-                    .any(|line| line.contains("cleared"));
-                assert!(
-                    hung,
-                    "into {room:?} the why didn't hang under its first line: {lines:#?}"
-                );
-            }
+            let (piped, one) = (room == Room::Unbounded, lines[at].contains("cleared"));
+            let hung = lines[at + 1..]
+                .iter()
+                .take_while(|line| line.starts_with("    "))
+                .any(|line| line.contains("cleared"));
+            assert!(
+                if piped { one } else { hung },
+                "into {room:?} the why wasn't one line piped, or hung: {lines:#?}"
+            );
         }
     }
 
