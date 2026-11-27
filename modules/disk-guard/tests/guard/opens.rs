@@ -1,5 +1,6 @@
 use crate::discover::file;
-use disk_guard::opens::{Seen, Watch};
+use crate::pool::{on_btrfs, subvolume};
+use disk_guard::opens::{MOST_GROUPS, Seen, Watch};
 use std::fs;
 use std::path::Path;
 use std::process::Command;
@@ -105,6 +106,91 @@ fn opens_beyond_what_the_queue_holds_are_told_as_lost() {
         Duration::from_secs(5),
     );
     assert!(all.contains(&Seen::Lost), "{} seen, none lost", all.len());
+}
+
+#[test]
+#[ignore = "needs TMPDIR on Btrfs, which the sandbox and the shell's tmpfs aren't: \
+            run with --ignored and TMPDIR on a Btrfs folder"]
+fn opens_in_builds_of_two_subvolumes_are_both_seen() {
+    // A group marks under one filesystem id, and each subvolume has its
+    // own, so on 26 November 40 build folders an hour went unmarked with
+    // EXDEV, their builds dated by the hour rather than their opens.
+    let root = tempfile::tempdir().unwrap();
+    assert!(
+        on_btrfs(root.path()),
+        "{} isn't on Btrfs",
+        root.path().display()
+    );
+    let watch = watch();
+    let mut opened = Vec::new();
+    for name in ["one", "two"] {
+        subvolume(root.path(), name);
+        let deps = root.path().join(name).join("deps");
+        let rlib = deps.join("libalpha-1111111111111111.rlib");
+        file(&rlib, "built");
+        if let Err(error) = watch.watch(&deps) {
+            panic!("the build in subvolume {name} wasn't marked: {error}");
+        }
+        opened.push(Seen::Opened(rlib));
+    }
+    for open in &opened {
+        let Seen::Opened(path) = open else {
+            unreachable!("only opens were kept")
+        };
+        Command::new("cat").arg(path).output().unwrap();
+    }
+    let all = seen(
+        &watch,
+        |all| opened.iter().all(|open| all.contains(open)),
+        Duration::from_secs(5),
+    );
+    assert!(
+        opened.iter().all(|open| all.contains(open)),
+        "an open in one subvolume's build went unseen: {all:?}"
+    );
+    assert_eq!(
+        watch.groups(),
+        2,
+        "two subvolumes' builds weren't heard through a group each"
+    );
+}
+
+#[test]
+#[ignore = "needs TMPDIR on Btrfs, which the sandbox and the shell's tmpfs aren't: \
+            run with --ignored and TMPDIR on a Btrfs folder"]
+fn a_watch_makes_no_group_past_its_most() {
+    // An account may hold 128 groups, and every work tree is a subvolume,
+    // so a watch keeps to half and leaves its other programs room.
+    let root = tempfile::tempdir().unwrap();
+    assert!(
+        on_btrfs(root.path()),
+        "{} isn't on Btrfs",
+        root.path().display()
+    );
+    let watch = watch();
+    for n in 0..MOST_GROUPS {
+        let name = format!("tree-{n}");
+        subvolume(root.path(), &name);
+        if let Err(error) = watch.watch(&root.path().join(&name)) {
+            panic!("subvolume {n}, within the most, wasn't marked: {error}");
+        }
+    }
+    subvolume(root.path(), "past");
+    let refused = watch.watch(&root.path().join("past"));
+    assert!(
+        refused
+            .as_ref()
+            .is_err_and(|error| error.to_string().contains("past the 64")),
+        "a subvolume past the most was answered {refused:?}"
+    );
+    assert_eq!(
+        watch.groups(),
+        MOST_GROUPS,
+        "a group was made past the most"
+    );
+    watch
+        .watch(&root.path().join("tree-0"))
+        .expect("a folder under an id already marked was refused once the most was reached");
 }
 
 #[test]

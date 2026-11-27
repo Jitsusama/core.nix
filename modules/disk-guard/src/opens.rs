@@ -9,6 +9,11 @@
 //! this asks. Each event names the directory by its file handle and the
 //! file by its name, and the opener's pid is reported only when it's the
 //! guard itself, whose own opens date nothing.
+//!
+//! A group that names files by handle marks folders of one filesystem id
+//! alone, and the kernel refuses a mark under another with EXDEV. Each
+//! Btrfs subvolume has an id of its own, and every work tree is one, so a
+//! watch keeps a group for each id it marks under.
 
 use std::collections::HashMap;
 use std::ffi::{CString, OsStr};
@@ -28,33 +33,79 @@ pub enum Seen {
     Lost,
 }
 
-/// A fanotify group hearing opens in the directories it watches.
+/// Fanotify groups hearing opens in the directories they watch.
 pub struct Watch {
-    fd: OwnedFd,
+    /// A group for each filesystem id marked under, by that id, and one
+    /// made before any mark, which the first id takes. A group is never
+    /// closed while the watch lives, so [`Watch::wait`] may poll them
+    /// unlocked.
+    groups: Mutex<Vec<Group>>,
     /// Each watched directory, by its filesystem's id and file handle, the
     /// way events name it.
     dirs: Mutex<HashMap<Vec<u8>, PathBuf>>,
     me: i32,
 }
 
+/// One fanotify group, and the filesystem id its marks are under, once it
+/// has one.
+struct Group {
+    fsid: Option<[u8; 8]>,
+    fd: OwnedFd,
+}
+
 /// The longest file handle the kernel gives (`MAX_HANDLE_SZ`).
 const MAX_HANDLE: usize = 128;
 
+/// The most groups a watch makes: half of the 128 an account may hold by
+/// default, so its other programs keep room for theirs.
+pub const MOST_GROUPS: usize = 64;
+
+/// A new fanotify group that names files by handle and never blocks.
+fn group() -> io::Result<OwnedFd> {
+    let flags =
+        libc::FAN_CLASS_NOTIF | libc::FAN_CLOEXEC | libc::FAN_NONBLOCK | libc::FAN_REPORT_DFID_NAME;
+    let opened = (libc::O_RDONLY | libc::O_LARGEFILE | libc::O_CLOEXEC) as libc::c_uint;
+    // SAFETY: fanotify_init takes two flag words and returns a new fd.
+    let fd = unsafe { libc::fanotify_init(flags, opened) };
+    if fd < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: fd is a new descriptor nothing else owns.
+    Ok(unsafe { OwnedFd::from_raw_fd(fd) })
+}
+
+/// Marks `folder` in `group`, to hear every open of what's in it.
+fn mark(group: &OwnedFd, folder: &OwnedFd) -> io::Result<()> {
+    let mask = libc::FAN_OPEN | libc::FAN_OPEN_EXEC | libc::FAN_EVENT_ON_CHILD;
+    let flags = libc::FAN_MARK_ADD | libc::FAN_MARK_ONLYDIR | libc::FAN_MARK_DONT_FOLLOW;
+    // SAFETY: the fd is a fanotify group, and "." resolved from the
+    // descriptor marks the directory it holds. A null path would ask the
+    // kernel to take the descriptor as a file, which it refuses for one
+    // opened only as a path.
+    let marked = unsafe {
+        libc::fanotify_mark(
+            group.as_raw_fd(),
+            flags,
+            mask,
+            folder.as_raw_fd(),
+            c".".as_ptr(),
+        )
+    };
+    if marked != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
+}
+
 impl Watch {
+    /// A watch with one group made, so a kernel that refuses this account
+    /// fanotify is known at once.
     pub fn new() -> io::Result<Watch> {
-        let flags = libc::FAN_CLASS_NOTIF
-            | libc::FAN_CLOEXEC
-            | libc::FAN_NONBLOCK
-            | libc::FAN_REPORT_DFID_NAME;
-        let opened = (libc::O_RDONLY | libc::O_LARGEFILE | libc::O_CLOEXEC) as libc::c_uint;
-        // SAFETY: fanotify_init takes two flag words and returns a new fd.
-        let fd = unsafe { libc::fanotify_init(flags, opened) };
-        if fd < 0 {
-            return Err(io::Error::last_os_error());
-        }
         Ok(Watch {
-            // SAFETY: fd is a new descriptor nothing else owns.
-            fd: unsafe { OwnedFd::from_raw_fd(fd) },
+            groups: Mutex::new(vec![Group {
+                fsid: None,
+                fd: group()?,
+            }]),
             dirs: Mutex::new(HashMap::new()),
             // The kernel reports pids as signed, and gives none past i32::MAX.
             me: std::process::id().cast_signed(),
@@ -65,28 +116,31 @@ impl Watch {
     /// directory goes. Watching one again changes nothing. Answers the
     /// [`handle`] of the folder the mark landed on: both are read through
     /// one descriptor of it, so a folder swapped in at the path between
-    /// them can't pass as the one marked.
+    /// them can't pass as the one marked. A folder under a filesystem id
+    /// no group marks yet gets a group of its own, up to [`MOST_GROUPS`].
     pub fn watch(&self, dir: &Path) -> io::Result<Vec<u8>> {
         let folder = folder(dir)?;
         let key = key(&folder)?;
-        let mask = libc::FAN_OPEN | libc::FAN_OPEN_EXEC | libc::FAN_EVENT_ON_CHILD;
-        let flags = libc::FAN_MARK_ADD | libc::FAN_MARK_ONLYDIR | libc::FAN_MARK_DONT_FOLLOW;
-        // SAFETY: the fd is a fanotify group, and "." resolved from the
-        // descriptor marks the directory it holds. A null path would ask
-        // the kernel to take the descriptor as a file, which it refuses
-        // for one opened only as a path.
-        let marked = unsafe {
-            libc::fanotify_mark(
-                self.fd.as_raw_fd(),
-                flags,
-                mask,
-                folder.as_raw_fd(),
-                c".".as_ptr(),
-            )
-        };
-        if marked != 0 {
-            return Err(io::Error::last_os_error());
+        let fsid: [u8; 8] = key[..8].try_into().map_err(io::Error::other)?;
+        let mut groups = self.groups.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(found) = groups.iter().find(|group| group.fsid == Some(fsid)) {
+            mark(&found.fd, &folder)?;
+        } else if let Some(unused) = groups.iter_mut().find(|group| group.fsid.is_none()) {
+            mark(&unused.fd, &folder)?;
+            unused.fsid = Some(fsid);
+        } else if groups.len() >= MOST_GROUPS {
+            return Err(io::Error::other(format!(
+                "its subvolume would need a fanotify group past the {MOST_GROUPS} a watch keeps"
+            )));
+        } else {
+            let fd = group()?;
+            mark(&fd, &folder)?;
+            groups.push(Group {
+                fsid: Some(fsid),
+                fd,
+            });
         }
+        drop(groups);
         self.dirs
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
@@ -94,16 +148,33 @@ impl Watch {
         Ok(key)
     }
 
-    /// What was seen, waiting up to `within` for something.
+    /// How many fanotify groups the watch holds.
+    pub fn groups(&self) -> usize {
+        self.groups
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .len()
+    }
+
+    /// What was seen in any group, waiting up to `within` for something.
+    /// A group made meanwhile is heard from the next wait on.
     pub fn wait(&self, within: Duration) -> io::Result<Vec<Seen>> {
-        let mut poll = libc::pollfd {
-            fd: self.fd.as_raw_fd(),
-            events: libc::POLLIN,
-            revents: 0,
-        };
+        let mut polls: Vec<libc::pollfd> = self
+            .groups
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .iter()
+            .map(|group| libc::pollfd {
+                fd: group.fd.as_raw_fd(),
+                events: libc::POLLIN,
+                revents: 0,
+            })
+            .collect();
         let millis = i32::try_from(within.as_millis()).unwrap_or(i32::MAX);
-        // SAFETY: one pollfd, counted as one.
-        if unsafe { libc::poll(&raw mut poll, 1, millis) } < 0 {
+        let count = libc::nfds_t::try_from(polls.len()).map_err(io::Error::other)?;
+        // SAFETY: the pollfds are counted as they are, and each descriptor
+        // stays open while the watch lives, since no group is closed.
+        if unsafe { libc::poll(polls.as_mut_ptr(), count, millis) } < 0 {
             let error = io::Error::last_os_error();
             return if error.kind() == io::ErrorKind::Interrupted {
                 Ok(Vec::new())
@@ -114,25 +185,32 @@ impl Watch {
         let mut seen = Vec::new();
         // Aligned for the event records read out of it.
         let mut buffer = vec![0u64; 8192];
+        for poll in polls.iter().filter(|poll| poll.revents != 0) {
+            self.read_out(poll.fd, &mut buffer, &mut seen)?;
+        }
+        Ok(seen)
+    }
+
+    /// Reads everything group `fd` holds into `seen`, through `buffer`.
+    fn read_out(&self, fd: i32, buffer: &mut [u64], seen: &mut Vec<Seen>) -> io::Result<()> {
         loop {
-            let bytes = buffer.len() * size_of::<u64>();
+            let bytes = size_of_val(buffer);
             // SAFETY: the buffer holds `bytes` writable bytes.
-            let read =
-                unsafe { libc::read(self.fd.as_raw_fd(), buffer.as_mut_ptr().cast(), bytes) };
+            let read = unsafe { libc::read(fd, buffer.as_mut_ptr().cast(), bytes) };
             // Negative, the read failed.
             let Ok(read) = usize::try_from(read) else {
                 let error = io::Error::last_os_error();
                 if error.kind() == io::ErrorKind::WouldBlock {
-                    return Ok(seen);
+                    return Ok(());
                 }
                 return Err(error);
             };
             if read == 0 {
-                return Ok(seen);
+                return Ok(());
             }
             // SAFETY: the kernel wrote `read` bytes into the buffer.
             let events = unsafe { std::slice::from_raw_parts(buffer.as_ptr().cast::<u8>(), read) };
-            self.parse(events, &mut seen);
+            self.parse(events, seen);
         }
     }
 
@@ -288,7 +366,10 @@ mod tests {
         key.extend_from_slice(&1_i32.to_ne_bytes());
         key.extend_from_slice(&HANDLE);
         Watch {
-            fd: OwnedFd::from(std::fs::File::open("/dev/null").unwrap()),
+            groups: Mutex::new(vec![super::Group {
+                fsid: None,
+                fd: OwnedFd::from(std::fs::File::open("/dev/null").unwrap()),
+            }]),
             dirs: Mutex::new(HashMap::from([(key, PathBuf::from("/w"))])),
             me: 0,
         }
