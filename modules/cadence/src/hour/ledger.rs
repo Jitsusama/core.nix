@@ -65,17 +65,9 @@ const FROM_ASKS: [&str; 6] = [
 /// hour the list is unread counts toward pruning it, as none saw it short,
 /// and each says why in the journal.
 pub(super) fn whole(path: &Path, seen: &mut Seen, now: i64) -> (String, Option<String>) {
-    let why = match fs::read(path).map(|bytes| text_lines(&bytes)) {
-        Ok((text, None)) => match torn(&text) {
-            None => return short(text, seen, now),
-            Some(line) => format!("its line {line} isn't a record"),
-        },
-        // The lines before the first that isn't text are numbered as
-        // written, so one of them that isn't a record is named first.
-        Ok((text, Some(line))) => match torn(&text).filter(|torn| *torn < line) {
-            Some(torn) => format!("its line {torn} isn't a record"),
-            None => format!("its line {line} isn't text"),
-        },
+    let why = match fs::read(path).map(|bytes| records(&bytes)) {
+        Ok(Ok(text)) => return short(text, seen, now),
+        Ok(Err(why)) => why,
         Err(err) if seen.most == 0 && err.kind() == io::ErrorKind::NotFound => {
             return (String::new(), None);
         }
@@ -84,6 +76,22 @@ pub(super) fn whole(path: &Path, seen: &mut Seen, now: i64) -> (String, Option<S
     seen.short_since = None;
     eprintln!("cadence: the asks list is unread, as {why}, so what it feeds is unjudged");
     (String::new(), Some(why))
+}
+
+/// The asks list's `bytes` as text, or why it can't be read whole: the
+/// first line that isn't text or isn't a record, by its number. The lines
+/// before the first that isn't text are numbered as written, so one of
+/// them that isn't a record is named first. The hour and the axes both
+/// read the list through this, so they name the same line.
+pub(crate) fn records(bytes: &[u8]) -> Result<String, String> {
+    let (text, not_text) = text_lines(bytes);
+    match (torn(&text), not_text) {
+        (None, None) => Ok(text),
+        (Some(torn), line) if line.is_none_or(|line| torn < line) => {
+            Err(format!("its line {torn} isn't a record"))
+        }
+        (_, line) => Err(format!("its line {} isn't text", line.unwrap_or_default())),
+    }
 }
 
 /// The number of the first line of `text` that isn't a record, counted

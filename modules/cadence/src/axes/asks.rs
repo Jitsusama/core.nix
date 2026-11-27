@@ -15,10 +15,10 @@ use serde_json::Value;
 
 use super::{Bar, Reading, shown};
 use crate::DAY;
-use crate::hour::ledger::torn;
-use crate::hour::measures::promised::promised;
+use crate::hour::ledger::records;
+use crate::hour::measures::parked;
+use crate::hour::measures::promised::{Promise, promised};
 use crate::tracking::{self, Tracking};
-use crate::whole::text_lines;
 
 /// How far back the asks are read: a week, as the card reads its merges.
 const WEEK: i64 = 7 * DAY;
@@ -38,25 +38,29 @@ struct Ask {
 /// before it's started. Each ask is read from its latest line, so a line
 /// left out could stand an earlier one in its place, landed as not, or a
 /// date as never missed: a line that isn't text or isn't a record leaves
-/// the list unread, naming the first, as the hour's measures judge it.
+/// the list unread, naming the first, through the hour's own reading of
+/// its lines, and the journal says so. The hour also leaves a list unread
+/// while it holds fewer asks than it has; the axes keep no count of what
+/// they've seen, so a list written over reads here as it stands.
 #[must_use]
 pub fn gather(state_home: &Path) -> (String, Option<String>) {
-    let bytes = match fs::read(state_home.join("mission/asks.jsonl")) {
-        Ok(bytes) => bytes,
+    let path = state_home.join("mission/asks.jsonl");
+    let read = match fs::read(&path) {
+        Ok(bytes) => records(&bytes),
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => return (String::new(), None),
-        Err(err) => return (String::new(), Some(format!("it can't be read: {err}"))),
+        Err(err) => Err(format!("it can't be read: {err}")),
     };
-    let (text, not_text) = text_lines(&bytes);
-    // The lines before the first that isn't text are numbered as written,
-    // so one of them that isn't a record is named first.
-    let why = match (torn(&text), not_text) {
-        (None, None) => return (text, None),
-        (Some(torn), line) if line.is_none_or(|line| torn < line) => {
-            format!("its line {torn} isn't a record")
-        }
-        (_, line) => format!("its line {} isn't text", line.unwrap_or_default()),
-    };
-    (String::new(), Some(why))
+    read.map_or_else(
+        |why| {
+            eprintln!(
+                "cadence: the asks list at {} is unread, as {why}, so the axes read none of his \
+                 asks",
+                path.display()
+            );
+            (String::new(), Some(why))
+        },
+        |text| (text, None),
+    )
 }
 
 /// Each ask of his own that says when he asked, read from its latest line
@@ -65,7 +69,12 @@ pub fn gather(state_home: &Path) -> (String, Option<String>) {
 /// no time is no ask, and one the list set itself or carries for another is
 /// not his. It missed a date, as the slips measure reads its dates, when
 /// one passed before it landed or was met, unless it was moved before it
-/// passed, so a date missed and then moved is still missed.
+/// passed, so a date missed and then moved is still missed. Its dates are
+/// every one any of its lines gave, each as the latest line giving it
+/// says, since a date moved by writing `expected` again with no
+/// `promised` is on no later line; such a move says no time, so the date
+/// it left counts as missed once it passed. An ask parked on a ruling
+/// misses none, as its owner owes no date while the ruling stands.
 fn asks(text: &str, now: i64) -> Vec<Ask> {
     let time = |v: &Value| {
         v.as_str()
@@ -76,21 +85,26 @@ fn asks(text: &str, now: i64) -> Vec<Ask> {
         .lines()
         .filter_map(|line| serde_json::from_str::<Value>(line).ok())
         .collect();
-    let mut latest: BTreeMap<[String; 2], Value> = BTreeMap::new();
+    let mut latest: BTreeMap<[String; 2], (Value, BTreeMap<i64, Promise>)> = BTreeMap::new();
     for ask in tracking::untwinned(lines) {
-        latest.insert(tracking::asked(&ask), ask);
+        let (line, dates) = latest.entry(tracking::asked(&ask)).or_default();
+        dates.extend(promised(&ask).into_iter().map(|p| (p.expected, p)));
+        *line = ask;
     }
     latest
         .into_values()
-        .filter(|ask| tracking::of(ask) == Some(Tracking::His))
-        .filter_map(|ask| {
+        .filter(|(ask, _)| tracking::of(ask) == Some(Tracking::His))
+        .filter_map(|(ask, dates)| {
             let landed = time(&ask["landed"]);
-            let by = landed.unwrap_or(now);
-            let missed = promised(&ask).iter().any(|p| {
-                p.expected < by
-                    && p.met.is_none_or(|met| met > p.expected)
-                    && p.moved.is_none_or(|moved| moved >= p.expected)
-            });
+            // Late at its date while open, as slips reads it, and landed
+            // on its date is kept.
+            let passed = |expected: i64| landed.map_or(expected <= now, |l| expected < l);
+            let missed = parked::ruling(&ask).is_none()
+                && dates.values().any(|p| {
+                    passed(p.expected)
+                        && p.met.is_none_or(|met| met > p.expected)
+                        && p.moved.is_none_or(|moved| moved >= p.expected)
+                });
             Some(Ask {
                 at: time(&ask["at"])?,
                 owner: ask["owner"].as_str().unwrap_or("").to_owned(),
@@ -379,6 +393,95 @@ mod tests {
                 "a date {why} was counted late"
             );
         }
+    }
+
+    #[test]
+    fn a_date_moved_by_writing_its_expected_again_is_still_missed() {
+        let at = "2026-11-13T12:00:00-05:00";
+        let text = [
+            line(at, "A", Some("2026-11-13T13:00:00-05:00"), None),
+            line(at, "A", Some("2026-11-13T22:00:00-05:00"), None),
+        ]
+        .join("\n");
+        assert_eq!(
+            readings(&text, None, NOW)[1].now,
+            Some(1.0),
+            "a 13:00 that passed, then rewritten as 22:00 with no promised, read as never missed"
+        );
+    }
+
+    #[test]
+    fn an_ask_parked_on_a_ruling_misses_no_date() {
+        let mut ask: Value = serde_json::from_str(&line(
+            "2026-11-13T12:00:00-05:00",
+            "A",
+            Some("2026-11-13T13:00:00-05:00"),
+            None,
+        ))
+        .expect("an ask line");
+        ask["parked"] = "until load is spread".into();
+        assert_eq!(
+            readings(&ask.to_string(), None, NOW)[1].now,
+            Some(0.0),
+            "an ask parked on a ruling read as late for a date nobody owes"
+        );
+    }
+
+    #[test]
+    fn an_ask_put_down_or_re_marked_at_its_latest_line_drops_out() {
+        let at = "2026-11-13T12:00:00-05:00";
+        let open = line(at, "A", Some("2026-11-13T13:00:00-05:00"), None);
+        let mut down: Value = serde_json::from_str(&open).expect("an ask line");
+        down["closed"] = "2026-11-13T15:00:00-05:00".into();
+        let mut derived: Value = serde_json::from_str(&open).expect("an ask line");
+        derived["tracking"] = "derived".into();
+        for (later, why) in [(down, "put down"), (derived, "re-marked derived")] {
+            let text = [open.clone(), later.to_string()].join("\n");
+            let [middle, late] = readings(&text, None, NOW).try_into().unwrap();
+            assert_eq!(
+                (middle.now, late.now),
+                (None, None),
+                "an ask {why} at its latest line was read from its earlier open line"
+            );
+        }
+    }
+
+    #[test]
+    fn an_open_ask_due_now_is_late_and_one_landed_on_its_date_is_not() {
+        let due = "2026-11-13T20:00:00-05:00";
+        let open = line("2026-11-13T12:00:00-05:00", "A", Some(due), None);
+        let landed = line("2026-11-13T13:00:00-05:00", "B", Some(due), Some(due));
+        assert_eq!(
+            readings(&[open, landed].join("\n"), None, NOW)[1]
+                .detail
+                .as_deref(),
+            Some("late: A 1"),
+            "an open ask due this second wasn't late, or one landed on its date was"
+        );
+    }
+
+    #[test]
+    fn a_list_said_unread_gives_no_figures_even_beside_its_text() {
+        let text = line("2026-11-13T12:00:00-05:00", "A", None, None);
+        let [middle, late] = readings(&text, Some("its line 2 isn't text"), NOW)
+            .try_into()
+            .unwrap();
+        assert_eq!(
+            (middle.now, late.now),
+            (None, None),
+            "a list said unread was read for figures"
+        );
+    }
+
+    #[test]
+    fn a_list_that_cant_be_read_is_unread_saying_why() {
+        let home = tempfile::tempdir().expect("a scratch home");
+        fs::create_dir_all(home.path().join("mission/asks.jsonl")).expect("a folder in its place");
+        let (text, unread) = gather(home.path());
+        assert!(
+            text.is_empty() && unread.is_some_and(|why| why.starts_with("it can't be read: ")),
+            "a list that can't be read wasn't said unread with why"
+        );
     }
 
     #[test]

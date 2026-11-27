@@ -187,8 +187,8 @@ fn the_day_boundary_and_each_asks_own_moves_decide_an_old_date() {
 }
 
 /// The keeper folds a copy of an ask into it, marking the copy's id with
-/// `~`; written after the ask, the copy, with no date of its own, would
-/// read as its latest line and answer the date it slipped.
+/// `~`; written after the ask, the copy, closed and carrying the ask's
+/// dates, would read as its latest line and answer the date it slipped.
 #[test]
 fn a_twin_folded_into_an_ask_is_not_read_as_its_latest_line() {
     let ask = json!({"id": "0a1b2c3d", "at": at(NOW - 3 * DAY), "words": "fold",
