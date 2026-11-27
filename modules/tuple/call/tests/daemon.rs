@@ -132,6 +132,10 @@ impl Running {
             STARTED.fetch_add(1, Ordering::Relaxed)
         ));
         let _ = std::fs::remove_dir_all(&folder);
+        // Made afresh, so a folder the removal couldn't take fails here
+        // rather than feeding this run what an earlier one wrote.
+        std::fs::create_dir(&folder)
+            .unwrap_or_else(|error| panic!("{} should be made afresh: {error}", folder.display()));
         for inner in ["run/daemons", "data/tuple/0", "state", "bin"] {
             std::fs::create_dir_all(folder.join(inner)).unwrap();
         }
@@ -912,7 +916,7 @@ fn a_command_held_past_its_hold_lets_its_act_be_asked_afresh() {
 
 #[test]
 fn a_stream_followed_afresh_journals_the_camera_it_says_on() {
-    let running = Running::start("afresh", true);
+    let running = Running::start("camera-afresh", true);
     running.streams(STATE);
     running.streams(&filming());
     let mut watching = running.client();
