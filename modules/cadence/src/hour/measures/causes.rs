@@ -72,7 +72,9 @@ const UNFOLDED_AT_MOST: usize = 100;
 const SAID_AT_MOST: usize = 500;
 
 /// The most changes one line or record counts, so one naming hundreds
-/// can't keep a file of them, nor stand for a pattern alone.
+/// can't keep a file of them. It bounds what a line costs, not what it
+/// weighs: one naming three changes still puts a class over its bar. A
+/// change named twice counts once toward it.
 const CHANGES_PER_LINE: usize = 10;
 
 /// The most unfolded classes one message counts, so a message of many
@@ -251,9 +253,13 @@ pub fn read(state_home: &Path, folder: &Path, now: i64, keeps: bool) -> Measure 
     let mut cases: Vec<Case> = kept
         .cases
         .into_iter()
-        .map(|case| Case {
-            class: class_named(&case.said),
-            ..case
+        .map(|case| {
+            let said: String = case.said.chars().take(SAID_AT_MOST).collect();
+            Case {
+                class: class_named(&said),
+                said,
+                ..case
+            }
         })
         .collect();
     cases.extend(said(&heard));
@@ -388,17 +394,19 @@ pub fn class_of(line: &str) -> &str {
     line.split_once(':').map_or(line, |(class, _)| class)
 }
 
-/// The lines one class over its bar gives, found on the changes `on`: one
-/// naming them all, or, where its owner differs by repository, one for
-/// each repository found on `AT_LEAST` changes of its own that `OWNERS`
-/// names the class's owner in, naming those and its owner, and one for
-/// the rest. A repository under the bar isn't asked apart: on 27
-/// November world was asked on 1 of 55 changes. Nor is one no owner is
-/// named in, since its line would go to the class's owner as the rest's
-/// does, and a sender naming many such repositories would make a line
-/// and an ask for each with no cap. Their changes still count in the
-/// rest's line, so three repositories on two each are asked of as the
-/// class is, not of nobody.
+/// The lines one class over its bar gives, found on the changes `on`.
+/// Each repository `OWNERS` names the class's owner in has a line of its
+/// own whenever the class is found there, asked of that owner. The other
+/// repositories share the class's own line, asked of its owner, and only
+/// once they are on `AT_LEAST` changes together; with no repository
+/// apart, that line names every change. So each line's key stays one
+/// owner's whatever the counts do: a count crossing the bar opens or
+/// closes that one ask, and a fix named on it holds. Letting a repository
+/// go apart by its count moved its cases between keys and asked again
+/// for a fix just named. On 27 November world, which no owner is named
+/// in, was asked apart on 1 of a class's 55 changes; it now counts only
+/// toward the rest's bar, so three such repositories on two changes each
+/// still reach the class's owner, and a sender naming many makes one ask.
 fn lines_of(class: &str, on: &BTreeSet<&str>) -> Vec<String> {
     let all: Vec<&str> = on.iter().copied().collect();
     let owned_in = |repo: &str| {
@@ -407,14 +415,16 @@ fn lines_of(class: &str, on: &BTreeSet<&str>) -> Vec<String> {
                 .iter()
                 .any(|&(named, named_repo, _)| named == class && named_repo == repo)
     };
-    let mut by_repo: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+    let mut apart: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+    let mut rest: Vec<&str> = Vec::new();
     for &change in on {
         let repo = change.split_once('#').map_or(change, |(repo, _)| repo);
-        by_repo.entry(repo).or_default().push(change);
+        if owned_in(repo) {
+            apart.entry(repo).or_default().push(change);
+        } else {
+            rest.push(change);
+        }
     }
-    let (apart, rest): (Vec<_>, Vec<_>) = by_repo
-        .into_iter()
-        .partition(|(repo, changes)| owned_in(repo) && changes.len() >= AT_LEAST);
     if apart.is_empty() {
         return vec![format!(
             "{class}: on {} changes in a week, {} · {}",
@@ -435,10 +445,9 @@ fn lines_of(class: &str, on: &BTreeSet<&str>) -> Vec<String> {
             )
         })
         .collect();
-    let rest: Vec<&str> = rest.into_iter().flat_map(|(_, changes)| changes).collect();
-    if !rest.is_empty() {
+    if rest.len() >= AT_LEAST {
         lines.push(format!(
-            "{class} in other repositories: on {} of its {} changes in a week, {} · {}",
+            "{class}: on {} of its {} changes in a week in other repositories, {} · {}",
             rest.len(),
             on.len(),
             rest.join(", "),
@@ -507,15 +516,20 @@ fn kept_withdrawals(withdrawn: &BTreeSet<String>, now: i64) -> BTreeSet<String> 
 }
 
 /// The message the mesh's file at `path`, named `name`, holds, when it is
-/// genuine. One that can't be read, or doesn't parse, is said on stderr
-/// and left out: the next hour reads it again within `SLACK_MS`, so one
-/// caught as it was written still counts, and one that stays torn is seen.
+/// genuine. One the harness moved after it was listed is let go without
+/// a word, since the harness moves only what is old, read already or
+/// expired. One that can't be read, or doesn't parse, is said on stderr
+/// and left out. The next hour lists it again only while it was written
+/// within `SLACK_MS` of that hour's mark, so one caught as it was written
+/// still counts; one that stays unreadable past then is lost, said only
+/// on stderr.
 fn message_in(path: &Path, name: &str) -> Option<Message> {
-    let parsed = symbiosis::opened_at_most(path)
-        .map_err(|error| error.to_string())
-        .and_then(|json| {
+    let parsed = match symbiosis::opened_at_most(path) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return None,
+        opened => opened.map_err(|error| error.to_string()).and_then(|json| {
             serde_json::from_slice::<Message>(&json).map_err(|error| error.to_string())
-        });
+        }),
+    };
     match parsed {
         Ok(message) => genuine(&message, name).then_some(message),
         Err(why) => {
@@ -627,8 +641,9 @@ fn changes(named: &str) -> Vec<String> {
         if !in_repo.is_empty() {
             repo = repo_named(in_repo).unwrap_or_default();
         }
-        if !repo.is_empty() {
-            found.push(format!("{repo}#{number}"));
+        let change = format!("{repo}#{number}");
+        if !repo.is_empty() && !found.contains(&change) {
+            found.push(change);
             if found.len() == CHANGES_PER_LINE {
                 break;
             }

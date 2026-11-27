@@ -5,6 +5,7 @@ use std::fs;
 
 use super::*;
 
+mod split;
 mod withdrawals;
 
 const NOW: i64 = 1_795_700_000;
@@ -154,6 +155,32 @@ fn a_line_keeps_only_so_much_of_its_cause_and_so_many_changes() {
             .all(|case| case.said.chars().count() <= SAID_AT_MOST),
         "a case kept its cause at any length: {} letters",
         cases[0].said.chars().count()
+    );
+    for (letters, kept) in [
+        (SAID_AT_MOST, SAID_AT_MOST),
+        (SAID_AT_MOST + 1, SAID_AT_MOST),
+    ] {
+        let line = format!("cause: {} | change: core.nix#1", "x".repeat(letters));
+        let said = cause_line(&line, NOW)[0].said.chars().count();
+        assert_eq!(
+            said, kept,
+            "a cause of {letters} letters wasn't kept to {kept}, so the cap has moved"
+        );
+    }
+    let repeated = cause_line(
+        &format!(
+            "cause: x | change: {}core.nix#7",
+            "core.nix#1, ".repeat(CHANGES_PER_LINE)
+        ),
+        NOW,
+    );
+    assert_eq!(
+        repeated
+            .iter()
+            .map(|case| case.change.as_str())
+            .collect::<Vec<_>>(),
+        ["core.nix#1", "core.nix#7"],
+        "a change named again filled the cap before a later one was read"
     );
 }
 
@@ -323,119 +350,6 @@ fn a_cause_found_again_and_again_never_leads_what_comes_after_it() {
         super::super::drag(&measures).map(|m| m.key.as_str()),
         Some("far"),
         "a cause filed with its own owners apart led the hour"
-    );
-}
-
-#[test]
-fn a_class_owned_apart_by_repository_goes_to_each_repositorys_owner() {
-    let cases = [
-        case(TEST_PASSES_UNDONE, "core.nix#1", 100),
-        case(TEST_PASSES_UNDONE, "core.nix#2", 100),
-        case(TEST_PASSES_UNDONE, "core.nix#8", 100),
-        case(TEST_PASSES_UNDONE, "agentic-harness.pi#3", 100),
-        case(TEST_PASSES_UNDONE, "agentic-harness.pi#9", 100),
-        case(TEST_PASSES_UNDONE, "agentic-harness.pi#10", 100),
-        case(TEST_PASSES_UNDONE, "mycelium#4", 100),
-        case(TEST_PASSES_UNDONE, "world#11", 100),
-        case("a pinned copy lags the tree", "core.nix#5", 100),
-        case("a pinned copy lags the tree", "core.nix#6", 100),
-        case("a pinned copy lags the tree", "mycelium#7", 100),
-    ];
-    let m = recurring(&cases, NOW);
-    assert_eq!(
-        m.now, 2.0,
-        "a class split by repository counted more than once"
-    );
-    let owners: Vec<(&str, &str)> = m
-        .behind
-        .iter()
-        .filter_map(|line| line.rsplit_once(" · "))
-        .map(|(line, owner)| (class_of(line), owner))
-        .collect();
-    let half = |repo: &str| format!("{TEST_PASSES_UNDONE} in {repo}");
-    let (harness, core, rest) = (
-        half("agentic-harness.pi"),
-        half("core.nix"),
-        half("other repositories"),
-    );
-    assert_eq!(
-        owners,
-        [
-            (harness.as_str(), "85PKB2"),
-            (core.as_str(), "80ECO2"),
-            (rest.as_str(), "1JQPPC"),
-            (PIN_LAGS, "16V6F4"),
-        ],
-        "a class wasn't split by repository to each owner over its bar, the rest to the \
-         class's owner, or one owned whole was split"
-    );
-    assert!(
-        m.behind[1]
-            .contains("on 3 of its 8 changes in a week, core.nix#1, core.nix#2, core.nix#8 ·"),
-        "a repository's part didn't name its own changes: {}",
-        m.behind[1]
-    );
-    assert!(
-        m.behind[2].contains("on 2 of its 8 changes in a week, mycelium#4, world#11 ·"),
-        "the repositories under the bar weren't named together: {}",
-        m.behind[2]
-    );
-}
-
-/// On 27 November world was asked apart on 1 of a class's 55 changes. A
-/// repository under the bar is asked of only with the rest, and a class
-/// none of whose repositories is over it is asked of whole, so three
-/// repositories on two changes each still reach the class's owner.
-#[test]
-fn a_repository_under_the_bar_is_asked_of_with_the_rest_not_apart() {
-    let cases = [
-        case(TEST_PASSES_UNDONE, "core.nix#1", 100),
-        case(TEST_PASSES_UNDONE, "core.nix#2", 100),
-        case(TEST_PASSES_UNDONE, "agentic-harness.pi#3", 100),
-        case(TEST_PASSES_UNDONE, "agentic-harness.pi#4", 100),
-        case(TEST_PASSES_UNDONE, "world#5", 100),
-        case(TEST_PASSES_UNDONE, "world#6", 100),
-    ];
-    let m = recurring(&cases, NOW);
-    assert_eq!(
-        m.behind,
-        [format!(
-            "{TEST_PASSES_UNDONE}: on 6 changes in a week, agentic-harness.pi#3, \
-             agentic-harness.pi#4, core.nix#1, core.nix#2, world#5, world#6 · 1JQPPC"
-        )],
-        "a class none of whose repositories is over the bar wasn't asked of whole"
-    );
-}
-
-/// A repository no owner is named in is asked of with the rest, however
-/// many changes it is on, so a line naming many unknown repositories,
-/// three changes each, makes one line and one ask rather than one for
-/// each of them.
-#[test]
-fn repositories_with_no_owner_of_their_own_are_asked_of_in_one_line() {
-    let unknown = NAMED_AT_MOST + 2;
-    let mut cases: Vec<Case> = (0..unknown)
-        .flat_map(|n| {
-            (1..=3).map(move |c| case(TEST_PASSES_UNDONE, &format!("repo{n:02}#{c}"), 100))
-        })
-        .collect();
-    cases.extend((1..=3).map(|c| case(TEST_PASSES_UNDONE, &format!("core.nix#{c}"), 100)));
-    let m = recurring(&cases, NOW);
-    let named: Vec<&str> = m.behind.iter().map(|l| class_of(l)).collect();
-    assert_eq!(
-        named,
-        [
-            format!("{TEST_PASSES_UNDONE} in core.nix"),
-            format!("{TEST_PASSES_UNDONE} in other repositories"),
-        ],
-        "a repository with no owner of its own was asked of apart: {:?}",
-        m.behind
-    );
-    let rest = format!("on {} of its {} changes", unknown * 3, unknown * 3 + 3);
-    assert!(
-        m.behind[1].contains(&rest) && m.behind[1].ends_with(" · 1JQPPC"),
-        "the other line didn't count every unknown repository's changes for the keeper: {}",
-        m.behind[1]
     );
 }
 
