@@ -66,6 +66,15 @@ function fieldOf(row, field) {
     return String(row?.forYou?.[field] ?? "");
 }
 
+// Whether a row says `word` of a field: a row Agents holds stands under
+// an agent's kind as well as its own (Now's agentsOwn), so :filter agent
+// holds what Agents does and :filter do still holds a session's to-do
+// (#6777's sixth round).
+function says(row, field, word) {
+    return fieldOf(row, field) === word
+        || field === "kind" && String(row?.forYou?.also ?? "") === word;
+}
+
 function wordsOf(arg) {
     return (arg ?? "").toLowerCase().split(SPACES).filter(word => word !== "");
 }
@@ -119,7 +128,7 @@ function asked(arg, rows, said, from) {
 // Whether a row stands in a filter: of its kind, where it names one, and
 // from its source, where it names one.
 function holds(filter, row) {
-    return FIELDS.every(field => filter[field] === "" || fieldOf(row, field) === filter[field]);
+    return FIELDS.every(field => filter[field] === "" || says(row, field, filter[field]));
 }
 
 // The rows a filter keeps, in the order For You lists them.
@@ -180,7 +189,7 @@ function offered(rows, arg, said, from) {
         return [];
     }
     const kept = filtered(rows, so);
-    const count = (field, word) => kept.filter(row => fieldOf(row, field) === word).length;
+    const count = (field, word) => kept.filter(row => says(row, field, word)).length;
     const kinds = so.kind !== "" ? []
         : KINDS.map(kind => ({ value: kind, field: "kind", count: count("kind", kind),
             note: said?.kinds?.[kind] ?? kind }));

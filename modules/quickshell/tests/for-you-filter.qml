@@ -154,6 +154,14 @@ QtObject {
         check(failures, "sources by name, numbers as numbers",
             offers(Filter.offered(sessions, "do ", said)), "s9 1, s10 1");
 
+        // A to-do Agents holds stands under an agent's kind and its own,
+        // so neither filter loses it (Now's agentsOwn; #6777's sixth round).
+        const held = items.concat([{ key: "m",
+                forYou: { kind: "do", source: "needs-you", also: "agent" } }]);
+        check(failures, "a to-do Agents holds is an agent's and a to-do",
+            ["agent", "do"].map(arg => keys(Filter.filtered(held, Filter.asked(arg, held, said))))
+                .join(" / "), "k m / a m");
+
         for (const failure of failures)
             console.warn(failure);
         console.log(`for-you-filter: ${failures.length} of the cases failed`);

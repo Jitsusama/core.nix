@@ -2626,8 +2626,9 @@ Provider {
     // :filter look holds what To Look At does, and any lifted (VKCF3Z,
     // 2026-11-09). Agents is opened where it stands, its headings left
     // out as a filter draws none, and each row it holds is told as an
-    // agent's whatever its own kind, so :filter agent holds what Agents
-    // does and no other kind's filter any of it (round 5, F26).
+    // agent's too, beside its own kind, so :filter agent holds what Agents
+    // does (round 5, F26) and :filter do still holds a session's to-do
+    // (round 6).
     function filterable() {
         const now = Date.now();
         const bands = bandsAt(now);
@@ -2637,11 +2638,12 @@ Provider {
             cellRows(bands.all, now).reduce((rows, row) => rows.concat(opened(row)), []),
             bandRows(bands.look, now), bandRows(bands.try, now), bandRows(bands.read, now));
     }
-    // A row inside Agents as :filter tells it, an agent's from where it
-    // came, kept while the row is.
+    // A row inside Agents as :filter tells it, an agent's as well as its
+    // own kind, from where it came, kept while the row is.
     function agentsOwn(row) {
         return keptAlike(itemsKept, `agent:${row.key}`, [row], () => Object.assign({}, row,
-            { forYou: { kind: "agent", source: row.forYou?.source ?? "sessions" } }));
+            { forYou: Object.assign({}, row.forYou, { also: "agent",
+                source: row.forYou?.source ?? "sessions" }) }));
     }
 
     // Whether one of Lately's rows stands in For You: only while its own
@@ -3382,7 +3384,9 @@ Provider {
         // or a landing lifted, by its own row's name. Agents leading, it's
         // the heaviest Agents holds, which Return, Return steps in to, a
         // to-do of a session asking nothing among them (round 5, F43).
-        const led = critical === "" ? Cells.leading(cellsOf(forYouBands.all)) : null;
+        // Banded at this minute, as waitingRows is, since time alone moves a
+        // to-do's weight and forYouBands isn't banded again for it (round 6).
+        const led = critical === "" ? Cells.leading(cellsOf(bandsAt(Date.now()).all)) : null;
         const asker = led?.item.kind === "agent" ? led.item.cell() : null;
         const lead = led?.item.toDo ?? null;
         const title = critical !== "" ? critical
