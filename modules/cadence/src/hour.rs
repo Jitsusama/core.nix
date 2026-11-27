@@ -217,15 +217,17 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
         }
         put::mark_asked(&mut ledger, owner, now, &ask.id);
     }
+    // Kept once the questions have gone and before the card, so their ids
+    // stand though the card's send fails or the run is stopped: asked
+    // again, each would wake its owner a second time and count against
+    // collaboration as a question of nobody's. A card that fails costs
+    // only the card.
+    findings::keep(&ledger_at, &ledger)?;
     let routes = fs::read_to_string(state_home.join("pain-points/routes.json")).ok();
     let keeper = measures::keeper(routes.as_deref());
     for (whom, intent) in card_to(to, keeper.as_deref()) {
         mesh.send(&message(whom, intent, card.clone()))?;
     }
-    // Kept once the card has gone, so a send that fails tells its findings
-    // and "fixed" lines again next hour rather than never: an owner told
-    // twice is cheaper than one never told.
-    findings::keep(&ledger_at, &ledger)?;
     write_whole(&kept_at, &serde_json::to_string(&next)?)?;
     Ok(())
 }

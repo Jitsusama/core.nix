@@ -403,7 +403,13 @@ fn causes_asked(m: &Measure) -> Vec<Filed> {
         .filter(|(line, _)| causes::class_of(line) != "unread")
         .map(|(line, owner)| {
             let class = causes::class_of(line);
-            let found = line.get(class.len() + 1..).unwrap_or_default().trim();
+            // Its changes are senders' words too, so a backtick in one can't
+            // read as marking cadence's own command.
+            let found = line
+                .get(class.len() + 1..)
+                .unwrap_or_default()
+                .trim()
+                .replace('`', "'");
             let key = format!("hour:{}:{class}", m.key);
             let done = causes::shell_quoted(&key);
             Filed {

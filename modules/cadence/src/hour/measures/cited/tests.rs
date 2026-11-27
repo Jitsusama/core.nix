@@ -310,6 +310,9 @@ fn a_sentence_ending_at_a_half_of_the_day_ends_before_a_capital() {
         "The fix merged at 9:00 a.m. It goes live at 22:45.",
         "The train lands by 9:00 a.m. The fix is live now.",
         "The review was at 9:00 AM. It goes live at 22:45.",
+        // Before a quote or a bracket the half's stop ends its sentence too.
+        "The review was at 9:00 a.m. \"It goes live at 22:45,\" said 16V6F4.",
+        "The review was at 9:00 a.m. (It goes live at 22:45.)",
     ] {
         let m = judged(&said(text), "", &cites, &by);
         assert!(
