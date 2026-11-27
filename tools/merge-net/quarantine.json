@@ -196,5 +196,14 @@
     "owner_session": "orchestrator",
     "reason": "has been broken since #6763, but fails with it reverted too, so a later merge breaks it as well; whoever finds that merge fixes it forward and takes it off this list",
     "test": "a-macs-checks-since-063296b4dae0652f63e1c3d95ddd9e30a80d7c7d"
+  },
+  {
+    "at": 1795762789,
+    "commit": "84ec95294d0cda750cc873c6cf024eb596db1a8d",
+    "due": "2026-11-29",
+    "owner_pr": 6204,
+    "owner_session": "orchestrator",
+    "reason": "has been broken since #6204, whose revert won't apply; its owner fixes it forward and takes it off this list",
+    "test": "a-macs-checks-since-6b3efce3479449e4385a7c608c587a64b45eee82"
   }
 ]
