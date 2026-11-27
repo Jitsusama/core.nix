@@ -409,7 +409,7 @@ fn lab_kept(
 
 /// Lab only: how far their sound must stand above a word of his for it
 /// to be cut as their echo, in dB.
-const SOUND: f32 = 20.0;
+const SOUND: f32 = 15.0;
 
 /// Lab only: the loudest quarter second of `sound` starting from a
 /// second before `at` to three tenths after, in 50 ms steps, in dB of
