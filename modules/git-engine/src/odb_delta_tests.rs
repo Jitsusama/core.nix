@@ -581,6 +581,13 @@ pub(super) fn read_each(objects: &std::path::Path, names: &[[u8; 20]]) -> (Vec<R
     (read, odb.bad.len())
 }
 
+impl Odb {
+    /// How many copies the store has marked bad, for the engine's tests.
+    pub(crate) fn marks(&self) -> usize {
+        self.bad.len()
+    }
+}
+
 #[test]
 fn a_copy_whose_chain_comes_round_leaves_a_base_read_from_its_other_copy() {
     let names = names(2);
