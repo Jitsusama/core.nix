@@ -3070,7 +3070,7 @@ Singleton {
             // Heard again for the same refusal, as no script sends but any
             // caller can, the first give-up's time stands, so its hold ends
             // answerPatience after it (refusedOwn, stillHeld).
-            if (named in refusalKeptAt) {
+            if (false && named in refusalKeptAt) {
                 console.info(`sessions: ${named}'s give-up heard again for the same refusal, `
                     + "taken once");
                 return;
