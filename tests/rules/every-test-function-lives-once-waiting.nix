@@ -60,7 +60,6 @@
   "modules/spend-watch/src/detect.rs" = 1;
   "modules/spend-watch/src/status.rs" = 1;
   "modules/zathura/keys-test.sh" = 1;
-  "modules/quickshell/tests/agents-on-niri-test.py" = 1;
   "modules/quickshell/tests/arrivals.qml" = 2;
   "modules/quickshell/tests/becoming.qml" = 1;
   "tests/vm/boot/bluetooth-disk-prompt-vm-test.py" = 1;
@@ -115,7 +114,6 @@
   "modules/quickshell/tests/order.qml" = 1;
   "modules/quickshell/tests/pacing.qml" = 1;
   "modules/quickshell/tests/part-names.qml" = 1;
-  "modules/quickshell/tests/passwords-on-niri-test.py" = 1;
   "modules/quickshell/tests/people.qml" = 2;
   "modules/quickshell/tests/piece-drawers.qml" = 1;
   "modules/quickshell/tests/pi-source.qml" = 1;

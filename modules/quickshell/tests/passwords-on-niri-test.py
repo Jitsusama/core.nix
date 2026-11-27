@@ -99,11 +99,8 @@ def shell() -> Iterator[Shell]:
     started.stop()
 
 
-@pytest.fixture(autouse=True)
-def launcher_closed_after(shell: Shell) -> Iterator[None]:
-    """Close the launcher after each test, so one failing with it open fails alone."""
-    yield
-    shell.close_launcher()
+# The launcher closed after each case, so one failing with it open, or still opening, fails alone.
+launcher_closed_after = launcher_on_niri.launcher_closed_after
 
 
 def opened(shell: Shell) -> None:

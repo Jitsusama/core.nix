@@ -2807,9 +2807,9 @@ def test_emoji_finds_a_whole_word_typed_in_it(shell: Shell) -> None:
     # journal to say why (2026-11-23), so a failure says how Emoji's search of the history stood.
     try:
         shell.type_in("tada", selecting="Party popper")
-    except AssertionError as failed:
+    except (AssertionError, launcher_on_niri.ShowingError) as failed:
         said = f"{failed}; Emoji's search: {shell.searching('emoji')}"
-        raise AssertionError(said) from failed
+        raise type(failed)(said) from failed
     shell.close_launcher()
 
 
@@ -3966,9 +3966,9 @@ def test_a_marks_click_draws_now_from_what_was_kept_on_its_row(shell: Shell) -> 
 
         try:
             shell.launcher_until(came)
-        except AssertionError as missed:
+        except (AssertionError, launcher_on_niri.ShowingError) as missed:
             failed = f"the click on the mark at its cell {cells[0]} opened nothing"
-            raise AssertionError(failed) from missed
+            raise type(missed)(failed) from missed
         assert opened[0]["into"] == "on", f"the click didn't open Now: {opened[0]}"
         assert opened[0].get("kept"), f"the click opened Now whole: {opened[0]}"
         first = opened[0].get("shown") or {"keys": [], "at": -1}
@@ -6477,13 +6477,13 @@ def on_charge(shell: Shell, machine: StandIn) -> None:
     shell.down_to("Charge")
     try:
         shell.launcher_until(lambda shown: "40,000,000" in shown["drawer"]["values"])
-    except AssertionError as failed:
+    except (AssertionError, launcher_on_niri.ShowingError) as failed:
         with machine.lock:
             watches = [sorted(watches.values()) for watches in machine.clients.values()]
         said, _ = shell.said_since(0)
         drawers = [report for report in said if "drawer" in report][-12:]
         message = f"{failed}\nwatched of the stand-in: {watches}\nsaid of drawers: {drawers}"
-        raise AssertionError(message) from failed
+        raise type(failed)(message) from failed
 
 
 def agent_window(address: str, window: Json, title: str) -> Json:

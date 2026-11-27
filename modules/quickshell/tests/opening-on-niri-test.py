@@ -225,12 +225,15 @@ def home_kept_after(shell: Shell) -> Iterator[None]:
     """Close the launcher after each test, and wait until it has kept home for the next.
 
     Home is put back a turn after the card has faded out, so the next test's opening would
-    otherwise race it, and one failing with the launcher open fails alone.
+    otherwise race it, and one failing with the launcher open fails alone. Home is waited for
+    even when the close fails, whose failure is said after, so the next test never races it.
     """
     yield
-    shell.launcher_left_closed()
-    shell.unshared()
-    shell.launcher_until(lambda shown: shown.get("kept"))
+    try:
+        shell.launcher_left_closed()
+    finally:
+        shell.unshared()
+        shell.launcher_until(lambda shown: shown.get("kept"))
 
 
 def openings(shell: Shell) -> list[Json]:
@@ -631,10 +634,10 @@ def test_an_open_card_fits_a_screen_that_shrinks_under_it(shell: Shell) -> None:
                     and shown["cut"] == []
                 )
             )
-        except AssertionError as missed:
+        except (AssertionError, launcher_on_niri.ShowingError) as missed:
             card = shell.showing()["card"]
             failed = f"open at 1 and shrunk to 2, the card ran off the screen: {card}"
-            raise AssertionError(failed) from missed
+            raise type(missed)(failed) from missed
         # Read once it holds still, so a fit the card only passed through isn't what's held.
         assert shell.held_still(), "the card never held still once it refitted"
         shown = shell.showing()
@@ -2642,7 +2645,7 @@ def test_the_launcher_takes_keys_after_each_of_five_restarts(shell: Shell) -> No
                     shown["typed"] == "agents" and (shown["selected"] or {}).get("name") == "Agents"
                 )
             )
-        except AssertionError as failed:
+        except (AssertionError, launcher_on_niri.ShowingError) as failed:
             message = f"after restart {restart} of {RESTARTS}, typing found nothing: {failed}"
-            raise AssertionError(message) from failed
+            raise type(failed)(message) from failed
         shell.close_launcher()

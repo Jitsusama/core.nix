@@ -201,23 +201,33 @@ class Shell:
         given = os.environ.get("QS_GIVEN", "").split()
         with self.log.open(mode) as log:
             self.launched = self.log.stat().st_size
-            self.process = subprocess.Popen(
+            process = subprocess.Popen(
                 ["qs", "-p", str(self.folder), *given],
                 stdout=log,
                 stderr=subprocess.STDOUT,
             )
+        self.process = process
         deadline = time.monotonic() + STARTING.total_seconds()
+        status: int | None = None
         said = ""
         while time.monotonic() < deadline:
+            # A shell that exited never answers, so its log is said at once rather than after
+            # the whole of STARTING.
+            if process.poll() is not None:
+                exited = f"the shell exited {process.returncode} before it answered closed"
+                failed = f"{exited}:\n{self.tail()}"
+                raise AssertionError(failed)
             status, said = self.execute(self.ipc("showing"))
-            # An answer that came empty or says what threw, as one may while the shell's objects
-            # still load, isn't yet one: the wait goes on, and fails saying it and the log.
+            # An answer that came empty, says what threw or says nothing of open, as one may while
+            # the shell's objects still load, isn't yet one: the wait goes on, and fails saying
+            # it, how the call last exited and the log.
             with contextlib.suppress(ValueError):
                 shown = json.loads(said) if status == 0 else None
-                if isinstance(shown, dict) and "threw" not in shown and not shown["open"]:
+                if isinstance(shown, dict) and "threw" not in shown and shown.get("open") is False:
                     return
             time.sleep(POLL * 2)
-        failed = f"the shell never answered closed, last saying {said!r}:\n{self.tail()}"
+        last = f"last exiting {status} and saying {said!r}"
+        failed = f"the shell never answered closed, {last}:\n{self.tail()}"
         raise AssertionError(failed)
 
     def daemon(self, name: str, program: str, *given: str, socket: Path | None = None) -> None:
@@ -337,11 +347,15 @@ class Shell:
         """Give what the launcher shows, from its showing call, failing as a read that threw.
 
         A read that throws in the shell answers what threw (launcher/Held.js's answered) at exit
-        0, and an answer once came empty (vm-desktop-looks, 2026-11-22). Either fails as
-        ShowingError naming it, which no wait presses past and the wrappers that add what they
-        saw carry, rather than as a missing field's KeyError or a bare JSON error.
+        0, an answer once came empty (vm-desktop-looks, 2026-11-22), and a call the shell never
+        took exits other than 0. Each fails as ShowingError naming it, which no wait presses
+        past and the wrappers that add what they saw carry, rather than as a missing field's
+        KeyError, a bare JSON error or the AssertionError a failed command gives.
         """
-        said = self.as_account(self.ipc("showing"))
+        status, said = self.execute(self.ipc("showing"))
+        if status != 0:
+            message = f"the launcher's showing exited {status}: {said!r}"
+            raise ShowingError(message)
         if not said.strip():
             message = "the launcher's showing answered nothing"
             raise ShowingError(message)
@@ -520,7 +534,8 @@ class Shell:
         left the launcher to open for the next (core.nix#7026's round, 2026-11-27). A launcher
         neither opening nor open, as nearly every case leaves it, is read once.
         """
-        if not any(self.showing()[state] for state in ("opening", "open")):
+        shown = self.showing()
+        if not (shown["opening"] or shown["open"]):
             return
         try:
             self.launcher_until(lambda shown: not shown["opening"])
