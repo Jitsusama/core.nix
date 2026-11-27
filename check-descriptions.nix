@@ -621,10 +621,11 @@
   cadence-outlasts-a-switch = ''
     a switch is told to leave each cadence run an installed timer starts be rather than restarting
     it and waiting on its start, which under load outlasts home-manager's wait and sends the whole
-    switch back, and each is a oneshot with a start timeout systemd reads that ends a hang now that
-    no switch does; the tick, day, review and hour must each be among the runs found, a failure
-    names each run and what it lacks, stand-in units each wrong one way must each be refused, and
-    ones right in each way allowed must each pass
+    switch back, and each is a oneshot setting a start timeout of its own systemd reads that ends a
+    hang now that no switch does; each timer's run is found as the base module finds it, the tick,
+    day, review and hour must each be among the runs found, a failure names each run and what it
+    lacks, stand-in units each wrong one way must each be refused, and ones right in each way
+    allowed must each pass
   '';
   cadence-passes-clippy = ''
     clippy finds nothing in cadence or its tests
