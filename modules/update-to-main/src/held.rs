@@ -244,11 +244,11 @@ fn stopped_by(config: &Config, head: &str, built: &Followed, hold: &Hold) -> Opt
                     return false;
                 };
                 let repo = Repo::followed(config, name, follow);
-                if !git::has(&repo, &hold.commit) || !git::has(&repo, commit) {
-                    if let Err(failure) = git::fetch(&repo) {
-                        unknown.get_or_insert(failure.why);
-                        return false;
-                    }
+                if (!git::has(&repo, &hold.commit) || !git::has(&repo, commit))
+                    && let Err(failure) = git::fetch(&repo)
+                {
+                    unknown.get_or_insert(failure.why);
+                    return false;
                 }
                 git::has(&repo, &hold.commit)
             })
