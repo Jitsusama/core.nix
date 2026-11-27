@@ -417,7 +417,7 @@ Provider {
             verb: Words.verb("sound:down"),
             stays: true,
             run: () => Watchers.act({ act: "restart-unit", unit: "sound.service" },
-                answer => provider.startRefused(Words.name("sound:down"), answer)),
+                answer => provider.startRefused("sound:down", Words.name("sound:down"), answer)),
             drawer: {
                 eyebrow: said("joined-here"),
                 title: Words.name("sound:down"),
@@ -1069,20 +1069,19 @@ Provider {
             note: note,
             run: () => Watchers.act(
                 { act: "restart-unit", unit: "noise-cancelled-trial.service" }, answer => {
-                    if (!provider.startRefused(name, answer))
+                    if (!provider.startRefused(key, name, answer))
                         NoiseCancelling.start();
                 })
         });
     }
 
-    // Says a start the machine daemon refused in its words, or that it had
-    // no answer, as ReadyRows' shut does, and whether it did. A row that
-    // starts a daemon holds nothing drawn, so `refused` would have no hold
-    // to take back, and said nothing at all (VKCF3Z, 2026-11-13).
-    function startRefused(name, answer) {
+    // Says a start the machine daemon refused on the row `key` in its
+    // words, or that it had no answer, as ReadyRows' shut does, and whether
+    // it did. A row that starts a daemon holds nothing drawn, so it's said
+    // by the name given (VKCF3Z, 2026-11-13).
+    function startRefused(key, name, answer) {
         const why = Ready.refusal(answer, Words.field.becoming ?? {});
-        if (why !== "")
-            launcher?.toldNot(name, "start", why);
+        provider.refused(key, why, { name: name, act: "start" });
         return why !== "";
     }
 
@@ -1276,14 +1275,15 @@ Provider {
     }
 
     // Asks the daemon what Return on a row does; a refusal is said in its
-    // plain words, and what follows is the record's to say. A Pick steps
-    // back out to the trial, whose clips it drops.
+    // plain words, by the row's name and the act asked, and what follows is
+    // the record's to say. A Pick steps back out to the trial, whose clips
+    // it drops.
     function byEarAsk(row) {
         const asking = ByEar.asked(row);
         if (asking !== null)
             NoiseCancelling.act(asking, why => {
                 if (why)
-                    provider.refused(row.key, why);
+                    provider.refused(row.key, why, { name: row.name, act: asking.act });
             });
         if (row.back)
             launcher?.back?.();

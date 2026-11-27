@@ -105,6 +105,20 @@ function fire(held, now, within, settle) {
     return nextDue(held(), now, within);
 }
 
+// What a source's refusal of an act on its row `key` comes to: the hold it
+// takes back, where the launcher holds that row becoming, which names the row
+// and the act itself; else what's said of it, `asked` as the source gives it,
+// { name, act }, since a row no act drew is held nowhere for its name to be
+// found (Timers' Pause, Spend's Start the Watch); else null, for a source
+// that named neither, whose refusal there's nothing to say by. A key is
+// matched among the holds' own, never one every object has.
+function refusal(holds, key, asked) {
+    if (Object.keys(holds).includes(key)) {
+        return { held: holds[key] };
+    }
+    return asked?.name ? { told: { name: asked.name, act: asked.act ?? "" } } : null;
+}
+
 // What `act` did, as words.json's `did` says it, else `done`: a daemon's
 // own word for an act is never said to Joel (PN2VZC, 2026-11-12: "Optimize
 // for Conferencing and Gaming not sqm yet", and Power's "not

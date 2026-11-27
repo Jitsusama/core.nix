@@ -64,6 +64,13 @@ ShellRoot {
             notDone = notDone.concat([`${name} ${act}: ${why}`]);
         }
 
+        // A refusal, with no row held becoming, is told by the name and act
+        // its source gave, as the launcher tells it (launcher/Becoming.js).
+        function becameNot(key, why, asked) {
+            if (asked?.name)
+                toldNot(asked.name, asked.act, why);
+        }
+
         function wants(source) {
             return wanting;
         }
