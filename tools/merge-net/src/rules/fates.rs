@@ -114,9 +114,28 @@ pub fn beside(fates: &[Fate], branch: &Side, main: &Side) -> Vec<String> {
     shared
 }
 
+/// Each of `files` that lies in a fate one of `side`'s paths, changed,
+/// renamed or deleted, lies in too, with that fate's name, so a hold for
+/// it can say the fate rather than a crate or a file both change.
+pub fn sharing(fates: &[Fate], side: &Side, files: &[String]) -> Vec<(String, String)> {
+    let touched = |fate: &&Fate| {
+        side.changed
+            .iter()
+            .chain(side.gone)
+            .any(|path| fate.holds(path))
+    };
+    files
+        .iter()
+        .filter_map(|file| {
+            let fate = fates.iter().filter(|fate| fate.holds(file)).find(touched)?;
+            Some((file.clone(), fate.name.clone()))
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{Fate, beside, fates, judging, parse};
+    use super::{Fate, beside, fates, judging, parse, sharing};
     use crate::ready::Side;
 
     fn owned(files: &[&str]) -> Vec<String> {
@@ -183,6 +202,33 @@ mod tests {
         assert!(
             judging("no colon").is_err(),
             "a base's list that doesn't read was let pass"
+        );
+    }
+
+    #[test]
+    fn a_file_shares_the_fate_a_side_touched_by_name() {
+        let fates =
+            parse("the map: modules/mycelium/site/ modules/local-sites/\nnet: modules/net/")
+                .expect("the fates read");
+        let nothing = |_: &str| String::new();
+        let (changed, gone) = (
+            owned(&["docs/x.md"]),
+            owned(&["modules/mycelium/site/old.js"]),
+        );
+        let side = Side {
+            changed: &changed,
+            gone: &gone,
+            text: &nothing,
+        };
+        let files = owned(&[
+            "modules/local-sites/kit/head.css",
+            "modules/net/site/panel.ts",
+        ]);
+        assert_eq!(
+            sharing(&fates, &side, &files),
+            vec![(files[0].clone(), "the map".to_owned())],
+            "a file in the fate a side renamed out of wasn't named by it, or one in a fate it \
+             never touched was"
         );
     }
 
