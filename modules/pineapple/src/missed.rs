@@ -252,13 +252,20 @@ mod tests {
     }
 
     /// A folder of `case`'s own in this test run, removed once it's
-    /// dropped, so a case that fails leaves nothing behind.
+    /// dropped, so a case that fails leaves nothing behind. It's made
+    /// here, and one already there fails the case, as its name can be
+    /// guessed: a link someone left there would have the case write
+    /// through it.
     struct Home(std::path::PathBuf);
 
     impl Home {
         fn new(case: &str) -> Self {
             let pid = std::process::id();
-            Self(std::env::temp_dir().join(format!("pineapple-missed-{case}-{pid}")))
+            let home = std::env::temp_dir().join(format!("pineapple-missed-{case}-{pid}"));
+            std::fs::create_dir(&home).unwrap_or_else(|error| {
+                panic!("couldn't make {} the case's own: {error}", home.display())
+            });
+            Self(home)
         }
     }
 

@@ -409,7 +409,7 @@ fn run(how: &Run) -> Result<(), Failure> {
         own: None,
         owed: Vec::new(),
     });
-    let mut own = Searched::new(judged.since, judged.own, first, INDEX_LAG);
+    let mut own = Searched::new(judged.since, judged.own.clone(), first, INDEX_LAG);
     let mut watched = Watched::default();
     let name = shown(&how.site);
     let left = Left::new(&how.site, &name, &how.origin, how.shadow, &state_home());
