@@ -88,6 +88,9 @@ Item {
             line.confirming = false;
             line.answerTaken = () => true;
             line.keyNow = () => Date.now();
+            // A link's quiet left by a case that failed inside it would
+            // drop the next case's keys.
+            line.unlinked();
             line.drawerHere = false;
             line.reselectable = false;
             line.registers = false;
@@ -457,6 +460,39 @@ Item {
             compare(asked.join(" "), "5400", "the ask asked with the key's time on it");
             compare(answered.count, 1);
             compare(answered.signalArguments[0][1], 5400, "and answered at that time");
+        }
+
+        // The operator again is timed on that clock too: d 100 ms after
+        // visual's, on a clock far from the wall's, is still taken with it,
+        // where the wall's would read it as long after and let it begin an
+        // operator, which j would then end as dj.
+        // A link's quiet is timed on that clock too, so a wall clock
+        // stepped back inside it can't drop every key for as long as the
+        // step: a key in its 700 ms is dropped, and one after is taken.
+        function test_aLinksQuietIsTimedOnTheClockThePromptIsGiven() {
+            line.keyNow = () => 5000;
+            line.linked(false);
+            line.keyNow = () => 5100;
+            keyClick(Qt.Key_Left);
+            compare(line.quietDropped, 1, "a key inside the quiet, dropped");
+            line.keyNow = () => 5800;
+            keyClick(Qt.Key_Left);
+            compare(line.quietDropped, 1, "and one after it, taken");
+            line.unlinked();
+        }
+
+        function test_theOperatorAgainIsTimedOnTheClockThePromptIsGiven() {
+            line.keyNow = () => 5000;
+            toNormal();
+            keyClick("V");
+            keyClick("d");
+            compare(operated.count, 1);
+            line.keyNow = () => 5100;
+            keyClick("d");
+            verify(!line.keyActed, "d again, swallowed on the given clock");
+            keyClick("j");
+            compare(operated.count, 1, "j after it only moves");
+            compare(stepped.count, 1);
         }
 
         // Unhurried, the ask hears d again only if it's asked before the
