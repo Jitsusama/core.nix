@@ -208,8 +208,11 @@ fn on_devtmpfs(proc: &Path, fd: &OsStr, mountinfo: &OnceCell<Option<Vec<u8>>>) -
 /// node comes from. Which mount it is comes from the descriptor's fdinfo
 /// and the process's mountinfo, read only for such a link, rather than
 /// from the file itself, since one on a network or FUSE filesystem that
-/// hangs would hang the watch for every camera. A descriptor whose fdinfo
-/// or mountinfo can't be read is skipped, as one that's closed is.
+/// hangs would hang the watch for every camera. A socket, pipe or other
+/// link that isn't a path can't be a bound node, so it's never asked,
+/// which keeps a process holding thousands of them as cheap to walk as
+/// before. A descriptor whose fdinfo or mountinfo can't be read is
+/// skipped, as one that's closed is.
 fn holds(proc: &Path, device: u64) -> io::Result<bool> {
     let mountinfo = OnceCell::new();
     for fd in fs::read_dir(proc.join("fd"))? {
@@ -218,8 +221,9 @@ fn holds(proc: &Path, device: u64) -> io::Result<bool> {
         let Ok(link) = fs::read_link(&path) else {
             continue;
         };
-        if !link.as_os_str().as_bytes().starts_with(b"/dev/")
-            && !on_devtmpfs(proc, &fd.file_name(), &mountinfo)
+        let link = link.as_os_str().as_bytes();
+        if !link.starts_with(b"/dev/")
+            && !(link.starts_with(b"/") && on_devtmpfs(proc, &fd.file_name(), &mountinfo))
         {
             continue;
         }
@@ -613,6 +617,29 @@ mod tests {
             pids,
             HashSet::from([4_000_003, 4_000_004]),
             "only the processes that still map the camera are seen"
+        );
+    }
+
+    #[test]
+    fn a_descriptor_that_isnt_a_path_is_never_asked_its_mount() {
+        // The descriptor reads as a pipe's, as most of a process's do, not
+        // as a path, on a devtmpfs mount. In the fake folder that name leads
+        // on, through a folder beside the descriptors that isn't one, to
+        // /dev/null, so following it would name the process. Only leaving a
+        // link that isn't a path unasked keeps it out.
+        let root = fake_proc("not-a-path");
+        let cgroup = b"0::/user.slice/user-1000.slice\n";
+        fake_process(&root, 4_000_001, Path::new("pipe:[1]/x"), Some(cgroup));
+        fake_mount(&root, 4_000_001, Some("devtmpfs"));
+        let beside = root.join("4000001/fd/pipe:[1]");
+        fs::create_dir(&beside).unwrap();
+        std::os::unix::fs::symlink("/dev/null", beside.join("x")).unwrap();
+        fake_process(&root, 4_000_002, Path::new("/dev/null"), Some(cgroup));
+        let (_, pids) = walked(&root);
+        assert_eq!(
+            pids,
+            HashSet::from([4_000_002]),
+            "only the process whose link is under /dev is seen"
         );
     }
 }
