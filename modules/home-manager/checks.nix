@@ -454,12 +454,13 @@ onLinux {
         wrong=0
         while IFS=$'\t' read -r core ends spelling; do
           # The second line systemd-analyze prints is the span in
-          # microseconds; a span of one or more bounds a start.
+          # microseconds; a span of one or more bounds a start, but for
+          # infinity, which it prints as the largest such count.
           if said=$(systemd-analyze timespan -- "$spelling" 2>/dev/null); then
             systemd=reads
             micros=$(printf '%s\n' "$said" | sed -n '2s/.*: *//p')
             case $micros in
-              "" | 0 | infinity) lasts=endless ;;
+              "" | 0 | infinity | 18446744073709551615) lasts=endless ;;
               *) lasts=ends ;;
             esac
           else
