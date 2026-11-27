@@ -789,17 +789,24 @@ done
 
 # Every cause the script can tell is one the shell's untaken knows, which
 # takes any other as no cause at all, so a cause added to one alone can't
-# pass unseen. It names those it doesn't know.
+# pass unseen. It names those it doesn't know, and any cause written other
+# than as a bare word (quoted, hyphenated, a variable or with a comment
+# after), which it couldn't tell from one it knows, so none is skipped.
 unknown=$("$python" - "$script" "$sessions" << 'EOF'
 import re
 import sys
 from pathlib import Path
 
 script, sessions = (Path(name).read_text(encoding="utf-8") for name in sys.argv[1:3])
-told = set(re.findall(r"^\s*cause=(\w*)\s*$", script, re.MULTILINE))
-known = re.search(r"\[([^\]]*)\]\.includes\(given\)", sessions)
+written = re.findall(r"^[^#\n]*\bcause=(.*)$", script, re.MULTILINE)
+told = {word for word in written if re.fullmatch(r"\w+", word)}
+odd = [word for word in written if not re.fullmatch(r"\w+", word)]
+known = re.search(r"const why = \[([^\]]*)\]\.includes\(given\)", sessions)
 names = set(re.findall(r'"(\w*)"', known.group(1))) if known else set()
-print(" ".join(sorted(told - names)) if told and names else "(none read)")
+if odd:
+    print("written so it can't be read: " + " | ".join(odd))
+else:
+    print(" ".join(sorted(told - names)) if told and names else "(none read)")
 EOF
 )
 if [ -n "$unknown" ]; then
