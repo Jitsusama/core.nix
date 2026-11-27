@@ -190,9 +190,13 @@ fn felt(feel: &[Pain], figures: &mut BTreeMap<String, f64>) {
 /// What each watched program held, in MiB: the most its copies held
 /// together, and a typical and a heavy copy, each the mean over the day's
 /// looks, when it was seen running, beside the share of those looks that
-/// counted every copy by its Pss. The share marks the scale the same keys
-/// are on: under 100 on a day partly by Rss, and absent from a day before
-/// shares were read, so a fall back to Rss reads as that, not a regression.
+/// counted every copy by its Pss. The share marks the scale the typical
+/// and heavy copy are on: under 100 on a day partly by Rss, so a fall
+/// back to Rss reads as that, not a regression. It's absent where the
+/// day's looks began before they were counted, in a file written before
+/// this count or by an older health, whose scale isn't known. The most
+/// held is one look's, not a mean, so on a mixed day the share doesn't
+/// say which measure that look took.
 #[expect(
     clippy::cast_precision_loss,
     reason = "a figure only needs to be near: mebibytes and counts"
@@ -213,10 +217,12 @@ fn held(memory: &BTreeMap<String, Memory>, figures: &mut BTreeMap<String, f64>) 
                 format!("memory.{name}.copy-p95-mib"),
                 mean(memory.p95_sum_kib),
             );
-            figures.insert(
-                format!("memory.{name}.looks-by-pss-percent"),
-                memory.looks_by_pss.min(memory.looks) as f64 * 100.0 / memory.looks as f64,
-            );
+            if let Some(by_pss) = memory.looks_by_pss {
+                figures.insert(
+                    format!("memory.{name}.looks-by-pss-percent"),
+                    by_pss.min(memory.looks) as f64 * 100.0 / memory.looks as f64,
+                );
+            }
         }
     }
 }
@@ -352,11 +358,18 @@ mod tests {
                 looks: 4,
                 median_sum_kib: (4 * 300) << 10,
                 p95_sum_kib: (2 * (500 + 700)) << 10,
-                looks_by_pss: 3,
+                looks_by_pss: Some(3),
                 ..Memory::default()
             },
         );
         day.memory.insert("quickshell".into(), Memory::default());
+        let looked = |looks_by_pss| Memory {
+            looks: 2,
+            looks_by_pss,
+            ..Memory::default()
+        };
+        day.memory.insert("overcounted".into(), looked(Some(5)));
+        day.memory.insert("resumed".into(), looked(None));
         let figures = of(&day);
         let figure = |name: &str| figures.get(name).copied();
         assert_eq!(
@@ -376,6 +389,16 @@ mod tests {
             figure("memory.quickshell.looks-by-pss-percent"),
             None,
             "no looks, so no share of them"
+        );
+        assert_eq!(
+            figure("memory.overcounted.looks-by-pss-percent"),
+            Some(100.0),
+            "a kept day saying more looks by Pss than it had reads as all of them"
+        );
+        assert_eq!(
+            figure("memory.resumed.looks-by-pss-percent"),
+            None,
+            "looks kept before they were counted, so no share is known"
         );
         assert_eq!(
             (
