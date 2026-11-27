@@ -209,5 +209,30 @@
       "test_a_detail_inside_a_thing_is_found_from_the_root_and_return_goes_there"
     ],
     "test": "vm-desktop-launcher-goes-places"
+  },
+  {
+    "at": 1795785057,
+    "commit": "f4954625f987835aa026752c1b3b52d865b36b2d",
+    "due": "2026-11-29",
+    "owner_pr": 7053,
+    "owner_session": "orchestrator",
+    "reason": "failed, then passed, at f4954625f987",
+    "subtests": [
+      "test_the_house_holds_the_upload_under_what_it_leaves"
+    ],
+    "test": "vm-the-house-holds-the-upload"
+  },
+  {
+    "at": 1795789654,
+    "commit": "c06280ba548e891ff671079094e1dd38b6a74a6a",
+    "due": "2026-11-29",
+    "owner_pr": 7119,
+    "owner_session": "orchestrator",
+    "reason": "failed, then passed, at c06280ba548e",
+    "subtests": [
+      "test_each_track_is_full_once_the_image_is_read",
+      "test_the_kernel_fills_each_track_as_it_reads"
+    ],
+    "test": "vm-boot-says-it-wakes-from-hibernation"
   }
 ]

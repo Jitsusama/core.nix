@@ -190,9 +190,11 @@ Singleton {
     // heard before each change is told (Daemon.qml), and each key's place
     // as it last sorted, so a sorting places anew only those (Pi.resorted).
     // Held back while the launcher is shut, they wait here until it
-    // shows them. Plain objects, so hearing notifies nothing.
-    readonly property var unplaced: ({})
-    readonly property var placedBy: ({})
+    // shows them. Plain objects, so hearing notifies nothing, with no
+    // prototype, so a session keyed "__proto__" is placed as any other
+    // rather than setting what the object inherits.
+    readonly property var unplaced: Object.create(null)
+    readonly property var placedBy: Object.create(null)
     function hear(changed, gone) {
         for (let at = 0; at < changed.length; at += 1)
             unplaced[changed[at]] = true;

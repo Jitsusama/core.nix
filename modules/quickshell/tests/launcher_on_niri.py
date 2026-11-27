@@ -46,6 +46,9 @@ WAITING = timedelta(seconds=30)
 # How often what the launcher shows is asked again while a wait has heard nothing, and the
 # pause between two keys typed, as the desktop test's keys are.
 POLL = 0.05
+# How long a launcher opened for something Joel didn't ask drops his keys, in seconds, from
+# its opening by the wall clock (Prompt.qml's linkQuiet).
+LINK_QUIET = 0.7
 KEY_PACE_MS = 50
 # Far enough to take the pointer to the screen's top left corner from anywhere on it.
 TO_THE_CORNER = -10000
@@ -339,12 +342,21 @@ class Shell:
         return ", ".join(self.made()["lately"][place]) or "none"
 
     def made_since(self, place: str, before: int) -> list[str]:
-        """Give the keys of the rows the place made after it had made `before`, oldest first."""
+        """Give the keys of the rows the place made after it had made `before`, oldest first.
+
+        Each whole, spaces and all, as an emoji's name holds them: only the marks Provider.qml
+        writes after it, shut and then walked, are taken off.
+        """
+        rows = self.rows_made_since(place, before)
+        return [row.removesuffix(" walked").removesuffix(" shut") for row in rows]
+
+    def rows_made_since(self, place: str, before: int) -> list[str]:
+        """Give the rows the place made after it had made `before`, whole, marked shut or walked."""
         made = self.made()
         count = int(made["rows"][place]) - before
         lately = made["lately"][place]
         assert count <= LATELY_KEPT, f"{place} made {count} rows: {', '.join(lately)}"
-        return [key.split(" ")[0] for key in (lately[-count:] if count else [])]
+        return list(lately[-count:]) if count else []
 
     def made_settled(self, place: str) -> None:
         """Wait until the place has made no row for a while, the opening's work done."""
@@ -507,6 +519,11 @@ class Shell:
         Escape gives normal from the find, lets the key list go if it's shown, and cancels a
         count or a key begun, but never closes (Joel, 2026-11-05: "fuck escape quitting"), so
         :q does, from any depth.
+
+        A launcher opened to say something Joel didn't ask for, as a Go To's why it couldn't
+        go (Launcher.qml's toldHere), drops every key for its first LINK_QUIET, so a key it
+        dropped is counted as an answer and sent again once that's over, never left to wait on
+        a move it can't make, nor a :q's Return let through alone to act on the row.
         """
 
         def where(shown: Json) -> tuple[object, ...]:
@@ -517,6 +534,7 @@ class Shell:
                 shown.get("listing"),
                 shown.get("command") is not None,
                 shown["operator"] or shown["counted"] or shown["begun"],
+                shown["quietDropped"],
             )
 
         def moved(was: tuple[object, ...], shown: Json) -> bool:
@@ -526,13 +544,15 @@ class Shell:
             was = where(self.showing())
             if not was[0]:
                 return
-            _, mode, _, listing, commanding, pending = was
+            _, mode, _, listing, commanding, pending, dropped = was
             if mode == "normal" and not (listing or commanding or pending):
                 self.send_chars(":q")
                 self.send_key("ret")
             else:
                 self.send_key("esc")
             self.launcher_until(functools.partial(moved, was))
+            if self.showing()["quietDropped"] != dropped:
+                time.sleep(LINK_QUIET)
         still = self.showing()
         message = f"the launcher was still open after 12 Escapes: {still}"
         raise AssertionError(message)
