@@ -431,12 +431,13 @@ in
       '';
 
   # A Mac's key job, run over sample keys with its Mac tools stood in for,
-  # says to make a key anew whichever refusal it says, by the owner, mode,
-  # access list and names of the file the key's name comes to, and for
-  # any key its folder refused, and says it of no key others may only run
-  # or reach by lesser rights, of one it copied, or where the name comes
-  # to no file and no folder refused it (keys said plainly round 4's F1,
-  # F2 and F7; round 6's F4).
+  # says to make a key anew whichever refusal it says, by the owner, mode
+  # and access list of the file the key's name comes to, and for any key
+  # its folder refused, and says it of no key others may only run or
+  # reach by lesser rights, of one refused only for a second name, of one
+  # it copied, or where the name comes to no file and no folder refused
+  # it (keys said plainly round 4's F1, F2 and F7; round 6's F4; round
+  # 7's F1).
   house-report-advises-by-the-file-its-key-names =
     pkgs.runCommandLocal "house-report-advises-by-the-file-its-key-names"
       {
