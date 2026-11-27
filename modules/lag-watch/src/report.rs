@@ -365,6 +365,7 @@ mod tests {
             call: BTreeMap::new(),
             lowered: BTreeMap::new(),
             unwatched: BTreeMap::new(),
+            scheds_without_dash_row: 0,
             niri: Answers {
                 p99_ms: p99,
                 ..Answers::default()

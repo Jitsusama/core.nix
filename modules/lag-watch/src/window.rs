@@ -65,6 +65,9 @@ pub struct Snapshot {
     /// began, so a window reads what it gained. Empty where the kernel
     /// doesn't keep it.
     pub blocked: BTreeMap<Thread, u64>,
+    /// How many of its threads' `sched` files held no row of dashes ending
+    /// their header (`kernel::lacks_dash_row`), so lost their fair count.
+    pub scheds_without_dash_row: u64,
 }
 
 /// How far past the time between two reads a thread's wait may run and
@@ -252,6 +255,12 @@ pub struct Window {
     /// not a quiet. Left out when none did, and of windows written before.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub unwatched: BTreeMap<String, usize>,
+    /// How many of the threads' `sched` files read at the window's end held
+    /// no row of dashes ending their header, so their waits fell back to the
+    /// schedstat's count alone, which takes some sleeps for waits: a gap that
+    /// shows. Left out when none did, and of windows written before.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub scheds_without_dash_row: u64,
     pub niri: Answers,
     /// What counted as Joel waiting, in words.
     pub trouble: Vec<String>,
@@ -417,6 +426,7 @@ pub fn between(then: &Snapshot, now: &Snapshot, niri: Answers, ended: u64, syste
         call,
         lowered: now.lowered.clone(),
         unwatched: now.unwatched.clone(),
+        scheds_without_dash_row: now.scheds_without_dash_row,
         niri,
         trouble: Vec::new(),
         worst: String::new(),

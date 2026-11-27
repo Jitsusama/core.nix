@@ -656,6 +656,31 @@ fn an_app_s_processes_that_go_unwatched_are_counted_in_the_window() {
 }
 
 #[test]
+fn scheds_read_without_their_dash_row_are_counted_in_the_window() {
+    let then = snapshot(0.0, &[], 0, 0);
+    let mut now = snapshot(10.0, &[], 0, 0);
+    now.scheds_without_dash_row = 3;
+    let w = between(&then, &now, quiet_niri(), 0, "gen");
+    assert_eq!(
+        w.scheds_without_dash_row,
+        3,
+        "the count didn't reach the window"
+    );
+    let line = serde_json::to_string(&w).unwrap();
+    assert!(line.contains("\"scheds_without_dash_row\":3"), "{line}");
+    // None writes no count, and an older window reads as none.
+    now.scheds_without_dash_row = 0;
+    let line = serde_json::to_string(&between(&then, &now, quiet_niri(), 0, "gen")).unwrap();
+    assert!(!line.contains("scheds_without_dash_row"), "{line}");
+    let back: Window = serde_json::from_str(&line).unwrap();
+    assert_eq!(
+        back.scheds_without_dash_row,
+        0,
+        "an older window read as a count"
+    );
+}
+
+#[test]
 fn answers_give_their_quantiles() {
     let a = Answers::of(&[3.0, 1.0, 2.0], 0);
     assert_eq!((a.p50_ms, a.max_ms, a.asked), (2.0, 3.0, 3));

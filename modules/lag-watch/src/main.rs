@@ -250,6 +250,9 @@ fn snapshot(
         let Some((sched, sched_text)) = kernel::read_sched_and_text(&thread.schedstat) else {
             continue;
         };
+        if kernel::lacks_dash_row(&sched_text) {
+            s.scheds_without_dash_row += 1;
+        }
         if apps::is_app(thread)
             && let Some(ns) = kernel::blocked(&sched_text)
         {

@@ -167,6 +167,33 @@ fn a_thread_s_own_name_never_reads_as_a_count() {
 }
 
 #[test]
+fn a_sched_read_without_its_dash_row_is_told_from_one_not_read() {
+    let rowless = "slack (7, #threads: 30)\n\
+                   wait_sum                     :         12.250000\n";
+    assert!(
+        lacks_dash_row(rowless),
+        "a sched without its dash row passed as whole"
+    );
+    assert_eq!(waited(rowless), None, "a count was read past no dash row");
+    let whole = "slack (7, #threads: 30)\n\
+                 ----------------------------------------\n\
+                 wait_sum                     :         12.250000\n";
+    assert!(
+        !lacks_dash_row(whole),
+        "a whole sched was taken as one without its dash row"
+    );
+    // Its stats may all be ones the kernel doesn't keep: the row is there.
+    assert!(
+        !lacks_dash_row("t (7, #threads: 1)\n----------------\n"),
+        "a sched with nothing past its dash row was taken as one without it"
+    );
+    assert!(
+        !lacks_dash_row(""),
+        "a sched not read was taken as one without its dash row"
+    );
+}
+
+#[test]
 fn a_name_cut_short_of_utf8_leaves_its_counts_readable() {
     let root = std::env::temp_dir().join(format!("lag-watch-name-{}", std::process::id()));
     let _ = fs::remove_dir_all(&root);

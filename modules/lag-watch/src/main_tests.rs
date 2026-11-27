@@ -253,6 +253,46 @@ fn a_thread_whose_schedstat_is_gone_gives_nothing_from_its_sched() {
 }
 
 #[test]
+fn each_sched_read_without_its_dash_row_is_counted() {
+    let dir = std::env::temp_dir().join(format!("lag-watch-rowless-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    let thread = |tid: &str, sched: Option<&str>| {
+        let at = dir.join(format!("74/task/{tid}"));
+        fs::create_dir_all(&at).unwrap();
+        fs::write(at.join("schedstat"), "10 20 3\n").unwrap();
+        if let Some(text) = sched {
+            fs::write(at.join("sched"), text).unwrap();
+        }
+        kernel::Thread {
+            label: "niri",
+            name: "niri".into(),
+            schedstat: at.join("schedstat"),
+            call: false,
+        }
+    };
+    let rowless = "niri (74, #threads: 9)\nwait_sum : 4.000000\n";
+    let whole = "niri (75, #threads: 9)\n----------------\nwait_sum : 4.000000\n";
+    let threads = [
+        thread("74", Some(rowless)),
+        thread("75", Some(whole)),
+        thread("76", None),
+    ];
+    let s = snapshot(&dir, &dir, &threads, BTreeMap::new());
+    assert_eq!(
+        s.scheds_without_dash_row,
+        1,
+        "only the sched read without its dash row counts, not one whole or one not read"
+    );
+    let fair: Vec<Option<u64>> = s.threads.values().map(|t| t.fair_ns).collect();
+    assert_eq!(
+        fair,
+        [None, Some(4_000_000), None],
+        "the fair counts weren't each read as their sched allows"
+    );
+    fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
 fn a_hidden_tab_is_left_out_on_the_paths_the_watch_finds_its_threads_by() {
     use kernel::tests::{ACCOUNT, opened, write};
     let proc = std::env::temp_dir().join(format!("lag-watch-found-{}", std::process::id()));

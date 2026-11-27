@@ -222,19 +222,28 @@ const NAME_MOST: usize = 15;
 /// thread's name, which the thread sets itself and may break into lines
 /// of its own, such as one reading `wait_sum: 9e9`, and ends at a line of
 /// dashes longer than any name can hold. So only what follows that line
-/// is the kernel's; a `sched` with no such line has none.
-fn sched_stats(text: &str) -> std::str::Lines<'_> {
+/// is the kernel's; a `sched` with no such line has none, and gives none.
+fn sched_stats(text: &str) -> Option<std::str::Lines<'_>> {
     let mut lines = text.lines();
     lines
         .by_ref()
-        .find(|line| line.trim().len() > NAME_MOST && line.trim().bytes().all(|b| b == b'-'));
-    lines
+        .find(|line| line.trim().len() > NAME_MOST && line.trim().bytes().all(|b| b == b'-'))?;
+    Some(lines)
+}
+
+/// Whether a `sched` was read yet has no row of dashes ending its header, so
+/// none of its lines can be told from a name's (`sched_stats`). Its fair
+/// count is lost and the wait falls back to the schedstat's alone, which
+/// would pass unseen were such reads not counted in the window. One that
+/// couldn't be read, or that the kernel doesn't keep, is empty, and isn't one.
+pub fn lacks_dash_row(text: &str) -> bool {
+    !text.is_empty() && sched_stats(text).is_none()
 }
 
 /// The first line of a `sched`'s stats whose key `named` takes, which the
 /// kernel prints in milliseconds, in nanoseconds.
 fn sched_ms(text: &str, named: impl Fn(&str) -> bool) -> Option<u64> {
-    let ms: f64 = sched_stats(text).find_map(|line| {
+    let ms: f64 = sched_stats(text)?.find_map(|line| {
         let (key, value) = line.split_once(':')?;
         named(key.trim()).then(|| value.trim().parse().ok())?
     })?;
