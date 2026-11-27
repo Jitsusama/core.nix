@@ -405,8 +405,8 @@ PanelWindow {
             sat = wanted;
             under = column;
             // Held short of its seat as a scroll caught its walk, it walks
-            // on to it, never put there at once (heldShort).
-            if (reshaped || (heldShort && place !== null)) {
+            // on to it, never put there at once (heldShortOn).
+            if (reshaped || (heldShortOn !== null && heldShortOn === wanted && place !== null)) {
                 walkFrom(true, saw);
             } else {
                 // Back on its own column, it rides with its window from
@@ -446,7 +446,7 @@ PanelWindow {
                 if (Stacked.standsOnTop(drawnAt(), top, { wide: size, tall: size, air: cell })) {
                     halt();
                     sat = was;
-                    heldShort = true;
+                    heldShortOn = was;
                 } else {
                     walkOnTo(was, saw);
                 }
@@ -554,9 +554,11 @@ PanelWindow {
     // its place that has it drawn now.
     property var carry: null
     property var lag: ({ x: 0, y: 0 })
-    // Whether it was held short of the seat `sat` names, its walk there
-    // caught by a scroll, until its next walk sets off (walks).
-    property bool heldShort: false
+    // The window it was held short of the seat on, its walk there caught
+    // by a scroll, until its next walk sets off or anything halts it, as
+    // a move, a leave or a drop does (walks, halt). Named, not a flag, so
+    // keys back on another window never read it as held short of theirs.
+    property var heldShortOn: null
     // Under the launcher's card it draws none of the ride, as it draws no
     // walk (stilled, below), apart from one his hand set off, which runs
     // on as his walks do; every other is put at its place as the card
@@ -647,7 +649,7 @@ PanelWindow {
         if (to === null) {
             halt();
             sat = id;
-            heldShort = true;
+            heldShortOn = id;
             return;
         }
         walkTo(true, saw, to);
@@ -740,7 +742,7 @@ PanelWindow {
             steps = 0;
         }
         byHand = false;
-        heldShort = false;
+        heldShortOn = null;
         // Set off before a scroll's spring settled, it walks from where
         // that had it drawn, as its plan does.
         unride();
@@ -1000,6 +1002,7 @@ PanelWindow {
         // After `going`, whose handler fades the yarn as the play that
         // ends was set off.
         byHand = false;
+        heldShortOn = null;
         stepped = null;
         pose = "";
     }

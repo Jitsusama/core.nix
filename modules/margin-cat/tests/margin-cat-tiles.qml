@@ -107,7 +107,8 @@ QtObject {
             2: moving(windows[2], "ViewMove", 30) });
         expect("a scroll is told on each window that says it, by how long before it began",
             [Tiles.told(viewing, 7, "ViewMove"), Tiles.told(viewing, 8, "ViewMove"),
-                Tiles.told(growing, 7, "ViewMove")],
+                Tiles.told(growing, 7, "ViewMove")]
+                .map(each => each.map(one => ({ id: one.id, ago: one.ago }))),
             [[{ id: 1, ago: 30 }, { id: 2, ago: 30 }], [], []]);
         const first = Tiles.hears(null, Tiles.told(viewing, 7, "ViewMove"), 1000);
         expect("a scroll first heard is dated by niri's begin, not when it was heard",
@@ -132,6 +133,11 @@ QtObject {
         const mixed = Object.assign({}, viewing, { 2: moving(windows[2], "ViewMove", 5) });
         expect("a new scroll beside an old one's word left on another window is dated by the new",
             Tiles.hears(first, Tiles.told(mixed, 7, "ViewMove"), 3000).at, 2995);
+        // A new scroll said 30 ms after it began, as the last was: niri's
+        // new layout says it, so it's dated anew, never taken for the old.
+        const twice = Object.assign({}, viewing, { 1: moving(windows[1], "ViewMove", 30) });
+        expect("a new scroll said as long after its begin as the last is dated by its own",
+            Tiles.hears(first, Tiles.told(twice, 7, "ViewMove"), 3000).at, 2970);
         expect("a scroll runs for its spring's length after it began, and none runs untold",
             [Tiles.runs(first, 1199, 230), Tiles.runs(first, 1200, 230),
                 Tiles.runs(Tiles.hears(first, [], 1000), 1000, 230),

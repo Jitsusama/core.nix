@@ -58,13 +58,14 @@ function animating(windows, workspaceId, kind) {
 }
 
 // What niri last said of a motion of `kind` on a workspace's windows: each
-// window whose layout tells of one, and how long before that layout went
-// out it began, in ms.
+// window whose layout tells of one, how long before that layout went out
+// it began, in ms, and the layout that said it.
 function told(windows, workspaceId, kind) {
     return Object.values(windows)
         .filter(one => one.workspace_id === workspaceId && one.layout?.tile_animation === kind
             && typeof one.layout?.tile_animation_began_ms_ago === "number")
-        .map(one => ({ id: one.id, ago: one.layout.tile_animation_began_ms_ago }));
+        .map(one => ({ id: one.id, ago: one.layout.tile_animation_began_ms_ago,
+            layout: one.layout }));
 }
 
 // When the latest motion `said` (told) began, on the clock `now` is read
@@ -76,14 +77,18 @@ function told(windows, workspaceId, kind) {
 // when the shell heard it, so a scroll's word left on some windows as
 // another's layout comes, a column resized or a window closed, keeps its
 // old begin and reads as ended, and a layout sent again mid-scroll keeps
-// the scroll's own.
+// the scroll's own. A word is the one heard before only while its layout
+// is the very one that said it, since niri says each layout anew: a new
+// scroll said, as most are, 0 ms after it began, as the last was, is
+// dated anew.
 function hears(heard, said, now) {
     const tiles = {};
     let at = null;
     for (const one of said) {
         const was = heard?.tiles?.[one.id];
-        const began = was?.ago === one.ago ? was.at : now - one.ago;
-        tiles[one.id] = { ago: one.ago, at: began };
+        const same = was !== undefined && was.ago === one.ago && was.layout === one.layout;
+        const began = same ? was.at : now - one.ago;
+        tiles[one.id] = { ago: one.ago, at: began, layout: one.layout };
         at = at === null ? began : Math.max(at, began);
     }
     return { tiles, at };
