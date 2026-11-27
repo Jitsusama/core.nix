@@ -347,12 +347,12 @@ it("the lede first says what waits on its person, and from which cells", () => {
   );
   assert.equal(
     lede(forages),
-    "3 things wait on you, from KESTR2 and 2 more. Every cell has its purpose written. KESTR2 has furthest to go, 3 of 6 steps done.",
+    "3 wait on you, from KESTR2 and 2 more. Every cell has its purpose written. KESTR2 has furthest to go, 3 of 6 steps done.",
   );
   const two = foragesOf(
     told([forage("KESTRL", { waits: [look] }), forage("OSPREY", { waits: [look] })]),
   ).forages;
-  assert.ok(lede(two).startsWith("2 things wait on you, from KESTRL and OSPREY. "), lede(two));
+  assert.ok(lede(two).startsWith("2 wait on you, from KESTRL and OSPREY. "), lede(two));
   const [one] = foragesOf(told([forage("OSPREY", { waits: [look] })])).forages;
   assert.ok(one);
   assert.ok(lede([one]).startsWith("One thing waits on you, from OSPREY. "), lede([one]));

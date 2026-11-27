@@ -426,7 +426,7 @@ function waited(forages: readonly Forage[]): string {
   }
   const cells = forages.filter((each) => each.waits.length > 0).map((each) => each.cell);
   const count =
-    things.size === 1 ? "One thing waits on you" : `${grouped(things.size)} things wait on you`;
+    things.size === 1 ? "One thing waits on you" : `${grouped(things.size)} wait on you`;
   return `${count}, from ${named(cells)}. `;
 }
 
