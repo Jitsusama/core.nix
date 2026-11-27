@@ -193,10 +193,8 @@
   "modules/slack/src/messages.rs" = 4;
   "modules/slack/src/search.rs" = 1;
   "modules/slack/src/unreads.rs" = 1;
-  "modules/slices/jobs-sorter/src/low.rs" = 10;
   "modules/slices/jobs-sorter/src/main.rs" = 21;
   "modules/slices/jobs-sorter/src/quests.rs" = 3;
-  "modules/slices/jobs-sorter/src/revive.rs" = 20;
   "modules/spend-watch/src/caps.rs" = 2;
   "modules/spend-watch/src/collection.rs" = 10;
   "modules/spend-watch/src/config.rs" = 13;

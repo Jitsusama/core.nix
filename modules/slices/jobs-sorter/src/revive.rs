@@ -136,15 +136,21 @@ mod tests {
 
     #[test]
     fn a_node_that_gave_up_is_seen() {
-        assert!(hopeless(&zoneinfo(1)));
-        assert!(!hopeless(&zoneinfo(0)));
+        assert!(hopeless(&zoneinfo(1)), "node_unreclaimable: 1 is a give-up");
+        assert!(
+            !hopeless(&zoneinfo(0)),
+            "node_unreclaimable: 0 is no give-up"
+        );
     }
 
     #[test]
     fn a_give_up_asks_the_jobs_slice_for_memory_back() {
         let folder = folder("asks");
         let mut reviver = Reviver::new(folder.as_path());
-        assert!(reviver.step(&zoneinfo(1), Instant::now()));
+        assert!(
+            reviver.step(&zoneinfo(1), Instant::now()),
+            "a give-up is asked of at once"
+        );
         assert_eq!(
             fs::read_to_string(folder.as_path().join("memory.reclaim")).unwrap(),
             ASK
@@ -155,8 +161,14 @@ mod tests {
     fn nothing_is_asked_while_reclaim_goes_on() {
         let folder = folder("quiet");
         let mut reviver = Reviver::new(folder.as_path());
-        assert!(!reviver.step(&zoneinfo(0), Instant::now()));
-        assert!(!folder.as_path().join("memory.reclaim").exists());
+        assert!(
+            !reviver.step(&zoneinfo(0), Instant::now()),
+            "no give-up, no ask"
+        );
+        assert!(
+            !folder.as_path().join("memory.reclaim").exists(),
+            "with no give-up, memory.reclaim is never written"
+        );
     }
 
     #[test]
@@ -164,9 +176,18 @@ mod tests {
         let folder = folder("spaced");
         let mut reviver = Reviver::new(folder.as_path());
         let began = Instant::now();
-        assert!(reviver.step(&zoneinfo(1), began));
-        assert!(!reviver.step(&zoneinfo(1), began + Duration::from_secs(1)));
-        assert!(reviver.step(&zoneinfo(1), began + SPACED));
+        assert!(
+            reviver.step(&zoneinfo(1), began),
+            "a give-up's first ask is at once"
+        );
+        assert!(
+            !reviver.step(&zoneinfo(1), began + Duration::from_secs(1)),
+            "1 s after an ask is too soon"
+        );
+        assert!(
+            reviver.step(&zoneinfo(1), began + SPACED),
+            "SPACED after the first ask comes the second"
+        );
     }
 
     #[test]
@@ -179,12 +200,27 @@ mod tests {
         let mut reviver = Reviver::new(folder.as_path());
         let began = Instant::now();
         let at = |seconds| began + Duration::from_secs(seconds);
-        assert!(reviver.step(&zoneinfo(1), at(0)));
-        assert!(reviver.step(&zoneinfo(1), at(5)));
-        assert!(!reviver.step(&zoneinfo(1), at(14)));
-        assert!(reviver.step(&zoneinfo(1), at(15)));
-        assert!(!reviver.step(&zoneinfo(1), at(34)));
-        assert!(reviver.step(&zoneinfo(1), at(35)));
+        assert!(reviver.step(&zoneinfo(1), at(0)), "asked at 0 s, at once");
+        assert!(
+            reviver.step(&zoneinfo(1), at(5)),
+            "asked at 5 s, SPACED after the first"
+        );
+        assert!(
+            !reviver.step(&zoneinfo(1), at(14)),
+            "not at 14 s, 9 s into a 10 s wait"
+        );
+        assert!(
+            reviver.step(&zoneinfo(1), at(15)),
+            "asked at 15 s, once the doubled 10 s wait was out"
+        );
+        assert!(
+            !reviver.step(&zoneinfo(1), at(34)),
+            "not at 34 s, 19 s into a 20 s wait"
+        );
+        assert!(
+            reviver.step(&zoneinfo(1), at(35)),
+            "asked at 35 s, once the doubled 20 s wait was out"
+        );
         let mut last = 35;
         for _ in 0..10 {
             last += LONGEST.as_secs();
@@ -201,11 +237,26 @@ mod tests {
         let mut reviver = Reviver::new(folder.as_path());
         let began = Instant::now();
         let at = |seconds| began + Duration::from_secs(seconds);
-        assert!(reviver.step(&zoneinfo(1), at(0)));
-        assert!(reviver.step(&zoneinfo(1), at(5)));
-        assert!(reviver.step(&zoneinfo(1), at(15)));
-        assert!(!reviver.step(&zoneinfo(0), at(16)));
-        assert!(reviver.step(&zoneinfo(1), at(17)));
-        assert!(reviver.step(&zoneinfo(1), at(22)));
+        assert!(reviver.step(&zoneinfo(1), at(0)), "asked at 0 s, at once");
+        assert!(
+            reviver.step(&zoneinfo(1), at(5)),
+            "asked at 5 s, SPACED after the first"
+        );
+        assert!(
+            reviver.step(&zoneinfo(1), at(15)),
+            "asked at 15 s, once the doubled 10 s wait was out"
+        );
+        assert!(
+            !reviver.step(&zoneinfo(0), at(16)),
+            "the give-up cleared at 16 s: no ask"
+        );
+        assert!(
+            reviver.step(&zoneinfo(1), at(17)),
+            "a new give-up at 17 s is asked of at once"
+        );
+        assert!(
+            reviver.step(&zoneinfo(1), at(22)),
+            "asked at 22 s: the wait starts again at SPACED, not 20 s"
+        );
     }
 }

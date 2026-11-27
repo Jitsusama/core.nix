@@ -236,12 +236,21 @@ mod tests {
     #[test]
     fn a_window_goes_low_only_while_every_pi_in_it_is_marked() {
         let marked = |pid| pid == 20 || pid == 31;
-        assert!(low(&[20], marked));
-        assert!(low(&[20, 31], marked));
+        assert!(
+            low(&[20], marked),
+            "a window whose one pi is marked goes low"
+        );
+        assert!(
+            low(&[20, 31], marked),
+            "a window whose pi are all marked goes low"
+        );
         // Two in one window: one someone may be at keeps it up.
-        assert!(!low(&[20, 42], marked));
+        assert!(
+            !low(&[20, 42], marked),
+            "a window with one pi unmarked stays up"
+        );
         // A window with no pi is no pi's to weigh.
-        assert!(!low(&[], marked));
+        assert!(!low(&[], marked), "a window with no pi stays up");
     }
 
     #[test]
@@ -251,7 +260,12 @@ mod tests {
         assert_eq!(wanted(&[42], true, marked, 10), STARTING);
         assert_eq!(wanted(&[20], false, marked, 10), 10);
         assert_eq!(wanted(&[42], false, marked, 10), AT);
-        const { assert!(STARTING > AT) };
+        const {
+            assert!(
+                STARTING > AT,
+                "a starting pi's window weighs more than an app's"
+            )
+        };
     }
 
     #[test]
@@ -295,16 +309,33 @@ mod tests {
         let watch = Watch::new(&dir).unwrap();
 
         let began = Instant::now();
-        assert!(!watch.wait(Duration::from_millis(100)));
-        assert!(began.elapsed() >= Duration::from_millis(100));
+        assert!(
+            !watch.wait(Duration::from_millis(100)),
+            "no mark came or went: the wait runs out"
+        );
+        let waited = began.elapsed();
+        assert!(
+            waited >= Duration::from_millis(100),
+            "the wait ran out early, after {waited:?} of 100 ms"
+        );
 
         // The event waits for the next wait, as a key's would between two.
         fs::remove_file(dir.join("20")).unwrap();
         let began = Instant::now();
-        assert!(watch.wait(Duration::from_secs(10)));
-        assert!(began.elapsed() < Duration::from_secs(5));
+        assert!(
+            watch.wait(Duration::from_secs(10)),
+            "the mark's removal ends the wait"
+        );
+        let waited = began.elapsed();
+        assert!(
+            waited < Duration::from_secs(5),
+            "woken after {waited:?}, not at once"
+        );
         // Read whole, so the next wait starts clean.
-        assert!(!watch.wait(Duration::ZERO));
+        assert!(
+            !watch.wait(Duration::ZERO),
+            "the removal's event is read whole"
+        );
         fs::remove_dir_all(&dir).unwrap();
     }
 
