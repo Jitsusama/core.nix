@@ -13,16 +13,16 @@ drawn, when it's back, say stale when the server goes, move its ages on while
 nothing is written, make today's growth yesterday's once the day turns, move no
 row or tree as the cursor steps, keep focus where it was through a redraw, let
 Tab reach the head's keys once, open on a headline and lede holding two lines,
-the lines the live ones take and those head.ts writes for any count up to 999
-and for nothing worth a look or cells waiting or changes failing, not shift as
-its feeds arrive on a reload, nor hold room for what a reload forgets or at another width, draw a
-second's burst of records a few times rather than each, draw a thread for
-each cell joining two repositories on the map under the work and walk it by
-keys, and pass the web-design skill's page checks, its homes check and its
-walked map's check at a phone's width and a desk's in both looks. Anything
-the page logs fails it, but for the browser's own lines once the test takes
-the server away. The server, the browser and the
-tab are modules/local-sites/tests/live_page.py's.
+the lines the live ones take and those head.ts writes for counts up to 999
+repositories and for one thing worth a look of each kind but a gone folder,
+not shift as its feeds arrive on a reload, nor hold room for what a reload
+forgets or at another width, draw a second's burst of records a few times
+rather than each, draw a thread for each cell joining two repositories on the
+map under the work and walk it by keys, and pass the web-design skill's page
+checks, its homes check and its walked map's check at a phone's width and a
+desk's in both looks. Anything the page logs fails it, but for the browser's
+own lines once the test takes the server away. The server, the browser and
+the tab are modules/local-sites/tests/live_page.py's.
 
 Long because each case is one thing the page does, on the same server, stand-ins
 and browser, and the fixtures that start them live here alone.
@@ -701,18 +701,22 @@ def test_tab_reaches_the_keys_at_the_head_once(code_page: Page) -> None:
 # What the stand-in's grove holds worth a look, its one change failing, as the live lede says it.
 FAILING = "has 1 change whose checks fail."
 # The headlines and ledes head.ts writes for groves the stand-in's doesn't hold, by the page's
-# own modules: counts from one repository to 999, and the lede with nothing worth a look, or one
-# or three cells waiting or changes failing, as model.ts says them, after what grew most or a
-# grove resting. Each grove is built of only the fields headOf and worthOf read, with a
-# repository named as short as the stand-in's core. A tree whose folder is gone, or two things
-# worth a look, are said at a length a phone gives a third line.
+# own modules: one repository, two, 99 and 999, and the lede with nothing worth a look, or one
+# or three cells waiting, changes failing or changes asked for, or a pile of resting trees, as
+# model.ts says them, after what grew most or a grove resting. Each grove is built of only the
+# fields headOf and worthOf read, its repository named as short as the stand-in's core or as
+# long as ten characters. A tree whose folder is gone, two things worth a look or a longer name
+# are said at a length a phone gives a third line.
 HEAD_FORMS = """async () => {
   const { headOf } = await import("./head.js");
   const { worthOf } = await import("./model.js");
-  const named = (name, today, { waiting = 0, failing = 0 } = {}) => ({
-    name, address: `#repo=${name}`, seasons: { today, week: 0, resting: 0, gone: 0 },
+  const named = (name, today, { waiting = 0, failing = 0, asked = 0, resting = 0 } = {}) => ({
+    name, address: `#repo=${name}`, seasons: { today, week: 0, resting, gone: 0 },
     cells: Array.from({ length: waiting }, () => ({ standing: "needs-you" })),
-    changes: Array.from({ length: failing }, () => ({ checks: "failing", review: null })) });
+    changes: [
+      ...Array.from({ length: failing }, () => ({ checks: "failing", review: null })),
+      ...Array.from({ length: asked }, () => ({ checks: "passing", review: "changes_asked" })),
+    ] });
   const grove = (repositories) => ({
     machine: "", roots: [], unread: [], repositories, worth: worthOf(repositories) });
   const many = (count, today) =>
@@ -720,8 +724,12 @@ HEAD_FORMS = """async () => {
   const counts = [
     [named("core", 0)], [named("core", 3), named("notes", 0)],
     [...many(87, 0), ...many(12, 1)], many(999, 1)];
-  const worth = [{}, { waiting: 1 }, { waiting: 3 }, { failing: 1 }, { failing: 3 }];
-  const ledes = [3, 0].flatMap((today) => worth.map((each) => [named("core", today, each)]));
+  const worth = [
+    {}, { waiting: 1 }, { waiting: 3 }, { failing: 1 }, { failing: 3 }, { asked: 1 },
+    { asked: 3 }, { resting: 12 }];
+  const ledes = [3, 0].flatMap((today) => [
+    ...worth.map((each) => [named("core", today, each)]),
+    [named("garden-log", today, { waiting: 1 })], [named("garden-log", today, { failing: 1 })]]);
   return {
     title: counts.map((each) => headOf(grove(each)).title),
     lede: ledes.map((each) => headOf(grove(each)).lede),
@@ -738,10 +746,12 @@ HELD_LINES = """(ids) => Object.fromEntries(ids.map((id) => {
   part.style.removeProperty(room);
   return [id, lines];
 }))"""
-# The lines the headline and lede hold, so a browser that breaks their words otherwise doesn't
-# move the page under them, within the rounding of a pixel's part.
+# The lines the headline and lede open on and hold, so a browser that breaks their words
+# otherwise doesn't move the page under them: as a part of a line for the hold, and within a
+# pixel for the height laid out, which the page rounds.
 HEAD_LINES = 2
 HELD_WITHIN = 0.01
+LAID_WITHIN = 1
 
 
 @pytest.mark.parametrize("size", [*SIZES, WIDE_DESK])
@@ -769,12 +779,19 @@ def test_the_opening_words_take_the_lines_the_head_will(
         )
         forms = page.evaluate(HEAD_FORMS)
         heights = page.evaluate(HEAD_HEIGHTS, [["title", "lede"], forms])
-        moved = {
-            part: said
-            for part, said in heights.items()
-            if any(px != said["opening"] for px in [said["live"], *said["forms"]])
-        }
-        assert not moved, f"at {size} the head's opening and live heights differ: {moved}"
+        for part, said in heights.items():
+            assert abs(said["opening"] - HEAD_LINES * said["line"]) < LAID_WITHIN, (
+                f"at {size} the {part} opens {said['opening']} px, not {HEAD_LINES} lines"
+            )
+            assert said["live"] == said["opening"], (
+                f"at {size} the live {part} is {said['live']} px, not {said['opening']}"
+            )
+            grew = {
+                words: px
+                for words, px in zip(forms[part], said["forms"], strict=True)
+                if px != said["opening"]
+            }
+            assert not grew, f"at {size} these {part} forms leave {said['opening']} px: {grew}"
     finally:
         opened.close()
 
