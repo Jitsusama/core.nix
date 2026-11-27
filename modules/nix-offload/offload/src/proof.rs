@@ -961,7 +961,7 @@ mod tests {
         assert_eq!(health.state(), State::Failing);
         assert!(!health.dropped(), "one failure is a blip");
         health.heard(false, 130);
-        assert!(health.dropped());
+        assert!(health.dropped(), "a second failure in a row drops it");
         assert_eq!(
             (health.last_success, health.last_failure, health.failures),
             (Some(10), Some(130), 2)
@@ -1203,9 +1203,11 @@ mod tests {
     #[test]
     fn a_proof_is_due_a_minute_after_the_last_began() {
         let began = Instant::now();
-        assert!(due(None, began));
-        assert!(!due(Some(began), began + Duration::from_secs(59)));
-        assert!(due(Some(began), began + EVERY));
+        assert!(due(None, began), "the first proof is due at once");
+        let soon = began + Duration::from_secs(59);
+        assert!(!due(Some(began), soon), "one begun 59 s ago isn't due");
+        let minute = began + EVERY;
+        assert!(due(Some(began), minute), "one begun a minute ago is due");
     }
 
     /// What a prover heard, ticking until it hears or 5 s pass.
@@ -1263,12 +1265,14 @@ mod tests {
              builder = \"/bin/sh\"; args = [ \"-c\" \"echo 17-3 > $out\" ]; \
              requiredSystemFeatures = [ ]; }"
         );
+        let required = expression("17-3", Some("x86_64-linux"), &["own", "big-parallel"], None);
         assert!(
-            expression("17-3", Some("x86_64-linux"), &["own", "big-parallel"], None).contains(
+            required.contains(
                 "system = \"x86_64-linux\"; builder = \"/bin/sh\"; \
                  args = [ \"-c\" \"echo 17-3 > $out\" ]; \
                  requiredSystemFeatures = [ \"own\" \"big-parallel\" ]; }"
-            )
+            ),
+            "{required}"
         );
         let measuring = expression("17-3", None, &[], Some("/nix/store/abc-coreutils"));
         assert!(
@@ -1345,7 +1349,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let ssh = stand_in(dir.path(), "ssh", "exit 0");
         let scratch = dir.path().join("proving");
-        assert!(over_ssh(STORE, &scratch, &ssh, WITHIN).passed);
+        let proven = over_ssh(STORE, &scratch, &ssh, WITHIN);
+        assert!(proven.passed, "it passes once ssh exits 0: {proven:?}");
         let given = fs::read_to_string(dir.path().join("given")).unwrap();
         let words: Vec<&str> = given.lines().collect();
         for option in [
@@ -1373,7 +1378,8 @@ mod tests {
             "its host key and log are cleaned up"
         );
         let failing = stand_in(dir.path(), "ssh", "exit 255");
-        assert!(!over_ssh(STORE, &scratch, &failing, WITHIN).passed);
+        let proven = over_ssh(STORE, &scratch, &failing, WITHIN);
+        assert!(!proven.passed, "it fails when ssh exits 255: {proven:?}");
         assert!(
             !over_ssh("", &scratch, &ssh, WITHIN).passed,
             "no store, no proof"
@@ -1460,7 +1466,8 @@ mod tests {
             "echo 'nix-offload-builds 5 2 ' >&2; exit 0",
         );
         let scratch = dir.path().join("proving.d");
-        assert!(over_ssh(STORE, &scratch, &ssh, WITHIN).passed);
+        let proven = over_ssh(STORE, &scratch, &ssh, WITHIN);
+        assert!(proven.passed, "it passes once ssh exits 0: {proven:?}");
         let given = fs::read_to_string(dir.path().join("given")).unwrap();
         assert!(given.contains("&& { printf"), "{given}");
         let mut health = Health::of("lend-1");
@@ -1470,7 +1477,8 @@ mod tests {
             serde_json::from_str(&fs::read_to_string(dir.path().join(HEALTH)).unwrap()).unwrap();
         assert_eq!(said["builds"]["cpuUsec"], 5);
         assert_eq!(said["builds"]["writtenBytes"], 1024);
-        assert!(said["builds"]["at"].as_u64().is_some_and(|at| at > 0));
+        let at = said["builds"]["at"].as_u64();
+        assert!(at.is_some_and(|at| at > 0), "the figures say when: {said}");
         write(dir.path(), None, None, 101);
         let said: Value =
             serde_json::from_str(&fs::read_to_string(dir.path().join(HEALTH)).unwrap()).unwrap();
@@ -1498,7 +1506,8 @@ mod tests {
                 &ssh,
                 Duration::from_millis(500)
             )
-            .passed
+            .passed,
+            "one still running at its time fails"
         );
         assert!(
             began.elapsed() < Duration::from_secs(5),
@@ -1519,7 +1528,8 @@ mod tests {
         let nix = stand_in(dir.path(), "nix", "exit 0");
         let line = "ssh-ng://work-linux x86_64-linux,aarch64-linux /etc/nix/key 4 0.5 \
                     big-parallel,own own AAAA";
-        assert!(through_daemon(line, &nix, WITHIN).passed);
+        let proven = through_daemon(line, &nix, WITHIN);
+        assert!(proven.passed, "it passes once nix exits 0: {proven:?}");
         let given = fs::read_to_string(dir.path().join("given")).unwrap();
         let words: Vec<&str> = given.lines().collect();
         assert_eq!(
@@ -1547,7 +1557,8 @@ mod tests {
             "nix",
             "echo 'cannot build on work-linux' >&2; exit 1",
         );
-        assert!(!through_daemon(line, &failing, WITHIN).passed);
+        let proven = through_daemon(line, &failing, WITHIN);
+        assert!(!proven.passed, "it fails when nix exits 1: {proven:?}");
     }
 
     // Only root's ssh reaches a builder beside, so its proof measures the
@@ -1606,14 +1617,16 @@ mod tests {
             &format!("echo \"{copying}...\" >&2; sleep 60"),
         );
         let began = Instant::now();
-        assert!(through_daemon(line, &nix, Duration::from_secs(10)).passed);
+        let proven = through_daemon(line, &nix, Duration::from_secs(10));
+        assert!(proven.passed, "passes as its output comes back: {proven:?}");
         assert!(
             began.elapsed() < Duration::from_secs(5),
             "{:?}",
             began.elapsed()
         );
         let stuck = stand_in(dir.path(), "nix", "echo 'copying 1 paths...' >&2; sleep 60");
-        assert!(!through_daemon(line, &stuck, Duration::from_millis(500)).passed);
+        let proven = through_daemon(line, &stuck, Duration::from_millis(500));
+        assert!(!proven.passed, "fails with no output back: {proven:?}");
     }
 
     #[test]
@@ -1649,7 +1662,10 @@ mod tests {
                 }],
             })
         );
-        assert!(passes_in(dir.path(), 1000 + FRESH));
+        assert!(
+            passes_in(dir.path(), 1000 + FRESH),
+            "a pass FRESH seconds old still counts"
+        );
         assert!(!passes_in(dir.path(), 1001 + FRESH), "a lender gone quiet");
         health.heard(
             Proven {
@@ -1669,8 +1685,8 @@ mod tests {
             serde_json::from_str(&fs::read_to_string(dir.path().join(HEALTH)).unwrap()).unwrap();
         assert_eq!(said["state"], "none");
         assert_eq!(said["builder"], Value::Null);
-        assert!(said.get("beside").is_none());
-        assert!(!passes_in(dir.path(), 1070));
-        assert!(!passes_in(&dir.path().join("nowhere"), 1070));
+        assert!(said.get("beside").is_none(), "none beside: {said}");
+        assert!(!passes_in(dir.path(), 1070), "none lent passes nothing");
+        assert!(!passes_in(&dir.path().join("nowhere"), 1070), "no file");
     }
 }

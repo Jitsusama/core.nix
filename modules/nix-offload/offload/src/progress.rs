@@ -85,8 +85,12 @@ mod tests {
     fn a_proofs_figures_are_heard_from_its_own_line() {
         assert_eq!(heard("nix-offload-builds 17 4 "), Some((17, 2048)));
         assert_eq!(heard("building '/nix/store/x.drv'..."), None);
-        assert!(asked_said().contains("usage_usec"));
-        assert!(asked_said().ends_with(">&2"));
+        let asked = asked_said();
+        assert!(
+            asked.contains("usage_usec"),
+            "it asks for processor time: {asked}"
+        );
+        assert!(asked.ends_with(">&2"), "it says on standard error: {asked}");
     }
 
     #[test]
