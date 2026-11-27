@@ -1635,6 +1635,11 @@
   formatting = ''
     everything is formatted and passes the linters
   '';
+  gate-probe-finds-the-sites-mark = ''
+    the web-design skill's first probe passes a page whose mark is drawn in its head or in the one
+    element just before it, and asks for the mark on a page whose mark sits only further up, whose
+    head draws only the theme switch's icons, or which has no head
+  '';
   gcloud-broker-asks-as-the-named-account = ''
     gcloud-broker is installed only where a machine names a service account, and asks only as it
   '';
