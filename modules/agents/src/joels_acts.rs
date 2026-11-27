@@ -61,11 +61,7 @@ pub(super) fn joels(said: &Value) -> bool {
 /// refused (Sessions.qml's steered), journalled with what it named, so
 /// an agent acting as Joel can be traced to it.
 pub(super) fn not_as_joel(why: &str, said: &Value) -> Value {
-    eprintln!(
-        "agents: a {} for {} wasn't taken: {why}",
-        named(&said["ask"]),
-        named(&said["address"])
-    );
+    eprintln!("{}", asker::refused_line(why, said));
     json!({"error": {"code": "refused", "message": NOT_AS_JOEL}})
 }
 
@@ -82,18 +78,6 @@ pub(super) const NOT_AS_JOEL: &str =
 pub(super) const ONLY_THE_SHELL: &str =
     "the agents daemon takes an answer only from the launcher, and couldn't tell this came from it";
 
-/// The most of what a refused ask named (its `ask`, `want` or
-/// `address`) its journal line says, its quoted JSON cut short: a want's
-/// id and an address are far shorter.
-pub(super) const NAMED_AT_MOST: usize = 120;
-
-/// What a refused ask named, as its journal line says it: its quoted
-/// JSON, cut to [`NAMED_AT_MOST`], since the asker chose it and could
-/// write a line as long as it liked (round 000035 on #6796, F13).
-pub(super) fn named(value: &Value) -> String {
-    value.to_string().chars().take(NAMED_AT_MOST).collect()
-}
-
 /// Joel's answer to one of `wants`, steered through `node` only where
 /// `asker` says the shell asked it: the node takes it as his, so an
 /// agent answering its own ask through this daemon would answer as him
@@ -109,15 +93,11 @@ pub(super) fn answered(
         // line asker.rs writes of who asked, so an agent answering its own
         // ask can be traced to it. What it named is the asker's own, cut
         // short, so no ask writes more than a line.
-        let why: &str = if why == asker::REFUSED {
-            "who asked isn't the shell"
-        } else {
-            why.as_str()
-        };
         eprintln!(
-            "agents: an answer to {} for {} wasn't taken: {why}",
-            named(&said["want"]),
-            named(&said["address"])
+            "agents: an answer to {} for {} wasn't taken: {}",
+            asker::named(&said["want"]),
+            asker::named(&said["address"]),
+            asker::journalled(&why)
         );
         return json!({"error": {"code": "refused", "message": ONLY_THE_SHELL}});
     }

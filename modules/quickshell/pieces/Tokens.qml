@@ -71,7 +71,17 @@ Piece {
             name: `${Words.name("verb:agent:pause")} ${session.title}`,
             // It steers the session as Joel, so a walk is refused it.
             joelsOnly: true,
-            run: () => Sessions.steer(session.address, { act: "pause" })
+            // Held here as well as by the mark, since it steers the node straight, so a mark
+            // lost on the way to the launcher can't let a walk pause as Joel (round 000011 on
+            // #6796, F101). Joel's own Return runs it outside a walk, as Sprouting.js's
+            // fromJoel tells, read here whole so the piece stands without the launcher's files.
+            run: shell => {
+                if (shell?.launcher?.cataloguing !== false) {
+                    console.info("tokens: a pause wasn't done from a walk");
+                    return;
+                }
+                Sessions.steer(session.address, { act: "pause" });
+            }
         };
     }).filter(action => action !== null)
 

@@ -29,6 +29,10 @@
 //! alone: there the shell runs as a plain process in a build sandbox,
 //! with no manager, no unit and, on a kernel before 6.5, no pidfd peer.
 //! No installed daemon is built with it.
+//!
+//! Long because its cases are over a third of it: each holds one way an
+//! asker that isn't the shell might pass, and they read the private
+//! judge, its manager's reads and what it keeps between asks.
 
 #![cfg_attr(
     feature = "walks",
@@ -42,7 +46,7 @@ use std::io::{self, Read};
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::os::unix::net::UnixStream;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::sync::{Mutex, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -61,6 +65,11 @@ pub const REFUSED: &str = "only the launcher starts new work here";
 /// machines run, which the libc crate names only in its newer layout.
 const SO_PEERPIDFD: libc::c_int = 77;
 
+/// What judges whether the process at the other end of a connection is
+/// the shell's, as [`the_shell`] does, handed to the daemon's socket so a
+/// case stands in one that waits as a slow manager does (#6918, F103).
+pub type Judge = Box<dyn Fn(&UnixStream) -> Result<(), String> + Send + Sync>;
+
 /// Whether the process at the other end of `stream` is the shell's, or
 /// why it can't be taken for it, in words the shell says.
 ///
@@ -70,17 +79,92 @@ const SO_PEERPIDFD: libc::c_int = 77;
 /// to be its own, or the kernel names no peer by pidfd.
 #[cfg(not(feature = "walks"))]
 pub fn the_shell(stream: &UnixStream) -> Result<(), String> {
-    let untold = |why: io::Error| format!("who asked can't be told: {why}");
-    let (pidfd, seen) = peer_of(stream).map_err(untold)?;
-    // The one taken is looked at before the asker's own pidfd, so an asker
-    // with its pid is that same process: both run at once, and no two
-    // running processes share a pid.
-    if taken_already(taken().as_ref(), seen.pid) && alive(&pidfd) {
-        return Ok(());
-    }
+    let (pidfd, seen) = peer_of(stream).map_err(|why| untold(&why))?;
     // SAFETY: getuid has no failure and touches no memory.
     let uid = unsafe { libc::getuid() };
-    if !takes(&seen, uid, shells_main_pid).map_err(untold)? {
+    judged(&TAKEN, pidfd, &seen, uid, || {
+        remembered(&UNTOLD, Instant::now, shells_main_pid)
+    })
+}
+
+/// The manager's last failure to name the shell's main process, and when
+/// it ended. Each as-Joel ask on a connection is answered in turn, so a
+/// slow manager's `MANAGER_PATIENCE` was paid again for each one the shell
+/// sent together, each waiting behind the one before (round 000038 on
+/// #6796, F91).
+static UNTOLD: Mutex<Option<Untold>> = Mutex::new(None);
+
+/// How long a manager's failure answers for it: well under the launcher's
+/// 4 s before it asks a refused act again (Daemon.qml's `askAgain`), so
+/// the asks sent together are refused at once and each sent again gets a
+/// fresh look.
+const UNTOLD_FOR: Duration = Duration::from_secs(2);
+
+/// A failure of the manager's, kept by when it ended and in its words.
+struct Untold {
+    at: Instant,
+    kind: io::ErrorKind,
+    why: String,
+}
+
+/// What `ask` says, or, within `UNTOLD_FOR` of its last failure as `kept`
+/// holds it, that failure again, unasked. `clock` reads the time, so a
+/// test holds it. A success forgets the failure.
+///
+/// # Errors
+///
+/// What `ask` gave, or its last failure, still kept.
+fn remembered(
+    kept: &Mutex<Option<Untold>>,
+    clock: impl Fn() -> Instant,
+    ask: impl FnOnce() -> io::Result<u32>,
+) -> io::Result<u32> {
+    let lock = || kept.lock().unwrap_or_else(PoisonError::into_inner);
+    let still = lock()
+        .as_ref()
+        .filter(|last| clock().duration_since(last.at) < UNTOLD_FOR)
+        .map(|last| io::Error::new(last.kind, last.why.clone()));
+    if let Some(why) = still {
+        return Err(why);
+    }
+    // Not held while the manager is asked, so no other connection waits on it.
+    let asked = ask();
+    *lock() = asked.as_ref().err().map(|why| Untold {
+        at: clock(),
+        kind: why.kind(),
+        why: why.to_string(),
+    });
+    asked
+}
+
+/// Why who asked can't be told, in the words the shell says.
+fn untold(why: &io::Error) -> String {
+    format!("who asked can't be told: {why}")
+}
+
+/// Whether `seen`, the process `pidfd` holds, is the shell under account
+/// `uid`: the one `kept` holds, while both run, with no manager asked;
+/// else as `takes` judges it, asking `main_pid`, and then kept in its
+/// place. Given its store and its manager, so a test holds both.
+///
+/// # Errors
+///
+/// Why it isn't taken for the shell, as `the_shell` says it.
+fn judged(
+    kept: &Mutex<Option<Taken>>,
+    pidfd: OwnedFd,
+    seen: &Seen,
+    uid: u32,
+    main_pid: impl FnOnce() -> io::Result<u32>,
+) -> Result<(), String> {
+    let last = last_of(taken(kept).as_ref());
+    let (verdict, keep) = decided(
+        last,
+        seen.pid,
+        || alive(&pidfd),
+        || takes(seen, uid, main_pid),
+    );
+    if matches!(&verdict, Err(why) if why == REFUSED) {
         // Who it was is journalled, quoted as the kernel read it, so an
         // agent asking as Joel can be traced to its own process and unit.
         let unit = seen
@@ -93,17 +177,58 @@ pub fn the_shell(stream: &UnixStream) -> Result<(), String> {
             seen.exe,
             unit.unwrap_or("no unified cgroup")
         );
-        return Err(REFUSED.to_owned());
     }
-    // Read last, so a pid taken again since any read above can't answer.
-    if alive(&pidfd) {
-        *taken() = Some(Taken {
+    if keep == Keep::TheAsker {
+        *taken(kept) = Some(Taken {
             pidfd,
             pid: seen.pid,
         });
-        Ok(())
-    } else {
-        Err(untold(gone()))
+    }
+    verdict
+}
+
+/// What's known of the process last taken for the shell, as a judge
+/// reads it: its pid then, and whether it runs yet.
+#[derive(Clone, Copy, Debug)]
+struct Last {
+    pid: u32,
+    runs: bool,
+}
+
+/// What a judge keeps once it's decided.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Keep {
+    /// Whatever was kept before, the asker taken again or refused.
+    AsItWas,
+    /// The asker, newly taken for the shell.
+    TheAsker,
+}
+
+/// Whether the asker with `pid` is the shell, and what's kept of it,
+/// given `last`, the process last taken, `alive`, whether the asker still
+/// runs, and `takes`, whether its manager says it's the shell. Pure but
+/// for what it's handed, so each way an asker might pass is a case of its
+/// own, with no process or manager (#6918, F119 and F126).
+///
+/// The one taken is looked at before the asker, so an asker with its pid
+/// is that same process: both run at once, and no two running processes
+/// share a pid. Otherwise the manager is asked, and the asker looked at
+/// again after, so a pid taken again since any read before can't answer,
+/// and only an asker the manager took and that still runs is kept.
+fn decided(
+    last: Option<Last>,
+    pid: u32,
+    alive: impl Fn() -> bool,
+    takes: impl FnOnce() -> io::Result<bool>,
+) -> (Result<(), String>, Keep) {
+    if last.is_some_and(|last| last.pid == pid && last.runs) && alive() {
+        return (Ok(()), Keep::AsItWas);
+    }
+    match takes() {
+        Err(why) => (Err(untold(&why)), Keep::AsItWas),
+        Ok(false) => (Err(REFUSED.to_owned()), Keep::AsItWas),
+        Ok(true) if alive() => (Ok(()), Keep::TheAsker),
+        Ok(true) => (Err(untold(&gone())), Keep::AsItWas),
     }
 }
 
@@ -122,14 +247,19 @@ struct Taken {
     pid: u32,
 }
 
-fn taken() -> std::sync::MutexGuard<'static, Option<Taken>> {
-    TAKEN.lock().unwrap_or_else(PoisonError::into_inner)
+/// What `kept` holds, read through a panic that poisoned it, since a
+/// `Taken` is whole whenever it's written.
+fn taken(kept: &Mutex<Option<Taken>>) -> std::sync::MutexGuard<'_, Option<Taken>> {
+    kept.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-/// Whether `pid` is still the process `taken` stands for: it has that
-/// pid and runs yet, so the pid can't since have gone to another.
-fn taken_already(taken: Option<&Taken>, pid: u32) -> bool {
-    taken.is_some_and(|one| one.pid == pid && alive(&one.pidfd))
+/// What a judge reads of `taken`: its pid, and whether it runs yet, so
+/// the pid can't since have gone to another.
+fn last_of(taken: Option<&Taken>) -> Option<Last> {
+    taken.map(|one| Last {
+        pid: one.pid,
+        runs: alive(&one.pidfd),
+    })
 }
 
 /// Whether the process at the other end of `stream` runs quickshell's
@@ -142,14 +272,13 @@ fn taken_already(taken: Option<&Taken>, pid: u32) -> bool {
 /// Why: it isn't the shell's program, or it can't be read.
 #[cfg(feature = "walks")]
 pub fn the_shell(stream: &UnixStream) -> Result<(), String> {
-    let untold = |why: io::Error| format!("who asked can't be told: {why}");
     let mut said = libc::ucred {
         pid: 0,
         uid: 0,
         gid: 0,
     };
     let mut length = libc::socklen_t::try_from(size_of::<libc::ucred>())
-        .map_err(|_| untold(io::Error::from(io::ErrorKind::InvalidInput)))?;
+        .map_err(|_| untold(&io::Error::from(io::ErrorKind::InvalidInput)))?;
     // SAFETY: SO_PEERCRED writes one ucred into the struct of the size
     // `length` gives, and the socket is open for the call.
     let read = unsafe {
@@ -162,14 +291,14 @@ pub fn the_shell(stream: &UnixStream) -> Result<(), String> {
         )
     };
     if read != 0 {
-        return Err(untold(io::Error::last_os_error()));
+        return Err(untold(&io::Error::last_os_error()));
     }
     // 0 for a peer in no namespace of this daemon's.
     let pid = said.pid;
     if pid <= 0 {
-        return Err(untold(gone()));
+        return Err(untold(&gone()));
     }
-    let exe = std::fs::read_link(format!("/proc/{pid}/exe")).map_err(untold)?;
+    let exe = std::fs::read_link(format!("/proc/{pid}/exe")).map_err(|why| untold(&why))?;
     if the_shells_program(&exe.to_string_lossy()) {
         Ok(())
     } else {
@@ -232,18 +361,24 @@ fn shells_main_pid() -> io::Result<u32> {
         "--value",
         SHELL_UNIT,
     ]);
-    main_pid_of(&mut asked, MANAGER_PATIENCE)
+    main_pid_of(asking(&mut asked)?, MANAGER_PATIENCE)
 }
 
-/// The main process `command` says, as `systemctl show --value` says it,
-/// within `patience`, the command killed and reaped where it doesn't end
-/// in time or can't be waited on.
-fn main_pid_of(command: &mut Command, patience: Duration) -> io::Result<u32> {
-    let mut asked = command
+/// `command` started, its words piped to be read and nothing to read.
+fn asking(command: &mut Command) -> io::Result<Child> {
+    command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .spawn()?;
+        .spawn()
+}
+
+/// The main process `asked` says, as `systemctl show --value` says it,
+/// within `patience`, the command killed and reaped where it doesn't end
+/// in time or can't be waited on. Its words are read once it ends, only
+/// as far as they are written: a process it left behind holding its
+/// pipes would otherwise hold the read past any patience.
+fn main_pid_of(mut asked: Child, patience: Duration) -> io::Result<u32> {
     let deadline = Instant::now() + patience;
     let status = loop {
         let ended = asked.try_wait();
@@ -269,14 +404,18 @@ fn main_pid_of(command: &mut Command, patience: Duration) -> io::Result<u32> {
     };
     // Its words are a line each, well inside a pipe's buffer, so it never
     // waits on them being read before it ends.
-    let mut said = String::new();
-    let mut why = String::new();
-    if let Some(mut out) = asked.stdout.take() {
-        out.read_to_string(&mut said)?;
-    }
-    if let Some(mut err) = asked.stderr.take() {
-        err.read_to_string(&mut why)?;
-    }
+    let said = asked
+        .stdout
+        .take()
+        .map(written)
+        .transpose()?
+        .unwrap_or_default();
+    let why = asked
+        .stderr
+        .take()
+        .map(written)
+        .transpose()?
+        .unwrap_or_default();
     if !status.success() {
         return Err(io::Error::other(format!(
             "systemd couldn't say the shell's main process: {}",
@@ -286,6 +425,38 @@ fn main_pid_of(command: &mut Command, patience: Duration) -> io::Result<u32> {
     said.trim()
         .parse()
         .map_err(|_| io::Error::other("systemd named no main process for the shell"))
+}
+
+/// What an ended command wrote to `pipe`, read without waiting: what's
+/// in it now, up to its end or to what a process still holding it hasn't
+/// written yet.
+fn written(pipe: impl Into<OwnedFd>) -> io::Result<String> {
+    let pipe: OwnedFd = pipe.into();
+    let fd = pipe.as_raw_fd();
+    // SAFETY: fcntl reading the status flags of a descriptor this process
+    // owns.
+    let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+    if flags < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: fcntl setting the status flags of the same descriptor.
+    let set = unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) };
+    if set < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    let mut read = std::fs::File::from(pipe);
+    let mut bytes = Vec::new();
+    let mut chunk = [0_u8; 512];
+    loop {
+        match read.read(&mut chunk) {
+            Ok(0) => break,
+            Ok(got) => bytes.extend_from_slice(&chunk[..got]),
+            Err(why) if why.kind() == io::ErrorKind::WouldBlock => break,
+            Err(why) if why.kind() == io::ErrorKind::Interrupted => {}
+            Err(why) => return Err(why),
+        }
+    }
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
 /// Whether `exe`, as `/proc/<pid>/exe` points, is quickshell's own
@@ -387,9 +558,95 @@ fn gone() -> io::Error {
     io::Error::new(io::ErrorKind::NotFound, "the process asking ended")
 }
 
+/// The most of what an ask names (its act, a session's address, a want's
+/// id) a refusal's journal line says, its quoted JSON cut short: each is
+/// far shorter.
+const NAMED_AT_MOST: usize = 120;
+
+/// What `value`, an asker's own, says in a journal line: its quoted JSON
+/// cut short, so no ask writes more than a line.
+#[must_use]
+pub fn named(value: &serde_json::Value) -> String {
+    value.to_string().chars().take(NAMED_AT_MOST).collect()
+}
+
+/// Why an ask [`the_shell`] refused wasn't taken, as its journal line says
+/// it: [`REFUSED`] is Joel's words for the launcher, so the journal says
+/// what the check found instead.
+#[must_use]
+pub fn journalled(why: &str) -> &str {
+    if why == REFUSED {
+        "who asked isn't the shell"
+    } else {
+        why
+    }
+}
+
+/// What an act done as Joel may name it's for, the first it names said
+/// in its refusal's line: a steer's session, Forget's, feedback's
+/// landing, a told line's quest or window, and a read's keys.
+const FOR_WHAT: [&str; 6] = ["address", "session", "landing", "quest", "window", "keys"];
+
+/// The journal line of an act done as Joel that [`the_shell`] refused:
+/// the act and the first of [`FOR_WHAT`] it names, each [`named`], so
+/// an agent acting as Joel can be traced to what it asked. An act
+/// naming none, as a share's end, says none rather than a null (round
+/// 000056 on #6796, F19 and F32).
+#[must_use]
+pub fn refused_line(why: &str, said: &serde_json::Value) -> String {
+    let whose = FOR_WHAT
+        .iter()
+        .map(|field| &said[field])
+        .find(|value| !value.is_null())
+        .map_or_else(String::new, |value| format!(" for {}", named(value)));
+    format!(
+        "agents: a {}{whose} wasn't taken: {}",
+        named(&said["ask"]),
+        journalled(why)
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_refused_acts_line_names_what_it_was_for_only_where_it_names_one() {
+        let said = serde_json::json!({"ask": "forget", "session": "s-1"});
+        assert_eq!(
+            refused_line(REFUSED, &said),
+            "agents: a \"forget\" for \"s-1\" wasn't taken: who asked isn't the shell"
+        );
+        let said = serde_json::json!({"ask": "feedback", "landing": "landing:s-p:o#1"});
+        assert_eq!(
+            refused_line(REFUSED, &said),
+            "agents: a \"feedback\" for \"landing:s-p:o#1\" wasn't taken: who asked isn't the shell"
+        );
+        let said = serde_json::json!({"ask": "sharing", "sharing": false});
+        assert_eq!(
+            refused_line(REFUSED, &said),
+            "agents: a \"sharing\" wasn't taken: who asked isn't the shell"
+        );
+        let said = serde_json::json!({"ask": "talk", "address": "P9R1KI"});
+        assert_eq!(
+            refused_line("who asked can't be told: gone", &said),
+            "agents: a \"talk\" for \"P9R1KI\" wasn't taken: who asked can't be told: gone"
+        );
+    }
+
+    #[test]
+    fn a_refused_acts_line_says_an_askers_own_words_short_and_on_one_line() {
+        let long = format!("{}\nagents: a forged line", "x".repeat(300));
+        let line = refused_line(
+            REFUSED,
+            &serde_json::json!({"ask": "talk", "address": long}),
+        );
+        assert!(!line.contains('\n'), "one line: {line}");
+        assert!(
+            line.len() < 200,
+            "the address cut to {NAMED_AT_MOST}: {line}"
+        );
+    }
 
     const SESSION: &str = "0::/user.slice/user-1000.slice/user@1000.service/session.slice";
 
@@ -501,26 +758,23 @@ mod tests {
         );
     }
 
-    /// A manager stood in by `sh`, saying what `script` does.
-    fn manager(script: &str) -> Command {
+    /// A manager stood in by `sh`, started, saying what `script` does.
+    fn manager(script: &str) -> Child {
         let mut said = Command::new("sh");
         said.args(["-c", script]);
-        said
+        asking(&mut said).expect("sh starts")
     }
 
     #[test]
     fn the_managers_main_process_is_read_from_what_it_says() {
         let patience = Duration::from_secs(5);
         assert_eq!(
-            main_pid_of(&mut manager("echo 4106561"), patience).expect("said"),
+            main_pid_of(manager("echo 4106561"), patience).expect("said"),
             4_106_561
         );
         // 0 is a unit with no main process, which no peer's pid is.
-        assert_eq!(
-            main_pid_of(&mut manager("echo 0"), patience).expect("said"),
-            0
-        );
-        let unread = main_pid_of(&mut manager("echo active"), patience).expect_err("no pid");
+        assert_eq!(main_pid_of(manager("echo 0"), patience).expect("said"), 0);
+        let unread = main_pid_of(manager("echo active"), patience).expect_err("no pid");
         assert!(
             unread.to_string().contains("named no main process"),
             "{unread}"
@@ -530,7 +784,7 @@ mod tests {
     #[test]
     fn a_manager_that_fails_says_why_in_its_own_words() {
         let failed = main_pid_of(
-            &mut manager("echo 'no such unit' >&2; exit 1"),
+            manager("echo 'no such unit' >&2; exit 1"),
             Duration::from_secs(5),
         )
         .expect_err("it failed");
@@ -541,23 +795,35 @@ mod tests {
     fn a_manager_out_of_time_is_ended_within_its_patience() {
         let patience = Duration::from_secs(1);
         let began = Instant::now();
-        // It writes its pid first, so whether it was killed can be read.
-        let pid_file = std::env::temp_dir().join(format!("wedged-{}", std::process::id()));
-        let script = format!("echo $$ > {}; exec sleep 30", pid_file.display());
-        let late = main_pid_of(&mut manager(&script), patience).expect_err("out of time");
+        // Its pid is known as it starts, so whether it was killed can be
+        // read however late a loaded machine runs it.
+        let wedged = manager("exec sleep 30");
+        let pid = wedged.id().to_string();
+        let late = main_pid_of(wedged, patience).expect_err("out of time");
         assert!(late.to_string().contains("within 1s"), "{late}");
         assert!(
             began.elapsed() < Duration::from_secs(5),
             "it waited {:?}",
             began.elapsed()
         );
-        let pid = std::fs::read_to_string(&pid_file).expect("it said its pid");
-        let _ = std::fs::remove_file(&pid_file);
         // Killed and reaped, it is no process at all, not even a zombie.
         assert!(
-            !Path::new(&format!("/proc/{}", pid.trim())).exists(),
-            "the wedged manager {} still runs",
-            pid.trim()
+            !Path::new(&format!("/proc/{pid}")).exists(),
+            "the wedged manager {pid} still runs"
+        );
+    }
+
+    #[test]
+    fn a_manager_ended_is_read_without_waiting_on_what_it_left_behind() {
+        let began = Instant::now();
+        // It ends at once, leaving a process holding its pipes open.
+        let said = main_pid_of(manager("echo 7; sleep 5 &"), Duration::from_secs(1))
+            .expect("said before it ended");
+        assert_eq!(said, 7);
+        assert!(
+            began.elapsed() < Duration::from_secs(3),
+            "its words were read for {:?}, as long as what it left held them",
+            began.elapsed()
         );
     }
 
@@ -584,14 +850,182 @@ mod tests {
             pidfd: pidfd_of(pid),
             pid,
         });
-        assert!(taken_already(taken.as_ref(), pid), "the one taken, running");
-        assert!(!taken_already(taken.as_ref(), pid + 1), "another pid");
-        assert!(!taken_already(None, pid), "none taken yet");
+        let read = last_of(taken.as_ref()).expect("one is taken");
+        assert_eq!((read.pid, read.runs), (pid, true), "the one taken, running");
+        assert!(last_of(None).is_none(), "none taken yet");
         shell.kill().expect("it's killed");
         shell.wait().expect("it's reaped");
-        assert!(
-            !taken_already(taken.as_ref(), pid),
+        let read = last_of(taken.as_ref()).expect("one is taken");
+        assert_eq!(
+            (read.pid, read.runs),
+            (pid, false),
             "once it ends, its pid could go to anyone"
+        );
+    }
+
+    #[test]
+    fn a_live_taken_pid_is_taken_again_with_no_manager_asked() {
+        let unasked = || -> io::Result<bool> { panic!("the manager was asked") };
+        let last = Some(Last { pid: 7, runs: true });
+        assert_eq!(
+            decided(last, 7, || true, unasked),
+            (Ok(()), Keep::AsItWas),
+            "taken again, nothing kept anew"
+        );
+    }
+
+    #[test]
+    fn a_dead_taken_process_is_not_taken_again_by_its_pid() {
+        let asked = std::cell::Cell::new(false);
+        let refusing = || {
+            asked.set(true);
+            Ok(false)
+        };
+        // Its pid gone to another, which runs and asks.
+        let last = Some(Last {
+            pid: 7,
+            runs: false,
+        });
+        assert_eq!(
+            decided(last, 7, || true, refusing),
+            (Err(REFUSED.to_owned()), Keep::AsItWas),
+            "a pid reused is judged whole, and refused as its manager says"
+        );
+        assert!(
+            asked.get(),
+            "the manager was asked once the taken one ended"
+        );
+        // Nor is an asker that ended while the one taken runs on, though
+        // their pids agree: it's judged whole, as its manager says.
+        let last = Some(Last { pid: 7, runs: true });
+        assert_eq!(
+            decided(last, 7, || false, || Ok(false)),
+            (Err(REFUSED.to_owned()), Keep::AsItWas),
+            "an asker that ended isn't taken again by its pid"
+        );
+    }
+
+    #[test]
+    fn a_refusal_is_never_kept() {
+        for (takes, why) in [
+            (Ok(false), REFUSED.to_owned()),
+            (
+                Err(io::Error::other("no bus")),
+                "who asked can't be told: no bus".to_owned(),
+            ),
+        ] {
+            assert_eq!(
+                decided(None, 7, || true, || takes),
+                (Err(why.clone()), Keep::AsItWas),
+                "refused as {why:?}, with nothing kept"
+            );
+        }
+    }
+
+    #[test]
+    fn the_asker_is_kept_only_once_its_manager_takes_it_and_it_still_runs() {
+        assert_eq!(
+            decided(None, 7, || true, || Ok(true)),
+            (Ok(()), Keep::TheAsker),
+            "taken and running, it's kept"
+        );
+        // It runs as it asks and ends while its manager is asked: read
+        // after, it's never kept, as its pid could be another's by then.
+        let manager_said = std::cell::Cell::new(false);
+        let runs = || !manager_said.get();
+        let taking = || {
+            manager_said.set(true);
+            Ok(true)
+        };
+        assert_eq!(
+            decided(None, 7, runs, taking),
+            (Err(untold(&gone())), Keep::AsItWas),
+            "ended once its manager took it, it's refused and not kept"
+        );
+    }
+
+    #[test]
+    fn the_shell_once_taken_is_taken_again_with_no_manager_asked_while_it_runs() {
+        let mut shell = Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .expect("sleep starts");
+        let pid = shell.id();
+        let kept = Mutex::new(None);
+        let seen = in_the_shells_unit(pid, WRAPPED);
+        judged(&kept, pidfd_of(pid), &seen, 1000, || Ok(pid)).expect("its manager names it");
+        let unasked = || -> io::Result<u32> { panic!("the manager was asked") };
+        judged(&kept, pidfd_of(pid), &seen, 1000, unasked).expect("taken as it was");
+        // Its pid alone answers nothing for another process, wherever it runs.
+        let mut other = Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .expect("sleep starts");
+        let beside = Seen {
+            cgroup: format!("{SESSION}/not-quickshell.service\n"),
+            ..in_the_shells_unit(other.id(), WRAPPED)
+        };
+        assert_eq!(
+            judged(&kept, pidfd_of(other.id()), &beside, 1000, unasked),
+            Err(REFUSED.to_owned()),
+            "another process isn't the one taken"
+        );
+        shell.kill().expect("it's killed");
+        shell.wait().expect("it's reaped");
+        // Ended, it is never taken again, so the next asker is judged
+        // whole, its manager asked.
+        let asked = std::cell::Cell::new(false);
+        let named = || {
+            asked.set(true);
+            Ok(pid)
+        };
+        let next = in_the_shells_unit(other.id(), WRAPPED);
+        assert_eq!(
+            judged(&kept, pidfd_of(other.id()), &next, 1000, named),
+            Err(REFUSED.to_owned()),
+            "its manager names another main process"
+        );
+        assert!(
+            asked.get(),
+            "the manager was asked once the taken one ended"
+        );
+        other.kill().expect("it's killed");
+        other.wait().expect("it's reaped");
+    }
+
+    #[test]
+    fn a_managers_failure_answers_for_it_only_a_moment() {
+        let began = Instant::now();
+        let now = std::cell::Cell::new(began);
+        let clock = || now.get();
+        let kept = Mutex::new(None);
+        let asked = std::cell::Cell::new(0);
+        let failing = || {
+            asked.set(asked.get() + 1);
+            Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "no answer within 3s",
+            ))
+        };
+        let first = remembered(&kept, clock, failing).expect_err("it failed");
+        now.set(began + Duration::from_millis(1500));
+        let again = remembered(&kept, clock, failing).expect_err("still failed");
+        assert_eq!(asked.get(), 1, "the manager isn't asked again so soon");
+        assert_eq!(
+            (again.kind(), again.to_string()),
+            (first.kind(), first.to_string()),
+            "its failure is said again in its own words"
+        );
+        now.set(began + UNTOLD_FOR);
+        let named = remembered(&kept, clock, || {
+            asked.set(asked.get() + 1);
+            Ok(7)
+        });
+        assert_eq!(named.expect("asked afresh"), 7);
+        assert_eq!(asked.get(), 2, "once the moment passes it's asked again");
+        assert!(
+            kept.lock().expect("kept").is_none(),
+            "a success forgets the failure"
         );
     }
 

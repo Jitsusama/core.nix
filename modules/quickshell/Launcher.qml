@@ -1271,6 +1271,9 @@ Scope {
     readonly property bool keyMoved: prompt.keyMoved
     readonly property bool keysOverRows: prompt.overRows
     property int toldFromOutside: 0
+    // Whether a link opened this line and Joel hasn't yet typed in it, so nothing it shows
+    // counts as his reading (Prompt.qml's readWaits).
+    readonly property bool readWaits: prompt.readWaits
 
     // The rows a terminal's `launcher show` last walked through (`walked`)
     // and listed (`listed`), held a few seconds after it asks, so a
@@ -1844,6 +1847,8 @@ Scope {
         if (Catalogue.kindOf(target) === "place") {
             open = true;
             goTo({ trail: ids, spot: "" });
+            // What it shows isn't Joel's reading until he types (Prompt.qml's walked).
+            prompt.walked();
             // Said opened only where the walk got (launcher/Reached.js).
             if (!Reached.reached(held.map(step => steadyId(step.row)), ids))
                 return { done: false, said: `${said} didn't open` };
@@ -2141,6 +2146,7 @@ Scope {
         if (Catalogue.kindOf(target) === "place") {
             open = true;
             goTo({ trail: ids, spot: "" });
+            prompt.walked();
             // A place that refused its step, as Passwords does while it's
             // walked from outside, is `unopened`, which the terminal says in
             // its own words, never that it opened.
@@ -5855,11 +5861,12 @@ Scope {
     // An answer shown under the field two seconds is one Joel has read, as a session's drawer
     // kept that long is (Agents.qml's staying), which its place tells whoever keeps it, so it's
     // open no more after a restart. It's told again each two seconds while one is shown
-    // unread, since the daemon may not yet have heard of the answer the shell shows.
+    // unread, since the daemon may not yet have heard of the answer the shell shows. A Talk a
+    // link opened (talkTo) counts only once Joel has typed in it (readWaits).
     Timer {
         interval: 2000
         repeat: true
-        running: root.open && root.talkAsked && root.talks.length > 0
+        running: root.open && root.talkAsked && root.talks.length > 0 && !root.readWaits
             && typeof root.asking.heard === "function"
         onTriggered: root.asking.heard()
     }

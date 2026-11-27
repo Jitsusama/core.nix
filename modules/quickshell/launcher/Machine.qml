@@ -509,6 +509,10 @@ Provider {
                 talks: () => answering() ? own.talks() : talking?.talks() ?? [],
                 heard: talking?.heard,
                 given: words => {
+                    // Held here as well as by the mark, since this talks to the node straight,
+                    // so a mark lost can't let a walk talk as Joel (round 000011, F101).
+                    if (!(agents?.joelsOwn("talk") ?? false))
+                        return;
                     if (answering()) {
                         own.given(words);
                         return;

@@ -106,9 +106,17 @@ ShellRoot {
             && piece.actions.map(action => action.name).join(", ")
                 === "See What Spends, Pause The Launcher's Shape"
     }, {
+        // Its Pause steers the node straight, so it holds a walk off itself, not only by
+        // its mark (round 000011 on #6796, F101); nothing is steered, so the case after
+        // this one is the first to steer.
+        what: "a walk refused the pause",
+        status: status({ tokens: root.running }),
+        act: (piece, tokens) => tokens.actions[1].run({ launcher: { cataloguing: true } }),
+        holds: piece => root.acted && Sessions.steered === ""
+    }, {
         what: "pausing the session that spends most",
         status: status({ tokens: root.running }),
-        act: (piece, tokens) => tokens.actions[1].run(),
+        act: (piece, tokens) => tokens.actions[1].run({ launcher: { cataloguing: false } }),
         holds: piece => Sessions.steered === "ADDR1 pause"
     }, {
         what: "tokens running out, while sharing",

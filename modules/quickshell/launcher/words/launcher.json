@@ -21,6 +21,14 @@
       "none": "none running",
       "said": {
         "actWalked": "a session is steered only from your own Return in the launcher",
+        "gaveUp": {
+          "forget": "a session to reopen wasn't forgotten",
+          "put-off": "the last boot's sessions weren't put off",
+          "not-now": "a session's ask wasn't put off",
+          "keep-places": "your windows' places weren't kept",
+          "sharing": "agents weren't told you're sharing your screen"
+        },
+        "gaveUpUnanswered": "the agents daemon didn't answer",
         "today": "{spent} today",
         "needs": "needs you",
         "needCount": "{count} need you",

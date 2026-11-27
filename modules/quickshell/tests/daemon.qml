@@ -25,7 +25,8 @@
 // only what differs, as mycelium's node does, lays a change over the
 // record it holds, letting go a field said as null, and one it asked deep,
 // as hello offers, mended with only what moved inside it, while one asked
-// nothing deep is replaced whole. A client of a kind
+// nothing deep is replaced whole. An ask refused for now is asked again
+// a little later, as it's given then, and once taken no more. A client of a kind
 // with no records knows it holds none once it's answered, and one whose
 // answer is the whole of its kind, as the node's is, lets go what went in
 // a gap, and one whose answer is whole only of some records lets go only
@@ -342,6 +343,60 @@ ShellRoot {
 
         socket: `${root.runtime}/daemons/kinds.sock`
         kind: "verdict"
+    }
+
+    // What an ask to keep is given as each try reads it: refused the first time, it's asked
+    // again as this is then, as a share's end or a place kept since goes rather than the one
+    // overtaken (Daemon.qml's askTillTaken).
+    property string keeping: ""
+    // Each value the stand-in was asked to keep, in turn, and whether it's being asked now.
+    property var keptAsks: []
+    property bool keptAsking: false
+    // When the ask taken was last seen asked, to tell it's asked no more, and when the read
+    // last answered was sent, so a step reads only what the stand-in said since.
+    property real keptSince: -1
+    property real keptReadFrom: -1
+    function keptRead() {
+        if (root.keptAsking)
+            return;
+        root.keptAsking = true;
+        const from = Date.now();
+        kinds.ask({ ask: "kept" }, answer => {
+            root.keptAsks = answer?.asked ?? [];
+            root.keptReadFrom = from;
+            root.keptAsking = false;
+        });
+    }
+
+    // Asking what's kept through a dropped connection or refused twice, on a connection of its
+    // own, so the drop leaves the watches above as they were.
+    Daemon {
+        id: retrying
+
+        socket: `${root.runtime}/daemons/kinds.sock`
+        kind: "verdict"
+        onGaveUp: (asked, why) => root.gaveUpSaid = root.gaveUpSaid.concat([`${asked.ask}: ${why}`])
+    }
+    // Each ask given up on, as its signal said it, with the daemon's refusal.
+    property var gaveUpSaid: []
+    property string holding: ""
+    // Each value the stand-in was asked of an ask, by ask, and whether one is being read.
+    property var tried: ({})
+    property bool triedReading: false
+    property real triedReadFrom: -1
+    function triedRead(ask) {
+        if (root.triedReading)
+            return;
+        root.triedReading = true;
+        const from = Date.now();
+        kinds.ask({ ask: `tried:${ask}` }, answer => {
+            root.tried = Object.assign({}, root.tried, { [ask]: answer?.asked ?? [] });
+            root.triedReadFrom = from;
+            root.triedReading = false;
+        });
+    }
+    function triedOf(ask) {
+        return JSON.stringify(root.tried[ask] ?? []);
     }
 
     // The kinds a record says its watch asked for, as one line.
@@ -669,6 +724,140 @@ ShellRoot {
             },
             holds: () => root.stepsHeard.join(" ") === "joining gettingAddress online"
                 && Object.keys(kinds.awaited).length === 0
+        },
+        {
+            // Refused while the agents daemon can't yet tell the shell asked, Joel's Forget
+            // It or a kept place went undone, said nowhere (round 000038 on #6796, F90). One
+            // try is due 4 s after the refusal, so the step waits 15.
+            what: "an ask refused for now is asked again later, as it's given then",
+            polls: 300,
+            run: () => {
+                root.keeping = "first";
+                kinds.askTillTaken(() => ({ ask: "keep", value: root.keeping }));
+                root.keeping = "latest";
+            },
+            holds: () => {
+                root.keptRead();
+                return JSON.stringify(root.keptAsks) === '["first","latest"]'
+                    && kinds.refusedAgain.length === 0;
+            }
+        },
+        {
+            // Past the 4 s a refused ask waits, so one asked again once taken would show.
+            what: "and once taken it's asked no more",
+            run: () => {
+                root.keptSince = Date.now();
+            },
+            // A poll starts a read while none is out, so the step holds on one sent 5 s on;
+            // judged as each poll ends, a read in flight never let it hold.
+            holds: () => {
+                root.keptRead();
+                return root.keptReadFrom - root.keptSince >= 5000
+                    && JSON.stringify(root.keptAsks) === '["first","latest"]'
+                    && kinds.refusedAgain.length === 0;
+            }
+        },
+        {
+            // A daemon restarting at a switch drops the connection with the ask unanswered,
+            // which went undone, said nowhere (round 000011 on #6796, F95 and F100). The try
+            // due once the connection is back, 2 s on, comes 4 s after the drop.
+            what: "an ask its connection dropped unanswered is asked again once it's back",
+            polls: 300,
+            run: () => {
+                root.holding = "dropped";
+                retrying.askTillTaken(() => ({ ask: "keep-dropped", value: root.holding }));
+                root.holding = "back";
+            },
+            holds: () => {
+                root.triedRead("keep-dropped");
+                return root.triedOf("keep-dropped") === '["dropped","back"]'
+                    && retrying.refusedAgain.length === 0 && retrying.wire !== null;
+            }
+        },
+        {
+            // Ten places kept while the daemon refused were ten tries, each paying its wait
+            // (round 000011 on #6796, F111 and F113). Two of one ask given as its latest,
+            // both refused, are asked again once, as it is then.
+            what: "two refused asks of what's latest are asked again once, as it is then",
+            polls: 300,
+            run: () => {
+                const held = () => ({ ask: "hold", value: root.holding });
+                root.holding = "one";
+                retrying.askTillTaken(held);
+                root.holding = "two";
+                retrying.askTillTaken(held);
+                root.holding = "latest";
+            },
+            holds: () => {
+                root.triedRead("hold");
+                return root.triedOf("hold") === '["one","two","latest"]'
+                    && retrying.refusedAgain.length === 0;
+            }
+        },
+        {
+            // Past the 4 s a refused ask waits, so a second try of the latest would show.
+            what: "and the latest, once taken, is asked no more",
+            run: () => {
+                root.keptSince = Date.now();
+            },
+            holds: () => {
+                root.triedRead("hold");
+                return root.triedReadFrom - root.keptSince >= 5000
+                    && root.triedOf("hold") === '["one","two","latest"]';
+            }
+        },
+        {
+            // Given up on, Joel's act went undone said only in the journal (round 000036 on
+            // #6796, F142). Five tries, 4 s apart, so the step waits 25 s.
+            what: "an ask refused at every try is given up after five, and said so",
+            polls: 500,
+            run: () => {
+                retrying.askTillTaken({ ask: "refuse", value: "never" });
+            },
+            holds: () => {
+                root.triedRead("refuse");
+                return root.triedOf("refuse") === JSON.stringify(Array(5).fill("never"))
+                    && JSON.stringify(root.gaveUpSaid) === '["refuse: not yet"]'
+                    && retrying.refusedAgain.length === 0;
+            }
+        },
+        {
+            // Asks given as words each name what they act on, as two Forget Its do, so each
+            // refused waits its own try rather than the latest standing for both (round 000036
+            // on #6796, F118 and F123). One try, 4 s on.
+            what: "two refused asks given as words are each asked again",
+            polls: 300,
+            run: () => {
+                retrying.askTillTaken({ ask: "forget", value: "a" });
+                retrying.askTillTaken({ ask: "forget", value: "b" });
+            },
+            holds: () => {
+                root.triedRead("forget");
+                return root.triedOf("forget") === '["a","b","a","b"]'
+                    && retrying.refusedAgain.length === 0;
+            }
+        },
+        {
+            // The latest standing for an older try kept the older one's few tries left, so a
+            // fresh ask was given up on early (round 000036 on #6796, F139). A fresh ask and one
+            // with two tries left are both refused, then the one kept twice more: kept with the
+            // older's few it's given up at the third refusal, and with the fresh one's it's
+            // taken at the fourth try. Two tries, 4 s apart.
+            what: "the latest standing for an older ask keeps the most tries of either",
+            polls: 300,
+            run: () => {
+                root.holding = "fresh";
+                const lingering = () => ({ ask: "linger", value: root.holding });
+                retrying.askTillTaken(lingering);
+                retrying.askedTillTaken(lingering, 2);
+                root.holding = "latest";
+            },
+            holds: () => {
+                root.triedRead("linger");
+                return root.triedOf("linger") === '["fresh","fresh","latest","latest"]'
+                    && !root.gaveUpSaid.some(said => said.startsWith("linger"))
+                    && retrying.refusedAgain.length === 0;
+            }
         },
         {
             what: "a whole answer after a gap lets go what went in it, heard as gone",

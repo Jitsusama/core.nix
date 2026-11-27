@@ -532,6 +532,31 @@ Provider {
         }
     }
 
+    // One of Joel's acts the agents daemon never took, after every try, is told him on his
+    // next opening, not only in the journal, so a Forget It or a share's start doesn't go
+    // undone unseen (round 000036 on #6796, F142). A read or a heard, which his next look
+    // marks again, stays the journal's.
+    function gaveUp(asked, why) {
+        const said = Words.of("agents").said ?? {};
+        const what = (said.gaveUp ?? {})[asked?.ask] ?? "";
+        if (what !== "")
+            provider.launcher?.toldThat(what, why !== "" ? why : said.gaveUpUnanswered ?? "");
+    }
+    Connections {
+        target: provider.rowsKind
+
+        function onGaveUp(asked, why) {
+            provider.gaveUp(asked, why);
+        }
+    }
+    Connections {
+        target: Sessions
+
+        function onGaveUp(asked, why) {
+            provider.gaveUp(asked, why);
+        }
+    }
+
     // The keys of its rows in the order the daemon gives them, each put in
     // its place by its `order` as it changes, never the list sorted; and
     // each row as last wrapped, by key. Plain, so keeping them notifies
@@ -1192,7 +1217,8 @@ Provider {
     // answered him, which the daemon says in the talk's own file. The
     // drawer follows the cursor, so one only passed over on the way down
     // isn't read: it must stay two seconds, as a window must before the
-    // sorter holds it (VKCF3Z, 2026-11-12, on #3547).
+    // sorter holds it (VKCF3Z, 2026-11-12, on #3547). Nor is one a link left selected read
+    // until Joel types (the launcher's readWaits).
     Timer {
         id: staying
 
@@ -1201,6 +1227,10 @@ Provider {
         interval: 2000
         onTriggered: {
             const launcher = provider.launcher;
+            if (launcher?.open && launcher.readWaits) {
+                restart();
+                return;
+            }
             if (launcher?.open && provider.drawerWanted === `drawer:agents:${address}`
                 && String(launcher.selected?.key ?? "") === `agent:${address}`)
                 provider.heard(address);
@@ -1698,7 +1728,8 @@ Provider {
     function actWalked() {
         return String((Words.of("agents").said ?? {}).actWalked ?? "");
     }
-    // The asks the agents daemon does only as Joel (main.rs's AS_JOEL),
+    // The asks the agents daemon does only as Joel (joels_acts.rs's AS_JOEL, each
+    // named here and no other, as tests/as-joel-agrees.py holds them),
     // sent as served from its top rows only when he chose them; any
     // other ask, and his own, goes as it is.
     readonly property var asJoel: ["pause", "resume", "stop", "close", "wake", "talk",

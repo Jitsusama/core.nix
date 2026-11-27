@@ -283,17 +283,26 @@ def closed_side(address: str) -> str:
     return f"closed {ended:%H:%M}" if today else f"closed {ended:%a %H:%M}"
 
 
-def node_record(key: str) -> Json | None:
-    """Give the node's record of `key` whole, ended or not, asked over its daemon interface."""
-    with socket.socket(socket.AF_UNIX) as node:
-        node.connect(str(NODE))
-        node.sendall(LIST_SESSIONS)
-        said = node.makefile()
-        while True:
-            answer = json.loads(said.readline())
-            if answer.get("id") == LISTED:
-                records = cast("list[Json]", answer.get("records", []))
-                return next((one for one in records if one.get("key") == key), None)
+def node_record(key: str) -> Json | str | None:
+    """Give the node's record of `key` whole, ended or not, or why the node couldn't say.
+
+    It explains a failure, when the node is likeliest to be unwell, so it waits a few
+    seconds at most and says why it has nothing rather than raising in the failure's place.
+    """
+    try:
+        with socket.socket(socket.AF_UNIX) as node:
+            node.settimeout(5)
+            node.connect(str(NODE))
+            node.sendall(LIST_SESSIONS)
+            said = node.makefile()
+            while line := said.readline():
+                answer = json.loads(line)
+                if answer.get("id") == LISTED:
+                    records = cast("list[Json]", answer.get("records", []))
+                    return next((one for one in records if one.get("key") == key), None)
+    except (OSError, ValueError) as why:
+        return f"the node couldn't say: {why!r}"
+    return "the node couldn't say: it hung up before listing its sessions"
 
 
 def held_by_node() -> list[str]:
@@ -784,6 +793,71 @@ def test_a_talk_shows_under_its_field_sent_then_waiting_then_answered(
             one.unlink()
 
 
+def test_a_talk_a_link_opened_reads_its_answer_only_once_joel_types(shell: Shell) -> None:
+    """A Talk a link opened tells its answer read only once Joel has typed in it.
+
+    Any process of the account's can open a Talk by a link (`qs ipc call launcher talkTo`),
+    with Joel away, and two seconds of an answer shown under a field nobody's at would tell
+    the session he'd read it, hiding it from him (round 000022 on #6796, F58). He sends his
+    words from his own Return and closes the launcher; the answer comes, a link opens the
+    Talk, and the answer stays unread until his first key.
+    """
+    words, answer = "is the tide out yet", "Ebbing, and low by noon."
+    inbox = STEER / "LISTEN"
+    (inbox / "replies").mkdir(parents=True, exist_ok=True)
+    steered = set(inbox.glob("*.json"))
+    talk: Path | None = None
+
+    def now() -> str:
+        return datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+    try:
+        found(shell, "listening quest", "Listening Quest")
+        shell.send_key("ret")
+        shell.launcher_until(lambda shown: shown["asking"])
+        shell.send_chars(words)
+        shell.launcher_until(lambda shown: shown["typed"] == words)
+        shell.send_key("ret")
+        talk = inbox / "replies" / f"{said_to(inbox, steered, words)}.jsonl"
+        shell.close_launcher()
+        delivered = {"stage": "delivered", "at": now(), "session": "s-listen", "from": "joel",
+            "text": words}  # fmt: skip
+        replied = {"stage": "replied", "at": now(), "text": answer}
+        talk.write_text(json.dumps(delivered) + "\n" + json.dumps(replied) + "\n")
+        # Sent words are kept until their talk says they were delivered (Drafts.qml), so a Talk
+        # opened before the shell hears it opens on them; the link waits until they're let go.
+        shells = STATE / "quickshell/by-shell"
+        deadline = time.monotonic() + 10
+        while any(words in kept.read_text() for kept in shells.glob("*/launcher-drafts.json")):
+            assert time.monotonic() < deadline, "his delivered words were never let go"
+            time.sleep(0.05)
+        did = followed(shell, "talkTo", "LISTEN")
+        assert did["done"], did
+        shell.launcher_until(
+            lambda shown: any(
+                answer in (one.get("answers") or [])
+                for one in cast("list[Json]", shown["talks"] or [])
+            )
+        )
+        # Past the two seconds a shown answer takes to read as heard, nothing says it was.
+        time.sleep(3)
+        assert '"stage":"read"' not in talk.read_text(), talk.read_text()
+        # His first key is his reading: the answer is heard, and the key is cleared again.
+        shell.send_chars("x")
+        shell.launcher_until(lambda shown: shown["typed"] == "x")
+        shell.send_key("ctrl-u")
+        deadline = time.monotonic() + 10
+        while '"stage":"read"' not in talk.read_text():
+            assert time.monotonic() < deadline, talk.read_text()
+            time.sleep(0.1)
+    finally:
+        shell.close_launcher()
+        if talk is not None:
+            talk.unlink(missing_ok=True)
+        for one in set(inbox.glob("*.json")) - steered:
+            one.unlink()
+
+
 def said_to(inbox: Path, steered: set[Path], words: str) -> str:
     """Give the id of the talk these words went in as, once their steer is in the inbox."""
     deadline = time.monotonic() + 10
@@ -1167,6 +1241,29 @@ def test_an_orchestrators_served_acts_walked_from_outside_steer_nothing(shell: S
             path.unlink()
 
 
+def dealing_by_id_fills_nothing(shell: Shell, inbox: Path) -> None:
+    """Check Deal With It run by its catalogue id is refused, and fills no prompt.
+
+    `qs ipc call launcher run` reaches the act on a path of its own (Launcher.qml's
+    catalogueRunWalked), which no walk through `doing` crosses (round 000036 on #6796, F124).
+    """
+    listed = cast("list[Json]", json.loads(shell.as_account(shell.ipc("list"))))
+    dealing = [
+        one
+        for one in listed
+        if one["words"] == "Deal With It" and "Dealing Quest" in str(one["in"])
+    ]
+    assert dealing, "the catalogue lists no Deal With It on the want"
+    ran = json.loads(shell.as_account(shell.ipc("run", shlex.quote(str(dealing[0]["id"])))))
+    assert ran.get("done") is False, ran
+    assert str(ran.get("said", "")).endswith(f": {ACT_WALKED}"), ran
+    shell.close_launcher()
+    # Past the closed frame's wait, a second at most, and the moment after it.
+    time.sleep(2 + LINK_QUIET)
+    filled = [json.loads(one.read_text()) for one in inbox.glob("*.json")]
+    assert filled == [], filled
+
+
 def test_a_wants_acts_walked_from_outside_are_refused_as_chosen(shell: Shell) -> None:
     """A walk's Put It Off or Deal With It on a want is refused, and fills no session's prompt.
 
@@ -1188,6 +1285,10 @@ def test_a_wants_acts_walked_from_outside_are_refused_as_chosen(shell: Shell) ->
         did = json.loads(shell.as_account(shell.ipc("doing", shlex.quote(json.dumps(walked)))))
         assert did.get("refused") == ACT_WALKED, did
         shell.close_launcher()
+        # A put-off sent would come back over the daemon's watch in milliseconds, so For You
+        # is opened again only past the link's quiet: one showing the want then means it
+        # stayed, not that the put-off hadn't arrived yet (round 000038 on #6796, F80).
+        time.sleep(LINK_QUIET)
         in_for_yous_agents(shell)
         shell.launcher_until(lambda shown: "Dealing Quest" in shown["rows"])
         shell.close_launcher()
@@ -1200,6 +1301,7 @@ def test_a_wants_acts_walked_from_outside_are_refused_as_chosen(shell: Shell) ->
         time.sleep(2 + LINK_QUIET)
         filled = [json.loads(one.read_text()) for one in inbox.glob("*.json")]
         assert filled == [], filled
+        dealing_by_id_fills_nothing(shell, inbox)
     finally:
         shell.close_launcher()
         for one in inbox.glob("*.json"):
@@ -1969,6 +2071,71 @@ def test_an_answered_talk_is_counted_at_home_until_joel_reads_it_in_its_drawer(
         shell.launcher_ready()
         shell.launcher_until(lambda _: "answer" not in agents_at_home(shell))
     finally:
+        talk.unlink()
+
+
+def test_a_go_to_asked_from_outside_marks_no_answer_heard(shell: Shell) -> None:
+    """A link's Go To goes to a session, but leaves the answer it holds for Joel unheard.
+
+    Go To marks a session's answer heard as it goes, as his own Return means he's seen it; a
+    link any program of his may follow means nothing of the kind, and the daemon takes the
+    shell's heard as his (Agents.qml's heard; round 000022 on #6796, F49).
+    """
+    replies = STEER / "LISTEN" / "replies"
+    replies.mkdir(parents=True, exist_ok=True)
+    talk = replies / "talk-1794414593810.jsonl"
+    lines = [
+        {"stage": "delivered", "at": "2026-11-11T21:00:00.000Z", "session": "s-listen",
+         "from": "joel", "text": "is the tide in?"},
+        {"stage": "replied", "at": "2026-11-11T21:01:00.000Z", "text": "Not until four."},
+    ]  # fmt: skip
+    talk.write_text("".join(json.dumps(line) + "\n" for line in lines))
+    try:
+        shell.close_launcher()
+        shell.as_account(shell.ipc("toggle"))
+        shell.launcher_ready()
+        shell.launcher_until(lambda _: " \u00b7 1 answer \u00b7 " in agents_at_home(shell))
+        shell.close_launcher()
+        shell.as_account(shell.ipc("goTo", "LISTEN"))
+        time.sleep(PAST_A_STAY)
+        assert '"stage":"read"' not in talk.read_text(), talk.read_text()
+    finally:
+        time.sleep(LINK_QUIET)
+        shell.close_launcher()
+        talk.unlink()
+
+
+def test_a_walked_go_to_marks_no_answer_heard_once_the_launcher_is_gone(shell: Shell) -> None:
+    """A walk's Go To goes to a session, but leaves the answer it holds for Joel unheard.
+
+    Go To runs once the launcher is gone (Launcher.qml's runOnceGone), after the walk has
+    returned, so only the walk kept with it (pendingWalked) tells its heard from his own
+    Return's (round 000036 on #6796, F127). The goTo case above crosses goToCell alone.
+    """
+    replies = STEER / "LISTEN" / "replies"
+    replies.mkdir(parents=True, exist_ok=True)
+    talk = replies / "talk-1794414593811.jsonl"
+    lines = [
+        {"stage": "delivered", "at": "2026-11-11T21:00:00.000Z", "session": "s-listen",
+         "from": "joel", "text": "is the ferry running?"},
+        {"stage": "replied", "at": "2026-11-11T21:01:00.000Z", "text": "Every hour, on the hour."},
+    ]  # fmt: skip
+    talk.write_text("".join(json.dumps(line) + "\n" for line in lines))
+    try:
+        shell.close_launcher()
+        shell.as_account(shell.ipc("toggle"))
+        shell.launcher_ready()
+        shell.launcher_until(lambda _: " \u00b7 1 answer \u00b7 " in agents_at_home(shell))
+        shell.close_launcher()
+        steps = ["agents", ORCHESTRATING, FOLD, "Listening Quest", "Go To"]
+        walked = {"steps": steps, "sure": True}
+        did = json.loads(shell.as_account(shell.ipc("doing", shlex.quote(json.dumps(walked)))))
+        assert "refused" not in did, did
+        time.sleep(PAST_A_STAY)
+        assert '"stage":"read"' not in talk.read_text(), talk.read_text()
+    finally:
+        time.sleep(LINK_QUIET)
+        shell.close_launcher()
         talk.unlink()
 
 
@@ -4354,6 +4521,25 @@ def test_carried_lists_each_carry_newest_first_and_carries_an_arrived_one_back_i
     took = round((time.monotonic() - began) * 1000)
     logging.getLogger(__name__).info("LAB Carry Back was reported becoming %s ms on", took)
     shell.reported(f"not become {arrived['is']}: ", bool, since)
+
+
+@pytest.mark.usefixtures("carried")
+def test_a_carry_back_walked_from_outside_asks_the_node_nothing(shell: Shell) -> None:
+    """A walk's sure Carry Back moves no session: the node weighs a carry by who asks.
+
+    The node takes the shell's carry back as Joel's (PROTOCOL.md's Carrying a Quest), so the
+    shell refuses one a walk chose and tells the walk why (round 000036 on #6796, F137); the
+    row never becomes "carrying back".
+    """
+    since = shell.mark()
+    steps = ["agents", "Carried", "Listening Quest", "Carry Back"]
+    walked = {"steps": steps, "words": "", "sure": True}
+    did = json.loads(shell.as_account(shell.ipc("doing", shlex.quote(json.dumps(walked)))))
+    assert did.get("refused") == ACT_WALKED, did
+    shell.close_launcher()
+    opens_saying_nothing_of_the_walk(shell)
+    reports, _ = shell.said_since(since)
+    assert not [said for said in reports if said.startswith("becoming ")], reports
 
 
 # How long For You's rows must stand unchanged before they count as made, and how long they

@@ -522,7 +522,10 @@ Singleton {
         kind: ["reopen", "restoring", "to-reopen", "arrangement", "kept-places", "want"]
         watching: ({ place: "agents" })
         answersWhole: true
+        onGaveUp: (asked, why) => root.gaveUp(asked, why)
     }
+    // Said of one of Joel's acts the agents daemon never took, as Daemon.qml's own is.
+    signal gaveUp(var asked, string why)
     readonly property var offered: {
         void reopenKind.revision;
         return Order.sorted(Object.values(reopenKind.held).filter(one => one.kind === "reopen"),

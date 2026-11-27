@@ -76,7 +76,7 @@ use serde_json::{Value, json};
 // Which asks are Joel's acts, which the shell's check holds and what a
 // refused one is told, in a file of their own beside this one.
 mod joels_acts;
-use joels_acts::{answered, held_to_the_shell, joels, not_as_joel};
+use joels_acts::{AS_JOEL, answered, held_to_the_shell, joels, not_as_joel};
 
 /// The daemon as the launcher knows it: Agents' ready rows, how its
 /// sessions stand together, each session's drawer, and the sessions
@@ -328,33 +328,32 @@ fn as_joel(
 /// Them Start, an answer to what a session asks and all Joel's (`as_joel`: a row's act, a line he
 /// tells, his feedback, and what the shell says he saw, read, put off or
 /// forgot), asked of `node` only for the shell, told apart by the
-/// connection each came on, so no agent lifts the stop Joel put on their
-/// starts, reads his places, answers one of `wants`, steers, tells or
-/// talks to a session as him, nor hides from him what he'd see; what the
-/// node says of the starts once they're let start is `stood` at once,
-/// rather than at the next poll. Each but which are kept asks the shell's
-/// systemd who the shell is, the first time a shell asks (asker.rs's
-/// `TAKEN`); Joel's acts are answered in the order he did them, and the
-/// rest of [`SLOW`] on threads of their own, holding up no ask after them. Each
-/// start the shell names by a
-/// token is kept on disk before the node is asked, its end before the
-/// shell hears it, and its told before that's answered, until the shell
-/// says it told Joel its end (starts.rs), so neither a restart of the
-/// shell nor one of this daemon ends it untold or tells it twice. The
-/// loop is told each change, to serve the starts' records anew.
+/// connection each came on, as `judge` tells, so no agent lifts the stop
+/// Joel put on their starts, reads his places, answers one of `wants`,
+/// steers, tells or talks to a session as him, nor hides from him what
+/// he'd see; what the node says of the starts once they're let start is
+/// `stood` at once, rather than at the next poll. Each but which are kept
+/// asks the shell's systemd who the shell is, the first time a shell asks
+/// (asker.rs's `TAKEN`); Joel's acts are answered in turn and the rest of
+/// [`SLOW`] apart, none holding up a get or watch. Each start the shell
+/// names by a token is kept on disk before the node is asked, its end
+/// before the shell hears it, and its told before that's answered, until
+/// the shell says it told Joel its end (starts.rs), so neither a restart
+/// of the shell nor one of this daemon ends it untold or tells it twice.
+/// The loop is told each change, to serve the starts' records anew.
 fn for_the_shell_alone(
     shared: &Shared,
     (node, wants): (Option<PathBuf>, Wants),
     keeping: Keeping,
     told: mpsc::Sender<Heard>,
     (stood, words): (Arc<starts_stopped::Told>, Said),
-    as_joel: Own,
+    (as_joel, judge): (Own, asker::Judge),
 ) {
     shared.peered(
         &SHELLS_ALONE,
         Box::new(move |said, stream| {
             if held_to_the_shell(said) {
-                return match asker::the_shell(stream) {
+                return match judge(stream) {
                     Ok(()) => as_joel(said),
                     Err(why) => Some(not_as_joel(&why, said)),
                 };
@@ -363,18 +362,17 @@ fn for_the_shell_alone(
                 return as_joel(said);
             }
             if said["ask"] == places::ASK {
-                return Some(places::answer(|| asker::the_shell(stream), node.as_deref()));
+                return Some(places::answer(|| judge(stream), node.as_deref()));
             }
             if said["ask"] == offers::ASK {
-                return Some(offers::answer(|| asker::the_shell(stream), node.as_deref()));
+                return Some(offers::answer(|| judge(stream), node.as_deref()));
             }
             if said["ask"] == wants::ASK {
-                let asker = asker::the_shell(stream);
+                let asker = judge(stream);
                 return Some(answered(asker, &wants, said, node.as_deref()));
             }
             if said["ask"] == starts_stopped::ASK {
-                let (answer, now) =
-                    starts_stopped::answer(asker::the_shell(stream), node.as_deref(), &words);
+                let (answer, now) = starts_stopped::answer(judge(stream), node.as_deref(), &words);
                 if let Some(now) = now {
                     stood.tell(now);
                 }
@@ -395,7 +393,7 @@ fn for_the_shell_alone(
             if said["ask"] == starts::KEPT {
                 return Some(json!({"kept": keeping.kept(&starts::told_of(said))}));
             }
-            let asker = asker::the_shell(stream);
+            let asker = judge(stream);
             if said["ask"] == starts::TOLD {
                 return Some(match asker {
                     Ok(()) => {
@@ -423,6 +421,7 @@ fn for_the_shell_alone(
         }),
     );
     shared.slow(&SLOW);
+    shared.in_turn(&AS_JOEL);
 }
 
 /// Every ask the daemon answers only as it's told who asked
@@ -458,12 +457,12 @@ const SHELLS_ALONE: [&str; 22] = [
 /// an answer, which waits on the node up to acts.rs's `PATIENCE` and so
 /// queued could come back after the Talk lets a second go
 /// (TalkAnswers.js's `SENT_STANDS_MS`), and feedback, which waits on the
-/// quest it goes to. Joel's other acts are answered in the order the
-/// shell asks them, on its connection's thread, as each but feedback was
-/// before the shell's check: a share's start and end, or the whole of his
+/// quest it goes to. Joel's other acts are answered in turn, in the order
+/// the shell asks them: a share's start and end, or the whole of his
 /// windows' places as each is kept, answered apart could land out of
 /// order, and the daemon keep the one he'd left (round 000056 on #6796,
-/// F16 and F30).
+/// F16 and F30), but off the connection's reading thread, where the
+/// shell's check held every get and watch behind them (#6918, F99).
 const SLOW: [&str; 7] = [
     sprout::ASK,
     places::ASK,
@@ -589,6 +588,23 @@ fn vocabulary(path: &Path) -> Result<Words, Failure> {
         })
 }
 
+/// Hears the sessions' inboxes and the files `paths` names, telling `to`.
+///
+/// # Errors
+///
+/// 1 when it can't hear the files. Without the inboxes only talks not yet
+/// taken go unshown, so every row is still served and it says so instead.
+fn follow_paths(paths: &Paths, to: mpsc::Sender<Heard>) -> Result<(), Failure> {
+    if let Err(why) = sources::follow_inboxes(&paths.steer, to.clone()) {
+        eprintln!(
+            "agents: can't hear the sessions' inboxes, so talks not yet taken go unshown: {why}"
+        );
+    }
+    sources::follow_files(paths, to).map_err(|why| {
+        Failure::new(Exit::Failed, "agents can't hear the files it reads").because(why.to_string())
+    })
+}
+
 /// Serves the rows until the sources it hears from are gone.
 ///
 /// # Errors
@@ -596,6 +612,14 @@ fn vocabulary(path: &Path) -> Result<Words, Failure> {
 /// 78 when the vocabulary can't be read, and 1 when it can't listen on
 /// its socket or hear the files it reads.
 fn serve(args: Args) -> Result<(), Failure> {
+    // Its judge is the walks' weak one, so a walks build that got installed
+    // says so at every start rather than acting as Joel for any process
+    // named as the shell, unsaid (round 000011 on #6796, F109).
+    #[cfg(feature = "walks")]
+    eprintln!(
+        "agents: built for the niri walks, taking any process running quickshell's program \
+         for the shell; no machine should run this build"
+    );
     let words = vocabulary(&args.vocabulary)?;
     let (to, heard) = mpsc::channel();
     // What the poll and Let Them Start last told of agents' starts, so
@@ -629,7 +653,7 @@ fn serve(args: Args) -> Result<(), Failure> {
         keeping.clone(),
         to.clone(),
         (Arc::clone(&starts_told), starts_said),
-        as_joel,
+        (as_joel, Box::new(asker::the_shell)),
     );
     match serve::listen(&args.socket) {
         Ok(listener) => serve::accept(Arc::clone(&shared), listener),
@@ -664,16 +688,7 @@ fn serve(args: Args) -> Result<(), Failure> {
         steer: args.steer,
         shells: args.shells,
     };
-    // Without them only talks not yet taken go unshown, so every row is
-    // still served.
-    if let Err(why) = sources::follow_inboxes(&paths.steer, to.clone()) {
-        eprintln!(
-            "agents: can't hear the sessions' inboxes, so talks not yet taken go unshown: {why}"
-        );
-    }
-    sources::follow_files(&paths, to).map_err(|why| {
-        Failure::new(Exit::Failed, "agents can't hear the files it reads").because(why.to_string())
-    })?;
+    follow_paths(&paths, to)?;
     let mut inputs = started(words, &paths, keeping);
     let mut served = Served::default();
     let mut held_landed = Rc::clone(served.landed());

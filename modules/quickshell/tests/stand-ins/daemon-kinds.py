@@ -19,6 +19,16 @@ answered with none. An ask of steps
 is answered in three, as wifid answers a join: two saying they aren't done, then the last.
 An unwatch is answered as wifid answers one, and each record says how many watches ahead its
 connection has unwatched, so the test can tell an emptied watch ahead was let go.
+An ask to keep is refused for now the first time, as the agents daemon refuses an act it does as
+Joel while it can't yet tell the shell asked, and taken after; an ask of what was asked to keep
+is answered with each value in turn, so the test can tell a refused ask was asked again as it
+was then given, and a taken one no more. An ask to keep through a drop is answered the first
+time by the connection dropped, unanswered, as a daemon restarting at a switch drops it, and
+taken after. An ask to hold is refused for now twice, so two given at once are both refused,
+and taken after. An ask to refuse is refused at every try, so the test can tell one given up
+on is said. An ask to forget is refused twice, so two given as words are each asked again; an
+ask to linger is refused three times, so one kept for an older try's few would be given up on.
+Each of those is answered, as asked, with every value asked of it in turn.
 """
 
 import json
@@ -31,6 +41,21 @@ from pathlib import Path
 # told them all and the rest only what stood through it.
 WAITED = {"waiting": 0, "lapsing": 0}
 WAITED_LOCK = threading.Lock()
+
+# Each value asked to keep, in the order asked, the first refused.
+KEPT: list[object] = []
+KEPT_LOCK = threading.Lock()
+
+# Each value asked of the asks that drop or refuse more than once, by ask, in the order asked,
+# and how many of each first go unanswered or refused.
+TRIED: dict[str, list[object]] = {
+    "keep-dropped": [],
+    "hold": [],
+    "refuse": [],
+    "forget": [],
+    "linger": [],
+}
+UNTAKEN = {"keep-dropped": 1, "hold": 2, "refuse": sys.maxsize, "forget": 2, "linger": 3}
 
 # What each kind that loses records in a gap holds before it, and what it holds after.
 LAPSING = {
@@ -84,6 +109,41 @@ def told_after_whole(asked: dict[str, object]) -> list[dict[str, object]] | None
     return None
 
 
+def refused(asked: dict[str, object]) -> list[dict[str, object]]:
+    """Refuse an ask for now, as the agents daemon refuses one it can't yet tell the shell asked."""
+    return [{"id": asked.get("id"), "error": {"code": "refused", "message": "not yet"}}]
+
+
+def taken(asked: dict[str, object]) -> list[dict[str, object]]:
+    """Take an ask, saying the value it was given."""
+    return [{"id": asked.get("id"), "kept": asked.get("value")}]
+
+
+def keeping(asked: dict[str, object]) -> list[dict[str, object]] | None:
+    """Answer an ask to keep or hold, or of what one was asked, or None for another ask."""
+    ask = asked.get("ask")
+    if ask == "keep":
+        with KEPT_LOCK:
+            KEPT.append(asked.get("value"))
+            first = len(KEPT) == 1
+        return refused(asked) if first else taken(asked)
+    if ask == "kept":
+        with KEPT_LOCK:
+            return [{"id": asked.get("id"), "asked": list(KEPT)}]
+    if isinstance(ask, str) and ask in TRIED:
+        with KEPT_LOCK:
+            TRIED[ask].append(asked.get("value"))
+            untaken = len(TRIED[ask]) <= UNTAKEN[ask]
+        if not untaken:
+            return taken(asked)
+        # A drop leaves the ask unanswered; serve hangs up after it.
+        return [] if ask == "keep-dropped" else refused(asked)
+    if isinstance(ask, str) and ask.startswith("tried:"):
+        with KEPT_LOCK:
+            return [{"id": asked.get("id"), "asked": list(TRIED.get(ask[6:], []))}]
+    return None
+
+
 def answer(asked: dict[str, object], unwatched: int) -> list[dict[str, object]]:
     """Answer one ask, in the lines a daemon sends for it, its connection unwatched so often."""
     if asked.get("ask") == "hello":
@@ -97,9 +157,10 @@ def answer(asked: dict[str, object], unwatched: int) -> list[dict[str, object]]:
                 "kinds": offers,
             }
         ]
-    told = told_after_whole(asked)
-    if told is not None:
-        return told
+    for answering in (told_after_whole, keeping):
+        said = answering(asked)
+        if said is not None:
+            return said
     kind = asked.get("kind")
     if isinstance(kind, str) and kind in LAPSING:
         with WAITED_LOCK:
@@ -159,6 +220,9 @@ def serve(client: socket.socket) -> None:
                 # The first watch of a kind that loses records is followed by a gap.
                 kind = asked.get("kind")
                 if isinstance(kind, str) and WAITED.get(kind) == 1:
+                    return
+                # So is the first ask to keep through a drop, left unanswered.
+                if asked.get("ask") == "keep-dropped" and len(TRIED["keep-dropped"]) == 1:
                     return
 
 

@@ -3,6 +3,7 @@
 //! asked over a socket as the shell asks.
 
 mod hang_ups;
+mod in_turn;
 
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -521,6 +522,32 @@ fn a_slow_ask_holds_up_no_ask_after_it() {
         client.heard(),
         json!({"id": 1, "done": true}),
         "the share answered once it's done"
+    );
+}
+
+#[test]
+fn asks_not_slow_are_done_and_answered_in_the_order_asked() {
+    let done = Arc::new(Mutex::new(Vec::new()));
+    let doing = Arc::clone(&done);
+    let own: Own = Box::new(move |said| {
+        let ask = said["ask"].as_str()?.to_owned();
+        if ask == "start" {
+            // As a share's start may take longer than its end does.
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        doing.lock().expect("the order is held").push(ask);
+        Some(json!({"done": true}))
+    });
+    let (shared, mut client, _folder) = served("ordered", own);
+    shared.slow(&["other"]);
+    client.send(&json!({"id": 1, "ask": "start"}));
+    client.send(&json!({"id": 2, "ask": "end"}));
+    assert_eq!(client.heard()["id"], 1, "the first asked is answered first");
+    assert_eq!(client.heard()["id"], 2, "and the second after it");
+    assert_eq!(
+        *done.lock().expect("the order is held"),
+        ["start", "end"],
+        "the second is done only once the first is"
     );
 }
 
