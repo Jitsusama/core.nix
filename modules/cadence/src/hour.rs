@@ -3,8 +3,9 @@
 //! delivering insane quality, both functionally, and by maintaining clean
 //! zones". Each hour it measures what shipped, what broke, what slipped
 //! and how clean the code is, each against a target, from what the
-//! machine already keeps; names the one biggest drag and files it with
-//! its owner in the loop's ledger, due a day on; says the next hour
+//! machine already keeps; names the one biggest drag; files it and every
+//! other measure past its target with its owner in the loop's ledger, due
+//! a day on, put to each owner as one question; says the next hour
 //! whether it moved; and sends the card to the orchestrator. A miss Joel
 //! found himself outranks every figure, and stays open until a check
 //! that would have caught it merges. The queues the work waits in show
@@ -12,11 +13,15 @@
 //!
 //! This file reads the measures and runs the hour; `card` composes what it
 //! says and keeps, `good` holds each measure to the definition of good,
-//! `owing` files its drag with each owner, `net` reads the merge net's two
-//! files, `records` reads the queues' records, and `reviews` the
-//! harness's review records.
+//! `owing` files its drag with each owner, `put` asks each owner of it,
+//! `net` reads the merge net's two files, `records` reads the queues'
+//! records, and `reviews` the harness's review records.
+//!
+//! Long because the run reads each record the measures need and keeps the
+//! hour, its ledger and its sends in order, and its tests sit beside it.
 
 mod card;
+mod falling;
 mod good;
 mod ledger;
 mod lines;
@@ -26,6 +31,7 @@ mod moved;
 mod net;
 mod owing;
 mod parted;
+mod put;
 mod records;
 mod reviews;
 mod stuck;
@@ -155,12 +161,21 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
         measures.push(spent_beside_landed(&state_home, now));
         measures.extend(spend_watch_measures(now));
     }
-    // Every measure read, each is held to its line on the definition of
-    // good, and one with none, or another target, is counted.
-    measures.push(good::undefined(&measures));
     // Once every measure is read, a miss whose check names one stays open
     // until it judges, so Joel isn't told it's fixed before it is; one
     // closed before last hour stays so.
+    measures::held(&misses, &mut measures, &kept.open);
+    // The loop itself, judged by its red lines falling against a week back,
+    // counted once the misses are held, so it counts the lines the card
+    // shows; only the definition's own count, which must hold this one to
+    // its line too, comes after it.
+    let this_hour = falling::hour(&measures, now);
+    measures.push(falling::falling(&kept.red, this_hour));
+    // Every measure read, each is held to its line on the definition of
+    // good, and one with none, or another target, is counted.
+    measures.push(good::undefined(&measures));
+    // Held again, so a miss whose check names one of those two is held by
+    // it as by any other; a miss already held isn't held twice.
     measures::held(&misses, &mut measures, &kept.open);
     let said = measures::said(&misses, &TimeZone::system());
     let (mut card, mut next) = compose(
@@ -171,6 +186,7 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
         &format!("{} tomorrow", clock(now + DAY)),
     );
     stuck::daily(&mut card, &mut next, &measures, now, &TimeZone::system());
+    next.red = falling::kept(&kept.red, this_hour);
     print!("{card}");
     // A look by hand lacks the timer's checkouts, so it can read a closed
     // miss as open: only the run sending the card keeps the hour and owes.
@@ -180,24 +196,92 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
     let ledger_at = folder.join("findings.jsonl");
     let _held = findings::lock(&ledger_at)?;
     let mut ledger = findings::read(&ledger_at);
-    let told = file(&mut ledger, &measures, &today(now), now);
+    let before = ledger.clone();
+    let date = today(now);
+    let told = file(&mut ledger, &measures, &date, now);
     let mesh = Mesh {
         root: state_home.join("pi/agentic-harness.pi"),
     };
-    for (owner, text) in told.into_iter().filter(|(owner, _)| !owner.is_empty()) {
-        mesh.send(&message(&owner, "finding", text))?;
-    }
+    // A question, so the line wakes its owner and wants an answer. Its
+    // lines carry its id only once it's gone. The asked owners' lines are
+    // kept before the card or any failure is said, so their ids stand
+    // though a send fails or the run is stopped: asked again, each would
+    // wake its owner a second time and count against collaboration as a
+    // question of nobody's. Every other line waits on the card.
+    // Each goes to a session the mesh reaches, a gone owner's passed on.
+    let presences = mesh.all();
+    let reached = reaching(&mesh, &presences, now);
+    let whom = |owner: &str, text: &str| {
+        let over = orchestrator_of(&presences, owner);
+        put::reach(owner, text, &reached, over.as_deref(), to)
+    };
+    let asks = put::asks(told);
+    ask_and_keep(&mesh, whom, &asks, &mut ledger, &before, &ledger_at, now)?;
     let routes = fs::read_to_string(state_home.join("pain-points/routes.json")).ok();
-    let keeper = measures::keeper(routes.as_deref());
+    // A keeper gone leaves the card to the orchestrator alone, rather than
+    // a question waiting on no one.
+    let keeper = measures::keeper(routes.as_deref()).filter(|k| reached(k.as_str()));
     for (whom, intent) in card_to(to, keeper.as_deref()) {
         mesh.send(&message(whom, intent, card.clone()))?;
     }
-    // Kept once the card has gone, so a send that fails tells its findings
-    // and "fixed" lines again next hour rather than never: an owner told
-    // twice is cheaper than one never told.
+    // Kept whole once the card has gone, so a card that fails tells its
+    // findings and "fixed" lines again next hour rather than never.
     findings::keep(&ledger_at, &ledger)?;
     write_whole(&kept_at, &serde_json::to_string(&next)?)?;
     Ok(())
+}
+
+/// Asks each owner its lines, then keeps the lines of those whose
+/// questions went, as the hour left them, before anything else can fail.
+/// A send that fails keeps the questions gone before it, then says why.
+fn ask_and_keep(
+    mesh: &Mesh,
+    whom: impl Fn(&str, &str) -> (String, String),
+    asks: &[(String, String)],
+    ledger: &mut [findings::Entry],
+    before: &[findings::Entry],
+    at: &Path,
+    now: i64,
+) -> io::Result<()> {
+    let failed = ask_owners(mesh, whom, asks, ledger, now).err();
+    let went = failed.as_ref().map_or(asks.len(), |(n, _)| *n);
+    keep_asked(at, ledger, before, &asks[..went])?;
+    failed.map_or(Ok(()), |(_, err)| Err(err))
+}
+
+/// Asks each owner its lines, sent to whom `whom` says reaches it, and
+/// marks the lines of each question gone with its id. A send that fails
+/// stops the asking, saying how many went.
+fn ask_owners(
+    mesh: &Mesh,
+    whom: impl Fn(&str, &str) -> (String, String),
+    asks: &[(String, String)],
+    ledger: &mut [findings::Entry],
+    now: i64,
+) -> Result<(), (usize, io::Error)> {
+    for (n, (owner, text)) in asks.iter().enumerate() {
+        let (to, text) = whom(owner, text);
+        let ask = message(&to, "question", text);
+        mesh.send(&ask).map_err(|err| (n, err))?;
+        put::mark_asked(ledger, owner, now, &ask.id);
+    }
+    Ok(())
+}
+
+/// Keeps the ledger as the hour left it for the owners of `asked`, whose
+/// questions went, and as it was read for every other line. With none
+/// asked there's nothing to keep before the card.
+fn keep_asked(
+    at: &Path,
+    ledger: &[findings::Entry],
+    before: &[findings::Entry],
+    asked: &[(String, String)],
+) -> io::Result<()> {
+    if asked.is_empty() {
+        return Ok(());
+    }
+    let owners: Vec<&str> = asked.iter().map(|(owner, _)| owner.as_str()).collect();
+    findings::keep(at, &put::asked_only(ledger, before, &owners))
 }
 
 /// The misses measured from a ledger not read whole, left unjudged, and
@@ -648,6 +732,32 @@ fn measure(key: &str, class: Class, now: f64, target: Option<f64>) -> Measure {
     }
 }
 
+/// Whether the mesh reaches the session going by an address, as
+/// `put::reaches` reads it from `presences`, one of this machine's by
+/// `reachable` in this boot.
+fn reaching<'a>(mesh: &Mesh, presences: &'a [Presence], now: i64) -> impl Fn(&str) -> bool + 'a {
+    let boot = fs::read_to_string("/proc/sys/kernel/random/boot_id")
+        .map(|b| b.trim().to_owned())
+        .unwrap_or_default();
+    let rosters = mesh.rostered(now);
+    let here = terminal_kit::environment::machine();
+    move |address: &str| {
+        put::reaches(address, presences, &here, now, |p| {
+            reachable(p, &boot, &rosters, |pid| {
+                Path::new(&format!("/proc/{pid}")).exists()
+            })
+        })
+    }
+}
+
+/// The cell orchestrating the session going by `address`, by its newest
+/// presence, when it names one.
+fn orchestrator_of(presences: &[Presence], address: &str) -> Option<String> {
+    put::newest(presences, address)
+        .and_then(|p| p.orchestrated_by.clone())
+        .filter(|o| !o.is_empty())
+}
+
 /// Whether the session `presence` describes can still be told of a merge's
 /// rounds: running in this `boot` and held by its host, as `running` says,
 /// since a pid from another boot may name some other process now; or
@@ -765,6 +875,94 @@ mod tests {
         for (state, boot, hosted, rosters, there, why) in cases {
             let presence = presence(state, boot, hosted);
             assert_eq!(reachable(&presence, "now", rosters, up), there, "{why}");
+        }
+    }
+
+    #[test]
+    fn an_owner_s_question_is_kept_by_its_id_once_it_went_and_only_then() {
+        // Now, as an id's stamp is, so the question's id is in its time.
+        let now = now_ms() / 1000;
+        let line = |key: &str, owner: &str| -> findings::Entry {
+            serde_json::from_value(serde_json::json!({
+                "key": key, "owner": owner, "first": "2026-11-26",
+                "last": "2026-11-26", "last_to": now, "due": 0,
+                "words": "as read", "axis": "slips", "evidence": "",
+                "fell_when": "", "open": true, "told": null, "late": false,
+                "kind": "drag",
+            }))
+            .expect("a line the test writes")
+        };
+        let before = vec![line("hour:a", "ABC123"), line("hour:b", "DEF456")];
+        let filed = || {
+            let mut ledger = before.clone();
+            for entry in &mut ledger {
+                "as filed".clone_into(&mut entry.words);
+            }
+            ledger
+        };
+        let asks: Vec<(String, String)> = ["ABC123", "DEF456"]
+            .iter()
+            .map(|owner| ((*owner).to_owned(), format!("cadence hour: {owner}'s.")))
+            .collect();
+        let dir = tempfile::tempdir().expect("a folder for the test");
+        let mesh = Mesh {
+            root: dir.path().to_owned(),
+        };
+        let folder = dir.path().join("mesh-workflow/messages");
+        let at = dir.path().join("findings.jsonl");
+        let to = |owner: &str, text: &str| (owner.to_owned(), text.to_owned());
+        let kept = || findings::read(&at);
+
+        // With nowhere to send, no question goes and nothing is kept.
+        let mut ledger = filed();
+        ask_and_keep(&mesh, to, &asks, &mut ledger, &before, &at, now)
+            .expect_err("a question went with no folder to go to");
+        assert!(
+            ledger.iter().all(|e| e.asked.is_empty()) && !at.exists(),
+            "a line was kept as asked by a question that never went"
+        );
+
+        // The second send fails: the first owner's line is kept with its
+        // question's id and as filed, the second's as it was read.
+        fs::create_dir_all(&folder).expect("the messages folder");
+        let second_fails = |owner: &str, text: &str| {
+            if owner == "DEF456" {
+                fs::remove_dir_all(&folder).expect("the folder taken away");
+            }
+            to(owner, text)
+        };
+        let mut ledger = filed();
+        ask_and_keep(&mesh, second_fails, &asks, &mut ledger, &before, &at, now)
+            .expect_err("the second send went with its folder gone");
+        let after = kept();
+        assert_eq!(
+            (after[0].asked.len(), after[0].words.as_str()),
+            (1, "as filed"),
+            "the question that went wasn't kept with its line"
+        );
+        assert_eq!(
+            (after[1].asked.len(), after[1].words.as_str()),
+            (0, "as read"),
+            "a line was kept as asked by the send that failed"
+        );
+
+        // Both go, and both lines are kept with their questions' ids.
+        fs::create_dir_all(&folder).expect("the messages folder again");
+        let mut ledger = filed();
+        ask_and_keep(&mesh, to, &asks, &mut ledger, &before, &at, now)
+            .expect("both questions went");
+        for entry in kept() {
+            let [id] = entry.asked.as_slice() else {
+                panic!(
+                    "{} was kept with {:?}, not its question",
+                    entry.key, entry.asked
+                );
+            };
+            assert!(
+                folder.join(format!("{id}.json")).exists(),
+                "{} names a question that wasn't sent",
+                entry.key
+            );
         }
     }
 

@@ -102,6 +102,9 @@ pub struct Sources {
     /// The mesh's `landings.json`.
     pub landings: String,
     pub messages: Vec<Note>,
+    /// The ids of the questions cadence's hour asked its lines in, from
+    /// its ledger, which give their owners a day.
+    pub asked: BTreeSet<String>,
     /// The pain-points detector's day files of the week, a record a line.
     pub points: Vec<String>,
     /// health's day files of the week.
@@ -194,6 +197,7 @@ fn gather(folder: &Path, state_home: &Path, now: i64) -> Sources {
             .collect(),
         landings: text(pi.join("mesh-workflow/landings.json")),
         messages: messages::read(&pi, since, None),
+        asked: crate::findings::asked_in(&text(folder.join("findings.jsonl"))),
         points: dated(state_home.join("pain-points"), "jsonl"),
         health: dated(state_home.join("health"), "json"),
         axes: read(&gather_axes(folder, state_home, now)),
@@ -347,7 +351,7 @@ fn page(s: &Sources) -> String {
     noise::notices(&s.notices, s.since, &mut tallies);
     noise::looks(&s.looks, s.since, &mut tallies);
     noise::landings(&s.landings, s.since, &mut tallies);
-    noise::messages(&s.messages, s.now - 3600, &mut tallies);
+    noise::messages(&s.messages, s.now - 3600, &s.asked, &mut tallies);
     let pains = pains(&s.points, &s.health, s.since);
     let blind = blind(&s.axes, &pains);
     let week = |at: i64| {

@@ -5,6 +5,15 @@ use jiff::tz::TimeZone;
 
 const NOW: i64 = 1_795_600_000;
 
+const fn falling_hour(at: i64, red: usize) -> super::super::falling::Hour {
+    super::super::falling::Hour {
+        at,
+        red,
+        unjudged: 0,
+        seen: 0,
+    }
+}
+
 /// The dates at risk of the kind `which` in an empty asks list.
 fn at_risk(which: Tracking) -> Measure {
     let none = |_: u32| -> measures::at_risk::Shared { Ok(Vec::new()) };
@@ -55,6 +64,8 @@ fn every_measure_the_hour_shows_has_a_line_that_holds_it_to_its_target() {
         measures::carried(&[], &[], "here"),
         measures::mapped(None, "", "OWNER"),
         measures::cited::unread(""),
+        super::super::falling::falling(&[], falling_hour(NOW, 0)),
+        super::super::falling::falling(&[falling_hour(NOW - 7 * 86_400, 3)], falling_hour(NOW, 0)),
         measures::holds::holds(&[], "", NOW),
         at_risk(Tracking::His),
         at_risk(Tracking::Derived),

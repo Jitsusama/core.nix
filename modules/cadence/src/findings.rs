@@ -81,6 +81,24 @@ pub struct Entry {
     /// `cadence owe --done`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fixed: Option<String>,
+    /// The ids of the questions its owner was asked it in, the latest
+    /// last, each kept for `ASKED_FOR`, so each question of the two days
+    /// the mesh is read over is known as the hour's. Nothing reads a
+    /// reply against them yet: a line closes when its measure is back in.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub asked: Vec<String>,
+    /// What the hour's line named as its owner's, each cell, file, miss
+    /// or date by the name that stays while it's red, with when each was
+    /// last asked, so none is asked again within a day of its own ask.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub names: BTreeMap<String, i64>,
+    /// Whether the hour filed it as a red line, which nothing but its
+    /// being past its target asks: those go late as one count, and which
+    /// keep a late line of their own is listed once, at `owing::red`. Its
+    /// kind on disk stays `drag`, so a cadence from before red lines
+    /// closes, holds and reopens it as a drag rather than keeping it open.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub red: bool,
     /// When its owner closed a drag with `cadence owe --done`, in
     /// seconds, so one its measure counts over a week isn't filed again
     /// the next hour from the cases the fix came after.
@@ -95,6 +113,28 @@ pub struct Entry {
 )]
 fn is_zero(count: &u32) -> bool {
     *count == 0
+}
+
+/// How long a line keeps the id of a question it was asked in, by the
+/// moment the id is stamped with: the two days the mesh is read over, so
+/// a line asked again for each new cell or file of its owner's keeps
+/// every one of them. By count, the younger ones fell out within a day.
+pub const ASKED_FOR: i64 = 2 * DAY;
+
+/// How many ids a line keeps at most, one an hour over those two days,
+/// so an id with no stamp can't grow it without end.
+pub const ASKED_AT_MOST: usize = 48;
+
+/// The ids of the questions the hour asked its lines in, from the ledger
+/// as `text`, a line an entry; a line that isn't one names none. Only
+/// cadence writes them, so they tell its hourly questions from its others
+/// and from a peer's claiming to be its.
+#[must_use]
+pub fn asked_in(text: &str) -> BTreeSet<String> {
+    text.lines()
+        .filter_map(|line| serde_json::from_str::<Entry>(line).ok())
+        .flat_map(|e| e.asked)
+        .collect()
 }
 
 /// The ledger kept at `path`, a line each; a line that isn't an entry is
@@ -227,6 +267,9 @@ pub fn update(
                 put_to: Vec::new(),
                 back: None,
                 fixed: None,
+                asked: Vec::new(),
+                names: BTreeMap::new(),
+                red: false,
                 closed: None,
             });
         }

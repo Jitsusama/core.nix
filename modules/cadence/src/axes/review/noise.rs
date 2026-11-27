@@ -9,7 +9,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use jiff::Timestamp;
 use serde::Deserialize;
 
-use crate::axes::messages::Note;
+use crate::axes::messages::{self, Note};
 use crate::mesh;
 
 /// What one sender sent of one kind over the week.
@@ -158,8 +158,10 @@ pub fn landings(text: &str, since: i64, tallies: &mut Tallies) {
 
 /// The week's messages, by sender. A question counts as unanswered when
 /// no message answers it and it was asked before `until`, in seconds, so
-/// one asked a moment ago isn't held against its sender.
-pub fn messages(notes: &[Note], until: i64, tallies: &mut Tallies) {
+/// one asked a moment ago isn't held against its sender; one of cadence's
+/// hourly questions, by the ids in `asked`, a day before it, as they give
+/// their owners a day.
+pub fn messages(notes: &[Note], until: i64, asked: &BTreeSet<String>, tallies: &mut Tallies) {
     let answered: BTreeSet<&str> = notes.iter().filter_map(|n| n.re.as_deref()).collect();
     let mut sorted: Vec<&Note> = notes.iter().collect();
     sorted.sort_by_key(|n| mesh::stamped_at(&n.id));
@@ -167,7 +169,12 @@ pub fn messages(notes: &[Note], until: i64, tallies: &mut Tallies) {
     for note in sorted {
         let tally = tallies.entry(("messages", note.from.clone())).or_default();
         tally.said += 1;
-        let asked_before = mesh::stamped_at(&note.id).is_some_and(|ms| ms < until * 1000);
+        let by = if messages::hourly(note, asked) {
+            until - crate::DAY
+        } else {
+            until
+        };
+        let asked_before = mesh::stamped_at(&note.id).is_some_and(|ms| ms < by * 1000);
         if note.intent == "question" && asked_before && !answered.contains(note.id.as_str()) {
             tally.unacted += 1;
         }
@@ -300,7 +307,7 @@ mod tests {
             note(ms + 7_200_000, "e", "question", 10, None),
         ];
         let mut tallies = Tallies::new();
-        messages(&notes, SINCE + 3600, &mut tallies);
+        messages(&notes, SINCE + 3600, &BTreeSet::new(), &mut tallies);
         assert_eq!(
             tally(&tallies, "messages", "AAAAAA"),
             Tally {
@@ -314,6 +321,34 @@ mod tests {
             tally(&tallies, "messages", "BBBBBB").said,
             1,
             "the answer counts to its own sender"
+        );
+    }
+
+    #[test]
+    fn a_question_of_cadences_is_held_against_it_only_once_a_day_old() {
+        let until = SINCE + 2 * crate::DAY;
+        let question = |ago: i64, tag: &str, said: u64| Note {
+            id: format!("{}-{}-1-{tag}", (until - ago) * 1000, crate::FROM),
+            intent: "question".to_owned(),
+            from: crate::FROM.to_owned(),
+            said,
+            ..Note::default()
+        };
+        // Its hourly two hours old waits; its day-old is held; and an
+        // alarm of its own two hours old, which the ledger never asked, is
+        // held as anyone's.
+        let notes = vec![
+            question(2 * 3600, "a", 1),
+            question(crate::DAY + 60, "b", 2),
+            question(2 * 3600, "c", 3),
+        ];
+        let asked: BTreeSet<String> = notes[..2].iter().map(|n| n.id.clone()).collect();
+        let mut tallies = Tallies::new();
+        messages(&notes, until, &asked, &mut tallies);
+        assert_eq!(
+            tally(&tallies, "messages", crate::FROM).unacted,
+            2,
+            "cadence's hourly two hours old was held, or its day-old or its alarm wasn't"
         );
     }
 }

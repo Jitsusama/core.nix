@@ -1,6 +1,10 @@
 //! What the hour measures, each against its target, read from text the
 //! machine already keeps, so every rule here is tested without a machine.
 //! Every target is a most: lower is better for each of them.
+//!
+//! Long because the rules every measure shares (which leads the hour,
+//! which is held by a miss, how the asks list is read) sit with their
+//! cases, and splitting them would part each rule from its tests.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -145,15 +149,18 @@ pub fn unread(mut measure: Measure, why: &str) -> Measure {
 /// is filed to each owner apart, but never leads, since asking its owner
 /// to steer it each hour moves nothing; nor do the queues, whose worst is asked apart once a day,
 /// nor a cause found again and again, each class of which is filed with its own owner apart.
-/// Nor does a count of the way the calls go out (the relay, pi's calls and
-/// the path), filed to its keeper apart each hour it is past, so it never
-/// takes the place of what else drags.
+/// Nor does the loop's own count of red lines, which only sums the others:
+/// leading, it would hide the line that moves it. Nor does a count of the
+/// way the calls go out (the relay, pi's calls and the path), filed to its
+/// keeper apart each hour it is past, so it never takes the place of what
+/// else drags.
 #[must_use]
 pub fn drag(measures: &[Measure]) -> Option<&Measure> {
     measures
         .iter()
         .filter(|m| !m.key.starts_with(rounds::FRUITLESS) && !m.key.starts_with(told_late::KEY))
-        .filter(|m| m.key != causes::KEY && !way_out::on_the_way(&m.key))
+        .filter(|m| m.key != super::falling::KEY && m.key != causes::KEY)
+        .filter(|m| !way_out::on_the_way(&m.key))
         .filter(|m| m.class != Class::Queues)
         .filter_map(|m| m.past().map(|past| (m, past)))
         .min_by(|(a, pa), (b, pb)| a.class.cmp(&b.class).then(pb.total_cmp(pa)))
@@ -603,6 +610,24 @@ mod tests {
             drag(&measures).map(|m| m.key.as_str()),
             Some("far"),
             "a date told late, which no one can move now, led the hour"
+        );
+    }
+
+    #[test]
+    fn the_count_of_red_lines_never_leads_over_the_lines_it_counts() {
+        let measures = [
+            measure(
+                super::super::falling::KEY,
+                Class::Functional,
+                9.0,
+                Some(4.0),
+            ),
+            measure("far", Class::Clean, 30.0, Some(10.0)),
+        ];
+        assert_eq!(
+            drag(&measures).map(|m| m.key.as_str()),
+            Some("far"),
+            "the loop's own count of red lines led the hour over a line it counts"
         );
     }
 

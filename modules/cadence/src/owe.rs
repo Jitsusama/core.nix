@@ -113,13 +113,14 @@ pub fn owe(ledger: &mut Vec<Entry>, owed: Owed, date: &str, now: i64) {
     // day, as a new line would, so an ask made once a day still reads as
     // made today; when it first opened is lost, and `reopened` says how
     // often it has come back.
-    if owed.kind == "drag"
+    if drags(&owed.kind)
         && let Some(entry) = ledger
             .iter_mut()
             .rev()
-            .find(|e| e.key == owed.key && e.kind.as_deref() == Some("drag"))
+            .find(|e| e.key == owed.key && e.kind.as_deref().is_some_and(drags))
     {
         entry.open = true;
+        entry.kind = Some(owed.kind);
         entry.reopened += 1;
         entry.late = false;
         entry.told = Some(date.to_owned());
@@ -160,6 +161,9 @@ pub fn owe(ledger: &mut Vec<Entry>, owed: Owed, date: &str, now: i64) {
         put_to: Vec::new(),
         back: None,
         fixed: None,
+        asked: Vec::new(),
+        names: std::collections::BTreeMap::new(),
+        red: false,
         closed: None,
     });
 }
@@ -175,6 +179,13 @@ pub fn settle(ledger: &mut [Entry], key: &str) -> bool {
         .is_some()
 }
 
+/// Whether a line of `kind` is one of the hour's: a drag, or a red line,
+/// which is filed as a drag marked red, so either may come back as the
+/// other.
+fn drags(kind: &str) -> bool {
+    kind == "drag"
+}
+
 /// Closes the must filed as `key` at `now`, or says the finding filed as
 /// `key` was fixed by `fix`, saying which; a finding with no fix said is
 /// refused, since its figure gone quiet shows no fix. A drag closed this
@@ -188,7 +199,7 @@ fn done(ledger: &mut [Entry], key: &str, fix: Option<&str>, now: i64) -> Result<
         .find(|e| e.open && e.kind.is_some() && e.key == key)
     {
         entry.open = false;
-        let drag = entry.kind.as_deref() == Some("drag");
+        let drag = entry.kind.as_deref().is_some_and(drags);
         if drag {
             entry.closed = Some(now);
             entry.fixed = fix.map(str::to_owned);
@@ -211,10 +222,9 @@ fn done(ledger: &mut [Entry], key: &str, fix: Option<&str>, now: i64) -> Result<
             format!("no open must or finding is filed as {key}"),
         )
     };
-    let settled =
-        ledger.iter_mut().rev().find(|e| e.key == key).filter(|e| {
-            !e.open && e.kind.as_deref() == Some("drag") && hour::held_when_fixed(&e.key)
-        });
+    let settled = ledger.iter_mut().rev().find(|e| e.key == key).filter(|e| {
+        !e.open && e.kind.as_deref().is_some_and(drags) && hour::held_when_fixed(&e.key)
+    });
     if let (Some(entry), Some(fix)) = (settled, fix) {
         entry.closed = Some(now);
         entry.fixed = Some(fix.to_owned());

@@ -56,9 +56,20 @@ fn fnv(text: &str) -> u64 {
     })
 }
 
+/// Whether `note` is one of cadence's hourly questions, which give their
+/// owners a day: its id among those the ledger keeps as `asked`, which
+/// only cadence writes, so no `from` or id a peer writes claims the day.
+/// Cadence's other questions, as a revert's alarm, wait half an hour as
+/// anyone's do.
+#[must_use]
+pub fn hourly(note: &Note, asked: &BTreeSet<String>) -> bool {
+    asked.contains(&note.id)
+}
+
 /// Every message sent since `since`, in seconds, under the mesh's `root`,
-/// each once. What each file said is kept at `kept`, when given, and read
-/// from there rather than opened again.
+/// each once, and only those whose id is the file's name. What each file
+/// said is kept at `kept`, when given, and read from there rather than
+/// opened again.
 #[must_use]
 pub fn read(root: &Path, since: i64, kept: Option<&Path>) -> Vec<Note> {
     let folder = root.join("mesh-workflow/messages");
@@ -91,7 +102,16 @@ pub fn read(root: &Path, since: i64, kept: Option<&Path>) -> Vec<Note> {
         let note = known
             .remove(&name)
             .or_else(|| serde_json::from_slice::<Note>(&fs::read(entry.path()).ok()?).ok());
-        if let Some(note) = note {
+        // Only a note whose id is the name the mesh filed it under, and
+        // whose sender is the one that name gives, as `Mesh::senders` holds
+        // them, so the sender is the one the mesh filed it as, not words its
+        // body claims. It is a check that the two agree, not proof of who
+        // wrote it: a writer into the folder could name both alike.
+        let stem = name.strip_suffix(".json");
+        let named = stem.and_then(|stem| stem.split('-').nth(1));
+        if let Some(note) =
+            note.filter(|n| stem == Some(n.id.as_str()) && named == Some(n.from.as_str()))
+        {
             said.insert(name, note);
         }
     }
@@ -134,8 +154,25 @@ mod tests {
         let id = format!("{at}-AAAAAA-1-{tag}");
         (
             id.clone(),
-            format!(r#"{{"id":"{id}","intent":"{intent}"}}"#),
+            format!(r#"{{"id":"{id}","intent":"{intent}","from":"AAAAAA"}}"#),
         )
+    }
+
+    #[test]
+    fn a_note_whose_body_names_another_sender_than_its_file_is_not_read() {
+        let root = tempfile::tempdir().expect("a scratch folder");
+        let folder = root.path().join("mesh-workflow/messages");
+        fs::create_dir_all(&folder).expect("the folder");
+        let (kept, body) = note(SINCE + 10_000, "a", "fyi");
+        fs::write(folder.join(format!("{kept}.json")), body).expect("written");
+        let (forged, body) = note(SINCE + 20_000, "b", "question");
+        let body = body.replace("\"from\":\"AAAAAA\"", "\"from\":\"CADENCE\"");
+        fs::write(folder.join(format!("{forged}.json")), body).expect("written");
+        assert_eq!(
+            ids(read(root.path(), SINCE / 1000, None)),
+            vec![kept],
+            "a note filed under one sender and saying it's another's was read"
+        );
     }
 
     fn ids(notes: Vec<Note>) -> Vec<String> {

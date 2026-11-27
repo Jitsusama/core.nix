@@ -11,7 +11,7 @@
 //! kept as one line in the mesh's day file, in the harness's shape, as
 //! subject-hubs keeps every sender's.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 pub use subject_hubs::{Hub, Need, keep, listed, socket};
 use subject_hubs::{taking, words};
@@ -76,6 +76,8 @@ pub fn put_late(
     }
     let mut put = Vec::new();
     let mut lines = Vec::new();
+    let mut drags: BTreeSet<String> = BTreeSet::new();
+    let mut dragged = 0;
     // One back, its figure in, waits only on its owner's word of the fix,
     // which it was asked for, so it goes to nobody else.
     for entry in ledger
@@ -112,11 +114,35 @@ pub fn put_late(
             continue;
         }
         entry.late = true;
+        // The hour files every measure past its target, so its red lines
+        // go late together; each is said as one count, which would
+        // otherwise crowd the day's worse and better off its note. Which
+        // keep a line each is listed once, at the hour's `owing::red`.
+        if entry.red {
+            dragged += 1;
+            // An owner is a peer's word, so only one in an address's
+            // letters is said in the note, never one carrying words.
+            drags.insert(match entry.owner.as_deref() {
+                None => "no owner".to_owned(),
+                Some(o) if !o.is_empty() && o.bytes().all(|b| b.is_ascii_alphanumeric()) => {
+                    o.to_owned()
+                }
+                Some(_) => "an owner that reads as no address".to_owned(),
+            });
+            continue;
+        }
         lines.push(format!(
             "Late: {}, open since {}, with {}",
             entry.words,
             entry.first,
             entry.owner.as_deref().unwrap_or("no owner")
+        ));
+    }
+    if dragged > 0 {
+        let with: Vec<String> = drags.into_iter().collect();
+        lines.push(format!(
+            "Late: {dragged} of the hour's red lines asked of their owners, with {}",
+            with.join(", ")
         ));
     }
     (put, lines)
@@ -255,6 +281,36 @@ mod tests {
             "a must left the quest that filed it: {put:?}"
         );
         assert_eq!(lines.len(), 1, "a must past its date wasn't said late");
+    }
+
+    #[test]
+    fn the_hours_red_lines_gone_late_are_said_as_one_count() {
+        let mut ledger = ledger("crashes:chrome");
+        ledger[0].kind = Some("hole".into());
+        for (key, owner, red) in [
+            ("hour:a", "B", true),
+            ("hour:b", "C", true),
+            ("hour:c", "B", true),
+            ("hour:miss:the host crashed", "D", false),
+        ] {
+            let mut drag = self::ledger(key).remove(0);
+            drag.kind = Some("drag".into());
+            drag.red = red;
+            drag.owner = Some(owner.into());
+            drag.words = key.to_owned();
+            ledger.push(drag);
+        }
+        let (_, lines) = put_late(&mut ledger, &[], |_| true, 2 * DAY + 1);
+        assert_eq!(
+            lines,
+            [
+                "Late: crashes:chrome got worse, open since d1, with A",
+                "Late: hour:miss:the host crashed, open since d1, with D",
+                "Late: 3 of the hour's red lines asked of their owners, with B, C"
+            ],
+            "the hour's red lines took a line each, or the must or Joel's miss lost its own"
+        );
+        assert!(ledger.iter().all(|e| e.late), "one wasn't marked late");
     }
 
     #[test]
