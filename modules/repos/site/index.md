@@ -74,9 +74,14 @@ so a suspend leaves it as it was. A build the Nix daemon runs
 for one works as its own user in its own folder, so it's counted
 nowhere, and a Mac says none of it. Where the daemon can't say, the page
 says nothing of it, and the rest of the page stands as it was; until its
-reading of `/proc` first answers, and once it misses three paces in a
-row, each repository says its processes are unread rather than that
-nothing works in it.
+reading of `/proc` first answers, and once its last reading is three
+minutes old with none newer, each repository says its processes are
+unread rather than that nothing works in it. That's judged as each
+reading of the disk ends, at least once a minute, so it's said late by
+a minute, or by one reading of a disk slower than that, at most. A
+tree newer than the last reading says its own unread until the next
+looks in it, and its repository says what was read of the rest, with
+no share of a core until a second reading has looked in the tree.
 
 ## Keys
 
@@ -109,9 +114,10 @@ read. Each `tree:<path>` has `repository`, `checkout`, `path`,
 `title`, `branch`, `checks` and `review`. Each `using:<key>` has its
 `repository`, its `processes`, `memory` in bytes and `cpu` as a share of
 one core, null until two readings are a minute apart and after a reading
-held up, all three null while the reading has stopped answering, and
-`folders`, each checkout or tree anything works in with its `path` and
-the same three.
+held up, all three null while the reading has stopped answering or
+looked in none of its folders, and `folders`, each checkout or tree
+anything works in with its `path` and the same three, null for a tree
+newer than the reading.
 Times are RFC 3339, UTC.
 
 `repos --json` says the same as one record, and `repos <name>` one

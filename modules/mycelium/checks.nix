@@ -958,6 +958,18 @@ in
           holds = "It Asks You"
           ${says}
         '';
+      # A help that wraps inside the phrase its act holds, as mycelium's
+      # 60 columns may, so the check must read across the line.
+      wrapped = act "wrapped" ''
+        [act.cli.has]
+        command = "steer"
+        holds = "pause, resume, stop or close"
+        [act.launcher]
+        waived = "none"
+      '';
+      wraps = pkgs.writeShellScript "mycelium" ''
+        printf '%s\n' 'Or it does something, as its act: pause, resume,' '  stop or close; fill, putting its text'
+      '';
       # Each way of straying the check has to catch, with what it says.
       strays = [
         {
@@ -1184,6 +1196,11 @@ in
       }
       if ! ${check} ${clean} ${root} ${lib.getExe untested} > said; then
         echo "The surfaces check refused the clean act, so no stray shows its own fault."
+        cat said
+        exit 1
+      fi
+      if ! ${check} ${wrapped} ${root} ${wraps} > said; then
+        echo "The surfaces check refused a phrase its help wraps across a line."
         cat said
         exit 1
       fi
@@ -1571,6 +1588,250 @@ in
         && refusesAgents (saying {
           elsewhere = "an-agent";
         })
+      );
+
+  # What work begun in some folders or naming some words needs is written
+  # in mycelium's words, each need as mycelium reads it from the words
+  # `--need` takes, and left out where nothing is said. A need mycelium
+  # couldn't read fails here rather than reading as none. The kinds are
+  # read from the locked mycelium's own Need, so one it gains, loses or
+  # renames fails here, as does a line of it the scan can't read. Its
+  # declaration must take fields it doesn't know, or a node on the lock
+  # would refuse the whole file, and once it reads needs_in, its field
+  # names and its rule's are pinned to those written here.
+  mycelium-declares-what-work-needs =
+    holds "mycelium-declares-what-work-needs"
+      "What a machine declares work begun in some folders or naming some words needs isn't written in mycelium's words, a cloud need isn't written alone or a kind=value one as its kind keyed to its value, one is written where nothing is said, the kinds the locked mycelium's Need has, read from a scan failing on any line it can't read, aren't those taken, the locked declaration refuses fields it doesn't know or reads needs_in or its rule by other names, or a need mycelium can't match, a machine no realm could name, a rule naming no folder or word, a folder from ~ or $, with an empty, . or .. part or space at an end, or an empty word is taken."
+      (
+        let
+          rule = {
+            folders = [ "src/inner" ];
+            words = [ "forge.example" ];
+            needs = [
+              "reach=inner"
+              "system=linux"
+              "arch=x86_64"
+              "machine=box-1"
+              "tool=gcloud"
+              "accelerator=gpu"
+              "cloud"
+            ];
+          };
+          taken =
+            extra:
+            (builtins.tryEval (builtins.deepSeq (declaredAs { needsIn = [ (rule // extra) ]; }) true)).success;
+          locked = "${self.inputs.mycelium}/src";
+          linesOf = file: lib.splitString "\n" (builtins.readFile "${locked}/${file}");
+          # What the locked source's items hold, read failing closed.
+          rust = import ./rust-items.nix { inherit lib; };
+          need = rust.enumIn (linesOf "placement.rs") "Need";
+          accelerators = rust.enumIn (linesOf "facts.rs") "AcceleratorKind";
+          declaration = rust.structIn (linesOf "declared.rs") "Declared";
+          # needs_in's field, or null on a lock from before it.
+          needsIn = lib.findFirst (field: field.name == "needs_in") null (declaration.fields or [ ]);
+          rule' = rust.structIn (linesOf "declared.rs") "NeedsIn";
+          kinds = map (variant: variant.name) (need.variants or [ ]);
+          # Rust's lines as a fixture gives them.
+          fixture = text: lib.splitString "\n" text;
+          # A field and an enum the reader takes, each changed by one line
+          # in the cases below to show it refuses what it can't read.
+          fields = over: body: ''
+
+            ${over}
+            pub struct Rule {
+                /// Its folders.
+            ${body}
+                pub needs: Vec<Need>,
+            }
+          '';
+          variants = over: body: ''
+
+            ${over}
+            pub enum Need {
+                /// A network.
+                Reach(String),
+            ${body}
+            }
+          '';
+          derived = "#[derive(Debug, Deserialize)]";
+          words = "    pub words: Vec<String>,";
+          read = over: body: rust.structIn (fixture (fields over body)) "Rule";
+          readEnum = over: body: rust.enumIn (fixture (variants over body)) "Need";
+          said =
+            kind: if kind == "cloud" then kind else "${kind}=${if kind == "accelerator" then "gpu" else "a"}";
+        in
+        (declaredAs { needsIn = [ rule ]; }).needs_in or null == [
+          {
+            inherit (rule) folders words;
+            needs = [
+              { reach = "inner"; }
+              { system = "linux"; }
+              { arch = "x86_64"; }
+              { machine = "box-1"; }
+              { tool = "gcloud"; }
+              { accelerator = "gpu"; }
+              "cloud"
+            ];
+          }
+        ]
+        # Every kind the type takes, no more and no fewer, each holding what
+        # the declaration writes of it, cloud nothing, and each taken.
+        && need.serde or null == [ "#[serde(rename_all = \"snake_case\")]" ]
+        &&
+          need.variants or null == [
+            {
+              name = "machine";
+              holds = "String";
+            }
+            {
+              name = "system";
+              holds = "String";
+            }
+            {
+              name = "arch";
+              holds = "String";
+            }
+            {
+              name = "reach";
+              holds = "String";
+            }
+            {
+              name = "accelerator";
+              holds = "AcceleratorKind";
+            }
+            {
+              name = "tool";
+              holds = "String";
+            }
+            {
+              name = "cloud";
+              holds = null;
+            }
+          ]
+        && lib.all (kind: taken { needs = [ (said kind) ]; }) kinds
+        && accelerators.serde or null == [ "#[serde(rename_all = \"lowercase\")]" ]
+        &&
+          accelerators.variants or null == [
+            {
+              name = "gpu";
+              holds = null;
+            }
+            {
+              name = "npu";
+              holds = null;
+            }
+          ]
+        && taken { needs = [ "accelerator=npu" ]; }
+        # A lock from before needs_in takes it unread only while nothing
+        # over Declared refuses a field; one with it names it, its type
+        # and its rule's fields and types as written here, which pins them
+        # from the lock that first does.
+        && declaration != null
+        && !lib.any (lib.hasInfix "deny_unknown_fields") declaration.over
+        && (needsIn == null) == (rule' == null)
+        && (needsIn == null || needsIn.type == "Vec<NeedsIn>")
+        && (
+          rule' == null
+          ||
+            map (field: { inherit (field) name type; }) rule'.fields == [
+              {
+                name = "folders";
+                type = "Vec<PathBuf>";
+              }
+              {
+                name = "words";
+                type = "Vec<String>";
+              }
+              {
+                name = "needs";
+                type = "Vec<Need>";
+              }
+            ]
+        )
+        # The reader reads what it's shown, multi-line attributes joined,
+        # and gives null for each kind of line it can't read.
+        &&
+          read derived "    #[serde(\n        default,\n    )]\n    pub folders: Vec<PathBuf>," == {
+            over = [ derived ];
+            serde = [ ];
+            fields = [
+              {
+                name = "folders";
+                type = "Vec<PathBuf>";
+                serde = [ "default," ];
+              }
+              {
+                name = "needs";
+                type = "Vec<Need>";
+                serde = [ ];
+              }
+            ];
+          }
+        &&
+          (read "#[serde(\n    deny_unknown_fields,\n)]\n${derived}" words).serde or null == [
+            "#[serde(deny_unknown_fields,)]"
+          ]
+        && read derived words != null
+        && read "#[derive(Debug)]" words == null
+        && read "// a note\n${derived}" words == null
+        && read "#[repr(C)]\n${derived}" words == null
+        && read derived "    #[serde(\n        default," == null
+        && read derived "    #[serde(rename = \"dirs\")]\n    pub folders: Vec<PathBuf>," == null
+        && read derived "    #[serde(alias = \"dirs\")]\n    pub folders: Vec<PathBuf>," == null
+        && read derived "    folders: Vec<PathBuf>," == null
+        && read derived "    pub folders:\n        Vec<PathBuf>," == null
+        && read derived "    // a note" == null
+        &&
+          (readEnum derived "    Cloud,").variants or null == [
+            {
+              name = "reach";
+              holds = "String";
+            }
+            {
+              name = "cloud";
+              holds = null;
+            }
+          ]
+        && readEnum "#[derive(Debug)]" "    Cloud," == null
+        && readEnum derived "    #[serde(skip)]\n    Cloud," == null
+        && readEnum derived "    Cloud { at: String }," == null
+        && readEnum derived "    Cloud(String, String)," == null
+        && readEnum derived "    CloudRoom," == null
+        && !((declared linux) ? needs_in)
+        && taken { }
+        && taken { words = [ ]; }
+        && taken { folders = [ ]; }
+        && !taken {
+          folders = [ ];
+          words = [ ];
+        }
+        && !taken { needs = [ "reach" ]; }
+        && !taken { needs = [ "colour=blue" ]; }
+        && !taken { needs = [ "reach=" ]; }
+        && !taken { needs = [ "reach=a=b" ]; }
+        && !taken { needs = [ "reach=Inner" ]; }
+        && !taken { needs = [ "reach=inner net" ]; }
+        && !taken { needs = [ "accelerator=tpu" ]; }
+        && taken { needs = [ "reach=office_vpn" ]; }
+        && !taken { needs = [ "machine=box_1" ]; }
+        && !taken { needs = [ "machine=-box" ]; }
+        && !taken { needs = [ "system=Linux" ]; }
+        && taken { folders = [ "/srv/inner" ]; }
+        && taken { folders = [ "src/an inner" ]; }
+        && !taken { folders = [ "." ]; }
+        && !taken { folders = [ "./src/inner" ]; }
+        && !taken { folders = [ "src/../inner" ]; }
+        && !taken { folders = [ "src//inner" ]; }
+        && !taken { folders = [ "src/inner/." ]; }
+        && !taken { folders = [ "$HOME/src/inner" ]; }
+        && !taken { folders = [ "src/$HOME" ]; }
+        && !taken { folders = [ " src/inner" ]; }
+        && !taken { needs = [ ]; }
+        && !taken { folders = [ "" ]; }
+        && !taken { folders = [ "~/src/inner" ]; }
+        && !taken { folders = [ "src/inner/" ]; }
+        && !taken { folders = [ "/" ]; }
+        && !taken { words = [ "" ]; }
       );
 
   # Each realm's node on either system reads what its machine declares from

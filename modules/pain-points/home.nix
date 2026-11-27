@@ -97,7 +97,8 @@ in
       # answers is stopped before the next is due, five minutes on. The
       # run ends its sends by SENDS_END and its asks of git by ASKS_END,
       # three minutes and three and a half in, so it writes what it heard
-      # inside this: shorten this and those move with it.
+      # inside this. Those are fixed in the Rust, not read from here, so
+      # shortening this means shortening them too.
       TimeoutStartSec = "4min";
     };
   };

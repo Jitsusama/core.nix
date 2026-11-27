@@ -26,10 +26,11 @@ public:
     // `held`, the chunks and large items it keeps for them; `resident`, the
     // pages of what's held in memory, lent ones not yet taken among them,
     // and each chunk's header, which `held` leaves out, so it may pass
-    // `held` by a little; and `outside`,
+    // `held` by a little, or -1 when the kernel won't say; and `outside`,
     // what its strings and objects hold beyond the heap; and `free`, of what
     // it holds, the resident pages with nothing in them, which could go
-    // back to the kernel without moving anything; `chunks`, what its
+    // back to the kernel without moving anything, or -1 as `resident` is;
+    // `chunks`, what its
     // chunks hold, large items aside; `collectsAt`, what they may hold
     // before a miss in the free lists starts the collector; and
     // `collectsOutsideAt`, what may be held outside before the collector
@@ -62,8 +63,9 @@ public:
     // in its free lists starts the collector, and its strings as many
     // more outside it, and as much again after every collection that ends
     // later, though a miss starts it no later than twice the room beyond
-    // what its chunks held at the first ask since a collection ended,
-    // whatever room it asked for, and never sooner than Qt would: up to
+    // what its chunks held at the first ask since a collection ended, and
+    // twice what its sweeps kept beyond what the last kept then, whatever room
+    // it asked for, and never sooner than Qt would: up to
     // 1024, and none for 0 or what isn't a number, in the heap from the
     // next collection on and outside it as Qt lowers its limit. Asked after the
     // closing's collection and again as an opening is asked, so the

@@ -2921,6 +2921,19 @@ ShellRoot {
                 && inside[0].drawer().body === "Its checks passed at its head."
                 && inside[1].drawer().body === "Push the branch?",
             JSON.stringify([inside[0].copies, inside[0].drawer(), inside[1].drawer()]));
+        // Where the want says more than its short line, the drawer says it
+        // whole as its body, its lines kept, and not its short line again.
+        const short = agents.wants;
+        const wholly = "Push the branch?\n\n- Yes: its checks passed\n  - at its head\n- No";
+        agents.wants = { WANTE: Object.assign({}, short.WANTE, { whole: wholly }) };
+        const wholeDrawer = row.drawer();
+        expect("a whole question is its drawer's body, said once, its choices kept",
+            wholeDrawer.body === wholly
+                && JSON.stringify(wholeDrawer.facts.map(one => one.label))
+                    === JSON.stringify(["Recommended", "Choice", "Session"])
+                && inside[1].drawer().body === wholly,
+            JSON.stringify([wholeDrawer, inside[1].drawer()]));
+        agents.wants = short;
         // An answer the node couldn't put says nothing of being answered,
         // since the session never heard it.
         agents.puts = false;

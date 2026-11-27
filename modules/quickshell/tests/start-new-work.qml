@@ -1,11 +1,14 @@
 // Start New Work, Agents' act that begins new work from a link or words, run
 // in Qt's own JavaScript engine, the one the shell runs it in. The
 // `start-new-work-asks-only-a-sprout` check copies
-// modules/quickshell/launcher/Sprouting.js, tests/lib/Expect.js and Agents'
-// words, as words.json, beside this file and runs it offscreen.
+// modules/quickshell/launcher/Sprouting.js, Openings.js and StartSaid.js,
+// tests/lib/Expect.js
+// and Agents' words, as words.json, beside this file and runs it offscreen.
 import QtQuick
 import "Expect.js" as Expect
+import "launcher/Openings.js" as Openings
 import "launcher/Sprouting.js" as Sprouting
+import "launcher/StartSaid.js" as StartSaid
 
 QtObject {
     // A case that doesn't hold throws, and ends the test as a failure.
@@ -180,37 +183,85 @@ QtObject {
 
         // Whether Joel still waits on the act in the launcher, so it may close for its
         // window and take the keys: open, on the act itself or held in its ask, where
-        // Return leaves him with the field emptied for another try, and no letter typed
-        // since the answer (its lettersAt then), so a new try he's typing keeps its keys.
+        // Return leaves him with the field emptied for another try, and no key taken
+        // nor letter given since his Return (its keysTaken and lettersAt then), so a new
+        // try he's typing or pasting keeps its keys.
         const act = "verb:agents:start-new-work:link";
-        const at = (open, asking, selected, lettersAt) => ({ open, asking, selected,
-            lettersAt });
+        const at = (open, asking, selected, keysTaken) => ({ open, asking, selected,
+            keysTaken, lettersAt: 0 });
         Expect.same("held in the act's ask, it waits",
-            Sprouting.waitsOn(at(true, { key: act }, null, 5), act, 5), true);
+            Sprouting.waitsOn(at(true, { key: act }, null, 5), act, 5, 0), true);
         Expect.same("on the act's row, it waits",
-            Sprouting.waitsOn(at(true, null, { key: act }, 5), act, 5), true);
-        Expect.same("a letter typed since, in its ask, it doesn't",
-            Sprouting.waitsOn(at(true, { key: act }, null, 9), act, 5), false);
+            Sprouting.waitsOn(at(true, null, { key: act }, 5), act, 5, 0), true);
+        Expect.same("a key taken since, in its ask, it doesn't",
+            Sprouting.waitsOn(at(true, { key: act }, null, 9), act, 5, 0), false);
+        // An arrow sets lettersAt to 0 again, so an answer heard after one, at 0, would
+        // wait again at any later arrow; keysTaken only goes up.
+        Expect.same("an arrow since, on the act's row, it doesn't",
+            Sprouting.waitsOn(at(true, null, { key: act }, 6), act, 0, 0), false);
+        // A paste moves no key, only the letters.
+        Expect.same("words pasted since, on the act's row, it doesn't",
+            Sprouting.waitsOn(Object.assign(at(true, null, { key: act }, 5), { lettersAt: 4 }),
+                act, 5, 0), false);
+        Expect.same("one whose keys were spent, as the launcher shut, never does",
+            Sprouting.waitsOn(at(true, null, { key: act }, 0), act, -1, 0), false);
         Expect.same("on another row, it doesn't",
-            Sprouting.waitsOn(at(true, null, { key: "other" }, 5), act, 5), false);
+            Sprouting.waitsOn(at(true, null, { key: "other" }, 5), act, 5, 0), false);
         Expect.same("closed, it doesn't",
-            Sprouting.waitsOn(at(false, { key: act }, null, 5), act, 5), false);
-        Expect.same("no launcher, it doesn't", Sprouting.waitsOn(null, act, 5), false);
+            Sprouting.waitsOn(at(false, { key: act }, null, 5), act, 5, 0), false);
+        Expect.same("no launcher, it doesn't", Sprouting.waitsOn(null, act, 5, 0), false);
 
-        // How the waiting stand at `now`: those past the minute are late even when up by
-        // then, so none opens past it; those up within it open; the rest wait on.
-        const openings = [{ key: "a", held: "h1", since: 1000 }, { key: "b", held: "h2",
-            since: 50000 }, { key: "c", held: "h3", since: 55000 }];
-        const upAre = new Set(["h1", "h2"]);
+        // How the waiting stand at `now`: each up opens however long it took, as Joel's
+        // start at 14:30 on 25 November came up five and a half minutes on; one past the
+        // minute and not yet said to be late is late, once; one past the watch is gone.
+        {
+        const minutes = 60000;
+        const times = { patience: minutes, watch: 15 * minutes };
+        const now = 20 * minutes;
+        const openings = [
+            { key: "slow", held: "h1", since: now - 5.5 * minutes, late: true },
+            { key: "quick", held: "h2", since: now - 5000 },
+            { key: "waits", held: "h3", since: now - 10000 },
+            { key: "late", held: "h4", since: now - 2 * minutes },
+            { key: "said", held: "h5", since: now - 3 * minutes, late: true },
+            { key: "gone", held: "h6", since: now - 15 * minutes, late: true },
+            { key: "unmarked", held: "h7", since: now - 2 * minutes },
+            { key: "watched", held: "h8", since: now - 16 * minutes, late: true }
+        ];
+        const upAre = new Set(["h1", "h2", "h7", "h8"]);
         const found = one => upAre.has(one.held) ? { address: one.held } : null;
-        const stood = Sprouting.settled(openings, found, 61000, 60000);
-        Expect.same("one past the minute is late, though up",
-            stood.late.map(one => one.key), ["a"]);
-        Expect.same("one up within it opens, with its session",
-            stood.up.map(one => [one.key, one.session.address]), [["b", "h2"]]);
-        Expect.same("one not up within it waits on", stood.waiting.map(one => one.key), ["c"]);
-        Expect.same("at the minute's own end, it's late",
-            Sprouting.settled([openings[0]], () => null, 61000, 60000).late.length, 1);
+        const stood = Sprouting.settled(openings, found, now, times);
+        Expect.same("each up is found, with its session, the slow one after its minute too",
+            stood.up.map(one => [one.key, one.session.address]),
+            [["slow", "h1"], ["quick", "h2"], ["unmarked", "h7"], ["watched", "h8"]]);
+        Expect.same("each up keeps its late mark, which picks the words said of it",
+            stood.up.map(one => Openings.upWord(one)), ["upLater", "up", "up", "upLater"]);
+        Expect.same("an up keeps the words said of it late, which it takes back",
+            Sprouting.settled([{ key: "k", held: "h9", machine: "m", since: 0, late: true,
+                told: "late on m" }], () => ({ address: "h9" }), now, times).up[0].told,
+            "late on m");
+        Expect.same("one past the minute is late", stood.late.map(one => one.key), ["late"]);
+        Expect.same("one watched a quarter hour is gone", stood.gone.map(one => one.key),
+            ["gone"]);
+        Expect.same("one within the minute, or said late, waits on, and one late now too",
+            stood.waiting.map(one => [one.key, one.late === true]),
+            [["waits", false], ["late", true], ["said", true]]);
+        Expect.same("one said late is said late once", Sprouting.settled(stood.waiting,
+            () => null, now + 5000, times).late.length, 0);
+        Expect.same("at the minute's own end, it's late", Sprouting.settled(
+            [{ key: "x", since: now - minutes }], () => null, now, times).late.length, 1);
+        Expect.same("one said late, a minute short of the quarter hour, still waits",
+            Sprouting.settled([{ key: "x", since: now - 14 * minutes, late: true }],
+                () => null, now, times).waiting.length, 1);
+        {
+            const toldOne = [{ key: "t", held: "h0", since: now - 3 * minutes, late: true,
+                told: "late on m" }];
+            Expect.same("one waiting keeps the words said of it late", Sprouting.settled(
+                toldOne, () => null, now, times).waiting[0].told, "late on m");
+            Expect.same("one gone keeps them too, so it takes them back", Sprouting.settled(
+                toldOne, () => null, now + 13 * minutes, times).gone[0].told, "late on m");
+        }
+        }
 
         // What the act that ran says.
         Expect.same("started names the machine",
@@ -370,6 +421,145 @@ QtObject {
             Sprouting.refusalActs().filter(key => String(written[key] ?? "").trim() === ""), []);
         Expect.same("and so is what asking where says",
             String(written.askedWhere ?? "").trim() !== "", true);
+        // What an opening says (Agents.qml's said): each written, each up one naming its
+        // session, and none filling more than it gives.
+        const opened = ["opening", "up", "upLater", "unopened", "lost"];
+        Expect.same("each word an opening says is written",
+            opened.filter(key => String(written[key] ?? "").trim() === ""), []);
+        Expect.same("each said once it's up names its session",
+            ["up", "upLater"].filter(key => !String(written[key]).includes("{title}")), []);
+        const full = { machine: "kestrel", title: "Olga's access", minutes: "15" };
+        // Agents.qml's said() gives every word a title, empty until the session is up, so
+        // only the up words may name one, or a word said before would show it blank.
+        Expect.same("only an up word names the title it's given", opened.filter(key =>
+            String(written[key]).includes("{title}")), ["up", "upLater"]);
+        Expect.same("each is filled whole", opened.filter(key =>
+            Openings.filled(written, key, full).includes("{")), []);
+
+        // How an opening's words are filled and where they're said.
+        Expect.same("a title is only text, its $ patterns kept", Openings.filled(
+            { up: "{title} is up on {machine}" }, "up", { machine: "k", title: "a $& b $$" }),
+            "a $& b $$ is up on k");
+        Expect.same("a name not given is filled with nothing",
+            Openings.filled({ lost: "{minutes} min" }, "lost", {}), " min");
+        Expect.same("an act unpressed since says", Openings.saysOnAct({ a: 100 }, "a", 200),
+            true);
+        Expect.same("an act never pressed says", Openings.saysOnAct({}, "a", 200), true);
+        {
+            // One the node kept, heard later, has no Return of its own: its since.
+            const opening = { key: "a", since: 200 };
+            Expect.same("an up start Joel waits on, its act unpressed since, takes the keys",
+                Openings.takesKeys(true, { a: 100 }, opening), true);
+            Expect.same("its act pressed since, it doesn't, though he waits",
+                Openings.takesKeys(true, { a: 300 }, opening), false);
+            Expect.same("not waited on, it doesn't", Openings.takesKeys(false, {}, opening),
+                false);
+            // Made from its Return, at 200 with 7 keys taken and 3 letters given,
+            // answered at 55200: what's pressed counts from the Return, the minute's
+            // patience from the answer.
+            const made = Openings.opening({ held: "h1", machine: "kestrel" }, "a",
+                { words: "w", letters: 3, keys: 7, at: 200 }, 55200);
+            Expect.same("an opening is pressed from its Return and waited from its answer",
+                made, { key: "a", held: "h1", machine: "kestrel", since: 55200, asked: 200,
+                    keys: 7, letters: 3, words: "w", on: "" });
+            Expect.same("its act pressed after its Return, before its answer, it doesn't",
+                Openings.takesKeys(true, { a: 250 }, made), false);
+            Expect.same("a slow answer isn't said to be still coming up seconds after",
+                Sprouting.settled([made], () => null, 65200, { patience: 60000, watch: 900000 })
+                    .late.length, 0);
+            Expect.same("once the launcher shut, none takes the keys again",
+                Openings.shutOn([made, { key: "b", keys: 3, late: true }])
+                    .map(one => [one.key, one.keys, one.late === true, one.asked === undefined]),
+                [["a", -1, false, false], ["b", -1, true, true]]);
+            Expect.same("a start still asked as it shut is spent, keeping the rest",
+                Openings.spent({ words: "w", letters: 3, keys: 7, at: 200 }),
+                { words: "w", letters: 3, keys: -1, at: 200 });
+            // Answered after the launcher shut, a held start opens no window.
+            const heldHow = { started: true, held: "h1", machine: "kestrel" };
+            const spentGiven = Openings.spent({ words: "w", letters: 3, keys: 7, at: 200 });
+            Expect.same("one answered after the shut promises no window",
+                Sprouting.told(Openings.promised(heldHow, spentGiven), written),
+                written.unheld.replace("{machine}", "kestrel"));
+            Expect.same("one answered with the launcher still up does",
+                Sprouting.told(Openings.promised(heldHow, { keys: 7 }), written),
+                written.started.replace("{machine}", "kestrel"));
+            Expect.same("one refused is said as it is",
+                Openings.promised({ started: false, held: "", why: "no" }, spentGiven),
+                { started: false, held: "", why: "no" });
+            // Late words go to the foot only for a start Joel still waits on.
+            const toldNow = [{ one: { key: "a" }, text: "ta" }, { one: { key: "b" }, text: "tb" },
+                { one: { key: "c" }, text: "tc" }];
+            Expect.same("a pass's words are footed where he waits, else noticed, in order",
+                Openings.toldWhere(toldNow, one => one.key !== "b"),
+                { foot: ["ta", "tc"], notice: ["tb"] });
+            Expect.same("and all noticed where he waits on none",
+                Openings.toldWhere(toldNow, () => false), { foot: [], notice: ["ta", "tb", "tc"] });
+            // At the shut, an act that promised a window says it shows in Agents instead.
+            const promising = [
+                { key: "a", held: "h1", machine: "kestrel", keys: 4 },
+                { key: "b", held: "h2", machine: "kestrel", keys: 5, late: true },
+                { key: "c", held: "h3", machine: "kestrel", keys: -1 }];
+            Expect.same("only one that promised a window, not late or spent, is said again",
+                Openings.unpromised(promising).map(each => [each.one.key,
+                    Sprouting.told(each.how, written)]),
+                [["a", written.unheld.replace("{machine}", "kestrel")]]);
+            // A start no act waits on is watched once, never taking the keys.
+            const watchedOne = Openings.watching([], heldHow, { key: "a", asked: 200 }, 900);
+            Expect.same("one answered late is watched from its act, never taking the keys",
+                watchedOne, { key: "a", held: "h1", machine: "kestrel", since: 900, asked: 200,
+                    keys: -1 });
+            Expect.same("and watched no more once it is, whichever came first",
+                Openings.watching([watchedOne], heldHow, { key: "start:t" }, 950), null);
+            Expect.same("but the same hold on another machine is",
+                Openings.watching([watchedOne], Object.assign({}, heldHow,
+                    { machine: "osprey" }), { key: "start:t" }, 950).machine, "osprey");
+            Expect.same("one refused or unheld isn't watched, as it opens nothing",
+                [{ started: false, held: "h9", machine: "kestrel", why: "no" },
+                    { started: true, held: "", machine: "kestrel" }]
+                    .map(how => Openings.watching([], how, { key: "a" }, 900)), [null, null]);
+            Expect.same("one kept has no Return, so its own time stands for it",
+                Openings.askedOf(Openings.watching([], heldHow, { key: "start:t" }, 900)), 900);
+        }
+        Expect.same("an act pressed since, or given fresh words, doesn't",
+            Openings.saysOnAct({ a: 300 }, "a", 200), false);
+        Expect.same("an act last pressed at the start's own Return still says",
+            Openings.saysOnAct({ a: 200 }, "a", 200), true);
+        Expect.same("a press stamps only its own act, at its time",
+            Openings.pressedAt({ a: 100, b: 5 }, "a", 300), { a: 300, b: 5 });
+        Expect.same("a later press of its act stops a start saying over it",
+            Openings.saysOnAct(Openings.pressedAt({}, "a", 300), "a", 200), false);
+        const waitingNow = [{ held: "h1", machine: "k" }, { held: "h2", machine: "k" },
+            { held: "h1", machine: "m" }];
+        Expect.same("each late opening carries what was said of it, and no other",
+            Openings.toldOf(waitingNow, [{ held: "h2", machine: "k" },
+                { held: "h1", machine: "m" }], ["late h2", "late h1 on m"]),
+            [{ held: "h1", machine: "k" }, { held: "h2", machine: "k", told: "late h2" },
+                { held: "h1", machine: "m", told: "late h1 on m" }]);
+        const tells = { told: ["late on k", "lost on m", "late on k"], keys: 3, at: 9,
+            shown: [["n", "late on k"]] };
+        const trimmed = Openings.footedWithout(tells, "late on k");
+        Expect.same("an opening takes back only its own tell, once",
+            [trimmed.told, trimmed.keys, trimmed.at],
+            [["lost on m", "late on k"], 3, 9]);
+        Expect.same("what's left keeps the foot it was shown in, which shut clears by",
+            trimmed.shown === tells.shown, true);
+        Expect.same("a tell it never had leaves the foot as it was",
+            Openings.footedWithout(tells, "up on q"), tells);
+        Expect.same("none is left once its own was the only tell",
+            Openings.footedWithout({ told: ["late on k"], keys: 1, at: 2 }, "late on k"), null);
+        Expect.same("no foot stays none", Openings.footedWithout(null, "late on k"), null);
+        const shownFoot = [["n", "late on k"]];
+        const lone = { told: ["late on k"], keys: 1, at: 2, shown: shownFoot };
+        const back = Openings.takenBack(lone, { told: "late on k" });
+        Expect.same("taking back the foot's last tell leaves none, and clears its foot",
+            [back.footed, back.cleared === shownFoot], [null, true]);
+        const someLeft = Openings.takenBack(tells, { told: "late on k" });
+        Expect.same("taking back one of several clears no foot",
+            [someLeft.footed.told, someLeft.cleared], [["lost on m", "late on k"], null]);
+        Expect.same("one never said late takes back nothing",
+            Openings.takenBack(lone, {}), { footed: lone, cleared: null });
+        Expect.same("no foot has none to clear",
+            Openings.takenBack(null, { told: "late on k" }), { footed: null, cleared: null });
 
         // Where each end is said beyond its own row, which Joel may have left.
         const refusedEnd = { started: false, why: "/home/j isn't a repository's folder" };
@@ -475,5 +665,103 @@ QtObject {
             /^[a-z0-9]+-[a-z0-9]+$/u.test(token), true);
         Expect.same("two asked in one moment are told apart",
             token === Sprouting.token(1763500000000, 0.25), false);
+
+        // The same words given the same act again say when they started, rather than
+        // starting the work twice (Joel, 2026-11-25: "no clue if i did it once, twice,
+        // thrice or not at all").
+        const began = new Date(2026, 10, 25, 14, 30, 50).getTime();
+        const inA = "verb:agents:start-new-work:in:/src/a";
+        const inB = "verb:agents:start-new-work:in:/src/b";
+        const minute = 60 * 1000;
+        const up = { started: true, machine: "skiff", held: "h1" };
+        const barInA = { key: inA, words: "fix the bar" };
+        const bar = StartSaid.made([], barInA, up, began);
+        const asks = (key, said, on) => ({ key, words: said, on: on ?? "" });
+        const again = (list, key, said, at) =>
+            StartSaid.again(list, asks(key, said), at)?.words ?? null;
+        Expect.same("the same words again say when they started", StartSaid.clock(
+            StartSaid.again(bar, asks(inA, "  fix the bar "), began + minute)), "14:30");
+        // Every From a Link act shares one key, so where it starts tells two apart.
+        const barThere = StartSaid.made([], { key: inA, words: "fix the bar", on: "cloud" }, up,
+            began);
+        Expect.same("the same words started here, then asked for the cloud, start there",
+            StartSaid.again(bar, asks(inA, "fix the bar", "cloud"), began + minute), null);
+        Expect.same("and the same asked for the cloud again say when they started",
+            StartSaid.clock(StartSaid.again(barThere, asks(inA, "fix the bar", "cloud"),
+                began + minute)), "14:30");
+        Expect.same("other words start", again(bar, inA, "fix the foot", began + minute), null);
+        Expect.same("the same words in another folder start",
+            again(bar, inB, "fix the bar", began + minute), null);
+        Expect.same("an hour on, the same words start",
+            again(bar, inA, "fix the bar", began + 60 * minute), null);
+        Expect.same("nothing made, anything starts", again([], inA, "fix the bar", began), null);
+        // Every start of the hour is kept, not only the last: A, then B, then A again.
+        const both = StartSaid.made(bar, { key: inA, words: "fix the foot" }, up, began + minute);
+        Expect.same("an earlier start is still known after a later one",
+            again(both, inA, "fix the bar", began + 2 * minute), "fix the bar");
+        // Unanswered may have started, so it counts; refused or unread began nothing.
+        const unanswered = StartSaid.made([], barInA,
+            { started: false, unanswered: true, why: "nothing answered" }, began);
+        Expect.same("an unanswered start counts, as not known to have started",
+            StartSaid.again(unanswered, asks(inA, "fix the bar"), began + minute)?.answered,
+            false);
+        Expect.same("a refused start counts for nothing", StartSaid.made([], barInA,
+            { started: false, why: "no", refusal: "" }, began), []);
+        Expect.same("nor does one whose answer couldn't be read", StartSaid.made([], barInA,
+            { started: false, why: "unread" }, began), []);
+        // Told it was made, a Return with the same words just after is meant.
+        const told = StartSaid.told(bar, bar[0], began + minute);
+        Expect.same("just told, the same words start once more",
+            again(told, inA, "fix the bar", began + 2 * minute), null);
+        Expect.same("told long ago, he's told again first",
+            again(told, inA, "fix the bar", began + 4 * minute), "fix the bar");
+        // A Return held, or pressed twice, lands under a second after the one told.
+        Expect.same("a Return straight after he was told is told again",
+            again(told, inA, "fix the bar", began + minute + 300), "fix the bar");
+        Expect.same("a retry refused leaves the start made before it",
+            StartSaid.made(told, barInA, { started: false, why: "no", refusal: "" },
+                began + 2 * minute).map(one => one.words), ["fix the bar"]);
+        Expect.same("started once more, it's known as the new start alone",
+            StartSaid.made(told, barInA, up, began + 2 * minute).length, 1);
+        Expect.same("an hour's starts go", StartSaid.made(bar, { key: inB, words: "fix it" }, up,
+            began + 60 * minute).map(one => one.key), [inB]);
+        // A Return on the act whose start is under way keeps its receipt only
+        // for the same words, to the same place; every From a Link act shares
+        // one key, so anything else is new work. What's under way is the start
+        // asked and every opening still coming up, its session not yet up.
+        const link = "verb:agents:start-new-work:link";
+        const running = { key: link, words: "https://x/issues/1", on: "" };
+        const coming = Openings.opening({ held: "h2", machine: "skiff" }, inA,
+            { words: "fix the bar", on: "", keys: 4, letters: 2, at: began }, began + minute);
+        const underWay = asked => StartSaid.underWayAgain([running, coming], Object.assign(
+            { key: link, words: "https://x/issues/1", on: "" }, asked));
+        Expect.same("the same words to the same place again keep the receipt",
+            underWay({ words: " https://x/issues/1 " }) === running, true);
+        Expect.same("another page's link on the same act is new work",
+            underWay({ words: "https://x/issues/2" }), null);
+        Expect.same("the same words for the cloud are new work", underWay({ on: "cloud" }),
+            null);
+        Expect.same("another act is new work", underWay({ key: inB }), null);
+        Expect.same("a start still coming up given again keeps its receipt too",
+            underWay({ key: inA, words: "fix the bar" })?.held, "h2");
+        // Lost, a start no longer counts as made, so the same words start again;
+        // the same words for the cloud are another start, and kept.
+        const lostHere = StartSaid.forgot(StartSaid.made(barThere, barInA, up, began), coming);
+        Expect.same("a start whose session was lost is made no more, the same words start",
+            StartSaid.again(lostHere, asks(inA, "fix the bar"), began + minute), null);
+        Expect.same("but the same words in the cloud are still made",
+            lostHere.map(one => one.on), ["cloud"]);
+        Expect.same("nothing running, nothing is under way again",
+            StartSaid.underWayAgain([], running), null);
+        Expect.same("and Start New Work says so in its own words, with the time",
+            [written.again, written.againUnanswered].every(one => String(one ?? "")
+                .includes("{at}")), true);
+
+        // A start's wait is counted to the second, so it's seen to run.
+        Expect.same("nothing before it began", StartSaid.waited(0, began), "");
+        Expect.same("seconds at first", StartSaid.waited(began, began + 8400), "8 s");
+        Expect.same("then minutes and seconds", StartSaid.waited(began, began + 65000),
+            "1 min 05 s");
+        Expect.same("never less than nothing", StartSaid.waited(began, began - 5000), "0 s");
     }
 }

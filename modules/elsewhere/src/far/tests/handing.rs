@@ -169,6 +169,212 @@ fn a_link_a_job_pins_at_its_handover_folder_stops_all_it_would_bring_back() {
 }
 
 #[test]
+fn a_link_pinned_at_the_handover_as_it_brings_back_gets_no_end_written_through_it() {
+    let mut kind = kind("");
+    kind.brings_back = vec!["out".into()];
+    // A cp that, once the job's one file crossed, moves the handover aside
+    // for a link the far line isn't allowed to clear: the list's end and
+    // its cut, written after, would go through it.
+    let swapping = format!(
+        "PATH=${{PATH#*:}} cp \"$@\" || exit\n\
+         [ -e \"$HOME/swapped\" ] || {{ {} && : > \"$HOME/swapped\"; }}",
+        linking_its_handover()
+    );
+    let (rm, refused) = pinning();
+    let programs = [("cp", swapping.as_str()), (rm, refused.as_str())];
+    let job = "mkdir out && printf a > out/a";
+    let (code, err, home) = far_line(Left::Whole, &[("x", "x")], job, &kind, None, &programs);
+    let listed = std::fs::read_to_string(home.join("moved").join(BROUGHT)).unwrap_or_default();
+    assert!(
+        home.join("swapped").exists() && kept_beyond(&home),
+        "the far line ended its list, or cleared, through a link pinned as it brought \
+         back ({code:?}): {err}"
+    );
+    assert!(
+        code == Some(0)
+            && err.contains("a link at the job's handover couldn't be cleared, so its tree stays")
+            && err.contains(
+                "so the list of what it brings back isn't ended and nothing is brought back"
+            )
+            && listed.contains("\tout/a\n")
+            && !work(&home).join("1").exists(),
+        "the far line didn't say the link stays and its list is left unended, listed \
+         what it began, or kept its copy ({code:?}): {listed:?} {err}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
+fn a_link_pinned_at_the_handover_between_two_files_gets_neither_copy_through_it() {
+    let mut kind = kind("");
+    kind.brings_back = vec!["out".into()];
+    // As above, but with a second file to copy once the handover is
+    // swapped: its copy, and the size read from it, would go through the
+    // link, as would the end and the cut after.
+    let swapping = format!(
+        "PATH=${{PATH#*:}} cp \"$@\" || exit\n\
+         [ -e \"$HOME/swapped\" ] || {{ {} && : > \"$HOME/swapped\"; }}",
+        linking_its_handover()
+    );
+    let (rm, refused) = pinning();
+    let programs = [("cp", swapping.as_str()), (rm, refused.as_str())];
+    let job = "mkdir out && printf a > out/a && printf b > out/b";
+    let (code, err, home) = far_line(Left::Whole, &[("x", "x")], job, &kind, None, &programs);
+    let listed = std::fs::read_to_string(home.join("moved").join(BROUGHT)).unwrap_or_default();
+    assert!(
+        home.join("swapped").exists()
+            && kept_beyond(&home)
+            && left_in(&home.join("beyond").join(BACK)) == ["0"],
+        "the far line copied the second file, or ended its list, through a link pinned \
+         between them ({code:?}): {err}"
+    );
+    assert!(
+        code == Some(0)
+            && err.contains("a link was put at its handover as it brought back, so the rest stays")
+            && listed.contains("\tout/a\n")
+            && !listed.contains("out/b"),
+        "the far line didn't say the rest stays, or listed the file it never copied \
+         ({code:?}): {listed:?} {err}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
+fn a_link_put_at_or_above_the_handover_between_two_files_leaves_the_rest_and_the_list_ends_cut() {
+    let mut kind = kind("");
+    kind.brings_back = vec!["out".into()];
+    let at = format!("../../{HANDOVER}/1");
+    let (whole, cut) = ("1\tout/a\n\ncut\n", "\ncut\n");
+    // A cp that, once the first file crossed, moves the handovers' folder,
+    // the one below it, the job's handover or its folder for copies aside
+    // to `beyond`, with a link to it at its name, so a second copy through
+    // it would land. Where the link the far line clears took the job's
+    // handover with it, the list is cut in one made again, never in what
+    // the link led to; where its folders can't be made again, as the
+    // last row's mkdir refuses, the far line says so in words of its own.
+    for (moved, back, list, refused) in [
+        ("../../handover".to_owned(), "elsewhere/1/back", cut, false),
+        (format!("../../{HANDOVER}"), "1/back", cut, false),
+        (at.clone(), "back", cut, false),
+        (format!("{at}/{BACK}"), "", whole, false),
+        ("../../handover".to_owned(), "elsewhere/1/back", "", true),
+    ] {
+        let swapping = format!(
+            "PATH=${{PATH#*:}} cp \"$@\" || exit\n\
+             [ -e \"$HOME/swapped\" ] || {{ mv {moved} \"$HOME/beyond\" && \
+             ln -s \"$HOME/beyond\" {moved} && : > \"$HOME/swapped\"; }}"
+        );
+        let mkdir = refusing("mkdir", "*\"/handover \"*", "exit 1");
+        let mut programs = vec![("cp", swapping)];
+        if refused {
+            programs.push((mkdir.0, mkdir.1));
+        }
+        let programs: Vec<_> = programs.iter().map(|(n, s)| (*n, s.as_str())).collect();
+        let job = "mkdir out && printf a > out/a && printf b > out/b";
+        let (code, err, home) = far_line(Left::Whole, &[("x", "x")], job, &kind, None, &programs);
+        let listed = std::fs::read_to_string(handover(&home).join(BROUGHT)).unwrap_or_default();
+        let beyond = back
+            .strip_suffix(BACK)
+            .map(|it| home.join("beyond").join(it).join(BROUGHT));
+        let beyond = beyond.map(|it| std::fs::read_to_string(it).unwrap_or_default());
+        assert!(
+            home.join("swapped").exists()
+                && left_in(&home.join("beyond").join(back)) == ["0"]
+                && beyond.as_deref().is_none_or(|it| !it.contains("cut")),
+            "the far line copied the second file, or cut its list, through a link at {moved} \
+             ({code:?}): {beyond:?} {err}"
+        );
+        assert!(
+            err.contains(
+                "couldn't cut the list of what it brings back, so nothing is brought back"
+            ) == refused,
+            "the far line didn't say, or wrongly said, it couldn't cut its list at {moved} \
+             ({code:?}): {err}"
+        );
+        assert!(
+            code == Some(0)
+                && err.contains(
+                    "a link was put at its handover as it brought back, so the rest stays"
+                )
+                && !err.contains("cannot create")
+                && !err.contains("No such file")
+                && !err.contains("Directory nonexistent")
+                && listed == list,
+            "a link at {moved} between files didn't leave the rest, or end the list cut \
+             ({code:?}): {listed:?} {err}"
+        );
+        let _ = std::fs::remove_dir_all(&home);
+    }
+}
+
+#[test]
+fn a_link_put_at_a_copy_s_name_gets_no_copy_through_it_and_the_list_ends_cut() {
+    let mut kind = kind("");
+    kind.brings_back = vec!["out".into()];
+    // A cp that, once the first file is copied, puts a link at the next
+    // copy's name to a file of the job's, as a job of the quest may
+    // meanwhile: the next copy, written there, would go through it.
+    let planting = "PATH=${PATH#*:} cp \"$@\" || exit\n\
+         [ -e \"$HOME/planted\" ] || \
+         { ln -s \"$HOME/target\" \"${2%/*}/1\" && : > \"$HOME/planted\"; }";
+    let programs = [("cp", planting)];
+    let job = "mkdir out && printf a > out/a && printf b > out/b && printf t > \"$HOME/target\"";
+    let (code, err, home) = far_line(Left::Whole, &[("x", "x")], job, &kind, None, &programs);
+    let target = std::fs::read_to_string(home.join("target")).unwrap_or_default();
+    let listed = std::fs::read_to_string(handover(&home).join(BROUGHT)).unwrap_or_default();
+    assert!(
+        home.join("planted").exists() && target == "t",
+        "the far line copied through a link put at a copy's name ({code:?}): {target:?} {err}"
+    );
+    assert!(
+        code == Some(0)
+            && err.contains("a link was put at its handover as it brought back, so the rest stays")
+            && listed.starts_with("1\tout/a\n")
+            && !listed.contains("out/b")
+            && listed.ends_with("\ncut\n"),
+        "the far line didn't say the rest stays, or end its list cut after the file it \
+         copied ({code:?}): {listed:?} {err}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
+fn a_link_pinned_at_the_handover_of_a_kind_bringing_nothing_back_gets_no_end_through_it() {
+    let mut nothing = kind("");
+    nothing.brings_back = Vec::new();
+    // A mkdir that, once the handover's folder for copies is made new,
+    // moves the handover aside for a link the far line isn't allowed to
+    // clear: the list's end, written after, would go through it.
+    let swapping = format!(
+        "PATH=${{PATH#*:}} mkdir \"$@\" || exit\n\
+         case \" $* \" in *\"/1/{BACK} \"*) {} ;; esac",
+        linking_its_handover()
+    );
+    let (rm, refused) = pinning();
+    let programs = [("mkdir", swapping.as_str()), (rm, refused.as_str())];
+    let (code, err, home) = far_line(
+        Left::Whole,
+        &[("x", "x")],
+        "true",
+        &nothing,
+        None,
+        &programs,
+    );
+    assert!(
+        home.join("moved").exists() && kept_beyond(&home),
+        "the far line wrote its list's end, or cleared, through a link pinned at the \
+         handover of a kind bringing nothing back ({code:?}): {err}"
+    );
+    assert!(
+        code == Some(0)
+            && err.contains("a link at the job's handover couldn't be cleared, so its tree stays")
+            && !err.contains("handover wasn't cleared"),
+        "the far line didn't say only that the link stays ({code:?}): {err}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
 fn a_handover_whose_folder_for_copies_cant_be_made_new_ends_its_list_cut() {
     let mut kind = kind("");
     kind.brings_back = vec!["out".into()];
@@ -317,7 +523,7 @@ fn a_hard_link_a_job_puts_at_its_handover_folder_s_name_is_never_opened() {
 
 /// A stand-in for `rm` that never clears the job's handover folder, as
 /// where a link stands at it that the far line isn't allowed to clear.
-fn pinning() -> (&'static str, String) {
+pub(super) fn pinning() -> (&'static str, String) {
     refusing("rm", &format!("*\"/{HANDOVER}/1 \"*"), "exit 1")
 }
 
@@ -399,6 +605,69 @@ fn a_far_line_stopped_once_its_job_links_its_handover_clears_nothing_through_it(
         assert!(
             !work(&home).join("1").exists() && !work(&home).join("1.run").exists(),
             "a stopped far line kept its copy or its run's file {pinned}: {err}"
+        );
+        let _ = std::fs::remove_dir_all(&home);
+    }
+}
+
+#[test]
+fn a_link_a_job_puts_at_the_copies_folder_redirects_no_clearing_of_its_copy() {
+    // A job that moves the copies' folder aside and puts at its name a
+    // link to a folder holding a copy at its own number, with its run's
+    // file and the lists and archive beside it, then ends, or is stopped,
+    // or leaves a link the far line can't clear, or ends where the
+    // handover's folder for copies can't be made, so nothing comes back.
+    let decoy = ["1", "1.back", "1.back.lost", "1.names", "1.run", "1.tar"];
+    let swapping = format!(
+        "s=$(cd ../.. && pwd)/.s && mv \"$s\" \"$HOME/aside\" &&
+         mkdir -p \"$HOME/decoy/1\" && : > \"$HOME/decoy/1/kept\" && cd \"$HOME/decoy\" &&
+         touch {} && ln -s \"$HOME/decoy\" \"$s\"",
+        decoy[1..].join(" ")
+    );
+    let (rm, pinned) = refusing("rm", "*\"/.s \"*", "exit 1");
+    let (mkdir, unmade) = refusing("mkdir", "*\"/1/back \"*", "exit 1");
+    let cases: [(&str, &[(&str, &str)]); 4] = [
+        ("ended", &[]),
+        ("stopped", &[]),
+        ("ended past a link it can't clear", &[(rm, pinned.as_str())]),
+        ("ended bringing nothing back", &[(mkdir, unmade.as_str())]),
+    ];
+    for (how, programs) in cases {
+        let stop = if how == "stopped" {
+            " && kill -TERM $PPID"
+        } else {
+            ""
+        };
+        let job = format!("{swapping}{stop}");
+        let (code, err, home) =
+            far_line(Left::Whole, &[("x", "x")], &job, &kind(""), None, programs);
+        assert!(
+            (how == "stopped")
+                == std::fs::read_to_string(home.join("signal")).is_ok_and(|signal| signal == "15"),
+            "the far line {how} was stopped, or wasn't ({code:?}): {err}"
+        );
+        // Exactly as the job left it, nothing taken and nothing written.
+        assert!(
+            home.join("aside").exists()
+                && home.join("decoy/1/kept").exists()
+                && left_in(&home.join("decoy")) == decoy
+                && left_in(&home.join("decoy/1")) == ["kept"],
+            "a far line {how} cleared or wrote through the link at its copies' folder \
+             ({code:?}): {:?} {err}",
+            left_in(&home.join("decoy"))
+        );
+        let linked = std::fs::symlink_metadata(work(&home)).is_ok_and(|at| at.is_symlink());
+        let stays = programs.first().is_some_and(|(name, _)| *name == "rm");
+        assert!(
+            err.contains("so nothing is brought back") == (how == "ended bringing nothing back"),
+            "a far line {how} handed back, or didn't, unlike its case ({code:?}): {err}"
+        );
+        assert!(
+            linked == stays
+                && err.contains("so its copy stays") == stays
+                && err.contains("copies' folder was cleared") != stays,
+            "a far line {how} kept the link it may clear, or didn't say what it did with it \
+             ({code:?}): {err}"
         );
         let _ = std::fs::remove_dir_all(&home);
     }
