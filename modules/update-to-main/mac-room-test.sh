@@ -6,8 +6,9 @@
 # the floor, any swap-out or a count started again; and can't tell, never
 # room, from a figure it can't read or one too long for bash to compare,
 # a record it can't keep, a floor that isn't a number or an argument left
-# out, which it names in its own words; and a record too long to compare
-# or holding a leading zero starts again. sysctl and
+# out, which it names in its own words, or a reading or floor with a
+# leading zero; a record too long to compare or holding a leading zero
+# starts again; and zero alone is a number. sysctl and
 # vm_stat are stand-ins printing what the test sets, sysctl only for the
 # figure mac-room.sh must ask for. Time passing is the record set back.
 #
@@ -126,6 +127,17 @@ if [ "${read_at:0:1}" = 0 ]; then
 fi
 reading 60 40 0099
 look "a record's swap-outs with a leading zero" 40 100 0 "one reading of the Mac's room so far"
+# Zero alone is a number: a Mac that never swapped has room.
+reading 60 40 0
+look "no swap-outs ever" 40 0 1 "40% then 40% free"
+reading 60 0 100
+look "a first reading of nothing free" 40 100 0 "0% then 40% free"
+# A reading of the Mac now with a leading zero can't tell, as macOS never
+# prints one.
+reading 60 40 100
+look "a share with a leading zero" 040 100 69 "its share of memory free"
+reading 60 40 100
+look "swap-outs with a leading zero" 40 0100 69 "its swap-outs"
 # A record it can't keep can't tell, never room.
 rm -rf "${record%/*}"
 mkdir -p "${record%/*}"
@@ -139,6 +151,12 @@ ended=0
 "${BASH}" "${room}" "${bin}/sysctl" "${bin}/vm_stat" "${record}" 3.5 2>"${PWD}/said" || ended=$?
 if [ "${ended}" != 69 ] || ! grep -qF "isn't a whole number" "${PWD}/said"; then
   echo "FAIL a floor that isn't a whole number: ended ${ended}: $(<"${PWD}/said")" >&2
+  failures=$((failures + 1))
+fi
+ended=0
+"${BASH}" "${room}" "${bin}/sysctl" "${bin}/vm_stat" "${record}" 035 2>"${PWD}/said" || ended=$?
+if [ "${ended}" != 69 ] || ! grep -qF "isn't a whole number" "${PWD}/said"; then
+  echo "FAIL a floor with a leading zero: ended ${ended}: $(<"${PWD}/said")" >&2
   failures=$((failures + 1))
 fi
 ended=0

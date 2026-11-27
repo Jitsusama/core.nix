@@ -60,7 +60,8 @@ done <<<"${stats}"
 # Read from the record, either starts again.
 number='^(0|[1-9][0-9]{0,17})$'
 [[ ${floor} =~ ${number} ]] ||
-  answer 69 "its floor, ${floor}, isn't a whole number of at most 18 digits"
+  answer 69 "its floor, ${floor}, isn't a whole number of at most 18 digits\
+ with no leading zero"
 # What couldn't be read is named, never what it printed instead.
 unread=""
 [[ ${free} =~ ${number} ]] || unread="its share of memory free"
