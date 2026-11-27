@@ -11,7 +11,9 @@ say in a machine's panel what runs there as the node moves and link it to its
 place on the mycelium map, say broken when net stops and live again, its
 devices read again, when it's back, say in its lede when net has never
 answered, to a page opened later too, and count what stands once it does,
-say stale when the server goes and keep what it drew, draw every
+say stale when the server goes and keep what it drew, count afresh
+only once it's back and net read again, say an empty network nameless,
+unanswered once net goes and nameless once it's back, draw every
 device and wire within a phone's width with its zoom buttons a finger's reach,
 stack a bigger house with switches and a full floor
 within a phone's width and a laptop's, draw the other way as a window narrows
@@ -33,7 +35,16 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
-from live_page import LOOKS, SIZES, Budget, Opened, Served, serving
+from live_page import (
+    LOOKS,
+    SIZES,
+    Budget,
+    Opened,
+    Served,
+    close_every,
+    serving,
+    serving_again,
+)
 from playwright.sync_api import Browser, Locator, Page, expect
 from stand_in_daemon import StandIn, standing_in
 
@@ -66,6 +77,8 @@ BUDGET = Budget(files=36, kilobytes=505, elements=335)
 # no floor would be an empty net read as an all-clear, so a count of either starts at one.
 COUNTED = re.compile(r"^\d+ devices? on [1-9]\d* eeros? across [1-9]\d* floors?, and .+\.$")
 UNANSWERED = "Net isn't answering, so no device is drawn."
+# The lede while net answers and has told every kind, naming no device.
+NAMELESS = "Net is answering, but has named no device yet."
 # A counted lede, split into how many devices use the network and what follows.
 USERS = re.compile(r"^(?P<users>\d+) devices? (?P<rest>on .+)$")
 # The lede over records kept from before, which counts what stands but says nothing of what's
@@ -261,9 +274,7 @@ def test_a_net_that_never_answers_says_so_in_the_lede(
                     COUNTED, timeout=BACK_MS
                 )
         finally:
-            first.close()
-            if later is not None:
-                later.close()
+            close_every(first, later)
 
 
 def test_a_sites_server_that_goes_is_said_stale(
@@ -280,6 +291,79 @@ def test_a_sites_server_that_goes_is_said_stale(
     expect(
         network_page.locator("#lede"), "the lede asked from records the page can't follow"
     ).to_have_text(HELD)
+
+
+# Keeps every word the lede says from now on, read as the page writes it.
+LEDES_KEPT = """() => {
+  const lede = document.querySelector("#lede");
+  window.ledesSaid = [];
+  const kept = () => window.ledesSaid.push(lede.textContent);
+  new MutationObserver(kept).observe(lede, { childList: true, characterData: true, subtree: true });
+}"""
+
+
+def test_a_sites_server_back_clears_what_was_held_only_once_it_draws_afresh(
+    network_opened: Opened, network_served: Served, net_daemon: StandIn, tmp_path: Path
+) -> None:
+    page = network_opened.page
+    says_it_stands(page, "live")
+    every_device_drawn(page)
+    lede = page.locator("#lede")
+    expect(lede, "the lede didn't count what stands").to_have_text(COUNTED)
+    before = lede.inner_text()
+    counted = USERS.match(before)
+    assert counted, "the lede's count didn't read"
+    root, server = network_served
+    network_opened.loses(server)
+    says_it_stands(page, "stale")
+    expect(lede, "the lede asked from records the page can't follow").to_have_text(HELD)
+    page.evaluate(LEDES_KEPT)
+    # What net holds moves while the server is away, so only a fresh reading shows it.
+    net_daemon.tell("device", gone=[f"device:{PRINTER}"])
+    with serving_again(tmp_path, root):
+        says_it_stands(page, "live", BACK_MS)
+        expect(device(page, PRINTER), "the page didn't read net afresh").to_have_count(
+            0, timeout=PACE_MS
+        )
+        users = int(counted["users"]) - 1
+        back = f"{users} device{'' if users == 1 else 's'} {counted['rest']}"
+        expect(lede, "the lede didn't count what net told once back").to_have_text(back)
+        # Counted from what the page held, the lede would say what it said before the server
+        # went, the printer and all, between going live and the fresh reading.
+        said = page.evaluate("window.ledesSaid")
+        assert before not in said, f"the lede counted what it held as current: {said}"
+
+
+def test_an_empty_network_is_said_nameless_unanswered_then_nameless_again(
+    browser: Browser, tmp_path: Path, mycelium_node: StandIn
+) -> None:
+    kinds = json.loads(os.environ["NET_KINDS"])
+    empty = StandIn(tmp_path / "empty-net.sock", "net", {kind: [] for kind in kinds}).start()
+    try:
+        feeds = feeds_of(empty, mycelium_node)
+        with serving(tmp_path, {"network": os.environ["NETWORK_SITE"]}, feeds) as (root, _):
+            opened = Opened(browser, f"{root}network/", SIZES[-1], "dark")
+            try:
+                page = opened.page
+                lede = page.locator("#lede")
+                says_it_stands(page, "live")
+                expect(lede, "an empty net read as no answer").to_have_text(
+                    NAMELESS, timeout=PACE_MS
+                )
+                empty.leave()
+                says_it_stands(page, "broken")
+                expect(lede, "an empty net gone wasn't said unanswered").to_have_text(UNANSWERED)
+                empty.start()
+                says_it_stands(page, "live", BACK_MS)
+                # Told every kind empty again, as at first, it names no device rather than
+                # reaching for one or reading the empty house as an all-clear.
+                expect(lede, "an empty net back wasn't said nameless").to_have_text(
+                    NAMELESS, timeout=PACE_MS
+                )
+            finally:
+                opened.close()
+    finally:
+        empty.leave()
 
 
 # How far right of the map's room, short of any scrollbar's gutter, each device's box reaches in
@@ -364,7 +448,11 @@ def test_narrowing_a_desk_to_a_phone_draws_the_map_the_other_way(
         stacked = f"(kestrel) => ({DRAWN_ACROSS})(kestrel) === false"
         page.wait_for_function(stacked, arg=KESTREL, timeout=PACE_MS)
         every_device_drawn(page)
-        expect(lede, "the lede lost its count as the map stacked").to_have_text(COUNTED)
+        # Read as drawn, since a lede the narrow head hid would still hold its words.
+        expect(lede, "the narrow head hid the lede").to_be_visible()
+        expect(lede, "the lede lost its count as the map stacked").to_have_text(
+            COUNTED, use_inner_text=True
+        )
         stands_within_the_room(page, "a narrowed window")
         page.set_viewport_size({"width": desk[0], "height": desk[1]})
         across = f"(kestrel) => ({DRAWN_ACROSS})(kestrel) === true"
