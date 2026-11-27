@@ -520,7 +520,8 @@ class Shell:
         left the launcher to open for the next (core.nix#7026's round, 2026-11-27). A launcher
         neither opening nor open, as nearly every case leaves it, is read once.
         """
-        if not any(self.showing()[state] for state in ("opening", "open")):
+        shown = self.showing()
+        if not (shown["opening"] or shown["open"]):
             return
         try:
             self.launcher_until(lambda shown: not shown["opening"])
