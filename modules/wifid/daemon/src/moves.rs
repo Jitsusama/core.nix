@@ -1009,6 +1009,73 @@ mod tests {
         );
     }
 
+    /// How wpa_supplicant fails a move or a look it was asked for.
+    fn failed() -> Refused {
+        Refused::Failed {
+            reason: "wpa_supplicant didn't answer".into(),
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_move_refused_once_readied_is_handed_back() {
+        let (asks, mut taken) = mpsc::channel(1);
+        let (back, mut came) = mpsc::channel(1);
+        let (_state, air) = watch::channel(State::default());
+        let asked = Instant::now();
+        let to = (HALL.into(), asked);
+        let moving = tokio::spawn(roam((asks, air), "wlan0".into(), to, back));
+        let Some(Ask::Ready { done, .. }) = taken.recv().await else {
+            panic!("asked for something other than readying the move");
+        };
+        done.send(Ok(())).expect("answered");
+        // No look ends here, so the move waits out its readying before it's
+        // asked, which paused time passes at once, as nothing else is due.
+        let Some(Ask::Roam { done, .. }) = taken.recv().await else {
+            panic!("the readied move wasn't asked once its readying passed");
+        };
+        done.send(Err(failed())).expect("answered");
+        moving.await.expect("moved");
+
+        assert_eq!(
+            came.try_recv().ok(),
+            Some(Back::Refused {
+                card: "wlan0".into(),
+                to: HALL.into(),
+                asked
+            }),
+            "a move refused once readied wasn't handed back to its chooser"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_move_whose_look_for_a_point_unheard_is_refused_is_handed_back() {
+        let (asks, mut taken) = mpsc::channel(1);
+        let (back, mut came) = mpsc::channel(1);
+        let (_state, air) = watch::channel(State::default());
+        let asked = Instant::now();
+        let to = (HALL.into(), asked);
+        let moving = tokio::spawn(roam((asks, air), "wlan0".into(), to, back));
+        let Some(Ask::Ready { done, .. }) = taken.recv().await else {
+            panic!("asked for something other than readying the move");
+        };
+        done.send(Err(Refused::NotNearby)).expect("answered");
+        let Some(Ask::Scan { done }) = taken.recv().await else {
+            panic!("an unheard point wasn't looked for");
+        };
+        done.send(Err(failed())).expect("answered");
+        moving.await.expect("moved");
+
+        assert_eq!(
+            came.try_recv().ok(),
+            Some(Back::Refused {
+                card: "wlan0".into(),
+                to: HALL.into(),
+                asked
+            }),
+            "a move whose look was refused wasn't handed back to its chooser"
+        );
+    }
+
     #[tokio::test(start_paused = true)]
     async fn a_card_whose_look_never_ends_waits_for_its_next_minute() {
         let (_, again) = looked_with(false).await;
