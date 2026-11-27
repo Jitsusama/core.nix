@@ -4771,7 +4771,10 @@
   the-cat-runner-names-how-each-case-ended = ''
     the margin cat's case runner fails a run with a case that failed, ran past its own processor
     time, was killed from outside or hung past the clock's guard, names each by how it ended and
-    says every case's time, and stops at a hang, naming the cases it left unrun
+    says every case's time, and stops at a hang, naming the cases it left unrun; it refuses
+    limits that aren't whole seconds before any case runs, and, where the builder holds the run
+    below a case's hard limit, says so once with the limit in force and what would fit, and
+    runs no case; the check fails where that can't be shown
   '';
   the-cats-walk-is-read-only-from-its-lists = ''
     the cat's code is read as no walk, by the rule it breaks, when WALKS holds anything but
@@ -6500,7 +6503,9 @@
     say beside it, its trouble said once too; and a loopback's file is said ready only once it and
     its node are written; and as a loopback's camera goes or its watch is stopped, its node file
     goes only once its nobody is written, and as its camera goes, one it couldn't remove is tried
-    again until it can be; and a loopback with no camera is said ready only once its node file is
+    again until it can be; and a stop tries its nobody and node file once more, whether it comes
+    with no camera or just as its camera went; and a loopback with no camera is said ready only
+    once its node file is
     gone or can't be there
   '';
   usb-camera-holders-forget-a-killed-run = ''
