@@ -278,7 +278,7 @@ function refocus(
   path: number[],
   item: object,
 ) {
-  const refused = (on: Placed) => refuses(on) || (!granted && !focusable(on));
+  const refused = (on: Placed) => refuses(on) || !(granted || focusable(on));
   const took = (on: Placed) =>
     (page === null || page.activeElement === on) && !(redrawing && refused(on));
   if (focused !== null && inside(focused, item)) {
