@@ -720,16 +720,20 @@ mod tests {
     }
 
     /// A `sleep` child, killed and reaped when dropped, so a case that
-    /// fails before it does leaves none running. A child already reaped
-    /// isn't signalled again, as the standard library keeps its status.
+    /// fails before it does leaves none running. A child a case already
+    /// reaped isn't signalled again: `Child::kill` sends nothing once the
+    /// standard library holds the child's status, which `wait` keeps
+    /// (`Process::send_signal` in `library/std/src/sys/process/unix/unix.rs`,
+    /// as rust-lang/rust's master read on 27 Nov 2026), so its pid, which
+    /// may since be another's, is never killed.
     struct Sleeper(std::process::Child);
 
     impl Drop for Sleeper {
         fn drop(&mut self) {
             // Killed, then reaped whether or not the kill failed, as a
-            // tuple's parts are evaluated in order; one line, so it isn't
-            // the copy of other tests' guards that every-test-function-
-            // lives-once refuses.
+            // tuple's parts are evaluated in order. It's one line, so it
+            // isn't the copy of other tests' guards that the rule
+            // every-test-function-lives-once refuses.
             let _ = (self.0.kill(), self.0.wait());
         }
     }
