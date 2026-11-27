@@ -10,7 +10,6 @@
   "modules/last-seconds/tests/each_sleep_is_heard.rs" = 1;
   "modules/local-sites/tests/serve.rs" = 1;
   "modules/machine/tests/daemon.rs" = 1;
-  "modules/model-relay/tests/relay.rs" = 8;
   "modules/night-shift/tests/away/mod.rs" = 3;
   "modules/night-shift/tests/run.rs" = 2;
   "modules/night-shift/tests/turn.rs" = 3;

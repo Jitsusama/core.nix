@@ -1,6 +1,7 @@
 # model-relay, built from this directory, its tests run as it builds. It
-# takes its shape from the terminal kit (../terminal-kit), so the source is
-# cut from the folder holding both.
+# takes its shape from the terminal kit (../terminal-kit), and its tests
+# time their steps by the test pace (../test-pace), so the source is cut
+# from the folder holding them all.
 {
   lib,
   rustPlatform,
@@ -17,6 +18,8 @@ rustPlatform.buildRustPackage rec {
       ./tests
       ../terminal-kit/Cargo.toml
       ../terminal-kit/src
+      ../test-pace/Cargo.toml
+      ../test-pace/src
     ];
   };
   sourceRoot = "${src.name}/model-relay";

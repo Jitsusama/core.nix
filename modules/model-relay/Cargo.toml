@@ -45,6 +45,8 @@ http-body-util = { version = "0.1", features = ["channel"] }
 # An origin of the tests' own, with a certificate made as they run.
 rcgen = { version = "0.14", default-features = false, features = ["crypto", "pem", "ring"] }
 tempfile = "3"
+# How long a timed step may take on a machine as busy as the one testing.
+test-pace = { path = "../test-pace" }
 # A body's deadline passed in a test's paused time rather than waited out.
 tokio = { version = "1.53", features = [
   "io-util",
