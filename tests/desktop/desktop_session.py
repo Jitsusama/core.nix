@@ -1589,22 +1589,32 @@ def flattened(value: object, at: str = "") -> dict[str, object]:
     return {at.lstrip("."): value}
 
 
+def whole(said: str) -> object:
+    """Give what a read said as JSON, or nothing for one empty or cut short."""
+    try:
+        return json.loads(said)
+    except ValueError:
+        return {}
+
+
 def what_moved(desktop: Desktop, reads: int = 5, apart: float = 0.3) -> str:
     """Say which of the launcher's laid-out words changed over a few reads, for a moving shot.
 
     Each read is the launcher's own laidOut and showing, once each, unlike laid_out, which
     waits for two to agree; a word whose text or place differs between any two reads is one
-    that moved. Showing holds the drawer's facts, which laidOut leaves out.
+    that moved. Showing holds the drawer's facts, which laidOut leaves out. It runs inside a
+    shot's failure, so a read that hangs is cut short and one that isn't whole is passed
+    over: neither may raise in place of the failure it explains.
     """
     seen: list[dict[str, object]] = []
     for n in range(reads):
         read: dict[str, object] = {}
         for call in ("laidOut", "showing"):
             status, said = desktop.machine.execute(
-                desktop.in_session(f"qs ipc call launcher {call}")
+                desktop.in_session(f"timeout 5 qs ipc call launcher {call}"), timeout=15
             )
-            if status == 0 and said.strip():
-                read |= flattened(json.loads(said), call)
+            if status == 0:
+                read |= flattened(whole(said), call)
         if read:
             seen.append(read)
         if n < reads - 1:
