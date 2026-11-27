@@ -31,6 +31,14 @@ list, drawn by `focused.ts` in `rows.ts`'s list; and the stand-ins they share,
 `stand-in.ts` for a feed's socket and `hands.ts` for a clock moved by hand. Node runs them
 as the kit builds.
 
+A list drawn by `keyed.ts` gives focus back to a control in a row's new
+drawing only where it's the same control, so a page marks each control's
+act in its markup as `data-act` where no `href`, or name and value, says
+it; one saying nothing of what it does is known by its words, and loses
+focus to its row when they change. A live log, a `pre` that scrolls and
+takes new words with its record, is marked so too, as `data-act="log"`,
+and keeps focus as it grows.
+
 The kit is typechecked with `noPropertyAccessFromIndexSignature`, so a field
 a record may lack is read as `record["field"]` and only a declared one as
 `record.field`. A site extending its `tsconfig.json` takes the flag too.

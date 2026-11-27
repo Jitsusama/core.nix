@@ -9,13 +9,19 @@ import assert from "node:assert/strict";
 import { test as it } from "node:test";
 import { keyed, type Placed } from "../keyed.ts";
 import { bare, button, inPlace, refocused } from "./focused.ts";
-import { type Act, type Control, cells, draw, List, Row } from "./rows.ts";
+import { type Act, type Cell, type Control, cells, draw, List, Row } from "./rows.ts";
 
 /** What a drawing throws on a record its row can't read. */
 const MISSHAPEN = /isn't the shape/u;
 
 /** A row's acts beside a log that scrolls, which a browser focuses with no tabindex. */
 const LOGGED: Act[] = ["open", { says: "log", kind: "pre", attributes: {}, scrolls: true }];
+
+/** The same log, marked with the page's own act for it, as the kit's README asks. */
+const MARKED: Act[] = [
+  "open",
+  { says: "log", kind: "pre", attributes: { "data-act": "log" }, scrolls: true },
+];
 
 /** Two buttons, which a disabled fieldset disables, as it doesn't a link. */
 const buttons = [button("open", "act", "open"), button("copy", "act", "copy")];
@@ -139,8 +145,30 @@ it("a drawing that throws after marking the focused control for another act hand
 });
 
 it("a drawing that throws before reaching the focused row leaves its focus", () => {
-  const { list, landed } = thrown("a", repointed);
-  assert.equal(landed, list.rows[1]?.children[1]);
+  // Even where a's drawing marks b's control for another act before it
+  // throws: b wasn't drawn, so keyed has no focus in it to give back.
+  const list = new List();
+  const rows = (changed: boolean) =>
+    keyed(list, {
+      rows: cells("a", "b", "c"),
+      key: (cell) => cell.key,
+      draw: (cell, was) => {
+        if (changed && cell.key === "a") {
+          const b = list.rows[1];
+          if (b !== undefined) {
+            repointed(b);
+          }
+          throw new Error("a record isn't the shape its row reads");
+        }
+        return was ?? new Row(cell.works, list.ownerDocument);
+      },
+      moved: changed ? ["a", "b", "c"] : [],
+    });
+  rows(false);
+  const control = list.rows[1]?.children[1];
+  control?.focus();
+  assert.throws(() => rows(true), MISSHAPEN);
+  assert.equal(list.ownerDocument.activeElement, control);
 });
 
 it("a drawing that throws after drawing the focused row anew gives focus back to its control", () => {
@@ -169,13 +197,35 @@ it("a scroller a page lets take focus keeps it in a row drawn again, in place or
   }
 });
 
-it("a row whose tabindex is taken away takes no focus", () => {
-  const list = new List();
-  const row = new Row("on a", list.ownerDocument);
-  list.insertBefore(row, null);
-  row.removeAttribute("tabindex");
-  row.focus();
-  assert.equal(list.ownerDocument.activeElement, null);
+it("a live log keeps focus as its words change only where the page marks its act", () => {
+  // Its words are the record's, so a log they alone tell apart fails safe.
+  const logged = (acts: readonly Act[], fresh: boolean) => {
+    const list = new List();
+    const rows = (told: readonly Cell[]) =>
+      keyed(list, {
+        rows: told,
+        key: (cell) => cell.key,
+        draw: (cell, was) => {
+          if (fresh || was === undefined) {
+            return new Row(cell.works, list.ownerDocument, true, acts);
+          }
+          was.again(cell.works);
+          return was;
+        },
+        moved: ["b"],
+      });
+    rows(cells("a", "b"));
+    list.rows[1]?.children[1]?.focus();
+    rows([...cells("a"), { key: "b", works: "on b, more" }]);
+    return list;
+  };
+  for (const fresh of [false, true]) {
+    const marked = logged(MARKED, fresh);
+    const log = marked.rows[1]?.children[1];
+    assert.equal(marked.ownerDocument.activeElement, log, `marked, fresh ${fresh}`);
+    const plain = logged(LOGGED, fresh);
+    assert.equal(plain.ownerDocument.activeElement, plain.rows[1], `unmarked, fresh ${fresh}`);
+  }
 });
 
 it("a focused control kept where it stands keeps focus, its state changed or not", () => {
@@ -192,12 +242,17 @@ it("a focused control kept where it stands keeps focus, its state changed or not
 it("a focused control that takes no press where it stands hands focus to its row", () => {
   const disabling = (control: Row["children"][number]) => control.setAttribute("disabled", "");
   assert.equal(inPlace(disabling, { acts: buttons }), "row", "a button disabled");
+  const early = { acts: buttons, early: true };
+  assert.equal(inPlace(disabling, early), "row", "disabled between its press and the drawing");
   // A link marked disabled still works in a browser, but fails safe here.
   assert.equal(inPlace(disabling), "row", "marked disabled, even a link");
   const hiding = (style: string) => (control: Row["children"][number]) =>
     control.setAttribute("style", style);
   assert.equal(inPlace(hiding("display: none")), "row", "taken out of the drawing");
   assert.equal(inPlace(hiding("visibility: hidden")), "row", "unseen where it stands");
+  // A scroller the page let take focus takes no press once hidden either.
+  const hidden = inPlace(hiding("display: none"), { acts: LOGGED });
+  assert.equal(hidden, "row", "a scroller taken out of the drawing");
   // A control a page lets take focus only by its tabindex, which goes.
   const pin: Act = { says: "pin", kind: "span", attributes: { tabindex: "0", "data-act": "pin" } };
   const untabbed = inPlace((control) => control.removeAttribute("tabindex"), {
@@ -211,6 +266,15 @@ it("a focused control marked in place for another act hands focus to its row", (
   assert.equal(inPlace(forgetting), "row");
   // A row taking no focus can't take it from the control, so it's let go.
   assert.equal(inPlace(forgetting, { focusable: false }), "none");
+  // Nor can a row whose tabindex the same drawing takes away.
+  const untabbing = (control: Row["children"][number]) => {
+    const row = control.parentElement;
+    if (row instanceof Row) {
+      row.removeAttribute("tabindex");
+    }
+    forgetting(control);
+  };
+  assert.equal(inPlace(untabbing), "none", "its row untabbed");
 });
 
 it("focus on a button a fieldset around the list disables goes to the row", () => {
@@ -226,8 +290,11 @@ it("focus on a button a fieldset around the list disables goes to the row", () =
 
 it("focus in a list made inert is let go, since nothing in it takes focus", () => {
   const holder: Control = { says: "", kind: "div", attributes: {} };
-  const inert = inPlace((_, around) => around?.setAttribute("inert", ""), { around: holder });
-  assert.equal(inert, "none");
+  const making = (_: unknown, around: { setAttribute(name: string, value: string): void } | null) =>
+    around?.setAttribute("inert", "");
+  assert.equal(inPlace(making, { around: holder }), "none");
+  // A scroller the page let take focus is let go too.
+  assert.equal(inPlace(making, { around: holder, acts: LOGGED }), "none", "a scroller");
 });
 
 it("a focused link whose words show the changed record keeps focus by where it goes", () => {

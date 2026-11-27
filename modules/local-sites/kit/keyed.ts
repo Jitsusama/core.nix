@@ -17,7 +17,7 @@
 // drawing, and the records the throwing call moved are the page's to draw
 // again, whole, since keyed keeps no note of them.
 
-import { alike, inside, type Known, knownAs, type Placed, refuses } from "./known.ts";
+import { alike, focusable, inside, type Known, knownAs, type Placed, refuses } from "./known.ts";
 
 /** As much of a drawn row as keyed reads: its key, kept on it. */
 interface Drawn {
@@ -108,11 +108,13 @@ function keyed<Row, Item extends Drawn>(holder: Holder<Item>, drawing: Drawing<R
   // its row is drawn afresh, since a row kept keeps its control.
   const redrawing = focus !== null && (moved === null || moved.has(focus.key));
   const known = redrawing && focused !== null ? knownAs(focused, holder) : null;
-  // A control markup says takes no press but the page let focus, a
-  // scroller say, keeps taking it as long as it stays the control it was.
-  const refused = redrawing && focused !== null && refuses(focused);
+  // A control whose markup lets it take no focus but the page let take
+  // it, a scroller say, may keep it as long as it stays the control it
+  // was; only that is let pass, since one disabled, inert or hidden since
+  // it took focus takes no press, which the drawing reads afresh.
+  const granted = redrawing && focused !== null && !focusable(focused);
 
-  const before = { focused, known, page, holder, redrawing, refused };
+  const before = { focused, known, page, holder, redrawing, granted };
 
   // Every row is drawn first, so nothing is touched if one throws.
   const rows: { key: string; item: Item; old: Item | undefined; fresh: boolean }[] = [];
@@ -241,7 +243,8 @@ function within(
 
 /**
  * Focus before a drawing: what had it, what that was, where focus is kept,
- * the list, and whether its row is drawn again.
+ * the list, whether its row is drawn again, and whether the page let focus
+ * what its markup says takes none.
  */
 interface Before {
   readonly focused: Placed | null;
@@ -249,7 +252,7 @@ interface Before {
   readonly page: { readonly activeElement: Placed | null } | null;
   readonly holder: object;
   readonly redrawing: boolean;
-  readonly refused: boolean;
+  readonly granted: boolean;
 }
 
 /**
@@ -264,18 +267,20 @@ interface Before {
  * it. A control that takes no press, which a browser may still call
  * focused, hands it to the row too, rather than let it fall to the page,
  * or is let go where the row takes none, whether drawn in place or afresh.
- * Only what the drawing made so counts: a page may let more take focus
- * than markup says, so a control that took focus taking no press by its
- * markup, a scroller say, keeps it, as does what has focus in a row the
- * drawing left alone.
+ * Whatever had focus in a row the drawing left alone keeps it. A page may
+ * let more take focus than markup says, so a control that had focus
+ * though its markup lets it take none, a scroller say, keeps it while it
+ * stays the control it was and takes presses: not disabled, inert or
+ * hidden, by the drawing or before it.
  */
 function refocus(
-  { focused, known, page, holder, redrawing, refused }: Before,
+  { focused, known, page, holder, redrawing, granted }: Before,
   path: number[],
   item: object,
 ) {
+  const refused = (on: Placed) => refuses(on) || (!granted && !focusable(on));
   const took = (on: Placed) =>
-    (page === null || page.activeElement === on) && !(redrawing && !refused && refuses(on));
+    (page === null || page.activeElement === on) && !(redrawing && refused(on));
   if (focused !== null && inside(focused, item)) {
     if (known === null || alike(focused, known, holder)) {
       focused.focus?.({ preventScroll: true });
