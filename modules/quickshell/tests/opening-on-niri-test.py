@@ -165,7 +165,8 @@ QUIET = timedelta(seconds=2)
 SETTLED = timedelta(seconds=30)
 
 # The sources whose rows the first chord after a restart may still catch up, since they read
-# what they show late, past home being kept; any other making rows is home found again whole.
+# what they show late, past home being kept; any other making more rows than a later chord, with
+# no change said between the wait and the chord, is home found again whole.
 # No wait settles them, so none waits on them: on a loaded gate's builder that chord made 4, 3
 # and 4 of their rows after the quiet (2026-11-26), and Traffic says no change at all while the
 # launcher is shut, so a wait on each having said one ran out every time (#6890's run,
@@ -755,41 +756,48 @@ def test_a_viewers_command_line_makes_no_rows(shell: Shell) -> None:
 
 
 def test_a_chord_first_after_a_restart_searches_no_more_than_a_later_one(shell: Shell) -> None:
-    """The first chord after a restart, with home kept as the shell started, finds it kept.
+    """The first chord after a restart searches no more than a later one, home kept as it started.
 
     Home kept as the shell started wasn't counted as kept for an opening into a place, so the
     first chord after each switch found home again whole on its way into the place, as no
     later one does. Home found again says no line of its own on a chord into a place ("home
     opened whole" is a home chord's), and makes no rows where its sources haven't changed
-    since warming found it, so the searches each chord runs show it: the first may run no more
-    than a later chord into the same place, opened once home is kept again. Its fill may still
-    catch up what CAUGHT_UP read since home was kept, as the launcher means it to, and what a
-    source said after the wait held still, which any chord makes, so only another source's rows
-    fail it besides: Spend said a change past the wait and made 1 row (z6569, 2026-11-27).
+    since warming found it, so the searches each chord runs show it: the first chord's first
+    try may run no more than a later chord into the same place, opened once home is kept
+    again. Its fill may still catch up what CAUGHT_UP read since home was kept, as the
+    launcher means it to, and what a source said after the wait held still and before the
+    chord, which any chord makes: Spend said a change past the wait and made 1 row (z6569,
+    2026-11-27). Any other source may make no more rows than the later chord made for it.
+    Changes are read before the chord, since the launcher counts a source's answers as
+    changes, and a chord's own search would otherwise excuse the sources it stirred.
     """
     restarted = time.monotonic()
     shell.restart()
     shell.launcher_until(lambda shown: shown.get("kept"))
     settled = answered_since(shell, restarted)
+    unopened = changes_said(shell)
+    changed = {name for name, count in unopened.items() if count != settled.get(name, 0)}
     made, first, tries = opened_into(shell, "windows")
-    since = changes_said(shell)
-    changed = {name for name, count in since.items() if count != settled.get(name, 0)}
     shell.close_launcher()
     shell.launcher_until(lambda shown: not shown["open"] and shown.get("kept"))
-    _, later, _ = opened_into(shell, "windows")
+    made_later, later, _ = opened_into(shell, "windows")
     assert later >= 1, (
         f"a later chord into Windows searched {later} times, so searches can't show home found"
     )
     assert first <= later, (
-        f"first into Windows after a restart searched {first} times, a later chord {later},"
-        f" as home found again would; other sources made rows: {made} (try {tries})"
+        f"first into Windows after a restart searched {first} times on its first try, a later"
+        f" chord {later}, as home found again would; other sources made rows: {made}"
+        f" (try {tries})"
     )
     others = {
-        name: rows for name, rows in made.items() if name not in CAUGHT_UP and name not in changed
+        name: rows
+        for name, rows in made.items()
+        if name not in CAUGHT_UP and name not in changed and rows > made_later.get(name, 0)
     }
     assert not others, (
-        f"into Windows after a restart, other sources made rows: {others} (all: {made}),"
-        f" on try {tries} of its first chord; changed past the wait: {sorted(changed)}"
+        f"into Windows after a restart, other sources made more rows than a later chord:"
+        f" {others} (all: {made}, later: {made_later}), on try {tries} of its first chord;"
+        f" changed between the wait and the chord: {sorted(changed)}"
     )
 
 
