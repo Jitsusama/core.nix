@@ -13,9 +13,9 @@
 //!
 //! Switching zswap off doesn't stop the pool being written out, in two
 //! ways. Under reclaim, which the image's own allocation may start, its
-//! shrinker writes back when `zswap.shrinker_enabled` is on; modules/memory
-//! leaves it off, as the kernel's default does, but `memory-zswap-shrinker@y`
-//! turns it on for as long as the machine runs. And a trim of a full pool
+//! shrinker writes back while `zswap.shrinker_enabled` is on, which
+//! modules/memory sets and the kernel's default leaves off, until
+//! `memory-zswap-shrinker@n` turns it off or the machine boots. And a trim of a full pool
 //! queued just before zswap went off may still run after. Both reach even the
 //! slices that set `MemoryZSwapWriteback = false` (modules/slices says why
 //! they do): 7.3's mm/zswap.c asks mm/memcontrol.c whether a group may write
@@ -37,9 +37,8 @@
 //! reckons. A page written after it stays in the image whole, where `fits`
 //! counted its entry compressed, so such writing could make the image larger
 //! than `fits` reckons, by at most what the pool holds uncompressed less what
-//! it takes. With the shrinker off, only a trim queued before zswap went off
-//! can do that. That is read from the source; no hibernation has been
-//! watched with either writing back.
+//! it takes. That is read from the source; no hibernation has been watched
+//! with either writing back.
 
 use std::fs;
 use std::io::{self, ErrorKind};

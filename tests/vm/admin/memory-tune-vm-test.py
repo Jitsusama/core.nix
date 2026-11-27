@@ -140,15 +140,15 @@ def test_an_administrator_turns_defrag_mode_on_and_off_without_a_password(
         assert read(reverted, DEFRAG) == mode, f"defrag_mode wasn't set to {mode}"
 
 
-def test_the_machine_boots_with_zswaps_shrinker_off(reverted: BaseMachine) -> None:
+def test_the_machine_boots_with_zswaps_shrinker_on(reverted: BaseMachine) -> None:
     shrinker = read(reverted, ZSWAP_SHRINKER)
-    assert shrinker == "N", f"booted with zswap's shrinker at {shrinker}"
+    assert shrinker == "Y", f"booted with zswap's shrinker at {shrinker}"
 
 
 def test_an_administrator_turns_zswaps_shrinker_on_and_off_without_a_password(
     reverted: BaseMachine,
 ) -> None:
-    for given, said_back in (("y", "Y"), ("n", "N")):
+    for given, said_back in (("n", "N"), ("y", "Y")):
         status, said = start(reverted, "someone", f"memory-zswap-shrinker@{given}")
         assert status == 0, said
         shrinker = read(reverted, ZSWAP_SHRINKER)
@@ -179,6 +179,7 @@ def test_a_defrag_mode_the_rules_dont_list_needs_a_password(reverted: BaseMachin
 def test_a_zswap_shrinker_value_the_rules_dont_list_needs_a_password(
     reverted: BaseMachine,
 ) -> None:
+    # It boots on, so a 0 written through would read back changed, as N.
     before = read(reverted, ZSWAP_SHRINKER)
     status, said = start(reverted, "someone", "memory-zswap-shrinker@0")
     assert status != 0, said

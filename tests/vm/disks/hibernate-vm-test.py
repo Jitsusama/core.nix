@@ -224,10 +224,9 @@ def test_what_is_swapped_out_for_the_image_goes_to_the_swap_file(swapping: QemuM
     300 MiB of random bytes is more than the image's cap of about 213 MiB beside the reserve, so
     they have to reach the swap file. Swapped to zram, which kept them in memory, they stayed in
     the image and it rolled back 58,596 pages short. zswap's pool keeps what it stores in memory
-    too, as it is when it doesn't compress, until its shrinker or a full pool writes it out, so
-    with zswap on it rolled back 28,090 pages short in one run of three. The counter of what zswap
-    stored comes back in the image, which is made after the room for it, so it shows nothing went
-    to the pool.
+    too, as it is when it doesn't compress, until its shrinker writes it out, so with zswap on
+    it rolled back 28,090 pages short in one run of three. The counter of what zswap stored comes
+    back in the image, which is made after the room for it, so it shows nothing went to the pool.
     """
     swapping.succeed(
         "mkdir -p /run/unpacked",

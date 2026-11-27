@@ -43,22 +43,24 @@ in
   # with swap free (39 GiB of 126 in use on average, 106 at the worst) and
   # zram's pages holding 13 to 16 GB of memory beside the slices' floors,
   # so reclaim gave up with 13 GB of file cache unreclaimed. The pool can't
-  # grow past its fifth, and once full it writes back its coldest pages
-  # until it's down to nine tenths of that, where zram, full, sent the
-  # newest instead. Its shrinker stays off: it writes back the coldest
-  # pages long before then, in every group reclaim reaches, kswapd's
+  # grow past its fifth, and its shrinker writes back the coldest pages as
+  # memory runs short, which zram, full, did with the newest instead.
+  #
+  # The shrinker writes back in every group reclaim reaches, kswapd's
   # included, however small the pool is (zswap_shrinker_count in Linux
-  # 7.3's mm/zswap.c). On 27 November, with it on, every page agents swapped
-  # to disk was its writing back, 8,703 of 8,703 in 30 s, with the pool at
-  # 1.7 GB of its 12.8 and 25 GB of memory available, while agents' tasks
-  # stalled on the disk 9.4% of each minute and read about 1.3 MB/s of
-  # swap back, 4 KiB at a time, and no group wrote 1 MB/s. A switch
-  # turns it off too (the rules below), since a boot is Joel's to time.
+  # 7.3's mm/zswap.c). On 27 November every page agents swapped to disk was
+  # its writing back, 8,703 of 8,703 in 30 s, with the pool at 1.7 GB of its
+  # 12.8 and 25 GB of memory available, while agents' tasks stalled on the
+  # disk 9.4% of each minute. It stays on all the same: off, a group at its
+  # MemoryHigh can't write out its own share of the pool, which is charged
+  # to it, a pool that fills turns every page away until it's down to nine
+  # tenths, and a machine that hibernates counts all of it as in use. Which
+  # weighs more is measured with `memory-zswap-shrinker@n` (below).
   boot.kernelParams = [
     "zswap.enabled=1"
     "zswap.compressor=zstd"
     "zswap.max_pool_percent=20"
-    "zswap.shrinker_enabled=0"
+    "zswap.shrinker_enabled=1"
   ];
 
   boot.kernel.sysctl = {
@@ -161,13 +163,9 @@ in
   # a second and apps' memory fully stalled 0.75% of the time, up to 4.4%,
   # with seven missed turns of sound. Only those asked for took none of
   # the first, 9 stalls a second, and 0.04%, up to 0.54%, with none missed.
-  #
-  # Turn zswap's shrinker off on a running kernel too, for the reason by the
-  # pool above.
   systemd.tmpfiles.rules = [
     "w /sys/kernel/mm/lru_gen/min_ttl_ms - - - - 0"
     "w ${hugepages} - - - - madvise"
-    "w ${zswapShrinker} - - - - N"
   ];
 
   # The machine's administrators, agents included since they work as Joel's
@@ -199,18 +197,19 @@ in
   # for it right after boot, since memory already fragmented recovers
   # slowly, so a trial turned on mid-run pays its cost at once and reads its
   # gain over hours. So could whether zswap's shrinker writes the pool's
-  # coldest pages to disk before the pool is full, which is off for the
-  # reason by the pool above and put back on with `memory-zswap-shrinker@y`
-  # should memory run short. Each unit writes its instance and only a value the rules list:
+  # coldest pages to disk before the pool is full, which is on for the
+  # reasons by the pool above, and which a trial turns off with
+  # `memory-zswap-shrinker@n` and back on with `@y`. Each unit writes its
+  # instance and only a value the rules list:
   # `systemctl start memory-watermarks@100`, `memory-hugepages@madvise`,
   # `memory-lru-gen@n`, `memory-swappiness@100`, `memory-page-cluster@3`
   # (2^3 pages at most), `memory-compaction@40`, `memory-min-free@131072`
-  # (in KiB), `memory-defrag-mode@1` or `memory-zswap-shrinker@y`. The most
-  # one can do is make reclaim
-  # worse until it's put back, never reach another setting. A
-  # switch that changes the sysctls writes them back; otherwise start the
-  # unit again with the value this file sets. At boot huge pages and the
-  # shrinker return to this file's choice, and the LRU to the kernel's own.
+  # (in KiB), `memory-defrag-mode@1` or `memory-zswap-shrinker@n`. The most
+  # one can do is make reclaim worse until it's put back, never reach
+  # another setting. A switch that changes the sysctls writes them back,
+  # and every switch writes huge pages back; otherwise start the unit again
+  # with the value this file sets. At boot huge pages and the shrinker
+  # return to this file's choice, and the LRU to the kernel's own.
   security.polkit.enable = true;
   security.polkit.extraConfig = builtins.readFile ./memory-tune.rules;
   systemd.services."memory-watermarks@" = tune "watermark spacing" space;

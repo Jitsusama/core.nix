@@ -564,10 +564,9 @@ in
     # freed, since zswap writes back only what the rest swapped, and a full
     # pool takes nothing until it falls to the kernel's default nine tenths
     # of its cap. With zswap off, as hibernation turns it for the image, the
-    # setting no longer holds: they swap to disk like the rest, and a trim of
-    # a full pool queued before zswap went off, or its shrinker when turned
-    # on (modules/memory leaves it off), may write out what the pool holds
-    # of theirs, which stays on the disk until it's read. The kernel reads the setting up the tree, so
+    # setting no longer holds: they swap to disk like the rest, and zswap's
+    # shrinker may write out what the pool holds of theirs, which stays on
+    # the disk until it's read. The kernel reads the setting up the tree, so
     # it holds for every program's scope inside, whatever jobs-sorter gives
     # back to a window's own.
     systemd.user.slices.session.sliceConfig = {
