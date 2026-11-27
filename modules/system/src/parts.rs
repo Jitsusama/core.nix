@@ -28,6 +28,23 @@ const SIDE_ITEMS: usize = 3;
 /// them, so no name is ever cut.
 const LINKS_NAMED: usize = 2;
 
+/// What a builder or a machine is said as when nothing of its name is left
+/// once plain: a thing that can't be named still has to be seen, and one
+/// that isn't answering most of all, so it is kept under this word rather
+/// than dropped. One word for both, so the reader learns it once.
+const UNNAMED: &str = "unnamed";
+
+/// The name the node gave a builder or a machine, made plain as any text
+/// the system shows is (`plain::words`), or `UNNAMED` where nothing of it
+/// is left: none given, one that isn't a string, or one only of what hides.
+fn plain_name(said: &Value) -> String {
+    let name = said.get("name").and_then(Value::as_str).unwrap_or_default();
+    match crate::plain::words(name) {
+        name if name.is_empty() => UNNAMED.to_owned(),
+        name => name,
+    }
+}
+
 /// The mycelium, from `mycelium health`: its links, its sessions, and the
 /// presences left behind by sessions whose process has gone, which it
 /// holds rather than judges.

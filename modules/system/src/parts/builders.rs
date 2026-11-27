@@ -17,6 +17,7 @@
 
 use serde_json::Value;
 
+use super::plain_name;
 use crate::record::{Health, Look, Thing};
 
 /// The most of a node's reason a builder's line carries, in characters:
@@ -35,11 +36,13 @@ const PROOFS: [&str; 6] = ["none", "unproven", "passing", "failing", "dropped", 
 /// read them, since the node then writes no builders' line at all. Two
 /// builders whose names are drawn alike are one to the reader and one
 /// record, so only the worse is kept: a fine one never hides a failing one.
+/// Builders without a name are all said unnamed, so they too are one,
+/// said at its worst.
 pub fn builders(said: &Value) -> Vec<(Thing, Vec<String>)> {
     let mut read: Vec<(Thing, Vec<String>)> = said
         .pointer("/Ok/Builders")
         .and_then(Value::as_array)
-        .map(|all| all.iter().filter_map(builder).collect())
+        .map(|all| all.iter().map(builder).collect())
         .unwrap_or_default();
     read.sort_by(|(a, _), (b, _)| b.health.cmp(&a.health).then_with(|| a.name.cmp(&b.name)));
     let mut named = std::collections::HashSet::new();
@@ -48,7 +51,8 @@ pub fn builders(said: &Value) -> Vec<(Thing, Vec<String>)> {
 }
 
 /// One builder: how it stands, and what in that is worth a look, as a
-/// side says it; none for a builder without a name.
+/// side says it. One without a name is kept and said unnamed, since one
+/// that can't be named may still be one that isn't answering.
 ///
 /// Only a builder that should take builds and can't is worth a look: one
 /// that didn't answer, or a lent one whose lender says its proofs left it
@@ -62,11 +66,8 @@ pub fn builders(said: &Value) -> Vec<(Thing, Vec<String>)> {
 /// reason whole, since what to do about a builder is in it. Its name is
 /// made plain as any text the system shows, and a state or lender's word is
 /// matched once plain, so padding never turns a known word into a look.
-fn builder(said: &Value) -> Option<(Thing, Vec<String>)> {
-    let name = crate::plain::words(said.get("name").and_then(Value::as_str)?);
-    if name.is_empty() {
-        return None;
-    }
+fn builder(said: &Value) -> (Thing, Vec<String>) {
+    let name = plain_name(said);
     let word = |key: &str| said.get(key).and_then(Value::as_str);
     // A word as it reads, its hidden characters and padding gone.
     let drawn = |word: &str| crate::plain::words(word).trim().to_owned();
@@ -135,7 +136,7 @@ fn builder(said: &Value) -> Option<(Thing, Vec<String>)> {
         address: None,
         ties: Value::Null,
     };
-    Some((thing, looks))
+    (thing, looks)
 }
 
 /// Why a builder's look matters: each is a builder the machines can't send

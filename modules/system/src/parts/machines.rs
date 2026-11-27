@@ -12,7 +12,7 @@ use serde_json::Value;
 
 use super::builders::builders;
 use super::ties::ties;
-use super::{Answer, and, count, side_of, unread};
+use super::{Answer, and, count, plain_name, side_of, unread};
 use crate::record::{Deeper, Health, Look, Part, Thing};
 use crate::words::grouped;
 
@@ -194,6 +194,8 @@ pub fn machines(
     }
 }
 
+/// A machine's name as the node wrote it, which its sessions are keyed by;
+/// the name it is shown under is `plain_name`'s.
 fn name_of(said: &Value) -> &str {
     said.get("name").and_then(Value::as_str).unwrap_or("")
 }
@@ -243,7 +245,9 @@ impl Said {
 
 /// One machine: what its node says of it, then its sessions, each said
 /// only when it's worth saying, with the words of what is worth a look in
-/// it, its worst first.
+/// it, its worst first. Its name is made plain as a builder's is, and said
+/// unnamed where nothing of it is left, so the node's text never reaches
+/// the page unplain and a machine that can't be named is still seen.
 fn machine(
     said: &Value,
     sessions: Option<&Value>,
@@ -273,7 +277,7 @@ fn machine(
     }
     let thing = Thing {
         kind: "machine",
-        name: name_of(said).to_owned(),
+        name: plain_name(said),
         health,
         says: line.join(", "),
         side,
