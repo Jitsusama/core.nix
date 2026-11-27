@@ -838,6 +838,16 @@ impl Way {
             .is_some_and(|dropped| at - dropped < self.dropped_stands_s)
     }
 
+    /// How long a hold found by drops stands in all, and how much of it is
+    /// left at `at`, in seconds, while it stands (drops stand said #7237).
+    fn dropped_stand(&self, at: f64) -> Option<(f64, f64)> {
+        let dropped = self.dropped_at.filter(|_| self.dropped_stands(at))?;
+        Some((
+            self.dropped_stands_s,
+            self.dropped_stands_s - (at - dropped),
+        ))
+    }
+
     /// Takes the guard's return to the anchor's hold at `at`: the drops
     /// are counted afresh from it, and one from a quiet hold found by
     /// drops is judged over `DROPS_AGAIN_S` (`QUIET_STAND`), while one
@@ -2311,6 +2321,15 @@ impl Controller {
                     eased: self.guard.eased(up.last_cut),
                 }
             };
+        }
+        // While a hold the router's drops found stands, the guard leaves it
+        // be, as only an anchored network's guard would judge it: that, not
+        // the plateau it holds under or a probe past it, holds the upload
+        // (drops stand said #7237).
+        if let Some((stands_s, left_s)) = up.dropped_stand(at)
+            && up.line().is_some()
+        {
+            return Why::Dropped { stands_s, left_s };
         }
         let at_the_hold = up
             .line()
@@ -6374,6 +6393,143 @@ mod tests {
                 up.returned_at.is_some()
             );
         }
+    }
+
+    /// Steps `c` on from where it last stepped until `to`, its CAKE holding
+    /// a queue the link carries whole, with nothing waiting past it, so a
+    /// router past it drops none of it, no probe looks for room past the
+    /// hold, and the VPN's own queue is never held: a stand it holds is
+    /// heard, as only a moment with something queued is, and quiet (drops
+    /// stand longer round 5's F2). The link carries what it is held to.
+    fn carried_whole(c: &mut Controller, to: f64) {
+        let mut at = c.last_at.map_or(0.0, |last| last + 0.1);
+        while at < to {
+            let rate = c.up.limit().map_or(12_000.0, crate::rate::float);
+            c.step(&Seen {
+                at_s: at,
+                up_kbit: rate.min(12_000.0),
+                up_ours: Some(Ours {
+                    queued: true,
+                    ..Ours::default()
+                }),
+                ..quiet(0.0, 300.0)(at)
+            });
+            at += 0.1;
+        }
+    }
+
+    // Stepped through, a stand that lapses with the upload at the line's
+    // hold, over the guard's share, is forgotten as it lapses, so the
+    // guard's later return from a hold of another kind isn't judged as one
+    // from the stand; one that lapses held low is. Both stands are heard
+    // and quiet, since one left unheard is judged afresh either way, which
+    // would hide the guard's forgetting (drops stand said #7237).
+    #[test]
+    fn the_guard_forgets_a_stand_that_lapses_at_its_share() {
+        let anchor = 12_000.0;
+        for (raised, judged) in [(true, false), (false, true)] {
+            let mut c = anchored(anchor);
+            let finding = DROPS_LOOK_S * DROPS_SHARE + 30.0;
+            dropped_under(&mut c, finding, (false, 0.0), |_| 6_000.0);
+            let found = c.up.dropped_at.expect("never found by drops");
+            if raised {
+                // Back at the line's hold while it stands, as a start puts it.
+                c.up.hold_at(found, anchor * ANCHOR_HOLD);
+            }
+            let lapses = found + c.up.dropped_stands_s;
+            carried_whole(&mut c, lapses - 1.0);
+            assert_eq!(
+                c.why_kind(),
+                "dropped",
+                "raised {raised}: a standing hold went unsaid: {}",
+                c.why()
+            );
+            let after = lapses + 5.0;
+            carried_whole(&mut c, after);
+            assert_ne!(
+                c.why_kind(),
+                "dropped",
+                "raised {raised}: a lapsed stand was still said: {}",
+                c.why()
+            );
+            assert!(
+                c.up.heard_s >= DROPS_LOOK_S - 0.2 && c.up.dropped_s < 1e-9,
+                "raised {raised}: the stand wasn't heard and quiet, so this shows nothing"
+            );
+            assert_eq!(
+                c.guarded, 0,
+                "raised {raised}: returned before it was held low"
+            );
+            if raised {
+                // Held low again by a hold of another kind, a plateau of its
+                // own under the guard's share, but over half what the stand
+                // proved the line carries, so the guard, not the way's own
+                // return to its connection, sends it back.
+                c.up.plateau = None;
+                c.up.hold_at(after, anchor * ANCHOR_LOW * 0.75);
+            }
+            carried_whole(&mut c, after + ANCHOR_LOW_S + 10.0);
+            assert_eq!(c.guarded, 1, "raised {raised}: the guard didn't return it");
+            assert_eq!(
+                c.up.returned_at.is_some(),
+                judged,
+                "raised {raised}: the return was judged as from the stand: {}",
+                c.up.returned_at.is_some()
+            );
+        }
+    }
+
+    // A stand found again on a return is named at twice its first length,
+    // with what is left of it, over the plateau it holds under, and only
+    // on an anchored network, whose guard it holds off; a cut is named
+    // ahead of it (drops stand said #7237).
+    #[test]
+    fn a_doubled_drops_stand_is_the_reason_while_it_stands() {
+        let mut c = anchored(6_000.0);
+        c.up.found_by_drops(0.0);
+        // Heard quiet through its look, so the return is judged quiet.
+        let look = (
+            DROPPED_STANDS_S - DROPS_LOOK_S + 1.0,
+            DROPPED_STANDS_S + 1.0,
+        );
+        heard_for(&mut c.up, look, 0.0);
+        c.up.returned(DROPPED_STANDS_S);
+        let found = DROPPED_STANDS_S + 10.0;
+        c.up.found_by_drops(found);
+        let stands_s = 2.0 * DROPPED_STANDS_S;
+        assert!(
+            (c.up.dropped_stands_s - stands_s).abs() < 1e-9,
+            "found again on a quiet return, it stands {} s",
+            c.up.dropped_stands_s
+        );
+        let heard = (Some(0.0), false);
+        let at = found + 100.0;
+        assert_eq!(
+            c.reason(at, false, 0.0, heard),
+            Why::Dropped {
+                stands_s,
+                left_s: stands_s - 100.0
+            },
+            "a doubled stand wasn't named with what is left of it"
+        );
+        let lapsed = found + stands_s + 1.0;
+        assert_eq!(
+            c.reason(lapsed, false, 0.0, heard),
+            Why::Router { plateau: 6_000.0 },
+            "a lapsed stand was still named"
+        );
+        c.up.last_cut = at - 1.0;
+        assert!(
+            matches!(c.reason(at, false, 0.0, heard), Why::Line { .. }),
+            "a cut a second ago wasn't named ahead of the stand"
+        );
+        c.up.last_cut = f64::NEG_INFINITY;
+        c.anchor(None);
+        assert_eq!(
+            c.reason(at, false, 0.0, heard),
+            Why::Router { plateau: 6_000.0 },
+            "a stand no guard judges was named on an unanchored network"
+        );
     }
 
     // Drops that don't follow the rate, as weak air's, go on under any

@@ -50,6 +50,11 @@ pub enum Why {
     /// Held under what got through a router that queues flow by flow, in
     /// kbit/s, where only data waiting shows its queue.
     Router { plateau: f64 },
+    /// Held under what got through a router that dropped what was sent past
+    /// its line, which the guard leaves be while the hold its drops found
+    /// stands: `stands_s` in all, doubled each time a return found them
+    /// again, with `left_s` of it left (drops stand said #7237).
+    Dropped { stands_s: f64, left_s: f64 },
     /// Sent back to the anchor's hold, after a minute under the guard's
     /// share of it with no cut that drained a queue.
     Guarded,
@@ -81,6 +86,7 @@ impl Why {
             Why::Tunnel { .. } => "tunnel",
             Why::Agents { .. } => "agents",
             Why::Router { .. } => "router",
+            Why::Dropped { .. } => "dropped",
             Why::Guarded => "guarded",
             Why::Ceiling => "ceiling",
         }
@@ -164,6 +170,12 @@ pub fn say(why: Why, limit: Option<u64>, anchor: Option<f64>, for_s: f64) -> Str
         Why::Router { plateau } => format!(
             "Upload {rate}: held under the router's own queue, which let {} through; {held}.",
             mbit(plateau)
+        ),
+        Why::Dropped { stands_s, left_s } => format!(
+            "Upload {rate}: a router past ours dropped what was sent over its line, so the hold \
+             its drops found stands {} more of {}; {held}.",
+            plural(left_s),
+            plural(stands_s)
         ),
         Why::Guarded => format!(
             "Upload {rate}: back to the line's hold after a minute under {} with no cut that \
@@ -462,6 +474,13 @@ mod tests {
                 "agents",
             ),
             (Why::Router { plateau: 1.0 }, "router"),
+            (
+                Why::Dropped {
+                    stands_s: 1.0,
+                    left_s: 1.0,
+                },
+                "dropped",
+            ),
             (Why::Guarded, "guarded"),
             (Why::Ceiling, "ceiling"),
         ];
@@ -515,6 +534,27 @@ mod tests {
             ),
             "Upload 7.4 Mb/s: held under the router's own queue, which let 9.6 Mb/s through; \
              held so for 30 s."
+        );
+    }
+
+    // A stand found again on a return is twice its first, so how long it
+    // stands in all is said beside what is left of it (drops stand said
+    // #7237).
+    #[test]
+    fn a_drops_stand_says_how_long_it_stands_and_how_much_is_left() {
+        assert_eq!(
+            say(
+                Why::Dropped {
+                    stands_s: 1_200.0,
+                    left_s: 900.0
+                },
+                Some(5_700),
+                Some(12_000.0),
+                300.0
+            ),
+            "Upload 5.7 Mb/s: a router past ours dropped what was sent over its line, so the \
+             hold its drops found stands 15 min more of 20 min; held so for 5 min.",
+            "a doubled drops stand said otherwise"
         );
     }
 

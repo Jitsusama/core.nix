@@ -80,7 +80,9 @@ pub struct Line {
     /// the shares the VPN's own queue and agents' lane were held to on the
     /// link, as main put them there, down to a hundredth, while under one:
     /// holds that leave the upload's rate as it was, and that the journal
-    /// says only as they begin or end. A line with a `why` was written by a
+    /// says only as they begin or end. A hold the router's drops found reads
+    /// `dropped` while it stands and the guard leaves it be, `router` once
+    /// it lapses (drops stand said #7237). A line with a `why` was written by a
     /// shaper whose `link_wait_ms` leaves agents' lane out (src/oneway.rs);
     /// a replay says how many seconds it fed from lines without one
     /// (`counting_agents`).
