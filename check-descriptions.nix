@@ -4459,9 +4459,11 @@
   subject-hubs-reads-hubs-and-keeps-needs = ''
     the hubs a mycelium node lists are read from the line with the list's id, one or several a
     subject, none from a node that holds no hubs and an error from any other refusal, a record
-    that can't be read or a subject that isn't a plain name left out; the narrowest subject
-    whose every word is said, of a live hub, takes a thing first; and each need put to a hub is
-    kept once in its UTC day's file of the mesh's needs, in the shape the harness keeps its own
+    that can't be read or a subject that isn't a plain name left out; a need's words are read
+    as the harness's wordsOf reads them, over its own cases, common words left out and joined
+    ids kept whole; the narrowest subject whose every word is said, as the harness judges a word
+    said, of a live hub, takes a thing first; and each need put to a hub is kept once in its UTC
+    day's file of the mesh's needs, in the shape the harness keeps its own
   '';
   subtests-read-no-word-as-an-option = ''
     the build of a VM test's subtests hands run-subtests the check and its words past --, in

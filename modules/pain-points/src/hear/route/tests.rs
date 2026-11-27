@@ -139,7 +139,7 @@ fn a_pains_subject_is_its_sessions_purpose_else_his_words() {
     };
     assert_eq!(
         said("s-ended", "no, wrong", false),
-        ["the", "launcher", "width"],
+        ["launcher", "width"],
         "an ended session's pain didn't go by what it worked on"
     );
     for (session, void, why) in [
@@ -150,7 +150,7 @@ fn a_pains_subject_is_its_sessions_purpose_else_his_words() {
     ] {
         assert_eq!(
             said(session, "why is the dock slow", void),
-            ["why", "the", "dock", "slow"],
+            ["dock", "slow"],
             "{why} pain didn't go by his words"
         );
     }
@@ -162,7 +162,7 @@ fn a_pains_subject_is_its_sessions_purpose_else_his_words() {
     };
     assert_eq!(
         stall(stalled::PROVIDER_FAILING),
-        ["the", "provider", "failing"],
+        ["provider", "failing"],
         "the provider failing him named no subject"
     );
     assert!(

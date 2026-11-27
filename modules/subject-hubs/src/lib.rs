@@ -8,7 +8,8 @@
 //!
 //! The node names a hub for each subject a cell declares (`list hub`). What
 //! a sender has, a finding's key or his words, takes in a subject when it
-//! holds every word of it, and the subject of most words is the narrowest,
+//! says every word of it, read and judged by one rule with the harness's
+//! routing (`reading.rs`), and the subject of most words is the narrowest,
 //! so `crashes:chrome` takes a chrome crash before `crashes` does. Which of
 //! a hub's holders gets it is each sender's to choose, as each counts what
 //! its holders hold its own way.
@@ -24,6 +25,10 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
+
+mod reading;
+
+pub use reading::words;
 
 /// A subject's hub, as the node names it: the cells it names as holding
 /// the subject, best first.
@@ -94,24 +99,6 @@ impl Need {
             cells,
         }
     }
-}
-
-/// The words a subject, a key or his words give: their parts split at
-/// anything but a letter or digit, lower case, of three letters or more,
-/// each once, as the harness reads a need's words.
-#[must_use]
-pub fn words(said: &str) -> Vec<String> {
-    let mut words: Vec<String> = Vec::new();
-    for word in said
-        .split(|c: char| !c.is_ascii_alphanumeric())
-        .filter(|w| w.len() >= 3)
-        .map(str::to_ascii_lowercase)
-    {
-        if !words.contains(&word) {
-            words.push(word);
-        }
-    }
-    words
 }
 
 /// Whether `said` is a plain name, of letters, digits and `:./_-`, and
@@ -302,21 +289,23 @@ pub fn socket(runtime: &Path, state_home: &Path, realm: Option<String>) -> Optio
     plain.then(|| runtime.join("mycelium").join(format!("{realm}.sock")))
 }
 
-/// The hubs whose subject `said` takes in, every word of it, whose hub
-/// cell is `live`, each with its subject's words: the subject of most
-/// words first, then the order the node names them in.
+/// The hubs whose subject `said` takes in, saying every word of it as the
+/// harness judges a word said (`reading::says`), whose hub cell is `live`,
+/// each with its subject's words: the subject of most words first, then
+/// the order the node names them in.
 #[must_use]
 pub fn taking<'a>(
     said: &[String],
     hubs: &'a [Hub],
     live: &impl Fn(&str) -> bool,
 ) -> Vec<(&'a Hub, Vec<String>)> {
+    let said = reading::routed(said);
     let mut matched: Vec<(&Hub, Vec<String>)> = hubs
         .iter()
         .filter(|h| live(&h.cell))
         .filter_map(|h| {
-            let subject = words(&h.subject);
-            let all = !subject.is_empty() && subject.iter().all(|w| said.contains(w));
+            let subject = reading::subject_words(&h.subject);
+            let all = !subject.is_empty() && subject.iter().all(|w| reading::says(w, &said));
             all.then_some((h, subject))
         })
         .collect();
