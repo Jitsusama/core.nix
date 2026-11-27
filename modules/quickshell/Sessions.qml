@@ -2672,7 +2672,7 @@ Singleton {
     signal unhosted(var session, string why)
     // A window Go To opens goes where the session would reopen (goesTo),
     // never on whichever workspace Joel is on. Whether it went: false only
-    // where it told why it couldn't (unhosted but for "opening" and
+    // where it told why it couldn't (unhosted but for "opening", "stillComing" and
     // "unowned", unjoined, unopened), which its caller says where Joel is, since one asked from
     // a link with the launcher shut was otherwise told to nobody (KP0L6A,
     // 2026-11-24 [00902e94]). A window raised, opened or still coming went.
@@ -4070,6 +4070,10 @@ Singleton {
     // told within comingPatience is given back, as viewerCame tells one:
     // one long past would meet Joel's next open of the launcher, whatever
     // he opens it for (tellOnOpen), and an ask no press held has none.
+    // A refusal kept on the same give-up (refusedUntaken) goes with it:
+    // the kitty that may have drawn the refused window under a pid read
+    // wrong is gone, its windows with it, so one still listed is another
+    // program's, and kept, a press would open nothing for answerPatience.
     function stillLostTo(pid) {
         const now = Date.now();
         const gone = Object.keys(stillSaid).filter(named =>
@@ -4077,8 +4081,11 @@ Singleton {
         const lost = gone.filter(named => (stillSaid[named].said ?? null) !== null
                 && now - stillSaid[named].at < comingPatience)
             .map(named => ({ named, said: stillSaid[named].said }));
-        for (const named of gone)
+        for (const named of gone) {
             forgetStill(named);
+            if (named in refusalKeptAt)
+                forgetRefusal(named);
+        }
         return lost;
     }
     // Each press stillLostTo let go is told its viewer was asked for again
@@ -4397,6 +4404,18 @@ Singleton {
             // keeps its place too, said to no one.
             if (pressed ? disowned(named, session) : refusedOwn(named)) {
                 console.info(`sessions: ${id} not woken, its own refused`);
+                return;
+            }
+            // Nor while the kitty that didn't answer for it may yet draw it
+            // (stillHeld), keeping where it slept too: let go, nothing would
+            // open it there once the hold lapses. Joel's press is told it may
+            // yet come (heldBack).
+            if (stillHeld(named)) {
+                if (pressed)
+                    heldBack(session.address, named, session);
+                else
+                    console.info(`sessions: ${id} not woken, as the kitty that didn't answer `
+                        + "for it may yet draw it");
                 return;
             }
             if (keptPlaces[id] !== undefined) {
