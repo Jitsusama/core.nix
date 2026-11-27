@@ -71,9 +71,7 @@ let handed = Number.NEGATIVE_INFINITY;
 let waiting: number | undefined;
 let owed = false;
 let expires: number | undefined;
-// When the map was first drawn with its messages yet to answer, on the
-// page's own clock, which the patience timer keeps too: a wall clock set
-// back while the map waits would leave the words reading for good.
+// When the map was first drawn with its messages yet to answer, on its timer's clock.
 let readingSince: number | undefined;
 // What the standing line last said, so a line the drawing wrote since is told apart.
 let saidLast: string | undefined;
@@ -161,9 +159,7 @@ function handOver(): void {
   owed = false;
   handed = Date.now();
   const now = nowOf(heard, handed);
-  // A line the drawing wrote of a reading it couldn't draw is for that
-  // reading alone. The drawing takes each reading as it is handed, so one
-  // that fails again says so again, and one that draws leaves the standing.
+  // A line the drawing wrote of a reading it couldn't draw is that reading's alone.
   if (saidLast !== undefined && asof.textContent !== saidLast) {
     sayHow();
   }
