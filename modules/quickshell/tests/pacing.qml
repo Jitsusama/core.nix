@@ -776,6 +776,22 @@ QtObject {
             names(Pacing.frameSwapped(Pacing.frameBegun(swapped.acts)).shown), "wifi");
     }
 
+    // Keys refreshed into one frame are all shown by it, the newest last,
+    // since Launcher.qml's keyDrawn says a frame by its newest key: two of
+    // the launcher's own arrows held in one frame still say the arrow
+    // pressed last, whole, as nobody wrote it (#6934's round).
+    function framingKeys(failures) {
+        const down = { text: "\u2193", own: true };
+        const up = { text: "\u2191", own: true };
+        const refreshed = Pacing.refreshedActs(Pacing.unframed(), [down, up]);
+        const shown = Pacing.frameSwapped(Pacing.frameBegun(refreshed)).shown;
+        check(failures, "one frame shows both keys refreshed into it",
+            shown.map(key => key.text).join(" "), "\u2193 \u2191");
+        const newest = shown[shown.length - 1];
+        check(failures, "and the newest, said by its frame, says its arrow whole",
+            Presented.timedShown(newest.text, "", newest.own), '"\u2191"');
+    }
+
     // A daemon's changes are timed from the first line the draw shows,
     // and said a place a line as the launcher closes (Y2YBTS, 2026-11-11).
     function presenting(failures) {
@@ -1950,6 +1966,7 @@ QtObject {
 
         costing(failures);
         framing(failures);
+        framingKeys(failures);
         presenting(failures);
         wanting(failures);
         waking(failures);
