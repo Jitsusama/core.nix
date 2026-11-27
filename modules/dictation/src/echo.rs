@@ -80,10 +80,12 @@ const QUIETER: f32 = 12.0;
 /// know his voice's level: with fewer, a word is cut for its level
 /// against theirs alone, as where he says little his side is mostly their
 /// echo. Until then, his words over theirs through a quiet microphone may
-/// be cut too. A call still being written is cut again whole once his
-/// voice is known, which brings them back, but lines read back after a
-/// restart stay as they were written, and the journal says when each cut
-/// was.
+/// be cut too. A call still being written is cut again whole with each
+/// take, so a word's verdict can go either way as more of his words are
+/// heard alone, until six sit on each side of where he changes microphone
+/// (`NEAR`): a word cut may be written back, and one kept cut. The
+/// journal says each cut, and each written back, as it happens; lines
+/// read back after a restart stay as they were written.
 const ALONE: usize = 5;
 
 /// How many of Joel's words heard alone, those nearest in time to a
