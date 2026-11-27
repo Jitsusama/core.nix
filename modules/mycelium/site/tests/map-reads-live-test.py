@@ -79,10 +79,11 @@ CELLS = 8
 # 677.4 KB once a network's label keeps what tells it apart, and 678.2 KB
 # once a cloud machine says it's kept, a little more once a long lease counts
 # days, about 0.4 KB more once every label is kept apart and in its room,
-# about 2.4 KB more once a machine's drawer starts new work on it, and 686.0
-# KB once what each cell split from is read, under the 687 KB allowed; new
-# work's line and its hidden controls draw about 20 elements of the 611.
-BUDGET = Budget(files=33, kilobytes=687, elements=620)
+# about 2.4 KB more once a machine's drawer starts new work on it, 686.0 KB
+# once what each cell split from is read, and about 0.9 KB more once new
+# work keeps to the machine chosen, under the 689 KB allowed; new work's line
+# and its hidden controls draw about 20 elements of the 611.
+BUDGET = Budget(files=33, kilobytes=689, elements=620)
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000
 TWIN_NETWORKS = 200
