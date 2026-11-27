@@ -727,6 +727,19 @@ fn a_call_whose_file_says_part_wasnt_heard_isnt_told_again_after_a_restart() {
     let mut writing = taken_up(&mut Vec::new(), &book, "call:e2", "Joel", &mut told);
     let other = lose("call:e2", 0, &mut writing, &mut told);
     assert!(other.is_some(), "a call never told was taken for one told");
+    // A call this run held was told until it ended, so a rejoin is a
+    // stretch of its own, told anew.
+    let held = Writing {
+        unheard: Some(unheard::and(None, 0)),
+        ..Writing::default()
+    };
+    let mut ended = vec![("call:e1".to_owned(), held)];
+    let mut told = HashSet::new();
+    let mut writing = taken_up(&mut ended, &book, "call:e1", "Joel", &mut told);
+    assert!(
+        lose("call:e1", 2 * SECOND, &mut writing, &mut told).is_some(),
+        "a call rejoined after it ended wasn't told anew"
+    );
 }
 
 #[test]
