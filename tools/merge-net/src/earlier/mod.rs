@@ -72,8 +72,12 @@ pub fn judged(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Resul
     let crates = Crates::at(Path::new("."), commit);
     // What main moved in a folder one check measures with the change's
     // (`fates.txt`), which the change's own files never show, with those
-    // its merge base names, so it can't judge itself by fewer.
-    let fates = rules::fates::judging(&at(&branched, rules::fates::FATES_TXT))?;
+    // its merge base names, so it can't judge itself by fewer, and those
+    // main names, so a base lacking main's newest needs no rebase.
+    let fates = rules::fates::judging(&[
+        ("the merge base's", &at(&branched, rules::fates::FATES_TXT)),
+        ("main's", &at_main(rules::fates::FATES_TXT)),
+    ])?;
     let branch = ready::Side {
         changed: &files,
         gone: &renamed,
@@ -106,11 +110,19 @@ pub fn judged(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Resul
             gone: &taken_away,
             text: &at_main,
         };
-        let mut shared = ready::shared(&branch, &main_side);
         let (at_base, checked) = (|f: &str| at(&base, f), |f: &str| at(candidate, f));
-        shared.retain(|file| !ready::stands_apart(file, &rebased, &main_side, &at_base, &checked));
         let beside = crates.beside(&files, &since);
-        Some(sharing(shared, beside, &fates, &branch, &main_side))
+        Some(shared_over(
+            &Sides {
+                branch: &branch,
+                rebased: &rebased,
+                main: &main_side,
+            },
+            &at_base,
+            &checked,
+            beside,
+            &fates,
+        ))
     };
     let same = |candidate: &str| {
         ready::when_same(candidate, change.as_deref()?, base_of, id_of, |base| {
@@ -129,6 +141,30 @@ pub fn judged(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Resul
         files,
         before,
     })
+}
+
+/// A change and what main moved since the base it's judged from: the
+/// change as its own files read, as merged into main, and main's moves.
+struct Sides<'a> {
+    branch: &'a ready::Side<'a>,
+    rebased: &'a ready::Side<'a>,
+    main: &'a ready::Side<'a>,
+}
+
+/// What the change shares with main's moves over an earlier pass at
+/// `checked`, from the base `at_base` reads, as `judged` asks it: the
+/// files both changed, less those that stand apart, then those `sharing`
+/// adds from `beside`'s crates and the change's `fates`, which never do.
+fn shared_over(
+    sides: &Sides,
+    at_base: &dyn Fn(&str) -> String,
+    checked: &dyn Fn(&str) -> String,
+    beside: Vec<String>,
+    fates: &[Fate],
+) -> Vec<String> {
+    let mut shared = ready::shared(sides.branch, sides.main);
+    shared.retain(|file| !ready::stands_apart(file, sides.rebased, sides.main, at_base, checked));
+    sharing(shared, beside, fates, sides.branch, sides.main)
 }
 
 /// What a change shares with what main moved since its base: the files
@@ -311,6 +347,109 @@ mod tests {
         assert!(
             apart.is_empty(),
             "a change outside every fate shared {apart:?}"
+        );
+    }
+
+    #[test]
+    fn a_file_shared_by_name_crate_and_fate_is_named_once() {
+        let (ours, theirs, none) = (
+            vec![
+                "modules/mycelium/site/view.js".to_owned(),
+                "modules/theme/type.nix".to_owned(),
+            ],
+            vec!["modules/theme/type.nix".to_owned()],
+            Vec::new(),
+        );
+        let nothing = |_: &str| String::new();
+        let side = |changed| ready::Side {
+            changed,
+            gone: &none,
+            text: &nothing,
+        };
+        let shared = sharing(
+            theirs.clone(),
+            theirs.clone(),
+            &rules::fates::fates(),
+            &side(&ours),
+            &side(&theirs),
+        );
+        assert_eq!(
+            shared, theirs,
+            "a file both changed, in a crate beside and in a fate, wasn't named once"
+        );
+    }
+
+    /// What `judged` makes shared of a change to `ours` over main's moves
+    /// of `theirs`, through the step it runs, each file read as `texts`
+    /// gives it: at the base, the earlier pass, main and the merged head.
+    fn shared_as_judged(ours: &[&str], theirs: &[&str], texts: [&str; 4]) -> Vec<String> {
+        let own = |files: &[&str]| {
+            files
+                .iter()
+                .map(|file| (*file).to_owned())
+                .collect::<Vec<_>>()
+        };
+        let (ours, theirs, none) = (own(ours), own(theirs), Vec::new());
+        let [base, checked, main, head] = texts.map(str::to_owned);
+        let (at_base, at_checked) = (|_: &str| base.clone(), |_: &str| checked.clone());
+        let (at_main, at_head) = (|_: &str| main.clone(), |_: &str| head.clone());
+        let branch = ready::Side {
+            changed: &ours,
+            gone: &none,
+            text: &at_head,
+        };
+        let main_side = ready::Side {
+            changed: &theirs,
+            gone: &none,
+            text: &at_main,
+        };
+        let sides = Sides {
+            branch: &branch,
+            rebased: &branch,
+            main: &main_side,
+        };
+        shared_over(
+            &sides,
+            &at_base,
+            &at_checked,
+            Vec::new(),
+            &rules::fates::fates(),
+        )
+    }
+
+    #[test]
+    fn judging_shares_main_s_fated_moves_after_files_stand_apart() {
+        // Each side moves its own key, so the file stands apart by its text.
+        let texts = [
+            r#"{"a": 1, "b": 1}"#,
+            r#"{"a": 2, "b": 1}"#,
+            r#"{"a": 1, "b": 2}"#,
+            r#"{"a": 2, "b": 2}"#,
+        ];
+        let outside = "modules/net/site/hosts.json";
+        assert_eq!(
+            shared_as_judged(&[outside], &[outside], texts),
+            Vec::<String>::new(),
+            "a file outside every fate whose keys stand apart was shared"
+        );
+        // In a fate, the file is shared all the same, which it isn't once
+        // the fold runs before files stand apart.
+        let fated = "modules/local-sites/sites.json";
+        assert_eq!(
+            shared_as_judged(&[fated], &[fated], texts),
+            vec![fated.to_owned()],
+            "a fated file that stood apart by its keys was dropped"
+        );
+        // Main's move in the fate is shared, not the change's own file, so
+        // the fold reads the sides the right way round.
+        assert_eq!(
+            shared_as_judged(
+                &["modules/mycelium/site/view.js", "docs/testing.md"],
+                &["modules/theme/type.nix"],
+                texts,
+            ),
+            vec!["modules/theme/type.nix".to_owned()],
+            "main's move in the map's fate wasn't what a map change shares"
         );
     }
 

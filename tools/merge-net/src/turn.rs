@@ -44,7 +44,7 @@ use std::process::{Command, ExitCode};
 use crate::kit;
 use crate::places::Places;
 use crate::ready::Side;
-use crate::rules::fates::{self, Fate};
+use crate::rules::fates::{self, FATES_TXT, Fate};
 use crate::waited::Waited;
 use crate_reach::Crates;
 
@@ -532,20 +532,17 @@ fn nothing(_: &str) -> String {
 }
 
 /// The fates the change at `commit` is judged by, as `ready` judges it:
-/// those built in with those its merge base's `fates.txt` names. A base
-/// whose list doesn't read leaves the built-in ones, said, since `ready`
-/// refuses that change anyway and the turn only orders gates.
+/// those built in with those its merge base's and main's `fates.txt`
+/// name. A list that doesn't read leaves the built-in ones, said, since
+/// `ready` refuses that change anyway and the turn only orders gates.
 fn judged_by(commit: &str) -> Vec<Fate> {
-    let here = Path::new(".");
-    let based = git_in(here, &["merge-base", commit, "refs/remotes/origin/main"])
-        .and_then(|base| {
-            git_in(
-                here,
-                &["show", &format!("{}:{}", base.trim(), fates::FATES_TXT)],
-            )
-        })
+    let (here, main) = (Path::new("."), "refs/remotes/origin/main");
+    let list_at = |at: &str| git_in(here, &["show", &format!("{}:{}", at.trim(), FATES_TXT)]);
+    let based = git_in(here, &["merge-base", commit, main])
+        .and_then(|base| list_at(&base))
         .unwrap_or_default();
-    fates::judging(&based).unwrap_or_else(|why| {
+    let newest = list_at(main).unwrap_or_default();
+    fates::judging(&[("the merge base's", &based), ("main's", &newest)]).unwrap_or_else(|why| {
         eprintln!("merge-net: {why}; the turn reads the built-in fates alone");
         fates::fates()
     })

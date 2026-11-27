@@ -8,7 +8,8 @@
 
 use crate::ready::Side;
 
-/// Where the fates are kept, whose newest change a head's base must hold.
+/// Where the fates are kept, read beside the built-in ones wherever a
+/// head may be judged by others.
 pub const FATES_TXT: &str = "tools/merge-net/fates.txt";
 
 /// The fates, as `fates.txt` holds them, built into the program so it
@@ -36,15 +37,26 @@ pub fn fates() -> Vec<Fate> {
     parse(FATES).expect("fates.txt reads as fates, which its own test holds")
 }
 
-/// The fates a head is judged by: those built in, from the head's own
-/// `fates.txt`, with every folder `base`'s copy names, `base` being the
-/// merge base's text of it, empty where it has none. A head can so add a
-/// fate but take none away from its own judgement, as `lock-after.txt` is
-/// read from the merge base alone.
-pub fn judging(base: &str) -> Result<Vec<Fate>, String> {
+/// The fates a head is judged by: those built in, from the tree the
+/// program was built from, with every folder each of `lists` names, each
+/// a copy of `fates.txt` (empty where there's none) with whose it is, as
+/// "the merge base's" or "main's". Reading the merge base's, a head can
+/// add a fate but take none away from its own judgement, as
+/// `lock-after.txt` is read from the merge base alone; reading main's, a
+/// head whose base lacks main's newest fates is still judged by them, so
+/// an edit of the list sends no head to rebase.
+pub fn judging(lists: &[(&str, &str)]) -> Result<Vec<Fate>, String> {
     let mut judged = fates();
-    let based = parse(base).map_err(|why| format!("the merge base's {FATES_TXT}: {why}"))?;
-    for fate in based {
+    for (whose, text) in lists {
+        let named = parse(text).map_err(|why| format!("{whose} {FATES_TXT}: {why}"))?;
+        join(&mut judged, named);
+    }
+    Ok(judged)
+}
+
+/// `judged` with every folder of `named` it lacks, by fate.
+fn join(judged: &mut Vec<Fate>, named: Vec<Fate>) {
+    for fate in named {
         match judged.iter_mut().find(|held| held.name == fate.name) {
             Some(held) => {
                 for folder in fate.folders {
@@ -56,7 +68,6 @@ pub fn judging(base: &str) -> Result<Vec<Fate>, String> {
             None => judged.push(fate),
         }
     }
-    Ok(judged)
 }
 
 /// Read fates from lines of `name: folder/...`, skipping comments and
@@ -173,16 +184,18 @@ mod tests {
     }
 
     #[test]
-    fn a_head_is_judged_by_every_fate_its_merge_base_names_too() {
+    fn a_head_is_judged_by_every_fate_its_merge_base_or_main_names_too() {
         let built = fates();
         assert_eq!(
-            judging("").as_ref(),
+            judging(&[("the merge base's", ""), ("main's", "")]).as_ref(),
             Ok(&built),
             "a base with no list added a fate"
         );
         let map = &built[0].name;
         let based = format!("{map}: modules/lost/\ngone: modules/gone/\n");
-        let judged = judging(&based).expect("the base's list reads");
+        let newest = format!("{map}: modules/newest/\nnew: modules/new/\n");
+        let judged =
+            judging(&[("the merge base's", &based), ("main's", &newest)]).expect("both lists read");
         let holding = |name: &str, folder: &str| {
             judged
                 .iter()
@@ -201,8 +214,15 @@ mod tests {
             "a fate the head dropped was dropped"
         );
         assert!(
-            judging("no colon").is_err(),
-            "a base's list that doesn't read was let pass"
+            holding(map, "modules/newest/") && holding("new", "modules/new/"),
+            "a fate main added since the head's base wasn't judged"
+        );
+        let refused = judging(&[("the merge base's", ""), ("main's", "no colon")]);
+        assert!(
+            refused
+                .as_ref()
+                .is_err_and(|why| why.starts_with("main's ")),
+            "a list that doesn't read was let pass, or wasn't said as whose: {refused:?}"
         );
     }
 
