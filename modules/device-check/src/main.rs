@@ -704,12 +704,15 @@ mod tests {
     fn in_a_narrow_terminal_a_long_line_hangs_under_its_mark() {
         // A device is named by its address and driver, as the walk writes
         // it, and its line passes a narrow terminal. It wraps there, each
-        // later line under the first's words rather than under the mark.
-        // The first line's words with the next one come to 40 cells, so a
-        // wrap that forgot the mark's 2 would draw other lines.
+        // later line under the first's words rather than under the mark,
+        // in the 38 cells the mark's 2 leave. The first line's words fill
+        // those 38 exactly, so a wrap one cell narrower parts them, and
+        // with the mark it reaches the terminal's edge, which a line may.
+        // The second's with the next word come to 39, so a wrap one cell
+        // wider takes that word up.
         let root = OsStr::new("/nonexistent");
         let look = Look {
-            now: ["power\t0000:00:0a.0 (intel_vsec)".to_owned()].into(),
+            now: ["power\t0000:00:04.0 (proc_thermal_pci)".to_owned()].into(),
             broke: Vec::new(),
             fixed: Vec::new(),
             sleeps: Vec::new(),
@@ -726,11 +729,11 @@ mod tests {
         assert_eq!(
             text.lines().collect::<Vec<_>>(),
             [
-                format!("{caution}0000:00:0a.0 (intel_vsec) failed a"),
-                "  power change and won't wake until the".to_owned(),
-                "  next boot".to_owned(),
+                format!("{caution}0000:00:04.0 (proc_thermal_pci) failed"),
+                "  a power change and won't wake until".to_owned(),
+                "  the next boot".to_owned(),
             ],
-            "the line didn't wrap at 38 cells under its mark, each word kept:\n{text}"
+            "the line didn't wrap at exactly 38 cells under its mark, each word kept:\n{text}"
         );
     }
 
