@@ -354,6 +354,14 @@ mod tests {
                 "a {code} was read as a commit the host doesn't know"
             );
         }
+        let token = Failure {
+            why: "asking for a token failed (exit status: 37)".into(),
+            lines: vec![format!("{compare} answered 404")],
+        };
+        assert!(
+            !unknown_to_host(&token),
+            "a token command's failure was read as the host not knowing the commit"
+        );
     }
 
     #[test]
