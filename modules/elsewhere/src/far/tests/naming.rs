@@ -15,7 +15,7 @@ fn a_file_put_at_a_copy_s_name_gets_no_copy_over_it_and_is_said_for_what_it_is()
     // As below, but a file rather than a link at the next copy's name:
     // no link was put at the handover, so the far line says what was.
     let planting = "PATH=${PATH#*:} cp \"$@\" || exit\n\
-         [ -e \"$HOME/planted\" ] || { printf t > \"${2%/*}/1\" && : > \"$HOME/planted\"; }";
+         [ -e \"$HOME/planted\" ] || { printf t > \"${3%/*}/1\" && : > \"$HOME/planted\"; }";
     let programs = [("cp", planting)];
     let job = "mkdir out && printf a > out/a && printf b > out/b";
     let (code, err, home) = far_line(Left::Whole, &[("x", "x")], job, &kind, None, &programs);
@@ -41,7 +41,7 @@ fn a_link_put_at_a_copy_s_name_gets_no_copy_through_it_and_the_list_ends_cut() {
     // meanwhile: the next copy, written there, would go through it.
     let planting = "PATH=${PATH#*:} cp \"$@\" || exit\n\
          [ -e \"$HOME/planted\" ] || \
-         { ln -s \"$HOME/target\" \"${2%/*}/1\" && : > \"$HOME/planted\"; }";
+         { ln -s \"$HOME/target\" \"${3%/*}/1\" && : > \"$HOME/planted\"; }";
     let programs = [("cp", planting)];
     let job = "mkdir out && printf a > out/a && printf b > out/b && printf t > \"$HOME/target\"";
     let (code, err, home) = far_line(Left::Whole, &[("x", "x")], job, &kind, None, &programs);
@@ -79,7 +79,7 @@ fn a_link_put_at_a_copy_s_own_name_as_it_crosses_is_never_read_through() {
     // a clear.
     let planting = "PATH=${PATH#*:} cp \"$@\" || exit\n\
          [ -e \"$HOME/planted\" ] || \
-         { rm -f \"$2\" && ln -s \"$HOME/target\" \"$2\" && : > \"$HOME/planted\"; }";
+         { rm -f \"$3\" && ln -s \"$HOME/target\" \"$3\" && : > \"$HOME/planted\"; }";
     let programs = [("cp", planting)];
     let job = "mkdir out && printf a > out/a && printf b > out/b && \
          printf target > \"$HOME/target\" && chmod 0 \"$HOME/target\"";

@@ -683,9 +683,10 @@ LC_ALL=C sort -u "$names" > "$names.in" ||
 {{
   n=0 files=0 bytes=0 most_files={MOST_FILES} most_bytes={MOST_BYTES}
   # One that can't be read or copied keeps its number, listed with no
-  # size, so the near side lands the rest and says it's missing.
+  # size, so the near side lands the rest and says it's missing. Its
+  # copy is cleared whole, since what cp met there may be a folder.
   missing() {{
-    rm -f "$job/{BACK}/$n"
+    cleared "$job/{BACK}/$n"
     printf "elsewhere: %s didn't come back\n" "$file" >&2
     printf '%s\t%s\n' - "$file" || exit 1
     n=$((n + 1))
@@ -708,16 +709,27 @@ LC_ALL=C sort -u "$names" > "$names.in" ||
     # handover, and anything else is said in words of its own.
     ! linked && [ ! -L "$job/{BACK}/$n" ] || {{ halted; exit 1; }}
     [ ! -e "$job/{BACK}/$n" ] || {{ crowded; exit 1; }}
-    size=$(wc -c 2>/dev/null < "$file") || {{ missing; continue; }}
+    # Only a plain file is sized, and only a plain copy, so a pipe, a
+    # socket or a device a job's process put at either name since find
+    # listed it or since it crossed is missing, never opened: wc's open
+    # of a pipe would hold the far line. cp -RP copies what stands at
+    # the file's name as it stands, never reading a pipe or a device, or
+    # through a link, so what was put there after the look is copied as
+    # itself and is then no plain copy, and a link halts as one at the
+    # copy's name does. What stays open is each span from a look to the
+    # open after it: wc's here and below, and cp's own.
+    [ -f "$file" ] && [ ! -L "$file" ] && size=$(wc -c 2>/dev/null < "$file") ||
+      {{ missing; continue; }}
     past $size && {{ kept $size; continue; }}
-    cp "$file" "$job/{BACK}/$n"; crossed=$?
+    cp -RP "$file" "$job/{BACK}/$n"; crossed=$?
     # A link put as it crossed, at the handover or at the copy's own
     # name, took the copy through it, so neither its size nor a clearing
     # of it is read through the link, which at a pipe would hold the far
     # line and at a file would list it at that file's size, and the file
     # is left unlisted with the rest.
     ! linked && [ ! -L "$job/{BACK}/$n" ] || {{ halted; exit 1; }}
-    [ $crossed -eq 0 ] && copied=$(wc -c < "$job/{BACK}/$n") || {{ missing; continue; }}
+    [ $crossed -eq 0 ] && [ -f "$job/{BACK}/$n" ] && copied=$(wc -c < "$job/{BACK}/$n") ||
+      {{ missing; continue; }}
     # Only what crossed counts toward the totals, at the size it crossed.
     past $copied && {{ kept $copied; continue; }}
     files=$((files + 1)) bytes=$(($bytes + $copied))

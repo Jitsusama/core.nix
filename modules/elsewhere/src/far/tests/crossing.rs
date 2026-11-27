@@ -487,7 +487,7 @@ fn the_far_side_counts_only_what_crossed_toward_a_share_s_totals() {
             // A cp that fails f2/b, which mustn't count toward the totals.
             (
                 "cp",
-                "case $1 in f2/b) exit 1 ;; esac\nPATH=${PATH#*:} exec cp \"$@\"",
+                "case $2 in f2/b) exit 1 ;; esac\nPATH=${PATH#*:} exec cp \"$@\"",
             ),
             // A find that names a file gone before it's read.
             (

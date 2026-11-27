@@ -225,7 +225,7 @@ fn a_link_that_stands_at_the_handover_though_none_was_cleared_is_said_as_standin
     // link was cleared there, so none was put back.
     let planting = "PATH=${PATH#*:} cp \"$@\" || exit\n\
          [ -e \"$HOME/planted\" ] || \
-         { rm -f \"$2\" && ln -s \"$HOME/target\" \"$2\" && : > \"$HOME/planted\"; }";
+         { rm -f \"$3\" && ln -s \"$HOME/target\" \"$3\" && : > \"$HOME/planted\"; }";
     for linking in [
         "s=${j%/*/*/*} && mv \"$s\" \"$HOME/aside\" && ln -s \"$HOME/back\" \"$s\"".to_owned(),
         "mv \"$j\" \"$HOME/aside\" && ln -s \"$HOME/back\" \"$j\"".to_owned(),
