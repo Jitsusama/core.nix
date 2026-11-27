@@ -849,7 +849,10 @@ mod tests {
         let waits: Vec<_> = (0..6).map(|_| retry.next(false, false)).collect();
         let seconds = |all: &[u64]| all.iter().map(|s| Some(Duration::from_secs(*s))).collect();
         let wanted: Vec<_> = seconds(&[2, 4, 8, 16, 16, 16]);
-        assert_eq!(waits, wanted, "a wrong file nobody holds was tried at other times");
+        assert_eq!(
+            waits, wanted,
+            "a wrong file nobody holds was tried at other times"
+        );
     }
 
     #[test]
