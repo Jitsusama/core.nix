@@ -309,8 +309,8 @@ mod tests {
 
     use super::*;
 
-    const DESK: &str = "6c:ae:f6:c1:84:26";
-    const HALL: &str = "6c:ae:f6:c1:84:28";
+    const DESK: &str = "02:00:00:00:a4:00";
+    const HALL: &str = "02:00:00:00:a6:00";
 
     fn carried(p95: Option<u64>, lost: f64) -> Measured {
         Measured {
