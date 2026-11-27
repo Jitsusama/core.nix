@@ -613,6 +613,10 @@ local keys = {
 for _, binding in ipairs(keys) do
   for _, key in ipairs(binding.keys) do
     mp.add_forced_key_binding(key, 'camera-' .. binding.act .. '-' .. key, function()
+      -- Every key it's given is logged, so a log holding no Z can tell
+      -- keys that never reached it from Zs alone that were lost (round 2
+      -- on #6975, F16 and F29).
+      mp.msg.info('viewfinder: heard ' .. key)
       if binding.act ~= 'close' then
         forget_z()
       end

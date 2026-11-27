@@ -175,8 +175,16 @@ mod tests {
             }
         );
         let copy = folders.at("into/Theme.qml");
-        assert!(!copy.is_symlink());
-        assert!(fs::read_to_string(copy).expect("copied").contains("accent"));
+        assert!(
+            !copy.is_symlink(),
+            "a built file should be copied, not linked: {}",
+            copy.display()
+        );
+        let copied = fs::read_to_string(copy).expect("copied");
+        assert!(
+            copied.contains("accent"),
+            "the copy should hold what was built, not {copied:?}"
+        );
     }
 
     #[test]
@@ -229,7 +237,11 @@ mod tests {
     #[test]
     fn a_tracked_file_deleted_from_the_working_copy_is_passed_over() {
         let folders = Folders::new("deleted");
-        assert!(folders.known(&["modules/quickshell/Gone.qml"]).is_empty());
+        let known = folders.known(&["modules/quickshell/Gone.qml"]);
+        assert!(
+            known.is_empty(),
+            "a file gone from the working copy should be passed over: {known:?}"
+        );
     }
 
     #[test]
