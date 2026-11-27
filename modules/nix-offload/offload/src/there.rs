@@ -6644,7 +6644,7 @@ mod tests {
             "/nix/store/bbbb-dep": {"narSize": 1000000000}}'"#;
         assert_eq!(
             says(held),
-            Duration::from_secs(120 + 3000),
+            Duration::from_mins(2 + 50),
             "the lease didn't count every path the copy can send"
         );
         assert_eq!(
