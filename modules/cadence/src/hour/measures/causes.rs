@@ -65,6 +65,29 @@ const VERSION: u32 = 2;
 /// line sent makes a key or an ask of any length.
 const UNFOLDED_AT_MOST: usize = 100;
 
+/// The most unfolded classes one message counts, so a message of many
+/// junk wordings can't put each over the bar; the folded classes are few
+/// by their making.
+const UNFOLDED_PER_MESSAGE: usize = 5;
+
+/// The most classes an hour names, and so asks of their owners; the rest
+/// are counted and said in one line to the keeper, and asked once fewer
+/// are over the bar.
+const NAMED_AT_MOST: usize = 10;
+
+/// The most letters a kept withdrawal's id may have, well past a real
+/// one's stamp, sender, process and hex, so none makes the kept file grow
+/// without end.
+const WITHDRAWAL_AT_MOST: usize = 128;
+
+/// The most letters a repository's name may have and be counted, well
+/// past any real one, so a change named can't make a key of any length.
+const REPO_AT_MOST: usize = 64;
+
+/// The words that join one change's number to the next within a line,
+/// keeping the repository named before them.
+const JOINING: &[&str] = &["and", "or", "also", "plus", "then", "&"];
+
 /// Who owns fixing each class, by its counted name and the repository its
 /// change is in, or any repository where that is empty, as the keeper
 /// named them on 26 November. A class whose owner differs by repository is
@@ -114,6 +137,54 @@ struct Kept {
     v: u32,
     through_ms: i64,
     cases: Vec<Case>,
+    /// The messages whose lines their senders withdrew, so one written
+    /// here after the reading that heard its withdrawal still stays out.
+    withdrawn: BTreeSet<String>,
+}
+
+/// The harness's review causes at `at`, or why they couldn't be read. No
+/// record yet is no review causes; one that can't be read is unread, or
+/// the classes only it holds up would close and be asked again. A byte
+/// that isn't UTF-8, as a read inside an append can meet, costs only its
+/// own line.
+fn review_record(at: &Path) -> Result<String, String> {
+    match fs::read(at) {
+        Ok(bytes) => Ok(String::from_utf8_lossy(&bytes).into_owned()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
+        Err(error) => Err(format!("{} couldn't be read ({error})", at.display())),
+    }
+}
+
+/// The reading kept at `at`, or why it couldn't be read. One that can't be
+/// read or doesn't parse is unread, as symbiosis's is: read as none, the
+/// cases only it holds, past the mesh's week, would be lost and their asks
+/// closed. None yet, or one of another version, reads the week anew.
+fn kept_reading(at: &Path) -> Result<Kept, String> {
+    let json = match fs::read(at) {
+        Ok(json) => json,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Kept::default()),
+        Err(error) => {
+            return Err(format!(
+                "the reading kept in {} can't be read ({error})",
+                at.display()
+            ));
+        }
+    };
+    match serde_json::from_slice::<Kept>(&json) {
+        Ok(kept) if kept.v == VERSION => Ok(kept),
+        Ok(kept) => {
+            eprintln!(
+                "cadence: {} is of version {}, so the mesh's week is read anew",
+                at.display(),
+                kept.v
+            );
+            Ok(Kept::default())
+        }
+        Err(error) => Err(format!(
+            "the reading kept in {} doesn't parse ({error})",
+            at.display()
+        )),
+    }
 }
 
 /// The measure at `now`, in seconds, from the mesh and the review folder
@@ -129,34 +200,22 @@ pub fn read(state_home: &Path, folder: &Path, now: i64, keeps: bool) -> Measure 
     let unread = |why: &str| Measure {
         now: 1.0,
         behind: vec![format!(
-            "unread: {why}, so no cause line could be read · {KEEPER}"
+            "{UNREAD}: {why}, so no cause line could be read · {KEEPER}"
         )],
         ..recurring(&[], now)
     };
     if !messages.is_dir() {
         return unread("no mesh messages folder here");
     }
-    // No record yet is no review causes; one that can't be read is unread,
-    // or the classes only it holds up would close and be asked again. A
-    // byte that isn't UTF-8, as a read inside an append can meet, costs
-    // only its own line.
-    let review_at = root.join("review/causes.jsonl");
-    let review = match fs::read(&review_at) {
-        Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
-        Err(error) => {
-            return unread(&format!(
-                "{} couldn't be read ({error})",
-                review_at.display()
-            ));
-        }
+    let review = match review_record(&root.join("review/causes.jsonl")) {
+        Ok(review) => review,
+        Err(why) => return unread(&why),
     };
     let kept_at = folder.join("causes.json");
-    let kept: Kept = fs::read_to_string(&kept_at)
-        .ok()
-        .and_then(|text| serde_json::from_str(&text).ok())
-        .filter(|kept: &Kept| kept.v == VERSION)
-        .unwrap_or_default();
+    let kept = match kept_reading(&kept_at) {
+        Ok(kept) => kept,
+        Err(why) => return unread(&why),
+    };
     let now_ms = now * 1000;
     // A mark past now says this machine's clock stepped back since it was
     // kept, and a file written in the step would sit behind it, so the
@@ -174,20 +233,12 @@ pub fn read(state_home: &Path, folder: &Path, now: i64, keeps: bool) -> Measure 
     let heard: Vec<(Message, i64)> = listed
         .into_iter()
         .filter_map(|(path, name, written)| {
-            let message: Message = serde_json::from_slice(&fs::read(&path).ok()?).ok()?;
+            let json = symbiosis::opened_at_most(&path).ok()?;
+            let message: Message = serde_json::from_slice(&json).ok()?;
             genuine(&message, &name).then_some((message, written))
         })
         .collect();
-    // Only its sender withdraws a line, so another's word leaves it
-    // counted.
-    let withdrawn: BTreeSet<&str> = heard
-        .iter()
-        .filter_map(|(m, _)| {
-            m.supersedes
-                .as_deref()
-                .filter(|id| sender_of(id) == Some(m.from.as_str()))
-        })
-        .collect();
+    let withdrawn = withdrawals(kept.withdrawn, &heard);
     let mut cases: Vec<Case> = kept
         .cases
         .into_iter()
@@ -205,24 +256,64 @@ pub fn read(state_home: &Path, folder: &Path, now: i64, keeps: bool) -> Measure 
     cases.sort();
     cases.dedup();
     cases.retain(|case| case.at > now - KEPT_FOR);
-    if keeps {
-        let next = Kept {
-            v: VERSION,
-            through_ms: now * 1000,
-            cases: cases.clone(),
-        };
-        // Unkept, the next hour reads the same messages again, so a write
-        // that fails loses nothing but time.
-        if let Ok(text) = serde_json::to_string(&next) {
-            let _ = write_whole(&kept_at, &text);
-        }
+    // Unkept, the next hour reads the same messages again, at the cost of
+    // a week's files, and a case the mesh lets go meanwhile is lost; so
+    // the card says so, though it names no class to ask of anyone.
+    let unkept = keeps
+        .then(|| {
+            let next = Kept {
+                v: VERSION,
+                through_ms: now * 1000,
+                cases: cases.clone(),
+                withdrawn: kept_withdrawals(&withdrawn, now),
+            };
+            serde_json::to_string(&next)
+                .map_err(|error| error.to_string())
+                .and_then(|text| write_whole(&kept_at, &text).map_err(|error| error.to_string()))
+                .err()
+        })
+        .flatten();
+    if let Some(why) = &unkept {
+        eprintln!(
+            "cadence: keeping the causes read in {}: {why}",
+            kept_at.display()
+        );
     }
     cases.extend(reviewed(&review));
-    recurring(&cases, now)
+    let mut m = recurring(&cases, now);
+    // Past its target, as an unread hour is, and first, so the card shows
+    // it whatever classes are over the bar.
+    if let Some(why) = unkept {
+        m.now = m.now.max(1.0);
+        m.behind.insert(
+            0,
+            format!(
+                "{UNKEPT}: what this hour read couldn't be kept ({why}), so the next reads the \
+                 week again · {KEEPER}"
+            ),
+        );
+    }
+    m
+}
+
+/// What a measure's line opens with when it names no class: the mesh
+/// couldn't be read, what was read couldn't be kept, or more classes were
+/// over the bar than an hour names.
+pub const UNREAD: &str = "unread";
+pub const UNKEPT: &str = "unkept";
+pub const MORE: &str = "more";
+
+/// Whether a line of the measure names no class, only that it couldn't
+/// read or keep, or how many more it didn't name, so it asks nobody for a
+/// fix.
+#[must_use]
+pub fn names_no_class(line: &str) -> bool {
+    [UNREAD, UNKEPT, MORE].contains(&class_of(line))
 }
 
 /// The classes in `cases` found on `AT_LEAST` changes or more in the week
-/// before `now`, most changes first, each with its owner after ` · `, so
+/// before `now`, the vetted before the unfolded and most changes first,
+/// each with its owner after ` · `, so
 /// each is filed with its own. A class whose owner differs by repository
 /// has a line for each repository it was found in, named after the class,
 /// since the class recurs though one half of it may not.
@@ -239,11 +330,36 @@ pub fn recurring(cases: &[Case], now: i64) -> Measure {
         .into_iter()
         .filter(|(_, on)| on.len() >= AT_LEAST)
         .collect();
-    over.sort_by(|(a, on_a), (b, on_b)| on_b.len().cmp(&on_a.len()).then(a.cmp(b)));
-    let behind: Vec<String> = over
-        .iter()
-        .flat_map(|(class, on)| lines_of(class, on))
+    // The vetted classes go before the unfolded, which any cell's wording
+    // can make, so a burst of those can't push one with an owner out of
+    // the named; then most changes first.
+    let unfolded = |class: &str| class.starts_with(folds::UNFOLDED);
+    over.sort_by(|(a, on_a), (b, on_b)| {
+        unfolded(a)
+            .cmp(&unfolded(b))
+            .then(on_b.len().cmp(&on_a.len()))
+            .then(a.cmp(b))
+    });
+    // The count of those left unnamed goes first, so the card shows it
+    // above the classes it names. While it stands, no ask open for a class
+    // it leaves unnamed closes, since this hour can't say that one is back.
+    let mut behind: Vec<String> = over
+        .len()
+        .checked_sub(NAMED_AT_MOST)
+        .filter(|&more| more > 0)
+        .map(|more| {
+            format!(
+                "{MORE}: {more} more classes are on {AT_LEAST} or more changes, unnamed and \
+                 unasked until fewer are over the bar · {KEEPER}"
+            )
+        })
+        .into_iter()
         .collect();
+    behind.extend(
+        over.iter()
+            .take(NAMED_AT_MOST)
+            .flat_map(|(class, on)| lines_of(class, on)),
+    );
     Measure {
         key: KEY.to_owned(),
         class: Class::Functional,
@@ -310,10 +426,46 @@ fn owner_of(class: &str, repo: &str) -> &'static str {
 }
 
 /// Whether `message` is the one its file `name` names, sent by whom its
-/// id says, so no file can stand in for another message or sender.
+/// id says, so no file can stand in for another message or sender. It
+/// checks that a file agrees with itself, not who wrote it: every writer
+/// to the mesh is the same local user, so a forger who writes the id and
+/// sender alike passes, until the mesh signs what it carries.
 fn genuine(message: &Message, name: &str) -> bool {
     name.strip_suffix(".json") == Some(message.id.as_str())
         && sender_of(&message.id) == Some(message.from.as_str())
+}
+
+/// The lines withdrawn: those `kept` and those `heard` withdraw, each
+/// applied whatever its stamp, since a sender's clock may run fast and
+/// its line counts all the same. Only a message from its line's own
+/// sender withdraws it, so another's word leaves it counted. That a
+/// message is from whom it says rests on the mesh, which signs nothing
+/// yet, so a forged withdrawal is kept as a real one is; clearing
+/// `withdrawn` in the kept file lets both go.
+fn withdrawals(mut kept: BTreeSet<String>, heard: &[(Message, i64)]) -> BTreeSet<String> {
+    kept.extend(heard.iter().filter_map(|(m, _)| {
+        m.supersedes
+            .clone()
+            .filter(|id| sender_of(id) == Some(m.from.as_str()))
+    }));
+    kept
+}
+
+/// Of those `withdrawn`, the ones kept for later hours, as of `now` in
+/// seconds: each as long as the line it withdraws could be, since that
+/// may be written here later. One stamped over an hour past now, or
+/// running long, would only grow the kept file every hour, so it is let
+/// go; it was applied to this hour's lines all the same.
+fn kept_withdrawals(withdrawn: &BTreeSet<String>, now: i64) -> BTreeSet<String> {
+    withdrawn
+        .iter()
+        .filter(|id| {
+            id.len() <= WITHDRAWAL_AT_MOST
+                && stamped_at(id)
+                    .is_some_and(|ms| ms > (now - KEPT_FOR) * 1000 && ms <= now * 1000 + SLACK_MS)
+        })
+        .cloned()
+        .collect()
 }
 
 /// Who sent the message `id` names, as `<ms>-<from>-<pid>-<short id>`.
@@ -324,6 +476,7 @@ fn sender_of(id: &str) -> Option<&str> {
 /// The cases the cells' cause lines in `heard` say, those sent to the
 /// keeper, each with when this machine wrote it, in ms, dated when its
 /// message was sent, or written where its stamp is later, and naming it.
+/// One message counts at most `UNFOLDED_PER_MESSAGE` unfolded classes.
 fn said(heard: &[(Message, i64)]) -> Vec<Case> {
     let to_keeper = format!("@{KEEPER}");
     heard
@@ -331,12 +484,21 @@ fn said(heard: &[(Message, i64)]) -> Vec<Case> {
         .filter(|(m, _)| m.to.iter().any(|to| *to == to_keeper || to == KEEPER))
         .filter_map(|(m, written)| Some((stamped_at(&m.id)?.min(*written) / 1000, m)))
         .flat_map(|(at, m)| {
-            m.text.lines().flat_map(move |line| {
-                cause_line(line, at).into_iter().map(|case| Case {
+            let mut unfolded = BTreeSet::new();
+            m.text
+                .lines()
+                .flat_map(|line| cause_line(line, at))
+                .filter(|case| {
+                    !case.class.starts_with(folds::UNFOLDED)
+                        || unfolded.contains(&case.class)
+                        || (unfolded.len() < UNFOLDED_PER_MESSAGE
+                            && unfolded.insert(case.class.clone()))
+                })
+                .map(|case| Case {
                     said_in: Some(m.id.clone()),
                     ..case
                 })
-            })
+                .collect::<Vec<_>>()
         })
         .collect()
 }
@@ -376,10 +538,14 @@ fn cause_line(line: &str, at: i64) -> Vec<Case> {
 
 /// The changes `named` names, as `<repo>#<number>`: "core.nix#6310, #6311"
 /// names two, the second in the first's repository, and "core #6310" one,
-/// its repository written apart from its number.
+/// its repository written apart from its number. A word before a bare
+/// number that is neither a repository known nor a joining word names a
+/// repository unknown, so the number is left out rather than counted in
+/// the repository before it, as is one in a repository no host could
+/// name.
 fn changes(named: &str) -> Vec<String> {
     let words: Vec<&str> = named
-        .split([',', ' ', ';'])
+        .split(|c: char| c == ',' || c == ';' || c.is_whitespace())
         .map(str::trim)
         .filter(|word| !word.is_empty())
         .collect();
@@ -389,7 +555,9 @@ fn changes(named: &str) -> Vec<String> {
         let Some((in_repo, number)) = word.split_once('#') else {
             let apart = words.get(at + 1).is_some_and(|next| next.starts_with('#'));
             if apart && is_repo(word) {
-                repo = repo_named(word);
+                repo = repo_named(word).unwrap_or_default();
+            } else if apart && !JOINING.contains(&word.to_lowercase().as_str()) {
+                repo.clear();
             }
             continue;
         };
@@ -397,7 +565,7 @@ fn changes(named: &str) -> Vec<String> {
             continue;
         };
         if !in_repo.is_empty() {
-            repo = repo_named(in_repo);
+            repo = repo_named(in_repo).unwrap_or_default();
         }
         if !repo.is_empty() {
             found.push(format!("{repo}#{number}"));
@@ -417,13 +585,22 @@ fn is_repo(word: &str) -> bool {
 }
 
 /// A repository as it is counted: the last part of its path, lower case,
-/// and its full name for a short one.
-fn repo_named(said: &str) -> String {
+/// and its full name for a short one; none for a name no host would take,
+/// since a repository's name goes into the class split by it, and so into
+/// its key and the ask its owner pastes from.
+fn repo_named(said: &str) -> Option<String> {
     let last = said.rsplit('/').next().unwrap_or(said).to_lowercase();
-    REPOS
-        .iter()
-        .find(|(short, _)| *short == last)
-        .map_or(last, |(_, full)| (*full).to_owned())
+    let named = !last.is_empty()
+        && last.len() <= REPO_AT_MOST
+        && last
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'));
+    named.then(|| {
+        REPOS
+            .iter()
+            .find(|(short, _)| *short == last)
+            .map_or(last, |(_, full)| (*full).to_owned())
+    })
 }
 
 /// The class `said`, written plain, is counted under: the one its words
