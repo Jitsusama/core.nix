@@ -160,7 +160,10 @@ fn a_list_that_couldn_t_be_written_whole_ends_cut() {
     // where there is one, a full disk, which refuses the write. And a sort
     // after which the names, or the losses, can't be read.
     let (found, sorted) = ("*\" -type f \"*", "*\" -u \"*");
-    #[cfg_attr(not(target_os = "linux"), allow(unused_mut))]
+    #[cfg_attr(
+        not(target_os = "linux"),
+        expect(unused_mut, reason = "only Linux has a full disk to add a case for")
+    )]
     let mut cases = vec![
         vec![refusing(
             "find",

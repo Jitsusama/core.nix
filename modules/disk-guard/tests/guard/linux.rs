@@ -143,7 +143,7 @@ fn text(root: &Path, path: &str, value: &str) {
 }
 
 #[test]
-fn pressure_is_the_last_ten_seconds_of_each_stall() {
+fn pressure_is_the_last_ten_seconds_of_each_stall_and_a_minute_of_all_at_once() {
     let root = tempfile::tempdir().unwrap();
     let io = "some avg10=12.50 avg60=3.00 avg300=0.82 total=136859772\n\
               full avg10=4.25 avg60=1.00 avg300=0.19 total=60570158\n";
@@ -164,22 +164,28 @@ fn pressure_is_the_last_ten_seconds_of_each_stall() {
         pressure.io,
         Stall {
             some: 12.5,
-            full: 4.25
-        }
+            full: 4.25,
+            full_minute: 1.0,
+        },
+        "the disk's stalls"
     );
     assert_eq!(
         pressure.memory,
         Stall {
             some: 0.5,
-            full: 0.0
-        }
+            full: 0.0,
+            full_minute: 1.0,
+        },
+        "memory's stalls"
     );
     assert_eq!(
         pressure.cpu,
         Stall {
             some: 30.0,
-            full: 0.0
-        }
+            full: 0.0,
+            full_minute: 0.0,
+        },
+        "the processors' stalls, with no full line"
     );
 }
 

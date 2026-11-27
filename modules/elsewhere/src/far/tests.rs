@@ -1,13 +1,16 @@
-use super::{Heard, Missed, bring_back, listed, plain_quest, quoted, script, travels, within_tree};
+use super::{Missed, bring_back, listed, script, travels, within_tree};
 use crate::settings::{Copies, Kind};
 use std::path::{Path, PathBuf};
 
 mod crossing;
+mod cutting;
 mod handing;
 mod heard;
+mod holding;
 mod leaving;
 mod sweeping;
 mod unpacking;
+mod words;
 
 pub(super) fn kind(setup: &str) -> Kind {
     Kind {
@@ -85,12 +88,15 @@ fn the_far_line_waits_for_the_files_then_runs_the_setup_and_the_job_by_name() {
     );
     for says in [
         "/quest-workspace/QEST-20261115-ABC123/handover/elsewhere/7-9\n",
-        "work=\"${XDG_CACHE_HOME:-$HOME/.cache}\"/pi/agentic-harness.pi/quest-workspace/\
+        "work=\"$cache\"/pi/agentic-harness.pi/quest-workspace/\
          QEST-20261115-ABC123/.e/7-9\n",
         "bytes=1048576\n",
         "until arrived; do",
         "cd \"$work\"/'a b' || {\n",
-        "  say 'elsewhere: refusing 7-9'\n  exit 77\n}\nsay 'elsewhere: running 7-9'\n",
+        "}\nentered 'a b' || { moved; handed=\n",
+        "  [ \"$why\" -ne 0 ] || { say 'elsewhere: refusing 7-9'; exit 77; }\n  \
+         say 'elsewhere: can'\\''t take 7-9'\n  exit 75\n}\nentered 'a b' || {",
+        "}\n  say 'elsewhere: can'\\''t take 7-9'; exit 75; }\nsay 'elsewhere: running 7-9'\n",
         "{ export PATH=/far/bin:$PATH\n  } && exec tla-rs -config 'it'\\''s.cfg'\n",
         "for path in out; do",
         "exit \"$code\"",
@@ -148,33 +154,6 @@ fn only_what_the_kind_brings_back_comes_home_once_listed_whole() {
             size: 2
         }]),
         "something outside what the kind brings back was taken"
-    );
-}
-
-#[test]
-fn a_quest_names_a_folder_and_nothing_more() {
-    assert!(
-        plain_quest("QEST-20261115-ABC123"),
-        "a quest's id was refused"
-    );
-    for odd in ["QEST-20261115-ABC12/", "../QEST", "QEST-2026111-ABC123", ""] {
-        assert!(!plain_quest(odd), "{odd:?} was taken for a quest");
-    }
-    assert_eq!(
-        Heard::Started.line("1-2"),
-        "elsewhere: running 1-2",
-        "the start line moved"
-    );
-}
-
-#[test]
-fn a_word_is_quoted_only_when_a_shell_would_split_it() {
-    assert_eq!(quoted("-workers"), "-workers", "a plain word was quoted");
-    assert_eq!(quoted(""), "''", "an empty word was lost");
-    assert_eq!(
-        quoted("$HOME"),
-        "'$HOME'",
-        "a variable was left for the far shell"
     );
 }
 
@@ -306,24 +285,32 @@ pub(super) fn far_line_in(
         std::env::var("PATH").unwrap_or_default()
     );
     let command = ["sh", "-c", run].map(str::to_owned);
-    let line = quickened(&script(
-        "QEST-20261115-ABC123",
-        "1",
-        bytes,
-        ".s",
-        folder,
+    let line = quickened(
+        &script(
+            "QEST-20261115-ABC123",
+            "1",
+            bytes,
+            ".s",
+            folder,
+            kind,
+            &command,
+        ),
         kind,
-        &command,
-    ));
+    );
     // The gate names dash, the strictest sh a far machine may have.
     let sh = std::env::var("ELSEWHERE_FAR_SH").unwrap_or_else(|_| "sh".to_owned());
-    let far = std::process::Command::new(sh)
+    let mut far = std::process::Command::new(sh);
+    if leaving::HOME_GONE.get() {
+        far.env("HOME", home.join("gone"))
+            .env("XDG_CACHE_HOME", home.join(".cache"));
+    } else {
+        far.env("HOME", &home).env_remove("XDG_CACHE_HOME");
+    }
+    let far = far
         .args(["-c", &line])
-        .env("HOME", &home)
         .env("PATH", path)
         // As though inherited, so a line keeping it clears another's copy.
         .env("mine", "1")
-        .env_remove("XDG_CACHE_HOME")
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
@@ -395,7 +382,7 @@ fn leave(
         std::fs::write(into, text).unwrap();
     }
     let paths = files.iter().map(|(path, _)| *path);
-    // 4 blocks of 512 bytes: a header, one block of a file and the close,
+    // 4 blocks of 512 bytes: a header, one block of a file and the close's two,
     // so one file with data a part (two empty ones may share one), and one
     // past 512 bytes or needing a pax header for its name is refused.
     let bytes = match left {
@@ -421,8 +408,9 @@ fn leave(
 
 /// The far `line` with these tests' waits and totals for a real
 /// crossing's: `WAITS`, `SLOWEST`, `A_PASS_AT_MOST`, `SHARE_FILES` and
-/// `SHARE_BYTES`.
-fn quickened(line: &str) -> String {
+/// `SHARE_BYTES`. Only a line for a `kind` that brings something back
+/// bounds what it brings, so only that one must hold the bound.
+fn quickened(line: &str, kind: &Kind) -> String {
     let mut line = line.to_owned();
     for (real, quick) in [
         (
@@ -450,8 +438,9 @@ fn quickened(line: &str) -> String {
             format!("most_files={SHARE_FILES} most_bytes={SHARE_BYTES}"),
         ),
     ] {
+        let brings_nothing = real.starts_with("most_files=") && kind.brings_back.is_empty();
         assert!(
-            line.contains(&real),
+            brings_nothing || line.contains(&real),
             "the far line no longer holds {real}:\n{line}"
         );
         line = line.replace(&real, &quick);

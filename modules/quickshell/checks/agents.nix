@@ -111,8 +111,8 @@
   # Start New Work asks the realm's node only a sprout of what Joel said, in no
   # window, in one of the repositories his quests work in, and says how it ended
   # in the node's or sprout's own words, as
-  # modules/quickshell/tests/start-new-work.qml holds launcher/Sprouting.js to
-  # it in Qt's own engine.
+  # modules/quickshell/tests/start-new-work.qml holds launcher/Sprouting.js and
+  # launcher/Openings.js to it in Qt's own engine.
   start-new-work-asks-only-a-sprout =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -120,12 +120,57 @@
     pkgs.runCommandLocal "start-new-work-asks-only-a-sprout" { } ''
       cp ${../tests/start-new-work.qml} start-new-work.qml
       cp ${../../../tests/lib/Expect.js} Expect.js
-      ${copied [ "launcher/Sprouting.js" ]}
+      ${copied [
+        "launcher/Openings.js"
+        "launcher/Sprouting.js"
+        "launcher/StartSaid.js"
+      ]}
       cp ${(import ../launcher/words.nix).places.agents} words.json
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts} QML_XHR_ALLOW_FILE_READ=1
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml start-new-work.qml
+      touch $out
+    '';
+
+  # Start New Work's In rows list his quests' folders, then the places the
+  # realm's node names, each folder once and only in plain words, a zone
+  # started by its name, Wheres.startAt giving a row picked before the places
+  # land the start it says after, and a node's 2000 read in under 50 ms of the
+  # shell's thread, as modules/quickshell/tests/start-new-work-places.qml
+  # holds launcher/Wheres.js to it in Qt's own engine.
+  start-new-work-finds-places =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "start-new-work-finds-places" { } ''
+      cp ${../tests/start-new-work-places.qml} start-new-work-places.qml
+      cp ${../../../tests/lib/Expect.js} Expect.js
+      ${copied [ "launcher/Wheres.js" ]}
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml start-new-work-places.qml
+      touch $out
+    '';
+
+  # Start New Work's In the Cloud is offered only where the node's providers
+  # could make a machine, lists the places another machine knows by name, and
+  # asks a sprout that needs the cloud, as
+  # modules/quickshell/tests/start-new-work-cloud.qml holds launcher/Cloud.js to
+  # it in Qt's own engine.
+  start-new-work-goes-to-the-cloud =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "start-new-work-goes-to-the-cloud" { } ''
+      cp ${../tests/start-new-work-cloud.qml} start-new-work-cloud.qml
+      cp ${../../../tests/lib/Expect.js} Expect.js
+      ${copied [ "launcher/Cloud.js" ]}
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml start-new-work-cloud.qml
       touch $out
     '';
 
@@ -153,8 +198,8 @@
 
   # Carry Back asks the realm's node only a carry of a quest to a machine,
   # rebuilt from the act's parts, and says how it ended in the node's own words,
-  # as modules/quickshell/tests/carry-back.qml holds launcher/CarryBack.js to it
-  # in Qt's own engine.
+  # on the row keyed as ReadyRows keyed it, as modules/quickshell/tests/
+  # carry-back.qml holds launcher/CarryBack.js to it in Qt's own engine.
   carry-back-asks-the-node-only-a-carry =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -177,7 +222,9 @@
   # go to the cell, or show the network or machine it names, by its name alone;
   # to offer a sprout's plain words as new work, the cell they say they're from
   # kept only as an address; and nothing for a link naming none of them, or a
-  # second within a few seconds
+  # second within a few seconds. Each function it calls must be one the
+  # launcher's IpcHandler has, taking as many arguments as it passes, since qs
+  # refuses any other
   # (modules/quickshell/tests/mycelium-links-open-in-the-launcher.sh). Its tests
   # run as it builds.
   mycelium-links-open-in-the-launcher =
@@ -218,6 +265,8 @@
             entry
             (pkgs.writeText "niri-mimeapps.list" defaults)
             (lib.getExe askingStandIn)
+            "${../Launcher.qml}"
+            "${../mycelium-link/src/main.rs}"
           ]
         }
         touch $out
@@ -254,9 +303,10 @@
   # worded, and the sessions beside the one drawn are found to watch their
   # drawers ahead, as modules/quickshell/tests/session-row.qml holds
   # launcher/SessionRow.js and SessionDrawer.js to them in Qt's own engine, and
-  # Landed what they landed, kept past their end (Landed.js). How Agents lays
-  # sessions out, and what its drawer says, is the agents daemon's, proven in
-  # its crate.
+  # Landed what they landed, kept past their end (Landed.js), and how Agents
+  # says what a Reopen Them All walk found gone (ReopenTally.js), which Sessions
+  # counts (Reopening.js). How Agents lays sessions out, and what its drawer
+  # says, is the agents daemon's, proven in its crate.
   the-launcher-says-how-each-session-stands =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -267,6 +317,7 @@
       cp ${../launcher/SessionRow.js} SessionRow.js
       cp ${../launcher/Order.js} Order.js
       cp ${../launcher/Landed.js} Landed.js
+      cp ${../launcher/ReopenTally.js} ReopenTally.js
       cp ${../launcher/SessionDrawer.js} SessionDrawer.js
       ${copied [ "Reading.js" ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
@@ -291,6 +342,26 @@
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml told.qml
+      touch $out
+    '';
+
+  # Talk to It on a session asking Joel something shows what it asks whole, with
+  # what it takes, and his words answer it, a choice by its label or value or
+  # his own where it takes them, reading sent, then answered or working, or not
+  # delivered and why, as modules/quickshell/tests/talk-answers.qml holds
+  # launcher/TalkAnswers.js to in Qt's own engine.
+  a-talk-answers-what-its-session-asks =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "a-talk-answers-what-its-session-asks" { } ''
+      cp ${../tests/talk-answers.qml} talk-answers.qml
+      ${copied [ "launcher/TalkAnswers.js" ]}
+      cp ${../../../tests/lib/Expect.js} Expect.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml talk-answers.qml
       touch $out
     '';
 

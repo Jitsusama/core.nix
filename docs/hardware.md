@@ -303,7 +303,9 @@ Some fixes this laptop needs are in no release yet, and two are in no tree
 at all. `kernel/next.nix` carries them in `kernel/next/`, applied to 7.3
 with no offset or fuzz, each patch's header naming where
 it comes from: linux-next's commits and their series, a posting to a list,
-or a local fix.
+or a local fix. `the-patches-from-linux-next-apply-exactly` holds them to
+that, since a point release can move code under a patch that still applies
+at an offset, and the build says nothing of it.
 
 | Patch                                | What it gives                                          |
 | ------------------------------------ | ------------------------------------------------------ |
@@ -311,7 +313,6 @@ or a local fix.
 | `dp-byte-reads-only-when-longer`     | a failed 1-byte DPCD read isn't sent again             |
 | `dp-mst-dsc-skips-empty-ports`       | an MST hub's empty port isn't asked for its DSC caps   |
 | `edp-wakes-the-panel`                | the panel is woken before its eDP revision is read     |
-| `btintel-pcie-pm`                    | Bluetooth lets a hibernate power off                   |
 | `btintel-pcie-dbgc-to-wifi`          | Bluetooth's debug traces go to the Wi-Fi side          |
 
 `xe-shrinker-spares-buffers` is linux-next's split of xe's buffer shrinker
@@ -352,25 +353,28 @@ of niri overnight caught its draws waiting on a client's buffer lock for
 122 to 250 ms, three times in five minutes, and the section below, The
 Write-Combined Buffers Under Reclaim, says what held them.
 
-`btintel-pcie-pm` is four of mainline's commits from 2026-10-14:
-12997a385f71, 2926eb396711, 4f6ead67b93b and f2cee6e2aa35. At a
-hibernate's thaw, the driver reset the controller and probed it again,
-though freeze never cut its power. The probe waited on the controller's
-firmware while user space was frozen. So the power-off asked a controller
+`btintel-pcie-pm`, four of mainline's commits from 2026-10-14
+(12997a385f71, 2926eb396711, 4f6ead67b93b and f2cee6e2aa35), reached
+the stable series in 7.3.6 with the mailbox handshake it had left out,
+so it left `kernel/next/`. At a hibernate's thaw, the driver had reset
+the controller and probed it again, though freeze never cut its power.
+The probe waited on the controller's firmware while user space was
+frozen. So the power-off asked a controller
 still in its bootloader for D3, timed out on its interrupt three times
 and returned -EBUSY. The hibernate rolled back, leaving the laptop on
 until its battery ran out. Thaw is now a plain wake, and only a restore
 or a resume from S3 resets. A missed interrupt is checked against the
 controller's boot stage register rather than a cache only the interrupt
-updates. This kernel lacks the mailbox handshake the third commit
-finishes, so that step is left out.
+updates. `bluetooth-lets-a-hibernation-power-off` reads the kernel's
+source for that plain thaw.
 
 `btintel-pcie-dbgc-to-wifi` is mainline's 0d3f5d805bff, from the same
 merge. The firmware sends its debug traces to the Wi-Fi side's debug
 collector rather than to buffers the driver allocates on the host. Intel
 pointed at it, with d572ea4b621c, for a BE201 that stopped the way this
 laptop's controller did; Bluetooth's Exceptions, below, says how.
-d572ea4b621c needs a mailbox parser this kernel lacks, so it is left out.
+d572ea4b621c came with 7.3.6, so the patch is mainline's commit as it
+stands.
 
 An assertion fails once the kernel is 7.4, which may have them, and the way
 through is to drop each patch that kernel has, then `kernel/next.nix`.
@@ -579,7 +583,9 @@ the image processor appears, so a machine without the camera never runs it.
 
 The relay starts and stops the camera on its one main loop, and starting
 blocks it for as long as the camera takes to set up: 75 ms idle, but 38 s
-during a switch on 9 November. A call that gave up and came back in that
+during a switch on 9 November. That setup was likely the buffers'
+compaction that [the kernel guide's camera fix][41] is for, though
+nothing measured it then. A call that gave up and came back in that
 time had its stop and start handled late, and the camera was left running
 with nothing asking it for frames until the relay was restarted by hand.
 A patch has the relay start the camera's pipeline again once a client has
@@ -588,7 +594,9 @@ for its service to start it afresh if that brings none in another 90 s,
 the wait a fresh setup gets, so a camera dead mid-call ends it in about
 100 s, and one that fails before its first frame in about 180 s; or if its
 loop stays blocked for 90 s. Each says so in the relay's
-log. A setup past 90 s would still never give a frame. The first wait is that long because
+log. A setup past 90 s would still never give a frame. The check
+vm-the-relay-waits-out-a-frameless-camera drives the 90 s and 10 s waits, and
+the end once a first frame never comes. The first wait is that long because
 the first frame can come 40 s after the start even once the loop is free:
 on 23 November, under load, the HAL waited that long for its capture
 buffers while the kernel compacted memory to give them out. A 10 s wait
@@ -1094,13 +1102,17 @@ been traced to its cause, and is harmless, so nothing silences or patches it:
   HDMI codec has four converters and the DSP's topology three outputs. The
   GPU drives four displays, the panel being one, so the three cover every
   external display.
-- **Bluetooth's "Received gp1 mailbox interrupt"**, four times as the
-  controller loads its firmware. The driver reports every interrupt from that
-  mailbox as an error and dumps its registers for debugging; the firmware
-  loads and the controller works. On some boots, and on resuming from them,
-  that dump also logs "Controller device warning": a bit the controller's
-  own firmware sets in its boot stage register, which the driver reports and
-  does nothing with.
+- **Bluetooth's mailbox lines** as the controller loads its firmware.
+  Before 7.3.6 the driver reported each interrupt from that mailbox as an
+  error, "Received gp1 mailbox interrupt", four times a boot, and dumped its
+  registers. 7.3.6 reads the mailbox for where the firmware keeps its debug
+  data and says so at info level, "mailbox for target access" and "mbox
+  interrupt received at N ns; queuing mbox_work"; the firmware loads and
+  the controller works. On some boots, and on resuming from them, the
+  driver also logs "Controller device warning", from its test for an error
+  at each alive interrupt and on waking, and before 7.3.6 from that dump:
+  a bit the controller's own firmware sets in its boot stage register,
+  which the driver reports and does nothing with.
 - **bluetoothd's "Unable to register device interface" and "Unable to
   create object for found device"**, a pair now and then while something
   scans. BlueZ 5.87 looks a device up by its address and address type, but
@@ -1828,3 +1840,4 @@ sealed to.
 [38]: https://github.com/aurora-silicon
 [39]: ../hardware/microsoft-surface-laptop-4-1958/touch/package.nix
 [40]: https://github.com/intel/crashlog
+[41]: kernel.md#the-patches

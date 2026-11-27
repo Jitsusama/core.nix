@@ -209,11 +209,11 @@ function whileLeaving(keys, open, before) {
 // from; `landed`, the key of the row selected once it landed ("" for
 // none, null where nothing was left); and `now`, the field's `keys`,
 // whether the launcher is `open`, its `depth`, and whether what left
-// changed within keyedWithin of Joel's last key (`byKey`), as the
-// launcher counts a change his key's own. A leave his key caused is one
-// he watched, so it guesses nothing new, though a guess still pending
-// from an earlier leave stands. A landing on its row keeps only such a
-// pending guess, unbroken, since this one closed whole.
+// was Joel's last key's act (`byKey`), as keyed says. A leave his key
+// caused is one he watched, so it guesses nothing new, though a guess
+// still pending from an earlier leave stands. A landing back on its row
+// keeps only such a pending guess, unbroken, since this one closed
+// whole.
 function landedAfter(before, from, landed, now) {
     const kept = pending(before, now.keys);
     if (!now.open) {
@@ -223,6 +223,95 @@ function landedAfter(before, from, landed, now) {
         return { keys: now.keys, at: 0, depth: now.depth, broken: false };
     }
     return kept ? Object.assign({}, before, { depth: now.depth, broken: false }) : unguessed();
+}
+
+// Whether the key the clock is timed from only moved, from `word`, as it
+// stood, once the prompt says it `moved` with `keys` taken (its
+// keysTaken), the clock's key having been the `heard`th. The prompt
+// clears its word as each key comes, before counting it, and says a move
+// once the key is read, so only a move said while the clock's own key
+// is the last counted is that key's: a Shift after j clears the word
+// without moving the clock, and read then, j's move was forgotten and a
+// share's change beside j taken for an act. A held key's repeat is
+// counted once read, so its word is the prompt's as its clock moves.
+function movedSaid(word, heard, keys, moved) {
+    return moved && keys === heard ? true : word;
+}
+
+// What a source's change does to the acts waiting on its refresh, as the
+// launcher hears it: `ago`, ms after the work of the key the clock is
+// timed from (Pacing.sinceKey); whether that key only `moved`; `within`,
+// keyedWithin; whether the change was to a place `shown` on screen in an
+// open launcher (Pacing.keyed's own word); and whether the source was
+// already `waiting` on a refresh, on the pace or a fill's find. Heard
+// within `within` of a key that acted, a change is that key's, whoever
+// made it: shown, it's the key's "act", or a "joined act" when what
+// already waits will be taken into the same refresh; not shown, it's
+// "kept", recording nothing and leaving the key's acts be. Any other
+// change, a daemon's answer past `within` too, "joins" each act of its
+// source (mixIn), so the leave that refresh makes is guessed. What
+// waits isn't asked who queued it, so Joel's own key just before, its
+// refresh not yet run, makes his next key's act joined too: a Return
+// held that needn't have been, the side this errs on. It answers what
+// it `says`, whether the change `joins` and whether an act it records
+// is `mixed`, so the launcher matches no words.
+function changeDoes(change) {
+    const said = says => ({ says, joins: says === "joins", mixed: says === "joined act" });
+    if (change.moved || change.ago >= change.within) {
+        return said("joins");
+    }
+    if (!change.shown) {
+        return said("kept");
+    }
+    return said(change.waiting ? "joined act" : "act");
+}
+
+// What a leave of `source` was, by `acts`, the launcher's keyedActs, and
+// `heard`, when the key the clock is timed from was taken: "a key's act"
+// when that key's change to the source is still waiting on the refresh
+// that shows it; "a key's act, joined" when a change it doesn't own was
+// taken into the same refresh (changeDoes); "a key's act, another key
+// since" when the act was an earlier key's; and "no key's act" when none
+// waits, as when a share's change or a daemon's answer comes alone. The
+// journal says which, so a held Return can be told from one let through.
+function actOf(acts, source, heard) {
+    const its = acts.filter(one => one.source === source);
+    const last = its.find(one => one.heard === heard);
+    if (last) {
+        return last.mixed ? "a key's act, joined" : "a key's act";
+    }
+    return its.length > 0 ? "a key's act, another key since" : "no key's act";
+}
+
+// Whether a leave of `source` was the act of Joel's last key, alone, so
+// one he watched (actOf).
+function keyed(acts, source, heard) {
+    return actOf(acts, source, heard) === "a key's act";
+}
+
+// Marks each of `acts` waiting on a refresh of `source` as joined by a
+// change its key doesn't own (changeDoes), so the leave that refresh
+// makes is guessed (keyed). Marked in place, as the launcher times each
+// act by the very record.
+function mixIn(acts, source) {
+    for (const one of acts) {
+        if (one.source === source) {
+            one.mixed = true;
+        }
+    }
+}
+
+// What the journal says of a leave once landedAfter has judged it: what
+// it was (`act`, as actOf says), and whether `guess`, the guess standing
+// after it, holds the Return pressed next, as returnUnder would answer
+// it, since a key's act may still leave one an earlier leave left
+// pending, and one by no key that lands back on its row holds nothing.
+// It's a forecast for a Return pressed next with no words asked for; one
+// pressed where the line asks for words is answered, and never held.
+function leaveSaid(act, guess) {
+    const next = { keys: guess.keys + 1, at: 0, depth: guess.depth, asking: false };
+    const holds = returnUnder(guess, next, 0).holds;
+    return `${act}; ${holds ? "a Return next holds" : "nothing holds"}`;
 }
 
 // A modifier pressed `alone`, as Shift or Ctrl, chose nothing, so the

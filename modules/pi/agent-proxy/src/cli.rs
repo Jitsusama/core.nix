@@ -5,7 +5,15 @@
 use terminal_kit::{Exit, Failure, Help};
 
 /// The flags it takes, each with a value.
-pub const FLAGS: [&str; 5] = ["--hosts", "--upstream", "--key", "--lent", "--socket"];
+pub const FLAGS: [&str; 7] = [
+    "--hosts",
+    "--upstream",
+    "--key",
+    "--lent",
+    "--os-login",
+    "--os-login-hosts",
+    "--socket",
+];
 
 /// What `pi-agent-proxy --help` says.
 pub fn help() -> Help {
@@ -34,10 +42,21 @@ pub fn help() -> Help {
         "a file of the builders lent now, read afresh at each login; again for each",
     )
     .option(
+        "--os-login FOLDER",
+        "make a key for OS Login hosts, writing its public half here",
+    )
+    .option(
+        "--os-login-hosts FILE",
+        "gcloud's known hosts, whose instances it signs those logins to",
+    )
+    .option(
         "--socket PATH",
         "where it listens; the socket systemd passes",
     )
-    .exit(Exit::Failed, "it had nowhere to listen")
+    .exit(
+        Exit::Failed,
+        "it had nowhere to listen, or couldn't make the OS Login key it was asked for alone",
+    )
     .exit(Exit::Config, "its hosts file couldn't be read")
 }
 

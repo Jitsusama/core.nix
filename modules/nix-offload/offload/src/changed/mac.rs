@@ -46,7 +46,9 @@ pub fn longest() -> Duration {
 /// `took`, as a person reads it: in minutes when it's whole minutes.
 pub fn said(took: Duration) -> String {
     let seconds = took.as_secs();
-    if seconds >= 60 && seconds.is_multiple_of(60) {
+    if seconds == 60 {
+        "a minute".to_owned()
+    } else if seconds >= 60 && seconds.is_multiple_of(60) {
         format!("{} minutes", seconds / 60)
     } else {
         format!("{seconds} seconds")
@@ -172,42 +174,87 @@ pub fn asks_for_room(asked: Option<&str>, here: &str, builds: bool) -> bool {
 /// waits. A Mac too busy to say its load has no room either, and nor has
 /// one that said nothing a load reads from: an ssh that couldn't finish
 /// its handshake says nothing, and a run sent on would only find the same
-/// Mac.
+/// Mac. Nor has one short of memory ([`Memory::short`]), or one that
+/// didn't say its memory: from 10:30 to 11:25 on 25 November the net
+/// found a Mac at loads of 35 to 262 on 12 processors, swapping.
+///
+/// Nor has one building a run sent to it already, whoever sent it: one
+/// lent build at a time, by velocity's ruling of 26 November. At 04:50 on
+/// 18 November the net's comparison found a Mac at 35 over five, under
+/// its room, while a session's darwin build ran there, and the two took
+/// it to 60. Until then a person's own part went beside another's build,
+/// bounded only by the Mac's turns, and on 26 November at 11:01 a gate's
+/// comparison went to the Mac beside one.
 pub fn room(host: &str, load: Result<Option<Load>, String>) -> Result<String, String> {
-    match load {
-        Ok(Some(load)) if load.over() => Err(format!("{host} has no room, at {}", load.said())),
-        Ok(Some(load)) => Ok(format!("{host} has room, at {}", load.said())),
-        Ok(None) => Err(format!("{host} didn't say its load")),
-        Err(why) => Err(why),
+    let load = load?.ok_or_else(|| format!("{host} didn't say its load"))?;
+    if load.over() {
+        return Err(format!("{host} has no room, at {}", load.said()));
     }
-}
-
-/// [`room`], for a run that waits its turn behind any other: a gate's or
-/// the net's comparison, which is owed rather than wanted now, so it waits
-/// while another run sent to the Mac builds there, however light its load.
-/// At 04:50 on 18 November the net's comparison found a Mac at 35 over
-/// five, under its room, while a session's darwin build ran there, and
-/// the two took it to 60. A person's own part for a Mac takes [`room`]
-/// alone, since its turn there bounds it beside another.
-pub fn room_alone(host: &str, load: Result<Option<Load>, String>) -> Result<String, String> {
-    match load {
-        Ok(Some(load)) if load.building > 0 && !load.over() => Err(format!(
+    if load.building > 0 {
+        return Err(format!(
             "{host} has no room, building {} run{} sent to it already, at {}",
             load.building,
             if load.building == 1 { "" } else { "s" },
             load.said()
-        )),
-        load => room(host, load),
+        ));
     }
+    let memory = load
+        .memory
+        .ok_or_else(|| format!("{host} didn't say its free memory or its swapping"))?;
+    let at = format!("{} and {}", memory.said(), load.said());
+    if memory.short() {
+        Err(format!("{host} has no room, at {at}"))
+    } else {
+        Ok(format!("{host} has room, at {at}"))
+    }
+}
+
+/// How long a Mac's room must hold before a run goes to it. A Mac's free
+/// memory swings within a minute as its own work comes and goes, so one
+/// reading let runs in on a passing lull: velocity's ruling of 26
+/// November admits a build only on two readings a minute apart, both
+/// with room, the second's swap-outs counted over the minute between.
+pub const SETTLE: Duration = Duration::from_mins(1);
+
+/// [`SETTLE`], or as many seconds as `NIX_OFFLOAD_MAC_SETTLE` says, as a
+/// test asks.
+pub fn settle() -> Duration {
+    std::env::var("NIX_OFFLOAD_MAC_SETTLE")
+        .ok()
+        .and_then(|seconds| seconds.parse().ok())
+        .map_or(SETTLE, Duration::from_secs)
+}
+
+/// Whether a run goes to the Mac `host`, by [`room`] on two of its loads,
+/// each `read` afresh, `settle` apart: `Ok` saying the second, or `Err`
+/// saying why it waits. One without room at the first isn't read again.
+pub fn room_held(
+    host: &str,
+    read: &dyn Fn() -> Result<Option<Load>, String>,
+    settle: Duration,
+) -> Result<String, String> {
+    room(host, read())?;
+    std::thread::sleep(settle);
+    room(host, read())
+        .map(|room| format!("{room}, held over {}", said(settle)))
+        .map_err(|why| format!("{why}, {} after it had room", said(settle)))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::there::Memory;
 
     fn words(text: &str) -> Vec<String> {
         text.split_whitespace().map(str::to_owned).collect()
     }
+
+    /// A Mac with memory to spare: half free, swapping nothing.
+    const SPARE: Option<Memory> = Some(Memory {
+        free: 50,
+        swapped: 0,
+        window: 60,
+    });
 
     #[test]
     fn a_run_for_a_mac_past_three_a_processor_waits_and_one_within_goes() {
@@ -217,6 +264,7 @@ mod tests {
                 five,
                 cores: 12,
                 building: 0,
+                memory: SPARE,
             }))
         };
         let busy = |why: &str| Err(why.to_owned());
@@ -237,7 +285,8 @@ mod tests {
         assert_eq!(
             room("skiff", at(36.0, 36.0)),
             Ok(
-                "skiff has room, at load 36.0 over a minute and 36.0 over five on 12 processors"
+                "skiff has room, at 50% free and 0 swap-outs over 60 s and load 36.0 \
+                 over a minute and 36.0 over five on 12 processors"
                     .into()
             ),
             "a run for a Mac at three a processor waited"
@@ -254,6 +303,59 @@ mod tests {
         );
     }
 
+    // From 10:30 to 11:25 on 25 November the net found a Mac swapping at
+    // loads of 35 to 262; velocity's line for a start there is 40% free
+    // and no swap-outs in the last minute.
+    #[test]
+    fn a_run_for_a_mac_short_of_memory_waits_however_light_its_load() {
+        let with = |memory: Option<Memory>| {
+            Ok(Some(Load {
+                minute: 6.0,
+                five: 6.0,
+                cores: 12,
+                building: 0,
+                memory,
+            }))
+        };
+        let memory = |free: u32, swapped: u64| {
+            Some(Memory {
+                free,
+                swapped,
+                window: 72,
+            })
+        };
+        assert_eq!(
+            room("skiff", with(memory(39, 0))),
+            Err(
+                "skiff has no room, at 39% free and 0 swap-outs over 72 s and load 6.0 \
+                 over a minute and 6.0 over five on 12 processors"
+                    .to_owned()
+            ),
+            "a run for a Mac just under 40% free went"
+        );
+        assert_eq!(
+            room("skiff", with(memory(80, 1))),
+            Err(
+                "skiff has no room, at 80% free and 1 swap-out over 72 s and load 6.0 \
+                 over a minute and 6.0 over five on 12 processors"
+                    .to_owned()
+            ),
+            "a run for a Mac that swapped out within its window went"
+        );
+        assert!(
+            room("skiff", with(memory(40, 0))).is_ok(),
+            "a run for a Mac at 40% free, swapping nothing, waited"
+        );
+        assert_eq!(
+            room("skiff", with(None)),
+            Err("skiff didn't say its free memory or its swapping".to_owned()),
+            "a Mac that didn't say its memory was taken to have room"
+        );
+    }
+
+    // At 11:01 on 26 November a gate's comparison went to a Mac beside a
+    // build there; velocity's ruling is one lent build at a time, for
+    // every caller.
     #[test]
     fn a_run_for_a_mac_waits_while_another_builds_there_however_light_its_load() {
         let building = |building: u32| {
@@ -262,10 +364,11 @@ mod tests {
                 five: 35.0,
                 cores: 12,
                 building,
+                memory: SPARE,
             }))
         };
         assert_eq!(
-            room_alone("skiff", building(1)),
+            room("skiff", building(1)),
             Err(
                 "skiff has no room, building 1 run sent to it already, at load 20.0 \
                  over a minute and 35.0 over five on 12 processors"
@@ -274,29 +377,23 @@ mod tests {
             "a run for a Mac went beside a build already there"
         );
         assert_eq!(
-            room_alone("skiff", building(0)),
+            room("skiff", building(0)),
             Ok(
-                "skiff has room, at load 20.0 over a minute and 35.0 over five on 12 processors"
+                "skiff has room, at 50% free and 0 swap-outs over 60 s and load 20.0 \
+                 over a minute and 35.0 over five on 12 processors"
                     .to_owned()
             ),
             "a run for a Mac building nothing waited"
         );
         assert_eq!(
-            room("skiff", building(1)),
-            Ok(
-                "skiff has room, at load 20.0 over a minute and 35.0 over five on 12 processors"
-                    .to_owned()
-            ),
-            "a person's own part for a Mac waited on another's build, which its turn bounds"
-        );
-        assert_eq!(
-            room_alone(
+            room(
                 "skiff",
                 Ok(Some(Load {
                     minute: 20.0,
                     five: 60.0,
                     cores: 12,
                     building: 1,
+                    memory: SPARE,
                 }))
             ),
             Err(
@@ -306,10 +403,89 @@ mod tests {
             "a Mac past its load and building said the build rather than the load"
         );
         assert_eq!(
-            room_alone("skiff", Ok(None)),
+            room("skiff", Ok(None)),
             Err("skiff didn't say its load".to_owned()),
             "a Mac that said nothing was taken to have room"
         );
+    }
+
+    /// A Mac's load as `room_held` reads it in turn from `loads`, saying
+    /// how many times it was read.
+    fn reads_of(
+        loads: Vec<Option<Memory>>,
+    ) -> (
+        impl Fn() -> Result<Option<Load>, String>,
+        std::rc::Rc<std::cell::Cell<usize>>,
+    ) {
+        let read = std::rc::Rc::new(std::cell::Cell::new(0));
+        let counted = std::rc::Rc::clone(&read);
+        let reading = move || {
+            let at = counted.get();
+            counted.set(at + 1);
+            Ok(Some(Load {
+                minute: 6.0,
+                five: 6.0,
+                cores: 12,
+                building: 0,
+                memory: loads.get(at).copied().flatten(),
+            }))
+        };
+        (reading, read)
+    }
+
+    // Velocity's ruling of 26 November: a build goes to a Mac only on two
+    // readings a minute apart, both at 40% free or more, swapping nothing.
+    #[test]
+    fn a_run_for_a_mac_goes_only_once_its_room_holds_on_a_second_reading() {
+        let free = |free: u32| {
+            Some(Memory {
+                free,
+                swapped: 0,
+                window: 60,
+            })
+        };
+        let (read, times) = reads_of(vec![free(50), free(45)]);
+        assert_eq!(
+            room_held("skiff", &read, Duration::ZERO),
+            Ok(
+                "skiff has room, at 45% free and 0 swap-outs over 60 s and load 6.0 over a \
+                minute and 6.0 over five on 12 processors, held over 0 seconds"
+                    .to_owned()
+            ),
+            "a Mac with room on both readings waited"
+        );
+        assert_eq!(
+            times.get(),
+            2,
+            "a Mac's room was read {} times, not twice",
+            times.get()
+        );
+        let (read, _) = reads_of(vec![free(50), free(30)]);
+        assert_eq!(
+            room_held("skiff", &read, Duration::ZERO),
+            Err(
+                "skiff has no room, at 30% free and 0 swap-outs over 60 s and load 6.0 over \
+                 a minute and 6.0 over five on 12 processors, 0 seconds after it had room"
+                    .to_owned()
+            ),
+            "a Mac whose room went by the second reading was sent a run"
+        );
+        let swapping = Some(Memory {
+            free: 60,
+            swapped: 3,
+            window: 60,
+        });
+        let (read, _) = reads_of(vec![free(60), swapping]);
+        assert!(
+            room_held("skiff", &read, Duration::ZERO).is_err(),
+            "a Mac that swapped out between its readings was sent a run"
+        );
+        let (read, times) = reads_of(vec![free(30), free(60)]);
+        assert!(
+            room_held("skiff", &read, Duration::ZERO).is_err(),
+            "a Mac without room at the first reading was sent a run"
+        );
+        assert_eq!(times.get(), 1, "a Mac without room was read again");
     }
 
     #[test]

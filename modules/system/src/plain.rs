@@ -1,0 +1,293 @@
+//! Text an owner or a node wrote, made safe to show: what the system says
+//! goes to a terminal, the launcher's rows and the realm's other machines,
+//! so nothing in it may act on a terminal, or move or hide the words around
+//! it. One filter for every such text, so a rule learnt for one reader
+//! holds for all of them, and beside it the terminal kit's own list of
+//! what draws nothing (terminal-kit's `one_line`), so nothing the kit keeps
+//! from a terminal reaches one through here.
+
+use std::iter::Peekable;
+use std::str::Chars;
+
+use terminal_kit::layout::one_line;
+
+/// `line` as plain words: a terminal's escape sequences gone whole, as a
+/// coloured or linked complaint writes them; every other control character
+/// and each line or paragraph separator one space, with every space
+/// beside it (a no-break or an ideographic one too) and however many stand
+/// together, so the words either side of a tab or a return stay apart by
+/// one; and the format characters that
+/// turn, hide or break text gone, as is any character the line's own form
+/// leaves out, so a row reads as it's written.
+pub fn words(line: &str) -> String {
+    let mut kept = String::new();
+    let mut chars = line.chars().peekable();
+    // Whether a control has parted the words since the last character that
+    // draws, so a space after it is the same parting.
+    let mut parted = false;
+    while let Some(each) = chars.next() {
+        match each {
+            '\u{1b}' => escape(&mut chars),
+            // The one-character forms of a control sequence and a string,
+            // as characters; written as raw bytes, they were never UTF-8
+            // and reach here as a replacement character, which is harmless.
+            '\u{9b}' => control_sequence(&mut chars),
+            '\u{90}' | '\u{98}' | '\u{9d}' | '\u{9e}' | '\u{9f}' => {
+                if string(&mut chars) {
+                    escape(&mut chars);
+                }
+            }
+            each if each.is_control() || matches!(each, '\u{2028}' | '\u{2029}') => {
+                parted = true;
+                kept.truncate(kept.trim_end_matches(blank).len());
+                if !kept.is_empty() {
+                    kept.push(' ');
+                }
+            }
+            // Gone here rather than by the line's own form after, so none
+            // stands between a control and a space to keep both.
+            each if hides(each) || unseen(each) => {}
+            each if parted && blank(each) => {}
+            each => {
+                parted = false;
+                kept.push(each);
+            }
+        }
+    }
+    // Nothing the loop keeps is a character the line's own form changes,
+    // but the kit's form is the guarantee, so a rule the kit learns later
+    // holds here before this loop learns it too.
+    one_line(&kept).trim().to_owned()
+}
+
+/// Whether `each` draws a blank cell, as the terminal kit's own words count
+/// one: a space of any width, a braille blank, or a Hangul filler that
+/// starts a syllable.
+fn blank(each: char) -> bool {
+    each.is_whitespace() || matches!(each, '\u{115f}' | '\u{2800}')
+}
+
+/// Passes over an escape sequence's rest, its escape already taken: a
+/// control sequence such as a colour, a string such as a title or a link,
+/// or one that runs through intermediates to its final character, such as
+/// a character set chosen; any other takes the one character after it,
+/// unless that is a control, which a terminal runs inside the sequence and
+/// so is left to part the words. A
+/// string ended by the escape of a sequence of its own goes on to that one
+/// here, in a loop, so text nesting a million of them costs no more stack
+/// than one: the text is a node's or an owner's, and a stack overflow ends
+/// the daemon reading it with no way to catch it.
+fn escape(chars: &mut Peekable<Chars>) {
+    loop {
+        if chars.peek().is_some_and(|each| each.is_control()) {
+            return;
+        }
+        match chars.next() {
+            Some('[') => control_sequence(chars),
+            Some(']' | 'P' | 'X' | '^' | '_') => {
+                if string(chars) {
+                    continue;
+                }
+            }
+            Some(' '..='/') => {
+                chars.find(|end| ('0'..='~').contains(end));
+            }
+            _ => {}
+        }
+        return;
+    }
+}
+
+/// Passes over a control sequence's rest, to its final character.
+fn control_sequence(chars: &mut Peekable<Chars>) {
+    chars.find(|end| ('@'..='~').contains(end));
+}
+
+/// Passes over a string's rest, to the bell or string terminator ending it,
+/// saying whether an escape ended it that isn't its terminator: that starts
+/// a sequence of its own, which its caller passes over as any other.
+fn string(chars: &mut Peekable<Chars>) -> bool {
+    while let Some(each) = chars.next() {
+        match each {
+            '\u{7}' | '\u{9c}' => return false,
+            '\u{1b}' => return chars.next_if_eq(&'\\').is_none(),
+            _ => {}
+        }
+    }
+    false
+}
+
+/// Whether the line's own form (the terminal kit's `one_line`) leaves
+/// `each` out, as it does the characters that draw nothing, such as a
+/// Hangul filler standing alone.
+fn unseen(each: char) -> bool {
+    one_line(each.encode_utf8(&mut [0; 4])).is_empty()
+}
+
+/// Whether `each` is a format character that turns, hides or breaks text:
+/// a soft hyphen, direction marks and overrides, joiners and invisible
+/// operators, annotation marks, and tags. Some of these the terminal kit
+/// keeps, since a word or an emoji needs them drawn, but a row of plain
+/// words needs none of them, and each could hide a difference.
+fn hides(each: char) -> bool {
+    matches!(
+        each,
+        '\u{ad}'
+            | '\u{61c}'
+            | '\u{180e}'
+            | '\u{200b}'..='\u{200f}'
+            | '\u{202a}'..='\u{202e}'
+            | '\u{2060}'..='\u{206f}'
+            | '\u{feff}'
+            | '\u{fff9}'..='\u{fffb}'
+            | '\u{e0000}'..='\u{e007f}'
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::words;
+
+    /// Escapes, strings and what hides text go, whole and no further.
+    #[test]
+    fn what_would_act_on_a_terminal_goes_whole() {
+        for (said, shown, what) in [
+            ("\u{1b}[31mred\u{1b}[m", "red", "a colour goes whole"),
+            (
+                "\u{1b}]8;;https://x\u{1b}\\link\u{1b}]8;;\u{1b}\\ broke",
+                "link broke",
+                "a link keeps its words, not its address",
+            ),
+            (
+                "\u{1b}]0;a title\u{7}said",
+                "said",
+                "a title set goes whole",
+            ),
+            (
+                "\u{9b}31mred\u{9d}0;title\u{9c}",
+                "red",
+                "one-character forms go whole",
+            ),
+            (
+                "\u{202e}gone\u{200b}\u{2066}\u{e0041}\u{ad}",
+                "gone",
+                "what turns or hides text goes",
+            ),
+            (
+                "\u{7}",
+                "",
+                "a line of only control characters leaves nothing",
+            ),
+            (
+                "a\u{1b}\u{1b}[31mb",
+                "ab",
+                "an escape after a lone escape begins its own",
+            ),
+            (
+                "\u{1b}(Bplain",
+                "plain",
+                "a character set chosen goes whole, through its intermediate",
+            ),
+            (
+                "\u{1b}(0plain",
+                "plain",
+                "a character set whose final is a digit goes whole too",
+            ),
+            ("\u{1b}cafter", "after", "a reset takes its one character"),
+            (
+                "\u{1b}]0;title\u{1b}[31mred",
+                "red",
+                "a sequence that ends a string goes whole too",
+            ),
+            (
+                "said\u{1b}]0;never ended",
+                "said",
+                "a string never ended takes the rest with it",
+            ),
+            (
+                "a\u{3164}\u{1d173}b",
+                "ab",
+                "what the terminal kit keeps from a terminal goes",
+            ),
+        ] {
+            assert_eq!(words(said), shown, "{what}");
+        }
+    }
+
+    /// A control parts words by one space, and the blanks beside it fold into that one.
+    #[test]
+    fn controls_and_blanks_beside_them_part_words_by_one_space() {
+        for (said, shown, what) in [
+            ("a\tb\rc", "a b c", "a tab or a return parts words"),
+            (
+                "a\u{2028}\tb",
+                "a b",
+                "a line separator parts words as a tab does",
+            ),
+            ("a;\t\tb", "a; b", "controls together leave one space"),
+            ("a\t  b", "a b", "spaces after a control fold into its one"),
+            ("a  \tb", "a b", "spaces before a control fold into its one"),
+            (
+                "a\t\u{a0}\u{3000}b",
+                "a b",
+                "a no-break or an ideographic space after a control folds into its one",
+            ),
+            (
+                "a\u{3000}\u{a0}\tb",
+                "a b",
+                "a no-break or an ideographic space before a control folds into its one",
+            ),
+            (
+                "a\u{2800}\t\u{115f}b",
+                "a b",
+                "a braille blank or a Hangul filler beside a control folds into its one",
+            ),
+            (
+                "a\t\u{200b} b",
+                "a b",
+                "a space after a format character that hides folds into a control's one",
+            ),
+            (
+                "a\u{1b}\tb",
+                "a b",
+                "a control after a lone escape still parts the words",
+            ),
+            (
+                "a\t\u{1b}[31m b",
+                "a b",
+                "a space after a colour after a control folds into its one",
+            ),
+            (
+                "a\t\u{3164} b",
+                "a b",
+                "a space after a character the line drops folds into a control's one",
+            ),
+            (
+                "a \u{3164}\tb",
+                "a b",
+                "a space before a character the line drops folds into a control's one",
+            ),
+            (
+                "a\tb  c",
+                "a b  c",
+                "spaces no control parts are the owner's own, after a word ends a parting",
+            ),
+        ] {
+            assert_eq!(words(said), shown, "{what}");
+        }
+    }
+
+    /// How many strings a node's text nests in the case below: past what a
+    /// test thread's stack holds were each a call deeper than the last.
+    const NESTED: usize = 1_000_000;
+
+    #[test]
+    fn strings_nested_without_end_cost_no_stack() {
+        let nested = "\u{1b}]".repeat(NESTED);
+        assert_eq!(words(&nested), "", "a string's nested escapes went whole");
+        let said = format!("{nested}\u{7}said");
+        assert_eq!(words(&said), "said", "the words after them stayed");
+        let short = "\u{9d}".to_owned() + &"\u{1b}]".repeat(NESTED) + "\u{9c}said";
+        assert_eq!(words(&short), "said", "so did a one-character string's");
+    }
+}

@@ -82,7 +82,12 @@ pub enum Job {
 /// and not for one taken up from its file after a restart. Its `guesses`
 /// say who the voices left numbered may be, once it's told apart; they
 /// aren't in its lines, so a restart loses them. Its first `read` lines
-/// were read back from its file, their echoes already left out.
+/// were read back from its file, their echoes already left out. Its
+/// `told` are the echo cuts from Joel's words already journaled, by the
+/// sample the cut starts at, and `left` the lines of his already
+/// journaled as left out whole, by the sample each starts at: splitting
+/// their takes by voice moves his lines' indices on but never their
+/// times, so what's told stays told across a rejoin.
 #[derive(Default)]
 struct Writing {
     lines: Vec<Line>,
@@ -94,6 +99,8 @@ struct Writing {
     takes: usize,
     whole: bool,
     guesses: Option<String>,
+    told: HashSet<usize>,
+    left: HashSet<usize>,
 }
 
 /// A piece of a take of theirs as the speaker model heard it: its
@@ -101,6 +108,42 @@ struct Writing {
 type Embedded = (Vec<f32>, usize, usize);
 
 impl Writing {
+    /// What's newly left out of Joel's side as the others' echo, a
+    /// journal line each, said once: for words cut from a line, how many,
+    /// when and how late; for a line left out whole, how many words and
+    /// when. Never the words, since a call's words stay out of the
+    /// journal. What's wrongly left out is gone from the file, so this is
+    /// all that says where to listen for it.
+    fn untold_cuts(&mut self) -> Vec<String> {
+        let (cut, cuts) = echo::cut_echoes(&self.lines, &self.words, said::spoken);
+        let mut untold: Vec<String> = cuts
+            .into_iter()
+            .filter(|cut| self.told.insert(cut.at))
+            .map(|cut| {
+                format!(
+                    "call-transcripts: {} of Joel's words at {} cut as their echo, {}",
+                    cut.text.split_whitespace().count(),
+                    transcript::clock(cut.at),
+                    cut.by(),
+                )
+            })
+            .collect();
+        let mut left: Vec<usize> = split::echoing(&cut, &self.pieces, self.read)
+            .into_iter()
+            .filter(|&index| self.left.insert(self.lines[index].start))
+            .collect();
+        left.sort_unstable();
+        untold.extend(left.into_iter().map(|index| {
+            format!(
+                "call-transcripts: a line of Joel's, {} words at {}, left out whole as \
+                 their echo",
+                cut[index].text.split_whitespace().count(),
+                transcript::clock(cut[index].start),
+            )
+        }));
+        untold
+    }
+
     /// Keeps the embedding of each piece of a take of theirs embedded,
     /// with the sample of the call it starts at and how many it holds,
     /// and which line the take is, if it has one; a piece is worded when
@@ -237,6 +280,9 @@ pub fn hear(
                     voice: None,
                     name: None,
                 });
+                for cut in writing.untold_cuts() {
+                    eprintln!("{cut}");
+                }
                 write(book, &key, writing, me, true);
             }
             Job::Done { key, side } => {
@@ -288,8 +334,9 @@ impl Hears for Parakeet {
 /// text a space between each, as `transcribe` would, and timed from the
 /// call's start, which is where its pieces are, so each of theirs finds
 /// the piece it was said in and each of Joel's the words of theirs it
-/// may echo.
-fn transcribe_take(
+/// may echo. The `transcribe` subcommand and the scorer hear a take
+/// through this too (`score::hear_take`), so they read what it writes.
+pub fn transcribe_take(
     hears: &mut impl Hears,
     start: usize,
     samples: &[f32],

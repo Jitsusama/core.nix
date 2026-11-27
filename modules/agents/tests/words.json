@@ -482,7 +482,15 @@
       "ask": "what to talk about?",
       "said": {
         "didNot": "didn't talk",
-        "leadless": "a network has no one lead"
+        "leadless": "a network has no one lead",
+        "answerAsk": "your answer?",
+        "answerWalked": "what {name} asks is answered only from your own Return in the launcher",
+        "asks": "{name} asks you",
+        "choices": "{choices}, or your own words",
+        "only": "{choices}",
+        "takesOnly": "it takes only {choices}",
+        "answered": "answered",
+        "working": "working on it"
       }
     },
     {

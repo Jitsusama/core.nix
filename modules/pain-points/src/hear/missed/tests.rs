@@ -10,6 +10,12 @@ const AT: i64 = 1_795_311_000_000;
 
 const OFFSET: i64 = -5 * 3600;
 
+/// Nobody a pain carried unsent may be owed to.
+const NOBODY: Owning = Owning {
+    lines: Vec::new(),
+    keeper: None,
+};
+
 fn sent(entry: &str, words: &str) -> Heard {
     serde_json::from_value(json!({
         "key": format!("s/{entry}"), "session": "s", "entry": entry, "at": AT,
@@ -79,8 +85,8 @@ fn a_pain_sent_is_written_once_beside_the_keepers_lines() {
     quoted.carried = true;
     let colour = sent("e1", "the bar is the wrong colour");
     let kept = [colour, void, carried, unsent, quoted];
-    write(&ledger, &kept, OFFSET, 0).expect("written");
-    write(&ledger, &kept, OFFSET, 0).expect("written again");
+    write(&ledger, &kept, &NOBODY, OFFSET, 0).expect("written");
+    write(&ledger, &kept, &NOBODY, OFFSET, 0).expect("written again");
     let lines = read(&ledger);
     assert_eq!(lines.len(), 4, "the keeper's and the three sent: {lines:?}");
     assert_eq!(
@@ -120,11 +126,11 @@ fn a_pain_closed_since_gains_its_check_and_a_carried_one_says_so() {
         sent("e1", "the bar is the wrong colour"),
         sent("e2", "the clock is out"),
     ];
-    write(&ledger, &kept, OFFSET, 0).expect("written");
+    write(&ledger, &kept, &NOBODY, OFFSET, 0).expect("written");
     let mut carried = kept[1].clone();
     carried.carried = true;
     let later = [closed(kept[0].clone()), carried];
-    write(&ledger, &later, OFFSET, 0).expect("written again");
+    write(&ledger, &later, &NOBODY, OFFSET, 0).expect("written again");
     let lines = read(&ledger);
     assert_eq!(lines.len(), 2, "no line twice: {lines:?}");
     assert_eq!(
@@ -138,11 +144,117 @@ fn a_pain_closed_since_gains_its_check_and_a_carried_one_says_so() {
     assert_eq!(lines[1]["carried"], true, "the keeper carries it from now");
     let first = folder("closed-first").join("misses.jsonl");
     let first_closed = [closed(kept[0].clone())];
-    write(&first, &first_closed, OFFSET, 0).expect("written");
+    write(&first, &first_closed, &NOBODY, OFFSET, 0).expect("written");
     assert_eq!(
         read(&first)[0]["closed_by"],
         "255494bb414c",
         "one closed before it was ever written is written with its check"
+    );
+}
+
+/// A pain the keeper carried before it was sent: never sent, so never
+/// routed, carried.
+fn carried_unsent(entry: &str, words: &str) -> Heard {
+    let mut pain = Heard {
+        to: None,
+        routed_at: None,
+        ..sent(entry, words)
+    };
+    pain.carried = true;
+    pain
+}
+
+fn lines(of: &[(&str, &str)]) -> Vec<Line> {
+    of.iter()
+        .map(|(words, owner)| Line {
+            words: (*words).into(),
+            owner: (*owner).into(),
+        })
+        .collect()
+}
+
+#[test]
+fn only_a_named_owner_the_routes_allow_owns_a_miss() {
+    let routes = |keeper: &str| Routes {
+        from: None,
+        fallback: None,
+        ledgers: Some(keeper.into()),
+        never: vec!["VOID01".into()],
+        told: Vec::new(),
+    };
+    // Blank, spaces alone, refused in another case, and padded.
+    let ledgers = lines(&[("a", ""), ("b", "   "), ("c", "void01"), ("d", " Y2YBTS ")]);
+    assert_eq!(
+        owning(&ledgers, &routes(" ORCH01")),
+        Owning {
+            lines: lines(&[("d", "Y2YBTS")]),
+            keeper: Some("ORCH01".into())
+        },
+        "a blank or refused owner was kept, or a named one or the keeper wasn't trimmed"
+    );
+    assert_eq!(
+        owning(&[], &routes("Void01")).keeper,
+        None,
+        "a keeper the routes refuse was kept"
+    );
+}
+
+#[test]
+fn a_pain_carried_before_it_was_sent_is_written_to_the_owner_its_carrying_line_names() {
+    let ledger = folder("carried-unsent").join("misses.jsonl");
+    // As `owning` leaves them: the clock's carrying line named no owner,
+    // so only a later line naming one is left to own it.
+    let mut owning = Owning {
+        lines: lines(&[
+            ("the launcher is slow to open", "Y2YBTS"),
+            ("the clock is out", "KP0L6A"),
+        ]),
+        keeper: None,
+    };
+    let mut early = carried_unsent("e0", "the launcher is slow to open again");
+    early.at = AT - 1;
+    let uncarried = Heard {
+        to: None,
+        routed_at: None,
+        ..sent("e3", "the launcher is slow to open")
+    };
+    let kept = [
+        carried_unsent("e1", "the launcher is slow to open"),
+        carried_unsent("e2", "the clock is out"),
+        carried_unsent("e4", "the bar is the wrong colour"),
+        early,
+        uncarried,
+    ];
+    write(&ledger, &kept, &owning, OFFSET, AT).expect("written");
+    write(&ledger, &kept, &owning, OFFSET, AT).expect("written again");
+    let owned: Vec<(Value, Value, Value)> = read(&ledger)
+        .into_iter()
+        .map(|line| {
+            (
+                line["pain"].clone(),
+                line["owner"].clone(),
+                line["carried"].clone(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        owned,
+        [
+            (json!("s/e1"), json!("Y2YBTS"), json!(true)),
+            (json!("s/e2"), json!("KP0L6A"), json!(true))
+        ],
+        "one carried unsent wasn't written once to its line's owner, or one no owning \
+         line carries, one heard before the ledger's start or one never carried was"
+    );
+    owning.keeper = Some("ORCH01".into());
+    write(&ledger, &kept, &owning, OFFSET, AT).expect("written with a keeper");
+    let kept_by = read(&ledger)
+        .into_iter()
+        .find(|line| line["pain"] == "s/e4");
+    assert_eq!(
+        kept_by.map(|line| line["owner"].clone()),
+        Some(json!("ORCH01")),
+        "one no owning line carries wasn't written to the keeper that carried it"
     );
 }
 
@@ -158,7 +270,7 @@ fn a_ledger_held_by_another_writer_is_left_and_said() {
         .expect("the lock");
     held.lock().expect("held");
     let one = [sent("e1", "the bar")];
-    let why = write(&ledger, &one, OFFSET, 0).expect_err("it waits");
+    let why = write(&ledger, &one, &NOBODY, OFFSET, 0).expect_err("it waits");
     assert!(why.contains("stayed locked"), "{why}");
     assert!(!ledger.exists(), "nothing written past the lock");
 }
@@ -170,10 +282,10 @@ fn a_ledger_written_whole_ends_each_line_once_and_holds_no_pain_sent_before_it()
     let pain = sent("e1", "the bar is the wrong colour");
     let mut early = sent("e0", "said before the ledger's start");
     early.routed_at = Some(AT);
-    let theirs = format!("{}\n{keepers}", line_of(&pain, OFFSET));
+    let theirs = format!("{}\n{keepers}", line_of(&pain, "ABC123", OFFSET));
     fs::write(&ledger, theirs).expect("a ledger ending mid-line");
     let kept = [closed(pain), early];
-    write(&ledger, &kept, OFFSET, AT + 30_000).expect("written");
+    write(&ledger, &kept, &NOBODY, OFFSET, AT + 30_000).expect("written");
     let text = fs::read_to_string(&ledger).expect("the ledger");
     assert!(
         !text.contains("\n\n") && text.ends_with("}\n"),

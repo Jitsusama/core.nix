@@ -129,6 +129,12 @@ QtObject {
         check("no link where its manager has none", Passwords.shows(gitHub, ""), "");
         check("every act, in order", Passwords.acts(gitHub, link),
             ["password", "code", "username", "website", "show", "link"]);
+        // Typing leads, as Return's act, only with a window to type into.
+        check("typing leads with a window under", Passwords.acts(gitHub, link, true),
+            ["type", "password", "code", "username", "website", "show", "link"]);
+        check("no typing with no window under", Passwords.acts(gitHub, link, false),
+            ["password", "code", "username", "website", "show", "link"]);
+        check("nothing typed with no password", Passwords.acts(bank, "", true), []);
         // Its website opens where its manager fills it only on a web page,
         // its primary website; anything else opens as any address does.
         check("its primary website opens where it's filled", Passwords.fillsAt(gitHub),
@@ -164,6 +170,8 @@ QtObject {
             lapsed: "copied {title}'s {detail} \u00b7 lapsed",
             cleared: "{title}'s {detail} is cleared from the clipboard",
             unfinished: "{title}'s {detail} not copied \u00b7 {why}",
+            typing: "typing {title}'s {detail}\u2026",
+            untyped: "{title}'s {detail} not typed \u00b7 {why}",
             hidden: "hidden", set: "set up", none: "none", unsecured: "unsecured website",
             reused: "reused password", reusedIn: "reused in {count} other entries",
             breached: "breached password", breaches: "seen in {count} breaches",
@@ -275,6 +283,16 @@ QtObject {
             "not answering"), now, said),
         "GitHub's password not copied \u00b7 not answering");
         check("nothing copied says nothing", Passwords.told(null, now, said), "");
+        // The foot, as a type is asked, refused or done.
+        const typing = { title: "GitHub", detail: "password", why: "" };
+        check("while it's typed", Passwords.typeTold(typing, said),
+            "typing GitHub's password\u2026");
+        check("a type refused says why", Passwords.typeTold(Object.assign({}, typing,
+            { why: "a pi session runs in that terminal" }), said),
+        "GitHub's password not typed \u00b7 a pi session runs in that terminal");
+        check("a type done says nothing", Passwords.typeTold(Object.assign({}, typing,
+            { done: true }), said), "");
+        check("nothing typed says nothing", Passwords.typeTold(null, said), "");
         // The row and the foot say a copy only while it's asked, or why it
         // was refused; once on the clipboard, the margin's mark says it.
         check("a copy asked is the row's to say", Passwords.speaks(asking), true);

@@ -23,6 +23,9 @@
 //! refusal is `said` in the launcher's words for it (launcher/words/wifi.json),
 //! as the vocabulary the connection's rows are made in has them, so the
 //! shell's foot says them as they are (2026-11-13).
+//!
+//! Long because its cases, over half of it, stay beside the private
+//! rules they prove, as every module in wifid keeps them.
 
 use std::time::Duration;
 
@@ -107,6 +110,60 @@ fn asking(said: &Value) -> Result<Asking, (&'static str, String)> {
         other => return Err(("unknown-act", format!("no act {other:?} here"))),
     };
     Ok(Asking::Once(ask, answer))
+}
+
+/// What an `act` ask wants, as the journal says it beside who asked, and
+/// never its password. It's said before the ask is checked, so each name is
+/// quoted as an unknown act is: a name holding a new line would otherwise
+/// write a journal line of its own, at a priority it chose, that reads as
+/// wifid's. An ask saying neither way is said so, as it's refused.
+pub fn wanted(said: &Value) -> String {
+    let named = |name: &str| match said.get(name).map(Value::as_str) {
+        Some(Some(named)) => quoted(named),
+        Some(None) => format!("a {name} that isn't text"),
+        None => format!("no {name}"),
+    };
+    let on = |name: &str| said.get(name).and_then(Value::as_bool);
+    let Some(act) = said.get("act").and_then(Value::as_str) else {
+        let what = if said.get("act").is_some() {
+            "an act that isn't text"
+        } else {
+            "no act"
+        };
+        return what.to_owned();
+    };
+    match act {
+        "roam" => format!("to roam to {}", named("bssid")),
+        act @ ("join" | "leave" | "forget") => format!("to {act} {}", named("network")),
+        "trust" => match on("trusted") {
+            Some(true) => format!("to trust {}", named("network")),
+            Some(false) => format!("to distrust {}", named("network")),
+            None => format!("to trust {} saying neither way", named("network")),
+        },
+        "radio" => match on("on") {
+            Some(true) => "to turn the radio on".to_owned(),
+            Some(false) => "to turn the radio off".to_owned(),
+            None => "to turn the radio saying neither way".to_owned(),
+        },
+        "scan" => "a look".to_owned(),
+        other => format!("an act {}", quoted(other)),
+    }
+}
+
+/// The most of a name an ask's journal line says: a BSSID is 17
+/// characters and an SSID at most 32 bytes, and journald cuts a line past
+/// its `LineMax` into records of their own, the rest reading as wifid's.
+const SAID_MOST: usize = 64;
+
+/// A name as an ask's journal line says it: quoted, so it holds no new
+/// line, and cut to `SAID_MOST` characters.
+fn quoted(name: &str) -> String {
+    if name.chars().count() <= SAID_MOST {
+        format!("{name:?}")
+    } else {
+        let cut: String = name.chars().take(SAID_MOST).collect();
+        format!("{cut:?}...")
+    }
 }
 
 /// The access point a `roam` ask names, by its address, in lower case as
@@ -362,6 +419,106 @@ mod tests {
             heard.push(serde_json::from_str(&line).expect("JSON"));
         }
         heard
+    }
+
+    #[test]
+    fn what_an_act_wants_is_said_by_its_act_and_never_its_password() {
+        let said = [
+            json!({"act": "roam", "bssid": "6c:ae:f6:c1:84:26"}),
+            json!({"act": "join", "network": "Lantern", "password": "secret"}),
+            json!({"act": "leave", "network": "Lantern"}),
+            json!({"act": "forget"}),
+            json!({"act": "trust", "network": "Lantern", "trusted": true}),
+            json!({"act": "trust", "network": "Lantern", "trusted": false}),
+            json!({"act": "trust", "network": "Lantern"}),
+            json!({"act": "radio", "on": true}),
+            json!({"act": "radio", "on": false}),
+            json!({"act": "radio"}),
+            json!({"act": "scan"}),
+            json!({"act": "dance"}),
+        ]
+        .map(|said| wanted(&said));
+
+        assert_eq!(
+            said,
+            [
+                "to roam to \"6c:ae:f6:c1:84:26\"",
+                "to join \"Lantern\"",
+                "to leave \"Lantern\"",
+                "to forget no network",
+                "to trust \"Lantern\"",
+                "to distrust \"Lantern\"",
+                "to trust \"Lantern\" saying neither way",
+                "to turn the radio on",
+                "to turn the radio off",
+                "to turn the radio saying neither way",
+                "a look",
+                "an act \"dance\"",
+            ],
+            "an act's want is misread"
+        );
+        assert_eq!(
+            [
+                json!({"act": 5}),
+                json!({}),
+                json!({"act": "roam", "bssid": 5})
+            ]
+            .map(|said| wanted(&said)),
+            [
+                "an act that isn't text",
+                "no act",
+                "to roam to a bssid that isn't text"
+            ],
+            "an ask naming what isn't text, or nothing, reads as naming something"
+        );
+    }
+
+    #[test]
+    fn what_an_act_wants_is_said_on_one_line_whatever_it_names() {
+        let forged = "x\n<6>pid 2211 (quickshell.service) asks to roam to 6c:ae:f6:c1:84:26";
+
+        let said = wanted(&json!({"act": "roam", "bssid": forged}));
+
+        assert!(
+            !said.contains('\n'),
+            "a name holding a new line wrote a journal line of its own: {said}"
+        );
+    }
+
+    #[test]
+    fn what_an_act_wants_says_at_most_the_start_of_a_long_name() {
+        let long = "A".repeat(100_000);
+
+        let said = [
+            wanted(&json!({"act": "join", "network": long})),
+            wanted(&json!({"act": long})),
+        ];
+
+        assert!(
+            said.iter().all(|said| said.len() < 100),
+            "a 100,000 character name was said whole, for journald to cut: {:?}",
+            said.map(|said| said.len())
+        );
+    }
+
+    #[test]
+    fn what_an_act_wants_says_an_ssid_whole_and_cuts_past_64_characters() {
+        let widest = "S".repeat(32);
+        let longest = "é".repeat(64);
+        let past = "é".repeat(65);
+
+        let wants = [&widest, &longest, &past]
+            .map(|network| wanted(&json!({"act": "join", "network": network})));
+
+        assert_eq!(
+            wants,
+            [
+                format!("to join \"{widest}\""),
+                format!("to join \"{longest}\""),
+                format!("to join \"{longest}\"..."),
+            ],
+            "a name of up to 64 characters wasn't said whole, or one past wasn't cut to 64"
+        );
     }
 
     #[tokio::test]

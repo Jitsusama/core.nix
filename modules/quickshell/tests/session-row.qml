@@ -1,8 +1,8 @@
 // How the launcher says where a pi session stands, run in Qt's own
 // JavaScript engine, the one the shell runs it in. The
 // `the-launcher-says-how-each-session-stands` check copies
-// modules/quickshell/launcher/SessionRow.js, SessionDrawer.js, Holders.js
-// and Landed.js beside this file and runs
+// modules/quickshell/launcher/SessionRow.js, SessionDrawer.js, Holders.js,
+// Landed.js and ReopenTally.js beside this file and runs
 // `qml -platform offscreen session-row.qml`. How each session stands, in
 // the one order every list keeps (needs you, working, in line, listening,
 // paused, parked), is the agents daemon's (modules/agents/src/standing.rs),
@@ -15,6 +15,7 @@ import "SessionDrawer.js" as SessionDrawer
 import "Holders.js" as Holders
 import "SessionRow.js" as SessionRow
 import "Landed.js" as Landed
+import "ReopenTally.js" as ReopenTally
 import "Reading.js" as Reading
 
 QtObject {
@@ -219,6 +220,23 @@ QtObject {
         ].map(made => JSON.stringify(SessionRow.unwaited(made))).join(" ");
         if (kept !== '{"glyph":"shapeSquare","hue":"warning"} {"glyph":"agent","hue":"program"}')
             failures.push(`For You's own marks: ${kept}`);
+        // A why the shell gives a press that tells of its viewer opening or
+        // viewed is said plainly in the foot; every other, a press that
+        // viewed nothing, in the alert's colour, as is one it has no tone
+        // for, a name every object answers included.
+        const plainWhys = typeof SessionRow.viewedWhy !== "function" ? "none read"
+            : ["opening", "startedOpening", "askedAgain", "startedAskedAgain", "cameAgain",
+                "startedCameAgain", "cameAfter", "startedCameAfter", "ownAfterAll",
+                "startedOwnAfterAll", "stillComing", "startedStillComing", "comeAfterAll",
+                "startedComeAfterAll", "disowned",
+                "startedDisowned", "untaken", "startedUntaken",
+                "unowned", "hosted", "hostless", "unnamed", "unviewable", "unviewableHost",
+                "bogus", "toString", "", undefined]
+                .filter(why => SessionRow.viewedWhy(why)).join(" ");
+        if (plainWhys !== "opening startedOpening askedAgain startedAskedAgain cameAgain "
+            + "startedCameAgain cameAfter startedCameAfter ownAfterAll startedOwnAfterAll "
+            + "stillComing startedStillComing comeAfterAll startedComeAfterAll")
+            failures.push(`the whys said plainly: "${plainWhys}"`);
 
         // Past 80% of its window its row says how full, in whole percent,
         // and nothing under it or where the record says no context.
@@ -525,6 +543,61 @@ QtObject {
             if (JSON.stringify(toldLauncher) !== JSON.stringify(want))
                 failures.push(`unsteered, ${what}: ${JSON.stringify(toldLauncher)}`);
         }
+        // A Wake a link's Go To asked for, refused at once with no row becoming
+        // woken, gives back the words it told, so goToFor answers with them
+        // (#6519's F147); one taken back told the foot nothing and gives none.
+        toldLauncher.length = 0;
+        const toldBack = SessionRow.unsteered(launcherStandIn, machineSaid, { act: "wake",
+            actName: "Wake", why: "", address: "PARKED", name: "Parked Quest",
+            called: "Parked Quest", held: false }, "alert");
+        const toldFoot = toldLauncher[0]?.[1]?.[0] ?? [];
+        if (JSON.stringify(toldBack) !== JSON.stringify(toldFoot.slice(0, 2))
+            || toldBack === null || toldBack[1] === "")
+            failures.push(`unsteered gives what it told: ${JSON.stringify([toldBack, toldFoot])}`);
+        const takenBack = SessionRow.unsteered(launcherStandIn, machineSaid, { act: "wake",
+            actName: "Wake", why: "", address: "PARKED", name: "Parked Quest",
+            called: "Parked Quest", held: true }, "alert");
+        if (takenBack !== null)
+            failures.push(
+                `unsteered taking a row back gives nothing: ${JSON.stringify(takenBack)}`);
+
+        // A Go To's refusal opens the launcher only to answer Joel's press for
+        // that session moments ago; a walk's, a kept view's or a start's late
+        // one waits in the foot, and one a wake reopens is nothing refused
+        // (#6519's second review).
+        const now = 1800000000000;
+        const pressed = { address: "PARKED", at: now - 2000 };
+        const tellings = [
+            ["a Go To pressed for it moments ago opens", "PARKED",
+                { waking: "", goneTo: pressed }, "opens"],
+            ["a second refusal of a press that opened it is held, not opened again", "PARKED",
+                { waking: "", goneTo: pressed, opened: pressed.at }, "held"],
+            ["a later press opens, though the one before it opened", "PARKED",
+                { waking: "", goneTo: pressed, opened: now - 9000 }, "opens"],
+            ["a press whose Go To went is held, as Joel types where it took him", "PARKED",
+                { waking: "", goneTo: Object.assign({ went: true }, pressed) }, "held"],
+            ["one refused while its press decides is held, till it didn't go", "PARKED",
+                { waking: "", goneTo: Object.assign({ deciding: true }, pressed) }, "held"],
+            ["one Go To is waking is unsaid", "PARKED",
+                { waking: "PARKED", goneTo: pressed }, "unsaid"],
+            ["a Go To pressed for another is held", "FARAWY",
+                { waking: "", goneTo: pressed }, "held"],
+            ["one told 14 s on still answers its press", "PARKED",
+                { waking: "", goneTo: { address: "PARKED", at: now - 14000 } }, "opens"],
+            ["a viewer no kitty took, told 20 s on, is held, never taking the keys", "PARKED",
+                { waking: "", goneTo: { address: "PARKED", at: now - 20000 } }, "held"],
+            ["a Go To pressed long ago is held, as a start's late refusal", "PARKED",
+                { waking: "", goneTo: { address: "PARKED", at: now - 15000 } }, "held"],
+            ["no Go To yet is held, as a walk's", "PARKED",
+                { waking: "", goneTo: { address: "", at: 0 } }, "held"],
+            ["no address is never one pressed for", "",
+                { waking: "", goneTo: { address: "", at: now } }, "held"]
+        ];
+        for (const [what, address, going, want] of tellings) {
+            const told = SessionRow.refusalTold(address, going, now);
+            if (told !== want)
+                failures.push(`refusalTold, ${what}: "${told}", not "${want}"`);
+        }
 
         const names = [
             ["its row's name first", "Parked Quest", "Its Quest", "PARKED", "Parked Quest"],
@@ -536,6 +609,40 @@ QtObject {
             const said = SessionRow.footName(served, title, address);
             if (said !== want)
                 failures.push(`footName, ${what}: "${said}", not "${want}"`);
+        }
+        // As the shell hands a session over: one with a record by the title
+        // its presence names, one started in pi's host with none yet by the
+        // quest's name the launcher gave it, never its id.
+        const titleOf = presence => presence.questInfo.title;
+        const handed = [
+            ["one with a record by its presence's title", { address: "QEST-X",
+                name: "Kelp", presence: { questInfo: { title: "Reef" } } }, "Reef"],
+            ["one with no record yet by the quest's name it was started on",
+                { address: "QEST-X", machine: "", name: "Kelp" }, "Kelp"],
+            ["one with neither by its address", { address: "QEST-X", machine: "" }, "QEST-X"]
+        ];
+        for (const [what, session, want] of handed) {
+            const said = SessionRow.footNameOf(undefined, session, titleOf);
+            if (said !== want)
+                failures.push(`footNameOf, ${what}: "${said}", not "${want}"`);
+        }
+
+        // What Joel hears of a walk, as Sessions counts it (tests/places.qml
+        // holds the count): one folder gone or many, then how many
+        // reopened, in Agents' words, and nothing where a word is missing.
+        const words = { folderGone: "folder gone", foldersGone: "folders gone",
+            reopened: "reopened" };
+        const toldOf = [
+            ["one folder gone", { gone: 1, reopened: 2 }, words,
+                '[["1","folder gone"],["2","reopened"]]'],
+            ["many folders gone", { gone: 2, reopened: 1 }, words,
+                '[["2","folders gone"],["1","reopened"]]'],
+            ["no words", { gone: 1, reopened: 0 }, {}, '[["1",""],["0",""]]']
+        ];
+        for (const [what, now, said, want] of toldOf) {
+            const got = JSON.stringify(ReopenTally.told(now, said));
+            if (got !== want)
+                failures.push(`told, ${what}: ${got}, not ${want}`);
         }
 
         for (const failure of failures)

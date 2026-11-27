@@ -56,6 +56,17 @@ pub enum Floor {
     Nothing,
 }
 
+impl Floor {
+    /// The memory.low it sets.
+    pub fn bytes(self) -> u64 {
+        match self {
+            Floor::Orchestrator => FLOOR,
+            Floor::Pi => PI_FLOOR,
+            Floor::Nothing => 0,
+        }
+    }
+}
+
 /// The floor of a window running `pis` pis, whether any `orchestrates`.
 pub fn floor_of(pis: usize, orchestrates: bool) -> Floor {
     if orchestrates {
@@ -262,9 +273,38 @@ pub struct Keeping {
 }
 
 impl Keeping {
+    /// The windows whose memory.low reads at an orchestrator's floor or a
+    /// pi's, taken as a sorter before this one kept them, though only their
+    /// height says so. A sorter's floors are
+    /// the user manager's runtime properties, so they outlive it, and a
+    /// sorter that took up none would fit its first looks as though nothing
+    /// kept them. Each is changed, as any kept window is, once what it holds
+    /// wants another floor: one that holds no pi is given back, whoever set
+    /// its floor at that height.
+    pub fn left(
+        scopes: impl IntoIterator<Item = std::path::PathBuf>,
+        floor: impl Fn(&Path) -> Option<u64>,
+    ) -> Self {
+        let kept = scopes
+            .into_iter()
+            .filter_map(|scope| {
+                let kept = match floor(&scope)? {
+                    FLOOR => Floor::Orchestrator,
+                    PI_FLOOR => Floor::Pi,
+                    _ => return None,
+                };
+                Some((scope.file_name()?.to_str()?.to_owned(), kept))
+            })
+            .collect();
+        Self {
+            kept,
+            failed: false,
+        }
+    }
+
     /// The windows to change, each with its floor, from each window's unit
-    /// and the floor it wants. One never kept and holding none is left as
-    /// it is.
+    /// and the floor it wants. One not kept, nor taken up as kept by
+    /// [`Keeping::left`], and holding none is left as it is.
     pub fn changes(&self, windows: &[(String, Floor)]) -> Vec<(String, Floor)> {
         windows
             .iter()
@@ -285,6 +325,14 @@ impl Keeping {
         }
     }
 
+    /// The windows kept at a floor, by unit, each with the memory.low it was
+    /// set.
+    pub fn floors(&self) -> impl Iterator<Item = (&str, u64)> {
+        self.kept
+            .iter()
+            .map(|(unit, floor)| (unit.as_str(), floor.bytes()))
+    }
+
     /// Forgets the windows no longer among `units`, which have closed.
     pub fn keep_only(&mut self, units: &[String]) {
         self.kept.retain(|unit, _| units.contains(unit));
@@ -296,6 +344,36 @@ mod tests {
     use super::*;
 
     const BOOT: &str = "3c4d23d2";
+
+    #[test]
+    fn the_floors_a_sorter_before_kept_are_taken_up_by_their_memory_low() {
+        let scopes = ["kitty-1-1.scope", "kitty-1-2.scope", "kitty-1-3.scope"]
+            .map(|name| std::path::PathBuf::from("/agents.slice").join(name));
+        let floor = |scope: &Path| match scope.file_name()?.to_str()? {
+            "kitty-1-1.scope" => Some(FLOOR),
+            "kitty-1-2.scope" => Some(PI_FLOOR),
+            _ => Some(2 << 30),
+        };
+        let keeping = Keeping::left(scopes, floor);
+        let mut floors: Vec<_> = keeping.floors().collect();
+        floors.sort_unstable();
+        assert_eq!(
+            floors,
+            [("kitty-1-1.scope", FLOOR), ("kitty-1-2.scope", PI_FLOOR)],
+            "a floor keep.rs sets wasn't taken up, or another floor was"
+        );
+        assert!(
+            keeping
+                .changes(&[("kitty-1-2.scope".to_owned(), Floor::Pi)])
+                .is_empty(),
+            "a pi's window taken up at its floor was kept again"
+        );
+        assert_eq!(
+            keeping.changes(&[("kitty-1-1.scope".to_owned(), Floor::Nothing)]),
+            [("kitty-1-1.scope".to_owned(), Floor::Nothing)],
+            "a window taken up as kept that holds no pi now wasn't given back"
+        );
+    }
 
     fn session(address: &str, by: Option<&str>, pid: u32, boot: &str) -> Presence {
         Presence {

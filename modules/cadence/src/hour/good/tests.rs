@@ -5,6 +5,13 @@ use jiff::tz::TimeZone;
 
 const NOW: i64 = 1_795_600_000;
 
+/// The dates at risk of the kind `which` in an empty asks list.
+fn at_risk(which: Tracking) -> Measure {
+    let none = |_: u32| -> measures::at_risk::Shared { Ok(Vec::new()) };
+    let no_branch = |_: &str| -> measures::at_risk::Shared { Ok(Vec::new()) };
+    measures::at_risk::at_risk("", NOW, which, &none, &no_branch)
+}
+
 /// A measure the hour would show under `key`, held to `target`.
 fn held(key: &str, target: Option<f64>) -> Measure {
     Measure {
@@ -32,6 +39,10 @@ fn every_measure_the_hour_shows_has_a_line_that_holds_it_to_its_target() {
     let mut shown = vec![
         measures::slips("", NOW, Tracking::His),
         measures::slips("", NOW, Tracking::Derived),
+        measures::parked("", Tracking::His),
+        measures::parked("", Tracking::Derived),
+        measures::told_late("", NOW, Tracking::His),
+        measures::told_late("", NOW, Tracking::Derived),
         measures::to_first_slice("", NOW, Tracking::His),
         measures::to_first_slice("", NOW, Tracking::Derived),
         measures::undated("", "2026-11-24", "OWNER"),
@@ -43,8 +54,31 @@ fn every_measure_the_hour_shows_has_a_line_that_holds_it_to_its_target() {
         measures::unresolved::unresolved(None, None, NOW, "OWNER"),
         measures::carried(&[], &[], "here"),
         measures::mapped(None, "", "OWNER"),
+        measures::cited::unread(""),
+        measures::holds::holds(&[], "", NOW),
+        at_risk(Tracking::His),
+        at_risk(Tracking::Derived),
     ];
     shown.extend(measures::apps::apps(None, NOW));
+    // Each of the relay's four judged, the share between two tallies.
+    shown.extend(measures::way_out::relay::relay(Some(
+        "model-relay: 10 asked, 0 refused, 0 failed\nmodel-relay: 19 asked, 0 refused, 0 failed",
+    )));
+    // The calls judged with one call in the hour, and a path of three samples.
+    let call = measures::way_out::calls::Turn {
+        at_ms: NOW * 1000 - 60_000,
+        error: None,
+    };
+    shown.extend(measures::way_out::calls::calls(Some(&[call]), NOW));
+    let sample = |ago: i64| {
+        serde_json::json!({"at": NOW - ago, "origin": "forge.example", "tls_s": 0.25}).to_string()
+    };
+    let samples = [sample(60), sample(660), sample(1260)].join("\n");
+    shown.extend(measures::way_out::path::path(
+        &samples,
+        &["forge.example".to_owned()],
+        NOW,
+    ));
     let said = serde_json::json!({"none": "no pain", "none_at_ms": NOW * 1000});
     shown.extend(measures::said_none(&said.to_string(), NOW));
     // Those read from a machine's records, under the keys and targets the
@@ -159,7 +193,7 @@ fn a_section_saying_less_than_all_four_or_a_key_twice_is_counted() {
 #[test]
 fn an_items_wrapped_lines_are_read_as_one() {
     let page = "# Good\n\n## Wrapped\n\n- Measures: `one`,\n  `two`\n- Target: 0.\n\
-                - Joel, 1 Nov: \"a line\n  wrapped\"\n- Over costs him: much.\n";
+                - Joel, 1 Nov: \"a line\n\twrapped\"\n- Over costs him: much.\n";
     let read = sections(page);
     assert_eq!(
         (&read[0].keys, read[0].joel.as_deref()),
@@ -168,5 +202,41 @@ fn an_items_wrapped_lines_are_read_as_one() {
             Some("Joel, 1 Nov: \"a line wrapped\"")
         ),
         "a wrapped item wasn't read whole: {read:?}"
+    );
+    assert!(
+        judged(page, &[]).behind.is_empty(),
+        "a page wrapped by spaces and a tab was faulted"
+    );
+}
+
+#[test]
+fn a_line_or_item_no_field_reads_or_a_key_holding_a_space_is_counted() {
+    let page = "# Good\n\n## Loose\n\n- Measures: `one`\n- Target: 0.\n  - Target: 9.\n\
+                left unindented, with more words than six\n  indented after it\n\
+                - Joel, 1 Nov: \"good\"\n- Joel, 2 Nov: \"again\"\n\
+                - Over costs him: much,\n\n  after a blank.\n- Over costs him: again.\n\
+                - Over costs him: thrice.\n- Owner: me.\n\n## Broken\n\n\
+                - Measures: `two\n  three`\n- Target: 0.\n- Joel, 1 Nov: \"good\"\n\
+                - Over costs him: much.\n";
+    assert_eq!(
+        sections(page)[0].cost.as_deref(),
+        Some("much,"),
+        "a line after a blank was joined to the item above it"
+    );
+    // Each line here joined to the item above it would leave this list.
+    assert_eq!(
+        judged(page, &[]).behind,
+        [
+            "Loose: under no item: - Target: 9.",
+            "Loose: under no item: left unindented, with more words than",
+            "Loose: under no item: indented after it",
+            "Loose: under no item: after a blank.",
+            "Loose: Joel said again: Joel, 2 Nov: \"again\"",
+            "Loose: Over costs him said again: Over costs him: again.",
+            "Loose: Over costs him said again: Over costs him: thrice.",
+            "Loose: no such field: Owner: me.",
+            "Broken: two three holds a space, as a key broken across lines does",
+        ],
+        "a line or item no field reads, or a key holding a space, went uncounted"
     );
 }

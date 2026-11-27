@@ -65,10 +65,20 @@ fn each_line_is_one_json_record() {
             offered: 3,
             judged: 2,
             surveyed: Some(7.25),
+            read: Some(1 << 20),
+            survey_read: Some(1 << 30),
+        })
+        .unwrap();
+    journal
+        .write(&Line::Walk {
+            at: 1_760_000_020.0,
+            step: "holders",
+            seconds: 61.5,
+            read: None,
         })
         .unwrap();
     let read = lines(&path);
-    assert_eq!(read.len(), 3);
+    assert_eq!(read.len(), 4);
     assert_eq!(read[2]["seconds"], 42.5);
     assert_eq!(read[0]["event"], "action");
     assert_eq!(read[0]["path"], "/home/u/src/app/target");
@@ -82,6 +92,21 @@ fn each_line_is_one_json_record() {
     assert_eq!(read[2]["offered"], 3);
     assert_eq!(read[2]["judged"], 2);
     assert_eq!(read[2]["surveyed"], 7.25);
+    assert_eq!(
+        (&read[2]["read"], &read[2]["survey_read"]),
+        (
+            &serde_json::json!(1u64 << 20),
+            &serde_json::json!(1u64 << 30)
+        ),
+        "a pass's line didn't say what it and its survey read"
+    );
+    assert_eq!(read[3]["event"], "walk");
+    assert_eq!(read[3]["step"], "holders");
+    assert_eq!(read[3]["seconds"], 61.5);
+    assert!(
+        read[3]["read"].is_null(),
+        "a walk that couldn't tell said it read something"
+    );
 }
 
 #[test]

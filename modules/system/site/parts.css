@@ -203,11 +203,12 @@ span.mark {
    looks' voice and grid, so many gone at once stay one quiet list under one
    mark rather than a section each. Their names stand in a column and when
    each was last heard starts level beside them. After the rows, so a name
-   keeps its own weight over theirs. ---- */
+   keeps its own weight over theirs. The names' column is held to most of
+   the width, for the reason the looks' is (below). ---- */
 
 .gone {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: fit-content(60%) minmax(0, 1fr);
   gap: var(--tie) var(--groups);
   max-inline-size: var(--measure);
   margin: 0;
@@ -251,7 +252,11 @@ span.mark {
 
 /* ---- What is worth a look, in the reading voice: a row each, its mark,
    then whose it is, then what. Where the rows can share one grid, the
-   names stand in a column and the words start together. ---- */
+   names stand in a column and the words start together. The names'
+   column is held to two fifths of the width, breaking a long name at its
+   hyphens: sized to its longest name, a spot machine's thirty letters took
+   all a phone's width and left the words a letter wide, running off its
+   edge, and left them a sixth of a desk's. ---- */
 
 /* A row's height held before the first draw, so the list arriving moves
    what is under it by its other rows only. */
@@ -265,7 +270,7 @@ span.mark {
 
 .looks {
   display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr);
+  grid-template-columns: auto fit-content(40%) minmax(0, 1fr);
   gap: var(--tie) var(--mark);
   margin: 0;
   padding: 0;
@@ -305,6 +310,34 @@ span.mark {
   color: var(--strong);
   font-weight: var(--title-weight);
   overflow-wrap: anywhere;
+}
+
+/* Why a look matters and its one act, under its words in their column, so
+   the reason reads as the look's and the names column stays clear. Quieter
+   than the words, since the look is what's read first and the why after. */
+.looks .why {
+  display: flex;
+  flex-wrap: wrap;
+  grid-column: 3;
+  gap: 0 var(--items);
+  align-items: baseline;
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--step-small);
+  line-height: 1.5;
+}
+
+/* A link, not a button: eight of them under eight looks would outshout the
+   looks. Its target is still a thumb's, 44 pixels tall (WCAG 2.5.5). */
+.looks .launch {
+  display: inline-flex;
+  align-items: center;
+  min-block-size: 44px;
+  overflow-wrap: anywhere;
+  color: var(--strong);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
 }
 
 .look:hover .words {
@@ -391,13 +424,6 @@ span.mark {
   padding-block: var(--items);
   border-block-start: 1px solid var(--rule);
   font: var(--voice-weight) var(--step-large) / 1.4 var(--serif);
-  font-style: italic;
-}
-
-.later {
-  margin: var(--groups) 0 0;
-  color: var(--muted);
-  font: var(--note-weight) var(--step-small) / 1.5 var(--serif);
   font-style: italic;
 }
 

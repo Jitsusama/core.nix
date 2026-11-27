@@ -1,19 +1,26 @@
-//! pineapple-github against a stand-in for GitHub's API: a stop said on a
-//! pull request reaches it and is kept in shadow, an ask without the
-//! phrase stops nothing, a quoted one is waved off, and what doesn't name
-//! the word or Joel isn't judged at all; it only asks, never posts nor
-//! marks anything read, and a restart judges nothing twice. Joel's own
-//! resume said there ends only shadow stops, even let go live. A round
-//! GitHub's rate limit refuses is read again rather than skipped, and a
-//! list's later pages are read too. A site with no notifications is read
-//! by searching for what Joel opened, its keys its own, from far enough
-//! back that a search's lagging index misses nothing, and never for more
-//! repositories than its searches allow, and its journal names it, not
-//! GitHub, when it can't be read. A site of a company's own weighs
-//! no writer's standing; who may stop Joel on GitHub itself, where any
-//! account may comment, is in standing.rs.
+//! pineapple-github against a stand-in for GitHub's API: a stop said on a pull
+//! request reaches it and is kept in shadow, an ask without the phrase stops
+//! nothing, a quoted one is waved off, and what doesn't name the word or Joel
+//! isn't judged at all; it only asks, never posts nor marks anything read, and
+//! a restart judges nothing twice. Joel's own resume said there ends only
+//! shadow stops, even let go live. A round GitHub's rate limit refuses is read
+//! again rather than skipped, and a list's later pages are read too. Joel's own
+//! words, which GitHub never notifies him of, are found by a search for the
+//! word, read again only once changed; a failed search costs nothing that
+//! notified him, and one failed or incomplete is asked again from as far back.
+//! A site with no notifications is read by searching for what Joel opened, its
+//! keys its own, from far enough back that a search's lagging index misses
+//! nothing, and never for more repositories than its searches allow, and its
+//! journal names it, not GitHub, when it can't be read. A site of a company's
+//! own weighs no writer's standing; who may stop Joel on GitHub itself, where
+//! any account may comment, is in standing.rs; a stop of Joel's a search
+//! indexed late, in late.rs; one heard after his resume, in `heard_after.rs`.
 
+mod heard_after;
+mod late;
+mod partial;
 mod standing;
+mod watch;
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -302,6 +309,177 @@ fn github_a_second_page_of_notifications_is_read_too() {
         "the first page's issue is read too: {asked:?}"
     );
     drop(asked);
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+/// What GitHub would answer where only Joel has spoken since: no
+/// notification, since GitHub never notifies him of his own words, and a
+/// search for the word finding example/shop#12, where he said a stop
+/// five minutes ago.
+fn only_joel_spoke(line: &str, now: u64) -> Value {
+    if line.contains(" /notifications?") {
+        return json!([]);
+    }
+    if line.contains(" /search/issues?") {
+        return json!({"items": [{"number": 12, "pull_request": {},
+            "repository_url": "https://api.example.com/repos/example/shop"}]});
+    }
+    let own = commented(5, LOGIN, "OWNER", "pineapple override", (now, 300));
+    answer_with(line, now, &[own])
+}
+
+/// A home whose GitHub reader last read half a minute ago, and when that
+/// was, so what was said five minutes ago is before what notifications
+/// are read from.
+fn read_lately() -> (PathBuf, u64) {
+    let home = home();
+    let last = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("after 1970")
+        .as_secs()
+        - 30;
+    let state = home.join("state/pineapple");
+    std::fs::create_dir_all(&state).expect("the state folder");
+    let judged = json!({"since": last, "keys": []});
+    std::fs::write(state.join(MARK), judged.to_string()).expect("the mark");
+    (home, last)
+}
+
+/// What the stand-in was asked to search for, in order.
+fn searches(asked: &Mutex<Vec<String>>) -> Vec<String> {
+    let asked = asked.lock().expect("what was asked");
+    let found = asked
+        .iter()
+        .filter(|line| line.contains(" /search/issues?"));
+    found.cloned().collect()
+}
+
+#[test]
+fn github_joels_own_stop_nobody_was_notified_of_is_found_by_searching_for_the_word() {
+    let (origin, asked) = answering(only_joel_spoke);
+    let (home, last) = read_lately();
+    let mut reading = github_reader(&home, &origin, &[]);
+    until_decided(&home, 2);
+    let rounds = asked.lock().expect("what was asked").len();
+    until_asked(&asked, rounds, 12);
+    reading.kill().expect("the reader stops");
+    reading.wait().expect("the reader is gone");
+
+    let said = decisions(&home);
+    assert_eq!(
+        each(&said, "verdict"),
+        ["stop", "stop-asked"],
+        "Joel's own stop is heard, though said before what notifications are read from"
+    );
+    assert_eq!(said[0]["by_joel"], true, "his own words");
+    assert_eq!(said[0]["reaches"], json!(["pr:example/shop#12"]));
+    let searched = format!(
+        "q=pineapple%20involves%3A{LOGIN}%20updated%3A%3E%3D{}",
+        stamp(last - 3600).replace(':', "%3A")
+    );
+    let asked = asked.lock().expect("what was asked");
+    assert!(
+        asked.iter().any(|line| line.contains(&searched)),
+        "it searches for the word where Joel takes part, from an hour back, \
+         as far as a search's index may lag: {asked:?}"
+    );
+    let reads = asked
+        .iter()
+        .filter(|line| line.contains(" /repos/example/shop/issues/12 "))
+        .count();
+    assert_eq!(
+        reads, 1,
+        "searched again unchanged, it isn't read again: {asked:?}"
+    );
+    drop(asked);
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+#[test]
+fn github_a_pull_request_notified_and_searched_is_judged_as_far_back_as_the_search_reaches() {
+    let (origin, asked) = answering(|line, now| {
+        if line.contains(" /notifications?") {
+            return answer_with(line, now, &[]);
+        }
+        only_joel_spoke(line, now)
+    });
+    let (home, _) = read_lately();
+    let mut reading = github_reader(&home, &origin, &[]);
+    until_decided(&home, 2);
+    let rounds = asked.lock().expect("what was asked").len();
+    until_asked(&asked, rounds, 12);
+    reading.kill().expect("the reader stops");
+    reading.wait().expect("the reader is gone");
+
+    assert_eq!(
+        each(&decisions(&home), "verdict"),
+        ["stop", "stop-asked"],
+        "named by both, it's judged from the farther back of the two, and read \
+         again as notified, nothing is judged twice"
+    );
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+#[test]
+fn github_a_failed_search_still_judges_what_notified_joel() {
+    let (origin, _) = answering_whole(|line, now| {
+        if line.contains(" /search/issues?") {
+            return Answered {
+                status: 500,
+                headers: Vec::new(),
+                body: json!({"message": "search is down"}),
+            };
+        }
+        Answered::ok(answer(line, now))
+    });
+    let home = home();
+    let mut reading = github_reader(&home, &origin, &[]);
+    until_decided(&home, 3);
+    reading.kill().expect("the reader stops");
+    reading.wait().expect("the reader is gone");
+
+    assert_eq!(
+        each(&decisions(&home), "verdict"),
+        ["stop", "waved:quoted", "stop-asked"],
+        "what notified Joel is judged though the search failed"
+    );
+    let said = journal(&home);
+    assert!(
+        said.contains("couldn't search GitHub for what Joel said"),
+        "the journal says the search failed: {said}"
+    );
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+#[test]
+fn github_an_incomplete_search_is_searched_again_from_as_far_back() {
+    let (origin, asked) = answering(|line, now| {
+        if line.contains(" /search/issues?") {
+            return json!({"incomplete_results": true, "items": []});
+        }
+        only_joel_spoke(line, now)
+    });
+    let (home, last) = read_lately();
+    let mut reading = github_reader(&home, &origin, &[]);
+    let began = Instant::now();
+    while searches(&asked).len() < 2 {
+        assert!(began.elapsed() < PATIENCE, "it never searched twice");
+        thread::sleep(Duration::from_millis(50));
+    }
+    reading.kill().expect("the reader stops");
+    reading.wait().expect("the reader is gone");
+
+    let from = format!("updated%3A%3E%3D{}", stamp(last - 3600).replace(':', "%3A"));
+    let searched = searches(&asked);
+    assert!(
+        searched[..2].iter().all(|line| line.contains(&from)),
+        "a search that came back incomplete is asked again from as far back: {searched:?}"
+    );
+    let said = journal(&home);
+    assert!(
+        said.contains("GitHub's search came back incomplete"),
+        "the journal says why: {said}"
+    );
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }
 

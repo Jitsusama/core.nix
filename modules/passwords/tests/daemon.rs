@@ -20,11 +20,12 @@
 //! again; and since when trouble's been found holds while it does, and
 //! clears once a check finds none, each told to a watch. Secret asks the
 //! daemon answers are their own module's (asks/mod.rs), and so are the
-//! copies it makes (copies/mod.rs).
+//! copies it makes (copies/mod.rs) and what it types (types/mod.rs).
 
 mod asks;
 mod common;
 mod copies;
+mod types;
 
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
@@ -120,9 +121,6 @@ fn a_secret_goes_only_to_the_ask_for_it() {
     watching.hear();
     let mut client = running.client();
     client.ask(&json!({"id": 1, "ask": "list", "asked": true}));
-    let shown = client.ask(&json!({"id": 2, "ask": "reveal", "key": "entry:keeping:gh"}));
-    assert_eq!(shown["value"], "hunter2");
-    assert_eq!(shown["detail"], "password");
     holds_no_secret(&client.ask(&json!({"id": 3, "ask": "get", "keys": ["entry:keeping:gh"]})));
     holds_no_secret(&client.ask(&json!({"id": 4, "ask": "search", "words": "git"})));
     let health = client.ask(&json!({"id": 5, "ask": "health"}));
@@ -176,16 +174,6 @@ fn the_daemon_ends_once_whatever_ran_it_closes_its_end() {
 }
 
 #[test]
-fn a_one_time_code_says_how_long_it_lasts() {
-    let running = Running::with("code", &[("keeping", KEEPING)]);
-    let mut client = running.client();
-    let code = client.ask(&json!({"id": 1, "ask": "code", "key": "entry:keeping:gh"}));
-    assert_eq!(code["code"], "123456");
-    assert_eq!(code["period"], 30);
-    assert_eq!(code["left"], 12);
-}
-
-#[test]
 fn a_one_time_codes_detail_gives_its_code_never_its_seed() {
     let running = Running::with("code-detail", &[("keeping", KEEPING)]);
     let mut client = running.client();
@@ -200,12 +188,36 @@ fn a_one_time_codes_detail_gives_its_code_never_its_seed() {
     until("the code is copied", || {
         std::fs::read_to_string(running.copied()).is_ok_and(|copied| copied == "123456")
     });
-    let shown = client.ask(&json!({"id": 3, "ask": "reveal", "key": "entry:keeping:gh",
-                                   "detail": "otp"}));
-    assert_eq!(shown["value"], "123456", "{shown}");
     // The seed was never asked of the manager, so it went nowhere.
     let log = std::fs::read_to_string(running.folder.join("keeping.log")).unwrap();
     assert!(!log.contains("\"reveal\""), "the seed was asked for: {log}");
+}
+
+#[test]
+fn a_secret_is_never_handed_back_on_the_pipe() {
+    // Any process of Joel's can open the shell's end of the daemon's pipes
+    // until agents are fenced, so a reveal is refused before anything is
+    // asked of a manager, a password and a one-time code alike. The code
+    // ask is refused too: a copy says how long a code lasts, and the code
+    // itself would be a secret on the pipe.
+    let running = Running::with("revealed", &[("keeping", KEEPING)]);
+    let mut client = running.client();
+    client.ask(&json!({"id": 1, "ask": "list", "asked": true}));
+    for (id, ask, detail) in [
+        (2, "reveal", Value::Null),
+        (3, "reveal", json!("otp")),
+        (4, "code", Value::Null),
+    ] {
+        let refused = client.ask(&json!({"id": id, "ask": ask,
+                                         "key": "entry:keeping:gh", "detail": detail}));
+        assert_eq!(refused["error"]["code"], "refused", "{refused}");
+        holds_no_secret(&refused);
+    }
+    let asked = running.asked_of("keeping");
+    assert!(
+        !asked.contains("\"reveal\"") && !asked.contains("\"code\""),
+        "a manager was asked for a secret to hand back: {asked}"
+    );
 }
 
 #[test]
@@ -229,8 +241,6 @@ fn a_manager_signed_out_is_said_so_and_gives_no_secret() {
     );
     let refused = client.ask(&json!({"id": 2, "ask": "reveal", "key": "entry:locked:gh"}));
     assert_eq!(refused["error"]["code"], "refused", "{refused}");
-    let refused = client.ask(&json!({"id": 3, "ask": "code", "key": "entry:locked:gh"}));
-    assert_eq!(refused["error"]["code"], "signed-out", "{refused}");
     let let_in = client.ask(&json!({"id": 4, "ask": "let-in", "manager": "locked"}));
     assert_eq!(let_in["error"]["code"], "signed-out", "{let_in}");
     let nobody = client.ask(&json!({"id": 5, "ask": "let-in", "manager": "nobody"}));

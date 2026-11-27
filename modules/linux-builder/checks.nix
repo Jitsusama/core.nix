@@ -22,8 +22,8 @@ let
     settings:
     lib.splitString "," (
       builtins.elemAt (lib.splitString " "
-        (macOf settings).environment.etc."nix/linux-builder.conf".text
-      ) 7
+        (macOf settings).environment.etc."nix/linux-builder.line".text
+      ) 5
     );
 
   # The guest nixpkgs builds, which is the one its cache holds.
@@ -96,6 +96,50 @@ in
         && builtins.elem "/etc/ssh/authorized_keys.d/%u" files
         && collecting.nix.settings.min-free != cached.nix.settings.min-free
       );
+
+  # The Mac's Nix reads its builders from the file the room job writes,
+  # which holds the builder's line only while the Mac has room: under the
+  # floor, swapping or unread, it holds none at once, and the line comes
+  # back only after the hold (room-test.sh). The job runs every 15 seconds
+  # with the floor and hold the options give, each in its place, and
+  # newsyslog moves aside the log it names.
+  linux-builder-is-offered-only-with-room =
+    let
+      mac = macOf {
+        room = {
+          floor = 40;
+          hold = 900;
+        };
+      };
+      job = mac.launchd.daemons.linux-builder-room.serviceConfig;
+      # What room.sh is given after bash and itself, in its order.
+      given = [
+        "/usr/sbin/sysctl"
+        "/usr/bin/vm_stat"
+        "/etc/nix/linux-builder.line"
+        "/var/lib/linux-builder-vz/offered"
+        "/var/lib/linux-builder-vz"
+        "40"
+        "900"
+        job.StandardErrorPath
+      ];
+    in
+    assert lib.assertMsg (lib.hasInfix "builders = @/var/lib/linux-builder-vz/offered"
+      mac.environment.etc."nix/linux-builder.conf".text
+    ) "The Mac's Nix reads the builder's line itself, not the file the room job writes.";
+    assert lib.assertMsg (
+      job.StartInterval == 15
+      && lib.drop 2 job.ProgramArguments == given
+      && lib.hasSuffix "room.sh" (builtins.elemAt job.ProgramArguments 1)
+      && job.StandardErrorPath == "/var/log/linux-builder-room.log"
+    ) "The room job doesn't run room.sh each 15 s with its line, file, floor, hold and log.";
+    assert lib.assertMsg (lib.any (lib.hasPrefix "${job.StandardErrorPath} ") (
+      lib.splitString "\n" mac.environment.etc."newsyslog.d/linux-builder-room.conf".text
+    )) "macOS's newsyslog doesn't move aside the log the room job writes.";
+    pkgs.runCommandLocal "linux-builder-is-offered-only-with-room" { } ''
+      $BASH ${./room-test.sh} ${./room.sh}
+      touch $out
+    '';
 
   # The collection does what each ask says and prints the store's free
   # bytes; anything else is refused before it runs a thing.
@@ -310,6 +354,31 @@ in
         && lib.subtractLists nixpkgsOwn marked.nix.settings.extra-system-features == [ "own-code" ]
         && (plain.nix.settings.extra-system-features or [ ]) == nixpkgsOwn
         && builtins.elem "big-parallel" marked.nix.settings.system-features
+      );
+
+  # The Mac's ssh to the VM gives up on a guest that stops answering, within
+  # about a minute once in and after five minutes to greet it, so a build
+  # sent there fails and frees its locks rather than waiting without end;
+  # each setting is said once in the entry, in any case, indent or with =,
+  # as ssh takes only a setting's first.
+  linux-builder-gives-up-on-a-guest-that-stops-answering =
+    let
+      lines =
+        lib.splitString "\n"
+          (macOf { }).environment.etc."ssh/ssh_config.d/100-linux-builder.conf".text;
+      said =
+        setting:
+        let
+          named = "[[:space:]]*${lib.toLower setting}[[:space:]=].*";
+        in
+        lib.filter (line: builtins.match named (lib.toLower line) != null) lines;
+    in
+    holds "linux-builder-gives-up-on-a-guest-that-stops-answering"
+      "The Mac's ssh to the Linux builder doesn't give up on a silent guest within about a minute, with ConnectTimeout 300, ServerAliveInterval 15 and ServerAliveCountMax 4 each said once."
+      (
+        said "ConnectTimeout" == [ "  ConnectTimeout 300" ]
+        && said "ServerAliveInterval" == [ "  ServerAliveInterval 15" ]
+        && said "ServerAliveCountMax" == [ "  ServerAliveCountMax 4" ]
       );
 
   # The VM runs under caffeinate -s, so the Mac stays awake while it serves

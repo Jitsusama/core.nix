@@ -32,7 +32,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::Read as _;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant, UNIX_EPOCH};
 
@@ -51,6 +51,17 @@ const SAID_AT_MOST: usize = 300;
 
 /// Where a run's reading of the mesh is kept between runs.
 const READ_FILE: &str = "read.json";
+
+/// Where each day folder's short forms are kept between runs.
+const LISTED_FILE: &str = "listed.json";
+
+/// A day folder's short forms, as listed when it was last written, at
+/// `written_ns` nanoseconds since 1970.
+#[derive(Debug, Default, Serialize, Deserialize)]
+struct Listed {
+    written_ns: u64,
+    ids: BTreeSet<String>,
+}
 
 /// Where the last run's reading of the mesh ended: the sending of the
 /// newest message it read, and each message it read since
@@ -100,6 +111,24 @@ pub struct Message {
 pub struct Standing {
     pub taken_by: Option<String>,
     pub closed_by: Option<String>,
+}
+
+/// Why no pain can close this run, if one can't: no messages to read, no
+/// switch naming the core the machine runs, when `switched` is false, or
+/// no core to ask of it.
+fn unreadable(ears: &Ears, switched: bool) -> Option<String> {
+    if !ears.messages.is_dir() {
+        Some(format!("no messages are at {}", ears.messages.display()))
+    } else if !switched {
+        Some(format!(
+            "no switch's core is in {}",
+            ears.switches.display()
+        ))
+    } else if !ears.core.is_dir() {
+        Some(format!("no core is at {}", ears.core.display()))
+    } else {
+        None
+    }
 }
 
 /// Takes up and closes, from the mesh and the machine, each pain sent and
@@ -154,17 +183,7 @@ pub(super) fn stand(
         .is_dir()
         .then(|| read_after(read, from, ears.at, &batch));
     let core = core_on(&fs::read_to_string(&ears.switches).unwrap_or_default());
-    let mut unclosed = match &core {
-        _ if !ears.messages.is_dir() => {
-            Some(format!("no messages are at {}", ears.messages.display()))
-        }
-        None => Some(format!(
-            "no switch's core is in {}",
-            ears.switches.display()
-        )),
-        Some(_) if !ears.core.is_dir() => Some(format!("no core is at {}", ears.core.display())),
-        Some(_) => None,
-    };
+    let mut unclosed = unreadable(ears, core.is_some());
     let entries: Vec<String> = kept.iter().map(|h| h.entry.clone()).collect();
     let held: Vec<&str> = entries.iter().map(String::as_str).collect();
     let sent: BTreeSet<&str> = batch.iter().filter_map(|(_, m)| short(&m.id)).collect();
@@ -172,7 +191,7 @@ pub(super) fn stand(
     let mut is_id = |word: &str| {
         sent.contains(word)
             || listed
-                .get_or_insert_with(|| listed_ids(&ears.messages))
+                .get_or_insert_with(|| listed_ids(&ears.messages, &ears.state))
                 .contains(word)
     };
     let mut known = BTreeMap::new();
@@ -182,6 +201,12 @@ pub(super) fn stand(
         };
         if let Some(&known) = known.get(commit) {
             return known;
+        }
+        // An ask that couldn't end by the run's end for them waits for the
+        // next run, as the run must write what it heard.
+        if Instant::now() + ASK_AT_MOST > ears.asks_end {
+            unclosed = Some("the run's time for asking git ran out".into());
+            return false;
         }
         let child = Command::new(&ears.git)
             .arg("--git-dir")
@@ -255,25 +280,73 @@ fn sent_of(id: &str) -> Option<i64> {
 }
 
 /// The short form of every message kept in `folder` and its days', for a
-/// landing naming one read on an earlier run.
-fn listed_ids(folder: &Path) -> BTreeSet<String> {
+/// landing naming one read on an earlier run. The days hold every message
+/// filed out of `folder` since the mesh began, some 130,000 by late
+/// November, so each day's short forms are kept in `state` and listed
+/// again only once the folder was written to since.
+fn listed_ids(folder: &Path, state: &Path) -> BTreeSet<String> {
+    let kept_at = state.join(LISTED_FILE);
+    let mut kept: BTreeMap<String, Listed> = fs::read(&kept_at)
+        .ok()
+        .and_then(|text| serde_json::from_slice(&text).ok())
+        .unwrap_or_default();
     let mut ids = BTreeSet::new();
-    let mut list = |dir: &Path| {
-        for entry in fs::read_dir(dir).into_iter().flatten().flatten() {
-            let name = entry.file_name().to_string_lossy().into_owned();
-            if let Some(id) = name.strip_suffix(".json").and_then(short) {
-                ids.insert(id.to_owned());
-            }
-        }
-    };
-    list(folder);
+    let mut days = BTreeMap::new();
+    let mut relisted = false;
     for entry in fs::read_dir(folder).into_iter().flatten().flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
-        if entry.file_type().is_ok_and(|t| t.is_dir()) && name.starts_with("20") {
-            list(&entry.path());
+        ids.extend(short_form(&name));
+        if !(entry.file_type().is_ok_and(|t| t.is_dir()) && name.starts_with("20")) {
+            continue;
         }
+        // Its time is read before its names, so a message filed while
+        // they're read leaves a time the next run lists again.
+        let written_ns = written_ns(&entry);
+        let day = match kept.remove(&name) {
+            Some(day) if Some(day.written_ns) == written_ns => day,
+            _ => {
+                relisted = true;
+                Listed {
+                    written_ns: written_ns.unwrap_or_default(),
+                    ids: short_forms(&entry.path()),
+                }
+            }
+        };
+        ids.extend(day.ids.iter().cloned());
+        days.insert(name, day);
+    }
+    // One not kept is listed again next run, so a failed write costs
+    // only time.
+    if (relisted || !kept.is_empty())
+        && let Ok(text) = serde_json::to_string(&days)
+    {
+        let _ = crate::write_whole(&kept_at, &text);
     }
     ids
+}
+
+/// The short forms of the messages in `dir`.
+fn short_forms(dir: &Path) -> BTreeSet<String> {
+    fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|entry| short_form(&entry.file_name().to_string_lossy()))
+        .collect()
+}
+
+/// The short form of the message a file `name` holds, if it holds one.
+fn short_form(name: &str) -> Option<String> {
+    name.strip_suffix(".json")
+        .and_then(short)
+        .map(str::to_owned)
+}
+
+/// When a folder was last written, in nanoseconds since 1970.
+fn written_ns(entry: &fs::DirEntry) -> Option<u64> {
+    let written = entry.metadata().and_then(|m| m.modified()).ok()?;
+    let since = written.duration_since(UNIX_EPOCH).ok()?;
+    u64::try_from(since.as_nanos()).ok()
 }
 
 /// Follows one message, `m`, in `pain`'s thread. A question `asker` sent
@@ -413,8 +486,7 @@ fn git_said(child: std::io::Result<Child>, limit: Duration) -> Result<i32, Strin
             Ok(Some(status)) => return status.code().ok_or_else(|| format!("ended by {status}")),
             Ok(None) if started.elapsed() < limit => std::thread::sleep(Duration::from_millis(50)),
             _ => {
-                let _ = child.kill();
-                let _ = child.wait();
+                super::node::stop(&mut child);
                 return Err(format!("ran past {} s", limit.as_secs()));
             }
         }
@@ -454,46 +526,49 @@ fn merged_at(text: &str) -> Vec<&str> {
 /// folder last written to before.
 pub fn messages(folder: &Path, since_ms: i64) -> Vec<(i64, Message)> {
     let mut found = Vec::new();
-    let mut gather = |dir: &Path| {
-        for entry in fs::read_dir(dir).into_iter().flatten().flatten() {
-            let name = entry.file_name().to_string_lossy().into_owned();
-            let sent = name.split('-').next().and_then(|ms| ms.parse::<i64>().ok());
-            let json = entry.path().extension().is_some_and(|ext| ext == "json");
-            let Some(sent) = sent.filter(|&sent| json && sent >= since_ms) else {
-                continue;
-            };
-            // A dir entry's type is its own, never a link's; what's read
-            // is held to the limit however the file grew since.
-            let plain = entry.file_type().is_ok_and(|t| t.is_file());
-            let mut bytes = Vec::new();
-            let read = plain
-                && fs::File::open(entry.path())
-                    .and_then(|f| f.take(READ_AT_MOST + 1).read_to_end(&mut bytes))
-                    .is_ok_and(|n| u64::try_from(n).is_ok_and(|n| n <= READ_AT_MOST));
-            if let Some(m) = read
-                .then(|| serde_json::from_slice::<Message>(&bytes).ok())
-                .flatten()
-            {
-                found.push((sent, m));
-            }
-        }
-    };
-    gather(folder);
-    for entry in fs::read_dir(folder).into_iter().flatten().flatten() {
-        let name = entry.file_name().to_string_lossy().into_owned();
-        let written = entry
-            .metadata()
-            .and_then(|m| m.modified())
-            .ok()
-            .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-            .and_then(|d| i64::try_from(d.as_millis()).ok());
-        let day = entry.file_type().is_ok_and(|t| t.is_dir()) && name.starts_with("20");
-        if day && written >= Some(since_ms) {
-            gather(&entry.path());
-        }
+    // The folder is listed once, as it holds thousands, each listing slow
+    // while a switch's writes hold the disk.
+    for day in gather(folder, since_ms, &mut found) {
+        gather(&day, since_ms, &mut found);
     }
     found.sort_by(|a, b| (a.0, &a.1.id).cmp(&(b.0, &b.1.id)));
     found
+}
+
+/// Adds to `found` each message in `dir` sent from `since_ms` on, and says
+/// which of its folders are days written to since then.
+fn gather(dir: &Path, since_ms: i64, found: &mut Vec<(i64, Message)>) -> Vec<PathBuf> {
+    let mut days = Vec::new();
+    for entry in fs::read_dir(dir).into_iter().flatten().flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if entry.file_type().is_ok_and(|t| t.is_dir()) {
+            let written = written_ns(&entry).and_then(|ns| i64::try_from(ns / 1_000_000).ok());
+            if name.starts_with("20") && written >= Some(since_ms) {
+                days.push(entry.path());
+            }
+            continue;
+        }
+        let sent = name.split('-').next().and_then(|ms| ms.parse::<i64>().ok());
+        let json = entry.path().extension().is_some_and(|ext| ext == "json");
+        let Some(sent) = sent.filter(|&sent| json && sent >= since_ms) else {
+            continue;
+        };
+        // A dir entry's type is its own, never a link's; what's read is
+        // held to the limit however the file grew since.
+        let plain = entry.file_type().is_ok_and(|t| t.is_file());
+        let mut bytes = Vec::new();
+        let read = plain
+            && fs::File::open(entry.path())
+                .and_then(|f| f.take(READ_AT_MOST + 1).read_to_end(&mut bytes))
+                .is_ok_and(|n| u64::try_from(n).is_ok_and(|n| n <= READ_AT_MOST));
+        if let Some(m) = read
+            .then(|| serde_json::from_slice::<Message>(&bytes).ok())
+            .flatten()
+        {
+            found.push((sent, m));
+        }
+    }
+    days
 }
 
 /// The core the machine switched to last, from integration's switches; a

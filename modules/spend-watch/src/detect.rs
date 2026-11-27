@@ -709,8 +709,10 @@ type ByMinute = BTreeMap<i64, (f64, String)>;
 /// Spend by minute from the logs, at list prices, kept between a running
 /// daemon's passes. Reading eight weeks of turns again took a sixth of each
 /// pass on 7 November, so the hour under way is read every time, and the
-/// hours gone only once their sums in `turn_hours`, which every turn added
-/// or forgotten moves, say one of them changed.
+/// hours gone only once `hour_moves`, which every turn added or forgotten
+/// moves, says one of them changed. Summing their `turn_hours` to tell
+/// whether one had changed read those rows back off the disk each pass, 22
+/// to 61 MB on 24 November, once the machine had dropped them from memory.
 #[derive(Debug, Default)]
 pub struct Minutes {
     gone: Option<Gone>,
@@ -723,8 +725,8 @@ struct Gone {
     /// The hours read, from `first` to before `split`.
     first: i64,
     split: i64,
-    /// Their turns and cost, as `turn_hours` summed them when read.
-    sums: (i64, f64),
+    /// The last move among them when read.
+    moved: i64,
     by_minute: ByMinute,
 }
 
@@ -737,7 +739,7 @@ impl Minutes {
             Some(gone)
                 if gone.split == split
                     && gone.first <= crate::time::hour_of(from)
-                    && hour_sums(history, gone.first, split)? == gone.sums =>
+                    && last_move(history, gone.first, split)? == gone.moved =>
             {
                 gone
             }
@@ -747,7 +749,7 @@ impl Minutes {
                 Gone {
                     first,
                     split,
-                    sums: hour_sums(history, first, split)?,
+                    moved: last_move(history, first, split)?,
                     by_minute: minutes(
                         history,
                         crate::time::minute_start(start),
@@ -762,20 +764,22 @@ impl Minutes {
             .map(|(minute, spent)| (*minute, spent.clone()))
             .collect();
         out.extend(minutes(history, crate::time::hour_start(split), f64::MAX)?);
-        self.gone = Some(kept);
+        // A write rolled back hands its moves out again, so hours read
+        // inside one not yet committed are read again next time.
+        self.gone = history.db.is_autocommit().then_some(kept);
         Ok(out)
     }
 }
 
-/// The turns and cost `turn_hours` holds from hour `first` to before `to`.
-fn hour_sums(history: &History, first: i64, to: i64) -> Result<(i64, f64), String> {
+/// The last move of any hour from `first` to before `to`, which every turn
+/// added to or forgotten from one of them raises.
+fn last_move(history: &History, first: i64, to: i64) -> Result<i64, String> {
     history
         .db
         .query_row(
-            "SELECT COALESCE(SUM(turns), 0), COALESCE(SUM(cost), 0.0) FROM turn_hours
-             WHERE hour >= ?1 AND hour < ?2",
+            "SELECT COALESCE(MAX(move), 0) FROM hour_moves WHERE hour >= ?1 AND hour < ?2",
             [first, to],
-            |row| Ok((row.get(0)?, row.get(1)?)),
+            |row| row.get(0),
         )
         .map_err(fail)
 }
@@ -2583,7 +2587,7 @@ mod tests {
 
     // A running daemon reads the hour under way on every pass, and the
     // hours gone only once one of them gains or loses a turn, so what it
-    // has is what a fresh read finds.
+    // has is what a fresh read finds, a write rolled back included.
     #[test]
     fn kept_minutes_are_read_whole_only_when_an_hour_gone_changes() {
         let history = ordinary();
@@ -2603,9 +2607,29 @@ mod tests {
             fresh(NOW + 2.0)
         );
         assert_eq!(kept.whole, 2, "a turn arriving late for an hour gone");
+        history
+            .db
+            .execute("DELETE FROM turns WHERE session = 'late'", [])
+            .unwrap();
+        assert_eq!(
+            kept.read(&history, from, NOW + 3.0).unwrap(),
+            fresh(NOW + 3.0)
+        );
+        assert_eq!(kept.whole, 3, "a turn forgotten from an hour gone");
+        history.db.execute_batch("BEGIN").unwrap();
+        turn(&history, "undone", NOW - 5.0 * HOUR, 3.0);
+        kept.read(&history, from, NOW + 4.0).unwrap();
+        history.db.execute_batch("ROLLBACK").unwrap();
+        turn(&history, "redone", NOW - 5.0 * HOUR, 5.0);
+        assert_eq!(
+            kept.read(&history, from, NOW + 5.0).unwrap(),
+            fresh(NOW + 5.0),
+            "a move handed out again after a rollback was missed"
+        );
+        assert_eq!(kept.whole, 5, "a write not committed was kept as read");
         let next = crate::time::hour_start(crate::time::hour_of(NOW) + 1);
         assert_eq!(kept.read(&history, from, next).unwrap(), fresh(next));
-        assert_eq!(kept.whole, 3, "the next hour");
+        assert_eq!(kept.whole, 6, "the next hour");
     }
 
     #[test]

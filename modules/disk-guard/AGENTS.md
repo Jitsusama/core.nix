@@ -38,7 +38,13 @@ or launchd, and [`home.nix`][2] the account's.
   be tidied. Only an overloaded one, its tasks stalled on the disk, memory
   or the processors 75% of the time, holds upkeep and the store's routine
   listing until it recovers; a disk past healthy is answered all the
-  same, its listing at idle priority until the disk is nearly full. It comes
+  same. Short of nearly full, the store's listing runs at idle priority,
+  and begins only while, over the last minute, all tasks stalled at once
+  no more than 5% on memory and 10% on the disk (`roomy`): on 23 November
+  a filling store's listings ran 10 to 15 minutes at 17 to 36 on the
+  disk. A filling store's waits six hours for room at most, then begins
+  at idle priority anyway, so a machine that never quiets still lists it
+  before it's nearly full. Nearly full, it can't wait for room. It comes
   at once, too, when an owner ends: the guard looks each minute, and a
   tree newly spent, a new boot, a guard with new
   rules or a path a producer watches saying something new since it last
@@ -176,6 +182,15 @@ or launchd, and [`home.nix`][2] the account's.
   measures whatever is writing, so it neither counts nor teaches. A pass
   that falls short rests before the next, doubling from a minute to fifteen
   while filling, five when nearly full and one when critically full. One
+  on a filling disk that finds nothing left to clear, after one before it
+  that found nothing too and whose rest ended at most fifteen minutes
+  before, rests it an hour, since each pass reads the metadata of all it
+  judges: one 17 minutes after such a pass read 15 GB of it on 25
+  November. The first rests a minute, as expiring generations or a build
+  ending leaves garbage only the next pass can take, and one that couldn't
+  ask the system daemon never counts, having lacked only its word. Its status
+  says it has cleared all it may for that hour. A worse band ends any
+  rest, and a restart forgets it. One
   that kept things only for want of the system guard's word ends its rest
   as soon as the system guard answers again, once in a row. A survey counts the
   blocks its candidates share once, for the first it measures, as trees
@@ -202,6 +217,29 @@ or launchd, and [`home.nix`][2] the account's.
   thread of its own while the pass beats, since the desktop calls a guard
   silent for two minutes dead. `src/pace.rs` holds it; `pacing` in the
   config sets the batch and the rest.
+- **Length.** Each offer is judged against every process, so a pass is as
+  long as what it was handed. Upkeep ends `unfinished` after 20 minutes,
+  and a pass reaching for room in a band no worse than filling after two
+  hours, the rest due at the next step, which surveys again and doesn't
+  rest. The next reach on that disk in such a band is offered none of
+  the files a cut one judged, so none judges the same two hours again;
+  what reaches that waited, stalled or were stopped judged is offered
+  again, and so is every command and garbage batch, whose names come
+  back each round for other work. Garbage collected in between skips
+  nothing. A reach that gets through its offers starts afresh, as does
+  a reach at a worse band, which sees every offer and so never calls
+  the disk exhausted over offers it wasn't shown, a reach that would
+  be offered nothing, upkeep, and a disk measured healthy and not
+  reaching on a forecast. What was
+  judged lives only in memory, so a guard started again judges
+  everything. One cut short teaches nothing of how
+  long a pass takes, and its notice says it ran as long as a pass may.
+  On 12 November a laptop's upkeep held a day and a half of
+  entries, and on 23 November an account's reach judged 88,000 offers for
+  15 hours, never offered what came after its survey. A pass for a nearly
+  or critically full disk goes on to its target or its last offer, since
+  a survey's walk there clears nothing while it runs. `ROUTINE_LONGEST`
+  and `REACH_LONGEST` in `src/pass.rs` hold them.
 - **Stopping.** A daemon takes its stop signal between steps, and a
   waiting stop ends a rest and starts no new command. A survey only
   reads, and its walks take minutes on a full home, so it asks as it
@@ -227,7 +265,19 @@ or launchd, and [`home.nix`][2] the account's.
   each once, taken, kept or failed, and how long the survey that offered
   them took, which its own seconds leave out, or null when none did. Each
   pass a survey served carries its seconds, so passes at one time and the
-  same seconds shared one walk. Judged reads beside the line's end: a pass
+  same seconds shared one walk. It says too what it read from disk
+  (`read`) and what its survey did (`survey_read`), from Linux's count for
+  the thread each ran on, or null on a Mac; what a pass hands a thread of
+  its own, a command, a Nix delete or an ask of the system daemon, isn't
+  counted, nor are the git commands a survey runs. A read is what a walk
+  pulled from the disk past the cache, so walks running at once split
+  one cost by which came first. The two walks no pass takes, measuring
+  what holds the disks and marking the builds, each journal a `walk`
+  line saying which, its seconds and what it read; the machine guard's
+  listing of the store's garbage and its dedupe of the store read too,
+  and journal no read yet. On 25 November the account's guard read
+  15.4 GB of the disk in 24 minutes, and no line said which walk it was.
+  Judged reads beside the line's end: a pass
   that ended `exhausted` having judged none had nothing due, and one that
   judged some and freed nothing kept or failed all it judged, which its
   action lines tell apart. A reach that ended `reached` having judged none
@@ -298,9 +348,27 @@ or launchd, and [`home.nix`][2] the account's.
   large store takes a core for minutes. A listing that expired generations
   or found its batches stale brings another, though on a healthy disk not
   until the last has rested nine times its own length, a rest a restart
-  keeps, so listing takes at most a tenth of its time. It lists with no
-  experimental features, since content-addressed derivations made Nix parse
-  and hash every derivation it met, five times the CPU; one that only a
+  keeps, so listing takes at most a tenth of its time. Its length counts
+  at most the half hour a listing may run, since it is heard only at the
+  step after it ends, and a pass between may have taken hours. A listing
+  that failed rests the same however full the store, since it freed
+  nothing, and Nix's locked one held the lock all along. A failed
+  listing is saved nowhere, so a restart forgets its rest. It lists without
+  Nix's garbage collector lock, which every other collection waits on,
+  Nix's own near `min-free` included, and which a laptop's listing held
+  24 minutes on 24 November: the store's entries are read first, then
+  the roots through `nix-store --gc --print-roots`, which takes no lock,
+  and the dead are the entries outside the roots' closures, with each
+  kept path's deriver and its closure while `keep-derivations` is on, as
+  Nix keeps them. A path added between the two readings is rooted by
+  then or not listed, and deleting takes the lock and refuses one that
+  came alive. A reading naming no root in the store fails the listing,
+  since all of it would read dead, and a question about paths asks only
+  of those still valid, since a collection may delete one meanwhile.
+  With `keep-outputs` on, or where Nix can't say, it says so and asks
+  Nix's own `--print-dead`, under the lock, with no experimental
+  features, since content-addressed derivations made Nix parse and hash
+  every derivation it met, five times the CPU; one that only a
   realisation keeps is listed dead, and Nix refuses it when it's deleted.
   The garbage's own pass, which comes once something let go of some, rests
   after one that left every path it was offered, two minutes doubling to
@@ -392,9 +460,24 @@ or launchd, and [`home.nix`][2] the account's.
   are the trend over about two hours, told once it's watched ten minutes
   and while the disk is filling now too, since builds writing and freeing
   gigabytes every few minutes swing the two-minute rate passes plan by
-  either way by tens of gigabytes an hour. A disk whose last pass, in its
+  either way by tens of gigabytes an hour. The disk Nix's store is on
+  also carries `nix_floor`, the `min-free` Nix keeps there by collecting
+  its own garbage, read from `nix config show` hourly, and `floor_at`,
+  when it reaches that floor. While it's above the floor its sentence
+  tells `floor_at` rather than when it fills, since Nix collects before
+  it does. `Fill::ahead` in `src/decide.rs` works both moments out, and
+  `band_in` leaves out a band that starts under the floor. A beat drops
+  either moment once it has passed, a restarted guard's first beats on
+  the status the last one left included. A disk whose last pass, in its
   band or a worse one, found nothing more to clear is `exhausted`, and its
-  sentence says so rather than that the guard is clearing. While a disk
+  sentence says so rather than that the guard is clearing. A pass is
+  `passing` from its start, the survey before it included, with its
+  disk, band and why, since one reaching for room runs up to two hours,
+  and on a fuller disk to its last offer; it's cleared in what the beats
+  write too, and a restarted guard's first beats drop the last one's.
+  A band's forecast counts down beat by beat through a long pass. While
+  one is at work on a disk, that
+  disk isn't `exhausted`, and the pass before it gives no notice. While a disk
   is below healthy, or holds more than the config's `budget` (a size or a
   share used, which takes nothing more), `holders` says what holds the
   space: the ten biggest folders the sources name, each straight under a
@@ -467,6 +550,28 @@ or launchd, and [`home.nix`][2] the account's.
   the same set, so what a clear offers to free is what it takes, and a
   pass drops what it reclaimed from it at once. The command refuses a
   kept folder. `src/clears.rs` holds the asks.
+- **Holds.** `writer_holds` in the config names marks another program
+  leaves while the disk's writes must wait for what Joel is using, as one
+  did on 24 November while Chrome stalled for seconds at a time. While any
+  of them exists, a daemon starts no pass, listing of Nix's garbage, delete
+  batch or store dedupe short of nearly full, and runs no producer, whose
+  news keeps for the hold's end, since each writes the disk for minutes. A
+  user daemon's ask to collect is answered as waiting, as the deletes'
+  rest is, so its pass waits with the store's garbage rather than counting
+  a failure. Only a mark's presence counts, never what it says. A nearly
+  full disk is answered as ever, as is a clear Joel asked for, and what is
+  already running goes on, a dedupe included. The log says when a hold
+  begins and ends. While it stands, a filling disk's status says its
+  clearing waits, never that it is clearing, unless it has cleared all it
+  may or Joel asked for a clear there; the launcher's row says so too.
+  A clear is told as at work on the disk its first asked folder lies on
+  from before its survey, which walks for minutes, and no longer once it
+  ends, whether it found anything or failed.
+  The system's guard and the account's each read their own config, so a
+  machine names its marks in both: core knows no program that leaves one.
+  A mark's path must be plain and absolute, since one the guard can't
+  find would never hold it, and a mistyped one is refused when the config
+  is read.
 - **Notices.** The account's guard shows one desktop notice, and only once
   a disk is nearly full: a filling disk is the launcher's to show. The
   exception is the guard itself failing: a pass on a filling disk whose
@@ -487,6 +592,10 @@ or launchd, and [`home.nix`][2] the account's.
   file there without Apple's entitlement, so no older build is dated or
   offered; nothing freezes a writer yet; there's no scope for a linking run;
   and Time Machine's local snapshots are thinned once nearly full.
+  macOS keeps no stall averages, so room is the kernel's own word on
+  memory: a listing that can wait needs 35% free, as `memory_pressure`
+  prints it, at the normal level; dedupe waits out a warning; critical
+  is overloaded. The disk's stalls go unjudged there.
 
 ## Where Things Live
 
@@ -497,9 +606,11 @@ or launchd, and [`home.nix`][2] the account's.
 | `src/plan.rs`, `pass.rs`  | the order, the windows, and a pass that measures as it goes |
 | `src/pace.rs`             | resting between batches, by the disk's own feel          |
 | `src/survey.rs`           | each source's candidates                                 |
+| `src/survey/`             | what builds and every other kind of source offer         |
 | `src/store_roots.rs`      | the links a tool keeps its builds by, found through Nix  |
 | `src/surveyed.rs`         | the last pass's survey, kept for `disk-guard plan` to read |
 | `src/holders.rs`          | what holds each disk, and whose it is                    |
+| `src/disk_reads.rs`       | what a walk read from disk, by its thread's count        |
 | `src/disks.rs`            | how hard each disk is written, and how worn              |
 | `src/keeps.rs`            | the folders Joel keeps, and why                          |
 | `src/ledger.rs`           | what held each disk over two days, and what grew         |
@@ -508,10 +619,11 @@ or launchd, and [`home.nix`][2] the account's.
 | `src/footprint.rs`        | what files take on a compressed disk, read as root       |
 | `src/activity.rs`, `locks.rs` | whether something is in use                          |
 | `src/host.rs`, `linux.rs`, `macos.rs` | the machine the guard runs on, through `crate::sys` |
-| `src/procargs.rs`, `pmset.rs` | what macOS says, parsed where Linux's tests reach it |
+| `src/procargs.rs`, `pmset.rs`, `memorystatus.rs` | what macOS says, parsed for Linux's tests |
 | `src/daemon.rs`, `serve.rs` | a daemon's step and its loop                           |
 | `src/socket.rs`, `vouch.rs` | what the two daemons say to each other                 |
 | `src/garbage.rs`, `generations.rs`, `dedupe.rs` | Nix's garbage, generations and linking |
+| `src/garbage/`            | running Nix's commands, its refused nix.conf lines left out |
 | `src/replaced.rs`, `opens.rs`, `unwatched.rs` | older builds, and the watch that dates them, or a Mac's lack of one |
 | `src/writers.rs`, `freeze.rs`, `freezer.rs` | who writes most, and freezing them through systemd |
 | `src/desktop.rs`, `notifier.rs` | notices and power saving over D-Bus, or on a Mac |

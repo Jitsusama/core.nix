@@ -1,22 +1,18 @@
 """Run some of a VM test's subtests, in seconds rather than minutes.
 
-A VM test's driver builds in seconds once its machines are built, and runs
-whatever script it's given. This builds the check's driver, cuts its script
-down to everything outside a subtest (the boot, the helpers) and the
-subtests asked for, and runs that in a runtime folder of its own, so two
-runs at once don't share the driver's network switch or machine state.
+A VM test's driver builds in seconds once its machines are built. Every VM
+test hands its tests to pytest inside the driver (tests/lib/vm_pytest.py),
+so this builds the check's driver and runs its script in a runtime folder of
+its own, so two runs at once don't share the driver's network switch or
+machine state, with pytest told which tests to pick.
 
     run-subtests [options] <check> [<words>...]
 
-Each subtest whose name holds any of the words runs, in the script's order;
-with none, the subtests are listed and it says it ran none, since it still
-exits 0. Each subtest makes what it needs when an
-earlier one hasn't, so any runs alone. The pictures are kept
-in the folder it prints at the end.
-
-A test written for pytest (tests/lib/vm_pytest.py) is run whole instead, and
-pytest picks the tests: each word, its spaces read as underscores, is matched
-against the tests' names, and with none they're listed, which boots nothing.
+Each test whose name holds any of the words runs, a word's spaces read as
+underscores, after only the fixtures it asks for. With none, pytest lists
+the tests, which boots nothing, and it says it ran none, since it still exits
+0. The pictures are kept in the folder it prints at the end. A check whose
+script doesn't hand its tests to pytest is refused, as having none to pick.
 
 With --there, all of it is built elsewhere: nix-offload builds the flake's
 `subtests` for the check and words where the VM can run (subtests.nix),
@@ -45,7 +41,7 @@ import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, NamedTuple, cast
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator, Sequence
@@ -74,6 +70,22 @@ OPERATORS = frozenset({"and", "or", "not"})
 # What subtests.nix says of a check that isn't a VM test, and so has no
 # subtests: its evaluation fails, which must never read as the check failing.
 NOT_A_VM_TEST = "isn't a VM test, so it has no subtests"
+# What this program says, inside the build too, of a VM test whose script
+# doesn't hand its tests to pytest: that build fails having run no test, which
+# must never read as the check failing either.
+NOT_HANDED_TO_PYTEST = "doesn't hand its tests to pytest"
+# Either refusal, read from what the build elsewhere said.
+REFUSALS = (NOT_A_VM_TEST, NOT_HANDED_TO_PYTEST)
+
+# What nix-offload says of subtests that passed at the commit already, naming
+# the folder it kept them in (its main.rs, Kept::unpassed), which it copies
+# nothing from when it's the folder asked for. It opens a line of its own, so
+# a build's log, whose lines open with the build's name, can't say it.
+SERVED = re.compile(
+    r"nix-offload: these subtests passed at \S+ already, so they "
+    r"aren't run again; their pictures are copied from (?P<kept>.+), and "
+    r"`(?P<forget>nix-offload passed forget \S+)` has them run again"
+)
 
 # Where the net keeps its quarantine list, and the main it's read from, so a
 # branch can't quarantine its own failure.
@@ -87,7 +99,12 @@ MAIN = "refs/remotes/origin/main"
 # FAILED names none.
 FAILED_TEST = re.compile(r"(?:\s*> |[^ ]+?> )?(?:FAILED|ERROR) \S*::(test_\w+)")
 
-type Chunk = tuple[str | None, list[str]]
+# A test pytest collects as its quiet listing says it, by its file and,
+# past the first `::`, its name, parameters and all, which may hold a space,
+# as `test_typed[the password]` does.
+COLLECTED = re.compile(r"\S+?\.py::(?P<test>\S.*)")
+# What pytest is told to list a check's tests with, booting nothing.
+LISTING = "--collect-only --quiet"
 
 
 @dataclass(frozen=True)
@@ -102,64 +119,6 @@ class Options:
     keep_machine_state: bool
     driver: Path | None = None
     there: bool = False
-
-
-def subtest_name(statement: ast.stmt) -> str | None:
-    """Give the name a `with subtest("..."):` statement gives, or None."""
-    if not isinstance(statement, ast.With) or len(statement.items) != 1:
-        return None
-    call = statement.items[0].context_expr
-    if (
-        isinstance(call, ast.Call)
-        and isinstance(call.func, ast.Name)
-        and call.func.id == "subtest"
-        and len(call.args) == 1
-        and isinstance(call.args[0], ast.Constant)
-        and isinstance(call.args[0].value, str)
-    ):
-        return call.args[0].value
-    return None
-
-
-def chunks(script: str) -> list[Chunk]:
-    """Split a test script into its top-level statements.
-
-    Each is a name and its lines: the subtest's name for a subtest, None for
-    anything else. Python parses it, so a string at the margin stays in its
-    statement, and each starts where the one before it ended, so the
-    comments and decorators before a statement go with it.
-    """
-    lines = script.splitlines(keepends=True)
-    body = ast.parse(script).body
-    starts = [0] + [statement.end_lineno or statement.lineno for statement in body[:-1]]
-    ends = [*starts[1:], len(lines)]
-    return [
-        (subtest_name(statement), lines[start:end])
-        for statement, start, end in zip(body, starts, ends, strict=True)
-    ]
-
-
-def named(name: str, words: Sequence[str]) -> bool:
-    """Say whether a subtest's name holds any of the words."""
-    return any(word in name for word in words)
-
-
-def names(script: str) -> list[str]:
-    """List the script's subtests, in the order they run."""
-    return [name for name, _ in chunks(script) if name is not None]
-
-
-def cut(script: str, words: Sequence[str]) -> str:
-    """Cut the script down to the subtests the words name.
-
-    Everything outside a subtest is kept.
-    """
-    return "".join(
-        line
-        for name, lines in chunks(script)
-        if name is None or named(name, words)
-        for line in lines
-    )
 
 
 def pytest_driven(script: str) -> bool:
@@ -179,10 +138,18 @@ def selecting(words: Sequence[str]) -> str:
     """Give the pytest options that pick the tests whose names hold any of the words.
 
     A test's name is its function's, so a word's spaces are read as underscores.
+    A word starting with a dash is refused wherever it stands, since as the
+    first pytest would take it for an option of its own rather than -k's
+    expression. A dash inside one is kept, as a parameter's id may hold one.
     """
     keywords = ["_".join(word.split()) for word in words]
     for word, keyword in zip(words, keywords, strict=True):
-        if not KEYWORD.fullmatch(word) or not keyword or keyword.lower() in OPERATORS:
+        if (
+            not KEYWORD.fullmatch(word)
+            or not keyword
+            or keyword.lower() in OPERATORS
+            or keyword.startswith("-")
+        ):
             message = f"{word!r} can't be matched against a test's name"
             raise ValueError(message)
     return "-k " + shlex.quote(" or ".join(keywords))
@@ -193,6 +160,7 @@ def nix(*arguments: str) -> str:
     # The nix run is the person's own, with their settings, so it's found
     # on the path rather than pinned; what it's given is theirs too.
     return subprocess.run(  # noqa: S603
+        # Found on the path, as said above, and run with the person's own words.
         ["nix", *arguments],  # noqa: S607
         check=True,
         stdout=subprocess.PIPE,
@@ -226,9 +194,9 @@ def runtime_folder(check: str, *, keep: bool) -> Iterator[Path]:
         folder.mkdir(mode=0o700, exist_ok=True)
         yield folder
         return
-    # mkdtemp makes a new folder only its owner can enter, so /tmp is safe.
     # A Nix build has no runtime folder and maybe no /tmp, but a short TMPDIR.
     build = os.environ.get("TMPDIR", "")
+    # mkdtemp makes a new folder only its owner can enter, so /tmp is safe.
     fallback = build if 0 < len(build) <= LONGEST_RUNTIME_BASE else "/tmp"  # noqa: S108
     folder = Path(tempfile.mkdtemp(prefix="vm.", dir=base if short else fallback))
     try:
@@ -238,7 +206,12 @@ def runtime_folder(check: str, *, keep: bool) -> Iterator[Path]:
 
 
 def run(driver: Path, script: str, out: Path, options: Options, pytest: str = "") -> int:
-    """Run the script on the driver, its pictures kept in out, pytest given those options."""
+    """Run the script on the driver, its pictures kept in out, pytest given those options.
+
+    A listing given a folder, as the build for --there is, keeps the names of
+    the tests pytest collects there too, for the run that asked, unless it
+    is at the person's terminal, fails or names none.
+    """
     with runtime_folder(options.check, keep=options.keep_machine_state) as runtime:
         script_path = runtime / "test-script.py"
         script_path.write_text(script)
@@ -259,11 +232,48 @@ def run(driver: Path, script: str, out: Path, options: Options, pytest: str = ""
             # After any the person set, so theirs hold too.
             given = os.environ.get("PYTEST_ADDOPTS", "")
             environment["PYTEST_ADDOPTS"] = f"{given} {pytest}".strip()
-        return subprocess.run(  # noqa: S603
-            command,
-            env=environment,
-            check=False,
-        ).returncode
+        # A list left from an earlier listing is never taken for this one's.
+        listed = out / "subtests"
+        if pytest == LISTING and options.out is not None:
+            listed.unlink(missing_ok=True)
+        # A listing at the person's own terminal, as -I makes one, keeps its
+        # output theirs.
+        if pytest != LISTING or options.out is None or options.interactive:
+            # The driver is the one the check built, given the person's own words.
+            return subprocess.run(  # noqa: S603
+                command,
+                env=environment,
+                check=False,
+            ).returncode
+        # Echoed line by line, the driver unbuffered, since the build's log
+        # is the listing's only other copy, and kept only from a listing
+        # that passed.
+        environment["PYTHONUNBUFFERED"] = "1"
+        names: list[str] = []
+        # The same driver, run the same way, with its output read for the names.
+        with subprocess.Popen(  # noqa: S603
+            command, env=environment, stdout=subprocess.PIPE, text=True, errors="replace"
+        ) as running:
+            for line in running.stdout or ():
+                sys.stdout.write(line)
+                sys.stdout.flush()
+                if (found := COLLECTED.fullmatch(line.strip())) is not None:
+                    names.append(found["test"])
+        if running.returncode != 0:
+            return running.returncode
+        # pytest fails a listing that collects nothing, so one that passes
+        # naming none was written in another shape, as a -v of the person's
+        # own makes it, and an empty list would read as a test with none.
+        if not names:
+            print(
+                f"run-subtests: {options.check}'s listing passed but named no test as "
+                "pytest's quiet listing does, so none is kept; pytest options given as well, "
+                f"such as -v, change its shape; build the whole test with {whole(options)}",
+                file=sys.stderr,
+            )
+            return 1
+        listed.write_text("".join(f"{name}\n" for name in names))
+        return 0
 
 
 def arguments(argv: Sequence[str]) -> Options:
@@ -341,6 +351,19 @@ def failed_tests(lines: Iterable[str]) -> frozenset[str]:
     )
 
 
+class Offloaded(NamedTuple):
+    """What nix-offload did: its status, and what its errors said."""
+
+    status: int
+    # Whether the check was refused as having no subtests to pick.
+    refused: bool
+    # nix-offload's word that it served a pass kept from before, naming its
+    # folder and the command that has it run again.
+    served: re.Match[str] | None
+    # The tests the build says failed.
+    failed: frozenset[str]
+
+
 def there(options: Options) -> tuple[int, frozenset[str]] | None:
     """Have nix-offload build and run it elsewhere, or None when it can't.
 
@@ -357,43 +380,98 @@ def there(options: Options) -> tuple[int, frozenset[str]] | None:
         flake = str(Path(flake).resolve())
     out = options.out or Path(tempfile.mkdtemp(prefix=f"{options.check}."))
     out.mkdir(parents=True, exist_ok=True)
+    # A list left in a folder used before isn't this build's, so it's moved
+    # out of the way. It goes back when nix-offload wrote no list of its own,
+    # so neither a failed run nor a pass kept in this very folder loses it;
+    # but not beside a pass copied from elsewhere, whose kept folder's list
+    # comes with it. Ctrl-C puts it back too, though beside such a copy if
+    # nix-offload had begun one; a signal that ends Python unhandled, as
+    # SIGTERM does, loses it. Either way a served pass is shown with the list
+    # its kept folder holds now, which a later listing into that folder, of
+    # another check or commit, may have replaced: nix-offload keeps no mark
+    # of whose list it is.
+    listed = out / "subtests"
+    before = listed.read_text() if listed.exists() else None
     command = ["nix-offload", "there", "-L", "--out", str(out), "--apply", apply]
     print(f"building {options.check}'s subtests where nix-offload builds", file=sys.stderr)
+    ran = None
+    wrote = False
     try:
-        status, refused, failed = offloaded([*command, flake, f"legacyPackages.{system}.subtests"])
+        listed.unlink(missing_ok=True)
+        ran = offloaded([*command, flake, f"legacyPackages.{system}.subtests"])
     except FileNotFoundError:
         return None
+    finally:
+        wrote = listed.exists()
+        if before is not None and not wrote and not copied(ran, out):
+            listed.write_text(before)
+    status, refused, served, failed = ran
     if refused:
         print(
-            f"run-subtests: {options.check} isn't a VM test; build it whole with "
-            f"nix-offload there . checks.{system}.{options.check}",
+            f"run-subtests: {options.check} has no subtests to pick; "
+            f"build it whole with {whole(options)}",
             file=sys.stderr,
         )
         return USAGE, frozenset()
     if status == USAGE:
         return None
-    listed = out / "subtests"
-    if not options.words and listed.exists():
-        print(listed.read_text(), end="")
-    else:
+    # A listing takes no pictures; the build keeps the names it collected, so
+    # one served from what's built already lists them too.
+    shown = wrote or (served is not None and kept_in(served, out) and listed.exists())
+    names = listed.read_text() if shown else ""
+    if options.words:
         say_pictures(out, options.check)
+    elif names.strip():
+        print(names, end="")
+    elif status == 0:
+        # The build keeps a listing's names or fails, so one passing with
+        # none brought back listed nothing the person can see.
+        print(nameless(options, served), file=sys.stderr)
+        return 1, failed
     return status, failed
 
 
-def offloaded(command: list[str]) -> tuple[int, bool, frozenset[str]]:
-    """Run nix-offload, and give its status, whether it refused the check, and what failed.
+def copied(ran: Offloaded | None, out: Path) -> bool:
+    """Say whether nix-offload copied into `out` a pass it kept in another folder."""
+    return ran is not None and ran.served is not None and not kept_in(ran.served, out)
 
-    Its errors are shown as they come, and read for subtests.nix's refusal
-    of a check that isn't a VM test and for the tests the build says failed.
-    """
+
+def kept_in(served: re.Match[str], out: Path) -> bool:
+    """Say whether the pass nix-offload served was kept in `out` itself."""
+    return Path(served["kept"]).resolve() == out.resolve()
+
+
+def nameless(options: Options, served: re.Match[str] | None) -> str:
+    """Say that a listing passed elsewhere with no names, and how to see the test run."""
+    if served is None:
+        said = "passed elsewhere but brought back no names"
+    else:
+        said = (
+            f"was served from a pass kept in {served['kept']}, which holds no names; "
+            f"`{served['forget']}` has it listed again"
+        )
+    return (
+        f"run-subtests: {options.check}'s listing {said}, so none are shown; "
+        f"build the whole test with {whole(options)}"
+    )
+
+
+def offloaded(command: list[str]) -> Offloaded:
+    """Run nix-offload, showing its errors as they come and reading what they say."""
     refused = False
+    served = None
     said: list[str] = []
-    with subprocess.Popen(command, stderr=subprocess.PIPE, text=True) as running:  # noqa: S603
+    # The command is nix-offload's, made here from the check and the person's words.
+    # A VM's log can carry bytes no text reads, which mustn't end the run.
+    with subprocess.Popen(  # noqa: S603
+        command, stderr=subprocess.PIPE, text=True, errors="replace"
+    ) as running:
         for line in running.stderr or ():
             sys.stderr.write(line)
-            refused = refused or NOT_A_VM_TEST in line
+            refused = refused or any(refusal in line for refusal in REFUSALS)
+            served = SERVED.match(line) or served
             said.append(line)
-    return running.returncode, refused, failed_tests(said)
+    return Offloaded(running.returncode, refused, served, failed_tests(said))
 
 
 def say_pictures(out: Path, check: str) -> None:
@@ -420,6 +498,7 @@ def quarantined(flake: str, check: str) -> list[dict[str, object]]:
     try:
         # git is the person's own, found on the path, as nix is.
         shown = subprocess.run(  # noqa: S603
+            # Reads main's quarantine list and nothing else.
             ["git", "-C", folder, "show", f"{MAIN}:{QUARANTINE}"],  # noqa: S607
             check=False,
             capture_output=True,
@@ -498,9 +577,10 @@ def blocking(options: Options, status: int, failed: frozenset[str]) -> int:
     """Give the run's status, a failure main's quarantine excuses read as none.
 
     Inside a build, given its driver, the status is the build's own, and
-    the run that sent it there reads the list.
+    the run that sent it there reads the list. A listing runs no test, so
+    one failing, here or in that build, is never a failure to excuse.
     """
-    if status not in FAILED or options.driver is not None:
+    if status not in FAILED or options.driver is not None or not options.words:
         return status
     held = quarantined(options.flake, options.check)
     if not held:
@@ -528,22 +608,36 @@ def main(argv: Sequence[str]) -> int:
     # pass unseen: on 15 November a session ran fifteen tests so. The build
     # a --there run makes lists with a driver given, and says nothing.
     if not options.words and status == 0 and options.driver is None:
-        print(ran_none(options.check), file=sys.stderr)
+        print(ran_none(options), file=sys.stderr)
     return status
 
 
-def ran_none(check: str) -> str:
+def ran_none(options: Options) -> str:
     """Say that a listing ran no subtest, and how to run some or all."""
+    return (
+        f"run-subtests: listed {options.check}'s subtests and ran none; name words from them "
+        f"to run those, or build the whole test with {whole(options)}"
+    )
+
+
+def whole(options: Options) -> str:
+    """Give the command that builds the whole check from its flake, for this machine's system."""
     machine = {"arm64": "aarch64"}.get(platform.machine(), platform.machine())
     system = f"{machine}-{platform.system().lower()}"
-    return (
-        f"run-subtests: listed {check}'s subtests and ran none; name words from them to run "
-        f"those, or build the whole test with nix-offload there . checks.{system}.{check}"
-    )
+    # Quoted, so it can be pasted as it's said whatever the flake's path holds.
+    target = shlex.quote(f"checks.{system}.{options.check}")
+    return f"nix-offload there {shlex.quote(options.flake)} {target}"
 
 
 def listed_or_ran(options: Options) -> int:
     """List a check's subtests, or run those the words name, here or elsewhere."""
+    # Before anything is built, here or elsewhere, since a build refusing
+    # a word fails having run no test, which a quarantine would excuse.
+    try:
+        selecting(options.words)
+    except ValueError as error:
+        print(f"run-subtests: {error}", file=sys.stderr)
+        return USAGE
     if options.there:
         built = there(options)
         if built is not None:
@@ -558,43 +652,32 @@ def ran(options: Options) -> int:
     """List a check's subtests, or run those the words name, here, and give the status."""
     driver = options.driver or build_driver(options.flake, options.check)
     script = (driver / "test-script").read_text()
-    if pytest_driven(script):
-        return run_pytest(driver, script, options)
-    if not options.words:
-        listed = "\n".join(names(script))
-        print(listed)
-        if options.out:
-            options.out.mkdir(parents=True, exist_ok=True)
-            (options.out / "subtests").write_text(listed + "\n")
-        return 0
-    chosen = [name for name in names(script) if named(name, options.words)]
-    if not chosen:
-        print(f"no subtest of {options.check} is named by {options.words}", file=sys.stderr)
+    if not pytest_driven(script):
+        print(
+            f"run-subtests: {options.check}'s script {NOT_HANDED_TO_PYTEST} "
+            f"(tests/lib/vm_pytest.py), so it has none to pick; build it whole with "
+            f"{whole(options)}",
+            file=sys.stderr,
+        )
         return USAGE
-    print("running:\n  " + "\n  ".join(chosen), file=sys.stderr)
-    out = options.out or Path(tempfile.mkdtemp(prefix=f"{options.check}."))
-    out.mkdir(parents=True, exist_ok=True)
-    status = run(driver, cut(script, options.words), out, options)
-    say_pictures(out, options.check)
-    return status
+    return run_pytest(driver, script, options)
 
 
 def run_pytest(driver: Path, script: str, options: Options) -> int:
-    """List a pytest-driven check's tests, or run those the words name.
+    """List a check's tests, or run those the words name.
 
     A selection naming no test fails the run, as vm_pytest makes it.
     """
+    if not options.words and options.out is not None:
+        options.out.mkdir(parents=True, exist_ok=True)
+        return run(driver, script, options.out, options, LISTING)
     if not options.words:
         out = Path(tempfile.mkdtemp(prefix=f"{options.check}."))
         try:
-            return run(driver, script, out, options, "--collect-only --quiet")
+            return run(driver, script, out, options, LISTING)
         finally:
             shutil.rmtree(out, ignore_errors=True)
-    try:
-        chosen = selecting(options.words)
-    except ValueError as error:
-        print(f"run-subtests: {error}", file=sys.stderr)
-        return USAGE
+    chosen = selecting(options.words)
     print(f"running the tests pytest picks with {chosen}", file=sys.stderr)
     out = options.out or Path(tempfile.mkdtemp(prefix=f"{options.check}."))
     out.mkdir(parents=True, exist_ok=True)

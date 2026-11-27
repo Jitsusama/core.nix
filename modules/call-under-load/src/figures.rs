@@ -82,6 +82,22 @@ pub struct Call {
     pub freezes: Option<f64>,
     /// How long the far end was frozen, in seconds, over the call.
     pub frozen_s: Option<f64>,
+    /// When each freeze had ended, in whole seconds since the epoch, so a
+    /// freeze can be laid beside lag-watch's ten-second rows to say what
+    /// the machine was doing. Each is the time of the far sample whose
+    /// count of freezes rose, once for each freeze it rose by, and is the
+    /// latest the freeze could have ended: the sample comes up to one
+    /// sample gap after it, a second or more under load, so the row before
+    /// may be the one that held the frame. Cut down to the second, as
+    /// lag-watch's own row ends are, a time can also sit up to a second
+    /// before its sample. A count that fell between two samples is taken
+    /// as a stream restarted from 0, and all it holds are timed. A restart
+    /// whose count comes back at or above the old one reads as no restart,
+    /// so only the rise past the old count is timed, and as many of its
+    /// freezes as the old count go untimed. Times are kept even when a
+    /// fall leaves `freezes` and `frozen_s` unread, so a restarted
+    /// stream's freezes may show only here.
+    pub frozen_at: Vec<f64>,
     /// A click on the call's own tab to its next frame, in ms.
     pub clicks_p50: Option<f64>,
     pub clicks_p99: Option<f64>,
@@ -247,6 +263,24 @@ pub fn call(mine: &[Value], far: &[Value], clicks: &[f64]) -> Call {
         .iter()
         .filter(|row| row["in"]["freezeCount"].is_number())
         .collect();
+    // Chrome counts a freeze once its next frame comes, so the sample
+    // whose count rose is the one by which it had ended, and a count that
+    // rose by two between samples ended two. A count that fell is taken as
+    // a stream restarted from 0, so all it holds are freezes since: the
+    // page keeps one inbound video stream's figures a sample, though not
+    // always the same stream's, and a switch between two reads as a
+    // restart too.
+    let frozen_at = frozen
+        .windows(2)
+        .flat_map(|pair| {
+            let risen = pair[1]["in"]["freezeCount"]
+                .as_u64()
+                .zip(pair[0]["in"]["freezeCount"].as_u64())
+                .map_or(0, |(b, a)| if b < a { b } else { b - a });
+            let at = pair[1]["t"].as_f64().map(|ms| (ms / 1000.0).floor());
+            std::iter::repeat_n(at, usize::try_from(risen).unwrap_or(0)).flatten()
+        })
+        .collect();
     let (mut freezes, mut frozen_s) = (None, None);
     if let (Some(first), Some(last)) = (frozen.first(), frozen.last())
         && frozen.len() > 1
@@ -290,6 +324,7 @@ pub fn call(mine: &[Value], far: &[Value], clicks: &[f64]) -> Call {
         got: percentile(&got, 10),
         freezes,
         frozen_s,
+        frozen_at,
         clicks_p50: percentile(clicks, 50),
         clicks_p99: percentile(clicks, 99),
         heard: sound.heard,
@@ -420,6 +455,11 @@ mod tests {
         assert_eq!(figures.got, Some(30.0));
         assert_eq!(figures.freezes, Some(10.2));
         assert_eq!(figures.frozen_s, Some(0.4));
+        assert_eq!(
+            figures.frozen_at,
+            vec![40.0],
+            "the freeze wasn't timed by the sample that counted it"
+        );
         assert_eq!(figures.clicks_p99, Some(9.0));
         // Sampled late, every 1.2 s as a loaded timer runs, the same freeze
         // over the same 70.8 s reads by the clock, not the sample count.
@@ -437,6 +477,34 @@ mod tests {
             Some(9.3),
             "freezes rounded down"
         );
+        // Two freezes, the second a sample later, are each timed, in
+        // whole seconds of the samples' own clock.
+        far[41]["in"]["freezeCount"] = json!(2);
+        for row in far.iter_mut().skip(42) {
+            row["in"]["freezeCount"] = json!(2);
+        }
+        assert_eq!(
+            call(&mine, &far, &[]).frozen_at,
+            vec![44.0, 45.0],
+            "each freeze wasn't timed"
+        );
+        // Two freezes ended between one sample and the next are both
+        // timed, and a time is cut down to its second, as lag-watch's are,
+        // never rounded up into the next row.
+        far[41]["in"]["freezeCount"] = json!(3);
+        far[41]["t"] = json!(45_600);
+        for row in far.iter_mut().skip(42) {
+            row["in"]["freezeCount"] = json!(3);
+        }
+        assert_eq!(
+            call(&mine, &far, &[]).frozen_at,
+            vec![44.0, 45.0, 45.0],
+            "two freezes in one sample weren't each timed, or a time was rounded up"
+        );
+        far[41]["t"] = json!(41 * 1100);
+        for row in far.iter_mut().skip(41) {
+            row["in"]["freezeCount"] = json!(1);
+        }
         // Samples with no time between them give no rate at all.
         let mut still = far.clone();
         for row in &mut still {
@@ -460,6 +528,26 @@ mod tests {
             (restarted.freezes, restarted.frozen_s),
             (None, None),
             "a restarted stream's counts read as a figure"
+        );
+        assert_eq!(
+            restarted.frozen_at,
+            vec![44.0, 66.0],
+            "a restarted stream's freeze wasn't timed"
+        );
+        // A stream that restarted between samples, the old one at 3 and
+        // the new one's first sample at 1, still times that one freeze.
+        for (t, row) in far.iter_mut().enumerate() {
+            let count = match t {
+                40..50 => 3,
+                50.. => 1,
+                _ => 0,
+            };
+            row["in"]["freezeCount"] = json!(count);
+        }
+        assert_eq!(
+            call(&mine, &far, &[]).frozen_at,
+            vec![44.0, 44.0, 44.0, 55.0],
+            "the freeze a restarted stream's first sample counted wasn't timed"
         );
     }
 

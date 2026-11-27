@@ -14,6 +14,9 @@ let
   # nothing otherwise.
   resampling."stream.properties"."resample.quality" = 10;
   cat = "${pkgs.coreutils}/bin/cat";
+  # A home's services under its login name, the one polkit gives, which a
+  # home may set apart from its attribute's.
+  byLogin = home: lib.nameValuePair home.home.username home.systemd.user.services;
   # The sound services (sound-services.nix says which), so one a module adds
   # is granted without a list here to keep: NixOS's for every account, and
   # home-manager's for its own account alone. As JSON, so a name is read as
@@ -22,7 +25,7 @@ let
     import ./sound-services.nix { inherit lib; } {
       pipewire = lib.getExe' config.services.pipewire.package "pipewire";
       system = config.systemd.user.services;
-      homes = lib.mapAttrs (_: home: home.systemd.user.services) (config.home-manager.users or { });
+      homes = lib.mapAttrs' (_: byLogin) (config.home-manager.users or { });
     }
   );
 in

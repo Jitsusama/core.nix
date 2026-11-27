@@ -2,11 +2,12 @@
 //! them, and plan again.
 
 use crate::band::{Band, Space, Thresholds};
+use crate::decide::Decision;
 use crate::plan::{Candidate, Class, Group, Step, plan};
 use crate::units::float;
 use std::collections::{BTreeMap, BTreeSet};
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// How long a batch may go before its frees are settled and measured.
 /// Settling asks the filesystem to commit, so it's done no more often.
@@ -34,6 +35,14 @@ const STALL_FLOOR: u64 = 1 << 30;
 /// unsaved, and every stop waited on an entry until systemd killed it.
 /// Twenty minutes keeps the survey each pass begins with a small share.
 pub const ROUTINE_LONGEST: f64 = 20.0 * 60.0;
+
+/// The longest a pass reaching for room on a disk no worse than filling
+/// goes before it ends unfinished, so the next step surveys again. On 23
+/// November an account's reach judged its survey's 88,000 offers for 15
+/// hours, never offered what had come since and never saying a pass. A
+/// fuller disk's goes on, since a survey's walk there clears nothing while
+/// it runs; on a filling one, two hours keeps a 40-minute walk a fraction.
+pub const REACH_LONGEST: f64 = 2.0 * 60.0 * 60.0;
 
 /// The filesystem a pass works on.
 pub trait Disk {
@@ -98,8 +107,9 @@ pub enum End {
     Stalled,
     /// A stop came, and what was left waits for the next start.
     Stopped,
-    /// A routine pass ran `ROUTINE_LONGEST`, and what was left is due again
-    /// at the next step.
+    /// A routine pass ran `ROUTINE_LONGEST`, or one reaching for room on a
+    /// disk no worse than filling ran `REACH_LONGEST`, and what was left is
+    /// due again at the next step.
     Unfinished,
     /// A pass reaching for room kept garbage for a rest or another process
     /// and left what costs more to lose for when that's over.
@@ -282,6 +292,34 @@ fn while_band(band: Band) -> &'static str {
     }
 }
 
+/// What a pass with `goal` still has to free, given the space `before`
+/// its next batch, the worst `band` it has seen and how long it has `ran`,
+/// or how it ends there: a reach that reached its target, or a pass past
+/// the longest it may run. Checked once a batch is measured, so what it
+/// freed is counted.
+fn still_to_free(
+    goal: Goal,
+    thresholds: &Thresholds,
+    before: &Space,
+    band: Band,
+    ran: f64,
+) -> Result<Option<u64>, End> {
+    let remaining = match goal {
+        Goal::Upkeep | Goal::Produce | Goal::Clear => None,
+        Goal::Reach if before.free >= thresholds.target => return Err(End::Reached),
+        Goal::Reach => Some(thresholds.target - before.free),
+    };
+    let longest = match goal {
+        Goal::Upkeep => Some(ROUTINE_LONGEST),
+        Goal::Reach if band <= Band::Filling => Some(REACH_LONGEST),
+        Goal::Reach | Goal::Produce | Goal::Clear => None,
+    };
+    if longest.is_some_and(|longest| ran >= longest) {
+        return Err(End::Unfinished);
+    }
+    Ok(remaining)
+}
+
 /// Takes what the plan says until free space reaches the target, nothing
 /// is left to take, or deletes stop freeing anything. Each batch is
 /// settled and measured before the next is planned, so a writer filling
@@ -320,19 +358,14 @@ pub fn pass(
         };
         band = thresholds.band(&before, band);
         report.band = report.band.max(band);
-        let remaining = match goal {
-            Goal::Upkeep | Goal::Produce | Goal::Clear => None,
-            Goal::Reach if before.free >= thresholds.target => {
-                report.end = End::Reached;
-                return report;
-            }
-            Goal::Reach => Some(thresholds.target - before.free),
-        };
-        // Checked once a batch is measured, so what it freed is counted.
-        if goal == Goal::Upkeep && disk.now() - began >= ROUTINE_LONGEST {
-            report.end = End::Unfinished;
-            return report;
-        }
+        let remaining =
+            match still_to_free(goal, thresholds, &before, report.band, disk.now() - began) {
+                Ok(remaining) => remaining,
+                Err(end) => {
+                    report.end = end;
+                    return report;
+                }
+            };
         let windows = match goal {
             Goal::Upkeep | Goal::Produce => Band::Healthy,
             Goal::Clear => Band::CriticallyFull,
@@ -508,4 +541,90 @@ fn credit(learned: &mut Learned, batch: &[&Candidate], freed: u64) {
 fn failed(mut report: Report, error: &io::Error) -> Report {
     report.end = End::Failed(error.to_string());
     report
+}
+
+/// What the next reach on a disk skips once a pass for `decision` there
+/// ended at `end` having tried `tried`, from what it skipped, `skipped`.
+///
+/// Only a reach its length cuts, one no worse than filling, skips what a
+/// cut one judged, so none judges the same two hours of offers again. One
+/// cut adds the files every pass in its step tried, which for a disk an
+/// image is backed by may hold a few its own pass never judged; one that
+/// waited, stalled or was stopped
+/// keeps what was skipped, and so does a collection of Nix's garbage,
+/// which runs in a reach's rest. Anything else (a reach that got through
+/// or ran at a worse band, or upkeep, which a healthy disk alone gets)
+/// skips nothing more. A command or a garbage batch is named, not found,
+/// and its name comes again each round for other work (the oldest batch
+/// is always the first), so only files are kept. It lives only in memory,
+/// so a guard started afresh judges everything again.
+pub fn skipped_after(
+    skipped: Option<BTreeSet<PathBuf>>,
+    decision: Decision,
+    end: &End,
+    tried: &BTreeSet<PathBuf>,
+) -> Option<BTreeSet<PathBuf>> {
+    let cuttable = matches!(decision, Decision::Reach(band) if band <= Band::Filling);
+    match end {
+        End::Unfinished if cuttable => {
+            let mut skipped = skipped.unwrap_or_default();
+            skipped.extend(tried.iter().filter(|path| !named(path)).cloned());
+            Some(skipped)
+        }
+        End::Waiting | End::Stalled | End::Stopped if cuttable => skipped,
+        _ if decision == Decision::Collect => skipped,
+        _ => None,
+    }
+}
+
+/// Whether a candidate's path names a command or garbage rather than a
+/// file, as `survey::named` writes it. A file whose path holds the mark
+/// is only judged again, which costs time and nothing else.
+fn named(path: &Path) -> bool {
+    path.as_os_str().as_encoded_bytes().contains(&b'#')
+}
+
+/// The `offers` a reach skipping `skipped` is given, each found at `path`:
+/// all of them when skipping would leave no file, since a reach given only
+/// what is named (garbage batches and commands, never skipped) would call
+/// the disk exhausted, and tell Joel to delete by hand, over files it was
+/// never shown.
+pub fn left_to_judge<T: Clone>(
+    offers: &[T],
+    skipped: Option<&BTreeSet<PathBuf>>,
+    path: impl Fn(&T) -> &Path,
+) -> Vec<T> {
+    let Some(skipped) = skipped else {
+        return offers.to_vec();
+    };
+    let left: Vec<T> = offers
+        .iter()
+        .filter(|offer| !skipped.contains(path(offer)))
+        .cloned()
+        .collect();
+    if left.iter().all(|offer| named(path(offer))) {
+        offers.to_vec()
+    } else {
+        left
+    }
+}
+
+/// Whether a reach skipping `skipped` had judged every file among
+/// `offers`, each found at `path`, so `left_to_judge` gives it all of
+/// them. It then starts afresh: kept, the skip set would cover the same
+/// files again, and every reach after would judge the same two hours.
+/// What is named is never skipped, so it counts for neither.
+pub fn judged_all<T>(
+    offers: &[T],
+    skipped: Option<&BTreeSet<PathBuf>>,
+    path: impl Fn(&T) -> &Path,
+) -> bool {
+    skipped.is_some_and(|skipped| {
+        let files: Vec<&Path> = offers
+            .iter()
+            .map(&path)
+            .filter(|found| !named(found))
+            .collect();
+        !files.is_empty() && files.iter().all(|found| skipped.contains(*found))
+    })
 }

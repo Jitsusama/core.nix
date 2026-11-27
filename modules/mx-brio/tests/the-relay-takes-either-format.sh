@@ -4,7 +4,8 @@
 # through, and its MJPEG, decoded, as on a USB 2 link. The relay's own
 # input runs with a test picture in the Brio's place, since no build
 # has a camera, so a missing plugin or caps that can't be met fails here
-# rather than leaving Joel, with the Brio hidden, no camera at all.
+# rather than leaving Joel, with the Brio hidden, no camera at all. The
+# input is made alone too, as the relay makes it, before linking a sink.
 #
 # Usage: the-relay-takes-either-format.sh INPUT
 set -euo pipefail
@@ -29,3 +30,17 @@ for source in "$picture,format=NV12" "$picture ! jpegenc"; do
     exit 1
   fi
 done
+# The relay makes its input from the description alone and links its own
+# sink after, so the input has to be made with nothing after it, which a
+# run ending in a sink can't show: the parser takes bare caps only between
+# two elements. Run alone, it stops at its unlinked end, and only one
+# that can't be made, in part or at all, is called erroneous or said
+# not to be constructed. One that can't be made says so at once, so a
+# run that doesn't stop within half a minute was made, and is ended
+# rather than left to hold a builder.
+# shellcheck disable=SC2086 # gst-launch takes a pipeline word by word.
+alone=$(timeout 30 gst-launch-1.0 -q $picture,format=NV12 $rest 2>&1 || true)
+if [[ $alone == *"erroneous pipeline"* || $alone == *"could not be constructed"* ]]; then
+  echo "the relay can't make its input, ending as it does: $alone"
+  exit 1
+fi

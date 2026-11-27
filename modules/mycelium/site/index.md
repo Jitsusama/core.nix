@@ -36,12 +36,25 @@ Nothing on it acts on the network.
   started inside another hangs from its parent's hub by a cord of its own.
   So does a network grown out of another, one whose cells were started by
   cells of the other: it branches from the network whose cells started
-  more of its cells than any other, and its drawer names them. A branch
-  lasts only while the cell that started it is on the map, since that
-  cell's network is known from where it is drawn. Who started a cell is
-  known only of this machine's cells for now, so each machine's map grows
-  branches only from its own cells, and two machines' maps of one realm
-  can differ.
+  or split more of its cells than any other, and its drawer names them. A branch
+  lasts only while the cell that started it, or that it split from, is on
+  the map, since that cell's network is known from where it is drawn. Who started a cell is
+  said by the node that started it and carried to every machine, so a
+  branch grows across machines alike. A node too old to say so of its
+  cells says it only of its own machine's, so a realm with such a node in
+  it grows branches from that machine's cells only on that machine's map.
+  A cell whose purpose split from another's, as a cell sprouted from
+  another's work does, counts toward a branch as a start does, so it grows
+  one where no start is said, or where its start grows none, as one from a
+  receptor, from inside its own network or from a branch of it. A cell
+  started from one network and split from another counts toward both, and
+  the branch's drawer says how it came. The branch's drawer and the cell's
+  say it split rather than that anybody started it, since a split is not a
+  start, and a cell's drawer says a split from the cell that started it
+  only once. Only a forage here says a split, and
+  only of a cell with a forage here, so only this machine's splits are
+  drawn, and a network can grow out of one network here and another on a
+  machine that can't read its splits.
 - **Lines thin as the map steps out past its own size.** What each line
   carries past a hairline thins with the zoom, as the cells shrink with
   it, so the cells read first: a heavier line still reads heavier than a
@@ -106,14 +119,15 @@ Nothing on it acts on the network.
   machine only brightens the talk it touches.
 - **Live networks lead.** A network none of whose cells is at work has
   its hub, cord and ground drawn in the lighter ink.
-- **A dashed magenta ring is a question waiting.** A cell asked a
-  question three minutes or more ago, and has said nothing on the mesh
-  since, is ringed and named; the ring widens with each question and
+- **A dashed magenta ring is an answer owed.** A cell another cell asked
+  a question three minutes or more ago, and has said nothing on the mesh
+  since, is ringed and named as owing an answer, since the question is
+  the cell's to answer and never one waiting on Joel; the ring widens with each question and
   with the age of the first, full at half an hour. Its network is
   ringed round its whole ground, so where the talk is held up reads from
   the whole map. The node keeps no link from an answer to its question,
-  so any word since counts as one. The panel lists them under Questions
-  Waiting, oldest first, with who asked.
+  so any word since counts as one. The panel lists them under Answers
+  Owed, oldest first, with who asked.
 - **Small networks fold.** A network whose cells would be drawn under
   5 px across, or past 400 cells one that sits off the map, draws as its
   ground and hub alone, its ground a shade fuller; its cells unfold as
@@ -141,13 +155,16 @@ Nothing on it acts on the network.
   for it, so opening it never moves the map; on a narrow screen it
   covers the map instead. It holds what is open, or Now: first every
   cell that needs him, those asking something before those stuck, and
-  the questions waiting and holds standing that hold the flow; then how
+  the answers owed and holds standing that hold the flow; then how
   the whole network stands, what it spent today, how to read the map
   and the network as a tree. Full stop, or the last control over the
-  map, opens Now. A cell's drawer talks to it in the Launcher, starts
-  new work from it, and one
-  with a forage opens the forage page on it, saying what it is for and
-  how far its plans have come.
+  map, opens Now. A cell's drawer can go to it, raising its window or
+  opening one, talk to it in the Launcher and start new work from it;
+  one that asks you something leads with those acts, then says what it
+  asks, whole, and one with a forage opens the forage page on it,
+  saying what it is for and how far its plans have come. A machine's
+  drawer opens its row in the Launcher's Machines and starts new work
+  on it; a basin's starts it on any of the cloud's machines.
 - **Signal against noise** is said in Now: of the latest messages,
   how many asked or found something, against how many were for context
   only; a network's details count the messages that touch it. A cell's
@@ -228,9 +245,17 @@ The keyboard comes first and the pointer works too.
 - **s** opens new work's line in the find line's place: say the work
   in your words, and Return hands them to the Launcher's Start New
   Work, from the cell open as the line opened unless its tick is
-  cleared. The page starts nothing itself: the Launcher opens with the
-  words filled in, and only your Return there starts the work. Words
-  handed on come back with s, from the same cell, to send again. Escape
+  cleared, and on the machine whose drawer is open, under the same
+  kind of tick. The page starts nothing itself: the Launcher opens
+  with the words filled in, and only your Return there starts the
+  work. Words handed on come back with s, to send again, on the
+  machine they went to, or on none, and from the same cell if it is
+  still on the map as the line opens, else from the one open now.
+  Words for a machine that has left go with it, so s opens an empty
+  line, and a machine that leaves while the line is open is let go of
+  at Return, which sends nothing and says so; the next Return starts
+  the work where new work starts. A drawer's own Start New Work
+  button offers its own cell or machine, over any kept words. Escape
   closes the line, and the control beside Now opens it too.
 - **Now holds the same network as a tree**, for a screen reader and
   for anyone who would rather walk a list: j and k step, l opens a branch,

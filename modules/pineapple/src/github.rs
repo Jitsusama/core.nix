@@ -3,7 +3,7 @@
 //! what was said on each, its opening, comments, review comments and
 //! reviews, with who said it, whether a bot did, and when. A tag is
 //! `@login` there. Only reading; the program asks
-//! (src/bin/pineapple-github.rs).
+//! (src/bin/pineapple-github/).
 //!
 //! What was said is judged once, by when it was first said: the word added
 //! later by editing an old comment or a description isn't heard, as an
@@ -90,7 +90,9 @@ pub enum Kind {
 }
 
 impl Kind {
-    fn name(self) -> &'static str {
+    /// Its name in the key of what was said (`Said`).
+    #[must_use]
+    pub fn name(self) -> &'static str {
         match self {
             Self::Opening => "opening",
             Self::Comment => "comment",
@@ -158,7 +160,17 @@ pub fn notified(answer: &Value, site: &str) -> Vec<Thread> {
 /// what Joel opened instead.
 #[must_use]
 pub fn found(answer: &Value, site: &str) -> Vec<Thread> {
-    let mut threads: Vec<Thread> = Vec::new();
+    found_when(answer, site)
+        .into_iter()
+        .map(|(thread, _)| thread)
+        .collect()
+}
+
+/// What [`found`] names, each with when the search says it last changed,
+/// as GitHub writes it, or empty where it doesn't say.
+#[must_use]
+pub fn found_when(answer: &Value, site: &str) -> Vec<(Thread, String)> {
+    let mut threads: Vec<(Thread, String)> = Vec::new();
     for one in answer["items"].as_array().into_iter().flatten() {
         let repo = one["repository_url"].as_str().and_then(|url| {
             let mut parts = url.rsplit('/');
@@ -174,8 +186,9 @@ pub fn found(answer: &Value, site: &str) -> Vec<Thread> {
             number,
             pull: one.get("pull_request").is_some(),
         };
-        if !threads.contains(&thread) {
-            threads.push(thread);
+        if !threads.iter().any(|(known, _)| *known == thread) {
+            let at = one["updated_at"].as_str().unwrap_or_default();
+            threads.push((thread, at.to_owned()));
         }
     }
     threads
@@ -297,11 +310,16 @@ pub fn next_page(link: &str) -> Option<&str> {
 }
 
 /// A page added to a list read so far: a list's own, or a search's
-/// items. A page of another shape adds nothing.
+/// items. A search's later page GitHub couldn't finish leaves the whole
+/// search unfinished, as it may have dropped any of its matches, not only
+/// the oldest. A page of another shape adds nothing.
 pub fn add_page(list: &mut Value, page: Value) {
     let (kept, more) = match (list, page) {
         (Value::Array(kept), Value::Array(more)) => (kept, more),
         (Value::Object(kept), Value::Object(mut more)) => {
+            if more.get("incomplete_results") == Some(&Value::Bool(true)) {
+                kept.insert("incomplete_results".to_owned(), Value::Bool(true));
+            }
             match (kept.get_mut("items"), more.remove("items")) {
                 (Some(Value::Array(kept)), Some(Value::Array(more))) => (kept, more),
                 _ => return,
@@ -317,8 +335,8 @@ pub fn add_page(list: &mut Value, page: Value) {
 /// again, or in its message that it is a rate limit (or, as GitHub once
 /// worded one, abuse detection), since a secondary limit may come with
 /// neither header. Joel's limit is shared with gh and
-/// every agent signed in as him, so it runs out, and a round it stops has
-/// to be tried again whole.
+/// every agent signed in as him, so it runs out, and what a round it stops
+/// hasn't read has to be read again.
 #[must_use]
 pub fn rate_limited(
     status: u16,
@@ -617,6 +635,14 @@ mod tests {
             list,
             json!([1, 2, 3]),
             "a page of another shape adds nothing"
+        );
+        let mut cut = json!({"incomplete_results": false, "items": [1]});
+        add_page(&mut cut, json!({"incomplete_results": true, "items": [2]}));
+        add_page(&mut cut, json!({"incomplete_results": false, "items": [3]}));
+        assert_eq!(
+            cut,
+            json!({"incomplete_results": true, "items": [1, 2, 3]}),
+            "a later page GitHub couldn't finish leaves the search unfinished"
         );
     }
 

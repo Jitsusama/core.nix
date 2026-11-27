@@ -4,7 +4,7 @@
 //! work reads which merges, checks, dates or quests the count is made of
 //! without opening the files it came from.
 
-use super::measures::{Class, Measure, SAID_NONE, queues, rounds, spent};
+use super::measures::{Class, Measure, SAID_NONE, parked, queues, rounds, spent};
 
 /// How many of the things behind a figure the card names before it
 /// counts the rest.
@@ -47,11 +47,12 @@ fn line(m: &Measure) -> String {
 /// The spend measure's lines each end with a quest instead, in its own
 /// order, and are named though it is never judged, since they are what
 /// it is for; so are the misses said none, each with its owner's reason,
-/// since the card shows them for that reason to be read. The merges past
+/// since the card shows them for that reason to be read, and the asks
+/// parked on each ruling, so a parking is read while it stands. The merges past
 /// five rounds are named whatever the median reads, each with what its
 /// rounds past five caught, as WCJQSG asked.
 fn behind(m: &Measure) -> Vec<String> {
-    if m.key == spent::KEY || m.key == SAID_NONE {
+    if m.key == spent::KEY || m.key == SAID_NONE || m.key.starts_with(parked::KEY) {
         return m.behind.iter().map(|line| format!("  {line}")).collect();
     }
     let named_within = m.key == rounds::KEY;
@@ -270,6 +271,20 @@ mod tests {
             shown_lines(Class::Cells, &[&said])[1..],
             ["  fine · IKQ63G: he was reassuring"],
             "a miss said none was shown without its owner's reason"
+        );
+    }
+
+    #[test]
+    fn the_asks_parked_are_named_by_ruling_unjudged() {
+        let held = Measure {
+            key: format!("{}-derived", parked::KEY),
+            target: None,
+            ..measure(Class::Slip, 3.0, &["b95ea57b: 2 asks", "1885d8c5: 1 ask"])
+        };
+        assert_eq!(
+            shown_lines(Class::Slip, &[&held])[1..],
+            ["  b95ea57b: 2 asks", "  1885d8c5: 1 ask"],
+            "the asks parked were counted without naming the rulings they wait on"
         );
     }
 
