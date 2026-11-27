@@ -549,11 +549,7 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
         println!(
             "merge-net: the train runs changed-checks at {} over {}",
             short(&candidate),
-            done.merged
-                .iter()
-                .map(|head| short(head))
-                .collect::<Vec<_>>()
-                .join(", ")
+            shorts(&done.merged)
         );
         match gate(&checkout, &log) {
             Gated::Passed => splitting.taken(),
@@ -798,6 +794,15 @@ fn red(root: &Path, red_of: &Red, splitting: &mut Splitting) {
         );
         let _ = fall(root, head, &said);
     }
+}
+
+/// Heads as they're said in the train's words: short, between commas.
+fn shorts(heads: &[String]) -> String {
+    heads
+        .iter()
+        .map(|head| short(head))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// A candidate that failed: its commit, the log its words went to, the
