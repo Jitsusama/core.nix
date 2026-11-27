@@ -220,9 +220,16 @@ pub fn descends(config: &Config, older: &str, newer: &str) -> Result<bool, Failu
     // A copy that can't walk between the two, as one missing history between
     // commits it holds, settles nothing either, so its error asks the host.
     let main = Repo::main(config);
-    if git::has(&main, newer) && matches!(git::descends(&main, older, newer), Ok(true)) {
+    let copied = git::has(&main, newer).then(|| git::descends(&main, older, newer));
+    if matches!(copied, Some(Ok(true))) {
         return Ok(true);
     }
+    // With no host to ask, that error is the answer: a no would say main
+    // went another way, when the copy only couldn't tell.
+    let unasked = || match copied {
+        Some(Err(failure)) => Err(failure),
+        _ => Ok(false),
+    };
     if let Some(found) = read::found(config, newer)
         && found.from.as_deref() == Some(older)
     {
@@ -234,10 +241,10 @@ pub fn descends(config: &Config, older: &str, newer: &str) -> Result<bool, Failu
     // descended from it didn't. So a copy that can't show it asks the host
     // before refusing, and only a host that says no, or none to ask, does.
     let Some(hosted) = &config.hosted else {
-        return Ok(false);
+        return unasked();
     };
     let Some(api) = &hosted.api else {
-        return Ok(false);
+        return unasked();
     };
     let account = run::account(&hosted.user)?;
     let token = token(hosted, &account)?;
