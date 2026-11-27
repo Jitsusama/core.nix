@@ -3530,7 +3530,8 @@
     enough to start before the hosts, judged by the stamp as read after its last sleep; one
     whose last sweep ended too long ago for a wait to end before the hosts take over, or that
     left no stamp or one ahead of the clock, lets it start at once; one that fails itself, by a
-    command or by bash, lets it start, and one asked wrongly ends 64; one that can't read the
+    command or by bash, lets it start, and one asked wrongly ends 64, or under a unit says so
+    and lets it start, rather than skip every hour unheard; one that can't read the
     machine, or reads a value that isn't a number, lets it start at once, naming what it
     couldn't read, and runs nothing it read
   '';

@@ -37,14 +37,15 @@
 # unfailed, so a wait that fails itself, by a command or by bash, lets
 # the sweep start rather than skip, as it did when this ran before it.
 # Only a skip it chose, and being asked wrongly, end otherwise. Under a
-# unit, which systemd marks with INVOCATION_ID, being asked wrongly ends
-# 255, the one end that fails a condition, so a unit whose words went
-# wrong fails where it's seen rather than skipping every hour unheard.
+# unit, which systemd marks with INVOCATION_ID, being asked wrongly lets
+# the sweep start too, having said so in its journal, since 64 would skip
+# every hour unheard and only 255, outside docs/commands.md's table,
+# fails a condition.
 skipping=false
 ended() {
   local status=$?
   if [ "$status" -eq 64 ]; then
-    [ -z "${INVOCATION_ID:-}" ] || exit 255
+    [ -z "${INVOCATION_ID:-}" ] || exit 0
     return
   fi
   "$skipping" || exit 0
@@ -72,7 +73,7 @@ EXAMPLES
 EXIT
   0   the sweep may start
   1   the sweep skips this hour
-  64  asked wrongly, or 255 under a unit
+  64  asked wrongly, but for 0 under a unit
 EOF
 }
 
@@ -131,8 +132,9 @@ age() {
 # How many seconds are left to the next top of the hour, by the local
 # clock the hourly timer keeps.
 to_the_hour() {
-  local minute second
-  read -r minute second < <(date '+%M %S')
+  local now minute second
+  now=$(date '+%M %S')
+  read -r minute second <<< "$now"
   echo $((3600 - 10#$minute * 60 - 10#$second))
 }
 
@@ -188,7 +190,8 @@ while :; do
   fi
   if [ "$SECONDS" -ge "$most" ]; then
     # As old as the next hour's run, at the next top of the hour, finds it.
-    if [ $((ago + $(to_the_hour))) -lt "$latest" ]; then
+    left=$(to_the_hour)
+    if [ $((ago + left)) -lt "$latest" ]; then
       echo "pi-sweep skips this hour without room after waiting $SECONDS s: $said"
       skipping=true
       exit 1

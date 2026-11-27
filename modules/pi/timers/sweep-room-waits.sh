@@ -163,12 +163,16 @@ judge "" "$?" "" "a wait that can't write"
 # And so does one that fails in bash itself, on a count that isn't one.
 "$program" "$here" "$here/meminfo" 0 x "$here/stamp" > /dev/null 2>&1
 judge "" "$?" "" "a wait that fails in bash"
-# Being asked wrongly still says so, and under a unit ends 255, the one
-# end that fails a condition rather than skipping the hour.
+# Being asked wrongly still says so, and under a unit lets the sweep
+# start rather than skip every hour unheard.
 "$program" "$here" > /dev/null 2>&1
 judge "" "$?" "" "a wait asked wrongly" 64
-INVOCATION_ID=0 "$program" "$here" > /dev/null 2>&1
-judge "" "$?" "" "a unit's wait asked wrongly" 255
+INVOCATION_ID=0 "$program" "$here" > /dev/null 2> "$here/said"
+judge "" "$?" "" "a unit's wait asked wrongly"
+if ! grep -q 'pi-sweep-room takes' "$here/said"; then
+  echo "a unit's wait asked wrongly didn't say so" >&2
+  failed=1
+fi
 
 # A stall that clears two seconds into a wait of up to a minute starts the
 # sweep then, not when the wait runs out.
