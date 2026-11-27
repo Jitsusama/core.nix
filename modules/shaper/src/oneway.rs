@@ -1580,7 +1580,7 @@ impl Controller {
             held_at: None,
             last_cut: LastCut::default(),
             tunnel: crate::tunnel::Hold::default(),
-            agents: crate::tunnel::Hold::default(),
+            agents: crate::tunnel::Hold::beside_agents(),
             acks_late_since: None,
         }
     }
@@ -1836,7 +1836,7 @@ impl Controller {
         // VPN within it at its whole share, since no wait is judged.
         if self.given_up() || unanswered {
             self.tunnel = crate::tunnel::Hold::default();
-            self.agents = crate::tunnel::Hold::default();
+            self.agents = crate::tunnel::Hold::beside_agents();
         }
         if self.given_up() || unanswered {
             // A spell of late acks the controller didn't judge through is
@@ -1891,7 +1891,7 @@ impl Controller {
         }
         if self.given_up() {
             self.tunnel = crate::tunnel::Hold::default();
-            self.agents = crate::tunnel::Hold::default();
+            self.agents = crate::tunnel::Hold::beside_agents();
             self.gave_up_at.get_or_insert(at);
             self.judge(at, Why::GaveUp);
             return Limits {

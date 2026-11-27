@@ -502,10 +502,11 @@ in
     # overnight, found it as good or better on every bar, and a boot that
     # left it off left agents' uploads filling the router's queue until
     # someone started it. One that never named it isn't shaped by an
-    # update. A switch that changes the shaper starts it again even after
-    # someone stopped it, as one did at 05:57 on 27 November, so a
-    # `systemctl stop shaper` holds only until then, and a null
-    # controller is the way to keep it off. The round
+    # update. Any switch starts it again after someone stopped it, as one
+    # did at 05:57 on 27 November: switch-to-configuration
+    # starts every active target again, and multi-user.target wants the
+    # shaper. So a `systemctl stop shaper` holds only until then, and a
+    # null controller is the way to keep it off. The round
     # trip's controller, which set rates from pings, is gone: five faults
     # in four days came from guessing whose queue a round trip shows, and
     # on 3 November it held a 312 Mbit/s download at 81.
