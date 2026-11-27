@@ -11,7 +11,9 @@
 //! compared with like; a fresh main tests something else, and the train
 //! cuts again when main moves anyway. One of `REPORTS_EVERY_FAILURE` that
 //! fails there too, its builder saying nothing at the candidate it didn't
-//! say there, is main's own red. Only those: a check that stops at its
+//! say there, is main's own red, unless the riders moved what a rule runs
+//! (`moves_a_rule`), since the candidate builds its own copy of the rule.
+//! Only those: a check that stops at its
 //! first error says the same at both whatever the riders broke after it,
 //! so a rider's break would land hidden behind main's. So `formatting`,
 //! which began this, isn't one: treefmt stops at the first file no
@@ -77,6 +79,8 @@ pub(super) struct Judging<'a> {
     pub whole: &'a mut dyn FnMut(&[String]) -> Gated,
     /// How many of the check's reds were excused as flakes in this ride.
     pub excused_before: &'a dyn Fn(&str) -> usize,
+    /// Whether the riders moved what a rule runs, as `moves_a_rule` says.
+    pub rules_moved: bool,
 }
 
 /// The names of the derivations whose builders failed, as the gate's
@@ -155,6 +159,20 @@ const REPORTS_EVERY_FAILURE: &[&str] = &[
     "every-suppression-says-why",
     "every-test-runs-or-fails",
 ];
+
+/// Whether the riders, moving `files`, moved what a rule runs besides the
+/// tree it reads: a rule's script, wrapper or waiting list, under
+/// `tests/rules/`, the flake that wires each rule, or the lock that gives
+/// them Python. A rider's rule that stops early, or says a new failure as
+/// main's, would print main's lines and hide its break behind main's red,
+/// so then no red is main's. None, the files unread, moved them all.
+pub(super) fn moves_a_rule(files: Option<&[String]>) -> bool {
+    files.is_none_or(|files| {
+        files.iter().any(|file| {
+            file.starts_with("tests/rules/") || file == "flake.nix" || file == "flake.lock"
+        })
+    })
+}
 
 /// The checks the gate's `words` name as added or changed, which it built,
 /// a row each of changed-checks' table: its kind, then its name.
@@ -313,6 +331,7 @@ fn blame(words: &str, check: &str, derivation: &str, judging: &mut Judging<'_>) 
     match at_base {
         Gated::Red
             if REPORTS_EVERY_FAILURE.contains(&check)
+                && !judging.rules_moved
                 && fails_as_at_base(words, &base_words, derivation) =>
         {
             Blame::Main
@@ -468,6 +487,7 @@ pub(super) fn excuses(
         again: &mut again,
         whole: &mut whole,
         excused_before: &counted,
+        rules_moved: moves_a_rule(moved_between(red.checkout, red.base, red.candidate).as_deref()),
     };
     let Some(judged) = judge(&words, &mut judging) else {
         return false;
@@ -560,6 +580,23 @@ fn said(blamed: Blame) -> &'static str {
         Blame::Flaky => "passed at the base and when built again, so it's a flake",
         Blame::Main => "fails at the base too, and only as it fails there, so it's main's",
     }
+}
+
+/// The files moved from `base` to `candidate` in the train's `checkout`;
+/// none where git can't say.
+fn moved_between(checkout: &Path, base: &str, candidate: &str) -> Option<Vec<String>> {
+    let ran = Command::new("git")
+        .args(["diff", "--name-only", "--no-renames", base, candidate])
+        .current_dir(checkout)
+        .output()
+        .ok()
+        .filter(|ran| ran.status.success())?;
+    Some(
+        String::from_utf8_lossy(&ran.stdout)
+            .lines()
+            .map(str::to_owned)
+            .collect(),
+    )
 }
 
 /// Where a build of `check` for a candidate writes its words, `how` saying

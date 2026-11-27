@@ -60,6 +60,7 @@ fn judged_whole(
         again: &mut built_again,
         whole: &mut built_whole,
         excused_before: &|_| excused,
+        rules_moved: false,
     };
     judge(words, &mut judging)
 }
@@ -229,6 +230,57 @@ fn a_check_failing_at_the_base_as_it_failed_is_mains_and_one_failing_anew_the_ri
     );
 }
 
+/// The candidate builds its own copy of a rule, so a rider's rule that
+/// stops early prints main's lines over a break of its own.
+#[test]
+fn mains_red_in_a_rule_the_riders_moved_is_theirs() {
+    let said = words(&[RULE], &[RULE]);
+    let mut base_build = as_before;
+    let mut built_again = passes;
+    let mut built_whole = |_: &[String]| Gated::Passed;
+    let mut judging = Judging {
+        named: &|_| BTreeMap::new(),
+        at_base: &mut base_build,
+        again: &mut built_again,
+        whole: &mut built_whole,
+        excused_before: &|_| 0,
+        rules_moved: true,
+    };
+    assert_eq!(
+        judge(&said, &mut judging).unwrap(),
+        [(RULE.to_owned(), Blame::Riders)],
+        "main's red in a rule the riders moved was excused as main's"
+    );
+    let moved = |files: &[&str]| {
+        let files: Vec<String> = files.iter().map(|file| (*file).to_owned()).collect();
+        moves_a_rule(Some(&files))
+    };
+    assert!(
+        moved(&["docs/a.md", "tests/rules/every-suppression-says-why.py"]),
+        "a rule's script moved unseen"
+    );
+    assert!(
+        moved(&["tests/rules/every-long-file-says-why-waiting.nix"]),
+        "a rule's waiting list moved unseen"
+    );
+    assert!(
+        moved(&["flake.nix"]),
+        "the flake wiring the rules moved unseen"
+    );
+    assert!(
+        moved(&["flake.lock"]),
+        "the lock giving the rules Python moved unseen"
+    );
+    assert!(
+        !moved(&["modules/a/b.nix", "tests/vm/rules-vm-test.py"]),
+        "files no rule runs were read as a rule's"
+    );
+    assert!(
+        moves_a_rule(None),
+        "files git couldn't read were read as moving no rule"
+    );
+}
+
 /// treefmt stops at the first file no formatter reads, so main's
 /// formatting red may hide a rider's.
 #[test]
@@ -243,6 +295,7 @@ fn mains_formatting_red_is_never_mains() {
         again: &mut built_again,
         whole: &mut built_whole,
         excused_before: &|_| 0,
+        rules_moved: false,
     };
     assert_eq!(
         judge(&said, &mut judging).unwrap(),
