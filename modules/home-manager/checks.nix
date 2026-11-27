@@ -409,6 +409,10 @@ onLinux {
         "5000000μs"
         "3 weeks 2days"
         "infinity"
+        # Padded, as a unit file's value may be, and given to systemd as is.
+        " +1.5h\t"
+        "infinity "
+        "\t30s"
         "10 minuets"
         "half an hour"
         "1.h"
@@ -438,7 +442,8 @@ onLinux {
       table = lib.concatMapStrings (
         spelling:
         let
-          reads = if runs.readsAs spelling then "reads" else "refuses";
+          # Read as a value is, trimmed, as ends reads it too.
+          reads = if runs.readable spelling then "reads" else "refuses";
           ends = if runs.ends spelling then "ends" else "endless";
         in
         "${reads}\t${ends}\t${spelling}\n"
@@ -455,7 +460,13 @@ onLinux {
       # passAsFile's tablePath and the build's out as its only inputs.
       ''
         wrong=0
-        while IFS=$'\t' read -r core ends spelling; do
+        # Split by hand, since read with a tab for IFS strips the tabs and
+        # spaces padding a spelling, which systemd must be given as is.
+        while IFS= read -r line; do
+          core=''${line%%$'\t'*}
+          rest=''${line#*$'\t'}
+          ends=''${rest%%$'\t'*}
+          spelling=''${rest#*$'\t'}
           # The second line systemd-analyze prints is the span in
           # microseconds; a span of one or more bounds a start, but for
           # infinity, which it prints as the largest such count.
