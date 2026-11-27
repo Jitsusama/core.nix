@@ -1273,10 +1273,18 @@ fn an_upkeep_made_due_anew_after_an_unheard_one_comes_back_too() {
         built.exists(),
         "what only the system daemon could vouch for went"
     );
+    let heard: Vec<String> = home
+        .journal()
+        .iter()
+        .map(|line| {
+            let at = line["at"].as_f64().map_or(-1.0, |at| at - begun);
+            format!("{at:.0} {} {} {}", line["event"], line["why"], line["step"])
+        })
+        .collect();
     assert_eq!(
         seen,
         [1, 2, 3],
-        "an upkeep a new boot made due, unheard, didn't come back ten minutes on"
+        "an upkeep a new boot made due, unheard, didn't come back ten minutes on: {heard:#?}"
     );
 }
 
