@@ -1646,7 +1646,8 @@ fn copier_started(program: &str) -> std::io::Result<Child> {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     // SAFETY: prctl and getppid are async-signal-safe and touch only the
-    // child.
+    // child, and each refusal is an OS error, which allocates nothing: the
+    // daemon's other threads may hold the allocator's lock at the fork.
     unsafe {
         command.pre_exec(move || {
             if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL, 0, 0, 0) != 0 {
@@ -1655,7 +1656,7 @@ fn copier_started(program: &str) -> std::io::Result<Child> {
             // A daemon that ended before the signal was asked for sends
             // none, so the copier holds nothing past it.
             if u32::try_from(libc::getppid()).ok() != Some(daemon) {
-                return Err(std::io::Error::other("the daemon has ended"));
+                return Err(std::io::Error::from_raw_os_error(libc::ESRCH));
             }
             Ok(())
         });

@@ -482,7 +482,7 @@ def test_a_fenced_command_reads_no_secret_copy_through_x11(desktop: Desktop) -> 
 
 
 # Passwords' copy, walked as Joel walks it: the stand-in for op lists the
-# console's login (tests/desktop/stand-ins/op-stand-in.sh), whose Return copies its password.
+# console's login (tests/desktop/stand-ins/op-stand-in.sh), whose Copy the Password copies it.
 ENTRY = "Lighthouse Console"
 STAND_IN = "stand-in-password"
 # Passwords clears its copy this long after it's made (modules/passwords/src/main.rs).
@@ -503,8 +503,19 @@ def copy_a_password(desktop: Desktop) -> float:
     answered, so the place is opened again once it has, to stand as Joel finds it then. Its
     Copy the Password is chosen by name among the entry's acts, since the entry's own Return
     types it instead while a window is under the launcher, as a terminal or a page is here.
+
+    A copy from before still held is cleared first, so the paste found after is this copy's
+    own: a copy that never happened, or a password typed instead, can't pass on the last one.
+    Any other copy is left as it is, for the step that reads what came before.
     """
     machine = desktop.machine
+    desktop.as_account(
+        f"if wl-paste --no-newline 2>/dev/null | grep -qx {STAND_IN}; then wl-copy --clear; fi"
+    )
+    machine.wait_until_fails(
+        desktop.in_session(f"wl-paste --no-newline 2>/dev/null | grep -qx {STAND_IN}"),
+        timeout=timedelta(seconds=10),
+    )
     desktop.answer("passwords")
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("is") == "collection:passwords"
