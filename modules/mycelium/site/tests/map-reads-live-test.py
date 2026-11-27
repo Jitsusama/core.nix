@@ -23,7 +23,8 @@ field, stepping through what was found, Escape's order, the walk, the
 machines, Now and Escape closing it, the view zoomed about its middle,
 panned across and down and fitted, -
 climbing from a cell to its network, the tree's steps, branches and
-Return, and the theme switch), and pass the web-design
+Return, and the theme switch), draw a realm of ten thousand cells and answer
+Return, j then Return and Now there within budgets of time, and pass the web-design
 skill's page checks and the map's own (site-checks.js) at a phone's width
 and a desk's in both looks. Any error the page logs fails it, since that is
 how the map froze on "reading" unseen, and how the drawing says a key
@@ -45,12 +46,12 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 from live_page import LOOKS, SIZES, Budget, Opened, Served, serving
-from playwright.sync_api import Browser, Page, expect
+from playwright.sync_api import Browser, Locator, Page, expect
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from stand_in_daemon import StandIn, standing_in
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
 HERE = Path(__file__).parent
 # The map redraws at most every 2 seconds, so a change must show well inside this.
@@ -89,8 +90,21 @@ BUDGET = Budget(files=33, kilobytes=689, elements=620)
 TWIN_CELLS = 10_000
 TWIN_NETWORKS = 200
 TWIN_RECEPTORS = 4
-# How long a twin of ten thousand cells may take to read and draw.
+# How long the checks wait for a twin of ten thousand cells to be read and judged, which is
+# patience, not a budget: a busy builder takes what it takes.
 TWIN_MS = 60_000
+# The budgets the twin is held to, in milliseconds: its whole realm drawn, from the page opening;
+# a key answered and painted, from the key going down; and the longest the page is held by one
+# task meanwhile. In the build's sandbox it stood drawn at 2.2 s, answered Return in 210 ms
+# (its longest task 157 ms), j and Return in 113 and . in 105, read by an earlier stopwatch
+# that also counted the driver's round trips and ended at the map's script; each run now prints
+# what the page itself timed (test_the_map_answers_its_keys_at_ten_thousand). A
+# builder's load moves a time by as much as twice between runs (docs/testing.md), so each is
+# set past that, where a regression a reader would feel still fails: half a second is past
+# which a key reads as lag, and a task past 400 ms drops frames he would see.
+TWIN_DRAWN_MS = 6000
+TWIN_KEY_MS = 500
+TWIN_TASK_MS = 400
 # A crowd of networks, past the seven names a screen holds, around one cell
 # that needs him, which must take a name before any of them.
 CROWD_NETWORKS = 20
@@ -1937,6 +1951,146 @@ def test_the_map_reaches_every_cell_of_ten_thousand(browser: Browser, twin_serve
     judged = TWIN_CELLS + TWIN_RECEPTORS
     assert said["cells"] == judged, f"the map judged {said['cells']} of {judged} cells"
     assert said["failures"] == [], f"the map misses {said['failures'][:5]} of {said['count']}"
+
+
+# Once every one of the twin's networks is a hub on the map, the frame after the one that first
+# showed them all, on the page's own clock from its opening: a frame's callbacks run before its
+# paint, so the second frame's run after the first was painted. Watched from each frame, as the
+# feed may draw the realm in parts, so neither the driver's polling nor the end of the map's own
+# script stands in for what the reader sees.
+WATCH_DRAWN = """(networks) => {
+  const twin = '#world .hub[data-key^="h:orchestration.skf"]';
+  const look = () => {
+    if (document.querySelectorAll(twin).length < networks) requestAnimationFrame(look);
+    else requestAnimationFrame(() => { window.drawnAt = performance.now(); });
+  };
+  requestAnimationFrame(look);
+}"""
+# Every long task the page runs from here on, and when the last key of each answer went down,
+# both on the page's own clock: the reader waits from the key that asks, not from the walk's
+# key before it, whose own tasks the longest still counts.
+WATCH_LONG = """() => {
+  window.longTasks = [];
+  window.longWatch = new PerformanceObserver((list) => {
+    for (const task of list.getEntries()) window.longTasks.push(task);
+  });
+  window.longWatch.observe({ type: "longtask" });
+  addEventListener("keydown", (e) => { window.keyDown = e.timeStamp; }, { capture: true });
+}"""
+# Before the keys, a watch on the element the answer is said in: once its words hold `has`, or
+# are `is`, and differ from `unlike`, the frame after the one that showed them. Timed in the page,
+# so the driver's round trips to press the keys and see the answer count for nothing. The watch is
+# on `within`, the answer's own element unless it's said, and the answer is found again at each
+# change, since an answer can be a new element, as Now's title replaces a cell's in the panel, and
+# a watch on the old one would never hear it.
+ARM = """({ selector, has, is, unlike, within }) => {
+  const said = () =>
+    (document.querySelector(selector)?.textContent ?? "").replace(/\\s+/gu, " ").trim();
+  const answers = (words) => (is ? words === is : words.includes(has)) && words !== unlike;
+  window.answered = new Promise((done) => {
+    const seen = new MutationObserver(() => {
+      if (!answers(said())) return;
+      seen.disconnect();
+      requestAnimationFrame(() => requestAnimationFrame(() => done(performance.now())));
+    });
+    const watched = document.querySelector(within || selector);
+    seen.observe(watched, { childList: true, characterData: true, subtree: true });
+  });
+}"""
+# When the answer's frame was painted, from the last key, and the longest task from the first
+# key to then, taken from the observer's records rather than waiting on its delivery.
+KEY_PAINTED = """async () => {
+  const painted = await window.answered;
+  window.longTasks.push(...window.longWatch.takeRecords());
+  const within = window.longTasks.filter(
+    (task) => task.startTime + task.duration > window.firstKey && task.startTime < painted,
+  );
+  return { took: painted - window.keyDown, longest: Math.max(0, ...within.map((t) => t.duration)) };
+}"""
+
+
+def words_of(at: Locator) -> str:
+    """Read the words `at` holds, spaced as ARM reads them."""
+    return " ".join((at.text_content() or "").split())
+
+
+def answered_in(
+    page: Page, keys: str, answer: dict[str, str], check: Callable[[], object]
+) -> dict[str, float]:
+    """How long the last of the keys took to be answered and painted, and the longest task.
+
+    `answer` says what the answer reads (see ARM); `check` says, readably, when it never came.
+    """
+    page.evaluate(ARM, {"has": "", "is": "", "unlike": "", "within": "", **answer})
+    page.evaluate("() => { window.firstKey = performance.now(); }")
+    for key in keys.split():
+        page.keyboard.press(key)
+    check()
+    answered: dict[str, float] = page.evaluate(KEY_PAINTED)
+    return {measure: round(value) for measure, value in answered.items()}
+
+
+def test_the_map_answers_its_keys_at_ten_thousand(
+    browser: Browser, twin_served: Served, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root, _ = twin_served
+    opened = Opened(browser, f"{root}mycelium/", SIZES[-1], "dark")
+
+    def stands_drawn(page: Page) -> None:
+        page.evaluate(WATCH_DRAWN, TWIN_NETWORKS)
+        the_map_stands(page, "live", TWIN_MS)
+        page.wait_for_function("() => window.drawnAt", timeout=TWIN_MS)
+
+    try:
+        # The heaviest page here, so a renderer a busy builder kills is opened once more.
+        opened.first(stands_drawn)
+        page = opened.page
+        drawn = round(page.evaluate("() => window.drawnAt"))
+        page.evaluate(WATCH_LONG)
+        where = page.locator("#where")
+        page.locator("#map-view").focus()
+        # Return opens the network the walk starts on, and goes down to its middle cell.
+        first = answered_in(
+            page,
+            "Enter",
+            {"selector": "#where", "has": "Opened", "unlike": words_of(where)},
+            lambda: expect(where, "Return opened nothing").to_contain_text(
+                "Opened", timeout=PACE_MS
+            ),
+        )
+        # Return again opens that cell; j then walks to its neighbour and Return opens that one.
+        # The twin's cells all read alike, so the address tells the two apart: j went somewhere
+        # only if the cell opened isn't the first. Saying it again is a mutation of its own, so
+        # the answer is the first words to say Opened after the keys.
+        opened_network = words_of(where)
+        page.keyboard.press("Enter")
+        expect(where, "Return opened no cell").not_to_have_text(opened_network, timeout=PACE_MS)
+        opened_first = page.evaluate("() => location.hash")
+        step = answered_in(
+            page,
+            "j Enter",
+            {"selector": "#where", "has": "Opened"},
+            lambda: page.wait_for_function(
+                "(was) => location.hash !== was", arg=opened_first, timeout=PACE_MS
+            ),
+        )
+        title = page.locator("#panel-title")
+        now = answered_in(
+            page,
+            ".",
+            {"selector": "#panel-title", "is": "Now", "within": "#panel"},
+            lambda: expect(title, ". opened no Now").to_have_text("Now", timeout=PACE_MS),
+        )
+        # Said whether it passes, past pytest's capture, so each run's log adds a measure the
+        # budgets can be read against.
+        with capsys.disabled():
+            print(f"drawn at {drawn} ms; Return {first}; j Return {step}; . {now}")
+        assert drawn <= TWIN_DRAWN_MS, f"ten thousand cells stood drawn only at {drawn} ms"
+        for keys, answered in (("Return", first), ("j and Return", step), (".", now)):
+            assert answered["took"] <= TWIN_KEY_MS, f"{keys} was answered in {answered}"
+            assert answered["longest"] <= TWIN_TASK_MS, f"{keys} held the page: {answered}"
+    finally:
+        opened.close()
 
 
 def test_a_cell_that_needs_you_takes_a_name_before_the_networks(

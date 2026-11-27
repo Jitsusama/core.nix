@@ -2663,7 +2663,9 @@
     and out about its middle, panned a step across and down and fitted whole again, -
     climbing from a cell to its network, the
     tree stepping, closing, opening, going in and out of a branch and opening a row, and the
-    theme switch wrapping),
+    theme switch wrapping), a realm of ten thousand cells drawn within 6 s and Return, j then
+    Return and Now each answered and painted within half a second, no task holding the page
+    past 400 ms,
     the web-design skill's page checks and the map's own (each opened thing in view, its drawer
     saying what it is, no more names than it's engaged with) passing at a phone's width and a
     desk's in both looks, a first visit within its budget of files, bytes and elements, both
