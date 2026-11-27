@@ -48,6 +48,8 @@ removal shows in their treefmt check once they take core.
 | `programs-live-in-their-own-files`               | no program past five lines is a string in Nix                 |
 | `every-fixed-wait-says-why`                      | a sleep in a test says what it waits through                  |
 | `every-failed-read-says-why`                     | a file read whose failure becomes nothing says why            |
+
+| `every-timed-step-allows-for-load`               | a bound on a test step's time allows for a busy host          |
 | `every-assert-says-what-was-wrong`               | an assertion that can't show each side says what was wrong    |
 | `every-test-runs-or-fails`                       | a test that can't run fails rather than passing               |
 | `every-suppression-says-why`                     | a lint suppression says why, where it's made                  |

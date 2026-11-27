@@ -1528,6 +1528,10 @@
     no test passes without running, by an #[ignore] with no reason, a printed skip, an early return
     or pytest's or QML's skips, but those still waiting to run where they can
   '';
+  every-timed-step-allows-for-load = ''
+    every upper bound on how long a test's step took goes through the host's pace, test-pace's
+    within in Rust or vm_helpers.pace in Python, but those still waiting to allow for it
+  '';
   every-timer-runs-a-written-service = ''
     home.nix's assertions refuse, by name, a timer whose service the account doesn't write and a
     written service named in jitsusama.timedRuns.unwritten; one unwritten is left out, so a
@@ -4729,6 +4733,14 @@
   mycelium-link-passes-clippy = ''
     clippy finds nothing in mycelium-link, which opens a mycelium: link in the launcher, or its
     tests
+  '';
+  test-pace-stretches-a-bound-with-the-host = ''
+    a timed step of a test is allowed its idle bound and a slack on an idle host, the bound
+    stretched by the host's ready tasks per processor up to the most pace on a busy one, and a
+    step begun busy keeps that pace; a failure says the time taken against both bounds
+  '';
+  test-pace-passes-clippy = ''
+    clippy finds nothing in test-pace, the library a test's timed steps are judged by
   '';
   terminal-kit-gives-every-command-one-shape = ''
     the terminal kit takes the shared flags out of a command line and leaves the rest in order,

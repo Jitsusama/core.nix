@@ -1,0 +1,12 @@
+# test-pace: how long a timed step of a test may take on a host as busy
+# as this one, a library each crate's tests name by path, so one copy of
+# the pace serves them all (src/lib.rs says how).
+[package]
+name = "test-pace"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[lib]
+path = "src/lib.rs"

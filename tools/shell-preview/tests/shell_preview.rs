@@ -11,6 +11,8 @@ use std::process::{Child, Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use test_pace::Timed;
+
 const GIT: &str = r#"#!/bin/sh
 case "$1" in
   rev-parse) echo "$STAND_IN/repo" ;;
@@ -176,7 +178,7 @@ fn a_stop_ends_the_preview_and_the_desktop_it_started() {
     );
 
     let pid = i32::try_from(preview.id()).expect("a pid");
-    let stopped = Instant::now();
+    let stopped = Timed::start();
     // SAFETY: kill only signals the preview this test started.
     unsafe { libc::kill(pid, libc::SIGTERM) };
     let status = preview.wait().expect("the preview ends");
@@ -185,8 +187,9 @@ fn a_stop_ends_the_preview_and_the_desktop_it_started() {
     // Asked, the desktop ends at once; only one that ignores being asked
     // waits out the preview's five seconds' grace to be killed.
     assert!(
-        stopped.elapsed() < Duration::from_secs(2),
-        "the desktop was killed, not asked"
+        stopped.within(Duration::from_secs(2)),
+        "the desktop was killed, not asked: it {}",
+        stopped.said(Duration::from_secs(2))
     );
     assert!(!running(sleep), "the desktop's sleep was left running");
     assert!(!own.exists(), "the preview's folder was left behind");
