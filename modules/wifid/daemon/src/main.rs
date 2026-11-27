@@ -1624,7 +1624,7 @@ fn refused(failure: store::Failure) -> Refused {
 fn refused_move(card: &str, bssid: &str, error: &zbus::Error) -> Refused {
     let forgotten = matches!(
         error,
-        zbus::Error::MethodError(name, said, _) if forgot(name.as_str(), said.as_deref())
+        zbus::Error::MethodError(name, _, reply) if forgot(name.as_str(), reply)
     );
     if forgotten {
         println!("<6>{card} didn't move to {bssid}, which wpa_supplicant no longer holds");
@@ -1635,10 +1635,18 @@ fn refused_move(card: &str, bssid: &str, error: &zbus::Error) -> Refused {
     }
 }
 
-/// Whether wpa_supplicant refused a move, by its error's name and words,
-/// as it no longer holds the access point asked for.
-fn forgot(name: &str, said: Option<&str>) -> bool {
-    name == INVALID_ARGS && said == Some(BSS_FORGOTTEN)
+/// Whether wpa_supplicant refused a move as it no longer holds the access
+/// point asked for: a bad argument saying so in its reply's second string.
+/// Every bad argument shares the name, and hostap's reply to one gives the
+/// same words first and what was wrong only after them
+/// (`wpas_dbus_error_invalid_args`, 2.12), so the words zbus takes from
+/// the first string never tell a forgotten point.
+fn forgot(name: &str, reply: &zbus::Message) -> bool {
+    name == INVALID_ARGS
+        && reply
+            .body()
+            .deserialize::<(String, String)>()
+            .is_ok_and(|(_, wrong)| wrong == BSS_FORGOTTEN)
 }
 
 /// How often a card on a network reads its link while someone asks for a
@@ -3696,6 +3704,9 @@ impl Wifid<'_> {
             return;
         }
         println!("<4>{card}'s look for the points asked never ended in time, so may join any");
+        // The look was the warning's heed, so a call waits on it no more.
+        let on = self.state.borrow().point_of(card);
+        self.heed_ended(card, on.as_deref());
         self.let_go(card, joining != Some(card)).await;
     }
 
@@ -3848,8 +3859,8 @@ impl Wifid<'_> {
     }
 
     /// Ends the heed of the warning from the point a card is on, as
-    /// wifid's move off it couldn't start, so a call's give-way doesn't
-    /// wait on it (`State::heed_ended`).
+    /// wifid's move off it couldn't start, or its look first lapsed, so a
+    /// call's give-way doesn't wait on it (`State::heed_ended`).
     fn heed_ended(&self, card: &str, from: Option<&str>) {
         if let Some(from) = from {
             change(self.state, |state| state.heed_ended(card, from));
@@ -4024,22 +4035,42 @@ impl Wifid<'_> {
 mod tests {
     use super::*;
 
+    /// wpa_supplicant's refusal of a roam, as it sends one: an error by
+    /// this name replying to the call, with these two strings.
+    fn refusal(name: &str, said: &(&str, &str)) -> zbus::Error {
+        let roam = zbus::Message::method_call("/fi/w1/wpa_supplicant1/Interfaces/0", "Roam")
+            .and_then(|call| call.build(&"02:00:00:00:0a:00"))
+            .expect("a roam to a made-up point couldn't be built");
+        let reply = zbus::Message::error(&roam.header(), name)
+            .and_then(|error| error.build(said))
+            .expect("a refusal of the roam couldn't be built");
+        zbus::Error::from(reply)
+    }
+
     #[test]
     fn a_move_to_a_point_wpa_supplicant_forgot_is_told_from_other_bad_asks() {
-        assert!(
-            forgot(INVALID_ARGS, Some("Target BSS not found")),
+        // hostap's own words for every bad argument, said first.
+        let bad = "Did not receive correct message arguments.";
+        let refused = |name: &str, said: (&str, &str)| {
+            refused_move("wlan0", "02:00:00:00:0a:00", &refusal(name, &said))
+        };
+        assert_eq!(
+            refused(INVALID_ARGS, (bad, BSS_FORGOTTEN)),
+            Refused::NotNearby,
             "a move to a forgotten point wasn't refused as out of reach"
         );
         assert!(
-            !forgot(INVALID_ARGS, Some("02:00:00:00:0x:00")),
+            matches!(
+                refused(INVALID_ARGS, (bad, "Invalid hardware address format")),
+                Refused::Failed { .. }
+            ),
             "a malformed address was taken for a forgotten point"
         );
         assert!(
-            !forgot(INVALID_ARGS, None),
-            "an argument refused with no words was taken for a forgotten point"
-        );
-        assert!(
-            !forgot(NOT_CONNECTED, Some("Target BSS not found")),
+            matches!(
+                refused(NOT_CONNECTED, (bad, BSS_FORGOTTEN)),
+                Refused::Failed { .. }
+            ),
             "another refusal was taken for a forgotten point"
         );
     }
