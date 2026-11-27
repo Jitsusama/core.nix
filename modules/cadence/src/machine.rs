@@ -138,7 +138,7 @@ pub const MEASURES: &[Measure] = &[
     measure(
         "health.memory.pi.most-mib",
         "resources",
-        "the most pi held at once",
+        "the most pi held at once, each copy by its own share where Linux reads it, else all it had resident",
         " MiB",
         None,
         1024.0,
@@ -146,7 +146,7 @@ pub const MEASURES: &[Measure] = &[
     measure(
         "health.memory.pi-conversation.copy-median-mib",
         "resources",
-        "what a typical hosted conversation's process held of its own and in swap",
+        "what a typical hosted conversation's process held in memory and swap, by its own share where Linux reads it, else all it had resident",
         " MiB",
         Some(300.0),
         64.0,
@@ -154,7 +154,7 @@ pub const MEASURES: &[Measure] = &[
     measure(
         "health.memory.pi-conversation.copy-p95-mib",
         "resources",
-        "what a heavy hosted conversation's process held of its own and in swap, one in twenty",
+        "what a heavy hosted conversation's process held, one in twenty, counted as the typical one is",
         " MiB",
         None,
         64.0,
@@ -162,7 +162,7 @@ pub const MEASURES: &[Measure] = &[
     measure(
         "health.memory.pi-conversation.most-mib",
         "resources",
-        "the most hosted conversations held at once",
+        "the most hosted conversations held at once, each copy counted as the typical one is",
         " MiB",
         None,
         1024.0,
@@ -170,7 +170,7 @@ pub const MEASURES: &[Measure] = &[
     measure(
         "health.memory.pi.copy-median-mib",
         "resources",
-        "what a typical pi in a window held of its own and in swap",
+        "what a typical pi in a window held in memory and swap, by its own share where Linux reads it, else all it had resident",
         " MiB",
         None,
         64.0,
