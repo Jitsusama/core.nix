@@ -30,11 +30,18 @@ function aboutOf(told) {
     return told.length > 0 ? String(told[0][0]) : "";
 }
 
-// What waits once `tell` ({told, about, at, loose}) is told: a tell waiting
+// The tell kept for the words `told`, told at `at`: about `about` where its
+// teller says, else what aboutOf reads, and loose only where it's said to
+// be, as Launcher.qml's tellOnOpen keeps it.
+function tell(told, loose, about, at) {
+    return { told, about: about ?? aboutOf(told), at, loose: loose === true };
+}
+
+// What waits once `told` ({told, about, at, loose}) is told: a tell waiting
 // about the same gives way to the newer, and the rest stay, older first,
 // as they were told.
-function waiting(kept, tell) {
-    return kept.filter(one => one.about !== tell.about).concat([tell]);
+function waiting(kept, told) {
+    return kept.filter(one => one.about !== told.about).concat([told]);
 }
 
 // The words of `tells`, in the order they were told, as the foot says them.
@@ -61,4 +68,34 @@ function due(kept, now) {
 // footCleared).
 function without(kept, shown) {
     return kept.filter(one => one.told !== shown);
+}
+
+// What the foot does once the tell whose words are `shown` is taken back,
+// given what the opening said, `state` ({tells, said}), the foot's words
+// `saying`, and whether the foot `showing` them now: `foot` is null to
+// leave it, or the words to say in its place, under the keys it said its
+// last under, so a word taken back never says the rest again after a key
+// let them go (#7116's stack round, 19). Words no longer shown are cleared,
+// so an opening never says them again.
+function untold(state, saying, shown, showing) {
+    if (saying === shown) {
+        return { state, foot: [] };
+    }
+    const left = state.said === saying ? without(state.tells, shown) : state.tells;
+    if (left.length === state.tells.length) {
+        return { state, foot: null };
+    }
+    if (!showing) {
+        return { state: { tells: [], said: null }, foot: [] };
+    }
+    const words = said(left);
+    return { state: { tells: left, said: words }, foot: words,
+        loose: left.length > 0 && left.every(one => one.loose) };
+}
+
+// Whether the foot, saying `saying`, says the tell whose words are `told`
+// among what the opening said, `state`, as an offer's foot is said beside
+// the tells that waited with it (#7116's stack round, 20 and 21).
+function among(state, saying, told) {
+    return saying === state.said && state.tells.some(one => one.told === told);
 }

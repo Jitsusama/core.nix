@@ -14,8 +14,8 @@ QtObject {
     function kept(tells) {
         let waiting = [];
         for (const one of tells)
-            waiting = ToldShut.waiting(waiting, { told: one.told, at: one.at,
-                about: one.about ?? ToldShut.aboutOf(one.told), loose: one.loose === true });
+            waiting = ToldShut.waiting(waiting,
+                ToldShut.tell(one.told, one.loose, one.about, one.at));
         return waiting;
     }
     // What an opening at `now` says after `tells`, as the foot's words in
@@ -88,6 +88,34 @@ QtObject {
                 { told: tally(2, 2), at: 0, about: "reopen them all" },
                 { told: tally(3, 1), at: 0, about: "reopen them all" }], minute).words,
             "3 gone | 1 reopened");
+        // Taking one back from what an opening said, as a start takes back
+        // its words (Launcher.qml's untell), with the foot showing them still
+        // or not.
+        const two = ToldShut.due(both, minute);
+        const openedTwo = { tells: two.tells, said: two.said };
+        const shownStill = ToldShut.untold(openedTwo, two.said, started, true);
+        Expect.same("one taken back while the foot shows them says the rest",
+            [shownStill.foot.map(one => one[0]), shownStill.state.said === shownStill.foot],
+            [["Quest B"], true]);
+        Expect.same("one taken back after a key let them go says nothing again",
+            ToldShut.untold(openedTwo, two.said, started, false),
+            { state: { tells: [], said: null }, foot: [] });
+        Expect.same("one taken back from a foot saying something else leaves it",
+            ToldShut.untold(openedTwo, [["q", "does nothing"]], started, true).foot, null);
+        Expect.same("words said alone are cleared when taken back",
+            ToldShut.untold(openedTwo, started, started, true).foot, []);
+        Expect.same("words no tell holds leave the foot",
+            ToldShut.untold(openedTwo, two.said, coming, true).foot, null);
+        // An offer's foot said beside the tells that waited with it.
+        const offer = [["link", "from Quest C", "text"]];
+        const withOffer = ToldShut.due(kept([{ told: asleep, at: 0 },
+            { told: offer, at: 0, about: "from Quest C" }]), minute);
+        const offered = { tells: withOffer.tells, said: withOffer.said };
+        Expect.same("an offer said among other tells is said",
+            [ToldShut.among(offered, withOffer.said, offer),
+                ToldShut.among(offered, [["q", "does nothing"]], offer),
+                ToldShut.among(offered, withOffer.said, came)],
+            [true, false, false]);
         Expect.same("a lapsed tell counts its words",
             opened([{ told: tally(1, 3), at: 0, about: "reopen them all" }],
                 15 * minute + 1).lapsed,

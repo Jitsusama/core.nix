@@ -3562,8 +3562,10 @@ Scope {
     // again (sayOffer), and the line left (onHeldChanged) or its words given (give) ends it,
     // so it never stands over a line it didn't offer.
     property var offerHeld: null
+    // Said alone or among the tells an opening said with it (ToldShut.among).
     readonly property bool offerSaid: offerHeld !== null && held.length === offerHeld.depth
-        && JSON.stringify(saying) === offerHeld.told
+        && (JSON.stringify(saying) === offerHeld.told
+            || ToldShut.among(toldSaid, saying, offerHeld.foot))
     // Words that aren't keys, as what an act didn't do and why, say nothing
     // in Return's place, so its last stands at its own width: held there,
     // the why stood a Return's room away from what it was the why of.
@@ -3661,23 +3663,23 @@ Scope {
             say(told, loose);
             return;
         }
-        toldOnOpen = ToldShut.waiting(toldOnOpen, { told,
-            about: about ?? ToldShut.aboutOf(told), at: Date.now(), loose: loose === true });
+        toldOnOpen = ToldShut.waiting(toldOnOpen, ToldShut.tell(told, loose, about, Date.now()));
     }
     // Takes back the words `shown` (a tellOnOpen's), from what waits for
     // the next opening and from the foot where it says them still, alone
-    // or among what the opening said.
+    // or among what the opening said (ToldShut.untold): the rest said
+    // again under the keys they were said under, so they go at the key
+    // they'd have gone at.
     function untell(shown) {
         toldOnOpen = ToldShut.without(toldOnOpen, shown);
-        if (saying === shown) {
-            say([]);
+        const left = ToldShut.untold(toldSaid, saying, shown, open && sayingNow);
+        toldSaid = left.state;
+        if (left.foot === null)
             return;
-        }
-        if (toldSaid.said !== saying)
-            return;
-        const left = ToldShut.without(toldSaid.tells, shown);
-        if (left.length !== toldSaid.tells.length)
-            sayTells(left);
+        const keys = sayingKeys;
+        say(left.foot, left.loose);
+        if (left.foot.length > 0)
+            sayingKeys = keys;
     }
     // Says `tells` in the foot, kept as what the opening said.
     function sayTells(tells) {
