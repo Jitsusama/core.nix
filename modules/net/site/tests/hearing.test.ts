@@ -116,6 +116,15 @@ it("says a concern watch's stray answer without counting it as worth a look", ()
   assert.equal(hearing.now().unheard, 0);
 });
 
+// A steady net may send no whole answer for the life of the tab.
+it("stops saying a stray answer once a later change is read", async () => {
+  const hearing = heardLive();
+  hearing.problem("concern", `${STRAY}: {"id":9}`);
+  await Promise.resolve();
+  hearing.moved("concern", false);
+  assert.deepEqual(hearing.problems(), [], "a stray answer outlived the change read after it");
+});
+
 it("keeps counting and saying a line that may hide a record when a stray answer follows it", () => {
   const hearing = heardLive();
   hearing.problem("concern", "the feed sent a line that isn't JSON");

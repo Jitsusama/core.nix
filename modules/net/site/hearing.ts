@@ -5,7 +5,8 @@
 // kit's feed says what it couldn't read of an answer before handing over the
 // rest of it in the same turn, so those records mustn't clear what was lost
 // from them. Only a whole answer makes a watch's records complete again
-// (the kit's records.ts), so only one clears what it couldn't read.
+// (the kit's records.ts), so only one clears a line that may have hidden a
+// record; a stray answer hid none, so the next record read clears it.
 
 import { STRAY } from "../../local-sites/kit/feed.ts";
 
@@ -20,7 +21,8 @@ const ASKING = ["concern", "source"];
 
 class Hearing {
   readonly #kinds: readonly string[];
-  // The last thing each watch couldn't read, said until a whole answer comes.
+  // The last thing each watch couldn't read, said until a whole answer
+  // comes, or, if it hid no record, until the next record is read.
   readonly #problems = new Map<string, string>();
   // The watches whose unread lines may have held a record, until a whole answer comes.
   readonly #hiding = new Set<string>();
@@ -43,7 +45,9 @@ class Hearing {
     if (!this.#broken.has(kind)) {
       this.#fresh.add(kind);
     }
-    if (whole && !this.#raising.has(kind)) {
+    // What hid no record goes with the next record read; what may have
+    // waits for a whole answer, which tells every record again.
+    if ((whole || !this.#hiding.has(kind)) && !this.#raising.has(kind)) {
       this.#problems.delete(kind);
       this.#hiding.delete(kind);
     }
