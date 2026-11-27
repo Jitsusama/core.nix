@@ -65,8 +65,8 @@ import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "../Hearing.js" as Hearing
+import "ActsSaid.js" as ActsSaid
 import "Order.js" as Order
-import "Presented.js" as Presented
 import "Seen.js" as Seen
 
 Provider {
@@ -209,7 +209,7 @@ Provider {
     // answers do (lineAsk), with the daemon's code, else to the journal,
     // naming `what` was asked, the why quoted with reports on, and with
     // them off by how many letters beside the daemon's code, or that no
-    // answer came (Presented.codeShown, refusalShown), as ReadyRows'
+    // answer came (ActsSaid.codeShown, refusalShown), as ReadyRows'
     // whySaid says an act's, so the line still tells a daemon refusing
     // from one gone.
     function lineAsked(ask, later, what) {
@@ -220,10 +220,10 @@ Provider {
             const why = !answer ? becoming.noAnswer ?? ""
                 : answer.error ? answer.error.said || (becoming.couldNot ?? "") : "";
             if (later)
-                later(why, true, Presented.codeShown(answer));
+                later(why, true, ActsSaid.codeShown(answer));
             else if (why !== "")
                 console.info(`launcher: ${what} refused: `
-                    + Presented.refusalShown(why, Presented.codeShown(answer), Options.reports));
+                    + ActsSaid.refusalShown(why, ActsSaid.codeShown(answer), Options.reports));
         });
     }
 
@@ -435,7 +435,7 @@ Provider {
         ready.link.ask({ ask: "screen", do: "line", output: output.name, option, typed },
             answer => later?.(!answer ? becoming.noAnswer ?? ""
                 : answer.error ? answer.error.said || (becoming.couldNot ?? "") : "", true,
-                Presented.codeShown(answer)));
+                ActsSaid.codeShown(answer)));
         return "";
     }
 

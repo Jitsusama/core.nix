@@ -39,6 +39,11 @@ pub struct State {
     /// The cards, by name, that have looked for networks since wifid was
     /// given them.
     looked: BTreeSet<String>,
+    /// Whether each card, by name, is looking for networks now, and how
+    /// many looks it has begun. A look takes the card off its channel, so
+    /// a call's echoes lost meanwhile aren't its link fading (fading.rs),
+    /// and one begun and ended between two reads still shows in the count.
+    scanning: BTreeMap<String, Looking>,
     /// How many looks the cards have finished, as the shell is told.
     looks: u32,
     /// What each card's driver last read of its link, by the card's name,
@@ -54,8 +59,9 @@ pub struct State {
     /// The gateway each card's default route goes through, by link index.
     gateways: BTreeMap<i32, Ipv4Addr>,
     /// The access point that last warned each card it drops it, by the
-    /// card's name, and until when the card's chooser isn't told of it.
-    warned_off: BTreeMap<String, (String, Instant)>,
+    /// card's name, when it warned, and until when the card's chooser
+    /// isn't told of it.
+    warned_off: BTreeMap<String, (String, Instant, Instant)>,
 }
 
 /// A card on a network through an access point it hears, and the gateway
@@ -87,6 +93,20 @@ pub struct Described {
     /// asked for one knows when it's done: what a look hears is described
     /// before it, and one that hears nothing changes nothing else.
     pub looks: u32,
+}
+
+/// Whether a card is looking for networks, and how many looks it's begun.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Looking {
+    pub now: bool,
+    pub begun: u32,
+}
+
+impl Looking {
+    /// Whether the card looked at all between this read and that later one.
+    pub fn looked_until(self, later: Looking) -> bool {
+        self.now || later.now || self.begun != later.begun
+    }
 }
 
 /// A Wi-Fi card.
@@ -228,6 +248,7 @@ impl State {
         self.gateways.retain(|index, _| indexes.contains(index));
         let names: Vec<&String> = self.cards.values().map(|card| &card.name).collect();
         self.looked.retain(|card| names.contains(&card));
+        self.scanning.retain(|card, _| names.contains(&card));
         // Only a card that goes takes its access point, since wifid hands
         // cards over, and asks where each is, before it follows any.
         self.at.retain(|card, _| !gone.contains(card));
@@ -375,6 +396,22 @@ impl State {
         self.look_ended();
     }
 
+    /// Takes in whether the card is looking for networks now, as
+    /// wpa_supplicant says.
+    pub fn scanning(&mut self, card: &str, scanning: bool) {
+        let looking = self.scanning.entry(card.to_owned()).or_default();
+        if scanning && !looking.now {
+            looking.begun = looking.begun.wrapping_add(1);
+        }
+        looking.now = scanning;
+    }
+
+    /// Whether the card is looking for networks now, and how many looks
+    /// it has begun.
+    pub fn looking(&self, card: &str) -> Looking {
+        self.scanning.get(card).copied().unwrap_or_default()
+    }
+
     /// Takes in that a card's look ended, heard or failed: one that failed
     /// hasn't looked, so settles nothing, but whoever asked for it is done
     /// waiting.
@@ -499,7 +536,7 @@ impl State {
     /// the card, until `warned_off` says, unless the card is on it again.
     /// A point merely unheard isn't kept off: a move there looks for it.
     pub fn warned_from(&self, card: &str, now: Instant) -> Option<&str> {
-        let (point, until) = self.warned_off.get(card)?;
+        let (point, _, until) = self.warned_off.get(card)?;
         let away = self
             .point_of(card)
             .is_none_or(|on| !on.eq_ignore_ascii_case(point));
@@ -507,10 +544,22 @@ impl State {
     }
 
     /// Keeps the access point that warned a card it drops it from the
-    /// card's chooser until then, in place of any it was warned by before.
-    pub fn warned_off(&mut self, card: &str, point: &str, until: Instant) {
+    /// card's chooser from when it warned until then, in place of any it
+    /// was warned by before.
+    pub fn warned_off(&mut self, card: &str, point: &str, (at, until): (Instant, Instant)) {
         self.warned_off
-            .insert(card.to_owned(), (point.to_owned(), until));
+            .insert(card.to_owned(), (point.to_owned(), at, until));
+    }
+
+    /// When the access point a card is on warned it drops the card, if it
+    /// did and that's still kept to at `now`: the warning's own heed is
+    /// then moving the card off it, looking first or letting it go.
+    pub fn warned_on(&self, card: &str, now: Instant) -> Option<Instant> {
+        let (point, at, until) = self.warned_off.get(card)?;
+        let on = self
+            .point_of(card)
+            .is_some_and(|on| on.eq_ignore_ascii_case(point));
+        (now < *until && on).then_some(*at)
     }
 
     /// The address of the access point the card is at, where it hears it,
@@ -1123,6 +1172,22 @@ mod tests {
     }
 
     #[test]
+    fn a_look_begun_and_ended_between_two_reads_still_shows() {
+        let mut state = State::default();
+        let before = state.looking("wlan0");
+
+        state.scanning("wlan0", true);
+        state.scanning("wlan0", true);
+        state.scanning("wlan0", false);
+        let after = state.looking("wlan0");
+        let later = state.looking("wlan0");
+
+        assert!(before.looked_until(after), "a look came between");
+        assert_eq!(after.begun, 1, "said looking twice, it's one look");
+        assert!(!after.looked_until(later), "none came after");
+    }
+
+    #[test]
     fn wifi_turned_off_is_settled() {
         let mut state = State::default();
         state.follow(&on_nothing(2));
@@ -1386,7 +1451,12 @@ mod tests {
         state.warned_off(
             "wlan2",
             &other.bssid.to_uppercase(),
-            now + Duration::from_secs(600),
+            (now, now + Duration::from_secs(600)),
+        );
+        assert_eq!(
+            state.warned_on("wlan2", now),
+            None,
+            "a card was said to be on the point that warned it, though it's on another"
         );
 
         assert_eq!(
@@ -1409,7 +1479,17 @@ mod tests {
             [-52, -60],
             "and heard again once the warning's time is up"
         );
-        state.warned_off("wlan2", &on, now + Duration::from_secs(600));
+        state.warned_off("wlan2", &on, (now, now + Duration::from_secs(600)));
+        assert_eq!(
+            state.warned_on("wlan2", now),
+            Some(now),
+            "a card on the point that warned it wasn't said to be, as of the warning"
+        );
+        assert_eq!(
+            state.warned_on("wlan2", now + Duration::from_secs(600)),
+            None,
+            "a warning was said to hold past its time"
+        );
         assert_eq!(
             signals(state.around_to_choose("wlan2", now)),
             [-52, -60],

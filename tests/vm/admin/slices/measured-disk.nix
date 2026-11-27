@@ -8,7 +8,9 @@ import ../../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "measured-disk";
 
   # The numbers only have to be ones the kernel takes: a virtual disk's
-  # speed says nothing of a real one's.
+  # speed says nothing of a real one's. The qos is the one the option's
+  # description advises, min and max included, so the advice is one
+  # disk-order can hand the kernel.
   nodes.machine = {
     imports = [ self.nixosModules.slices ];
     users.users.alice = {
@@ -26,9 +28,11 @@ import ../../../lib/pytest-vm-test.nix { inherit pkgs; } {
       };
       qos = {
         rpct = 95;
-        rlat = 5000;
+        rlat = 10000;
         wpct = 95;
-        wlat = 5000;
+        wlat = 10000;
+        min = 50;
+        max = 150;
       };
     };
   };

@@ -39,18 +39,18 @@ def test_the_machine_has_root_hubs_that_may_wake_it_and_ones_that_may_not(
     """The machine has a USB 2 root hub and a SuperSpeed one, so both rules are tried."""
     speeds = [speed for speed, _ in hubs.values()]
     assert "480" in speeds
-    assert any(speed not in WAKING for speed in speeds)
+    assert any(speed not in WAKING for speed in speeds), f"no root hub is SuperSpeed: {speeds}"
 
 
 def test_usb_2_and_1_1_root_hubs_may_wake_it(hubs: dict[str, tuple[str, str]]) -> None:
     """Its USB 2 and 1.1 root hubs may wake it, so a cable plugged in does."""
     slow = {hub: wakeup for hub, (speed, wakeup) in hubs.items() if speed in WAKING}
-    assert slow
+    assert slow, f"no root hub is USB 2 or 1.1: {hubs}"
     assert set(slow.values()) == {"enabled"}
 
 
 def test_usb_3_root_hubs_may_not_wake_it(hubs: dict[str, tuple[str, str]]) -> None:
     """Its USB 3 root hubs may not wake it, so a device pulled out while it sleeps doesn't."""
     fast = {hub: wakeup for hub, (speed, wakeup) in hubs.items() if speed not in WAKING}
-    assert fast
+    assert fast, f"no root hub is USB 3: {hubs}"
     assert set(fast.values()) == {"disabled"}

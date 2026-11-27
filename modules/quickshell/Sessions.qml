@@ -1672,16 +1672,18 @@ Singleton {
         // Only Reopen Them All tells each to carry on, which marks its walk.
         const walk = told === root.carryOn;
         const connectedNow = root.screensThere();
-        const places = Places.placed(placeable, connectedNow, inUse,
-            here.map(one => momentOf(one.id)).map(moment => Array.isArray(moment) ? moment : []));
+        // Placed and given by the one screens answer (Reopening.js's placedGiven).
+        const placing = Reopening.placedGiven(placeable, connectedNow, inUse, { moments:
+            here.map(one => momentOf(one.id)).map(moment => Array.isArray(moment) ? moment : []),
+            before: puttingBack?.given });
+        const places = placing.places;
         // Its windows go back by the screen in use as its own sessions are
         // placed, and to the twin connectors they're given, not as a
         // hand-over meanwhile places others, and what windows back before
         // took where the sessions' say nothing.
         if (puttingBack !== null && walk && !("inUse" in puttingBack)) {
             puttingBack.inUse = inUse;
-            puttingBack.given = Reopening.givenBy(placeable, places, puttingBack.given,
-                connectedNow);
+            puttingBack.given = placing.given;
             // So split twins can be read from the journal: with no screen
             // said, no session tells its windows which twin is its own.
             if (Object.keys(connectedNow).length === 0)
@@ -2352,15 +2354,9 @@ Singleton {
     // whoever saw it leave, since a reopen notes one minutes after.
     property var awayFrom: ({})
     function noteAway(away, id) {
-        if (!away || id === null || id === undefined)
-            return;
-        const kept = awayFrom[away.screen] ?? [];
-        if (kept.some(one => one.id === id))
-            return;
-        const next = Object.assign({}, awayFrom);
-        next[away.screen] = kept.concat([{ id, workspace: away.workspace, output: away.output,
-            others: away.others ?? {} }]);
-        awayFrom = next;
+        const next = Reopening.notedAway(awayFrom, away, id);
+        if (next !== null)
+            awayFrom = next;
     }
     // Each workspace's screen and number as last seen with that screen
     // connected, by niri's id. A screen going, as at an undock, sends its
@@ -2500,10 +2496,10 @@ Singleton {
         const inUse = Reopening.inUseFor(going.inUse, Niri.workspace()?.output ?? null, there);
         // Each window put back gives its twins' connectors, after its
         // sessions', so twin monitors on new connectors take one each:
-        // only one connected now showing its screen (givenOn), not last
-        // boot's, kept while no screen is said.
-        const kept = Places.whereKept(at, going.kept, there, { given: going.given, inUse });
-        going.given.push({ at, output: Reopening.givenOn(at.screen, kept, there) });
+        // only one connected now showing its screen (Reopening.js's keptBack).
+        const back = Reopening.keptBack(at, going.kept, there, { given: going.given, inUse });
+        const kept = back.kept;
+        going.given.push(back.gives);
         const output = found.output ?? kept.output ?? inUse;
         const where = found.make ? Object.assign({}, found, { output }) : found;
         const workspace = Niri.workspace(window.workspace_id);
@@ -2663,8 +2659,17 @@ Singleton {
     // in the launcher's foot, since a press is never met with nothing.
     signal unhosted(var session, string why)
     // A window Go To opens goes where the session would reopen (goesTo),
-    // never on whichever workspace Joel is on.
-    function goTo(session) {
+    // never on whichever workspace Joel is on. Whether it went: false only
+    // where it told why it couldn't (unhosted but for "opening" and
+    // "unowned", unjoined, unopened), which its caller says where Joel is, since one asked from
+    // a link with the launcher shut was otherwise told to nobody (KP0L6A,
+    // 2026-11-24 [00902e94]). A window raised, opened or still coming went.
+    // `pressed`, where given, is the press wakeToGo stamped before its wake,
+    // kept so one press is one stamp: stamped again here, a wake's refusal
+    // opening the launcher read as another press's and opened it twice
+    // (#6519's tenth round).
+    function goTo(session, pressed) {
+        root.goneTo = pressed ?? { address: String(session.address ?? ""), at: Date.now() };
         readKittyPid();
         if (session.presence?.hosted)
             raisedOwn(viewerOf(session.presence));
@@ -2681,33 +2686,37 @@ Singleton {
             const named = viewerOf(session.presence);
             const listed = listedNamed(named);
             const words = session.attach;
-            if (listed)
+            if (listed) {
                 Niri.act({ FocusWindow: { id: listed.id } });
-            else if (named === "" || !Array.isArray(words) || words.length === 0)
+            } else if (named === "" || !Array.isArray(words) || words.length === 0) {
                 unhosted(session, named === "" ? "unnamed" : "hosted");
-            else if (!disowned(named, session) && !heldBack(session.address, named, session)) {
+                return false;
+            } else if (disowned(named, session)) {
+                return false;
+            } else if (!heldBack(session.address, named, session)) {
                 view(session, root.goesTo(session), true);
                 // Its own asked for, whose window holds its name is said,
                 // so a stray window is seen at the press. One held back is
-                // said opening, as its own is.
+                // said opening, as its own is. Both went.
                 if (heldByAnother(named))
                     unhosted(session, "unowned");
             }
-            return;
+            return true;
         }
-        if (!session.here && !session.window && !session.kitty) {
-            joinElsewhere(session);
-            return;
-        }
-        if (session.window)
+        if (!session.here && !session.window && !session.kitty)
+            return joinElsewhere(session);
+        if (session.window) {
             Niri.act({ FocusWindow: { id: session.window.id } });
-        else if (session.kitty)
+        } else if (session.kitty) {
             Niri.spawn(["kitten", "@", "--to", session.kitty.socket, "focus-window",
                 "--match", `id:${session.kitty.window}`]);
-        else if (session.held)
+        } else if (session.held) {
             attach(session.held, root.goesTo(session));
-        else
+        } else {
             unopened(session);
+            return false;
+        }
+        return true;
     }
     // A session here in no window, kitty or holder the shell can reach, as
     // pi run in another terminal is, which Go To can't open: said, never
@@ -2738,21 +2747,23 @@ Singleton {
     // `ssh -t -- <machine> mycelium ... attach <id>`), and only once: the
     // node names the window it joins, which Go To then goes to. With no
     // words, as when it isn't held or its machine is out of reach, nothing
-    // opens, and the caller is told why.
+    // opens, and the caller is told why, said false. One asked for moments
+    // ago is still coming, so a second press went too.
     signal unjoined(var session)
     function joinElsewhere(session) {
         const words = session.attach;
         const joining = `${session.machine}:${session.address}`;
         if (!words || (Array.isArray(words) && words.length === 0)) {
             unjoined(session);
-            return;
+            return false;
         }
         if (Date.now() - (attaching[joining] ?? 0) < attachPatience)
-            return;
+            return true;
         attaching = Object.assign({}, attaching, { [joining]: Date.now() });
         const command = Array.isArray(words) ? words.map(String) : ["zsh", "-lic", String(words)];
         root.inSessions("pi-session", command, root.goesTo(session));
         Report.say(`joined session ${session.address} on ${session.machine}`);
+        return true;
     }
 
     // Views a hosted session in a new window of the sessions' kitty, by its
@@ -3733,6 +3744,8 @@ Singleton {
         }
         const why = String(answer?.error?.message ?? "");
         Report.say(`unsteered ${upper}: ${why}`);
+        if (act === "wake")
+            root.wakesRefused += 1;
         unsteered(running.find(one => String(one.address).toUpperCase() === upper)
             ?? parkedAs(upper) ?? { address: upper }, why, String(act ?? ""));
         return false;
@@ -4367,12 +4380,59 @@ Singleton {
     // it's parked. One only viewing wakes is left to goTo's own viewer,
     // which opens where Joel is and takes focus: wake's would open where it
     // slept, unfocused, and hold goTo's off while it came. Agents' Go To,
-    // What's On's and For You's Deal With It all go through here.
+    // What's On's and For You's Deal With It all go through here. Whether it
+    // went, as goTo says, or woke one parked here, since that wake opens its
+    // own window here, which goTo can't yet see. One woken on another
+    // machine opens its window there, which takes Joel nowhere, so only
+    // goTo's answer counts for it, and a can't-go is said rather than hidden.
     function wakeToGo(resting, session) {
-        if (resting && !wokenByViewing(resting))
+        const woke = Boolean(resting) && !wokenByViewing(resting);
+        // This press is stamped before the wake, which a node out of reach
+        // refuses at once (PiSource's steer), so that refusal is told as
+        // this press's, never judged by the press before it (#6519's fifth
+        // round); goTo keeps that stamp rather than making another.
+        const pressed = woke ? { address: String(session.address ?? ""), at: Date.now() }
+            : undefined;
+        const refusedBefore = root.wakesRefused;
+        // While the wake is asked the press is still deciding, so a refusal
+        // told inside it is held (SessionRow.refusalTold) until goTo says
+        // whether this press went (#6519's twelfth round); goTo's own stamp
+        // ends it.
+        if (woke) {
+            root.goneTo = Object.assign({ deciding: true }, pressed);
             wake(resting);
-        goTo(session);
+        }
+        // One refused at once, by a node out of reach, was said as it was refused, so
+        // it didn't go (#6519's tenth round); one refused later still counts, since
+        // the wake was asked and its why comes to the foot.
+        const refusedAtOnce = root.wakesRefused !== refusedBefore;
+        // A session woken here reopens by its wake, so what goTo can't open meanwhile is
+        // nothing refused, and isn't said as a press that did nothing (waking).
+        root.waking = woke && resting.here !== false ? String(session.address ?? "") : "";
+        const went = goTo(session, pressed);
+        // Gone, Joel types where it took him, so the wake's late refusal is
+        // held for his next opening (SessionRow.refusalTold; #6519's F166).
+        if (woke && went)
+            root.goneTo = Object.assign({ went: true }, pressed);
+        const wakes = root.waking !== "" && !refusedAtOnce;
+        root.waking = "";
+        // One refused at once that didn't go is this press's to answer, now
+        // that goTo has had its say.
+        if (woke && refusedAtOnce && !went)
+            wakeRefusedAtOnce(session);
+        return went || wakes;
     }
+    // A Go To's wake refused while its press decided, which then didn't go,
+    // so Agents opens the launcher on the why it held, once for that press.
+    signal wakeRefusedAtOnce(var session)
+    // How many wakes the node has refused, counted as each is told
+    // (steered), so wakeToGo knows one refused before its wake() returned.
+    property int wakesRefused: 0
+    // The session a Go To is waking, while goTo runs for it, so its refusals go unsaid.
+    property string waking: ""
+    // The session Go To was last asked for, and when, so a refusal can tell one Joel just
+    // pressed for from one that came of no press, a walk's or a start's (Agents' refusedGoing).
+    property var goneTo: ({ address: "", at: 0 })
     // Whether `session` sleeps in pi's host with no window, which only
     // viewing it wakes.
     // A window only the windows daemon's index names, which niri, its list
