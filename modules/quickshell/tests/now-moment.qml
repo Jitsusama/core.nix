@@ -2312,6 +2312,26 @@ ShellRoot {
         onRow("on:awake").run();
         expect("a kept row runs its piece's act as it is now",
             onRow("on:awake") === awakeRow && ran === "awake now", ran);
+        // A piece's act that steers a session as Joel, as Tokens' Pause does, is his own
+        // Return's alone on its act row, and on the piece's row when Return runs it first,
+        // whatever order the piece lays its acts in (round 000036 on #6796, F125).
+        const acting = (first, second) => ({ present: true, active: true, group: "on",
+            title: "Acting", value: "now", actions: [first, second] });
+        const pause = { name: "Pause Quest", joelsOnly: true, run: () => ran = "paused" };
+        const look = { name: "Look", run: () => ran = "looked" };
+        awake.piece = acting(pause, look);
+        cast.piece = acting(look, pause);
+        Facts.all = [awake, cast];
+        const pausing = onRow("on:awake");
+        const looking = onRow("on:casting");
+        const actsOf = row => row.verbs().map(act => `${act.name}:${act.joelsOnly}`).join(",");
+        expect("a piece's act that steers as Joel is his own Return's on its act row",
+            actsOf(pausing) === "Pause Quest:true,Look:false"
+                && actsOf(looking) === "Look:false,Pause Quest:true",
+            `${actsOf(pausing)} | ${actsOf(looking)}`);
+        expect("a piece's row is Joel's own Return's alone when its first act is",
+            pausing.joelsOnly === true && looking.joelsOnly === false,
+            `${pausing.joelsOnly} ${looking.joelsOnly}`);
         Facts.all = [];
 
         // For You's to-dos, the sessions wanting Joel and its bands' own
