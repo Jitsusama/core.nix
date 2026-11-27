@@ -176,6 +176,18 @@ function looksOf(record: Fields): readonly ThingLook[] | undefined {
   return read.length === looks.length ? read : undefined;
 }
 
+/** The most items a side says, the last saying how many more past it, as the daemon's does. */
+const SIDE_ITEMS = 3;
+
+/** A side of `items`, cut to `SIDE_ITEMS` as the daemon cuts one. */
+function sideOf(items: readonly string[]): readonly string[] {
+  if (items.length <= SIDE_ITEMS) {
+    return items;
+  }
+  const more = items.length - (SIDE_ITEMS - 1);
+  return [...items.slice(0, SIDE_ITEMS - 1), `and ${more} more worth a look`];
+}
+
 /**
  * The thing `key` names, read from its record. A thing not told yet is left
  * out unsaid: its part and its record are two watches, so a new machine can
@@ -199,21 +211,31 @@ function thingOf(held: Holds, key: string, unread: string[]): Thing | undefined 
   // can't read is no tear: the list is then all there is to go by.
   const torn =
     listed !== undefined && sided !== undefined && (listed.length === 0) !== (sided.length === 0);
-  const sent = record["looks"] !== undefined && record["looks"] !== null;
-  if (sent && (listed === undefined || torn)) {
-    unread.push(`${key}'s looks, so the page goes by its side alone, with no whys`);
-  }
+  const looksLost =
+    record["looks"] !== undefined && record["looks"] !== null && listed === undefined;
+  const sideLost = record["side"] !== undefined && record["side"] !== null && sided === undefined;
   // A side sent but unreadable is said too, since beside an empty list a bad
-  // machine would otherwise read as having nothing worth a look.
-  if (record["side"] !== undefined && record["side"] !== null && sided === undefined) {
+  // machine would otherwise read as having nothing worth a look. Where no look
+  // is listed either, nothing is left to go by, and one line says so.
+  if (sideLost && listed !== undefined && listed.length > 0) {
     unread.push(`${key}'s side, so the page goes by its looks alone`);
+  } else if (sideLost || (looksLost && sided === undefined)) {
+    let lost = "looks";
+    if (sideLost) {
+      lost = looksLost ? "looks and side" : "side";
+    }
+    unread.push(`${key}'s ${lost}, so whether anything there is worth a look can't be told`);
+  } else if (looksLost || torn) {
+    unread.push(`${key}'s looks, so the page goes by its side alone, with no whys`);
   }
   return {
     kind: kindOf(key),
     name,
     health: healthOf(text(record, "health")),
     says: text(record, "says") ?? "",
-    side: sided ?? [],
+    // An unreadable side is said from the looks listed beside it, so the
+    // machine's standing line names what they do, cut as the daemon cuts one.
+    side: sided ?? sideOf((listed ?? []).map((look) => look.side)),
     looks: torn ? undefined : listed,
     address: text(record, "address"),
     ties: tiesOf(record["ties"]),
