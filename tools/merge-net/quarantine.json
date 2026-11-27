@@ -221,5 +221,18 @@
       "test_the_house_holds_the_upload_under_what_it_leaves"
     ],
     "test": "vm-the-house-holds-the-upload"
+  },
+  {
+    "at": 1795789654,
+    "commit": "c06280ba548e891ff671079094e1dd38b6a74a6a",
+    "due": "2026-11-29",
+    "owner_pr": 7119,
+    "owner_session": "orchestrator",
+    "reason": "failed, then passed, at c06280ba548e",
+    "subtests": [
+      "test_each_track_is_full_once_the_image_is_read",
+      "test_the_kernel_fills_each_track_as_it_reads"
+    ],
+    "test": "vm-boot-says-it-wakes-from-hibernation"
   }
 ]
