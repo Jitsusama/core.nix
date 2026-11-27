@@ -370,7 +370,10 @@ ShellRoot {
 
         socket: `${root.runtime}/daemons/kinds.sock`
         kind: "verdict"
+        onGaveUp: (asked, why) => root.gaveUpSaid = root.gaveUpSaid.concat([`${asked.ask}: ${why}`])
     }
+    // Each ask given up on, as its signal said it, with the daemon's refusal.
+    property var gaveUpSaid: []
     property string holding: ""
     // Each value the stand-in was asked of an ask, by ask, and whether one is being read.
     property var tried: ({})
@@ -729,6 +732,21 @@ ShellRoot {
                 root.triedRead("hold");
                 return root.triedReadFrom - root.keptSince >= 5000
                     && root.triedOf("hold") === '["one","two","latest"]';
+            }
+        },
+        {
+            // Given up on, Joel's act went undone said only in the journal (round 000036 on
+            // #6796, F142). Five tries, 4 s apart, so the step waits 25 s.
+            what: "an ask refused at every try is given up after five, and said so",
+            polls: 500,
+            run: () => {
+                retrying.askTillTaken({ ask: "refuse", value: "never" });
+            },
+            holds: () => {
+                root.triedRead("refuse");
+                return root.triedOf("refuse") === JSON.stringify(Array(5).fill("never"))
+                    && JSON.stringify(root.gaveUpSaid) === '["refuse: not yet"]'
+                    && retrying.refusedAgain.length === 0;
             }
         },
         {

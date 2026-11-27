@@ -25,7 +25,8 @@ is answered with each value in turn, so the test can tell a refused ask was aske
 was then given, and a taken one no more. An ask to keep through a drop is answered the first
 time by the connection dropped, unanswered, as a daemon restarting at a switch drops it, and
 taken after. An ask to hold is refused for now twice, so two given at once are both refused,
-and taken after. Each of those is answered, as asked, with every value asked of it in turn.
+and taken after. An ask to refuse is refused at every try, so the test can tell one given up
+on is said. Each of those is answered, as asked, with every value asked of it in turn.
 """
 
 import json
@@ -45,8 +46,8 @@ KEPT_LOCK = threading.Lock()
 
 # Each value asked of the asks that drop or refuse more than once, by ask, in the order asked,
 # and how many of each first go unanswered or refused.
-TRIED: dict[str, list[object]] = {"keep-dropped": [], "hold": []}
-UNTAKEN = {"keep-dropped": 1, "hold": 2}
+TRIED: dict[str, list[object]] = {"keep-dropped": [], "hold": [], "refuse": []}
+UNTAKEN = {"keep-dropped": 1, "hold": 2, "refuse": sys.maxsize}
 
 # What each kind that loses records in a gap holds before it, and what it holds after.
 LAPSING = {

@@ -239,6 +239,10 @@ Scope {
     // hears what a daemon tells beyond its records, as the passwords
     // daemon tells a watch what its last check found.
     signal told(var answer)
+    // Said of an ask `askTillTaken` gave up on, with the daemon's refusal, or "" where it never
+    // answered, so the launcher tells Joel his act went undone rather than only the journal
+    // (round 000036 on #6796, F142).
+    signal gaveUp(var asked, string why)
 
     // The answers still awaited, by id, each a function given the answer.
     property var awaited: ({})
@@ -671,6 +675,7 @@ Scope {
             if (tries <= 1) {
                 const why = unanswered ? "no answer" : answer.error.message;
                 console.warn(`${socket}: ${asked.ask} still not taken, so asked no more: ${why}`);
+                daemon.gaveUp(asked, unanswered ? "" : String(answer.error.message ?? ""));
                 return;
             }
             // One given as a function says its latest when asked, so one try of each such ask

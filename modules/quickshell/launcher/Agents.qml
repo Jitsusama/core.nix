@@ -525,6 +525,31 @@ Provider {
         }
     }
 
+    // One of Joel's acts the agents daemon never took, after every try, is told him on his
+    // next opening, not only in the journal, so a Forget It or a share's start doesn't go
+    // undone unseen (round 000036 on #6796, F142). A read or a heard, which his next look
+    // marks again, stays the journal's.
+    function gaveUp(asked, why) {
+        const said = Words.of("agents").said ?? {};
+        const what = (said.gaveUp ?? {})[asked?.ask] ?? "";
+        if (what !== "")
+            provider.launcher?.toldThat(what, why !== "" ? why : said.gaveUpUnanswered ?? "");
+    }
+    Connections {
+        target: provider.rowsKind
+
+        function onGaveUp(asked, why) {
+            provider.gaveUp(asked, why);
+        }
+    }
+    Connections {
+        target: Sessions
+
+        function onGaveUp(asked, why) {
+            provider.gaveUp(asked, why);
+        }
+    }
+
     // The keys of its rows in the order the daemon gives them, each put in
     // its place by its `order` as it changes, never the list sorted; and
     // each row as last wrapped, by key. Plain, so keeping them notifies
