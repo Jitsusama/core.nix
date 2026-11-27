@@ -3163,6 +3163,49 @@ fn a_held_commit_the_checkout_lacks_with_no_host_to_ask_stops_main() {
     );
 }
 
+/// With no host to ask, a checkout fetched whole holds every commit before
+/// main's head, so a held commit it lacks isn't main's and main switches:
+/// a hold on a branch's commit not merged yet keeps nothing else off.
+#[test]
+fn a_held_commit_a_whole_checkout_lacks_with_no_host_to_ask_lets_main_through() {
+    let world = World::hosted_from(World::new(), counted_token);
+    world.hosted_commit("one", None);
+    let two = world.hosted_commit("two", None);
+    let unmerged = "d".repeat(40);
+    held::ask(&world.config, &format!("hold {unmerged}"), Some(1000));
+    world.system(&two);
+    assert_eq!(
+        world.update().1,
+        done(&two),
+        "a held commit a whole checkout lacks, with no host, stopped main"
+    );
+}
+
+/// A main rewritten past what the machine ran, both of which root's copy
+/// holds, is refused on the copy's own walk: a host that can't say how
+/// they stand mustn't turn the refusal into a failed update.
+#[test]
+fn a_main_the_copy_shows_went_another_way_is_refused_without_the_host() {
+    let world = with_api();
+    let start = world.unsigned("start");
+    let one = world.hosted_commit("one", None);
+    world.answer();
+    world.system(&one);
+    assert_eq!(world.update().1, done(&one), "the first head wasn't read");
+    git(&world.origin, &["reset", "--quiet", "--hard", &start]);
+    // The host is never told of two, so asking it how two stands fails.
+    let two = world.hosted_commit("two", None);
+    world.system(&two);
+    let ending = world.update().1;
+    let Line::Refused { why, .. } = &ending else {
+        panic!("a main the copy shows went another way wasn't refused: {ending:?}")
+    };
+    assert!(
+        why.contains("doesn't descend"),
+        "refused for another reason: {why}"
+    );
+}
+
 /// A hold on a commit nobody can say main holds stops the update, and the
 /// stop says how to let it through.
 #[test]
