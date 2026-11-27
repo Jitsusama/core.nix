@@ -6547,11 +6547,12 @@ def into_the_limit(shell: Shell, machine: StandIn, *, found: str = "") -> None:
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
     shell.type_in("machine", selecting="Machine")
-    for step, holding in (("Machine", "Power"), ("Power", "Battery")):
+    # Battery's place is where Power's rows are served, its Charge Limit among them.
+    walk = (("Machine", "Power"), ("Power", "Battery"), ("Battery", "Charge Limit"))
+    for step, holding in walk:
         shell.down_to(step)
         shell.step_in()
         shell.launcher_until(holds(holding))
-    shell.launcher_until(holds("Charge Limit"))
     if found:
         shell.type_in(found, selecting="Charge Limit")
     else:
