@@ -299,11 +299,7 @@ pub fn hear(
                 if writing.done.len() == 2 {
                     tell_apart(book, &key, writing, me);
                     write(book, &key, writing, me, false);
-                    if let Some(writing) = calls.remove(&key) {
-                        keep(&mut ended, &key, writing);
-                    }
-                    told.remove(&key);
-                    unsummed.push(key);
+                    put_away(&mut calls, &mut ended, &mut told, &mut unsummed, key);
                 }
             }
             Job::SumUp { key } => {
@@ -377,6 +373,7 @@ fn heard_or_left_out(
 /// wasn't heard, the file written at once so a restart before another
 /// line is heard reads it back, and `notice` for it, unless the call
 /// was told already.
+#[must_use]
 fn not_heard(
     book: &Shared,
     key: &str,
@@ -414,6 +411,7 @@ fn shown(notice: Option<Notice>) {
 /// none once it has been, `told` holding the calls told until each ends.
 /// Its model not loading and failing on part of it share it, so a call
 /// is told once, whichever came first.
+#[must_use]
 fn told_once(
     told: &mut HashSet<String>,
     key: &str,
@@ -661,6 +659,24 @@ fn their_side(record: &Record, me: &str) -> TheirSide {
             people: record.known.map(|_| record.people.len()),
         }
     }
+}
+
+/// A call written down whole, put away: kept as it was heard, so one
+/// rejoined is told apart whole; no longer among those `told`, so a
+/// failure once it's taken up again is told anew; and given to be
+/// summed up.
+fn put_away(
+    calls: &mut HashMap<String, Writing>,
+    ended: &mut Vec<(String, Writing)>,
+    told: &mut HashSet<String>,
+    unsummed: &mut Vec<String>,
+    key: String,
+) {
+    if let Some(writing) = calls.remove(&key) {
+        keep(ended, &key, writing);
+    }
+    told.remove(&key);
+    unsummed.push(key);
 }
 
 /// Keeps a call that ended as it was heard, embeddings and all, so one

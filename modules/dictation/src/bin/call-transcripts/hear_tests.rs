@@ -708,7 +708,11 @@ fn a_call_none_of_which_was_heard_has_a_file_saying_so() {
     let mut writing = Writing::default();
     let mut told = HashSet::new();
     let load = || notices::not_transcribed("Planning", "The speech model didn't load: x");
-    not_heard(&book, "call:e1", &mut writing, "Joel", 0, &mut told, load);
+    let told_of = not_heard(&book, "call:e1", &mut writing, "Joel", 0, &mut told, load);
+    assert!(
+        told_of.is_some(),
+        "a call none of which was heard wasn't told"
+    );
     let unheard = Some(Unheard {
         stretches: 1,
         first: 0,
