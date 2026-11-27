@@ -23,7 +23,7 @@ function described(output) {
 // the workspaces, putting them back in the order they had on it whenever
 // Joel moved one (P9R1KI, 2026-11-03).
 function screensOf(outputs) {
-    const screens = {};
+    const screens = byName();
     for (const [name, output] of Object.entries(outputs ?? {})) {
         if (output?.logical !== null) {
             screens[name] = described(output);

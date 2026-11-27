@@ -43,6 +43,14 @@ QtObject {
                     logical: { x: 0, y: 0, width: 2560, height: 1440 } },
                 "eDP-1": { make: "LG Display", model: "0x07C6", serial: null, logical: null }
             }), { "DP-4": monitor });
+        // niri's answer, parsed, holds a connector named __proto__ as a key
+        // of its own, and it stays one, described, as far as connected().
+        const protoSaid = Places.screensOf(JSON.parse(
+            '{"__proto__": {"make": "LG Display", "model": "0x07C6", "serial": null}}'));
+        expect("a screen niri says on a connector named __proto__ is said and connected by name",
+            [Object.keys(protoSaid), protoSaid["__proto__"],
+                Places.connected(protoSaid, [{ id: 21, output: "__proto__" }])["__proto__"]],
+            [["__proto__"], panel, panel]);
 
         // Kept on the monitor as DP-4; after the boot it's DP-5, beside the
         // laptop's panel, which is in use.
