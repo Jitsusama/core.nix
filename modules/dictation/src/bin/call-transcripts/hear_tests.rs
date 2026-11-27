@@ -597,10 +597,11 @@ fn a_model_not_loading_once_a_call_has_lines_says_part_wasnt_heard() {
         some.heading, "Part of Standup Wasn't Heard",
         "a call with lines written was said to be not transcribed at all"
     );
-    assert!(
-        some.body.ends_with(why),
-        "the notice didn't say the model didn't load: {}",
-        some.body
+    // The reason already says the speech model didn't load, so it's
+    // said once, not after a line that it failed on part of it.
+    assert_eq!(
+        some.body, why,
+        "the notice didn't say once that the model didn't load"
     );
 }
 
