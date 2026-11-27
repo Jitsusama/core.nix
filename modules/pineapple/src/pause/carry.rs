@@ -307,18 +307,7 @@ fn give(plan: &Plan, runs: &mut dyn Runs, at: &[Reached], script: &str) -> Vec<R
     };
     let asked: Vec<Vec<String>> = at
         .iter()
-        .map(|one| {
-            let mut args = reach::asked(&["run"], one.realm.as_deref());
-            args.extend([
-                "--need".to_owned(),
-                format!("machine={}", one.machine),
-                "--".to_owned(),
-                "sh".to_owned(),
-                "-c".to_owned(),
-                script.to_owned(),
-            ]);
-            args
-        })
+        .map(|one| reach::run_there(&one.machine, one.realm.as_deref(), script.to_owned()))
         .collect();
     let each: Vec<(&Path, &[String])> = asked
         .iter()

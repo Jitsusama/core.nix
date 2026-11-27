@@ -296,8 +296,13 @@ fn a_stop_says_everything_stops_and_pauses_only_agents_work() {
          demo's: {:?}",
         here.asked
     );
-    let mac = asked_with(&here, "mycelium run --need machine=mac -- sh -c");
-    assert_eq!(mac.len(), 1, "the Mac is asked to stop: {:?}", here.asked);
+    let mac = asked_with(&here, "mycelium run --need machine=mac --folder / -- sh -c");
+    assert_eq!(
+        mac.len(),
+        1,
+        "the Mac is asked to stop, in a folder any account there may enter: {:?}",
+        here.asked
+    );
     assert!(
         mac[0].contains("starts stop") && mac[0].contains("stop-all-1.json"),
         "the Mac writes the same stop and refuses its starts: {}",

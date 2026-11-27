@@ -53,6 +53,31 @@ pub(super) const BEGUN: &str = "pineapple: begun there";
 /// 255 of that mycelium's own can't read as the script never running.
 const OWN_FAILURE: u8 = 70;
 
+/// The folder a stop's run there starts in. Unnamed, a run asks for the
+/// folder pineapple runs in here, Joel's home, which another machine may
+/// hold under that name but keep from whoever runs there, such as a
+/// room's own account, which can't start a shell in it. The script reads
+/// and writes only by whole paths, so the root, which every account may
+/// enter, serves on every machine.
+pub(super) const FOLDER: &str = "/";
+
+/// What `mycelium` is asked to run `script` on `machine`, in `realm` or
+/// its own, in [`FOLDER`].
+pub(super) fn run_there(machine: &str, realm: Option<&str>, script: String) -> Vec<String> {
+    let mut args = asked(&["run"], realm);
+    args.extend([
+        "--need".to_owned(),
+        format!("machine={machine}"),
+        "--folder".to_owned(),
+        FOLDER.to_owned(),
+        "--".to_owned(),
+        "sh".to_owned(),
+        "-c".to_owned(),
+        script,
+    ]);
+    args
+}
+
 /// Whether `why` a run failed is mycelium saying the command never ran.
 /// The script's word may share its line with the status, when nothing
 /// was said after it.
@@ -334,15 +359,11 @@ pub fn elsewhere(plan: &Plan, runs: &mut dyn Runs, at: &Reached, said: &Value, a
             realm: at.realm.clone(),
         };
     };
-    let mut args = asked(&["run"], at.realm.as_deref());
-    args.extend([
-        "--need".to_owned(),
-        format!("machine={}", at.machine),
-        "--".to_owned(),
-        "sh".to_owned(),
-        "-c".to_owned(),
+    let args = run_there(
+        &at.machine,
+        at.realm.as_deref(),
         script(said, act, at.realm.as_deref()),
-    ]);
+    );
     let (failed, reached) = match runs.run(mycelium, &args) {
         Ok(_) => (Vec::new(), true),
         Err(why) => (
