@@ -26,30 +26,18 @@ pub(crate) fn reload_on_save(
     std::thread::Builder::new()
         .name("reloader".into())
         .spawn(move || {
-            // The setter, and the file and width it's on, so one made again
-            // after a panic takes them up where it left off.
-            let mut kept: Option<page::Setter> = None;
-            let mut asked = (first, width);
-            while let Ok(ask) = asks.recv() {
-                asked = asked_for(
-                    asked,
-                    std::iter::once(ask).chain(std::iter::from_fn(|| asks.try_recv().ok())),
-                );
-                let set = step(
-                    &mut kept,
-                    || page::Setter::new(&asked.0),
-                    |setter| readied(setter, &asked),
-                    |setter| {
-                        setter.set().map(|(page, ms)| {
-                            let lines = text::lines(text::runs(&page.frame));
-                            (page, ms, lines, setter.title().to_string(), setter.words())
-                        })
-                    },
-                );
-                if reset_to.send((asked.0.clone(), set)).is_err() {
-                    return;
-                }
-            }
+            serve(
+                &asks,
+                (first, width),
+                page::Setter::new,
+                |setter| {
+                    setter.set().map(|(page, ms)| {
+                        let lines = text::lines(text::runs(&page.frame));
+                        (page, ms, lines, setter.title().to_string(), setter.words())
+                    })
+                },
+                |file, set| reset_to.send((file, set)).is_ok(),
+            );
         })?;
     // Pictures fetched from the web set the page again, the file unedited.
     let fetched_to = reload_to.clone();
@@ -63,6 +51,38 @@ pub(crate) fn reload_on_save(
     .map_err(|error| eprintln!("reader: can't watch {file} for saves: {error}"))
     .ok();
     Ok((reload_to, watch))
+}
+
+/// Sets for each ask that comes on `asks` until they end, or until `told`,
+/// given each set and the file it's of, says nobody hears it: the asks
+/// waiting by then are taken as one, for the newest file and width they
+/// ask for, else those `asked` before, on the setter kept, or one `make`
+/// makes for the file, readied for them. The setter is kept with the file
+/// and width it's on, so one made again after a panic takes them up where
+/// it left off.
+fn serve<S: Readied, T>(
+    asks: &std::sync::mpsc::Receiver<Reload>,
+    mut asked: (String, page::Width),
+    make: impl Fn(&str) -> S,
+    mut set: impl FnMut(&mut S) -> Result<T, String>,
+    mut told: impl FnMut(String, Result<T, String>) -> bool,
+) {
+    let mut kept: Option<S> = None;
+    while let Ok(ask) = asks.recv() {
+        asked = asked_for(
+            asked,
+            std::iter::once(ask).chain(std::iter::from_fn(|| asks.try_recv().ok())),
+        );
+        let done = step(
+            &mut kept,
+            || make(&asked.0),
+            |setter| readied(setter, &asked),
+            &mut set,
+        );
+        if !told(asked.0.clone(), done) {
+            return;
+        }
+    }
 }
 
 /// The file and width a set is for: the newest of each that `asks` asks
@@ -136,7 +156,7 @@ fn guarded<T>(set: impl FnOnce() -> Result<T, String>) -> (Result<T, String>, bo
 
 #[cfg(test)]
 mod tests {
-    use super::{Readied, asked_for, guarded, readied, step};
+    use super::{Readied, guarded, serve, step};
     use crate::app::Reload;
     use crate::page::Width;
 
@@ -174,59 +194,71 @@ mod tests {
     #[test]
     fn each_set_is_readied_for_the_newest_asked_on_a_setter_kept_or_made_again() {
         let (narrow, wide) = (Width::for_window(360.0), Width::for_window(1200.0));
-        let mut kept = None;
-        let make = |made| {
-            move || Setter {
-                made,
-                ..Setter::default()
-            }
+        let (ask, asks) = std::sync::mpsc::channel();
+        // Opened on notes.md. After each set is told, the asks that come
+        // next: two links at once, then a widening whose set panics, then
+        // a save, then one nobody hears.
+        let mut next = [
+            vec![Reload::Open("one.md".into()), Reload::Open("two.md".into())],
+            vec![Reload::Fit(wide)],
+            vec![Reload::Again],
+        ]
+        .into_iter();
+        ask.send(Reload::Again).expect("the reloader hears");
+        let made = std::cell::Cell::new(0);
+        let panicked = std::cell::Cell::new(false);
+        let mut heard: Vec<(String, Result<Ran, String>)> = Vec::new();
+        serve(
+            &asks,
+            ("notes.md".into(), narrow),
+            |_| {
+                made.set(made.get() + 1);
+                Setter {
+                    made: made.get(),
+                    ..Setter::default()
+                }
+            },
+            |setter| {
+                assert!(
+                    setter.width != Some(wide) || panicked.replace(true),
+                    "a page that can't be laid out"
+                );
+                Ok((setter.made, setter.file.clone(), setter.width))
+            },
+            |file, set| {
+                heard.push((file, set));
+                let Some(asked) = next.next() else {
+                    ask.send(Reload::Again).expect("the reloader hears");
+                    return false;
+                };
+                for one in asked {
+                    ask.send(one).expect("the reloader hears");
+                }
+                true
+            },
+        );
+        let on = |made, file: &str, width| {
+            (
+                file.to_string(),
+                Ok((made, Some(file.to_string()), Some(width))),
+            )
         };
-        let read = |setter: &mut Setter| Ok((setter.made, setter.file.clone(), setter.width));
-        let on = |made, file: &str, width| Ok((made, Some(file.to_string()), Some(width)));
-        // Opened on notes.md: the first set makes its setter.
-        let mut asked = asked_for(("notes.md".into(), narrow), [Reload::Again]);
-        let first = step(
-            &mut kept,
-            make(1),
-            |s: &mut Setter| readied(s, &asked),
-            read,
-        );
-        assert_eq!(first, on(1, "notes.md", narrow), "the first set");
-        // A link opens two.md: the setter kept sets it, not notes.md.
-        asked = asked_for(asked, [Reload::Open("two.md".into())]);
-        let linked = step(
-            &mut kept,
-            make(2),
-            |s: &mut Setter| readied(s, &asked),
-            read,
-        );
+        assert_eq!(heard.len(), 4, "once nobody hears, no ask is set");
+        assert_eq!(heard[0], on(1, "notes.md", narrow), "the first set");
         assert_eq!(
-            linked,
+            heard[1],
             on(1, "two.md", narrow),
-            "a setter that ran whole is kept, and readied for the file a link opened"
-        );
-        // Widened, and the set panics: the setter unwound goes.
-        asked = asked_for(asked, [Reload::Fit(wide)]);
-        let panicked = step(
-            &mut kept,
-            make(3),
-            |s: &mut Setter| readied(s, &asked),
-            |_| -> Result<Ran, String> { panic!("a page that can't be laid out") },
-        );
-        assert_eq!(panicked, Err("it panicked".to_string()));
-        assert!(kept.is_none(), "the setter unwound is dropped");
-        // A save: a new setter takes up two.md, wide, where the last left off.
-        asked = asked_for(asked, [Reload::Again]);
-        let saved = step(
-            &mut kept,
-            make(4),
-            |s: &mut Setter| readied(s, &asked),
-            read,
+            "a setter that ran whole is kept, and readied for the newest file links opened"
         );
         assert_eq!(
-            saved,
-            on(4, "two.md", wide),
-            "a save after a panic sets the file and width last asked for"
+            heard[2],
+            ("two.md".to_string(), Err("it panicked".to_string())),
+            "a set that panics is told as failing"
+        );
+        assert_eq!(
+            heard[3],
+            on(2, "two.md", wide),
+            "after a panic a new setter takes up the file and width last asked for"
         );
     }
 

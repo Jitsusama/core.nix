@@ -2,7 +2,7 @@ use super::{
     Block, Landed, Mark, Opens, Place, Said, Taking, as_read, at, heading_of, heights_known,
     heights_wanted, keep_window_in, kept_at, landed_again, letter, line_in, listed_in, mark,
     mark_at, moved, on_lines, opening, pt_of, read_in, set_again, still_waiting, take_kept,
-    taken_as_his, through, window_in, write_in,
+    take_onto, through, window_in, write_in,
 };
 use std::collections::HashMap;
 
@@ -784,9 +784,9 @@ fn a_page_set_again_lands_kept_marks_from_what_was_kept_unless_edited() {
 #[test]
 fn a_mark_taken_on_a_page_an_edit_set_lands_once_and_never_again_by_its_kept_block() {
     // a waited for block 3, which the page set after an edit has. Taken
-    // there, as App::saved takes it, it's his: a resize moves it as every
-    // mark of his moves, not again from block 3 as kept, which the edit
-    // may have renumbered. Unedited, it stays the kept one.
+    // there, as App::take_incoming takes it, it's his: a resize moves it
+    // as every mark of his moves, not again from block 3 as kept, which
+    // the edit may have renumbered. Unedited, it stays the kept one.
     let kept = Mark {
         letter: 'a',
         block: 3,
@@ -804,8 +804,15 @@ fn a_mark_taken_on_a_page_an_edit_set_lands_once_and_never_again_by_its_kept_blo
     let resized = [(0, 36.0), (1, 120.0), (2, 200.0), (3, 400.0), (4, 440.0)];
     let after = |edited: bool| {
         let (mut waiting, mut marks, mut landed) = (vec![kept.clone()], HashMap::new(), Vec::new());
-        take_kept(&mut waiting, &mut marks, &mut landed, &set, whole);
-        taken_as_his(&mut landed, edited);
+        take_onto(
+            &mut waiting,
+            &mut marks,
+            &mut landed,
+            &set,
+            &[],
+            whole,
+            edited,
+        );
         set_again(&mut landed, &mut marks, &resized, false, |pt| pt + 1000.0);
         marks.get(&'a').copied()
     };
@@ -814,6 +821,56 @@ fn a_mark_taken_on_a_page_an_edit_set_lands_once_and_never_again_by_its_kept_blo
         after(false),
         Some(410.0),
         "unedited, a lands again from block 3"
+    );
+}
+
+#[test]
+fn a_mark_taken_on_a_page_an_edit_set_goes_on_its_line_before_it_is_let_go() {
+    // a lands 10 pt into block 1, between its lines topped at 120 and
+    // 135, and goes on the nearer, as App::take_incoming takes it. After
+    // an edit it's his there, on its line, and no longer kept; unedited
+    // it stays the kept one, on its line too.
+    let kept = Mark {
+        letter: 'a',
+        block: 1,
+        into_pt: 10.0,
+        block_pt: Some(80.0),
+        width_pt: Some(400.0),
+        said: Said::default(),
+    };
+    let whole = Taking {
+        whole: true,
+        width_pt: 400.0,
+        opened_pt: 400.0,
+    };
+    let starts = [(0, 36.0), (1, 120.0), (2, 200.0)];
+    let lines = [(50.0, 60.0), (120.0, 130.0), (135.0, 145.0), (150.0, 160.0)];
+    let taken = |edited: bool| {
+        let (mut waiting, mut marks, mut landed) = (vec![kept.clone()], HashMap::new(), Vec::new());
+        take_onto(
+            &mut waiting,
+            &mut marks,
+            &mut landed,
+            &starts,
+            &lines,
+            whole,
+            edited,
+        );
+        let on_lines: Vec<(char, f64, bool)> = landed
+            .iter()
+            .map(|one| (one.kept.letter, one.pt, one.on_line))
+            .collect();
+        (waiting.len(), marks.get(&'a').copied(), on_lines)
+    };
+    assert_eq!(
+        taken(true),
+        (0, Some(135.0), Vec::new()),
+        "edited, a is on its line and let go"
+    );
+    assert_eq!(
+        taken(false),
+        (0, Some(135.0), vec![('a', 135.0, true)]),
+        "unedited, a is on its line and still kept"
     );
 }
 

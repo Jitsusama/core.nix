@@ -311,8 +311,7 @@ impl App {
             // The whole page, set again at another width or saved, has the
             // blocks the first screen's marks waited for, and after an edit
             // they're his once they land.
-            self.take_kept_marks();
-            place::taken_as_his(&mut self.landed, edited);
+            self.take_kept_marks_as(self.whole, edited);
         }
         self.marks_on_lines();
         self.read_layout();
@@ -362,42 +361,46 @@ impl App {
     /// whose height is known only once the next is set, so a mark kept
     /// with its block's height waits for the whole page there.
     pub(crate) fn take_kept_marks(&mut self) {
-        self.take_kept_marks_as(self.whole);
+        self.take_kept_marks_as(self.whole, false);
     }
 
     /// The rest of the page couldn't be set, so no block past the first
     /// screen's comes: marks waiting on one land by their kept distance,
     /// as one kept without its height does, rather than wait all session.
     pub(crate) fn rest_failed(&mut self) {
-        self.take_kept_marks_as(true);
+        self.take_kept_marks_as(true, false);
     }
 
     /// Takes back the kept marks whose blocks the page has, `whole` when
-    /// no block past the page's comes. Only a page set as wide as a mark's
-    /// distance was measured on gives one kept without its block's height
-    /// that height, which closing keeps: one at another would pair it with
-    /// a height it never had. A mark kept without its width is taken as
-    /// measured at the width the reader opened at, and learns its block's
-    /// height there only in memory, so closing writes it back as read.
-    fn take_kept_marks_as(&mut self, whole: bool) {
+    /// no block past the page's comes, each on its line once the page's
+    /// lines are read, and lets go of them there when an `edited` file set
+    /// the page, as `place::take_onto` does. Only a page set as wide as a
+    /// mark's distance was measured on gives one kept without its block's
+    /// height that height, which closing keeps: one at another would pair
+    /// it with a height it never had. A mark kept without its width is
+    /// taken as measured at the width the reader opened at, and learns its
+    /// block's height there only in memory, so closing writes it back as
+    /// read.
+    fn take_kept_marks_as(&mut self, whole: bool, edited: bool) {
         let width_pt = self.painter.width_pt();
-        if self.kept_marks.is_empty() && !place::heights_wanted(&self.landed, width_pt) {
+        if !edited && self.kept_marks.is_empty() && !place::heights_wanted(&self.landed, width_pt) {
             return;
         }
         let starts = place::starts(&self.painter.page().frame);
-        place::heights_known(&mut self.landed, &starts, width_pt);
-        place::take_kept(
+        let lines: Vec<(f64, f64)> = self.words.iter().flatten().map(moves::ends_of).collect();
+        place::take_onto(
             &mut self.kept_marks,
             &mut self.marks,
             &mut self.landed,
             &starts,
+            &lines,
             place::Taking {
                 whole,
                 width_pt,
                 opened_pt: self.opened_pt,
             },
+            edited,
         );
-        self.marks_on_lines();
     }
 
     /// Puts each kept mark landed as far through its block on the line of

@@ -716,12 +716,29 @@ pub fn set_again(
     }
 }
 
-/// Lets go of the kept marks a page set again took, once they're on their
-/// lines, when the file was `edited`: their blocks are numbered as it was
-/// read at opening, the best guess a mark kept without its words has, so
-/// they land there once and are his from then on, never landed again by
-/// numbers the edit may have moved. Unedited, they stay the kept ones.
-pub fn taken_as_his(landed: &mut Vec<Landed>, edited: bool) {
+/// Takes the kept marks onto the page starting at `starts`, whose lines
+/// by their tops and baselines are `lines`: those landed learn the heights
+/// their blocks have, as `heights_known` gives them, the kept ones whose
+/// blocks it has land, as `take_kept` lands them, and each goes on its
+/// line, as `on_lines` puts it. When the file was `edited`, the page lets
+/// go of them then: their blocks are numbered as it was read at opening,
+/// the best guess a mark kept without its words has, so they land there
+/// once and are his from then on, never landed again by numbers the edit
+/// may have moved. Unedited, they stay the kept ones.
+pub fn take_onto(
+    kept: &mut Vec<Mark>,
+    marks: &mut HashMap<char, f64>,
+    landed: &mut Vec<Landed>,
+    starts: &[(usize, f64)],
+    lines: &[(f64, f64)],
+    taking: Taking,
+    edited: bool,
+) {
+    heights_known(landed, starts, taking.width_pt);
+    take_kept(kept, marks, landed, starts, taking);
+    for (letter, top) in on_lines(landed, marks, starts, lines) {
+        marks.insert(letter, top);
+    }
     if edited {
         landed.clear();
     }
