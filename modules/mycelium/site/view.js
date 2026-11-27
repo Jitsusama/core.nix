@@ -75,7 +75,7 @@ import { grewWords, grownOf, oneCopyEach, originsOf, splitSaid } from "./lineage
 import { drawnWidth } from "./lines.js";
 import { durationOf, easedInOut, goneAndBack } from "./motion.js";
 import { shapeOf as shapeOfReading } from "./shape.js";
-import { CLOUD, FULL_WORDS, handedWords, isAddress, isMachine, keptOnStands, LONGEST_WORDS, leftWords, onWords, sproutLink, unsprouted } from "./sprout.js";
+import { drawerOffersOn, FULL_WORDS, handedWords, keptOnStands, LONGEST_WORDS, offered, onWords, returned } from "./sprout.js";
 import { EVERY_TREE_STEP, hasKids as hangsAny, kidsOf, openedTo, rootsOf, rowsOf, rowWords, upOf, walked, worstFirst } from "./outline.js";
 import {
   allCells,
@@ -172,12 +172,10 @@ import {
   // The machine new work would start on, the one whose drawer opened it.
   let sproutOn = null;
   // The words last handed on, the cell they went from and the machine
-  // they went to, kept to send again, and whether the line offers that
-  // cell, and that machine, now: apart, since a cell can leave the map
-  // while the machine its words went on, or none, still stands.
+  // they went to, kept to send again, and whether the line offers them
+  // now (sprout.ts's offered says when).
   let sproutKept = null;
-  let sproutKeptFromOffered = false;
-  let sproutKeptOnOffered = false;
+  let sproutKeptOffered = false;
   let sproutOpener = null;
   // The keys down now, by code, and those down as the line last opened,
   // closed or sent, whose repeats go nowhere until each comes up.
@@ -3324,7 +3322,7 @@ import {
       launcherLink("machine", name, "Open It in the Launcher") +
       // New work starts on it, or on any of the cloud's for a basin's
       // stand, from the Launcher's Start New Work as any new work does.
-      sproutOnButton(pool ? CLOUD : name, pool ? "Start New Work on the Cloud" : "Start New Work Here") +
+      sproutOnButton(drawerOffersOn(name, pool), pool ? "Start New Work on the Cloud" : "Start New Work Here") +
       // Its home as a device is the network page, which knows it by name.
       // A sandbox or a basin isn't a device on the home network, so it has
       // no row there.
@@ -3353,9 +3351,9 @@ import {
     const href = linkOf(kind, name, machine);
     return href ? `<p class="led"><a class="inline" href="${esc(href)}">${esc(words)}</a></p>` : "";
   };
-  // A machine's name mycelium-link would refuse is never offered.
+  // A machine drawerOffersOn offers none on has no button.
   const sproutOnButton = (on, words) =>
-    isMachine(on) ? `<p class="led"><button type="button" class="inline" data-sprout-on="${esc(on)}">${esc(words)}</button></p>` : "";
+    on !== null ? `<p class="led"><button type="button" class="inline" data-sprout-on="${esc(on)}">${esc(words)}</button></p>` : "";
 
   const backButton = (label) =>
     `<button type="button" class="back" data-back><svg viewBox="0 0 10 10" aria-hidden="true"><path d="M7 1.5L3 5L7 8.5"/></svg>${esc(label)}</button>`;
@@ -3712,12 +3710,23 @@ import {
   // lets go of; a receptor is never one, as it is never talked to, and an
   // address the link would leave out is never offered.
   sproutInput.maxLength = LONGEST_WORDS;
-  const sproutableFrom = (address) =>
-    isAddress(address) && !!panelBody.querySelector(`[data-sprout-from="${CSS.escape(address)}"]`);
-  // A cell kept with handed words was offered when they went, so it
-  // stands whatever drawer is open now.
-  const offerFrom = (from, { kept = false } = {}) => {
-    sproutFrom = kept || sproutableFrom(from) ? from : null;
+  // The machine a drawer's Start New Work Here names, offered as the
+  // cell is, with a tick that lets go of it so the work starts where new
+  // work does when none is named.
+  const drawerOn = () => panelBody.querySelector("[data-sprout-on]")?.dataset.sproutOn ?? null;
+  // The machines the map has now, by name.
+  const mapMachines = () => current?.machines.map((x) => x.name) ?? [];
+  // What the map holds now that bears on what the line offers.
+  const standing = () => ({
+    machines: mapMachines(),
+    drawerOn: drawerOn(),
+    offersFrom: (address) => !!panelBody.querySelector(`[data-sprout-from="${CSS.escape(address)}"]`),
+    stands: (address) => !!current?.byAddress.has(address),
+  });
+  // What the line offers, as sprout.ts's offered chose it, each with its
+  // tick set.
+  const offerFrom = (from) => {
+    sproutFrom = from;
     sproutFromLine.hidden = sproutFrom === null;
     sproutFromBox.checked = true;
     const short = sproutFrom ? current?.byAddress.get(sproutFrom)?.short || sproutFrom : "";
@@ -3726,34 +3735,29 @@ import {
     // is there to see too.
     sproutFromLine.title = sproutFrom ? `${short} (${sproutFrom})` : "";
   };
-  // The machine a drawer's Start New Work Here names, offered as the
-  // cell is, with a tick that lets go of it so the work starts where new
-  // work does when none is named.
-  const drawerOn = () => panelBody.querySelector("[data-sprout-on]")?.dataset.sproutOn ?? null;
-  // The machines the map has now, by name.
-  const mapMachines = () => current?.machines.map((x) => x.name) ?? [];
-  const offerOn = (on, { kept = false } = {}) => {
-    sproutOn = isMachine(on) && (kept || on === drawerOn()) ? on : null;
+  const offerOn = (on) => {
+    sproutOn = on;
     sproutOnLine.hidden = sproutOn === null;
     sproutOnBox.checked = true;
     sproutOnWords.textContent = sproutOn ? onWords(sproutOn) : "";
     sproutOnLine.title = sproutOnWords.textContent;
   };
+  const offer = ({ from, on, kept }) => {
+    sproutKeptOffered = kept;
+    offerFrom(from);
+    offerOn(on);
+  };
   // `named` is a drawer's button, which names its own cell, or its own
   // machine as `on`.
   const openSprout = (from, { named = false, on = null } = {}) => {
     // Asked again while open, it only takes the keys back, so a cleared
-    // tick stays cleared, unless a drawer's button names another cell,
-    // which it then offers, the keys going back to it on close.
+    // tick stays cleared, unless a drawer's button names a cell or a
+    // machine, which it then offers ticked, the keys going back to it on
+    // close.
     if (!sproutLine.hidden) {
       if (named) {
         sproutOpener = document.activeElement;
-        sproutKeptFromOffered = false;
-        sproutKeptOnOffered = false;
-        if (from === sproutFrom) sproutFromBox.checked = true;
-        else offerFrom(from);
-        if (on === sproutOn) sproutOnBox.checked = true;
-        else offerOn(on);
+        offer(offered({ from, on, named, kept: sproutKept, typed: sproutInput.value }, standing()));
       }
       holdKeysDown();
       sproutInput.focus();
@@ -3762,20 +3766,13 @@ import {
     holdKeysDown();
     sproutOpener = document.activeElement;
     closeFind({ said: false });
-    // Words kept for a machine that has left the map go with it. Others go
-    // on the machine they went to, or on none, unless a drawer's button
-    // names its own, and from the cell they went from while it is still on
-    // the map, else from the one open now. A cell that leaves never sends
-    // its words on the open drawer's machine, where they never went.
+    // Words kept for a machine that has left the map go with it; offered
+    // says where the others go.
     if (sproutKept && !keptOnStands(sproutKept.on, mapMachines())) {
       sproutKept = null;
       sproutInput.value = "";
     }
-    const kept = sproutKept?.from;
-    sproutKeptOnOffered = sproutKept !== null && !named;
-    sproutKeptFromOffered = sproutKeptOnOffered && (kept === null || !!current?.byAddress.has(kept));
-    offerFrom(sproutKeptFromOffered ? kept : from, { kept: sproutKeptFromOffered });
-    offerOn(sproutKeptOnOffered ? sproutKept.on : on, { kept: sproutKeptOnOffered });
+    offer(offered({ from, on, named, kept: sproutKept, typed: sproutInput.value }, standing()));
     trail.inert = true;
     sproutLine.hidden = false;
     sproutControl.setAttribute("aria-expanded", "true");
@@ -3808,8 +3805,7 @@ import {
       sproutInput.value = "";
       sproutKept = null;
     }
-    sproutKeptFromOffered = false;
-    sproutKeptOnOffered = false;
+    sproutKeptOffered = false;
     sproutInput.setCustomValidity("");
     sproutLine.hidden = true;
     trail.inert = false;
@@ -3828,30 +3824,29 @@ import {
     e.preventDefault();
     const from = sproutFrom !== null && sproutFromBox.checked ? sproutFrom : null;
     const on = sproutOn !== null && sproutOnBox.checked ? sproutOn : null;
+    // What Return does is sprout.ts's returned; this only carries it out.
+    const done = returned(sproutInput.value, from, on, mapMachines());
     // A machine that left the map while the line was open is let go of
-    // and said, so the work never goes to a machine the map no longer
-    // has, and the next Return starts it where new work starts. The
-    // Return is held, so its repeat never sends before Joel has read why.
-    if (!keptOnStands(on, mapMachines())) {
+    // and said. The Return is held, so its repeat never sends before Joel
+    // has read why.
+    if (done.kind === "left") {
       holdKeysDown();
       offerOn(null);
-      where.textContent = leftWords(on);
+      where.textContent = done.said;
       return;
     }
-    const link = sproutLink(sproutInput.value, from, on);
     // No words, or a machine no link can name, is said where the words go,
     // in the field's own bubble, and once to a screen reader, until a word
     // is typed.
-    if (!link) {
-      const why = unsprouted(sproutInput.value, on);
-      sproutInput.setCustomValidity(why);
+    if (done.kind === "refused") {
+      sproutInput.setCustomValidity(done.why);
       sproutInput.reportValidity();
-      where.textContent = why;
+      where.textContent = done.why;
       return;
     }
-    sproutGo.href = link;
+    sproutGo.href = done.href;
     sproutGo.click();
-    sproutKept = { words: sproutInput.value, from, on };
+    sproutKept = done.kept;
     const short = from === null ? null : current?.byAddress.get(from)?.short || from;
     closeSprout({ said: false, keep: true });
     where.textContent = handedWords(short, on);
@@ -3867,21 +3862,20 @@ import {
     if (sproutInput.value.length - replaced + adds.length > LONGEST_WORDS) where.textContent = FULL_WORDS;
   });
   // New words over kept ones are new work, so they go from the cell open
-  // now, as a fresh line's would; a tick Joel cleared stays cleared. Kept
-  // words offer their cell only when they offer their machine, so the
-  // machine's flag says whether anything kept is offered.
+  // now, as a fresh line's would; a tick Joel cleared stays cleared. The
+  // kept words themselves stay where they went, even once their machine
+  // has left, so Return says it left rather than send them elsewhere.
   sproutInput.addEventListener("input", () => {
     sproutInput.setCustomValidity("");
-    if (sproutKeptOnOffered && sproutInput.value !== sproutKept?.words) {
-      sproutKeptFromOffered = false;
-      sproutKeptOnOffered = false;
-      const ticked = sproutFromBox.checked;
-      const onTicked = sproutOnBox.checked;
-      offerFrom(chosen?.kind === "cell" ? chosen.id : null);
-      offerOn(drawerOn());
-      sproutFromBox.checked = ticked;
-      sproutOnBox.checked = onTicked;
-    }
+    if (!sproutKeptOffered || sproutInput.value === sproutKept?.words) return;
+    const from = chosen?.kind === "cell" ? chosen.id : null;
+    const next = offered({ from, on: drawerOn(), named: false, kept: sproutKept, typed: sproutInput.value }, standing());
+    if (next.kept) return;
+    const ticked = sproutFromBox.checked;
+    const onTicked = sproutOnBox.checked;
+    offer(next);
+    sproutFromBox.checked = ticked;
+    sproutOnBox.checked = onTicked;
   });
   // A tick changed changes what Return would send, so why it last sent
   // nothing is said again only at the next Return. NO_MACHINE can't come

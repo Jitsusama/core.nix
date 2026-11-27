@@ -1328,6 +1328,11 @@
     counts a whole path, and no home found is said; a count above none runs as given and ends
     0, and --help runs no du
   '';
+  every-failed-read-says-why = ''
+    every Rust file read outside tests whose failure its expression takes as nothing says why in
+    a comment, but those still waiting to say it couldn't read, once a planted tree shows each
+    shape counted
+  '';
   every-fixed-wait-says-why = ''
     every sleep in a test polls, or says what passes while it waits in a comment or by a named
     constant, but those still waiting to become waits on their events
@@ -4328,9 +4333,10 @@
   '';
   sign-in-program-never-waits-for-good = ''
     a sign-in program's token is taken trimmed, slow, ending after its output or once a hold
-    writing it is let go; one failing, printing nothing, missing, printing what isn't text or
-    past 64 KiB is none; one hanging, lingering or printing for good runs over within its
-    patience, killed with what it started
+    writing it is let go; one failing, printing nothing, printing what isn't text or past 64
+    KiB is none, as is one held for writing all its patience; one missing is none at once; one
+    hanging, lingering or printing for good runs over within its patience, killed with what it
+    started
   '';
   sign-in-program-passes-clippy = ''
     clippy finds nothing in sign-in-program, which runs a reader's sign-in, or its tests
@@ -6451,7 +6457,9 @@
   '';
   tuple-completes-in-zsh = ''
     Tab in zsh offers tuple's commands and subcommands, through Tuple's own completion and the real
-    tuple, among them every command core runs against it and the flags its followers pass
+    tuple, among them every command core runs against it and the flags its followers pass, in a
+    folder of its own whose daemon alone it stops; its editors' script refuses to run with a
+    runtime or data folder outside that folder
   '';
   tuple-ends-its-flags = ''
     The real tuple takes a name that starts with a dash after "--" as a name, never a flag, for each
@@ -6459,7 +6467,9 @@
     unfavorite; and its script, which stops Tuple's daemon, refuses before reaching tuple from a
     person's shell in their home or a checkout, the repository's dev shell, a bare environment and
     a home holding its own runtime and data folders, and from the build with any one of its four
-    signs moved, while run as the build is it reaches tuple
+    signs moved or unset, its build folder set above or below the one it's in with a dev shell's
+    sign or without, or a runtime or data folder whose name only begins with the build folder's,
+    while run as the build is it reaches tuple
   '';
   tuple-keeps-its-logs = ''
     Tuple's service keeps the daemon's last three logs, newest first, before it starts, and an empty
@@ -6487,7 +6497,11 @@
     Started line from health is refused, each refusal proven first on a table of settings
   '';
   tuple-shares-through-the-portal = ''
-    Tuple reads the portal setting where the switch writes it
+    Tuple reads the portal setting where the switch writes it, and the script refuses an empty data
+    folder to find; first, the folder of its own that the checks running the real tuple share
+    sends tuple's stop only to its own home, runtime and data folders, the runtime folder made
+    first, ends before any tuple runs when it can't be made, keeps a script's status, and is
+    removed as a script ends but for a stop cut off, which keeps it and says how to stop it
   '';
   tuple-takes-no-real-time-priority = ''
     Tuple's daemon may take no real-time priority, and goes first by a nice below 0 and a CPU weight
