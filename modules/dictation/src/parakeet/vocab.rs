@@ -88,10 +88,14 @@ impl Vocab {
 }
 
 /// Whether a piece is English text: no special token such as `<unk>` or
-/// `<|nospeech|>`, and nothing outside ASCII but the mark of a word's start.
+/// `<|nospeech|>`, and nothing outside ASCII but the mark of a word's start,
+/// nor a control such as a newline, which would break a transcript's line.
 fn english(piece: &str) -> bool {
     let special = piece.len() > 2 && piece.starts_with('<') && piece.ends_with('>');
-    !special && piece.chars().all(|c| c == SPACE || c.is_ascii())
+    !special
+        && piece
+            .chars()
+            .all(|c| c == SPACE || (c.is_ascii() && !c.is_ascii_control()))
 }
 
 #[cfg(test)]
