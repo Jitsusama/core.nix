@@ -2622,6 +2622,20 @@ ShellRoot {
         Sessions.forgetAsk(unansweredNamed);
         expect("a window no press waited on, its kitty quiet, tells nobody as it comes",
             walkCame === "  x0", walkCame);
+        // A kitty started under another pid ends that hold, telling nobody,
+        // as no press was told it may yet come.
+        Sessions.viewWith(unansweredRow.attach, unansweredNamed, null, "walked");
+        Sessions.untaken(unansweredNamed, String(Date.now()), "unanswered");
+        kittyPidFile.setText("8181\n");
+        untell();
+        Sessions.kittyStarted();
+        const walkHeld = unansweredNamed in Sessions.stillSaid;
+        const walkLost = `${heard()} ${walkHeld}`;
+        Sessions.forgetAsk(unansweredNamed);
+        kittyPidFile.setText("4242\n");
+        Sessions.readKittyPid();
+        expect("a hold no press made ends as another kitty starts, telling nobody",
+            walkLost === "  x0 false", walkLost);
         // Held only for the kitty that didn't answer: one whose pid the file
         // says now, its word it started not yet heard, is asked afresh, as
         // is any where no kitty's pid was known at the give-up.
@@ -2641,7 +2655,9 @@ ShellRoot {
         // it: comingPatience ends it.
         kittyPidFile.setText("7878\n");
         untell();
-        Sessions.kittyStarted?.();
+        // Called plainly, so a kittyStarted gone fails here rather than
+        // passing as one that changed nothing.
+        Sessions.kittyStarted();
         const unknownStill = unansweredNamed in Sessions.stillSaid;
         const unknownKept = `${heard()} ${unknownStill}`;
         const unknownFrom = Niri.spawns.length;
@@ -2820,9 +2836,14 @@ ShellRoot {
         Sessions.forgetAsk(unansweredRefused);
         const lapsedAt = refusedLateFor(129);
         Sessions.untaken(unansweredRefused, lapsedAt, "unanswered");
+        // Both the refusal and any hold it keeps are the give-up's time.
         const keptAtOf = past => {
             Sessions.refusalKeptAt = Object.assign({}, Sessions.refusalKeptAt,
                 { [unansweredRefused]: Date.now() - past });
+            if (unansweredRefused in Sessions.stillSaid)
+                Sessions.stillSaid = Object.assign({}, Sessions.stillSaid, { [unansweredRefused]:
+                    Object.assign({}, Sessions.stillSaid[unansweredRefused],
+                        { at: Date.now() - past }) });
         };
         keptAtOf(Sessions.answerPatience - 1000);
         const keptLapsing = Sessions.refusedOwn(unansweredRefused);
@@ -2839,6 +2860,22 @@ ShellRoot {
             !(unansweredRefused in Sessions.refusalKeptAt),
             JSON.stringify(Sessions.refusalKeptAt));
         Niri.windows = unforged;
+        // A refusal kept as the kitty didn't answer, no press told of it,
+        // holds a press as well once its stray closes: asked again, the
+        // kitty could draw both windows once it catches up.
+        const refusedRow = { address: "REFUSEDLATE",
+            presence: { hosted: true, session: "s-unanswered-refused" },
+            attach: view.slice(0, -1).concat(["s-unanswered-refused"]), here: true };
+        const strayAt = refusedLateFor(134);
+        Sessions.untaken(unansweredRefused, strayAt, "unanswered");
+        Niri.windows = unforged;
+        const strayFrom = Niri.spawns.length;
+        untell();
+        Sessions.goTo(refusedRow);
+        const pressedAfterStray = `${heard()} ${spawnsOf(unansweredRefused, strayFrom)}`;
+        Sessions.forgetAsk(unansweredRefused);
+        expect("a refusal no press was told of holds a press once its stray closes",
+            pressedAfterStray === "REFUSEDLATE stillComing x1 0", pressedAfterStray);
         // A kitty down as its kept viewer is asked, its pid written but
         // not yet listening when the script gave up on the socket, was never
         // asked: the place is kept under the pid before, so that kitty is
