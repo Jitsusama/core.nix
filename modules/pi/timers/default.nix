@@ -204,10 +204,16 @@ in
         # mostly git's status of tree after tree, and was the disk's
         # largest reader while agents' and Joel's apps waited on it.
         # Capped at 40 MB/s, the 34 GB it read takes 15 minutes, within
-        # its two hours. The state folder names the disk the trees are on,
-        # under it as %S, which systemd finds itself.
+        # its two hours. The trees are linked worktrees: their files are
+        # under the state folder, %S, as the lock is, while the packs, refs
+        # and index git reads most are in their repositories, under the
+        # home folder, %h. Each names its disk, which systemd finds itself,
+        # so the cap holds on both however a machine splits them.
         IOWeight = 1;
-        IOReadBandwidthMax = "${config.xdg.stateHome} 40M";
+        IOReadBandwidthMax = [
+          "%h 40M"
+          "%S 40M"
+        ];
         ExecStart = "${lib.getExe pkgs.nodejs} --disable-warning=MODULE_TYPELESS_PACKAGE_JSON ${sweepScript}";
         # Where agents' own commands run, beneath everything Joel uses, and
         # a place the polkit rules and the TPM agent's gate both take as an
