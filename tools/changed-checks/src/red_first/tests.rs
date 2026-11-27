@@ -23,6 +23,8 @@ fn a_test_is_told_by_its_folder_or_its_name_alone() {
         "modules/contests/src/main.rs",
         "flake.nix",
         "check-descriptions.nix",
+        "tests/lib/vm_helpers.py",
+        "checks.nix",
     ] {
         assert!(!is_test(code), "{code} was told as a test");
     }
@@ -39,6 +41,9 @@ fn a_change_lays_its_added_and_edited_tests_over_the_base_and_no_other() {
                 D\tmodules/z/old.rs\n\
                 R100\tmodules/q/tests/a.qml\tmodules/q/tests/b.qml\n\
                 R087\tmodules/q/One.qml\tmodules/q/Two.qml\n\
+                R062\tmodules/q/tests/c.qml\tmodules/q/tests/d.qml\n\
+                M\tmodules/e/src/far/tests.rs\n\
+                A\tmodules/e/src/far/tests/leaking.rs\n\
                 T\tmodules/y/tests/link.sh\n";
 
     assert_eq!(
@@ -48,7 +53,10 @@ fn a_change_lays_its_added_and_edited_tests_over_the_base_and_no_other() {
                 "tools/x/tests/new.rs".to_owned(),
                 "modules/y/src/lib_tests.rs".to_owned(),
                 "modules/y/tests/new/cases.rs".to_owned(),
+                "modules/q/tests/d.qml".to_owned(),
+                "modules/e/src/far/tests.rs".to_owned(),
                 "modules/y/tests/link.sh".to_owned(),
+                "modules/e/src/far/tests/leaking.rs".to_owned(),
             ],
             moved: vec![(
                 "modules/q/tests/a.qml".to_owned(),
@@ -62,8 +70,9 @@ fn a_change_lays_its_added_and_edited_tests_over_the_base_and_no_other() {
                 "modules/q/Two.qml".to_owned(),
             ],
         },
-        "a removed test was laid over the base, a moved one or one only new code declares \
-         wasn't said apart, or code was taken for a test"
+        "a removed test was laid over the base, one moved whole or one only new code declares \
+         wasn't said apart, one moved with lines or declared by a laid test wasn't laid, or \
+         code was taken for a test"
     );
 }
 

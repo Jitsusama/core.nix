@@ -619,7 +619,7 @@ fn compare(
     }
     let asked = options.build.then(|| comparison.to_build(options.vm));
     let at = red_first::At { root, base, system };
-    let red = red_first::judged(&at, asked, commit.is_some(), (&before, &after), noted)?;
+    let red = red_first::judged(&at, asked, commit.is_some(), (&before, &after), noted);
     Ok(if red {
         Compared::Passed
     } else {

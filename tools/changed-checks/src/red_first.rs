@@ -11,26 +11,31 @@
 //! Tests are told from code by their paths alone ([`is_test`]): a file in
 //! a `tests`, `test` or `checks` folder, a `checks.nix`, or one whose name
 //! starts `test_` or ends `_test`, `-test`, `.test` or `tests` before its
-//! extension. The
-//! change's added and edited test files are laid over the base's tree as a
+//! extension. The root's `tests/lib` folder and `checks.nix` are the
+//! harness every test runs in, with no test written in them, so they're
+//! code to red first. The change's added and edited test files are laid over the base's tree as a
 //! commit of their own, never checked out, and each check the gate built
 //! is evaluated there. Which checks those tests reach follows from the
 //! derivations, with no list of which test is whose:
 //!
 //! - one whose derivation over the base is the base's reads none of them;
 //! - one whose derivation over the base is the tree's reads none of the
-//!   change's code, so its tests can't fail without it; it's built there
-//!   as the rest are, which the store answers at once;
-//! - one that isn't there over the base, or doesn't evaluate there, can't
-//!   pass there, and is said;
-//! - a lint, named `-passes-clippy` or `-passes-qmllint` as core's are,
-//!   reads its folder's tests with its code but runs none of them, so it
-//!   passes over the base by design, and it's said, not built there;
+//!   change's code, so it passes there whatever its tests say, as a scan
+//!   counting every VM test's subtests does, and it's said, not built;
+//! - one that doesn't evaluate there fails there, as it should, which
+//!   proves the tests;
+//! - one that isn't there over the base can't be asked there, so it's
+//!   said, and since it might be the one running them, nothing is refused;
+//! - a lint, named `-passes-clippy`, `-passes-qmllint` or
+//!   `-compiles-for-macos` as core's are, reads its folder's tests with
+//!   its code but runs none of them, so it passes over the base by design,
+//!   and it's said, not built there;
 //! - one whose derivation moves too with a file nothing names at the root
 //!   reads the whole tree, as a formatter or a scan of every file does, so
 //!   no file of the change is its test, and it's said, not refused;
-//! - each other is built over the base, until one a builder fails, red as
-//!   the change's tests should be. A check may carry tests without running
+//! - each other is built over the base, the example systems and VM tests
+//!   last, until one a builder fails, red as the change's tests should
+//!   be. A check may carry tests without running
 //!   them, as a system holding a package whose source holds its tests
 //!   does, and passes there by design, so one red proves the change and
 //!   the rest go unbuilt. The change is refused when every one passes.
@@ -39,13 +44,18 @@
 //!   nothing. Nix's log of these builds is kept out of the run's, where
 //!   merge-net would read a failed build as the change's.
 //!
-//! A change of tests alone is said and not built, a moved test file is
-//! said and not laid over the base, a test file the change only takes
-//! lines from isn't laid there, nor is a new Rust test file among a
-//! crate's sources, which only the change's code declares, and tests
-//! added inside a code file, which no path tells apart, are said. A
-//! candidate of merge-net's train, all merges of changes judged at their
-//! own heads, isn't judged again.
+//! A change of tests alone is said and not built, a test file moved
+//! whole is said and not laid over the base, a test file the change only
+//! takes lines from isn't laid there, nor is a new Rust test file among a
+//! crate's sources that only the change's code declares (one a laid test
+//! file declares is laid with it), and tests added inside a code file,
+//! which no path tells apart, are said. A candidate of merge-net's train,
+//! all merges of changes judged at their own heads, isn't judged again.
+//! Red first judges on Linux alone: a Mac's checks that a change's tests
+//! reach often only evaluate a system, while the check running them may
+//! be Linux's alone, so a Mac's run would refuse what Linux's proved.
+//! When red first can't judge at all, as when nix can't evaluate the
+//! laid tests or git can't lay them, the run says so and refuses nothing.
 //!
 //! A test that pins behaviour that was already right passes on the base
 //! by design: a commit of the change saying `Red-first: none, <why>`
@@ -55,9 +65,10 @@
 
 use std::collections::BTreeSet;
 use std::fs;
-use std::io::Write;
-use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::path::Path;
+use std::process::Stdio;
+
+use laying::{git, laid_over};
 
 use crate::building;
 use crate::checks::Derivations;
@@ -70,7 +81,7 @@ const TRAILER: &str = "Red-first";
 
 /// How a lint's name ends: it reads a folder's tests with its code and runs
 /// none of them, so it can't fail for a test's sake.
-const LINTS: [&str; 2] = ["-passes-clippy", "-passes-qmllint"];
+const LINTS: [&str; 3] = ["-passes-clippy", "-passes-qmllint", "-compiles-for-macos"];
 
 /// What an added line holds where it adds a test inside a code file.
 const INLINE: [&str; 4] = ["#[test]", "#[cfg(test)]", "#[tokio::test]", "def test_"];
@@ -85,6 +96,9 @@ pub struct At<'a> {
 
 /// Whether a path is a test's, by the path alone.
 pub fn is_test(path: &str) -> bool {
+    if path.starts_with("tests/lib/") || path == "checks.nix" {
+        return false;
+    }
     let (folders, file) = path.rsplit_once('/').unwrap_or(("", path));
     if folders
         .split('/')
@@ -112,6 +126,20 @@ fn declared_by_code(path: &str) -> bool {
         && folders.split('/').any(|folder| folder == "src")
 }
 
+/// The files that could declare the Rust module file at `path`: its
+/// parent module's, beside its folder or in it, or its crate's root.
+fn declarers(path: &str) -> Vec<String> {
+    let Some((folder, _)) = path.rsplit_once('/') else {
+        return Vec::new();
+    };
+    let mut found = vec![format!("{folder}.rs"), format!("{folder}/mod.rs")];
+    if folder == "src" || folder.ends_with("/src") {
+        found.extend([format!("{folder}/lib.rs"), format!("{folder}/main.rs")]);
+    }
+    found.retain(|declarer| declarer != path);
+    found
+}
+
 /// The files a change touched, by what they are.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Change {
@@ -135,9 +163,15 @@ impl Change {
             let (Some(status), Some(path)) = (fields.next(), fields.next()) else {
                 continue;
             };
+            // Only a file moved whole passed on the base as it is; one
+            // moved with lines of its own is as a test edited.
+            let whole = status.get(1..) == Some("100");
             match (status.chars().next(), fields.next()) {
-                (Some('R' | 'C'), Some(to)) if is_test(path) && is_test(to) => {
+                (Some('R' | 'C'), Some(to)) if is_test(path) && is_test(to) && whole => {
                     change.moved.push((path.to_owned(), to.to_owned()));
+                }
+                (Some('R' | 'C'), Some(to)) if is_test(path) && is_test(to) => {
+                    change.tests.push(to.to_owned());
                 }
                 (Some('R' | 'C'), Some(to)) => {
                     change.code.extend([path.to_owned(), to.to_owned()]);
@@ -151,6 +185,18 @@ impl Change {
                 _ => change.code.push(path.to_owned()),
             }
         }
+        // A new file a laid test file declares is laid with it, or the
+        // laid one names a module the base lacks, and fails to build
+        // there whatever its tests say.
+        let (laid, declared): (Vec<String>, Vec<String>) = std::mem::take(&mut change.declared)
+            .into_iter()
+            .partition(|file| {
+                declarers(file)
+                    .iter()
+                    .any(|declarer| change.tests.contains(declarer))
+            });
+        change.tests.extend(laid);
+        change.declared = declared;
         change
     }
 }
@@ -283,8 +329,26 @@ pub fn over(name: &str, before: &Derivations, after: &Derivations, laid: &Deriva
 /// tests laid over the base's code, saying what it found; false when
 /// each built there passes, as it would without the change. A run that builds
 /// nothing asks nothing, and a change not yet `committed` has no commit
-/// to take its tests from, so is said and passes.
+/// to take its tests from, so is said and passes. Red first failing for
+/// its own reasons is said and refuses nothing: its checks have passed.
 pub fn judged(
+    at: &At,
+    asked: Option<Vec<&str>>,
+    committed: bool,
+    (before, after): (&Derivations, &Derivations),
+    noted: &mut Run,
+) -> bool {
+    judging(at, asked, committed, (before, after), noted).unwrap_or_else(|why| {
+        eprintln!(
+            "changed-checks: red first couldn't judge the change ({why}), so its tests \
+             aren't asked to fail on the base"
+        );
+        true
+    })
+}
+
+/// Whether the change's tests fail on the base, as `judged` says.
+fn judging(
     at: &At,
     asked: Option<Vec<&str>>,
     committed: bool,
@@ -299,6 +363,14 @@ pub fn judged(
         eprintln!(
             "changed-checks: the change's tests are asked to fail on the base once it's \
              committed"
+        );
+        return Ok(true);
+    }
+    if !at.system.ends_with("-linux") {
+        eprintln!(
+            "changed-checks: the change's tests are asked to fail on the base on Linux, where \
+             its checks run them, not on {}",
+            at.system
         );
         return Ok(true);
     }
@@ -390,44 +462,77 @@ fn over_the_base(
 ) -> Result<bool, String> {
     let laid = laid_over(at, tests, &[], "the change's tests over its base")?;
     let flake = format!("git+file://{}?rev={laid}", at.root);
-    // A test that reads what the change adds can't even be evaluated over
-    // the base, as a checks file naming a new package can't, so it fails
-    // there as it should.
-    let on_base = match evaluated_as(&flake, at.system, built, noted) {
-        Ok(on_base) => on_base,
-        Err(why) => {
-            eprintln!(
-                "changed-checks: the change's tests don't evaluate laid over the base ({why}), \
-                 so {} fail there, as they should",
-                built.join(", ")
-            );
-            return Ok(true);
-        }
-    };
+    // A test reading what the change adds stops nix's whole evaluation
+    // over the base, as a checks file naming a new package does, and so
+    // does nix failing for its own reasons, which no exit tells apart; so
+    // it's said, and refuses nothing.
+    let on_base = evaluated_as(&flake, at.system, built, noted).map_err(|why| {
+        format!(
+            "the checks don't evaluate with its tests laid over the base, as when a test reads \
+             what the change adds: {why}"
+        )
+    })?;
     let mut moved = Vec::new();
+    let mut only_tests = Vec::new();
+    let mut undefined = false;
     for name in built {
         match over(name, before, after, &on_base) {
+            Over::Moved => moved.push(name.clone()),
             // One reading none of the change's code is the very build that
-            // just passed at the head, so it's built over the base too,
-            // costing nothing where the store still holds it.
-            Over::Moved | Over::OnlyTests => moved.push(name.clone()),
-            Over::Undefined => eprintln!(
-                "changed-checks: {name} isn't a check over the base, so its tests aren't run there"
-            ),
-            Over::Unevaluated => eprintln!(
-                "changed-checks: {name} doesn't evaluate with the change's tests laid over the \
-                 base, so it fails there, as it should"
-            ),
+            // just passed at the head, so its passing says nothing.
+            Over::OnlyTests => only_tests.push(name.as_str()),
+            Over::Undefined => {
+                eprintln!(
+                    "changed-checks: {name} isn't a check over the base, so it can't be asked \
+                     to fail there, and the change isn't refused"
+                );
+                undefined = true;
+            }
+            Over::Unevaluated => {
+                eprintln!(
+                    "changed-checks: {name} doesn't evaluate with the change's tests laid over \
+                     the base, so it fails there, as it should"
+                );
+                return Ok(true);
+            }
             Over::Unreached => {}
         }
     }
-    let moved = by_their_files(at, tests, &on_base, moved, noted)?;
+    if !only_tests.is_empty() {
+        eprintln!(
+            "changed-checks: {} read the change's tests but none of its code, so they pass on \
+             the base whatever the tests say, and aren't asked to fail there",
+            only_tests.join(", ")
+        );
+    }
+    if moved.is_empty() && only_tests.is_empty() && !undefined {
+        eprintln!(
+            "changed-checks: no check built reads the change's tests ({}), so none is asked \
+             to fail on the base",
+            tests.join(", ")
+        );
+    }
+    // One not there over the base might have been the check running them.
+    if undefined {
+        return Ok(true);
+    }
+    let mut moved = by_their_files(at, tests, &on_base, moved, noted)?;
+    // The systems carrying a package, and the VM tests, cost most to build,
+    // and a system only carrying the tests passes there by design, so the
+    // checks that run tests go first.
+    moved.sort_by_key(|name| name.starts_with("example-") || name.starts_with("vm-"));
     // A check that only carries the tests, as a system holding a package
     // whose source holds them does, passes over the base by design, so
     // one failing there proves them, and the rest needn't be built.
     let mut passing = Vec::new();
     let mut unbuilt = false;
-    for name in &moved {
+    for (done, name) in moved.iter().enumerate() {
+        // A build's log is held back, so the run says what it waits on.
+        eprintln!(
+            "changed-checks: building {name} over the base ({} of {})",
+            done + 1,
+            moved.len()
+        );
         match built_over(&flake, at.system, name, &on_base)? {
             Built::Red => {
                 eprintln!(
@@ -467,7 +572,8 @@ fn built_over(
     let ended = built(ran.status.success(), &log);
     if ended == Built::Unbuilt {
         let folder = crate::cache().join("changed-checks");
-        let kept = folder.join(format!("red-first-{name}.log"));
+        // Runs judging the same check at once each keep their own.
+        let kept = folder.join(format!("red-first-{}-{name}.log", std::process::id()));
         let _ = fs::create_dir_all(&folder).and_then(|()| fs::write(&kept, &*log));
         eprintln!(
             "changed-checks: {name} couldn't be built over the base, though no builder failed \
@@ -595,105 +701,7 @@ fn evaluated_as(
     Ok(found)
 }
 
-/// A commit holding the base's tree with HEAD's `files` laid over it, and
-/// an empty file at each of `empty`, made with git's plumbing alone, so
-/// nothing is checked out, no ref moves and nothing is signed. It takes
-/// the base's author and committer, so it differs from the base only in
-/// its files and its revision.
-fn laid_over(at: &At, files: &[String], empty: &[String], message: &str) -> Result<String, String> {
-    let index = Index::new()?;
-    let indexed = [("GIT_INDEX_FILE", index.0.as_os_str())];
-    git(at.root, &["read-tree", at.base], None, &indexed)?;
-    let mut listing = Vec::new();
-    if !files.is_empty() {
-        let mut asked = vec!["ls-tree", "-z", "HEAD", "--"];
-        asked.extend(files.iter().map(String::as_str));
-        listing.extend(git(at.root, &asked, None, &[])?.into_bytes());
-        if !listing.ends_with(b"\0") {
-            listing.push(0);
-        }
-    }
-    if !empty.is_empty() {
-        let blob = git(at.root, &["hash-object", "-w", "--stdin"], Some(b""), &[])?;
-        for path in empty {
-            listing.extend(format!("100644 blob {blob}\t{path}\0").into_bytes());
-        }
-    }
-    let info = ["update-index", "-z", "--index-info"];
-    git(at.root, &info, Some(&listing), &indexed)?;
-    let tree = git(at.root, &["write-tree"], None, &indexed)?;
-    let base = git(at.root, &["cat-file", "commit", at.base], None, &[])?;
-    let people: String = base
-        .lines()
-        .filter(|line| line.starts_with("author ") || line.starts_with("committer "))
-        .flat_map(|line| [line, "\n"])
-        .collect();
-    let commit = format!(
-        "tree {tree}\nparent {}\n{people}\nchanged-checks: {message}\n",
-        at.base
-    );
-    let asked = ["hash-object", "-t", "commit", "-w", "--stdin"];
-    git(at.root, &asked, Some(commit.as_bytes()), &[])
-}
-
-/// An index of the run's own, gone once dropped.
-struct Index(PathBuf);
-
-impl Index {
-    fn new() -> Result<Self, String> {
-        let folder = crate::cache().join("changed-checks");
-        fs::create_dir_all(&folder)
-            .map_err(|error| format!("making {}: {error}", folder.display()))?;
-        let path = folder.join(format!("red-first-{}.index", std::process::id()));
-        let _ = fs::remove_file(&path);
-        Ok(Self(path))
-    }
-}
-
-impl Drop for Index {
-    fn drop(&mut self) {
-        let _ = fs::remove_file(&self.0);
-    }
-}
-
-/// Run git in the repository at `root`, given `input` and these variables,
-/// and give what it printed, trimmed of its last line's end.
-fn git(
-    root: &str,
-    arguments: &[&str],
-    input: Option<&[u8]>,
-    told: &[(&str, &std::ffi::OsStr)],
-) -> Result<String, String> {
-    let failed = |error: std::io::Error| format!("running git: {error}");
-    let mut child = Command::new("git")
-        .arg("-C")
-        .arg(Path::new(root))
-        .args(arguments)
-        .envs(told.iter().copied())
-        .stdin(if input.is_some() {
-            Stdio::piped()
-        } else {
-            Stdio::null()
-        })
-        .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
-        .spawn()
-        .map_err(failed)?;
-    if let (Some(input), Some(mut stdin)) = (input, child.stdin.take()) {
-        stdin.write_all(input).map_err(failed)?;
-    }
-    let ran = child.wait_with_output().map_err(failed)?;
-    if !ran.status.success() {
-        return Err(format!(
-            "git {} failed: {}",
-            arguments.join(" "),
-            ran.status
-        ));
-    }
-    let said = String::from_utf8(ran.stdout)
-        .map_err(|_| format!("git {} printed what isn't text", arguments.join(" ")))?;
-    Ok(said.trim_end_matches('\n').to_owned())
-}
+mod laying;
 
 #[cfg(test)]
 mod tests;
