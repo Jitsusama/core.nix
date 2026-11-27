@@ -61,14 +61,27 @@ bool expect(const char *what, bool holds, double ago) {
 // How long the thread spins, by the monotonic clock, for each reading.
 constexpr double SPUN_MS = 200;
 
+// How much more the thread's clocks say after a spin than before it, and
+// how long the spin took by the monotonic clock, which is past SPUN_MS
+// when the thread is held off as it ends.
+struct Spin {
+    double ran;
+    double waited;
+    double took;
+};
+
 // Keeps the calling thread busy for SPUN_MS, and gives how much more
-// `read` says after than before.
-double spun(const KeyTimes &times, double (KeyTimes::*read)() const) {
-    const double before = (times.*read)();
-    const double until = monotonicNow() + SPUN_MS;
+// each of its clocks says after than before.
+Spin spun(const KeyTimes &times) {
+    const double ranBefore = times.ran();
+    const double waitedBefore = times.waited();
+    const double began = monotonicNow();
+    const double until = began + SPUN_MS;
     while (monotonicNow() < until) {
     }
-    return (times.*read)() - before;
+    const double ran = times.ran() - ranBefore;
+    const double waited = times.waited() - waitedBefore;
+    return {ran, waited, monotonicNow() - began};
 }
 
 // Holds a thread to one CPU, so two held to it take turns.
@@ -85,28 +98,37 @@ bool expectMs(const char *what, bool holds, double ms) {
     return holds;
 }
 
-// What the thread's clocks say while it spins alone, then beside another
-// thread spinning on its CPU, which the scheduler takes turns with: alone
-// it runs nearly all the time, and beside the other it waits about half.
+// What the thread's clocks say while it spins, then beside another thread
+// spinning on its CPU, which the scheduler takes turns with. A spinning
+// thread is only running or waiting for its CPU, so the two together
+// cover most of the spin, and never more than it took. How they share it
+// isn't held: on a builder other builds run on the same CPU, and a spin
+// held to it by itself ran 78 ms of 200 there. Only most, since time a
+// virtual machine's host takes is neither. Beside the other it waits
+// about half of what it's given, whatever else the CPU carries, so an
+// eighth of the spin leaves room for what a host or other builds take.
 bool threadTimed(const KeyTimes &times) {
     const int cpu = sched_getcpu();
     holdTo(pthread_self(), cpu);
-    const double ranAlone = spun(times, &KeyTimes::ran);
+    const Spin alone = spun(times);
+    const double covered = alone.ran + alone.waited;
     std::atomic<bool> going{true};
     std::thread other([&going] {
         while (going.load(std::memory_order_relaxed)) {
         }
     });
     holdTo(other.native_handle(), cpu);
-    const double waitedBeside = spun(times, &KeyTimes::waited);
+    const Spin beside = spun(times);
     going = false;
     other.join();
-    const bool ran = expectMs("a thread spinning alone is said to have run most of it",
-                              ranAlone > SPUN_MS / 2 && ranAlone <= SPUN_MS + SLACK_MS, ranAlone);
+    const bool ran = expectMs("a thread spinning is said to have run", alone.ran > 0, alone.ran);
+    const bool whole = expectMs("a thread spinning is said to have run or waited most of it",
+                                covered > alone.took / 2 && covered <= alone.took + SLACK_MS,
+                                covered);
     const bool waited = expectMs("a thread taking turns with another is said to have waited",
-                                 waitedBeside > SPUN_MS / 4 && waitedBeside < SPUN_MS,
-                                 waitedBeside);
-    return ran && waited;
+                                 beside.waited > SPUN_MS / 8 && beside.waited < beside.took,
+                                 beside.waited);
+    return ran && whole && waited;
 }
 
 // How many fresh pages the thread touches, each a minor fault: a page
