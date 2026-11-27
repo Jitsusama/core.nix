@@ -291,17 +291,14 @@ fn a_tag_whose_object_is_missing_is_read_once_a_pack_brings_it() {
 
 #[test]
 fn a_tag_whose_object_wouldnt_read_leaves_the_others_settled() {
-    use std::os::unix::fs::PermissionsExt;
     let (commit, tag) = ([15; 20], [16; 20]);
     let (dir, loose, zlib) = tagged("one-unread", commit, tag);
     let hex = |oid: [u8; 20]| hash::Oid(oid).hex();
-    // v1's object is sound but closed to its reader, a fault that
-    // passes, so v1 is peeled again each answer; w0, after it by name,
-    // names the commit too.
-    let object = loose.join(&hex(tag)[2..]);
-    std::fs::write(&object, zlib).unwrap();
-    let opened = |mode| std::fs::set_permissions(&object, std::fs::Permissions::from_mode(mode));
-    opened(0o000).expect("the object closed");
+    // v1's object is sound, but this thread is held to too little memory
+    // to read it, a fault that passes, so v1 is peeled again each answer;
+    // w0, after it by name, names the commit too. A file closed to its
+    // reader would do the same for any user but root, who reads through.
+    std::fs::write(loose.join(&hex(tag)[2..]), zlib).unwrap();
     let w0 = dir.join(".git/refs/tags/w0");
     std::fs::write(&w0, format!("{}\n", hex(commit))).unwrap();
     crate::stamp::tests::ahead(3);
@@ -311,17 +308,18 @@ fn a_tag_whose_object_wouldnt_read_leaves_the_others_settled() {
             .ask(&dir, &options(&[]), false)
             .map(|answer| answer.tag)
     };
+    crate::odb::starve(Some(16));
     let first = tag_said();
     // w0 rewritten in place to name another commit, which moves no
     // stamp, so only tags read again for v1's sake would lose it.
     std::fs::write(&w0, format!("{}\n", hex([17; 20]))).unwrap();
     let second = tag_said();
-    // Opened again in place, which moves no stamp either: only a tag
+    // The memory given back, which moves no stamp either: only a tag
     // left unread is read again to find it.
-    opened(0o644).expect("the object opened");
-    let opened_again = tag_said();
+    crate::odb::starve(None);
+    let fed = tag_said();
     assert_eq!(
-        (first, second, opened_again),
+        (first, second, fed),
         (Some("w0".into()), Some("w0".into()), Some("v1".into())),
         "a tag whose object wouldn't read had every other tag read again, or was \
          settled as one that won't read till its file is written again"
