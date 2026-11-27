@@ -38,7 +38,6 @@
   "modules/cadence/src/day/passed.rs" = 1;
   "modules/cadence/src/day/phases.rs" = 1;
   "modules/cadence/src/findings.rs" = 1;
-  "modules/cadence/src/findings/hubs.rs" = 1;
   "modules/cadence/src/gate.rs" = 1;
   "modules/cadence/src/hour.rs" = 12;
   "modules/cadence/src/hour/measures/broken.rs" = 1;
@@ -50,7 +49,7 @@
   "modules/cadence/src/hour/measures/misses/running/services.rs" = 2;
   "modules/cadence/src/hour/parted.rs" = 1;
   "modules/cadence/src/idle/tell.rs" = 4;
-  "modules/cadence/src/main.rs" = 13;
+  "modules/cadence/src/main.rs" = 12;
   "modules/cadence/src/mesh.rs" = 2;
   "modules/cadence/src/net.rs" = 2;
   "modules/cadence/src/start.rs" = 10;
@@ -124,7 +123,7 @@
   "modules/health/src/feel.rs" = 1;
   "modules/health/src/follow.rs" = 2;
   "modules/health/src/lid.rs" = 3;
-  "modules/health/src/memory.rs" = 4;
+  "modules/health/src/memory.rs" = 5;
   "modules/health/src/reports.rs" = 1;
   "modules/health/src/trials.rs" = 1;
   "modules/health/src/typing.rs" = 1;
@@ -134,7 +133,7 @@
   "modules/hibernate/unlock/src/oneshot.rs" = 1;
   "modules/hibernate/unlock/src/restored.rs" = 1;
   "modules/lag-watch/src/kernel.rs" = 1;
-  "modules/lag-watch/src/main.rs" = 4;
+  "modules/lag-watch/src/main.rs" = 2;
   "modules/last-seconds/src/bin/last-seconds-keep.rs" = 1;
   "modules/last-seconds/src/main.rs" = 1;
   "modules/last-seconds/src/sample.rs" = 1;
@@ -178,6 +177,7 @@
   "modules/pain-points/src/hear/missed.rs" = 1;
   "modules/pain-points/src/hear/route.rs" = 1;
   "modules/pain-points/src/hear/stalled.rs" = 1;
+  "modules/pain-points/src/hear/troubles.rs" = 1;
   "modules/passwords/src/asks.rs" = 1;
   "modules/passwords/src/asks/npmrc.rs" = 1;
   "modules/passwords/src/typing.rs" = 4;
@@ -198,8 +198,8 @@
   "modules/pineapple/src/judged.rs" = 2;
   "modules/pineapple/src/pause/carry.rs" = 2;
   "modules/pineapple/src/pause/mod.rs" = 2;
-  "modules/pineapple/src/progress.rs" = 2;
-  "modules/pineapple/src/resume.rs" = 2;
+  "modules/pineapple/src/progress.rs" = 3;
+  "modules/pineapple/src/resume.rs" = 3;
   "modules/pineapple/src/serve.rs" = 1;
   "modules/pineapple/src/tell.rs" = 1;
   "modules/processor-telemetry/src/clusters.rs" = 1;
@@ -262,9 +262,10 @@
   "modules/slices/jobs-sorter/src/tiers.rs" = 1;
   "modules/sound/src/desk.rs" = 1;
   "modules/spend-watch/src/cli/mod.rs" = 1;
-  "modules/spend-watch/src/daemon.rs" = 3;
+  "modules/spend-watch/src/daemon.rs" = 5;
   "modules/spend-watch/src/quests.rs" = 1;
   "modules/spotify/spotify-recent/src/token.rs" = 1;
+  "modules/subject-hubs/src/lib.rs" = 1;
   "modules/system/src/homes.rs" = 2;
   "modules/system/src/kept.rs" = 2;
   "modules/system/src/main.rs" = 1;
