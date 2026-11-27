@@ -618,13 +618,15 @@ fn fixed_lately(ledger: &[Entry], key: &str, now: i64) -> bool {
 /// Whether `owner` was asked about a claim of his rule within the day
 /// before `now`, open or closed: each ask wakes it if it's parked, and
 /// one answer settles every claim it sent before, so it's asked at most
-/// once a day however many it made. An ask is filed [`RULED_DUE`] before
-/// its due, as the age close in [`file`] reads it too.
+/// once a day however many it made. When an ask was filed is when it was
+/// last sent, as the age close in [`file`] reads it too, rather than its
+/// due less [`RULED_DUE`], so a ledger saved under another due still reads
+/// right.
 fn asked_lately(ledger: &[Entry], owner: &str, now: i64) -> bool {
     let keyed = format!("hour:{}:{owner}:", ruled::KEY);
     ledger
         .iter()
-        .any(|e| e.key.starts_with(&keyed) && e.due - RULED_DUE > now - DAY)
+        .any(|e| e.key.starts_with(&keyed) && e.last_to > now - DAY)
 }
 
 /// Files the hour's drag in the loop's ledger as a must of kind `drag`,
@@ -650,7 +652,7 @@ pub fn file(
         .filter(|e| e.open && e.kind.as_deref() == Some("drag"))
         .filter(|e| match e.key.strip_prefix("hour:") {
             Some(key) if key.starts_with(QUEUE) => queues::answered(key, measures),
-            Some(key) if key.starts_with(ruled::KEY) && e.due - RULED_DUE + DAY <= now => true,
+            Some(key) if key.starts_with(ruled::KEY) && e.last_to + DAY <= now => true,
             _ => back_in(&e.key, measures),
         })
         .map(|e| e.key.clone())
@@ -1750,13 +1752,19 @@ mod tests {
     fn an_hour_asks_only_so_many_senders_the_oldest_first() {
         let mut claims = measure(ruled::KEY, Class::Cells, 8.0, Some(0.0));
         claims.behind = (0..8)
-            .map(|n| format!("[0000000{n}] Joel wants it. · SENDER{n}"))
+            .map(|n| format!("[0000000{n}] Joel wants it. · SENDER{}", 7 - n))
             .collect();
+        // Named against the claims' order, so asking by name rather than
+        // by age asks the wrong ones; sorted, since the order told isn't
+        // what's tested.
         let senders = |told: Vec<(String, String)>| -> Vec<String> {
-            told.into_iter()
+            let mut to: Vec<String> = told
+                .into_iter()
                 .filter(|(_, text)| text.contains("a rule or wish of Joel's"))
                 .map(|(to, _)| to)
-                .collect()
+                .collect();
+            to.sort();
+            to
         };
         let mut ledger = Vec::new();
         let first = file(
@@ -1767,7 +1775,7 @@ mod tests {
         );
         assert_eq!(
             senders(first),
-            (0..RULED_HOURLY)
+            (8 - RULED_HOURLY..8)
                 .map(|n| format!("SENDER{n}"))
                 .collect::<Vec<_>>(),
             "an hour asked more senders than its cap, or not the oldest claims' first"
@@ -1775,7 +1783,7 @@ mod tests {
         let next = file(&mut ledger, &[claims], "2026-11-26", 4600);
         assert_eq!(
             senders(next),
-            ["SENDER6", "SENDER7"],
+            ["SENDER0", "SENDER1"],
             "the senders past the first hour's cap weren't asked in the next"
         );
     }

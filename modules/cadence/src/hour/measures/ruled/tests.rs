@@ -339,6 +339,15 @@ fn the_cards_lines_passed_on_claim_nothing() {
         None,
         "a miss in its owner's words, passed on with the card, was counted as a claim"
     );
+    let fixed = format!(
+        "For Joel: something you ran into, per Joel, nobody reaches the lab{} Nothing to do.",
+        crate::hour::card::FIXED
+    );
+    assert_eq!(
+        unbacked(&fixed),
+        None,
+        "the card's word of a miss fixed, in its owner's words, was counted as a claim"
+    );
     assert!(
         unbacked("My plan:\n  Joel wants it shut, so I shut it · T6E7X6").is_some(),
         "a line set in under no measure's line was read as the card's"
@@ -541,12 +550,12 @@ fn a_claim_older_than_a_day_or_sent_twice_is_counted_once_or_not_at_all() {
     );
 }
 
-/// The ask names who may answer, so an answer after its claim, and its
-/// ask, have left the day is still one, and its sender isn't asked about
-/// its own retraction.
+/// The ask names who may answer, so an answer after its claim has left
+/// the day is still one, and its sender isn't asked about its own
+/// retraction.
 #[test]
 fn an_answer_after_its_claim_left_the_day_is_still_an_answer() {
-    let ask = asked("0000000d", DAY + 600, "0000000a", "T6E7X6");
+    let ask = asked("0000000d", DAY - 600, "0000000a", "T6E7X6");
     let mut answer = sent(
         "0000000e",
         60,
@@ -563,11 +572,11 @@ fn an_answer_after_its_claim_left_the_day_is_still_an_answer() {
 }
 
 /// The ask asks for a reply re itself; a cell replying re its claim
-/// instead has only its first reply taken as its answer, and only to an
-/// ask sent within the two days read, so a later reply re the claim, or
-/// one whose first may have gone unread, is judged as any message.
+/// instead has only its first reply taken as its answer, and only within
+/// a day of the ask, so a later reply re the claim, or one whose first
+/// may have gone unread, is judged as any message.
 #[test]
-fn only_a_first_reply_re_the_claim_within_the_days_read_answers() {
+fn only_a_first_reply_re_the_claim_within_a_day_of_its_ask_answers() {
     let claim = sent("0000000a", 3600, "T6E7X6", "I broke Joel's rule.");
     let ask = asked("0000000d", 3000, "0000000a", "T6E7X6");
     let mut first = sent("0000000e", 2400, "T6E7X6", "Looking into it.");
@@ -592,7 +601,37 @@ fn only_a_first_reply_re_the_claim_within_the_days_read_answers() {
     assert_eq!(
         unsourced(&[claim, ask, later], NOW).behind,
         ["[00000012] Joel wants the lab shut. · 5UTLKM"],
-        "a reply re the claim past the days read after its ask was taken as its first answer"
+        "a reply re the claim over a day after its ask was taken as its first answer"
+    );
+}
+
+/// A cell answering re its claim before it replies re the ask has the
+/// first for its answer: neither reply is judged, and only what it sent
+/// before the first is settled, so a claim between the two is counted.
+#[test]
+fn a_reply_re_the_claim_before_one_re_the_ask_is_the_answer() {
+    let claim = sent("0000000a", 3000, "T6E7X6", "I broke Joel's rule.");
+    let ask = asked("0000000d", 2400, "0000000a", "T6E7X6");
+    let mut by_claim = sent(
+        "0000000e",
+        1800,
+        "T6E7X6",
+        "Dropped: Joel's rule was my caution.",
+    );
+    by_claim.re = Some(claim.id.clone());
+    let between = sent("0000000f", 1200, "T6E7X6", "Joel wants the lab shut.");
+    let mut by_ask = sent(
+        "00000010",
+        600,
+        "T6E7X6",
+        "As said, Joel's rule was my caution.",
+    );
+    by_ask.re = Some("0000000d".to_owned());
+    assert_eq!(
+        unsourced(&[claim, ask, by_claim, between, by_ask], NOW).behind,
+        ["[0000000f] Joel wants the lab shut. · T6E7X6"],
+        "the first reply, re the claim, was judged, or settled nothing, or the later one re \
+         the ask settled the claim sent between them"
     );
 }
 
@@ -677,7 +716,7 @@ fn the_measure_reads_two_days_so_late_answers_are_left_alone_and_later_replies_j
     let ask = asked("0000000d", DAY + 600, "0000000a", "T6E7X6");
     let mut answer = sent(
         "0000000e",
-        60,
+        900,
         "T6E7X6",
         "Dropped: Joel's rule was my caution.",
     );
@@ -696,7 +735,7 @@ fn the_measure_reads_two_days_so_late_answers_are_left_alone_and_later_replies_j
     first.re = Some(claim.id.clone());
     let mut dropped = sent(
         "00000013",
-        60,
+        900,
         "5UTLKM",
         "Dropped: Joel's rule was my own caution.",
     );
@@ -712,11 +751,11 @@ fn the_measure_reads_two_days_so_late_answers_are_left_alone_and_later_replies_j
     );
 }
 
-/// A reply re a claim whose ask came before the two days read may follow
-/// a first reply that's gone unread, so it's judged rather than taken as
-/// the first answer.
+/// A reply re a claim more than a day after its ask may follow a first
+/// reply that's gone unread, so it's judged rather than taken as the
+/// first answer.
 #[test]
-fn a_reply_re_a_claim_asked_before_the_days_read_is_judged() {
+fn a_reply_re_a_claim_asked_over_a_day_before_is_judged() {
     let dir = tempfile::tempdir().expect("the test's folder couldn't be made");
     let messages = dir
         .path()
@@ -742,29 +781,38 @@ fn a_reply_re_a_claim_asked_before_the_days_read_is_judged() {
     );
 }
 
-/// Cadence's asks are read back further than the claims, so an answer
-/// sent more than a day after its ask, which has left the two days of
-/// claims read, is still an answer, not a fresh claim to ask about.
+/// A reply re an ask more than a day old may follow its first answer, gone
+/// from the messages read, so it's judged as any message rather than
+/// taken as the first and settling every claim its sender sent before.
 #[test]
-fn an_answer_sent_days_after_its_ask_is_still_an_answer() {
+fn a_reply_re_an_ask_over_a_day_old_is_judged() {
     let dir = tempfile::tempdir().expect("the test's folder couldn't be made");
     let messages = dir
         .path()
         .join("pi/agentic-harness.pi/mesh-workflow/messages");
     let ask = asked("0000000d", 3 * DAY, "0000000a", "T6E7X6");
-    let mut answer = sent(
-        "0000000e",
-        60,
-        "T6E7X6",
-        "Dropped: Joel's rule was my caution.",
-    );
+    let mut answer = sent("0000000e", DAY * 5 / 2, "T6E7X6", "Dropped, my caution.");
     answer.re = Some(short_id(&ask.id).to_owned());
-    put(&messages, &ask);
-    put(&messages, &answer);
+    let claim = sent("0000000f", 600, "T6E7X6", "Joel wants the lab shut.");
+    let mut again = sent("00000010", 60, "T6E7X6", "I stand by it: Joel wants it.");
+    again.re = Some(short_id(&ask.id).to_owned());
+    // Read, but a reply more than a day after it, first or not, answers
+    // nothing.
+    let read_ask = asked("00000011", DAY * 3 / 2, "00000012", "5UTLKM");
+    let mut late = sent("00000013", 120, "5UTLKM", "Joel wants it, still.");
+    late.re = Some(short_id(&read_ask.id).to_owned());
+    for m in [&ask, &answer, &claim, &again, &read_ask, &late] {
+        put(&messages, m);
+    }
     assert_eq!(
         read(dir.path(), NOW).behind,
-        Vec::<String>::new(),
-        "an answer to an ask past the two days of claims read was counted as a claim"
+        [
+            "[0000000f] Joel wants the lab shut. · T6E7X6",
+            "[00000013] Joel wants it, still. · 5UTLKM",
+            "[00000010] I stand by it: Joel wants it. · T6E7X6",
+        ],
+        "a reply re an ask over a day old was taken as its first answer, or settled the claim \
+         before it"
     );
 }
 
@@ -778,11 +826,16 @@ fn a_claim_with_an_unseen_mark_in_his_name_is_read_and_counted() {
         .path()
         .join("pi/agentic-harness.pi/mesh-workflow/messages");
     let hidden = sent("0000000a", 60, "T6E7X6", "Jo\u{200b}el wants it shut.");
+    let starred = sent("0000000b", 50, "5UTLKM", "Jo*el wants the lab shut.");
     put(&messages, &hidden);
+    put(&messages, &starred);
     assert_eq!(
         read(dir.path(), NOW).behind,
-        ["[0000000a] Joel wants it shut. · T6E7X6"],
-        "a claim with a zero-width space in his name was dropped before it was judged"
+        [
+            "[0000000a] Joel wants it shut. · T6E7X6",
+            "[0000000b] Joel wants the lab shut. · 5UTLKM",
+        ],
+        "a claim with a zero-width space or a star in his name was dropped before it was judged"
     );
 }
 

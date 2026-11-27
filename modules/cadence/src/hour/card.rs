@@ -27,6 +27,10 @@ const UNMOVED_FOR: u32 = 2;
 /// passing them on rather than saying them.
 pub(super) const WHY_MISSED: &str = "Why didn't our checks catch these?";
 
+/// What the card tells him of a miss that's fixed, after the miss: the
+/// claims measure reads a line of it passed on as the card's own.
+pub(super) const FIXED: &str = ", is fixed, and a check now catches it if it comes back.";
+
 /// What the hour remembers until the next: its drag, and the misses that
 /// were open, so one that closes is told once.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -255,11 +259,7 @@ fn tell_fixed(
             .get(what)
             .cloned()
             .unwrap_or_else(|| format!("something you ran into, {what}"));
-        let _ = writeln!(
-            card,
-            "For Joel: {thing}, is fixed, and a check now catches it if it comes back. \
-             Nothing to do."
-        );
+        let _ = writeln!(card, "For Joel: {thing}{FIXED} Nothing to do.");
     }
     told
 }

@@ -52,7 +52,7 @@ fn line(m: &Measure) -> String {
 /// five rounds are named whatever the median reads, each with what its
 /// rounds past five caught, as WCJQSG asked. The claims of his rule are
 /// one a message, not one a cell, so only each sender's oldest is named,
-/// the one it's asked about, and the rest counted.
+/// the one it's asked about in turn, and the rest counted.
 fn behind(m: &Measure) -> Vec<String> {
     if m.key == spent::KEY || m.key == SAID_NONE || m.key.starts_with(parked::KEY) {
         return m.behind.iter().map(|line| format!("  {line}")).collect();
@@ -69,7 +69,8 @@ fn behind(m: &Measure) -> Vec<String> {
         // Sorting is stable, so each owner's keep the order they were read in.
         lines.sort_by_key(|line| line.rsplit_once(" · ").map_or("", |(_, owner)| owner));
         if m.key == ruled::KEY {
-            // The ones each sender is asked about, as owing asks them.
+            // The ones each sender is asked about, as owing asks them in
+            // turn, so many senders an hour and each once a day.
             lines = ruled::asked_of_each(lines);
         }
         let rest = m.behind.len() - lines.len();

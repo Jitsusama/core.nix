@@ -32,18 +32,19 @@
 //!
 //! Cadence's own messages are left out, and so is the first reply to its
 //! ask from the cell asked, and its first reply re the claim after the
-//! ask, before any re the ask, to an ask within the two days the claims
-//! are read: the ask tells it to say the claim is dropped, and the words
+//! ask, before any re the ask, sent within [`ANSWERED_WITHIN`] of the
+//! ask: the ask tells it to say the claim is dropped, and the words
 //! it drops it in name the claim. The first of them answers, and takes
 //! off the count every claim its sender sent before it, whatever it says,
 //! so a cell is asked once about its day's backlog: cadence can't judge
 //! whether the words given are his, so the ask has the answer sent where
 //! the claim went, to be read by those it bound. Every later reply, re
 //! the ask or the claim, is judged as any message and settles nothing, so
-//! a thread of its own hides no fresh claim. A claim its sender replaces,
-//! as the mesh lets it, is off the count too. Its asks are
-//! read back over [`ASKS_READ`] days, so an answer sent long after is
-//! still one. A message whose id isn't well formed, or names another
+//! a thread of its own hides no fresh claim, and so is a reply sent
+//! later than that after the ask, re either, since its ask and every
+//! reply before it are then no longer sure to be among those read. A
+//! claim its sender replaces, as the mesh lets it, is off the count too.
+//! A message whose id isn't well formed, or names another
 //! sender, is read as no one's, since its asks would go astray.
 //!
 //! The mesh is a shared folder with nothing signed, so this counts the
@@ -180,10 +181,18 @@ const TO_HIM: [&str; 12] = [
 ];
 
 /// How far back, in seconds, the messages that may claim or answer are
-/// read: the day judged, and the day before it, for a reply re a claim
-/// asked late in its day. A reply re the claim answers only an ask sent
-/// within this, so the first such reply is always among those read.
-const CLAIMS_READ: i64 = 2 * DAY;
+/// read: the day judged, and [`ANSWERED_WITHIN`] before it, so every ask
+/// a reply in the day may answer, and every reply to it before, is read.
+const CLAIMS_READ: i64 = DAY + ANSWERED_WITHIN;
+
+/// How long after an ask, in seconds, a reply may answer it: a day, as
+/// the ask stays open. A reply in the day judged then answers only an ask
+/// within the messages read, so whether it's the first is known from
+/// them, and doesn't turn as the hours pass; a later one, re the ask or
+/// the claim, is judged as any message, so an ask whose answer has left
+/// the read opens no lasting way to clear what its sender sends. A cell
+/// asleep past it answers a fresh ask, if its answer reads as a claim.
+const ANSWERED_WITHIN: i64 = DAY;
 
 /// How many claims of his rule each sender is asked about at once, and
 /// the card names. A day of the mesh on 26 November held some 180
@@ -193,7 +202,9 @@ const EACH: usize = 1;
 
 /// The lines of `lines`, as the measure gives them, of the claims each
 /// sender is asked about: its first [`EACH`], in the order given. The card
-/// names these and the asks go for these, so the two never part.
+/// names these and the asks go for these, so the two never part, though
+/// the hour asks only so many senders, and each once a day, so a sender
+/// named may be asked in an hour to come.
 #[must_use]
 pub fn asked_of_each<'a>(lines: impl IntoIterator<Item = &'a String>) -> Vec<&'a String> {
     let mut asked: BTreeMap<&str, usize> = BTreeMap::new();
@@ -207,12 +218,6 @@ pub fn asked_of_each<'a>(lines: impl IntoIterator<Item = &'a String>) -> Vec<&'a
         })
         .collect()
 }
-
-/// How many days of cadence's own asks are read back, so an answer to
-/// one sent days late, as by a cell parked over a weekend, is still read
-/// as an answer rather than judged as a claim. Only cadence's own files
-/// are opened past the two days the claims are read over.
-const ASKS_READ: i64 = 8;
 
 /// The most characters of a claim the card and the ask give: words are
 /// capped too, but a sentence with no space in it, or with marks that
@@ -231,13 +236,12 @@ const TORN_NAMED: usize = 3;
 /// harness's own names are some forty long.
 const TORN_LONGEST: usize = 48;
 
-/// The measure, from the mesh's messages of the last two days under
-/// `state_home`'s harness folder, and cadence's asks of the last
-/// [`ASKS_READ`] days. Only the last day's messages are judged, but an
-/// answer sent late judged as a claim would ask its sender about its own
-/// answer, so the asks before are read too, and the day before the
-/// claims for a reply re one. Only cadence's asks, replies, and those
-/// naming him are kept, since nothing else can claim, ask or answer, and
+/// The measure, from the mesh's messages of the last [`CLAIMS_READ`]
+/// under `state_home`'s harness folder. Only the last day's messages are
+/// judged, but an answer judged as a claim would ask its sender about
+/// its own answer, so the asks and replies before are read too. Only
+/// cadence's asks, replies, and those naming him are kept, since nothing
+/// else can claim, ask or answer, and
 /// two days of the mesh held whole would weigh on the hour. With no
 /// messages folder there, or one that can't be listed or read, it's left
 /// unjudged, rather than reading the messages it missed as none unsourced
@@ -253,23 +257,19 @@ pub fn read(state_home: &Path, now: i64) -> Measure {
     }
     let ask = |m: &Message| m.from == CADENCE && about(&m.text).is_some();
     let used = |m: &Message| {
-        // Read as `plain` reads it, so a mark that draws as nothing set
-        // inside his name doesn't drop the claim before it's judged.
-        ask(m)
-            || m.re.is_some()
-            || m.supersedes.is_some()
-            || m.text.replace(unseen, "").to_lowercase().contains("joel")
+        // Every claim names him, and `plain` brings no letters together
+        // that marks kept apart: it takes marks out, sets marks in, or
+        // puts a quote by three dots. So a message's ASCII letters and
+        // digits alone hold his name whenever its plain words do, whatever
+        // marks are set inside it, as a zero-width space or a `*`, and no
+        // claim is dropped before it's judged.
+        let named = || {
+            let letters: String = m.text.chars().filter(char::is_ascii_alphanumeric).collect();
+            letters.to_ascii_lowercase().contains("joel")
+        };
+        ask(m) || m.re.is_some() || m.supersedes.is_some() || named()
     };
-    let two_days = (now - CLAIMS_READ) * 1000;
-    let read = mesh
-        .sent_as_named(two_days, (now + AHEAD) * 1000, used)
-        .and_then(|(mut sent, mut torn)| {
-            let before = (now - ASKS_READ * DAY) * 1000;
-            let (asks, torn_asks) = mesh.sent_by_as_named(CADENCE, before, two_days - 1, ask)?;
-            sent.extend(asks);
-            torn.extend(torn_asks);
-            Ok((sent, torn))
-        });
+    let read = mesh.sent_as_named((now - CLAIMS_READ) * 1000, (now + AHEAD) * 1000, used);
     match read {
         Ok((sent, torn)) if torn.is_empty() => unsourced(&sent, now),
         Ok((sent, torn)) => {
@@ -385,7 +385,7 @@ const ASKED: &str = "claims a rule or wish of Joel's";
 #[must_use]
 pub fn unsourced(sent: &[Message], now: i64) -> Measure {
     let sent: Vec<&Message> = sent.iter().filter(|m| well_named(m)).collect();
-    let Answers { replies, through } = answers(&sent, now);
+    let Answers { replies, through } = answers(&sent);
     let settled = |m: &Message| {
         through
             .get(m.from.as_str())
@@ -470,17 +470,16 @@ struct Answers<'a> {
 /// The answers in `sent` to an ask about a claim of his rule, by `now`.
 /// Only a claim this measure asked about has an answer: a reply, after
 /// the ask, from the cell it asked, re its ask or re the claim the ask
-/// names. The first reply re the ask is left unjudged, since it answers
-/// cadence and a cell dropping the claim names it; so is the first re the
-/// claim, when it comes before that, and only for an ask sent within the
-/// [`CLAIMS_READ`] read, so the first is always among the messages read.
-/// Each later reply, re either, is the cell's thread going on and is
-/// judged, so one ask never opens a lasting way to clear what it sends.
-/// The ask, not the claim, says who may answer, so an answer counts after
-/// its claim has left the day. A reply before the ask, one re a message
-/// never asked about, or one re any other of cadence's, is judged as any
-/// other.
-fn answers<'a>(sent: &[&'a Message], now: i64) -> Answers<'a> {
+/// names, within [`ANSWERED_WITHIN`] of the ask. The first reply re the
+/// ask is left unjudged, since it answers cadence and a cell dropping the
+/// claim names it; so is the first re the claim, when it comes before
+/// that. Each later reply, re either, is the cell's thread going on and
+/// is judged, so one ask never opens a lasting way to clear what it
+/// sends. The ask, not the claim, says who may answer, so an answer
+/// counts after its claim has left the day. A reply before the ask, or
+/// past its time, one re a message never asked about, or one re any
+/// other of cadence's, is judged as any other.
+fn answers<'a>(sent: &[&'a Message]) -> Answers<'a> {
     let asks: Vec<(&str, &str, &Message)> = sent
         .iter()
         .copied()
@@ -488,17 +487,16 @@ fn answers<'a>(sent: &[&'a Message], now: i64) -> Answers<'a> {
         .filter_map(|m| Some((short_id(&m.id), about(&m.text)?, m)))
         .collect();
     let claim_of: BTreeMap<&str, &str> = asks.iter().map(|&(ask, claim, _)| (ask, claim)).collect();
-    // A reply re the ask answers it however late; one re the claim only an
-    // ask sent within the messages read, since an earlier first reply
-    // before them would go unseen and leave a later one taken first.
-    let read_from = (now - CLAIMS_READ) * 1000;
-    let asked_before = |claim: &str, of: &str, at: Option<i64>, via_ask: bool| {
+    // A reply answers only an ask sent within its time before it, so the
+    // ask and every reply to it before are among the messages read, and
+    // an earlier first reply never goes unseen to leave a later one taken
+    // first.
+    let asked_before = |claim: &str, of: &str, at: i64| {
         asks.iter().any(|&(_, about, ask)| {
-            let sent = stamped_at(&ask.id);
             about == claim
                 && ask.to.iter().any(|to| to == &format!("@{of}"))
-                && sent < at
-                && (via_ask || sent.is_some_and(|sent| sent >= read_from))
+                && stamped_at(&ask.id)
+                    .is_some_and(|sent| sent < at && at - sent <= ANSWERED_WITHIN * 1000)
         })
     };
     let mut by_claim: BTreeMap<(&str, &str), (i64, &str)> = BTreeMap::new();
@@ -509,11 +507,10 @@ fn answers<'a>(sent: &[&'a Message], now: i64) -> Answers<'a> {
         };
         let via_ask = claim_of.get(re).copied();
         let claim = via_ask.unwrap_or(re);
-        let stamped = stamped_at(&m.id);
-        let Some(at) = stamped else {
+        let Some(at) = stamped_at(&m.id) else {
             continue;
         };
-        if !asked_before(claim, &m.from, stamped, via_ask.is_some()) {
+        if !asked_before(claim, &m.from, at) {
             continue;
         }
         let of = if via_ask.is_some() {
@@ -659,7 +656,12 @@ fn uncarded(text: &str) -> String {
             .strip_prefix("Drag: ")
             .is_some_and(|rest| rest.contains(" against at most "));
         let missed = line.starts_with(super::super::card::WHY_MISSED);
-        named || measured || drag || missed
+        // The card tells him a miss is fixed in its owner's words, which
+        // may claim his rule as the miss's own line did.
+        let fixed = line
+            .strip_prefix("For Joel: ")
+            .is_some_and(|rest| rest.contains(super::super::card::FIXED));
+        named || measured || drag || missed || fixed
     };
     // The card sets each thing behind a measure in deeper than its line,
     // as lines.rs draws it under the card's own indent, and some are a
