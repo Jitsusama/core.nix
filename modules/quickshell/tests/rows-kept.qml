@@ -286,7 +286,8 @@ QtObject {
         Expect.same("eight rows moving among Emoji's are eight moves",
             RowsKept.steps(emoji, moving, 8).map(step => step.move !== undefined),
             Array(8).fill(true));
-        Expect.same("and end where they're listed", done(emoji, moving, 8),
+        Expect.same("and the eight moves among Emoji's rows end where they're listed",
+            done(emoji, moving, 8),
             { rows: moving.join(" "), drawn: "" });
         const timed = (work, rounds) => {
             gc();
