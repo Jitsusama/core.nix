@@ -3302,8 +3302,9 @@
   passwords-copier-check-reads-are-bounded = ''
     the copier check's reads of a copier each answer within its patience, a child holding the
     copier's standard error open, a copier never ending, a reader never reading, a copier saying
-    nothing and one saying half a line and holding on included, and two lines said at once are
-    answered one at a time
+    nothing and one saying half a line and holding on included; a line is read whole, as the
+    daemon reads it, so one said in pieces is joined, two said at once are answered in turn, and
+    a half line is answered as said only once the copier ended
   '';
   passwords-copier-keeps-a-secret-in-memory-on-niri = ''
     on a nested niri, Passwords' copier, given a secret on its standard input as the daemon gives

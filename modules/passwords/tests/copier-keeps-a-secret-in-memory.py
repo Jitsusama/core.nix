@@ -89,6 +89,10 @@ LIBC = ctypes.CDLL(None, use_errno=True)
 
 # What each copier said past the line said_next last answered of it, kept for its next call.
 UNANSWERED: dict[subprocess.Popen[bytes], bytes] = {}
+# What said_next adds to a line a copier began and held on after without ending it, so it's
+# never answered as the word the daemon waits for: the daemon reads whole lines, and hears a
+# half one only once the copier ends.
+UNFINISHED = "(said with no newline, which the daemon waits on)"
 
 
 class Cases:
@@ -361,27 +365,35 @@ def said_next(copier: subprocess.Popen[bytes]) -> str:
 
     The whole read is bounded by PATIENCE from its start: it reads only once select says
     there's something to read, until a newline, the end or the deadline, so a copier that
-    says part of a line and holds on is answered what it said, in time, rather than hanging
-    the check. What came past the line is kept for the next call on the same copier, as
-    two lines said at once come in one read.
+    says part of a line and holds on is answered in time rather than hanging the check.
+    The daemon reads whole lines, so a half line is answered as said only once the copier
+    ended; one it still holds at the deadline is answered with UNFINISHED after it, as the
+    daemon would never hear it. What came past the line is kept for the next call on the
+    same copier, as two lines said at once come in one read.
     """
     stdout = copier.stdout
     if not isinstance(stdout, io.BufferedReader):
         return ""
     heard = UNANSWERED.pop(copier, b"")
     until = time.monotonic() + PATIENCE
+    ended = False
     while b"\n" not in heard:
         waiting = until - time.monotonic()
         if waiting <= 0 or not select.select([stdout], [], [], waiting)[0]:
             break
         more = stdout.read1(65536)
         if not more:
+            ended = True
             break
         heard += more
-    line, _, rest = heard.partition(b"\n")
-    if rest:
-        UNANSWERED[copier] = rest
-    return line.decode(errors="replace").strip()
+    line, newline, rest = heard.partition(b"\n")
+    said = line.decode(errors="replace").strip()
+    if newline or ended or not line:
+        if rest:
+            UNANSWERED[copier] = rest
+        return said
+    UNANSWERED[copier] = line
+    return f"{said} {UNFINISHED}"
 
 
 def said_held(told: str) -> str | None:

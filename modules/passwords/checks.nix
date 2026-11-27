@@ -146,13 +146,16 @@ onLinux {
           ${lib.getExe' copier "wl-copy"} ${lib.getExe pkgs.bash}
         touch $out
       '';
-  # The copier check's reads of how a copier ended are bounded, each
-  # answering within its patience: a copier still running hasn't refused,
-  # one that ended is said with its code and what it said, even with a
-  # child holding its standard error open, one that never ends is killed,
-  # a reader that never reads is given up on without spinning, and a
-  # copier saying nothing says nothing. Its copiers are bash scripts, so
-  # it needs no display (tests/copier-check-reads-bounded-test.py).
+  # The copier check's reads of a copier are bounded, each answering
+  # within its patience: a copier still running hasn't refused, one that
+  # ended is said with its code and what it said, even with a child
+  # holding its standard error open, one that never ends is killed, a
+  # reader that never reads is given up on without spinning, and a copier
+  # saying nothing says nothing. A line is read whole, as the daemon reads
+  # it: one said in pieces is joined, two said at once are answered in
+  # turn, and a half line is answered as said only once the copier ended.
+  # Its copiers are bash scripts, so it needs no display
+  # (tests/copier-check-reads-bounded-test.py).
   passwords-copier-check-reads-are-bounded =
     pkgs.runCommandLocal "passwords-copier-check-reads-are-bounded"
       { nativeBuildInputs = [ pkgs.python3 ]; }
