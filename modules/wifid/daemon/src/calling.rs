@@ -285,7 +285,7 @@ fn answered(revents: libc::c_short) -> bool {
 /// leader, exited while its other threads run in another, reads so of a
 /// cgroup since removed, and that path is still one the asker ran in.
 /// That's the kernel's own: `cgroup_exit` takes an exited task off its
-/// css_set's count, so its cgroup may go, while `pidfd_poll` answers
+/// `css_set`'s count, so its cgroup may go, while `pidfd_poll` answers
 /// only once `thread_group_exited`.
 /// With no pidfd, the file not found says the asker was reaped, and the
 /// ending is looked up by `named`.
