@@ -2,10 +2,12 @@
 # tuple-ends-its-flags.sh stops Tuple's daemon as it ends, so it must refuse
 # to run anywhere but its check's build. Here it's run as the shells a
 # person would run it from: their own, from their home or a checkout; the
-# repository's dev shell, which sets NIX_BUILD_TOP; and a bare environment.
+# repository's dev shell, which sets NIX_BUILD_TOP and IN_NIX_SHELL; and a
+# bare environment.
 # Then it's run as the build is, which it must let through, and as the build
 # with each of its four signs alone moved, which it must refuse, so each half
-# of its guard is shown to refuse on its own. Each has a stand-in tuple
+# of its guard is shown to refuse on its own, each by being unset as well
+# as moved, and the build folder's by being set above or below. Each has a stand-in tuple
 # first on PATH that marks being reached, so a guard that lets any of them
 # through fails here rather than on the person's Tuple.
 set -euo pipefail
@@ -20,6 +22,12 @@ trap 'rm -rf "$here"' EXIT
 mkdir -p "$here/bin" "$here/home/checkout" "$here/run-user" "$here/build"
 printf '#!%s\ntouch %q\n' "$BASH" "$here/reached" > "$here/bin/tuple"
 chmod +x "$here/bin/tuple"
+# A folder mounted noexec would let the stand-in be passed over for the
+# real tuple further along PATH, so it must run before anything is tried.
+if ! "$here/bin/tuple" || [[ ! -e $here/reached ]]; then
+  echo "the stand-in tuple in $here doesn't run; is TMPDIR mounted noexec?" >&2
+  exit 1
+fi
 
 # Runs the probe from a folder, with the environment given, and says how it
 # ended in status and what it said.
@@ -69,9 +77,16 @@ fi
 
 # Each of the build's signs moved alone. A person's home holding its
 # runtime and data folders, at their usual places, is the build's but for
-# NIX_BUILD_TOP, which alone tells them apart.
+# NIX_BUILD_TOP, which alone tells them apart, whether no shell set it or
+# a dev shell set it to a folder below or above the one it's in.
 refused "a person's home holding its runtime and data folders" "$here/home" \
   HOME="$here/home" XDG_RUNTIME_DIR="$here/home/run" XDG_DATA_HOME="$here/home/.local/share"
+refused "a dev shell in a home holding its runtime and data folders" "$here/home" \
+  NIX_BUILD_TOP="$here/home/checkout" IN_NIX_SHELL=impure HOME="$here/home" \
+  XDG_RUNTIME_DIR="$here/home/run" XDG_DATA_HOME="$here/home/.local/share"
+refused "a dev shell whose build folder holds the home it's in" "$here/home" \
+  NIX_BUILD_TOP="$here" IN_NIX_SHELL=impure HOME="$here/home" \
+  XDG_RUNTIME_DIR="$here/home/run" XDG_DATA_HOME="$here/home/.local/share"
 refused "a build whose home is elsewhere" "$build" \
   NIX_BUILD_TOP="$build" HOME="$here/home" XDG_RUNTIME_DIR="$build/run" \
   XDG_DATA_HOME="$build/data"
@@ -81,11 +96,19 @@ refused "a build whose runtime folder is the person's" "$build" \
 refused "a build whose data folder is the person's" "$build" \
   NIX_BUILD_TOP="$build" HOME="$build" XDG_RUNTIME_DIR="$build/run" \
   XDG_DATA_HOME="$here/home/.local/share"
-# Unset, Tuple keeps its data under HOME, so it must be set.
+# Unset, Tuple keeps its data under HOME, so it must be set; and a home or
+# runtime folder left unset is no more the build's than one moved.
 refused "a build with no data folder" "$build" \
   NIX_BUILD_TOP="$build" HOME="$build" XDG_RUNTIME_DIR="$build/run"
-# At the root, the folder's paths would begin with two slashes. The data
-# folder is given so, and so are the other signs, which leaves only the
-# runtime folder, as a person's would be, to refuse it.
-refused "a shell at the root" / \
-  NIX_BUILD_TOP=/ HOME=/ XDG_RUNTIME_DIR=/run XDG_DATA_HOME=//data
+refused "a build with no home" "$build" \
+  NIX_BUILD_TOP="$build" XDG_RUNTIME_DIR="$build/run" XDG_DATA_HOME="$build/data"
+refused "a build with no runtime folder" "$build" \
+  NIX_BUILD_TOP="$build" HOME="$build" XDG_DATA_HOME="$build/data"
+# A folder beside the build's whose name only begins with its name is
+# outside it, for the runtime and the data folder each.
+refused "a build whose runtime folder only begins with its name" "$build" \
+  NIX_BUILD_TOP="$build" HOME="$build" XDG_RUNTIME_DIR="$build-run" \
+  XDG_DATA_HOME="$build/data"
+refused "a build whose data folder only begins with its name" "$build" \
+  NIX_BUILD_TOP="$build" HOME="$build" XDG_RUNTIME_DIR="$build/run" \
+  XDG_DATA_HOME="$build-data"

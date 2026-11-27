@@ -214,8 +214,8 @@ fn listed(bus: &Channel) -> Result<Vec<Listed>, Box<dyn Error>> {
     }
 }
 
-/// Whether systemd's `SystemState` says the system is up, neither booting
-/// nor shutting down.
+/// Whether systemd's `SystemState` says the system is up: neither booting
+/// nor shutting down, nor in maintenance, its rescue or emergency target.
 fn up(state: &str) -> bool {
     matches!(state, "running" | "degraded")
 }
@@ -349,6 +349,18 @@ mod tests {
     }
 
     #[test]
+    fn a_long_update_is_cut_at_the_most_its_length_can_say() {
+        // One-byte characters put a character's edge at every byte, so the
+        // cut falls on the cap itself: 254, its length 255 with the zero.
+        let message = update(&"x".repeat(300));
+        assert_eq!(
+            (message[2], message.len()),
+            (255, 258),
+            "an update should keep 254 bytes, the most a length byte can say beside its zero"
+        );
+    }
+
+    #[test]
     fn a_session_is_told_apart_from_anything_else() {
         assert_eq!(kind("user@1000.service"), "session");
         assert_eq!(kind("session-2.scope"), "session");
@@ -363,7 +375,7 @@ mod tests {
     }
 
     #[test]
-    fn only_a_boot_or_a_shutdown_is_told_of() {
+    fn only_a_running_or_degraded_system_reads_as_up() {
         assert!(
             up("running"),
             "a running system should read as up, with nothing to tell"
@@ -372,12 +384,16 @@ mod tests {
             up("degraded"),
             "a degraded system should read as up, with nothing to tell"
         );
-        for state in ["initializing", "starting", "stopping", "maintenance"] {
+        for state in ["initializing", "starting", "stopping"] {
             assert!(
                 !up(state),
-                "a system {state} should read as booting or shutting down"
+                "a system that is {state} is booting or shutting down, so it isn't up"
             );
         }
+        assert!(
+            !up("maintenance"),
+            "a system in maintenance, its rescue or emergency target, isn't up"
+        );
     }
 
     #[test]
