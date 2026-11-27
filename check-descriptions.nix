@@ -6477,6 +6477,12 @@
     Tuple's daemon may take no real-time priority, and goes first by a nice below 0 and a CPU weight
     above 100
   '';
+  twin-screens-each-take-their-own-windows-back = ''
+    Reopen Them All, with two screens of one model back on new connectors, puts a window kept on
+    one twin on the connector its session kept on the other didn't take, and the window of a twin
+    put back after the walk on the connector a window put back before it didn't take; and notes a
+    window away from a screen named constructor or __proto__ as any other, without a throw
+  '';
   type-is-set-by-level = ''
     no QML file of the shell's sets a font's size, weight, axes, letter spacing or case other than
     from a level of the theme's type; nor does the reader's page or its foot say a size, a
