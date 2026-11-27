@@ -592,21 +592,6 @@ mod tests {
         );
     }
 
-    /// A class of cause sorts before how fast things ship and how clean
-    /// the code is, so only its filter keeps it from leading them.
-    #[test]
-    fn a_cause_found_again_and_again_never_leads_what_comes_after_it() {
-        let measures = [
-            measure(causes::KEY, Class::Functional, 4.0, Some(0.0)),
-            measure("far", Class::Clean, 30.0, Some(10.0)),
-        ];
-        assert_eq!(
-            drag(&measures).map(|m| m.key.as_str()),
-            Some("far"),
-            "a cause filed with its own owners apart led the hour"
-        );
-    }
-
     #[test]
     fn an_ask_counts_until_its_first_slice_and_an_open_one_counts_its_age() {
         let ask = |words: &str, asked: i64, first: Option<i64>, landed: Option<i64>| {

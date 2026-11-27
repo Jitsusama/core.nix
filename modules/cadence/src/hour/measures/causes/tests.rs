@@ -267,6 +267,31 @@ fn a_class_on_three_changes_in_a_week_is_over_and_names_its_owner() {
     );
 }
 
+/// A class of cause sorts before how fast things ship and how clean the
+/// code is, so only its filter keeps it from leading the hour, though it
+/// is filed with its own owners apart.
+#[test]
+fn a_cause_found_again_and_again_never_leads_what_comes_after_it() {
+    let cases: Vec<Case> = (1..=3)
+        .map(|c| case("stale docs", &format!("core.nix#{c}"), 60))
+        .collect();
+    let far = Measure {
+        key: "far".to_owned(),
+        class: Class::Clean,
+        says: "far".to_owned(),
+        now: 30.0,
+        target: Some(10.0),
+        owner: "OWNER".to_owned(),
+        behind: Vec::new(),
+    };
+    let measures = [recurring(&cases, NOW), far];
+    assert_eq!(
+        super::super::drag(&measures).map(|m| m.key.as_str()),
+        Some("far"),
+        "a cause filed with its own owners apart led the hour"
+    );
+}
+
 #[test]
 fn a_class_owned_apart_by_repository_goes_to_each_repositorys_owner() {
     let cases = [
