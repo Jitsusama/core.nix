@@ -3,8 +3,9 @@
 // `an-ipc-reply-arrives-whole` check runs this as the shell, with QS
 // naming its qs: the shell asks itself, through `qs ipc call`, for replies
 // of a few lengths, the longest past what a socket's buffer takes at once,
-// then for a function it hasn't got, and exits 1 for a reply that comes
-// back short or a failed call that qs says succeeded.
+// then for a function it hasn't got, then for one that answers nothing, and
+// exits 1 for a reply that comes back short, a failed call that qs says
+// succeeded, or a call answering nothing that qs says failed.
 import Quickshell
 import Quickshell.Io
 import QtQuick
@@ -23,7 +24,14 @@ ShellRoot {
         function of(length: int): string {
             return "x".repeat(length);
         }
+
+        // Answers nothing, as the sessions handler's untakenFor does.
+        function told(named: string, why: string): void {
+            root.toldWith = `${named} ${why}`;
+        }
     }
+
+    property string toldWith: ""
 
     Process {
         id: caller
@@ -54,9 +62,28 @@ ShellRoot {
         id: missing
         command: ["sh", "-c", "\"$QS\" ipc -p shell.qml call replies nothing"]
         onExited: exitCode => {
-            if (exitCode === 0)
+            if (exitCode === 0) {
                 console.warn("FAIL a call to a function that isn't there exited 0");
-            Qt.callLater(() => Qt.exit(exitCode === 0 ? 1 : 0));
+                Qt.callLater(() => Qt.exit(1));
+            } else {
+                voided.running = true;
+            }
+        }
+    }
+
+    // A call that answers nothing ends qs with success, which is how
+    // opens-in-sessions.sh tells a shell that took untakenFor from one
+    // that has none, falling back to untaken only for the second.
+    Process {
+        id: voided
+        command: ["sh", "-c", "\"$QS\" ipc -p shell.qml call replies told s-1 refused"]
+        onExited: exitCode => {
+            if (exitCode !== 0)
+                console.warn(`FAIL a call that answers nothing exited ${exitCode}`);
+            else if (root.toldWith !== "s-1 refused")
+                console.warn(`FAIL a call that answers nothing was given "${root.toldWith}"`);
+            const passed = exitCode === 0 && root.toldWith === "s-1 refused";
+            Qt.callLater(() => Qt.exit(passed ? 0 : 1));
         }
     }
 
