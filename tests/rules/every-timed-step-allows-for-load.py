@@ -55,7 +55,7 @@ def python_bounds(text: str) -> Iterator[int]:
 
 
 def reader_for(path: Path) -> Callable[[str], Iterator[int]] | None:
-    """The reader for a test file this check reads, or None for any other file."""
+    """Give the reader for a test file this check reads, or None for any other file."""
     if ".git" in path.parts:
         return None
     in_tests = "tests" in path.parts[:-1]
