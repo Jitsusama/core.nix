@@ -219,7 +219,7 @@ def leaves_then_asks(shell: Shell, play: str) -> int:
     slow read on a busy lender could pass between one key and the read after it; a key more
     only keeps the level typing. A level left typing by an earlier key passes at once, which is
     as safe, since typing draws no play for the key to cut. A level held still fails at once,
-    since the ask would be refused.
+    since the ask would be refused, as does an empty one, from a shell that doesn't report.
     """
     level = f"qs -p {shell.folder} ipc call cat level"
     deadline = time.monotonic() + HEARS.total_seconds()
@@ -229,6 +229,10 @@ def leaves_then_asks(shell: Shell, play: str) -> int:
         if now == "typing":
             break
         assert now != "still", f"the cat is held still, so it would refuse:\n{shell.tail()}"
+        assert now, (
+            "the shell doesn't report (Options.reports is off), so its cat refuses next"
+            f" and hides its level:\n{shell.tail()}"
+        )
         assert time.monotonic() < deadline, (
             f"the shell never heard a key in {HEARS}, its cat left {now}:\n{shell.tail()}"
         )
