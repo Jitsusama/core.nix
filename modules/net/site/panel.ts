@@ -210,8 +210,11 @@ function standsNow(context: Context): string {
   return `${plural(users(context), "device")} on ${plural(shape.points.length, "eero")} across ${plural(shape.floors.length, "floor")}, and ${asks}.`;
 }
 
-/** The lede while net has never answered and is no longer being reached. */
+/** The lede while net has never answered and the server says it can't reach it. */
 const UNANSWERED = "Net hasn't answered, so no device is drawn.";
+
+/** The lede while nothing was ever drawn and the page can't reach the sites' server. */
+const UNREACHED = "The sites' server can't be reached, so no device is drawn.";
 
 /** How net's feeds stand for the lede: whether any was ever live, and the worst now. */
 interface Answering {
@@ -248,10 +251,11 @@ class Standings {
 
 /**
  * What the lede says, or null to leave it as it is: what stands now while
- * the map draws a device, and that net hasn't answered once its feeds stop
- * reaching it before any was live. A page opened while net is down is given
- * the records the server still holds, and draws them, so the lede counts
- * them too rather than saying none is drawn. With none drawn, the counts
+ * the map draws a device, and, once its feeds stop reaching it before any
+ * was live, which of net or the sites' server hasn't answered. A page
+ * opened while net is down is given the records the server still holds,
+ * and draws them, so the lede counts them too rather than saying none is
+ * drawn. With none drawn, the counts
  * are never said: a page joining a watch the server holds as broken is told
  * every kind empty, a live feed's records may not have come yet, and "0
  * devices, and nothing needs a look" would read as an all-clear either way.
@@ -260,8 +264,12 @@ function ledeOf(answering: Answering, context: Context | undefined): string | nu
   if (context !== undefined && context.network.devices.length > 0) {
     return standsNow(context);
   }
-  const unreached = answering.worst === "broken" || answering.worst === "stale";
-  return !answering.answered && unreached ? UNANSWERED : null;
+  if (answering.answered) {
+    return null;
+  }
+  // A feed is stale while the sites' server can't be reached, and broken while
+  // the server is reached and says net isn't (the kit's feed.ts).
+  return { broken: UNANSWERED, stale: UNREACHED }[answering.worst ?? ""] ?? null;
 }
 
 /** Says what stands now in the head's lede, writing only when it changes. */
@@ -354,4 +362,5 @@ export {
   Standings,
   standsNow,
   UNANSWERED,
+  UNREACHED,
 };

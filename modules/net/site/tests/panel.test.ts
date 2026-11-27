@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
 import { KINDS, networkOf } from "../model.ts";
-import { type Context, ledeOf, standsNow, UNANSWERED } from "../panel.ts";
+import { type Context, ledeOf, standsNow, UNANSWERED, UNREACHED } from "../panel.ts";
 import { study } from "../shape.ts";
 import { records, type Told, told } from "./house.ts";
 
@@ -62,9 +62,15 @@ it("the lede says nothing needs a look when only the internet's ceiling is told"
 // empty, before any feed was live.
 const empty = contextOf([], true);
 
-it("the lede says net hasn't answered once its feeds stop reaching it before any was live", () => {
+it("the lede says net hasn't answered once the server says it can't reach net", () => {
   assert.equal(ledeOf({ answered: false, worst: "broken" }, undefined), UNANSWERED);
-  assert.equal(ledeOf({ answered: false, worst: "stale" }, undefined), UNANSWERED);
+});
+
+// A feed goes stale while the sites' server itself can't be reached, which
+// says nothing of net.
+it("the lede blames the sites' server, not net, while the page can't reach it", () => {
+  assert.equal(ledeOf({ answered: false, worst: "stale" }, undefined), UNREACHED);
+  assert.equal(ledeOf({ answered: false, worst: "stale" }, empty), UNREACHED);
 });
 
 it("the lede says net hasn't answered over an empty net no feed was live for", () => {
