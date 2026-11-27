@@ -13,8 +13,8 @@
 //! This file reads the measures and runs the hour; `card` composes what it
 //! says and keeps, `good` holds each measure to the definition of good,
 //! `owing` files its drag with each owner, `net` reads the merge net's two
-//! files, `records` reads the queues' records, and `reviews` the
-//! harness's review records.
+//! files, `records` reads the queues' records, `reviews` the harness's
+//! review records, and `told` says where each finding goes.
 
 mod card;
 mod good;
@@ -29,6 +29,7 @@ mod parted;
 mod records;
 mod reviews;
 mod stuck;
+mod told;
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -184,8 +185,10 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
     let mesh = Mesh {
         root: state_home.join("pi/agentic-harness.pi"),
     };
+    let answers = there(&mesh, now);
     for (owner, text) in told.into_iter().filter(|(owner, _)| !owner.is_empty()) {
-        mesh.send(&message(&owner, "finding", text))?;
+        let (whom, text) = told::told_to(&owner, text, to, &answers);
+        mesh.send(&message(&whom, "finding", text))?;
     }
     let routes = fs::read_to_string(state_home.join("pain-points/routes.json")).ok();
     let keeper = measures::keeper(routes.as_deref());
@@ -399,24 +402,9 @@ fn rounds_per_merge(
         };
         let notes = mesh.sent_since((now - DAY) * 1000);
         let presences = mesh.all();
-        let boot = fs::read_to_string("/proc/sys/kernel/random/boot_id")
-            .map(|b| b.trim().to_owned())
-            .unwrap_or_default();
-        let rosters = mesh.rostered(now);
-        let there = |address: &str| {
-            presences
-                .iter()
-                .filter(|p| p.addresses.iter().any(|a| a == address))
-                .max_by_key(|p| p.at.to_string())
-                .is_some_and(|p| {
-                    reachable(p, &boot, &rosters, |pid| {
-                        Path::new(&format!("/proc/{pid}")).exists()
-                    })
-                })
-        };
         landed_by_session(
             notes.iter().map(|m| (m.from.as_str(), m.text.as_str())),
-            there,
+            there(&mesh, now),
             |address| measures::spent::quest_of(&presences, address),
         )
     };
@@ -668,6 +656,28 @@ fn reachable(
         None => presence.owner.as_ref().and_then(|o| o.boot_id.as_deref()) == Some(boot),
     };
     (presence.state == "parked" && resumes) || running(presence, boot, rosters, process_exists)
+}
+
+/// Whether a session going by an address is `reachable` now, by the
+/// newest presence going by it; with no boot id to read, only one parked
+/// on its host's roster is.
+fn there(mesh: &Mesh, now: i64) -> impl Fn(&str) -> bool {
+    let presences = mesh.all();
+    let boot = fs::read_to_string("/proc/sys/kernel/random/boot_id")
+        .map(|b| b.trim().to_owned())
+        .unwrap_or_default();
+    let rosters = mesh.rostered(now);
+    move |address: &str| {
+        presences
+            .iter()
+            .filter(|p| p.addresses.iter().any(|a| a == address))
+            .max_by_key(|p| p.at.to_string())
+            .is_some_and(|p| {
+                reachable(p, &boot, &rosters, |pid| {
+                    Path::new(&format!("/proc/{pid}")).exists()
+                })
+            })
+    }
 }
 
 /// The changes the three mains landed in the hour, shown unjudged: an

@@ -26,7 +26,7 @@ pub const SHARE: &str = "relay:reset-share";
 pub const ANSWERED_502: &str = "relay:answered-502";
 
 /// Who keeps the relay, and so moves each of the four.
-const OWNER: &str = "OXUW1Y";
+const OWNER: &str = "O90YM6";
 
 /// The ceilings OXUW1Y set on 26 November (cdb89d6a): per hour, 400 resets,
 /// 150 sent direct, resets past 2% of what was carried, and 50 502s.

@@ -475,4 +475,18 @@ fn the_run_sending_the_card_keeps_the_hour_and_owes_its_drag() {
             .any(|file| file.starts_with("state/pi/agentic-harness.pi/mesh-workflow/messages/")),
         "the card and the owner's finding weren't sent: {kept:?}"
     );
+    // No session answers as the drag's owner here, so the orchestrator is
+    // told it, saying whose.
+    let findings: Vec<String> = kept
+        .iter()
+        .filter(|file| file.starts_with("state/pi/agentic-harness.pi/mesh-workflow/messages/"))
+        .map(|file| fs::read_to_string(account.path().join(file)).expect("a message it wrote"))
+        .filter(|message| message.contains("\"intent\":\"finding\""))
+        .collect();
+    assert!(
+        findings
+            .iter()
+            .any(|m| m.contains("\"@WCJQSG\"") && m.contains("For 88LQC0, ")),
+        "a finding for an owner no session answers as didn't go to the orchestrator: {findings:?}"
+    );
 }
