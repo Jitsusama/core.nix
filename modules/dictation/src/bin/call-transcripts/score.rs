@@ -14,7 +14,9 @@
 //!
 //! The far end's words are timed as they're heard, and the times held to
 //! their takes and to the reference's speech (times.rs), since cutting
-//! their echo from Joel's words goes by them.
+//! their echo from Joel's words goes by them. How loud their takes were
+//! is kept as a call being heard keeps it, so the echo cut by their sound
+//! is measured as it's cut live.
 
 use std::collections::HashMap;
 use std::fmt::Write as _;
@@ -237,14 +239,21 @@ fn score_meeting(speech: &mut Parakeet, meeting: &Meeting) -> Result<(Scored, Ti
     let mut scored = Scored::default();
     let mut lines = Vec::new();
     let mut word_times = HashMap::new();
+    let mut their_sound = Track::default();
     for side in [Side::Mine, Side::Theirs] {
         let sound = &sounds[index(side)];
         let file = format!("{name}.{}.wav", label(side));
+        let side_takes = takes(sound);
+        if side == Side::Theirs {
+            for take in &side_takes {
+                their_sound.hear(take.start, &take.samples);
+            }
+        }
         hear_side(
             &mut *speech,
             side,
             &file,
-            &takes(sound),
+            &side_takes,
             &mut lines,
             &mut word_times,
         )?;
@@ -271,7 +280,7 @@ fn score_meeting(speech: &mut Parakeet, meeting: &Meeting) -> Result<(Scored, Ti
             .flat_map(|line| said(&line.text))
             .collect()
     };
-    let (cut, cuts) = echo::cut_echoes(&lines, &word_times, &Track::default(), said::spoken);
+    let (cut, cuts) = echo::cut_echoes(&lines, &word_times, &their_sound, said::spoken);
     for taken in &cuts {
         println!(
             "{name}: Joel's words at {} taken for an echo, {}: {}",
