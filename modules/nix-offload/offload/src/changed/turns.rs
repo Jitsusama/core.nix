@@ -8,12 +8,19 @@
 //! only took longer, a median of 1,016 s against 470 to 700, and timing
 //! subtests broke under the load. Nothing waited for a lent builder, so
 //! the queue read empty and the overload showed only as load.
+//!
+//! Runs waiting for a turn take it in the order they came, each holding a
+//! ticket in a line beside the turns ([`Ticket`]). On 26 November, with
+//! whichever waiter looked first taking a freed turn, three runs waited
+//! out their callers' 90-minute limits while later runs went ahead, and
+//! none said how long it might be.
 
 use std::fs;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// How many runs go from this machine to builders at once.
 pub const AT_ONCE: u32 = 8;
@@ -122,7 +129,13 @@ fn turn_of(
     moves: bool,
     full: &str,
 ) -> io::Result<Option<fs::File>> {
-    let (turn, unusable) = free(turns, name, count)?;
+    // A free turn is taken at once only while no run waits in line, so a
+    // run that has just come never goes ahead of one that's waited.
+    let (turn, unusable) = if Ticket::waiting(turns, name, None)? == 0 {
+        free(turns, name, count)?
+    } else {
+        (None, Vec::new())
+    };
     match turn {
         Some(turn) => Ok(Some(turn)),
         None if moves => Ok(None),
@@ -142,17 +155,126 @@ fn turn_of(
     }
 }
 
-/// One of `count` turns named `name` once one is free, looking again
-/// every half second, so whichever waiter looks first after a run ends
-/// takes its turn.
+/// How often a waiting run says where it stands in line.
+const SAID_EVERY: Duration = Duration::from_mins(5);
+
+/// One of `count` turns named `name` once one is free and no run that
+/// came before this one still waits for it, looking again every half
+/// second, and saying every [`SAID_EVERY`] how many wait ahead.
 fn waited(turns: &Path, name: &str, count: u32) -> io::Result<fs::File> {
+    let ticket = Ticket::taken(turns, name)?;
+    let began = Instant::now();
+    let first = Ticket::waiting(turns, name, Some(&ticket))?;
+    let mut said = began;
     loop {
-        if let (Some(turn), _) = free(turns, name, count)? {
+        let ahead = Ticket::waiting(turns, name, Some(&ticket))?;
+        if ahead == 0
+            && let (Some(turn), _) = free(turns, name, count)?
+        {
             return Ok(turn);
+        }
+        if said.elapsed() >= SAID_EVERY {
+            eprintln!("nix-offload: {}", standing(ahead, first, began.elapsed()));
+            said = Instant::now();
         }
         // A run holds its turn for minutes, so half a second's lag in
         // taking a freed one costs nothing and keeps the wait cheap.
         thread::sleep(Duration::from_millis(500));
+    }
+}
+
+/// Where a run stands that has waited `waited` with `ahead` runs still
+/// before it, of the `first` that were when it came: how long the rest
+/// is likely to take at the pace those before it have gone.
+fn standing(ahead: usize, first: usize, waited: Duration) -> String {
+    let minutes = waited.as_secs() / 60;
+    let gone = first.saturating_sub(ahead);
+    if ahead == 0 {
+        return format!("this run is next for a turn, after {minutes} min waiting");
+    }
+    if gone == 0 {
+        return format!(
+            "{ahead} runs wait ahead of this one, and none has had its turn in {minutes} min"
+        );
+    }
+    let likely = waited.as_secs() * ahead as u64 / gone as u64 / 60;
+    format!(
+        "{ahead} runs wait ahead of this one; at the pace since it came, its turn is about \
+         {likely} min off"
+    )
+}
+
+/// A run's place in the line for the turns named `name`: a file in
+/// `<name>.line/`, named by when it came, locked while its run waits and
+/// removed once it doesn't. A ticket is locked before it's put in the
+/// line, so one found unlocked is a dead run's, and is cleared.
+#[derive(Debug)]
+struct Ticket {
+    at: PathBuf,
+    _held: fs::File,
+}
+
+impl Ticket {
+    /// A ticket at the end of the line for `name`.
+    fn taken(turns: &Path, name: &str) -> io::Result<Self> {
+        /// Tells apart tickets one process takes in the same nanosecond.
+        static TAKEN: AtomicU64 = AtomicU64::new(0);
+        let line = turns.join(format!("{name}.line"));
+        fs::create_dir_all(&line)?;
+        let came = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let named = format!(
+            "{came:024}-{}-{}",
+            std::process::id(),
+            TAKEN.fetch_add(1, Ordering::Relaxed)
+        );
+        let making = line.join(format!(".{named}"));
+        let held = crate::there::open_turn(&making, true).map_err(io::Error::other)?;
+        held.lock()?;
+        let at = line.join(named);
+        fs::rename(&making, &at)?;
+        Ok(Self { at, _held: held })
+    }
+
+    /// How many runs wait in line for `name`, of those before `mine` when
+    /// it's given: a ticket counts while its run holds its lock, and one
+    /// left by a run that died is cleared as it's found.
+    fn waiting(turns: &Path, name: &str, mine: Option<&Self>) -> io::Result<usize> {
+        let line = turns.join(format!("{name}.line"));
+        let tickets = match fs::read_dir(&line) {
+            Ok(tickets) => tickets,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(0),
+            Err(error) => return Err(error),
+        };
+        let mine = mine.and_then(|mine| mine.at.file_name().map(ToOwned::to_owned));
+        let mut ahead = 0;
+        for ticket in tickets.flatten() {
+            let named = ticket.file_name();
+            let before = mine.as_ref().is_none_or(|mine| named < *mine);
+            if named.to_string_lossy().starts_with('.') || !before {
+                continue;
+            }
+            // A ticket that's a link or can't be read is no run's.
+            let Ok(file) = crate::there::open_turn(&ticket.path(), false) else {
+                continue;
+            };
+            match file.try_lock() {
+                Err(fs::TryLockError::WouldBlock) => ahead += 1,
+                Ok(()) => {
+                    let _ = fs::remove_file(ticket.path());
+                }
+                Err(fs::TryLockError::Error(_)) => {}
+            }
+        }
+        Ok(ahead)
+    }
+}
+
+impl Drop for Ticket {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.at);
     }
 }
 
@@ -481,6 +603,108 @@ mod tests {
                  goes on without one"
             ),
             "a run with neither turn didn't say so in one line"
+        );
+    }
+
+    /// Starts a run to `host`, uncounted, that waits for its turn, and
+    /// gives what tells when it has one, once its ticket is in line.
+    fn waiter(
+        turns: &Path,
+        host: &str,
+        tickets: usize,
+    ) -> (std::sync::mpsc::Receiver<()>, thread::JoinHandle<Turn>) {
+        let (told, heard) = std::sync::mpsc::channel();
+        let (path, owned) = (turns.to_owned(), host.to_owned());
+        let waiting = thread::spawn(move || {
+            let turn = sending(&path, &owned, false, false);
+            let _ = told.send(());
+            turn
+        });
+        let name = format!("changed-{host}");
+        let until = std::time::Instant::now() + Duration::from_secs(5);
+        while Ticket::waiting(turns, &name, None).unwrap() < tickets {
+            assert!(
+                std::time::Instant::now() < until,
+                "a waiting run never took its ticket"
+            );
+            thread::sleep(Duration::from_millis(10));
+        }
+        (heard, waiting)
+    }
+
+    #[test]
+    fn runs_waiting_for_a_turn_take_it_in_the_order_they_came() {
+        let turns = tempfile::tempdir().unwrap();
+        let mut held: Vec<_> = (0..EACH)
+            .map(|_| sending(turns.path(), "builder", false, false))
+            .collect();
+        let (first, first_run) = waiter(turns.path(), "builder", 1);
+        let (second, second_run) = waiter(turns.path(), "builder", 2);
+        held.pop();
+        assert_eq!(
+            first.recv_timeout(Duration::from_secs(10)),
+            Ok(()),
+            "the run that came first didn't take the turn given back"
+        );
+        assert!(
+            second.recv_timeout(Duration::from_secs(1)).is_err(),
+            "the run that came second took a turn while four were held"
+        );
+        held.pop();
+        assert_eq!(
+            second.recv_timeout(Duration::from_secs(10)),
+            Ok(()),
+            "the run that came second never had the next turn"
+        );
+        drop((first_run.join(), second_run.join()));
+    }
+
+    #[test]
+    fn a_run_that_comes_while_another_waits_doesnt_go_ahead_of_it() {
+        let turns = tempfile::tempdir().unwrap();
+        let mut held: Vec<_> = (0..EACH)
+            .map(|_| sending(turns.path(), "builder", false, false))
+            .collect();
+        let (_waited, waiting) = waiter(turns.path(), "builder", 1);
+        held.pop();
+        assert!(
+            matches!(sending(turns.path(), "builder", true, false), Turn::Full),
+            "a run that came last took the turn a waiting run was owed"
+        );
+        drop(held);
+        drop(waiting.join());
+    }
+
+    #[test]
+    fn a_dead_runs_ticket_is_cleared_rather_than_waited_on() {
+        let turns = tempfile::tempdir().unwrap();
+        let line = turns.path().join("changed-builder.line");
+        fs::create_dir_all(&line).unwrap();
+        let dead = line.join(format!("{:024}-1-0", 1));
+        fs::write(&dead, "").unwrap();
+        assert!(
+            matches!(sending(turns.path(), "builder", true, false), Turn::Had(_)),
+            "a run waited on a ticket no run holds"
+        );
+        assert!(!dead.exists(), "a dead run's ticket was left in line");
+    }
+
+    #[test]
+    fn a_waiting_run_says_how_many_are_ahead_and_how_long_is_likely() {
+        let minutes = |m| Duration::from_secs(m * 60);
+        assert_eq!(
+            standing(0, 3, minutes(20)),
+            "this run is next for a turn, after 20 min waiting"
+        );
+        assert_eq!(
+            standing(4, 4, minutes(10)),
+            "4 runs wait ahead of this one, and none has had its turn in 10 min"
+        );
+        assert_eq!(
+            standing(3, 6, minutes(30)),
+            "3 runs wait ahead of this one; at the pace since it came, its turn is about \
+             30 min off",
+            "three gone in thirty minutes leaves three more about thirty off"
         );
     }
 
