@@ -758,5 +758,8 @@ fn plainly_named(check: &str) -> bool {
 mod lent;
 
 #[cfg(test)]
+#[path = "flaky/owner_tests.rs"]
+mod owner_tests;
+#[cfg(test)]
 #[path = "flaky/tests.rs"]
 mod tests;
