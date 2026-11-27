@@ -647,31 +647,28 @@ def test_local(connection: Connection) -> None:
 
 
 def test_tunnel(tunnel: Connection) -> None:
-    """Inside a tunnel, the same classes reach its own queues, both ways."""
+    """Inside a tunnel, the same classes reach its own queues, both ways.
+
+    Agents' model relay sits in background with their bulk, but goes as best effort: held
+    inside a VPN as bulk, it waited behind agents' uploads until the origin gave its calls
+    up. It waits a moment before sending, so its unit's cgroup is in its set by then.
+    """
     inner = f"{BIN}/head -c 1000000 /dev/zero > /dev/tcp/10.9.0.2/5201"
     tunnel.lands("bulk", "jobs.slice", inner, dev="wg0")
     tunnel.lands("best effort", "app.slice", inner, dev="wg0")
+    named = f"{BIN}/sleep {NAMED_S}; {inner}"
+
+    def call_models() -> None:
+        tunnel.client.succeed(
+            "systemd-run -M alice@ --user --wait --collect --slice=background.slice"
+            f" --unit=model-relay-agents {BIN}/bash -c '{named}'"
+        )
+
+    tunnel.reaches("best effort", "model-relay-agents", call_models, "wg0", LEAST_TRANSFER)
     inner_down = f"exec 3<>/dev/tcp/10.9.0.2/5202; {BIN}/cat <&3 > /dev/null"
     back = tunnel.ifb("wg0")
     tunnel.lands("bulk", "jobs.slice", inner_down, dev=back)
     tunnel.lands("best effort", "app.slice", inner_down, dev=back)
-
-
-def test_model_calls_go_ahead_of_bulk_inside_the_tunnel(tunnel: Connection) -> None:
-    """Agents' model relay sits in background with their bulk, but goes as best effort.
-
-    Held inside a VPN as bulk, it waited behind agents' uploads until the origin gave its
-    calls up. It waits a moment before sending, so its unit's cgroup is in its set by then.
-    """
-    inner = f"{BIN}/sleep {NAMED_S}; {BIN}/head -c 1000000 /dev/zero > /dev/tcp/10.9.0.2/5201"
-
-    def send() -> None:
-        tunnel.client.succeed(
-            "systemd-run -M alice@ --user --wait --collect --slice=background.slice"
-            f" --unit=model-relay-agents {BIN}/bash -c '{inner}'"
-        )
-
-    tunnel.reaches("best effort", "model-relay-agents", send, "wg0", LEAST_TRANSFER)
 
 
 def test_tunnel_has_a_lane_of_its_own(tunnel: Connection) -> None:
