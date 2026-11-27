@@ -119,6 +119,11 @@ fn a_change_main_left_alone_or_a_date_already_past_is_not_at_risk() {
         "a change main left alone, or a date that's a slip now, counted: {:?}",
         m.behind
     );
+    assert!(
+        m.target == Some(0.0) && !m.says.contains("unread"),
+        "a change main left alone, or a date past, left the hour unjudged: {}",
+        m.says
+    );
 }
 
 #[test]
@@ -137,12 +142,18 @@ fn a_landed_or_closed_piece_or_a_closed_parked_or_confirmed_ask_waits_on_nothing
         ask("put down", json!({"closed": "put down"})),
         ask("confirmed", json!({"confirmed": at(NOW - 60)})),
         ask("parked", json!({"parked": "b95ea57b"})),
+        ask("landed whole", json!({"landed": at(NOW - 60)})),
     ]);
     let m = read(&text);
     assert!(
         m.behind.is_empty(),
         "a piece or ask that waits on no merge counted: {:?}",
         m.behind
+    );
+    assert!(
+        m.target == Some(0.0) && !m.says.contains("unread"),
+        "a piece or ask that waits on no merge was read, and left the hour unjudged: {}",
+        m.says
     );
 }
 
@@ -185,8 +196,8 @@ fn a_world_piece_is_asked_by_its_branch_and_one_with_none_is_unread() {
         "the branch's files, or how many past the first three, read wrong"
     );
     assert!(
-        m.says.ends_with("(1 unread)"),
-        "a piece with no branch passed for none at risk: {}",
+        m.says.contains("(1 unread; the first, no branch: "),
+        "a piece with no branch passed for none at risk, or went unnamed: {}",
         m.says
     );
     assert_eq!(
@@ -208,8 +219,9 @@ fn a_change_that_cannot_be_read_is_said_unread_not_safe() {
     let m = at_risk(&text, NOW, Tracking::His, &unreadable, &|_| Ok(Vec::new()));
     assert!(m.behind.is_empty(), "an unread change counted at risk");
     assert!(
-        m.says.ends_with("(1 unread)"),
-        "an unread change passed for none at risk: {}",
+        m.says
+            .ends_with("(1 unread; the first, a fix: core.nix#6595 unread: the fetch failed)"),
+        "an unread change passed for none at risk, or went unnamed: {}",
         m.says
     );
     assert_eq!(m.target, None, "an unread change alone was judged met");
@@ -221,7 +233,7 @@ fn a_pr_naming_no_change_that_can_be_found_is_unread_not_safe() {
         let text = list(&[ask_waiting("a fix", "A", (NOW + 600, pr), &json!({}))]);
         let m = read(&text);
         assert!(
-            m.says.ends_with("(1 unread)") && m.target.is_none(),
+            m.says.contains("(1 unread; the first, a fix: ") && m.target.is_none(),
             "{pr} passed for none at risk: {} {:?}",
             m.says,
             m.target
@@ -327,6 +339,72 @@ fn no_record_no_line_or_a_stale_one_is_unread_not_none_shared() {
 }
 
 #[test]
+fn a_branch_is_read_by_its_last_line_written_whatever_the_stamps_say() {
+    let refusals = list(&[
+        gate_line("gates", NOW + DAY, "drift", &[]),
+        gate_line("gates", NOW - 60, "drift", &["README.md"]),
+    ]);
+    assert_eq!(
+        drifted(Some(&refusals), "gates", NOW),
+        Ok(vec!["README.md".to_owned()]),
+        "one line dated a day ahead hid the fresh line written after it"
+    );
+    let stepped = list(&[
+        gate_line("stepped", NOW - 600, "drift", &[]),
+        gate_line("stepped", NOW + 600, "refused", &["flake.nix"]),
+    ]);
+    assert_eq!(
+        drifted(Some(&stepped), "stepped", NOW),
+        Err("its latest line for stepped is dated ahead".to_owned()),
+        "a branch whose latest line is dated ahead was read by an older line"
+    );
+    let back = list(&[
+        gate_line("back", NOW - 60, "drift", &[]),
+        gate_line("back", NOW - 600, "refused", &["flake.nix"]),
+    ]);
+    assert_eq!(
+        drifted(Some(&back), "back", NOW),
+        Ok(vec!["flake.nix".to_owned()]),
+        "a latest line stamped before the one ahead of it was passed over"
+    );
+}
+
+#[test]
+fn a_part_naming_no_change_leaves_the_whole_piece_unread() {
+    let text = list(&[ask_waiting(
+        "two halves",
+        "A",
+        (NOW + 600, "core.nix#6000, Org/world#123"),
+        &json!({"branch": "halves"}),
+    )]);
+    let m = read(&text);
+    assert!(
+        m.says.contains("(1 unread; the first, two halves: ") && m.target.is_none(),
+        "a half naming no change was dropped and the rest judged safe: {} {:?}",
+        m.says,
+        m.target
+    );
+}
+
+/// Of several dates unread, the card counts them all and names the first
+/// by its ask's time and words, whatever order the list holds them in.
+#[test]
+fn dates_unread_are_counted_and_the_first_by_its_ask_is_named() {
+    let halves = (NOW + 600, "core.nix#6000, Org/world#123");
+    let text = list(&[
+        ask_waiting("b second", "A", halves, &json!({"branch": "halves"})),
+        ask_waiting("a first", "B", halves, &json!({"branch": "halves"})),
+    ]);
+    let m = read(&text);
+    assert!(
+        m.says.contains("(2 unread; the first, a first: ") && m.target.is_none(),
+        "dates unread went uncounted, or the first wasn't the first ask: {} {:?}",
+        m.says,
+        m.target
+    );
+}
+
+#[test]
 fn an_ask_is_read_from_its_latest_line_and_the_list_s_own_apart() {
     let waiting = ask_waiting("a fix", "A", (NOW + 600, "core.nix#6595"), &json!({}));
     let mut landed = waiting.clone();
@@ -343,4 +421,18 @@ fn an_ask_is_read_from_its_latest_line_and_the_list_s_own_apart() {
     );
     assert_eq!(ours.behind.len(), 1, "the derived ask went uncounted");
     assert_eq!(ours.key, "dates-at-risk-derived", "the list's own key");
+}
+
+#[test]
+fn a_twin_folded_into_an_ask_doesnt_close_its_date_at_risk() {
+    let mut ask = ask_waiting("fold", "F", (NOW + 3 * 3600, "core.nix#6595"), &json!({}));
+    ask["id"] = "0a1b2c3d".into();
+    let twin = super::super::slipped::twin(&ask, NOW - 60);
+    let m = read(&list(&[ask, twin]));
+    assert_eq!(
+        m.behind.len(),
+        1,
+        "a twin written after its ask closed its date at risk: {:?}",
+        m.behind
+    );
 }

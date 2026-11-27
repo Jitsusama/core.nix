@@ -69,6 +69,7 @@ mod speed;
 mod start;
 mod stats;
 mod tracking;
+mod unasked;
 mod units;
 mod unrun;
 mod watch;
@@ -368,10 +369,7 @@ fn tell_reverted(
     now: i64,
 ) -> io::Result<()> {
     let path = folder.join("reverted.json");
-    let mut told: reverted::Told = fs::read(&path)
-        .ok()
-        .and_then(|b| serde_json::from_slice(&b).ok())
-        .unwrap_or_default();
+    let mut told = reverted::Told::read(&path)?;
     let findings = net.join("findings");
     let reverts = reverted::reverts(&findings, now - 3600);
     let unrun = unrun::unrun(&findings, now - 3600);
@@ -694,8 +692,15 @@ fn clock(at: i64) -> String {
         .unwrap_or_default()
 }
 
+/// Runs `program` with `args`, giving what it printed; git never asks
+/// anyone for a password, as [`unasked::git`] runs it.
 fn command(program: &str, args: &[&str]) -> io::Result<String> {
-    let out = Command::new(program).args(args).output()?;
+    let mut run = if program == "git" {
+        unasked::git()
+    } else {
+        Command::new(program)
+    };
+    let out = run.args(args).output()?;
     if out.status.success() {
         Ok(String::from_utf8_lossy(&out.stdout).into_owned())
     } else {

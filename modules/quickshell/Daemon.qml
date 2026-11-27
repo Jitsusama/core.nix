@@ -502,6 +502,7 @@ Scope {
             onConnectionStateChanged: {
                 if (connected) {
                     daemon.refusals = 0;
+                    daemon.failedWith = null;
                     daemon.wire = socket;
                     daemon.greet();
                 } else {
@@ -510,6 +511,7 @@ Scope {
                 }
             }
             onError: failed => {
+                daemon.failedWith = failed;
                 daemon.gone();
                 if (failed !== daemon.serverNotFound || daemon.refusals < daemon.missingTries)
                     daemon.tryAgain();
@@ -629,6 +631,11 @@ Scope {
     // How many times it's been refused since it last answered.
     property int refusals: 0
 
+    // The QLocalSocket error its link's last try failed with, null since it last connected, so a
+    // check that fails waiting on it says whether nothing was there or something refused. Null
+    // rather than -1, which is Qt's UnknownSocketError.
+    property var failedWith: null
+
     // How long to wait before trying again, after so many refusals.
     function waitAfter(refused) {
         return Math.min(2000 * 2 ** refused, 60000);
@@ -678,8 +685,12 @@ Scope {
             // (round 000011, F111); one given as words names what it acts on, so each waits.
             const alike = one => typeof said === "function" && typeof one.said === "function"
                 && one.ask === asked.ask;
+            // The one kept takes the most tries left of those it stands for, so a fresh ask
+            // isn't given up on with an older one's few (round 000036 on #6796, F139).
+            const left = refusedAgain.filter(alike).reduce((most, one) => Math.max(most, one.tries),
+                tries - 1);
             refusedAgain = refusedAgain.filter(one => !alike(one))
-                .concat([{ said: said, ask: asked.ask, tries: tries - 1 }]);
+                .concat([{ said: said, ask: asked.ask, tries: left }]);
             if (!askAgain.running)
                 askAgain.start();
         });

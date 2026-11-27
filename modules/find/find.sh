@@ -114,8 +114,8 @@ maxdepth=''
 # and `+ +2` are each 2, and ` -2` is -2, rather than left unread. strtoq
 # holds a number past a long long at its end, and find keeps the depth in
 # an int, its low 32 bits, so a huge depth is -1 there, which is no limit,
-# and 4294967295 is too. One find refuses, with no digits or something
-# after them, opens nothing, so the 0 or the digits it's read as here
+# and 4294967295 is too. One find refuses, starting with a -, with no
+# digits or with something after them, opens nothing, so the 0 or the digits it's read as here
 # don't matter. It's said in `read_depth`, apart from `depth`, whether the
 # walk goes depth first.
 depth_of() {

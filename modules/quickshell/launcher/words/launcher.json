@@ -954,7 +954,7 @@
       "id": "displays",
       "once": ["Displays", "Monitors"],
       "name": "Screens",
-      "term": "Desktop/screen",
+      "term": "Machine/screen",
       "noun": "screens",
       "glyph": "display",
       "ask": "which screen?",

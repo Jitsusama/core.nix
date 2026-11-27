@@ -53,7 +53,7 @@ const ties = {
 };
 
 function machine(name: string, health: Thing["health"], side: string[] = []): Thing {
-  return { name, health, says: "", side, address: undefined, ties: tiesOf(ties) };
+  return { name, health, says: "", side, looks: undefined, address: undefined, ties: tiesOf(ties) };
 }
 
 function system(things: Thing[], others: Part[] = []): System {
@@ -311,6 +311,11 @@ it("itself says its disk, then its processor, memory, power and update", () => {
     asideOf({ update_step: "done", update_why: "the boot check failed" }),
     "Updated at 02:40, but the boot check failed.",
     "a done update that didn't all go ahead says why",
+  );
+  assert.equal(
+    asideOf({ update_step: "unchanged", update_why: "the boot check failed" }),
+    "Unchanged at its update at 02:40, but the boot check failed.",
+    "an unchanged update after one that didn't all go ahead still says why",
   );
   assert.equal(
     asideOf({ update_step: "building" }),

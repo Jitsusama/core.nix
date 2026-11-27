@@ -40,6 +40,13 @@ for words in Harbour door; do
   fi
 done
 
+# A binding that threw ran on something the stand-in lacks, so a case could pass on code that
+# never ran as in the shell.
+if grep -aF 'TypeError' "$said"; then
+  echo "a binding threw while the cases ran"
+  failed=1
+fi
+
 if [ "$failed" -ne 0 ]; then
   echo "what the launcher said:"
   grep -a 'launcher:' "$said" || true

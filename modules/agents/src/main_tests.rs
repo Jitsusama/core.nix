@@ -396,8 +396,9 @@ fn the_daemons_socket_acts_as_joel_for_no_one_but_the_shell() {
         asked.try_recv().is_err(),
         "none was done for a program that isn't the shell"
     );
-    // A share's start only hides amounts, so it's taken from anyone: one
-    // refused because the check couldn't be made would leave them shown.
+    // A share's start hides Joel's amounts from him, so it's the shell's
+    // alone too: the shell asks it again till taken, and at each opening
+    // (round 000036 on #6796, F121 and F133).
     writeln!(
         &asking,
         "{}",
@@ -408,12 +409,11 @@ fn the_daemons_socket_acts_as_joel_for_no_one_but_the_shell() {
     reading.read_line(&mut line).expect("an answer");
     let answer: Value = serde_json::from_str(&line).expect("one line of JSON");
     assert_eq!(
-        answer["done"],
-        json!(true),
-        "a share's start is taken: {answer}"
+        answer["error"]["code"],
+        json!("refused"),
+        "a share's start is refused to a program that isn't the shell: {answer}"
     );
-    assert_eq!(asked.try_recv().ok(), Some(json!("sharing")));
-    assert!(asked.try_recv().is_err(), "only the share's start was done");
+    assert!(asked.try_recv().is_err(), "no share's start was done");
     let _ = std::fs::remove_dir_all(&folder);
 }
 

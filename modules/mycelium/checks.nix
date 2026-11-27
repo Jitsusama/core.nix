@@ -222,6 +222,17 @@ let
   carryingAloneNode =
     toString
       (linux (links // { easesCarry = true; })).systemd.user.services.mycelium.Service.ExecStart;
+  # The home realm's node for a machine naming the machines lent for agents
+  # it may ease onto,
+  # forced whole so a name the option's type refuses fails here.
+  ontoNode =
+    onto:
+    let
+      words =
+        toString
+          (linux (links // { easesOnto = onto; })).systemd.user.services.mycelium.Service.ExecStart;
+    in
+    builtins.deepSeq words words;
   # The home realm's node for a machine naming one via, forced whole so a
   # value the option's type refuses fails here.
   viaNode =
@@ -503,7 +514,7 @@ in
   # harness's pi-carry, which a carry runs by name.
   mycelium-links-what-a-machine-names =
     holds "mycelium-links-what-a-machine-names"
-      "A machine's links, over SSH or through a provider's program, don't each get dialled in its realm, its providers' programs aren't each asked, a via or a provider naming its program by no path or a place it could misread evaluates, Linux's node signs in with a key that may ask for a PIN or not the one its realm names, or through an agent the account's SSH config names, a Mac's node starts sessions whose commits wait on its sensor or finds the system's ssh after the account's programs or none of them, Linux's node isn't given a soft 65536 and a hard 524288 open files, or a Mac's a soft 10240 and no hard limit of its own, the home realm's node doesn't write how it would ease the machine or a further realm's does, it asks the harness to park sessions or makes its carries though its machine doesn't say to or doesn't where it does, on Linux or a Mac, a machine in a realm naming none runs no node, or one in none runs one."
+      "A machine's links, over SSH or through a provider's program, don't each get dialled in its realm, its providers' programs aren't each asked, a via or a provider naming its program by no path or a place it could misread evaluates, Linux's node signs in with a key that may ask for a PIN or not the one its realm names, or through an agent the account's SSH config names, a Mac's node starts sessions whose commits wait on its sensor or finds the system's ssh after the account's programs or none of them, Linux's node isn't given a soft 65536 and a hard 524288 open files, or a Mac's a soft 10240 and no hard limit of its own, the home realm's node doesn't write how it would ease the machine or a further realm's does, it doesn't name each machine lent for agents it may ease onto, or names one where none is set, in a further realm's node, or by a name it could misread, it asks the harness to park sessions or makes its carries though its machine doesn't say to or doesn't where it does, on Linux or a Mac, a machine in a realm naming none runs no node, or one in none runs one."
       (
         lib.hasInfix "--realm personal node --ssh one --ssh two" linuxNode
         && lib.hasInfix "--health-socket %t/daemons/system.sock --eases" linuxNode
@@ -515,12 +526,28 @@ in
               // {
                 easesSleep = true;
                 easesCarry = true;
+                easesOnto = [ "tern" ];
               }
             )).systemd.user.services.mycelium-other.Service.ExecStart
         ))
         && !(lib.hasInfix "--eases-sleep" linuxNode)
         && !(lib.hasInfix "--eases-carry" linuxNode)
         && !(lib.hasInfix "--eases-carry" sleepingNode)
+        && !(lib.hasInfix "--eases-onto" linuxNode)
+        && lib.hasInfix "--eases --eases-onto tern-2 --eases-onto osprey" (ontoNode [
+          "tern-2"
+          "osprey"
+        ])
+        && lib.hasInfix "--eases-onto tern" (
+          toString
+            (mac (easing // { easesOnto = [ "tern" ]; })).launchd.agents.mycelium.config.ProgramArguments
+        )
+        && lib.all (wrong: !(builtins.tryEval (ontoNode [ wrong ])).success) [
+          "Tern"
+          "tern osprey"
+          "--eases-carry"
+          "tern%h"
+        ]
         && lib.hasInfix "--eases --eases-carry --eases-sleep" carryingNode
         && lib.hasInfix "--eases --eases-carry" carryingAloneNode
         && !(lib.hasInfix "--eases-sleep" carryingAloneNode)
@@ -831,6 +858,7 @@ in
           sleepingNode
           carryingNode
           carryingAloneNode
+          (ontoNode [ "tern" ])
           apartAgentsNode
           (viaNode "/bin/cell:cell-1")
           (providerNode "/bin/cell")
@@ -958,6 +986,18 @@ in
           holds = "It Asks You"
           ${says}
         '';
+      # A help that wraps inside the phrase its act holds, as mycelium's
+      # 60 columns may, so the check must read across the line.
+      wrapped = act "wrapped" ''
+        [act.cli.has]
+        command = "steer"
+        holds = "pause, resume, stop or close"
+        [act.launcher]
+        waived = "none"
+      '';
+      wraps = pkgs.writeShellScript "mycelium" ''
+        printf '%s\n' 'Or it does something, as its act: pause, resume,' '  stop or close; fill, putting its text'
+      '';
       # Each way of straying the check has to catch, with what it says.
       strays = [
         {
@@ -1187,6 +1227,11 @@ in
         cat said
         exit 1
       fi
+      if ! ${check} ${wrapped} ${root} ${wraps} > said; then
+        echo "The surfaces check refused a phrase its help wraps across a line."
+        cat said
+        exit 1
+      fi
       ${lib.concatMapStrings (stray: ''
         strays ${stray.table} ${lib.escapeShellArg stray.says}
       '') strays}
@@ -1204,14 +1249,27 @@ in
         touch $out
       '';
 
+  # Every realm's node runs among the sessions, and what it swaps out stays
+  # compressed in memory rather than going to disk, as the sessions' kitty's
+  # does, so a wake after a quiet spell faults back from memory. On
+  # 2026-11-26 a node held 1.43 GB in swap, 25 KB of it in zswap, the kernel
+  # having reclaimed it past its floor 3,986,771 times; while the disk was
+  # busiest, 12 of 41 calls to it took 1.8 to 44 s. With writeback off, 38
+  # of 40 calls took under 0.7 s through the same load, and none hung.
   mycelium-runs-among-the-sessions =
     holds "mycelium-runs-among-the-sessions"
-      "A mycelium node runs outside agents.slice, where its wakeups preempt Joel's programs."
+      "A mycelium node runs outside agents.slice, where its wakeups preempt Joel's programs, or writes its swapped memory out to disk, where a wake waits to read it back."
       (
-        lib.all (node: (node.Service.Slice or null) == "agents.slice") [
-          bothLinux.mycelium
-          bothLinux.mycelium-other
-        ]
+        lib.all
+          (
+            node:
+            (node.Service.Slice or null) == "agents.slice"
+            && (node.Service.MemoryZSwapWriteback or true) == false
+          )
+          [
+            bothLinux.mycelium
+            bothLinux.mycelium-other
+          ]
       );
 
   mycelium-serves-the-harness-files =
@@ -1476,7 +1534,7 @@ in
   # One that declares nothing has no file, which mycelium reads as unknown.
   mycelium-declares-what-a-machine-says =
     holds "mycelium-declares-what-a-machine-says"
-      "What a machine declares, its probes of either kind included, isn't written in mycelium's shape, its node doesn't say whether a call is on there with a-call-is-on asked about that machine alone, a held session's outlives isn't each system's, a fence it doesn't say is written, whether pi fences itself isn't written only when a Mac says so beside its fences or isn't refused on Linux, doors it accepts for another machine aren't or take a machine no realm could name, an agent's run in a fenced or strict fence isn't said to start through its system's launcher, an unfenced one's is, one is when runs are refused, a machine of either system can't declare every fence, or a machine declaring nothing gets a file anyway."
+      "What a machine declares, its probes of either kind included, isn't written in mycelium's shape, its node doesn't say whether a call is on there with a-call-is-on asked about that machine alone, a held session's outlives isn't each system's, a fence it doesn't say is written, whether pi fences itself isn't written only when a Mac says so beside its fences or isn't refused on Linux, doors it accepts for another machine aren't or take a machine no realm could name, an agent's run in a fenced or strict fence isn't said to start through its system's launcher, an unfenced one's is, one is when runs are refused, a machine of either system can't declare every fence, a machine kept lively doesn't say its ceiling or one not kept lively says one, or a machine declaring nothing gets a file anyway."
       (
         declared linux == {
           reach = [ "internet" ];
@@ -1506,6 +1564,30 @@ in
         && !((declared linux) ? hosts)
         && !((declared linux) ? fence)
         && !((declared linux) ? pi_fences_itself)
+        && !((declared linux) ? kept_lively)
+        && (declaredAs { keptLively.cpu = 28; }).kept_lively or null == { cpu = 28; }
+        && (
+          (declaredAs {
+            keptLively = {
+              cpu = 28;
+              memoryAvailable = 1024;
+            };
+          }).kept_lively or null == {
+            cpu = 28;
+            memory_available = 1024;
+          }
+        )
+        && (
+          (declaredAs {
+            keptLively = {
+              cpu = 28;
+              memoryFull = 3;
+            };
+          }).kept_lively or null == {
+            cpu = 28;
+            memory_full = 3;
+          }
+        )
         && !((launching mac everyKind) ? pi_fences_itself)
         && (saidBy (selfFenced mac)).pi_fences_itself or false
         && (saidBy (selfFenced mac)).fence.strict.runs or null == macLauncher
@@ -1571,6 +1653,250 @@ in
         && refusesAgents (saying {
           elsewhere = "an-agent";
         })
+      );
+
+  # What work begun in some folders or naming some words needs is written
+  # in mycelium's words, each need as mycelium reads it from the words
+  # `--need` takes, and left out where nothing is said. A need mycelium
+  # couldn't read fails here rather than reading as none. The kinds are
+  # read from the locked mycelium's own Need, so one it gains, loses or
+  # renames fails here, as does a line of it the scan can't read. Its
+  # declaration must take fields it doesn't know, or a node on the lock
+  # would refuse the whole file, and once it reads needs_in, its field
+  # names and its rule's are pinned to those written here.
+  mycelium-declares-what-work-needs =
+    holds "mycelium-declares-what-work-needs"
+      "What a machine declares work begun in some folders or naming some words needs isn't written in mycelium's words, a cloud need isn't written alone or a kind=value one as its kind keyed to its value, one is written where nothing is said, the kinds the locked mycelium's Need has, read from a scan failing on any line it can't read, aren't those taken, the locked declaration refuses fields it doesn't know or reads needs_in or its rule by other names, or a need mycelium can't match, a machine no realm could name, a rule naming no folder or word, a folder from ~ or $, with an empty, . or .. part or space at an end, or an empty word is taken."
+      (
+        let
+          rule = {
+            folders = [ "src/inner" ];
+            words = [ "forge.example" ];
+            needs = [
+              "reach=inner"
+              "system=linux"
+              "arch=x86_64"
+              "machine=box-1"
+              "tool=gcloud"
+              "accelerator=gpu"
+              "cloud"
+            ];
+          };
+          taken =
+            extra:
+            (builtins.tryEval (builtins.deepSeq (declaredAs { needsIn = [ (rule // extra) ]; }) true)).success;
+          locked = "${self.inputs.mycelium}/src";
+          linesOf = file: lib.splitString "\n" (builtins.readFile "${locked}/${file}");
+          # What the locked source's items hold, read failing closed.
+          rust = import ./rust-items.nix { inherit lib; };
+          need = rust.enumIn (linesOf "placement.rs") "Need";
+          accelerators = rust.enumIn (linesOf "facts.rs") "AcceleratorKind";
+          declaration = rust.structIn (linesOf "declared.rs") "Declared";
+          # needs_in's field, or null on a lock from before it.
+          needsIn = lib.findFirst (field: field.name == "needs_in") null (declaration.fields or [ ]);
+          rule' = rust.structIn (linesOf "declared.rs") "NeedsIn";
+          kinds = map (variant: variant.name) (need.variants or [ ]);
+          # Rust's lines as a fixture gives them.
+          fixture = text: lib.splitString "\n" text;
+          # A field and an enum the reader takes, each changed by one line
+          # in the cases below to show it refuses what it can't read.
+          fields = over: body: ''
+
+            ${over}
+            pub struct Rule {
+                /// Its folders.
+            ${body}
+                pub needs: Vec<Need>,
+            }
+          '';
+          variants = over: body: ''
+
+            ${over}
+            pub enum Need {
+                /// A network.
+                Reach(String),
+            ${body}
+            }
+          '';
+          derived = "#[derive(Debug, Deserialize)]";
+          words = "    pub words: Vec<String>,";
+          read = over: body: rust.structIn (fixture (fields over body)) "Rule";
+          readEnum = over: body: rust.enumIn (fixture (variants over body)) "Need";
+          said =
+            kind: if kind == "cloud" then kind else "${kind}=${if kind == "accelerator" then "gpu" else "a"}";
+        in
+        (declaredAs { needsIn = [ rule ]; }).needs_in or null == [
+          {
+            inherit (rule) folders words;
+            needs = [
+              { reach = "inner"; }
+              { system = "linux"; }
+              { arch = "x86_64"; }
+              { machine = "box-1"; }
+              { tool = "gcloud"; }
+              { accelerator = "gpu"; }
+              "cloud"
+            ];
+          }
+        ]
+        # Every kind the type takes, no more and no fewer, each holding what
+        # the declaration writes of it, cloud nothing, and each taken.
+        && need.serde or null == [ "#[serde(rename_all = \"snake_case\")]" ]
+        &&
+          need.variants or null == [
+            {
+              name = "machine";
+              holds = "String";
+            }
+            {
+              name = "system";
+              holds = "String";
+            }
+            {
+              name = "arch";
+              holds = "String";
+            }
+            {
+              name = "reach";
+              holds = "String";
+            }
+            {
+              name = "accelerator";
+              holds = "AcceleratorKind";
+            }
+            {
+              name = "tool";
+              holds = "String";
+            }
+            {
+              name = "cloud";
+              holds = null;
+            }
+          ]
+        && lib.all (kind: taken { needs = [ (said kind) ]; }) kinds
+        && accelerators.serde or null == [ "#[serde(rename_all = \"lowercase\")]" ]
+        &&
+          accelerators.variants or null == [
+            {
+              name = "gpu";
+              holds = null;
+            }
+            {
+              name = "npu";
+              holds = null;
+            }
+          ]
+        && taken { needs = [ "accelerator=npu" ]; }
+        # A lock from before needs_in takes it unread only while nothing
+        # over Declared refuses a field; one with it names it, its type
+        # and its rule's fields and types as written here, which pins them
+        # from the lock that first does.
+        && declaration != null
+        && !lib.any (lib.hasInfix "deny_unknown_fields") declaration.over
+        && (needsIn == null) == (rule' == null)
+        && (needsIn == null || needsIn.type == "Vec<NeedsIn>")
+        && (
+          rule' == null
+          ||
+            map (field: { inherit (field) name type; }) rule'.fields == [
+              {
+                name = "folders";
+                type = "Vec<PathBuf>";
+              }
+              {
+                name = "words";
+                type = "Vec<String>";
+              }
+              {
+                name = "needs";
+                type = "Vec<Need>";
+              }
+            ]
+        )
+        # The reader reads what it's shown, multi-line attributes joined,
+        # and gives null for each kind of line it can't read.
+        &&
+          read derived "    #[serde(\n        default,\n    )]\n    pub folders: Vec<PathBuf>," == {
+            over = [ derived ];
+            serde = [ ];
+            fields = [
+              {
+                name = "folders";
+                type = "Vec<PathBuf>";
+                serde = [ "default," ];
+              }
+              {
+                name = "needs";
+                type = "Vec<Need>";
+                serde = [ ];
+              }
+            ];
+          }
+        &&
+          (read "#[serde(\n    deny_unknown_fields,\n)]\n${derived}" words).serde or null == [
+            "#[serde(deny_unknown_fields,)]"
+          ]
+        && read derived words != null
+        && read "#[derive(Debug)]" words == null
+        && read "// a note\n${derived}" words == null
+        && read "#[repr(C)]\n${derived}" words == null
+        && read derived "    #[serde(\n        default," == null
+        && read derived "    #[serde(rename = \"dirs\")]\n    pub folders: Vec<PathBuf>," == null
+        && read derived "    #[serde(alias = \"dirs\")]\n    pub folders: Vec<PathBuf>," == null
+        && read derived "    folders: Vec<PathBuf>," == null
+        && read derived "    pub folders:\n        Vec<PathBuf>," == null
+        && read derived "    // a note" == null
+        &&
+          (readEnum derived "    Cloud,").variants or null == [
+            {
+              name = "reach";
+              holds = "String";
+            }
+            {
+              name = "cloud";
+              holds = null;
+            }
+          ]
+        && readEnum "#[derive(Debug)]" "    Cloud," == null
+        && readEnum derived "    #[serde(skip)]\n    Cloud," == null
+        && readEnum derived "    Cloud { at: String }," == null
+        && readEnum derived "    Cloud(String, String)," == null
+        && readEnum derived "    CloudRoom," == null
+        && !((declared linux) ? needs_in)
+        && taken { }
+        && taken { words = [ ]; }
+        && taken { folders = [ ]; }
+        && !taken {
+          folders = [ ];
+          words = [ ];
+        }
+        && !taken { needs = [ "reach" ]; }
+        && !taken { needs = [ "colour=blue" ]; }
+        && !taken { needs = [ "reach=" ]; }
+        && !taken { needs = [ "reach=a=b" ]; }
+        && !taken { needs = [ "reach=Inner" ]; }
+        && !taken { needs = [ "reach=inner net" ]; }
+        && !taken { needs = [ "accelerator=tpu" ]; }
+        && taken { needs = [ "reach=office_vpn" ]; }
+        && !taken { needs = [ "machine=box_1" ]; }
+        && !taken { needs = [ "machine=-box" ]; }
+        && !taken { needs = [ "system=Linux" ]; }
+        && taken { folders = [ "/srv/inner" ]; }
+        && taken { folders = [ "src/an inner" ]; }
+        && !taken { folders = [ "." ]; }
+        && !taken { folders = [ "./src/inner" ]; }
+        && !taken { folders = [ "src/../inner" ]; }
+        && !taken { folders = [ "src//inner" ]; }
+        && !taken { folders = [ "src/inner/." ]; }
+        && !taken { folders = [ "$HOME/src/inner" ]; }
+        && !taken { folders = [ "src/$HOME" ]; }
+        && !taken { folders = [ " src/inner" ]; }
+        && !taken { needs = [ ]; }
+        && !taken { folders = [ "" ]; }
+        && !taken { folders = [ "~/src/inner" ]; }
+        && !taken { folders = [ "src/inner/" ]; }
+        && !taken { folders = [ "/" ]; }
+        && !taken { words = [ "" ]; }
       );
 
   # Each realm's node on either system reads what its machine declares from

@@ -209,7 +209,8 @@ const WHY_TONES = {
     opening: "plain", startedOpening: "plain", askedAgain: "plain",
     startedAskedAgain: "plain", cameAgain: "plain", startedCameAgain: "plain",
     cameAfter: "plain", startedCameAfter: "plain", ownAfterAll: "plain",
-    startedOwnAfterAll: "plain",
+    startedOwnAfterAll: "plain", stillComing: "plain", startedStillComing: "plain",
+    comeAfterAll: "plain", startedComeAfterAll: "plain",
     disowned: "alert", startedDisowned: "alert", untaken: "alert",
     startedUntaken: "alert", unowned: "alert", hosted: "alert", hostless: "alert",
     unnamed: "alert", unviewable: "alert", unviewableHost: "alert"
@@ -307,14 +308,55 @@ function takesBack(refused) {
 // refusal. `launcher` holds becameNot and tellOnOpen, `said` the
 // agents:machine words, `alert` the foot's colour, and `refused` is as
 // takesBack takes it, with `actName` the act's name and `called` what the
-// foot names the session by.
+// foot names the session by. It gives the foot's `[name, words]` it told,
+// so a Go To asked from outside answers with them (Agents' goToFor), or
+// null for a row taken back, which told the foot nothing.
 function unsteered(launcher, said, refused, alert) {
     const back = takesBack(refused);
     if (back !== null) {
         launcher?.becameNot?.(`agent:${refused.address}`, back);
-        return;
+        return null;
     }
     const [name, words] = refusal(said, { act: refused.actName, why: refused.why,
         address: refused.address, name: refused.called });
     launcher?.tellOnOpen?.([[name, words, alert]]);
+    return [name, words];
+}
+
+// How long after a Go To its refusal still answers that press: a session
+// elsewhere is refused once its node answers, in a few seconds. One later,
+// as a viewer no kitty took can be told up to 85 s on, is held for the
+// launcher's next opening: opening it then would take the keys from
+// whatever Joel has gone on to type in, a password prompt among them
+// (#6519's fifth round). A press opens the launcher once (`opened`).
+const PRESS_TELLS_MS = 15000;
+
+// How Agents' refusedGoing tells a Go To that couldn't go, by `going`,
+// Sessions' waking and goneTo: "unsaid" for one a Go To is waking, which
+// its wake reopens, so nothing was refused; "opens" for one Joel asked
+// Go To for moments ago, opening the launcher to say why, since every act
+// shuts it before it runs (KP0L6A, 2026-11-24 [00902e94]); else "held" in
+// the foot for his next opening, as a walk's, a kept view's or a start's
+// late refusal is, which came of no press just then and mustn't open the
+// launcher over his work. A press opens it once: a second refusal of it,
+// as a window refused after the terminal was, is held as well (`opened`,
+// the press it last opened for), or it would open the launcher again
+// after Joel shut it. A press whose Go To went (`goneTo.went`), as one to
+// a terminal on the machine a session is parked on, holds its wake's late
+// refusal too, since Joel is typing where it took him, perhaps a password
+// (#6519's F166). One refused while its press still decides
+// (`goneTo.deciding`, a node out of reach refusing inside the wake) is
+// held as well, and opened for only once that press didn't go
+// (Sessions' wakeRefusedAtOnce).
+function refusalTold(address, going, now) {
+    const said = String(address ?? "");
+    if (said !== "" && going?.waking === said) {
+        return "unsaid";
+    }
+    const gone = going?.goneTo;
+    if (said !== "" && gone?.address === said && now - Number(gone.at) < PRESS_TELLS_MS
+        && gone.went !== true && gone.deciding !== true && going?.opened !== gone.at) {
+        return "opens";
+    }
+    return "held";
 }
