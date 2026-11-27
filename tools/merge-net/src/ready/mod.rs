@@ -14,6 +14,8 @@
 //! else `~/.local/state/nix-offload/passed/COMMIT`), which keeps a line
 //! for each changed-checks run sent that passed, with its arguments.
 
+pub mod merged;
+
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};

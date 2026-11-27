@@ -130,7 +130,7 @@ pub fn judged(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Resul
 
 /// The tree merging `commit` into `main` in the repository at `folder`
 /// makes, which a head behind main lands as; none where they conflict.
-fn merged_tree(folder: &Path, main: &str, commit: &str) -> Option<String> {
+pub(crate) fn merged_tree(folder: &Path, main: &str, commit: &str) -> Option<String> {
     let merged = Command::new("git")
         .arg("-C")
         .arg(folder)

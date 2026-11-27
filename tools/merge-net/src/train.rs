@@ -332,6 +332,13 @@ pub fn riding(head: &str) -> Option<String> {
     Some(rides_said(&root))
 }
 
+/// Take the rider at `head` off the train, as one whose merge over main
+/// passed merges without it.
+pub fn step_off(head: &str) {
+    let root = crate::state::State::from_env().root;
+    leave(&root, head, Left::Off);
+}
+
 /// What `ready` says of a rider asked of again, among the riders under
 /// `root`: that it waits, not that it was just put on the train.
 fn rides_said(root: &Path) -> String {
