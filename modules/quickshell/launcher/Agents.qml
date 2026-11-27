@@ -52,6 +52,7 @@ import "Moment.js" as Moment
 import "Numbers.js" as Numbers
 import "Openings.js" as Openings
 import "Order.js" as Order
+import "Presented.js" as Presented
 import "ReopenTally.js" as ReopenTally
 import "SessionDrawer.js" as SessionDrawer
 import "SessionRow.js" as SessionRow
