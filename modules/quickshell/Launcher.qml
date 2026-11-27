@@ -9662,8 +9662,9 @@ Scope {
             // not yet made, waits until they rest rather than holding the
             // next one; the key's own frame goes on without it
             // (Pacing.typingRests). A cheap one follows in the frame after
-            // the letter's, never in it, since up to 8 ms on every letter
-            // would be the letters' cost (Pacing.drawerRestsForLetters).
+            // the letter's, never in it, since up to 13 ms on
+            // every letter would be the letters' cost
+            // (Pacing.drawerRestsForLetters).
             // One not out yet rests too, since coming out costs more than
             // the makings, timed only for drawers already out, measure.
             drawerJoined = false;

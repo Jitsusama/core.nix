@@ -11,12 +11,14 @@
 # and ones it mustn't pass on, and a second link within a few seconds of
 # the first.
 # usage: mycelium-links-open-in-the-launcher.sh <desktop entry> <niri's defaults>
-#   <mycelium-link asking a stand-in qs>
+#   <mycelium-link asking a stand-in qs> <Launcher.qml> <mycelium-link's main.rs>
 set -euo pipefail
 
 entry=$1
 defaults=$2
 asking_stand_in=$3
+launcher=$4
+link_source=$5
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 cd "$work"
@@ -98,6 +100,13 @@ opening 'mycelium:sprout?words=-rf+now&from=tern02' \
   '[ipc][call][launcher][newWork][words:-rf now][from:]'
 opening 'mycelium:sprout?from=TERN02' ''
 opening 'mycelium:sprout?words=tidy&words=reboot' ''
+# Its Start New Work Here, on a machine's drawer: the machine after a fixed
+# word too, in the launcher's call naming one, and a misshaped one refused.
+opening 'mycelium:sprout?words=tidy&on=osprey' \
+  '[ipc][call][launcher][newWorkOn][words:tidy][from:][on:osprey]'
+opening 'mycelium:sprout?words=tidy&from=TERN02&on=cloud' \
+  '[ipc][call][launcher][newWorkOn][words:tidy][from:TERN02][on:cloud]'
+opening 'mycelium:sprout?words=tidy&on=-h' ''
 # Code's page's Open it in the launcher, on a repository's row.
 opening 'mycelium:repository/github:someone/thing' \
   '[ipc][call][launcher][code][github:someone/thing]'
@@ -119,4 +128,32 @@ if [ "$said" != '[ipc][call][launcher][talkTo][DAHTNJ]' ]; then
   echo "two links at once asked: $said"
   failed=1
 fi
+
+# The stand-in answers any call, so each function the program calls must
+# be one the launcher's IpcHandler has, taking as many arguments as the
+# program passes it, as the asks above show; qs refuses any other, and the
+# link opens nothing.
+passes='code 1
+goTo 1
+machine 1
+network 1
+newWork 2
+newWorkOn 3
+talkTo 1'
+# Each function of the handler and how many arguments it takes.
+handles=$(sed -n '/^    IpcHandler {$/,/^    }$/p' "$launcher" |
+  sed -n 's/^        function \([A-Za-z]*\)(\(.*\)).*{$/\1 \2/p' |
+  awk '{ name = $1; $1 = ""; print name, ($0 ~ /[^ ]/ ? split($0, each, ",") : 0) }')
+calls=$(sed -n '/^    fn call(&self)/,/^    }$/p' "$link_source" | grep -oE '"[A-Za-z]+"' |
+  tr -d '"' | LC_ALL=C sort -u)
+if [ "$calls" != "$(cut -d ' ' -f 1 <<< "$passes")" ]; then
+  echo "mycelium-link calls $calls; say here how many arguments each is passed"
+  failed=1
+fi
+while read -r function count; do
+  if ! grep -qxF "$function $count" <<< "$handles"; then
+    echo "mycelium-link calls $function with $count, which the launcher's IpcHandler hasn't"
+    failed=1
+  fi
+done <<< "$passes"
 [ "$failed" = 0 ]

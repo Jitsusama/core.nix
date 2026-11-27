@@ -11,7 +11,8 @@ QtObject {
     Component.onCompleted: Expect.run(cases)
 
     function cases() {
-        const words = { unnamed: "unnamed", unmachined: "unmachined", untaken: "untaken" };
+        const words = { unnamed: "unnamed", unmachined: "unmachined", unprovided: "unprovided",
+            unheard: "unheard", unoffered: "unoffered: {why}" };
         const offered = [{ shape: "standard" }];
 
         // Joel, 2026-11-25: "we need full integation, from pi, from cli, from laucnher,
@@ -34,9 +35,85 @@ QtObject {
         Expect.same("a node that can't take the cloud's need takes back what it offered",
             Cloud.heard("", { error: { code: "untaken", message: "can't yet" } }),
             { offers: [], unoffered: "can't yet", journal: "can't yet" });
+        // In the Cloud's drawer says the cheapest by the hour, the figure Joel reads
+        // before a machine that costs money is made, so a new price is news.
+        const standard = { shape: "standard", hourly: "0.38", currency: "USD" };
+        Expect.same("offers differ by a shape, a price or a currency, as well as by count",
+            [Cloud.differs([standard], [Object.assign({}, standard, { hourly: "0.52" })]),
+                Cloud.differs([standard], [Object.assign({}, standard, { currency: "EUR" })]),
+                Cloud.differs([standard], [Object.assign({}, standard, { shape: "large" })]),
+                Cloud.differs([standard], [standard, { shape: "small" }]),
+                Cloud.differs([standard], [{ shape: "standard" }]),
+                Cloud.differs([standard], [Object.assign({}, standard)]),
+                Cloud.differs([], []),
+                Cloud.differs([standard, { shape: "large", hourly: "1.10", currency: "USD" }],
+                    [standard, { shape: "large", hourly: "1.40", currency: "USD" }])],
+            [true, true, true, true, true, false, false, true]);
         Expect.same("asked again only when never heard or ten minutes old",
             [Cloud.stale(0, 1000), Cloud.stale(1000, 1000 + 599999),
                 Cloud.stale(1000, 1000 + 600000)], [true, false, true]);
+        // What Agents.qml's askOffers keeps of each answer, so the launcher itself
+        // takes a new price as news, not the comparison alone.
+        const kept = { offers: [standard], at: 1000, unoffered: "" };
+        const repriced = { offers: [Object.assign({}, standard, { hourly: "0.52" })] };
+        Expect.same("an answer repricing a shape is kept and draws the rows again",
+            Cloud.answered(kept, repriced, 5000),
+            { offers: repriced.offers, at: 5000, unoffered: "", changed: true, journal: null });
+        Expect.same("one offering the same is kept as heard now, drawing nothing",
+            Cloud.answered(kept, { offers: [Object.assign({}, standard)] }, 5000).changed, false);
+        Expect.same("one failing keeps what was offered and when, and says why once",
+            [Cloud.answered(kept, { error: { message: "down" } }, 5000),
+                Cloud.answered(Object.assign({}, kept, { unoffered: "down" }),
+                    { error: { message: "down" } }, 5000).journal],
+            [{ offers: [standard], at: 1000, unoffered: "down", changed: false, journal: "down" },
+                null]);
+        Expect.same("and no daemon to answer is heard as no answer",
+            Cloud.answered({ offers: [], at: 0, unoffered: "" }, null, 5000).unoffered,
+            "the agents daemon isn't answering");
+        // An old node would drop the need and start the work here (offers.rs), so a
+        // node that no longer takes the cloud takes back what it offered.
+        const untaken = Cloud.answered(kept, { error: { code: "untaken",
+            message: "can't yet" } }, 5000);
+        Expect.same("one no longer taking the cloud takes back what was offered, and says why",
+            [untaken, Cloud.refused("core.nix", "cloud",
+                Cloud.offeredNow(untaken.at, untaken.offers, untaken.unoffered), words)],
+            [{ offers: [], at: 5000, unoffered: "can't yet", changed: true,
+                journal: "can't yet" }, "unoffered: can't yet"]);
+        // A Return asks before it reads, so what a daemon answers at once is said on
+        // it, as Daemon.qml's sent answers null at once with no daemon connected.
+        // Each read is a copy, as Agents' offersKept builds one each call, so a
+        // returning that read only before it asked would say the stale state.
+        const replayed = (state, answers) => {
+            let asked = 0;
+            const offeredBy = Cloud.returning(() => Object.assign({}, state), () => {
+                asked += 1;
+                if (answers === undefined) {
+                    state.asking = true;
+                    return;
+                }
+                Object.assign(state, Cloud.answered(state, answers, 5000));
+            }, 5000);
+            return [offeredBy, asked];
+        };
+        const nothingYet = () => ({ asking: false, at: 0, offers: [], unoffered: "" });
+        Expect.same("a Return says what an answer at once says, and not yet while one is out",
+            [replayed(nothingYet(), null), replayed(nothingYet()),
+                replayed(nothingYet(), { offers: [standard] })],
+            [["the agents daemon isn't answering", 1], [null, 1], [[standard], 1]]);
+        Expect.same("and asks nothing while offers are fresh or an ask is out",
+            [replayed({ asking: false, at: 4000, offers: [standard], unoffered: "" }, null),
+                replayed({ asking: true, at: 0, offers: [], unoffered: "down" }, null)],
+            [[[standard], 0], ["down", 0]]);
+        // An opening asks only once the offers are stale, as a provider's program runs
+        // for each ask; a Return refused for want of them asks again whatever their age.
+        const fresh = { asking: false, at: 1000, offers: [standard] };
+        Expect.same("asked at an opening once stale, by a Return also while none is offered",
+            [Cloud.asksNow(fresh, 2000, false), Cloud.asksNow(fresh, 2000, true),
+                Cloud.asksNow(Object.assign({}, fresh, { offers: [] }), 2000, false),
+                Cloud.asksNow(Object.assign({}, fresh, { offers: [] }), 2000, true),
+                Cloud.asksNow(Object.assign({}, fresh, { at: 0 }), 2000, false),
+                Cloud.asksNow({ asking: true, at: 0, offers: [] }, 2000, true)],
+            [false, false, false, true, true, false]);
 
         Expect.same("the cheapest by the hour, in the first priced one's currency",
             [Cloud.cheapest([{ shape: "a", hourly: "0.90", currency: "USD" },
@@ -86,12 +163,44 @@ QtObject {
             [Cloud.refused("/home/j/src/core.nix", "cloud", offered, words),
                 Cloud.refused("", "-", offered, words)],
             ["unnamed", "unmachined"]);
+        // With offers offered the cloud refuses nothing, so only the words can
+        // be, and those are Sprouting's to say, never a link misnamed.
+        Expect.same("a start the cloud offers for says no why of its own",
+            Cloud.refused("core.nix", "cloud", offered, words), "");
         // An old node would drop the need and start the work here, a link's start included.
         Expect.same("nothing is asked of the cloud while it offers nothing, and it says so",
             [Cloud.ask("fix it", "core.nix", "cloud", []),
                 Cloud.ask("https://github.com/o/r/issues/7", "", Cloud.linked("on:cloud"), null),
                 Cloud.refused("core.nix", "cloud", [], words)],
-            [null, null, "untaken"]);
+            [null, null, "unprovided"]);
+        // A link's cloud act may be Returned before the shell has heard any offers,
+        // which take up to half a minute, so not yet heard is never said as can't.
+        Expect.same("the cloud not heard yet says so, rather than that it can't be taken",
+            [Cloud.ask("fix it", "core.nix", "cloud", null),
+                Cloud.refused("core.nix", "cloud", null, words),
+                Cloud.refused("/home/j/src/core.nix", "cloud", null, words)],
+            [null, "unheard", "unnamed"]);
+        // One whose last ask came back with no offers, a machine with no node or a node
+        // down, is told why, even while it's asked again, never "not yet", which the
+        // last ask already ended (#6792's rounds).
+        const noNode = "this machine runs no node to ask what the cloud offers";
+        Expect.same("not yet only with nothing heard, else what was offered, else its why",
+            [Cloud.offeredNow(0, [], ""), Cloud.offeredNow(0, [], noNode),
+                Cloud.offeredNow(1800000000000, offered, noNode),
+                Cloud.offeredNow(1800000000000, [], ""),
+                Cloud.offeredNow(1800000000000, [], "can't yet")],
+            [null, noNode, offered, [], "can't yet"]);
+        Expect.same("and a why the last ask came back with is said as it",
+            [Cloud.ask("fix it", "core.nix", "cloud", noNode),
+                Cloud.refused("core.nix", "cloud", noNode, words)],
+            [null, `unoffered: ${noNode}`]);
+        Expect.same("and a why the node wrote is said as written, its $ patterns kept",
+            Cloud.refused("core.nix", "cloud", "zone $& and $$ unknown", words),
+            "unoffered: zone $& and $$ unknown");
+        Expect.same("and a link naming nowhere is said as that, offers heard or not",
+            [Cloud.refused("core.nix", "-", null, words),
+                Cloud.refused("core.nix", "-", noNode, words)],
+            ["unmachined", "unmachined"]);
         Expect.same("a machine by its name needs no offer",
             Cloud.ask("https://github.com/o/r/issues/7", "", "skiff", []),
             { ask: "sprout", text: "https://github.com/o/r/issues/7", on: "skiff" });
