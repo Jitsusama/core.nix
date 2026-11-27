@@ -42,14 +42,23 @@ pub(super) const EMPTY_REST: f64 = 3600.0;
 /// while no disk is worse than filling, and the longest that wait may be.
 /// On 27 November surveys reading 15 GB apiece walked for 32 of 50 minutes,
 /// each for a reach that ended waiting or an upkeep that freed nothing,
-/// and kept the disk busy beside everything Joel ran. A survey slowed by a
-/// busy disk waits the longer for it, and a worse band waits for none.
-pub(super) const SURVEY_SPACING: f64 = 3.0;
+/// and kept the disk busy beside everything Joel ran. Spaced three times
+/// their walk, at most half an hour, seven from 05:58 to 09:26 still read
+/// 136 GB, walking 15 to 30 minutes each, and none freed more than 1.3 GB.
+/// The walk's length stands for what it read, so a survey slowed by a busy
+/// disk waits the longer for it and one that read little waits little. A
+/// filling disk has a tenth of its room or more, and a worse band, or a
+/// forecast of one, waits for none.
+pub(super) const SURVEY_SPACING: f64 = 12.0;
 
-pub(super) const SURVEY_SPACING_LONGEST: f64 = 1800.0;
+pub(super) const SURVEY_SPACING_LONGEST: f64 = 3.0 * 3600.0;
 
 /// How long after a whole survey that walked `seconds` the next waits, as
 /// `SURVEY_SPACING` says.
+pub(super) fn survey_spacing(seconds: f64) -> f64 {
+    (SURVEY_SPACING * seconds).min(SURVEY_SPACING_LONGEST)
+}
+
 /// Ends `watched`'s rest once it reads healthy, and forgets the emptied
 /// hour kept for it in `emptied`, so a restart can't bring back a rest
 /// the guard that kept it had already ended; whether it forgot one, so
@@ -71,10 +80,6 @@ pub(super) fn healthy_ends_rest(
 /// arrives.
 pub(super) fn pressed(decision: Decision, band: Band) -> bool {
     band > Band::Filling || matches!(decision, Decision::Reach(reach) if reach > Band::Filling)
-}
-
-pub(super) fn survey_spacing(seconds: f64) -> f64 {
-    (SURVEY_SPACING * seconds).min(SURVEY_SPACING_LONGEST)
 }
 
 pub(super) fn longest_rest(band: Band) -> f64 {

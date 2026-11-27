@@ -1100,7 +1100,7 @@ fn surveyed_before(home: &Home, ended: f64, seconds: f64) {
 }
 
 #[test]
-fn a_filling_disk_waits_three_times_the_last_survey_s_walk_even_across_a_restart() {
+fn a_filling_disk_waits_twelve_times_the_last_survey_s_walk_even_across_a_restart() {
     // On 27 November surveys reading 15 GB apiece walked for 32 of 50
     // minutes, one of them minutes after a switch restarted the guard.
     let home = Home::new();
@@ -1115,7 +1115,7 @@ fn a_filling_disk_waits_three_times_the_last_survey_s_walk_even_across_a_restart
     };
     let mut guard = home.guard(home.config("100%", "100%"));
     let mut seen = Vec::new();
-    for (wall, monotonic) in [(0.0, 3600.0), (1300.0, 4900.0), (1500.0, 5100.0)] {
+    for (wall, monotonic) in [(0.0, 3600.0), (5800.0, 9400.0), (6000.0, 9600.0)] {
         let at = Tick {
             wall: begun + wall,
             monotonic,
@@ -1127,24 +1127,24 @@ fn a_filling_disk_waits_three_times_the_last_survey_s_walk_even_across_a_restart
     assert_eq!(
         seen,
         [0, 0, 1],
-        "a filling disk didn't wait 1,500 s after a survey that walked 500 s"
+        "a filling disk didn't wait 6,000 s after a survey that walked 500 s"
     );
     let kept = home.memory()["surveyed"].clone();
     assert!(
-        kept[0].as_f64() >= Some(begun + 1500.0),
+        kept[0].as_f64() >= Some(begun + 6000.0),
         "the survey wasn't kept as ended: {kept}"
     );
 }
 
 #[test]
-fn a_survey_s_spacing_lasts_half_an_hour_at_most() {
+fn a_survey_s_spacing_lasts_three_hours_at_most() {
     let home = Home::new();
     fs::create_dir_all(home.root.join("scratch")).unwrap();
     let begun = wall();
     surveyed_before(&home, begun - 100.0, 5000.0);
     let mut guard = home.guard(home.config("100%", "100%"));
     let mut seen = Vec::new();
-    for (wall, monotonic) in [(1650.0, 3600.0), (1750.0, 3700.0)] {
+    for (wall, monotonic) in [(10_650.0, 3600.0), (10_750.0, 3700.0)] {
         let at = Tick {
             wall: begun + wall,
             monotonic,
@@ -1156,7 +1156,7 @@ fn a_survey_s_spacing_lasts_half_an_hour_at_most() {
     assert_eq!(
         seen,
         [false, true],
-        "a survey that walked 5,000 s spaced the next other than 1,800 s"
+        "a survey that walked 5,000 s spaced the next other than three hours"
     );
 }
 

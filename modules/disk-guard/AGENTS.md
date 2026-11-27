@@ -62,11 +62,12 @@ or launchd, and [`home.nix`][2] the account's.
   went unheard upkeep after upkeep, and each came back for a walk of
   15 GB.
 - **Spacing.** A pass that walks every source waits after the last one
-  ended three times as long as that one walked, at most half an hour,
+  ended twelve times as long as that one walked, at most three hours,
   kept across restarts, so a survey slowed by a busy disk waits the
   longer for it. On 27 November surveys of 15 GB apiece walked for 32 of
   50 minutes, each for a reach that ended waiting or an upkeep that freed
-  nothing. A disk worse than filling never waits, nor one forecast to be
+  nothing, and seven spaced at most half an hour read 136 GB while none
+  freed more than 1.3 GB. A disk worse than filling never waits, nor one forecast to be
   within a pass, whose pass starts early so it's done before the band
   arrives, and nor does the store's garbage, which needs no survey.
 - **Windows.** How long a thing has to sit idle before it goes narrows with
