@@ -944,6 +944,29 @@ fn a_claim_split_by_a_line_break_or_odd_spacing_is_read_whole() {
     );
 }
 
+/// The card and the ask open on a claim's own words, a few before it, so
+/// a claim late in a long report is shown rather than cut off, with three
+/// dots for the words left out on either side.
+#[test]
+fn a_claim_is_shown_by_its_own_words_however_far_in_it_stands() {
+    let shown = |text: &str| unsourced(&[sent("0000000a", 60, "T6E7X6", text)], NOW).behind;
+    assert_eq!(
+        shown("I ran the jq check over every log since Wednesday and it breaks Joel's rule."),
+        ["[0000000a] ... every log since Wednesday and it breaks Joel's rule. · T6E7X6"],
+        "the card's line left out the claim at the end of its sentence, or gave fewer words \
+         than it could"
+    );
+    assert_eq!(
+        shown(
+            "I ran the jq check over every log since Wednesday and it breaks Joel's rule \
+             again, so I stopped the run and filed it for the morning."
+        ),
+        ["[0000000a] ... and it breaks Joel's rule again, so I stopped ... · T6E7X6"],
+        "the card's line didn't open a few words before the claim, or gave no three dots for \
+         the words cut after it"
+    );
+}
+
 /// A claim's words reach the card and the keeper, so no mark in them may
 /// break the card's line, turn its sender round, or carry words no reader
 /// sees; a torn file's name, cleaned the same way, can't either.

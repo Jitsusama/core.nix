@@ -305,10 +305,27 @@ fn median(sorted: &[f64]) -> f64 {
     }
 }
 
+/// How many words [`short`] and [`short_from`] give.
+const SHORT: usize = 9;
+
 /// The first few words of an ask, enough to know it by.
 fn short(words: &str) -> String {
-    let mut said: Vec<&str> = words.split_whitespace().take(9).collect();
-    if words.split_whitespace().nth(9).is_some() {
+    short_from(words, 0)
+}
+
+/// A few words of `words`, enough to know them by, from its word `from`,
+/// or from nearer its start when fewer than [`SHORT`] words follow that,
+/// so a window opened near the end still gives as many as it can. Three
+/// dots stand for the words left out on either side.
+fn short_from(words: &str, from: usize) -> String {
+    let all: Vec<&str> = words.split_whitespace().collect();
+    let from = from.min(all.len().saturating_sub(SHORT));
+    let mut said: Vec<&str> = Vec::new();
+    if from > 0 {
+        said.push("...");
+    }
+    said.extend(all.iter().skip(from).take(SHORT));
+    if all.len() > from + SHORT {
         said.push("...");
     }
     said.join(" ")

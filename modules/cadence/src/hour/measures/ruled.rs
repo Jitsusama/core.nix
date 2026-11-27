@@ -63,7 +63,7 @@ use std::path::Path;
 
 use super::cells::short_id;
 use super::cited::sentences;
-use super::{Class, DAY, Measure, count, pains, short};
+use super::{Class, DAY, Measure, count, pains, short_from};
 use crate::mesh::{Mesh, Message, stamped_at};
 
 /// The key the count of claims with no word of his behind them takes.
@@ -226,6 +226,11 @@ pub fn asked_of_each<'a>(lines: impl IntoIterator<Item = &'a String>) -> Vec<&'a
 /// capped too, but a sentence with no space in it, or with marks that
 /// look like none, would otherwise be given whole.
 const CLAIM_LONGEST: usize = 160;
+
+/// How many words before a claim's own the card and the ask open on, so
+/// a claim is shown in its own words however far into its sentence it
+/// stands, as "... and it breaks Joel's rule." closing a long report.
+const CLAIM_LEAD: usize = 3;
 
 /// How far past now, in seconds, a message's stamp may stand and still be
 /// read: a clock a little ahead of cadence's is a message, and one stamped
@@ -438,7 +443,9 @@ pub fn unsourced(sent: &[Message], now: i64) -> Measure {
             .iter()
             .map(|(_, m, claim)| {
                 let (id, from) = (short_id(&m.id), &m.from);
-                let mut shown: String = short(&clean(claim));
+                let claim = clean(claim);
+                let opens = claimed(&claim).unwrap_or(0).saturating_sub(CLAIM_LEAD);
+                let mut shown: String = short_from(&claim, opens);
                 if shown.chars().count() > CLAIM_LONGEST {
                     shown = shown.chars().take(CLAIM_LONGEST).collect::<String>() + "...";
                 }
@@ -815,31 +822,48 @@ fn unquoted(text: &str) -> String {
     plain
 }
 
-/// Whether `sentence` claims a rule or wish of Joel's: any of the words
-/// naming him, or one by "he" or "his" in a sentence naming him.
+/// Whether `sentence` claims a rule or wish of Joel's, as [`claimed`]
+/// finds one.
 fn claims(sentence: &str) -> bool {
-    // "Joel's wish list" names a list of his, the repository's own, and
-    // claims nothing he said.
-    let said = sentence
-        .to_lowercase()
-        .replace("joel's wish list", "joel's list");
-    let names = CLAIMS.iter().any(|claim| at_word(&said, claim));
-    let joel = words(&said).iter().any(|word| word == "joel");
-    names || (joel && HIS.iter().any(|claim| at_word(&said, claim)))
+    claimed(sentence).is_some()
 }
 
-/// Whether `words` holds `phrase` as whole words, or with a plural "s"
-/// or "es", so "Joel's rules" and "Joel's wishes" claim and "Joel's
+/// Where the first claim of a rule or wish of Joel's in `sentence` opens,
+/// counted in its words: any of the words naming him, or one by "he" or
+/// "his" in a sentence naming him. The card opens on it, so it's counted
+/// in words rather than bytes, which lower case may change.
+fn claimed(sentence: &str) -> Option<usize> {
+    let said = sentence.to_lowercase();
+    let joel = words(&said).iter().any(|word| word == "joel");
+    let his = HIS.iter().filter(|_| joel);
+    let at = CLAIMS
+        .iter()
+        .chain(his)
+        .filter_map(|claim| at_word(&said, claim))
+        .min()?;
+    // Lower case leaves every blank where it was, so the words before the
+    // claim count as many as in the sentence given; a word the claim opens
+    // inside, as "(Joel", is the claim's.
+    let before = &said[..at];
+    let inside = before.ends_with(|c: char| !c.is_whitespace());
+    Some(before.split_whitespace().count() - usize::from(inside))
+}
+
+/// Where `words` first holds `phrase` as whole words, or with a plural
+/// "s" or "es", so "Joel's rules" and "Joel's wishes" claim and "Joel's
 /// willingness" doesn't, and with no denial just before it, as
-/// [`denied`] reads one.
-fn at_word(words: &str, phrase: &str) -> bool {
-    words.match_indices(phrase).any(|(at, _)| {
+/// [`denied`] reads one. "Joel's wish list" names a list of his, the
+/// repository's own, and claims nothing he said.
+fn at_word(words: &str, phrase: &str) -> Option<usize> {
+    words.match_indices(phrase).map(|(at, _)| at).find(|&at| {
         let before = words[..at].chars().next_back();
         let rest = &words[at + phrase.len()..];
         let plural = rest.strip_prefix("es").or_else(|| rest.strip_prefix('s'));
         let after = plural.unwrap_or(rest).chars().next();
+        let listed = phrase == "joel's wish" && rest.starts_with(" list");
         before.is_none_or(|c| !c.is_alphanumeric())
             && after.is_none_or(|c| !c.is_alphanumeric())
+            && !listed
             && !denied(&words[..at])
     })
 }
