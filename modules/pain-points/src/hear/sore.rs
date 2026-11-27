@@ -114,8 +114,9 @@ fn whatever_then(words: &[&str]) -> bool {
 }
 
 /// The marks that end a sentence, full-width question and exclamation
-/// marks among them.
-const ENDS: [char; 6] = ['.', '!', '?', '\u{ff1f}', ';', '\u{ff01}'];
+/// marks among them, and an ellipsis, read as the run of stops it
+/// stands for.
+const ENDS: [char; 7] = ['.', '!', '?', '\u{ff1f}', ';', '\u{ff01}', '\u{2026}'];
 
 /// The marks that exclaim.
 const EXCLAIMS: [char; 2] = ['!', '\u{ff01}'];
@@ -299,7 +300,7 @@ fn pieces(low: &str, runs: bool) -> Vec<&str> {
         {
             continue;
         }
-        let marks = low[from..end].replace(' ', "");
+        let marks = low[from..end].replace(' ', "").replace('\u{2026}', "...");
         let stops_only = marks.chars().all(|m| m == '.');
         let runs_on = rest.starts_with(char::is_alphanumeric);
         let before = &low[..from];
@@ -330,9 +331,10 @@ fn ends_in(piece: &str, these: &[char]) -> bool {
 
 /// A piece's clauses, each with whether the line after it opens a
 /// sentence: it ends a line, and the next line opens with no bullet. A
-/// stop a sentence runs across ("...", "etc.") closes the clause before
-/// it, unless it runs on into a letter, as "core.nix" does, so "the
-/// brackets and shit... see the page" ends its filler there.
+/// stop a sentence runs across ("...", an ellipsis typed as one mark,
+/// "etc.") closes the clause before it, unless it runs on into a letter,
+/// as "core.nix" does, so "the brackets and shit... see the page" ends
+/// its filler there.
 fn clauses(piece: &str) -> Vec<(&str, bool)> {
     let bytes = piece.as_bytes();
     let mut out = Vec::new();
@@ -341,7 +343,8 @@ fn clauses(piece: &str) -> Vec<(&str, bool)> {
         let spaced =
             c == '-' && at > 0 && bytes[at - 1] == b' ' && bytes.get(at + 1) == Some(&b' ');
         let end = at + c.len_utf8();
-        let stop = c == '.' && !piece[end..].starts_with(char::is_alphanumeric);
+        let stop =
+            matches!(c, '.' | '\u{2026}') && !piece[end..].starts_with(char::is_alphanumeric);
         if !(CLAUSE_ENDS.contains(&c) || spaced || stop) {
             continue;
         }
@@ -1063,6 +1066,30 @@ mod tests {
         assert!(
             grew < 10.0,
             "four times the run of marks took {grew:.1} times as long to read"
+        );
+    }
+
+    #[test]
+    fn an_ellipsis_is_read_as_its_run_of_stops_wherever_it_is_read() {
+        // Read past `kinds`, which writes one as its stops, so a reading
+        // given it as he typed it still closes the filler's clause at it,
+        // and ends the part an ask is read in there.
+        for eased in [
+            "consider tax brackets and shit\u{2026} help me understand the take home",
+            "shit, it's fine\u{2026} can you check the logs?",
+        ] {
+            assert!(
+                !swears(eased),
+                "an ellipsis read as no stops swore: {eased}"
+            );
+        }
+        // A sentence runs across one as it does across "...", as a list does.
+        let typed = pieces("see the brackets\u{2026} and the rates", true);
+        let stops = pieces("see the brackets... and the rates", true);
+        assert_eq!(
+            typed.len(),
+            stops.len(),
+            "an ellipsis ended a sentence: {typed:?}"
         );
     }
 
