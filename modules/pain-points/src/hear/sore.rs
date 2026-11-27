@@ -135,6 +135,16 @@ fn words_of(low: &str) -> Vec<&str> {
 /// each an ask for more, and no owner found a fault in them.
 const FILLERS: [&str; 2] = ["shit", "crap"];
 
+/// The words a clause asking for something opens with, as "consider the
+/// tax brackets and shit" and "help me understand the take home" do. A
+/// filler is spared only in a message that asks, by one of these or a
+/// "?", since "text alignment and shit, constantly shifting around" asks
+/// for nothing and is a hurt; a pain sent is cheaper than one lost.
+const ASKING: [&str; 20] = [
+    "consider", "add", "include", "cover", "help", "see", "show", "tell", "explain", "list",
+    "update", "check", "look", "make", "give", "put", "use", "can", "could", "please",
+];
+
 /// The words a filler swear follows, read back to the "and" or "or"
 /// that joins it, so "and some shit" and "or other crap" are fillers too.
 const FILLER_JOINS: [&str; 2] = ["and", "or"];
@@ -375,12 +385,27 @@ fn sentences(low: &str) -> Vec<Sentence<'_>> {
     pieces(low, true).into_iter().map(sentence).collect()
 }
 
+/// Whether a message asks for something: a sentence of it asks, or a
+/// clause of it opens with a word of `ASKING`.
+fn asking(said: &[Sentence]) -> bool {
+    said.iter().any(|sentence| {
+        sentence.asked.contains(&true)
+            || sentence
+                .words
+                .iter()
+                .enumerate()
+                .any(|(at, w)| (at == 0 || sentence.closes[at - 1]) && ASKING.contains(w))
+    })
+}
+
 /// Each swear a message says at what it's about, as whether it's said in
 /// a sentence that asks: a swear not before a word of praise, the next
 /// sentence's first word for one ending its own, nor one closing a list
-/// unless it's exclaimed in its own clause, since "it broke and shit!" is
-/// said in anger and "add the costs and shit, thanks!" isn't.
+/// in a message that asks for something unless it's exclaimed in its own
+/// clause, since "it broke and shit!" is said in anger and "add the costs
+/// and shit, thanks!" isn't.
 fn swearing(said: &[Sentence]) -> Vec<bool> {
+    let asks = asking(said);
     let mut asked = Vec::new();
     for (n, sentence) in said.iter().enumerate() {
         let words = &sentence.words;
@@ -390,7 +415,7 @@ fn swearing(said: &[Sentence]) -> Vec<bool> {
                 .or_else(|| said[n + 1..].iter().find_map(|later| later.words.first()));
             if (SWEARS.iter().any(|s| w.starts_with(s)) || *w == "ass")
                 && !next.is_some_and(|next| PRAISE.contains(next))
-                && (sentence.exclaimed[at] || !filler(sentence, at))
+                && (sentence.exclaimed[at] || !asks || !filler(sentence, at))
             {
                 asked.push(sentence.asked[at]);
             }
@@ -734,21 +759,16 @@ mod tests {
             "add the costs and shit to the page, it'll look great!",
             // A tail closing the clause, or two words between.
             "add the costs and shit like that",
-            "brackets and shit too",
-            "the brackets and crap as well",
-            "the deductions and all that crap",
+            "add brackets and shit too",
+            "add the brackets and crap as well",
+            "add the deductions and all that crap",
             // A stop that ends no sentence.
-            "the brackets, rates... and shit",
-            "the brackets, rates. . . and shit",
+            "see the brackets, rates... and shit",
+            "see the brackets, rates. . . and shit",
             "consider tax brackets, deductions, etc. and shit",
             "consider tax brackets (etc.) and shit",
             "consider tax brackets, rates/etc. and shit",
             "update core.nix and shit",
-            // Accepted: a hurt said only as a list's filler, with no fault
-            // word and no "!", is unheard, as a false pain costs a turn;
-            // so is one said after the filler's comma, in words of no fault.
-            "it wiped my branch and shit",
-            "i merged it and shit, it wiped my branch",
         ] {
             assert_eq!(
                 kinds(filler, AT, &[]),
@@ -765,6 +785,36 @@ mod tests {
                 "a filler's tail swore: {filler}"
             );
         }
+        // A filler in a message asking for nothing is a hurt, his own
+        // words of 25 October among them, with a comma or without.
+        for hurt in [
+            "text alignment and shit constantly shifting around",
+            "text alignment and shit, constantly shifting around",
+            "i lost my notes and shit in the rebase",
+            "it wiped my branch and shit",
+            "i merged it and shit, it wiped my branch",
+            "the brackets and shit",
+        ] {
+            assert!(
+                kinds(hurt, AT, &[]).contains(&"swore"),
+                "a filler in a message asking for nothing went unheard: {hurt}"
+            );
+        }
+        // Each word as he'd say it, so one dropped from its list is caught.
+        for word in [
+            "consider", "add", "include", "cover", "help", "see", "show", "tell", "explain",
+            "list", "update", "check", "look", "make", "give", "put", "use", "can", "could",
+            "please",
+        ] {
+            let filler = format!("the brackets and shit\n{word} them");
+            assert_eq!(
+                kinds(&filler, AT, &[]),
+                none,
+                "a filler in a message asking by its word swore: {filler}"
+            );
+        }
+        // Each hurt below is said after an ask, so it is the filler's own
+        // rules that hear it, not the ask's.
         for hurt in [
             "And shit, it wiped my branch",
             "and shit",
@@ -786,8 +836,9 @@ mod tests {
             "i rebased it\nand shit, it's gone",
             "i rebased it\n\noh and shit, it's gone",
         ] {
+            let hurt = format!("consider this. {hurt}");
             assert!(
-                kinds(hurt, AT, &[]).contains(&"swore"),
+                kinds(&hurt, AT, &[]).contains(&"swore"),
                 "heard as a list's filler, though it has no list before its join, no join, \
                  is exclaimed in its own clause, is no filler's word, or stands beside one: \
                  {hurt}"
@@ -806,7 +857,7 @@ mod tests {
             "oh", "ah", "ugh", "well", "so", "yeah", "man", "god", "jeez", "ok", "okay", "hey",
             "hmm", "wow", "dude", "right", "wait", "huh", "oops", "uh", "um", "lol", "no", "yes",
         ] {
-            let hurt = format!("{word} and shit, it wiped my branch");
+            let hurt = format!("consider this. {word} and shit, it wiped my branch");
             assert!(
                 kinds(&hurt, AT, &[]).contains(&"swore"),
                 "a word that lists nothing was taken for a list: {hurt}"
