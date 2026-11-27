@@ -12,6 +12,11 @@ const ROOM = 40;
 const ENDS_ON_HERON = /\(HERON1\)$/u;
 // The stem two long ids clip to, alike, before each takes its number.
 const STEM_W = "(SKIFF-OF-THE-NORTH-SHORE-AND-THE-W...";
+// Any run of spaces, which a page draws as one.
+const SPACES = /\s+/gu;
+
+/** A text as a page draws it, its spaces run together and none at its ends. */
+const drawn = (text: string) => text.replace(SPACES, " ").trim();
 
 /** A clip as the map's: the text whole within the room, else cut short with dots. */
 const clip = (text: string, within: number) =>
@@ -21,7 +26,11 @@ const clip = (text: string, within: number) =>
 const labelledApart = (networks: readonly Named[]): ReadonlyMap<string, string> => {
   const labels = labelsApart(networks, toldApart(networks), clip, ROOM);
   const each = [...labels.values()];
-  assert.equal(new Set(each).size, each.length, `two labels read alike: ${each.join(" | ")}`);
+  assert.equal(
+    new Set(each.map(drawn)).size,
+    each.length,
+    `two labels read alike: ${each.join(" | ")}`,
+  );
   for (const label of each) {
     assert.ok(label.length <= ROOM, `${label} is ${label.length} long, past the room of ${ROOM}`);
   }
@@ -67,6 +76,28 @@ it("an id too long to leave its name room is the label alone, clipped to the roo
     { key: "orchestration.skiff2", name, carries: "Mend the south gauges along the bay" },
   ]);
   assert.equal(labels.get(long), "(SKIFF-OF-THE-NORTH-SHORE-AND-THE-BAY)");
+});
+
+it("a name keeps a place beside its id while eight of its characters fit, and no fewer", () => {
+  const name = "Rig the Skiff for the Whole of the Coming Season";
+  const pair = (ids: readonly string[]) =>
+    labelledApart(
+      ids.map((id, at) => ({ key: `orchestration.${id}`, name, carries: `Mend gauges ${at}` })),
+    );
+  // Each id is 29 characters, its hint 31, which leaves the name 8.
+  const fits = pair(["skiff-of-the-north-shore-ab-1", "skiff-of-the-north-shore-ab-2"]);
+  assert.equal(
+    fits.get("orchestration.skiff-of-the-north-shore-ab-1"),
+    "Rig t... (SKIFF-OF-THE-NORTH-SHORE-AB-1)",
+    "a name with eight characters of room lost its place beside its id",
+  );
+  // One character more leaves it 7, so the id is the label alone.
+  const over = pair(["skiff-of-the-north-shore-abc-1", "skiff-of-the-north-shore-abc-2"]);
+  assert.equal(
+    over.get("orchestration.skiff-of-the-north-shore-abc-1"),
+    "(SKIFF-OF-THE-NORTH-SHORE-ABC-1)",
+    "a name with seven characters of room kept a place beside its id",
+  );
 });
 
 it("two ids too long for the room that clip alike are numbered apart", () => {
@@ -136,6 +167,23 @@ it("a network keeps its number however the node lists the networks alike with it
   assert.deepEqual(
     [backward.get(shore), backward.get(bay)],
     [forward.get(shore), forward.get(bay)],
+  );
+});
+
+it("a title padded with spaces the map draws as one is told apart as drawn", () => {
+  const name = "Rig the Skiff for the Season";
+  const labels = labelledApart([
+    { key: "orchestration.skiff1", name, carries: "Mend the north gauges" },
+    {
+      key: "orchestration.heron1",
+      name: " Rig the  Skiff for\tthe Season ",
+      carries: " Rig the  Skiff for\tthe Season ",
+    },
+  ]);
+  assert.equal(
+    labels.get("orchestration.heron1"),
+    name,
+    "a padded title wasn't read as the words it draws, so it wasn't told apart as drawn",
   );
 });
 
