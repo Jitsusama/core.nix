@@ -517,9 +517,9 @@ impl Working {
     }
 }
 
-/// What the journal last said of the share of a core: nothing until two
-/// readings have said whether one is measured, so the first says why it
-/// isn't, and after that whether it was, so a loss is said once.
+/// Whether the readings before measured a share of a core, so the journal
+/// says a loss once and its end once: nothing until two readings have said
+/// whether one is measured, so the first says why it isn't.
 #[derive(Default)]
 struct Journal {
     measuring: Option<bool>,
