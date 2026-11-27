@@ -324,9 +324,9 @@ pub fn names_no_class(line: &str) -> bool {
 /// before `now`, the vetted before the unfolded and most changes first,
 /// each with its owner after ` · `, so
 /// each is filed with its own. A class whose owner differs by repository
-/// has a line for each repository it was found in over the bar, named
-/// after the class, and one for the rest, since the class recurs though
-/// one part of it may not.
+/// has a line for each repository with an owner of its own that it was
+/// found in over the bar, named after the class, and one for the rest,
+/// since the class recurs though one part of it may not.
 #[must_use]
 pub fn recurring(cases: &[Case], now: i64) -> Measure {
     let mut changes: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
@@ -390,16 +390,23 @@ pub fn class_of(line: &str) -> &str {
 
 /// The lines one class over its bar gives, found on the changes `on`: one
 /// naming them all, or, where its owner differs by repository, one for
-/// each repository found on `AT_LEAST` changes of its own, naming those
-/// and its owner, and one for the rest. A repository under the bar isn't
-/// asked apart: on 27 November world was asked on 1 of 55 changes. Its
-/// changes still count in the rest's line, so three repositories on two
-/// each are asked of as the class is, not of nobody.
+/// each repository found on `AT_LEAST` changes of its own that `OWNERS`
+/// names the class's owner in, naming those and its owner, and one for
+/// the rest. A repository under the bar isn't asked apart: on 27
+/// November world was asked on 1 of 55 changes. Nor is one no owner is
+/// named in, since its line would go to the class's owner as the rest's
+/// does, and a sender naming many such repositories would make a line
+/// and an ask for each with no cap. Their changes still count in the
+/// rest's line, so three repositories on two each are asked of as the
+/// class is, not of nobody.
 fn lines_of(class: &str, on: &BTreeSet<&str>) -> Vec<String> {
     let all: Vec<&str> = on.iter().copied().collect();
-    let split = OWNERS
-        .iter()
-        .any(|&(named, repo, _)| named == class && !repo.is_empty());
+    let owned_in = |repo: &str| {
+        !repo.is_empty()
+            && OWNERS
+                .iter()
+                .any(|&(named, named_repo, _)| named == class && named_repo == repo)
+    };
     let mut by_repo: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
     for &change in on {
         let repo = change.split_once('#').map_or(change, |(repo, _)| repo);
@@ -407,7 +414,7 @@ fn lines_of(class: &str, on: &BTreeSet<&str>) -> Vec<String> {
     }
     let (apart, rest): (Vec<_>, Vec<_>) = by_repo
         .into_iter()
-        .partition(|(_, changes)| split && changes.len() >= AT_LEAST);
+        .partition(|(repo, changes)| owned_in(repo) && changes.len() >= AT_LEAST);
     if apart.is_empty() {
         return vec![format!(
             "{class}: on {} changes in a week, {} · {}",

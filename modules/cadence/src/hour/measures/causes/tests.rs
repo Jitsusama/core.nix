@@ -406,6 +406,38 @@ fn a_repository_under_the_bar_is_asked_of_with_the_rest_not_apart() {
     );
 }
 
+/// A repository no owner is named in is asked of with the rest, however
+/// many changes it is on, so a line naming many unknown repositories,
+/// three changes each, makes one line and one ask rather than one for
+/// each of them.
+#[test]
+fn repositories_with_no_owner_of_their_own_are_asked_of_in_one_line() {
+    let unknown = NAMED_AT_MOST + 2;
+    let mut cases: Vec<Case> = (0..unknown)
+        .flat_map(|n| {
+            (1..=3).map(move |c| case(TEST_PASSES_UNDONE, &format!("repo{n:02}#{c}"), 100))
+        })
+        .collect();
+    cases.extend((1..=3).map(|c| case(TEST_PASSES_UNDONE, &format!("core.nix#{c}"), 100)));
+    let m = recurring(&cases, NOW);
+    let named: Vec<&str> = m.behind.iter().map(|l| class_of(l)).collect();
+    assert_eq!(
+        named,
+        [
+            format!("{TEST_PASSES_UNDONE} in core.nix"),
+            format!("{TEST_PASSES_UNDONE} in other repositories"),
+        ],
+        "a repository with no owner of its own was asked of apart: {:?}",
+        m.behind
+    );
+    let rest = format!("on {} of its {} changes", unknown * 3, unknown * 3 + 3);
+    assert!(
+        m.behind[1].contains(&rest) && m.behind[1].ends_with(" · 1JQPPC"),
+        "the other line didn't count every unknown repository's changes for the keeper: {}",
+        m.behind[1]
+    );
+}
+
 #[test]
 fn a_review_record_is_dated_by_its_run() {
     let text = [
