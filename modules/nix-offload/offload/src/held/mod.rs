@@ -3,7 +3,10 @@
 //! derivations as this machine's store shows them, and what this store
 //! holds. `there` sends those up rather than have them built again: a
 //! fresh builder compiled the running system's own kernel for over an
-//! hour on 3 November, which this machine held and no cache did.
+//! hour on 3 November, which this machine held and no cache did. How each
+//! path goes up only once at a time is in [`once`].
+
+pub mod once;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
