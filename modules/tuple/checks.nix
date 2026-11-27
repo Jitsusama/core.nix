@@ -56,7 +56,8 @@ onLinux {
   # Tuple shares a screen through the portal: the switch writes the setting
   # where Tuple keeps it, and Tuple, which ignores a folder it doesn't know
   # and a value not written as it writes one, has to read it back. So the
-  # check runs the switch's own steps, with the data folder moved here.
+  # check runs the switch's own steps, with the data folder moved here
+  # (tests/tuple-shares-through-the-portal.sh).
   tuple-shares-through-the-portal =
     let
       home = account graphical;
@@ -64,22 +65,8 @@ onLinux {
       data = home.xdg.dataHome;
     in
     pkgs.runCommandLocal "tuple-shares-through-the-portal" { nativeBuildInputs = [ tuple ]; } ''
-      export HOME=$PWD XDG_DATA_HOME=$PWD/data XDG_RUNTIME_DIR=$PWD/run
-      mkdir -m 700 run
-      sed -n '\|^run .*${lib.escapeRegex data}/tuple/|{s|^run ||;s|${data}|'"$PWD"'/data|g;p}' \
-        ${home.home.activationPackage}/activate > steps
-      sh -e steps
-      # Any tuple command may start Tuple's daemon, so each is held to a
-      # time, as tests/tuple-ends-its-flags.sh says: settings reads Tuple's
-      # own files, so it's given room, and a cut-off says so rather than
-      # reading as a setting unread.
-      ended=0
-      timeout -k 5 30 tuple settings > said 2>&1 < /dev/null || ended=$?
-      timeout -k 5 10 tuple stop > /dev/null 2>&1 || true
-      if [ $ended -eq 124 ] || [ $ended -eq 137 ]; then
-        echo "tuple settings was cut off (status $ended); it said:"; cat said; exit 1
-      fi
-      if ! grep -q '^capture | portal |' said; then cat said; exit 1; fi
+      ${lib.getExe pkgs.bash} ${./tests/tuple-shares-through-the-portal.sh} \
+        ${home.home.activationPackage}/activate ${data}
       touch $out
     '';
 
@@ -193,7 +180,9 @@ onLinux {
   # in a sandbox with no network or account, so it reaches nobody
   # (tests/tuple-ends-its-flags.sh). It stops Tuple's daemon, so it's run
   # first from the shells a person would run it from, each of which it
-  # must refuse (tests/tuple-ends-its-flags-outside.sh).
+  # must refuse (tests/tuple-ends-its-flags-outside.sh). To see what a
+  # command takes by hand, `tuple help <cmd>` prints it without running it,
+  # as package.nix says.
   tuple-ends-its-flags =
     let
       home = account graphical;

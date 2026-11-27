@@ -24,15 +24,16 @@
 # network or forget one, though never one Nix declares; on the launcher's
 # rows socket it can move the card to another access point of its network,
 # and the card still knows its neighbours there, forgetting them only on a
-# network of another name; a point warning it drops the card has it moved
-# where the point names, looking over that one's channel first when it isn't
-# heard and ending a look under way, or let go when that one doesn't answer
-# or the whole network drops it, never sent back; a move to one gone takes it back to the one it
-# left within wifid's 2 s for a way back, past any wait that one bids, or
-# leaves it free to join any network when it can't get back either. The
-# tests are in wifi/, an area to a file, each run in order through pytest
-# on a machine of its own, so the areas run side by side; wifid as they
-# reach it is wifi/wifi_session.py.
+# network of another name; a call losing its echoes gives way to another
+# at once; a point warning it drops the card has it moved where the point
+# names, looking over that one's channel first when it isn't heard and
+# ending a look under way, or let go when that one doesn't answer or the
+# whole network drops it, never sent back; a move to one gone takes it back
+# to the one it left within wifid's 2 s for a way back, past any wait that
+# one bids, or leaves it free to join any network when it can't get back
+# either. The tests are in wifi/, an area to a file, each run in order
+# through pytest on a machine of its own, so the areas run side by side;
+# wifid as they reach it is wifi/wifi_session.py.
 {
   self,
   pkgs,
@@ -52,9 +53,10 @@ let
     serviceConfig.NetworkNamespacePath = "/run/netns/air";
   };
 
-  # Each names its country, as nearly every real access point does. The
-  # test runs nixpkgs's kernel, which records the name of a network joined
-  # only when it does; core.nix's kernel has a patch for the others.
+  # Each names its country, as nearly every real access point does, so the
+  # test doesn't depend on whether nixpkgs's kernel records the name of a
+  # network whose access point names none. The XPS 14's
+  # wifi-names-a-network-without-a-country holds core.nix's kernel to that.
   accessPoint =
     name: settings:
     pkgs.writeText "${name}.conf" ''

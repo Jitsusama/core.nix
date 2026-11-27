@@ -86,6 +86,13 @@ judge "$said" "$?" "pi-sweep starts: the last sweep ended 104 minutes ago, too l
 said=$("$program" "$here" "$here/meminfo" 900 1 "$here/none")
 judge "$said" "$?" "pi-sweep starts: no sweep has left a stamp, so the hosts sweep meanwhile" \
   "no stamp"
+# Its last pass counts too: readings 30 s apart over a minute's wait end
+# 3 minutes 30 s short of two hours, so a stamp 6995 s old, which a
+# check a second apart would still wait on, is too old.
+touch -d '6995 seconds ago' "$here/stamp"
+said=$("$program" "$here" "$here/meminfo" 60 30 "$here/stamp")
+judge "$said" "$?" "pi-sweep starts: the last sweep ended 116 minutes ago, too long to wait" \
+  "a stamp its last pass would outlast"
 # A stamp an hour old, as each hourly run finds it, still waits.
 touch -d '60 minutes ago' "$here/stamp"
 said=$("$program" "$here" "$here/meminfo" 2 1 "$here/stamp")

@@ -24,10 +24,6 @@
   "modules/calls/src/lib.rs" = 5;
   "modules/chrome/open-tabs/host/src/main.rs" = 1;
   "modules/chrome/pack-extension/src/main.rs" = 1;
-  "modules/collector/src/otlp.rs" = 2;
-  "modules/collector/src/pressure.rs" = 4;
-  "modules/collector/src/when.rs" = 3;
-  "modules/collector/tests/collector.rs" = 1;
   "modules/console/font/src/main.rs" = 10;
   "modules/desk-facts/facts.rs" = 17;
   "modules/device-check/src/main.rs" = 13;
@@ -160,10 +156,6 @@
   "modules/key-counts/src/tally.rs" = 5;
   "modules/lag-watch/src/kernel.rs" = 2;
   "modules/lid/docked/src/main.rs" = 11;
-  "modules/load-proof/src/frames.rs" = 2;
-  "modules/load-proof/src/run.rs" = 4;
-  "modules/load-proof/src/save.rs" = 1;
-  "modules/load-proof/src/sound.rs" = 1;
   "modules/machine/tests/daemon.rs" = 1;
   "modules/mic-mute-light/mic-mute-light.rs" = 13;
   "modules/network-revive/src/config.rs" = 1;

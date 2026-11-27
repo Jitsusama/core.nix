@@ -41,11 +41,15 @@ hard=$((limit + 10))
 TIMEFORMAT='%U %S %R'
 # Without its two scratch files the runner can't say a case's time or the
 # builder's reason, so it stops here rather than blaming the builder below.
+# They're let go as it ends from before either is made, so the first is
+# let go too when only the second can't be made.
+used=""
+why=""
+trap 'rm -f -- ${used:+"$used"} ${why:+"$why"}' EXIT
 if ! used=$(mktemp) || ! why=$(mktemp); then
   echo "the runner couldn't make its scratch files" >&2
   exit 1
 fi
-trap 'rm -f "$used" "$why"' EXIT
 # A builder that holds the run below the hard limit a case needs refuses it
 # for every case alike, since each inherits the runner's, so it's said once,
 # before any case, with the figure, what would fit and ulimit's own reason,

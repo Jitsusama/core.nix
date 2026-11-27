@@ -99,7 +99,8 @@ impl Weighing {
 /// agents.slice there; with the processor's weight alone, the window Joel
 /// is at would share the disk evenly with every agent's. On a disk held
 /// only by latency targets the disk's weight does nothing, so setting it
-/// there costs nothing.
+/// there costs nothing; on one BFQ runs, systemd scales it down first, so
+/// a weight ten times another's gives under twice its share.
 pub fn weigh_call(unit: &str, weight: u64) -> Vec<String> {
     let weight = weight.to_string();
     [

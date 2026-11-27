@@ -187,6 +187,11 @@ function thingOf(held: Held, key: string, unread: string[]): Thing | undefined {
   if (sent && (listed === undefined || torn)) {
     unread.push(`${key}'s looks, so the page goes by its side alone, with no whys`);
   }
+  // A side sent but unreadable is said too, since beside an empty list a bad
+  // machine would otherwise read as having nothing worth a look.
+  if (record["side"] !== undefined && record["side"] !== null && sided === undefined) {
+    unread.push(`${key}'s side, so the page goes by its looks alone`);
+  }
   return {
     name,
     health: healthOf(text(record, "health")),

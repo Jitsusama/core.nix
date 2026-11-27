@@ -38,6 +38,7 @@ import "NeedsYou.js" as NeedsYou
 import "Here.js" as Here
 import "Keeping.js" as Keeping
 import "PlaceRow.js" as PlaceRow
+import "ActsSaid.js" as ActsSaid
 import "Presented.js" as Presented
 import "SessionRow.js" as SessionRow
 import "TalkAnswers.js" as TalkAnswers
@@ -1164,7 +1165,7 @@ Provider {
         // A look's file is named for what Joel wrote, and the daemon's words
         // may quote it, so they're said by letters and as errorShown says them.
         const why = answer?.error === undefined ? "not there to ask"
-            : Presented.errorShown(answer.error, Options.reports);
+            : ActsSaid.errorShown(answer.error, Options.reports);
         const named = Presented.typedShown(file, Options.reports);
         console.warn(`Now: the to-do daemon didn't settle ${named} (${why}),`
             + " so its look stands as it was");
@@ -1181,9 +1182,8 @@ Provider {
     // gone quiet there, whose file still says it waits. A terminal whose
     // session is gone opened nothing, so it stays as it was. Whether it
     // opened, so a caller settling it elsewhere settles only what opened.
-    // A session held whose window can't be raised or opened (Sessions.qml's
-    // unopened and unhosted) still counts as opened, until Sessions.goTo
-    // says whether it opened anything, by Mon 23 Nov 2026.
+    // Nor did one whose session's window can't be raised or opened
+    // (Sessions.goTo), which stays as it was too.
     function openLook(one) {
         if (one.kind === "terminal") {
             if (!goToCell(one))
@@ -1230,8 +1230,11 @@ Provider {
     // Over a launcher or a talk line Joel has up by then it says nothing
     // on screen, as toldGone never opens over what he's typing, and only
     // the journal says so. The journal names what the look led by, so a
-    // report reads why. Whether a session was held to go to: a parked one
-    // whose wake is refused says why on the foot, and still counts.
+    // report reads why. One held that can't be gone to, as one on another
+    // machine no holder keeps, opens the launcher to say why the same way
+    // (toldHere). Whether it went: a parked one whose wake is refused later
+    // says why on the foot, and still counts, since the wake was asked; one
+    // refused at once, by a node out of reach, didn't go (Sessions.wakeToGo).
     function goToCell(one) {
         const cell = lookCell(one);
         if (cell === null) {
@@ -1246,7 +1249,15 @@ Provider {
                 + ` ${moved ? "moved on" : "gone"}, ${told ? "told" : "not told, in use"}`);
             return false;
         }
-        Sessions.wakeToGo(Sessions.parkedAs(cell.address), cell);
+        if (!Sessions.wakeToGo(Sessions.parkedAs(cell.address), cell)) {
+            // Agents' refusedGoing has opened the launcher to say why already; this
+            // opens it for a refusal said no other way.
+            const told = provider.launcher?.toldHere() === true;
+            console.warn(`Now: look ${JSON.stringify(one.id)}'s session`
+                + ` ${JSON.stringify(cell.address ?? null)} couldn't be gone to,`
+                + ` ${told ? "told here" : "told already, or the launcher in use"}`);
+            return false;
+        }
         return true;
     }
 
