@@ -451,6 +451,13 @@ def refuses() -> list[str]:
     markless = {"categories": [{"id": "bad:place", "glyph": "nowhere"}], "things": []}
     if not any("a glyph the theme hasn't got" in said for said in misplaced(markless, set())):
         out.append(f"The check lets a place wear a mark the theme hasn't got: {markless}.")
+    # Two things by one id, as Asked For's and the Agents drawer's You Asked
+    # once were, named once however many of them share it.
+    shared = {"categories": [], "things": [{"id": "a"}, {"id": "b"}, {"id": "a"}, {"id": "a"}]}
+    if [said for said in misplaced(shared, set()) if "names two things" in said] != [
+        "a names two things."
+    ]:
+        out.append(f"The check doesn't name the one id two things share in {shared}.")
     out.extend(f"The check refuses what it shouldn't: {said}" for said in unsaid(ALLOWED))
     out.extend(f"The check takes {name!r} for Title Case." for name in SENTENCES if titled(name))
     out.extend(

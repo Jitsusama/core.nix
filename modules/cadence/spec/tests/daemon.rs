@@ -3,7 +3,7 @@
 //! watch of Spec is served, and one failing, which leaves Spec with none
 //! and the daemon answering. Asked For is watched and served the same.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -53,7 +53,12 @@ fn watched(daemon: &Daemon, place: &str) -> BTreeMap<String, Value> {
 }
 
 /// What one client watching each of `places` holds once every one's
-/// headline has come, by key.
+/// headline has come, by key, less what it was told went.
+///
+/// It waits for each headline to have been heard once, not to be held, so
+/// a place told gone as another moves, as handing one place's rows alone
+/// would tell it (round 7 on #6875, 123), fails the asserts rather than
+/// waiting for ever.
 fn watched_all(daemon: &Daemon, places: &[&str]) -> BTreeMap<String, Value> {
     let mut client = daemon.client();
     client.ask(&json!({"id": 1, "ask": "hello"}));
@@ -61,9 +66,10 @@ fn watched_all(daemon: &Daemon, places: &[&str]) -> BTreeMap<String, Value> {
         client.send(&json!({"id": id, "ask": "watch", "kind": ["row", "head"], "place": place}));
     }
     let mut held = BTreeMap::new();
+    let mut heard = BTreeSet::new();
     while !places
         .iter()
-        .all(|place| held.contains_key(&format!("head:{place}")))
+        .all(|place| heard.contains(&format!("head:{place}")))
     {
         let said = client.heard();
         for record in said["records"]
@@ -73,7 +79,11 @@ fn watched_all(daemon: &Daemon, places: &[&str]) -> BTreeMap<String, Value> {
             .flatten()
         {
             let key = record["key"].as_str().unwrap_or("").to_owned();
+            heard.insert(key.clone());
             held.insert(key, record.clone());
+        }
+        for gone in said["gone"].as_array().into_iter().flatten() {
+            held.remove(gone.as_str().unwrap_or(""));
         }
     }
     held
@@ -151,6 +161,12 @@ fn both_places_watched_at_once_are_each_served_their_own() {
     let body = format!("if [ \"$2\" = --served ]; then echo '{spec}'; else echo '{asked_for}'; fi");
     let daemon = started("both", &body);
     let held = watched_all(&daemon, &["spec", "asked"]);
+    for place in ["spec", "asked"] {
+        assert!(
+            held.contains_key(&format!("head:{place}")),
+            "{place} was told gone as the other moved: {held:?}"
+        );
+    }
     assert_eq!(held["row:spec:scale"]["row"]["name"], "Scale", "{held:?}");
     assert_eq!(
         held["row:asked:be66afc9"]["row"]["name"], "the split",
