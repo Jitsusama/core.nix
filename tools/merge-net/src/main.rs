@@ -155,6 +155,7 @@ fn watching(
     }
     let world = Real {
         state: state.root.clone(),
+        checkout: state.root.join("core"),
         url: env::var("MERGE_NET_REPOSITORY").unwrap_or_else(|_| REPOSITORY.to_owned()),
         system: SYSTEM.to_owned(),
         booted: holds::booted().unwrap_or(0),

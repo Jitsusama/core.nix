@@ -309,8 +309,11 @@ impl Clock {
 
 /// The world as the net finds it.
 pub struct Real {
-    /// The net's state folder, where its checkout is.
+    /// The net's state folder.
     pub state: PathBuf,
+    /// Its clone of the repository: the watch's, under `state`, or the
+    /// train's own, which holds the base the train just fetched.
+    pub checkout: PathBuf,
     /// The repository's URL on GitHub, as origin.
     pub url: String,
     /// The checks' system.
@@ -355,7 +358,7 @@ impl Real {
     }
 
     fn checkout(&self) -> PathBuf {
-        self.state.join("core")
+        self.checkout.clone()
     }
 
     /// The checkout to itself, until what's given back is dropped.
@@ -2285,6 +2288,7 @@ mod tests {
         git_in(&main, &["push", "-q", "origin", "HEAD:main"]);
         let net = Real {
             state: root.join("net"),
+            checkout: root.join("net").join("core"),
             url: origin.display().to_string(),
             system: "x86_64-linux".to_owned(),
             booted: 0,

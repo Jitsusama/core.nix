@@ -640,13 +640,17 @@ fn tell(root: &Path, url: &str, red: &Red<'_>, judged: &[(String, Blame)]) {
                 continue;
             }
         };
+        let owner = owner_in(root, url, red, check, &failed);
+        if owner.is_none() {
+            println!("merge-net: no merge since the last passed head owns {check}");
+        }
         // The red's own words are the gate's: a flake's rebuild passed.
         let finding = json!({
             "kind": kind,
             "test": check,
             "commit": red.base,
             "candidate": red.candidate,
-            "owner_pr": owner_in(root, url, red.base, check, &failed),
+            "owner_pr": owner,
             "log": red.log.display().to_string(),
             "rebuilt_log": rebuilt.display().to_string(),
             "at": now(),
@@ -659,13 +663,15 @@ fn tell(root: &Path, url: &str, red: &Red<'_>, judged: &[(String, Blame)]) {
 
 /// The PR that owns `check`, failed beside `failed`, as the net's watch
 /// reads an owner: the newest merge from the head it last passed to the
-/// candidate's `base` that moved the check, at the repository `url`, under
+/// candidate's base that moved the check, at the repository `url`, under
 /// the state folder `root`; none where it passed nothing yet, or finds no
-/// such merge.
-fn owner_in(root: &Path, url: &str, base: &str, check: &str, failed: &[String]) -> Option<u64> {
+/// such merge. The merges are read in the train's checkout, which has just
+/// fetched the base, rather than the watch's clone, which may not hold it.
+fn owner_in(root: &Path, url: &str, red: &Red<'_>, check: &str, failed: &[String]) -> Option<u64> {
     let passed = State::at(root.to_path_buf()).heads().0?;
     let world = crate::world::Real {
         state: root.to_path_buf(),
+        checkout: red.checkout.to_path_buf(),
         url: url.to_owned(),
         system: crate::SYSTEM.to_owned(),
         booted: 0,
@@ -674,7 +680,7 @@ fn owner_in(root: &Path, url: &str, base: &str, check: &str, failed: &[String]) 
         dropped: std::sync::Mutex::default(),
         follow: None,
     };
-    crate::watch::owner_of(&world, &passed, base, check, failed)
+    crate::watch::owner_of(&world, &passed, red.base, check, failed)
 }
 
 /// How the train says whose a red is.
