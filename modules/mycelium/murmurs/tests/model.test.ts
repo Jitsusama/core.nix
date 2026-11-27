@@ -200,6 +200,14 @@ it("a murmur is read without its controls of direction, for its row as for its l
     holding([murmur("OSPREY", 200, { purpose: "\u202e\u2066: the tide" })]),
   ).murmurs;
   assert.equal(named?.quest, "OSPREY", "a name of nothing but controls should be the writer's");
+  const [quiet] = murmursOf(holding([murmur("OSPREY", 200, { settled: "\u202e\u2066" })])).murmurs;
+  assert.equal(quiet?.settled, null, "a settling of nothing but controls should be in the air");
+});
+
+it("a murmur's ties are read plain, and its own cell among them still left out", () => {
+  const ties = ["QEST-20261116-\u202eKESTRL", "QEST-20261116-OSPREY", "HERONS\u2069"];
+  const [read] = murmursOf(holding([murmur("OSP\u2066REY", 100, { tied_to: ties })])).murmurs;
+  assert.deepEqual(read?.ties, ["KESTRL", "HERONS"], "each tie should be plain, the writer's gone");
 });
 
 it("a murmur's words are cut on a word, without a stop before the ellipsis", () => {

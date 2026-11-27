@@ -124,13 +124,16 @@ function murmursOf(held: Held): Murmurs {
     if (settled === undefined && said !== null) {
       unread.push(`${record.key}'s settling, which isn't words`);
     }
+    // Plain before it's judged, so a settling of nothing but controls is as empty as "".
+    const how = plain(settled ?? "");
+    const who = plain(writer);
     murmurs.push({
       key: record.key,
-      writer: plain(writer),
-      quest: called(plain(text(record, "purpose") ?? ""), plain(writer)),
+      writer: who,
+      quest: called(plain(text(record, "purpose") ?? ""), who),
       words: plain(words),
-      ties: (ties ?? []).map(short).filter((each) => each !== writer),
-      settled: settled === undefined || settled === "" ? null : plain(settled),
+      ties: (ties ?? []).map((each) => plain(short(each))).filter((each) => each !== who),
+      settled: how === "" ? null : how,
       at,
     });
   }
