@@ -1190,7 +1190,16 @@ impl<'a> Air<'a> {
                 }
                 if join == Join::Lands {
                     landed = true;
-                    change(&self.state, |state| state.landed(&card));
+                    // A point beside the step is where the join landed, so
+                    // it's taken in as it lands rather than after.
+                    let at = match point {
+                        Some(zvariant::Value::ObjectPath(said)) => Some(joined_to(said)),
+                        _ => None,
+                    };
+                    change(&self.state, |state| match at {
+                        Some(at) => state.landed_at(&card, at),
+                        None => state.landed(&card),
+                    });
                     let said = credited(point, self.at.get(path.as_str()).map(String::as_str));
                     let on = self.joined(bus, path, said.as_deref()).await;
                     let arrived = self.arrivals.borrow_mut().joined(&card, on.as_deref(), now);
@@ -1987,20 +1996,26 @@ impl Wifid<'_> {
             supplicant.create_interface(args).await?
         };
         let interface = interface(self.bus, path).await?;
+        // A card found partway through a join, as wifid starts mid-move,
+        // hasn't left a point that warned it until that join lands, so the
+        // warning taken in from before stays if the join fails. Its step
+        // is read on both sides of its point, as a join could fail back
+        // between two reads: only a card joined throughout has landed
+        // where its point says.
+        let before = interface.state().await?;
         // A card kept on its network as wifid restarts says nothing of the
         // access point it's at until it moves, so it's asked.
         let point = interface.current_access_point().await.ok();
         let point = point.filter(|point| joined_to(point).is_some());
         let joined = point.as_ref().map(ToString::to_string);
-        // A card found partway through a join, as wifid starts mid-move,
-        // hasn't left a point that warned it until that join lands, so the
-        // warning taken in from before stays if the join fails.
-        let landed = interface.state().await? == "completed";
+        let landed = before == "completed" && interface.state().await? == "completed";
         change(self.state, |state| {
-            if !landed {
+            if landed {
+                state.landed_at(&card.name, joined);
+            } else {
                 state.joining(&card.name);
+                state.at(&card.name, joined);
             }
-            state.at(&card.name, joined);
         });
         // A card in a move, or on its way back, keeps the hold the move
         // gave it, as networks saved meanwhile hand every card over again:

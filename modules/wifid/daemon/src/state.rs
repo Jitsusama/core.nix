@@ -375,6 +375,17 @@ impl State {
         self.settle_warnings();
     }
 
+    /// Takes in that the card of that name has finished joining, at the
+    /// point the step that says so names beside it, or none. Its point is
+    /// taken in first, as wpa_supplicant sends both in one signal when
+    /// they come within 5 ms: settled against the point it was joining
+    /// before, a card landing elsewhere could count as back where it was
+    /// warned, and forget the warning.
+    pub fn landed_at(&mut self, card: &str, point: Option<String>) {
+        self.at(card, point);
+        self.landed(card);
+    }
+
     /// How many times the card of that name has begun joining a network.
     pub fn attempts(&self, card: &str) -> u64 {
         self.attempts.get(card).copied().unwrap_or_default()
@@ -1624,6 +1635,29 @@ mod tests {
             state.warned_from("wlan2", now),
             Some(&*warned),
             "a join found partway that failed back to the warned point forgot the warning"
+        );
+    }
+
+    #[test]
+    fn a_join_landing_elsewhere_beside_its_point_keeps_the_warning() {
+        let mut state = at_the_inn();
+        let warned = state.point_of("wlan2").expect("on a point");
+        let now = Instant::now();
+        state.warned_off("wlan2", &warned, (now, now + Duration::from_secs(3600)));
+        // Left for the hall, then a join back to the point that warned,
+        // which associates there and lands on the hall instead, the step
+        // and the hall in one signal.
+        state.attempting("wlan2");
+        state.at("wlan2", Some("/Interfaces/0/BSSs/1".into()));
+        state.landed("wlan2");
+        state.attempting("wlan2");
+        state.at("wlan2", Some("/Interfaces/0/BSSs/2".into()));
+        state.landed_at("wlan2", Some("/Interfaces/0/BSSs/1".into()));
+
+        assert_eq!(
+            state.warned_from("wlan2", now),
+            Some(&*warned),
+            "a join that landed on the hall settled as though back on the warned point"
         );
     }
 
