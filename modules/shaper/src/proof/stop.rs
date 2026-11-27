@@ -3,6 +3,11 @@
 //! and the shaper's state kept on disk while a window owns it, so a
 //! keeper beside a proof killed outright, or failing that the next proof,
 //! puts it back as the killed one's window found it.
+//!
+//! Long because its tests, over half of it, walk each way a stop is heard,
+//! a stopped or resumed proof goes on, and a killed proof's word is kept
+//! fresh, read and left to the next, against the one set of signal
+//! handlers and the one state on disk they share.
 
 use std::fs;
 use std::io::Write;
