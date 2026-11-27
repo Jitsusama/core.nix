@@ -389,6 +389,13 @@ fn sentence(piece: &str) -> Sentence<'_> {
         said.asked.extend(std::iter::repeat_n(asks, words.len()));
         said.told.push((asks, words));
     }
+    // Its clauses and its parts split it only at marks no word holds, so
+    // each reads the same words; a swear past the end is read as told.
+    debug_assert_eq!(
+        said.asked.len(),
+        said.words.len(),
+        "its parts and its clauses read different words: {piece:?}"
+    );
     let exclaims = ends_in(piece, &EXCLAIMS);
     let last = clause_of.last().copied();
     said.exclaimed = clause_of
@@ -437,7 +444,7 @@ fn swearing(said: &[Sentence]) -> Vec<bool> {
                 && !next.is_some_and(|next| PRAISE.contains(next))
                 && (sentence.exclaimed[at] || !asks || !filler(sentence, at))
             {
-                asked.push(sentence.asked[at]);
+                asked.push(sentence.asked.get(at).copied().unwrap_or(false));
             }
         }
     }
