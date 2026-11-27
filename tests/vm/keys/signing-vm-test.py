@@ -11,6 +11,7 @@ signer the module lists are signing.nix's, given as the `values` fixture.
 from __future__ import annotations
 
 import shlex
+import time
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any
@@ -294,43 +295,69 @@ def test_a_stopped_agents_socket_listens_again_until_its_path_unit_stops(
 
     agent-signing-key.path starts it again once it stops, and their agent lists their key
     through it, so it serves as well as listens. A stop that should hold stops the path unit
-    first and the socket after it, as docs/installing.md says; once the manager has no job left
-    to run, the socket is still off for five seconds, polled, so nothing queued was about to
-    start it. Starting the path unit is the way back on, and it's started however the case
-    ends, so the tests after it get the socket.
+    first and the socket after it, as docs/installing.md says; once neither unit has a job left
+    to run, the socket is still off, so nothing queued was about to start it. Starting the path
+    unit is the way back on, and it's started however the case ends, so the tests after it get
+    the socket.
     """
     socket = f"XDG_RUNTIME_DIR={joel.runtime} systemctl --user is-active -q agent-signing.socket"
     listening = f"su - joel -c {shlex.quote(socket)}"
-    jobs = f'XDG_RUNTIME_DIR={joel.runtime} test -z "$(systemctl --user list-jobs --no-legend)"'
-    settled = f"su - joel -c {shlex.quote(jobs)}"
     units = "agent-signing-key.path agent-signing.socket"
 
     def state(unit: str) -> str:
         return joel.run(f"systemctl --user is-active {unit} || true").strip()
 
+    def say_why() -> None:
+        print(joel.run(f"systemctl --user status --no-pager {units} || true"))
+        print(joel.run("journalctl --user -u agent-signing.socket -n 30 --no-pager || true"))
+
     def serves_again() -> None:
         try:
             joel.machine.wait_until_succeeds(listening, timeout=WAITING)
         except Exception:
-            print(joel.run(f"systemctl --user status --no-pager {units} || true"))
+            say_why()
             raise
         listed = joel.run(f"SSH_AUTH_SOCK={joel.runtime}/agent-signing.sock ssh-add -l")
         assert keys.agent in listed, listed
+
+    def settled() -> None:
+        # Only these two units' jobs: anything else the manager runs can't start the socket
+        # without queuing a job of its own. A list-jobs that fails fails the case, through
+        # joel.run, rather than reading as a queue still busy.
+        deadline = time.monotonic() + WAITING.total_seconds()
+        while queued := joel.run(f"systemctl --user list-jobs --no-legend {units}").strip():
+            if time.monotonic() >= deadline:
+                say_why()
+                pytest.fail(f"the units' jobs never ran in {WAITING}:\n{queued}")
+            time.sleep(0.5)
+
+    def stays_off() -> None:
+        # Read once, with neither unit's job left to run: a start already queued has run by
+        # now and left the socket active, and nothing else is set to start it.
+        socket_state = state("agent-signing.socket")
+        if socket_state == "inactive":
+            return
+        say_why()
+        if state("agent-signing-key.path") == "active":
+            cause = "agent-signing-key.path started again and started it"
+        else:
+            cause = "agent-signing-key.path is still stopped, so something else started it"
+        pytest.fail(f"agent-signing.socket is {socket_state} once both units stopped: {cause}")
 
     joel.run("systemctl --user stop agent-signing.socket")
     serves_again()
     try:
         joel.run("systemctl --user stop agent-signing-key.path")
         joel.run("systemctl --user stop agent-signing.socket")
-        assert state("agent-signing-key.path") == "inactive"
-        joel.machine.wait_until_succeeds(settled, timeout=WAITING)
-        joel.run(
-            "for _ in $(seq 10); do"
-            " systemctl --user is-active -q agent-signing.socket && exit 1; sleep 0.5; done"
-        )
-        assert state("agent-signing.socket") == "inactive"
-    finally:
-        joel.run("systemctl --user start agent-signing-key.path")
+        path_state = state("agent-signing-key.path")
+        assert path_state == "inactive", path_state
+        settled()
+        stays_off()
+    except BaseException:
+        # Back on for the tests after it, without a second failure here hiding the first.
+        joel.run("systemctl --user start agent-signing-key.path || true")
+        raise
+    joel.run("systemctl --user start agent-signing-key.path")
     serves_again()
 
 
