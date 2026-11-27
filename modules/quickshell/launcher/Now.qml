@@ -1486,7 +1486,7 @@ Provider {
                 // doesn't keep (#5949); one with words and no code is still
                 // a refusal that said why.
                 untaken: answer?.error
-                    ? `not given by the node, which refused it as ${Presented.errorShown(
+                    ? `not given by the node, which refused it as ${ActsSaid.errorShown(
                         answer.error, Options.reports)}`
                     : "not given by the node, which said nothing of why"
             };
