@@ -12,11 +12,15 @@ const ROOM = 40;
 const ENDS_ON_HERON = /\(HERON1\)$/u;
 // The stem two long ids clip to, alike, before each takes its number.
 const STEM_W = "(SKIFF-OF-THE-NORTH-SHORE-AND-THE-W...";
-// Any run of spaces, which a page draws as one.
-const SPACES = /\s+/gu;
+// Any run of the spaces, tabs and line breaks a page draws as one; a no-break space it keeps.
+const SPACES = /[ \t\n\r\f]+/gu;
+// The space a page drops at either end, once each run is one.
+const EDGE_SPACES = /^ | $/gu;
+// A text starting or ending on a space.
+const AT_AN_END = /^ | $/u;
 
 /** A text as a page draws it, its spaces run together and none at its ends. */
-const drawn = (text: string) => text.replace(SPACES, " ").trim();
+const drawn = (text: string) => text.replace(SPACES, " ").replace(EDGE_SPACES, "");
 
 /** A clip as the map's: the text whole within the room, else cut short with dots. */
 const clip = (text: string, within: number) =>
@@ -199,4 +203,107 @@ it("a title written as another's id-hinted label takes its own id in turn", () =
     },
   ]);
   assert.match(labels.get("orchestration.heron1") ?? "", ENDS_ON_HERON);
+});
+
+it("padded titles hinted beside their ids are clipped as drawn, then take their ids", () => {
+  const labels = labelledApart([
+    {
+      key: "orchestration.skiff1",
+      name: " Rig the  Skiff for\tthe Whole of the Coming Season ",
+      carries: "Mend the north gauges",
+    },
+    {
+      key: "orchestration.skiff2",
+      name: "Rig the Skiff for the\nWhole of  the Coming Season",
+      carries: "Mend the south gauges",
+    },
+  ]);
+  assert.deepEqual(
+    [labels.get("orchestration.skiff1"), labels.get("orchestration.skiff2")],
+    ["Rig the Skiff for the Whole ... (SKIFF1)", "Rig the Skiff for the Whole ... (SKIFF2)"],
+    "a padded title beside its id wasn't clipped as the words it draws",
+  );
+});
+
+it("a title that draws as nothing is its tell alone, with no space at either end", () => {
+  const blank = (id: string, carries: string) => ({
+    key: `orchestration.${id}`,
+    name: " \t ",
+    carries,
+  });
+  const networks = [
+    blank("heron1", "Mend the north gauges along the whole shore first"),
+    blank("heron2", "Mend the north gauges along the whole shore second"),
+    blank("heron3", ""),
+    blank("heron4", " \n "),
+  ];
+  const told = toldApart(networks);
+  const labels = labelledApart(networks);
+  for (const said of [...told.values(), ...labels.values()]) {
+    assert.doesNotMatch(said, AT_AN_END, `"${said}" starts or ends on a space`);
+  }
+  assert.deepEqual(
+    networks.map((n) => told.get(n.key)),
+    [
+      "Mend the north gauges along the whole shore first",
+      "Mend the north gauges along the whole shore second",
+      "(HERON3)",
+      "(HERON4)",
+    ],
+    "a title that draws as nothing wasn't told by its tell alone",
+  );
+  assert.deepEqual(
+    networks.map((n) => labels.get(n.key)),
+    ["(HERON1)", "(HERON2)", "(HERON3)", "(HERON4)"],
+    "a title that draws as nothing wasn't labelled by its id alone",
+  );
+});
+
+it("what a network carries is read as drawn, so its padded name tells nothing more", () => {
+  const name = "Rig the Skiff for the Season";
+  const told = toldApart([
+    { key: "orchestration.skiff1", name, carries: " Rig the  Skiff for\tthe Season " },
+    { key: "orchestration.skiff2", name, carries: "Mend the  south\tgauges " },
+  ]);
+  assert.deepEqual(
+    [told.get("orchestration.skiff1"), told.get("orchestration.skiff2")],
+    [name, `${name}: Mend the south gauges`],
+    "what a network carries wasn't read as the words it draws",
+  );
+});
+
+it("an id with spaces or a line break in it is hinted as drawn", () => {
+  const name = "Rig the Skiff for the Whole of the Coming Season";
+  const networks = [
+    { key: "orchestration.a  b", name, carries: name },
+    { key: "orchestration.c\nd", name, carries: name },
+  ];
+  const told = toldApart(networks);
+  const labels = labelledApart(networks);
+  assert.deepEqual(
+    networks.map((n) => told.get(n.key)),
+    [`${name} (A B)`, `${name} (C D)`],
+    "an id's hint in a told name wasn't drawn as the map draws it",
+  );
+  assert.deepEqual(
+    networks.map((n) => labels.get(n.key)),
+    ["Rig the Skiff for the Whole of ... (A B)", "Rig the Skiff for the Whole of ... (C D)"],
+    "an id's hint in a label wasn't drawn as the map draws it",
+  );
+});
+
+it("a no-break space, which a page draws as it is, is kept apart from a space", () => {
+  const name = "Rig the Skiff for the Season";
+  const kept = ["Rig the\u00a0Skiff for the Season", "\u00a0Rig the Skiff for the Season"];
+  const networks = [name, ...kept].map((title, at) => ({
+    key: `orchestration.skiff${at}`,
+    name: title,
+    carries: title,
+  }));
+  const labels = labelledApart(networks);
+  assert.deepEqual(
+    networks.map((n) => labels.get(n.key)),
+    [name, ...kept],
+    "a no-break space was run into a space, or dropped at an end, as a page never does",
+  );
 });
