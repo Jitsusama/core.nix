@@ -6325,10 +6325,17 @@ mod tests {
     const NO_UPDATE: &str = "nix-offload-test-no-update/buildin[g]";
 
     /// What [`building_read`] says in `shell` over `turns`, finding a
-    /// machine's own update by `update`, or why it couldn't be run.
+    /// machine's own update by `update`, or why it couldn't be run. This
+    /// test's PATH is set by the script: in a Mac's package build,
+    /// nix-darwin's /etc/zshenv puts /bin first, and its setuid ps refuses
+    /// a build user, so zsh counted nothing there (67FEB45D, 27 November).
     fn counted_in(shell: &str, turns: &Path, update: &str) -> String {
+        let path = std::env::var("PATH").unwrap_or_default();
         Command::new(shell)
-            .args(["-c", &building_read()])
+            .args([
+                "-c",
+                &format!("PATH='{path}'; export PATH; {}", building_read()),
+            ])
             .env("NIX_OFFLOAD_TURNS", turns)
             .env("NIX_OFFLOAD_OWN_UPDATE", update)
             .output()
