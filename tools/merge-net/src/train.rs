@@ -475,6 +475,8 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
     let owner = slug.split('/').next().unwrap_or_default().to_owned();
     let git = |arguments: &[&str]| run_git(&checkout, arguments);
     let mut splitting = Splitting::default();
+    let mut waits = pulls::Waits::new();
+    let ask = |rider: &Rider| pulls::asked_of(&slug, rider);
     loop {
         let waiting = riders(&root);
         if waiting.is_empty() {
@@ -494,7 +496,12 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
             );
             println!("merge-net: {}, so it goes on as it is", hand_over(&newer));
         }
-        let aboard = aboard(&root, &git, &slug, &owner, &waiting);
+        let asking = pulls::Asking {
+            ask: &ask,
+            git: &git,
+            now: crate::state::now(),
+        };
+        let aboard = aboard(&root, &asking, &owner, &waiting, &mut waits);
         let mut mergings = aboard.mergings;
         mergings.truncate(splitting.take());
         if mergings.is_empty() {

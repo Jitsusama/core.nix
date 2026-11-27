@@ -6,14 +6,22 @@
 //! A rider GitHub can't be asked about waits for the next candidate rather
 //! than step off: on 26 November a failed `gh` call read as a closed pull
 //! request dropped #6748 at 15:19 and #6821 at 16:35, both open and
-//! unmoved, each costing its owner another ready and a later landing.
+//! unmoved, each costing its owner another ready and a later landing. It
+//! waits at most `WAITS_FOR`, as a GitHub that never answers would keep
+//! the train running for it for ever; a commit GitHub says it doesn't
+//! hold heads no pull request, and steps off at once.
 
+use std::collections::HashMap;
 use std::path::Path;
 
 use serde_json::Value;
 
 use super::{Left, Merging, Rider, hub, leave, slug_of, subject};
 use crate::state::short;
+
+/// How long a rider waits on a GitHub that can't be asked about it before
+/// it steps off, as long as a candidate no builder takes keeps its riders.
+pub(super) const WAITS_FOR: u64 = super::UNTAKEN_FOR;
 
 /// An open pull request into main from one of the repository's own
 /// branches, as the train reads it.
@@ -77,8 +85,17 @@ fn pull_in(listed: &str, owner: &str, branch: &str) -> Asked {
 /// with no pull request is recorded under that branch, as #6757 was at
 /// 16:05 on 26 November, though its commit still heads one.
 pub fn pull_at(slug: &str, head: &str) -> Asked {
-    let out = hub::gh(&["api", &format!("repos/{slug}/commits/{head}/pulls")])?;
-    pull_at_in(&out, slug.split('/').next().unwrap_or_default(), head)
+    match hub::gh(&["api", &format!("repos/{slug}/commits/{head}/pulls")]) {
+        Ok(out) => pull_at_in(&out, slug.split('/').next().unwrap_or_default(), head),
+        Err(why) if holds_no_commit(&why) => Ok(None),
+        Err(why) => Err(why),
+    }
+}
+
+/// Whether `gh`'s failure `why` is GitHub saying it holds no such commit,
+/// which no pull request can head, rather than GitHub failing to answer.
+fn holds_no_commit(why: &str) -> bool {
+    why.contains("No commit found for SHA") || why.contains("(HTTP 422)")
 }
 
 /// The open pull request of `owner`'s own into main headed by `head`, in
@@ -116,7 +133,7 @@ fn listed_of(listed: &str) -> Result<Vec<Value>, String> {
 
 /// The open pull request of `rider`, by its branch and, where its branch
 /// heads none, by its commit.
-fn asked_of(slug: &str, rider: &Rider) -> Asked {
+pub(super) fn asked_of(slug: &str, rider: &Rider) -> Asked {
     match pull_of(slug, &rider.branch)? {
         Some(pull) => Ok(Some(pull)),
         None => pull_at(slug, &rider.head),
@@ -160,53 +177,84 @@ pub struct Aboard {
     pub waited: bool,
 }
 
+/// Since when each rider has waited on GitHub or a fetch, by its head, in
+/// seconds since the epoch, kept across candidates.
+pub type Waits = HashMap<String, u64>;
+
+/// How a ride asks of its riders: GitHub of each one's open pull request,
+/// `git` in its checkout, and the time, in seconds since the epoch.
+pub struct Asking<'a> {
+    pub ask: &'a dyn Fn(&Rider) -> Asked,
+    pub git: &'a dyn Fn(&[&str]) -> Result<String, String>,
+    pub now: u64,
+}
+
+/// Whether the rider at `head`, which waits for `why` at `now`, has waited
+/// since `waits` first saw it wait for `WAITS_FOR` or longer, saying so
+/// as it steps off under `root`; otherwise it waits on.
+fn waited_out(root: &Path, waits: &mut Waits, head: &str, why: &str, now: u64) -> bool {
+    let since = *waits.entry(head.to_owned()).or_insert(now);
+    if now.saturating_sub(since) < WAITS_FOR {
+        println!(
+            "merge-net: {} waits for the next candidate: {why}",
+            short(head)
+        );
+        return false;
+    }
+    println!(
+        "merge-net: {} steps off the train: it waited {} minutes, and still {why}",
+        short(head),
+        WAITS_FOR / 60
+    );
+    waits.remove(head);
+    leave(root, head, Left::Off);
+    true
+}
+
 /// The riders of `waiting` still their pull request's head, under `root`,
-/// as the candidate merges them, fetched by `git` into the checkout; a
-/// draft, or one whose pull request moved on or closed, steps off, and one
-/// GitHub or the fetch failed for waits aboard. A draft keeps no fell
-/// record, which would bar its head from the train once it was marked
-/// ready and cost its owner a gate run alone: `ready` refuses it while
-/// it's a draft, and boards it again once it isn't.
+/// as the candidate merges them, fetched into the checkout; a draft, or
+/// one whose pull request moved on or closed, steps off, and one GitHub or
+/// the fetch failed for waits aboard, for `WAITS_FOR` at most, as `waits`
+/// keeps. A draft keeps no fell record, which would bar its head from the
+/// train once it was marked ready and cost its owner a gate run alone:
+/// `ready` refuses it while it's a draft, and boards it again once it
+/// isn't.
 pub fn aboard(
     root: &Path,
-    git: &dyn Fn(&[&str]) -> Result<String, String>,
-    slug: &str,
+    asking: &Asking,
     owner: &str,
     waiting: &[Rider],
+    waits: &mut Waits,
 ) -> Aboard {
     let mut aboard = Aboard::default();
     for rider in waiting {
-        let asked = asked_of(slug, rider);
+        let asked = (asking.ask)(rider);
         match (boarding(&asked, &rider.head), asked) {
             (Boarding::Draft(why), _) => {
                 println!(
                     "merge-net: {} steps off the train: {why}",
                     short(&rider.head)
                 );
+                waits.remove(&rider.head);
                 leave(root, &rider.head, Left::Off);
             }
             (Boarding::Waits(why), _) => {
-                println!(
-                    "merge-net: {} waits for the next candidate: {why}",
-                    short(&rider.head)
-                );
-                aboard.waited = true;
+                aboard.waited |= !waited_out(root, waits, &rider.head, &why, asking.now);
             }
             (Boarding::Rides, Ok(Some(pull))) => {
-                match git(&["fetch", "--quiet", "origin", &rider.head]) {
-                    Ok(_) => aboard.mergings.push(Merging {
-                        number: pull.number,
-                        head: rider.head.clone(),
-                        subject: subject(pull.number, owner, &pull.branch),
-                        title: pull.title,
-                    }),
+                match (asking.git)(&["fetch", "--quiet", "origin", &rider.head]) {
+                    Ok(_) => {
+                        waits.remove(&rider.head);
+                        aboard.mergings.push(Merging {
+                            number: pull.number,
+                            head: rider.head.clone(),
+                            subject: subject(pull.number, owner, &pull.branch),
+                            title: pull.title,
+                        });
+                    }
                     Err(why) => {
-                        println!(
-                            "merge-net: {} waits for the next candidate: its head couldn't be \
-                             fetched ({why})",
-                            short(&rider.head)
-                        );
-                        aboard.waited = true;
+                        let why = format!("its head couldn't be fetched ({why})");
+                        aboard.waited |= !waited_out(root, waits, &rider.head, &why, asking.now);
                     }
                 }
             }
@@ -215,6 +263,7 @@ pub fn aboard(
                     "merge-net: {} steps off the train: its pull request moved on or closed",
                     short(&rider.head)
                 );
+                waits.remove(&rider.head);
                 leave(root, &rider.head, Left::Off);
             }
         }
@@ -405,5 +454,118 @@ mod tests {
             refused_as_draft(&pull).contains("draft"),
             "a draft's refusal doesn't say it's a draft"
         );
+    }
+
+    #[test]
+    fn a_commit_github_doesnt_hold_heads_no_pull_request_and_a_failure_says_nothing() {
+        assert!(
+            holds_no_commit("gh api: No commit found for SHA: abc (HTTP 422)"),
+            "GitHub saying it holds no such commit read as a failure to answer"
+        );
+        assert!(
+            !holds_no_commit("gh api: HTTP 502: Bad Gateway"),
+            "a failure to answer read as GitHub holding no such commit"
+        );
+    }
+
+    fn ours(head: &str) -> Rider {
+        Rider {
+            head: head.to_owned(),
+            branch: format!("jitsusama/{head}"),
+            at: 10,
+        }
+    }
+
+    fn open(head: &str, draft: bool) -> Asked {
+        Ok(Some(Pull {
+            number: 6821,
+            title: "Ours".to_owned(),
+            head: head.to_owned(),
+            branch: format!("jitsusama/{head}"),
+            draft,
+        }))
+    }
+
+    /// The heads still aboard under `root`.
+    fn aboard_in(root: &Path) -> Vec<String> {
+        super::super::riders(root)
+            .into_iter()
+            .map(|rider| rider.head)
+            .collect()
+    }
+
+    // #6748 and #6821, open and unmoved, stepped off on 26 November when
+    // a call to GitHub failed; one GitHub never answers for must not keep
+    // the train running for ever either.
+    #[test]
+    fn a_rider_github_cant_answer_for_waits_until_it_has_waited_out() {
+        let root = super::super::tests::root("waits");
+        let heads = ["rides", "unasked", "unfetched", "drafted", "closed"];
+        for head in heads {
+            super::super::board(&root, &ours(head)).unwrap();
+        }
+        let waiting: Vec<Rider> = heads.iter().map(|&head| ours(head)).collect();
+        let ask = |rider: &Rider| match rider.head.as_str() {
+            "unasked" => Err("gh pr: unexpected EOF".to_owned()),
+            "drafted" => open("drafted", true),
+            "closed" => Ok(None),
+            head => open(head, false),
+        };
+        let git = |arguments: &[&str]| {
+            if arguments.contains(&"unfetched") {
+                Err("fatal: the remote hung up".to_owned())
+            } else {
+                Ok(String::new())
+            }
+        };
+        let mut waits = Waits::new();
+        let at = |now: u64| Asking {
+            ask: &ask,
+            git: &git,
+            now,
+        };
+        let first = aboard(&root, &at(1000), "jitsusama", &waiting, &mut waits);
+        assert_eq!(
+            (
+                first
+                    .mergings
+                    .iter()
+                    .map(|m| m.head.as_str())
+                    .collect::<Vec<_>>(),
+                first.waited,
+            ),
+            (vec!["rides"], true),
+            "only the open rider at its head didn't ride, or the train wouldn't pause"
+        );
+        assert_eq!(
+            aboard_in(&root),
+            ["rides", "unasked", "unfetched"],
+            "a rider GitHub or a fetch failed for stepped off, or a draft or a closed one stayed"
+        );
+        let still = aboard(
+            &root,
+            &at(1000 + WAITS_FOR - 1),
+            "jitsusama",
+            &waiting[..3],
+            &mut waits,
+        );
+        assert!(
+            still.waited && aboard_in(&root).len() == 3,
+            "a rider stepped off before it had waited out"
+        );
+        let out = aboard(
+            &root,
+            &at(1000 + WAITS_FOR),
+            "jitsusama",
+            &waiting[..3],
+            &mut waits,
+        );
+        assert_eq!(
+            (aboard_in(&root), out.waited),
+            (vec!["rides".to_owned()], false),
+            "a rider that waited out stayed aboard, or the train still paused for it"
+        );
+        assert!(waits.is_empty(), "a rider that left kept its wait");
+        fs::remove_dir_all(&root).unwrap();
     }
 }
