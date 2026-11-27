@@ -14,6 +14,7 @@ drawer is timed apart.
 
 from __future__ import annotations
 
+import itertools
 import re
 import time
 from typing import TYPE_CHECKING
@@ -94,16 +95,19 @@ def where(shell: Shell) -> tuple[object, object, object]:
     """Give the place the launcher has selected, its row's name, and how many it lists in all.
 
     The count takes in any headings, which nearly no list has. A launcher that can't be read
-    gives why in place of the name, so the case's failure still says what it saw.
+    gives why in place of the name, so the case's failure still says what it saw: a read that
+    throws in the shell answers what threw (Held.js's answered), not the launcher's fields.
     """
     try:
         shown = shell.showing()
     except (AssertionError, ValueError) as unread:
         return None, f"unread: {unread}", None
-    return shown["current"], (shown["selected"] or {}).get("name"), shown["count"]
+    if "threw" in shown:
+        return None, f"threw: {shown['threw']}", None
+    return shown.get("current"), (shown.get("selected") or {}).get("name"), shown.get("count")
 
 
-def test_an_arrow_is_said_whole(shell: Shell) -> None:
+def test_down_and_up_are_each_said_whole(shell: Shell) -> None:
     """Down and up are each said as themselves, since the launcher names them and nobody typed.
 
     Only a key slower to its frame than FELT_MS is said, and a launcher done opening drew
@@ -111,26 +115,45 @@ def test_an_arrow_is_said_whole(shell: Shell) -> None:
     the selection and none was said (2026-11-26). So each try opens the launcher, presses as
     soon as it's ready, while its opening still draws, and closes it, as the step cases do. A
     frame says only its newest key, so a try ends on the arrow it's for: down alone, then down
-    and up, from the first row the opening selects. A failure gives where the selection stood
-    after each try's arrows, and the launcher's own lines.
+    and up, from the first row the opening selects. A try that fails leaves the launcher
+    closed, as every case starts, so the next case fails only for its own reasons. A failure,
+    whether the arrows went unsaid or a try raised, gives where the selection stood after each
+    try's arrows, and the launcher's own lines.
     """
     seen: list[tuple[object, object, object]] = []
+    tries = itertools.count()
     mark = shell.mark()
 
     def an_opening() -> None:
+        keys = ["down"] if next(tries) % 2 == 0 else ["down", "up"]
         shell.as_account(shell.ipc("toggle"))
-        shell.launcher_ready()
-        for key in ["down"] if len(seen) % 2 == 0 else ["down", "up"]:
-            shell.send_key(key)
-        seen.append(where(shell))
-        shell.close_launcher()
+        closed = False
+        try:
+            shell.launcher_ready()
+            for key in keys:
+                shell.send_key(key)
+            seen.append(where(shell))
+            shell.close_launcher()
+            closed = True
+        finally:
+            if not closed:
+                shell.launcher_left_closed()
 
-    said = said_by(shell, an_opening, lambda keys: set(keys) >= ARROWS, ARROW_TRIES)
-    logged = launcher_on_niri.logged_since(shell, mark).splitlines()
-    lines = "\n".join([line for line in logged if "launcher: " in line][-LINES_GIVEN:])
-    stood = f"place, row and count after each try's arrows: {seen}"
-    assert set(said) >= ARROWS, f"an arrow went unsaid as itself: {said}\n{stood}\n{lines}"
+    def what_it_saw() -> str:
+        logged = launcher_on_niri.logged_since(shell, mark).splitlines()
+        lines = "\n".join([line for line in logged if "launcher: " in line][-LINES_GIVEN:])
+        return f"place, row and count after each try's arrows: {seen}\n{lines}"
+
+    try:
+        said = said_by(shell, an_opening, lambda keys: set(keys) >= ARROWS, ARROW_TRIES)
+    except AssertionError as failed:
+        message = f"{failed}\n{what_it_saw()}"
+        raise AssertionError(message) from failed
+    assert set(said) >= ARROWS, f"an arrow went unsaid as itself: {said}\n{what_it_saw()}"
     assert "1 letter" not in said, f"an arrow was counted as typed: {said}"
+    # How many openings both took, which a run read with -s shows, so up's margin of its six
+    # can be judged.
+    print(f"down and up were said within {len(seen)} of {ARROW_TRIES} openings")
 
 
 def test_a_step_in_and_out_says_its_arrow_and_the_places_key(shell: Shell) -> None:

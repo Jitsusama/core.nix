@@ -5290,7 +5290,7 @@
     it says, its note saying when it's signed out or out of reach
   '';
   the-launcher-says-a-lagging-keys-kind-on-niri = ''
-    on niri with reports off, a lagging key's journal line says an arrow whole, and a step in by
+    on niri with reports off, a lagging key's journal line says down and up whole, and a step in by
     Return, out by - and in by a word and a space by its arrow and the key of the launcher's own
     place it took, never the place's name; a key listed without the notices' answer, and their
     answer late, say what was typed by how many letters; and a program's lagging drawer is said by
