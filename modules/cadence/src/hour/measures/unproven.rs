@@ -73,8 +73,24 @@ pub fn read(
     asks: &str,
     now: i64,
 ) -> Measure {
-    let running = misses::running_generation();
+    let record = fs::read_to_string(state_home.join(SWITCHES)).unwrap_or_default();
+    let running = named_running(&record, Path::new("/")).or_else(misses::running_generation);
     read_on(state_home, folder, checkouts, asks, now, running)
+}
+
+/// The highest generation the switch `record` names whose system, under
+/// `root`, is the one running, as a generation put back leaves a later
+/// one, unrecorded, holding the same system as one the record names.
+fn named_running(record: &str, root: &Path) -> Option<u64> {
+    let current = fs::canonicalize(root.join("run/current-system")).ok()?;
+    let profiles = root.join("nix/var/nix/profiles");
+    lines(record)
+        .filter_map(|line| generation(&line))
+        .filter(|named| {
+            let link = profiles.join(format!("system-{named}-link"));
+            fs::canonicalize(link).is_ok_and(|system| system == current)
+        })
+        .max()
 }
 
 /// The measure as `read` has it, on a machine whose system generation

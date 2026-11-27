@@ -902,6 +902,41 @@ fn a_switch_back_to_what_lacks_the_merge_holds_the_ask_back() {
 }
 
 #[test]
+fn what_runs_is_the_highest_named_generation_holding_the_running_system() {
+    let root = tempfile::tempdir().expect("a root");
+    let (store, profiles) = (
+        root.path().join("store"),
+        root.path().join("nix/var/nix/profiles"),
+    );
+    for dir in [
+        store.join("a"),
+        store.join("b"),
+        profiles.clone(),
+        root.path().join("run"),
+    ] {
+        std::fs::create_dir_all(dir).expect("a folder");
+    }
+    let link =
+        |to: &str, at: &Path| std::os::unix::fs::symlink(store.join(to), at).expect("a link");
+    link("a", &root.path().join("run/current-system"));
+    for (generation, system) in [(1415, "a"), (1416, "b"), (1417, "a")] {
+        link(system, &profiles.join(format!("system-{generation}-link")));
+    }
+    // 1416 was put back, so 1417 holds 1415's system, unrecorded.
+    let record = [switch(3600, 1415, "a"), switch(2400, 1416, "b")].join("\n");
+    assert_eq!(
+        super::named_running(&record, root.path()),
+        Some(1415),
+        "the generation running wasn't found by its system"
+    );
+    assert_eq!(
+        super::named_running(&switch(2400, 1416, "b"), root.path()),
+        None,
+        "a generation not running was taken to run"
+    );
+}
+
+#[test]
 fn a_run_is_judged_on_the_switch_whose_generation_it_names() {
     let home = state();
     let (old, merge) = scratch(&home.path().join("core.git"), 6835);
