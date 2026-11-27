@@ -3192,9 +3192,21 @@ fn a_main_the_copy_shows_went_another_way_is_refused_without_the_host() {
     world.answer();
     world.system(&one);
     assert_eq!(world.update().1, done(&one), "the first head wasn't read");
+    // The checkout holds what the machine ran and the rewritten head both,
+    // whole, as a person's own fetches would leave it.
+    let checkout = world.config.hosted.as_ref().unwrap().checkout.clone();
+    git(&checkout, &["fetch", "--quiet", "origin", "+main:refs/ran"]);
     git(&world.origin, &["reset", "--quiet", "--hard", &start]);
     // The host is never told of two, so asking it how two stands fails.
     let two = world.hosted_commit("two", None);
+    git(
+        &checkout,
+        &["fetch", "--quiet", "origin", "+main:refs/rewritten"],
+    );
+    assert!(
+        world.checkout_has(&one) && world.checkout_has(&two),
+        "the checkout didn't hold both ends"
+    );
     world.system(&two);
     let ending = world.update().1;
     let Line::Refused { why, .. } = &ending else {
