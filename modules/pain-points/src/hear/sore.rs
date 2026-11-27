@@ -493,7 +493,12 @@ fn said(each: &[&str], fault: &str) -> bool {
 /// The ways a message says something hurt, each a word for the finding,
 /// or none.
 pub fn kinds(words: &str, at: i64, earlier: &[(i64, String)]) -> Vec<&'static str> {
-    let low = words.to_lowercase().replace('\u{2019}', "'");
+    // A curly apostrophe is read as a straight one, and an ellipsis as
+    // the run of stops it stands for.
+    let low = words
+        .to_lowercase()
+        .replace('\u{2019}', "'")
+        .replace('\u{2026}', "...");
     let each = words_of(&low);
     let mut kinds = Vec::new();
     // A "no" or "wrong" set off by a comma or stop turns down what came
@@ -929,6 +934,7 @@ mod tests {
         for filler in [
             "consider tax brackets and shit... help me understand the take home",
             "consider tax brackets and shit. . . help me understand the take home",
+            "consider tax brackets and shit\u{2026} help me understand the take home",
             "add the costs and shit etc. see the page",
         ] {
             assert_eq!(
