@@ -342,12 +342,21 @@ class Shell:
         return ", ".join(self.made()["lately"][place]) or "none"
 
     def made_since(self, place: str, before: int) -> list[str]:
-        """Give the keys of the rows the place made after it had made `before`, oldest first."""
+        """Give the keys of the rows the place made after it had made `before`, oldest first.
+
+        Each whole, spaces and all, as an emoji's name holds them: only the marks Provider.qml
+        writes after it, shut and then walked, are taken off.
+        """
+        rows = self.rows_made_since(place, before)
+        return [row.removesuffix(" walked").removesuffix(" shut") for row in rows]
+
+    def rows_made_since(self, place: str, before: int) -> list[str]:
+        """Give the rows the place made after it had made `before`, whole, marked shut or walked."""
         made = self.made()
         count = int(made["rows"][place]) - before
         lately = made["lately"][place]
         assert count <= LATELY_KEPT, f"{place} made {count} rows: {', '.join(lately)}"
-        return [key.split(" ")[0] for key in (lately[-count:] if count else [])]
+        return list(lately[-count:]) if count else []
 
     def made_settled(self, place: str) -> None:
         """Wait until the place has made no row for a while, the opening's work done."""
