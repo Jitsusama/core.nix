@@ -113,20 +113,21 @@ fn own_name(proc: &Path) -> io::Result<String> {
 /// counts only where the system's manager puts it, as the first part of
 /// the path that isn't a slice. Only the unified hierarchy's line is read,
 /// since a legacy hierarchy can be shaped by whoever it's delegated to,
-/// and a process with no such line is never left out: naming the relay
-/// shows the camera on, while leaving out a reader would show it off.
+/// and a process with no such line, or more than the one the kernel
+/// writes, is never left out: naming the relay shows the camera on, while
+/// leaving out a reader would show it off. The kernel refuses a newline in
+/// a cgroup's name, so a second line is no more than a guard.
 pub fn ignored(cgroup: &str, units: &[String]) -> bool {
-    cgroup.lines().any(|line| {
-        let Some(path) = line.strip_prefix("0::/") else {
-            return false;
-        };
-        path.split('/')
-            .find(|part| {
-                part.rsplit_once('.')
-                    .is_none_or(|(_, kind)| kind != "slice")
-            })
-            .is_some_and(|part| units.iter().any(|unit| unit == part))
-    })
+    let mut unified = cgroup.lines().filter_map(|line| line.strip_prefix("0::/"));
+    let (Some(path), None) = (unified.next(), unified.next()) else {
+        return false;
+    };
+    path.split('/')
+        .find(|part| {
+            part.rsplit_once('.')
+                .is_none_or(|(_, kind)| kind != "slice")
+        })
+        .is_some_and(|part| units.iter().any(|unit| unit == part))
 }
 
 /// Whether a process is left out, by what reading its cgroup file gave.
@@ -155,7 +156,11 @@ pub fn maps(mapped: &[u8], node: &Path, inode: u64) -> bool {
 }
 
 /// Whether a process has the node open, under any name: a by-id link, or
-/// /dev/videoN.
+/// /dev/videoN. A process in a mount namespace of its own, as a sandboxed
+/// app is, still reads as /dev, its own namespace's path. Only a node
+/// bound somewhere outside any /dev is missed, since telling it apart
+/// would mean asking every open file what it is, and one on a network or
+/// FUSE filesystem that hangs would hang the watch for every camera.
 fn holds(proc: &Path, device: u64) -> io::Result<bool> {
     for fd in fs::read_dir(proc.join("fd"))? {
         let fd = fd?.path();
@@ -232,12 +237,19 @@ mod tests {
         assert_eq!(unwrapped(".hidden"), ".hidden");
     }
 
-    /// Holds each cgroup file to whether its process is left out.
+    /// Holds each cgroup file to whether its process is left out, with
+    /// the relay's unit ignored.
     fn each_left_out(cases: &[(&str, bool)]) {
-        let units = ["stand-in.service".to_owned()];
+        each_left_out_of(&["stand-in.service"], cases);
+    }
+
+    /// Holds each cgroup file, read as the watch reads it, to whether its
+    /// process is left out with these units ignored.
+    fn each_left_out_of(units: &[&str], cases: &[(&str, bool)]) {
+        let units: Vec<String> = units.iter().map(|&unit| unit.to_owned()).collect();
         for (cgroup, out) in cases {
             assert_eq!(
-                ignored(cgroup, &units),
+                left_out(&Ok(cgroup.as_bytes().to_vec()), &units),
                 *out,
                 "whether {cgroup:?} is left out"
             );
@@ -279,23 +291,38 @@ mod tests {
                 "1:name=systemd:/user.slice\n0::/system.slice/stand-in.service\n",
                 true,
             ),
+            // The kernel writes one unified line, so a file with two
+            // says nothing trustworthy, whichever way round they are.
+            (
+                "0::/user.slice/x.scope\n0::/system.slice/stand-in.service\n",
+                false,
+            ),
+            (
+                "0::/system.slice/stand-in.service\n0::/user.slice/x.scope\n",
+                false,
+            ),
         ]);
     }
 
     #[test]
     fn a_process_in_no_unit_is_never_left_out() {
         // Only root can put a process straight in a slice, or at the root,
-        // but either has no unit to leave out.
-        each_left_out(&[
-            ("0::/\n", false),
-            ("0::/system.slice\n", false),
-            ("0::/user.slice/user-1000.slice\n", false),
-            ("", false),
-        ]);
+        // but either has no unit to leave out, even with its slice named.
+        let slices = ["stand-in.service", "system.slice", "user-1000.slice"];
+        each_left_out_of(
+            &slices,
+            &[
+                ("0::/system.slice/x.service\n", false),
+                ("0::/\n", false),
+                ("0::/system.slice\n", false),
+                ("0::/user.slice/user-1000.slice\n", false),
+                ("", false),
+            ],
+        );
     }
 
     #[test]
-    fn a_cgroup_file_that_cant_be_read_as_text_never_leaves_out() {
+    fn a_cgroup_file_that_isnt_text_or_cant_be_read_leaves_out_only_the_relay() {
         let units = ["stand-in.service".to_owned()];
         let user = b"0::/user.slice/user-1000.slice/user@1000.service";
         let odd = Ok([&user[..], b"/\xff/stand-in.service\n"].concat());
