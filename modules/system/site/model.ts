@@ -152,7 +152,8 @@ function capital(said: string): string {
  * A thing's looks, or none when its record carries no list of them, or one
  * with a look missing its words: its side then says them all, as from a
  * daemon that lists none, rather than a list that leaves one out. A look
- * missing its why is kept with none.
+ * missing its why is kept with none, and one whose health isn't a word the
+ * daemon says a health in has none of its own, so it ranks with its thing.
  */
 function looksOf(record: Fields): readonly ThingLook[] | undefined {
   const looks: unknown = record["looks"];
@@ -164,8 +165,12 @@ function looksOf(record: Fields): readonly ThingLook[] | undefined {
     if (!isObject(look) || side === undefined || side === "") {
       return [];
     }
-    const health = text(look, "health");
-    const own = health === undefined ? {} : { health: healthOf(health) };
+    // Only the daemon's own word gives a look its health: the page's unread
+    // for a word it doesn't know would rank a look it did read above every
+    // bad one, where its thing's health says how bad it is.
+    const word = text(look, "health");
+    const health = word === undefined ? undefined : HEALTHS.get(word);
+    const own = health === undefined ? {} : { health };
     return [{ side, matters: text(look, "matters") ?? "", ...own }];
   });
   return read.length === looks.length ? read : undefined;
