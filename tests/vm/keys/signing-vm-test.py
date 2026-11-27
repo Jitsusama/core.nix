@@ -101,8 +101,10 @@ def keys(joel: Joel, values: dict[str, Any]) -> Keys:
     joel.run("mkdir -p ~/.ssh ~/.local/share/signing")
     joel.run(f"ssh-tpm-keygen -N {values['pin']} -C joel@test -f {JOEL_KEY}")
     # With no agents' key at login, their socket doesn't listen, so the wait below
-    # proves the path unit started it.
-    joel.run("systemctl --user is-active agent-signing.socket", succeed=False)
+    # proves something started it once the key was made. Its state must be exactly
+    # inactive: a socket that failed is a fault, not the condition at work.
+    state = joel.run("systemctl --user is-active agent-signing.socket || true").strip()
+    assert state == "inactive", state
     # No PIN: an empty answer to both of the keygen's prompts.
     joel.run(
         f"SSH_ASKPASS_REQUIRE=force SSH_ASKPASS={values['noPin']}"
@@ -283,6 +285,28 @@ def test_sign_as_picks_the_key_outright(joel: Joel, keys: Keys) -> None:
     """SIGN_AS picks the key outright."""
     joel.run(at_terminal("SIGN_AS=agent git -C repo commit -q --allow-empty -m 'chosen'"))
     assert joel.signer_of_last_commit() == ["G", keys.agent]
+
+
+@pytest.mark.usefixtures("keys")
+def test_a_stopped_agents_socket_listens_again_until_its_path_unit_stops(joel: Joel) -> None:
+    """The agents' socket, stopped by hand while their key is there, listens again.
+
+    agent-signing-key.path starts it again once it stops, so a stop that should hold stops the
+    path unit first, and then the socket stays off. Starting the path unit is the way back on:
+    the key is there, so it starts the socket, as docs/installing.md says. The test ends with
+    the socket listening, as the tests after it need.
+    """
+    socket = f"XDG_RUNTIME_DIR={joel.runtime} systemctl --user is-active -q agent-signing.socket"
+    listening = f"su - joel -c {shlex.quote(socket)}"
+    joel.run("systemctl --user stop agent-signing.socket")
+    joel.machine.wait_until_succeeds(listening, timeout=WAITING)
+    joel.run("systemctl --user stop agent-signing-key.path agent-signing.socket")
+    path = joel.run("systemctl --user is-active agent-signing-key.path || true").strip()
+    assert path == "inactive", path
+    state = joel.run("systemctl --user is-active agent-signing.socket || true").strip()
+    assert state == "inactive", state
+    joel.run("systemctl --user start agent-signing-key.path")
+    joel.machine.wait_until_succeeds(listening, timeout=WAITING)
 
 
 @pytest.mark.usefixtures("keys", "refusing")
