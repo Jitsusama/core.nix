@@ -556,14 +556,16 @@ in
     # longest first. Compressed, a page takes about a third of what it
     # held, in zswap's pool, which holds at most a fifth of the memory. A
     # page zswap turns away, as one that won't compress or that finds the
-    # pool full, stays in memory as it is rather than going to disk. Their
-    # pages leave the pool only as they come back or are freed, since zswap
-    # writes back only what the rest swapped, and a full pool takes nothing
-    # until it falls to the kernel's default nine tenths of its cap. With
-    # zswap off, as hibernation turns it for the image, the setting no
-    # longer holds and they swap to disk like the rest. The kernel reads the
-    # setting up the tree, so it holds for every program's scope inside,
-    # whatever jobs-sorter gives back to a window's own.
+    # pool full, stays in memory as it is rather than going to disk. While
+    # zswap is on, their pages leave the pool only as they come back or are
+    # freed, since zswap writes back only what the rest swapped, and a full
+    # pool takes nothing until it falls to the kernel's default nine tenths
+    # of its cap. With zswap off, as hibernation turns it for the image, the
+    # setting no longer holds: they swap to disk like the rest, and zswap's
+    # shrinker may write out what the pool holds of theirs, which stays on
+    # the disk until it's read. The kernel reads the setting up the tree, so
+    # it holds for every program's scope inside, whatever jobs-sorter gives
+    # back to a window's own.
     systemd.user.slices.session.sliceConfig = {
       CPUWeight = 1000;
       IOWeight = 1000;
