@@ -145,8 +145,9 @@ const FILLER_ONTO: [&str; 8] = ["to", "in", "on", "for", "from", "into", "of", "
 
 /// Words that list nothing, so "oh and shit, it wiped my branch" has no
 /// list before its join.
-const INTERJECTIONS: [&str; 9] = [
-    "oh", "ah", "ugh", "well", "so", "yeah", "man", "god", "jeez",
+const INTERJECTIONS: [&str; 19] = [
+    "oh", "ah", "ugh", "well", "so", "yeah", "man", "god", "jeez", "ok", "okay", "hey", "hmm",
+    "wow", "dude", "right", "wait", "huh", "oops",
 ];
 
 /// A sentence of lowered text: whether it exclaims, its words, and for
@@ -244,11 +245,18 @@ fn swears(low: &str) -> bool {
     if !swore(low) {
         return false;
     }
-    let sentences: Vec<(bool, &str, Vec<&str>)> = low
-        .split_inclusive(ENDS)
+    // Split as swore() splits, so "shit?!" is one sentence that asks and
+    // exclaims, not an ask spared as a filler and a bare "!".
+    let sentences: Vec<(bool, &str, Vec<&str>)> = pieces(low)
+        .into_iter()
         .map(|sentence| {
+            let mut marks = sentence
+                .trim_end()
+                .chars()
+                .rev()
+                .take_while(|c| ENDS.contains(c));
             (
-                sentence.trim_end().ends_with(ASKS),
+                marks.any(|c| ASKS.contains(&c)),
                 sentence,
                 words_of(sentence),
             )
@@ -444,6 +452,11 @@ mod tests {
         assert_eq!(kinds("I love this page!", AT, &[]), none);
         assert_eq!(kinds("make it look fucking awesome", AT, &[]), none);
         assert_eq!(
+            kinds("holy shit! amazing work", AT, &[]),
+            none,
+            "a swear before praise across a stop"
+        );
+        assert_eq!(
             kinds(
                 "shit, that hang is bound to happen. that is fine, don't let that stop you",
                 AT,
@@ -543,7 +556,10 @@ mod tests {
             "consider the brackets, deductions, and shit",
             "consider:\n- brackets\n- deductions\n- and shit",
             "great! add the costs and shit",
-            "holy shit! amazing work",
+            "great\u{ff01} add the costs and shit",
+            // Accepted: a hurt said only as a list's filler, with no fault
+            // word and no "!", is unheard, as a false pain costs a turn.
+            "it wiped my branch and shit",
         ] {
             assert_eq!(
                 kinds(filler, AT, &[]),
@@ -562,11 +578,28 @@ mod tests {
             "the build failed and shit hit the fan",
             "it wiped my branch and shit?!",
             "it wiped my branch and shit\u{ff01}",
+            "it wiped my notes and wtf",
         ] {
             assert!(
                 kinds(hurt, AT, &[]).contains(&"swore"),
-                "a swear with no list before its join, no join, exclaimed, or beside a \
-                 filler was heard as a filler: {hurt}"
+                "a swear with no list before its join, no join, exclaimed, not a filler's \
+                 word, or beside a filler was heard as a filler: {hurt}"
+            );
+        }
+        // Each word, so one dropped from its list is caught.
+        for onto in FILLER_ONTO {
+            let filler = format!("add the costs and crap {onto} the page");
+            assert_eq!(
+                kinds(&filler, AT, &[]),
+                none,
+                "a filler run on swore: {filler}"
+            );
+        }
+        for word in INTERJECTIONS {
+            let hurt = format!("{word} and shit, it wiped my branch");
+            assert!(
+                kinds(&hurt, AT, &[]).contains(&"swore"),
+                "a word that lists nothing was taken for a list: {hurt}"
             );
         }
     }
@@ -583,6 +616,7 @@ mod tests {
             "shit. that's fine?",
             "shit, that's fine\u{ff1f}",
             "that's fine. why the fuck is it slow?",
+            "it's fine. how'd it wipe my branch and shit?!",
             "it's fine, i'll do it myself, fuck this",
             "shit, it's fine. whatever.",
             "shit, it's fine, whatever",
