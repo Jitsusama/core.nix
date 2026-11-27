@@ -3398,8 +3398,16 @@ fn far_within(command: &str, grace: &str, far: Far) -> String {
 /// November a Mac on 12 processors ran five at once, four of them sent
 /// by different runs, at load 75 to 94, and lost its DNS: Nix holds each
 /// client to its own `max-jobs`, and the Mac's load was read once for
-/// each run, before any of them had started.
-pub const NEARBY_AT_ONCE: u32 = 2;
+/// each run, before any of them had started. Two at once still took a
+/// Mac to 60 over five on 18 November, and velocity's ruling of 26
+/// November is one lent build at a time, whoever sends it. The turn is
+/// taken on the Mac itself, so two runs whose rooms were read at once
+/// still build there one after the other.
+pub const NEARBY_AT_ONCE: u32 = 1;
+
+/// How many turns a machine nearby's builds are counted in: the two a run
+/// took before 26 November, when [`NEARBY_AT_ONCE`] was 2.
+const TURNS_COUNTED: u32 = 2;
 
 /// What a shell runs to name the boot it runs in: Linux's boot id, or a
 /// Mac's boot session's. Both are fixed for the whole boot, where a Mac's
@@ -3447,17 +3455,24 @@ const TURNS_READ: &str = "turns=\"${NIX_OFFLOAD_TURNS:-$HOME/.cache/nix-offload/
 /// account in one pid namespace: two namespaces of one boot sharing a home
 /// read each other's turns as dead too, and nothing here tells them apart.
 pub fn in_turn_nearby(command: &str) -> String {
+    in_one_of_turns(command, NEARBY_AT_ONCE)
+}
+
+/// [`in_turn_nearby`], with `at_once` turns rather than
+/// [`NEARBY_AT_ONCE`], so its tests can show how a run passes over a
+/// turn it can't make for another.
+fn in_one_of_turns(command: &str, at_once: u32) -> String {
     format!(
         "{TURNS_READ} \
          boot=$({BOOT_READ}); mine=\"$$ $boot\"; \
          here=$(uname -n); turn=; waited=0; unmadebefore=; \
-         trap 'k=1; while [ \"$k\" -le {NEARBY_AT_ONCE} ]; do \
+         trap 'k=1; while [ \"$k\" -le {at_once} ]; do \
          if [ \"$(readlink \"$turns/$k\" 2>/dev/null)\" = \"$mine\" ]; then \
          rm -f \"$turns/$k\"; fi; \
          k=$((k + 1)); done' EXIT; \
          if [ -z \"$boot\" ]; then turn=none; fi; \
          while [ -z \"$turn\" ]; do mkdir -p \"$turns\" 2>/dev/null; n=1; unmade=0; holders=; \
-         while [ \"$n\" -le {NEARBY_AT_ONCE} ]; do \
+         while [ \"$n\" -le {at_once} ]; do \
          if [ -d \"$turns/$n\" ] && [ ! -L \"$turns/$n\" ]; then \
          unmade=$((unmade + 1)); n=$((n + 1)); continue; fi; \
          if ln -s \"$mine\" \"$turns/$n\" 2>/dev/null; then turn=\"$turns/$n\"; break; fi; \
@@ -3478,7 +3493,7 @@ pub fn in_turn_nearby(command: &str) -> String {
          if [ -n \"$taker\" ] && [ \"${{taker#* }}\" != \"$boot\" ]; then turn=shared; break; fi; \
          turn=; unmadebefore=; sleep \"${{NIX_OFFLOAD_TURN_LOOK:-1}}\" 2>/dev/null || sleep 1; \
          continue; fi; \
-         if [ \"$unmade\" -ge {NEARBY_AT_ONCE} ]; then \
+         if [ \"$unmade\" -ge {at_once} ]; then \
          if [ -n \"$unmadebefore\" ]; then turn=none; break; fi; \
          unmadebefore=1; sleep 1; continue; fi; \
          unmadebefore=; \
@@ -5500,8 +5515,9 @@ pub struct Memory {
 }
 
 /// The share of a Mac's memory free below which it has no room, by
-/// velocity's line for a start there.
-const FREE_AT_LEAST: u32 = 35;
+/// velocity's line for a start there: 35 until its ruling of 26
+/// November raised it to 40, read twice (`changed::mac::room_held`).
+const FREE_AT_LEAST: u32 = 40;
 
 impl Memory {
     /// Whether the Mac is short of memory: under [`FREE_AT_LEAST`] free,
@@ -5610,14 +5626,16 @@ impl Load {
 }
 
 /// What a shell runs to say how many runs sent to its machine build there
-/// now: its [`NEARBY_AT_ONCE`] turns ([`in_turn_nearby`]) held by a shell
-/// alive in this boot, as a run waiting for a turn reads them. A machine
-/// with no folder builds none.
+/// now: its turns ([`in_turn_nearby`]) held by a shell alive in this
+/// boot, as a run waiting for a turn reads them. A machine with no folder
+/// builds none. It counts [`TURNS_COUNTED`] of them, past
+/// [`NEARBY_AT_ONCE`], since a run sent by an older nix-offload, from
+/// before 26 November, may hold a second.
 pub fn building_read() -> String {
     format!(
         "{TURNS_READ} \
          boot=$({BOOT_READ}); building=0; k=1; \
-         while [ \"$k\" -le {NEARBY_AT_ONCE} ]; do holder=$(readlink \"$turns/$k\" 2>/dev/null); \
+         while [ \"$k\" -le {TURNS_COUNTED} ]; do holder=$(readlink \"$turns/$k\" 2>/dev/null); \
          k=$((k + 1)); pid=${{holder%% *}}; \
          case \"$pid\" in ''|*[!0-9]*|0*|????????*) continue;; esac; \
          if [ -n \"$boot\" ] && [ \"${{holder#* }}\" = \"$boot\" ] && \
@@ -7869,6 +7887,14 @@ mod tests {
         std::os::unix::fs::symlink(holder, turns.join(n.to_string())).unwrap();
     }
 
+    /// The turns from `first` to the last, as a shell's list of words.
+    fn turns_from(first: u32) -> String {
+        (first..=NEARBY_AT_ONCE)
+            .map(|n| n.to_string())
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
     /// Who holds turn `n` in `turns`, if anyone does.
     fn turn_holder(turns: &Path, n: u32) -> Option<String> {
         fs::read_link(turns.join(n.to_string()))
@@ -7955,10 +7981,10 @@ mod tests {
         });
         let why = format!(
             "nix-offload: {} already runs as many builds sent to it as it takes at once, so \
-             this waits there for its turn, held in {} by shells {pid}, {pid}",
+             this waits there for its turn, held in {} by shells {}",
             this_machine(),
             turns.path().display(),
-            pid = std::process::id()
+            vec![std::process::id().to_string(); NEARBY_AT_ONCE as usize].join(", ")
         );
         for said in ["at once", "again a second on"] {
             let heard = told
@@ -7994,11 +8020,13 @@ mod tests {
             None,
             "{shell} kept its turn once it ended"
         );
-        assert_eq!(
-            turn_holder(turns.path(), 1),
-            Some(live),
-            "{shell} gave back a turn it never held"
-        );
+        for n in 1..NEARBY_AT_ONCE {
+            assert_eq!(
+                turn_holder(turns.path(), n),
+                Some(live.clone()),
+                "{shell} gave back turn {n}, which it never held"
+            );
+        }
     }
 
     #[test]
@@ -8051,7 +8079,9 @@ mod tests {
                     None,
                     "{shell} kept the turn {why} once it ended"
                 );
-                assert_eq!(turn_holder(turns.path(), 1), Some(live.clone()), "{shell}");
+                for n in 1..NEARBY_AT_ONCE {
+                    assert_eq!(turn_holder(turns.path(), n), Some(live.clone()), "{shell}");
+                }
             }
         }
     }
@@ -8553,15 +8583,14 @@ mod tests {
                 "#!/bin/sh\nt=\"$NIX_OFFLOAD_TURNS\"; looks=$(cat \"$t/looks\" 2>/dev/null); \
                  looks=$((${{looks:-0}} + 1)); echo \"$looks\" > \"$t/looks\"\n\
                  case $looks in\n\
-                 2) rmdir \"$t/1\" \"$t/2\"; \
-                 ln -s \"$LIVE\" \"$t/1\"; ln -s \"$LIVE\" \"$t/2\" ;;\n\
-                 3) rm \"$t/1\" \"$t/2\"; {mkdir} \"$t/1\" \"$t/2\" ;;\n\
-                 4) rmdir \"$t/1\" \"$t/2\" ;;\n\
+                 2) for n in {every}; do rmdir \"$t/$n\"; ln -s \"$LIVE\" \"$t/$n\"; done ;;\n\
+                 3) for n in {every}; do rm \"$t/$n\"; {mkdir} \"$t/$n\"; done ;;\n\
+                 4) for n in {every}; do rmdir \"$t/$n\"; done ;;\n\
                  esac\nexec {mkdir} \"$@\"\n",
+                every = turns_from(1),
                 mkdir = which("mkdir")
             ),
         );
-        assert_eq!(NEARBY_AT_ONCE, 2, "the stand-in mkdir makes two turns");
         let live = format!("{} {}", std::process::id(), this_boot());
         for shell in ["dash", "zsh"] {
             let turns = tempfile::tempdir().unwrap();
@@ -8745,17 +8774,19 @@ mod tests {
                 "#!/bin/sh\nt=\"$NIX_OFFLOAD_TURNS\"; looks=$(cat \"$t/looks\" 2>/dev/null); \
                  looks=$((${{looks:-0}} + 1)); echo \"$looks\" > \"$t/looks\"\n\
                  case $looks in\n\
-                 2) rmdir \"$t/1\" \"$t/2\"; ln -s \"$LIVE\" \"$t/2\"; \
+                 2) for n in {every}; do rmdir \"$t/$n\"; done; \
+                 for n in {past_the_first}; do ln -s \"$LIVE\" \"$t/$n\"; done; \
                  (w=0; until [ -L \"$t/1\" ] || [ \"$w\" -ge 400 ]; do \
                  sleep 0.05; w=$((w + 1)); done; \
                  rm -f \"$t/1\"; ln -s \"$LIVE\" \"$t/1\") & ;;\n\
-                 3) rm \"$t/1\" \"$t/2\"; {mkdir} \"$t/1\" \"$t/2\" ;;\n\
-                 4) rmdir \"$t/1\" \"$t/2\" ;;\n\
+                 3) for n in {every}; do rm \"$t/$n\"; {mkdir} \"$t/$n\"; done ;;\n\
+                 4) for n in {every}; do rmdir \"$t/$n\"; done ;;\n\
                  esac\nexec {mkdir} \"$@\"\n",
+                every = turns_from(1),
+                past_the_first = turns_from(2),
                 mkdir = which("mkdir")
             ),
         );
-        assert_eq!(NEARBY_AT_ONCE, 2, "the stand-in mkdir makes two turns");
         let live = format!("{} {}", std::process::id(), this_boot());
         for shell in ["dash", "zsh"] {
             let turns = tempfile::tempdir().unwrap();

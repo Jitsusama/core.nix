@@ -309,6 +309,8 @@ fn there_command(bin: &Path, offload: &Path, state: &Path) -> Command {
         // No file of root's, so every builder is vouched for, as on a
         // machine without nix-offload-lines, wherever the tests run.
         .env("NIX_OFFLOAD_VOUCHED", state.join("no-lent"))
+        // A Mac's room is read twice without the minute between.
+        .env("NIX_OFFLOAD_MAC_SETTLE", "0")
         .envs(no_vm_builders(state))
         .env("XDG_RUNTIME_DIR", state)
         .env("XDG_STATE_HOME", state)
