@@ -754,13 +754,13 @@ def test_a_chord_first_after_a_restart_searches_no_more_than_a_later_one(shell: 
     chord's first try may run no more searches than a later chord into the same place, opened
     once home is kept again. It's said as soon as home is kept, since a source's change, shut
     or open, only shows what's there again, which the launcher never counts as a search. Its
-    rows aren't held. With home found again put back, a check on
-    other sources' rows passed (#6890's run, 2026-11-26), while a change a source says late
-    makes its row on whichever chord follows, as Spend's 1 row failed one (z6569, 2026-11-27).
+    rows aren't held, since a change a source says late makes its row on whichever chord
+    follows, as Spend's 1 row failed one (z6569, 2026-11-27), while with home found again put
+    back a check on other sources' rows passed (#6890's run, 2026-11-26).
     """
     shell.restart()
     shell.launcher_until(lambda shown: shown.get("kept"))
-    made, first, tries = opened_into(shell, "windows")
+    _, first, tries = opened_into(shell, "windows")
     shell.close_launcher()
     shell.launcher_until(lambda shown: not shown["open"] and shown.get("kept"))
     _, later, _ = opened_into(shell, "windows")
@@ -771,10 +771,10 @@ def test_a_chord_first_after_a_restart_searches_no_more_than_a_later_one(shell: 
         f"a later chord into Windows searched {later} times, more than its fill's"
         f" {PLACE_SEARCHES}, so a first chord could find home again and search no more"
     )
+    tried = "1 try" if tries == 1 else f"{tries} tries"
     assert first <= later, (
         f"first into Windows after a restart searched {first} times on its first try, a later"
-        f" chord {later}, as home found again would; it took {tries} tries, the last making"
-        f" other sources' rows: {made}"
+        f" chord {later}, as home found again would; it took {tried}"
     )
 
 
