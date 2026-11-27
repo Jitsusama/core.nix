@@ -10528,7 +10528,9 @@ Scope {
             // How many of them are kept dimmed where they were, gone from what
             // their source answers last (Steady.kept's `went`), which `found`
             // counts too; a row its source draws dimmed itself isn't among them.
-            went: root.matches.filter(row => row.went).length,
+            // Counted as what a key making the list afresh would leave out
+            // (Steady.forgotten), which tests/steady.qml holds to that.
+            went: root.matches.length - Steady.forgotten(root.matches).length,
             // What each of those rows is, and how it reads whole, so a
             // test can say no thing is listed twice.
             things: root.matches.slice(0, 20).map(row => ({

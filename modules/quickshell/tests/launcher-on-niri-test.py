@@ -2860,9 +2860,17 @@ def test_emoji_says_how_many_it_found_past_those_it_answers(shell: Shell) -> Non
         held = (again["found"], again["went"]) == (said, head["went"])
         if said != "" and caught_up and held:
             break
-        assert time.monotonic() < deadline, (
+        # Out of time with the heads held on a standing answer, only the head's count is
+        # missing, so that's the fault said: the launcher's, not the history's or a race's.
+        late = time.monotonic() >= deadline
+        assert not (late and standing and held and said != ""), (
+            f"Emoji's head never said how many it found past those it shows: {said!r},"
+            f" Emoji's search {answer}"
+        )
+        assert not late, (
             f"Emoji's head and the history's answer to f never stood together: the head said"
-            f" {said!r} then {again['found']!r}, Emoji's search {answer}"
+            f" {said!r} with {head['went']} kept gone, then {again['found']!r} with"
+            f" {again['went']}, Emoji's search {answer}"
         )
         time.sleep(launcher_on_niri.POLL)
     shell.close_launcher()
@@ -2882,6 +2890,11 @@ def test_emoji_says_how_many_it_found_past_those_it_answers(shell: Shell) -> Non
     # the history finds no group (clipboard/src/search.rs keeps only emoji), and nothing was
     # acted on to be still offered (Launcher.qml's stillActed), so there are none.
     went = cast("int", head["went"])
+    # Rows kept dimmed are an answer to f let go, so they're its emoji: at most what an answer
+    # holds, and no group among them, as a list kept from before the key would have, since
+    # Emoji's groups head it while nothing is typed.
+    assert went <= answer["keysHeld"], f"the head kept {went} gone, more than {answer}"
+    assert FIRST_GROUP not in head["rows"], f"the head kept a group from before f: {head['rows']}"
     past, beside = answer["foundAll"] - answer["keysHeld"], found - answer["foundAll"] - went
     assert found - shown == past, f"the head said {said}, the history {answer}"
     assert beside == 0, (
