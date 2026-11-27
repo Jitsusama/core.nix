@@ -747,7 +747,7 @@ fn owners_for(
     let mut held: BTreeMap<String, usize> = BTreeMap::new();
     for to in kept
         .iter()
-        .filter(|h| h.closed_by.is_none())
+        .filter(|h| !h.closed())
         .filter_map(|h| h.to.clone())
     {
         *held.entry(to).or_default() += 1;
