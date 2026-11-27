@@ -2090,6 +2090,40 @@ def test_a_go_to_asked_from_outside_marks_no_answer_heard(shell: Shell) -> None:
         talk.unlink()
 
 
+def test_a_walked_go_to_marks_no_answer_heard_once_the_launcher_is_gone(shell: Shell) -> None:
+    """A walk's Go To goes to a session, but leaves the answer it holds for Joel unheard.
+
+    Go To runs once the launcher is gone (Launcher.qml's runOnceGone), after the walk has
+    returned, so only the walk kept with it (pendingWalked) tells its heard from his own
+    Return's (round 000036 on #6796, F127). The goTo case above crosses goToCell alone.
+    """
+    replies = STEER / "LISTEN" / "replies"
+    replies.mkdir(parents=True, exist_ok=True)
+    talk = replies / "talk-1794414593811.jsonl"
+    lines = [
+        {"stage": "delivered", "at": "2026-11-11T21:00:00.000Z", "session": "s-listen",
+         "from": "joel", "text": "is the ferry running?"},
+        {"stage": "replied", "at": "2026-11-11T21:01:00.000Z", "text": "Every hour, on the hour."},
+    ]  # fmt: skip
+    talk.write_text("".join(json.dumps(line) + "\n" for line in lines))
+    try:
+        shell.close_launcher()
+        shell.as_account(shell.ipc("toggle"))
+        shell.launcher_ready()
+        shell.launcher_until(lambda _: " \u00b7 1 answer \u00b7 " in agents_at_home(shell))
+        shell.close_launcher()
+        steps = ["agents", ORCHESTRATING, FOLD, "Listening Quest", "Go To"]
+        walked = {"steps": steps, "sure": True}
+        did = json.loads(shell.as_account(shell.ipc("doing", shlex.quote(json.dumps(walked)))))
+        assert "refused" not in did, did
+        time.sleep(PAST_A_STAY)
+        assert '"stage":"read"' not in talk.read_text(), talk.read_text()
+    finally:
+        time.sleep(LINK_QUIET)
+        shell.close_launcher()
+        talk.unlink()
+
+
 def test_no_words_however_long_leave_their_room_or_lie_on_anothers(shell: Shell) -> None:
     """Words of any length stay inside their room and the card, and off each other's ink.
 
