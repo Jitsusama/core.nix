@@ -111,14 +111,23 @@ QtObject {
                 .map(each => each.map(one => ({ id: one.id, ago: one.ago }))),
             [[{ id: 1, ago: 30 }, { id: 2, ago: 30 }], [], []]);
         // niri puts a column's move on each tile of the columns it moves,
-        // so the cat hears it only of the window it's carried by.
+        // so the cat reads only the word of the window it's carried by, and
+        // every window's word is heard as its layout comes, so one asked of
+        // long after keeps its own begin and reads as ended (#7194's round,
+        // F4).
         const besides = Object.assign({}, windows, { 1: moving(windows[1], "ColumnMove", 20),
             2: moving(windows[2], "ColumnMove", 40) });
-        expect("a column's move is told of the window asked of alone, and of none unmoved",
-            [Tiles.told(besides, 7, "ColumnMove", 2), Tiles.told(besides, 7, "ColumnMove", 3),
-                Tiles.told(viewing, 7, "ColumnMove", 1)]
-                .map(each => each.map(one => ({ id: one.id, ago: one.ago }))),
-            [[{ id: 2, ago: 40 }], [], []]);
+        const movedHeard = Tiles.hears(null, Tiles.told(besides, 7, "ColumnMove"), 1000);
+        const movedLater = Tiles.hears(movedHeard, Tiles.told(besides, 7, "ColumnMove"), 9000);
+        expect("a column's move is dated for each window it moved, and for none unmoved",
+            [Tiles.heardOf(movedHeard, 2).at, Tiles.heardOf(movedHeard, 1).at,
+                Tiles.heardOf(movedHeard, 3).at, Tiles.heardOf(null, 2).at],
+            [960, 980, null, null]);
+        expect("a column's move asked of long after keeps its begin and reads as ended",
+            [Tiles.heardOf(movedLater, 2).at,
+                Tiles.runs(Tiles.heardOf(movedLater, 2), 9000, 500),
+                Tiles.runs(Tiles.heardOf(movedHeard, 2), 1000, 500)],
+            [960, false, true]);
         const first = Tiles.hears(null, Tiles.told(viewing, 7, "ViewMove"), 1000);
         expect("a scroll first heard is dated by niri's begin, not when it was heard",
             first.at, 970);

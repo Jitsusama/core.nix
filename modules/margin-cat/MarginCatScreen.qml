@@ -557,12 +557,20 @@ PanelWindow {
     // (modules/niri/home.nix's window-movement), so the cat rides it the
     // same way rather than sitting at once ahead of its window as it
     // slides, which only a drag or a gesture, which niri says no word of,
-    // does.
+    // does. Only `on`'s own word counts, since niri puts a column's move on
+    // every column it moves (Tiles.heardOf).
     function columnMoving(on: var): bool {
-        const now = Date.now();
-        columnHeard = Tiles.hears(columnHeard,
-            Tiles.told(Niri.windows, space?.id, "ColumnMove", on), now);
-        return Tiles.runs(columnHeard, now, slideMs);
+        columnsHeard();
+        return Tiles.runs(Tiles.heardOf(columnHeard, on), Date.now(), slideMs);
+    }
+    // Every window's word of its column's move, heard as each layout
+    // comes, with scrolling()'s, so each is dated as near as it can be to
+    // when niri said it. Heard only as the cat asked, a word left on a
+    // still window was dated then, as a slide just begun, and had the cat
+    // ride a full spring to a window long at rest (#7194's round, F4).
+    function columnsHeard(): void {
+        columnHeard = Tiles.hears(columnHeard, Tiles.told(Niri.windows, space?.id, "ColumnMove"),
+            Date.now());
     }
     property var columnHeard: null
     // Whether niri's spring slides the window `on` under the cat: the
@@ -575,6 +583,7 @@ PanelWindow {
 
         function onRevisionChanged() {
             window.scrolling();
+            window.columnsHeard();
         }
     }
     readonly property var spring: Object.assign({}, Theme.motion.spring,
@@ -597,8 +606,9 @@ PanelWindow {
         // by, as niri says, by its latest begin rather than an old word
         // left on another window, or a guess at how late it hears of one
         // where niri says nothing or tells of one ended.
+        const carrier = Carried.carriedBy(landedOn, sat);
         const began = scrolling() ? scrollHeard.at
-            : columnMoving(Carried.carriedBy(landedOn, sat)) ? columnHeard.at : null;
+            : columnMoving(carrier) ? Tiles.heardOf(columnHeard, carrier).at : null;
         const behind = MarginCat.behindTold(frameMs, "slide", began === null ? null
             : now - began);
         carry = Carried.rides(carry, place, to, { at: now - behind, spring });
@@ -1445,6 +1455,7 @@ PanelWindow {
         }
         function onSettledChanged() {
             window.scrolling();
+            window.columnsHeard();
         }
     }
 

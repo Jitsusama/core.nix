@@ -146,7 +146,8 @@ windows; with its workspace emptied, it comes in at that edge along the floor.
 
 - Held by `margin-cat-one-screen.qml`: "its window scrolled, it's carried as far"
 - Held by `margin-cat-one-screen.qml`: "its window said off the screen first"
-- Held by `margin-cat-tiles.qml`: "a column's move is told of the window asked of alone"
+- Held by `margin-cat-tiles.qml`: "a column's move asked of long after keeps its begin and reads
+  as ended"
 - Owed since 2026-11-27: a case on niri that the cat rides back to its seat as a column
   opening beside its window slides it aside; the Qt cases hold only which word is heard.
 - Held by `margin-cat-one-screen.qml`: "drawn where it was as niri sets off, nearer as it

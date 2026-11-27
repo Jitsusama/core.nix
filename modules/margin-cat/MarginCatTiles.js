@@ -59,14 +59,11 @@ function animating(windows, workspaceId, kind) {
 
 // What niri last said of a motion of `kind` on a workspace's windows: each
 // window whose layout tells of one, how long before that layout went out
-// it began, in ms, and the layout that said it; of window `on` alone where
-// it's given, as a column's move is heard only of the window the cat is
-// carried by, never of another column niri moves.
-function told(windows, workspaceId, kind, on) {
+// it began, in ms, and the layout that said it.
+function told(windows, workspaceId, kind) {
     return Object.values(windows)
         .filter(one => one.workspace_id === workspaceId && one.layout?.tile_animation === kind
-            && typeof one.layout?.tile_animation_began_ms_ago === "number"
-            && (on === undefined || one.id === on))
+            && typeof one.layout?.tile_animation_began_ms_ago === "number")
         .map(one => ({ id: one.id, ago: one.layout.tile_animation_began_ms_ago,
             layout: one.layout }));
 }
@@ -103,6 +100,15 @@ function hears(heard, said, now) {
 // running until the clock came round again.
 function runs(heard, now, lasts) {
     return heard !== null && heard.at !== null && now >= heard.at && now - heard.at < lasts;
+}
+
+// The motion `heard` (hears) as it tells of window `on` alone: when that
+// window's own word of it began, null for none, as runs() reads it. niri
+// puts a column's move on the tiles of each column it moves, so the cat
+// rides only the one it's carried by, and every window's word is heard,
+// each dated as it came, so a word asked of late keeps its own begin.
+function heardOf(heard, on) {
+    return { at: heard?.tiles?.[on]?.at ?? null };
 }
 
 // The tiles of a workspace's windows, each with its column and its row in
