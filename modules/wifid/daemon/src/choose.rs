@@ -3602,7 +3602,7 @@ pub(crate) mod tests {
             "a miss an hour after the last held give-ways"
         );
         assert!(
-            !missed_apart(SPURNED - Duration::from_secs(1)),
+            !missed_apart(SPURNED.saturating_sub(Duration::from_secs(1))),
             "a miss a second short of an hour after the last, not after its give-way, held nothing"
         );
     }
