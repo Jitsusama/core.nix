@@ -3596,7 +3596,7 @@ Singleton {
     // gone quiet for good costs Joel only a minute and a half.
     function stillHeld(named) {
         const still = stillSaid[named];
-        return still !== undefined && (still.under ?? "") !== ""
+        return still !== undefined
             && still.under === sessionsKittyPid && Date.now() - still.at < answerPatience;
     }
     // Whether a viewer `named` was asked for within viewPatience and niri
