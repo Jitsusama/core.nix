@@ -357,12 +357,11 @@ fn a_first_reading_that_never_answers_is_said_late_once_and_its_answer_once() {
     // never is, so the line is the late one whole. It's heard where the
     // daemon says it, as `take` tells it, and the thread says nothing
     // while its first walk is held.
-    let old = SAMPLED * 2;
+    let old = YOUNG_PAST_A_WAIT;
     let (free, freed) = mpsc::channel::<()>();
     let freed = std::sync::Mutex::new(freed);
     let (tell, told) = mpsc::channel();
     let folders = vec![PathBuf::from("/home/someone/trees/fix")];
-    let began = Instant::now();
     let mut working = Working::start_saying(
         BRISK,
         old,
@@ -375,6 +374,9 @@ fn a_first_reading_that_never_answers_is_said_late_once_and_its_answer_once() {
             let _ = tell.send(said);
         },
     );
+    // Read once the reading's own clock has begun, so the late take is
+    // past `old` however long the thread took to start.
+    let began = Instant::now();
     working.take(folders.clone());
     assert!(working.unread(), "a reading not yet answered was said");
     assert_eq!(told.try_iter().count(), 0, "a young first wait was said");
@@ -422,6 +424,106 @@ fn a_first_reading_that_never_answers_is_said_late_once_and_its_answer_once() {
         answered,
         ["the reading of /proc answers at last"],
         "the journal wasn't told once that the first reading answered: {heard:?}"
+    );
+}
+
+/// How old a reading may grow in a case whose first take must wait out
+/// SAMPLED and still be young: a wake a whole LATE late leaves it LATE of
+/// room yet.
+const YOUNG_PAST_A_WAIT: Duration = SAMPLED.saturating_add(LATE.saturating_mul(2));
+
+#[test]
+fn a_first_reading_that_lands_old_is_said_as_none_answering_and_then_at_last() {
+    // A first walk held past `old` and freed between two takes lands
+    // already old: none has answered yet, so the journal says so, as the
+    // next walk's answer says it answers at last. The second walk holds
+    // until the case has taken the first, telling `landed` that the
+    // first was put in the slot.
+    let old = YOUNG_PAST_A_WAIT;
+    let (free, freed) = mpsc::channel::<()>();
+    let (again, freed_again) = mpsc::channel::<()>();
+    let (landed, heard_landed) = mpsc::channel::<()>();
+    let mut calls = 0_u32;
+    let (tell, told) = mpsc::channel();
+    let folders = vec![PathBuf::from("/home/someone/trees/fix")];
+    let mut working = Working::start_saying(
+        BRISK,
+        old,
+        folders.clone(),
+        move |_: &[PathBuf]| {
+            calls += 1;
+            if calls == 1 {
+                let _ = freed.recv_timeout(SAMPLED * 8);
+            } else if calls == 2 {
+                let _ = landed.send(());
+                let _ = freed_again.recv_timeout(SAMPLED * 8);
+            }
+            Sample::default()
+        },
+        move |said| {
+            let _ = tell.send(said);
+        },
+    );
+    let began = Instant::now();
+    working.take(folders.clone());
+    assert_eq!(told.try_iter().count(), 0, "a young first wait was said");
+    std::thread::sleep(old.saturating_sub(began.elapsed()) + BRISK);
+    drop(free);
+    heard_landed
+        .recv_timeout(LATE)
+        .expect("the first walk never landed");
+    working.take(folders.clone());
+    let said: Vec<String> = told.try_iter().collect();
+    assert!(
+        said.len() == 1 && said[0].starts_with("no reading of /proc has answered in "),
+        "a first reading landing old wasn't said once as none answering: {said:?}"
+    );
+
+    drop(again);
+    let mut heard = Vec::new();
+    let until = Instant::now() + LATE;
+    while heard.is_empty() && Instant::now() < until {
+        std::thread::sleep(BRISK);
+        working.take(folders.clone());
+        heard.extend(told.try_iter());
+    }
+    assert_eq!(
+        heard,
+        ["the reading of /proc answers at last"],
+        "the journal wasn't told once that a reading answered at last"
+    );
+}
+
+#[test]
+fn a_first_reading_slower_than_a_wait_that_answers_young_says_nothing() {
+    // The daemon's commonest slow start: its first walk outlasts the
+    // wait, then answers long before it's old, so nothing was late and
+    // nothing answers at last.
+    let (tell, told) = mpsc::channel();
+    let folders = vec![PathBuf::from("/home/someone/trees/fix")];
+    let mut working = Working::start_saying(
+        BRISK,
+        ROOMY,
+        folders.clone(),
+        |_: &[PathBuf]| {
+            std::thread::sleep(SAMPLED + SAMPLED / 2);
+            Sample::default()
+        },
+        move |said| {
+            let _ = tell.send(said);
+        },
+    );
+    let until = Instant::now() + SAMPLED * 2 + LATE;
+    working.take(folders.clone());
+    while working.unread() && Instant::now() < until {
+        std::thread::sleep(BRISK);
+        working.take(folders.clone());
+    }
+    assert!(!working.unread(), "the first reading never answered");
+    let said: Vec<String> = told.try_iter().collect();
+    assert!(
+        said.is_empty(),
+        "a young answer after a wait was said: {said:?}"
     );
 }
 

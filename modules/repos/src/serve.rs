@@ -427,7 +427,8 @@ impl Working {
                 .to_owned()
             });
         }
-        self.standing = if self.standing.ever_fresh() {
+        let answered = self.standing.ever_fresh();
+        self.standing = if answered {
             Standing::Late
         } else {
             Standing::NeverFresh
@@ -442,7 +443,9 @@ impl Working {
         let held = using::reading().map_or(String::new(), |pid| {
             format!(", held up reading the memory of process {pid}")
         });
-        let late = if self.at.is_some() {
+        // A first reading that lands already old never answered either,
+        // so it's said as none, as its answer will be said at last.
+        let late = if answered {
             format!(
                 "the reading of /proc is {} s old with none newer",
                 age.as_secs()
