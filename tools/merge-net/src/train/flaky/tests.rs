@@ -11,7 +11,7 @@ fn broke(name: &str) -> String {
 
 /// A gate's words, as changed-checks and nix say them, naming `built` as
 /// changed and each of `failed` a derivation whose builder failed.
-fn words(built: &[&str], failed: &[&str]) -> String {
+pub(super) fn words(built: &[&str], failed: &[&str]) -> String {
     let rows = built.iter().map(|check| format!("changed  {check}\n"));
     let errors = failed.iter().map(|name| {
         format!(
@@ -46,7 +46,7 @@ fn judged(
 }
 
 /// `judged`, its build of every check ending as `whole` says.
-fn judged_whole(
+pub(super) fn judged_whole(
     words: &str,
     at_base: &dyn Fn(&str) -> (Gated, String),
     again: &dyn Fn(&str) -> Gated,
@@ -71,7 +71,7 @@ fn judged_whole(
 const RULE: &str = "every-long-file-says-why";
 
 /// A build that passed.
-fn passes(_: &str) -> Gated {
+pub(super) fn passes(_: &str) -> Gated {
     Gated::Passed
 }
 

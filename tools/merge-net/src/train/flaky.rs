@@ -256,6 +256,25 @@ pub(super) fn built(words: &str) -> Vec<String> {
         .collect()
 }
 
+/// The checks whose failure the gate's `words` say main's quarantine
+/// excused: changed-checks built each alone, and its red blocked nothing,
+/// so the failure its build left in the words isn't the red's. Judging it
+/// again would build a check broken at every base and blame the riders.
+/// A builder can't say it, since nix's `-L` puts the builder's name before
+/// each line it prints.
+pub(super) fn quarantined(words: &str) -> BTreeSet<String> {
+    words
+        .lines()
+        .filter_map(|line| {
+            let said = line
+                .strip_prefix("changed-checks: ")?
+                .strip_suffix(", so it blocks nothing")?;
+            let (name, _) = said.split_once(" failed, but ")?;
+            plainly_named(name).then(|| name.to_owned())
+        })
+        .collect()
+}
+
 /// What changed-checks says when the builds it ran ended and one failed:
 /// the one way it gives up for which each failure is a build's.
 const CHANGED_FAILED: &str = "\u{2715} a check the change touched failed";
@@ -426,8 +445,15 @@ pub(super) fn judge(
     words: &str,
     judging: &mut Judging<'_>,
 ) -> Result<Vec<(String, Blame)>, Declined> {
-    let failed = failed_derivations(words)
-        .filter(|failed| !failed.is_empty())
+    let quarantined = quarantined(words);
+    let failed: Vec<String> = failed_derivations(words)
+        .map(|failed| {
+            failed
+                .into_iter()
+                .filter(|name| !quarantined.contains(name.strip_prefix(VM_RUN).unwrap_or(name)))
+                .collect()
+        })
+        .filter(|failed: &Vec<String>| !failed.is_empty())
         .ok_or(Declined::Unexplained)?;
     if failed.len() > MOST_REBUILT {
         return Err(Declined::TooMany);
@@ -471,7 +497,9 @@ pub(super) fn judge(
         };
         let rest: Vec<String> = gate_built
             .into_iter()
-            .filter(|check| !mains(check) && !check.starts_with(VM_TEST))
+            .filter(|check| {
+                !mains(check) && !check.starts_with(VM_TEST) && !quarantined.contains(check)
+            })
             .collect();
         if !rest.is_empty() && (judging.whole)(&rest) != Gated::Passed {
             return Err(Declined::WholeRed);
@@ -760,6 +788,10 @@ mod lent;
 #[cfg(test)]
 #[path = "flaky/owner_tests.rs"]
 mod owner_tests;
+
+#[cfg(test)]
+#[path = "flaky/quarantined_tests.rs"]
+mod quarantined_tests;
 #[cfg(test)]
 #[path = "flaky/tests.rs"]
 mod tests;
