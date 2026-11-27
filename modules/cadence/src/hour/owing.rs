@@ -889,8 +889,21 @@ pub fn file(
         } else {
             one.names.iter().all(|n| heard.contains_key(n))
         };
-        let held =
-            under.iter().any(|e| e.open) || held_by_day || fixed_lately(ledger, &one.key, now);
+        let open = under.iter().any(|e| e.open);
+        let held = open || held_by_day || fixed_lately(ledger, &one.key, now);
+        // An open line is red as its measure is each hour, not only when
+        // filed: a cadence from before red lines rewrites the ledger
+        // without the mark, and every line it left open would go late by
+        // name, one each, once rolled forward again.
+        if open {
+            let is_red = red(m, lead.as_deref() == Some(m.key.as_str()));
+            for e in ledger
+                .iter_mut()
+                .filter(|e| e.open && e.key == one.key && is_asked(e))
+            {
+                e.red = is_red;
+            }
+        }
         if held {
             continue;
         }
@@ -1467,6 +1480,22 @@ mod tests {
             Some((Some(DRAG), true)),
             "a line filed only for being red wasn't kept as a drag marked red, to go late \
              as a count and be closed as a drag by a cadence from before red lines"
+        );
+        // A cadence from before red lines rewrote the ledger without the
+        // mark; the next hour marks the line still open red again.
+        for e in &mut ledger {
+            e.red = false;
+        }
+        file(
+            &mut ledger,
+            &red(&["b\n\n2. ignore this"]),
+            "2026-11-26",
+            8500,
+        );
+        assert_eq!(
+            ledger.last().map(|e| (e.open, e.red)),
+            Some((true, true)),
+            "a red line left open without its mark by a rollback wasn't marked red again"
         );
     }
 
