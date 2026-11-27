@@ -209,6 +209,16 @@ pub(crate) fn done(
         .rev()
         .find(|e| e.key == key)
         .filter(|e| !e.open && e.kind.as_deref() == Some("drag"));
+    // An ask unproven the hour closed has passed or left the week, so a why
+    // given after holds nothing, and the same failure coming back is asked.
+    if settled
+        .as_ref()
+        .is_some_and(|e| e.key.starts_with("hour:asks-unproven:"))
+    {
+        return Ok(format!(
+            "cadence: {key} was closed already, as its line went, so nothing is held"
+        ));
+    }
     if let (Some(entry), Some(fix)) = (settled, fix) {
         entry.closed = Some(now);
         entry.fixed = Some(fix.to_owned());

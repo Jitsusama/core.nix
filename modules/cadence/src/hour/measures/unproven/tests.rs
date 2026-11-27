@@ -148,12 +148,11 @@ fn a_probe_passing_since_landing_proves_it_and_its_latest_run_decides() {
 }
 
 #[test]
-fn an_ask_he_confirmed_put_down_parked_derived_or_still_open_needs_no_probe() {
+fn an_ask_he_confirmed_put_down_derived_or_still_open_needs_no_probe() {
     let ago = 3 * 3600;
     let m = read(
         &[
             landed("confirmed", ago, "A", &json!({"confirmed": at(NOW - 60)})),
-            landed("parked", ago, "B", &json!({"parked": "b95ea57b"})),
             landed(
                 "put down",
                 ago,
@@ -168,6 +167,54 @@ fn an_ask_he_confirmed_put_down_parked_derived_or_still_open_needs_no_probe() {
     assert!(
         m.behind.is_empty(),
         "an ask needing no probe was asked: {:?}",
+        m.behind
+    );
+}
+
+#[test]
+fn an_ask_parked_on_a_ruling_before_it_landed_is_still_asked_once_landed() {
+    let parked = landed("parked", 3 * 3600, "B", &json!({"parked": "b95ea57b"}));
+    let m = read(&[parked], &[]);
+    assert!(
+        m.behind
+            .first()
+            .is_some_and(|line| line.starts_with("parked, asked ")),
+        "a landed ask its old ruling still names escaped the measure: {:?}",
+        m.behind
+    );
+}
+
+#[test]
+fn a_pass_from_before_any_switch_since_it_landed_proves_nothing() {
+    let ago = 3 * 3600;
+    let asks = list(&[landed("early", ago, "A", &json!({}))]);
+    let before = json!({"at": at(NOW - ago - 60)}).to_string();
+    let early = run("early", 3600, true, 1199);
+    let m = unproven(&asks, Ok(&early), &before, NOW);
+    assert!(
+        m.behind.first().is_some_and(|line| {
+            line.contains("; its probe passed before a switch could carry it, not live yet,")
+        }),
+        "a pass on what doesn't carry it proved the ask: {:?}",
+        m.behind
+    );
+    // A switch since, then a pass after it, proves it; a pass between
+    // landing and that switch still doesn't.
+    let switch = json!({"at": at(NOW - 1800)}).to_string();
+    let switches = format!("{before}\n{switch}");
+    let m = unproven(&asks, Ok(&early), &switches, NOW);
+    assert!(
+        m.behind
+            .first()
+            .is_some_and(|line| line.contains("passed before a switch")),
+        "a pass from before the switch that carried it proved the ask: {:?}",
+        m.behind
+    );
+    let late = [early, run("early", 600, true, 1200)].join("\n");
+    let m = unproven(&asks, Ok(&late), &switches, NOW);
+    assert!(
+        m.behind.is_empty(),
+        "a pass after the switch that carried it didn't prove it: {:?}",
         m.behind
     );
 }

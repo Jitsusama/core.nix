@@ -13,7 +13,7 @@ use std::path::Path;
 
 use serde_json::Value;
 
-use super::{Class, DAY, Measure, count, first_owner, lines, parked, seconds, short};
+use super::{Class, DAY, Measure, count, first_owner, lines, seconds, short};
 use crate::tracking::{self, Tracking};
 
 /// The measure's key.
@@ -84,8 +84,9 @@ type Unproven = (i64, String, String);
 /// Each ask is read from its latest line by its id, else when it was asked
 /// and its words, as the list writes an ask whole each time; a line with no
 /// id is the same ask as one with an id and its time and words. One he
-/// confirmed himself needs no probe, nor does one put down or [`parked`] on
-/// a ruling. Each line names who answers for the ask's whole result, its
+/// confirmed himself needs no probe, nor does one put down; one landed
+/// waits on no ruling, as the parked measure reads it, so a ruling it was parked on
+/// before can't keep it out. Each line names who answers for the ask's whole result, its
 /// `answers`, else its owner, else the list's keeper. Until any ask in the
 /// list names a probe, or while the runs can't be read, the measure says so
 /// and goes unjudged, so no ask is asked for a probe its keeper hasn't
@@ -116,11 +117,14 @@ pub fn unproven(text: &str, probes: Result<&str, &str>, switches: &str, now: i64
     }
     let named = latest.values().any(names_probe);
     let runs = probes.map_err(ToOwned::to_owned).and_then(runs);
+    if let Err(why) = &runs {
+        eprintln!("cadence: the probe runs are unread, {why}; a tear its keeper must mend");
+    }
     let by_ask = runs.as_ref().ok();
-    let last_switch = lines(switches).filter_map(|s| seconds(&s["at"])).max();
+    let switched: Vec<i64> = lines(switches).filter_map(|s| seconds(&s["at"])).collect();
     let (older, week): (Vec<_>, Vec<_>) = latest
         .values()
-        .filter_map(|ask| Some((ask, unproven_ask(ask, by_ask, last_switch, now)?)))
+        .filter_map(|ask| Some((ask, unproven_ask(ask, by_ask, &switched, now)?)))
         .partition(|(_, (landed, _, _))| *landed < now - SINCE);
     let (unnamed, mut open): (Vec<_>, Vec<_>) =
         week.into_iter().partition(|(ask, _)| !names_probe(ask));
@@ -200,18 +204,19 @@ fn runs(probes: &str) -> Result<BTreeMap<String, Vec<Run>>, String> {
 /// the window before `now`, needs a probe, and its latest run since it
 /// landed didn't pass or there is none. An ask with no id has none of the
 /// runs, as its keeper writes the id on every line it writes a probe on;
-/// with the `runs` unread, none is said to have run. One landed after the
-/// last switch, `last_switch`, isn't live yet, so its cell knows to chase
-/// the switch rather than the code.
+/// with the `runs` unread, none is said to have run. One landed after every
+/// switch in `switched` isn't live yet, so its cell knows to chase the
+/// switch rather than the code, and a pass from before the first switch
+/// since it landed proves nothing, as it ran on what doesn't carry it; with
+/// no switch record, any pass since it landed proves it.
 fn unproven_ask(
     ask: &Value,
     runs: Option<&BTreeMap<String, Vec<Run>>>,
-    last_switch: Option<i64>,
+    switched: &[i64],
     now: i64,
 ) -> Option<Unproven> {
     let landed = seconds(&ask["landed"])?;
     let waits = tracking::of(ask) == Some(Tracking::His)
-        && parked::ruling(ask).is_none()
         && unset(&ask["confirmed"])
         && landed <= now - GRACE;
     if !waits {
@@ -225,13 +230,18 @@ fn unproven_ask(
         // A run dated past now would stay the latest whatever runs after.
         .filter(|run| run.at >= landed && run.at <= now)
         .max_by_key(|run| run.at);
-    let unswitched = if last_switch.is_some_and(|at| at < landed) {
+    let live_from = switched.iter().copied().filter(|&at| at >= landed).min();
+    let unswitched = if !switched.is_empty() && live_from.is_none() {
         ", not live yet, as no switch has come since it landed"
     } else {
         ""
     };
+    let live = |run: &Run| switched.is_empty() || live_from.is_some_and(|at| run.at >= at);
     let state = match (!names_probe(ask), last) {
-        (_, Some(run)) if run.passed => return None,
+        (_, Some(run)) if run.passed && live(run) => return None,
+        (_, Some(run)) if run.passed => {
+            "its probe passed before a switch could carry it".to_owned()
+        }
         (true, _) => "it names no probe".to_owned(),
         (false, None) if runs.is_none() => "its probe runs unread".to_owned(),
         (false, None) => "its probe hasn't run since it landed".to_owned(),
@@ -257,7 +267,9 @@ fn unproven_ask(
 /// or a separator the owing rules split on can't make a line read as
 /// another's.
 fn clean(text: &str) -> String {
-    let mut text = text.replace(char::is_control, "?");
+    // Nor can a backtick or double quote close the span the cell's close
+    // command is given in.
+    let mut text = text.replace(char::is_control, "?").replace(['`', '"'], "'");
     // Until none is left, as a replaced separator can close another.
     while text.contains("; ") || text.contains(" · ") {
         text = text.replace("; ", ";?").replace(" · ", " ? ");

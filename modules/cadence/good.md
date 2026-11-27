@@ -250,9 +250,9 @@ holding a space, as one broken across two lines does, is counted too.
 
 - Measures: `asks-unproven`
 - Target: 0 of his own asks landed over two hours ago whose probe hasn't passed here since it
-  landed, its latest run deciding, unless he confirmed it, or it was put down or parked on a
-  ruling. One naming no probe counts, once any ask names one; until then, or while the probe
-  runs can't be read, it goes unjudged. Each landed in the last week is asked of the cell its
+  landed, its latest run deciding and a pass counting once a switch since landing could carry
+  it, unless he confirmed it or it was put down. One naming no probe counts, once any ask names
+  one; until then, or while the probe runs can't be read, it goes unjudged. Each landed in the last week is asked of the cell its
   `answers` names, saying when no switch has come since it landed; older ones count on one line,
   left to the probes' backfill.
 - Joel, 26 Nov 11:30: "we need to make sure we have various self improvement loops built in"

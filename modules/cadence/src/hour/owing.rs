@@ -1429,7 +1429,7 @@ mod tests {
 
     #[test]
     fn an_ask_unproven_goes_to_its_cell_whatever_leads_and_closes_once_its_line_is_gone() {
-        let card = "show the card, asked 2026-11-26T09:00:00Z";
+        let card = "don't show the card, asked 2026-11-26T09:00:00Z";
         let map = "fix the map, asked 2026-11-26T08:00:00Z";
         let mut unproven = measure(unproven::KEY, Class::Functional, 2.0, Some(0.0));
         unproven.behind = vec![
@@ -1452,7 +1452,8 @@ mod tests {
         );
         assert!(
             card_told.contains(&format!(
-                "`cadence owe --done 'hour:{}:1JQPPC:{card}' WHY`",
+                "`cadence owe --done 'hour:{}:1JQPPC:don'\\''t show the card, asked \
+                 2026-11-26T09:00:00Z' WHY`",
                 unproven::KEY
             )),
             "the cell wasn't told how to close it: {card_told}"
@@ -1552,6 +1553,19 @@ mod tests {
             asked(&told),
             "a cell's close held through a pass, so the same failure went unasked: {told:?}"
         );
+        // Closed by the hour as its line went, a why given after holds
+        // nothing, so the same failure coming back is asked.
+        hour(&mut ledger, &[other], 22600);
+        let late = owe::done(&mut ledger, &key, Some("needs his login"), 23000).map_err(|f| f.exit);
+        assert!(
+            late.as_ref()
+                .is_ok_and(|said| said.contains("nothing is held")),
+            "a why given after the hour closed it was taken as a hold: {late:?}"
+        );
+        assert!(
+            asked(&hour(&mut ledger, &[&moved], 26200)),
+            "a why given after a pass held the same failure after it"
+        );
     }
 
     #[test]
@@ -1571,7 +1585,17 @@ mod tests {
         );
         assert_eq!(
             told.iter()
-                .map(|(to, text)| (to.as_str(), text.contains("write probes for")))
+                .map(|(to, text)| {
+                    let close = format!(
+                        "`cadence owe --done 'hour:{}:{keeper}:{}' WHY`",
+                        unproven::KEY,
+                        unproven::UNNAMED
+                    );
+                    (
+                        to.as_str(),
+                        text.contains("write probes for") && text.contains(&close),
+                    )
+                })
                 .collect::<Vec<_>>(),
             [(keeper, true)],
             "the keeper wasn't asked to write the probes once, or the backfill was filed"
