@@ -403,11 +403,13 @@ impl World {
                      if [ -e \"$here/unit-fails\" ]; then echo 'warning: the following units \
                      failed: home-manager-joel.service' >&2; exit 4; fi\n\
                      echo \"$1\" >> {modes}\n\
-                     case \"$1\" in switch|boot) ln -sfn \"$here\" {boots};; esac\n\
+                     case \"$1\" in switch|boot)\n\
+                     ln -sfn \"$(readlink -f {profile})\" {boots};; esac\n\
                      case \"$1\" in switch|test) ln -sfn \"$here\" {running}\n\
                      echo \"restarting the following units: sshd.service\";; esac\n",
                     head = stand_in_head(),
                     modes = self.root.join("modes").display(),
+                    profile = self.config.profile.display(),
                     boots = self.root.join("boots").display(),
                     running = self.root.join("running").display()
                 ),
@@ -443,7 +445,9 @@ impl World {
     }
 
     /// The system the boot loader starts next, which only
-    /// switch-to-configuration's `switch` and `boot` set.
+    /// switch-to-configuration's `switch` and `boot` set, to what the
+    /// profile names then rather than to the system they were run from, as
+    /// lanzaboote's loader starts the profile's newest generation.
     fn boots(&self) -> PathBuf {
         fs::read_link(self.root.join("boots")).unwrap()
     }
@@ -1693,6 +1697,175 @@ fn going_back_to_a_checked_system_makes_it_the_boot_default_again() {
         fs::canonicalize(world.boots()).unwrap(),
         fs::canonicalize(&checked).unwrap(),
         "going back left a switch that failed its health check the boot default"
+    );
+}
+
+/// A system of main's `commit` that boots as the booted system does, so
+/// its switch makes it the boot default at once, and whose health fails.
+fn unhealthy_booting_as_booted(world: &World, commit: &str) -> PathBuf {
+    let system = world.system(commit);
+    std::os::unix::fs::symlink(world.config.booted.join("initrd"), system.join("initrd")).unwrap();
+    fs::write(system.join("unhealthy"), "").unwrap();
+    system
+}
+
+/// A machine whose update-to-main made main's `zero` its boot default,
+/// then ran main's `one`, whose boot check failed, so it boots `zero`
+/// still; and main's `two`, whose switch makes it the boot default and
+/// whose health then fails. Gives `zero` and `two`.
+fn a_switch_failing_after_a_failed_boot_check(world: &mut World) -> (PathBuf, PathBuf) {
+    let booted = world.system("booted");
+    fs::write(booted.join("initrd"), "one").unwrap();
+    std::os::unix::fs::symlink(&booted, &world.config.booted).unwrap();
+    let zero = world.signed("zero");
+    std::os::unix::fs::symlink(booted.join("initrd"), world.system(&zero).join("initrd")).unwrap();
+    let (_, switched) = world.update();
+    assert!(
+        matches!(switched, Line::Done { boots: None, .. }),
+        "main's zero didn't switch: {switched:?}"
+    );
+    a_failed_boot_check(world);
+    let two = world.signed("two");
+    let failing = unhealthy_booting_as_booted(world, &two);
+    (world.system(&zero), failing)
+}
+
+/// The why of `ending`, an update that failed and went back.
+fn went_back(ending: &Line) -> &str {
+    let Line::Failed { why, .. } = ending else {
+        panic!("the unhealthy switch didn't fail: {ending:?}")
+    };
+    assert!(why.contains("went back to what it ran"), "{why}");
+    why
+}
+
+#[test]
+fn going_back_unchecked_puts_back_what_the_machine_booted_before() {
+    // Going back to a system whose boot check failed only activates it,
+    // so a switch that failed after making itself the boot default stayed
+    // it: the machine would next boot what had just failed.
+    let mut world = World::new();
+    let (zero, _) = a_switch_failing_after_a_failed_boot_check(&mut world);
+    let (_, failed) = world.update();
+    let why = went_back(&failed);
+    assert_eq!(
+        fs::canonicalize(world.boots()).unwrap(),
+        fs::canonicalize(&zero).unwrap(),
+        "going back left the switch that failed what the machine boots: {why}"
+    );
+    assert_eq!(
+        world.modes().last().map(String::as_str),
+        Some("boot"),
+        "what the machine booted before wasn't made the boot default again"
+    );
+    assert_eq!(
+        fs::canonicalize(&world.config.profile).unwrap(),
+        fs::canonicalize(&zero).unwrap(),
+        "the profile, which a loader boots the newest of, didn't name what it booted before"
+    );
+}
+
+#[test]
+fn a_healthy_switch_is_what_going_back_unchecked_puts_back() {
+    let mut world = World::new();
+    a_switch_failing_after_a_failed_boot_check(&mut world);
+    world.update();
+    let three = world.signed("three");
+    let healthy = world.system(&three);
+    std::os::unix::fs::symlink(world.config.booted.join("initrd"), healthy.join("initrd")).unwrap();
+    let (_, switched) = world.update();
+    assert!(
+        matches!(switched, Line::Done { boots: None, .. }),
+        "main's three didn't switch: {switched:?}"
+    );
+    let four = world.signed("four");
+    a_new_initrd(&mut world, &four, "exit 1");
+    let (_, unchecked) = world.update();
+    assert!(
+        matches!(unchecked, Line::Done { boots: Some(_), .. }),
+        "main's four didn't fail its boot check: {unchecked:?}"
+    );
+    let five = world.signed("five");
+    unhealthy_booting_as_booted(&world, &five);
+    let (_, failed) = world.update();
+    let why = went_back(&failed);
+    assert_eq!(
+        fs::canonicalize(world.boots()).unwrap(),
+        fs::canonicalize(&healthy).unwrap(),
+        "going back didn't put back the boot default the healthy switch made: {why}"
+    );
+}
+
+#[test]
+fn a_boot_default_set_by_hand_since_is_left_be_and_said() {
+    // A switch by hand moves the boot default to the person's choice, so
+    // the one update-to-main kept before it is no longer what to go back to.
+    let mut world = World::new();
+    let (_, two) = a_switch_failing_after_a_failed_boot_check(&mut world);
+    let by_hand = world.system("by-hand");
+    for link in [world.config.profile.clone(), world.root.join("boots")] {
+        fs::remove_file(&link).unwrap();
+        std::os::unix::fs::symlink(&by_hand, &link).unwrap();
+    }
+    let (_, failed) = world.update();
+    let why = went_back(&failed);
+    assert!(
+        why.contains("the profile moved outside update-to-main"),
+        "going back didn't say why it left the boot default be: {why}"
+    );
+    assert_eq!(
+        fs::canonicalize(world.boots()).unwrap(),
+        fs::canonicalize(&two).unwrap(),
+        "going back moved a boot default the profile no longer named: {why}"
+    );
+}
+
+#[test]
+fn a_switch_cut_off_after_it_moved_the_profile_still_puts_back_the_boot_default() {
+    // update-to-main moves the profile itself before a switch ends, so a
+    // daemon cut off between the two left the profile its own, not a hand's.
+    let mut world = World::new();
+    let (zero, two) = a_switch_failing_after_a_failed_boot_check(&mut world);
+    let one = world.running();
+    let moved = [
+        world.config.profile.clone(),
+        world.root.join("boots"),
+        world.root.join("running"),
+    ];
+    for link in moved {
+        fs::remove_file(&link).unwrap();
+        std::os::unix::fs::symlink(&two, &link).unwrap();
+    }
+    fs::write(
+        world.config.state.join("switching.json"),
+        serde_json::json!({ "system": two, "previous": one }).to_string(),
+    )
+    .unwrap();
+    let (_, failed) = world.update();
+    let why = went_back(&failed);
+    assert_eq!(
+        fs::canonicalize(world.boots()).unwrap(),
+        fs::canonicalize(&zero).unwrap(),
+        "a switch cut off after moving the profile left the one that failed the boot default: {why}"
+    );
+}
+
+#[test]
+fn a_boot_default_collected_since_is_said_left_to_the_switch_that_failed() {
+    let mut world = World::new();
+    let (zero, two) = a_switch_failing_after_a_failed_boot_check(&mut world);
+    fs::remove_dir_all(&zero).unwrap();
+    let (_, failed) = world.update();
+    let why = went_back(&failed);
+    let next = format!("boots {} next", two.display());
+    assert!(
+        why.contains(&next) && why.contains("is gone from the store"),
+        "going back didn't say the machine boots the switch that failed next: {why}"
+    );
+    assert_eq!(
+        fs::canonicalize(world.boots()).unwrap(),
+        fs::canonicalize(&two).unwrap(),
+        "{why}"
     );
 }
 

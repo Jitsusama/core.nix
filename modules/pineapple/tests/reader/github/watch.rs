@@ -1,15 +1,21 @@
 //! Joel's own stop where GitHub's search hasn't indexed it yet: heard the
 //! round after he says it, since the newest comments where his account
 //! was last active list it at once, and read once however many rounds
-//! list it after, even where a repository before it is refused.
+//! list it after, even where a repository before it is refused, and
+//! owed where its read fails, though nothing lists it again, and waiting
+//! its turn while owed, though the watch lists it every round.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::thread;
+use std::time::{Duration, Instant};
 
 use pineapple::github::stamp;
 use serde_json::{Value, json};
 
-use super::{LOGIN, answer_with, commented, github_reader, read_lately, until_asked};
-use crate::{Answered, answering, answering_whole, decisions, each, journal, until_decided};
+use super::{LOGIN, answer_with, commented, github_reader, read_lately, searches, until_asked};
+use crate::{
+    Answered, PATIENCE, answering, answering_whole, decisions, each, journal, until_decided,
+};
 
 /// Where only Joel spoke, on example/shop#12, a moment ago: no
 /// notification, a search that hasn't indexed it, his events feed naming
@@ -232,5 +238,88 @@ fn github_joels_listed_stop_is_read_once_however_often_it_is_listed() {
         "the thread his judged stop is on isn't read again for it: {asked:?}"
     );
     drop(asked);
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+#[test]
+fn github_joels_stop_listed_once_on_a_thread_that_failed_is_owed_and_heard() {
+    // His events name example/shop only the first time they're asked,
+    // and that round's read of the thread fails, so only what's owed
+    // brings it back.
+    let (feeds, reads) = (AtomicUsize::new(0), AtomicUsize::new(0));
+    let (origin, _) = answering_whole(move |line, now| {
+        let feed = line.contains(&format!(" /users/{LOGIN}/events?"));
+        if feed && feeds.fetch_add(1, Ordering::SeqCst) > 0 {
+            return Answered::ok(json!([]));
+        }
+        let opening = line.contains(" /repos/example/shop/issues/12 ");
+        if opening && reads.fetch_add(1, Ordering::SeqCst) == 0 {
+            return Answered {
+                status: 502,
+                ..Answered::ok(json!({"message": "bad gateway"}))
+            };
+        }
+        Answered::ok(unindexed(line, now))
+    });
+    let (home, _) = read_lately();
+    let mut reading = github_reader(&home, &origin, &[]);
+    until_decided(&home, 2);
+    reading.kill().expect("the reader stops");
+    reading.wait().expect("the reader is gone");
+    assert_eq!(
+        each(&decisions(&home), "verdict"),
+        ["stop-asked", "stop"],
+        "a thread only his events listed, unread that round, is owed and heard after"
+    );
+    let said = journal(&home);
+    assert!(
+        said.contains("couldn't read github:example/shop#12"),
+        "its failed read is said: {said}"
+    );
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+#[test]
+fn github_a_thread_failing_where_joel_spoke_lately_waits_its_turn_though_listed_each_round() {
+    // Every read of example/shop#12 fails, so his stop there stays
+    // unjudged, and the watch lists it in every round.
+    let (origin, asked) = answering_whole(|line, now| {
+        if line.contains(" /repos/example/shop/issues/12 ") {
+            return Answered {
+                status: 502,
+                ..Answered::ok(json!({"message": "bad gateway"}))
+            };
+        }
+        Answered::ok(unindexed(line, now))
+    });
+    let (home, _) = read_lately();
+    let mut reading = github_reader(&home, &origin, &[]);
+    let began = Instant::now();
+    while searches(&asked).len() < 7 {
+        assert!(began.elapsed() < PATIENCE, "it never searched seven times");
+        thread::sleep(Duration::from_millis(50));
+    }
+    reading.kill().expect("the reader stops");
+    reading.wait().expect("the reader is gone");
+
+    // Only the six rounds before the seventh search, so a late stop
+    // can't count an eighth round's read.
+    let seen = asked.lock().expect("what was asked").clone();
+    let seventh = seen
+        .iter()
+        .enumerate()
+        .filter(|(_, line)| line.contains(" /search/issues?"))
+        .nth(6)
+        .map(|(place, _)| place)
+        .expect("a seventh search");
+    let read = seen[..seventh]
+        .iter()
+        .filter(|line| line.contains(" /repos/example/shop/issues/12 "))
+        .count();
+    assert_eq!(
+        read, 3,
+        "it's asked in rounds one, two and four as its wait doubles, not in each round the \
+         watch lists it: {seen:?}"
+    );
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }

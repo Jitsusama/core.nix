@@ -122,6 +122,9 @@ const COUNTS_SAID: &str = " taking requests;";
 const USAGE: i32 = 64;
 /// How long the origin holds each request the sharing test sends.
 const HELD: Duration = Duration::from_millis(300);
+/// How often the test of the most connections looks for one still being
+/// opened.
+const OPENED_LOOKED_FOR_EVERY: Duration = Duration::from_millis(50);
 
 /// How long `/cut` waits after its first half before its connection falls,
 /// and `/broken` before its answer breaks, so the relay has the half first.
@@ -1087,9 +1090,10 @@ async fn many_requests_share_a_few_connections() {
 }
 
 // The most it takes is what a machine keeps, so it's proven to start
-// at that count and keep to it with more requests than slots at once.
+// at that count, where one more is refused as usage, to open each of
+// them, and to share them with more requests than slots at once.
 #[tokio::test(flavor = "current_thread")]
-async fn the_most_connections_it_takes_are_kept_to() {
+async fn the_most_connections_it_takes_are_each_opened_and_shared() {
     const MOST: usize = 16;
     const ASKED: usize = 3 * MOST;
     let origin = origin().await;
@@ -1115,10 +1119,22 @@ async fn the_most_connections_it_takes_are_kept_to() {
         ASKED,
         "the origin wasn't handed every request"
     );
-    let connections = origin.connections.load(Ordering::SeqCst);
+    // Each slot is opened on its first turn, for the request in front or
+    // behind it, and one opened behind may land after the last answer.
+    let opened_by = Instant::now() + LISTENS_WITHIN;
+    let mut connections = origin.connections.load(Ordering::SeqCst);
+    while connections < MOST && Instant::now() < opened_by {
+        tokio::time::sleep(OPENED_LOOKED_FOR_EVERY).await;
+        connections = origin.connections.load(Ordering::SeqCst);
+    }
+    assert_eq!(
+        connections, MOST,
+        "{ASKED} requests took {connections} connections to the origin, not its {MOST}"
+    );
+    let most = origin.held.most.load(Ordering::SeqCst);
     assert!(
-        (1..=MOST).contains(&connections),
-        "{ASKED} requests took {connections} connections to the origin, past {MOST}"
+        most > MOST,
+        "the origin held at most {most} requests at once, so they didn't share {MOST} connections"
     );
     drop(relay.said());
 }

@@ -233,6 +233,16 @@ pub struct Memory {
     /// than by all they had resident, as `Held::by_rss` says. A day kept
     /// before shares were read has none, as every copy then was by Rss.
     pub by_pss: u64,
+    /// The day's looks that counted every copy they saw by its Pss, so
+    /// the typical and heavy copy, means over the looks, say how much of
+    /// them was by shares: fewer than `looks` on the day a machine moved
+    /// to shares, or where some copy's share couldn't be read. None for a
+    /// day kept with looks before this count was, whose looks' measure
+    /// isn't known, rather than 0, which would say they were all by Rss.
+    /// Left out of the file then, not written as null, which a build
+    /// holding a plain count can't read, so it would start the day afresh.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub looks_by_pss: Option<u64>,
 }
 
 /// The copies of an age, and what they held in memory and swap, in KiB.
@@ -262,10 +272,19 @@ impl Memory {
         each.sort_unstable();
         self.median_kib = ranked(&each, 50);
         self.p95_kib = ranked(&each, 95);
+        // A day with no looks yet has none uncounted, so its count starts.
+        if self.looks == 0 && self.looks_by_pss.is_none() {
+            self.looks_by_pss = Some(0);
+        }
         if !each.is_empty() {
             self.looks += 1;
             self.median_sum_kib += self.median_kib;
             self.p95_sum_kib += self.p95_kib;
+            if let Some(counted) = self.looks_by_pss.as_mut()
+                && self.by_pss == self.copies
+            {
+                *counted += 1;
+            }
         }
         self.by_age = vec![Aged::default(); AGES.len() + 1];
         for held in copies {
@@ -277,15 +296,17 @@ impl Memory {
 }
 
 /// What the last look counted its copies by: their own share (Pss), all
-/// they had resident (Rss), or, when it was both, how many were by Rss;
-/// nothing when none was running.
+/// they had resident (Rss), or, when it was both, how many were by Rss,
+/// in brackets so the count can't read as one of the line's sizes;
+/// nothing when none was running. A kept day saying more copies by Pss
+/// than it saw reads as all by Pss rather than a wrapped count.
 #[must_use]
 pub fn measure(held: &Memory) -> String {
     match (held.copies, held.by_pss) {
         (0, _) => String::new(),
         (_, 0) => "by Rss".to_owned(),
-        (all, pss) if pss == all => "by Pss".to_owned(),
-        (all, pss) => format!("by Pss, {} by Rss", all - pss),
+        (all, pss) if pss >= all => "by Pss".to_owned(),
+        (all, pss) => format!("by Pss ({} by Rss)", all - pss),
     }
 }
 
@@ -630,7 +651,7 @@ mod tests {
     }
 
     #[test]
-    fn the_copies_counted_by_rss_are_kept_each_look() {
+    fn the_last_look_counts_its_copies_by_pss_and_the_day_its_looks() {
         let copy = |by_rss| Held {
             kib: 10,
             swap_kib: 0,
@@ -654,7 +675,63 @@ mod tests {
         memory.saw(3, &[copy(true), copy(true)]);
         assert_eq!(measure(&memory), "by Rss");
         memory.saw(4, &[copy(true), copy(false), copy(false)]);
-        assert_eq!(measure(&memory), "by Pss, 1 by Rss");
+        assert_eq!(measure(&memory), "by Pss (1 by Rss)");
+        assert_eq!(
+            (memory.looks, memory.looks_by_pss),
+            (4, Some(1)),
+            "only the look whose one copy was by Pss counted every copy by it"
+        );
+        let mut resumed: Memory =
+            serde_json::from_str(r#"{"copies": 1, "by_pss": 1, "looks": 3}"#).expect("a day");
+        resumed.saw(5, &[copy(false)]);
+        assert_eq!(
+            (resumed.looks, resumed.looks_by_pss),
+            (4, None),
+            "a day kept with looks before the count can't say how many were by Pss"
+        );
+        let overcounted: Memory =
+            serde_json::from_str(r#"{"copies": 2, "by_pss": 5}"#).expect("a day");
+        assert_eq!(
+            measure(&overcounted),
+            "by Pss",
+            "more by Pss than copies reads as all, not a wrapped count"
+        );
+    }
+
+    #[test]
+    fn a_day_of_unknown_count_reads_back_on_a_build_that_counts_plainly() {
+        /// The day as a build holding the count as a plain number reads it.
+        #[derive(Debug, Default, Deserialize)]
+        #[serde(default)]
+        struct Plain {
+            looks: u64,
+            looks_by_pss: u64,
+        }
+        let unknown = Memory {
+            looks: 3,
+            ..Memory::default()
+        };
+        let written = serde_json::to_string(&unknown).expect("a day written");
+        assert!(
+            !written.contains("looks_by_pss"),
+            "an unknown count is left out, not null: {written}"
+        );
+        let plain: Plain = serde_json::from_str(&written).expect("the plain build reads it");
+        assert_eq!((plain.looks, plain.looks_by_pss), (3, 0));
+        let counted = Memory {
+            looks: 3,
+            looks_by_pss: Some(2),
+            ..Memory::default()
+        };
+        let written = serde_json::to_string(&counted).expect("a day written");
+        let again: Memory = serde_json::from_str(&written).expect("read back");
+        assert_eq!(
+            again.looks_by_pss,
+            Some(2),
+            "a known count reads back: {written}"
+        );
+        let plain: Plain = serde_json::from_str(&written).expect("the plain build reads it");
+        assert_eq!(plain.looks_by_pss, 2);
     }
 
     #[test]

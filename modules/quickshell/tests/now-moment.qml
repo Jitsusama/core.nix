@@ -246,6 +246,9 @@ ShellRoot {
         property string intoAsked: ""
         property int goneTold: 0
         property var goneMoved: []
+        // How often it was asked to open and say what's held for its next opening
+        // (Launcher.qml's toldHere), as a Go To that couldn't go asks.
+        property int hereTold: 0
 
         function toldThat(what, why) {
             told = told.concat([{ what: what, why: why }]);
@@ -256,6 +259,10 @@ ShellRoot {
         function toldGone(moved) {
             goneTold += 1;
             goneMoved = goneMoved.concat([moved]);
+            return true;
+        }
+        function toldHere() {
+            hereTold += 1;
             return true;
         }
         // Set without one only by a case that asks what's left without it.
@@ -2612,6 +2619,27 @@ ShellRoot {
                 && JSON.stringify(theLauncher.goneMoved) === "[false]",
             JSON.stringify([theLauncher.goneTold, theLauncher.told, theLauncher.intoAsked,
                 theLauncher.goneMoved]));
+        // Go on one whose session is held but can't be gone to, as one on another machine no
+        // holder keeps, opens the launcher to say why (KP0L6A, 2026-11-24 [00902e94]), and
+        // leaves it waiting, since nothing opened.
+        const farLook = { id: "x", file: "x.json", kind: "terminal", title: "Read X",
+            target: "", state: "waiting", cell: "ACTED" };
+        now.lookTexts = Object.assign({}, now.lookTexts, { "x.json": JSON.stringify(farLook) });
+        const textFar = now.lookTexts["x.json"];
+        Sessions.wentTo = null;
+        Sessions.goes = false;
+        theLauncher.hereTold = 0;
+        const openedFar = now.openLook(farLook);
+        Sessions.goes = true;
+        expect("Go on a session it can't go to says it opened nothing",
+            openedFar === false && Sessions.wentTo?.address === "ACTED",
+            JSON.stringify([openedFar, Sessions.wentTo?.address ?? null]));
+        expect("and leaves its look waiting as it was",
+            now.lookTexts["x.json"] === textFar && now.looksSettling["x.json"] === undefined,
+            JSON.stringify([now.lookTexts["x.json"], now.looksSettling["x.json"] ?? null]));
+        expect("and opens the launcher to say why", theLauncher.hereTold === 1,
+            String(theLauncher.hereTold));
+        Sessions.wentTo = null;
         now.lookTexts = textsGone;
         theLauncher.goneTold = 0;
         theLauncher.goneMoved = [];
@@ -2884,6 +2912,25 @@ ShellRoot {
                 now.waiting.side, now.laterRow?.side]));
         now.everything();
         expect("and once", now.tally.rows === made, now.tally.rows - made);
+        // His own to-do, its deadline passed, outweighs a session's ask, so
+        // home names it, as For You leads with it (#6777's sixth review,
+        // F55); a light one leaves the session leading, as above.
+        WaitingOnYou.now = [toDo("Pay It", new Date(Date.now() - 3600000).toISOString())];
+        expect("his own heavier than a session's ask, home names his own",
+            now.homeSays() === "Pay It \u00b7 1 more", now.homeSays());
+        // And time alone lifts a to-do past the ask, though nothing banded
+        // For You again: home reads the bands at its own minute, as its
+        // rows do, not those kept since its items changed (#6777's seventh
+        // review, F75). Sign In, raised two hours ago, weighs the ask's 50
+        // once it has waited fifteen more.
+        WaitingOnYou.now = [toDo("Sign In")];
+        const keptBands = now.forYouBands;
+        const later = Date.now() + 16 * 3600000;
+        expect("time alone lifting his own past the ask, home names it then",
+            now.homeSays() === "Session C needs you \u00b7 1 more"
+                && now.homeSays(later) === "Sign In \u00b7 1 more"
+                && now.forYouBands === keptBands,
+            JSON.stringify([now.homeSays(), now.homeSays(later)]));
         Location.here = here;
         Facts.all = [];
         WaitingOnYou.now = [];
