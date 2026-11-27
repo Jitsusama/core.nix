@@ -36,6 +36,26 @@ fn asks(count: usize) -> String {
         .join("\n")
 }
 
+/// Whether `ran` said the list is unread: in the journal, and to
+/// cadence-spec as a headline saying so, the last rows kept, never as a
+/// failure that leaves Asked For waiting on it for good (round 4, F57).
+fn unread(ran: &Output) -> Result<(), String> {
+    let said = String::from_utf8_lossy(&ran.stderr).into_owned();
+    let made: Value = serde_json::from_slice(&ran.stdout)
+        .map_err(|why| format!("printed no JSON ({why}), saying {said}"))?;
+    let kept = ran.status.success()
+        && made["keep"] == true
+        && made.get("rows").is_none()
+        && made["head"]["said"] == "can't read the list now"
+        && made["head"]["glyph"] == "failed"
+        && said.contains("unread");
+    if kept {
+        Ok(())
+    } else {
+        Err(format!("printed {made}, saying {said}"))
+    }
+}
+
 #[test]
 fn the_asks_list_is_read_against_what_the_hour_saw_of_it() {
     let account = tempfile::tempdir().expect("a stand-in account");
@@ -60,9 +80,11 @@ fn the_asks_list_is_read_against_what_the_hour_saw_of_it() {
     fs::write(&list, asks(5)).expect("five asks");
     let ran = asked(folder);
     let said = String::from_utf8_lossy(&ran.stderr);
-    assert!(
-        !ran.status.success() && said.contains("no record"),
-        "a list with no record of the hour's to read it against is unread: {said}"
+    assert!(said.contains("no record"), "it says why: {said}");
+    assert_eq!(
+        unread(&ran),
+        Ok(()),
+        "a list with no record of the hour's to read it against is unread"
     );
     let seen = json!({"asks": {"most": 5}}).to_string();
     fs::write(&hour, &seen).expect("the hour saw five");
@@ -81,12 +103,11 @@ fn the_asks_list_is_read_against_what_the_hour_saw_of_it() {
 
     fs::write(&list, asks(2)).expect("the list written over");
     let ran = asked(folder);
-    let said = String::from_utf8_lossy(&ran.stderr);
-    assert!(
-        !ran.status.success() && ran.stdout.is_empty(),
-        "a list holding fewer asks than the hour saw is unread, so the last rows stay: {said}"
+    assert_eq!(
+        unread(&ran),
+        Ok(()),
+        "a list holding fewer asks than the hour saw is unread, the last rows kept"
     );
-    assert!(said.contains("unread"), "it says why: {said}");
     assert_eq!(
         fs::read_to_string(&hour).expect("the hour's record"),
         seen,
@@ -102,11 +123,7 @@ fn the_asks_list_is_read_against_what_the_hour_saw_of_it() {
     let short = |since: u64| json!({"asks": {"most": 5, "short_since": since}}).to_string();
     fs::write(&hour, short(now - 60)).expect("short a minute");
     let ran = asked(folder);
-    assert!(
-        !ran.status.success(),
-        "short a minute, still unread: {}",
-        String::from_utf8_lossy(&ran.stdout)
-    );
+    assert_eq!(unread(&ran), Ok(()), "short a minute, still unread");
     fs::write(&hour, short(now - 3 * 3600)).expect("short three hours");
     let ran = asked(folder);
     let said = String::from_utf8_lossy(&ran.stderr);
@@ -117,10 +134,9 @@ fn the_asks_list_is_read_against_what_the_hour_saw_of_it() {
     fs::write(&list, asks(5)).expect("the list whole");
     fs::write(&hour, "{").expect("the hour's record torn");
     let ran = asked(folder);
-    let said = String::from_utf8_lossy(&ran.stderr);
-    assert!(
-        !ran.status.success() && ran.stdout.is_empty(),
-        "with the hour's record unreadable, the list is unread, never read against nothing: \
-         {said}"
+    assert_eq!(
+        unread(&ran),
+        Ok(()),
+        "with the hour's record unreadable, the list is unread, never read against nothing"
     );
 }

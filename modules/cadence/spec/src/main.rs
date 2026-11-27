@@ -146,10 +146,9 @@ fn serving(socket: &Path, asking: &Asking) -> Result<(), Failure> {
             let watched = shared.watches("row", place.name) || shared.watches("head", place.name);
             if watched && last[at].is_none_or(|made| made.elapsed() >= place.fresh) {
                 last[at] = Some(Instant::now());
-                if let Some((rows, head)) = made(asking, place)
-                    && !kept[at].take(rows, vec![head]).is_empty()
-                {
-                    moved = true;
+                if let Some(Made { rows, head }) = made(asking, place) {
+                    let rows = rows.unwrap_or_else(|| last_rows(&kept[at]));
+                    moved |= !kept[at].take(rows, vec![head]).is_empty();
                 }
             }
             let since = last[at].map(|made| made.elapsed());
@@ -188,11 +187,31 @@ fn waiting(watched: bool, since: Option<Duration>, fresh: Duration) -> Option<Du
     watched.then(|| since.map_or(fresh, |since| fresh.saturating_sub(since)))
 }
 
+/// What cadence made of a place: its rows in the order shown, or none
+/// where it said to keep the last, and its headline as a whole record.
+#[derive(Debug, PartialEq)]
+struct Made {
+    rows: Option<Vec<Value>>,
+    head: Value,
+}
+
+/// The rows a place last served, in their order, to serve again beside a
+/// new headline, as when Asked For's list is unread (round 4, F57).
+fn last_rows(kept: &Kept) -> Vec<Value> {
+    let mut rows: Vec<&Value> = kept
+        .all()
+        .filter(|record| record["kind"] == "row")
+        .map(|record| &record["row"])
+        .collect();
+    rows.sort_by_key(|row| row["order"].as_i64());
+    rows.into_iter().cloned().collect()
+}
+
 /// A place's rows and headline as cadence makes them now, or none where
 /// it failed, read nothing or ran past the place's deadline, so the last
 /// rows stay. cadence's own words on why go to the journal, since its
 /// stderr is this daemon's.
-fn made(asking: &Asking, place: &Place) -> Option<(Vec<Value>, Value)> {
+fn made(asking: &Asking, place: &Place) -> Option<Made> {
     let mut command = Command::new(&asking.cadence);
     command
         .arg("axes")
@@ -312,13 +331,22 @@ fn stopped(child: &mut Child) -> std::io::Result<std::process::ExitStatus> {
 /// The rows and headline in what cadence printed for `place`, the
 /// headline as the whole record served beside the rows, its fields under
 /// its kind, as every place's reader reads one (ReadyRows.qml's held);
-/// served bare, Spec's head read as nothing (Y2YBTS, 2026-11-14).
-fn parsed(printed: &[u8], place: &str) -> Option<(Vec<Value>, Value)> {
+/// served bare, Spec's head read as nothing (Y2YBTS, 2026-11-14). Where
+/// it says `keep` in place of rows, the last rows stay beside the new
+/// headline.
+fn parsed(printed: &[u8], place: &str) -> Option<Made> {
     let mut made: Value = serde_json::from_slice(printed).ok()?;
     let head = made.get_mut("head").filter(|head| head.is_object())?.take();
-    let rows = made.get_mut("rows")?.as_array_mut().map(std::mem::take)?;
+    let rows = if made["keep"] == true {
+        None
+    } else {
+        Some(made.get_mut("rows")?.as_array_mut().map(std::mem::take)?)
+    };
     let key = format!("head:{place}");
-    Some((rows, json!({"key": key, "kind": "head", "head": head})))
+    Some(Made {
+        rows,
+        head: json!({"key": key, "kind": "head", "head": head}),
+    })
 }
 
 #[cfg(test)]
@@ -329,8 +357,8 @@ mod tests {
     fn what_cadence_prints_reads_as_rows_and_a_headline() {
         let printed = br#"{"rows": [{"key": "row:spec:scale"}],
             "head": {"key": "head:spec", "said": "all in spec"}}"#;
-        let (rows, head) = parsed(printed, "spec").expect("rows and a headline");
-        assert_eq!(rows, vec![json!({"key": "row:spec:scale"})]);
+        let Made { rows, head } = parsed(printed, "spec").expect("rows and a headline");
+        assert_eq!(rows, Some(vec![json!({"key": "row:spec:scale"})]));
         assert_eq!(
             head,
             json!({"key": "head:spec", "kind": "head",
@@ -366,8 +394,38 @@ mod tests {
         let names: Vec<(&str, &str)> = PLACES.iter().map(|p| (p.name, p.flag)).collect();
         assert_eq!(names, [("spec", "--served"), ("asked", "--asked")]);
         let printed = br#"{"rows": [], "head": {"said": "3 open"}}"#;
-        let (_, head) = parsed(printed, "asked").expect("a headline");
+        let Made { head, .. } = parsed(printed, "asked").expect("a headline");
         assert_eq!(head["key"], "head:asked");
+    }
+
+    #[test]
+    fn a_headline_that_says_keep_is_served_beside_the_last_rows() {
+        let mut kept = Kept::default();
+        let rows = vec![json!({"key": "row:asked:b"}), json!({"key": "row:asked:a"})];
+        let head = json!({"key": "head:asked", "kind": "head", "head": {"said": "2 open"}});
+        kept.take(rows, vec![head]);
+        let printed = br#"{"keep": true, "head": {"said": "can't read the list now"}}"#;
+        let Made { rows, head } = parsed(printed, "asked").expect("a headline");
+        assert_eq!(rows, None, "no rows of its own");
+        let last = last_rows(&kept);
+        let keys: Vec<&Value> = last.iter().map(|row| &row["key"]).collect();
+        assert_eq!(
+            keys,
+            ["row:asked:b", "row:asked:a"],
+            "in the order last shown"
+        );
+        let moved = kept.take(last, vec![head]);
+        assert_eq!(
+            moved.changed.len(),
+            1,
+            "only the headline is told again: {moved:?}"
+        );
+        assert!(moved.gone.is_empty(), "and no row goes");
+        assert_eq!(
+            kept.get("head:asked").expect("its headline")["head"]["said"],
+            "can't read the list now"
+        );
+        assert_eq!(last_rows(&Kept::default()), Vec::<Value>::new());
     }
 
     #[test]

@@ -6,7 +6,8 @@
       "said": {
         "open": "{count} open",
         "late": "{late} late of {count}",
-        "none": "nothing you asked for is open"
+        "none": "nothing you asked for is open",
+        "unread": "can't read the list now"
       }
     },
     {
@@ -16,7 +17,7 @@
         "due": "due {time}",
         "late": "late since {time}",
         "undated": "no date yet",
-        "passes": "probe passes",
+        "passes": "probe passed {time}",
         "fails": "probe fails since {time}",
         "unrun": "probe not run yet",
         "unread": "probe can't be read",
@@ -54,7 +55,7 @@
       "name": "Probe",
       "term": "Agents/probe",
       "said": {
-        "passes": "passes",
+        "passes": "passed {time}",
         "fails": "fails since {time}",
         "unrun": "not run yet",
         "unread": "can't be read",

@@ -22,7 +22,9 @@
 //! hour/card.rs), never a second record of its own on another clock: one
 //! written over, holding fewer asks than the hour read in it, is unread
 //! until the hour takes it as pruned, rather than served as most of his
-//! asks gone, so cadence-spec keeps the last rows; one the hour never saw
+//! asks gone. Unread, it prints a headline saying so and asks cadence-spec
+//! to keep the last rows (`keep`), so Asked For says it can't read the
+//! list rather than waiting on it for good (round 4, F57); one the hour never saw
 //! and not there holds no asks yet; and the hour's record unreadable leaves
 //! the list unread, as the hour reads it then too (round 2, F9 and F20).
 //! A list where the hour has kept no record at all, as on a machine whose
@@ -30,6 +32,9 @@
 //! could tell it written over (round 3, F30). A date moved is counted from
 //! the dates the hour reads in an ask (hour/measures/promised.rs), and a
 //! probes record with a line lost reads every probe unread (probes.rs).
+//! A probe stands only for an ask given one, whatever runs name it, and a
+//! pass says when it ran, so one from weeks ago never reads as this
+//! morning's (round 4, F70).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
@@ -60,14 +65,14 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<(), Failure> {
     let kept = folder.join("hour.json");
     let list = state_home.join("mission/asks.jsonl");
     if !kept.exists() && list.exists() {
-        return Err(failed(
-            "the asks list is unread, as the hour has kept no record to read it against",
-        ));
+        unread(&words, "the hour has kept no record to read it against");
+        return Ok(());
     }
     let mut hour = Kept::last(&kept);
-    let (asks, unread) = ledger::whole(&list, &mut hour.asks, now);
-    if let Some(why) = hour.unread.or(unread) {
-        return Err(failed(format!("the asks list is unread, as {why}")));
+    let (asks, why) = ledger::whole(&list, &mut hour.asks, now);
+    if let Some(why) = hour.unread.or(why) {
+        unread(&words, &why);
+        return Ok(());
     }
     let open = open(&asks);
     let owners: BTreeSet<&str> = open.iter().map(|ask| ask.answers.as_str()).collect();
@@ -81,6 +86,27 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<(), Failure> {
     let made = made(&open, probed.as_ref(), &titles, &words, now);
     println!("{}", json!({"rows": made.0, "head": made.1}));
     Ok(())
+}
+
+/// Says the list is unread, as `why`, in the journal and to cadence-spec:
+/// a headline saying so and no rows, the last rows kept.
+fn unread(words: &Words, why: &str) {
+    eprintln!("cadence: the asks list is unread, as {why}, so Asked For keeps its last rows");
+    println!("{}", unread_made(words));
+}
+
+/// What's printed for a list unread: its headline, and `keep` in place of
+/// rows, so the place keeps the last it served.
+fn unread_made(words: &Words) -> Value {
+    json!({
+        "keep": true,
+        "head": {
+            "key": format!("head:{PLACE}"),
+            "place": PLACE,
+            "said": words.said("asked:head", "unread", &[]),
+            "glyph": "failed",
+        },
+    })
 }
 
 /// One open ask of his, its times in seconds.
@@ -141,10 +167,12 @@ fn one_line(words: &str) -> String {
     words.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-/// How an ask's probe reads: by its newest run, not run yet, or the
-/// record unread, so a lost newest run never reads as the one before it.
+/// How an ask's probe reads: none given it, by its newest run, not run
+/// yet, or the record unread, so a lost newest run never reads as the one
+/// before it.
 #[derive(Clone, Copy)]
 enum Probe<'a> {
+    Unprobed,
     Ran(&'a Probed),
     NotRun,
     Unread,
@@ -171,9 +199,14 @@ fn made(
     let rows = ordered
         .into_iter()
         .map(|ask| {
-            let probe = probed.map_or(Probe::Unread, |probed| {
-                probed.get(&ask.id).map_or(Probe::NotRun, Probe::Ran)
-            });
+            // A run naming an ask given no probe stands for nothing.
+            let probe = if ask.probed {
+                probed.map_or(Probe::Unread, |probed| {
+                    probed.get(&ask.id).map_or(Probe::NotRun, Probe::Ran)
+                })
+            } else {
+                Probe::Unprobed
+            };
             row(ask, probe, titles, words, now)
         })
         .collect();
@@ -223,13 +256,13 @@ fn row(
     let failing = matches!(probe, Probe::Ran(ran) if !ran.passed);
     // The side says "probe" in each phrase, the drawer's Probe by its name.
     let probe_in = |id: &str| match probe {
-        Probe::Ran(ran) if ran.passed => json!({"said": words.said(id, "passes", &[])}),
+        Probe::Ran(ran) if ran.passed => timed(&words.said(id, "passes", &[]), ran.at, "moment"),
         Probe::Ran(ran) => timed(
             &words.said(id, "fails", &[]),
             ran.since.unwrap_or(ran.at),
             "moment",
         ),
-        _ if !ask.probed => json!({"said": words.said(id, "unprobed", &[])}),
+        Probe::Unprobed => json!({"said": words.said(id, "unprobed", &[])}),
         Probe::Unread => json!({"said": words.said(id, "unread", &[])}),
         Probe::NotRun => json!({"said": words.said(id, "unrun", &[])}),
     };
@@ -480,6 +513,8 @@ mod tests {
             r#"{"ask": "p1", "at": "2026-11-26T11:00:00-05:00", "passed": true}"#,
             r#"{"ask": "f2", "at": "2026-11-26T10:00:00-05:00", "passed": false}"#,
             r#"{"ask": "f2", "at": "2026-11-26T11:00:00-05:00", "passed": false}"#,
+            // A run naming an ask given no probe, as any writer could add.
+            r#"{"ask": "n4", "at": "2026-11-26T11:00:00-05:00", "passed": false}"#,
         ]
         .join("\n");
         let (rows, _) = made(
@@ -498,7 +533,13 @@ mod tests {
         let passing = by("p1");
         assert_eq!(passing["side"][0]["said"], "due {time}");
         assert_eq!(passing["side"][0]["as"], "meeting");
-        assert_eq!(passing["side"][1]["said"], "probe passes");
+        assert_eq!(passing["side"][1]["said"], "probe passed {time}");
+        let eleven: Timestamp = "2026-11-26T11:00:00-05:00".parse().expect("a time");
+        assert_eq!(
+            passing["side"][1]["at"],
+            eleven.as_millisecond(),
+            "a pass says when it ran, so an old one reads old"
+        );
         let failing = by("f2");
         assert_eq!(failing["side"][0]["said"], "no date yet");
         assert_eq!(failing["side"][1]["said"], "probe fails since {time}");
@@ -513,7 +554,15 @@ mod tests {
             "a failing probe wears the failed mark"
         );
         assert_eq!(by("u3")["side"][1]["said"], "probe not run yet");
-        assert_eq!(by("n4")["side"][1]["said"], "no probe yet");
+        let unprobed = by("n4");
+        assert_eq!(
+            unprobed["side"][1]["said"], "no probe yet",
+            "a run stands only for an ask given a probe"
+        );
+        assert!(
+            unprobed.get("glyph").is_none(),
+            "nor marks one failed: {unprobed}"
+        );
         // The record unread, a probe that passed reads unread, never as the
         // run before a lost one; one with no probe still says so.
         let (rows, _) = made(&open(&text), None, &BTreeMap::new(), &words(), NOON);
@@ -561,6 +610,16 @@ mod tests {
                 .any(|fact| fact["name"] == "Date Moved" && fact["said"] == "2 times"),
             "three dates, as the hour reads them, is two moves: {facts:?}"
         );
+    }
+
+    #[test]
+    fn a_list_unread_says_so_and_keeps_the_last_rows() {
+        let made = unread_made(&words());
+        assert_eq!(made["keep"], true, "the place keeps what it last served");
+        assert!(made.get("rows").is_none(), "and is handed no rows to take");
+        assert_eq!(made["head"]["key"], "head:asked");
+        assert_eq!(made["head"]["said"], "can't read the list now");
+        assert_eq!(made["head"]["glyph"], "failed");
     }
 
     #[test]
