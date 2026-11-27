@@ -32,6 +32,7 @@ import os
 import re
 import time
 from datetime import UTC, datetime
+from http import HTTPStatus
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -158,9 +159,9 @@ def code_served(tmp_path: Path, repos_daemon: StandIn, mycelium_node: StandIn) -
     with serving(tmp_path, {"code": os.environ["CODE_SITE"]}, feeds) as served:
         documents = tmp_path / "documents"
         (documents / "sites.json").write_text(json.dumps(WRITTEN))
-        # The rows the home lists, the declared ones as declared, which it writes beside the
-        # record for the readers of a row's homes.
-        (documents / "rows.json").write_text(json.dumps(SITES))
+        # The rows the home lists, the declared ones as declared, which it builds into its own
+        # folder for the readers of a row's homes, served at the sites' root.
+        (tmp_path / "home" / "rows.json").write_text(json.dumps(SITES))
         (documents / CELLS_SITE).mkdir()
         thing = {"kind": "cell", "key": "E2ZIAQ", "name": "E2ZIAQ", "address": CELL_HOME}
         (documents / CELLS_SITE / "homes.json").write_text(json.dumps({"things": [thing]}))
@@ -382,22 +383,31 @@ def test_a_cell_at_work_links_to_its_home_on_the_map(
     )
 
 
-def test_a_home_without_its_rows_has_cells_linked_by_its_record(
+def test_a_home_not_built_yet_links_no_cell_by_the_record_a_session_wrote(
     code_opened: Opened, repos_daemon: StandIn, tmp_path: Path
 ) -> None:
-    # A home from before it listed its rows apart keeps every row in its record.
-    documents = tmp_path / "documents"
-    (documents / "rows.json").unlink()
-    (documents / "sites.json").write_text(json.dumps(SITES))
-    code_opened.expecting("the server responded with a status of 404")
+    # Before the home's builder writes its rows, as after a reboot, the server answers 503
+    # for them, and the record, which a session writes, never stands in for them. The page
+    # first opened reads the rows, so its read is let finish, the cell linked by them, before
+    # they go, or its answer could be the one the reload is waiting for.
     code_page = code_opened.page
-    code_page.reload()
     says_it_stands(code_page, "live")
     grove_written_now(repos_daemon)
     home = code_page.locator(f'#open a[href="../{CELL_HOME}"]')
-    expect(home, "a record's cells row didn't link the cell home").to_contain_text(
+    expect(home, "the rows didn't link the cell home").to_contain_text("E2ZIAQ", timeout=PACE_MS)
+    (tmp_path / "home" / "rows.json").unlink()
+    (tmp_path / "documents" / "sites.json").write_text(json.dumps(SITES))
+    code_opened.expecting("the server responded with a status of 503")
+    unbuilt = re.compile(r"/rows\.json$")
+    with code_page.expect_response(lambda answer: bool(unbuilt.search(answer.url))) as asked:
+        code_page.reload()
+    assert asked.value.status == HTTPStatus.SERVICE_UNAVAILABLE, "the home's rows were served"
+    says_it_stands(code_page, "live")
+    grove_written_now(repos_daemon)
+    expect(code_page.locator("#open"), "the cell at work wasn't drawn").to_contain_text(
         "E2ZIAQ", timeout=PACE_MS
     )
+    expect(home, "the record a session wrote linked a cell home").to_have_count(0)
 
 
 def test_a_cell_is_linked_home_by_its_sites_pattern(
@@ -410,10 +420,9 @@ def test_a_cell_is_linked_home_by_its_sites_pattern(
     home = code_page.locator(f'#open a[href="../{CELL_HOME}"]')
     expect(home, "the record didn't link the cell home").to_contain_text("E2ZIAQ", timeout=PACE_MS)
     # A site whose every cell has its page there says so as a pattern, keeping no record.
-    documents = tmp_path / "documents"
-    (documents / CELLS_SITE / "homes.json").unlink()
+    (tmp_path / "documents" / CELLS_SITE / "homes.json").unlink()
     pattern = sites_homing_cells([{"kind": "cell", "address": "#cell={name}"}])
-    (documents / "rows.json").write_text(json.dumps(pattern))
+    (tmp_path / "home" / "rows.json").write_text(json.dumps(pattern))
     code_page.reload()
     says_it_stands(code_page, "live")
     grove_written_now(repos_daemon)
