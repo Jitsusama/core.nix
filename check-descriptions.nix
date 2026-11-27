@@ -6432,9 +6432,9 @@
     The real tuple takes a name that starts with a dash after "--" as a name, never a flag, for each
     command the launcher runs on a contact: call start, call join, and contacts favorite and
     unfavorite; and its script, which stops Tuple's daemon, refuses before reaching tuple from a
-    person's shell in their home or a checkout, the repository's dev shell, a bare environment,
-    the root, a home holding its own runtime folder, and shells holding only some of the build's
-    folders
+    person's shell in their home or a checkout, the repository's dev shell, a bare environment and
+    a home holding its own runtime and data folders, and from the build with any one of its four
+    signs moved, while run as the build is it reaches tuple
   '';
   tuple-keeps-its-logs = ''
     Tuple's service keeps the daemon's last three logs, newest first, before it starts, and an empty
