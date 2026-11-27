@@ -91,7 +91,7 @@ HEAD_FORMS = """async () => {
       UNHEARD.lede,
       ...[
         said(0, 0), said(3, 0),
-        said(1, 1, "Keep Mycelia Fast and Whole Through Every Switch Tonight Again", title),
+        said(1, 1, "Keep Mycelia Fast and Whole Through Each Gate Tonight", title),
         said(1, 1, "make the nightly audits find everything in order and keep it", lower),
       ].map(lede),
     ].map(escaped),
@@ -601,8 +601,13 @@ def test_the_murmurs_page_keeps_to_its_budget(browser: Browser, murmurs_served: 
 
 
 # Past SIZES' desk the head lays out as it does there, its type no longer fluid and its parts
-# capped in width, so a wider desk would only repeat it.
-@pytest.mark.parametrize("size", SIZES)
+# capped in width, so a wider desk would only repeat it. Between them, a narrow window gives
+# the headline's box four lines where its opening words take three, and a wider one three where
+# they take two.
+BETWEEN = [(520, 900), (660, 900)]
+
+
+@pytest.mark.parametrize("size", [*SIZES, *BETWEEN])
 def test_the_head_keeps_the_lines_it_opens_on(
     browser: Browser, murmurs_served: Served, size: tuple[int, int]
 ) -> None:

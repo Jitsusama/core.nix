@@ -47,7 +47,12 @@ code {
   text-transform: lowercase;
 }
 
+/* The headline's counts wrap where its opening words don't, so the box holds the lines the
+   longest count takes: four on a phone and in a narrow window, three a little wider, and two
+   from a third of a desk up. Each step comes a little past where one browser's counts take a
+   line fewer, since another breaks them a few pixels later. */
 .headline {
+  min-block-size: 2lh;
   max-inline-size: 18ch;
   margin: 0;
   color: var(--strong);
@@ -332,6 +337,18 @@ code {
   color: var(--text);
   font-size: var(--step-small);
   font-style: italic;
+}
+
+@media (max-width: 45rem) {
+  .headline {
+    min-block-size: 3lh;
+  }
+}
+
+@media (max-width: 38.75rem) {
+  .headline {
+    min-block-size: 4lh;
+  }
 }
 
 @supports (text-wrap: pretty) {
