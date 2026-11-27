@@ -678,7 +678,19 @@ Singleton {
     // kept place without it.
     // The press takes the ask over too, so a give-up is said to it
     // (untaken), whoever asked first.
+    // So is one whose kitty didn't answer moments ago (stillHeld), said
+    // may yet come and told if it does: asked again, that kitty could draw
+    // both windows once it catches up.
     function heldBack(id, named, said) {
+        if (stillHeld(named)) {
+            console.info(`sessions: ${id} not asked for again, since the kitty that didn't `
+                + "answer for it may yet draw it");
+            goingTo = { app: named, at: Date.now(), from: Niri.focused };
+            stillSaid = Object.assign({}, stillSaid,
+                { [named]: Object.assign({}, stillSaid[named], { said }) });
+            unhosted(said, said?.startedInHost ? "startedStillComing" : "stillComing");
+            return true;
+        }
         if (!viewerComing(named))
             return false;
         console.info(`sessions: ${id} not viewed again, since its viewer is asked for already`);
@@ -3553,6 +3565,15 @@ Singleton {
     function listedNow(window) {
         return window !== null && window !== undefined
             && (!trustsNiri() || String(window.id) in Niri.windows);
+    }
+    // Whether the kitty up now is the one that didn't answer for viewer
+    // `named`, within answerPatience of that give-up (stillSaid): long
+    // enough for a kitty caught up to draw it, short enough that a kitty
+    // gone quiet for good costs Joel only a minute and a half.
+    function stillHeld(named) {
+        const still = stillSaid[named];
+        return still !== undefined && (still.under ?? "") !== ""
+            && still.under === sessionsKittyPid && Date.now() - still.at < answerPatience;
     }
     // Whether a viewer `named` was asked for within viewPatience and niri
     // hasn't listed it since (viewerCame).
