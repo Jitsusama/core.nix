@@ -177,8 +177,7 @@ fn run(
     // another machine's files, switch nothing, and so restart nothing a
     // switch would.
     if runs_wholly(config, &built) {
-        if let Err(e) = remember(config, &head).and_then(|()| follows::remember(config, &followed))
-        {
+        if let Err(e) = ran_wholly(config, &head, &followed) {
             return failed(Some(head), e);
         }
         return Line::Unchanged {
@@ -225,17 +224,32 @@ fn paused(config: &Config, following: &dyn Fn() -> bool) -> Option<String> {
 /// a hold, and its commit is remembered only once it switches: without
 /// this, the next update builds that input at its pin, and its switch, or
 /// a newer wait, spends the ask. It's kept, never a floor, since it never
-/// ran, so a later ask may still step behind it.
+/// ran, so a later ask may still step behind it. One a hold keeps off is
+/// let go, so the hold stops that ask rather than every update of main's.
 fn waited_asks(config: &Config) -> follows::Followed {
     waited(config)
         .map(|waiting| {
             waiting
                 .followed
                 .into_iter()
-                .filter(|(name, _)| config.follows.get(name).is_some_and(|f| f.asked))
+                .filter(|(name, commit)| {
+                    config.follows.get(name).is_some_and(|f| f.asked)
+                        && !held::keeps_off(config, name, commit)
+                })
                 .collect()
         })
         .unwrap_or_default()
+}
+
+/// Remembers main at `head` and its inputs at `followed` as what runs,
+/// when it builds what the machine already runs. A build that waited for
+/// a hold is let go then: what ran since is a later ask's, so the next
+/// update mustn't build the wait again.
+fn ran_wholly(config: &Config, head: &str, followed: &follows::Followed) -> Result<(), Failure> {
+    remember(config, head)?;
+    follows::remember(config, followed)?;
+    let _ = fs::remove_file(waiting_file(config));
+    Ok(())
 }
 
 /// A built system whose switch waits for a hold to be given.
