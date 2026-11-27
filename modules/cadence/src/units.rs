@@ -247,9 +247,16 @@ pub fn restarts(journal: &str, mut delay: impl FnMut(&str) -> Option<i64>) -> Ve
             continue;
         }
         let pending = unpaired.remove(unit);
-        let exit = pending.filter(|exit| match (exit.invocation.as_deref(), invocation) {
-            (Some(ended), Some(restarted)) => ended == restarted,
-            _ => at - exit.at <= delay(unit).map_or(EXITS_BEFORE, |d| d + STOPPING),
+        // The same invocation pairs whenever it ended; any other exit pairs
+        // only within the unit's delay, so a restart line naming another
+        // invocation than its exit's, as a systemd that wrote the next
+        // one's would, falls back to the time rather than dropping it.
+        let exit = pending.filter(|exit| {
+            let same = matches!(
+                (exit.invocation.as_deref(), invocation),
+                (Some(ended), Some(restarted)) if ended == restarted
+            );
+            same || at - exit.at <= delay(unit).map_or(EXITS_BEFORE, |d| d + STOPPING)
         });
         restarts.push(Restart {
             unit: unit.to_owned(),
@@ -570,7 +577,7 @@ pub fn due(
 /// (nix-offload.service 3, repos-refresh.service 2)`.
 #[must_use]
 pub fn retries_said(read: &Read, now: i64) -> String {
-    let Counted { left, .. } = counted(read, now);
+    let Counted { left, .. } = counted(read, now, &BTreeMap::new());
     if left.is_empty() {
         return "none left out as retries".to_owned();
     }
@@ -589,8 +596,11 @@ pub fn retries_said(read: &Read, now: i64) -> String {
 /// loop, by unit, and how many of each unit's were left out as retries. A
 /// restart after an exit with a status its unit names for retries is left
 /// out. So is a quiet unit's with no exit read before it, unless more than
-/// `QUIET_RETRIES` of those fall in the `WITHIN`, when they all count.
-fn counted(read: &Read, now: i64) -> Counted<'_> {
+/// `QUIET_RETRIES` of those fall in the `WITHIN`, when they all count, or
+/// its loop is among the `held` spells already told: a lender retrying
+/// near the cap would otherwise cross it again and again, each crossing
+/// told as a new loop.
+fn counted<'a>(read: &'a Read, now: i64, held: &BTreeMap<String, Spell>) -> Counted<'a> {
     let mut looping: BTreeMap<&str, Vec<i64>> = BTreeMap::new();
     let mut left: BTreeMap<&str, usize> = BTreeMap::new();
     let mut quiet: BTreeMap<&str, Vec<i64>> = BTreeMap::new();
@@ -613,7 +623,7 @@ fn counted(read: &Read, now: i64) -> Counted<'_> {
         }
     }
     for (unit, times) in quiet {
-        if times.len() > QUIET_RETRIES {
+        if times.len() > QUIET_RETRIES || held.contains_key(&format!("loop:{unit}")) {
             looping.entry(unit).or_default().extend(times);
         } else {
             *left.entry(unit).or_default() += times.len();
@@ -632,7 +642,7 @@ struct Counted<'a> {
 /// Everything broken now, each with when it began.
 fn broken(read: &Read, told: &Told, now: i64, clock: &impl Fn(i64) -> String) -> Vec<Broken> {
     let mut broken = Vec::new();
-    let Counted { looping, .. } = counted(read, now);
+    let Counted { looping, .. } = counted(read, now, &told.spells);
     for (unit, mut times) in looping {
         times.sort_unstable();
         let key = format!("loop:{unit}");
@@ -1157,8 +1167,9 @@ mod tests {
     }
 
     /// What `systemctl show` says of a build lender: restarted only on
-    /// failure, a minute after, and retrying on clean exits.
-    const LENDER: &str = "Restart=on-failure\nRestartUSec=1min\n\
+    /// failure, after systemd's default 100ms since it sets no delay, and
+    /// retrying on clean exits.
+    const LENDER: &str = "Restart=on-failure\nRestartUSec=100ms\n\
                           RestartForceExitStatus=75 100\nSuccessExitStatus=75 100\n";
 
     fn lender(times: &[i64]) -> Read {
@@ -1199,6 +1210,31 @@ mod tests {
             retries_said(&past, now),
             "none left out as retries",
             "quiet retries past the cap were still said to be left out"
+        );
+    }
+
+    #[test]
+    fn a_lender_told_looping_stays_one_spell_while_it_dips_under_the_cap() {
+        let seven: Vec<i64> = (1..=7).map(|n| TICK + n * 120).collect();
+        let now = TICK + 7 * 120 + 10;
+        let mut told = Told::default();
+        assert_eq!(
+            due(&lender(&seven), &mut told, now, watchdog, clock).len(),
+            1,
+            "seven quiet retries in the window weren't told as a loop"
+        );
+        let six = lender(&seven[1..]);
+        assert!(
+            due(&six, &mut told, now, watchdog, clock).is_empty(),
+            "a loop already told was told again as it dipped under the cap"
+        );
+        assert!(
+            told.spells.contains_key("loop:nix-offload.service"),
+            "a lender dipping to the cap ended its loop, so the next crossing reads as new"
+        );
+        assert!(
+            due(&lender(&seven), &mut told, now, watchdog, clock).is_empty(),
+            "a lender crossing the cap again was told as a new loop"
         );
     }
 
@@ -1292,15 +1328,25 @@ mod tests {
             // invocation after it.
             of_invocation(&exit(lost, "killed", "9", at - 200), "k"),
             of_invocation(&restart(lost, at - 100), "l"),
-            // Lines naming no invocation, paired by the lender's minute:
-            // a kill long before its restart, and one just before.
-            exit(stale, "killed", "9", at - 600),
+            // Lines naming no invocation, paired by the lender's delay
+            // and half a minute: a kill a minute before its restart, past
+            // that though inside the five minutes kept when no delay is
+            // read, and one twenty seconds before, past the delay alone.
+            exit(stale, "killed", "9", at - 120),
             restart(stale, at - 60),
-            exit(fresh, "killed", "9", at - 100),
+            exit(fresh, "killed", "9", at - 80),
             restart(fresh, at - 60),
         ]
         .join("\n");
-        let read = paired(&journal, at, |_| LENDER.to_owned());
+        let asked = std::cell::RefCell::new(BTreeMap::<String, usize>::new());
+        let read = paired(&journal, at, |unit| {
+            *asked.borrow_mut().entry(unit.to_owned()).or_default() += 1;
+            LENDER.to_owned()
+        });
+        assert!(
+            asked.into_inner().values().all(|&n| n == 1),
+            "a unit was asked of systemctl more than once in a tick"
+        );
         let exits_read: Vec<(&str, bool)> = read
             .restarts
             .iter()
@@ -1316,6 +1362,23 @@ mod tests {
             retries_said(&read, at),
             "2 of them left out as retries (nix-offload-more.service 1, nix-offload.service 1)",
             "a quiet restart after a stale kill was counted"
+        );
+    }
+
+    #[test]
+    fn an_exit_whose_restart_names_another_invocation_pairs_by_the_delay() {
+        let lender = "nix-offload.service";
+        let at = TICK + WITHIN;
+        let journal = [
+            of_invocation(&exit(lender, "exited", "75", at - 70), "a"),
+            of_invocation(&restart(lender, at - 60), "b"),
+        ]
+        .join("\n");
+        let read = paired(&journal, at, |_| LENDER.to_owned());
+        assert_eq!(
+            read.restarts.iter().map(|r| r.after).collect::<Vec<_>>(),
+            [Some(75)],
+            "an exit just before a restart naming the next invocation wasn't paired"
         );
     }
 
