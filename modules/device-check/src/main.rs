@@ -726,14 +726,28 @@ mod tests {
             None,
             "a line passed 40 cells:\n{text}"
         );
+        let lines: Vec<&str> = text.lines().collect();
         assert_eq!(
-            text.lines().collect::<Vec<_>>(),
+            lines,
             [
                 format!("{caution}0000:00:04.0 (proc_thermal_pci) failed"),
                 "  a power change and won't wake until".to_owned(),
                 "  the next boot".to_owned(),
             ],
             "the line didn't wrap at exactly 38 cells under its mark, each word kept:\n{text}"
+        );
+        // The edges the comment above counts, counted, so a new fixture
+        // that drifts off them fails here rather than passing a wrap a cell
+        // off.
+        assert_eq!(
+            layout::width(lines[0]),
+            40,
+            "the first line's words didn't fill the room past the mark:\n{text}"
+        );
+        assert_eq!(
+            layout::width(lines[1].trim_start()) + 1 + layout::width("the"),
+            39,
+            "the second line's words and the next didn't come to a cell past the room:\n{text}"
         );
     }
 

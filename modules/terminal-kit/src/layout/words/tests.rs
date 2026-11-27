@@ -107,6 +107,31 @@ fn a_paragraph_keeps_its_inset_on_every_line() {
 }
 
 #[test]
+fn hung_words_wrap_at_the_room_the_lead_leaves_to_the_cell() {
+    // After a lead of 2, 17 cells leave 15. The first line's words fill
+    // those 15 exactly, so a room one cell narrower parts them. The
+    // second's with the next word come to 16, so a room one cell wider
+    // takes that word up. Each room draws its own lines, so a wrap off by
+    // one cell either way can't pass.
+    let said = "a card failed a power change and won't wake until the next boot";
+    assert_eq!(
+        hung(said, 2, Room::Cells(17)),
+        "a card failed a\n  power change\n  and won't wake\n  until the\n  next boot",
+        "hung words didn't wrap at exactly the room the lead leaves"
+    );
+    assert_eq!(
+        hung(said, 2, Room::Cells(16)),
+        "a card failed\n  a power change\n  and won't wake\n  until the\n  next boot",
+        "hung words ran a cell past the room the lead leaves"
+    );
+    assert_eq!(
+        hung(said, 2, Room::Cells(18)),
+        "a card failed a\n  power change and\n  won't wake until\n  the next boot",
+        "hung words wrapped a cell short of the room the lead leaves"
+    );
+}
+
+#[test]
 fn a_hanging_paragraph_keeps_its_first_line_s_room_and_hangs_the_rest() {
     let words = "one two three four five";
     assert_eq!(
