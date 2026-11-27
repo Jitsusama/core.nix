@@ -571,6 +571,7 @@ fn tell(title: &str, written: &str, file: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::unheard;
 
     fn supplies(online: &[(&str, &str)]) -> tempfile::TempDir {
         let power = tempfile::tempdir().unwrap();
@@ -684,6 +685,44 @@ mod tests {
         assert!(
             record.folder.join(SUMMARY).exists(),
             "summary.md stays until a summary takes its place"
+        );
+    }
+
+    #[test]
+    fn a_call_mostly_not_heard_keeps_that_in_place_of_a_summary() {
+        let calls = tempfile::tempdir().unwrap();
+        let (book, record) = ended(calls.path());
+        let file = record.folder.join(TRANSCRIPT);
+        let record = Record {
+            transcript: Some(file.clone()),
+            ..record
+        };
+        book.lock().put(record.clone());
+        let (again, _asked) = mpsc::channel();
+        let kept = |said: &str| {
+            std::fs::write(&file, filed::whole("Planning", None, said)).unwrap();
+            assert!(
+                readable(&book, &record.key, &again).is_none(),
+                "a call with too little heard was given to the model"
+            );
+            filed::summary(&std::fs::read_to_string(&file).unwrap())
+        };
+        // As the daemon writes it: the note opens the Transcript section.
+        let part = unheard::and(None, 0).note();
+        let greetings = format!(
+            "# Transcript\n\n{part}\n\n**Joel**, 0:01: Hello? Hello.\n\n\
+             **Others**, 0:04: Hi. Thank you.\n"
+        );
+        assert_eq!(
+            kept(&greetings).as_deref(),
+            Some(said::TOO_LITTLE_HEARD),
+            "a call the speech model failed on was kept as one where little was said"
+        );
+        let none = unheard::and(None, 0).note_with_none_heard();
+        assert_eq!(
+            kept(&format!("# Transcript\n\n{none}\n")).as_deref(),
+            Some(said::NOTHING_HEARD),
+            "a call with no line heard was kept as one where part was"
         );
     }
 

@@ -182,3 +182,24 @@ fn an_older_takes_tidy_isnt_the_new_ones() {
     );
     assert_eq!(waiting, Some((3, "the new take".to_owned())));
 }
+
+#[test]
+fn a_notice_is_shown_as_written() {
+    // An error or a take may open with a dash or hold markup, which
+    // notify-send would read as an option or as its body's markup.
+    let args = notifying("-Dictation failed", "--urgency=critical <b>a & b</b>");
+    let ends = args.iter().position(|arg| arg == "--");
+    assert_eq!(
+        ends,
+        Some(args.len() - 3),
+        "a notice's words could be read as options: {args:?}"
+    );
+    assert_eq!(
+        args[args.len() - 2..],
+        [
+            "-Dictation failed",
+            "--urgency=critical &lt;b&gt;a &amp; b&lt;/b&gt;"
+        ],
+        "a notice's body could be read as markup"
+    );
+}

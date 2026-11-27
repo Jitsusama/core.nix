@@ -39,6 +39,11 @@
 //! take waits on its tidy 2 s at most, and then is typed as heard, the
 //! tidy dropped when it comes, since Joel asked for no delayed voice. A
 //! terminal's take is never tidied, since a command is typed as said.
+//!
+//! Long because it is the service whole: the one thread holding the state
+//! and each event a press, a take or a tidy brings it, with the typing,
+//! the notices and the client beside them; its cases are kept apart, in
+//! `service_tests.rs`.
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::os::fd::FromRawFd;
@@ -757,11 +762,30 @@ fn type_out(text: &str) -> Result<(), String> {
 
 fn notice(summary: &str, body: &str) {
     let _ = Command::new("notify-send")
-        .args(["--app-name=Dictation", "--expire-time=2000", summary, body])
+        .args(notifying(summary, body))
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
         .and_then(|mut child| child.wait());
+}
+
+/// notify-send's arguments for a notice of `summary` and `body`, after
+/// `--` so neither is read as an option, and the body, which a notice
+/// reads as markup, with its markup escaped.
+fn notifying(summary: &str, body: &str) -> Vec<String> {
+    let body = body
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;");
+    [
+        "--app-name=Dictation",
+        "--expire-time=2000",
+        "--",
+        summary,
+        &body,
+    ]
+    .map(str::to_owned)
+    .to_vec()
 }
 
 /// Sends `line` to the service and copies what it answers to standard

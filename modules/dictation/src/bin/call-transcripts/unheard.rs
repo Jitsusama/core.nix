@@ -9,8 +9,12 @@ use dictation::transcript;
 /// How the note opens, by which it's read back.
 const OPENS: &str = "Part of the call wasn't heard: the speech model failed on ";
 
-/// How the note opens while no line of the call has been heard.
-const OPENS_NONE: &str = "None of the call was heard: the speech model failed on ";
+/// How the note opens while no line of the call has been heard: takes
+/// heard may hold no word, so it says no more than that no word was.
+const OPENS_NONE: &str = "No words of the call were heard: the speech model failed on ";
+
+/// How that note opened before, which files written then still say.
+const OPENED_NONE: &str = "None of the call was heard: the speech model failed on ";
 
 /// The stretches of a call not heard: how many, and the sample of the
 /// call the first starts at.
@@ -59,7 +63,7 @@ impl Unheard {
     pub fn read(said: &str) -> Option<Self> {
         said.split("\n\n").find_map(|paragraph| {
             let paragraph = paragraph.trim();
-            let rest = [OPENS, OPENS_NONE]
+            let rest = [OPENS, OPENS_NONE, OPENED_NONE]
                 .iter()
                 .find_map(|opens| paragraph.strip_prefix(opens))?;
             let (stretches, at) = if let Some(at) = rest.strip_prefix("a stretch of it, at ") {
@@ -135,14 +139,28 @@ mod tests {
     fn a_call_none_of_which_was_heard_says_so() {
         let unheard = and(Some(and(None, 2 * RATE)), 14 * MINUTE);
         let note = unheard.note_with_none_heard();
+        // Takes heard may hold no word too, so it says only that no word
+        // was heard, never that the model failed on all of it.
         assert_eq!(
             note,
-            "None of the call was heard: the speech model failed on 2 stretches of it, the \
-             first at 0:02.",
-            "a call none of which was heard was said to be heard in part"
+            "No words of the call were heard: the speech model failed on 2 stretches of it, \
+             the first at 0:02.",
+            "a call none of which was heard was said to be heard in part, or failed on whole"
         );
         let said = format!("# Transcript\n\n{note}");
         assert_eq!(Unheard::read(&said), Some(unheard), "{said}");
+    }
+
+    #[test]
+    fn a_note_of_none_heard_as_first_written_is_read_back() {
+        // Files written before keep the note as it opened then.
+        let written = "# Transcript\n\nNone of the call was heard: the speech model failed on \
+            a stretch of it, at 0:02.";
+        let one = Unheard {
+            stretches: 1,
+            first: 2 * RATE,
+        };
+        assert_eq!(Unheard::read(written), Some(one), "{written}");
     }
 
     #[test]

@@ -134,10 +134,12 @@ pub(super) mod tests {
 
     #[test]
     fn a_piece_that_would_break_a_line_is_never_written() {
-        // A transcript's lines are its paragraphs, so a piece writing a
-        // newline, a tab or another control would let what someone said
-        // open a paragraph the transcript reads as its own note.
-        for piece in ["\n", " a\n\nb", "\t", "\r", "\u{7f}"] {
+        // A transcript's lines are its paragraphs. call-transcripts'
+        // `said::spoken` already folds a take's whitespace, a newline or a
+        // tab, into one space, so the guard is for the other controls,
+        // such as DEL and ESC, and for `Word::text`, which keeps each word
+        // as its pieces spell it.
+        for piece in ["\n", " a\n\nb", "\t", "\r", "\u{7f}", "\u{1b}"] {
             assert!(!english(piece), "{piece:?} may be written");
         }
     }

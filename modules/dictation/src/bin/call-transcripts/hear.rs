@@ -35,6 +35,7 @@
 //! apart, in `hear_tests.rs`.
 
 use std::collections::{HashMap, HashSet};
+use std::ops::Range;
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::time::Duration;
 
@@ -95,7 +96,9 @@ pub enum Job {
 /// journaled as left out whole, by the sample each starts at: splitting
 /// their takes by voice moves his lines' indices on but never their
 /// times, so what's told stays told across a rejoin. What its speech
-/// model failed on is `unheard`, which its file says.
+/// model failed on is `unheard`, which its file says, and `unheard_to`
+/// the sample the last stretch of it counted ends at, kept only in
+/// memory.
 #[derive(Default)]
 struct Writing {
     lines: Vec<Line>,
@@ -110,6 +113,7 @@ struct Writing {
     told: HashSet<usize>,
     left: HashSet<usize>,
     unheard: Option<Unheard>,
+    unheard_to: Option<usize>,
 }
 
 /// A piece of a take of theirs as the speaker model heard it: its
@@ -117,6 +121,28 @@ struct Writing {
 type Embedded = (Vec<f32>, usize, usize);
 
 impl Writing {
+    /// Counts a take not heard, spanning the samples of the call in
+    /// `take`, as a stretch of its own only when it starts at or past the
+    /// end of the last stretch counted: both sides are recorded at once,
+    /// so a take of each failing over the same part of the call would
+    /// otherwise count it twice. Each side gives a take as it's cut, at
+    /// its end, so takes come roughly in the order they end, and one
+    /// starting before the last stretch ends only stretches it; a take of
+    /// one side given late, wholly before that stretch, isn't counted. The
+    /// end is kept only in memory, so after a restart a take overlapping
+    /// one counted before it is counted again.
+    fn left_unheard(&mut self, take: Range<usize>) {
+        let counted = self.unheard_to.is_none_or(|to| take.start >= to);
+        self.unheard = Some(match self.unheard {
+            Some(unheard) if !counted => Unheard {
+                first: unheard.first.min(take.start),
+                ..unheard
+            },
+            unheard => unheard::and(unheard, take.start),
+        });
+        self.unheard_to = Some(self.unheard_to.map_or(take.end, |to| to.max(take.end)));
+    }
+
     /// What's newly left out of Joel's side as the others' echo, a
     /// journal line each, said once: for words cut from a line, how many,
     /// when and how late; for a line left out whole, how many words and
@@ -252,11 +278,13 @@ pub fn hear(
                 let writing = calls
                     .entry(key.clone())
                     .or_insert_with(|| taken_up(&mut ended, book, &key, me));
+                let take = start..start + samples.len();
                 let parakeet = match loaded(settings, &mut speech) {
                     Ok(parakeet) => parakeet,
                     Err(why) => {
-                        let notice = || notices::not_transcribed(&title_of(book, &key), &why);
-                        shown(not_heard(book, &key, writing, me, start, &mut told, notice));
+                        let heard = !writing.lines.is_empty();
+                        let notice = || not_loaded(&title_of(book, &key), &why, heard);
+                        shown(not_heard(book, &key, writing, me, take, &mut told, notice));
                         continue;
                     }
                 };
@@ -264,7 +292,7 @@ pub fn hear(
                 let ((text, words), failed) = heard_or_left_out(heard);
                 if let Some(why) = failed {
                     let notice = || notices::not_all_heard(&title_of(book, &key), &why);
-                    shown(not_heard(book, &key, writing, me, start, &mut told, notice));
+                    shown(not_heard(book, &key, writing, me, take, &mut told, notice));
                 }
                 // Embedded once Parakeet has heard it, so a call's first
                 // line never waits on the speaker model's loading.
@@ -298,11 +326,7 @@ pub fn hear(
                 if writing.done.len() == 2 {
                     tell_apart(book, &key, writing, me);
                     write(book, &key, writing, me, false);
-                    if let Some(writing) = calls.remove(&key) {
-                        keep(&mut ended, &key, writing);
-                    }
-                    told.remove(&key);
-                    unsummed.push(key);
+                    put_away(&mut calls, &mut ended, &mut told, &mut unsummed, key);
                 }
             }
             Job::SumUp { key } => {
@@ -371,23 +395,40 @@ fn heard_or_left_out(
     }
 }
 
-/// A take `start` samples into `key`'s call that wasn't heard, its model
-/// not loading or failing on it: counted in what the call's file says
-/// wasn't heard, the file written at once so a restart before another
-/// line is heard reads it back, and `notice` for it, unless the call
-/// was told already.
+/// A take of `key`'s call that wasn't heard, spanning the samples of the
+/// call in `take`, its model not loading or failing on it: counted in
+/// what the call's file says wasn't heard, the file written at once so a
+/// restart before another line is heard reads it back, and `notice` for
+/// it, unless the call was told already.
+#[must_use]
 fn not_heard(
     book: &Shared,
     key: &str,
     writing: &mut Writing,
     me: &str,
-    start: usize,
+    take: Range<usize>,
     told: &mut HashSet<String>,
     notice: impl FnOnce() -> Notice,
 ) -> Option<Notice> {
-    writing.unheard = Some(unheard::and(writing.unheard, start));
+    writing.left_unheard(take);
     write(book, key, writing, me, true);
     told_once(told, key, notice)
+}
+
+/// The notice for `title`'s call when its speech model didn't load,
+/// saying `why`: that part of it wasn't heard once a line of it was
+/// (`heard`), since its transcript holds those, and that it couldn't be
+/// transcribed while it has none. `why` names the model already, so it's
+/// the body alone.
+fn not_loaded(title: &str, why: &str, heard: bool) -> Notice {
+    if heard {
+        Notice {
+            body: why.to_owned(),
+            ..notices::not_all_heard(title, why)
+        }
+    } else {
+        notices::not_transcribed(title, why)
+    }
 }
 
 /// A `notice`, shown, if there is one.
@@ -401,6 +442,7 @@ fn shown(notice: Option<Notice>) {
 /// none once it has been, `told` holding the calls told until each ends.
 /// Its model not loading and failing on part of it share it, so a call
 /// is told once, whichever came first.
+#[must_use]
 fn told_once(
     told: &mut HashSet<String>,
     key: &str,
@@ -648,6 +690,24 @@ fn their_side(record: &Record, me: &str) -> TheirSide {
             people: record.known.map(|_| record.people.len()),
         }
     }
+}
+
+/// A call written down whole, put away: kept as it was heard, so one
+/// rejoined is told apart whole; no longer among those `told`, so a
+/// failure once it's taken up again is told anew; and given to be
+/// summed up.
+fn put_away(
+    calls: &mut HashMap<String, Writing>,
+    ended: &mut Vec<(String, Writing)>,
+    told: &mut HashSet<String>,
+    unsummed: &mut Vec<String>,
+    key: String,
+) {
+    if let Some(writing) = calls.remove(&key) {
+        keep(ended, &key, writing);
+    }
+    told.remove(&key);
+    unsummed.push(key);
 }
 
 /// Keeps a call that ended as it was heard, embeddings and all, so one

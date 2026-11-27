@@ -255,6 +255,11 @@ fn close(id: u32) {
 pub fn show(notice: &Notice, then: impl FnOnce(&str) + Send + 'static) -> Shown {
     let args = arguments(notice);
     let shown = Shown::default();
+    // A case that reaches a notice, as summing up a call does, never
+    // raises it on the desktop the cases are run from.
+    if cfg!(test) {
+        return shown;
+    }
     let showing = shown.clone();
     std::thread::spawn(move || {
         let raised = Command::new("notify-send")
