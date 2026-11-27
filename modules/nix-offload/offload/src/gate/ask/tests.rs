@@ -104,7 +104,7 @@ fn a_refusal_ends_as_refused_and_a_failure_as_unavailable() {
 
 const COMMIT: &str = "0123456789abcdef0123456789abcdef01234567";
 
-/// A pace of a few milliseconds a look, `crossing` after a bad end and
+/// A pace of a few milliseconds a look, `crossing` after an end and
 /// `longest` in all, so a test waits as a real ask does, only shorter.
 const fn pace(crossing: u64, longest: u64) -> Pace {
     Pace {
@@ -114,11 +114,13 @@ const fn pace(crossing: u64, longest: u64) -> Pace {
     }
 }
 
-/// An answer that ends as `ends` says once asked `after` times, and
-/// counts whether it was stopped.
+/// An answer that ends as `ends` says once asked `after` times, writing
+/// `writes` into its gate folder as it ends, and counts whether it was
+/// stopped.
 struct Fake {
     ends: Option<End>,
     after: usize,
+    writes: Option<(PathBuf, String)>,
     stopped: bool,
 }
 
@@ -127,8 +129,14 @@ impl Fake {
         Self {
             ends,
             after,
+            writes: None,
             stopped: false,
         }
+    }
+
+    fn writing(mut self, gate: &Path, found: &Found) -> Self {
+        self.writes = Some((gate.join(RESULT), found.json()));
+        self
     }
 }
 
@@ -137,6 +145,9 @@ impl Answering for Fake {
         if self.after > 0 {
             self.after -= 1;
             return None;
+        }
+        if let Some((path, text)) = self.writes.take() {
+            fs::write(path, text).expect("the answer's result");
         }
         self.ends.clone()
     }
@@ -173,66 +184,81 @@ fn an_answer_that_ends_without_a_result_is_told_once_its_crossing_is_past() {
     );
 }
 
+/// A result written `after` from now into `gate`, as one crossing back.
+fn crossing_back(gate: &Path, found: &Found, after: Duration) -> thread::JoinHandle<()> {
+    let (path, text) = (gate.join(RESULT), found.json());
+    thread::spawn(move || {
+        thread::sleep(after);
+        fs::write(path, text).expect("a result");
+    })
+}
+
 #[test]
-fn a_pass_that_crosses_back_after_the_crossing_is_still_the_answer() {
+fn a_failed_gates_result_crossing_back_after_its_end_is_the_answer() {
     let gate = tempfile::tempdir().expect("a gate folder");
-    let folder = gate.path().to_owned();
-    let late = thread::spawn(move || {
-        thread::sleep(Duration::from_millis(300));
-        fs::write(folder.join(RESULT), found(0).json()).expect("a result");
-    });
-    let mut answer = Fake::ending(Some(End::Exited(0)), 0);
-    let waited = waited(gate.path(), COMMIT, pace(50, 60_000), &mut answer);
+    let late = crossing_back(gate.path(), &found(1), Duration::from_millis(200));
+    let mut answer = Fake::ending(Some(End::Exited(1)), 0);
+    let waited = waited(gate.path(), COMMIT, pace(60_000, 60_000), &mut answer);
     late.join().expect("the result's writer");
     assert_eq!(
         waited,
-        Waited::Found(found(0)),
-        "an answer that ended 0 wrote a pass, which should be waited for past the crossing"
+        Waited::Found(found(1)),
+        "a gate that failed ends its answer with its code, and its result should be waited for"
     );
 }
 
 #[test]
-fn an_answer_mycelium_couldnt_run_is_told_at_once() {
+fn an_answer_ending_255_is_waited_for_like_any_other_end() {
     let gate = tempfile::tempdir().expect("a gate folder");
+    let late = crossing_back(gate.path(), &found(0), Duration::from_millis(200));
     let mut answer = Fake::ending(Some(End::Exited(UNRUN)), 0);
-    let since = Instant::now();
+    let waited = waited(gate.path(), COMMIT, pace(60_000, 60_000), &mut answer);
+    late.join().expect("the result's writer");
     assert_eq!(
-        waited(gate.path(), COMMIT, pace(60_000, 60_000), &mut answer),
-        Waited::Unrun(End::Exited(UNRUN)),
-        "a run mycelium couldn't make should be told as one"
+        waited,
+        Waited::Found(found(0)),
+        "a 255 may be a dropped link after the gate ran, so its result should be waited for"
     );
-    assert!(
-        since.elapsed() < Duration::from_secs(5),
-        "a run mycelium couldn't make should be told at once, not after its crossing"
+}
+
+#[test]
+fn a_pass_that_never_crosses_back_is_told_once_its_crossing_is_past() {
+    let gate = tempfile::tempdir().expect("a gate folder");
+    let mut answer = Fake::ending(Some(End::Exited(0)), 0);
+    assert_eq!(
+        waited(gate.path(), COMMIT, pace(20, 60_000), &mut answer),
+        Waited::Ended(End::Exited(0)),
+        "an answer that ended 0 with nothing back shouldn't be waited out to the longest"
     );
 }
 
 #[test]
 fn a_result_written_as_the_answer_ended_is_the_answer() {
     let gate = tempfile::tempdir().expect("a gate folder");
-    fs::write(gate.path().join(RESULT), found(0).json()).expect("a result");
-    let mut answer = Fake::ending(Some(End::Exited(0)), 0);
+    // The result lands only as the end is heard, so the first look missed
+    // it and only the look once more on telling the end finds it.
+    let mut answer = Fake::ending(Some(End::Exited(0)), 0).writing(gate.path(), &found(0));
     assert_eq!(
         waited(gate.path(), COMMIT, pace(0, 60_000), &mut answer),
         Waited::Found(found(0)),
-        "a result there when the answer ends should be read, not told as missing"
+        "a result written as the answer ended should be read, not told as missing"
     );
     assert!(!answer.stopped, "an answer that ended needn't be stopped");
 }
 
 #[test]
-fn an_answer_still_running_once_its_result_is_back_is_let_go() {
+fn an_answer_still_running_once_a_result_is_back_is_left_to_its_run() {
     let gate = tempfile::tempdir().expect("a gate folder");
     fs::write(gate.path().join(RESULT), found(0).json()).expect("a result");
     let mut answer = Fake::ending(None, 0);
     assert_eq!(
-        waited(gate.path(), COMMIT, pace(20, 60_000), &mut answer),
+        waited(gate.path(), COMMIT, pace(0, 60_000), &mut answer),
         Waited::Found(found(0)),
         "a result back while the answer runs should be the answer"
     );
     assert!(
-        answer.stopped,
-        "an answer that hasn't ended once its crossing is past should be stopped"
+        !answer.stopped,
+        "a result there may be an earlier run's, so the running answer shouldn't be stopped"
     );
 }
 
@@ -266,15 +292,100 @@ fn an_answer_still_running_at_the_longest_is_stopped() {
 }
 
 #[test]
-fn a_pass_that_never_crosses_back_is_late_and_stops_nothing() {
+fn an_answer_ended_past_the_longest_is_late_and_stops_nothing() {
     let gate = tempfile::tempdir().expect("a gate folder");
     let mut answer = Fake::ending(Some(End::Exited(0)), 0);
     assert_eq!(
-        waited(gate.path(), COMMIT, pace(0, 50), &mut answer),
+        waited(gate.path(), COMMIT, pace(60_000, 50), &mut answer),
         Waited::Late,
-        "a pass that never came back should be late, which asks again later"
+        "an answer whose crossing outlasts the longest wait should be late"
     );
     assert!(!answer.stopped, "an answer that ended needn't be stopped");
+}
+
+/// `gated` over answers that end as `ends` say, one a start, each
+/// writing `writes` as it ends where it says, and how many it started.
+fn gated_over(
+    gate: &Path,
+    ends: Vec<(End, Option<Found>)>,
+    pace: Pace,
+) -> (Result<Found, Failure>, usize) {
+    let mut ends = ends.into_iter();
+    let mut starts = 0;
+    let gated = gated("far", gate, COMMIT, pace, &mut |_| {
+        starts += 1;
+        let (end, found) = ends.next().expect("no more starts than ends");
+        let fake = Fake::ending(Some(end), 0);
+        Ok(Box::new(match found {
+            Some(found) => fake.writing(gate, &found),
+            None => fake,
+        }) as Box<dyn Answering>)
+    });
+    (gated, starts)
+}
+
+#[test]
+fn an_answer_that_couldnt_start_is_started_again() {
+    let gate = tempfile::tempdir().expect("a gate folder");
+    let unstarted = (End::Exited(UNSTARTED), None);
+    let (gated, starts) = gated_over(
+        gate.path(),
+        vec![
+            unstarted.clone(),
+            unstarted,
+            (End::Exited(0), Some(found(0))),
+        ],
+        pace(0, 60_000),
+    );
+    assert_eq!(
+        gated.map(|found| found.exit).ok(),
+        Some(0),
+        "the third start's pass should be the answer"
+    );
+    assert_eq!(
+        starts, 3,
+        "an answer its fence refused should be started again"
+    );
+}
+
+#[test]
+fn an_answer_that_never_starts_is_told_after_its_last_start() {
+    let gate = tempfile::tempdir().expect("a gate folder");
+    let unstarted = (End::Exited(UNSTARTED), None);
+    let (gated, starts) = gated_over(
+        gate.path(),
+        vec![unstarted.clone(), unstarted.clone(), unstarted],
+        pace(0, 60_000),
+    );
+    let failure = gated.err().expect("no start should mean no result");
+    assert_eq!(
+        failure.exit,
+        Exit::Unavailable,
+        "it should end as unavailable"
+    );
+    assert_eq!(starts, STARTS as usize, "it should stop at its last start");
+}
+
+#[test]
+fn each_end_without_a_result_is_told_with_its_own_exit() {
+    let gate = tempfile::tempdir().expect("a gate folder");
+    let (unrun, _) = gated_over(
+        gate.path(),
+        vec![(End::Exited(UNRUN), None)],
+        pace(0, 60_000),
+    );
+    let unrun = unrun.err().expect("a 255 without a result is no answer");
+    assert_eq!(
+        unrun.exit,
+        Exit::Unavailable,
+        "a 255 should end as unavailable"
+    );
+    let (late, _) = gated_over(gate.path(), vec![(End::Exited(0), None)], pace(60_000, 0));
+    assert_eq!(
+        late.err().map(|failure| failure.exit),
+        Some(NOT_YET),
+        "no result within the longest wait should end as not yet"
+    );
 }
 
 #[test]
@@ -294,12 +405,12 @@ fn the_answer_runs_in_its_gates_folder_for_the_longest_wait() {
         "optimus",
         COMMIT,
         Path::new("/home/j/q/handover/gates/c"),
-        Duration::from_secs(7200),
+        Duration::from_secs(7201),
     );
     assert_eq!(
         run.join(" "),
         format!(
-            "run --need machine=optimus --folder /home/j/q/handover/gates/c --lasts 120m \
+            "run --need machine=optimus --folder /home/j/q/handover/gates/c --lasts 121m \
              -- nix-offload answer QEST-20261115-ABC123 {COMMIT}"
         ),
         "the answer should run, waited on, in the gate's folder"
