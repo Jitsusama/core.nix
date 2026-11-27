@@ -112,7 +112,7 @@ fn a_commands_output_and_status_are_read() {
     assert_eq!(output.status, Some(3));
     assert_eq!(output.stdout, b"out\n");
     assert_eq!(output.stderr, b"err\n");
-    assert!(!output.truncated);
+    assert!(!output.truncated, "said cut short, under its limit");
 }
 
 #[test]
@@ -143,7 +143,7 @@ fn output_past_the_limit_is_cut_and_the_rest_drained() {
     let output = finished(run(&job).unwrap());
     assert_eq!(output.status, Some(0));
     assert_eq!(output.stdout.len(), 1000);
-    assert!(output.truncated);
+    assert!(output.truncated, "cut at its limit, not said to be");
 }
 
 fn gone(pid: u32) -> bool {
@@ -163,8 +163,10 @@ fn a_command_past_its_time_is_killed_with_everything_it_started() {
     let mut job = job(&["sh", "-c", &script]);
     job.timeout = Duration::from_millis(500);
     let started = Instant::now();
-    assert!(matches!(run(&job).unwrap(), Ran::TimedOut));
-    assert!(started.elapsed() < Duration::from_secs(5));
+    let ran = run(&job).unwrap();
+    assert!(matches!(ran, Ran::TimedOut), "{ran:?}");
+    let took = started.elapsed();
+    assert!(took < Duration::from_secs(5), "timed out after {took:?}");
     let pid: u32 = std::fs::read_to_string(&pid_file)
         .unwrap()
         .trim()
@@ -188,7 +190,8 @@ fn a_child_holding_the_output_open_cant_hold_the_guard() {
     job.timeout = Duration::from_millis(500);
     let started = Instant::now();
     let _ = run(&job).unwrap();
-    assert!(started.elapsed() < Duration::from_secs(2));
+    let took = started.elapsed();
+    assert!(took < Duration::from_secs(2), "held the guard {took:?}");
 }
 
 /// The guard blocks its stop signals in every thread, so it stops only
@@ -328,12 +331,10 @@ fn a_command_that_never_reads_its_input_is_killed_at_its_time() {
 
 #[test]
 fn a_missing_program_is_an_error() {
-    assert!(run(&job(&["/nonexistent/program"])).is_err());
-    assert!(
-        run(&Job {
-            argv: Vec::new(),
-            ..job(&[])
-        })
-        .is_err()
-    );
+    run(&job(&["/nonexistent/program"])).expect_err("ran a missing program");
+    let empty = Job {
+        argv: Vec::new(),
+        ..job(&[])
+    };
+    run(&empty).expect_err("ran an empty command line");
 }

@@ -48,7 +48,6 @@
   "modules/disk-guard/tests/guard/anchor.rs" = 3;
   "modules/disk-guard/tests/guard/cli.rs" = 2;
   "modules/disk-guard/tests/guard/collecting.rs" = 6;
-  "modules/disk-guard/tests/guard/commands.rs" = 7;
   "modules/disk-guard/tests/guard/config.rs" = 2;
   "modules/disk-guard/tests/guard/daemon.rs" = 21;
   "modules/disk-guard/tests/guard/dedupe.rs" = 3;
@@ -58,7 +57,6 @@
   "modules/disk-guard/tests/guard/freezer.rs" = 4;
   "modules/disk-guard/tests/guard/garbage.rs" = 4;
   "modules/disk-guard/tests/guard/generations.rs" = 2;
-  "modules/disk-guard/tests/guard/git.rs" = 7;
   "modules/disk-guard/tests/guard/journal.rs" = 2;
   "modules/disk-guard/tests/guard/locks.rs" = 4;
   "modules/disk-guard/tests/guard/logs.rs" = 2;
@@ -69,20 +67,13 @@
   "modules/disk-guard/tests/guard/pace.rs" = 2;
   "modules/disk-guard/tests/guard/pass.rs" = 3;
   "modules/disk-guard/tests/guard/plan.rs" = 4;
-  "modules/disk-guard/tests/guard/pmset.rs" = 5;
   "modules/disk-guard/tests/guard/pool.rs" = 1;
-  "modules/disk-guard/tests/guard/procs.rs" = 7;
   "modules/disk-guard/tests/guard/reclaim.rs" = 4;
   "modules/disk-guard/tests/guard/serve.rs" = 8;
-  "modules/disk-guard/tests/guard/snapshots.rs" = 7;
-  "modules/disk-guard/tests/guard/socket.rs" = 5;
   "modules/disk-guard/tests/guard/state.rs" = 2;
   "modules/disk-guard/tests/guard/survey.rs" = 4;
   "modules/disk-guard/tests/guard/temp.rs" = 3;
-  "modules/disk-guard/tests/guard/trash.rs" = 5;
-  "modules/disk-guard/tests/guard/trees.rs" = 5;
   "modules/disk-guard/tests/guard/variants.rs" = 1;
-  "modules/disk-guard/tests/guard/vouch.rs" = 10;
   "modules/disk-loss-panic/disk-loss-panic.rs" = 9;
   "modules/eero/src/views/golden.rs" = 1;
   "modules/ergodox/ergodox-watch.rs" = 1;

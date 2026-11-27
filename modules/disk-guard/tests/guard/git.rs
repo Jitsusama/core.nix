@@ -80,7 +80,10 @@ fn a_git_working_in_a_worktree_keeps_the_repository_s_temporaries() {
         cwd: Some(PathBuf::from("/home/u/big/trees/one/areas/core")),
         ..git(7, "/nix/store/abc-git/bin/git")
     };
-    assert!(busy(&places, &[fetch], ME));
+    assert!(
+        busy(&places, &[fetch], ME),
+        "a git in a worktree wasn't counted"
+    );
 }
 
 #[test]
@@ -91,7 +94,10 @@ fn a_remote_helper_reading_the_repository_keeps_its_temporaries() {
         maps: vec![PathBuf::from("/home/u/big/git/objects/pack/pack-1234.idx")],
         ..git(8, "/nix/store/abc-git/libexec/git-core/git-remote-https")
     };
-    assert!(busy(&places, &[helper], ME));
+    assert!(
+        busy(&places, &[helper], ME),
+        "a helper with a pack mapped wasn't counted"
+    );
     let writer = Process {
         cwd: Some(PathBuf::from("/")),
         files: vec![PathBuf::from(
@@ -99,7 +105,10 @@ fn a_remote_helper_reading_the_repository_keeps_its_temporaries() {
         )],
         ..git(9, "/nix/store/abc-git/libexec/git-core/git-index-pack")
     };
-    assert!(busy(&places, &[writer], ME));
+    assert!(
+        busy(&places, &[writer], ME),
+        "a helper writing a pack wasn't counted"
+    );
 }
 
 #[test]
@@ -118,7 +127,10 @@ fn nothing_but_git_elsewhere_leaves_a_repository_unworked() {
         cwd: Some(PathBuf::from("/home/u/src/core")),
         ..git(11, "/nix/store/abc-git/bin/git")
     };
-    assert!(!busy(&places, &[editor, elsewhere], ME));
+    assert!(
+        !busy(&places, &[editor, elsewhere], ME),
+        "an editor, or a git elsewhere, counted"
+    );
 }
 
 #[test]
@@ -155,7 +167,10 @@ fn a_program_named_for_git_and_git_s_own_daemons_leave_a_repository_unworked() {
         ],
         ..git(15, "/nix/store/abc-git/bin/git")
     };
-    assert!(!busy(&places, &[engine, credentials, fsmonitor], ME));
+    assert!(
+        !busy(&places, &[engine, credentials, fsmonitor], ME),
+        "git-engine or a git daemon counted"
+    );
 }
 
 #[test]
@@ -167,7 +182,8 @@ fn an_account_s_own_git_that_cant_be_read_keeps_them_and_another_s_doesn_t() {
         exe: None,
         ..git(12, "git")
     };
-    assert!(busy(&places, std::slice::from_ref(&hidden), ME));
+    let own = std::slice::from_ref(&hidden);
+    assert!(busy(&places, own, ME), "its own unread git was ruled out");
     let root = Process { uid: 0, ..hidden };
-    assert!(!busy(&places, &[root], ME));
+    assert!(!busy(&places, &[root], ME), "another's unread git counted");
 }

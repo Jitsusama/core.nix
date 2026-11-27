@@ -64,7 +64,11 @@ fn a_tree_left_before_a_suspend_has_idled_only_while_awake() {
     assert_eq!(made.class, Class::Target);
     assert_eq!(made.size, 4096);
     assert_eq!(made.checkout.as_deref(), Some(Path::new("/home/u/src/app")));
-    assert!(!made.occupied && !made.spent);
+    assert_eq!(
+        (made.occupied, made.spent),
+        (false, false),
+        "a free tree's (occupied, spent)"
+    );
 }
 
 #[test]
@@ -97,7 +101,7 @@ fn a_tree_someone_sits_in_is_occupied() {
         Checkout::At("/home/u/src/web".into()),
     );
     let made = candidate(&install, &seen(Use::Occupied(7)), &Awake::default(), 10.0).unwrap();
-    assert!(made.occupied);
+    assert!(made.occupied, "a tree someone sits in wasn't occupied");
     assert_eq!(made.class, Class::Install);
 }
 
@@ -166,18 +170,15 @@ fn a_finished_or_deleted_tree_is_spent() {
         finished: true,
         ..seen(Use::Free)
     };
-    assert!(
-        candidate(&target, &finished, &Awake::default(), 10.0)
-            .unwrap()
-            .spent
-    );
+    let done = candidate(&target, &finished, &Awake::default(), 10.0).unwrap();
+    assert!(done.spent, "a finished tree wasn't spent");
     let orphan = found(
         "/home/u/src/gone/target",
         Kind::Target,
         Checkout::Gone("/home/u/src/gone".into()),
     );
     let made = candidate(&orphan, &seen(Use::Free), &Awake::default(), 10.0).unwrap();
-    assert!(made.spent);
+    assert!(made.spent, "a tree whose checkout is gone wasn't spent");
     // Nothing is there to judge the tree by.
     assert_eq!(made.checkout, None);
 }
@@ -186,7 +187,7 @@ fn a_finished_or_deleted_tree_is_spent() {
 fn an_unknown_checkout_is_never_spent() {
     let target = found("/home/u/src/app/target", Kind::Target, Checkout::Unknown);
     let made = candidate(&target, &seen(Use::Free), &Awake::default(), 10.0).unwrap();
-    assert!(!made.spent);
+    assert!(!made.spent, "a tree of no known checkout was spent");
     assert_eq!(made.checkout, None);
 }
 
