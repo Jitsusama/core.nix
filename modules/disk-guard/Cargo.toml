@@ -13,7 +13,9 @@ libc = "0.2"
 regex-lite = "0.1"
 rustix = { version = "1.1", features = ["fs"] }
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+# Walls kept in memory.json and the journal are compared exactly when read
+# back, and without float_roundtrip a parsed float can be an ulp off.
+serde_json = { version = "1", features = ["float_roundtrip"] }
 # The shape every command of ours takes: help, the answer's form, the
 # terminal's colours and the shared exits (../terminal-kit).
 terminal-kit = { path = "../terminal-kit" }
