@@ -26,10 +26,9 @@ fn sent(short: &str, ago: i64, from: &str, text: &str) -> Message {
 
 /// Cadence's ask `ago` seconds back to `to` about its message `claim`.
 fn asked(short: &str, ago: i64, claim: &str, to: &str) -> Message {
-    let text = format!("cadence hour: your message {claim} says Joel ruled or wants something.");
     Message {
         to: vec![format!("@{to}")],
-        ..sent(short, ago, CADENCE, &text)
+        ..sent(short, ago, CADENCE, &ask(claim, "Joel wants it."))
     }
 }
 
@@ -206,6 +205,73 @@ fn a_claim_with_a_word_inside_joelish_isnt_one() {
         None,
         "the wish list, a list of his, was read as a wish he said"
     );
+    for text in [
+        "Joel's calendar has the review at 3.",
+        "Per Joelle, the lab is shut.",
+        "Joel's willingness is not the question.",
+    ] {
+        assert_eq!(
+            unbacked(text),
+            None,
+            "a word only starting a claim was read as one: {text}"
+        );
+    }
+    assert!(
+        unbacked("Those were Joel's calls.").is_some(),
+        "a claim in the plural went uncounted"
+    );
+}
+
+/// A denial of his rule is the correction the measure wants, not a claim,
+/// but a denial set off by a stop denies nothing after it.
+#[test]
+fn a_denial_of_his_rule_claims_nothing() {
+    for text in [
+        "That was my pivot, not Joel's rule.",
+        "This isn't Joel's rule.",
+        "It was never his rule, Joel set nothing.",
+    ] {
+        assert_eq!(
+            unbacked(text),
+            None,
+            "a denial was counted as a claim: {text}"
+        );
+    }
+    assert!(
+        unbacked("No, Joel wants the lab shut.").is_some(),
+        "a claim after a no set off by a stop went uncounted"
+    );
+}
+
+/// The card names each claim on a line of its own for the orchestrator to
+/// pass on, so a message passing on the card's lines claims nothing; its
+/// own words around them are still judged.
+#[test]
+fn the_cards_lines_passed_on_claim_nothing() {
+    let relay = format!(
+        "From the hour's card:\n✕ {SAYS}: 1, at most 0\n  [0000000a] I broke Joel's rule. · \
+         T6E7X6\n- [0000000b] Joel wants it. · 5UTLKM"
+    );
+    assert_eq!(
+        unbacked(&relay),
+        None,
+        "a relay of the card was counted as a claim"
+    );
+    assert!(
+        unbacked(&format!("{relay}\nAnd Joel wants it shut.")).is_some(),
+        "a claim of the relayer's own beside the card's lines went uncounted"
+    );
+}
+
+/// The ask's text is written by [`ask`] and read back by [`about`], so
+/// rewording one can't leave the other reading no ask at all.
+#[test]
+fn an_asks_text_names_the_claim_it_asks_about() {
+    assert_eq!(
+        about(&ask("0000000a", "I broke Joel's rule.")),
+        Some("0000000a"),
+        "the ask's own text didn't read back as about its claim"
+    );
 }
 
 /// The ask tells its sender to answer re the ask or re the claim, and
@@ -254,8 +320,14 @@ fn a_senders_answer_re_the_ask_or_the_claim_clears_it_and_isnt_counted() {
     );
     let mut by_card = sent("00000014", 200, "IKQ63G", "Held: Joel wants it held.");
     by_card.re = Some("00000013".to_owned());
+    let mut before_ask = sent("00000018", 1500, "T6E7X6", "Correction: Joel wants it.");
+    before_ask.re = Some("0000000a".to_owned());
+    let mut again = sent("00000019", 100, "T6E7X6", "I stand by it: Joel wants it.");
+    again.re = Some("0000000d".to_owned());
     let m = unsourced(
         &[
+            again,
+            before_ask,
             first,
             second,
             third,
@@ -276,14 +348,16 @@ fn a_senders_answer_re_the_ask_or_the_claim_clears_it_and_isnt_counted() {
         m.behind,
         [
             "[0000000c] Joel wants the lab shut. · IKQ63G",
+            "[00000018] Correction: Joel wants it. · T6E7X6",
             "[00000010] Joel's rule binds you too. · T6E7X6",
             "[00000012] Joel wants T6E7X6 to stop. · 5UTLKM",
             "[00000014] Held: Joel wants it held. · IKQ63G",
             "[00000016] So Joel wants it shut. · IKQ63G",
+            "[00000019] I stand by it: Joel wants it. · T6E7X6",
         ],
         "an answered claim or an answer was counted, or a reply clearing nothing, re a \
          claim never asked about, another's claim, its ask or another cadence message, \
-         went uncounted"
+         sent before the ask or after the first answer, went uncounted"
     );
     let m = unsourced(&[sent("00000011", 60, CADENCE, "Joel wants it.")], NOW);
     assert_eq!(
@@ -325,12 +399,12 @@ fn a_claim_older_than_a_day_or_sent_twice_is_counted_once_or_not_at_all() {
     );
 }
 
-/// The ask names who may answer, so an answer after its claim has left
-/// the day is still one, and its sender isn't asked about its own
-/// retraction.
+/// The ask names who may answer, so an answer after its claim, and its
+/// ask, have left the day is still one, and its sender isn't asked about
+/// its own retraction.
 #[test]
 fn an_answer_after_its_claim_left_the_day_is_still_an_answer() {
-    let ask = asked("0000000d", DAY - 600, "0000000a", "T6E7X6");
+    let ask = asked("0000000d", DAY + 600, "0000000a", "T6E7X6");
     let mut answer = sent(
         "0000000e",
         60,
@@ -343,6 +417,42 @@ fn an_answer_after_its_claim_left_the_day_is_still_an_answer() {
         m.behind,
         Vec::<String>::new(),
         "an answer re an ask whose claim had left the day was counted as a claim"
+    );
+}
+
+/// Writes `m` into `folder` as the harness files it.
+fn put(folder: &Path, m: &Message) {
+    fs::create_dir_all(folder).expect("the message's folder couldn't be made");
+    let body = serde_json::to_vec(m).expect("the message couldn't be written");
+    fs::write(folder.join(format!("{}.json", m.id)), body).expect("the message wasn't written");
+}
+
+/// The measure reads the last day's messages, and cadence's own over the
+/// day before too, so an answer to an ask sent late in its claim's day is
+/// still read as one; nothing else older than a day is opened.
+#[test]
+fn the_measure_reads_cadences_asks_over_two_days_and_the_rest_over_one() {
+    let dir = tempfile::tempdir().expect("the test's folder couldn't be made");
+    let messages = dir
+        .path()
+        .join("pi/agentic-harness.pi/mesh-workflow/messages");
+    let ask = asked("0000000d", DAY + 600, "0000000a", "T6E7X6");
+    let mut answer = sent(
+        "0000000e",
+        60,
+        "T6E7X6",
+        "Dropped: Joel's rule was my caution.",
+    );
+    answer.re = Some(ask.id.clone());
+    put(&messages, &ask);
+    put(&messages, &answer);
+    let old = format!("{}-T6E7X6-1-0000000f", (NOW - DAY - 600) * 1000);
+    fs::write(messages.join(format!("{old}.json")), "{").expect("the old file wasn't written");
+    let m = read(dir.path(), NOW);
+    assert_eq!(
+        (m.behind.as_slice(), m.says.as_str()),
+        ([].as_slice(), SAYS),
+        "an answer to an ask over a day old was counted, or an old message was opened"
     );
 }
 
@@ -380,11 +490,35 @@ fn with_no_messages_folder_or_one_that_cant_be_listed_the_measure_is_left_unjudg
         "the torn file wasn't named: {}",
         m.says
     );
-    fs::remove_dir_all(&messages).expect("the messages folder couldn't be removed");
-    fs::write(&messages, "").expect("a file couldn't stand in for the folder");
-    let m = read(home, NOW);
-    assert_eq!(
-        m.target, None,
-        "a messages folder that can't be listed was read as none, so its asks would close"
-    );
+    shut_day_is_unread(&messages);
 }
+
+/// A day's folder that can't be listed leaves the measure unread, saying
+/// why, rather than read as none and closing its asks.
+#[cfg(unix)]
+fn shut_day_is_unread(messages: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    let home = messages
+        .ancestors()
+        .nth(4)
+        .expect("the messages folder has a home");
+    let day = messages.join("2026-11-25");
+    put(&day, &sent("00000010", 300, "5UTLKM", "Joel wants it."));
+    fs::set_permissions(&day, fs::Permissions::from_mode(0o000))
+        .expect("the day's folder couldn't be shut");
+    let shut = fs::read_dir(&day).is_err();
+    let m = read(home, NOW);
+    fs::set_permissions(&day, fs::Permissions::from_mode(0o755))
+        .expect("the day's folder couldn't be opened again");
+    // Run as root, a shut folder still lists, so there's nothing to see.
+    if shut {
+        assert!(
+            m.target.is_none() && m.says.contains("can't be listed"),
+            "a day's folder that can't be listed was read as none: {}",
+            m.says
+        );
+    }
+}
+
+#[cfg(not(unix))]
+fn shut_day_is_unread(_: &Path) {}

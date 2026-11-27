@@ -15,21 +15,27 @@
 //! backticks is words about a claim, not one. Each claim in a message is
 //! judged, so one backed claim hides no other.
 //!
-//! Cadence's own messages are left out, and so is an answer, re its ask
-//! or re the claim itself, from the claim's sender. An answer takes its
-//! claim off the count, whatever it says: cadence can't judge whether the
-//! words given are his, so the answer is read by whoever reads the mesh.
-//! A message whose id isn't well formed, or names another sender, is
-//! read as no one's, since its asks would go astray.
+//! A denial, as "not Joel's rule", claims nothing, and nor does a line
+//! of cadence's own card passed on, as `[0000000a] ... · T6E7X6`.
+//!
+//! Cadence's own messages are left out, and so is the first answer to its
+//! ask, re the ask or re the claim, from the cell asked. An answer takes
+//! its claim off the count, whatever it says: cadence can't judge whether
+//! the words given are his, so the answer is read by whoever reads the
+//! mesh. A message whose id isn't well formed, or names another sender,
+//! is read as no one's, since its asks would go astray.
+//!
+//! The mesh is a shared folder with nothing signed, so this counts the
+//! cells that write through the harness as it is meant to be used: a
+//! cell writing files by hand can send as cadence or as another cell.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use super::cells::short_id;
 use super::cited::sentences;
-use super::holds::sent_at;
 use super::{Class, DAY, Measure, count, short};
-use crate::mesh::{Mesh, Message};
+use crate::mesh::{Mesh, Message, stamped_at};
 
 /// The key the count of claims with no word of his behind them takes.
 pub const KEY: &str = "rulings-unsourced";
@@ -123,6 +129,11 @@ const SAYING: [&str; 17] = [
 /// as "Joel's rule of 22 Nov": "Joel's rule at 10:08" dates its breaking.
 const RULES: [&str; 5] = ["rule", "ruling", "wish", "call", "orders"];
 
+/// The words that deny a claim they come just before, lower case.
+const DENIALS: [&str; 10] = [
+    "not", "isn't", "wasn't", "aren't", "weren't", "isnt", "wasnt", "never", "no", "nor",
+];
+
 /// The words naming him, lower case, with his name's possessive.
 const HIM: [&str; 5] = ["joel", "joel's", "he", "his", "him"];
 
@@ -131,11 +142,16 @@ const HIM: [&str; 5] = ["joel", "joel's", "he", "his", "him"];
 /// further is a file that would otherwise be named as torn every hour.
 const AHEAD: i64 = 300;
 
+/// How many torn files the card names by id, the rest counted.
+const TORN_NAMED: usize = 3;
+
 /// The measure, from the mesh's messages of the last day under
-/// `state_home`'s harness folder. With no messages folder there, or one
-/// that can't be listed or read, it's left unjudged, rather than reading
-/// the messages it missed as none unsourced and closing their asks. A file
-/// that isn't a message is named in what it says and read past.
+/// `state_home`'s harness folder, and cadence's own over the day before
+/// too, since an ask sent late in a claim's day may be answered after
+/// it. With no messages folder there, or one that can't be listed or
+/// read, it's left unjudged, rather than reading the messages it missed
+/// as none unsourced and closing their asks. A file that isn't a message
+/// is named in what it says and read past.
 #[must_use]
 pub fn read(state_home: &Path, now: i64) -> Measure {
     let mesh = Mesh {
@@ -144,11 +160,19 @@ pub fn read(state_home: &Path, now: i64) -> Measure {
     if !mesh.root.join("mesh-workflow/messages").is_dir() {
         return unread("no mesh messages folder here");
     }
-    match mesh.sent_as_named((now - DAY) * 1000, (now + AHEAD) * 1000) {
+    let day = (now - DAY) * 1000;
+    let wanted = |stem: &str| {
+        stamped_at(stem).is_some_and(|at| at >= day) || stem.split('-').nth(1) == Some(CADENCE)
+    };
+    match mesh.sent_as_named((now - 2 * DAY) * 1000, (now + AHEAD) * 1000, wanted) {
         Ok((sent, torn)) if torn.is_empty() => unsourced(&sent, now),
         Ok((sent, torn)) => {
+            let mut named: Vec<String> = torn.iter().take(TORN_NAMED).map(|t| clean(t)).collect();
+            if torn.len() > TORN_NAMED {
+                named.push(format!("and {} more", torn.len() - TORN_NAMED));
+            }
             let mut m = unsourced(&sent, now);
-            m.says = format!("{} (read past, not messages: {})", m.says, torn.join(", "));
+            m.says = format!("{} (read past, not messages: {})", m.says, named.join(", "));
             m
         }
         Err(why) => unread(&why),
@@ -159,11 +183,36 @@ pub fn read(state_home: &Path, now: i64) -> Measure {
 #[must_use]
 pub fn unread(why: &str) -> Measure {
     Measure {
-        says: format!("{SAYS} (unread: {why})"),
+        says: format!("{SAYS} (unread: {})", clean(why)),
         target: None,
         ..unsourced(&[], 0)
     }
 }
+
+/// `text` with no control character in it, so a file's name or a
+/// sender's words can't write a line of the card that reads as cadence's.
+fn clean(text: &str) -> String {
+    text.replace(char::is_control, " ")
+}
+
+/// The ask to the sender of message `id` claiming his rule in `said`.
+/// [`about`] reads the claim's id back from its opening words, so the two
+/// are kept here together.
+#[must_use]
+pub fn ask(id: &str, said: &str) -> String {
+    format!(
+        "{ASKS}{id} {ASKED} or wants something, with no word of when he said it: \"{said}\". \
+         Only his own words bind a cell. Please answer on the mesh, re this ask or re {id}, \
+         with his words and when he said them, or say the claim is dropped and whose caution \
+         it was. Your answer closes this ask; unanswered, it closes a day after the message."
+    )
+}
+
+/// The words an ask opens with, before the claim's id.
+const ASKS: &str = "cadence hour: your message ";
+
+/// The words that follow the claim's id in an ask.
+const ASKED: &str = "says Joel ruled";
 
 /// The messages in `sent` from the day before `now` that claim a rule or
 /// wish of Joel's with nothing behind it and no answer from their sender,
@@ -181,12 +230,11 @@ pub fn unsourced(sent: &[Message], now: i64) -> Measure {
         .filter(|m| m.from != CADENCE && !answers.contains(m.id.as_str()))
         .filter(|m| !answered.contains(&(m.from.as_str(), short_id(&m.id))))
         .filter(|m| seen.insert(m.id.as_str()))
-        .filter_map(|m| Some((sent_at(m)?, m)))
+        .filter_map(|m| Some((stamp(m)?, m)))
         .filter(|&(at, _)| at > now - DAY && at <= now)
         .filter_map(|(at, m)| Some((at, m, unbacked(&m.text)?)))
         .collect();
     found.sort_by_key(|&(at, _, _)| at);
-    let clean = |text: &str| text.replace(char::is_control, " ");
     Measure {
         key: KEY.to_owned(),
         class: Class::Cells,
@@ -217,13 +265,21 @@ fn well_named(m: &Message) -> bool {
         if digits(ms) && plain(from) && *from == m.from && digits(pid) && plain(id))
 }
 
+/// When `m` was sent, in seconds, by the stamp its id and file name both
+/// carry. A message's own `at` is left aside: its sender writes it, and
+/// one set a day back would slip its claim out of the count.
+fn stamp(m: &Message) -> Option<i64> {
+    stamped_at(&m.id).map(|ms| ms / 1000)
+}
+
 /// The ids of the answers in `sent` to a claim of his rule, and the claims
 /// they answer, by sender and short id. Only a claim this measure asked
-/// about has an answer: one from the cell it asked, re its ask or re the
-/// claim the ask names. The ask, not the claim, says who may answer, so
-/// an answer counts after its claim has left the day, and a reply re a
-/// message never asked about, or re any other of cadence's, is judged as
-/// any other message.
+/// about has an answer: the first reply, after the ask, from the cell it
+/// asked, re its ask or re the claim the ask names. The ask, not the
+/// claim, says who may answer, so an answer counts after its claim has
+/// left the day. A later reply, one before the ask, one re a message never
+/// asked about, or one re any other of cadence's, is judged as any other
+/// message, so a cell can't keep claiming his rule under its first answer.
 fn answers<'a>(sent: &[&'a Message]) -> (BTreeSet<&'a str>, BTreeSet<(&'a str, &'a str)>) {
     let asks: Vec<(&str, &str, &Message)> = sent
         .iter()
@@ -232,18 +288,23 @@ fn answers<'a>(sent: &[&'a Message]) -> (BTreeSet<&'a str>, BTreeSet<(&'a str, &
         .filter_map(|m| Some((short_id(&m.id), about(&m.text)?, m)))
         .collect();
     let claim_of: BTreeMap<&str, &str> = asks.iter().map(|&(ask, claim, _)| (ask, claim)).collect();
-    let asked = |claim: &str, of: &str| {
+    let asked_before = |claim: &str, of: &str, at: Option<i64>| {
         asks.iter().any(|&(_, about, ask)| {
-            about == claim && ask.to.iter().any(|to| to == &format!("@{of}"))
+            about == claim
+                && ask.to.iter().any(|to| to == &format!("@{of}"))
+                && stamped_at(&ask.id) < at
         })
     };
+    let mut by_time = sent.to_vec();
+    by_time.sort_by_key(|m| stamped_at(&m.id));
     let (mut answers, mut answered) = (BTreeSet::new(), BTreeSet::new());
-    for &m in sent {
+    for m in by_time {
         let Some(re) = m.re.as_deref().map(short_id) else {
             continue;
         };
         let claim = claim_of.get(re).copied().unwrap_or(re);
-        if asked(claim, &m.from) {
+        let first = !answered.contains(&(m.from.as_str(), claim));
+        if first && asked_before(claim, &m.from, stamped_at(&m.id)) {
             answers.insert(m.id.as_str());
             answered.insert((m.from.as_str(), claim));
         }
@@ -252,13 +313,10 @@ fn answers<'a>(sent: &[&'a Message]) -> (BTreeSet<&'a str>, BTreeSet<(&'a str, &
 }
 
 /// The short id of the message one of this measure's asks is about, as
-/// its text names it: "cadence hour: your message <short id> says Joel
-/// ruled". Any other of cadence's messages is about no claim.
+/// [`ask`] writes it. Any other of cadence's messages is about no claim.
 fn about(ask: &str) -> Option<&str> {
-    let (id, rest) = ask
-        .strip_prefix("cadence hour: your message ")?
-        .split_once(' ')?;
-    rest.starts_with("says Joel ruled").then_some(id)
+    let (id, rest) = ask.strip_prefix(ASKS)?.split_once(' ')?;
+    rest.starts_with(ASKED).then_some(id)
 }
 
 /// The first sentence of `text` claiming a rule or wish of Joel's that
@@ -276,10 +334,35 @@ pub fn unbacked(text: &str) -> Option<String> {
         .map(|at| said[at].to_owned())
 }
 
-/// `text` with its curly apostrophes made straight and its quotes put by
-/// stand-ins, as [`unquoted`] does.
+/// `text` with its curly apostrophes made straight, the lines of cadence's
+/// card it passes on taken out, as [`uncarded`] does, and its quotes put
+/// by stand-ins, as [`unquoted`] does.
 fn plain(text: &str) -> String {
-    unquoted(&text.replace(['\u{2018}', '\u{2019}'], "'"))
+    unquoted(&uncarded(&text.replace(['\u{2018}', '\u{2019}'], "'")))
+}
+
+/// `text` with no line of cadence's card in it: neither a claim the card
+/// names, as `[0000000a] I broke Joel's rule. · T6E7X6`, nor what the
+/// measure says it counts. The card is made to be passed on, and a cell
+/// passing it on claims nothing of its own.
+fn uncarded(text: &str) -> String {
+    let plain = |part: &str| !part.is_empty() && part.chars().all(|c| c.is_ascii_alphanumeric());
+    let carded = |line: &str| {
+        let line = line.trim_start_matches(|c: char| c.is_whitespace() || c == '-' || c == '*');
+        let named = line
+            .strip_prefix('[')
+            .and_then(|rest| rest.split_once("] "))
+            .is_some_and(|(id, _)| plain(id));
+        named
+            && line
+                .rsplit_once(" · ")
+                .is_some_and(|(_, from)| plain(from.trim_end()))
+    };
+    text.lines()
+        .filter(|line| !carded(line))
+        .collect::<Vec<_>>()
+        .join("\n")
+        .replace(SAYS, "...")
 }
 
 /// `text` with its bold and italic marks taken out, and every span in
@@ -330,14 +413,28 @@ fn claims(sentence: &str) -> bool {
     names || (joel && HIS.iter().any(|claim| at_word(&said, claim)))
 }
 
-/// Whether `words` holds `phrase` where a word starts.
+/// Whether `words` holds `phrase` as whole words, or with a plural "s",
+/// so "Joel's calls" claims and "Joel's calendar" doesn't, and with no
+/// denial just before it, as [`denied`] reads one.
 fn at_word(words: &str, phrase: &str) -> bool {
     words.match_indices(phrase).any(|(at, _)| {
-        words[..at]
-            .chars()
-            .next_back()
-            .is_none_or(|before| !before.is_alphanumeric())
+        let before = words[..at].chars().next_back();
+        let rest = &words[at + phrase.len()..];
+        let after = rest.strip_prefix('s').unwrap_or(rest).chars().next();
+        before.is_none_or(|c| !c.is_alphanumeric())
+            && after.is_none_or(|c| !c.is_alphanumeric())
+            && !denied(&words[..at])
     })
+}
+
+/// Whether the words before a claim end in a denial of it, as "not Joel's
+/// rule" or "never his wish". A denial set off by a stop, as "No, Joel
+/// wants it", answers something else and denies nothing that follows.
+fn denied(before: &str) -> bool {
+    before
+        .split_whitespace()
+        .next_back()
+        .is_some_and(|word| word.ends_with(char::is_alphanumeric) && DENIALS.contains(&word))
 }
 
 /// Whether `sentence` says when he said something: a date or a clock

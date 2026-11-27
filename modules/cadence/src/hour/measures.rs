@@ -147,10 +147,11 @@ pub fn drag(measures: &[Measure]) -> Option<&Measure> {
         .map(|(m, _)| m)
 }
 
-/// The measures read from the mesh's messages of the last day under
-/// `state_home`: the holds no ask in `asks` dates, and the claims of Joel's
-/// rule with no word of his. Each reads the messages itself; they're
-/// gathered in one call so the hour's gather stays within clippy's hundred.
+/// The measures read from the mesh's messages under `state_home`: the
+/// holds no ask in `asks` dates, over the last two hours, and the claims
+/// of Joel's rule with no word of his, over the last day. Each reads the
+/// messages itself, since each reads a different span; they're gathered
+/// in one call so the hour's gather stays within clippy's hundred.
 #[must_use]
 pub fn from_mesh(state_home: &std::path::Path, asks: &str, now: i64) -> [Measure; 2] {
     [

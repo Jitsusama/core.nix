@@ -13,6 +13,8 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+mod named;
+
 /// Where the harness keeps the mesh and its parked sessions.
 #[derive(Debug, Clone)]
 pub struct Mesh {
@@ -360,60 +362,6 @@ impl Mesh {
             .collect()
     }
 
-    /// Every message stamped from `from_ms` to `to_ms` whose body names the
-    /// id its file is named by, and the ids of the files there that aren't
-    /// messages. As [`Mesh::senders`] holds, a body naming another id is no
-    /// one's, and a measure that asks its sender would ask the wrong cell.
-    ///
-    /// Unlike [`Mesh::sent_since`], a folder that can't be listed, or a
-    /// message that can't be read for any reason but its file having moved,
-    /// is said why, since a measure reading what's left would close asks on
-    /// messages it never saw. The harness files each message into its day's
-    /// folder after a while, so one gone from the first folder read is
-    /// sought again in the day folders. A file that isn't a message, as one
-    /// torn in writing, is named rather than read, so one bad file never
-    /// blinds the rest; `to_ms` keeps a file stamped in the future from
-    /// being named every hour for good.
-    pub fn sent_as_named(
-        &self,
-        from_ms: i64,
-        to_ms: i64,
-    ) -> Result<(Vec<Message>, Vec<String>), String> {
-        let kept = day_kept(from_ms);
-        let days = || -> Result<Vec<PathBuf>, String> {
-            let mut files = Vec::new();
-            for path in listed(&self.messages())? {
-                let name = path.file_name().map(|n| n.to_string_lossy().into_owned());
-                if path.is_dir() && name.as_deref().is_some_and(&kept) {
-                    files.extend(listed(&path)?);
-                } else if !path.is_dir() {
-                    files.push(path);
-                }
-            }
-            Ok(files)
-        };
-        let stamped = |p: &&PathBuf| {
-            let at = p.file_name().and_then(|n| stamped_at(&n.to_string_lossy()));
-            p.extension().is_some_and(|e| e == "json")
-                && !p.is_dir()
-                && at.is_some_and(|at| (from_ms..=to_ms).contains(&at))
-        };
-        let (mut read, mut moved) = (Read::default(), BTreeSet::new());
-        for path in days()?.iter().filter(stamped) {
-            if !read.file(path)? {
-                moved.insert(path.file_name().map(ToOwned::to_owned));
-            }
-        }
-        if !moved.is_empty() {
-            for path in days()?.iter().filter(stamped) {
-                if moved.remove(&path.file_name().map(ToOwned::to_owned)) {
-                    read.file(path)?;
-                }
-            }
-        }
-        Ok((read.sent, read.torn))
-    }
-
     /// Who sent each message sent at `from_ms` or later whose short id,
     /// the last part of its id, is among `ids`, and what it said, by that
     /// short id. A file's name is its message's id, `<ms>-<from>-<pid>-<short
@@ -461,9 +409,17 @@ impl Mesh {
     /// Every message's file whose id is stamped at `from_ms` or later, as
     /// [`Mesh::sent_since`] reads them.
     fn files_since(&self, from_ms: i64) -> Vec<PathBuf> {
-        self.message_files(day_kept(from_ms))
+        let earliest = jiff::Timestamp::from_millisecond(from_ms - 24 * 3600 * 1000)
+            .map(|at| at.strftime("%Y-%m-%d").to_string())
+            .unwrap_or_default();
+        let dated = |name: &str| name.len() == 10 && name.as_bytes()[4] == b'-';
+        self.message_files(|day| !dated(day) || day >= earliest.as_str())
             .into_iter()
-            .filter(|p| stamped_since(p, from_ms))
+            .filter(|p| {
+                p.file_name()
+                    .and_then(|n| stamped_at(&n.to_string_lossy()))
+                    .is_some_and(|at| at >= from_ms)
+            })
             .collect()
     }
 
@@ -576,107 +532,6 @@ fn json_files(folder: &Path) -> impl Iterator<Item = PathBuf> {
         .filter_map(Result::ok)
         .map(|entry| entry.path())
         .filter(|path| path.extension().is_some_and(|e| e == "json"))
-}
-
-/// What [`Mesh::sent_as_named`] has read: the messages named as their
-/// files are, and the ids of the files that aren't messages.
-#[derive(Default)]
-struct Read {
-    sent: Vec<Message>,
-    torn: Vec<String>,
-}
-
-impl Read {
-    /// Reads the message at `path`, saying false when its file has moved
-    /// away and why when it can't be read for any other reason.
-    fn file(&mut self, path: &Path) -> Result<bool, String> {
-        let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
-            return Ok(true);
-        };
-        let bytes = match fs::read(path) {
-            Ok(bytes) => bytes,
-            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(false),
-            Err(e) => return Err(format!("{stem} can't be read: {e}")),
-        };
-        match serde_json::from_slice::<Loose>(&bytes) {
-            Ok(loose) if loose.id == stem => self.sent.push(loose.into()),
-            Ok(_) => {}
-            Err(_) => self.torn.push(stem.to_owned()),
-        }
-        Ok(true)
-    }
-}
-
-/// A message as far as a measure needs one: its id, sender and words,
-/// with whatever else it carries, since a message missing a field
-/// cadence never reads is still a message.
-#[derive(Deserialize)]
-struct Loose {
-    id: String,
-    from: String,
-    text: String,
-    #[serde(default)]
-    v: u32,
-    #[serde(default)]
-    at: String,
-    #[serde(default)]
-    to: Vec<String>,
-    #[serde(default)]
-    intent: String,
-    #[serde(default)]
-    pid: u32,
-    #[serde(default)]
-    re: Option<String>,
-    #[serde(default)]
-    supersedes: Option<String>,
-    #[serde(default, rename = "endsHold")]
-    ends_hold: bool,
-}
-
-impl From<Loose> for Message {
-    fn from(m: Loose) -> Self {
-        Message {
-            v: m.v,
-            id: m.id,
-            at: m.at,
-            from: m.from,
-            to: m.to,
-            intent: m.intent,
-            text: m.text,
-            pid: m.pid,
-            re: m.re,
-            supersedes: m.supersedes,
-            ends_hold: m.ends_hold,
-        }
-    }
-}
-
-/// The paths in `dir`, or why it can't be listed.
-fn listed(dir: &Path) -> Result<Vec<PathBuf>, String> {
-    fs::read_dir(dir)
-        .and_then(|entries| entries.map(|e| e.map(|e| e.path())).collect())
-        .map_err(|e| format!("{} can't be listed: {e}", dir.display()))
-}
-
-/// Whether a folder of the messages folder, by its name, may hold a
-/// message sent at `from_ms` or later: any but a day's folder from before
-/// the day before, since a message is filed a little after it's sent.
-fn day_kept(from_ms: i64) -> impl Fn(&str) -> bool {
-    let earliest = jiff::Timestamp::from_millisecond(from_ms - 24 * 3600 * 1000)
-        .map(|at| at.strftime("%Y-%m-%d").to_string())
-        .unwrap_or_default();
-    move |name: &str| {
-        let dated = name.len() == 10 && name.as_bytes()[4] == b'-';
-        !dated || name >= earliest.as_str()
-    }
-}
-
-/// Whether the message file at `path` is named for a message sent at
-/// `from_ms` or later.
-fn stamped_since(path: &Path, from_ms: i64) -> bool {
-    path.file_name()
-        .and_then(|n| stamped_at(&n.to_string_lossy()))
-        .is_some_and(|at| at >= from_ms)
 }
 
 fn read_json<T: for<'de> Deserialize<'de>>(path: &Path) -> Option<T> {
@@ -980,92 +835,6 @@ mod tests {
                 format!("{}-A-1-dd", midnight + 7_200_000)
             ],
             "one sent before the moment read, one since missed, or a day long past listed"
-        );
-    }
-
-    #[test]
-    fn a_message_whose_body_names_another_id_than_its_file_is_read_as_no_ones() {
-        let (_dir, mesh) = mesh();
-        for id in ["10-CADENCE-1-aa", "11-CADENCE-1-bb"] {
-            mesh.send(&question(id, "B")).unwrap();
-        }
-        fs::rename(
-            mesh.messages().join("11-CADENCE-1-bb.json"),
-            mesh.messages().join("12-OTHER-1-cc.json"),
-        )
-        .unwrap();
-        let ids: Vec<String> = mesh
-            .sent_as_named(0, i64::MAX - 1)
-            .expect("the messages were read")
-            .0
-            .into_iter()
-            .map(|m| m.id)
-            .collect();
-        assert_eq!(
-            ids,
-            ["10-CADENCE-1-aa"],
-            "a body naming another id than its file was read as sent"
-        );
-    }
-
-    /// A file that isn't a message is named and read past, so the rest are
-    /// still read, and a messages folder that can't be listed is said why
-    /// rather than read as no messages, since a measure would close the
-    /// asks of the messages it missed.
-    #[test]
-    fn messages_as_named_name_what_isnt_one_and_say_why_they_cant_be_listed() {
-        let (dir, mesh) = mesh();
-        mesh.send(&question("10-CADENCE-1-aa", "B")).unwrap();
-        fs::write(mesh.messages().join("11-CADENCE-1-bb.json"), "{").unwrap();
-        let (sent, torn) = mesh.sent_as_named(0, 100).expect("the messages were read");
-        let ids: Vec<&str> = sent.iter().map(|m| m.id.as_str()).collect();
-        assert_eq!(ids, ["10-CADENCE-1-aa"], "one torn file hid the others");
-        assert_eq!(torn, ["11-CADENCE-1-bb"], "a torn file wasn't named");
-        fs::remove_dir_all(dir.path().join("mesh-workflow")).unwrap();
-        assert!(
-            mesh.sent_as_named(0, 100).is_err(),
-            "a messages folder that can't be listed was read as no messages"
-        );
-    }
-
-    /// A message missing what cadence never reads of it, as its version,
-    /// time or process, is still read; one stamped past `to_ms` is neither
-    /// read nor named, so a file stamped in the future can't be named
-    /// every hour for good.
-    #[test]
-    fn messages_as_named_read_a_spare_shape_and_leave_the_future_alone() {
-        let (_dir, mesh) = mesh();
-        let spare = r#"{"id":"10-A-1-aa","from":"A","text":"hi","to":["@B"]}"#;
-        fs::write(mesh.messages().join("10-A-1-aa.json"), spare).unwrap();
-        fs::write(mesh.messages().join("900-A-1-zz.json"), "{").unwrap();
-        let (sent, torn) = mesh.sent_as_named(0, 100).expect("the messages were read");
-        let read: Vec<(&str, &[String])> = sent
-            .iter()
-            .map(|m| (m.id.as_str(), m.to.as_slice()))
-            .collect();
-        assert_eq!(
-            read,
-            [("10-A-1-aa", ["@B".to_owned()].as_slice())],
-            "a message missing fields cadence doesn't read was read past"
-        );
-        assert!(
-            torn.is_empty(),
-            "a file stamped past the read was named: {torn:?}"
-        );
-    }
-
-    /// A message gone between the folder's listing and its reading has
-    /// been filed away into its day, so it's said moved rather than why it
-    /// can't be read, and sought again there.
-    #[test]
-    fn a_message_moved_away_mid_read_is_said_moved() {
-        let (_dir, mesh) = mesh();
-        let mut read = Read::default();
-        let gone = mesh.messages().join("10-A-1-aa.json");
-        assert_eq!(
-            read.file(&gone),
-            Ok(false),
-            "a message moved away was taken for one that can't be read"
         );
     }
 

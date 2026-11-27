@@ -259,29 +259,37 @@ fn told_late_asked(m: &Measure, says: &str) -> Vec<Filed> {
 /// Joel's with no word of his behind it, filed message by message, each
 /// line opening with the message's short id in brackets and naming its
 /// sender last. A message can't be taken back, so it closes once its line
-/// is gone: when its sender answers, or a day after it was sent.
+/// is gone: when its sender answers, or a day after it was sent. Each
+/// sender is asked about its oldest one at a time, as [`RULED_EACH`] says,
+/// and the next once that one closes, so a day's backlog never wakes a
+/// cell for every message in it; the card still names them all.
 fn ruled_asked(m: &Measure) -> Vec<Filed> {
+    let mut asked: BTreeMap<&str, usize> = BTreeMap::new();
     m.behind
         .iter()
         .filter_map(|line| line.rsplit_once(" · "))
+        .filter(|&(_, owner)| {
+            let each = asked.entry(owner).or_default();
+            *each += 1;
+            *each <= RULED_EACH
+        })
         .filter_map(|(claim, owner)| {
             let (id, said) = claim.strip_prefix('[')?.split_once("] ")?;
             Some(Filed {
                 key: format!("hour:{}:{owner}:{id}", m.key),
                 says: format!("a claim of his rule with no word of his, yours: {said}"),
-                text: format!(
-                    "cadence hour: your message {id} says Joel ruled or wants something, with \
-                     no word of when he said it: \"{said}\". Only his own words bind a cell. \
-                     Please answer on the mesh, re this ask or re {id}, with his words and \
-                     when he said them, or say the claim is dropped and whose caution it was. \
-                     Your answer closes this ask; unanswered, it closes a day after the \
-                     message."
-                ),
+                text: ruled::ask(id, said),
                 owner: owner.to_owned(),
             })
         })
         .collect()
 }
+
+/// How many claims of his rule each sender is asked about at once. A day
+/// of the mesh on 26 November held some 180 messages using the words of a
+/// claim, from a few dozen senders, so the first hour would otherwise wake
+/// some cells many times over.
+const RULED_EACH: usize = 1;
 
 /// Each owner's ask for a test that runs to catch their misses again, in
 /// the orchestrator's ruling (23 November): every miss gets a check that
@@ -1206,6 +1214,47 @@ mod tests {
             open(&ledger),
             [format!("hour:{}:5UTLKM:5a6b7c8d", ruled::KEY)],
             "a claim closed while its line stood, or stayed open once it was gone"
+        );
+    }
+
+    /// A day's backlog of one sender's claims asks about its oldest one,
+    /// and the next only once that one closes, so a cell isn't woken for
+    /// every message of a day.
+    #[test]
+    fn a_sender_is_asked_about_one_claim_at_a_time() {
+        let mut claims = measure(ruled::KEY, Class::Cells, 5.0, Some(0.0));
+        claims.behind = ["0000000a", "0000000b", "0000000c", "0000000d"]
+            .iter()
+            .map(|id| format!("[{id}] Joel wants it. · T6E7X6"))
+            .chain(["[0000000e] Joel wants it. · 5UTLKM".to_owned()])
+            .collect();
+        let mut ledger = Vec::new();
+        let asked = |told: &[(String, String)]| {
+            let mut ids: Vec<String> = told
+                .iter()
+                .filter_map(|(_, text)| text.strip_prefix("cadence hour: your message "))
+                .filter_map(|text| text.split_once(' ').map(|(id, _)| id.to_owned()))
+                .collect();
+            ids.sort_unstable();
+            ids
+        };
+        let told = file(
+            &mut ledger,
+            std::slice::from_ref(&claims),
+            "2026-11-26",
+            1000,
+        );
+        assert_eq!(
+            asked(&told),
+            ["0000000a", "0000000e"],
+            "a sender was asked about more than its oldest, or another sender not at all"
+        );
+        claims.behind.remove(0);
+        let told = file(&mut ledger, &[claims], "2026-11-26", 4600);
+        assert_eq!(
+            asked(&told),
+            ["0000000b"],
+            "the next claim wasn't asked once one closed, or one was asked again"
         );
     }
 
