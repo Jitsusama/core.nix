@@ -662,8 +662,7 @@ fn scheds_read_without_their_dash_row_are_counted_in_the_window() {
     now.scheds_without_dash_row = 3;
     let w = between(&then, &now, quiet_niri(), 0, "gen");
     assert_eq!(
-        w.scheds_without_dash_row,
-        3,
+        w.scheds_without_dash_row, 3,
         "the count didn't reach the window"
     );
     let line = serde_json::to_string(&w).unwrap();
@@ -674,8 +673,7 @@ fn scheds_read_without_their_dash_row_are_counted_in_the_window() {
     assert!(!line.contains("scheds_without_dash_row"), "{line}");
     let back: Window = serde_json::from_str(&line).unwrap();
     assert_eq!(
-        back.scheds_without_dash_row,
-        0,
+        back.scheds_without_dash_row, 0,
         "an older window read as a count"
     );
 }

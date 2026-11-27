@@ -279,8 +279,7 @@ fn each_sched_read_without_its_dash_row_is_counted() {
     ];
     let s = snapshot(&dir, &dir, &threads, BTreeMap::new());
     assert_eq!(
-        s.scheds_without_dash_row,
-        1,
+        s.scheds_without_dash_row, 1,
         "only the sched read without its dash row counts, not one whole or one not read"
     );
     let fair: Vec<Option<u64>> = s.threads.values().map(|t| t.fair_ns).collect();
