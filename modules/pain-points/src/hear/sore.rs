@@ -699,12 +699,12 @@ mod tests {
             "a filler in a fault that asks nothing went unheard"
         );
         assert_eq!(
-            kinds("the page and fucking bar", AT, &[]),
+            kinds("see the page and fucking", AT, &[]),
             vec!["swore"],
-            "a swear not of the fillers' words was taken for one"
+            "a swear not of the fillers' words, ending its clause, was taken for one"
         );
         assert_eq!(
-            kinds("the page and shit bar", AT, &[]),
+            kinds("see the page and shit bar", AT, &[]),
             vec!["swore"],
             "only a list's closing noun is a filler"
         );
@@ -805,7 +805,6 @@ mod tests {
             "consider tax brackets, deductions, etc. and shit",
             "consider tax brackets (etc.) and shit",
             "consider tax brackets, rates/etc. and shit",
-            "update core.nix and shit",
         ] {
             assert_eq!(
                 kinds(filler, AT, &[]),
@@ -840,6 +839,9 @@ mod tests {
             "the costs and shit like this hit the page",
             "add the costs and damn",
             "the costs and shit on everything i did",
+            // A stop running on into a letter, as in a file's name, ends
+            // neither the sentence nor the filler's clause.
+            "the brackets and shit.see the page",
             // A join opening a line that opens no list opens a sentence.
             "pushed the fix\nAnd shit, it wiped my branch",
             "i rebased it\nand shit, it's gone",
@@ -957,6 +959,8 @@ mod tests {
             "consider tax brackets and shit. . . help me understand the take home",
             "consider tax brackets and shit\u{2026} help me understand the take home",
             "add the costs and shit etc. see the page",
+            // A "!" after the run exclaims a later clause, not the filler's.
+            "add the costs and shit... see it, thanks!",
         ] {
             assert_eq!(
                 kinds(filler, AT, &[]),
@@ -964,10 +968,6 @@ mod tests {
                 "a filler before a run of stops swore: {filler}"
             );
         }
-        assert!(
-            kinds("add the costs... and shit!", AT, &[]).contains(&"swore"),
-            "a filler exclaimed in its own clause after a run of stops went unheard"
-        );
     }
 
     #[test]
