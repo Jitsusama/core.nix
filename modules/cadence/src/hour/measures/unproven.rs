@@ -91,7 +91,7 @@ pub fn read(
         .unwrap_or(now)
         - SINCE;
     let merges: RefCell<BTreeMap<&str, Option<BTreeMap<u64, String>>>> = RefCell::default();
-    let judged: RefCell<BTreeMap<(String, &str, u32), Option<bool>>> = RefCell::default();
+    let judged: RefCell<BTreeMap<Judging, Option<bool>>> = RefCell::default();
     let carried = |line: &Value, repo: Repo, number: u32| {
         let name = repo_name(repo);
         let key = (line["revs"].to_string(), name, number);
@@ -116,6 +116,10 @@ pub fn read(
         now,
     )
 }
+
+/// A switch's revisions, as its line writes them, and a change's repository
+/// and number: what a judgement of whether it carries the change is kept by.
+type Judging = (String, &'static str, u32);
 
 /// The name cadence's checkouts know `repo` by, as the misses call each.
 const fn repo_name(repo: Repo) -> &'static str {
@@ -196,15 +200,15 @@ pub fn unproven(
     }
     let by_ask = runs.as_ref().ok();
     let record = switches.unwrap_or_default();
-    let mut switched: Vec<(i64, Value)> = lines(record)
+    let mut timed: Vec<(i64, Value)> = lines(record)
         .filter_map(|line| Some((seconds(&line["at"])?, line)))
         .collect();
-    switched.sort_by_key(|(at, _)| *at);
+    timed.sort_by_key(|(at, _)| *at);
     // A record holding lines but no time read is one in another shape, not
     // none, so no pass is taken on it as if no switch had come.
     let switches_unread = match switches {
         Err(why) => Some(format!("the switch record unread: {}", clean(why))),
-        Ok(_) if switched.is_empty() && record.lines().any(|l| !l.trim().is_empty()) => {
+        Ok(_) if timed.is_empty() && record.lines().any(|l| !l.trim().is_empty()) => {
             Some("the switch record unread: no line names when it ran".to_owned())
         }
         Ok(_) => None,
@@ -213,7 +217,7 @@ pub fn unproven(
         .values()
         .filter_map(|ask| {
             let switches = Switches {
-                switched: &switched,
+                switched: &timed,
                 carried,
             };
             Some((ask, unproven_ask(ask, by_ask, &switches, now)?))
