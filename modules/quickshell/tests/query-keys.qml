@@ -2302,6 +2302,17 @@ QtObject {
         holds("and a styled one's links in its ink, unwashed",
             Search.readerText("<a href=\"x\">y</a>", { styled: true, ink: "#fff", sought: "y" }),
             "<div style=\"white-space:pre-wrap\"><a style=\"color:#fff\" href=\"x\">y</a></div>");
+        // Every title's reader is given it washed where it's sought, each
+        // break read as the space it stood for, as Drawer.qml gives it
+        // (`spaced`); another text's break ends what's washed.
+        const readerWash = { ink: "ink", ground: "ground" };
+        holds("a title's reader is washed across its break",
+            Search.readerText("a\nb", { sought: "a b", wash: readerWash, spaced: true }),
+            "<div style=\"white-space:pre-wrap\">"
+                + "<span style=\"color:ink;background-color:ground\">a<br>b</span></div>");
+        holds("and another text's reader is not",
+            Search.readerText("a\nb", { sought: "a b", wash: readerWash, spaced: false }),
+            "<div style=\"white-space:pre-wrap\">a<br>b</div>");
         const runsOn = [
             ["a space wrapped at", "Sparkling ", 9, " "],
             ["nothing at a zero-width space", "Server time.\u200b", 13, ""],
