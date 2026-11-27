@@ -1155,6 +1155,34 @@ Provider {
 
     function looksHeard() {
         looksTold(lookStream?.held ?? {});
+        lookJudged();
+    }
+    // A whole answer holding no looks changes no revision, so its being
+    // answered judges a waiting link too: queued after the revision's
+    // looksHeard where both come, so the looks are taken first.
+    onLooksAnsweredChanged: Qt.callLater(lookJudged)
+
+    // Hands the launcher the look a link waits on, once the looks are told.
+    function lookJudged() {
+        if (lookWaiting === "" || !looksAnswered)
+            return;
+        const id = lookWaiting;
+        lookWaiting = "";
+        launcher?.lookLinkHeard?.(id);
+    }
+
+    // Whether the stream has told the looks once, so a look For You lacks
+    // is known not held rather than not yet heard, as just after the shell
+    // starts or while the to-do daemon has never answered.
+    property bool looksAnswered: lookStream?.answered === true
+    // The look a link named before the stream told the looks, judged once
+    // it has (Launcher.qml's lookLinkHeard); none while no link waits.
+    property string lookWaiting: ""
+
+    // Keeps the look a link names to judge once the looks are told,
+    // unless they're told already, as lookPlace judged it then.
+    function awaitLook(id) {
+        lookWaiting = looksAnswered ? "" : String(id ?? "");
     }
 
     // The looks as `records` tells them, the stream's records by key, with
@@ -2464,6 +2492,8 @@ Provider {
             make: now => provider.item(each, now)
         })), looks.waiting.map(one => ({
             kind: "look",
+            // Its id, so a link finds where it stands (lookPlace).
+            look: one.id,
             thing: provider.lookThing(one),
             cell: () => provider.lookCell(one),
             // Read here so an answer given relists it, saying so.
@@ -2472,6 +2502,7 @@ Provider {
         })), looks.reading.map(one => ({
             // A look that asks nothing, To Read's, its row a look's as any.
             kind: "read",
+            look: one.id,
             thing: provider.lookThing(one),
             cell: () => provider.lookCell(one),
             answered: null,
@@ -2734,6 +2765,33 @@ Provider {
         }
         lap("letting go");
         return rows;
+    }
+
+    // Where the row of the look `id` stands in Now, as a mycelium:look/ link
+    // asks to open it (Launcher.qml's showLook): the steady ids of the rows
+    // stepped through from home, and the look's own, or null where For You
+    // holds no look of that id. Among what needs Joel now it stands inside
+    // Agents when a cell left it, under that cell's heading, which is no
+    // step, and in For You itself when none did, as cellRows lays them out
+    // from the same groups (#6583's ninth round, 57 and 62);
+    // else in To Look At, To Read or History. Read from the bands For You
+    // lists (waitingRows) and from History's looks, never by listing For
+    // You, since each asking of it is a pass of its keeping.
+    function lookPlace(id) {
+        const bands = bandsAt(Date.now());
+        const holds = band => band.some(item => item.look === id);
+        const celled = cellsOf(bands.all).some(group => group.cell !== null
+            && group.items.some(item => item.look === id));
+        const through = celled ? ["on:waitingOnYou:kind:agent"]
+            : holds(bands.all) ? []
+            : holds(bands.look) ? ["on:waitingOnYou:kind:look"]
+            : holds(bands.read) ? ["on:waitingOnYou:kind:read"]
+            : looks.history.some(one => one.id === id)
+                || lookedRows().some(row => row.look === id) ? ["on:waiting:history"] : null;
+        return through === null ? null : {
+            trail: ["collection:on", "on:waitingOnYou"].concat(through),
+            spot: `on:look:${id}`
+        };
     }
 
     // Every row For You's :filter narrows, each one by one, as For You

@@ -2221,6 +2221,72 @@ def test_machine_opens_on_its_row_in_machines_selected_and_on_nothing_none_has(
     shell.close_launcher()
 
 
+def test_look_opens_on_its_row_in_for_you_selected_and_on_nothing_it_lacks(
+    shell: Shell,
+) -> None:
+    """Look and a look's id opens For You on that look's row, selected, through To Look At.
+
+    A live site draws a look and hands Joel to it here, since only his press may steer it
+    (1HE06W, 2026-11-24 [b410e73c]). An id For You doesn't hold opens For You, its foot saying
+    so in For You's own words, never the id a page chose.
+    """
+    looks = STATE / "pi/agentic-harness.pi/looks"
+    looks.mkdir(parents=True, exist_ok=True)
+    look = looks / "linked.json"
+    # It came just now, since one three days old goes quiet (launcher/Looks.js).
+    came = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    launcher_on_niri.laid_whole(
+        look,
+        json.dumps(
+            {
+                "v": 1,
+                "id": "linked",
+                "title": "Linked Look",
+                "target": "/etc/hostname",
+                "kind": "file",
+                "state": "waiting",
+                "at": came,
+                "address": "LISTEN",
+                "ask": "Say whether it reads right.",
+                "choices": [{"value": "reads-right", "label": "Reads Right"}],
+            }
+        ),
+    )
+    try:
+        # For You has heard the look before the link asks, so this is the walk, not the wait.
+        in_for_you(shell)
+        shell.launcher_until(lambda shown: "To Look At" in shown["rows"])
+        shell.close_launcher()
+        did = followed(shell, "look", "linked")
+        assert did["done"], did
+        assert did["said"].endswith("To Look At \u203a look linked"), did
+        shell.launcher_until(
+            lambda shown: (
+                shown["open"]
+                and shown["held"] == ["now", "For You", "To Look At"]
+                and (shown["selected"] or {}).get("name") == "Linked Look"
+            )
+        )
+        shell.close_launcher()
+        did = followed(shell, "look", "gone")
+        assert did == {
+            "done": False,
+            "said": "the link named a look For You doesn't hold: it may have been settled and"
+            " let go since, or never left on this machine",
+        }, did
+        shell.launcher_until(
+            lambda shown: (
+                shown["open"]
+                and shown["held"] == ["now", "For You"]
+                and "settled and let go since" in " ".join(shown["saying"]).replace("\xa0", " ")
+                and "gone" not in " ".join(shown["saying"])
+            )
+        )
+        shell.close_launcher()
+    finally:
+        look.unlink()
+
+
 def test_a_link_opens_nothing_over_the_launcher_or_the_line_joel_has_up(shell: Shell) -> None:
     """A link while Joel has the launcher or the line up opens nothing: talkTo, network, machine.
 

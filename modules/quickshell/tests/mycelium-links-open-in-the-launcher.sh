@@ -111,6 +111,9 @@ opening 'mycelium:sprout?words=tidy&on=-h' ''
 opening 'mycelium:repository/github:someone/thing' \
   '[ipc][call][launcher][code][github:someone/thing]'
 opening 'mycelium:repository/github:someone/thing;reboot' ''
+# A live site's look, drawn whole there, on its row in For You.
+opening 'mycelium:look/0175b442b5f20e43?from=home' '[ipc][call][launcher][look][0175b442b5f20e43]'
+opening 'mycelium:look/-h' ''
 opening 'mycelium:cell/dahtnj' ''
 opening 'mycelium:cell/DAHTNJ@kes;trel' ''
 opening 'mycelium:cell/-h' ''
@@ -135,6 +138,7 @@ fi
 # link opens nothing.
 passes='code 1
 goTo 1
+look 1
 machine 1
 network 1
 newWork 2

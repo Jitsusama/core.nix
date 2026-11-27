@@ -287,6 +287,13 @@ ShellRoot {
             hereTold += 1;
             return true;
         }
+        // The looks a link waited on that Now handed back once the looks
+        // were told (Launcher.qml's lookLinkHeard).
+        property var looksHeard: []
+
+        function lookLinkHeard(id) {
+            looksHeard = looksHeard.concat([id]);
+        }
         // Set without one only by a case that asks what's left without it.
         property var sources: [weather, calendar, cameras, power, pastNotices, agents, quests]
         property int placed: 0
@@ -1993,6 +2000,56 @@ ShellRoot {
         expect("asking again made nothing, and then only it and To Look At's row holding it",
             madeAgain === 0 && now.tally.rows - madeBefore - madeAgain === 2,
             JSON.stringify([madeAgain, now.tally.rows - madeBefore - madeAgain]));
+        // A link to a look walks the rows For You makes down to its own
+        // (Launcher.qml's showLook): through To Look At while it waits
+        // there, through History once it's done with, and nowhere for a
+        // look For You doesn't hold.
+        const linkedThrough = now.waiting.verbs().find(row => row.key
+            === "on:waitingOnYou:kind:look");
+        const linkedWaiting = now.lookPlace("b");
+        expect("a link to a look waiting walks through To Look At to its row",
+            linkedThrough !== undefined && JSON.stringify(linkedWaiting) === JSON.stringify({
+                trail: ["collection:on", now.waiting.key, linkedThrough.key],
+                spot: "on:look:b" })
+                && linkedThrough.verbs().some(row => row.key === linkedWaiting.spot),
+            JSON.stringify([linkedWaiting, linkedThrough?.key]));
+        expect("a link to a look For You doesn't hold walks nowhere",
+            now.lookPlace("z") === null, JSON.stringify(now.lookPlace("z")));
+        // A link followed before the stream told the looks, as just after the
+        // shell starts, keeps its look until they're told and then hands it to
+        // the launcher to judge, never saying it unheld before it's known; one
+        // after they're told keeps none, since lookPlace judged it then.
+        const answeredBefore = now.looksAnswered;
+        now.looksAnswered = false;
+        theLauncher.looksHeard = [];
+        now.awaitLook("z");
+        now.lookJudged();
+        const keptUnheard = [now.lookWaiting, theLauncher.looksHeard.length];
+        now.looksAnswered = true;
+        now.lookJudged();
+        expect("a link before the looks are told waits on them, and is judged once they are",
+            JSON.stringify([keptUnheard, now.lookWaiting, theLauncher.looksHeard])
+                === JSON.stringify([["z", 0], "", ["z"]]),
+            JSON.stringify([keptUnheard, now.lookWaiting, theLauncher.looksHeard]));
+        now.awaitLook("y");
+        expect("a link once the looks are told waits on nothing",
+            now.lookWaiting === "", now.lookWaiting);
+        now.looksAnswered = answeredBefore;
+        const linkedTexts = now.lookTexts;
+        now.lookTexts = Object.assign({}, linkedTexts, { "h.json": JSON.stringify({ v: 1,
+            id: "h", kind: "page", at: root.lookedAt, target: "https://example.com",
+            title: "Read H", why: "Because.", state: "resolved",
+            resolved: root.lookedAt }) });
+        const linkedDone = now.lookPlace("h");
+        const linkedHistory = now.waiting.verbs().find(row => row.key
+            === "on:waiting:history");
+        expect("a link to a look done with walks through History to its row",
+            linkedHistory !== undefined && JSON.stringify(linkedDone) === JSON.stringify({
+                trail: ["collection:on", now.waiting.key, linkedHistory.key],
+                spot: "on:look:h" })
+                && linkedHistory.verbs().some(row => row.key === linkedDone.spot),
+            JSON.stringify([linkedDone, linkedHistory?.verbs().map(row => row.key)]));
+        now.lookTexts = linkedTexts;
         // The sessions are said anew at each step and each focus move, the
         // same ones wanting Joel; only who wants him is what a look reads.
         Sessions.wanting = [];
@@ -2012,6 +2069,23 @@ ShellRoot {
                 && wanted.length === 2 && wanted[0] === changed[1] && wanted[1] === changed[2],
             JSON.stringify([lifted?.side, wanted.map(row => [row.name, row.side,
                 changed.includes(row)])]));
+        // Held by a running session, the session is its cell, so the look
+        // stands inside Agents under its heading, and a link to it walks in
+        // there to its row, never stopping at For You's top, where no row
+        // of it stands (#6583's ninth round, 57 and 62).
+        Sessions.running = [{ address: "LEFTA", title: "Session A",
+            presence: { session: "s-a", addresses: [] } }];
+        const agentsHolding = now.waiting.verbs().find(row => row.key
+            === "on:waitingOnYou:kind:agent");
+        const linkedInAgents = now.lookPlace("a");
+        expect("a link to a look a running session left walks through Agents to its row",
+            agentsHolding !== undefined && JSON.stringify(linkedInAgents) === JSON.stringify({
+                trail: ["collection:on", now.waiting.key, agentsHolding.key],
+                spot: "on:look:a" })
+                && agentsHolding.verbs().some(row => row.key === linkedInAgents.spot)
+                && !now.waiting.verbs().some(row => row.key === "on:look:a"),
+            JSON.stringify([linkedInAgents, agentsHolding?.verbs().map(row => row.key)]));
+        Sessions.running = [];
         Sessions.wanting = [];
         // A look says who asks and what, its choices first in its step, and
         // its drawer what happens if Joel does nothing, with no weight (Joel,

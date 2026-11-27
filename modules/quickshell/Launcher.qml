@@ -1680,7 +1680,7 @@ Scope {
     }
 
     // Whether Joel has the launcher or the void's line up, which a mycelium: link, asking
-    // talkTo, goToCell, showNetwork, showMachine or showCode, never opens over: what he's
+    // talkTo, goToCell, showNetwork, showMachine, showCode or showLook, never opens over: what he's
     // typed, and where he is, stay as they are, and the link opens nothing (ISXEG8's ruling,
     // 2026-11-15 [dd375f5e]). A link opens either only from closed, holding his first keys
     // back (Prompt.qml's linked). One still opening counts, since open is set only once its
@@ -1759,6 +1759,105 @@ Scope {
         intoOn("machines", machines.lands(key));
         prompt.linked();
         return { done: true, said: `opening Machines \u203a ${name}` };
+    }
+
+    // Opens For You on the row of the look `said` names, selected, as a mycelium:look/ link
+    // from a live site asks: the page draws the look whole and hands it here, so Joel's press
+    // on the row's own choices is the answer, never the page's (1HE06W, 2026-11-25
+    // [b410e73c]). Only the first word said names one. Walked as showNetwork walks, since a
+    // look stands in For You, in To Look At, in To Read or in History as it goes (Now.qml's
+    // lookPlace). A look For You doesn't hold, settled since or never left on this machine,
+    // opens For You with its foot saying so, as showMachine does, so his click never goes
+    // nowhere unsaid; the words are For You's own, never the id, so a page can't put words
+    // of its choosing in the launcher. Says what it did as JSON, as talkTo does.
+    function showLook(said) {
+        const now = collections.find(one => one.settings.name === "on") ?? null;
+        if (now === null)
+            return { error: "the launcher has no Now" };
+        const id = String(said ?? "").trim().split(/\s+/)[0];
+        console.info("launcher: asked from outside to show the look "
+            + Presented.typedShown(id, Options.reports));
+        if (inUse())
+            return inUseSaid;
+        const words = Words.of("on:waiting").said ?? {};
+        const found = id === "" ? null : now.lookPlace(id);
+        if (found === null && id !== "" && !now.looksAnswered) {
+            // The stream hasn't told the looks yet, as just after the shell
+            // starts, so For You opens saying so and the look is judged once
+            // they're told (lookLinkHeard), never said unheld before it's known.
+            const wanted = row => steadyId(row) === `on:look:${id}`;
+            intoOn("forYou", wanted);
+            // After intoOn, which lets any waiting look go.
+            lookLanding = { id: id, wanted: wanted };
+            now.awaitLook(id);
+            lookUnheard.restart();
+            toldWhence(words.unheard ?? "");
+            prompt.linked();
+            return { done: true, said: words.unheard ?? "" };
+        }
+        if (found === null) {
+            toldThat(words.unlisted ?? "", words.unlistedWhy ?? "");
+            into("forYou");
+            prompt.linked();
+            return { done: false, said: `${words.unlisted ?? ""}: ${words.unlistedWhy ?? ""}` };
+        }
+        const place = walkToLook(now, id, found);
+        prompt.linked();
+        if (!Reached.reached(held.map(step => steadyId(step.row)), place.trail))
+            return { done: false, said: "the look didn't open" };
+        // The look's own id ends it, so a reply says which look it walked to,
+        // not only the places walked through.
+        const walked = held.map(step => step.row.name).concat([`look ${id}`]);
+        return { done: true, said: `opened ${walked.join(" \u203a ")}` };
+    }
+
+    // Walks to the look `id` For You holds, `found` where it stood before
+    // opening, and lands on its row, giving the place it walked: worked out
+    // again once open, since opening splits the looks again and one may
+    // have moved from To Look At to For You itself.
+    function walkToLook(now, id, found) {
+        let place = found;
+        cataloguing = true;
+        try {
+            freshen();
+            open = true;
+            place = now.lookPlace(id) ?? found;
+            goTo(place);
+        } finally {
+            cataloguing = false;
+        }
+        // Its row may come a read later, so the cursor lands on it then.
+        landOn = row => steadyId(row) === place.spot;
+        landed();
+        return place;
+    }
+
+    // Judges the look a link named before the stream told the looks, now
+    // that it has, while the link still waits: walked to where For You
+    // holds it, or said unheld. It waits by its own record, never by the
+    // landing, which a refresh of For You or its opening from a kept place
+    // lets go, and which landing on the row itself ends, so the link was
+    // dropped unsaid (#6583's second review). A key pressed since lets it
+    // go, the cursor being his (keyPressing), as the launcher shutting
+    // does; so nothing's done then.
+    function lookLinkHeard(id) {
+        if (lookLanding === null || lookLanding.id !== id)
+            return;
+        if (landOn === lookLanding.wanted)
+            landOn = null;
+        lookLanding = null;
+        lookUnheard.stop();
+        const now = collections.find(one => one.settings.name === "on") ?? null;
+        if (!open || now === null)
+            return;
+        const found = now.lookPlace(id);
+        if (found === null) {
+            const words = Words.of("on:waiting").said ?? {};
+            toldThat(words.unlisted ?? "", words.unlistedWhy ?? "");
+            return;
+        }
+        say([]);
+        walkToLook(now, id, found);
     }
 
     // Opens Code on a repository's row by its key, selected, as a
@@ -9178,6 +9277,12 @@ Scope {
             return JSON.stringify(root.showCode(key));
         }
 
+        // Opens For You on a look's row by its id, selected, its choices a
+        // step in (root's showLook).
+        function look(id: string): string {
+            return JSON.stringify(root.showLook(id));
+        }
+
         // What a place or a row shows, its drawer and the rows inside it,
         // for `launcher show` in a terminal, as JSON: the path's steps
         // joined by a "\u203a", each a row's name or its steady id, and
@@ -11054,13 +11159,46 @@ Scope {
     // The landing a repository's link set, so Code says its miss over
     // that landing alone (codeLinkMissed).
     property var codeLanding: null
+    // The look a link named while the looks aren't told, `{ id, wanted }`,
+    // its landing among them, until they're told, a key or a shut lets it
+    // go, or lookUnheard gives up on it (showLook, lookLinkHeard).
+    property var lookLanding: null
+    // The looks never told while a link waits, as with no to-do daemon
+    // answering, are said in the foot after a while rather than its "opens
+    // once heard" promising a walk that never comes (#6583's second review).
+    // The daemon tells the looks it holds within a second of the shell
+    // asking, so ten is far past a slow one.
+    Timer {
+        id: lookUnheard
+
+        interval: 10000
+        onTriggered: root.lookNeverHeard()
+    }
+    function lookNeverHeard() {
+        if (lookLanding === null)
+            return;
+        if (landOn === lookLanding.wanted)
+            landOn = null;
+        lookLanding = null;
+        collections.find(one => one.settings.name === "on")?.awaitLook("");
+        if (!open)
+            return;
+        const words = Words.of("on:waiting").said ?? {};
+        toldThat(words.neverHeard ?? "", words.neverHeardWhy ?? "");
+    }
     // Closed, it draws the place as it kept it, as a chord does
     // (intoKept), landing there and again once the fill has stepped into
     // it anew (filled): Super+N into the notices on screen opened whole
     // every time, 146 ms to its frame and presented 167 ms from the ask
     // (Joel, 2026-11-15, 09:14).
     property var landsOnFill: null
+    // Whatever it opens on, Super+N's notices, a margin mark's place or
+    // another link's, takes the cursor where it lands, so a look a link
+    // named before the looks were told goes too, and its late walk never
+    // pulls him out of where this took him (#6583's ninth round, 58, 67
+    // and 69).
     function intoOn(name, wanted, normal) {
+        lookLanding = null;
         const asked = !open && !opening && openAsked < 0;
         if (asked)
             askedToOpen();
@@ -11097,6 +11235,7 @@ Scope {
     // top: every ask after the first opened on / (vm-desktop-looks-file-
     // picker, 2026-11-11).
     function chordInto(name) {
+        cursorTaken();
         if (!open && !opening && intoKept(name))
             return;
         into(name);
@@ -11600,6 +11739,7 @@ Scope {
             drafts.flush();
             drawerMakingsKeep();
             landOn = null;
+            lookLanding = null;
             toldInto = "";
         }
         else
@@ -12581,7 +12721,16 @@ Scope {
     function keyPressing() {
         filled("key");
         fillFound("key");
+        cursorTaken();
+    }
+
+    // Joel took the cursor, by a key, a chord or a click on a row: a landing
+    // still waiting goes, and so does a look a link named before the looks
+    // were told, so nothing walks him back to For You once they are (#6583's
+    // first review, F41, F51 and F52).
+    function cursorTaken() {
         landOn = Steady.landing(landOn, { key: true }).waiting;
+        lookLanding = null;
     }
 
     // Brings a card shown from what it kept up to now: open, every source
@@ -16363,6 +16512,7 @@ Scope {
                                     // A click chose its row, so no Return
                                     // after it is one a leave guessed.
                                     onClicked: {
+                                        root.cursorTaken();
                                         root.guessed = Held.unguessed();
                                         if (root.arms(entry.modelData))
                                             root.pressArming(entry.modelData, 0);
