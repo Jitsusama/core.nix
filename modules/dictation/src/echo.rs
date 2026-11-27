@@ -5,7 +5,8 @@
 //! too. Where each word's time is known, their words his microphone heard
 //! just after they said them, and quieter than they said them, are cut
 //! from his line, as are words of his heard inside their speech far
-//! quieter than it and than his own voice, however spelled. His own
+//! quieter than it, however spelled, and, once his voice is known, far
+//! quieter than his voice too. His own
 //! words in it stay: their microphones pick up his voice too, far
 //! quieter than their own, and that's his. A line of his whose words
 //! repeat a line of theirs said at the same time is their echo, and is
@@ -78,7 +79,11 @@ const QUIETER: f32 = 12.0;
 /// How many of Joel's words, heard while none of theirs is, it takes to
 /// know his voice's level: with fewer, a word is cut for its level
 /// against theirs alone, as where he says little his side is mostly their
-/// echo.
+/// echo. Until then, his words over theirs through a quiet microphone may
+/// be cut too. A call still being written is cut again whole once his
+/// voice is known, which brings them back, but lines read back after a
+/// restart stay as they were written, and the journal says when each cut
+/// was.
 const ALONE: usize = 5;
 
 /// How many of Joel's words heard alone, those nearest in time to a
@@ -227,12 +232,13 @@ fn voice(alone: &[(usize, f32)], at: usize) -> Option<f32> {
 }
 
 /// For each of Joel's `mine`, the loudest of `theirs` said within a
-/// moment of it, if that's `DROWNED` louder, his `voice` around it, from
-/// his words heard `alone`, once known, is `QUIETER` louder, and they go
-/// on speaking past it, or his word just before it was cut so: his words
-/// heard inside their speech far below it are its echo, and so is the
-/// echo of their last words, which follows them, while a word of his that
-/// opens as their line ends may be his answer.
+/// moment of it, if his word is its echo by how loud each is. Theirs must
+/// be `DROWNED` louder than his word, and his `voice` around it, from his
+/// words heard `alone`, `QUIETER` louder, once it's known. They must go on
+/// speaking past his word, or his word just before it must have been cut
+/// so, as the echo of their last words follows them. A word of his that
+/// opens as their line ends, with none cut just before it, may be his
+/// answer.
 fn drowned(mine: &[Word], theirs: &[Word], alone: &[(usize, f32)]) -> Vec<Option<usize>> {
     let mut drowned: Vec<Option<usize>> = Vec::with_capacity(mine.len());
     for (i, word) in mine.iter().enumerate() {
