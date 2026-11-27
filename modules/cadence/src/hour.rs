@@ -194,23 +194,28 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
     let ledger_at = folder.join("findings.jsonl");
     let _held = findings::lock(&ledger_at)?;
     let mut ledger = findings::read(&ledger_at);
+    let before = ledger.clone();
     let date = today(now);
     let told = file(&mut ledger, &measures, &date, now);
     let mesh = Mesh {
         root: state_home.join("pi/agentic-harness.pi"),
     };
     // A question, so the line wakes its owner and wants an answer. Its
-    // lines carry its id only once it's gone, so a send that fails leaves
-    // none naming a question nobody had; the ledger is kept as those that
-    // went left it before the failure is said, so they aren't asked again
-    // next hour as questions of nobody's.
-    for (owner, text) in put::asks(told) {
-        let ask = message(&owner, "question", text);
+    // lines carry its id only once it's gone. When one fails, the hour's
+    // filing is undone for its owner and those after, so the next hour
+    // asks each again, and the ledger is kept as the owners asked left it
+    // before the failure is said, so theirs aren't asked again as
+    // questions of nobody's.
+    let asks = put::asks(told);
+    for (n, (owner, text)) in asks.iter().enumerate() {
+        let ask = message(owner, "question", text.clone());
         if let Err(err) = mesh.send(&ask) {
+            let unsent: Vec<&str> = asks[n..].iter().map(|(o, _)| o.as_str()).collect();
+            put::unfile(&mut ledger, &before, &unsent);
             findings::keep(&ledger_at, &ledger)?;
             return Err(err);
         }
-        put::mark_asked(&mut ledger, &owner, now, &ask.id);
+        put::mark_asked(&mut ledger, owner, now, &ask.id);
     }
     let routes = fs::read_to_string(state_home.join("pain-points/routes.json")).ok();
     let keeper = measures::keeper(routes.as_deref());

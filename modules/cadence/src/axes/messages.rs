@@ -104,8 +104,9 @@ pub fn read(root: &Path, since: i64, kept: Option<&Path>) -> Vec<Note> {
             .or_else(|| serde_json::from_slice::<Note>(&fs::read(entry.path()).ok()?).ok());
         // Only a note whose id is the name the mesh filed it under, and
         // whose sender is the one that name gives, as `Mesh::senders` holds
-        // them, so the sender is the one that wrote it, not words its body
-        // claims.
+        // them, so the sender is the one the mesh filed it as, not words its
+        // body claims. It is a check that the two agree, not proof of who
+        // wrote it: a writer into the folder could name both alike.
         let stem = name.strip_suffix(".json");
         let named = stem.and_then(|stem| stem.split('-').nth(1));
         if let Some(note) =

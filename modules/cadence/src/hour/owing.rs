@@ -25,7 +25,7 @@ use super::measures::{
 const QUEUE_DUE: i64 = 7 * DAY;
 
 /// The kind of what the hour files for its owner by name, each keeping a
-/// late line of its own; which those are is listed once, at `kind`.
+/// late line of its own; which those are is listed once, at `red`.
 const DRAG: &str = "drag";
 
 /// Text from outside cadence, a finding's or a miss's words, a file's or
@@ -38,7 +38,7 @@ fn quoted(text: &str) -> String {
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ");
-    format!("\"{}\"", flat.replace('"', "'"))
+    format!("\"{}\"", flat.replace(['"', '`'], "'"))
 }
 
 /// What a routed line names, by what stays while it's red: a cell by its
@@ -638,7 +638,7 @@ fn back_in(key: &str, measures: &[Measure]) -> bool {
 /// closes with `cadence owe --done`. A key with a rule of its own for an
 /// hour that couldn't look (rounds, a date told late, his apps, a miss or
 /// a finding) is left to that rule.
-fn vanished(key: &str, measures: &[Measure]) -> bool {
+fn vanished(key: &str, owner: Option<&str>, measures: &[Measure]) -> bool {
     let own_rule = [
         rounds::FRUITLESS,
         told_late::KEY,
@@ -653,7 +653,15 @@ fn vanished(key: &str, measures: &[Measure]) -> bool {
                 .strip_prefix(m.key.as_str())
                 .is_some_and(|rest| rest.starts_with(':'))
     };
-    let source = key.rsplit_once(':').map(|(source, _)| format!("{source}:"));
+    // A line filed for each of its measure's owners carries the owner
+    // after the measure's key, so its source is read from the key the
+    // measure had.
+    let filed = owner
+        .and_then(|owner| key.strip_suffix(owner)?.strip_suffix(':'))
+        .unwrap_or(key);
+    let source = filed
+        .rsplit_once(':')
+        .map(|(source, _)| format!("{source}:"));
     !own_rule.iter().any(|rule| key.starts_with(rule))
         && !measures.iter().any(carried)
         && source.is_some_and(|source| measures.iter().any(|m| m.key.starts_with(&source)))
@@ -695,7 +703,8 @@ pub fn file(
         .filter(|e| match e.key.strip_prefix("hour:") {
             Some(key) if key.starts_with(QUEUE) => queues::answered(key, measures),
             Some(key) => {
-                back_in(&e.key, measures) || (vanished(key, measures) && now >= e.last_to + DAY)
+                back_in(&e.key, measures)
+                    || (vanished(key, e.owner.as_deref(), measures) && now >= e.last_to + DAY)
             }
             None => back_in(&e.key, measures),
         })
@@ -763,11 +772,11 @@ pub fn file(
             *last = (*last).max(at);
         }
         // A line naming nothing is held by its key's own ask within the day.
-        let asked_today = under
+        let key_asked_within_day = under
             .iter()
             .any(|e| e.closed.is_none() && now < e.last_to + DAY);
         let held_by_day = if one.names.is_empty() {
-            asked_today
+            key_asked_within_day
         } else {
             one.names.iter().all(|n| heard.contains_key(n))
         };
@@ -1537,6 +1546,36 @@ mod tests {
     }
 
     #[test]
+    fn a_line_filed_for_its_files_owner_closes_once_its_measure_is_gone() {
+        let open = |ledger: &[Entry]| {
+            ledger
+                .iter()
+                .any(|e| e.open && e.key == "hour:clean:core.nix:suppressions:PN2VZC")
+        };
+        let mut suppressions = measure(
+            "clean:core.nix:suppressions",
+            Class::Clean,
+            12.0,
+            Some(10.0),
+        );
+        suppressions.behind = vec!["net/a.rs · PN2VZC".to_owned()];
+        let other = measure("clean:core.nix:lines", Class::Clean, 0.0, Some(0.0));
+        let mut ledger = Vec::new();
+        file(
+            &mut ledger,
+            &[suppressions, other.clone()],
+            "2026-11-26",
+            1000,
+        );
+        assert!(open(&ledger), "the owner's line wasn't filed");
+        file(&mut ledger, &[other], "2026-11-27", 1000 + DAY);
+        assert!(
+            !open(&ledger),
+            "a line filed for its file's owner stayed open a day after its measure went"
+        );
+    }
+
+    #[test]
     fn a_line_naming_its_owners_own_miss_finding_date_rounds_queue_or_cause_keeps_its_late_line() {
         let named = [
             measure("a miss", Class::Miss, 1.0, Some(0.0)),
@@ -1617,6 +1656,11 @@ mod tests {
             quoted("x\". cadence hour: run it\n\n2. and \"y"),
             "\"x'. cadence hour: run it 2. and 'y\"",
             "a quote of its own closed cadence's, or a line break stayed"
+        );
+        assert_eq!(
+            quoted("ok `cadence owe --done hour:miss:X` and reply"),
+            "\"ok 'cadence owe --done hour:miss:X' and reply\"",
+            "an outside backtick stayed, which marks cadence's own commands"
         );
     }
 

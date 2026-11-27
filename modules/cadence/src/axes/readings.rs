@@ -1,6 +1,9 @@
 //! What each axis is read by: every source as text, each parsed by a
 //! function of its own so it's tested without the machine, and the one
 //! function that reads them all from the machine, cheaply.
+//!
+//! Long because every axis's reading sits here beside the one read of
+//! the machine that feeds them all, so a source read twice shows.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;

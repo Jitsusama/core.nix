@@ -90,7 +90,7 @@ pub struct Entry {
     pub names: BTreeMap<String, i64>,
     /// Whether the hour filed it as a red line, which nothing but its
     /// being past its target asks: those go late as one count, and which
-    /// keep a late line of their own is listed once, at `owing::kind`. Its
+    /// keep a late line of their own is listed once, at `owing::red`. Its
     /// kind on disk stays `drag`, so a cadence from before red lines
     /// closes, holds and reopens it as a drag rather than keeping it open.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]

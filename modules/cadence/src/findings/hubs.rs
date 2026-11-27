@@ -282,7 +282,7 @@ pub fn put_late(
         // The hour files every measure past its target, so its red lines
         // go late together; each is said as one count, which would
         // otherwise crowd the day's worse and better off its note. Which
-        // keep a line each is listed once, at the hour's `owing::kind`.
+        // keep a line each is listed once, at the hour's `owing::red`.
         if entry.red {
             dragged += 1;
             drags.insert(entry.owner.clone().unwrap_or_else(|| "no owner".to_owned()));

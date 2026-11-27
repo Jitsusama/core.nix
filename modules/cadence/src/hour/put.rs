@@ -75,6 +75,27 @@ pub fn mark_asked(ledger: &mut [Entry], owner: &str, now: i64, id: &str) {
     }
 }
 
+/// Undoes the hour's filing for each of `unsent`, owners whose question
+/// never went, back to `before`, the ledger as the hour read it: each of
+/// their lines is as it was, so the next hour files and asks it again,
+/// rather than holding it open as asked by a question nobody had. The
+/// lines of owners already asked stand, and so does all else the hour
+/// did. A filing only changes lines in place or adds them after, so a
+/// line keeps its place.
+pub fn unfile(ledger: &mut Vec<Entry>, before: &[Entry], unsent: &[&str]) {
+    let theirs = |e: &Entry| e.owner.as_deref().is_some_and(|o| unsent.contains(&o));
+    let mut at = 0;
+    ledger.retain(|e| {
+        at += 1;
+        at <= before.len() || !theirs(e)
+    });
+    for (line, was) in ledger.iter_mut().zip(before) {
+        if theirs(&*line) || theirs(was) {
+            line.clone_from(was);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -167,6 +188,32 @@ mod tests {
             ],
             "a line not filed for that owner this hour or not a drag took the id, a red \
              line or one come back didn't, or one kept more than its latest four"
+        );
+    }
+
+    #[test]
+    fn a_question_that_never_went_leaves_its_owner_s_lines_as_the_hour_found_them() {
+        let mut closed = entry("hour:b", "DEF456", NOW - 7200, "drag");
+        closed.open = false;
+        let before = vec![
+            entry("hour:a", "ABC123", NOW - 7200, "drag"),
+            closed.clone(),
+        ];
+        // The hour asked ABC123 of a new line, and filed DEF456's line
+        // again and a new one, then DEF456's question failed.
+        let mut ledger = before.clone();
+        ledger[0].last_to = NOW;
+        ledger[1].open = true;
+        ledger[1].last_to = NOW;
+        ledger.push(entry("hour:c", "ABC123", NOW, "drag"));
+        ledger.push(entry("hour:d", "DEF456", NOW, "drag"));
+        let asked = ledger.clone();
+        unfile(&mut ledger, &before, &["DEF456"]);
+        assert_eq!(
+            ledger,
+            [asked[0].clone(), closed, asked[2].clone()],
+            "an owner never asked kept the hour's filing, so their lines read as asked, \
+             or an owner asked lost theirs"
         );
     }
 }
