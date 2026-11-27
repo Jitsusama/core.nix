@@ -132,7 +132,7 @@ it("a part's side and what it holds are read apart", () => {
 
 it("a machine's looks are read with their whys, and none from a record listing none", () => {
   const named = { key: "machine:osprey", kind: "machine", name: "osprey", health: "bad" };
-  const reach = { side: "out of reach", matters: "What runs there can't be read from here." };
+  const reach = { side: "out of reach", matters: "What can't be read from here.", health: "bad" };
   const side = ["out of reach", "code failing"];
   const osprey = { ...named, side, looks: [reach, { side: "code failing" }] };
   const ospreyAs = (record: Record<string, unknown>) => {
