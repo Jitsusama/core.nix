@@ -81,8 +81,10 @@ socket() {
 at=$(date +%s)
 hello=$(socket 1 <<<'{"id":1,"ask":"hello"}')
 # Only plain names, since each names a file here and a field of the line:
-# a feed answering anything else gets no watch of it.
-listed=$(jq --raw-output '.kinds[]? | strings | select(test("^[a-z][a-z_-]{0,31}$"))' \
+# a feed answering anything else gets no watch of it. At most 16, as each
+# holds a connection and its buffer for the wait; the node declares 11.
+listed=$(jq --raw-output \
+  '[.kinds[]? | strings | select(test("^[a-z][a-z_-]{0,31}$"))] | .[:16][]' \
   <<<"${hello}" 2>/dev/null) || listed=""
 kinds=()
 if [[ -n ${listed} ]]; then
@@ -102,22 +104,21 @@ for kind in "${kinds[@]}"; do
     # the first records end the read long before this many.
     printf '{"id":1,"ask":"hello"}\n{"id":2,"ask":"watch","kind":"%s"}\n' "${kind}" |
       socket 64 |
-      while IFS= read -r line; do
+      {
         # The watch's first records end its wait, timed; its refusal ends
-        # it untimed, so the hour counts it as the whole wait. Read as
-        # JSON, whatever order its keys come in.
-        said=$(jq --raw-output 'select(.id == 2) |
-          if has("records") then "records" elif has("error") then "error" else empty end' \
-          <<<"${line}" 2>/dev/null) || said=""
+        # it untimed, so the hour counts it as the whole wait. jq reads
+        # each line as JSON, whatever order its keys come in, and ends at
+        # the first that says, so the clock stops as the records arrive
+        # rather than after bash has read a large line a byte at a time.
+        said=$(jq --null-input --raw-input --raw-output 'first(inputs | fromjson? |
+          select(.id == 2) |
+          if has("records") then "records" elif has("error") then "error" else empty end)' \
+          2>/dev/null) || said=""
+        end=$(date +%s%N)
         if [[ ${said} == records ]]; then
-          end=$(date +%s%N)
           echo $(((end - start) / 1000000)) >"${timed}/${kind}"
-          break
         fi
-        if [[ ${said} == error ]]; then
-          break
-        fi
-      done
+      }
   ) &
 done
 wait

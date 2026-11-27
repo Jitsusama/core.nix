@@ -55,12 +55,22 @@ struct Sample {
 }
 
 impl Sample {
+    /// How long the page waited on `kind` in this sample, none where the
+    /// sample failed: a kind the page waits on that the feed didn't offer
+    /// is never answered, so it counts as the whole wait.
+    fn waited(&self, kind: &str) -> Option<f64> {
+        if self.watches.is_empty() {
+            return None;
+        }
+        let answered = self.watches.iter().find(|(k, _)| k == kind);
+        Some(answered.map_or(PROBE_WAIT, |(_, seconds)| *seconds))
+    }
+
     /// How long the page waited on this sample to come live.
     fn wait(&self) -> f64 {
-        self.watches
+        WAITED_ON
             .iter()
-            .filter(|(kind, _)| WAITED_ON.contains(&kind.as_str()))
-            .map(|(_, seconds)| *seconds)
+            .filter_map(|kind| self.waited(kind))
             .reduce(f64::max)
             .unwrap_or(PROBE_WAIT)
     }
@@ -138,25 +148,13 @@ fn measured(samples: &[Sample]) -> Measure {
     }
     let waits: Vec<f64> = samples.iter().map(Sample::wait).collect();
     let worst = waits.iter().copied().fold(0.0, f64::max);
-    let mut kinds: Vec<&str> = samples
-        .iter()
-        .flat_map(|s| s.watches.iter().map(|(kind, _)| kind.as_str()))
-        .filter(|kind| WAITED_ON.contains(kind))
-        .collect();
-    kinds.sort_unstable();
-    kinds.dedup();
     // The watch that held the page longest, by its own median over the
-    // samples that opened it, so a red names which answer to look at.
-    let slowest = kinds
+    // samples that didn't fail, so a red names which answer to look at.
+    let slowest = WAITED_ON
         .iter()
-        .map(|kind| {
-            let times = samples
-                .iter()
-                .flat_map(|s| &s.watches)
-                .filter(|(k, _)| k == kind)
-                .map(|(_, seconds)| *seconds)
-                .collect();
-            (*kind, median(times))
+        .filter_map(|kind| {
+            let times: Vec<f64> = samples.iter().filter_map(|s| s.waited(kind)).collect();
+            (!times.is_empty()).then(|| (*kind, median(times)))
         })
         .max_by(|(_, a), (_, b)| a.total_cmp(b));
     let mut behind = Vec::new();
@@ -210,8 +208,22 @@ mod tests {
         serde_json::json!({"at": NOW - ago, "kinds": kinds}).to_string()
     }
 
+    /// A sample of each watch the page waits on, answered as `message`
+    /// says and the rest quicker.
+    fn waited(ago: i64, message: Option<f64>) -> String {
+        sampled(
+            ago,
+            &[
+                ("network", Some(0.1)),
+                ("cell", Some(0.5)),
+                ("machine", Some(0.2)),
+                ("message", message),
+            ],
+        )
+    }
+
     fn quick(ago: i64) -> String {
-        sampled(ago, &[("cell", Some(0.5)), ("message", Some(0.9))])
+        waited(ago, Some(0.9))
     }
 
     #[test]
@@ -231,8 +243,10 @@ mod tests {
 
     #[test]
     fn one_slow_watch_holds_the_page_and_is_named_behind_it() {
-        let slow = |ago| sampled(ago, &[("cell", Some(0.5)), ("message", Some(3.1))]);
-        let m = site(&[slow(60), slow(660), quick(1260)].join("\n"), NOW);
+        let m = site(
+            &[waited(60, Some(3.1)), waited(660, Some(3.1)), quick(1260)].join("\n"),
+            NOW,
+        );
         assert!(
             (m.now - 3.1).abs() < 1e-9,
             "two slow samples of three didn't make the median: {m:?}"
@@ -246,7 +260,7 @@ mod tests {
 
     #[test]
     fn an_unanswered_watch_or_a_failed_sample_counts_the_whole_wait() {
-        let unanswered = sampled(60, &[("cell", Some(0.5)), ("message", None)]);
+        let unanswered = waited(60, None);
         let failed = serde_json::json!({"at": NOW - 660, "error": "no hello"}).to_string();
         let m = site(&[unanswered, failed, quick(1260)].join("\n"), NOW);
         assert!(
@@ -262,13 +276,11 @@ mod tests {
 
     #[test]
     fn an_even_hour_takes_the_middle_twos_mean_not_its_worst() {
-        let waited =
-            |ago, seconds| sampled(ago, &[("cell", Some(0.2)), ("message", Some(seconds))]);
         let lines = [
-            waited(60, 0.5),
-            waited(660, 1.5),
-            waited(1260, 2.5),
-            waited(1860, 9.0),
+            waited(60, Some(0.5)),
+            waited(660, Some(1.5)),
+            waited(1260, Some(2.5)),
+            waited(1860, Some(9.0)),
         ];
         let m = site(&lines.join("\n"), NOW);
         assert!(
@@ -283,8 +295,19 @@ mod tests {
     }
 
     #[test]
-    fn a_watch_the_page_doesnt_wait_on_holds_no_sample() {
-        let apart = |ago| sampled(ago, &[("message", Some(0.4)), ("tie", Some(6.0))]);
+    fn a_watch_the_page_doesnt_wait_on_holds_no_page() {
+        let apart = |ago| {
+            sampled(
+                ago,
+                &[
+                    ("network", Some(0.1)),
+                    ("cell", Some(0.2)),
+                    ("machine", Some(0.3)),
+                    ("message", Some(0.4)),
+                    ("tie", Some(6.0)),
+                ],
+            )
+        };
         let m = site(&[apart(60), apart(660), apart(1260)].join("\n"), NOW);
         assert!(
             (m.now - 0.4).abs() < 1e-9,
@@ -293,6 +316,29 @@ mod tests {
         assert_eq!(
             m.behind[0], "slowest watch message, median 0.40 s",
             "a watch apart was named as the slowest"
+        );
+    }
+
+    #[test]
+    fn a_watch_the_page_waits_on_left_out_counts_the_whole_wait() {
+        let short = |ago| {
+            sampled(
+                ago,
+                &[
+                    ("network", Some(0.1)),
+                    ("cell", Some(0.2)),
+                    ("message", Some(0.4)),
+                ],
+            )
+        };
+        let m = site(&[short(60), short(660), short(1260)].join("\n"), NOW);
+        assert!(
+            (m.now - PROBE_WAIT).abs() < 1e-9,
+            "a sample without the machine watch read as live: {m:?}"
+        );
+        assert_eq!(
+            m.behind[0], "slowest watch machine, median 20.00 s",
+            "the watch left out wasn't named as the slowest"
         );
     }
 
