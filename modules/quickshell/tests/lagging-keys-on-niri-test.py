@@ -14,6 +14,7 @@ drawer is timed apart.
 
 from __future__ import annotations
 
+import itertools
 import re
 import time
 from typing import TYPE_CHECKING
@@ -82,33 +83,29 @@ def said_by(
     return said
 
 
-def selected(shown: Json) -> object:
-    """Give the name of the row the launcher has selected, or None while none is."""
-    return (shown["selected"] or {}).get("name")
-
-
 def test_an_arrow_is_said_whole(shell: Shell) -> None:
     """An arrow is said as itself, since the launcher names it and nobody typed it.
 
-    Each arrow waits for the one before it to have moved the selection, so each is heard in a
-    turn of its own and draws a row of its own. Pressed back to back on a loaded machine, no try
-    in six said an arrow (#6855's merge run, 2026-11-26), where alone the case passed five times
-    in five: heard in one turn, the two leave the selection where it began, with nothing new to
-    draw for them.
+    A try presses one arrow, down and up in turn, and gives it WRITTEN_WITHIN to be said before
+    the next. Pressed two a try, back to back, no try in six said an arrow on a loaded lender
+    (#6855's merge run, 2026-11-26), where alone the case passed five times in five. Why isn't
+    known: two arrows heard in one turn, or drawn in one frame, are a hypothesis no run has
+    shown, and one arrow a try is neither while its frame comes within WRITTEN_WITHIN. The row
+    selected before each press is kept, so a failure says whether the arrows moved it at all.
     """
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
+    arrows = itertools.cycle(["down", "up"])
+    selected: list[object] = []
 
-    def down_and_up() -> None:
-        began = selected(shell.showing())
-        shell.send_key("down")
-        shell.launcher_until(lambda shown: selected(shown) != began)
-        shell.send_key("up")
-        shell.launcher_until(lambda shown: selected(shown) == began)
+    def an_arrow() -> None:
+        selected.append((shell.showing()["selected"] or {}).get("name"))
+        shell.send_key(next(arrows))
 
-    said = said_by(shell, down_and_up, lambda keys: bool(ARROWS & set(keys)))
+    said = said_by(shell, an_arrow, lambda keys: bool(ARROWS & set(keys)))
     shell.close_launcher()
-    assert ARROWS & set(said), f"no arrow was said as itself: {said}"
+    unsaid = f"no arrow was said as itself: {said}, the row selected before each: {selected}"
+    assert ARROWS & set(said), unsaid
     assert "1 letter" not in said, f"an arrow was counted as typed: {said}"
 
 
