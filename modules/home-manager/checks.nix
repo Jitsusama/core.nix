@@ -5,6 +5,7 @@
   holds,
   lib,
   onLinux,
+  pkgs,
   ...
 }:
 let
@@ -70,7 +71,9 @@ let
   # - list-probe, loose-probe and padded-probe say bounds systemd reads
   #   as a list, with no whole number, and padded;
   # - skipped-probe's list ends in a line systemd can't read, so it skips
-  #   that line and keeps the one before;
+  #   that line and keeps the one before, and the build says so;
+  # - empty-probe's TimeoutStartSec is an empty list, which writes no
+  #   line, so it says no bound and none unread;
   # - refused-probe says a span systemd's parse_time refuses, "1.h";
   # - reset-probe's last ExecStart line clears the lines before it;
   # - unit-probe's timer names the service it runs, unit-probe-run;
@@ -142,6 +145,7 @@ let
         "kept-bound-probe"
         "list-probe"
         "skipped-probe"
+        "empty-probe"
         "refused-probe"
         "loose-probe"
         "padded-probe"
@@ -226,6 +230,7 @@ let
           "10 minuets"
         ];
       };
+      empty-probe = oneshot { Service.TimeoutStartSec = [ ]; };
       refused-probe = oneshot { Service.TimeoutStartSec = "1.h"; };
       loose-probe = oneshot { Service.TimeoutStartSec = ".5h"; };
       padded-probe = oneshot { Service.TimeoutStartSec = "infinity "; };
@@ -241,8 +246,9 @@ let
     };
   };
   home = account probes;
-  # The same account naming stray-probe and reset-probe as ones it
-  # doesn't write, and bare-probe, which it does.
+  # The same account naming stray-probe as one it doesn't write, and
+  # bare-probe and reset-probe, which it does: reset-probe's blank last
+  # line leaves systemd no ExecStart, but its unit file is still written.
   excused = account (
     probes
     // {
@@ -306,7 +312,11 @@ let
       && lib.any (lib.hasInfix "kept-bound-probe's TimeoutSec") home.warnings
       && lib.any (lib.hasInfix "half-probe's TimeoutStartSec") home.warnings
       && !lib.any (lib.hasInfix "loose-probe") home.warnings
-      && !lib.any (lib.hasInfix "skipped-probe") home.warnings;
+      && !lib.any (lib.hasInfix "skipped-probe's TimeoutStartSec [") home.warnings;
+    "a list line systemd drops after the one it reads is warned of, by name, key and line" =
+      lib.any (lib.hasInfix "skipped-probe's TimeoutStartSec ends in [\"10 minuets\"]") home.warnings;
+    "an empty list writes no bound, so it ends after three hours, unwarned" =
+      bound home "empty-probe" == "3h" && !lib.any (lib.hasInfix "empty-probe") home.warnings;
     # Only a run left with no bound systemd reads is told it now ends at
     # three hours: one whose other key still bounds it isn't.
     "the warning says three hours only where the base's bound now holds" =
@@ -314,7 +324,10 @@ let
         of = name: lib.filter (lib.hasInfix "${name}'s ") home.warnings;
         hours = name: lib.any (lib.hasInfix "three hours") (of name);
       in
-      hours "misspelt-probe" && !hours "half-probe" && !hours "kept-bound-probe";
+      hours "misspelt-probe"
+      && !hours "half-probe"
+      && !hours "kept-bound-probe"
+      && !hours "skipped-probe";
     "a timer's Timer.Unit is the service it keeps" =
       method home "unit-probe-run" == "keep-old" && !(home.systemd.user.services ? unit-probe);
     "a template's instance keeps its run, and its bound, on the template" =
@@ -349,6 +362,9 @@ let
       refusal hidden excused == null && !(excused.systemd.user.services ? stray-probe);
     "a written service named in jitsusama.timedRuns.unwritten is refused, by name" =
       names unwritten excused "bare-probe" && !(names unwritten excused "stray-probe");
+    "a service whose last ExecStart line clears the rest, named unwritten, is refused" =
+      names unwritten excused
+        "reset-probe";
   };
   broken = cases: lib.attrNames (lib.filterAttrs (_: held: !held) cases);
 in
@@ -368,4 +384,67 @@ onLinux {
     holds "every-timer-runs-a-written-service"
       "home.nix's timers don't hold: ${lib.concatStringsSep "; " (broken writes)}"
       (broken writes == [ ]);
+
+  # timed.nix reads a timeout's spelling by a copy of systemd's parse_time,
+  # so each spelling here is given to the systemd nixpkgs ships, through
+  # systemd-analyze timespan, which reads a span as a unit file's timeout
+  # is read, and the two must agree on every one.
+  systemd-reads-each-span-as-core-does =
+    let
+      runs = import ./timed.nix { inherit lib; };
+      spellings = [
+        "1h"
+        "10min"
+        "2h30min"
+        "1h 30min"
+        "1h30m"
+        ".5h"
+        "+1.5h"
+        "12.34s.56"
+        "1.5"
+        "600"
+        "0"
+        # The micro sign and the Greek mu, each a unit of its own.
+        "5000000µs"
+        "5000000μs"
+        "3 weeks 2days"
+        "infinity"
+        "10 minuets"
+        "half an hour"
+        "1.h"
+        "3.sec"
+        "+.5h"
+        "1.5.0h"
+        "12.34.56"
+        "10+5min"
+        "6hrs"
+        "30secs"
+        "2 mins"
+        "-1h"
+      ];
+      table = lib.concatMapStrings (
+        spelling: "${if runs.readsAs spelling then "reads" else "refuses"}\t${spelling}\n"
+      ) spellings;
+    in
+    pkgs.runCommand "systemd-reads-each-span-as-core-does"
+      {
+        nativeBuildInputs = [ pkgs.systemd ];
+        passAsFile = [ "table" ];
+        inherit table;
+      }
+      ''
+        wrong=0
+        while IFS=$'\t' read -r core spelling; do
+          if systemd-analyze timespan -- "$spelling" >/dev/null 2>&1; then
+            systemd=reads
+          else
+            systemd=refuses
+          fi
+          if [ "$core" != "$systemd" ]; then
+            echo "timed.nix $core \"$spelling\", which systemd $systemd"
+            wrong=1
+          fi
+        done < "$tablePath"
+        [ "$wrong" = 0 ] && touch "$out"
+      '';
 }

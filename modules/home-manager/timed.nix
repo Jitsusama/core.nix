@@ -53,6 +53,9 @@ rec {
   # or it is a stop and digits alone. A number with no unit must be
   # followed by a space or tab, or end the span, so "1.5.0h" and "10+5"
   # are refused, and "1.h" and "+.5h" too, as systemd refuses each.
+  # home-manager's systemd-reads-each-span-as-core-does holds it to the
+  # systemd nixpkgs ships, so a systemd reading otherwise is caught when
+  # it comes rather than by a run killed or left unbounded.
   span =
     let
       number = "(\\+?[0-9]+(\\.[0-9]+)?|\\.[0-9]+)";
@@ -113,6 +116,33 @@ rec {
     else
       lib.last lines;
 
+  # The lines of a list systemd drops after the one it reads, in order: a
+  # later line is how a list overrides an earlier one, so a line dropped
+  # for its spelling leaves the earlier bound standing where none sees
+  # it. None when it reads no line, since then the key itself is unread.
+  late =
+    value:
+    let
+      lines = map (line: if builtins.isString line then lib.trim line else line) (lib.toList value);
+      after =
+        lib.foldr
+          (
+            line: found:
+            if found.read then
+              found
+            else if readsAs line then
+              found // { read = true; }
+            else
+              found // { lines = [ line ] ++ found.lines; }
+          )
+          {
+            read = false;
+            lines = [ ];
+          }
+          lines;
+    in
+    if after.read then after.lines else [ ];
+
   # Whether systemd reads one line as a timeout: a number not below zero,
   # a span, or infinity.
   readsAs =
@@ -136,10 +166,12 @@ rec {
     || (spanned && builtins.match ".*[1-9].*" v != null);
 
   # The start timeout a service's `Service` section sets, as systemd reads
-  # it: `given`, the keys it says; `read`, those systemd can read; and
-  # `value`, the one that bounds the start, or null for none. Order counts
-  # only when both are readable: home-manager writes TimeoutSec before
-  # TimeoutStartSec, and the later line wins, so TimeoutStartSec does.
+  # it: `given`, the keys it says; `read`, those systemd can read;
+  # `dropped`, those of `read` with a line after the one systemd reads
+  # that it drops; and `value`, the one that bounds the start, or null
+  # for none. Order counts only when both are readable: home-manager
+  # writes TimeoutSec before TimeoutStartSec, and the later line wins, so
+  # TimeoutStartSec does.
   timeout =
     service:
     let
@@ -152,6 +184,7 @@ rec {
     in
     {
       inherit given read;
+      dropped = lib.filter (key: late service.${key} != [ ]) read;
       value = if read == [ ] then null else said service.${lib.head read};
     };
 }
