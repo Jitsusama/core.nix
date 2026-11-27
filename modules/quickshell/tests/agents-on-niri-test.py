@@ -1100,6 +1100,40 @@ def test_a_sessions_acts_walked_from_outside_steer_nothing_and_say_why(shell: Sh
             path.unlink()
 
 
+def test_a_want_walked_from_outside_is_dealt_with_only_once_joel_returns(shell: Shell) -> None:
+    """A walk's Deal With It fills no session's prompt, though it runs once the walk has ended.
+
+    Deal With It waits for the launcher to be gone (Launcher.qml's runOnceGone), and ran after
+    the walk had cleared what said it was one, so its words went into the session's prompt as
+    Joel's (round 000056 on #6796, F12 and F29). It now runs as the walk chose it, refused.
+    """
+    wants = {"kind": "approval", "since": datetime.now(UTC).isoformat(), "said": "May I?"}
+    lay("DEALER", "Dealing Quest", {"state": "listening", "busy": False, "wants": wants})
+    inbox = STEER / "DEALER"
+    try:
+        in_for_you(shell)
+        shell.launcher_until(lambda shown: "Dealing Quest" in shown["rows"])
+        shell.close_launcher()
+        walked = {"steps": ["now", "For You", "Dealing Quest", "Deal With It"], "sure": True}
+        did = json.loads(shell.as_account(shell.ipc("doing", shlex.quote(json.dumps(walked)))))
+        assert "error" not in did, did
+        # Past the closed frame's wait, a second at most, and the moment after it.
+        time.sleep(2 + LINK_QUIET)
+        filled = [json.loads(one.read_text()) for one in inbox.glob("*.json")]
+        assert filled == [], filled
+    finally:
+        shell.close_launcher()
+        for one in inbox.glob("*.json"):
+            one.unlink()
+        (PRESENCE / "dealer.json").unlink()
+        # A session asking for Joel's yes, left for the cases after, would stand first in
+        # For You and Agents, so it's gone from the node before they begin.
+        deadline = time.monotonic() + 10
+        while "session:s-dealer" in held_by_node():
+            assert time.monotonic() < deadline, "the node still holds the asking session"
+            time.sleep(0.1)
+
+
 def test_a_paused_sessions_return_lands_on_resume_and_a_second_sends_it(shell: Shell) -> None:
     """A paused session's Return lands on Resume, which changes how it stands; a second resumes."""
     row = found(shell, "paused quest", "Paused Quest")

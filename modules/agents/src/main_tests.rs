@@ -398,3 +398,22 @@ fn the_daemons_socket_acts_as_joel_for_no_one_but_the_shell() {
     );
     let _ = std::fs::remove_dir_all(&folder);
 }
+
+/// Every one of Joel's acts is the shell's alone, and each but feedback
+/// is answered in the order the shell asks it, never apart, so a share's
+/// end can't land before its start, nor an older set of his places after
+/// a newer one; and each answered apart is the shell's alone too.
+#[test]
+fn joels_acts_are_the_shells_alone_and_answered_in_order() {
+    for act in AS_JOEL {
+        assert!(SHELLS_ALONE.contains(&act), "{act} is the shell's alone");
+        assert_eq!(
+            SLOW.contains(&act),
+            act == "feedback",
+            "{act} is answered in order, but feedback, which waits on its quest"
+        );
+    }
+    for ask in SLOW {
+        assert!(SHELLS_ALONE.contains(&ask), "{ask} is the shell's alone");
+    }
+}

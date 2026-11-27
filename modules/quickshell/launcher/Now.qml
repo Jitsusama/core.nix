@@ -621,6 +621,20 @@ Provider {
             { title: title });
     }
 
+    // Deal With It on what the session at `address` asks (`asked`, its title): its prompt
+    // filled with readyToDeal's line as Joel's, which the node wakes it on, then `session`
+    // gone to. Only from his own Return: a walk from outside runs it once the launcher's gone
+    // (Launcher.qml's runOnceGone), and is refused there, nothing filled or gone to (round
+    // 000056 on #6796, F29).
+    function dealWith(address, asked, session) {
+        if (!Sprouting.fromJoel(provider.launcher)) {
+            console.info("launcher: For You's Deal With It wasn't done from a walk");
+            return;
+        }
+        Sessions.steer(address, { act: "fill", text: readyToDeal(asked) });
+        Sessions.goTo(session);
+    }
+
     // Each placeholder given by a function, so a `$` in what fills it, as a
     // look's own choice label may hold, is read as itself, not a pattern.
     function filledIn(words, fill) {
@@ -2153,14 +2167,7 @@ Provider {
         const inside = () => [
             thing(Object.assign(named("deal"), {
                 key: `verb:on:waiting:deal:${key}`,
-                run: () => {
-                    // The node wakes one parked once its words are in.
-                    Sessions.steer(address, {
-                        act: "fill",
-                        text: readyToDeal(asked)
-                    });
-                    Sessions.goTo(session());
-                }
+                run: () => dealWith(address, asked, session())
             })),
             talkTo(session()),
             thing(Object.assign(named("go"), {
@@ -2284,11 +2291,7 @@ Provider {
                 key: `verb:on:waiting:deal:${key}`,
                 gap: true,
                 later: true,
-                run: () => {
-                    // The node wakes one parked once its words are in.
-                    Sessions.steer(address, { act: "fill", text: readyToDeal(asked) });
-                    Sessions.goTo(session());
-                }
+                run: () => dealWith(address, asked, session())
             }))
         ], answers.own ? [thing(Object.assign(named("own"), {
             key: `verb:on:waiting:own:${key}`,

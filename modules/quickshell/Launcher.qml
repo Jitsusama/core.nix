@@ -1622,14 +1622,23 @@ Scope {
     // typed or sent. Like talkTo, it does nothing over a launcher in use, which an open act has
     // closed before its link reaches here. A session no longer here opens Agents, its foot
     // saying so once, so a notice from an ended one never goes nowhere unsaid. Says what it
-    // did as JSON, as talkTo does. Not goTo, which is a spot's within the launcher.
+    // did as JSON, as talkTo does. Not goTo, which is a spot's within the launcher. Any process
+    // of the account's can ask it, so it goes as a walk from outside does (`cataloguing`),
+    // marking nothing Joel's: what the session answered him stays unheard until he reads it
+    // (Agents' heard; round 000056 on #6796, F15).
     function goToCell(said) {
         const agents = collections.find(one => one.settings.name === "agents") ?? null;
         console.info("launcher: asked from outside to go to "
             + Presented.typedShown(String(said ?? ""), Options.reports));
         if (inUse())
             return inUseSaid;
-        const session = agents ? agents.goToFor(said) : null;
+        let session = null;
+        cataloguing = true;
+        try {
+            session = agents ? agents.goToFor(said) : null;
+        } finally {
+            cataloguing = false;
+        }
         if (session === null) {
             const gone = Words.of("verb:notice:goTo").said ?? {};
             toldGone();
@@ -6993,6 +7002,8 @@ Scope {
     property int foundPast: 0
     property int current: 0
     property var pending: null
+    // Whether a walk from outside chose `pending` (runOnceGone).
+    property bool pendingWalked: false
 
     // The words typed, and every choice they found before the finest were
     // kept: a longer query can only find fewer, so it searches these.
@@ -8643,9 +8654,13 @@ Scope {
     // the screenshot before the closed frame was drawn, the launcher in it
     // (2026-11-03: drawn 1.9 s after it closed). One closed already draws
     // nothing, so it waits that moment alone, and a frame that never comes
-    // is waited for a second at most.
+    // is waited for a second at most. Whether a walk from outside chose it
+    // is kept with it, and it runs as chosen (pendingWalked), so an act
+    // only Joel's own Return does (Sprouting.fromJoel) is refused to a
+    // walk after the walk has ended too (round 000056 on #6796, F12).
     function runOnceGone(choice, shown) {
         pending = choice;
+        pendingWalked = cataloguing;
         closedFrame = false;
         if (shown)
             undrawn.restart();
@@ -8686,8 +8701,14 @@ Scope {
         onTriggered: {
             if (root.pending === null)
                 return;
-            root.pending.run();
-            root.pending = null;
+            const walked = root.cataloguing;
+            root.cataloguing = root.pendingWalked;
+            try {
+                root.pending.run();
+            } finally {
+                root.cataloguing = walked;
+                root.pending = null;
+            }
         }
     }
 

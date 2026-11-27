@@ -325,8 +325,9 @@ fn as_joel(
 /// talks to a session as him, nor hides from him what he'd see; what the
 /// node says of the starts once they're let start is `stood` at once,
 /// rather than at the next poll. Each but which are kept asks the shell's
-/// systemd who the shell is, and most wait on the node besides, so they're
-/// answered on threads of their own, holding up no ask after them. Each
+/// systemd who the shell is, the first time a shell asks (asker.rs's
+/// `TAKEN`); Joel's acts are answered in the order he did them, and the
+/// rest of [`SLOW`] on threads of their own, holding up no ask after them. Each
 /// start the shell names by a
 /// token is kept on disk before the node is asked, its end before the
 /// shell hears it, and its told before that's answered, until the shell
@@ -464,32 +465,24 @@ const SHELLS_ALONE: [&str; 21] = [
     "keep-places",
 ];
 
-/// Every one of [`SHELLS_ALONE`] but which are kept, which asks nothing of
-/// who asked: each asks the shell's systemd who the shell is. An answer
-/// waits on the node up to acts.rs's `PATIENCE` besides, so queued
-/// behind the shell's other acts it could come back after the Talk lets
-/// a second go (TalkAnswers.js's `SENT_STANDS_MS`).
-const SLOW: [&str; 20] = [
+/// Which of [`SHELLS_ALONE`] are answered each on a thread of its own: a
+/// start, which waits on the node a long while, its places, a start told,
+/// an answer, which waits on the node up to acts.rs's `PATIENCE` and so
+/// queued could come back after the Talk lets a second go
+/// (TalkAnswers.js's `SENT_STANDS_MS`), and feedback, which waits on the
+/// quest it goes to. Joel's other acts are answered in the order the
+/// shell asks them, on its connection's thread, as each but feedback was
+/// before the shell's check: a share's start and end, or the whole of his
+/// windows' places as each is kept, answered apart could land out of
+/// order, and the daemon keep the one he'd left (round 000056 on #6796,
+/// F16 and F30).
+const SLOW: [&str; 6] = [
     sprout::ASK,
     places::ASK,
     starts::TOLD,
     starts_stopped::ASK,
     wants::ASK,
-    "pause",
-    "resume",
-    "stop",
-    "close",
-    "wake",
-    "talk",
-    "tell",
     "feedback",
-    "not-now",
-    "put-off",
-    "forget",
-    "read",
-    "heard",
-    "sharing",
-    "keep-places",
 ];
 
 /// What one of [`AS_JOEL`] is told where the shell's check refused it,

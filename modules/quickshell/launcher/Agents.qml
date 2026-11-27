@@ -1576,9 +1576,12 @@ Provider {
     // Whether an act the daemon does as Joel (its AS_JOEL, main.rs) may go
     // now: only from his own Return, never a walk from outside (`qs ipc call
     // launcher runWith`, `launcher do`), which any program of his may ask, an
-    // agent's among them. The daemon takes the shell's asks as his and can't
-    // tell the two apart, so this is their only guard and fails closed
-    // (Sprouting.fromJoel). Refused, the walk is told why, and only the
+    // agent's among them, nor a link's goTo. The daemon takes the shell's asks as his and
+    // can't tell the two apart, so this is their only guard and fails closed
+    // (Sprouting.fromJoel); one a walk leaves to run once the launcher's gone keeps that it
+    // was walked (Launcher.qml's runOnceGone). The shell's own steers to the node are
+    // guarded where they carry words (Now.qml's dealWith); a wake, as Go and a link's
+    // goTo send, says nothing as him. Refused, the walk is told why, and only the
     // journal says it, as a refused sprout's is: a notice would let any
     // program put one on his screen.
     function joelsOwn(act) {
