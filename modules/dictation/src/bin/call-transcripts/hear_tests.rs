@@ -582,6 +582,29 @@ fn a_call_is_told_once_whichever_failure_comes_first() {
 }
 
 #[test]
+fn a_model_not_loading_once_a_call_has_lines_says_part_wasnt_heard() {
+    // A call with lines written was transcribed in part, so its model not
+    // loading, as after a lost device, leaves only part of it unheard;
+    // a call with no line yet is the one that couldn't be transcribed.
+    let why = "The speech model didn't load: the device was lost";
+    let none = not_loaded("Standup", why, false);
+    assert_eq!(
+        none.heading, "Standup Couldn't Be Transcribed",
+        "a call with no line yet wasn't said to be not transcribed"
+    );
+    let some = not_loaded("Standup", why, true);
+    assert_eq!(
+        some.heading, "Part of Standup Wasn't Heard",
+        "a call with lines written was said to be not transcribed at all"
+    );
+    assert!(
+        some.body.ends_with(why),
+        "the notice didn't say the model didn't load: {}",
+        some.body
+    );
+}
+
+#[test]
 fn a_transcript_says_what_wasnt_heard() {
     // Once the notice is gone, the file is all that says a call's
     // transcript is missing part of it, so it says so, ahead of the

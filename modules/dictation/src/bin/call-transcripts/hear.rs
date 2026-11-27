@@ -255,7 +255,8 @@ pub fn hear(
                 let parakeet = match loaded(settings, &mut speech) {
                     Ok(parakeet) => parakeet,
                     Err(why) => {
-                        let notice = || notices::not_transcribed(&title_of(book, &key), &why);
+                        let heard = !writing.lines.is_empty();
+                        let notice = || not_loaded(&title_of(book, &key), &why, heard);
                         shown(not_heard(book, &key, writing, me, start, &mut told, notice));
                         continue;
                     }
@@ -388,6 +389,14 @@ fn not_heard(
     writing.unheard = Some(unheard::and(writing.unheard, start));
     write(book, key, writing, me, true);
     told_once(told, key, notice)
+}
+
+/// The notice for `title`'s call when its speech model didn't load,
+/// saying `why`: that part of it wasn't heard once a line of it was
+/// (`heard`), since its transcript holds those, and that it couldn't be
+/// transcribed while it has none.
+fn not_loaded(title: &str, why: &str, _heard: bool) -> Notice {
+    notices::not_transcribed(title, why)
 }
 
 /// A `notice`, shown, if there is one.
