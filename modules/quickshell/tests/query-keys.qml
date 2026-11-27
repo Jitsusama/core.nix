@@ -385,6 +385,26 @@ QtObject {
                 1400, 300)), ["no", "no", "no", "no", "no", "no", "no"]);
         holds("and no key at all, as a modifier alone, is let by",
             Confirm.answer(ask, "", 1400, 300), "early");
+        holds("and a Return given no time, or not a number, is let by, never a yes",
+            [undefined, NaN, null, "1400", Infinity].map(now => Confirm.answer(ask, "Return",
+                now, 300)), ["early", "early", "early", "early", "early"]);
+        // Infinity is there to rule out a looser check, typeof "number",
+        // under which Infinity - 1000 is never under the guard: a yes.
+        const timeless = Confirm.asked("Close Notes?", run, run, undefined);
+        holds("and so is a Return to an ask put at no time, or with no guard",
+            [Confirm.answer(timeless, "Return", 1400, 300), Confirm.answer(ask, "Return", 1400,
+                undefined)], ["early", "early"]);
+        holds("while any other key still lets such an ask go, so it never stands for good",
+            [Confirm.answer(timeless, "Escape", 1400, 300), Confirm.answer(ask, "y", 1400,
+                undefined)], ["no", "no"]);
+        holds("but a key of no time to such an ask is let by too",
+            Confirm.answer(timeless, "Escape", undefined, 300), "early");
+        holds("and such an ask says why it can't be timed, where a timed one says nothing",
+            [Confirm.untimed(timeless, 300), Confirm.untimed(ask, undefined),
+                Confirm.untimed(ask, 300)],
+            ["it was put at no time", "it has no guard", null]);
+        holds("the ask takes a yes or a no, never an early key, nor one with no ask",
+            ["yes", "no", "early", ""].map(Confirm.takes), [true, true, false, false]);
         pending(holds);
         visual(holds);
         changes(holds);
@@ -1904,7 +1924,50 @@ QtObject {
         return KeyActs.acts(read, Object.assign({ alone: false, registering: false,
             answering: false, answerTaken: true, repeated: false, operated: false, commands: false,
             drawerHere: false, intoHere: () => true, upHere: true, reselectHere: true, mode,
-            text: "slack" }, line));
+            fillLeaves: () => false, text: "slack" }, line));
+    }
+
+    // Whether a key that acted only moved through the rows (KeyActs.moves),
+    // by the keys and mode and where Tab goes (`intoHere`).
+    function moving(keys, mode, intoHere = () => true) {
+        let standing = Keys.rest();
+        let read = null;
+        for (const key of keys) {
+            read = Keys.read(standing, key, mode, false);
+            standing = read.standing;
+        }
+        return KeyActs.moves(read.act, { mode, intoHere });
+    }
+
+    function keysMoving(holds) {
+        // [what, keys, mode, where Tab goes, moved]
+        const cases = [
+            ["j in normal", ["j"], "normal", () => true, true],
+            ["Down on the find", ["Down"], "find", () => true, true],
+            // The find's Tab with nowhere to go goes on to the next row,
+            // as Down does (Launcher.qml's tabbedIn).
+            ["Tab on the find going on to the next row", ["Tab"], "find", () => false, true],
+            ["Tab on the find going into a row", ["Tab"], "find", () => true, false],
+            ["Tab in normal, which only says it can't go in", ["Tab"], "normal", () => false,
+                false],
+            ["Return on the find", ["Return"], "find", () => false, false],
+            ["j, asking nothing of where Tab would go", ["j"], "normal",
+                () => { throw new Error("intoHere asked of j"); }, true]
+        ];
+        for (const [what, keys, mode, intoHere, moved] of cases)
+            holds(`${what} ${moved ? "only moves" : "does more than move"}`,
+                orThrown(() => moving(keys, mode, intoHere)), moved);
+    }
+
+    // What `asked` gives, or what it threw, said as the case's answer, so a
+    // guard asked of a key it shouldn't be fails that case by name and the
+    // cases after it still run.
+    function orThrown(asked) {
+        try {
+            return asked();
+        } catch (error) {
+            return `threw ${error}`;
+        }
     }
 
     function keysActing(holds) {
@@ -1949,7 +2012,13 @@ QtObject {
             ["gv in the drawer with nothing chosen", ["g", "v"], "page",
                 { reselectHere: KeyActs.reselectHere("page", true, "") }],
             ["l moving the caret on a prompt's words", ["l"], "normal", { words: true }],
+            // On words h is idle only as an edit (letterBack), not by the
+            // rows' outSaid, so it's held here apart from h on a row.
+            ["or h", ["h"], "normal", { words: true }],
+            ["or Backspace, as h", ["Backspace"], "normal", { words: true }],
             ["or w", ["w"], "normal", { words: true }],
+            ["or b", ["b"], "normal", { words: true }],
+            ["or e", ["e"], "normal", { words: true }],
             ["or 0", ["0"], "normal", { words: true }],
             ["or $", ["$"], "normal", { words: true }],
             ["x deleting a letter of them", ["x"], "normal", { words: true }],
@@ -1978,7 +2047,7 @@ QtObject {
                 { answering: true, repeated: true }]
         ];
         for (const [what, keys, mode, line] of idle)
-            holds(`${what} acts on nothing`, acting(keys, mode, line), false);
+            holds(`${what} acts on nothing`, orThrown(() => acting(keys, mode, line)), false);
         const acted = [
             ["Backspace on an empty find, leaving it", ["Backspace"], "find", { text: "" }],
             ["Escape on the find", ["Escape"], "find", {}],
@@ -2019,10 +2088,16 @@ QtObject {
             ["the operator again, which the ask takes as its answer", ["d"], "normal",
                 { operated: true, answering: true }],
             ["a colon opening the line from Tab with nowhere to go", ["Tab"], "normal",
-                { commands: true, intoHere: () => false }]
+                { commands: true, intoHere: () => false }],
+            // Ctrl+Y on a command's row in a place puts its start in the
+            // field out at the top (Launcher.qml's fill), leaving the place.
+            ["Ctrl+Y filling a command's start, out of a place", ["Ctrl+y"], "find",
+                { fillLeaves: () => true }],
+            ["j, asking nothing of where Ctrl+Y would go", ["j"], "normal",
+                { fillLeaves: () => { throw new Error("fillLeaves asked of j"); } }]
         ];
         for (const [what, keys, mode, line] of acted)
-            holds(`${what} acts`, acting(keys, mode, line), true);
+            holds(`${what} acts`, orThrown(() => acting(keys, mode, line)), true);
     }
 
     // Whether gv has something to take back (KeyActs.reselectHere), by
@@ -3192,6 +3267,7 @@ QtObject {
         drawerValueLines(holds);
         drawerPreviewHeights(holds);
         keysActing(holds);
+        keysMoving(holds);
         reselectsHere(holds);
 
         for (const failure of failures)

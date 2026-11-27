@@ -265,7 +265,14 @@ pub fn ask(arguments: &[String]) -> Result<(), Failure> {
         quest: asked.quest.clone(),
         session: asked.session.clone(),
     };
-    let gate = super::folder(&asked.quest, &commit);
+    let Some(gate) = super::folder(&asked.quest, &commit) else {
+        return Err(failed(
+            Exit::Config,
+            "ask has nowhere to leave the gate's request",
+            super::NO_SCRATCH,
+            "Set HOME, or XDG_CACHE_HOME, to an absolute folder.",
+        ));
+    };
     if let Err(why) = left(&request, &gate) {
         return Err(failed(
             Exit::Bug,
