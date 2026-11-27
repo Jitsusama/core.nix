@@ -12,6 +12,7 @@
 
 use crate::config::{Config, Kind};
 use crate::run::{self, Failure};
+use crate::system;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -57,9 +58,49 @@ pub fn keep(config: &Config, system: &Path) {
     }
 }
 
+/// Puts back `default`, the boot default update-to-main left before
+/// `system`'s switch, once going back only activated what ran before and
+/// so left the boot default where that switch put it, saying in `failure`
+/// what the machine boots next.
+pub fn boots_as_before(
+    config: &Config,
+    system: &Path,
+    default: Result<PathBuf, String>,
+    failure: &mut Failure,
+) {
+    if !system::boots_at_once(config, system) {
+        // Its switch only activated it, so the boot default is where it
+        // was, kept beside the profile as it points now.
+        if let Ok(default) = &default {
+            keep(config, default);
+        }
+        return;
+    }
+    let why = match default {
+        Err(why) => why,
+        Ok(default) => match put_back(config, &default) {
+            Ok(()) => {
+                keep(config, &default);
+                failure.why.push_str(", booting what it booted before next");
+                return;
+            }
+            Err(back) => {
+                failure.lines.extend(back.lines);
+                format!(
+                    "making {} the boot default again failed: {}",
+                    default.display(),
+                    back.why
+                )
+            }
+        },
+    };
+    let next = format!(", but it boots {} next, since {why}", system.display());
+    failure.why.push_str(&next);
+}
+
 /// Makes `system` the boot default again, leaving what runs and the
 /// profile as they are, as switch-to-configuration's `boot` does.
-pub fn put_back(config: &Config, system: &Path) -> Result<(), Failure> {
+fn put_back(config: &Config, system: &Path) -> Result<(), Failure> {
     let switch = system.join("bin/switch-to-configuration");
     if !switch.exists() {
         return Err(Failure::new(format!(

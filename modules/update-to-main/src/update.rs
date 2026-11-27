@@ -686,7 +686,7 @@ fn going_back(
                 .why
                 .push_str("; the machine went back to what it ran");
             if unchecked {
-                boots_as_before(config, system, default, &mut failure);
+                boot_default::boots_as_before(config, system, default, &mut failure);
             } else {
                 // Going back switched, which made it the boot default.
                 boot_default::keep(config, &previous);
@@ -699,46 +699,6 @@ fn going_back(
         }
     }
     failure
-}
-
-/// Puts back `default`, the boot default update-to-main left before
-/// `system`'s switch, once going back only activated what ran before and
-/// so left the boot default where that switch put it, saying in `failure`
-/// what the machine boots next.
-fn boots_as_before(
-    config: &Config,
-    system: &std::path::Path,
-    default: Result<std::path::PathBuf, String>,
-    failure: &mut Failure,
-) {
-    if !system::boots_at_once(config, system) {
-        // Its switch only activated it, so the boot default is where it
-        // was, kept beside the profile as it points now.
-        if let Ok(default) = &default {
-            boot_default::keep(config, default);
-        }
-        return;
-    }
-    let why = match default {
-        Err(why) => why,
-        Ok(default) => match boot_default::put_back(config, &default) {
-            Ok(()) => {
-                boot_default::keep(config, &default);
-                failure.why.push_str(", booting what it booted before next");
-                return;
-            }
-            Err(back) => {
-                failure.lines.extend(back.lines);
-                format!(
-                    "making {} the boot default again failed: {}",
-                    default.display(),
-                    back.why
-                )
-            }
-        },
-    };
-    let next = format!(", but it boots {} next, since {why}", system.display());
-    failure.why.push_str(&next);
 }
 
 /// The commit the machine last switched to, when it has.
