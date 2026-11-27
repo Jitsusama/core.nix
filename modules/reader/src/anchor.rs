@@ -123,12 +123,23 @@ impl Moving<'_> {
     }
 
     /// Where a view's top goes, as `moved` moves a point, but kept as far
-    /// through its block as it was rather than on the line nearest it: a
-    /// view scrolled to the page's top, over its first line, lands there
-    /// again, and one partway down a line stays partway down it.
+    /// through its block as it was rather than on the line nearest it
+    /// where it stood on no line or over its block's first: a view
+    /// scrolled to the page's top, over its first line, lands there again,
+    /// and one partway down a line stays partway down it. One on a line's
+    /// top lands on a line, as a mark does, or a wider page would scale it
+    /// through its block partway into one.
     pub fn moved_view(&self, pt: f64) -> f64 {
         self.moved_as(pt, |line, now| {
-            place::moved_by_block(self.before, self.after, line, now)
+            // Where no line's top is, `line_topped` gives the point for
+            // both its top and its baseline.
+            let on_no_line = line.1 <= line.0;
+            let over_its_first = place::line_at(self.before, line).1 < 0.0;
+            if on_no_line || over_its_first {
+                place::moved_by_block(self.before, self.after, line, now)
+            } else {
+                place::moved_into(self.before, self.after, line, self.ends, now)
+            }
         })
     }
 
@@ -308,6 +319,34 @@ mod tests {
         pt: f64,
     ) -> f64 {
         let ends: Vec<(f64, f64)> = now.iter().map(moves::ends_of).collect();
+        set_again(edited, reflowed, before, after, was, now, &ends).moved(pt)
+    }
+
+    /// Where a view's top at `pt` goes, as `moving` moves a point.
+    fn viewed(
+        edited: bool,
+        reflowed: bool,
+        before: &[(usize, f64)],
+        after: &[(usize, f64)],
+        was: &[Line],
+        now: &[Line],
+        pt: f64,
+    ) -> f64 {
+        let ends: Vec<(f64, f64)> = now.iter().map(moves::ends_of).collect();
+        set_again(edited, reflowed, before, after, was, now, &ends).moved_view(pt)
+    }
+
+    /// A page set again, as `moving` and `viewed` move across it, its most
+    /// at 500 pt.
+    fn set_again<'a>(
+        edited: bool,
+        reflowed: bool,
+        before: &'a [(usize, f64)],
+        after: &'a [(usize, f64)],
+        was: &'a [Line],
+        now: &'a [Line],
+        ends: &'a [(f64, f64)],
+    ) -> Moving<'a> {
         Moving {
             edited,
             reflowed,
@@ -315,11 +354,74 @@ mod tests {
             after,
             was,
             now,
-            ends: &ends,
+            ends,
             most_pt: 500.0,
             said: std::cell::OnceCell::new(),
         }
-        .moved(pt)
+    }
+
+    /// Two blocks' lines and tops, as set before and after: `(was, now,
+    /// before, after)`.
+    type Widened = ([Line; 6], [Line; 4], [(usize, f64); 2], [(usize, f64); 2]);
+
+    /// A block of five lines, their tops 0, 20, 40, 60 and 80, and one at
+    /// 100, set again wider: the first block has three lines now, 0, 20
+    /// and 40, and the second starts at 60.
+    fn widened() -> Widened {
+        let was = [
+            line(10.0, "a"),
+            line(30.0, "b"),
+            line(50.0, "c"),
+            line(70.0, "d"),
+            line(90.0, "e"),
+            line(110.0, "next"),
+        ];
+        let now = [
+            line(10.0, "a b"),
+            line(30.0, "c d"),
+            line(50.0, "e"),
+            line(70.0, "next"),
+        ];
+        (was, now, [(0, 0.0), (1, 100.0)], [(0, 0.0), (1, 60.0)])
+    }
+
+    #[test]
+    fn a_view_on_a_lines_top_lands_on_a_line_at_another_width() {
+        // On the fourth line's top, 60 pt into a block 100 tall, it would
+        // land 36 pt into one 60 tall, partway into the second line; it
+        // lands on the line nearest that, the third's top, as a mark does.
+        let (was, now, before, after) = widened();
+        assert_eq!(viewed(false, true, &before, &after, &was, &now, 60.0), 40.0);
+        assert_eq!(moving(false, true, &before, &after, &was, &now, 60.0), 40.0);
+    }
+
+    #[test]
+    fn a_view_partway_down_a_block_on_no_line_stays_as_far_through_it() {
+        // Halfway down the block, between the third line's top and the
+        // fourth's, it goes halfway down the block set wider, on no line.
+        let (was, now, before, after) = widened();
+        assert_eq!(viewed(false, true, &before, &after, &was, &now, 50.0), 30.0);
+    }
+
+    #[test]
+    fn a_view_on_a_page_an_edit_set_wider_goes_into_the_block_saying_its_words() {
+        // A paragraph saved in above "alpha beta gamma delta", set at a
+        // narrower window: no new line says "delta", or "alpha beta
+        // gamma", and the view's block's number names the new paragraph
+        // now. On "delta"'s top, the view lands on a line of the block
+        // saying what its block said, "gamma delta", as a mark there does;
+        // partway down the block, on no line, it goes as far through it.
+        let old = [line(50.0, "alpha beta gamma"), line(70.0, "delta")];
+        let new = [
+            line(40.0, "inserted"),
+            line(70.0, "alpha beta"),
+            line(90.0, "gamma delta"),
+        ];
+        let before = [(0, 0.0), (1, 30.0), (2, 80.0)];
+        let after = [(0, 0.0), (1, 30.0), (2, 50.0), (3, 120.0)];
+        assert_eq!(viewed(true, true, &before, &after, &old, &new, 60.0), 80.0);
+        // 15 pt into a block 50 tall: 21 pt into the one 70 tall.
+        assert_eq!(viewed(true, true, &before, &after, &old, &new, 45.0), 71.0);
     }
 
     #[test]
