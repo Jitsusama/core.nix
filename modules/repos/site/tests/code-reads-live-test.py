@@ -73,8 +73,9 @@ KINDS = ["reading", "repository", "checkout", "tree", "change", "using"]
 # element is each drawer's way to its row in the launcher, where its acts are. Three of the files
 # and four of the kilobytes are what keeps a draw light: its pace, the trees a drawer lists and
 # the foot's reasons. One kilobyte is the theme's 12 px floor on each step of its type, which
-# every page reads.
-BUDGET = Budget(files=37, kilobytes=536, elements=276)
+# every page reads, and one keeps a name with nowhere to wrap inside its stand and the find's
+# placeholder upright under more contrast.
+BUDGET = Budget(files=37, kilobytes=537, elements=276)
 CELLS_SITE = "cells/"
 
 
@@ -930,9 +931,35 @@ def test_a_phone_reads_every_word_code_draws(
         assert said["small"] == [], f"Code drew words under {LEAST_PX} px at a phone: {said}"
         assert said["placeholder"] == said["muted"], f"the find's words weren't muted: {said}"
         assert said["opacity"] == "1", f"the find's words were faded below muted: {said}"
-        named = opened.page.evaluate(SPILT, LONG_NAME)
-        assert named["stands"] > 0, "Code drew no stand in its grove at a phone"
-        assert named["spilt"] == [], f"a long name spilt past its stand at a phone: {named}"
+    finally:
+        opened.close()
+
+
+@pytest.mark.usefixtures("code_whole")
+@pytest.mark.parametrize("size", SIZES)
+def test_a_name_stays_inside_its_stand_at_every_width(
+    browser: Browser, code_served: Served, size: tuple[int, int]
+) -> None:
+    """No name spills past its stand, however long, and one that fits a phone keeps one line.
+
+    A name wraps at its dots and dashes, and one with neither breaks wherever it must
+    only when it is wider than the room it has, so it is never cut and never spills.
+    """
+    root, _ = code_served
+    opened = Opened(browser, f"{root}code/", size, LOOKS[0])
+    try:
+        says_it_stands(opened.page, "live")
+        named = opened.page.locator(".grove .stand .nm").first
+        expect(named, "Code drew no stand's name in its grove").to_be_visible(timeout=PACE_MS)
+        opened.page.evaluate("document.fonts.ready.then(() => true)")
+        for name in (LONG_NAME, WIDER_THAN_A_PHONE):
+            said = opened.page.evaluate(SPILT, name)
+            assert said["stands"] > 0, f"Code drew no stand in its grove at {size}"
+            assert said["named"] == said["stands"], f"a stand drew no name at {size}: {said}"
+            assert said["spilt"] == [], f"{name} spilt past its stand at {size}: {said}"
+        if size == SIZES[0]:
+            said = opened.page.evaluate(SPILT, LONG_NAME)
+            assert said["lines"] == 1, f"{LONG_NAME} broke though a phone has room: {said}"
     finally:
         opened.close()
 
@@ -940,25 +967,68 @@ def test_a_phone_reads_every_word_code_draws(
 # The longest repository name on Joel's machine with no dot or dash to wrap
 # at, which at 12 px drew wider than a phone's stand of four to a row.
 LONG_NAME = "infrastructure"
+# A name with nowhere to wrap that is wider than a phone, so no stand can
+# hold it on one line and only breaking it keeps it inside.
+WIDER_THAN_A_PHONE = LONG_NAME * 6
 
-# Each stand's name, given `name`, drawn past the stand it names.
+# Each stand's name set to `name`, then how many stands and names there are,
+# each name drawn past its stand, and the most lines any name took.
 SPILT = """(name) => {
   const spilt = [];
   const stands = document.querySelectorAll(".grove .stand");
+  let named = 0;
+  let lines = 0;
   for (const stand of stands) {
-    const named = stand.querySelector(".nm");
-    if (!named) continue;
-    named.textContent = name;
+    const nm = stand.querySelector(".nm");
+    if (!nm) continue;
+    named += 1;
+    nm.textContent = name;
     const words = document.createRange();
-    words.selectNodeContents(named);
+    words.selectNodeContents(nm);
     const drawn = words.getBoundingClientRect();
+    const tops = new Set([...words.getClientRects()].map((line) => Math.round(line.top)));
+    lines = Math.max(lines, tops.size);
     const room = stand.getBoundingClientRect();
     if (drawn.left < room.left - 0.5 || drawn.right > room.right + 0.5) {
       spilt.push(`${Math.round(drawn.width)} px in ${Math.round(room.width)}`);
     }
   }
-  return { stands: stands.length, spilt };
+  return { stands: stands.length, named, lines, spilt };
 }"""
+
+
+# The find's slant and ink, typed and as its placeholder.
+SLANTS = """() => {
+  const find = document.querySelector("#find");
+  const typed = getComputedStyle(find);
+  const said = getComputedStyle(find, "::placeholder");
+  return { typed: typed.fontStyle, said: said.fontStyle, ink: typed.color, saidInk: said.color };
+}"""
+
+
+@pytest.mark.usefixtures("code_whole")
+@pytest.mark.parametrize("look", LOOKS)
+def test_more_contrast_sets_the_finds_placeholder_upright_beside_its_italic_words(
+    browser: Browser, code_served: Served, look: str
+) -> None:
+    """Under more contrast the placeholder is drawn in the text's ink, so only a slant tells it.
+
+    The kit slants a raised placeholder, which on Code's italic find would read as typed
+    words; without more contrast the placeholder keeps its field's slant and is told by ink.
+    """
+    root, _ = code_served
+    opened = Opened(browser, f"{root}code/", SIZES[1], look)
+    try:
+        says_it_stands(opened.page, "live")
+        said = opened.page.evaluate(SLANTS)
+        assert said["typed"] == "italic", f"Code's find no longer types in italic: {said}"
+        assert said["said"] == said["typed"], f"the placeholder left its field's slant: {said}"
+        opened.page.emulate_media(contrast="more")
+        said = opened.page.evaluate(SLANTS)
+        assert said["saidInk"] == said["ink"], f"more contrast left the placeholder faint: {said}"
+        assert said["said"] == "normal", f"the placeholder read as typed words: {said}"
+    finally:
+        opened.close()
 
 
 @pytest.mark.usefixtures("code_whole")
