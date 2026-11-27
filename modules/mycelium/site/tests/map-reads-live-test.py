@@ -749,6 +749,59 @@ def test_a_node_serving_no_ties_has_the_map_wait_for_its_messages(
     opened.close()
 
 
+# What the standing line says of a watch that isn't live (kit/status.ts).
+NOT_LIVE = "Not live since"
+
+
+# A message watch that breaks before it first answers leaves the map drawn
+# from its ties, and the line says the map isn't live and why, as it says any
+# broken watch, rather than that it is reading or waiting on what passed: the
+# server tells it broken until the node answers a watch asked again.
+def test_messages_broken_before_they_answer_are_said_broken(
+    browser: Browser, slow_talk_served: Served, slow_talk_node: StandIn
+) -> None:
+    root, _ = slow_talk_served
+    opened = Opened(browser, f"{root}mycelium/", SIZES[-1], "dark")
+    page = opened.page
+    the_map_stands(page, "live")
+    asof = page.locator("#asof")
+    expect(asof, "the map didn't say it was reading what passed").to_contain_text(READING_TALK)
+    slow_talk_node.cut("message")
+    the_map_stands(page, "broken")
+    expect(asof, "broken messages weren't said as not live").to_contain_text(NOT_LIVE)
+    expect(asof, "broken messages were said as read for").not_to_contain_text(READING_TALK)
+    expect(asof, "broken messages were said as waited on").not_to_contain_text(WAITING_TALK)
+    the_map_counts(page, COUNTED, "the map dropped the realm when its messages broke")
+    opened.close()
+
+
+# Messages that answered and then lose their watch, as when the node drops it,
+# are said broken while the server watches again, and live once they answer
+# again. They were read once, so the line never says it is reading them.
+def test_messages_watched_again_after_answering_are_said_broken_then_live(
+    browser: Browser, slow_talk_served: Served, slow_talk_node: StandIn
+) -> None:
+    root, _ = slow_talk_served
+    opened = Opened(browser, f"{root}mycelium/", SIZES[-1], "dark")
+    page = opened.page
+    the_map_stands(page, "live")
+    asof = page.locator("#asof")
+    slow_talk_node.answer("message")
+    expect(asof, "messages that answered were still read for").not_to_contain_text(
+        READING_TALK, timeout=PACE_MS
+    )
+    slow_talk_node.withhold("message")
+    slow_talk_node.cut("message")
+    the_map_stands(page, "broken")
+    expect(asof, "a dropped message watch wasn't said as not live").to_contain_text(NOT_LIVE)
+    expect(asof, "messages read once were said as read for again").not_to_contain_text(READING_TALK)
+    slow_talk_node.answer("message")
+    the_map_stands(page, "live", timeout=BACK_MS)
+    expect(asof, "messages back weren't said live").to_contain_text("Live from")
+    expect(asof, "messages back were said as read for").not_to_contain_text(READING_TALK)
+    opened.close()
+
+
 # The networks node.json's realm leads, each drawn as a hub, and the one
 # branching from another, as a mind map branches.
 NETWORKS = ("orchestration.skiff1", "orchestration.tern01", "orchestration.heron1")
