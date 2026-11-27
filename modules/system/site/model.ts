@@ -233,7 +233,7 @@ function thingOf(held: Holds, key: string, unread: string[]): Thing | undefined 
     name,
     health: healthOf(text(record, "health")),
     says: text(record, "says") ?? "",
-    // An unreadable side is said from the looks listed beside it, so the
+    // A side absent, null or unreadable is said from the looks listed beside it, so the
     // machine's standing line names what they do, cut as the daemon cuts one.
     side: sided ?? sideOf((listed ?? []).map((look) => look.side)),
     looks: torn ? undefined : listed,
