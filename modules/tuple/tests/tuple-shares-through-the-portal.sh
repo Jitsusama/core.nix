@@ -12,10 +12,12 @@ set -euo pipefail
 # data folder is only text to find in its steps.
 activate=$(realpath -- "$2")
 data=$3
-# An empty one would match every step's folder and move none of them, so
-# the steps would write into the person's own Tuple folder.
-if [[ -z $data ]]; then
-  echo "the data folder to find in the steps is empty" >&2
+# An empty one would match every step's folder and move none of them, and
+# one that isn't a whole path, or ends in a slash, would match only part of
+# one, so the steps would write into the person's own Tuple folder or home.
+if [[ $data != /* || $data == */ ]]; then
+  echo "the data folder to find in the steps isn't a whole path without a slash at its end:" \
+    "\"$data\"" >&2
   exit 64
 fi
 # The library is handed in by its store path; shellcheck reads it from here.

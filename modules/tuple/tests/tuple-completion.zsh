@@ -9,8 +9,11 @@ completion=$1
 here=$PWD
 # Each Tab runs the real tuple with these folders, so run anywhere but the
 # folder of its own tuple-completes-in-zsh.sh makes, it would reach a
-# person's daemon and data.
-if [[ $XDG_RUNTIME_DIR != $here/* || $XDG_DATA_HOME != $here/* ]]; then
+# person's daemon and data. A person's home holding its own runtime and
+# data folders looks like that folder, so only the folder's own name for
+# itself, and its own folders exactly, let it through.
+if [[ $TUPLE_FOLDER_OF_ITS_OWN != "$here" || $HOME != "$here" ||
+  $XDG_RUNTIME_DIR != "$here/run" || $XDG_DATA_HOME != "$here/data" ]]; then
   print -ru2 -- "tuple-completion.zsh runs only from tuple-completes-in-zsh.sh"
   exit 64
 fi

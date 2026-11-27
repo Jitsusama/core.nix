@@ -6427,8 +6427,9 @@
   tuple-completes-in-zsh = ''
     Tab in zsh offers tuple's commands and subcommands, through Tuple's own completion and the real
     tuple, among them every command core runs against it and the flags its followers pass, in a
-    folder of its own whose daemon alone it stops; its editors' script refuses to run with a
-    runtime or data folder outside that folder
+    folder of its own whose daemon alone it stops; its editors' script refuses before any tuple runs
+    a home, runtime or data folder but that folder's own, a person's home holding its own runtime
+    and data folders among them
   '';
   tuple-ends-its-flags = ''
     The real tuple takes a name that starts with a dash after "--" as a name, never a flag, for each
@@ -6466,11 +6467,13 @@
     Started line from health is refused, each refusal proven first on a table of settings
   '';
   tuple-shares-through-the-portal = ''
-    Tuple reads the portal setting where the switch writes it, and the script refuses an empty data
-    folder to find; first, the folder of its own that the checks running the real tuple share
-    sends tuple's stop only to its own home, runtime and data folders, the runtime folder made
-    first, ends before any tuple runs when it can't be made, keeps a script's status, and is
-    removed as a script ends but for a stop cut off, which keeps it and says how to stop it
+    Tuple reads the portal setting where the switch writes it, and the script refuses before any
+    tuple runs a data folder to find that's empty, isn't a whole path or ends in a slash; first,
+    the folder of its own that the checks running the real tuple share is made under the TMPDIR
+    given, sends tuple's stop only to its own home and every folder XDG names, the runtime folder
+    made first, ends before any tuple runs when it can't be made, keeps a script's status, even
+    with no stderr, and is removed as a script ends but for a stop cut off, which keeps it and says
+    how to stop it
   '';
   tuple-takes-no-real-time-priority = ''
     Tuple's daemon may take no real-time priority, and goes first by a nice below 0 and a CPU weight
