@@ -312,6 +312,7 @@ async fn serve(
     let owner = supplicant_owner(&owners).await;
     let mut air = Air::new(state.clone(), seen, &arrivals, owner);
     air.hear_all(&bus, &supplicant).await;
+    wifid.settle_joins().await;
 
     let rule = MatchRule::builder()
         .msg_type(zbus::message::Type::Signal)
@@ -1583,6 +1584,22 @@ fn joined_throughout(steps: [&str; 2], points: [Option<&str>; 2]) -> bool {
     steps == ["completed"; 2] && points[0] == points[1]
 }
 
+/// Whether a card has landed, and the access point it's at, if any. Its
+/// step and its point are each read twice, as a move could leave for
+/// another point and fail back between two reads.
+async fn landing(interface: &InterfaceProxy<'_>) -> zbus::Result<(bool, Option<OwnedObjectPath>)> {
+    let before = interface.state().await?;
+    let point = interface.current_access_point().await.ok();
+    let point = point.filter(|point| joined_to(point).is_some());
+    let after = interface.state().await?;
+    let again = interface.current_access_point().await.ok();
+    let joined = point.as_ref().map(ToString::to_string);
+    let again = again.as_ref().and_then(|again| joined_to(again));
+    let steps = [before.as_str(), after.as_str()];
+    let landed = joined_throughout(steps, [joined.as_deref(), again.as_deref()]);
+    Ok((landed, point))
+}
+
 /// Turns every Wi-Fi radio on or off.
 fn radio(on: bool) -> Result<(), Refused> {
     let turned = OpenOptions::new()
@@ -2074,20 +2091,11 @@ impl Wifid<'_> {
         let interface = interface(self.bus, path).await?;
         // A card found partway through a join, as wifid starts mid-move,
         // hasn't left a point that warned it until that join lands, so the
-        // warning taken in from before stays if the join fails. Its step
-        // and its point are each read twice, as a move could leave for
-        // another point and fail back between two reads.
-        let before = interface.state().await?;
-        // A card kept on its network as wifid restarts says nothing of the
-        // access point it's at until it moves, so it's asked.
-        let point = interface.current_access_point().await.ok();
-        let point = point.filter(|point| joined_to(point).is_some());
+        // warning taken in from before stays if the join fails. A card kept
+        // on its network as wifid restarts says nothing of the access point
+        // it's at until it moves, so it's asked.
+        let (landed, point) = landing(&interface).await?;
         let joined = point.as_ref().map(ToString::to_string);
-        let after = interface.state().await?;
-        let again = interface.current_access_point().await.ok();
-        let again = again.as_ref().and_then(|again| joined_to(again));
-        let steps = [before.as_str(), after.as_str()];
-        let landed = joined_throughout(steps, [joined.as_deref(), again.as_deref()]);
         change(self.state, |state| {
             if landed {
                 state.landed_at(&card.name, joined);
@@ -2133,6 +2141,31 @@ impl Wifid<'_> {
             }
         }
         Ok(interface)
+    }
+
+    /// Reads again each card still joining as wpa_supplicant's signals
+    /// are first followed: one handed over partway through a join that
+    /// landed before then says so in no signal wifid hears, and would stay
+    /// joining, its warnings never settled, until it next moved.
+    async fn settle_joins(&self) {
+        let joining = self.state.borrow().still_joining();
+        for card in joining {
+            let Ok(path) = self.supplicant.get_interface(&card).await else {
+                continue;
+            };
+            let read = match interface(self.bus, path).await {
+                Ok(interface) => landing(&interface).await,
+                Err(error) => Err(error),
+            };
+            match read {
+                Ok((true, point)) => {
+                    let point = point.as_ref().map(ToString::to_string);
+                    change(self.state, |state| state.landed_at(&card, point));
+                }
+                Ok((false, _)) => {}
+                Err(error) => eprintln!("<4>can't read how far {card} has joined: {error}"),
+            }
+        }
     }
 
     /// Holds a card on its network as it's handed over to the access point

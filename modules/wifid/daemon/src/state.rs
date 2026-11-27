@@ -368,6 +368,11 @@ impl State {
         self.joining.insert(card.to_owned());
     }
 
+    /// The cards, by name, short of a completed join.
+    pub fn still_joining(&self) -> Vec<String> {
+        self.joining.iter().cloned().collect()
+    }
+
     /// Takes in that the card of that name has finished joining, at the
     /// point it's at: only then has it left one point for another.
     pub fn landed(&mut self, card: &str) {
