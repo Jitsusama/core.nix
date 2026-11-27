@@ -73,6 +73,15 @@ let
     env = (old.env or { }) // {
       INLYNE_KEYBINDINGS = "${bindingsFile}";
     };
+    # inlyne's file watcher tests time a change's notice against the
+    # clock, which a Mac's FSEvents gives only as fast as fseventsd keeps
+    # up: on 26 November, with it at a whole core, a Mac's update failed
+    # on slowly_swap_file after its four tries. The patches leave the
+    # watcher alone and Linux's inotify still runs them, so a Mac skips
+    # them rather than letting a busy daemon hold its update.
+    checkFlags =
+      (old.checkFlags or [ ])
+      ++ lib.optionals pkgs.stdenv.hostPlatform.isDarwin [ "--skip=file_watcher::tests" ];
     postFixup =
       (old.postFixup or "")
       + lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
