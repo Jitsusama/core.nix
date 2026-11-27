@@ -1646,8 +1646,12 @@ mod tests {
 
         moves(&mut state, "/Interfaces/0/BSSs/2", false);
         moves(&mut state, "/Interfaces/0/BSSs/1", true);
+        // As the card associates with the hall again, away from the point
+        // that warned, that point is kept off only if the warning lasted.
+        state.attempting("wlan2");
+        state.at("wlan2", Some("/Interfaces/0/BSSs/2".into()));
         let failed = state.warned_from("wlan2", now).map(str::to_owned);
-        moves(&mut state, "/Interfaces/0/BSSs/2", true);
+        state.landed("wlan2");
         moves(&mut state, "/Interfaces/0/BSSs/1", true);
 
         assert_eq!(
