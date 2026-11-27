@@ -20,12 +20,15 @@ pub const GRACE: Duration = Duration::from_secs(10);
 /// or more, is given a second before the next: asked again at once, it
 /// went on refusing for most of an hour. The time is read with `date`,
 /// not bash's `$SECONDS`, since a plainer `sh` such as dash leaves that
-/// empty and the loop asked nothing.
+/// empty and the loop asked nothing. It's read once into `now` before the
+/// first request and again after each, so a second ticking between two
+/// reads can't end a one-second loop before it asks: a request's
+/// `--max-time` is figured from `now` too.
 pub fn repeated(seconds: &str, request: &str, every: &str) -> String {
     format!(
-        "end=$(($(date +%s) + {seconds})); while [ \"$(date +%s)\" -lt \"$end\" ]; do \
+        "now=$(date +%s); end=$((now + {seconds})); while [ \"$now\" -lt \"$end\" ]; do \
          a=$({request}); \
-         echo \"$a\"; case $a in [45]*) sleep 1;; esac; {every} done"
+         echo \"$a\"; case $a in [45]*) sleep 1;; esac; {every} now=$(date +%s); done"
     )
 }
 
@@ -43,13 +46,13 @@ pub fn scripts(seconds: u64) -> [String; 4] {
     let up = repeated(
         &s,
         "head -c 4000000000 /dev/zero | curl -s -g -o /dev/null -X POST -T - \
-         --max-time $((end - $(date +%s) + 1)) -w '%{http_code} %{size_upload}\\n' \
+         --max-time $((end - now + 1)) -w '%{http_code} %{size_upload}\\n' \
          \"$1/__up\"",
         "",
     );
     let down = repeated(
         &s,
-        "curl -s -g -o /dev/null --max-time $((end - $(date +%s) + 1)) \
+        "curl -s -g -o /dev/null --max-time $((end - now + 1)) \
          -w '%{http_code} %{size_download}\\n' \"$1/__down?bytes=5000000\"",
         "",
     );
