@@ -4,7 +4,7 @@
 //! work reads which merges, checks, dates or quests the count is made of
 //! without opening the files it came from.
 
-use super::measures::{Class, Measure, SAID_NONE, parked, queues, rounds, spent};
+use super::measures::{Class, Measure, SAID_NONE, parked, queues, rounds, ruled, spent};
 
 /// How many of the things behind a figure the card names before it
 /// counts the rest.
@@ -50,7 +50,9 @@ fn line(m: &Measure) -> String {
 /// since the card shows them for that reason to be read, and the asks
 /// parked on each ruling, so a parking is read while it stands. The merges past
 /// five rounds are named whatever the median reads, each with what its
-/// rounds past five caught, as WCJQSG asked.
+/// rounds past five caught, as WCJQSG asked. The claims of his rule are
+/// one a message, not one a cell, so only each sender's oldest is named,
+/// the one it's asked about in turn, and the rest counted.
 fn behind(m: &Measure) -> Vec<String> {
     if m.key == spent::KEY || m.key == SAID_NONE || m.key.starts_with(parked::KEY) {
         return m.behind.iter().map(|line| format!("  {line}")).collect();
@@ -66,7 +68,18 @@ fn behind(m: &Measure) -> Vec<String> {
         let mut lines: Vec<&String> = m.behind.iter().collect();
         // Sorting is stable, so each owner's keep the order they were read in.
         lines.sort_by_key(|line| line.rsplit_once(" · ").map_or("", |(_, owner)| owner));
-        return lines.into_iter().map(|line| format!("  {line}")).collect();
+        if m.key == ruled::KEY {
+            // The ones each sender is asked about, as owing asks them in
+            // turn, so many senders an hour and each once a day.
+            lines = ruled::asked_of_each(lines);
+        }
+        let rest = m.behind.len() - lines.len();
+        let more = (rest > 0).then(|| format!("  and {rest} more from the same senders"));
+        return lines
+            .into_iter()
+            .map(|line| format!("  {line}"))
+            .chain(more)
+            .collect();
     }
     let mut named: Vec<String> = m.behind.iter().take(NAMED).cloned().collect();
     let rest = m.behind.len().saturating_sub(NAMED);
@@ -224,6 +237,30 @@ mod tests {
                 "  CCCCCC driving, every cell ended · WM4KSZ",
             ],
             "a cell measure cut its quests short, or didn't group them by owner"
+        );
+    }
+
+    #[test]
+    fn the_claims_of_his_rule_name_each_senders_oldest_and_count_the_rest() {
+        let mut claims = measure(
+            Class::Cells,
+            4.0,
+            &[
+                "[0000000a] Joel wants it. · T6E7X6",
+                "[0000000b] Joel wants more. · 5UTLKM",
+                "[0000000c] Joel wants it shut. · T6E7X6",
+                "[0000000d] Joel wants it open. · T6E7X6",
+            ],
+        );
+        claims.key = ruled::KEY.to_owned();
+        assert_eq!(
+            shown_lines(Class::Cells, &[&claims])[1..],
+            [
+                "  [0000000b] Joel wants more. · 5UTLKM",
+                "  [0000000a] Joel wants it. · T6E7X6",
+                "  and 2 more from the same senders",
+            ],
+            "the card named every claim, or not each sender's oldest"
         );
     }
 

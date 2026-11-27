@@ -298,7 +298,7 @@ fn gather(
         &today(now),
         orchestrator,
     ));
-    all.push(measures::holds::read(state_home, &asks, now));
+    all.extend(measures::from_mesh(state_home, &asks, now));
     // Only the hour that files keeps what it read of the mesh; a look by
     // hand names no orchestrator, and keeps nothing.
     let keeps = orchestrator.is_some();

@@ -657,7 +657,7 @@ fn shown(said: &str) -> String {
 /// The sentences of `text`, by its lines and the stops ending them, a
 /// stop ending one only before a space or the line's end, so a name such
 /// as `core.nix` stays whole.
-fn sentences(text: &str) -> Vec<&str> {
+pub(super) fn sentences(text: &str) -> Vec<&str> {
     let mut found = Vec::new();
     for line in text.lines() {
         let mut start = 0;
