@@ -44,9 +44,13 @@ pub(super) const RULED_HOURLY: usize = 6;
 /// How far back the asks about a claim of his rule count against
 /// [`RULED_HOURLY`]: a second run in the same hour, the timer's and one
 /// by hand, finds the first's asks and sends only what is left of the
-/// cap. Shorter than an hour, since the timer may start its next run up
-/// to its half-minute accuracy early, and an hour to the second would
-/// then find the last hour's asks and send none.
+/// cap. Shorter than an hour, since the asks are stamped when a run
+/// sends them: the timer starts a run late by up to its half-minute
+/// accuracy, never early, and a run reads the hour before it sends, so a
+/// spell of an hour to the second could find the last hour's asks in the
+/// next timer's run and send none. Ten minutes short leaves room for that
+/// lateness, and for a run by hand just after the timer's, whose asks the
+/// next hour's run then leaves out of the count as well.
 const RULED_SPELL: i64 = 50 * 60;
 
 /// One drag as the ledger files it: its key, owner, words, and what its
