@@ -2214,8 +2214,9 @@ Singleton {
         // One asked of moments ago, by Go To or viewKept, is opening it:
         // that window is the one niri lists, so the walk doesn't wait on it.
         if (!asked) {
-            console.info(`sessions: ${id}'s viewer not opened, since niri lists it open `
-                + "or one asked for is opening");
+            console.info(`sessions: ${id}'s viewer not opened, since `
+                + (root.stillHeld(named) ? root.unaskedSaid(named)
+                    : "niri lists it open or one asked for is opening"));
             reopenNext();
             return;
         }
@@ -3454,7 +3455,7 @@ Singleton {
                 const on = root.spaceSaid(one.into.workspace);
                 console.info(`sessions: ${one.id}'s kept viewer `
                     + (asked ? `opened to wait for its host, on ${on}`
-                        : "kept, since one asked for is opening"));
+                        : `kept, since ${root.unaskedSaid(one.place.named)}`));
             } else if (one.session.held && !one.session.presence?.hosted) {
                 attach(one.session.held, one.into);
             } else if (root.refusedOwn(viewerOf(one.session.presence))) {
@@ -3466,7 +3467,8 @@ Singleton {
                 // viewer that never opens still leaves its place to open by.
                 const id = String(one.session.presence?.session ?? "");
                 kept[id] = keptPlaces[id];
-                console.info(`sessions: ${id}'s kept viewer kept, since one asked for is opening`);
+                console.info(`sessions: ${id}'s kept viewer kept, since `
+                    + root.unaskedSaid(viewerOf(one.session.presence)));
             }
         }
         // Each viewer asked for now, its place let go, is remembered with
@@ -3641,6 +3643,13 @@ Singleton {
         return still !== undefined && (still.under ?? "") !== ""
             && still.under === sessionsKittyPid && Date.now() - still.at < answerPatience
             && kittyPidNow() !== "";
+    }
+    // Why viewWith asked none for viewer `named`, open or refused aside,
+    // for the journal: a held one is said so, as viewWith's own line is,
+    // so whoever reads it after isn't sent after an ask still opening.
+    function unaskedSaid(named) {
+        return stillHeld(named) ? "the kitty that didn't answer for it may yet draw it"
+            : "one asked for is opening";
     }
     // Whether a viewer `named` was asked for within viewPatience and niri
     // hasn't listed it since (viewerCame).
