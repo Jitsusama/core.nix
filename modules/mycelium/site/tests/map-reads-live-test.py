@@ -607,6 +607,31 @@ def test_the_map_says_it_still_waits_on_messages_that_never_answer(
     opened.close()
 
 
+# What the map's line says when a reading fails to draw (view.js).
+COULDNT_DRAW = "The map couldn't draw"
+
+
+def test_a_line_saying_the_map_couldnt_draw_outlasts_its_patience_with_messages(
+    browser: Browser, slow_talk_served: Served
+) -> None:
+    root, _ = slow_talk_served
+    opened = Opened(browser, f"{root}mycelium/", SIZES[-1], "dark")
+    opened.expecting("a reading failed to draw")
+    page = opened.page
+    the_map_stands(page, "live")
+    asof = page.locator("#asof")
+    expect(asof, "the map didn't say it was reading what passed").to_contain_text(READING_TALK)
+    # A reading with nothing in it fails to draw, as a broken one would.
+    page.evaluate("document.dispatchEvent(new CustomEvent('mycelium:now', { detail: null }))")
+    expect(asof, "a reading that failed to draw wasn't said").to_contain_text(COULDNT_DRAW)
+    # Past the patience the line would move to waiting, and a second more is enough to see it.
+    page.wait_for_timeout(TALK_PATIENCE_MS + 1000)
+    expect(asof, "the patience with messages wiped what the drawing said").to_contain_text(
+        COULDNT_DRAW
+    )
+    opened.close()
+
+
 def test_a_stale_map_says_nothing_of_reading_its_messages(
     browser: Browser, slow_talk_served: Served
 ) -> None:
