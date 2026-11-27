@@ -12,7 +12,8 @@
 // shared no amount shows; and typing finds a run by the change or its id,
 // typing on looking through only what the letters before it matched; and
 // a row is keyed as its record is, but never as one of the launcher's own
-// kinds.
+// kinds, while the record Runs holds keeps the node's own key, which only
+// this pins, since nothing asks the node by it.
 // It exits 0 once every case holds, and otherwise 1, saying which didn't.
 import qs
 import Quickshell
@@ -268,7 +269,9 @@ ShellRoot {
 
             // A run's row is keyed as its record is, but never as one of the
             // launcher's own kinds, which the journal says whole as its ids
-            // (Presented.keyServed), while the run read keeps the node's key.
+            // (Presented.keyServed), while the record Runs reads keeps the
+            // node's key: nothing asks the node by it, so this pins the record
+            // alone.
             expect("a run's row keyed as its record is",
                 inherited[0].key === "run:review.constructor-1", inherited[0].key);
             runs.records = [{ key: "place:emoji", kind: "run", id: "fleet.claims",
@@ -276,8 +279,8 @@ ShellRoot {
             const claiming = runs.everything()[0];
             expect("but one claiming a place is kept under the node's row:",
                 claiming.key === "row:place:emoji", claiming.key);
-            expect("while the run keeps the node's own key", runs.runs[0].key === "place:emoji",
-                runs.runs[0].key);
+            expect("while Runs' record keeps the node's own key",
+                runs.runs[0].key === "place:emoji", runs.runs[0].key);
             Qt.callLater(() => Qt.exit(0));
         } catch (error) {
             fail(error.message);
