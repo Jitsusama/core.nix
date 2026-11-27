@@ -2439,7 +2439,9 @@ fn a_token_that_cant_see_main_lifts_no_hold_of_main_s_commit() {
     let two = world.hosted_commit("two", Some(&pinning(&pinned)));
     world.answer();
     world.system(&two);
-    fs::write(world.root.join("blind"), format!("{zero} {two}")).unwrap();
+    let kept = world.config.reads().join(&two);
+    let blind = format!("{zero} {two} {}", kept.display());
+    fs::write(world.root.join("blind"), blind).unwrap();
     let Line::Refused { why, .. } = world.update().1 else {
         panic!("a token that couldn't see main lifted the hold of main's own commit")
     };
@@ -2450,16 +2452,17 @@ fn a_token_that_cant_see_main_lifts_no_hold_of_main_s_commit() {
 }
 
 /// A token command that gives a token, and once the world's `blind` file
-/// names a held commit and a head, gives every ask after the first one a
-/// token that can't see main: the host's answers for that head, and for
-/// how it stands with the held commit, are gone.
+/// names a held commit, a head and where the read of that head's folder is
+/// kept, gives every ask after the read a token that can't see main: the
+/// host's answers for that head, and for how it stands with the held
+/// commit, are gone.
 fn blinded_token(world_root: &Path) -> String {
     let root = world_root.display();
     format!(
-        "if [ -e {root}/blind ]; then if [ -e {root}/seen ]; then \
-         read -r held head < {root}/blind; \
+        "if [ -e {root}/blind ]; then read -r held head kept < {root}/blind; \
+         if [ -e \"$kept\" ]; then \
          rm -f {root}/api/git/commits/$head {root}/api/compare/$held...$head; \
-         else touch {root}/seen; fi; fi; echo a-token"
+         fi; fi; echo a-token"
     )
 }
 
