@@ -7,14 +7,16 @@
 //! from his line, as are words of his heard inside their speech far
 //! quieter than it, however spelled, and, once his voice is known, far
 //! quieter than his voice too. So are words of his said outside their
-//! lines far quieter than their sound just before, however spelled, as
-//! their takes' loudness keeps it (loudness.rs): their model may have
-//! heard no words in that sound, or it ran on past their last. His own
-//! words in it stay: their microphones pick up his voice too, far
-//! quieter than their own, and that's his. A line of his whose words
-//! repeat a line of theirs said at the same time is their echo, and is
-//! left out whole, which also covers a line read back from a transcript,
-//! whose words' times are lost. On a headset there's none of either.
+//! lines far quieter than their sound just before, as their takes'
+//! loudness keeps it (loudness.rs), however spelled, and, once his voice
+//! is known, far quieter than his voice too: a line of theirs spans its
+//! whole take, so that reaches the takes their model heard no words in,
+//! and the second after one ends. His own words in their sound stay:
+//! their microphones pick up his voice too, far quieter than their own,
+//! and that's his. A line of his whose words repeat a line of theirs
+//! said at the same time is their echo, and is left out whole, which
+//! also covers a line read back from a transcript, whose words' times
+//! are lost. On a headset there's none of either.
 
 use std::collections::{HashMap, HashSet};
 use std::hash::BuildHasher;
@@ -105,8 +107,11 @@ const NEAR: usize = 11;
 
 /// How far under the loudest of their sound just before it, in dB, a word
 /// of Joel's said outside their lines is their echo however it's spelled
-/// and whatever words of theirs were heard there: their sound reaches his
-/// microphone where their model heard no words in it, or after their last.
+/// and whatever words of theirs were heard there: a line of theirs spans
+/// its whole take, so it reaches their takes their model heard no words
+/// in, and the second after one ends, since their sound reaches his
+/// microphone there too. Once his voice is known, the word must be
+/// `QUIETER` under that as well, so his answer just after them is his.
 /// On the echoed meetings, 69 of the 71 echo words the spelling and level
 /// rules kept sat 20 dB or more under it, all inside their takes, and
 /// cutting them took his side from 19.0% of its words wrong to 14.4%.
