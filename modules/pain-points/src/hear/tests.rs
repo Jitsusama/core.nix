@@ -6,7 +6,7 @@
 
 use super::node::node_took;
 use super::*;
-use serde_json::json;
+use serde_json::{Value, json};
 use std::fs;
 use std::io::Write;
 
@@ -709,6 +709,66 @@ fn a_pain_the_keeper_carries_later_is_closed() {
     fs::write(place.root.join("asks.jsonl"), line).expect("a ledger");
     let hour = hear(&place.ears(), CELLS, &mut |_, _| true).expect("a second run");
     assert_eq!(hour.open, 0, "carried since: {hour:?}");
+}
+
+/// On 26 November an owner said a pain heard at 10:35 was casual words,
+/// not a hurt, and nothing could close it but its aging out.
+#[test]
+fn a_pain_its_owner_says_was_none_closes_with_why() {
+    let place = Place::new("said-none");
+    place.routes();
+    let said = [user(
+        "a",
+        "2026-11-16T19:50:00.000Z",
+        "no, the drawer forgets its place",
+    )];
+    place.log("src", "s-live", Path::new("/home/j/src"), &said);
+    let hour = hear(&place.ears(), CELLS, &mut |_, _| true).expect("a run");
+    assert_eq!(hour.open, 1, "heard and sent: {hour:?}");
+    let misses = place.root.join("misses.jsonl");
+    let written = fs::read_to_string(&misses).expect("its miss written");
+    let mut line: Value = serde_json::from_str(written.trim()).expect("one line");
+    line["none"] = json!("");
+    line["none_at_ms"] = json!(AT);
+    fs::write(&misses, line.to_string() + "\n").expect("said none without why");
+    let hour = hear(&place.ears(), CELLS, &mut |_, _| true).expect("a second run");
+    assert_eq!(hour.open, 1, "none with no why closes nothing: {hour:?}");
+    // Said three days on, so only the moment its owner's word was read
+    // counts it closed today.
+    let mut later = place.ears();
+    later.at = AT + 3 * DAY_MS;
+    line["none"] = json!("he was describing, not hurt");
+    fs::write(&misses, line.to_string() + "\n").expect("said none");
+    let hour = hear(&later, CELLS, &mut |_, _| true).expect("a third run");
+    assert_eq!(
+        (hour.open, hour.closed),
+        (0, 1),
+        "its owner's word closed it: {hour:?}"
+    );
+    let kept = place.heard();
+    assert_eq!(
+        (kept[0].none.as_deref(), kept[0].closed_at),
+        (Some("he was describing, not hurt"), Some(later.at)),
+        "why it was none, or when it was read, wasn't kept with it"
+    );
+    assert_eq!(
+        kept[0].closed_by, None,
+        "no landing is said to have closed it"
+    );
+    // Its owner takes the none back by naming a test in its place.
+    let mut tested = line.clone();
+    let fields = tested.as_object_mut().expect("a line of fields");
+    fields.remove("none");
+    fields.remove("none_at_ms");
+    tested["test"] = json!("core modules/p tests/p.rs a_case");
+    fs::write(&misses, tested.to_string() + "\n").expect("a test named");
+    let hour = hear(&later, CELLS, &mut |_, _| true).expect("a fourth run");
+    let kept = place.heard();
+    assert_eq!(
+        (hour.open, kept[0].none.as_deref(), kept[0].closed_at),
+        (1, None, None),
+        "a none its owner took back left the pain closed: {hour:?}"
+    );
 }
 
 #[test]

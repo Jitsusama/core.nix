@@ -7,7 +7,8 @@
 //! are read: a pain they carry goes to no one again, and the keeper of
 //! the ledgers hears of each new one. Each pain sent is written into his
 //! misses ledger too (missed.rs), and stays open there and here until a
-//! landing a switch carried closes it. Nothing is ever sent to the void,
+//! landing a switch carried closes it, or its owner says on its misses
+//! line why it was no pain. Nothing is ever sent to the void,
 //! and nothing is posted anywhere.
 //!
 //! Unlike `read`, which keeps kinds and timings alone, `hear` keeps his
@@ -350,6 +351,38 @@ fn said(hour: &Hour) -> String {
     )
 }
 
+/// Closes each of `kept` whose owner said at its line of the misses
+/// ledger at `misses` that it was no pain, at `at` when first seen so.
+/// Before, only a landing closed a pain, so one heard wrongly stayed open
+/// in the hour, and its owner was asked of it again, until it aged out.
+/// A ledger that can't be read closes none, as nobody's word is read.
+/// Its word is read afresh each run, as cadence reads it, so a reason
+/// reworded is kept as reworded, and a none taken back, by naming a test
+/// in its place, opens the pain again unless a landing closed it.
+fn close_said_none(misses: &Path, at: i64, kept: &mut [Heard]) {
+    let Ok(text) = fs::read_to_string(misses) else {
+        return;
+    };
+    let said = heard::said_none(&text);
+    for h in kept.iter_mut() {
+        match said.iter().find(|(key, _)| *key == h.key) {
+            Some((_, why)) => {
+                if !h.closed() {
+                    h.closed_at = Some(at);
+                }
+                h.none = Some(why.clone());
+            }
+            None if h.none.is_some() => {
+                h.none = None;
+                if h.closed_by.is_none() {
+                    h.closed_at = None;
+                }
+            }
+            None => {}
+        }
+    }
+}
+
 /// Writes what it heard whole, so what was sent stays marked sent however
 /// the run ends.
 fn keep(heard_at: &Path, kept: &[Heard]) -> Result<(), String> {
@@ -389,7 +422,7 @@ fn ledgers_carrying(ears: &Ears, kept: &mut [Heard]) -> Vec<heard::Line> {
         .flat_map(|path| heard::ledger(&fs::read_to_string(path).unwrap_or_default()))
         .collect();
     for h in kept {
-        let looked = h.at >= ears.at - DAY_MS || h.closed_by.is_none();
+        let looked = h.at >= ears.at - DAY_MS || !h.closed();
         if !h.carried && !stalled::is(h) && looked {
             h.carried = heard::carried(&h.words, &ledgers);
         }
@@ -420,6 +453,7 @@ pub fn hear_putting(
     let heard_at = ears.state.join("heard.jsonl");
     let mut kept = still_kept(&heard_at, ears.at);
     let ledgers = ledgers_carrying(ears, &mut kept);
+    close_said_none(&ears.misses, ears.at, &mut kept);
     let cells = route::cells(cells_printed);
     hear_logs(
         ears,
@@ -526,7 +560,7 @@ fn still_kept(heard_at: &Path, at: i64) -> Vec<Heard> {
         .filter_map(|line| serde_json::from_str(line).ok())
         .filter(|h: &Heard| {
             h.at >= at - heard::KEPT_MS
-                || (h.is_miss() && h.closed_by.is_none())
+                || (h.is_miss() && !h.closed())
                 || h.closed_at.is_some_and(|closed| closed >= at - DAY_MS)
         })
         .collect()
@@ -589,6 +623,7 @@ fn hear_logs(
                 thread: Vec::new(),
                 shared: false,
                 landed: Vec::new(),
+                none: None,
             });
         }
         // An answer read while the node names no cell for the session
@@ -712,7 +747,7 @@ fn owners_for(
     let mut held: BTreeMap<String, usize> = BTreeMap::new();
     for to in kept
         .iter()
-        .filter(|h| h.closed_by.is_none())
+        .filter(|h| !h.closed())
         .filter_map(|h| h.to.clone())
     {
         *held.entry(to).or_default() += 1;

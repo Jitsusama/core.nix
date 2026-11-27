@@ -317,7 +317,9 @@ pub fn finding_held(
          write a red case that shows it, fix it, and answer with a fix time in hours \
          (same day for a quick fix); if it isn't yours, send it to its owner. It stays open \
          until its fix runs here: once it lands, reply to this with \"merged at\" and the \
-         commit, or name its #entry beside them in your landing note.",
+         commit, or name its #entry beside them in your landing note. If it was no hurt, \
+         say why with pain-points test --miss AT --none \"why\", AT being its misses \
+         line's time; that closes it, and Joel reads the why on cadence's card.",
     );
     for (n, pain) in pains.iter().take(NAMED_AT_MOST).enumerate() {
         let to = held_as.get(&pain.key).map_or(String::new(), |subject| {
@@ -472,6 +474,7 @@ mod tests {
             thread: Vec::new(),
             shared: false,
             landed: Vec::new(),
+            none: None,
         }
     }
 

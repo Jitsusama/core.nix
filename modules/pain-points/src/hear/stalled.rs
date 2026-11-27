@@ -86,6 +86,7 @@ pub fn stalls(log: &Log, session: &str, void: bool, since: i64, until: i64) -> V
                 thread: Vec::new(),
                 shared: false,
                 landed: Vec::new(),
+                none: None,
             }
         })
         .collect()
