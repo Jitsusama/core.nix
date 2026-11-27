@@ -57,6 +57,9 @@ enum Whence {
     Lately,
     /// Learned at this hour, heard about as loud.
     Learned,
+    /// Learned at this hour and the hour just gone, heard about as loud,
+    /// as the card was on it within the hour (`Learned::just_left`).
+    JustLeft,
     /// Learned while the card brought a download down, heard about as
     /// loud.
     Loaded,
@@ -75,8 +78,10 @@ struct Asked {
 /// What's known of how an access point carries from here, as loaded as
 /// the card is now, so the chooser weighs like with like: what it carried
 /// in the span, else what it's learned to carry under load, loaded, or at
-/// this hour, not. For the card's own point, what's learned alone, as
-/// what it usually carries. Under load, one learned to carry badly idle
+/// this hour, not, or for another the card was on within the hour, at this
+/// hour and the one before, so a point just left isn't tried as untried.
+/// For the card's own point, what's learned at this hour alone, as what
+/// it usually carries. Under load, one learned to carry badly idle
 /// and never learned under load is known by that, since a radio slow
 /// idle is no quicker bringing a download down, and isn't tried blind.
 /// The card's own is too, where slow, so a download queued on it weighs
@@ -96,10 +101,20 @@ fn known<'a>(
             .of(point, now)
             .filter(|measured| !own && choose::loaded(measured) == loaded)
             .map(|measured| (measured, Whence::Lately));
+        // The card's own point is weighed by its own span, and by what it
+        // usually carries at this hour alone, so only another is known by
+        // the hour just gone: by this hour alone, on 27 Nov 2026 a point
+        // the card had left 26 minutes before read as untried
+        // (`Learned::just_left`).
         let idle = || {
             learned
                 .of(point, hour, signal)
                 .map(|measured| (measured, Whence::Learned))
+                .or_else(|| {
+                    let left = learned.just_left(point, hour, signal, now);
+                    left.filter(|_| !own)
+                        .map(|measured| (measured, Whence::JustLeft))
+                })
         };
         lately.or_else(|| {
             if loaded {
@@ -726,6 +741,12 @@ fn tried(
                 measure::ms(known.p95)
             )
         }
+        (Some(known), Some(Whence::JustLeft)) => {
+            format!(
+                "carried {} at p95 at this hour and the one before",
+                measure::ms(known.p95)
+            )
+        }
         (Some(known), Some(Whence::Loaded)) => {
             format!(
                 "carried {} at p95 under load before",
@@ -782,7 +803,7 @@ mod tests {
     use std::path::Path;
 
     use super::*;
-    use crate::learn::Here;
+    use crate::learn::{self, Here};
     use crate::measure::tests::joined;
     use crate::measure::{Counts, Echo};
     use crate::radio::{Load, Radio};
@@ -866,6 +887,7 @@ mod tests {
             hour,
             signal: -50,
             trusted: true,
+            at: Instant::now(),
         };
         for _ in 0..10 {
             learned.carried(&here, measured).unwrap();
@@ -1090,7 +1112,10 @@ mod tests {
         let lately = Measures::default();
 
         let at_eight = known(&lately, &learned, (Instant::now(), 20));
-        let at_nine = known(&lately, &learned, (Instant::now(), 21));
+        // An hour past the card's last minute on the hall, the hour just
+        // gone no longer stands for it (`Learned::just_left`).
+        let an_hour_on = Instant::now() + learn::LEFT_WITHIN;
+        let at_nine = known(&lately, &learned, (an_hour_on, 21));
 
         let (hall, whence) = at_eight(HALL, -50, IDLE).expect("the hall was learned at eight");
         assert_eq!(hall.p95, Some(ms(15)), "what it carried then is known");
@@ -1286,6 +1311,173 @@ mod tests {
         assert_eq!(whence, Whence::Lately, "and known as measured lately");
     }
 
+    /// The access point a card left at 10:03 on 27 Nov 2026 for carrying
+    /// badly, on 2.4 GHz, and the one it tried on 5 GHz.
+    const LEFT_AT_TEN: &str = "02:00:00:00:27:00";
+    const TRIED_AT_TEN: &str = "02:00:00:00:28:00";
+
+    /// What an access point carried over a minute ending `at`, heard this
+    /// loud, at this hour.
+    fn minute_on(
+        learned: &mut Learned,
+        (point, signal): (&str, i16),
+        (hour, at): (u8, Instant),
+        measured: &Measured,
+    ) {
+        let here = Here {
+            network: "Lantern",
+            point,
+            hour,
+            signal,
+            trusted: true,
+            at,
+        };
+        learned.carried(&here, measured).unwrap();
+    }
+
+    /// What the card learned of the point it left at 10:03 on 27 Nov 2026:
+    /// all of hour 9 at about 35 ms at p95, then two minutes of hour 10 at
+    /// 250 and one at 519 under load, timed from `nine`, standing for
+    /// 09:00.
+    fn left_at_ten(learned: &mut Learned, nine: Instant) {
+        let past_nine = |minutes: u64| nine + Duration::from_secs(minutes * 60);
+        for minute in 1..=60 {
+            minute_on(
+                learned,
+                (LEFT_AT_TEN, -44),
+                (9, past_nine(minute)),
+                &idle(35),
+            );
+        }
+        for minute in 61..=62 {
+            minute_on(
+                learned,
+                (LEFT_AT_TEN, -44),
+                (10, past_nine(minute)),
+                &idle(250),
+            );
+        }
+        minute_on(
+            learned,
+            (LEFT_AT_TEN, -44),
+            (10, past_nine(63)),
+            &carried(519),
+        );
+    }
+
+    #[test]
+    fn another_point_left_within_the_hour_is_known_by_the_hour_just_gone_too() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut learned = Learned::kept_in(&dir.path().join("carried"));
+        let nine = Instant::now();
+        left_at_ten(&mut learned, nine);
+        let lately = Measures::default();
+        let half_past_ten = nine + Duration::from_secs(89 * 60 + 44);
+
+        let known_then = known(&lately, &learned, (half_past_ten, 10));
+
+        let (left, whence) = known_then(LEFT_AT_TEN, -44, IDLE).expect("left 26 minutes before");
+        assert_eq!(
+            left.p95.map(|p95| p95.as_millis()),
+            Some(41),
+            "hour 9's sixty minutes of 35 ms and hour 10's two of 250, by their minutes"
+        );
+        assert_eq!(
+            whence,
+            Whence::JustLeft,
+            "and known as learned over both hours"
+        );
+        assert_eq!(
+            known_then(LEFT_AT_TEN, -44, OWN),
+            None,
+            "the card's own point goes by this hour alone"
+        );
+        assert_eq!(
+            known_then(LEFT_AT_TEN, -70, IDLE),
+            None,
+            "nor is it known so from a room or two away"
+        );
+        let after_a_suspend = known(&lately, &learned, (half_past_ten, 7));
+        assert_eq!(
+            after_a_suspend(LEFT_AT_TEN, -44, IDLE),
+            None,
+            "nor at an hour other than the one after, as an instant doesn't count a suspend"
+        );
+        let an_hour_on = nine + Duration::from_hours(1) + learn::LEFT_WITHIN;
+        let known_later = known(&lately, &learned, (an_hour_on, 10));
+        assert_eq!(
+            known_later(LEFT_AT_TEN, -44, IDLE),
+            None,
+            "an hour past its last minute of hour 9, hour 10's two minutes are too few"
+        );
+    }
+
+    #[test]
+    fn a_point_left_for_carrying_badly_is_not_tried_as_untried_in_the_next_half_hour() {
+        // On 27 Nov 2026 a card left 02:00:00:00:27:00 at 10:03:46 for
+        // 02:00:00:00:28:00, known at 118.6 ms under load, and at 10:29:44
+        // on that one's 42.9 ms went back to the first as untried, heard
+        // at -44 dBm, though it had been on it for all of hour 9.
+        let dir = tempfile::tempdir().unwrap();
+        let mut learned = Learned::kept_in(&dir.path().join("carried"));
+        let nine = Instant::now();
+        left_at_ten(&mut learned, nine);
+        for _ in 0..10 {
+            minute_on(&mut learned, (TRIED_AT_TEN, -50), (3, nine), &carried(119));
+        }
+        let past_nine =
+            |minutes: u64, seconds: u64| nine + Duration::from_secs(minutes * 60 + seconds);
+        let lately = Measures::default();
+        let wider = Heard {
+            frequency: 5180,
+            ..heard(TRIED_AT_TEN, -50)
+        };
+        let around = [heard(LEFT_AT_TEN, -44), wider];
+        let mut chooser = crate::choose::tests::after_a_bad_minute(LEFT_AT_TEN);
+        let mut choose = |now: Instant, on: &str, measured: &Measured| {
+            let known = known(&lately, &learned, (now, 10));
+            let on = joined(on);
+            chosen(
+                &mut chooser,
+                now,
+                (&on, measured),
+                (&around, None),
+                &known,
+                false,
+            )
+        };
+
+        let moved = choose(past_nine(63, 46), LEFT_AT_TEN, &carried(519));
+        assert_eq!(
+            moved,
+            Some(Next::Move(TRIED_AT_TEN.into())),
+            "519 ms under load two minutes running leaves for 119 known under load"
+        );
+        for minute in 64..=87 {
+            let stayed = choose(past_nine(minute, 46), TRIED_AT_TEN, &idle(20));
+            assert_eq!(
+                stayed, None,
+                "20 ms at {minute} minutes past nine moves nothing"
+            );
+        }
+        // Resting on a slow middle, the wider band may yield to a narrower
+        // one, as it did then.
+        let slow = Measured {
+            p50: Some(ms(15)),
+            p95: Some(Duration::from_micros(42_900)),
+            ..idle(43)
+        };
+        let first = choose(past_nine(88, 44), TRIED_AT_TEN, &slow);
+        let second = choose(past_nine(89, 44), TRIED_AT_TEN, &slow);
+
+        assert_eq!(first, None, "one slow minute moves nothing");
+        assert_eq!(
+            second, None,
+            "the point left 26 minutes before carried 35 ms all of hour 9 and 250 since, \
+             so 42.9 ms is no reason to try it as untried"
+        );
+    }
+
     fn other(point: &str, measured: Option<Measured>) -> Other {
         Other {
             point: point.into(),
@@ -1312,6 +1504,16 @@ mod tests {
             ),
             format!("{why} carried 10.0 ms at p95 at this hour before"),
             "a move made on what was learned says so"
+        );
+        assert_eq!(
+            tried(
+                &on,
+                (&carried(30), 2437, None),
+                &other(HALL, quick.clone()),
+                Some(Whence::JustLeft)
+            ),
+            format!("{why} carried 10.0 ms at p95 at this hour and the one before"),
+            "a move made on what was learned of a point just left says over which hours"
         );
         assert_eq!(
             tried(

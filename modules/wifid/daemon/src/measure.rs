@@ -421,7 +421,7 @@ pub async fn follow(
                     let video = measures.video_of(&on.point, now);
                     println!("<6>{}", said(&on, (&best, &carried), video, call));
                     let around = state.borrow().around(&on.card);
-                    learn_from(&mut learned, &on, &carried, &around, hour);
+                    learn_from(&mut learned, &on, &carried, &around, (now, hour));
                     let chooser = chooser_of(&mut choosers, &on);
                     if let Some(minute) = measures.minute_of(&on.point, now) {
                         chooser.took_minute(now, &on.point, &minute);
@@ -739,8 +739,14 @@ fn counted(station: &Station) -> Option<Counts> {
 }
 
 /// Folds what the access point a card is on carried into what it's learned
-/// to carry at this hour, heard as loud as it's heard now.
-fn learn_from(learned: &mut Learned, on: &Joined, carried: &Measured, around: &[Heard], hour: u8) {
+/// to carry at this hour, heard as loud as it's heard now, as of `now`.
+fn learn_from(
+    learned: &mut Learned,
+    on: &Joined,
+    carried: &Measured,
+    around: &[Heard],
+    (now, hour): (Instant, u8),
+) {
     let Some(heard) = around.iter().find(|heard| heard.bssid == on.point) else {
         return;
     };
@@ -750,6 +756,7 @@ fn learn_from(learned: &mut Learned, on: &Joined, carried: &Measured, around: &[
         hour,
         signal: heard.signal,
         trusted: on.trusted,
+        at: now,
     };
     if let Err(error) = learned.carried(&here, carried) {
         eprintln!("<4>can't keep what {} carried: {error}", on.point);
