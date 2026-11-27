@@ -10,9 +10,9 @@
 //! writes one. OUTPUT gets one program name per line, sorted, and nothing
 //! while no program has it open; it's replaced whole, so a reader never
 //! sees half of it. A process in an ignored unit, such as the relay that
-//! fills the camera, is left out; a unit is a cgroup no program can put
-//! itself in, as it can take any name, so long as it's one the system's
-//! manager placed rather than a person's own. With --card, only a loopback of
+//! fills the camera, is left out, since a program can take any name but
+//! can't put itself in a system service or scope. A unit a person's own
+//! manager starts by the same name doesn't count. With --card, only a loopback of
 //! that name counts, so a node number another camera has since been given
 //! isn't taken for this one.
 //!
@@ -125,7 +125,10 @@ fn help() -> Help {
         .argument("SOURCE", "the camera's node, or a file naming it")
         .argument("OUTPUT", "the file to name them in; with --usb, its folder")
         .option("--card NAME", "only a loopback of this name counts")
-        .option("--ignore-unit UNIT", "leaves out this unit's processes")
+        .option(
+            "--ignore-unit UNIT",
+            "leaves out this system service's or scope's processes",
+        )
         .option("--usb", "SOURCE is a USB camera's node")
         .option(
             "--forget",
@@ -137,6 +140,24 @@ fn help() -> Help {
 /// A start asked wrongly, pointing at the help.
 fn wrongly(what: String) -> Failure {
     Failure::new(Exit::Usage, what).try_this("loopback-holders --help")
+}
+
+/// A unit to leave out, if it's a system service or scope holding only its
+/// own processes. A person's manager or session, or init.scope, holds
+/// everything they run, so leaving one out would hide every reader; and a
+/// slice or any other kind never names the unit a process is in.
+fn unit(name: String) -> Result<String, Failure> {
+    let own = name
+        .rsplit_once('.')
+        .is_some_and(|(stem, kind)| !stem.is_empty() && matches!(kind, "service" | "scope"));
+    let everyones =
+        name.starts_with("user@") || name.starts_with("session-") || name == "init.scope";
+    if !own || everyones || name.contains('/') {
+        return Err(wrongly(format!(
+            "--ignore-unit takes a system service or scope of its own, not {name}"
+        )));
+    }
+    Ok(name)
 }
 
 fn options(mut arguments: impl Iterator<Item = String>) -> Result<Options, Failure> {
@@ -156,7 +177,7 @@ fn options(mut arguments: impl Iterator<Item = String>) -> Result<Options, Failu
         };
         match argument.as_str() {
             "--card" => card = Some(value()?),
-            "--ignore-unit" => units.push(value()?),
+            "--ignore-unit" => units.push(unit(value()?)?),
             "--sysfs" => sysfs = PathBuf::from(value()?),
             "--debugfs" => debugfs = PathBuf::from(value()?),
             "--usb" => usb = true,
@@ -1107,10 +1128,10 @@ mod tests {
     fn the_arguments_are_read_as_the_units_give_them() {
         let given = |line: &str| options(line.split(' ').map(str::to_owned));
         let read =
-            given("--card Stand-in --ignore-unit a.service --ignore-unit b.service /run/d /run/o")
+            given("--card Stand-in --ignore-unit a.service --ignore-unit b.scope /run/d /run/o")
                 .unwrap();
         assert_eq!(read.card.as_deref(), Some("Stand-in"));
-        assert_eq!(read.units, ["a.service", "b.service"]);
+        assert_eq!(read.units, ["a.service", "b.scope"]);
         assert!(!read.usb);
         assert_eq!(read.sysfs, Path::new("/sys"));
         assert_eq!(read.debugfs, Path::new("/sys/kernel/debug"));
@@ -1137,6 +1158,13 @@ mod tests {
             "--forget /a /b",
             "--usb --forget --card Camera /a /b",
             "--usb --forget --ignore-unit a.service /a /b",
+            "--ignore-unit a.slice /a /b",
+            "--ignore-unit a.socket /a /b",
+            "--ignore-unit .service /a /b",
+            "--ignore-unit a/b.service /a /b",
+            "--ignore-unit user@1000.service /a /b",
+            "--ignore-unit session-2.scope /a /b",
+            "--ignore-unit init.scope /a /b",
         ] {
             let ending = terminal_kit::run(
                 &help(),
