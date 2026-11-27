@@ -6540,8 +6540,9 @@
     goes only once its nobody is written, and as its camera goes, one it couldn't remove is tried
     again until it can be; and a stop tries its nobody and node file once more, whether it comes
     with no camera or just as its camera went; and a loopback with no camera is said ready only
-    once its node file is
-    gone or can't be there
+    once its node file is gone or can't be there; and a camera a loopback moves to is said held
+    while its node file still says the camera before; and a wrong file nobody holds is tried twice
+    as long each time, up to sixteen seconds, while a held camera is looked at each interval
   '';
   usb-camera-holders-forget-a-killed-run = ''
     each USB camera watch's unit, the relayed one's too, forgets what says its node in the folder it
