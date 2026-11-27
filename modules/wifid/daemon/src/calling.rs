@@ -1249,6 +1249,35 @@ mod tests {
     }
 
     #[test]
+    fn an_asker_s_pid_taken_by_another_is_said_gone_by_its_socket_s_pidfd() {
+        let (connected, child) = a_child_connected();
+        // Had before the reap, as from 6.5 to 6.15 one had after is
+        // refused, which would read as no pidfd here.
+        let pidfd = pidfd_of(connected.as_fd());
+        child.gone();
+        // This test's own pid, live, stands for one the reaped asker's
+        // number went to, which only the socket's pidfd tells apart from
+        // the asker.
+        let own = i32::try_from(std::process::id()).expect("a pid fits");
+
+        let peer = Peer::on(connected.as_fd(), Some(own), Some(1000));
+
+        match pidfd.as_ref().map_err(io::Error::raw_os_error) {
+            Ok(_) => assert_eq!(
+                peer.cgroup,
+                Cgroup::Gone,
+                "a reaped asker's pid named its taker's cgroup, so the pidfd wasn't the socket's: \
+                 {peer}"
+            ),
+            Err(Some(libc::ENOPROTOOPT)) => assert!(
+                matches!(peer.cgroup, Cgroup::Unproven(_)),
+                "a kernel with no pidfd for a socket proved a path: {peer}"
+            ),
+            Err(errno) => panic!("the child's pidfd went unread, errno {errno:?}"),
+        }
+    }
+
+    #[test]
     fn an_asker_s_pidfd_says_whether_its_path_is_its_own() {
         let read = || Ok(b"0::/system.slice/x.service\n".to_vec());
         let path = "system.slice/x.service".to_owned();
