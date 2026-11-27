@@ -103,6 +103,42 @@ onLinux {
           ${pkgs.callPackage ./completion.nix { }}/share/zsh/site-functions/_passwords
         touch $out
       '';
+  # Passwords' copier, run as the daemon runs it on the account's niri
+  # nested in the sandbox, keeps a secret it's given on its standard input
+  # in its own memory, locked and unreadable through /proc: it pastes on
+  # Joel's display, and nothing is made under TMPDIR, where any process of
+  # the account's could read it, nor run from PATH. One it can't read whole
+  # is refused (tests/copier-keeps-a-secret-in-memory.py).
+  passwords-copier-keeps-a-secret-in-memory-on-niri =
+    let
+      files = lib.filterAttrs (name: _: lib.hasPrefix "niri/" name) (account graphical).xdg.configFile;
+      copier = pkgs.callPackage ./copier.nix { };
+      inherit (pkgs) mesa;
+    in
+    pkgs.runCommandLocal "passwords-copier-keeps-a-secret-in-memory-on-niri"
+      {
+        nativeBuildInputs = [
+          graphical.config.programs.niri.package
+          pkgs.dbus
+          pkgs.python3
+          pkgs.sway-unwrapped
+          pkgs.wl-clipboard
+        ];
+        __EGL_VENDOR_LIBRARY_FILENAMES = "${mesa}/share/glvnd/egl_vendor.d/50_mesa.json";
+        LIBGL_DRIVERS_PATH = "${mesa}/lib/dri";
+        GBM_BACKENDS_PATH = "${mesa}/lib/gbm";
+        LIBGL_ALWAYS_SOFTWARE = 1;
+      }
+      ''
+        export HOME=$PWD XDG_CONFIG_HOME=$PWD
+        ${lib.concatLines (
+          lib.mapAttrsToList (name: file: "install -D -m 644 ${file.source} ${lib.escapeShellArg name}") files
+        )}
+        ${lib.getExe pkgs.bash} ${../../tests/lib/nested-niri.sh} niri/config.kdl logs \
+          python3 ${./tests/copier-keeps-a-secret-in-memory.py} \
+          ${lib.getExe' copier "wl-copy"} ${lib.getExe pkgs.bash}
+        touch $out
+      '';
   # clippy finds nothing in the passwords daemon, its tests included.
   passwords-passes-clippy = passesClippy "passwords-passes-clippy" (
     pkgs.callPackage ./package.nix { }

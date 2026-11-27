@@ -11,6 +11,8 @@
 //! be trusted in kept.rs, and GitHub's reader, against its own stand-in,
 //! in github.rs, the reader hearing Slack through a tool gateway in
 //! gateway.rs, and the guard each case holds its reader by in guard.rs.
+//! A stop of Joel's heard only after he resumed what he said it before
+//! is in late.rs.
 
 mod deaf;
 mod gateway;
@@ -18,6 +20,7 @@ mod github;
 mod guard;
 mod kept;
 mod keyring;
+mod late;
 mod live;
 mod said;
 

@@ -14,6 +14,10 @@
 //! them, so each change is logged with the process and cgroup that said it,
 //! and anything but exactly that shape is refused, logged by what was
 //! wrong with it and never by what it said (2026-11-14).
+//!
+//! Long because its cases, over half of it, stay beside the private
+//! readings of the kernel's word on an asker they prove, as every module
+//! in wifid keeps them.
 
 use std::ffi::OsStr;
 use std::fmt;
@@ -129,13 +133,31 @@ impl Peer {
     /// on 26 Nov 2026, so there the path is read as before and said as
     /// unproven, rather than said of no asker at all.
     pub fn on(socket: BorrowedFd<'_>, pid: Option<i32>, uid: Option<u32>) -> Peer {
+        Peer::read_by(socket, pid, uid, |number| {
+            std::fs::read(format!("/proc/{number}/cgroup"))
+        })
+    }
+
+    /// The peer on a connection as `on` says it, its cgroup file read by
+    /// `read` from its pid, so a test can have the asker exit as it's
+    /// read.
+    fn read_by(
+        socket: BorrowedFd<'_>,
+        pid: Option<i32>,
+        uid: Option<u32>,
+        read: impl FnOnce(i32) -> io::Result<Vec<u8>>,
+    ) -> Peer {
         let pid = pid.filter(|&pid| pid > 0);
         let Some(number) = pid else {
             let cgroup = Cgroup::Unasked;
             return Peer { pid, uid, cgroup };
         };
         let pidfd = pidfd_of(socket);
-        let read = std::fs::read(format!("/proc/{number}/cgroup"));
+        // Read before the pidfd is polled, in a statement of its own: as
+        // an argument beside `held(pidfd)` it would be read after the
+        // poll, and an asker exiting between them would have another's
+        // path said as its own, proven.
+        let read = read(number);
         let cgroup = judged(held(pidfd), read, |path| {
             named(Path::new("/sys/fs/cgroup"), path)
         });
@@ -156,10 +178,13 @@ enum Held {
     Failed(Option<i32>),
 }
 
-/// What the asker's pidfd, as `pidfd_of` gave it, says of it now. A peer
-/// reaped before it's asked for gets `EINVAL` from kernels whose
-/// `pidfd_prepare` refuses a pid with no task, and `ESRCH` from those that
-/// say so, so both are taken as gone.
+/// What the asker's pidfd, as `pidfd_of` gave it, says of it now. From
+/// 6.16 the kernel gives a unix socket's peer a pidfd even once it's been
+/// reaped (`PIDFD_STALE` in `net/core/sock.c`), so there it's the poll in
+/// `exited`, not an errno, that says it's gone. Before, a peer reaped
+/// before it's asked for gets `EINVAL`; `ESRCH` is taken as gone too, as
+/// `pidfd_prepare` says it of a pid with no task where nothing turns it
+/// into `EINVAL`.
 fn held(pidfd: io::Result<OwnedFd>) -> Held {
     match pidfd {
         Ok(pidfd) => match exited(&pidfd) {
@@ -213,7 +238,10 @@ fn pidfd_of(socket: BorrowedFd<'_>) -> io::Result<OwnedFd> {
 /// Whether the process a pidfd names has exited, as a pidfd polls
 /// readable once it has. Polling asks no permission, so no filter or
 /// missing capability can make a process gone read as there. A zombie
-/// still holds its pid but counts as exited, which only says less.
+/// still holds its pid but counts as exited, which only says less. Any
+/// answer at all is taken as exited, not only `POLLIN`, since a live
+/// pidfd answers none: one that answers only `POLLHUP`, `POLLERR` or
+/// `POLLNVAL` isn't trusted to prove the path.
 fn exited(pidfd: &OwnedFd) -> io::Result<bool> {
     let mut polled = libc::pollfd {
         fd: pidfd.as_raw_fd(),
@@ -226,30 +254,49 @@ fn exited(pidfd: &OwnedFd) -> io::Result<bool> {
     if ready < 0 {
         return Err(io::Error::last_os_error());
     }
-    Ok(polled.revents & libc::POLLIN != 0)
+    Ok(answered(polled.revents))
+}
+
+/// Whether a pidfd's poll answered at all, as `exited` takes any answer
+/// to say the process is gone.
+fn answered(revents: libc::c_short) -> bool {
+    revents != 0
 }
 
 /// Where an asker runs, from what its pidfd said once its cgroup file was
 /// read and what that read gave, `named` saying whether a cgroup of a
 /// path exists.
+///
+/// An asker still there when the read was done can't have been reaped
+/// before it, so a file not found says only that wifid's `/proc` doesn't
+/// show it, as `ProtectProc=invisible` would, and is said as unread, not
+/// gone. Its path's ` (deleted)` ending is taken as its cgroup's name,
+/// with no lookup that a wrong root or a long path could spoil. The
+/// kernel refuses to remove a cgroup a process is in, and a process whose
+/// every thread has exited polls exited, so only a threaded cgroup's
+/// leader, exited while its other threads run in another, reads so of a
+/// cgroup since removed, and that path is still one the asker ran in.
+/// With no pidfd, the file not found says the asker was reaped, and the
+/// ending is looked up by `named`.
 fn judged(held: Held, read: io::Result<Vec<u8>>, named: impl Fn(&[u8]) -> bool) -> Cgroup {
-    let cgroup = match held {
-        Held::Exited => return Cgroup::Gone,
+    let cgroup = match (held, read) {
+        (Held::Exited, _) => return Cgroup::Gone,
         // Without its pidfd where the kernel gives one, nothing says the
         // path read is the asker's.
-        Held::Failed(errno) => return Cgroup::Unread(errno),
-        Held::Still | Held::NoPidfd => match read {
-            Ok(cgroup) => cgroup_of(&cgroup, named),
-            // A process reaped before its file is opened leaves none, and
-            // one reaped as it's read leaves it without its task.
-            Err(error)
-                if error.kind() == io::ErrorKind::NotFound
-                    || error.raw_os_error() == Some(libc::ESRCH) =>
-            {
-                return Cgroup::Gone;
-            }
-            Err(error) => return Cgroup::Unread(error.raw_os_error()),
-        },
+        (Held::Failed(errno), _) => return Cgroup::Unread(errno),
+        (Held::Still, Ok(cgroup)) => cgroup_of(&cgroup, |_| true),
+        (Held::NoPidfd, Ok(cgroup)) => cgroup_of(&cgroup, named),
+        // A process reaped before its file is opened leaves none, and one
+        // reaped as it's read leaves it without its task.
+        (Held::NoPidfd, Err(error))
+            if error.kind() == io::ErrorKind::NotFound
+                || error.raw_os_error() == Some(libc::ESRCH) =>
+        {
+            return Cgroup::Gone;
+        }
+        (Held::Still | Held::NoPidfd, Err(error)) => {
+            return Cgroup::Unread(error.raw_os_error());
+        }
     };
     match (cgroup, held) {
         (None, _) => Cgroup::Unnamed,
@@ -302,9 +349,10 @@ impl fmt::Display for Peer {
 ///
 /// The kernel ends the path with ` (deleted)` once a process's cgroup is
 /// removed, as for a zombie whose unit has stopped, so that's said as the
-/// cgroup it was, since removed. A live cgroup may be named to end so too,
-/// so a path `named`, one whose cgroup exists by that whole name, keeps
-/// it as the name's, escaped as the rest. It's looked up by the bytes the
+/// cgroup it was, since removed. A zombie's pidfd polls exited, so this
+/// is reached only where there's none, as `judged` says. A live cgroup
+/// may be named to end so too, so a path `named`, one whose cgroup exists
+/// by that whole name, keeps it as the name's, escaped as the rest. It's looked up by the bytes the
 /// kernel wrote, before any is said as `?`, so a name that isn't UTF-8 is
 /// found too. A name removed between the read and that look is said as
 /// removed, which it then is.
@@ -360,6 +408,8 @@ fn cut(path: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::os::fd::AsFd;
+
     use serde_json::json;
 
     use super::*;
@@ -613,8 +663,6 @@ mod tests {
 
     #[test]
     fn a_peer_is_read_from_the_kernel_and_says_when_it_couldnt_be() {
-        use std::os::fd::AsFd;
-
         // A pair's other end is this test's own process, alive.
         let (socket, _other) = std::os::unix::net::UnixStream::pair().expect("a pair");
         let own = i32::try_from(std::process::id()).expect("a pid fits");
@@ -625,21 +673,31 @@ mod tests {
 
         // Proven only where the kernel gives a pidfd, and said unproven
         // only where it gives none, so a proof that never ran shows.
-        match pidfd.as_ref().map_err(io::Error::raw_os_error) {
-            Ok(_) => assert!(
-                matches!(here.cgroup, Cgroup::Path(_)),
-                "this test's own cgroup went unproven or unread: {here}"
-            ),
-            Err(Some(libc::ENOPROTOOPT)) => assert!(
-                matches!(here.cgroup, Cgroup::Unproven(_)),
-                "a kernel with no pidfd for a socket proved this test's own cgroup: {here}"
-            ),
+        // The pid read past pid_max is beside this test's own live
+        // socket, so with a pidfd it's an asker still there whose file
+        // wifid can't see, as a hidden /proc gives, and with none it's
+        // one reaped.
+        let unseen = match pidfd.as_ref().map_err(io::Error::raw_os_error) {
+            Ok(_) => {
+                assert!(
+                    matches!(here.cgroup, Cgroup::Path(_)),
+                    "this test's own cgroup went unproven or unread: {here}"
+                );
+                format!("its cgroup unread, errno {}", libc::ENOENT)
+            }
+            Err(Some(libc::ENOPROTOOPT)) => {
+                assert!(
+                    matches!(here.cgroup, Cgroup::Unproven(_)),
+                    "a kernel with no pidfd for a socket proved this test's own cgroup: {here}"
+                );
+                "gone as its cgroup was read".to_owned()
+            }
             Err(errno) => panic!("this test's own pidfd went unread, errno {errno:?}"),
-        }
+        };
         assert_eq!(
             gone.to_string(),
-            format!("pid {}, uid 1000 (gone as its cgroup was read)", i32::MAX),
-            "a pid that isn't there named a cgroup"
+            format!("pid {}, uid 1000 ({unseen})", i32::MAX),
+            "a pid that isn't there named a cgroup, or a live asker's unseen file was said gone"
         );
         assert_eq!(
             Peer::on(socket.as_fd(), Some(0), Some(1000)).to_string(),
@@ -675,15 +733,137 @@ mod tests {
         // for the kill to land, as a pidfd polls readable once it has.
         let ready = unsafe { libc::poll(&raw mut polled, 1, 10_000) };
         let killed = exited(&pidfd).expect("a killed process polls");
+        // A zombie's file still reads, so only the poll keeps its path
+        // from being said as a proven asker's.
+        let zombie_read = std::fs::read(format!("/proc/{pid}/cgroup"));
         child.wait().expect("sleep is reaped");
         let reaped = exited(&pidfd).expect("a reaped process polls");
 
         assert!(!running, "a running process was said exited");
         assert_eq!(ready, 1, "a killed process never polled readable");
         assert!(killed, "a killed process not yet reaped was said there");
+        let zombie_read = zombie_read.expect("a zombie's cgroup file still reads");
+        assert!(
+            matches!(
+                judged(Held::Still, Ok(zombie_read), |_| true),
+                Cgroup::Path(_)
+            ),
+            "a zombie's file named no path, so its poll wasn't what kept it unsaid"
+        );
         assert!(
             reaped,
             "a reaped process was said there, so another's path could be said as its"
+        );
+    }
+
+    #[test]
+    fn any_answer_from_a_pidfd_s_poll_says_its_process_exited() {
+        assert!(
+            !answered(0),
+            "a live pidfd, which answers none, was said exited"
+        );
+        for revents in [libc::POLLIN, libc::POLLHUP, libc::POLLERR, libc::POLLNVAL] {
+            assert!(
+                answered(revents),
+                "a pidfd answering {revents:#x} without POLLIN proved its asker's path"
+            );
+        }
+    }
+
+    /// A child process connected to a listener of this test's, with the
+    /// connection's end here. Once connected it waits on signals, so the
+    /// test says when it goes, by `gone`.
+    fn a_child_connected() -> (std::os::unix::net::UnixStream, libc::pid_t) {
+        let folder = tempfile::tempdir().expect("a folder");
+        let at = folder.path().join("s");
+        let listener = std::os::unix::net::UnixListener::bind(&at).expect("a listener");
+        // SAFETY: a sockaddr_un is plain numbers, all zero a valid one.
+        let mut address: libc::sockaddr_un = unsafe { mem::zeroed() };
+        address.sun_family = libc::sa_family_t::try_from(libc::AF_UNIX).expect("a family");
+        let bytes = at.as_os_str().as_bytes();
+        assert!(
+            bytes.len() < address.sun_path.len(),
+            "a socket path too long: {at:?}"
+        );
+        for (slot, &byte) in address.sun_path.iter_mut().zip(bytes) {
+            *slot = libc::c_char::from_ne_bytes([byte]);
+        }
+        let length = libc::socklen_t::try_from(mem::size_of::<libc::sockaddr_un>())
+            .expect("an address's length fits");
+        // SAFETY: the child calls only socket, connect, pause and _exit,
+        // each safe after a fork in a process of many threads, and never
+        // returns into the test.
+        let pid = unsafe { libc::fork() };
+        if pid == 0 {
+            // SAFETY: as above; the address was made before the fork.
+            unsafe {
+                let fd = libc::socket(libc::AF_UNIX, libc::SOCK_STREAM, 0);
+                if fd < 0 || libc::connect(fd, (&raw const address).cast(), length) < 0 {
+                    libc::_exit(1);
+                }
+                loop {
+                    libc::pause();
+                }
+            }
+        }
+        assert!(pid > 0, "no fork: {}", io::Error::last_os_error());
+        let (connected, _) = listener.accept().expect("the child connects");
+        (connected, pid)
+    }
+
+    /// Kill a child of `a_child_connected`, and reap it.
+    fn gone(pid: libc::pid_t) {
+        let mut status = 0;
+        // SAFETY: they take only numbers and the one int written.
+        let (killed, reaped) = unsafe {
+            (
+                libc::kill(pid, libc::SIGKILL),
+                libc::waitpid(pid, &raw mut status, 0),
+            )
+        };
+        assert_eq!(
+            (killed, reaped),
+            (0, pid),
+            "the child wasn't killed and reaped"
+        );
+    }
+
+    #[test]
+    fn an_asker_reaped_before_it_s_read_is_said_gone() {
+        let (connected, pid) = a_child_connected();
+        gone(pid);
+
+        // Gone whatever the kernel: from 6.16 its stale pidfd polls
+        // exited, from 6.5 it's refused one, and before, its file's gone.
+        let peer = Peer::on(connected.as_fd(), Some(pid), Some(1000));
+
+        assert_eq!(
+            peer.cgroup,
+            Cgroup::Gone,
+            "an asker reaped before it was read named a cgroup: {peer}"
+        );
+    }
+
+    #[test]
+    fn an_asker_s_file_is_read_before_its_pidfd_is_asked() {
+        let (connected, pid) = a_child_connected();
+        let pidfd = pidfd_of(connected.as_fd());
+
+        // The asker goes as its file is read, so a poll before the read
+        // would find it still there and prove the path read after.
+        let peer = Peer::read_by(connected.as_fd(), Some(pid), Some(1000), |_| {
+            gone(pid);
+            Ok(b"0::/system.slice/x.service\n".to_vec())
+        });
+
+        let want = match pidfd.as_ref().map_err(io::Error::raw_os_error) {
+            Ok(_) => Cgroup::Gone,
+            Err(Some(libc::ENOPROTOOPT)) => Cgroup::Unproven("system.slice/x.service".into()),
+            Err(errno) => panic!("the child's pidfd went unread, errno {errno:?}"),
+        };
+        assert_eq!(
+            peer.cgroup, want,
+            "a path read as its asker went was proven, so the poll came first"
         );
     }
 
@@ -718,7 +898,11 @@ mod tests {
             Held::Exited,
             "reaped, 6.5 to 6.15"
         );
-        assert_eq!(held(errno(libc::ESRCH)), Held::Exited, "reaped, after");
+        assert_eq!(
+            held(errno(libc::ESRCH)),
+            Held::Exited,
+            "a pid with no task, said so by pidfd_prepare"
+        );
         assert_eq!(held(errno(libc::ENOPROTOOPT)), Held::NoPidfd, "before 6.5");
         assert_eq!(
             held(errno(libc::EMFILE)),
@@ -728,8 +912,28 @@ mod tests {
     }
 
     #[test]
+    fn a_removed_cgroups_mark_is_a_live_name_for_an_asker_still_there() {
+        let read = || Ok(b"0::/system.slice/x.service (deleted)\n".to_vec());
+        assert_eq!(
+            judged(Held::Still, read(), |_| false),
+            Cgroup::Path("system.slice/x.service??deleted?".into()),
+            "an asker still there was said to be in a cgroup since removed, not the one it ran in"
+        );
+        assert_eq!(
+            judged(Held::NoPidfd, read(), |_| false),
+            Cgroup::Unproven("system.slice/x.service, since removed".into()),
+            "with no pidfd, a cgroup not found by its marked name wasn't said as removed"
+        );
+        assert_eq!(
+            judged(Held::NoPidfd, read(), |_| true),
+            Cgroup::Unproven("system.slice/x.service??deleted?".into()),
+            "with no pidfd, a live cgroup named to end so was said as removed"
+        );
+    }
+
+    #[test]
     fn a_cgroup_unread_says_why() {
-        let unread = |read| judged(Held::Still, read, |_| false);
+        let unread = |read| judged(Held::NoPidfd, read, |_| false);
         assert_eq!(
             unread(Err(io::ErrorKind::NotFound.into())),
             Cgroup::Gone,
@@ -740,16 +944,34 @@ mod tests {
             Cgroup::Gone,
             "a process reaped as its file was read read as one unreadable"
         );
-        assert_eq!(
-            unread(Err(io::Error::from_raw_os_error(libc::ENAMETOOLONG))),
-            Cgroup::Unread(Some(libc::ENAMETOOLONG)),
-            "a path nested past PATH_MAX read as a process gone"
-        );
-        assert_eq!(
-            unread(Ok(b"1:name=systemd:/a\n".to_vec())),
-            Cgroup::Unnamed,
-            "a host with no unified line read as a process gone"
-        );
+        for errno in [libc::ENOENT, libc::ESRCH] {
+            assert_eq!(
+                judged(
+                    Held::Still,
+                    Err(io::Error::from_raw_os_error(errno)),
+                    |_| true
+                ),
+                Cgroup::Unread(Some(errno)),
+                "an asker its pidfd held there, its file unseen, was said gone"
+            );
+        }
+        // Both with a pidfd, as production has, and without.
+        for held in [Held::Still, Held::NoPidfd] {
+            assert_eq!(
+                judged(
+                    held,
+                    Err(io::Error::from_raw_os_error(libc::ENAMETOOLONG)),
+                    |_| false
+                ),
+                Cgroup::Unread(Some(libc::ENAMETOOLONG)),
+                "a path nested past PATH_MAX read as a process gone, held {held:?}"
+            );
+            assert_eq!(
+                judged(held, Ok(b"1:name=systemd:/a\n".to_vec()), |_| false),
+                Cgroup::Unnamed,
+                "a host with no unified line read as a process gone, held {held:?}"
+            );
+        }
         assert_eq!(
             super::cgroup_of(b"0::/system.slice/x\xff.service (deleted)\n", |path| {
                 path == b"system.slice/x\xff.service (deleted)"
@@ -769,6 +991,13 @@ mod tests {
         assert!(
             !named(root.path(), b"x.slice/z.service (deleted)"),
             "a cgroup not there was said as there"
+        );
+        // A lookup that fails but not as not found, here ENOTDIR under a
+        // file, as root or not, is taken as there.
+        std::fs::write(root.path().join("f"), b"").expect("a file");
+        assert!(
+            named(root.path(), b"f/x (deleted)"),
+            "a cgroup wifid couldn't look into was said as none"
         );
     }
 }

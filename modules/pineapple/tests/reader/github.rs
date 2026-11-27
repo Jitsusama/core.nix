@@ -1,22 +1,22 @@
-//! pineapple-github against a stand-in for GitHub's API: a stop said on a
-//! pull request reaches it and is kept in shadow, an ask without the
-//! phrase stops nothing, a quoted one is waved off, and what doesn't name
-//! the word or Joel isn't judged at all; it only asks, never posts nor
-//! marks anything read, and a restart judges nothing twice. Joel's own
-//! resume said there ends only shadow stops, even let go live. A round
-//! GitHub's rate limit refuses is read again rather than skipped, and a
-//! list's later pages are read too. Joel's own words, which GitHub never
-//! notifies him of, are found by a search for the word, read again only
-//! once changed; a failed search costs nothing that notified him, and one
-//! failed or incomplete is asked again from as far back. A site with no
-//! notifications is read by searching for what Joel opened, its keys its
-//! own, from far enough back that a search's lagging index misses
-//! nothing, and never for more repositories than its searches allow, and
-//! its journal names it, not GitHub, when it can't be read. A site of a
-//! company's own weighs no writer's standing; who may stop Joel on GitHub
-//! itself, where any account may comment, is in standing.rs; a stop of
-//! Joel's a search indexed late, in late.rs.
+//! pineapple-github against a stand-in for GitHub's API: a stop said on a pull
+//! request reaches it and is kept in shadow, an ask without the phrase stops
+//! nothing, a quoted one is waved off, and what doesn't name the word or Joel
+//! isn't judged at all; it only asks, never posts nor marks anything read, and
+//! a restart judges nothing twice. Joel's own resume said there ends only
+//! shadow stops, even let go live. A round GitHub's rate limit refuses is read
+//! again rather than skipped, and a list's later pages are read too. Joel's own
+//! words, which GitHub never notifies him of, are found by a search for the
+//! word, read again only once changed; a failed search costs nothing that
+//! notified him, and one failed or incomplete is asked again from as far back.
+//! A site with no notifications is read by searching for what Joel opened, its
+//! keys its own, from far enough back that a search's lagging index misses
+//! nothing, and never for more repositories than its searches allow, and its
+//! journal names it, not GitHub, when it can't be read. A site of a company's
+//! own weighs no writer's standing; who may stop Joel on GitHub itself, where
+//! any account may comment, is in standing.rs; a stop of Joel's a search
+//! indexed late, in late.rs; one heard after his resume, in `heard_after.rs`.
 
+mod heard_after;
 mod late;
 mod partial;
 mod standing;

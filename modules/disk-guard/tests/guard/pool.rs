@@ -110,6 +110,123 @@ fn the_subvolumes_of_one_btrfs_pool_are_one_filesystem() {
     );
 }
 
+/// A pipe holds none of its disk's bytes, so its pool is its own device,
+/// read without opening it, since an open of a pipe with no writer waits
+/// for one: by its name, as any account may ask the machine's guard, and
+/// through a link to it, as a process the guard weighs for a freeze holds
+/// one, which the kernel follows rather than the name the link says, as
+/// that may be gone. Only on Btrfs was a pipe ever opened, so only there
+/// does this case fail on code that opens it, by waiting.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_pipe_with_no_writer_s_pool_is_its_own_device_read_without_opening_it() {
+    use std::os::unix::ffi::OsStrExt;
+    use std::os::unix::fs::OpenOptionsExt;
+    use std::path::PathBuf;
+    let dir = tempfile::tempdir().unwrap();
+    let pipe = dir.path().join("pipe");
+    let name = std::ffi::CString::new(pipe.as_os_str().as_bytes()).unwrap();
+    // SAFETY: a plain system call on a name this test owns.
+    assert_eq!(
+        unsafe { libc::mkfifo(name.as_ptr(), 0o600) },
+        0,
+        "no pipe made"
+    );
+    let device = fs::metadata(&pipe).unwrap().dev();
+    // Read within five seconds, on a thread of its own, since an open
+    // would never end.
+    let within = |path: PathBuf| {
+        let (sent, heard) = std::sync::mpsc::channel();
+        std::thread::spawn(move || sent.send(pool(&path).ok()));
+        heard.recv_timeout(std::time::Duration::from_secs(5)).ok()
+    };
+    assert_eq!(
+        within(pipe.clone()),
+        Some(Some(device)),
+        "a pipe's pool, read by its name within five seconds, as its own device"
+    );
+    // Held for reading only, without waiting, so it still has no writer.
+    let held = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NONBLOCK)
+        .open(&pipe)
+        .unwrap();
+    fs::remove_file(&pipe).unwrap();
+    let link = Path::new("/proc/self/fd").join(held.as_raw_fd().to_string());
+    assert_eq!(
+        within(link),
+        Some(Some(device)),
+        "a held pipe's pool, read through its link within five seconds, as its own device"
+    );
+    drop(held);
+}
+
+/// A file its writer holds a lease on refuses the guard's reopen, and the
+/// writer may lease it again after each break; so its pool is read as its
+/// subvolume's, without waiting the lease out, or a writer could keep its
+/// file off every disk and so out of every freeze.
+#[cfg(target_os = "linux")]
+#[test]
+#[ignore = "needs TMPDIR on Btrfs, which the sandbox and the shell's tmpfs aren't, \
+            and Linux 6.10 or later, before which a lease still refuses the read: \
+            run with --ignored and TMPDIR on a Btrfs folder"]
+fn a_leased_file_s_pool_is_its_subvolume_s_read_without_waiting_out_the_lease() {
+    let dir = tempfile::tempdir().unwrap();
+    assert!(
+        on_btrfs(dir.path()),
+        "{} isn't on Btrfs",
+        dir.path().display()
+    );
+    let expected = pool(dir.path()).unwrap();
+    let file = dir.path().join("leased");
+    let held = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&file)
+        .unwrap();
+    // SAFETY: plain system calls; a broken lease signals SIGIO, whose
+    // default would end the test, so it's ignored.
+    let leased = unsafe {
+        libc::signal(libc::SIGIO, libc::SIG_IGN);
+        libc::fcntl(held.as_raw_fd(), libc::F_SETLEASE, libc::F_WRLCK)
+    };
+    assert_eq!(leased, 0, "no lease: {}", std::io::Error::last_os_error());
+    let (sent, heard) = std::sync::mpsc::channel();
+    std::thread::spawn(move || sent.send(pool(&file).ok()));
+    assert_eq!(
+        heard.recv_timeout(std::time::Duration::from_secs(5)).ok(),
+        Some(Some(expected)),
+        "a leased file's pool, read within five seconds, as its subvolume's"
+    );
+    drop(held);
+}
+
+/// A writer may give its file a mode that lets nobody read it, which a
+/// reading open would meet; so its pool is read without one, or a writer
+/// could keep its file off every disk and so out of every freeze.
+#[cfg(target_os = "linux")]
+#[test]
+#[ignore = "needs TMPDIR on Btrfs, which the sandbox and the shell's tmpfs aren't, \
+            and Linux 6.10 or later, before which a mode still refuses the read: \
+            run with --ignored and TMPDIR on a Btrfs folder"]
+fn a_file_nobody_may_read_s_pool_is_its_subvolume_s() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    assert!(
+        on_btrfs(dir.path()),
+        "{} isn't on Btrfs",
+        dir.path().display()
+    );
+    let file = dir.path().join("unreadable");
+    fs::write(&file, "written").unwrap();
+    fs::set_permissions(&file, fs::Permissions::from_mode(0o000)).unwrap();
+    assert_eq!(
+        pool(&file).ok(),
+        pool(dir.path()).ok(),
+        "a file nobody may read, on its subvolume's pool"
+    );
+}
+
 #[test]
 fn the_volumes_of_one_apfs_container_share_its_pool() {
     let data = apfs_container("apfs", "/dev/disk3s5").unwrap();
