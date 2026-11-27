@@ -89,6 +89,7 @@ use std::time::{Duration, Instant};
 use crate::archived;
 use crate::held;
 use crate::kept;
+use crate::once;
 use crate::passed;
 use crate::proof;
 
@@ -1158,6 +1159,8 @@ fn sent_up(
     if sent.is_empty() {
         return Ok(());
     }
+    let paths: Vec<&str> = sent.iter().map(String::as_str).collect();
+    let _once = sent_once(lent, &paths, within);
     // ssh's control socket goes in TMPDIR, as when what's built comes back.
     let mut copying = Copying::start(
         upload(nix, alive)
@@ -1854,6 +1857,21 @@ fn uplink_turn(rank: Rank, about: &str, bytes: Option<u64>) -> Option<Turn> {
     })
 }
 
+/// The locks of `paths` to the lent builder `lent`, waited on for at most
+/// `within` where another copy from this machine sends them
+/// ([`once::sending_once`]), kept beside the uplink's turns; none where
+/// that folder can't be had, which [`turns_folder`] says.
+fn sent_once(lent: &Builder, paths: &[&str], within: Duration) -> Option<once::Sending> {
+    let folder = turns_folder()?;
+    Some(once::sending_once(
+        &folder,
+        &lent.host,
+        paths,
+        within,
+        &mut |line| eprintln!("{line}"),
+    ))
+}
+
 /// The folder the uplink's turns are kept in: the account's runtime
 /// folder's, or with none one of its own in the temp folder, made only
 /// it may enter. On Linux that's the `/tmp` every account writes to, so a
@@ -2279,6 +2297,9 @@ fn sent_held(
     // ssh's control socket goes in TMPDIR, as when what's built comes back.
     let within = send_within(size);
     let about = format!("of {} of held outputs to {}", sized(size), lent.host);
+    // Taken before the turn, so a copy waiting on another holds none idle.
+    let paths: Vec<&str> = sending.iter().map(|path| path.as_str()).collect();
+    let _once = sent_once(lent, &paths, within);
     let _turn = uplink_turn(rank, &about, Some(size));
     let mut copying = upload(nix, COPY_ALIVE);
     let ended = dies_with_run(&mut copying)
@@ -2360,7 +2381,7 @@ pub fn finished_within(
 
 /// A while, as a person reads it: in seconds under two minutes, else in
 /// minutes, rounded up.
-fn lasting(while_: std::time::Duration) -> String {
+pub fn lasting(while_: std::time::Duration) -> String {
     match while_.as_secs() {
         1 => "1 second".to_owned(),
         seconds if seconds < 120 => format!("{seconds} seconds"),
