@@ -98,12 +98,34 @@ def says_it_stands(page: Page, state: str, timeout: int = PACE_MS) -> None:
     )
 
 
+def quoted(key: str) -> str:
+    """Return `key` as a CSS string, since an id read back from the page may hold any mark."""
+    return '"' + "".join(map(css_character, key)) + '"'
+
+
+# The last of the control characters a CSS string can't hold as written, and the one past them.
+LAST_C0 = 0x1F
+DELETE = 0x7F
+
+
+def css_character(each: str) -> str:
+    """Return `each` as a CSS string holds it: a quote or backslash escaped, a control by code.
+
+    Given a NUL, CSS reads its escape as U+FFFD, so no selector finds an id holding one.
+    """
+    if each in '\\"':
+        return "\\" + each
+    if ord(each) <= LAST_C0 or ord(each) == DELETE:
+        return f"\\{ord(each):x} "
+    return each
+
+
 def device(page: Page, key: str) -> Locator:
-    return page.locator(f'#tree [role=treeitem][data-id="{key}"]')
+    return page.locator(f"#tree [role=treeitem][data-id={quoted(key)}]")
 
 
 def placed(page: Page, key: str) -> Locator:
-    return page.locator(f'#map-draw [data-level=device][data-id="{key}"]')
+    return page.locator(f"#map-draw [data-level=device][data-id={quoted(key)}]")
 
 
 def every_device_drawn(page: Page) -> None:
@@ -283,10 +305,24 @@ def test_narrowing_a_desk_to_a_phone_draws_the_map_the_other_way(
         opened.close()
 
 
-# The device net.json's worst concern is about, which the first fit brings into view.
+# The device net.json's worst concern is about, which the first fit brings into view: one that
+# isn't a ceiling's, as site.ts's fitFirst passes those over.
 FIRST_CONCERN = min(
-    json.loads((HERE / "net.json").read_text())["kinds"]["concern"], key=lambda c: c["rank"]
+    (
+        concern
+        for concern in json.loads((HERE / "net.json").read_text())["kinds"]["concern"]
+        if concern["concern"] != "ceiling"
+    ),
+    key=lambda c: c["rank"],
 )["device"]
+# How far below `[keys, concern]`'s keys' device the concern's is drawn, top to top.
+BELOW = """([keys, concern]) => {
+  const top = (id) => document
+    .querySelector(`#map-draw [data-level=device][data-id="${CSS.escape(id)}"]`)
+    ?.getBoundingClientRect().top;
+  const [from, to] = [top(keys), top(concern)];
+  return from === undefined || to === undefined ? null : to - from;
+}"""
 # The device drawn farthest from `from`, centre to centre, so a view showing one can leave the
 # other out.
 FARTHEST = """(from) => {
@@ -302,9 +338,11 @@ FARTHEST = """(from) => {
   boxes.sort((a, b) => far(b) - far(a));
   return boxes[0] === origin ? null : boxes[0].dataset.id;
 }"""
-# The view scrolled from its corner just far enough to show `id`, as a jump to it would.
+# The view scrolled back to its top, keeping where it stands side to side, then just far enough to
+# show `id`, down or across, with none of a jump's padding.
 TO_SHOW = """(id) => {
-  document.querySelector("#map-view").scrollTo(0, 0);
+  const view = document.querySelector("#map-view");
+  view.scrollTo(view.scrollLeft, 0);
   document.querySelector(`#map-draw [data-level=device][data-id="${CSS.escape(id)}"]`)
     .scrollIntoView({ block: "nearest", inline: "nearest" });
 }"""
@@ -366,6 +404,14 @@ def the_keys_device_stands_in_view(page: Page, where: str) -> None:
 
 def the_first_concern_leaves_it_out(page: Page, keys_on: str, where: str) -> None:
     """Show the first concern, as a jump back to it would, and check `keys_on` is then out."""
+    # TO_SHOW scrolls down from the top, across as the map stands, with no padding, so it loses
+    # the keys' device no more than a padded jump down to the concern would: lost to it, the
+    # device is lost to that jump too. A jump up to a concern drawn above it is another matter.
+    below = page.evaluate(BELOW, [keys_on, FIRST_CONCERN])
+    assert below is not None, f"{where}'s map drew no {keys_on} or {FIRST_CONCERN}"
+    assert below > 0, (
+        f"{where}'s map draws {FIRST_CONCERN} above {keys_on}, where TO_SHOW can't stand for a jump"
+    )
     page.evaluate(TO_SHOW, FIRST_CONCERN)
     past = page.evaluate(PAST, keys_on)
     assert past is not None, f"{where}'s map drew no {keys_on}"
@@ -503,6 +549,80 @@ def test_the_network_page_keeps_to_its_budget(network_opened: Opened) -> None:
     every_device_drawn(network_opened.page)
     network_opened.keeps_to(BUDGET)
     says_it_stands(network_opened.page, "live")
+
+
+# What the find's placeholder is drawn in, beside the muted it should be
+# drawn in, as the browser computes both.
+PLACEHOLDER = """() => {
+  const said = getComputedStyle(document.querySelector("#find"), "::placeholder");
+  const probe = document.createElement("span");
+  probe.style.color = "var(--muted)";
+  document.body.append(probe);
+  const muted = getComputedStyle(probe).color;
+  probe.remove();
+  return { colour: said.color, opacity: said.opacity, muted };
+}"""
+
+
+@pytest.mark.parametrize("look", LOOKS)
+def test_the_find_says_what_it_takes_in_words_that_read(
+    browser: Browser, network_served: Served, look: str
+) -> None:
+    root, _ = network_served
+    opened = Opened(browser, f"{root}network/", SIZES[0], look)
+    try:
+        says_it_stands(opened.page, "live")
+        said = opened.page.evaluate(PLACEHOLDER)
+        assert said["colour"] == said["muted"], (
+            f"the find's placeholder wasn't drawn in muted in the {look} look: {said}"
+        )
+        assert said["opacity"] == "1", (
+            f"the find's placeholder was faded below muted in the {look} look: {said}"
+        )
+    finally:
+        opened.close()
+
+
+# The find's placeholder beside the page's text and its typed words, as the
+# browser computes them once the reader has picked a look on the page.
+PLACEHOLDER_PICKED = """(look) => {
+  document.documentElement.dataset.theme = look;
+  const find = document.querySelector("#find");
+  const said = getComputedStyle(find, "::placeholder");
+  const probe = document.createElement("span");
+  probe.style.color = "var(--text)";
+  document.body.append(probe);
+  const text = getComputedStyle(probe).color;
+  probe.remove();
+  const typed = getComputedStyle(find).fontStyle;
+  return { colour: said.color, style: said.fontStyle, typed, text };
+}"""
+
+
+@pytest.mark.parametrize("look", LOOKS)
+def test_more_contrast_raises_the_finds_words_in_a_look_picked_on_the_page(
+    browser: Browser, network_served: Served, look: str
+) -> None:
+    """A reader asking for more contrast gets it in a look picked on the page too.
+
+    The theme's colours for a picked look stood above the kit's more-contrast
+    rule, so muted words stayed faint for whoever had chosen a look. Raised to
+    the text's colour, a placeholder is told from typed words by its slant.
+    """
+    root, _ = network_served
+    opened = Opened(browser, f"{root}network/", SIZES[0], look)
+    try:
+        says_it_stands(opened.page, "live")
+        opened.page.emulate_media(contrast="more")
+        said = opened.page.evaluate(PLACEHOLDER_PICKED, look)
+        assert said["colour"] == said["text"], (
+            f"more contrast left the find's placeholder muted in the picked {look} look: {said}"
+        )
+        assert said["style"] != said["typed"], (
+            f"more contrast drew the find's placeholder as typed words in the {look} look: {said}"
+        )
+    finally:
+        opened.close()
 
 
 @pytest.mark.parametrize("look", LOOKS)

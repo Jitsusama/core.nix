@@ -55,14 +55,36 @@ in
 
   # Started by the first signature that wants it, it loads the key before it
   # serves, as the agent's patch makes ssh-tpm-agent do (../ssh-tpm-agent).
+  # It listens only where the agents' key is made. Without it, the first ask,
+  # such as pi's agent proxy listing its keys, starts an agent over a
+  # dangling link that fails, and leaves the socket failed with it. A key there
+  # when the manager starts, at login or at boot for a lingering account, is
+  # started by sockets.target; one made after it starts is caught by
+  # agent-signing-key.path, which starts the socket when it appears. While the
+  # key is there the path unit starts the socket again whenever it stops, as
+  # tests/vm/keys/signing-vm-test.py shows, so a hand stop that should hold
+  # stops agent-signing-key.path first. Nothing keeps the stop: the manager
+  # starts both again when it next starts, since its targets want them, and so
+  # does a home-manager switch, as docs/installing.md says.
   systemd.user.sockets.agent-signing = {
-    Unit.Description = "The agents' signing key's own ssh-tpm-agent, which asks nothing";
+    Unit = {
+      Description = "The agents' signing key's own ssh-tpm-agent, which asks nothing";
+      ConditionPathExists = "${agentKey}.tpm";
+    };
     Socket = {
       ListenStream = "%t/${agentSocket}";
       SocketMode = "0600";
       Service = "agent-signing.service";
     };
     Install.WantedBy = [ "sockets.target" ];
+  };
+  systemd.user.paths.agent-signing-key = {
+    Unit.Description = "Starts the agents' signing socket once their key is made";
+    Path = {
+      PathExists = "${agentKey}.tpm";
+      Unit = "agent-signing.socket";
+    };
+    Install.WantedBy = [ "paths.target" ];
   };
   systemd.user.services.agent-signing = {
     Unit = {

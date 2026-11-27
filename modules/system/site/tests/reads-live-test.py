@@ -2,7 +2,8 @@
 
 The page is the one Nix builds, served by the real local-sites server beside a
 stand-in system daemon (modules/local-sites/tests/stand_in_daemon.py) holding
-a summary, four parts and two machines under test names, system.json. It must
+a summary, four parts, two machines and a builder under test names,
+system.json, trimmed to the kinds home.nix declares (SYSTEM_KINDS). It must
 say it's live with every machine drawn and counted, follow a machine that
 turns and one that goes, say broken when the daemon stops and live again
 when it's back, say stale when the server goes, and pass the web-design skill's
@@ -16,6 +17,8 @@ places must move the cursor from section to section, and a machine's address
 must put it on that machine. Anything the page
 logs fails it, since that is how it drew four empty parts unseen on 16 November.
 The server, the browser and the tab are modules/local-sites/tests/live_page.py's.
+Long because every case reads the one page against the one stand-in daemon and its
+fixtures, which a split would copy into each half.
 """
 
 import json
@@ -43,8 +46,10 @@ COUNTED = "Two machines, both worth a look."
 # about 437 KB and 397 elements since the list of what is worth a look, six to a row,
 # and since no comment is sent, its styles' included; about 445 KB since machines
 # out of reach are named apart, a cost worth the page reading well with many down;
-# 403 elements since each machine's look carries its act, opening it in the launcher.
-BUDGET = Budget(files=25, kilobytes=450, elements=410)
+# 403 elements since each machine's look carries its act, opening it in the launcher;
+# 413 elements since the builders' card, which the fixture's one good builder always
+# draws, and its code, about 4.4 KB of source on main's.
+BUDGET = Budget(files=25, kilobytes=455, elements=416)
 
 
 @pytest.fixture
@@ -57,7 +62,9 @@ def system_daemon(tmp_path: Path) -> Iterator[StandIn]:
 
 @pytest.fixture
 def system_served(tmp_path: Path, system_daemon: StandIn) -> Iterator[Served]:
-    whole = {"socket": str(system_daemon.path), "kinds": {"summary": {}, "part": {}, "machine": {}}}
+    # The kinds home.nix declares for the feed, so one it leaves out fails here.
+    kinds: dict[str, dict[str, object]] = json.loads(os.environ["SYSTEM_KINDS"])
+    whole = {"socket": str(system_daemon.path), "kinds": kinds}
     with serving(tmp_path, {"system": os.environ["SYSTEM_SITE"]}, {"system": whole}) as served:
         yield served
 
@@ -378,6 +385,12 @@ AFTER_KESTREL = """() => {
   const at = rows.findIndex((row) => row.matches('a.look') && row.textContent.includes('firmware'));
   return rows[Math.min(at + 1, rows.length - 1)]?.dataset.row ?? null;
 }"""
+# The key of the look a lands on after kestrel's firmware look, the list's first after its last.
+NEXT_LOOK = """() => {
+  const looks = [...document.querySelectorAll('#looks a[data-row]')];
+  const at = looks.findIndex((row) => row.textContent.includes('firmware'));
+  return looks[(at + 1) % looks.length]?.dataset.row ?? null;
+}"""
 
 
 @pytest.mark.parametrize("size", SIZES, ids=[f"{width}px" for width, _ in SIZES])
@@ -458,6 +471,13 @@ def test_a_machines_look_says_why_it_matters_and_opens_it_in_the_launcher(
         page.keyboard.press("j")
         held = page.evaluate("document.activeElement?.dataset?.row ?? null")
         assert held == after, f"j from the act went to {held}, not {after}"
+        # a steps to the next look from the act as from its look, never back onto its own.
+        launch.focus()
+        following = page.evaluate(NEXT_LOOK)
+        assert following is not None, "no look was listed to step to"
+        page.keyboard.press("a")
+        landed = page.evaluate("document.activeElement?.dataset?.row ?? null")
+        assert landed == following, f"a from the act went to {landed}, not {following}"
     finally:
         opened.close()
 
@@ -647,6 +667,9 @@ def test_a_machine_out_of_reach_is_named_apart(system_page: Page, system_daemon:
 # A spot machine's name, as long as the provider's: sized to it, the names'
 # column once took a phone's whole width and left the words a letter wide.
 LONG_NAME = "gull-spot-provider-s99ia2-1795535220"
+# A name with nowhere to break, twice as long: only the act's own wrapping keeps
+# "Open ... in the Launcher" inside a phone's width, as a hyphen would otherwise.
+UNBROKEN_NAME = LONG_NAME.replace("-", "") * 2
 # The least of the list's width each look's words keep, whatever the names:
 # the names' column takes two fifths at most, and the mark and gaps a little.
 WORDS_KEEP = 0.4
@@ -658,6 +681,9 @@ WORDS_ROOM = """(() => {
   return { least: Math.min(...words.map((w) => w.width)) / list.width,
     past: Math.max(...words.map((w) => w.right)) - innerWidth };
 })()"""
+# How far past the window the furthest of the looks' acts runs.
+ACT_PAST = """(() => Math.max(...[...document.querySelectorAll('#looks .launch')]
+  .map((act) => act.getBoundingClientRect().right)) - innerWidth)()"""
 
 
 def test_a_long_name_leaves_its_words_room_at_every_size(
@@ -665,22 +691,66 @@ def test_a_long_name_leaves_its_words_room_at_every_size(
 ) -> None:
     says_it_stands(system_page, "live")
     counted(system_page)
+    acts = {"link": f"mycelium:machine/{UNBROKEN_NAME}?from=system", "commands": []}
     long: dict[str, object] = {
-        **machine_called(LONG_NAME),
+        **machine_called(UNBROKEN_NAME),
         "health": "bad",
         "says": "has a nearly full disk, 54 GB free",
         "side": ["nearly full disk, 54 GB free"],
+        "ties": {
+            "reached": True,
+            "heard_at": None,
+            "cells": {"busy": 1, "idle": 0, "ended": 0},
+            "network": None,
+            "code": None,
+            "figures": None,
+            "acts": acts,
+        },
     }
     system_daemon.tell("machine", changed=[long])
-    things = ["machine:kestrel", "machine:osprey", f"machine:{LONG_NAME}"]
+    things = ["machine:kestrel", "machine:osprey", f"machine:{UNBROKEN_NAME}"]
     system_daemon.tell("part", changed=[{"key": "part:machines", "things": things}])
-    look = system_page.locator(f"#looks a[data-row^='look:machine:{LONG_NAME}:']")
+    look = system_page.locator(f"#looks a[data-row^='look:machine:{UNBROKEN_NAME}:']")
     expect(look, "the long-named machine's look never came").to_be_visible(timeout=PACE_MS)
+    act = system_page.locator(f"#looks a.launch[href='{acts['link']}']")
+    expect(act, "the long-named machine's look drew no act").to_be_visible()
     for width, height in SIZES:
         system_page.set_viewport_size({"width": width, "height": height})
         room = system_page.evaluate(WORDS_ROOM)
         assert room["past"] <= 0, f"at {width} px a look's words ran {room['past']} px past"
         assert room["least"] >= WORDS_KEEP, f"at {width} px a look's words kept {room['least']}"
+        past = system_page.evaluate(ACT_PAST)
+        assert past <= 0, f"at {width} px a look's act ran {past} px past the window"
+
+
+def test_a_builder_comes_on_its_own_watch(system_page: Page, system_daemon: StandIn) -> None:
+    says_it_stands(system_page, "live")
+    card = system_page.locator('#parts [data-part="part-builders"]')
+    expect(card, "heron's card wasn't drawn").to_contain_text("One builder")
+    gull: dict[str, object] = {
+        "key": "builder:gull",
+        "kind": "builder",
+        "name": "gull",
+        "health": "watch",
+        "says": "isn't answering (connection refused)",
+        "side": ["not answering"],
+        "ties": None,
+    }
+    system_daemon.tell("builder", changed=[gull])
+    # Heron, which is good, is named before gull, as a part's order can be one push behind its
+    # builders' health: the card still leads with gull, and takes its health.
+    named = ["machine:kestrel", "machine:osprey", "builder:heron", "builder:gull"]
+    system_daemon.tell("part", changed=[{"key": "part:machines", "things": named}])
+    said = card.locator(".said")
+    expect(said, "gull's line didn't lead the card").to_contain_text(
+        "gull (watch) isn't answering", timeout=PACE_MS
+    )
+    expect(said, "gull's line was drawn but not shown").to_be_visible()
+    expect(card, "the card didn't take gull's health").to_have_class(re.compile(r"\bwatch\b"))
+    expect(card.locator(".aside"), "heron wasn't said beside gull").to_contain_text("heron")
+    look = system_page.locator("#looks a[data-row^='look:builder:gull:']")
+    expect(look, "gull's look wasn't listed").to_have_attribute("href", "../mycelium/#builder=gull")
+    counted(system_page)
 
 
 def test_a_machine_that_goes_leaves_its_part(system_page: Page, system_daemon: StandIn) -> None:

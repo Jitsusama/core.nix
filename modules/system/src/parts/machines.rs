@@ -10,6 +10,7 @@ use std::io;
 
 use serde_json::Value;
 
+use super::builders::builders;
 use super::ties::ties;
 use super::{Answer, and, count, side_of, unread};
 use crate::record::{Deeper, Health, Look, Part, Thing};
@@ -88,7 +89,8 @@ const OWN_MATTERS: &str =
 /// sessions from `mycelium health` where that was read, and its ties to
 /// the network and the code from `net --json` and `repos --json` where
 /// those were, and this machine's with when its quest backup last backed up,
-/// where it keeps one.
+/// where it keeps one; then the builders they send builds to, as the same
+/// answer names them (builders.rs), each a thing of its own kind.
 pub fn machines(
     machines: &Answer,
     health: &Answer,
@@ -105,20 +107,21 @@ pub fn machines(
     // its file is this machine's own and was read without the node.
     let unknown = |why: &str| {
         let mut part = unread("machines", why, deeper.clone());
-        if let Some((_, said, look)) = backup.and_then(backup_said) {
+        if let Some((said, look)) = backup.and_then(backup_said) {
             part.says = format!("{}; this machine {said}", part.says);
             part.side.push(look.side);
         }
         part
     };
-    let list = match machines {
-        Ok(said) => said
-            .pointer("/Ok/Machines")
-            .and_then(Value::as_array)
-            .cloned()
-            .unwrap_or_default(),
+    let said = match machines {
+        Ok(said) => said,
         Err(why) => return unknown(why),
     };
+    let list = said
+        .pointer("/Ok/Machines")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
     if list.is_empty() {
         return unknown("the node knows of no machine");
     }
@@ -138,12 +141,16 @@ pub fn machines(
             (thing, looks)
         })
         .collect();
-    // The worst first, then by name, so the line a look wants leads.
+    // The worst first, then by name, so the line a look wants leads. The
+    // builders follow the machines, each kind the worst first.
     read.sort_by(|(a, _), (b, _)| b.health.cmp(&a.health).then_with(|| a.name.cmp(&b.name)));
+    let machine_count = read.len();
+    read.extend(builders(said));
+    let builder_count = read.len() - machine_count;
     let side = side_of(
         read.iter()
             .filter(|(thing, _)| thing.health > Health::Good)
-            .map(|(thing, looks)| format!("{} {}", thing.name, looks.join(", ")))
+            .map(|(thing, looks)| format!("{} {}", named(thing), looks.join(", ")))
             .collect(),
     );
     let things: Vec<Thing> = read.into_iter().map(|(thing, _)| thing).collect();
@@ -159,16 +166,23 @@ pub fn machines(
     {
         0 => format!(
             "{} ready",
-            count(things.len() as u64, "machine", "machines")
+            count(machine_count as u64, "machine", "machines")
         ),
         _ => things
             .iter()
             .filter(|thing| thing.health > Health::Good)
-            .map(|thing| format!("{} {}", thing.name, thing.says))
+            .map(|thing| format!("{} {}", named(thing), thing.says))
             .collect::<Vec<_>>()
             .join("; "),
     };
-    let holds = count(things.len() as u64, "machine", "machines");
+    let holds = match builder_count {
+        0 => count(machine_count as u64, "machine", "machines"),
+        _ => format!(
+            "{} and {}",
+            count(machine_count as u64, "machine", "machines"),
+            count(builder_count as u64, "builder", "builders")
+        ),
+    };
     Part {
         name: "machines",
         health,
@@ -184,14 +198,25 @@ fn name_of(said: &Value) -> &str {
     said.get("name").and_then(Value::as_str).unwrap_or("")
 }
 
+/// How the part's line names a thing: a machine by its name, and anything
+/// else by its kind too, since a builder often bears a machine's name and
+/// "gull isn't answering" beside a healthy gull reads as the machine down.
+fn named(thing: &Thing) -> String {
+    if thing.kind == "machine" {
+        thing.name.clone()
+    } else {
+        format!("{} {}", thing.kind, thing.name)
+    }
+}
+
 /// What a machine's line says, in the order it's found, and what in it is
-/// worth a look: how bad, as the line says it, and the look itself, whose
-/// words for a row's side name no machine and so drop the verb ("filling
-/// disk" for "has a filling disk").
+/// worth a look: as the line says it, and the look itself, how bad it is
+/// and its words for a row's side, which name no machine and so drop the
+/// verb ("filling disk" for "has a filling disk").
 #[derive(Default)]
 struct Said {
     line: Vec<String>,
-    looks: Vec<(Health, String, Look)>,
+    looks: Vec<(String, Look)>,
 }
 
 impl Said {
@@ -205,7 +230,14 @@ impl Said {
     fn look(&mut self, health: Health, said: String, side: String, matters: &str) {
         self.line.push(said.clone());
         let matters = matters.to_owned();
-        self.looks.push((health, said, Look { side, matters }));
+        self.looks.push((
+            said,
+            Look {
+                health,
+                side,
+                matters,
+            },
+        ));
     }
 }
 
@@ -224,14 +256,14 @@ fn machine(
     } = looked(said, own, backup);
     let health = looks
         .iter()
-        .map(|(health, ..)| *health)
+        .map(|(_, look)| look.health)
         .max()
         .unwrap_or(Health::Good);
-    let named: Vec<String> = looks.iter().map(|(_, said, _)| said.clone()).collect();
+    let named: Vec<String> = looks.iter().map(|(said, _)| said.clone()).collect();
     // The side says the worst first; a sort that keeps ties in place keeps
     // the rest in the order they were found.
-    looks.sort_by(|(a, ..), (b, ..)| b.cmp(a));
-    let looks: Vec<Look> = looks.into_iter().map(|(.., look)| look).collect();
+    looks.sort_by_key(|(_, look)| std::cmp::Reverse(look.health));
+    let looks: Vec<Look> = looks.into_iter().map(|(_, look)| look).collect();
     let side = side_of(looks.iter().map(|look| look.side.clone()).collect());
     if line.is_empty() {
         line.push("is ready".to_owned());
@@ -260,11 +292,13 @@ fn machine(
 /// Being short of room is said but never worth a look: agents' builds
 /// hold the processor nearly all day, which isn't Joel's to act on, and
 /// memory waits for a day measured to tell a held shortage from a spike.
-/// A filling disk is said but never worth a look either: the disk guard
-/// calls a disk filling under a quarter free and takes back what
-/// regenerates by itself, so only one it couldn't keep from nearly full
-/// is the reader's to act on. Two machines each with hundreds of
-/// gigabytes free were once headlined both worth a look for it.
+/// A filling disk is said but never worth a look either: the band calls a
+/// disk filling under a quarter free, and on a machine running the disk
+/// guard what regenerates is taken back by itself, so only a disk nearly
+/// full is the reader's to act on. Two machines each with hundreds of
+/// gigabytes free were once headlined both worth a look for it. A machine
+/// without the guard, such as a cloud builder, is judged the same: its
+/// record says what it is, but not whether a guard runs on it.
 fn looked(said: &Value, own: Option<&Value>, backup: Option<Backup>) -> Said {
     let mut words = Said::default();
     if said.get("state").and_then(Value::as_str) == Some("unreachable") {
@@ -305,8 +339,8 @@ fn looked(said: &Value, own: Option<&Value>, backup: Option<Backup>) -> Said {
                 Health::Bad,
                 format!("has a {side}"),
                 side,
-                "Builds and sessions there fail once it fills, and the disk guard couldn't free \
-                 enough of it by itself.",
+                "Builds and sessions there fail once it fills, and nothing there freed enough of \
+                 it by itself.",
             );
         }
         _ => {}
@@ -380,21 +414,21 @@ fn ago_said(seconds: u64) -> String {
 /// hours, so its words change once an hour rather than each minute, and
 /// every watcher isn't sent them anew.
 fn backup_looks(words: &mut Said, backup: Backup) {
-    if let Some((health, said, Look { side, matters })) = backup_said(backup) {
-        words.look(health, said, side, &matters);
+    if let Some((said, look)) = backup_said(backup) {
+        words.look(look.health, said, look.side, &look.matters);
     }
 }
 
 /// A quest backup's look, its line and the look with its why, when it
 /// wants one. A late one fails only past the whole hours that were worth
 /// a look, so the same words never say both.
-fn backup_said(backup: Backup) -> Option<(Health, String, Look)> {
+fn backup_said(backup: Backup) -> Option<(String, Look)> {
     let age = match backup {
         Backup::Unread(why) => {
             return Some((
-                Health::Watch,
                 format!("can't tell when its quests last backed up ({why})"),
                 Look {
+                    health: Health::Watch,
                     side: "quest backup's time unknown".to_owned(),
                     matters: "Quests changed since its last backup would be lost with this \
                               machine's disk, and when that was can't be told."
@@ -411,9 +445,9 @@ fn backup_said(backup: Backup) -> Option<(Health, String, Look)> {
         _ => return None,
     };
     Some((
-        health,
         format!("hasn't backed up its quests in {hours} h{BACKUP_HINT}"),
         Look {
+            health,
             side: format!("no quest backup in {hours} h"),
             matters: "Quests changed since then would be lost with this machine's disk.".to_owned(),
         },
@@ -752,6 +786,50 @@ mod tests {
             "It stops when its battery runs out, and what runs there stops with it.",
             "each look says why it matters"
         );
+        let healths: Vec<Health> = part.things[0]
+            .looks
+            .iter()
+            .map(|look| look.health)
+            .collect();
+        assert_eq!(
+            healths,
+            [Health::Bad, Health::Watch],
+            "each look keeps its own health, not the machine's worst"
+        );
+    }
+
+    #[test]
+    fn a_machines_looks_of_one_health_keep_the_order_they_were_found_in() {
+        // Its battery and its firmware, each worth a look, are found before
+        // its failing code, which the worst first moves ahead of them both.
+        let mut studio = laptop(&[], "healthy");
+        studio["name"] = json!("studio");
+        studio["power"] = json!({"on_battery": true, "charge": 12});
+        studio["firmware"] = json!({"error_before_boot": 600});
+        studio["health"] = json!({"parts": {"code": "bad"}});
+        let part = machines(
+            &Ok(realm(&[laptop(&[], "healthy"), studio])),
+            &Err(String::new()),
+            None,
+            None,
+        );
+        let looks: Vec<(&str, Health)> = part.things[0]
+            .looks
+            .iter()
+            .map(|look| (look.side.as_str(), look.health))
+            .collect();
+        assert_eq!(
+            looks,
+            [
+                ("code failing", Health::Bad),
+                ("on battery at 12%", Health::Watch),
+                (
+                    "booted under an hour ago after a firmware error",
+                    Health::Watch
+                )
+            ],
+            "the bad first, then the worth a look in the order they were found"
+        );
     }
 
     #[test]
@@ -821,7 +899,7 @@ mod tests {
     }
 
     #[test]
-    fn a_filling_disk_is_said_and_left_to_the_guard() {
+    fn a_filling_disk_is_said_but_never_worth_a_look() {
         let part = machines(
             &Ok(realm(&[laptop(&[], "filling")])),
             &Err(String::new()),
@@ -831,7 +909,7 @@ mod tests {
         assert_eq!(
             part.health,
             Health::Good,
-            "the disk guard takes back what regenerates once a disk is filling"
+            "the band decides on every machine, guard or not: a filling disk isn't worth a look"
         );
         assert_eq!(part.says, "1 machine ready");
         assert_eq!(part.side, NO_LOOK);
@@ -997,6 +1075,85 @@ mod tests {
     }
 
     #[test]
+    fn each_kind_of_look_says_its_whole_why() {
+        // This machine's backup is looked at, and another's own code, so
+        // no one machine wears every kind.
+        let mut here = laptop(&[], "nearly-full");
+        here["state"] = json!("unreachable");
+        here["power"] = json!({"on_battery": true, "charge": 12});
+        here["firmware"] = json!({"error_before_boot": 600});
+        let mut studio = json!({"name": "studio", "state": "ready", "disk_band": "healthy"});
+        studio["health"] = json!({"parts": {"code": "watch"}});
+        let part = super::machines(
+            &Ok(realm(&[here, studio])),
+            &Err(String::new()),
+            None,
+            None,
+            Some(Backup::Landed(7 * 3_600)),
+        );
+        let mut said: Vec<(&str, &str, &str)> = part
+            .things
+            .iter()
+            .flat_map(|thing| {
+                thing.looks.iter().map(|look| {
+                    (
+                        thing.name.as_str(),
+                        look.side.as_str(),
+                        look.matters.as_str(),
+                    )
+                })
+            })
+            .collect();
+        said.sort_unstable();
+        let mut whys = [
+            (
+                "laptop",
+                "out of reach",
+                "What runs there can't be read or steered from here until a link reaches it again.",
+            ),
+            (
+                "laptop",
+                "nearly full disk, 279 GB free",
+                "Builds and sessions there fail once it fills, and nothing there freed enough of \
+                 it by itself.",
+            ),
+            (
+                "laptop",
+                "on battery at 12%",
+                "It stops when its battery runs out, and what runs there stops with it.",
+            ),
+            (
+                "laptop",
+                "booted under an hour ago after a firmware error",
+                "Its firmware kept an error from before it booted, as an abrupt reset leaves, so \
+                 what ran there may have ended without warning.",
+            ),
+            (
+                "studio",
+                "code wants a look",
+                "Its own system check judged so, and that machine's system page says why.",
+            ),
+            (
+                "laptop",
+                "no quest backup in 7 h",
+                "Quests changed since then would be lost with this machine's disk.",
+            ),
+        ];
+        whys.sort_unstable();
+        assert_eq!(said, whys, "each look's why, whole, on its own machine");
+        let unread = backup_said(Backup::Unread("the backup's time file says no time"))
+            .map(|(.., look)| look.matters);
+        assert_eq!(
+            unread.as_deref(),
+            Some(
+                "Quests changed since its last backup would be lost with this machine's disk, \
+                 and when that was can't be told."
+            ),
+            "a backup whose time can't be told says why too"
+        );
+    }
+
+    #[test]
     fn another_machine_says_what_its_own_code_is() {
         let mut studio = json!({"name": "studio", "state": "ready", "disk_band": "healthy"});
         studio["health"] = json!({"health": "bad", "parts": {"code": "watch", "network": "good"}});
@@ -1034,6 +1191,64 @@ mod tests {
             "this machine's code is its own part, and the rest are the same whole \
              read from every machine: {}",
             part.says
+        );
+    }
+
+    #[test]
+    fn the_builders_follow_the_machines_and_a_stalled_one_is_worth_a_look() {
+        let mut said = realm(&[laptop(&[], "healthy")]);
+        said["Ok"]["Builders"] = json!([
+            {"name": "osprey", "state": "running", "lent": true, "jobs": 16},
+            {"name": "gull", "state": "not answering"},
+        ]);
+        let part = machines(&Ok(said.clone()), &Err(String::new()), None, None);
+        let kinds: Vec<(&str, &str)> = part
+            .things
+            .iter()
+            .map(|thing| (thing.kind, thing.name.as_str()))
+            .collect();
+        assert_eq!(
+            kinds,
+            [
+                ("machine", "laptop"),
+                ("builder", "gull"),
+                ("builder", "osprey")
+            ],
+            "the machines first, then the builders, each the worst first"
+        );
+        assert_eq!(
+            part.health,
+            Health::Watch,
+            "a stalled builder is the part's"
+        );
+        assert_eq!(
+            part.side,
+            ["builder gull isn't answering"],
+            "a builder's side says it is one, since it often bears a machine's name"
+        );
+        assert_eq!(
+            part.says, "builder gull isn't answering",
+            "a builder's line says it is one, since it often bears a machine's name"
+        );
+        assert_eq!(part.holds.as_deref(), Some("1 machine and 2 builders"));
+        said["Ok"]["Builders"] = json!([{"name": "osprey", "state": "running"}]);
+        let part = machines(&Ok(said), &Err(String::new()), None, None);
+        assert_eq!(
+            (part.health, part.says.as_str()),
+            (Health::Good, "1 machine ready"),
+            "a ready part counts its machines, which a builder isn't"
+        );
+        assert_eq!(part.holds.as_deref(), Some("1 machine and 1 builder"));
+        let part = machines(
+            &Ok(realm(&[laptop(&[], "healthy")])),
+            &Err(String::new()),
+            None,
+            None,
+        );
+        assert_eq!(
+            part.holds.as_deref(),
+            Some("1 machine"),
+            "an answer naming no builders holds none"
         );
     }
 }

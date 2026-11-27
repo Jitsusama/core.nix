@@ -216,6 +216,38 @@ fn a_machine_that_cant_take_a_stop_is_tried_again_after_a_minute() {
 }
 
 #[test]
+fn a_stop_goes_to_every_machine_lacking_it_at_once_so_one_out_of_reach_holds_none_up() {
+    let state = scratch("carry-at-once");
+    keep(&state, "slack-C1-1.000000", &heard("slack:C1:1.000000"));
+    let named = Plan {
+        machines: vec!["mac".to_owned(), "builder".to_owned(), "far".to_owned()],
+        ..plan()
+    };
+    let mut here = Machine {
+        unreached: Some("machine=builder"),
+        ..machine()
+    };
+
+    let (gives, _) = Carrier::default().carry(&named, &state, "here", 0, &mut here);
+
+    let failed: Vec<(&str, bool)> = gives
+        .iter()
+        .map(|one| (one.machine.as_str(), one.failed.is_some()))
+        .collect();
+    assert_eq!(
+        failed,
+        vec![("mac", false), ("builder", true), ("far", false)],
+        "each is given it, and only the one out of reach fails: {gives:?}"
+    );
+    assert_eq!(
+        here.batches,
+        vec![3],
+        "all three are asked in one batch, run together: {:?}",
+        here.asked
+    );
+}
+
+#[test]
 fn a_machine_whose_give_may_have_landed_is_given_its_resume() {
     let state = scratch("carry-landed");
     keep(&state, "slack-C1-1.000000", &heard("slack:C1:1.000000"));

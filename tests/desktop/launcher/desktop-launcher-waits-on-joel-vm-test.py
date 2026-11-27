@@ -277,19 +277,26 @@ def test_the_launchers_home_says_how_its_sessions_stand_rather_than_naming_them(
     long = "\u03c0 - Bootstrap the Lighthouse to Replace Every Other Machine on the Desk - tree"
     desktop.pi_window("TESTQC", long)
     desktop.presence_says({"addresses": ["TESTQC"], "busy": True, "title": long}, "TESTQC")
-    desktop.as_account("qs ipc call launcher toggle")
-    desktop.launcher_ready()
-    desktop.launcher_until(
-        lambda shown: any(
-            thing["is"] == "collection:agents"
-            and re.fullmatch(r"Agents \u00b7 \d+ working(?: \u00b7 \S+ today)?", thing["reads"])
-            for thing in shown["things"]
+    # Its session goes however this ends, a wait for home failing as much as
+    # its shot: left, an open launcher and a busy session would wait on Joel
+    # in the cases after it, hiding its failure behind theirs.
+    try:
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        desktop.launcher_until(
+            lambda shown: any(
+                thing["is"] == "collection:agents"
+                and re.fullmatch(r"Agents \u00b7 \d+ working(?: \u00b7 \S+ today)?", thing["reads"])
+                for thing in shown["things"]
+            )
         )
-    )
-    desktop.shoot("launcher-home-agents")
-    desktop.close_launcher()
-    desktop.as_account(f"niri msg action close-window --id {desktop.window_titled(long)['id']}")
-    desktop.as_account(f"rm -f {PI_PRESENCE}/testqc.json")
+        desktop.shoot("launcher-home-agents", ticking=NOWS_CLOCK)
+    finally:
+        if desktop.showing()["open"]:
+            desktop.close_launcher()
+        window = desktop.window_titled(long)["id"]
+        desktop.as_account(f"niri msg action close-window --id {window}")
+        desktop.as_account(f"rm -f {PI_PRESENCE}/testqc.json")
 
 
 def test_the_launchers_agents_hold_still_as_one_changes_the_selection_on_its_row(
@@ -441,6 +448,12 @@ def test_where_an_agents_title_is_cut_holds_still_as_its_side_changes(desktop: D
 # the session that needs him.
 
 
+# Home's selected row is Now, whose drawer counts the seconds and the clock's offset from
+# its source as they run, so a home shot waits on the rest of the picture alone: the moving
+# shot's words said only these changed (the drawer's seconds, offset and minute).
+NOWS_CLOCK = "Now's drawer, its seconds and the clock's offset"
+
+
 def shoots_now_at_joels_scales(desktop: Desktop, reads: str) -> None:
     """Shoot home at 1 and Joel's scales, its Now row reading as given, and the plate beside it.
 
@@ -449,14 +462,20 @@ def shoots_now_at_joels_scales(desktop: Desktop, reads: str) -> None:
     # The to-do's card away first, which would stand over the row and the plate.
     with desktop.told("gone notifications"):
         desktop.as_account("qs ipc call notices putAway")
-    desktop.shoot("launcher-home-now-waiting")
-    for scale in JOELS_SCALES:
-        desktop.as_account(f"niri msg output winit scale {scale}")
-        desktop.launcher_until(
-            lambda shown: any(thing["reads"] == reads for thing in shown["things"])
-        )
-        desktop.shoot(f"launcher-home-now-waiting-at-{scale.replace('.', '-')}")
-    desktop.as_account("niri msg output winit scale 1")
+    desktop.shoot("launcher-home-now-waiting", ticking=NOWS_CLOCK)
+    # Back at 1 however a shot ends, since a scale left at 2 would lay out
+    # every case after it at Joel's laptop's size.
+    try:
+        for scale in JOELS_SCALES:
+            desktop.as_account(f"niri msg output winit scale {scale}")
+            desktop.launcher_until(
+                lambda shown: any(thing["reads"] == reads for thing in shown["things"])
+            )
+            desktop.shoot(
+                f"launcher-home-now-waiting-at-{scale.replace('.', '-')}", ticking=NOWS_CLOCK
+            )
+    finally:
+        desktop.as_account("niri msg output winit scale 1")
 
 
 def test_the_safe_words_slack_reader_stays_down_and_tells_for_you_nothing(
@@ -1012,14 +1031,18 @@ def test_waiting_on_you_leads_now_with_nothing_waiting_and_says_so(desktop: Desk
 # The heading over what TESTQA's session wants of Joel, in For You: its name and where it
 # stands, as the agents daemon says it (What Needs Me, 2026-11-18).
 WANTS_HEADING = "A quest of its own & whole \u00b7 needs you"
+# What sessions ask gathers under this one row at For You's own level, never loose there.
+AGENTS = "Agents"
 
 
 def test_a_session_wanting_joel_waits_on_him_as_the_session(desktop: Desktop) -> None:
     """A session wanting Joel is in For You as its Agents row, and Now has no pi row.
 
-    Super+O, Return, Return goes to its window: Now opens on For You, which counts it,
-    Return steps in to the session, selected under its cell's heading, which says where
-    it stands in the agents daemon's own words, and its Return goes to its window.
+    Now opens on For You, which counts it, and Return steps in to Agents, never a
+    session at For You's own level (Joel, 2026-11-25 21:52: "it also makes no sense for
+    the agents to be top level"). Its Return steps in to the session, selected under its
+    cell's heading, which says where it stands in the agents daemon's own words, and the
+    session's Return steps into what it asks, whose first goes to its window.
     """
     machine = desktop.machine
     desktop.pi_session()
@@ -1047,6 +1070,14 @@ def test_a_session_wanting_joel_waits_on_him_as_the_session(desktop: Desktop) ->
         desktop.launcher_until(
             lambda shown: (
                 shown["held"] == ["now", "For You"]
+                and shown["rows"] == [AGENTS]
+                and (shown["selected"] or {}).get("side") == "1"
+            )
+        )
+        machine.send_key("ret")
+        desktop.launcher_until(
+            lambda shown: (
+                shown["held"] == ["now", "For You", AGENTS]
                 and shown["rows"][:2] == [WANTS_HEADING, "A quest of its own & whole"]
                 and (shown["selected"] or {}).get("name") == "A quest of its own & whole"
                 and shown["selected"]["verb"] == "more"
@@ -1057,7 +1088,7 @@ def test_a_session_wanting_joel_waits_on_him_as_the_session(desktop: Desktop) ->
         machine.send_key("ret")
         desktop.launcher_until(
             lambda shown: (
-                shown["held"] == ["now", "For You", "A quest of its own & whole"]
+                shown["held"] == ["now", "For You", AGENTS, "A quest of its own & whole"]
                 and shown["rows"] == ["Deal With It", "Go To", "Put It Off"]
             )
         )
@@ -1073,9 +1104,10 @@ def test_a_session_wanting_joel_waits_on_him_as_the_session(desktop: Desktop) ->
 
 
 def answered_in_place(desktop: Desktop, since: str) -> None:
-    """Answer a session's question from For You: in its row, Return on the recommended answer.
+    """Answer a session's question from For You, inside Agents, by its recommended answer.
 
-    The answer reaches the session's inbox as the harness takes one, by the want's id.
+    It's answered in its row, Return on the recommended answer. The answer reaches the
+    session's inbox as the harness takes one, by the want's id.
     """
     machine = desktop.machine
     desktop.as_account(f"mkdir -p {INBOX} && find {INBOX} -name '*.json' -delete")
@@ -1095,7 +1127,13 @@ def answered_in_place(desktop: Desktop, since: str) -> None:
     machine.send_key("ret")
     desktop.launcher_until(
         lambda shown: (
-            shown["held"] == ["now", "For You"]
+            shown["held"] == ["now", "For You"] and (shown["selected"] or {}).get("name") == AGENTS
+        )
+    )
+    machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["held"] == ["now", "For You", AGENTS]
             and (shown["selected"] or {}).get("side") == "needs your answer \u00b7 2 choices"
         )
     )
@@ -1125,7 +1163,8 @@ def answered_in_place(desktop: Desktop, since: str) -> None:
 def test_a_sessions_action_is_in_needs_you_once_as_its_item(desktop: Desktop) -> None:
     """A session wanting Joel to do one of its items is in For You once, as the item.
 
-    Under the session's heading, since the item is its own.
+    Under the session's heading inside Agents, since the item is its own and the
+    session asks it of him.
 
     And it's said once, by For You's notice: the session's own notice for the same thing
     put two up in the same second (2026-11-06), and a session's want posts none now.
@@ -1161,8 +1200,12 @@ def test_a_sessions_action_is_in_needs_you_once_as_its_item(desktop: Desktop) ->
         retry(lambda _: tray_counted(desktop) == 1, timeout=dt.timedelta(seconds=10))
         desktop.machine.send_key("ret")
         desktop.launcher_until(
+            lambda shown: shown["held"] == ["now", "For You"] and shown["rows"] == [AGENTS]
+        )
+        desktop.machine.send_key("ret")
+        desktop.launcher_until(
             lambda shown: (
-                shown["held"] == ["now", "For You"]
+                shown["held"] == ["now", "For You", AGENTS]
                 and shown["rows"] == [WANTS_HEADING, "Sign the Form"]
             )
         )
