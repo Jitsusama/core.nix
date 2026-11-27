@@ -8,6 +8,8 @@
 //! itself, and asks the watcher only when no landing names one.
 
 use std::collections::BTreeMap;
+use std::fs;
+use std::io;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
@@ -105,6 +107,32 @@ pub struct Told {
     pub unrun: BTreeMap<String, i64>,
 }
 
+impl Told {
+    /// The record kept at `path`, empty when it was never written. One that
+    /// can't be read or parsed is an error, so the tick leaves it as it is
+    /// rather than writing an emptied record over it, which the hour would
+    /// read whole as no merge reverted and close the reverts line on.
+    ///
+    /// # Errors
+    ///
+    /// When the record can't be read, or isn't JSON of its shape.
+    pub fn read(path: &Path) -> io::Result<Self> {
+        match fs::read(path) {
+            Ok(bytes) => serde_json::from_slice(&bytes).map_err(|err| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!(
+                        "{} isn't JSON, so it's kept as it is: {err}",
+                        path.display()
+                    ),
+                )
+            }),
+            Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(Self::default()),
+            Err(err) => Err(err),
+        }
+    }
+}
+
 /// A line to send: to the owner's session, or to the watcher when no
 /// landing names who merged it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -177,7 +205,31 @@ fn said(names: &[String]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
+
+    #[test]
+    fn a_record_never_written_is_empty_and_a_torn_one_is_refused_not_emptied() {
+        let root = tempfile::tempdir().expect("a scratch folder");
+        let path = root.path().join("reverted.json");
+        let never = Told::read(&path).expect("a record never written reads as none told");
+        assert!(
+            never.reverts.is_empty() && never.unrun.is_empty(),
+            "a record never written held something: {never:?}"
+        );
+        fs::write(&path, "{\"reverts\":").expect("a torn record");
+        let torn = Told::read(&path);
+        assert!(
+            torn.as_ref()
+                .is_err_and(|err| err.to_string().contains("isn't JSON")),
+            "a torn record was read as one to write over: {torn:?}"
+        );
+        fs::write(&path, r#"{"reverts":{"ended-in:4083":999}}"#).expect("a whole record");
+        let whole = Told::read(&path).expect("a whole record reads");
+        assert_eq!(
+            whole.reverts.get("ended-in:4083"),
+            Some(&999),
+            "a whole record lost what it held"
+        );
+    }
 
     #[test]
     fn a_revert_or_quarantine_is_read_once_with_every_test_it_was_for() {

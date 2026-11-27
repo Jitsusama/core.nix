@@ -37,8 +37,13 @@ WORK = "/home/alice/work"
 # Naming a conversation here parks it after two minutes idle, as parking is proven on one.
 SWITCH = "/home/alice/.local/state/pi/agentic-harness.pi/park-workflow/switch"
 ROSTER = f"/home/alice/.local/state/pi/agentic-harness.pi/host-rosters/{KEY}.json"
-# What a ready host holding both says, as systemd's status and the journal show it.
-SERVING_BOTH = "ready, serving 2 conversations"
+# What a ready host holding both says, as systemd's status and the journal show it, as a
+# pattern for grep -E: it counts those it runs awake and parked apart, and
+# either may be awake after a start, so the two add up to both, with none dropped.
+HOLDING_BOTH = (
+    r"ready: loaded (2, parked 0|1, parked 1|0, parked 2)"
+    r"(, [0-9]+ in processes of their own)?, dropped 0"
+)
 # The harness's scripted model, as its test support names it.
 PROVIDER = "sealed-faux"
 MODEL = "faux-1"
@@ -72,6 +77,7 @@ class Host:
         self.ids: dict[str, str] = {}
         self.files: dict[str, str] = {}
         self.records: dict[str, bytes] = {}
+        self.sent = 0
 
     def run(self, command: str) -> str:
         """Run a command as alice and give what it printed."""
@@ -91,7 +97,13 @@ class Host:
 
     def asked(self, request: dict[str, Any]) -> str:
         """Give the command that sends the host one request through its socket."""
-        return f"{self.asking} {shlex.quote(json.dumps({'v': 1, 'id': request['op'], **request}))}"
+        # A host answers a start asked again under its id with the first answer, and refuses
+        # an id used for another start, so each command has an id of its own. Only starts are
+        # remembered by id, so a poll that runs one list command again and again is answered
+        # afresh each time.
+        self.sent += 1
+        sent = {"v": 1, "id": f"{request['op']}-{self.sent}", **request}
+        return f"{self.asking} {shlex.quote(json.dumps(sent))}"
 
     def ask(self, request: dict[str, Any]) -> dict[str, Any]:
         """Send the host one request through its socket and give its answer's result."""
@@ -106,11 +118,17 @@ class Host:
 
     def until_serving_both(self, timeout: dt.timedelta = COMING_BACK) -> None:
         """Wait until the host is ready again, saying it holds both."""
-        self.until(
-            f"systemctl --user show -p StatusText --value {UNIT}"
-            f" | grep -qxF {shlex.quote(SERVING_BOTH)}",
-            timeout,
-        )
+        try:
+            self.until(
+                f"systemctl --user show -p StatusText --value {UNIT}"
+                f" | grep -qxE {shlex.quote(HOLDING_BOTH)}",
+                timeout,
+            )
+        except Exception as error:
+            # A ready line in another wording would otherwise fail as a bare timeout, without
+            # saying what the host did say.
+            message = f"the host never said it holds both; it says {self.show('StatusText')!r}"
+            raise AssertionError(message) from error
 
     def until_started_again(self, killed: str) -> None:
         """Wait until a process other than the killed one runs the host and says it holds both."""
@@ -122,7 +140,17 @@ class Host:
         )
         started = self.show("MainPID")
         self.machine.wait_until_succeeds(
-            f"journalctl --no-pager _PID={started} | grep -qF {shlex.quote(SERVING_BOTH)}",
+            f"journalctl --no-pager _PID={started} | grep -qE {shlex.quote(HOLDING_BOTH)}",
+            timeout=COMING_BACK,
+        )
+
+    def until_said_holding_both(self) -> None:
+        """Wait until the host has told the journal, this boot, that it holds both."""
+        # The host writes its ready line just after telling systemd it is ready, so the unit
+        # can be active a moment before the journal holds the line.
+        self.machine.wait_until_succeeds(
+            f"journalctl --no-pager -b _UID=1000 _SYSTEMD_USER_UNIT={UNIT}"
+            f" | grep -qE {shlex.quote(HOLDING_BOTH)}",
             timeout=COMING_BACK,
         )
 
@@ -234,8 +262,7 @@ def test_a_rebooted_machine_starts_the_host_and_resumes_both(rebooted: Host) -> 
     """A reboot: the host starts with the account's manager, ready and holding both."""
     host = rebooted
     assert host.show("ActiveState") == "active"
-    said = host.said()
-    assert SERVING_BOTH in said, said
+    host.until_said_holding_both()
     assert set(host.states()) == set(host.ids.values()), host.states()
     roster = host.run(f"cat {ROSTER}")
     for name, session in host.ids.items():

@@ -10,7 +10,9 @@
 //!
 //! A round Slack couldn't be asked in, its network down or its rate
 //! spent, counts neither way: nothing there is Joel's to do, and the
-//! journal says it. An answer that came but can't be read counts as
+//! journal says it. Through a tool gateway, past [`UNREACHED`] such
+//! rounds in a row is told, since nothing else hears Slack while the
+//! gateway is out, and only Joel marks it done. An answer that came but can't be read counts as
 //! deaf, though no sign-in mends it: its cause lasts (a gateway's
 //! wording changed, its answer cut short past what can be asked again,
 //! or a message among the newest shaped like its markup), so read as
@@ -57,7 +59,17 @@ pub enum Deafness {
     /// One search's answer can't be read, so only the other's messages
     /// are judged.
     Unread(Search),
+    /// The tool gateway Slack is heard through left its searches
+    /// unanswered more than [`UNREACHED`] rounds in a row: unreached, or
+    /// its tool failing or Slack's rate spent behind it.
+    Unreached,
 }
+
+/// How many rounds in a row a reader over a tool gateway may leave Slack
+/// unasked, about five minutes at its pace, before that's a deafness of
+/// its own: the gateway is the one way it hears, so an outage of it
+/// isn't a blink that a reader beside it covers.
+pub const UNREACHED: u32 = 10;
 
 /// Each of a round's two searches.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -76,8 +88,14 @@ pub enum Round {
     Heard,
     /// Nothing was read, or one search wasn't, for a reason Joel can fix.
     Deaf(Deafness),
-    /// Slack couldn't be asked: counted neither way.
+    /// Slack couldn't be asked, neither search answered: counted neither
+    /// way.
     Unasked,
+    /// One search answered while the other blinked, or one waits on a
+    /// later page: too little read to count either way, though Slack, or
+    /// its gateway, was reached. It names the search left unasked, if one
+    /// was and waits on no later page.
+    Partly(Option<Search>),
 }
 
 /// What changes in the file of what waits on Joel.
@@ -132,6 +150,17 @@ pub struct Deaf {
     /// Whether a file this program didn't write may still stand, as one
     /// left by the reader before a restart may.
     left: bool,
+    /// Whether Slack is heard through a tool gateway, whose sign-in isn't
+    /// Slack's, so a row about it can't send Joel to sign in to Slack.
+    gateway: bool,
+    /// How many rounds in a row left Slack unasked.
+    unasked: u32,
+    /// The search left unasked beside one answered, and how many rounds
+    /// in a row it was.
+    alone: Option<(Search, u32)>,
+    /// The search the round just before narrowed an unreached row to;
+    /// any other round forgets it.
+    turn: Option<Search>,
 }
 
 impl Default for Deaf {
@@ -153,6 +182,19 @@ impl Deaf {
             told: None,
             since: None,
             left: true,
+            gateway: false,
+            unasked: 0,
+            alone: None,
+            turn: None,
+        }
+    }
+
+    /// The same, for a reader hearing Slack through a tool gateway.
+    #[must_use]
+    pub fn through_gateway() -> Deaf {
+        Deaf {
+            gateway: true,
+            ..Deaf::new()
         }
     }
 
@@ -199,9 +241,12 @@ impl Deaf {
     /// flickers. A change of why starts a time of its own, so it isn't
     /// hidden under a row Joel marked done.
     pub fn heard(&mut self, round: Round, at: u64) -> Change {
+        let turn = self.turn.take();
         match round {
             Round::Heard => {
                 self.rounds = 0;
+                self.unasked = 0;
+                self.alone = None;
                 self.held = None;
                 self.phrase = Fared::default();
                 self.tag = Fared::default();
@@ -214,6 +259,10 @@ impl Deaf {
                 }
             }
             Round::Deaf(why) => {
+                if why != Deafness::Unreached {
+                    self.unasked = 0;
+                    self.alone = None;
+                }
                 self.rounds = self.rounds.saturating_add(1);
                 let held = match self.held {
                     Some((last, held)) if last == why => held.saturating_add(1),
@@ -222,7 +271,10 @@ impl Deaf {
                 self.held = Some((why, held));
                 // A sign-in's cause reads neither search, so each counts
                 // as heard of nothing it says.
-                let whole = matches!(why, Deafness::Refused | Deafness::NoSignIn);
+                let whole = matches!(
+                    why,
+                    Deafness::Refused | Deafness::NoSignIn | Deafness::Unreached
+                );
                 let covers =
                     |search| why == Deafness::Unreadable || why == Deafness::Unread(search);
                 self.phrase.round(!whole && covers(Search::Phrase));
@@ -251,10 +303,106 @@ impl Deaf {
                 self.told = Some(why);
                 self.left = false;
                 let since = *self.since.get_or_insert(at);
-                Change::Tell(waits(why, since, at))
+                Change::Tell(if self.gateway {
+                    waits_on_gateway(why, since, at)
+                } else {
+                    waits(why, since, at)
+                })
             }
+            Round::Partly(alone) => self.answered(alone, turn, at),
+            Round::Unasked if self.gateway => self.none_answered(at),
             Round::Unasked => Change::Keep,
         }
+    }
+
+    /// What a round read in part changes, `alone` the search it left
+    /// unasked, if one. The gateway answered it, so a row saying it's
+    /// unreached is taken away, as is one saying only the search it
+    /// answered can't be read; a deafness after is a time of its own,
+    /// told anew even where Joel marked that row done. A row saying it's
+    /// unreached, though, is narrowed to the search still left unasked
+    /// rather than taken away, since that search is still unheard, unless
+    /// the round just before narrowed it to the other: each was answered.
+    fn answered(&mut self, alone: Option<Search>, turn: Option<Search>, at: u64) -> Change {
+        if let Some(search) =
+            alone.filter(|_| self.gateway && self.told == Some(Deafness::Unreached))
+            && turn.is_none_or(|last| last == search)
+        {
+            let run = match self.alone {
+                Some((last, run)) if last == search => run.saturating_add(1),
+                _ => 1,
+            };
+            let change = self.heard(Round::Deaf(Deafness::Unread(search)), at);
+            self.alone = Some((search, run));
+            self.turn = Some(search);
+            return change;
+        }
+        let reached = match self.told {
+            Some(Deafness::Unreached) => true,
+            Some(Deafness::Unread(told)) => alone.is_some_and(|left| left != told),
+            _ => false,
+        };
+        if reached {
+            self.told = None;
+            self.since = None;
+            self.rounds = 0;
+            self.held = None;
+        }
+        match self.partly(alone, at) {
+            Change::Keep if reached => Change::Untell,
+            change => change,
+        }
+    }
+
+    /// What a round no search was answered in changes, through a gateway:
+    /// a run of them is deaf as any cause is, since nothing else hears
+    /// Slack while it lasts. A search left unasked alone is left unasked
+    /// here too, so its run goes on, and a gateway answering the other
+    /// now and then can't keep it untold. Once its partner too has gone
+    /// unanswered [`ROUNDS`] in a row, the run only counts: a row saying
+    /// the partner is still heard would mislead while nothing answers.
+    fn none_answered(&mut self, at: u64) -> Change {
+        self.unasked = self.unasked.saturating_add(1);
+        if self.unasked > UNREACHED {
+            return self.heard(Round::Deaf(Deafness::Unreached), at);
+        }
+        let Some((search, run)) = self.alone else {
+            return Change::Keep;
+        };
+        if self.unasked >= ROUNDS {
+            self.alone = Some((search, run.saturating_add(1)));
+            return Change::Keep;
+        }
+        let unasked = self.unasked;
+        let change = self.partly(Some(search), at);
+        self.unasked = unasked;
+        change
+    }
+
+    /// What a round leaving `alone` unasked, if one, changes: it ends a
+    /// run of rounds unasked. Through a gateway, one search left unasked
+    /// more than [`UNREACHED`] rounds in a row is deaf of its own, since a
+    /// stop only it finds goes unheard, so it's told as that search unread
+    /// until the row says it. Its partner answered in the run, so it's
+    /// never told as both.
+    fn partly(&mut self, alone: Option<Search>, at: u64) -> Change {
+        self.unasked = 0;
+        let run = match (alone, self.alone) {
+            (Some(search), Some((last, run))) if search == last => run.saturating_add(1),
+            _ => 1,
+        };
+        self.alone = alone.map(|search| (search, run));
+        let Some(search) = alone.filter(|search| self.gateway && !self.tells(*search)) else {
+            return Change::Keep;
+        };
+        if run <= UNREACHED {
+            return Change::Keep;
+        }
+        // Told as a deaf round would be, its run kept for the next.
+        let kept = self.alone;
+        let change = self.heard(Round::Deaf(Deafness::Unread(search)), at);
+        self.alone = kept;
+        change
     }
 }
 
@@ -315,6 +463,17 @@ pub fn waits(why: Deafness, since: u64, at: u64) -> Value {
             vec![READ_JOURNAL],
             json!({"by": "person"}),
         ),
+        Deafness::Unreached => (
+            format!(
+                "The tool gateway the safe word hears Slack through isn't answering its \
+                 searches, {UNHEARD}"
+            ),
+            vec![
+                "Ask an agent to read the reader's journal, which says why each search went \
+                 unanswered: the gateway unreached, its tool failing or Slack's rate spent",
+            ],
+            json!({"by": "person"}),
+        ),
     };
     json!({
         "v": 2,
@@ -331,6 +490,29 @@ pub fn waits(why: Deafness, since: u64, at: u64) -> Value {
             "steps": steps,
         }]
     })
+}
+
+/// What [`waits`] asks, for a reader hearing Slack through a tool gateway:
+/// a sign-in refused or missing is the gateway's, which no Slack sign-in
+/// mends and no signal says is mended, so it says so, sends Joel to the
+/// journal and is marked done by his word alone.
+#[must_use]
+pub fn waits_on_gateway(why: Deafness, since: u64, at: u64) -> Value {
+    let mut told = waits(why, since, at);
+    let said = match why {
+        Deafness::Refused => "The tool gateway or Slack behind it refused the safe word's sign-in",
+        Deafness::NoSignIn => "The safe word has no tool gateway sign-in it can read",
+        Deafness::Unreadable | Deafness::Unread(_) | Deafness::Unreached => return told,
+    };
+    let item = &mut told["items"][0];
+    item["why"] = json!(format!(
+        "{said}, so a stop said in Slack isn't heard; one said elsewhere still is"
+    ));
+    item["steps"] = json!([
+        "Ask an agent to read the reader's journal, which says why the gateway's sign-in failed"
+    ]);
+    item["doneWhen"] = json!({"by": "person"});
+    told
 }
 
 /// Where For You's row is written, and a name passed over for it.

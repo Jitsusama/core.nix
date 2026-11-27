@@ -246,6 +246,11 @@ fi"#
 /// and process space the run was in and its number there.
 pub(super) const RUN: &str = ".run";
 
+/// The far line's first step, finding the cache its scratches lie in as
+/// `scratches` does here: a relative one, as the XDG spec says, is none.
+pub(super) const CACHE: &str =
+    "cache=${XDG_CACHE_HOME:-}; case $cache in /*) ;; *) cache=$HOME/.cache ;; esac";
+
 /// The far line's step defining `cleared`, which takes each path it is
 /// given away whole, its folders made the far line's own to enter and
 /// write first, since a job may close one so that nothing under it can be
@@ -293,6 +298,14 @@ copies() {
 # the quest may put one at either, which tar's -C and the job's cd follow.
 placed() {
   copies && [ -d "$work" ] && [ ! -L "$work" ]
+}
+# True once the copy is `placed` and the working folder is the very one
+# the copy holds at `$1` within it, by where the cd landed, not by names:
+# a link put at a folder of the copy, or above it and taken down again,
+# around the cd would otherwise have the job run where it points. Where
+# the copy's own place can't be read, nothing is taken as entered.
+entered() {
+  placed && place=$(cd -P "$work" && pwd -P) && [ "$(pwd -P)" = "$place${1:+/$1}" ]
 }
 # Says the copy isn't the folder it was where `placed` no longer holds.
 moved() {
@@ -563,6 +576,16 @@ lose() {{
     printf '%s\t%s\n' - "$path" || return 1
   done
 }}
+# A link put at the handover, a folder above it or its folder for
+# copies, or anything at a copy's name, as the files are listed or cross
+# would have the list begun, or each later file copied or cleared,
+# through it, so the rest stays and the list gets no end.
+linked() {{
+  [ -L "${{job%/*/*}}" ] || [ -L "${{job%/*}}" ] || [ -L "$job" ] || [ -L "$job/{BACK}" ]
+}}
+halted() {{
+  printf "elsewhere: a link was put at its handover as it brought back, so the rest stays\n" >&2
+}}
 # The sorted list's name is tried with the others, then left free for
 # sort's own write.
 if [ -n "$beside" ] && true > "$names" && true > "$names.lost" && true > "$names.in" && rm -f "$names.in"; then
@@ -579,6 +602,7 @@ copies || exit 1
 LC_ALL=C sort -u "$names" > "$names.in" ||
   {{ rm -f "$names.in" "$names.lost" && true > "$names.in" && lose > "$names.lost" ||
     exit 1; }}
+! linked || {{ halted; exit 1; }}
 {{
   n=0 files=0 bytes=0 most_files={MOST_FILES} most_bytes={MOST_BYTES}
   # One that can't be read or copied keeps its number, listed with no
@@ -602,6 +626,9 @@ LC_ALL=C sort -u "$names" > "$names.in" ||
     n=$((n + 1))
   }}
   while IFS= read -r file; do
+    # Where its folder for copies is made new, nothing stands at a
+    # copy's name until it's written.
+    ! linked && [ ! -e "$job/{BACK}/$n" ] && [ ! -L "$job/{BACK}/$n" ] || {{ halted; exit 1; }}
     size=$(wc -c 2>/dev/null < "$file") || {{ missing; continue; }}
     past $size && {{ kept $size; continue; }}
     cp "$file" "$job/{BACK}/$n" && copied=$(wc -c < "$job/{BACK}/$n") ||
@@ -631,6 +658,11 @@ fi
 const UNENDED: &str = "printf \"elsewhere: its handover wasn't cleared, so the list of what \
 it brings back isn't ended and nothing is brought back\\n\" >&2";
 
+/// What the far line says where a list that couldn't be written whole
+/// couldn't be cut either, so the near side waits it out.
+const UNCUT: &str = "printf \"elsewhere: couldn't cut the list of what it brings back, so \
+nothing is brought back\\n\" >&2";
+
 /// The end of `bringing`'s list of what's brought back, once the list's
 /// lines were written, or `wrote` says they couldn't all be.
 fn ended() -> String {
@@ -640,22 +672,34 @@ fn ended() -> String {
 # at the handover couldn't be cleared, as `freed` says, the list's end
 # and its cut aren't written through it, and the near side waits out a
 # list with no end; this line's words say why, where the near side's
-# own read as a slow crossing. One put there while the files were copied
-# isn't looked for between them.
+# own read as a slow crossing. One put there, or at a copy's name, as
+# the files were listed or copied is looked for before the list begins
+# and before each copy, which leaves the rest and the end.
 ! copies || rm -f "$names" "$names".*
 {freed}if [ -z "$handed" ]; then wrote=1
   {UNENDED}
 elif [ $wrote -ne 0 ]; then
   printf "elsewhere: couldn't write down all it brings back\n" >&2
-elif ! echo {END} >> "$job/{BROUGHT}"; then
+elif ! {{ echo {END} >> "$job/{BROUGHT}"; }} 2>/dev/null; then
   printf "elsewhere: couldn't end the list of what it brings back\n" >&2
   wrote=1
 fi
 # Cut on a line of its own, so a line the full disk cut in half can't
 # hide it, and never through a link that couldn't be cleared at its name
-# or at the handover.
-[ $wrote -eq 0 ] || [ -z "$handed" ] || [ -L "$job/{BROUGHT}" ] ||
-  printf '\n%s\n' {CUT} >> "$job/{BROUGHT}"
+# or at the handover. Where one cleared there took the job's folder with
+# it, the folder is made again, so the near side still reads the cut:
+# only the levels `unlinked` clears, each where no folder of its own
+# stands, and none of them a link as the cut is written, so a link put
+# back meanwhile is never made or written through, and a quest's scratch
+# that went is never made again.
+if [ $wrote -ne 0 ] && [ -n "$handed" ]; then
+  for at in "${{job%/*/*}}" "${{job%/*}}" "$job"; do
+    [ -d "$at" ] && [ ! -L "$at" ] || mkdir "$at" 2>/dev/null || break
+  done
+  {{ [ ! -L "${{job%/*/*}}" ] && [ ! -L "${{job%/*}}" ] && [ ! -L "$job" ] &&
+    [ ! -L "$job/{BROUGHT}" ] && printf '\n%s\n' {CUT} >> "$job/{BROUGHT}"; }} 2>/dev/null ||
+    {UNCUT}
+fi
 "#,
         freed = freed(),
     )

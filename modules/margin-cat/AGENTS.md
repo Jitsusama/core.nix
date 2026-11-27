@@ -127,6 +127,15 @@ screen with it on niri's spring if that's where niri scrolls it, and back
 with it the same way if the keys come back first; then it comes back in at
 that edge head first, as between workspaces, and walks the strip to its
 seat, leaping the gap at the edge only where its window is all past it.
+Caught mid-walk by the scroll standing on its window's top, it stops where
+it's drawn and rides the same way; caught mid-leap or anywhere else, it walks
+on to that window where niri moved it. A ride isn't a rest: no play sets off
+and no pet starts till it ends. A scroll runs for niri's spring from when
+niri says it began, so a scroll's word left on a window long after reads as
+ended. Moved to another workspace while it's off the edge, it holds out of
+sight through niri's slide, then comes in at that edge head first over the
+new workspace's windows; with its workspace emptied, it comes in at that
+edge along the floor.
 
 - Held by `margin-cat-one-screen.qml`: "its window scrolled, it's carried as far"
 - Held by `margin-cat-one-screen.qml`: "drawn where it was as niri sets off, nearer as it
@@ -139,6 +148,25 @@ seat, leaping the gap at the edge only where its window is all past it.
 - Held by `margin-cat-one-screen.qml`: "then it comes on facing in, never thinking again or going
   back out"
 - Held by `margin-cat-one-screen.qml`: "and walks the tops to its seat"
+- Held by `margin-cat-one-screen.qml`: "it holds out of sight as niri slides"
+- Held by `margin-cat-one-screen.qml`: "it comes in at that edge, head first"
+- Held by `margin-cat-one-screen.qml`: "a floating window dragged, it sits there at once"
+- Held by `margin-cat-one-screen.qml`: "walking along its top"
+- Held by `margin-cat-one-screen.qml`: "in the air of a leap onto it"
+- Held by `margin-cat-tiles.qml`: "a scroll's word left on a window as another's layout comes
+  keeps its begin"
+- Held by `margin-cat-tiles.qml`: "a layout sent again mid-scroll keeps the scroll's begin"
+- Held by `margin-cat-tiles.qml`: "a new scroll beside an old one's word left on another window
+  is dated by the new"
+- Held by `margin-cat-one-screen.qml`: "off the right under it"
+- Held by `margin-cat-one-screen.qml`: "a pixel on the left, it comes straight down"
+- Owed since 2026-11-25: on nested niri, a walk caught by a scroll off the edge rides its
+  window, and a floor came to from off the edge.
+- Owed since 2026-11-26: a Qt case that no play, stroll or pet starts during a ride; the
+  view's `still`, `play()` and `stroll()` each check `carry`, which nothing pins.
+- Owed since 2026-11-25: a word cached before the tiles watch goes live is dated as begun
+  its `ago` before the shell heard it, not before niri sent it, so an old scroll may read as
+  just begun and start a ride for one spring; unmeasured.
 
 ### Climb, Path and Leap About the Windows
 
