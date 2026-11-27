@@ -132,6 +132,16 @@ const fn count(n: usize) -> f64 {
     n as f64
 }
 
+/// The loop's measure for the hour at `now`, in seconds, from this hour's
+/// `measures` and the hours `kept`, with the hours to keep for the next:
+/// the three steps in one, so none can be left out of the hour and leave
+/// the measure unjudged for good, as an hour never kept would.
+#[must_use]
+pub fn judge(measures: &[Measure], kept_hours: &[Hour], now: i64) -> (Measure, Vec<Hour>) {
+    let this = hour(measures, now);
+    (falling(kept_hours, this), kept(kept_hours, this))
+}
+
 /// The hours to keep after `this` one: those `kept` within a week and its
 /// slack before it, and this one.
 #[must_use]
@@ -272,6 +282,24 @@ mod tests {
             falling(&[before], unmade).target,
             Some(8.0),
             "an hour kept before measures were counted left it unjudged"
+        );
+    }
+
+    #[test]
+    fn an_hour_judged_is_kept_so_the_hour_a_week_on_is_judged_by_it() {
+        let red = [past("a"), past("b"), past("c")];
+        let (first, hours) = judge(&red, &[], NOW - WEEK);
+        assert!(
+            first.target.is_none(),
+            "the first hour kept was judged: {first:?}"
+        );
+        let mut fixed = past("c");
+        fixed.now = 0.0;
+        let (week_on, next) = judge(&[past("a"), past("b"), fixed], &hours, NOW);
+        assert_eq!(
+            (week_on.target, week_on.past(), next.len()),
+            (Some(2.0), None, 2),
+            "the hour a week on wasn't judged by the one kept, or both weren't kept"
         );
     }
 

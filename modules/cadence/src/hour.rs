@@ -169,8 +169,8 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
     // counted once the misses are held, so it counts the lines the card
     // shows; only the definition's own count, which must hold this one to
     // its line too, comes after it.
-    let this_hour = falling::hour(&measures, now);
-    measures.push(falling::falling(&kept.red, this_hour));
+    let (red_lines_falling, red_hours) = falling::judge(&measures, &kept.red, now);
+    measures.push(red_lines_falling);
     // Every measure read, each is held to its line on the definition of
     // good, and one with none, or another target, is counted.
     measures.push(good::undefined(&measures));
@@ -186,7 +186,7 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
         &format!("{} tomorrow", clock(now + DAY)),
     );
     stuck::daily(&mut card, &mut next, &measures, now, &TimeZone::system());
-    next.red = falling::kept(&kept.red, this_hour);
+    next.red = red_hours;
     print!("{card}");
     // A look by hand lacks the timer's checkouts, so it can read a closed
     // miss as open: only the run sending the card keeps the hour and owes.
