@@ -1152,9 +1152,10 @@ def test_a_kept_place_opens_afresh_while_niri_hasnt_said_its_casts(shell: Shell)
     assert f"launcher: on opened afresh, {unsaid_why}" in said, f"On's wasn't said:\n{said}"
     assert not home.get("kept"), f"home was drawn from its kept rows under a share: {home}"
     assert f"launcher: home opened afresh, {unsaid_why}" in said, f"home's wasn't said:\n{said}"
+    openings = ("on", "home")
     took = [line for line in said.splitlines() if "opening took" in line]
-    assert len(took) >= 2, f"the two openings didn't say their time:\n{said}"
-    for line in took[-2:]:
+    assert len(took) >= len(openings), f"the two openings didn't say their time:\n{said}"
+    for line in took[-len(openings) :]:
         assert DRAWING_SPLIT.search(line), f"a whole opening didn't say its drawing apart: {line}"
 
 
