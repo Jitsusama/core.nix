@@ -54,6 +54,16 @@ ASKED_AGAIN_MS = 20_000
 STILL = 0.01
 # How long page.ts holds the last visit's room before letting it go anyway.
 ROOM_HELD_MS = 3000
+# The longest a first visit is held unseen, as page.ts's ROOM_WAIT_MS and site.css's fallback
+# hold it. The first visit's still test passes only if the stand-in draws inside it: past it,
+# the page is shown before it has drawn, so neither its stillness nor its draw showing it is
+# what the test reads.
+UNSEEN_MS = 1000
+# What site.css makes of the body's opacity while a first visit is held, and once it is shown.
+UNSEEN = "0"
+SEEN = "1"
+# The mark index.html sets on a first visit and page.ts clears once the repositories draw.
+WAITS = re.compile(r"\bwaits\b")
 # A phone's window short enough that an open drawer runs past its foot.
 SHORT_PHONE = 360
 # Core's resting tree, in a season that stays folded until opened.
@@ -704,6 +714,29 @@ new PerformanceObserver((list) => {
 }).observe({ type: "layout-shift", buffered: true });"""
 
 
+# How a first visit is held, read the way the page sets it: the mark index.html sets and page.ts
+# clears, what site.css makes of the body's opacity under it, whether a row is drawn, and when.
+# It's read once as the page loads, before a feed can draw, and once as the mark goes, since a
+# row can draw before every kind has come, and by the time a test looks the cap may have shown
+# the page anyway.
+HELD = """const heldOf = () => ({
+  waits: document.documentElement.classList.contains("waits"),
+  opacity: getComputedStyle(document.body).opacity,
+  drawn: document.querySelector("#list .row") !== null,
+  at: performance.now(),
+});
+document.addEventListener("DOMContentLoaded", () => {
+  globalThis.loaded = heldOf();
+});
+new MutationObserver((_, watching) => {
+  const waits = document.documentElement.classList.contains("waits");
+  if (globalThis.loaded !== undefined && !waits) {
+    globalThis.shown = heldOf();
+    watching.disconnect();
+  }
+}).observe(document, { attributes: true, attributeFilter: ["class"], subtree: true });"""
+
+
 @pytest.mark.parametrize("size", SIZES)
 def test_a_first_visit_holds_the_page_still(
     browser: Browser, code_served: Served, size: tuple[int, int]
@@ -714,10 +747,25 @@ def test_a_first_visit_holds_the_page_still(
     try:
         page = context.new_page()
         page.add_init_script(SHIFTS)
+        page.add_init_script(HELD)
         page.goto(f"{root}code/")
         says_it_stands(page, "live")
         expect(row(page, "github:owl/core"), "a first visit drew no row").to_be_visible()
-        expect(page.locator("body"), "a first visit stayed unseen").to_be_visible()
+        html = page.locator("html")
+        expect(html, "a first visit was never shown").not_to_have_class(WAITS, timeout=PACE_MS)
+        loaded = page.evaluate("() => globalThis.loaded")
+        assert loaded is not None, "a first visit was never read as it loaded"
+        assert not loaded["drawn"], "a first visit drew as it loaded, so its hold went unread"
+        assert loaded["waits"], "a first visit wasn't marked to wait as it loaded"
+        opacity = loaded["opacity"]
+        assert opacity == UNSEEN, f"a first visit was at opacity {opacity} before it drew"
+        shown = page.evaluate("() => globalThis.shown")
+        assert shown is not None, "a first visit's mark went before the page had loaded"
+        at = shown["at"]
+        assert at < UNSEEN_MS, f"a first visit was shown at {at:.0f} ms, by the cap, not its draw"
+        assert shown["drawn"], "a first visit was shown before its repositories drew"
+        opacity = shown["opacity"]
+        assert opacity == SEEN, f"a first visit was at opacity {opacity} once shown"
         page.wait_for_timeout(1000)
         shifted = page.evaluate("() => globalThis.shifted")
         assert shifted < STILL, f"a first visit at {width} px shifted {shifted} as it drew"
