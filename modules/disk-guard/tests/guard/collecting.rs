@@ -11,6 +11,7 @@ use disk_guard::socket::Responder;
 use std::collections::HashMap;
 use std::fs;
 use std::io::Read;
+use std::os::unix::ffi::OsStrExt;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, mpsc};
@@ -97,9 +98,22 @@ impl Store {
             fs::create_dir_all(root.join(sub)).unwrap();
         }
         let log = root.join("log");
-        let policy = "$(cut -d' ' -f41 /proc/$$/stat)";
+        // The scheduling policy a script runs under, field 41 of its stat,
+        // read by builtins alone, as is the pause while a listing waits: a
+        // `cut` and a `sleep` forked at idle priority beside a loaded
+        // builder's builds slowed the listings until a wait gave up. A
+        // script's name holds no space, so the fields split as `cut` split
+        // them.
+        let read_policy = "field_41() { shift 40; policy=$1; }\n\
+                           read -r stat < /proc/$$/stat; field_41 $stat\n";
+        let policy = "$policy";
+        // What a listing reads to pause, and never hears from. Only bash's
+        // `read` times out in a fraction of a second, so bash runs them.
+        let never = root.join("never");
+        silent_pipe(&never);
+        let bash = crate::garbage::bash();
         let script = |name: &str, body: String| {
-            crate::garbage::script(&root.join("bin").join(name), &body);
+            crate::garbage::script_in(&root.join("bin").join(name), &bash, &body);
         };
         // Linking logs apart, so the garbage's log reads as it did.
         let linked = root.join("linked");
@@ -113,7 +127,8 @@ impl Store {
         script(
             "nix-store",
             format!(
-                "if [ \"$*\" = --optimise ]; then\n\
+                "{read_policy}\
+                 if [ \"$*\" = --optimise ]; then\n\
                    echo \"optimise {policy}\" >> {linked}\n\
                    [ -e {slow}-broken ] && {{ echo 'error: database is locked' >&2; exit 1; }}\n\
                    if [ -e {slow} ]; then\n\
@@ -124,7 +139,9 @@ impl Store {
                  fi\n\
                  [ \"$*\" = '{listing}' ] || exit 9\n\
                  echo \"list {policy}\" >> {log}\n\
-                 if [ -e {listed} ]; then while [ -e {slow_list} ]; do sleep 0.05; done; fi\n\
+                 if [ -e {listed} ]; then while [ -e {slow_list} ]; do\n\
+                   read -r -t 0.05 nothing <> {never}\n\
+                 done; fi\n\
                  : > {listed}\n\
                  [ -e {broken} ] && {{ echo 'error: a temporary file went' >&2; exit 1; }}\n\
                  for p in {store}/*; do [ -e \"$p/meta\" ] || [ -e \"$p/disk.img\" ] || continue\n\
@@ -139,13 +156,15 @@ impl Store {
                 broken = root.join("listing-broken").display(),
                 listed = root.join("listed").display(),
                 slow_list = root.join("listing-slow").display(),
+                never = never.display(),
                 stale = root.join("listing-stale").display(),
             ),
         );
         script(
             "nix",
             format!(
-                "[ \"$1 $2\" = '--extra-experimental-features nix-command' ] || exit 9\nshift 2\n\
+                "{read_policy}\
+                 [ \"$1 $2\" = '--extra-experimental-features nix-command' ] || exit 9\nshift 2\n\
                  case \"$1 $2\" in\n\
                  'path-info --json') [ \"$3\" = --offline ] || exit 9; shift 3\n\
                    printf '{{'; sep=''\n\
@@ -189,7 +208,8 @@ impl Store {
         script(
             "nix-env",
             format!(
-                "[ \"$1 $3\" = '-p --delete-generations' ] || exit 9\n\
+                "{read_policy}\
+                 [ \"$1 $3\" = '-p --delete-generations' ] || exit 9\n\
                  echo \"expire $* {policy}\" >> {log}\n\
                  profile=$2; shift 3\n\
                  for n in \"$@\"; do rm \"$profile-$n-link\"; done\n",
@@ -760,8 +780,22 @@ fn step_later_until(
     senses: &Senses,
     done: impl Fn(&Store, f64) -> bool,
 ) {
+    step_until_at(store, guard, (now(), seconds), senses, done);
+}
+
+/// Steps `guard` at `seconds` past the wall clock `from` until `done`
+/// holds, as `step_later_until` does from now. A case whose rests are
+/// lengths it set counts them all from one moment, since the seconds a
+/// loaded builder spends between steps would otherwise add to each.
+fn step_until_at(
+    store: &Store,
+    guard: &mut Guard,
+    (from, seconds): (f64, f64),
+    senses: &Senses,
+    done: impl Fn(&Store, f64) -> bool,
+) {
     let at = Tick {
-        wall: now() + seconds,
+        wall: from + seconds,
         ..tick()
     };
     let started = Instant::now();
@@ -769,9 +803,14 @@ fn step_later_until(
         // What the guard kept and said, since this has given up seven
         // times on a loaded builder with no word of why no listing began.
         let read = |path: &str| fs::read_to_string(store.root.join(path)).unwrap_or_default();
+        let journal = read("state/journal.jsonl");
+        let garbage: Vec<&str> = journal
+            .lines()
+            .filter(|line| line.contains("garbage"))
+            .collect();
         assert!(
             started.elapsed() < AT_IDLE,
-            "{seconds} s on: {:?}\nkept: {}\nstatus: {}",
+            "{seconds} s on: {:?}\nkept: {}\nstatus: {}\njournal: {garbage:#?}",
             store.log(),
             read("state/garbage.json"),
             read("status.json")
@@ -784,7 +823,13 @@ fn step_later_until(
 /// Steps `guard` at `seconds` past now until it keeps a listing begun then.
 /// JSON can bring a moment back a hair off, so near enough is the same.
 fn listed_later(store: &Store, guard: &mut Guard, seconds: f64, senses: &Senses) {
-    step_later_until(store, guard, seconds, senses, |store, at| {
+    listed_at(store, guard, (now(), seconds), senses);
+}
+
+/// Steps `guard` at `seconds` past the wall clock `from` until it keeps a
+/// listing begun then, as `listed_later` does from now.
+fn listed_at(store: &Store, guard: &mut Guard, at: (f64, f64), senses: &Senses) {
+    step_until_at(store, guard, at, senses, |store, at| {
         kept(store).is_some_and(|kept| (kept - at).abs() < 0.001)
     });
 }
@@ -793,10 +838,12 @@ fn listed_later(store: &Store, guard: &mut Guard, seconds: f64, senses: &Senses)
 /// say so. That it said nothing is borne out by the next `listed_later`,
 /// which waits for a listing begun at its own moment rather than this one.
 fn step_later(guard: &mut Guard, seconds: f64, senses: &Senses) {
-    let at = Tick {
-        wall: now() + seconds,
-        ..tick()
-    };
+    step_at(guard, now() + seconds, senses);
+}
+
+/// Steps `guard` at the wall clock `wall`, as `step_later` does.
+fn step_at(guard: &mut Guard, wall: f64, senses: &Senses) {
+    let at = Tick { wall, ..tick() };
     for _ in 0..10 {
         guard.step(&at, senses).unwrap();
         std::thread::sleep(Duration::from_millis(30));
@@ -1018,6 +1065,20 @@ fn a_nearly_full_store_is_listed_however_memory_stalls() {
     });
 }
 
+/// A pipe at `path` that nothing writes, which a script opens to write as
+/// well as read, so the open waits for no writer and a read with a timeout
+/// on it pauses for just that long: a pause by a builtin, with no fork.
+fn silent_pipe(path: &Path) {
+    let name = std::ffi::CString::new(path.as_os_str().as_bytes()).unwrap();
+    // SAFETY: a plain system call on a name the store owns.
+    assert_eq!(
+        unsafe { libc::mkfifo(name.as_ptr(), 0o600) },
+        0,
+        "no pipe made: {}",
+        std::io::Error::last_os_error()
+    );
+}
+
 /// This process's scheduling policy, as /proc gives it, which what the
 /// guard runs at full priority inherits: a machine whose Nix daemon runs
 /// builds at idle priority runs this suite there too, so a listing at
@@ -1085,12 +1146,15 @@ fn a_listing_that_failed_slowly_rests_before_it_is_tried_again() {
     fs::write(store.root.join("listed"), "").unwrap();
     fs::write(store.root.join("listing-slow"), "").unwrap();
     let mut guard = store.guard(store.config("100%", "0%"));
-    step_later_until(&store, &mut guard, 0.0, &CALM, |store, _| lists(store) == 1);
+    let began = (now(), 0.0);
+    step_until_at(&store, &mut guard, began, &CALM, |store, _| {
+        lists(store) == 1
+    });
     // It fails five minutes after it began.
     fs::remove_file(store.root.join("listing-slow")).unwrap();
-    step_later(&mut guard, 300.0, &CALM);
+    step_at(&mut guard, began.0 + 300.0, &CALM);
     fs::remove_file(store.root.join("listing-broken")).unwrap();
-    step_later(&mut guard, 300.0 + 6.0 * 60.0, &CALM);
+    step_at(&mut guard, began.0 + 300.0 + 6.0 * 60.0, &CALM);
     assert_eq!(
         lists(&store),
         1,
@@ -1098,7 +1162,12 @@ fn a_listing_that_failed_slowly_rests_before_it_is_tried_again() {
         store.log()
     );
     // Nine times its length on, it's tried again.
-    listed_later(&store, &mut guard, 300.0 + 9.0 * 300.0 + 60.0, &CALM);
+    listed_at(
+        &store,
+        &mut guard,
+        (began.0, 300.0 + 9.0 * 300.0 + 60.0),
+        &CALM,
+    );
     assert_eq!(lists(&store), 2, "{:?}", store.log());
 }
 
@@ -1113,18 +1182,26 @@ fn a_listing_that_failed_slowly_rests_however_full_the_store() {
     fs::write(store.root.join("listed"), "").unwrap();
     fs::write(store.root.join("listing-slow"), "").unwrap();
     let mut guard = store.guard(store.config("100%", "100%"));
-    step_later_until(&store, &mut guard, 0.0, &CALM, |store, _| lists(store) == 1);
+    let began = (now(), 0.0);
+    step_until_at(&store, &mut guard, began, &CALM, |store, _| {
+        lists(store) == 1
+    });
     fs::remove_file(store.root.join("listing-slow")).unwrap();
-    step_later(&mut guard, 300.0, &CALM);
+    step_at(&mut guard, began.0 + 300.0, &CALM);
     fs::remove_file(store.root.join("listing-broken")).unwrap();
-    step_later(&mut guard, 300.0 + 6.0 * 60.0, &CALM);
+    step_at(&mut guard, began.0 + 300.0 + 6.0 * 60.0, &CALM);
     assert_eq!(
         lists(&store),
         1,
         "a nearly full store's failed listing was tried again before it rested: {:?}",
         store.log()
     );
-    listed_later(&store, &mut guard, 300.0 + 9.0 * 300.0 + 60.0, &CALM);
+    listed_at(
+        &store,
+        &mut guard,
+        (began.0, 300.0 + 9.0 * 300.0 + 60.0),
+        &CALM,
+    );
     assert_eq!(lists(&store), 2, "{:?}", store.log());
 }
 

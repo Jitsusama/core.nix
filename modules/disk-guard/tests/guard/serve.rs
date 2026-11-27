@@ -372,12 +372,15 @@ fn a_disk_below_healthy_has_what_holds_it_measured_on_a_thread_of_its_own() {
     );
 }
 
-/// The status file once its holders are measured, or as it stands when
-/// `within` passes first.
+/// Whether a status says what holds the disks, measured.
+fn holds_measured(status: &serde_json::Value) -> bool {
+    status["holders_at"].is_number()
+}
+
+/// The status file once its holders are measured, failing when `within`
+/// passes first.
 fn measured(guard: &mut Guard, dir: &Path, within: Duration) -> serde_json::Value {
-    status_once(guard, dir, within, |status| {
-        status["holders_at"].is_number()
-    })
+    status_once(guard, dir, within, "a measure", holds_measured)
 }
 
 /// The first status saying what holds the disks once a pass has surveyed
@@ -389,7 +392,7 @@ fn surveyed(guard: &mut Guard, dir: &Path, within: Duration) -> serde_json::Valu
     // A pass can end, and its status carry a measure, before any survey
     // has offered a thing: then every holder says the guard hasn't looked.
     // Only a status whose holders have all been looked at has a survey in it.
-    status_once(guard, dir, within, |status| {
+    status_once(guard, dir, within, "a whole survey", |status| {
         status["holders"].as_array().is_some_and(|holders| {
             !holders.is_empty()
                 && holders.iter().all(|holder| {
@@ -401,9 +404,28 @@ fn surveyed(guard: &mut Guard, dir: &Path, within: Duration) -> serde_json::Valu
     })
 }
 
-/// The first status, step after step, that `ready` takes, or the last
-/// once `within` has passed.
+/// The first status, step after step, that `ready` takes. Once `within`
+/// has passed it fails, naming the wait for `what` and showing the last
+/// status: handed back, a status not yet ready failed its test later on a
+/// wrong value, with no word that the wait had run out.
 fn status_once(
+    guard: &mut Guard,
+    dir: &Path,
+    within: Duration,
+    what: &str,
+    ready: impl Fn(&serde_json::Value) -> bool,
+) -> serde_json::Value {
+    let status = status_until(guard, dir, within, &ready);
+    assert!(
+        ready(&status),
+        "the wait for {what} ran out after {within:?}; the last status: {status}"
+    );
+    status
+}
+
+/// The first status, step after step, that `ready` takes, or the last
+/// once `within` has passed, for a test that waits to see it never comes.
+fn status_until(
     guard: &mut Guard,
     dir: &Path,
     within: Duration,
@@ -453,13 +475,17 @@ fn each_measurement_goes_in_the_ledger_and_a_holder_says_what_it_grew_since_one_
     let mut guard = guard_over(&root, "1");
     // Started, it says the ledger's measure until its own ends, so wait
     // for one taken since: on a busy builder the first status comes first.
-    let status = status_once(&mut guard, &root, Duration::from_secs(20), |status| {
-        status["holders_at"].as_f64().is_some_and(|at| at >= now)
-    });
+    let status = status_once(
+        &mut guard,
+        &root,
+        Duration::from_secs(20),
+        "a measure taken since it started",
+        |status| status["holders_at"].as_f64().is_some_and(|at| at >= now),
+    );
     let grew = &status["holders"][0]["grew"];
     assert!(
         grew.is_object(),
-        "no measure of its own came in time: {status}"
+        "its own measure says nothing of what grew: {status}"
     );
     assert!(grew["bytes"].as_u64().unwrap() >= 64 * 1024, "{status}");
     assert!(grew["over"].as_f64().unwrap() >= 7200.0, "{status}");
@@ -474,7 +500,12 @@ fn each_measurement_goes_in_the_ledger_and_a_holder_says_what_it_grew_since_one_
 fn a_healthy_disk_within_its_budget_measures_nothing() {
     let dir = tempfile::tempdir().unwrap();
     let mut guard = guard_over(dir.path(), "100%");
-    let status = measured(&mut guard, dir.path(), Duration::from_secs(2));
+    let status = status_until(
+        &mut guard,
+        dir.path(),
+        Duration::from_secs(2),
+        holds_measured,
+    );
     assert!(status["holders_at"].is_null(), "{status}");
 }
 

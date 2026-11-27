@@ -58,15 +58,23 @@ fn finished(ran: Ran) -> disk_guard::commands::Output {
 
 /// Runs `job` until `stop` is asked after `after`, with `grace` to end.
 fn stopped_after(job: &Job, after: Duration, grace: Duration) -> (Ran, Duration) {
+    stopped_when(job, || std::thread::sleep(after), grace)
+}
+
+/// Runs `job` and asks it to stop once `ready` returns, as
+/// `stopped_after` does after a while, and how long it took from then.
+fn stopped_when(job: &Job, ready: impl FnOnce() + Send, grace: Duration) -> (Ran, Duration) {
     let stop = AtomicBool::new(false);
+    let asked = std::sync::OnceLock::new();
     std::thread::scope(|scope| {
         scope.spawn(|| {
-            std::thread::sleep(after);
+            ready();
+            asked.get_or_init(Instant::now);
             stop.store(true, Ordering::Relaxed);
         });
-        let started = Instant::now();
         let ran = stoppable(job, &stop, grace).unwrap();
-        (ran, started.elapsed())
+        let took = asked.get().map_or(Duration::ZERO, Instant::elapsed);
+        (ran, took)
     })
 }
 
@@ -74,13 +82,22 @@ fn stopped_after(job: &Job, after: Duration, grace: Duration) -> (Ran, Duration)
 fn a_stopped_command_is_asked_to_end_and_given_its_grace() {
     let dir = tempfile::tempdir().unwrap();
     let said = dir.path().join("said");
+    let trapped = dir.path().join("trapped");
+    // Stopped once its trap is set, since a loaded builder once asked it
+    // before the shell had read that far, and the shell ended unheard.
     let script = format!(
-        "trap 'sleep 0.3; echo ended > {}; exit 0' TERM; sleep 30 & wait",
-        said.display()
+        "trap 'sleep 0.3; echo ended > {}; exit 0' TERM; : > {}; sleep 30 & wait",
+        said.display(),
+        trapped.display()
     );
-    let (ran, took) = stopped_after(
+    let (ran, took) = stopped_when(
         &job(&["sh", "-c", &script]),
-        Duration::from_millis(200),
+        || {
+            let began = Instant::now();
+            while !trapped.exists() && began.elapsed() < Duration::from_secs(10) {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        },
         Duration::from_secs(5),
     );
     assert!(matches!(ran, Ran::Stopped), "{ran:?}");
