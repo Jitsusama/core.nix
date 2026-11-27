@@ -1354,8 +1354,10 @@ ShellRoot {
             for (const [typed, narrowed] of [["r", false], ["ra", true], ["rad", true],
                 ["ra", false], ["q", false], ["qu", true], ["qu r", true]]) {
                 const pool = applications.poolFor(applications.programs, typed);
-                same(`"${typed}" looked ${narrowed ? "through the last key's" : "whole"}`,
-                    pool.length < applications.programs.length, narrowed);
+                const narrowTo = narrowed ? applications.lastMatched.rows.length
+                    : applications.programs.length;
+                same(`"${typed}" looked ${narrowed ? "through the last key's alone" : "whole"}`,
+                    pool.length, narrowTo);
                 const got = found(typed);
                 same(`"${typed}" found as looking whole does`, got, whole(typed));
                 found(typed);
@@ -1374,6 +1376,12 @@ ShellRoot {
             reworded.keywords = radFinds.prepared;
             same("a program given more words in place since is looked at again",
                 applications.poolFor(applications.programs, "rad").includes(reworded), true);
+            same("and looked at again in a list made anew that keeps it",
+                applications.poolFor(applications.programs.slice(), "rad").includes(reworded),
+                true);
+            same("while the list made anew still narrows to what the last key matched",
+                applications.poolFor(applications.programs.slice(), "rad").length,
+                applications.lastMatched.rows.length + 1);
             applications.matched("rad");
             same("and matched by them, typed on",
                 applications.lastMatched.rows.includes(reworded), true);

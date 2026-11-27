@@ -554,7 +554,7 @@ Scope {
     // makes the list anew but keeps some of its rows, as Runs keeps every
     // finished run's while one at work is made again each update, a kept
     // row the letters before didn't match still can't match while what a
-    // search reads of it (`searchReads`) is what they judged. One reworded in
+    // search reads of it (`searchRead`) is what they judged. One reworded in
     // place since is looked at again, so a program the launcher's
     // withSynonyms gives more words to as it joins it is found by them at
     // once, and a row a provider later rewords in place can't go missing
@@ -570,16 +570,36 @@ Scope {
         if (last.from === null || last.words === "" || !words.startsWith(last.words))
             return rows;
         const matched = byWhat(last.rows);
+        // Typed on over the same list, as a key mostly is, a row's place
+        // in it is its place in the last, so the whole list is never
+        // looked up by key and nothing is made for a row.
+        if (last.from === rows)
+            return rows.filter((row, at) => among(matched, last.rows, row)
+                || !readsAsAt(last.read, at, row));
         const judged = byWhat(last.from);
         return rows.filter(row => among(matched, last.rows, row)
             || !judgedAsItReads(judged, last, row));
     }
 
-    // What a search reads of a row: its name and its other words, each
-    // made once and never changed in place but by being given anew, as
-    // withSynonyms gives `keywords` (Member.js, Runs' `also`).
-    function searchReads(row) {
-        return [row.prepared, row.keywords ?? null, row.also ?? null];
+    // What a search reads of a row, by part: its name and its other
+    // words, each made once and never changed in place but by being given
+    // anew, as withSynonyms gives `keywords` (Member.js, Runs' `also`).
+    // Read part by part, so recording and comparing them makes no array
+    // a row.
+    readonly property int searchReadParts: 3
+    function searchRead(row, part) {
+        if (part === 0)
+            return row.prepared;
+        return (part === 1 ? row.keywords : row.also) ?? null;
+    }
+
+    // Whether the last search read of the row at `at` what it reads now.
+    function readsAsAt(read, at, row) {
+        for (let part = 0; part < searchReadParts; part += 1) {
+            if (read[at * searchReadParts + part] !== searchRead(row, part))
+                return false;
+        }
+        return true;
     }
 
     // Where in `rows` each row is, by what it is, so asking whether a row
@@ -605,16 +625,17 @@ Scope {
     // reads now.
     function judgedAsItReads(by, last, row) {
         const at = (by[row.key ?? ""] ?? []).find(one => last.from[one] === row);
-        if (at === undefined)
-            return false;
-        const was = last.read[at];
-        const now = searchReads(row);
-        return was[0] === now[0] && was[1] === now[1] && was[2] === now[2];
+        return at !== undefined && readsAsAt(last.read, at, row);
     }
 
+    // What the search read of each of `rows`, part by part, in one list.
     function matchedIn(rows, typed, matched) {
-        lastMatched = { from: rows, words: Fuzzy.words(typed).join(" "), rows: matched,
-            read: rows === null ? [] : rows.map(row => searchReads(row)) };
+        const read = [];
+        for (const row of rows ?? []) {
+            for (let part = 0; part < searchReadParts; part += 1)
+                read.push(searchRead(row, part));
+        }
+        lastMatched = { from: rows, words: Fuzzy.words(typed).join(" "), rows: matched, read };
     }
 
     // Its row in the main search: its matches, unless it answered what's

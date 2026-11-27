@@ -64,7 +64,8 @@ Provider {
         return {
             id: bare,
             // Made a string, so a node's key of any other kind can't throw
-            // where rows are found by it (Provider.qml's byWhat).
+            // where the launcher reads a found row's key as one
+            // (Launcher.qml's startsWith on it).
             key: String(record.key ?? `run:${id}`),
             kind: record["run.kind"]
                 ?? (id.startsWith("fleet.") ? "fleet" : kinds[round] ? round : "review"),
