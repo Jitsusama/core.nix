@@ -27,7 +27,7 @@ use pineapple::github::{self, Said, Thread, found_when};
 use pineapple::progress::Own;
 use pineapple::{Joel, Platform, Saying, Verdict, judge};
 
-use super::{GitHub, Unread, searched};
+use super::{GitHub, Left, Unread, searched};
 
 /// How far before the last whole search Joel's own words are searched for
 /// and judged, and how far before that a thread found is read, in
@@ -65,13 +65,15 @@ pub(super) struct Searched {
 /// What one search found: each pull request or issue to read, when each
 /// it named had last changed, whether the round may move on from it (not
 /// when its first search failed, or was cut short giving nothing it could
-/// read, which holds as an outage does), and what it left out, for the
-/// journal once the round knows where the next reaches.
+/// read, which holds as an outage does), and what it left out, each as
+/// the journal says it and when it ends, for the journal and Joel once
+/// the round knows where the next reaches, with whose words it searched.
 pub(super) struct Found {
     pub(super) threads: Vec<Thread>,
     pub(super) seen: HashMap<String, String>,
     pub(super) answered: bool,
-    left: Vec<String>,
+    left: Vec<(String, String)>,
+    login: String,
 }
 
 impl Searched {
@@ -125,6 +127,7 @@ impl Searched {
             seen: HashMap::new(),
             answered: true,
             left: Vec::new(),
+            login: login.to_owned(),
         };
         // Up to when the search before was cut short, none at first.
         let mut before: Option<String> = None;
@@ -153,11 +156,12 @@ impl Searched {
                 // cut short would, rather than hold every round back on a
                 // wide search that may keep failing.
                 Err(Unread::Gone(why) | Unread::Failed(why) | Unread::Limited(why)) => {
-                    found.left.push(format!(
+                    let said = format!(
                         "<4>couldn't search {} for what Joel said changed {changed} ({why}), so \
                          threads the search before left out are",
                         github.name
-                    ));
+                    );
+                    found.left.push((said, before.unwrap_or_default()));
                     return found;
                 }
             };
@@ -191,11 +195,12 @@ impl Searched {
                 return found;
             };
             if searching == SEARCHES {
-                found.left.push(format!(
+                let said = format!(
                     "<4>{}'s search for what Joel said found {all} but gave {gave}, back to \
                      {oldest}, so threads it left out, changed from {reach} to then, are",
                     github.name
-                ));
+                );
+                found.left.push((said, oldest));
                 return found;
             }
             before = Some(oldest);
@@ -207,14 +212,19 @@ impl Searched {
     /// answered, knowing what that read as read, what the round couldn't
     /// read owed (owed.rs), and says in the journal what its searches left
     /// out, from where the next round reaches, which only moving on
-    /// settles.
-    pub(super) fn moved_on(&mut self, began: u64, found: Found) {
+    /// settles, and tells Joel in a row of its own (left.rs), as nothing
+    /// searches it again.
+    pub(super) fn moved_on(&mut self, began: u64, found: Found, tell: &Left) {
         if found.answered {
+            let reach = self.reach();
             self.from = began;
             self.read = found.seen;
             let next = github::stamp(self.reach());
-            for left in found.left {
+            for (left, to) in found.left {
                 eprintln!("{left} searched again only from {next}, where the next round reaches");
+                if let Some(to) = github::seconds(&to) {
+                    tell.own(&found.login, reach, to);
+                }
             }
         }
     }

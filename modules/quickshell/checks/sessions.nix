@@ -17,6 +17,27 @@
 let
   # Joel away, so what waits for him to go opens; a case sets it as it needs.
   away = singleton "Away.qml" "property bool now: true";
+  # What the cases with niri stood in run beside Sessions.qml, shared by
+  # each check here whose stand-ins are these; one with a niri of its own
+  # takes the rest. niri has Joel's window on the screen's first workspace,
+  # and the empty one it keeps last; a test makes more as windows open there.
+  reopenStandIns = {
+    niri = ../tests/stand-ins/hosted-reopen-niri.qml;
+    options = singleton "Options.qml" ''
+      readonly property var sounds: ({ wants: "", player: "" })
+    '';
+    quiet = singleton "Quiet.qml" ''
+      property bool on: false
+    '';
+    notices = singleton "Notices.qml" ''
+      property var live: ({})
+      function mark(id, read) {}
+    '';
+    waiting = singleton "WaitingOnYou.qml" ''
+      readonly property var standing: ({})
+    '';
+    report = singleton "Report.qml" "function say(text) {}";
+  };
 in
 {
   # A switch never restarts the kitty every session's window is in, so no
@@ -193,20 +214,13 @@ in
           spawns = spawns.concat([command.join(" ")]);
         }
       '';
-      options = singleton "Options.qml" ''
-        readonly property var sounds: ({ wants: "", player: "" })
-      '';
-      quiet = singleton "Quiet.qml" ''
-        property bool on: false
-      '';
-      notices = singleton "Notices.qml" ''
-        property var live: ({})
-        function mark(id, read) {}
-      '';
-      waiting = singleton "WaitingOnYou.qml" ''
-        readonly property var standing: ({})
-      '';
-      report = singleton "Report.qml" "function say(text) {}";
+      inherit (reopenStandIns)
+        options
+        quiet
+        notices
+        waiting
+        report
+        ;
     in
     pkgs.runCommandLocal "a-session-is-known-by-its-own-record" { } ''
       export HOME=$TMPDIR XDG_STATE_HOME=$PWD/state XDG_DATA_HOME=$PWD/data
@@ -262,20 +276,13 @@ in
         }
         function spawn(command) { spawns = spawns.concat([command.join(" ")]); }
       '';
-      options = singleton "Options.qml" ''
-        readonly property var sounds: ({ wants: "", player: "" })
-      '';
-      quiet = singleton "Quiet.qml" ''
-        property bool on: false
-      '';
-      notices = singleton "Notices.qml" ''
-        property var live: ({})
-        function mark(id, read) {}
-      '';
-      waiting = singleton "WaitingOnYou.qml" ''
-        readonly property var standing: ({})
-      '';
-      report = singleton "Report.qml" "function say(text) {}";
+      inherit (reopenStandIns)
+        options
+        quiet
+        notices
+        waiting
+        report
+        ;
     in
     pkgs.runCommandLocal "a-session-behind-the-lock-waits-for-its-kin" { } ''
       export HOME=$TMPDIR XDG_STATE_HOME=$PWD/state XDG_DATA_HOME=$PWD/data
@@ -308,23 +315,14 @@ in
   # has a realm, a node and a niri that opens windows.
   a-hosted-viewer-reopens-where-it-was =
     let
-      # Joel's window on the monitor's first workspace, and the empty one
-      # niri keeps last; the test makes more as windows open there.
-      niri = ../tests/stand-ins/hosted-reopen-niri.qml;
-      options = singleton "Options.qml" ''
-        readonly property var sounds: ({ wants: "", player: "" })
-      '';
-      quiet = singleton "Quiet.qml" ''
-        property bool on: false
-      '';
-      notices = singleton "Notices.qml" ''
-        property var live: ({})
-        function mark(id, read) {}
-      '';
-      waiting = singleton "WaitingOnYou.qml" ''
-        readonly property var standing: ({})
-      '';
-      report = singleton "Report.qml" "function say(text) {}";
+      inherit (reopenStandIns)
+        niri
+        options
+        quiet
+        notices
+        waiting
+        report
+        ;
     in
     # Kept in Nix because each line copies a file Nix gives it beside the
     # cases, or sets what Quickshell runs them with.
@@ -360,27 +358,69 @@ in
       touch $out
     '';
 
+  # Reopen Them All passes the twin connectors its sessions were given on to
+  # the windows it puts back, and those of a window put back before the walk
+  # on through it unless a session took that connector, with two screens of
+  # one model back on new connectors
+  # (modules/quickshell/tests/sessions-twins-put-back.qml), with niri stood
+  # in. Sessions handed over outside a walk give windows none, a walk
+  # joined keeps the screen in use as it began, twin sessions of one boot
+  # take a connector each, a session kept on a screen that's gone goes to
+  # the screen in use as its walk began, and a window noted away from a
+  # screen named for a prototype's key is noted as any other.
+  twin-screens-each-take-their-own-windows-back =
+    let
+      inherit (reopenStandIns)
+        niri
+        options
+        quiet
+        notices
+        waiting
+        report
+        ;
+    in
+    # Kept in Nix because each line copies a file Nix gives it beside the
+    # cases, or sets what Quickshell runs them with.
+    pkgs.runCommandLocal "twin-screens-each-take-their-own-windows-back" { } ''
+      export HOME=$TMPDIR XDG_STATE_HOME=$PWD/state XDG_DATA_HOME=$PWD/data
+      ${lib.getExe pkgs.bash} ${../tests/stand-ins/sessions-behind-the-lock-state.sh} \
+        $XDG_STATE_HOME
+      ${copied [
+        "Daemon.qml"
+        "PiSource.qml"
+        "Sessions.qml"
+      ]}
+      cp ${waiting} WaitingOnYou.qml
+      cp ${report} Report.qml
+      cp ${../tests/sessions-twins-put-back.qml} shell.qml
+      cp ${../../../tests/lib/Expect.js} Expect.js
+      cp ${niri} Niri.qml
+      cp ${options} Options.qml
+      cp ${quiet} Quiet.qml
+      cp ${away} Away.qml
+      cp ${notices} Notices.qml
+      export XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      mkdir -m 700 $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR/mycelium
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      timeout 60 ${qs} -p shell.qml
+      touch $out
+    '';
+
   # Go To on a session with no window here brings the window it opens to the
   # front once niri lists it
   # (modules/quickshell/tests/sessions-go-to-focuses.qml), with the node and
   # niri stood in.
   go-to-brings-a-windowless-session-forward =
     let
-      niri = ../tests/stand-ins/hosted-reopen-niri.qml;
-      options = singleton "Options.qml" ''
-        readonly property var sounds: ({ wants: "", player: "" })
-      '';
-      quiet = singleton "Quiet.qml" ''
-        property bool on: false
-      '';
-      notices = singleton "Notices.qml" ''
-        property var live: ({})
-        function mark(id, read) {}
-      '';
-      waiting = singleton "WaitingOnYou.qml" ''
-        readonly property var standing: ({})
-      '';
-      report = singleton "Report.qml" "function say(text) {}";
+      inherit (reopenStandIns)
+        niri
+        options
+        quiet
+        notices
+        waiting
+        report
+        ;
     in
     # Kept in Nix because each line copies a file Nix gives it beside the
     # cases, or sets what Quickshell runs them with.
@@ -414,20 +454,14 @@ in
   # niri and the decider stood in.
   a-spawn-kept-in-the-background-opens-no-window =
     let
-      options = singleton "Options.qml" ''
-        readonly property var sounds: ({ wants: "", player: "" })
-      '';
-      quiet = singleton "Quiet.qml" ''
-        property bool on: false
-      '';
-      notices = singleton "Notices.qml" ''
-        property var live: ({})
-        function mark(id, read) {}
-      '';
-      waiting = singleton "WaitingOnYou.qml" ''
-        readonly property var standing: ({})
-      '';
-      report = singleton "Report.qml" "function say(text) {}";
+      inherit (reopenStandIns)
+        niri
+        options
+        quiet
+        notices
+        waiting
+        report
+        ;
     in
     # Kept in Nix because each line copies a file Nix gives it beside the
     # cases, or sets what Quickshell runs them with.
@@ -443,7 +477,7 @@ in
       cp ${report} Report.qml
       cp ${../tests/sessions-spawn-decides.qml} shell.qml
       cp ${../../../tests/lib/Expect.js} Expect.js
-      cp ${../tests/stand-ins/hosted-reopen-niri.qml} Niri.qml
+      cp ${niri} Niri.qml
       cp ${options} Options.qml
       cp ${quiet} Quiet.qml
       cp ${away} Away.qml
@@ -473,20 +507,14 @@ in
   # in.
   a-screen-niri-is-late-to-name-takes-its-workspaces-back =
     let
-      options = singleton "Options.qml" ''
-        readonly property var sounds: ({ wants: "", player: "" })
-      '';
-      quiet = singleton "Quiet.qml" ''
-        property bool on: false
-      '';
-      notices = singleton "Notices.qml" ''
-        property var live: ({})
-        function mark(id, read) {}
-      '';
-      waiting = singleton "WaitingOnYou.qml" ''
-        readonly property var standing: ({})
-      '';
-      report = singleton "Report.qml" "function say(text) {}";
+      inherit (reopenStandIns)
+        niri
+        options
+        quiet
+        notices
+        waiting
+        report
+        ;
     in
     # Kept in Nix because each line copies a file Nix gives it beside the
     # cases, or sets what Quickshell runs them with.
@@ -502,7 +530,7 @@ in
       cp ${report} Report.qml
       cp ${../tests/sessions-screen-comes-home.qml} shell.qml
       cp ${../../../tests/lib/Expect.js} Expect.js
-      cp ${../tests/stand-ins/hosted-reopen-niri.qml} Niri.qml
+      cp ${niri} Niri.qml
       cp ${options} Options.qml
       cp ${quiet} Quiet.qml
       cp ${away} Away.qml
