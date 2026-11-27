@@ -1024,9 +1024,9 @@ const LOOK_EVERY: Duration = Duration::from_millis(250);
 /// Waits until the wall clock reads `until`, milliseconds since the epoch as
 /// `now` gives them and the foot and margin show a copy's clearing by, or
 /// until `longest` has passed `awake`, whichever comes first, sleeping by
-/// `sleep` at most LOOK_EVERY at a time. A sleep stops while the machine is
+/// `sleep` at most `LOOK_EVERY` at a time. A sleep stops while the machine is
 /// suspended and the wall clock doesn't, so a time that ran out while the lid
-/// was closed ends the wait within LOOK_EVERY of waking, rather than as long
+/// was closed ends the wait within `LOOK_EVERY` of waking, rather than as long
 /// after as was left; `longest` ends it as meant when the wall clock is set
 /// back meanwhile. It ends too at the first look where `wanted` says it
 /// isn't, as a copy something else replaced has nothing left to clear.
