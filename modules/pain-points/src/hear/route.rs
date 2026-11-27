@@ -183,6 +183,9 @@ pub fn owner(
 /// they name a subject only where the provider failed him, which the
 /// provider's owner holds; another stall without a purpose names none.
 pub fn said(pain: &Heard, cells: &BTreeMap<String, Cell>, routes: &Routes) -> Vec<String> {
+    if the_providers(pain) {
+        return subject_hubs::words(super::stalled::PROVIDER_FAILING);
+    }
     let purpose = cells
         .get(&pain.session)
         .filter(|cell| !pain.void && !routes.refuses(&cell.address))
@@ -191,13 +194,17 @@ pub fn said(pain: &Heard, cells: &BTreeMap<String, Cell>, routes: &Routes) -> Ve
         return subject_hubs::words(purpose);
     }
     if super::stalled::is(pain) {
-        return if pain.words.contains(super::stalled::PROVIDER_FAILING) {
-            subject_hubs::words(super::stalled::PROVIDER_FAILING)
-        } else {
-            Vec::new()
-        };
+        return Vec::new();
     }
     subject_hubs::words(&pain.words)
+}
+
+/// Whether a pain is a stall the model's provider caused, which its
+/// owner holds whichever session it hit: the session's own cell can't
+/// fix a provider, as two said on 27 November when it was sent theirs.
+#[must_use]
+pub fn the_providers(pain: &Heard) -> bool {
+    super::stalled::is(pain) && pain.words.contains(super::stalled::PROVIDER_FAILING)
 }
 
 /// The hub that takes what `said` names, and the holder it goes to: of
@@ -577,16 +584,22 @@ mod tests {
                 "{why} pain didn't go by his words"
             );
         }
-        let stall = |why: &str| {
+        let stall_in = |session: &str, why: &str| {
             let words = format!("a turn of 90 s lost him 80 s, {why}");
-            let mut p = pain("s-blank", "turn-1", &words, 1);
+            let mut p = pain(session, "turn-1", &words, 1);
             p.kinds = vec![stalled::KIND.into()];
             super::said(&p, &cells, &routes)
         };
+        let stall = |why: &str| stall_in("s-blank", why);
         assert_eq!(
             stall(stalled::PROVIDER_FAILING),
             ["the", "provider", "failing"],
             "the provider failing him named no subject"
+        );
+        assert_eq!(
+            stall_in("s-ended", stalled::PROVIDER_FAILING),
+            ["the", "provider", "failing"],
+            "the provider failing him went by the session's purpose, which can't fix it"
         );
         assert!(
             stall("he stopped it").is_empty(),

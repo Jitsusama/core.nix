@@ -732,7 +732,12 @@ fn owners_for(
         let Some(cell) = cells.get(&pain.session) else {
             continue;
         };
-        let owner = route::own(&pain.session, pain.void, cells, routes).or_else(|| {
+        // A stall the provider caused goes by its subject, not to the cell
+        // it hit.
+        let own = (!route::the_providers(pain))
+            .then(|| route::own(&pain.session, pain.void, cells, routes))
+            .flatten();
+        let owner = own.or_else(|| {
             // Never back to its own cell, which the void's or a refused
             // one may be, live as it is.
             let mut takers = live.clone();
