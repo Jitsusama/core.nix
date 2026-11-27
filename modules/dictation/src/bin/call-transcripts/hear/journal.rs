@@ -4,7 +4,7 @@
 //! What's wrongly left out is gone from the file, so this is all that says
 //! where to listen for it.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use dictation::echo::{self, Cut};
 use dictation::parakeet::Word;
@@ -14,14 +14,15 @@ use super::Writing;
 use crate::{said, split};
 
 /// What the journal was told of a call's echo cuts and not since told
-/// written back: each run of Joel's words cut, how many words, by the
-/// sample it starts at, and `left` the lines of his told as left out
-/// whole, by the sample each starts at. Splitting their takes by voice
-/// moves his lines' indices on but never their times, so what's told
-/// stays told across a rejoin.
+/// written back: each of Joel's words cut, by the sample it was heard at,
+/// with the sample the run that told it starts at, so a run written back
+/// in part, or grown at its front, tells only the words that changed;
+/// and `left` the lines of his told as left out whole, by the sample each
+/// starts at. Splitting their takes by voice moves his lines' indices on
+/// but never their times, so what's told stays told across a rejoin.
 #[derive(Default)]
 pub(super) struct Told {
-    runs: HashMap<usize, usize>,
+    words: HashMap<usize, usize>,
     left: HashSet<usize>,
 }
 
@@ -34,32 +35,34 @@ struct Run {
 }
 
 impl Told {
-    /// A journal line for each run of `cutting` newly cut, and for each
-    /// run told cut that the call written again keeps, as it may once more
-    /// of Joel's words are heard alone, each said once: written back
-    /// first, then cut.
+    /// A journal line for the words of each run of `cutting` newly cut,
+    /// from the first of them, and one for each run told whose words the
+    /// call written again keeps, as it may once more of Joel's words are
+    /// heard alone, from the first it keeps; each word said once until
+    /// it's cut again, and written back told before what's cut.
     #[must_use]
     fn runs(&mut self, cutting: &[Run]) -> Vec<String> {
-        let starts: HashSet<usize> = cutting
+        let cut: HashSet<usize> = cutting
             .iter()
-            .filter_map(|run| run.words.first())
-            .copied()
+            .flat_map(|run| run.words.iter().copied())
             .collect();
-        let mut back: Vec<(usize, usize)> = Vec::new();
-        self.runs.retain(|at, words| {
-            let still = starts.contains(at);
+        // How many words of each run told are written back, and the first.
+        let mut back: BTreeMap<usize, (usize, usize)> = BTreeMap::new();
+        self.words.retain(|&word, &mut run| {
+            let still = cut.contains(&word);
             if !still {
-                back.push((*at, *words));
+                let (words, first) = back.entry(run).or_insert((0, word));
+                *words += 1;
+                *first = (*first).min(word);
             }
             still
         });
-        back.sort_unstable();
         let mut untold: Vec<String> = back
-            .into_iter()
-            .map(|(at, words)| {
+            .into_values()
+            .map(|(words, first)| {
                 format!(
                     "call-transcripts: {words} of Joel's words at {} written back",
-                    transcript::clock(at),
+                    transcript::clock(first),
                 )
             })
             .collect();
@@ -67,11 +70,18 @@ impl Told {
             let Some(&at) = run.words.first() else {
                 continue;
             };
-            let words = run.words.len();
-            if self.runs.insert(at, words).is_none() {
+            let new: Vec<usize> = run
+                .words
+                .iter()
+                .copied()
+                .filter(|word| !self.words.contains_key(word))
+                .collect();
+            self.words.extend(new.iter().map(|&word| (word, at)));
+            if let Some(&first) = new.first() {
                 untold.push(format!(
-                    "call-transcripts: {words} of Joel's words at {} cut as their echo, {}",
-                    transcript::clock(at),
+                    "call-transcripts: {} of Joel's words at {} cut as their echo, {}",
+                    new.len(),
+                    transcript::clock(first),
                     run.by,
                 ));
             }
