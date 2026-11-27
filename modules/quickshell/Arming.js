@@ -155,18 +155,28 @@ function holds(armed, id, keysTaken) {
 // press with no key between, which does it; or "" for one so soon after
 // arming (within `wait`, in ms) that it's the arming press doubled, a key
 // bounced, which does nothing and leaves it armed, as a landing's doubled
-// Return does. `now` is the monotonic clock's, as the launcher's other
-// doubled-key guards read; a press whose time can't be told from the
-// arming's, as one not a number, is held as doubled, so a slip there
-// costs the press, never a session ended.
+// Return does (doubled). `now` is when the press was pressed, on the
+// monotonic clock, as a landing's and a line's Returns are timed. An
+// arming whose time is no number is armed again by the next press, timed
+// afresh, so the row is never left armed with no press able to do it.
 function pressed(armed, id, how) {
     const again = armed.key !== "" && armed.key === id
         && how.keysTaken - armed.keys === how.counted;
-    if (!again) {
+    if (!again || !Number.isFinite(armed.at)) {
         return { act: "armed", armed: { key: id, keys: how.keysTaken, at: how.now } };
     }
-    if (!(how.now - armed.at >= how.wait)) {
+    if (doubled(how.now, armed.at, how.wait)) {
         return { act: "", armed: { key: armed.key, keys: how.keysTaken, at: armed.at } };
     }
     return { act: "ends", armed: rest() };
+}
+
+// Whether a press at `at` comes within `wait` ms of the one at `since`, so
+// it's that one doubled, a key bounced, which does nothing: the one rule
+// for an arming's, a landing's and a line's Returns. A press whose time
+// can't be told from the other's, as one not a number, is held as
+// doubled, so a slip there costs the press, never a session ended; one
+// exactly `wait` after is a fresh press.
+function doubled(at, since, wait) {
+    return !(at - since >= wait);
 }
