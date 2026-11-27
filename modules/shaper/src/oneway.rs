@@ -1553,10 +1553,21 @@ pub struct Controller {
     acks_late_since: Option<f64>,
 }
 
+/// The VPN's two holds as a controller starts them, and again each time
+/// it lets the upload go: the VPN's own queue's, and agents' direct
+/// lane's, which keeps its hold at its least.
+fn vpn_holds() -> (crate::tunnel::Hold, crate::tunnel::Hold) {
+    (
+        crate::tunnel::Hold::default(),
+        crate::tunnel::Hold::beside_agents(),
+    )
+}
+
 impl Controller {
     /// A controller starting at bases `up` and `down`, where a test gives
     /// them; the shaper starts each stay with none.
     pub fn new(up: Option<f64>, down: Option<f64>) -> Controller {
+        let (tunnel, agents) = vpn_holds();
         Controller {
             up: Way::new(up),
             down: Way {
@@ -1579,8 +1590,8 @@ impl Controller {
             why_since: None,
             held_at: None,
             last_cut: LastCut::default(),
-            tunnel: crate::tunnel::Hold::default(),
-            agents: crate::tunnel::Hold::beside_agents(),
+            tunnel,
+            agents,
             acks_late_since: None,
         }
     }
@@ -1835,8 +1846,7 @@ impl Controller {
         // Let go, the upload is held at most at a trial's ceiling, and the
         // VPN within it at its whole share, since no wait is judged.
         if self.given_up() || unanswered {
-            self.tunnel = crate::tunnel::Hold::default();
-            self.agents = crate::tunnel::Hold::beside_agents();
+            (self.tunnel, self.agents) = vpn_holds();
         }
         if self.given_up() || unanswered {
             // A spell of late acks the controller didn't judge through is
@@ -1890,8 +1900,7 @@ impl Controller {
             }
         }
         if self.given_up() {
-            self.tunnel = crate::tunnel::Hold::default();
-            self.agents = crate::tunnel::Hold::beside_agents();
+            (self.tunnel, self.agents) = vpn_holds();
             self.gave_up_at.get_or_insert(at);
             self.judge(at, Why::GaveUp);
             return Limits {
@@ -2130,6 +2139,22 @@ impl crate::replay::Controller for Controller {
 mod tests {
     use super::*;
     use crate::replay::{self, Base, Stay};
+
+    // Each place a controller holds the VPN afresh takes its two holds
+    // from one, where only the tunnel's lets go at its least (tunnel hold
+    // at its least round 2's F21).
+    #[test]
+    fn only_the_tunnel_s_hold_lets_go_at_its_least() {
+        let (tunnel, agents) = vpn_holds();
+        assert!(
+            tunnel.lets_go_at_least(),
+            "the VPN's own queue keeps its hold at its least"
+        );
+        assert!(
+            !agents.lets_go_at_least(),
+            "agents' direct lane lets its hold go at its least"
+        );
+    }
 
     /// Where a direction starts a test, in kbit/s: a base and a plateau,
     /// as a stay reaches them partway through.
