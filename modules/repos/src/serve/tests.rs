@@ -350,22 +350,25 @@ fn a_walk_that_cannot_read_proc_says_what_works_unread_not_idle() {
 fn a_first_reading_that_never_answers_is_said_late_once_and_its_answer_once() {
     // The restart above leaves the page unread, and the journal must say
     // why, as it does for a reading that stops, but as none that ever
-    // answered. The first take waits out SAMPLED, past the pace's
-    // STALE, so it's already late; what holds the reading up is named
-    // only where one is, which a stand-in reading never is, so the line
-    // is the late one whole. It's heard where the daemon says it, as
-    // `take` tells it, and the thread says nothing while its first walk
-    // is held.
+    // answered. Grown old past SAMPLED, as the daemon's three paces are,
+    // the first take waits SAMPLED out still young, and says nothing;
+    // one past `old` is late and waits on nothing. What holds the
+    // reading up is named only where one is, which a stand-in reading
+    // never is, so the line is the late one whole. It's heard where the
+    // daemon says it, as `take` tells it, and the thread says nothing
+    // while its first walk is held.
+    let old = SAMPLED * 2;
     let (free, freed) = mpsc::channel::<()>();
     let freed = std::sync::Mutex::new(freed);
     let (tell, told) = mpsc::channel();
     let folders = vec![PathBuf::from("/home/someone/trees/fix")];
+    let began = Instant::now();
     let mut working = Working::start_saying(
         BRISK,
-        BRISK * STALE,
+        old,
         folders.clone(),
         move |_: &[PathBuf]| {
-            let _ = freed.lock().map(|freed| freed.recv_timeout(SAMPLED * 4));
+            let _ = freed.lock().map(|freed| freed.recv_timeout(SAMPLED * 8));
             Sample::default()
         },
         move |said| {
@@ -374,7 +377,15 @@ fn a_first_reading_that_never_answers_is_said_late_once_and_its_answer_once() {
     );
     working.take(folders.clone());
     assert!(working.unread(), "a reading not yet answered was said");
+    assert_eq!(told.try_iter().count(), 0, "a young first wait was said");
+    std::thread::sleep(old.saturating_sub(began.elapsed()) + BRISK);
+    let late = Instant::now();
     working.take(folders.clone());
+    let waited = late.elapsed();
+    assert!(
+        waited < SAMPLED / 2,
+        "a take after the first waited {waited:?}"
+    );
     let said: Vec<String> = told.try_iter().collect();
     let unread = " s, so what works in each repository is said unread until it answers";
     let seconds = said
@@ -382,12 +393,11 @@ fn a_first_reading_that_never_answers_is_said_late_once_and_its_answer_once() {
         .and_then(|said| said.strip_prefix("no reading of /proc has answered in "))
         .and_then(|said| said.strip_suffix(unread))
         .and_then(|seconds| seconds.parse::<u64>().ok());
-    // It waited out SAMPLED, and at most a late wake more.
+    // It grew old, and at most a late wake more.
     assert!(
         said.len() == 1
-            && seconds.is_some_and(
-                |seconds| (SAMPLED.as_secs()..=(SAMPLED + LATE).as_secs()).contains(&seconds)
-            ),
+            && seconds
+                .is_some_and(|seconds| (old.as_secs()..=(old + LATE).as_secs()).contains(&seconds)),
         "the journal wasn't told once that no reading answered: {said:?}"
     );
 

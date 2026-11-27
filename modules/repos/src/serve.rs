@@ -257,6 +257,8 @@ struct Working {
 enum Standing {
     /// None has been taken, so the first is waited on.
     Unwaited,
+    /// The first was waited on and none has answered, though none is late.
+    Waited,
     /// The last taken was fresh.
     Fresh,
     /// The last taken is late, and none taken was ever fresh.
@@ -411,7 +413,11 @@ impl Working {
         let was = self.standing.late();
         if age < self.old {
             let again = self.standing.ever_fresh();
-            self.standing = Standing::Fresh;
+            self.standing = if self.at.is_some() {
+                Standing::Fresh
+            } else {
+                Standing::Waited
+            };
             return was.then(|| {
                 if again {
                     "the reading of /proc answers again"
