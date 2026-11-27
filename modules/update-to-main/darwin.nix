@@ -75,6 +75,7 @@ in
         why = "the Mac is short of memory";
         refusesTheAskAlone = true;
         refusesAtMost = 2 * 60 * 60;
+        saysWhy = true;
       }
       # HIDIdleTime is how long since any key or the pointer was touched, in
       # nanoseconds; with none read it can't tell.
