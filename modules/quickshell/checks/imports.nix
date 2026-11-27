@@ -14,6 +14,11 @@
     "Ex.js"
     "Operators.js"
   ];
+  "CommandLine.qml" = [
+    "Bands.js"
+    "Commands.js"
+    "LineEditing.js"
+  ];
   "Commands.js" = [ "Ex.js" ];
   "ConnectedKeyboards.qml" = [ "launcher/Keyboards.js" ];
   "Copied.qml" = [ "Copied.js" ];

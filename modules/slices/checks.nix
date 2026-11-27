@@ -89,7 +89,9 @@
   # swap before work is ended, but for the hard part the sessions' kitty
   # keeps, which the next check holds; every slice above claims both kinds.
   # Whether the parents' floors cover them is the VM test's to say, since
-  # one is a share of memory and another a size.
+  # one is a share of memory and another a size. What session.slice and
+  # app.slice swap out stays compressed in memory, never on the disk, so
+  # what Joel comes back to faults back without waiting on it.
   session-memory-is-protected =
     let
       inherit (graphical.config) systemd;
@@ -102,13 +104,15 @@
       agents = systemd.user.slices.agents.sliceConfig;
     in
     holds "session-memory-is-protected"
-      "A slice above session.slice, app.slice or agents.slice lacks its memory floor, so they have none."
+      "A slice above session.slice, app.slice or agents.slice lacks its memory floor, so they have none, or session.slice or app.slice writes what it swaps out to the disk."
       (
         same (above "MemoryMin")
         && same (above "MemoryLow")
         && systemd.user.slices.session.sliceConfig ? MemoryMin
         && systemd.user.slices.app.sliceConfig ? MemoryMin
         && agents ? MemoryLow
+        && (systemd.user.slices.session.sliceConfig.MemoryZSwapWriteback or true) == false
+        && (systemd.user.slices.app.sliceConfig.MemoryZSwapWriteback or true) == false
       );
 
   # The compositor and the shell are how Joel drives the machine, so inside
@@ -141,12 +145,14 @@
 
   # Agents' sessions sit beside Joel's programs, not among them, where each
   # of their wakeups preempted his, and at a tenth of their weight, where
-  # his programs waited on the processor less than a third as long. The
-  # sorter watches both, so a session's busy work still goes to jobs.
+  # his programs waited on the processor less than a third as long. On the
+  # disk too, which io.cost on a named disk shares by weight. The sorter
+  # watches both, so a session's busy work still goes to jobs.
   sessions-sit-beside-the-programs =
     let
       inherit (graphical.config.systemd.user) slices services;
       weight = slice: slice.sliceConfig.CPUWeight or 100;
+      disk = slice: slice.sliceConfig.IOWeight or 100;
       # A slice is watched when it's named alone or with where its terminals'
       # busy work goes, after an `=` the shell quotes.
       watches =
@@ -157,8 +163,13 @@
         lib.hasInfix " --under ${slice} " given || lib.hasInfix " --under '${slice}=" given;
     in
     holds "sessions-sit-beside-the-programs"
-      "Agents' sessions have no slice beside the apps, the apps don't outweigh it ten times over, or the sorter doesn't watch it."
-      (weight slices.app >= 10 * weight slices.agents && watches "app.slice" && watches "agents.slice");
+      "Agents' sessions have no slice beside the apps, the apps don't outweigh it ten times over on the processor and the disk, or the sorter doesn't watch it."
+      (
+        weight slices.app >= 10 * weight slices.agents
+        && disk slices.app >= 10 * disk slices.agents
+        && watches "app.slice"
+        && watches "agents.slice"
+      );
 
   # Under every core's load, the processor's one power budget holds each
   # near the same clock, so one of Joel's threads ran no faster on a

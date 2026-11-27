@@ -10,6 +10,16 @@ use std::process::{Command, Stdio};
 use std::ptr;
 
 #[test]
+fn this_mac_s_kernel_says_its_memory_s_room() {
+    let read = disk_guard::macos::pressure(Path::new("/proc/pressure"))
+        .expect("the kernel refused its memory reading");
+    assert!(
+        read.memory_room.is_some(),
+        "the kernel's reading gave no room"
+    );
+}
+
+#[test]
 fn this_process_reads_as_itself() {
     let mut mapped = tempfile::NamedTempFile::new().unwrap();
     mapped.write_all(&[0; 4096]).unwrap();

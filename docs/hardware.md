@@ -311,6 +311,7 @@ or a local fix.
 | `dp-byte-reads-only-when-longer`     | a failed 1-byte DPCD read isn't sent again             |
 | `dp-mst-dsc-skips-empty-ports`       | an MST hub's empty port isn't asked for its DSC caps   |
 | `edp-wakes-the-panel`                | the panel is woken before its eDP revision is read     |
+| `btintel-pcie-pm`                    | Bluetooth lets a hibernate power off                   |
 | `btintel-pcie-dbgc-to-wifi`          | Bluetooth's debug traces go to the Wi-Fi side          |
 
 `xe-shrinker-spares-buffers` is linux-next's split of xe's buffer shrinker
@@ -351,28 +352,25 @@ of niri overnight caught its draws waiting on a client's buffer lock for
 122 to 250 ms, three times in five minutes, and the section below, The
 Write-Combined Buffers Under Reclaim, says what held them.
 
-`btintel-pcie-pm`, four of mainline's commits from 2026-10-14
-(12997a385f71, 2926eb396711, 4f6ead67b93b and f2cee6e2aa35), reached
-the stable series in 7.3.6 with the mailbox handshake it had left out,
-so it left `kernel/next/`. At a hibernate's thaw, the driver had reset
-the controller and probed it again, though freeze never cut its power.
-The probe waited on the controller's firmware while user space was
-frozen. So the power-off asked a controller
+`btintel-pcie-pm` is four of mainline's commits from 2026-10-14:
+12997a385f71, 2926eb396711, 4f6ead67b93b and f2cee6e2aa35. At a
+hibernate's thaw, the driver reset the controller and probed it again,
+though freeze never cut its power. The probe waited on the controller's
+firmware while user space was frozen. So the power-off asked a controller
 still in its bootloader for D3, timed out on its interrupt three times
 and returned -EBUSY. The hibernate rolled back, leaving the laptop on
 until its battery ran out. Thaw is now a plain wake, and only a restore
 or a resume from S3 resets. A missed interrupt is checked against the
 controller's boot stage register rather than a cache only the interrupt
-updates. `bluetooth-lets-a-hibernation-power-off` reads the kernel's
-source for that plain thaw.
+updates. This kernel lacks the mailbox handshake the third commit
+finishes, so that step is left out.
 
 `btintel-pcie-dbgc-to-wifi` is mainline's 0d3f5d805bff, from the same
 merge. The firmware sends its debug traces to the Wi-Fi side's debug
 collector rather than to buffers the driver allocates on the host. Intel
 pointed at it, with d572ea4b621c, for a BE201 that stopped the way this
 laptop's controller did; Bluetooth's Exceptions, below, says how.
-d572ea4b621c came with 7.3.6, so the patch is mainline's commit as it
-stands.
+d572ea4b621c needs a mailbox parser this kernel lacks, so it is left out.
 
 An assertion fails once the kernel is 7.4, which may have them, and the way
 through is to drop each patch that kernel has, then `kernel/next.nix`.
@@ -1100,17 +1098,13 @@ been traced to its cause, and is harmless, so nothing silences or patches it:
   HDMI codec has four converters and the DSP's topology three outputs. The
   GPU drives four displays, the panel being one, so the three cover every
   external display.
-- **Bluetooth's mailbox lines** as the controller loads its firmware.
-  Before 7.3.6 the driver reported each interrupt from that mailbox as an
-  error, "Received gp1 mailbox interrupt", four times a boot, and dumped its
-  registers. 7.3.6 reads the mailbox for where the firmware keeps its debug
-  data and says so at info level, "mailbox for target access" and "mbox
-  interrupt received at N ns; queuing mbox_work"; the firmware loads and
-  the controller works. On some boots, and on resuming from them, the
-  driver also logs "Controller device warning", from its test for an error
-  at each alive interrupt and on waking, and before 7.3.6 from that dump:
-  a bit the controller's own firmware sets in its boot stage register,
-  which the driver reports and does nothing with.
+- **Bluetooth's "Received gp1 mailbox interrupt"**, four times as the
+  controller loads its firmware. The driver reports every interrupt from that
+  mailbox as an error and dumps its registers for debugging; the firmware
+  loads and the controller works. On some boots, and on resuming from them,
+  that dump also logs "Controller device warning": a bit the controller's
+  own firmware sets in its boot stage register, which the driver reports and
+  does nothing with.
 - **bluetoothd's "Unable to register device interface" and "Unable to
   create object for found device"**, a pair now and then while something
   scans. BlueZ 5.87 looks a device up by its address and address type, but

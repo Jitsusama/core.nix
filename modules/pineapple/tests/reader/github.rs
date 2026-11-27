@@ -15,8 +15,9 @@
 //! its journal names it, not GitHub, when it can't be read. A site of a
 //! company's own weighs no writer's standing; who may stop Joel on GitHub
 //! itself, where any account may comment, is in standing.rs; a stop of
-//! Joel's a search indexed late, in late.rs.
+//! Joel's a search indexed late, in late.rs; one heard after his resume, in `heard_after.rs`.
 
+mod heard_after;
 mod late;
 mod standing;
 mod watch;
