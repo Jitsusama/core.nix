@@ -930,11 +930,12 @@ import {
   });
   // What one cell's marks are painted in, by its key, for the page's
   // checks: which kind of cell it reads as is in these inks and widths,
-  // which a cell keeps at every zoom.
+  // which a cell keeps at every zoom, and whether it steps back from what
+  // is open is in their alpha.
   groundEl.marksOf = (key) =>
     cellLayer.filter((p) => p.key === key).map((p) => {
       const ink = inkOf(p.tag, p.cls, p.parent);
-      return { cls: p.cls, fill: ink.fill, stroke: ink.stroke, width: ink.width };
+      return { cls: p.cls, fill: ink.fill, stroke: ink.stroke, width: ink.width, alpha: ink.alpha };
     });
   groundEl.dataset.lines = "";
   groundEl.lines = () => {
