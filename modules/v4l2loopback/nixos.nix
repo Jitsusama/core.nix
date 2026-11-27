@@ -153,13 +153,33 @@ in
     # The files' folder lasts the boot, so a shell watching it keeps its
     # watch however often a camera's service starts again. USB cameras'
     # holders (../usb-camera-holders) share it, so it's set by name, which
-    # the two modules' settings merge on.
+    # the two modules' settings merge on. Each loopback's file name is
+    # claimed in .claimed/ from boot, whether or not its camera is there
+    # yet, so a USB camera called the same, as a second camera of the model
+    # a relay shares, writes beside it rather than over it.
     systemd.tmpfiles.settings = lib.mkIf (cfg.holders != { }) {
-      camera-holders.${holdersDir}.d = {
-        mode = "0755";
-        user = "root";
-        group = "root";
-      };
+      camera-holders = {
+        ${holdersDir}.d = {
+          mode = "0755";
+          user = "root";
+          group = "root";
+        };
+        "${holdersDir}/.claimed".d = {
+          mode = "0755";
+          user = "root";
+          group = "root";
+        };
+      }
+      // lib.mapAttrs' (
+        _: camera:
+        lib.nameValuePair "${holdersDir}/.claimed/${camera.file}" {
+          f = {
+            mode = "0644";
+            user = "root";
+            group = "root";
+          };
+        }
+      ) cfg.holders;
     };
 
     systemd.services = lib.mapAttrs' (

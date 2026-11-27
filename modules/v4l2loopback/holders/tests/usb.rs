@@ -38,22 +38,34 @@ impl Watch {
     /// The same, with a real device's node for the camera's, which a
     /// program holding it is seen holding, as only a node under /dev is.
     fn on(name: &str, device: Option<&Path>) -> Self {
-        Self::saying(name, device, false, false)
+        Self::saying(name, device, false, false, false)
     }
 
     /// The same, its node one the watch may not read, so inotify refuses
     /// to watch it, as it does when it has no watches left to give.
     fn blind(name: &str) -> Self {
-        Self::saying(name, None, false, true)
+        Self::saying(name, None, false, true, false)
     }
 
     /// The same, its log and complaints going to /dev/full, which takes no
     /// write, as a journal stream that has gone takes none.
     fn unheard(name: &str, device: &Path) -> Self {
-        Self::saying(name, Some(device), true, false)
+        Self::saying(name, Some(device), true, false, false)
     }
 
-    fn saying(name: &str, device: Option<&Path>, unheard: bool, blind: bool) -> Self {
+    /// The same, beside a loopback whose file is called as this camera is,
+    /// claimed as the loopback module claims it, and naming its holder.
+    fn beside_its_loopback(name: &str) -> Self {
+        Self::saying(name, None, false, false, true)
+    }
+
+    fn saying(
+        name: &str,
+        device: Option<&Path>,
+        unheard: bool,
+        blind: bool,
+        claimed: bool,
+    ) -> Self {
         let root = std::env::temp_dir().join(format!("holders-usb-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         let sysfs = root.join("sys");
@@ -102,6 +114,14 @@ impl Watch {
         fs::write(devices.join(plugged), format!("{}\n", real.display())).unwrap();
         // Named for init's pid, 1, which always runs.
         fs::write(devices.join("Webcam 2.1"), format!("{}\n", real.display())).unwrap();
+        let mut file = folder.join("MX Brio 705 for Business");
+        if claimed {
+            fs::create_dir_all(folder.join(".claimed")).unwrap();
+            fs::write(folder.join(".claimed").join(file.file_name().unwrap()), "").unwrap();
+            fs::write(&file, "firefox\n").unwrap();
+            fs::write(devices.join(file.file_name().unwrap()), "/dev/video9\n").unwrap();
+            file = folder.join("MX Brio 705 for Business (video0)");
+        }
         let debugfs = root.join("debug");
         let stats = debugfs.join("usb/uvcvideo/2-7-1/stats");
         fs::create_dir_all(stats.parent().unwrap()).unwrap();
@@ -135,7 +155,7 @@ impl Watch {
         }
         let program = command.spawn().unwrap();
         Self {
-            file: folder.join("MX Brio 705 for Business"),
+            file,
             streaming: usb.join("2-1:1.1/bAlternateSetting"),
             stats,
             log,
@@ -494,6 +514,50 @@ fn a_camera_whose_run_crashed_reads_unplugged_rather_than_held() {
         left,
         [".devices"],
         "a camera with no run was left said held"
+    );
+}
+
+#[test]
+fn a_camera_called_as_a_loopback_is_writes_beside_it_not_over_it() {
+    let mut watch = Watch::beside_its_loopback("claimed");
+    watch.until_there(true, "no file apart from the loopback's");
+    assert_eq!(
+        fs::read_to_string(&watch.file).unwrap(),
+        "",
+        "the camera apart said someone held it"
+    );
+    let folder = watch.file.parent().unwrap().to_owned();
+    let loopbacks = folder.join("MX Brio 705 for Business");
+    assert_eq!(
+        fs::read_to_string(&loopbacks).unwrap(),
+        "firefox\n",
+        "the loopback's holders were written over"
+    );
+    assert_eq!(
+        fs::read_to_string(folder.join(".devices/MX Brio 705 for Business")).unwrap(),
+        "/dev/video9\n",
+        "the loopback's node file was written over"
+    );
+    let log = fs::read_to_string(&watch.log).unwrap();
+    let said = concat!(
+        "a loopback's file is called \"MX Brio 705 for Business\", ",
+        "so this camera's is \"MX Brio 705 for Business (video0)\""
+    );
+    assert!(
+        log.contains(said),
+        "the camera's giving way went unsaid: {log}"
+    );
+    watch.stop();
+    assert_eq!(
+        watch.ended(),
+        Some(0),
+        "the camera apart didn't stop cleanly"
+    );
+    assert!(!watch.file.exists(), "the camera apart's file outlived it");
+    assert_eq!(
+        fs::read_to_string(&loopbacks).unwrap(),
+        "firefox\n",
+        "the camera apart took the loopback's file with it"
     );
 }
 
