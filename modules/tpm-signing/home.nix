@@ -62,7 +62,9 @@ in
   # started by sockets.target; one made after it starts is caught by
   # agent-signing-key.path, which starts the socket when it appears. While the
   # key is there the path unit starts the socket again whenever it stops, so a
-  # hand stop that should hold stops agent-signing-key.path first.
+  # hand stop that should hold stops agent-signing-key.path first; it holds
+  # until the manager next starts, or until the path unit is started again
+  # (tests/vm/keys/signing-vm-test.py).
   systemd.user.sockets.agent-signing = {
     Unit = {
       Description = "The agents' signing key's own ssh-tpm-agent, which asks nothing";

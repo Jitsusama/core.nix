@@ -329,7 +329,22 @@ mod tests {
     fn an_offset_past_any_time_zone_is_refused() {
         offset_from(1_747_475_245, 1_793_366_371)
             .expect_err("a measured offset of over a year was taken");
-        parse_offset("-50401\n").expect_err("a kept offset past 14 hours was read");
+        parse_offset("-50401\n").expect_err("a kept offset past 14 hours behind was read");
+        parse_offset("50401\n").expect_err("a kept offset past 14 hours ahead was read");
+    }
+
+    #[test]
+    fn a_kept_offset_of_exactly_14_hours_is_read() {
+        assert_eq!(
+            parse_offset("50400\n"),
+            Ok(50_400),
+            "14 hours ahead should be read"
+        );
+        assert_eq!(
+            parse_offset("-50400\n"),
+            Ok(-50_400),
+            "the limit is the same behind"
+        );
     }
 
     #[test]
