@@ -5,7 +5,7 @@
 //! told of its new ones.
 //! A program does it, not a session, so the loop costs no model turns.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::fs;
 use std::io;
@@ -412,13 +412,18 @@ fn on_machine(worse: &mut [judge::Finding], machine: &str, to: i64) {
 /// it failed again. Left out, its line keeps the first read's words and
 /// hours, any fix said since and the day its close is counted from. Any
 /// other finding, and one failed again since, is found as ever, and
-/// forgets a fix said before. `since` reads the day from a moment to now,
-/// and is read only when a finding may be left out.
+/// forgets a fix said before. Each finding is judged on the hours since
+/// its own last read, as findings read by different runs, or new beside one
+/// left out, have different last reads: hours another's read counted would
+/// show it failed again. `since` reads the day from a moment to now, once
+/// for each last read a finding may be left out from, and not at all when
+/// none may be. A last read after now, as after the clock steps back,
+/// leaves nothing out.
 fn found_since(
     worse: &mut Vec<judge::Finding>,
     ledger: &[findings::Entry],
     now: i64,
-    since: impl FnOnce(i64) -> Day,
+    mut since: impl FnMut(i64) -> Day,
 ) {
     fn named(key: &str) -> Option<(&str, &str)> {
         key.split_once(':')
@@ -429,28 +434,26 @@ fn found_since(
             .iter()
             .rev()
             .find(|e| e.key == key)
-            .filter(|e| e.open && now - e.last_to < DAY / 2)
+            .filter(|e| e.open && (0..DAY / 2).contains(&(now - e.last_to)))
             .map(|e| e.last_to)
     };
-    let Some(from) = worse
+    let froms: BTreeSet<i64> = worse
         .iter()
         .filter(|f| named(&f.key).is_some())
         .filter_map(|f| last_read(&f.key))
-        .min()
-    else {
-        return;
-    };
-    let gap = since(from);
+        .collect();
+    let gaps: BTreeMap<i64, Day> = froms.into_iter().map(|from| (from, since(from))).collect();
     worse.retain(|f| {
         let Some((kind, name)) = named(&f.key) else {
             return true;
         };
-        let again = gap
-            .named
+        let Some(gap) = last_read(&f.key).and_then(|from| gaps.get(&from)) else {
+            return true;
+        };
+        gap.named
             .get(kind)
             .and_then(|names| names.get(name))
-            .is_some_and(|&times| times > 0);
-        again || last_read(&f.key).is_none()
+            .is_some_and(|&times| times > 0)
     });
 }
 
@@ -549,6 +552,81 @@ mod tests {
             (flaky.fixed, read),
             (None, false),
             "a finding of no unit or program kept its fix through a run again"
+        );
+    }
+
+    #[test]
+    fn each_finding_read_again_is_judged_on_the_hours_since_its_own_last_read() {
+        let hour = 3600;
+        let crash = |key: &str| judge::Finding {
+            key: key.to_owned(),
+            bar: None,
+            before: Some(0.0),
+            now: 1.0,
+            words: format!("a crash of {key}"),
+        };
+        let day = |to: i64| Day {
+            date: "d1".to_owned(),
+            from: to - DAY,
+            to,
+            ..Day::default()
+        };
+        let (owners, known) = (BTreeMap::new(), BTreeSet::new());
+        // A was found by the first read; B, new, by a read five hours on,
+        // which left A out, so A's last read stays the first.
+        let mut ledger = Vec::new();
+        findings::update(
+            &mut ledger,
+            &day(DAY),
+            &[crash("crashes:a")],
+            &owners,
+            &known,
+        );
+        findings::update(
+            &mut ledger,
+            &day(DAY + 5 * hour),
+            &[crash("crashes:b")],
+            &owners,
+            &known,
+        );
+        for e in &mut ledger {
+            e.fixed = Some("core #6000".to_owned());
+        }
+        // B crashed within the first read's hours, before its own read, so
+        // only the hours since the first read hold it.
+        let mut read = Vec::new();
+        let mut worse = vec![crash("crashes:a"), crash("crashes:b"), crash("crashes:c")];
+        found_since(&mut worse, &ledger, DAY + 8 * hour, |from| {
+            read.push(from);
+            let mut gap = day(DAY + 8 * hour);
+            gap.from = from;
+            if from == DAY {
+                gap.named.insert(
+                    "crashes".to_owned(),
+                    [("b".to_owned(), 1)].into_iter().collect(),
+                );
+            }
+            gap
+        });
+        let found: Vec<&str> = worse.iter().map(|f| f.key.as_str()).collect();
+        assert_eq!(
+            (found, read),
+            (vec!["crashes:c"], vec![DAY, DAY + 5 * hour]),
+            "a finding was judged on hours its own last read already counted, the hours since \
+             a last read weren't read once each, or one never found was left out"
+        );
+        // A last read after now, as after the clock steps back, leaves
+        // nothing out and reads no hours.
+        let mut worse = vec![crash("crashes:a")];
+        let mut read = false;
+        found_since(&mut worse, &ledger, DAY - hour, |from| {
+            read = true;
+            day(from)
+        });
+        assert_eq!(
+            (worse.len(), read),
+            (1, false),
+            "a last read after now left a finding out, or read hours from the future"
         );
     }
 
