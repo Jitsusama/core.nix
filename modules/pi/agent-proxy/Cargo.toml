@@ -27,3 +27,7 @@ signature = "2"
 libc = "0.2"
 # The shape every command of ours takes: its flags, help, errors and exits.
 terminal-kit = { path = "../../terminal-kit" }
+
+[dev-dependencies]
+# How long a timed step may take on a machine as busy as the one testing.
+test-pace = { path = "../../test-pace" }

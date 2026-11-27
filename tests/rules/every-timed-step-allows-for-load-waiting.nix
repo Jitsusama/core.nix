@@ -21,7 +21,6 @@
   "modules/passwords/tests/keys.rs" = 1;
   "modules/passwords/tests/types/mod.rs" = 1;
   "modules/people/tests/daemon.rs" = 2;
-  "modules/pi/agent-proxy/tests/agent_proxy.rs" = 7;
   "modules/pi/github-door/tests/door.rs" = 1;
   "modules/pineapple/tests/reader/deaf.rs" = 4;
   "modules/pineapple/tests/reader/gateway/live.rs" = 11;
