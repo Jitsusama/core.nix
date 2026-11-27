@@ -59,8 +59,13 @@ const WORDS: readonly string[] = [
 
 /** A stop that would sit before the ellipsis a cut murmur ends with. */
 const TRAILING_STOP = /[,;:.]$/u;
-/** The controls that embed, override or isolate a direction, which could close the lede's own. */
+/**
+ * The controls that embed, override or isolate a direction, which could close the isolates the
+ * page holds a writer's words in, or run on past them, and the separators that end a paragraph
+ * for direction, and every isolate open in it, said as the space they stand for.
+ */
 const DIRECTIONS = /[\u202A-\u202E\u2066-\u2069]/gu;
+const PARAGRAPHS: ReadonlySet<string> = new Set(["\u001C", "\u001D", "\u001E", "\u0085", "\u2029"]);
 
 /**
  * How many characters of a murmur the lede quotes, and of its quest's name, before each is
@@ -89,6 +94,12 @@ function counted(count: number): string {
   return WORDS[count] ?? String(count);
 }
 
+/** `words` as a writer's text is drawn: without the controls of direction it held. */
+function plain(words: string): string {
+  const said = [...words.replace(DIRECTIONS, "")];
+  return said.map((character) => (PARAGRAPHS.has(character) ? " " : character)).join("");
+}
+
 /** Every murmur `held` holds, newest first, with each it couldn't read named. */
 function murmursOf(held: Held): Murmurs {
   const murmurs: Murmur[] = [];
@@ -115,11 +126,11 @@ function murmursOf(held: Held): Murmurs {
     }
     murmurs.push({
       key: record.key,
-      writer,
-      quest: called(text(record, "purpose") ?? "", writer),
-      words,
+      writer: plain(writer),
+      quest: called(plain(text(record, "purpose") ?? ""), plain(writer)),
+      words: plain(words),
       ties: (ties ?? []).map(short).filter((each) => each !== writer),
-      settled: settled === undefined || settled === "" ? null : settled,
+      settled: settled === undefined || settled === "" ? null : plain(settled),
       at,
     });
   }
@@ -174,11 +185,11 @@ const UNHEARD = {
 
 /**
  * `words` cut at `most`, between a first-strong isolate and its pop, the plain text form of
- * `<bdi>`, so a direction they set, or one a cut leaves open, runs no further than them. Any
- * control of direction in them goes first, since one could close the isolate early.
+ * `<bdi>`, so a direction they set, or one a cut leaves open, runs no further than them. The
+ * words are plain, as murmursOf reads them, so none of theirs can close the isolate early.
  */
 function isolated(words: string, most: number): string {
-  return `\u2068${trimmed(words.replace(DIRECTIONS, ""), most)}\u2069`;
+  return `\u2068${trimmed(words, most)}\u2069`;
 }
 
 /** The line under the sentence: the newest murmur still in the air, and who said it. */

@@ -189,6 +189,19 @@ it("the lede drops the controls of direction a name or a murmur holds", () => {
   );
 });
 
+it("a murmur is read without its controls of direction, for its row as for its lede", () => {
+  // A paragraph's end closes every isolate open in it, so it's read as the space it stands for.
+  const text = "Gulls\u2029are\u0085back\u202b.";
+  const settled = "\u2066Done\u2069.";
+  const [read] = murmursOf(holding([murmur("OSPREY", 200, { text, settled })])).murmurs;
+  assert.equal(read?.words, "Gulls are back.", "the words should be plain");
+  assert.equal(read?.settled, "Done.", "the settling should be plain");
+  const [named] = murmursOf(
+    holding([murmur("OSPREY", 200, { purpose: "\u202e\u2066: the tide" })]),
+  ).murmurs;
+  assert.equal(named?.quest, "OSPREY", "a name of nothing but controls should be the writer's");
+});
+
 it("a murmur's words are cut on a word, without a stop before the ellipsis", () => {
   assert.equal(trimmed("short", 140), "short", "words that fit should stand whole");
   assert.equal(trimmed("the skiff, the tern", 10), "the skiff...", "the comma should go");
