@@ -2828,6 +2828,42 @@ def test_the_map_keeps_to_its_budget(browser: Browser, mycelium_served: Served) 
         opened.close()
 
 
+# Every raster the page fetched, shows as an image or paints from a style, by
+# its address: a file of a raster kind, or a raster's data written inline.
+RASTERS = r"""() => {
+  const raster = /\.(png|jpe?g|gif|webp|avif|bmp|ico)([?#]|$)|^data:image\/(?!svg)/iu;
+  const fetched = performance.getEntriesByType("resource").map((each) => each.name);
+  const shown = [...document.querySelectorAll("img, picture source, image, input[type=image]")]
+    .map((each) => each.currentSrc || each.src || each.getAttribute("href") || each.srcset || "");
+  const url = /url\("?([^")]*)"?\)/gu;
+  const painted = [...document.querySelectorAll("*")].flatMap((each) =>
+    [...getComputedStyle(each).backgroundImage.matchAll(url)].map((found) => found[1])
+  );
+  return {
+    fetched: fetched.filter((each) => raster.test(each)),
+    shown: shown.filter((each) => raster.test(each)),
+    painted: painted.filter((each) => raster.test(each)),
+  };
+}"""
+
+
+def test_the_map_is_drawn_as_vectors_with_no_raster_picture(
+    browser: Browser, mycelium_served: Served
+) -> None:
+    """The map is drawn from shapes, never a picture (Joel, 14 November: "stick to svgs")."""
+    root, _ = mycelium_served
+    opened = Opened(browser, f"{root}mycelium/", SIZES[-1], "dark")
+    try:
+        the_map_stands(opened.page, "live")
+        the_map_counts(opened.page, COUNTED, "the map didn't draw")
+        found = opened.page.evaluate(RASTERS)
+        assert found == {"fetched": [], "shown": [], "painted": []}, (
+            f"the map fetched, showed or painted a raster picture: {found}"
+        )
+    finally:
+        opened.close()
+
+
 @pytest.mark.parametrize("look", LOOKS)
 @pytest.mark.parametrize("size", SIZES)
 def test_the_map_passes_the_skills_page_checks_and_its_own(
