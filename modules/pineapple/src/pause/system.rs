@@ -495,10 +495,39 @@ mod tests {
             limit: Duration::from_secs(1),
         };
         let begun = sh(&format!("echo '{BEGUN}' >&2; sleep 5 & exit 255"));
+        let start = Instant::now();
         let answers = system.run_all(&[(Path::new("sh"), &begun)]);
+        let took = start.elapsed();
         assert!(
             answers[0].as_ref().is_err_and(|why| !didnt_run(why)),
             "its words unread, it may have begun, so it isn't read as never run: {answers:?}"
+        );
+        assert!(
+            took < Duration::from_secs(3),
+            "it was answered at its limit, not when its child let go: {took:?}"
+        );
+    }
+
+    #[test]
+    fn one_never_run_with_its_output_held_still_reads_as_maybe_begun() {
+        let mut system = System {
+            limit: Duration::from_secs(1),
+        };
+        // As mycelium says it couldn't run the command at all, but with a
+        // child holding what it printed.
+        let never = sh("echo 'mycelium: too old to run commands' >&2; sleep 5 & exit 255");
+        let began = Instant::now();
+        let answers = system.run_all(&[(Path::new("sh"), &never)]);
+        let took = began.elapsed();
+        // Read as never run, a machine that may hold the stop would be taken
+        // as never reached, so words unread never prove it.
+        assert!(
+            answers[0].as_ref().is_err_and(|why| !didnt_run(why)),
+            "its words unread, it isn't read as never run: {answers:?}"
+        );
+        assert!(
+            took < Duration::from_secs(3),
+            "it was answered at its limit, not when its child let go: {took:?}"
         );
     }
 }
