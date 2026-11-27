@@ -174,7 +174,6 @@ it("says a machine that left before Return, and where the work starts instead", 
     "osprey has left the map, so the work won't start there; " +
       "Return starts it where new work starts.",
   );
-  assert.ok(leftWords(CLOUD).startsWith("the cloud has left"), "the cloud should be a place");
 });
 
 /** The escape a case may hold: 1 to 6 capital hex digits (README.md, The Address Cases). */

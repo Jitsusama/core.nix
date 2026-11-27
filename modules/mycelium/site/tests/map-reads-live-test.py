@@ -2482,6 +2482,25 @@ def test_new_works_words_from_a_gone_cell_never_take_the_open_machine(
     # has left and a machine's drawer is open: sent on kestrel, they'd
     # start work where Joel never asked.
     sent_again(page, "mycelium:sprout?words=orphan")
+    # New words typed over ones kept from a gone cell are new work, so
+    # they go on the open drawer's machine, as a fresh line's would.
+    page.evaluate("location.hash = '#cell=HERON2'")
+    page.locator("#panel-body").get_by_role("button", name="Start New Work From It").click()
+    page.keyboard.type("stray")
+    page.keyboard.press("Enter")
+    mycelium_node.tell("cell", gone=["cell:HERON2"])
+    heron = page.locator('#world [data-key="c:HERON2"]')
+    expect(heron, "the map kept a cell that left").to_have_count(0, timeout=PACE_MS)
+    page.evaluate("location.hash = '#machine=kestrel'")
+    expect(page.locator("#panel-title"), "kestrel's drawer never opened").to_have_text("kestrel")
+    page.locator("#map-view").focus()
+    page.keyboard.press("s")
+    expect(page.locator("#sprout"), "the gone cell's words never came back").to_have_value("stray")
+    expect(page.locator("#sprout-on-line"), "kept words took the open machine").to_be_hidden()
+    page.locator("#sprout").fill("mended")
+    expect(page.locator("#sprout-on-words"), "new words didn't take the open machine").to_have_text(
+        "On kestrel"
+    )
 
 
 def test_new_works_machine_that_leaves_while_the_line_is_open_is_let_go_at_return(
@@ -2498,8 +2517,13 @@ def test_new_works_machine_that_leaves_while_the_line_is_open_is_let_go_at_retur
     mycelium_node.tell("machine", gone=["machine:osprey"])
     expect(osprey, "the map kept a machine that left").to_have_count(0, timeout=PACE_MS)
     page.evaluate("window.talkedTo = null")
-    page.locator("#sprout").press("Enter")
-    assert page.evaluate("window.talkedTo") is None, "the words went to a machine that left"
+    # A Return held a little long repeats; the repeat must send nothing
+    # before Joel has read why the machine went.
+    page.locator("#sprout").focus()
+    page.keyboard.down("Enter")
+    page.keyboard.down("Enter")
+    page.keyboard.up("Enter")
+    assert page.evaluate("window.talkedTo") is None, "the words went on, held Return or not"
     expect(page.locator("#sprout-on-line"), "the gone machine stayed offered").to_be_hidden()
     expect(page.locator("#where"), "the map didn't say the machine left").to_have_text(LEFT_OSPREY)
     sent_as(page, "late", "mycelium:sprout?words=late")

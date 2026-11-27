@@ -3828,8 +3828,10 @@ import {
     const on = sproutOn !== null && sproutOnBox.checked ? sproutOn : null;
     // A machine that left the map while the line was open is let go of
     // and said, so the work never goes to a machine the map no longer
-    // has, and the next Return starts it where new work starts.
+    // has, and the next Return starts it where new work starts. The
+    // Return is held, so its repeat never sends before Joel has read why.
     if (!keptOnStands(on, mapMachines())) {
+      holdKeysDown();
       offerOn(null);
       where.textContent = leftWords(on);
       return;
@@ -3863,10 +3865,12 @@ import {
     if (sproutInput.value.length - replaced + adds.length > LONGEST_WORDS) where.textContent = FULL_WORDS;
   });
   // New words over kept ones are new work, so they go from the cell open
-  // now, as a fresh line's would; a tick Joel cleared stays cleared.
+  // now, as a fresh line's would; a tick Joel cleared stays cleared. Kept
+  // words offer their cell only when they offer their machine, so the
+  // machine's flag says whether anything kept is offered.
   sproutInput.addEventListener("input", () => {
     sproutInput.setCustomValidity("");
-    if ((sproutKeptFromOffered || sproutKeptOnOffered) && sproutInput.value !== sproutKept?.words) {
+    if (sproutKeptOnOffered && sproutInput.value !== sproutKept?.words) {
       sproutKeptFromOffered = false;
       sproutKeptOnOffered = false;
       const ticked = sproutFromBox.checked;
@@ -3878,9 +3882,9 @@ import {
     }
   });
   // A tick changed changes what Return would send, so why it last sent
-  // nothing is said again only at the next Return. The map offers only
-  // names a link carries, so no tick can raise NO_MACHINE; this guards
-  // against the two name rules drifting apart.
+  // nothing is said again only at the next Return. NO_MACHINE can't come
+  // from a tick, since the map offers only names isMachine passes; what
+  // this clears is NO_WORDS.
   for (const box of [sproutFromBox, sproutOnBox]) {
     box.addEventListener("change", () => sproutInput.setCustomValidity(""));
   }
