@@ -1154,6 +1154,25 @@ QtObject {
         // How fast a drawer's search runs is drawer-search-pace.qml's.
     }
 
+    // A piece of `words` laid on a line as Drawer.qml lays it, its `text`
+    // and what it wrapped at, `on`, which the search runs on with into its
+    // words' next piece, or null where its text ends.
+    function part(words, text, on) {
+        return { words, text, length: text.length, on };
+    }
+
+    // A piece that ends its paragraph or its text, with the spaces it ends
+    // with, its `trailing`.
+    function ending(words, text, trailing) {
+        return { words, text, length: text.length, on: null, trailing };
+    }
+
+    // A line of pieces, left to right, as DrawerLines.linesOf lays them.
+    function laid(...parts) {
+        const text = parts.map(each => each.text).join("");
+        return { text, length: text.length, parts };
+    }
+
     function drawerSearch(holds) {
         const into = ["Escape", "Ctrl+w", "l"];
         // [what, the keys typed from going in, the acts done, what's sought]
@@ -1273,11 +1292,6 @@ QtObject {
         // on across its wrap, with what its piece broke at between them: a
         // space, or nothing at a zero-width space or inside a word. Its end,
         // null, stops it, as Vim's does, as the wash reads each text whole.
-        const part = (words, text, on) => ({ words, text, length: text.length, on });
-        const laid = (...parts) => {
-            const text = parts.map(each => each.text).join("");
-            return { text, length: text.length, parts };
-        };
         const [server, sparkling, plain, pairs] = [{}, {}, {}, {}];
         const wrapped = [
             laid(part(server, "Server time.\u200b", "")),
@@ -1334,8 +1348,6 @@ QtObject {
         // is, so only the break stops the search between them; a text of
         // only spaces, and a wrapped one ending in them, land on the
         // nearest letter there is.
-        const ending = (words, text, trailing) =>
-            ({ words, text, length: text.length, on: null, trailing });
         const [ends, blank, wraps] = [{}, {}, {}];
         const ended = [
             laid(ending(ends, "Ends here", "  ")),
@@ -2338,24 +2350,27 @@ QtObject {
             holds(`a laid line ends with ${what}`, Lines.trailing(raw, kept), want);
         // The search and the wash read a title alike: all the search reads of it, its laid
         // lines' letters each run on as runsOn says, and its last with what trails it, as
-        // Drawer.qml's pieces give them, sought, washes the whole title.
+        // Drawer.qml's pieces give them, joined as DrawerPage.textsOf joins them for the
+        // search, sought, washes the whole title.
         const titleInk = { ink: "ink", ground: "ground" };
         const titleWash = words =>
             `<span style="color:ink;background-color:ground">${words}</span>`;
         const searchRead = title => {
-            let read = "";
+            const words = {};
+            const lines = [];
             let from = 0;
             for (let at = 0; at <= title.length; at++) {
                 if (at < title.length && !/[\n\u2028\u2029]/.test(title[at]))
                     continue;
                 const raw = title.slice(from, at + 1);
                 const kept = raw.replace(/\s+$/, "").length;
-                const on = at < title.length ? Lines.runsOn(raw, kept, true)
-                    : Lines.trailing(raw, kept);
-                read += raw.slice(0, kept) + on;
+                const letters = raw.slice(0, kept);
+                lines.push(laid(at < title.length
+                    ? part(words, letters, Lines.runsOn(raw, kept, true))
+                    : ending(words, letters, Lines.trailing(raw, kept))));
                 from = at + 1;
             }
-            return read;
+            return Page.textsOf(lines)[0].text;
         };
         const titles = [
             ["one at its balanced break", "Drawing 2026-11-09\n10.12.03.svg"],
