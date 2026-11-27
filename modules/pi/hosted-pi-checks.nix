@@ -1,17 +1,18 @@
 # The checks of pi as a host runs it, each running pi built with every
 # host patch applied exactly, which pi's checks.nix gathers beside its own,
 # kept apart since they change with hosted-pi.nix, host-patches and the
-# tests they run alone.
+# tests they run alone. pi's build names its package folder with a word
+# only a checks.nix may say, so pi's checks.nix gives it as folder.
 {
   lib,
   pkgs,
+  folder,
   ...
 }:
 let
   # pi as a host runs it, every host patch applied exactly (hosted-pi.nix).
   hostedPi = import ./hosted-pi.nix {
-    inherit pkgs;
-    folder = "pi-monorepo";
+    inherit pkgs folder;
   };
 in
 {
@@ -20,7 +21,7 @@ in
   # queued show as pending until a dequeue clears them.
   pi-hosted-keeps-turns-its-own = pkgs.runCommandLocal "pi-hosted-keeps-turns-its-own" { } ''
     HOME=$TMPDIR ${lib.getExe pkgs.nodejs} --no-warnings \
-      ${./tests/pi-hosted-keeps-turns-its-own.mjs} ${hostedPi}/lib/node_modules/pi-monorepo
+      ${./tests/pi-hosted-keeps-turns-its-own.mjs} ${hostedPi}/lib/node_modules/${folder}
     touch $out
   '';
 
@@ -33,7 +34,7 @@ in
     pkgs.runCommandLocal "pi-hosted-builds-boundary-context-when-read" { }
       ''
         HOME=$TMPDIR ${lib.getExe pkgs.nodejs} --no-warnings \
-          ${./tests/pi-hosted-builds-boundary-context-when-read.mjs} ${hostedPi}/lib/node_modules/pi-monorepo
+          ${./tests/pi-hosted-builds-boundary-context-when-read.mjs} ${hostedPi}/lib/node_modules/${folder}
         touch $out
       '';
 
@@ -43,7 +44,7 @@ in
     pkgs.runCommandLocal "pi-hosted-freezes-context-without-a-set" { }
       ''
         HOME=$TMPDIR ${lib.getExe pkgs.nodejs} --no-warnings \
-          ${./tests/pi-hosted-freezes-context-without-a-set.mjs} ${hostedPi}/lib/node_modules/pi-monorepo
+          ${./tests/pi-hosted-freezes-context-without-a-set.mjs} ${hostedPi}/lib/node_modules/${folder}
         touch $out
       '';
 
@@ -53,7 +54,7 @@ in
     pkgs.runCommandLocal "pi-hosted-keeps-the-patches-it-applied" { }
       ''
         ${lib.getExe pkgs.bash} ${./tests/pi-hosted-keeps-the-patches-it-applied.sh} \
-          ${./host-patches} ${hostedPi} ${hostedPi}/lib/node_modules/pi-monorepo
+          ${./host-patches} ${hostedPi} ${hostedPi}/lib/node_modules/${folder}
         touch $out
       '';
 
@@ -73,7 +74,7 @@ in
     in
     pkgs.runCommandLocal "pi-hosted-runs-its-own-turns-through-pi" { } ''
       HOME=$TMPDIR ${lib.getExe pkgs.nodejs} --no-warnings \
-        ${tests}/pi-hosted-runs-its-own-turns-through-pi.mjs ${hostedPi}/lib/node_modules/pi-monorepo
+        ${tests}/pi-hosted-runs-its-own-turns-through-pi.mjs ${hostedPi}/lib/node_modules/${folder}
       touch $out
     '';
 
@@ -81,7 +82,7 @@ in
     pkgs.runCommandLocal "pi-hosted-loads-where-a-link-points" { }
       ''
         HOME=$TMPDIR ${lib.getExe pkgs.nodejs} --no-warnings \
-          ${./tests/pi-hosted-loads-where-a-link-points.mjs} ${hostedPi}/lib/node_modules/pi-monorepo
+          ${./tests/pi-hosted-loads-where-a-link-points.mjs} ${hostedPi}/lib/node_modules/${folder}
         touch $out
       '';
 
@@ -92,7 +93,7 @@ in
     pkgs.runCommandLocal "pi-hosted-keeps-each-folders-extensions" { }
       ''
         HOME=$TMPDIR ${lib.getExe pkgs.nodejs} --no-warnings \
-          ${./tests/pi-hosted-keeps-each-folders-extensions.mjs} ${hostedPi}/lib/node_modules/pi-monorepo
+          ${./tests/pi-hosted-keeps-each-folders-extensions.mjs} ${hostedPi}/lib/node_modules/${folder}
         touch $out
       '';
 
@@ -103,7 +104,7 @@ in
     pkgs.runCommandLocal "pi-hosted-shares-only-keyed-packages" { }
       ''
         HOME=$TMPDIR ${lib.getExe pkgs.nodejs} --no-warnings \
-          ${./tests/pi-hosted-shares-only-keyed-packages.mjs} ${hostedPi}/lib/node_modules/pi-monorepo
+          ${./tests/pi-hosted-shares-only-keyed-packages.mjs} ${hostedPi}/lib/node_modules/${folder}
         touch $out
       '';
 
@@ -127,9 +128,9 @@ in
     in
     pkgs.runCommandLocal "pi-hosted-shares-keyed-modules" { } ''
       HOME=$TMPDIR ${lib.getExe pkgs.nodejs} --no-warnings \
-        ${tests}/pi-hosted-shares-keyed-modules.mjs ${hostedPi}/lib/node_modules/pi-monorepo
+        ${tests}/pi-hosted-shares-keyed-modules.mjs ${hostedPi}/lib/node_modules/${folder}
       HOME=$TMPDIR ${lib.getExe pkgs.nodejs} --no-warnings \
-        ${tests}/pi-hosted-keyed-late-imports.mjs ${hostedPi}/lib/node_modules/pi-monorepo
+        ${tests}/pi-hosted-keyed-late-imports.mjs ${hostedPi}/lib/node_modules/${folder}
       touch $out
     '';
 
@@ -140,7 +141,7 @@ in
     pkgs.runCommandLocal "pi-hosted-keeps-each-conversations-keys" { }
       ''
         HOME=$TMPDIR ${lib.getExe pkgs.nodejs} --no-warnings \
-          ${./tests/pi-hosted-keeps-each-conversations-keys.mjs} ${hostedPi}/lib/node_modules/pi-monorepo
+          ${./tests/pi-hosted-keeps-each-conversations-keys.mjs} ${hostedPi}/lib/node_modules/${folder}
         touch $out
       '';
 
@@ -151,7 +152,7 @@ in
     pkgs.runCommandLocal "pi-hosted-starts-conversations-lightly" { }
       ''
         HOME=$TMPDIR ${lib.getExe pkgs.nodejs} --no-warnings \
-          ${./tests/pi-hosted-starts-conversations-lightly.mjs} ${hostedPi}/lib/node_modules/pi-monorepo
+          ${./tests/pi-hosted-starts-conversations-lightly.mjs} ${hostedPi}/lib/node_modules/${folder}
         touch $out
       '';
 
@@ -162,7 +163,7 @@ in
     pkgs.runCommandLocal "pi-hosted-loads-extensions-lightly" { }
       ''
         HOME=$TMPDIR ${lib.getExe pkgs.nodejs} --no-warnings \
-          ${./tests/pi-hosted-loads-extensions-lightly.mjs} ${hostedPi}/lib/node_modules/pi-monorepo
+          ${./tests/pi-hosted-loads-extensions-lightly.mjs} ${hostedPi}/lib/node_modules/${folder}
         touch $out
       '';
 
@@ -173,7 +174,7 @@ in
     pkgs.runCommandLocal "pi-hosted-yields-between-extensions" { }
       ''
         HOME=$TMPDIR ${lib.getExe pkgs.nodejs} --no-warnings \
-          ${./tests/pi-hosted-yields-between-extensions.mjs} ${hostedPi}/lib/node_modules/pi-monorepo
+          ${./tests/pi-hosted-yields-between-extensions.mjs} ${hostedPi}/lib/node_modules/${folder}
         touch $out
       '';
 
@@ -184,7 +185,7 @@ in
     pkgs.runCommandLocal "pi-hosted-names-handlers-that-hold" { }
       ''
         HOME=$TMPDIR ${lib.getExe pkgs.nodejs} --no-warnings \
-          ${./tests/pi-hosted-names-handlers-that-hold.mjs} ${hostedPi}/lib/node_modules/pi-monorepo
+          ${./tests/pi-hosted-names-handlers-that-hold.mjs} ${hostedPi}/lib/node_modules/${folder}
         touch $out
       '';
 
@@ -192,7 +193,7 @@ in
   # session_start that never settles leaves the window readable, not blank.
   pi-hosted-draws-before-it-binds = pkgs.runCommandLocal "pi-hosted-draws-before-it-binds" { } ''
     HOME=$TMPDIR ${lib.getExe pkgs.nodejs} --no-warnings \
-      ${./tests/pi-hosted-draws-before-it-binds.mjs} ${hostedPi}/lib/node_modules/pi-monorepo
+      ${./tests/pi-hosted-draws-before-it-binds.mjs} ${hostedPi}/lib/node_modules/${folder}
     touch $out
   '';
 
@@ -205,7 +206,7 @@ in
     pkgs.runCommandLocal "pi-hosted-screen-stays-in-its-session" { }
       ''
         HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR ${lib.getExe pkgs.nodejs} --no-warnings \
-          ${./tests/pi-hosted-screen-stays-in-its-session.mjs} ${hostedPi}/lib/node_modules/pi-monorepo
+          ${./tests/pi-hosted-screen-stays-in-its-session.mjs} ${hostedPi}/lib/node_modules/${folder}
         touch $out
       '';
 
@@ -222,7 +223,7 @@ in
       ''
         HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR ${lib.getExe pkgs.nodejs} --no-warnings \
           ${./tests/pi-hosted-screen-reaches-its-viewers.mjs} \
-          ${hostedPi}/lib/node_modules/pi-monorepo
+          ${hostedPi}/lib/node_modules/${folder}
         touch $out
       '';
 }
