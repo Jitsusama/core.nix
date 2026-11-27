@@ -55,6 +55,9 @@ const SPACED = /[^\S \u00a0]/u;
 // as Reading.js's DANGLING, which draws the cut: a stop or a pause, or a
 // dash or a bar after a space, so "Talk - " and a long word draws as Talk.
 const DANGLING = /(?:[\s\u00b7,;:]|\s[-|\u2013])+$/u;
+// What ends a name drawn as nothing, trimmed by hand, as Qt's engine has
+// no trimEnd.
+const TRAILING = /\s+$/u;
 // And the rest of what Unicode says may draw as nothing, some of it past
 // U+FFFF: selectors of a letter's variant (Mongolian's and Unicode's),
 // Khmer's inherent vowels, shorthand's and music's format controls, and
@@ -155,7 +158,10 @@ function poses(name, taken) {
     const read = readAs(name);
     const head = readAs(headOf(name));
     const cut = read.split(" ").length > ACT_WORDS || read.length > WHOLE_CHOICE;
-    const face = drawnOf(String(name)).trim();
+    // Only its end trimmed: a row's name is drawn with what opens it, so a
+    // choice opening with a space opens with no act's letters and poses,
+    // rather than measured a space short (round 11 on #6562, F158).
+    const face = drawnOf(String(name)).replace(TRAILING, "");
     // The least of it a verb's line cut short shows, since it's cut at a
     // word (Reading.wordCuts): the act and the word after it and an
     // ellipsis, or the whole of a choice of two words. Only where that

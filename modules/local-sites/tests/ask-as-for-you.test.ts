@@ -332,6 +332,10 @@ const LOOKS: Record<string, object> = {
       `ANSWER ${"X".repeat(11)}`,
     ]),
   },
+  "choices opening with a space before their act": {
+    ...LOOK,
+    choices: labelled([` Talk ${"x".repeat(19)}`, " Talk", "Talk now"]),
+  },
   "choices whose stop after the act the cut strips": {
     ...LOOK,
     choices: labelled([

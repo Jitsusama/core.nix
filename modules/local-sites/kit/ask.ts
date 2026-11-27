@@ -375,7 +375,8 @@ function poses(name: string, taken: readonly string[]): boolean {
   const read = readAs(name);
   const head = readAs(headOf(name));
   const cut = read.split(" ").length > ACT_WORDS || read.length > WHOLE_CHOICE;
-  const face = name.replace(UNDRAWN, "").trim();
+  // Only its end trimmed, as LookForm.js's: one opening with a space poses.
+  const face = name.replace(UNDRAWN, "").trimEnd();
   const drawn = (each: string): number => {
     const uncut = actWeighed(face, each.length) + weighed(face.slice(each.length));
     const words = face.split(" ");
