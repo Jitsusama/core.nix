@@ -867,13 +867,11 @@ in
   # with where their time went, and a closing makes again only the spots of
   # things whose stamp moved, and only the newest yank's frame starts its
   # flash, and an opening the collector stalled says where the heap stood
-  # as it was asked, as modules/quickshell/tests/pacing.qml holds
-  # launcher/ActsSaid.js, launcher/ChangesPresented.js, launcher/Collector.js,
-  # launcher/Flash.js, launcher/Pacing.js and launcher/Presented.js, with what
-  # they read (launcher/KeysSaid.js, launcher/Makings.js, launcher/Order.js,
-  # launcher/Spots.js, launcher/Thread.js, launcher/Thrown.js and
-  # launcher/Wanted.js), to it in
-  # Qt's own engine.
+  # as it was asked, as modules/quickshell/tests/pacing.qml holds in Qt's own
+  # engine. Beside it go the launcher's files it imports (ActsSaid.js,
+  # ChangesPresented.js, Collector.js, Flash.js, Makings.js, Pacing.js,
+  # Presented.js, Spots.js, Thread.js, Thrown.js and Wanted.js) and the two
+  # they read that it doesn't (KeysSaid.js and Order.js).
   the-launcher-paces-its-refreshes =
     let
       qt = pkgs.qt6.qtdeclarative;

@@ -178,6 +178,8 @@ fn give_up(state: &Path, im: Option<&str>, from: u64) {
 /// nowhere yet to send, and keeps a line in phoned.jsonl for each told,
 /// written down in shadow, or that may have gone, as `im` names where:
 /// with the text that went, or for one unsent or unsure, its own form.
+/// An alert the daemon wrote down twice is tried once a round, so it's
+/// sent once and its sends that may have gone are counted by round.
 fn tell_each(
     shadow: bool,
     state: &Path,
@@ -186,7 +188,11 @@ fn tell_each(
     mut tell: impl FnMut(Alert) -> Option<Result<String, Missed>>,
 ) {
     let phoned = state.join("phoned.jsonl");
+    let mut tried = HashSet::new();
     for line in new {
+        if !tried.insert(told_as(&line)) {
+            continue;
+        }
         let field = |name: &str| line[name].as_str().unwrap_or_default().to_owned();
         let (title, words, link) = (field("title"), field("words"), field("link"));
         let alert = Alert {
