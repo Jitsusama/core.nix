@@ -78,7 +78,9 @@ pub const FOR: Duration = Duration::from_secs(600);
 pub const KEEP: Duration = Duration::from_hours(2);
 
 /// The file, under the account's config folder, whose being there turns
-/// [`KEEP`] off.
+/// [`KEEP`] off. A window in a slice that keeps writeback off itself, as
+/// app.slice and session.slice do, stays in memory whatever it says, since
+/// the kernel reads the setting up the tree.
 pub const KEEP_OFF: &str = "memory/no-arm-c";
 
 /// The most windows held at once, the focused one among them.

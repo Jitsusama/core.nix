@@ -335,6 +335,41 @@ fn a_page_unanswered_ten_rounds_in_a_row_is_a_gap_while_the_pages_before_it_are_
         "what the first page gave is judged once, its stop with it: {}",
         came.journal
     );
+    // A second write of the same span would fold into the one row, so it's
+    // the journal that says the row was written once: every write of the
+    // tag search's row, whole or in parts, as one met with another comes
+    // out in parts. The case ends soon after the read on, so the count
+    // reaches no further than that.
+    let written = came
+        .journal
+        .lines()
+        .filter(|line| {
+            line.contains("<5>wrote Joel's row in ")
+                && line.contains("missed.json: The safe word never read ")
+                && line.contains("tagged you in Slack")
+        })
+        .count();
+    assert!(
+        written == 1,
+        "the row of what it read on past is written once, not also while it waited, {written} \
+         times: {}",
+        came.journal
+    );
+    // The read on reaches back a minute before the last read, the first
+    // round's newest, which was said 300 seconds before the case began, as
+    // a gap told at once would: the wait moves no last read.
+    let rows = came.missed["items"].as_array().cloned().unwrap_or_default();
+    let id = format!(
+        "pineapple-slack-missed-tag-{}-{}",
+        (began - 360) * 1000,
+        (began - 250) * 1000
+    );
+    assert!(
+        rows.len() == 1 && rows[0]["id"] == id.as_str() && rows[0]["whole"] == true,
+        "what it read on past after waiting is one row, whole, from a minute before the last \
+         read to the oldest the first page gave, {id}: {:?}",
+        came.missed
+    );
 }
 
 #[test]

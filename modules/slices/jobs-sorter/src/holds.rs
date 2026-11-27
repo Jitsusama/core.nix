@@ -137,6 +137,20 @@ pub fn keep_call(unit: &str, keep: bool) -> Vec<String> {
     .collect()
 }
 
+/// The nearest cgroup above `scope` that keeps zswap writeback off for
+/// it, read through `read` as `fs::read_to_string` reads a file. While
+/// zswap is on the kernel reads memory.zswap.writeback up the tree, so
+/// under one a scope given back still keeps its paged-out memory off the
+/// disk. The walk stops at the first cgroup without the file, the root.
+pub fn kept_above(scope: &Path, read: impl Fn(&Path) -> Option<String>) -> Option<PathBuf> {
+    scope
+        .ancestors()
+        .skip(1)
+        .map_while(|cgroup| Some((cgroup, read(&cgroup.join("memory.zswap.writeback"))?)))
+        .find(|(_, value)| value.trim() == "0")
+        .map(|(cgroup, _)| cgroup.to_path_buf())
+}
+
 /// The scopes held, each by its path, so each is set once and given back
 /// once it ages out.
 #[derive(Debug, Default)]
@@ -315,6 +329,68 @@ impl Holding {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Reads memory.zswap.writeback as `tree` gives it, by each cgroup's
+    /// path; any other cgroup, the root among them, has no file.
+    fn writeback<'a>(tree: &'a [(&'a str, &'a str)]) -> impl Fn(&Path) -> Option<String> + 'a {
+        |file| {
+            tree.iter()
+                .find(|(cgroup, _)| Path::new(cgroup).join("memory.zswap.writeback") == file)
+                .map(|(_, value)| format!("{value}\n"))
+        }
+    }
+
+    #[test]
+    fn a_slice_above_that_keeps_writeback_off_is_named() {
+        let tree = [
+            ("/sys/fs/cgroup/user.slice", "1"),
+            ("/sys/fs/cgroup/user.slice/app.slice", "0"),
+            ("/sys/fs/cgroup/user.slice/app.slice/kitty-1-9.scope", "1"),
+        ];
+        assert_eq!(
+            kept_above(
+                Path::new("/sys/fs/cgroup/user.slice/app.slice/kitty-1-9.scope"),
+                writeback(&tree)
+            ),
+            Some(PathBuf::from("/sys/fs/cgroup/user.slice/app.slice"))
+        );
+    }
+
+    #[test]
+    fn a_scope_whose_own_writeback_alone_is_off_has_nothing_above() {
+        let tree = [
+            ("/sys/fs/cgroup/user.slice", "1"),
+            ("/sys/fs/cgroup/user.slice/session.slice", "1"),
+            (
+                "/sys/fs/cgroup/user.slice/session.slice/kitty-1-9.scope",
+                "0",
+            ),
+        ];
+        assert_eq!(
+            kept_above(
+                Path::new("/sys/fs/cgroup/user.slice/session.slice/kitty-1-9.scope"),
+                writeback(&tree)
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn the_walk_stops_at_a_cgroup_without_the_file() {
+        // The kernel has no file at the root, so nothing above an unread
+        // cgroup is taken as keeping writeback off, even a stray "0".
+        let tree = [
+            ("/sys/fs/cgroup", "0"),
+            ("/sys/fs/cgroup/user.slice/app.slice/kitty-1-9.scope", "1"),
+        ];
+        assert_eq!(
+            kept_above(
+                Path::new("/sys/fs/cgroup/user.slice/app.slice/kitty-1-9.scope"),
+                writeback(&tree)
+            ),
+            None
+        );
+    }
 
     #[test]
     fn a_window_is_held_with_a_floor_in_memory_and_avoided_or_given_all_back() {

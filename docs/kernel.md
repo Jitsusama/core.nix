@@ -97,9 +97,9 @@ the name was never recorded, and networkd couldn't match a saved network's
 file on it, or tell it had moved to another network and needed a new
 address. The patch recorded the name first. Most access points name their
 country, but hostapd doesn't unless it's told to. Upstream took it as
-[577f690ce5dc][3], which reached the stable series in 7.3.6. The XPS
-14's `wifi-names-a-network-without-a-country` reads the kernel's source
-to hold it there.
+[577f690ce5dc][3], which reached the stable series in 7.3.6.
+`wifi-names-a-network-without-a-country` reads core's kernel's source,
+with its patches, to hold it there for every machine.
 
 The Wi-Fi fix still carried is for a card that couldn't join an access point
 while memory was fragmented. Intel's driver adds a send queue as it joins,
@@ -458,9 +458,12 @@ if less; record a new one after moving to a new series.
   user.slice, which holds a build back while a synced write waits out the
   drive's cache. Inside the account none is set: on 10 November targets on
   Joel's slices beside the agents' held his own reads back.
-  On the XPS 14's disk, which has no DRAM of its own, the target won: an
-  app's worst synced save beside heavy writes took 55 to 170 ms under it, and
-  76 to 492 ms under every `io.cost` setting tried, so that disk keeps it.
+  On the XPS 14's disk, which has no DRAM of its own, targets on Joel's
+  slices won on 24 October: an app's worst synced save beside heavy writes
+  took 55 to 170 ms under them, and 76 to 492 ms under every `io.cost`
+  setting tried. Those targets are gone since, so the choice there is now
+  `io.cost` against no order inside the account, on a measured model with
+  a qos of 10 ms at the 95th percentile both ways, from 50 to 150% of it.
 - **Building in every module a boot loads.** See
   [Built In or a Module](#built-in-or-a-module): only the ones the boot waits
   for earn it.
@@ -494,5 +497,5 @@ if less; record a new one after moving to a new series.
 [crashes]: hardware.md#the-two-crashes
 [1]: https://github.com/firelzrd/bore-scheduler
 [2]: https://git.kernel.org/torvalds/c/a6036a41bffb
-[3]: https://git.kernel.org/pub/scm/linux/kernel/git/next/linux-next.git/commit/?id=577f690ce5dc
+[3]: https://git.kernel.org/torvalds/c/577f690ce5dc
 [4]: https://lore.kernel.org/all/20261024042753.2276779-1-albin_yang@163.com/
