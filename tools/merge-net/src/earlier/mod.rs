@@ -28,10 +28,8 @@ pub fn pass(commit: &str, main: &str) -> Option<String> {
             .status()
             .is_ok_and(|status| status.success())
     };
-    let ready::Before::Clean(checked) = judged(commit, main, &on_main).ok()?.before else {
-        return None;
-    };
-    Some(ready::record(&checked))
+    let before = judged(commit, main, &on_main).ok()?.before;
+    Some(ready::record(before.speaker()?))
 }
 
 /// What `ready` knows of a head's change from its earlier commits: where
@@ -116,32 +114,12 @@ pub fn judged(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Resul
             shared_since(candidate, base)
         })
     };
-    let names_gone = |candidate: &str| {
-        let (since, taken_away) = since(&base_of(candidate)?)?;
-        let main_side = ready::Side {
-            changed: &since,
-            gone: &taken_away,
-            text: &at_main,
-        };
-        let mut naming = ready::names_gone(&branch, &main_side);
-        naming.extend(crates.beside(&files, &since));
-        Some(naming)
-    };
     let candidates = ready::speakers(
         commit,
         behind,
         &candidates(commit, main, &files, &ready::recent_records())?,
     );
-    let before = match ready::checked_before(&candidates, &ready::record, on_main, &same) {
-        // Main renamed or deleted a path one side names, which neither
-        // run saw, so it runs again as a change checked once would.
-        ready::Before::Twice(newest, _, shared)
-            if !names_gone(&newest).is_some_and(|naming| naming.is_empty()) =>
-        {
-            ready::Before::Shares(newest, shared)
-        }
-        before => before,
-    };
+    let before = ready::checked_before(&candidates, &ready::record, on_main, &same);
     Ok(Judged {
         stands,
         behind,
