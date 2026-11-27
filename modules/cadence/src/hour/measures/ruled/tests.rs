@@ -1024,6 +1024,12 @@ fn a_claim_is_backed_across_a_line_break_only_by_a_sentence_it_wraps() {
         None,
         "a claim whose own sentence, wrapped, dates his saying was counted"
     );
+    assert_eq!(
+        unbacked("Sam asked for it and Joelle, he said on 25 Nov\nthat Joel wants the bar green.")
+            .as_deref(),
+        Some("that Joel wants the bar green."),
+        "a name that only opens as his was read as his, so another's he backed the claim"
+    );
 }
 
 /// The card and the ask open on a claim's own words, a few before it, so

@@ -673,12 +673,14 @@ fn opens_alone(line: &str) -> bool {
 }
 
 /// `sentence` from the first word naming Joel on, where a he after it
-/// may stand for him; none when it names him nowhere.
+/// may stand for him; none when it names him nowhere. His name is read
+/// whole, or as its possessive, as [`HIM`] reads it, so a name that only
+/// opens as his, as "Joelle", isn't his.
 fn from_his_name(sentence: &str) -> Option<String> {
     let words: Vec<&str> = sentence.split_whitespace().collect();
     let at = words
         .iter()
-        .position(|word| bare(word).starts_with("joel"))?;
+        .position(|word| matches!(bare(word).as_str(), "joel" | "joel's"))?;
     Some(words[at..].join(" "))
 }
 
