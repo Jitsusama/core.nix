@@ -510,26 +510,31 @@ QtObject {
             row("constructor", "A"), row("__proto__", "B"), row("constructor", "A", { rich: 1 })
         ]))), "constructor __proto__");
 
-        // Latching a pick costs a few walks over the rows picked, never a
-        // walk for each latch: a Set in Qt's engine looks a key up by
-        // walking every key it holds (H6EDLC, 2026-11-11). It's held to
-        // twenty walks making and reading an object of the keys: healthy
-        // latching took 5 to 14 on lenders, and a Set 46 to 63 (2026-11-27).
-        // Each batch times a walk and the latching back to back, and the
-        // collector runs before each so neither pays for the other's
-        // garbage. Timed apart, as the fastest of the walks against the
-        // fastest of the latchings, a quiet walk could be held against latchings that
-        // were all busy: 5.2 ms against 0.4 on a lender running 315
+        // Latching a pick costs walks over the rows picked, never a walk
+        // for each latch: a Set in Qt's engine looks a key up by walking
+        // every key it holds (H6EDLC, 2026-11-11). It's held to twenty
+        // walks making and reading an object of the keys, which a latch up
+        // to a few times slower than today's still passes: healthy latching
+        // took 5 to 14 walks on lenders, and a Set 46 to 63 (#6941's lent
+        // runs, 2026-11-27). Each batch times a walk and the latching back
+        // to back, the collector run twice before each, as member-light's
+        // weighing does, so neither pays for the other's garbage. A walk is
+        // timed over fifty rounds, about 20 ms, so the clock's millisecond
+        // and one stall weigh as little on it as on a latching's ten.
+        // Timed apart, as the fastest of the walks against the fastest of
+        // the latchings, a quiet walk could be held against latchings
+        // that were all busy: 5.2 ms against 0.4 on a lender running 315
         // builds, and 2.5 alone (A4315520, 2026-11-26). It holds when
-        // three of the five batches do, so one stall in a short walk,
-        // raising its batch's bound, can't let a slow latching through.
-        const timed = work => {
+        // three of the five batches do, so one stall raising its batch's
+        // bound can't let a slow latching through.
+        const timed = (work, rounds) => {
+            gc();
             gc();
             const began = Date.now();
-            for (let round = 0; round < 10; round += 1) {
+            for (let round = 0; round < rounds; round += 1) {
                 work();
             }
-            return (Date.now() - began) / 10;
+            return (Date.now() - began) / rounds;
         };
         const everyRow = Array.from({ length: 1914 }, (_, at) =>
             row(`emoji:${at}`, `Emoji ${at}`));
@@ -549,8 +554,8 @@ QtObject {
         everyRow.forEach((one, at) => { latchedAt[`r${at}`] = one.key; });
         const there = Rank.standing(everyKey);
         const batches = Array.from({ length: 5 }, () => {
-            const walk = timed(walking);
-            return { walk, took: timed(() => Rank.relatch(latchedAt, pickedOf, "em", there)) };
+            const walk = timed(walking, 50);
+            return { walk, took: timed(() => Rank.relatch(latchedAt, pickedOf, "em", there), 10) };
         });
         const said = batches.map(one => `${one.took} against ${one.walk}`).join(", ");
         console.info(`latching a pick took, in ms against a walk's: ${said}`);

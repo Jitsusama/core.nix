@@ -333,8 +333,8 @@ fn a_stops_notice_that_couldnt_be_sent_is_sent_again_and_told_once() {
         "written down once, at its first look: {told}"
     );
     assert!(
-        live[0].contains("\"knocked\":false"),
-        "as that first knock didn't go: {told}"
+        live[0].contains("\"shadow\":false"),
+        "as live, though that first knock didn't go: {told}"
     );
     drop(daemon);
 }

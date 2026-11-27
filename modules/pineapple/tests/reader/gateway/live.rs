@@ -6,7 +6,8 @@
 //! it reads on past is said in a row beside his row in For You. A second
 //! reader started on the folder it keeps ends at once, beside the keyring's
 //! reader too, an alert left untold for its ten minutes is said to be let
-//! go, once, and searches failing round after round write Joel's row.
+//! go, once, one written down twice is sent as once, and searches failing
+//! round after round write Joel's row.
 
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -20,6 +21,8 @@ use super::{
     OWN, PATIENCE, an_alert_waits, decisions_in, each, gateway, home, journal, kept_stops, reading,
     said, serving, sign_in, stand_in, tools, until_decided_in,
 };
+
+mod twice;
 
 /// Where For You's row of what waits goes, under a case's home, as the
 /// unit names it.

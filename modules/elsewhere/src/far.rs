@@ -304,7 +304,8 @@ mine= place= tab=$(printf '\t')
 say() {{ printf '\n%s\n' "$1"; }}
 # With no cache found, no quest's scratch is either. That is this
 # machine's fault, not the tree's, so the job is left untaken for another.
-[ -n "$cache" ] || {{ printf 'elsewhere: no cache is found here\n' >&2
+# Its word reaches the near terminal, so it names this machine.
+[ -n "$cache" ] || {{ printf 'elsewhere: no cache is found on %s\n' "$(uname -n)" >&2
   say {untaken}; exit {UNTAKEN}; }}
 {stopping}
 {sweeping}

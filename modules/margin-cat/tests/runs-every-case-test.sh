@@ -9,7 +9,8 @@
 # refused as a case is run, past the runner's first try, leaving it unrun; a
 # builder holding the run below a case's hard limit, every case left unrun
 # with the limit in force said once, wherever this user can't raise a hard
-# limit; and limits and guards that aren't whole seconds, refused.
+# limit; limits and guards that aren't whole seconds, refused; and a second
+# scratch file that can't be made, every case left unrun and the first let go.
 # usage: runs-every-case-test.sh <runs-every-case.sh>
 # CAPPED_MUST_RUN, set by the check, fails the run where the capped case
 # can't be shown, rather than leaving it out, so a build passes only having
@@ -57,6 +58,20 @@ ulimit() {
 }
 EOF
 
+# A mktemp making the runner's first scratch file and refusing its second,
+# read from BASH_ENV as the refusing ulimit is. Each is made in a subshell,
+# so the first leaves a mark in the scratch folder for the second to see.
+cat >"$here/making-one" <<'EOF'
+mktemp() {
+  if [ -e "$TMPDIR/.made" ]; then
+    echo "mktemp: refused the second" >&2
+    return 1
+  fi
+  : >"$TMPDIR/.made"
+  command mktemp "$@"
+}
+EOF
+
 fails=0
 failing() {
   echo "FAIL: $1" >&2
@@ -68,9 +83,11 @@ failing() {
 # the clock's, keeping what it said and how it ended; where `cap` is set,
 # under a hard limit of that many seconds already, which a user not root
 # can't raise, and a soft one two below it, so a hold said by the soft one
-# shows; and where `start` is set, with bash first reading that file.
+# shows; where `start` is set, with bash first reading that file; and where
+# `scratch` is set, with its scratch files made there.
 cap=
 start=
+scratch=
 runs() {
   local folder=$here/$1 limit=$2 guard=$3 each
   shift 3
@@ -80,7 +97,8 @@ runs() {
   done
   code=0
   said=$(cd "$folder" && { [ -z "$cap" ] || { ulimit -St $((cap - 2)) && ulimit -Ht "$cap"; }; } &&
-    BASH_ENV=$start CASE_LIMIT=$limit CASE_GUARD=$guard "$BASH" "$runner" "$here/qml" 2>&1) ||
+    TMPDIR=${scratch:-${TMPDIR-}} BASH_ENV=$start CASE_LIMIT=$limit CASE_GUARD=$guard \
+    "$BASH" "$runner" "$here/qml" 2>&1) ||
     code=$?
   echo "$said"
 }
@@ -154,6 +172,21 @@ holds "2 of 2 cases failed:"
 never "a-marks.qml took"
 [ ! -e "$here/refused-in-run/a-marks.qml.ran" ] || failing "a-marks.qml ran though refused"
 [ ! -e "$here/refused-in-run/b-marks.qml.ran" ] || failing "b-marks.qml ran though refused"
+
+# Without its second scratch file the runner stops before any case, and
+# lets go the first, so only the stand-in's mark is left.
+scratch=$here/scratch
+mkdir "$scratch"
+start=$here/making-one
+runs one-scratch-file 1 60 a-marks:mark
+start=
+scratch=
+ends 1
+holds "the runner couldn't make its scratch files"
+never "a-marks.qml"
+[ ! -e "$here/one-scratch-file/a-marks.qml.ran" ] || failing "a-marks.qml ran"
+left=$(ls -A "$here/scratch")
+[ "$left" = .made ] || failing "the runner left its scratch folder holding: $left"
 
 runs refused soon 60 a-passes:pass
 ends 2

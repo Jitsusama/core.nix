@@ -332,11 +332,20 @@ mod tests {
 
     #[test]
     fn a_long_update_is_cut_whole_characters_short() {
-        let status = format!("waiting:{}", "é".repeat(200));
+        // Nine bytes before the two-byte characters put the most the length
+        // can say, 254, in the middle of one, so the cut has to step back.
+        let status = format!("waiting:a{}", "é".repeat(200));
         let message = update(&status);
-        assert_eq!(message[2] as usize, message.len() - 3);
-        assert!(message.len() - 3 <= 255);
-        assert!(std::str::from_utf8(&message[3..message.len() - 1]).is_ok());
+        assert_eq!(
+            (message[2], message.len()),
+            (254, 257),
+            "an update should be cut back to 253 bytes, its length counting the closing zero"
+        );
+        assert_eq!(
+            std::str::from_utf8(&message[3..message.len() - 1]).err(),
+            None,
+            "an update should be cut between characters"
+        );
     }
 
     #[test]
@@ -355,10 +364,19 @@ mod tests {
 
     #[test]
     fn only_a_boot_or_a_shutdown_is_told_of() {
-        assert!(up("running"));
-        assert!(up("degraded"));
+        assert!(
+            up("running"),
+            "a running system should read as up, with nothing to tell"
+        );
+        assert!(
+            up("degraded"),
+            "a degraded system should read as up, with nothing to tell"
+        );
         for state in ["initializing", "starting", "stopping", "maintenance"] {
-            assert!(!up(state), "{state}");
+            assert!(
+                !up(state),
+                "a system {state} should read as booting or shutting down"
+            );
         }
     }
 
@@ -381,7 +399,10 @@ mod tests {
                 "a.service",
             );
         new.set_sender(Some(SYSTEMD.into()));
-        assert!(matches!(signal(&new), Some(Signal::New(7, unit)) if unit == "a.service"));
+        assert!(
+            matches!(signal(&new), Some(Signal::New(7, unit)) if unit == "a.service"),
+            "JobNew should read as job 7 starting a.service"
+        );
 
         let removed = Message::new_signal(ROOT, MANAGER, "JobRemoved")
             .unwrap()
@@ -391,7 +412,10 @@ mod tests {
                 QUITTING,
             )
             .append1("done");
-        assert!(matches!(signal(&removed), Some(Signal::Removed(7, unit)) if unit == QUITTING));
+        assert!(
+            matches!(signal(&removed), Some(Signal::Removed(7, unit)) if unit == QUITTING),
+            "JobRemoved should read as job 7 of {QUITTING} ending"
+        );
     }
 
     #[test]
@@ -408,6 +432,9 @@ mod tests {
         )
         .unwrap()
         .append3(JOB, values, Vec::<String>::new());
-        assert!(matches!(signal(&changed), Some(Signal::Stepped(9, true))));
+        assert!(
+            matches!(signal(&changed), Some(Signal::Stepped(9, true))),
+            "a job's changed properties should read as job 9 now running"
+        );
     }
 }

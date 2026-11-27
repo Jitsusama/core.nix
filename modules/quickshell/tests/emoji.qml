@@ -152,6 +152,16 @@ ShellRoot {
                     && served.typedAsking === "" && served.asking === "turt", root.said());
             Expect.expect("and isn't taken as its key's own",
                 root.fresh.length === 1 && root.fresh[0] === false, JSON.stringify(root.fresh));
+
+            // An emoji's row is keyed by its thing where it has one, kept under `row:` where
+            // that claims the launcher's own kind, and by its key where it has none.
+            const claiming = theEmoji.made({ thing: "place:Harbour", kind: "emoji", acts: [] },
+                "emoji:x");
+            Expect.expect("an emoji whose thing claims a place is kept under row:",
+                claiming?.key === "row:place:Harbour", String(claiming?.key));
+            const thingless = theEmoji.made({ kind: "emoji", acts: [] }, "emoji:x");
+            Expect.expect("and one with no thing is keyed by its key",
+                thingless?.key === "emoji:x", String(thingless?.key));
         });
     }
 }

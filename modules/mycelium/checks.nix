@@ -1577,6 +1577,17 @@ in
             memory_available = 1024;
           }
         )
+        && (
+          (declaredAs {
+            keptLively = {
+              cpu = 28;
+              memoryFull = 3;
+            };
+          }).kept_lively or null == {
+            cpu = 28;
+            memory_full = 3;
+          }
+        )
         && !((launching mac everyKind) ? pi_fences_itself)
         && (saidBy (selfFenced mac)).pi_fences_itself or false
         && (saidBy (selfFenced mac)).fence.strict.runs or null == macLauncher
