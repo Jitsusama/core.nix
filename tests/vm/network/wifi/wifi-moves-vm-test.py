@@ -404,9 +404,10 @@ def gives_way_as_it_loses(machine: BaseMachine, wifid: Wifid) -> None:
         )
     finally:
         # Its caller undoes the loss and the call, whatever fails here. Read without failing,
-        # so a journal that can't be read never hides why the give-way failed.
-        _, journal = machine.execute(f"journalctl -o short-precise --after-cursor='{quiet}'")
-        machine.log(journal)
+        # so a journal that can't be read never hides why the give-way failed, though a read
+        # that fails says so beside what it got.
+        status, journal = machine.execute(f"journalctl -o short-precise --after-cursor='{quiet}'")
+        machine.log(journal if status == 0 else f"journalctl exited {status}:\n{journal}")
 
 
 # The eero asked the laptop to move 27 times from 15 to 20 Nov 2026, and wpa_supplicant said what
