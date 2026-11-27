@@ -135,8 +135,10 @@ moved beside it rather than a scroll, it walks on to that window where it
 moved. Back on its column grown or shrunk across, it walks to its seat. A
 ride isn't a rest: no play sets off and no pet starts till it ends. A scroll
 runs for niri's spring from when niri says it began, so a scroll's word left
-on a window long after reads as ended. Moved to another workspace while it's
-off the edge, it holds out of sight through niri's slide, then comes in at
+on a window long after reads as ended. It hears the window it's carried by as
+well as the keys' one, so the scroll reaches it however late niri's word of
+the keys comes. Moved to another workspace while it's off the edge, it holds
+out of sight through niri's slide, then comes in at
 that edge head first over the new workspace's windows; with its workspace
 emptied, it comes in at that edge along the floor.
 
@@ -177,6 +179,10 @@ emptied, it comes in at that edge along the floor.
 - Owed since 2026-11-27: a case of the view's own wiring, that follow() gives backOn
   `held` only for the seat a scroll held it short of, and `heldShortOn` is cleared once it
   plays; the choices are pinned in MarginCatCarried.js, not what the view passes them.
+- Owed since 2026-11-27: a case that the window it's carried by is still heard
+  when the keys' move reaches the shell before niri's scroll; on nested niri the order
+  can't be chosen, so `the-margin-cat-follows-the-keys-on-niri` catches it only when
+  the race goes that way.
 - Owed since 2026-11-27: a case that a column moved before its tile record keeps a
   scroll's date; a layout object made afresh from the stale tile reads as a scroll begun.
 - Owed since 2026-11-25: a word cached before the tiles watch goes live is dated as begun

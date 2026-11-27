@@ -975,6 +975,26 @@ PanelWindow {
             window.scene.placedOn -= 1;
         if (wantsAs !== "")
             Niri.wantTiles(wantsAs, false);
+        Niri.wantTile(`cat seat ${named}`, null);
+    }
+
+    // The window it's carried by (carried), whose tile it hears as well as
+    // the keys' (MarginCat.qml's over), so niri scrolling that window as
+    // the keys go to a column off the edge is heard as niri says it. The
+    // keys and the tiles come on two watches of the windows daemon, so the
+    // keys can be heard first; heard through the keys' tile alone, the
+    // cat's own was then let go (Niri.forgetTiles) before its scroll was
+    // told, and came back only in the whole answer to its rest's want of
+    // every tile, after its walk set off from where the window had been
+    // (merge-net's train and gates, 2026-11-26 and 27). Sitting, it's the
+    // keys' own window, so nothing more is heard.
+    readonly property var carriedFrom: window.scene.shared || Niri.overview ? null
+        : Carried.carriedBy(landedOn, sat)
+    // Wanted once the change is done, as its tiles are (wantsTiles).
+    onCarriedFromChanged: Qt.callLater(wantsSeat)
+    function wantsSeat(): void {
+        if (!gone)
+            Niri.wantTile(`cat seat ${named}`, carriedFrom);
     }
 
     // Every frame of a walk, a move or a play is asked of as it begins,
