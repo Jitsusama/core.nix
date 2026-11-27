@@ -127,6 +127,13 @@ Scope {
                 root.coming = Plays.scene(root.lively, Math.random, root.played,
                     root.drawsWith(play));
         }
+
+        // How lively it may be now, so a test leaving the keys asks for a
+        // play only once the shell has heard the key: a scene asked for
+        // while still idle can come up before, and the key cut it short.
+        function level(): string {
+            return root.lively;
+        }
     }
 
     // What a scene is drawn with besides its level and last play: the play
@@ -186,9 +193,13 @@ Scope {
 
     // What handing out a beat leaves of the play asked for and the rests
     // of the plays that rest, as Plays.handed says, so a play a cat turned
-    // down is neither spent nor rested from.
+    // down is neither spent nor rested from. An ask let go once its
+    // refusals outlast REFUSED_FOR is said, so a case waiting on it reads
+    // that it was dropped, not that the refusals cleared.
     function handed(beat: var, taken: bool): void {
         const left = Plays.handed({ answers, asked, refusedAt }, beat, taken, Date.now());
+        if (Options.reports && !taken && asked !== "" && left.asked === "")
+            Report.say(`let go cat ${JSON.stringify({ kind: asked })}`);
         answers = left.answers;
         asked = left.asked;
         refusedAt = left.refusedAt;

@@ -7,7 +7,7 @@ use std::path::Path;
 
 use pineapple::deaf::{Deafness, Round, Search};
 use pineapple::ears::{Ears, Unread};
-use pineapple::gate::{Asked, gate};
+use pineapple::gate::{Asked, Gate, Sent, gate};
 use pineapple::judged::{self, Judged};
 use pineapple::phone;
 use pineapple::record::{self, Source};
@@ -322,7 +322,8 @@ fn judge(
         edited: message.edited,
         age: read_at.saturating_sub(said_at),
     };
-    let gated = gate(&asked, &sent, read_at, replies_off(state));
+    let mute = account.is_none() && !reader.shadow;
+    let gated = reply_gate(&asked, &sent, (read_at, state), mute);
     let entry = record::line(&source, &decision, gated, now, reader.shadow);
     if agreed && let Err(error) = record::append(&state.join("decisions.jsonl"), &entry) {
         eprintln!("<3>couldn't write a decision down: {error}");
@@ -381,6 +382,13 @@ fn keep_stop(
         stop["by_joel"] = false.into();
         stop["said_by"] = format!("{} (unconfirmed)", message.author).into();
     }
+    // Joel's own, read agreed and never edited, said just before a resume
+    // of his naming it and heard only after, is kept as he left it,
+    // resumed (src/resume.rs). An edited one's time is when it was first
+    // said, not when its words were, so it stands.
+    if agreed && !message.edited {
+        *stop = resume::as_left(records, std::mem::take(stop));
+    }
     let shadow = if shadow { ", in shadow" } else { "" };
     let unagreed = if agreed {
         ""
@@ -389,6 +397,10 @@ fn keep_stop(
     };
     let kept = record::keep(records, key, stop);
     match &kept {
+        Ok(true) if resume::ended(stop) => eprintln!(
+            "<5>a stop{shadow}, said before Joel resumed it, kept as resumed: {}",
+            message.link
+        ),
         // An unagreed stop is named by the key it's kept under, as its
         // link could point anywhere.
         Ok(true) => eprintln!(
@@ -481,6 +493,22 @@ fn answer(
             eprintln!("<3>Slack didn't take a reply: {why}");
             false
         }
+    }
+}
+
+/// The rule held to tell no thread anything, live over a gateway, which
+/// sends to Joel alone, as the GitHub reader holds its replies.
+const NO_REPLIES: &str = "no-replies-here";
+
+/// The rule `asked`'s reply is held by at `read_at`, with `state` saying
+/// whether replies are switched off, as [`gate`] says; one it lets
+/// through is held by [`NO_REPLIES`] when the reader is `mute`, as none
+/// can be said, so what's written down never says a reply went.
+fn reply_gate(asked: &Asked<'_>, sent: &[Sent], read: (u64, &Path), mute: bool) -> Gate {
+    let (read_at, state) = read;
+    match gate(asked, sent, read_at, replies_off(state)) {
+        Gate::Through(_) if mute => Gate::Held(NO_REPLIES),
+        gated => gated,
     }
 }
 

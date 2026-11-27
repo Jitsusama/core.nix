@@ -261,8 +261,12 @@ fn a_link_at_the_copies_folder_that_wont_clear_stops_the_sweep_and_says_so() {
     let root = scratch("far-swept-linked");
     let runs = root.join("s");
     let aside = root.join("aside");
-    let job = "4242-1763912345678901234";
-    copy(&runs, job, &format!("{} {}", gone(), here()));
+    // Two gone runs, so a sweep that went on past the link would say so
+    // again for the second.
+    let (job, next) = ("4242-1763912345678901234", "4243-1763912345678901234");
+    for id in [job, next] {
+        copy(&runs, id, &format!("{} {}", gone(), here()));
+    }
     // Another job of the quest moving the copies' folder aside, with a
     // link to it at its name, as the sweep's first head reads a gone
     // run's file (the head after tr in its pipeline leaves it be), and an
@@ -270,7 +274,7 @@ fn a_link_at_the_copies_folder_that_wont_clear_stops_the_sweep_and_says_so() {
     let (r, a) = (runs.display(), aside.display());
     let head = format!(
         "PATH=${{PATH#*:}}
-[ \"$1\" != -c ] || {{ mv '{r}' '{a}' && ln -s '{a}' '{r}'; }}
+[ \"$1\" != -c ] || [ -L '{r}' ] || {{ mv '{r}' '{a}' && ln -s '{a}' '{r}'; }}
 exec head \"$@\""
     );
     let rm = format!("case \"$*\" in *' {r}') exit 1 ;; esac\nPATH=${{PATH#*:}}\nexec rm \"$@\"");
@@ -283,7 +287,12 @@ exec head \"$@\""
     );
     assert_eq!(
         left_in(&aside),
-        [job.to_owned(), format!("{job}{RUN}")],
+        [
+            job.to_owned(),
+            format!("{job}{RUN}"),
+            next.to_owned(),
+            format!("{next}{RUN}")
+        ],
         "the sweep cleared through the link it couldn't clear"
     );
     let _ = std::fs::remove_dir_all(&root);

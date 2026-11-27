@@ -3,7 +3,7 @@
 modules/quickshell/checks/core.nix runs this through pytest inside tests/lib/nested-niri.sh, with
 the shell's reports off. A link, a terminal's `launcher do` or a catalogue run hands the launcher
 words someone else wrote, a page's or a source's, so with reports off each line says them by kind
-and how many letters, as the journal's other lines do (launcher/Presented.js), and never whole.
+and how many letters, as the journal's other lines do (launcher/ActsSaid.js), and never whole.
 """
 
 from __future__ import annotations
