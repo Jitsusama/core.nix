@@ -75,7 +75,13 @@ pub fn read_kept<T: DeserializeOwned + Default>(path: &Path) -> io::Result<T> {
             )
         }),
         Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(T::default()),
-        Err(err) => Err(err),
+        Err(err) => Err(io::Error::new(
+            err.kind(),
+            format!(
+                "{} can't be read, so it's kept as it is: {err}",
+                path.display()
+            ),
+        )),
     }
 }
 
@@ -190,6 +196,16 @@ mod tests {
                 "a record {what} didn't say it was kept: {err}"
             );
         }
+        // One that can't be read at all, here a folder in its place, is
+        // refused naming where it is, never read as empty.
+        fs::remove_file(&path).expect("the torn record goes");
+        fs::create_dir_all(&path).expect("a folder where the record goes");
+        let unreadable: io::Result<BTreeMap<String, i64>> = read_kept(&path);
+        let err = unreadable.expect_err("a record that can't be read was read");
+        assert!(
+            err.to_string().contains(&path.display().to_string()),
+            "a record that can't be read didn't name its path: {err}"
+        );
     }
 
     #[test]
