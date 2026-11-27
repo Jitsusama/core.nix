@@ -364,8 +364,9 @@ in
   # one model back on new connectors
   # (modules/quickshell/tests/sessions-twins-put-back.qml), with niri stood
   # in. Sessions handed over outside a walk give windows none, a walk
-  # joined keeps the screen in use as it began, twin sessions of one boot
-  # take a connector each, a session kept on a screen that's gone goes to
+  # joined keeps the screen in use as it began, twin sessions take a
+  # connector each by their own boot's places, a session kept on a screen
+  # that's gone goes to
   # the screen in use as its walk began, and a window noted away from a
   # screen named for a prototype's key is noted as any other.
   twin-screens-each-take-their-own-windows-back =
