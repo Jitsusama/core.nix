@@ -2811,6 +2811,15 @@ Singleton {
     function viewWith(words, named, into, title, said) {
         if (root.openNamed(named) || viewerComing(named))
             return false;
+        // Nor while the kitty that didn't answer for it may yet draw it
+        // (stillHeld), whoever asks: Reopen Them All, viewKept or a wake
+        // would have it draw a second beside it, and its press lose the
+        // late tell, as heldBack keeps a press from doing.
+        if (stillHeld(named)) {
+            console.info(`sessions: ${named} not asked for again, as the kitty that didn't `
+                + "answer for it may yet draw it");
+            return false;
+        }
         if (refusedOwn(named)) {
             console.info(`sessions: ${named} not asked for again, its own refused`);
             return false;
@@ -3124,7 +3133,8 @@ Singleton {
     // malformed ask, not one meant: the time orders the script's own give-ups against
     // newer presses, and ends a refusal only within answerPatience of its
     // ask. A call meant can so end or keep a refusal, let a press's focus
-    // go, keep a place again and have the foot say untaken, may yet come,
+    // go, keep a place again, have a viewer's asks within answerPatience
+    // ask nothing (stillHeld) and have the foot say untaken, may yet come,
     // or asked again where a kitty has come since, none past a boundary:
     // any program of his could start a viewer, or reach the kitty's
     // socket, itself anyway.
@@ -4010,29 +4020,50 @@ Singleton {
     }
     // A sessions kitty started, as its unit says once it has written its
     // pid (home.nix's sessions-kitty): its pid is read, a press told its
-    // window may yet come of the kitty before is told it won't
-    // (stillLostTo), and a place kept for a kitty other than the one that
-    // didn't take its viewer is asked for (viewKept). A unit started again
+    // window may yet come of the kitty before is let go of it
+    // (stillLostTo), a place kept for a kitty other than the one that
+    // didn't take its viewer is asked for (viewKept), and each press let
+    // go is told how its ask ended (lostTold). A unit started again
     // makes its folder anew, which the watch on the file misses, and its
     // kitty draws nothing till asked, so with Joel away and niri quiet
     // nothing else would ask.
     function kittyStarted() {
         readKittyPid();
-        stillLostTo(sessionsKittyPid);
+        const lost = stillLostTo(sessionsKittyPid);
         viewKept();
+        lostTold(lost);
     }
     // Each press told its window may yet come of a kitty other than the one
-    // up now is told the ask is over, as that kitty's gone with it. One
-    // whose kitty wasn't known is left to comingPatience.
+    // up now, as that kitty's gone with it, forgotten, so viewKept may ask
+    // the new kitty for its viewer, and given back to be told (lostTold).
+    // One whose kitty wasn't known is left to comingPatience.
     function stillLostTo(pid) {
         const lost = Object.keys(stillSaid)
             .filter(named => (stillSaid[named].under ?? "") !== ""
-                && stillSaid[named].under !== pid);
-        for (const named of lost) {
-            const said = stillSaid[named].said;
-            forgetStill(named);
+                && stillSaid[named].under !== pid)
+            .map(named => ({ named, said: stillSaid[named].said }));
+        for (const one of lost)
+            forgetStill(one.named);
+        return lost;
+    }
+    // Each press stillLostTo let go is told its viewer was asked for again
+    // where viewKept has just asked the new kitty for it, as its place was
+    // kept again under the kitty before (keepAgain), its focus kept, as
+    // untaken's would be (pressedAgain); otherwise that the ask is over,
+    // its focus let go, so a viewer viewKept opens later can't take it.
+    function lostTold(lost) {
+        for (const { named, said } of lost) {
+            const going = goingTo?.app === named ? goingTo : null;
+            const again = attaching[named] !== undefined;
             console.info(`sessions: ${named}'s kitty started again, so the window it may `
-                + "yet have drawn won't come; its press is told");
+                + "yet have drawn won't come; "
+                + (again ? "it's asked for of the new one, " : "") + "its press is told");
+            if (again) {
+                pressedAgain(named, said, going);
+                continue;
+            }
+            if (going !== null)
+                goingTo = null;
             unhosted(said, said.startedInHost ? "startedUntaken" : "untaken");
         }
     }
