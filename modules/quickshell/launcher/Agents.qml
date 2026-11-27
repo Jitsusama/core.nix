@@ -151,6 +151,18 @@ Provider {
         if (!provider.warming)
             return;
         laidOut();
+        landedWarming.begun = true;
+        landedWarming.from = 0;
+        landedWarming.start();
+    }
+
+    // Landings told after the warm began, as a daemon slow to answer as
+    // the shell starts tells them, are kept the same way, so the first
+    // step finds those kept too. It goes through them all again from the
+    // newest, where a new one is put; each kept already is found alike.
+    onLandedMovesChanged: {
+        if (!landedWarming.begun)
+            return;
         landedWarming.from = 0;
         landedWarming.start();
     }
@@ -166,6 +178,10 @@ Provider {
         id: landedWarming
 
         property int from: 0
+        property bool begun: false
+        // How many it said it kept last, so a warm again that kept no
+        // more says nothing.
+        property int said: -1
         readonly property real budget: 8
 
         interval: 16
@@ -185,6 +201,9 @@ Provider {
             if (at < all.length)
                 return;
             stop();
+            if (all.length === said)
+                return;
+            said = all.length;
             Report.say(`landings kept as the shell started: ${all.length}`);
         }
     }

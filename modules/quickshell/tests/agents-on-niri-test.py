@@ -460,17 +460,26 @@ def test_the_first_step_into_landed_after_a_start_makes_no_landings_row_anew(
     to 376 ms of its work, against 34 to 50 ms for each later one (his journal, 2026-11-15).
     It's the module's first case, so no case before it has stepped into Landed, and it reads
     no landing, which To Try's Return would, for the cases after it.
+
+    Landed holds only the last day's landings, a row for each day before standing for the
+    rest, so the step may make those days' rows but none of a landing's. The warm is waited
+    for until it has kept every one of the last day's, as a daemon slow to tell them at a
+    start would have it kept again once they come.
     """
+    day = timedelta(days=1)
+    lasts = sum(1 for one in LANDINGS if LANDED - datetime.fromisoformat(one["at"]) < day)
     launcher_on_niri.warmed(shell)
-    shell.reported("landings kept as the shell started", lambda _: True, shell.launched)
+    shell.reported(
+        "landings kept as the shell started: ", lambda rest: int(rest) == lasts, shell.launched
+    )
     opened(shell)
     shell.launcher_until(lambda shown: "Landed" in shown["rows"])
     shell.down_to("Landed")
     before = made_by_agents(shell)
     shell.step_in()
     shell.launcher_until(lambda shown: shown["rows"][:2] == [STOPPED, TRY_FIRST])
-    made = made_by_agents(shell) - before
-    assert made < len(LANDINGS), f"the first step into Landed made {made}: {made_lately(shell)}"
+    made = [key for key in made_since(shell, before) if key.startswith("agents:landed:")]
+    assert not made, f"the first step into Landed made {made}: {made_lately(shell)}"
 
 
 def test_a_listening_sessions_return_asks_what_to_say_and_its_acts_stay_inside(
