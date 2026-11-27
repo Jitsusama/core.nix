@@ -158,8 +158,8 @@ onLinux {
             name:
             let
               service = user.services.${name};
-              inherit (runs.timeout service.Service) given read;
-              timeout = (runs.timeout service.Service).value;
+              inherit (runs.timeout service.Service) given read value;
+              unread = key: builtins.toJSON service.Service.${key};
             in
             if runs.bare user.services name then
               [ "${name} has a timer but no unit" ]
@@ -170,13 +170,13 @@ onLinux {
               ++ lib.optional (
                 (service.Service.Type or null) != "oneshot"
               ) "${name} isn't a oneshot, so no start timeout ends its hang"
-              ++ map (
-                key: "${name}'s ${key} ${builtins.toJSON service.Service.${key}} is one systemd can't read"
-              ) (lib.subtractLists read given)
+              ++ map (key: "${name}'s ${key} ${unread key} is one systemd can't read") (
+                lib.subtractLists read given
+              )
               ++ lib.optional (read == [ ]) "${name} sets no timeout of its own that systemd reads"
               ++ lib.optional (
-                timeout != null && !runs.ends timeout
-              ) "${name}'s timeout ${builtins.toJSON timeout} ends no hang";
+                value != null && !runs.ends value
+              ) "${name}'s timeout ${builtins.toJSON value} ends no hang";
         in
         lib.concatMap wrong started
         ++ map (name: "${name} is named unwritten, so its run went unchecked") (
@@ -259,6 +259,20 @@ onLinux {
             inherit timers;
             services = services // {
               cadence = lib.recursiveUpdate (run "1h") { Service.ExecStart = [ "" ]; };
+            };
+          };
+          says = "cadence has a timer but no unit";
+        };
+        "an ExecStart whose last line clears the lines before it" = {
+          user = {
+            inherit timers;
+            services = services // {
+              cadence = lib.recursiveUpdate (run "1h") {
+                Service.ExecStart = [
+                  "cadence"
+                  ""
+                ];
+              };
             };
           };
           says = "cadence has a timer but no unit";
@@ -452,6 +466,26 @@ onLinux {
             cadence-hour = run "1h 30min";
           };
         };
+        "timeouts systemd reads in its looser spellings" = {
+          inherit timers;
+          services = services // {
+            cadence = run [ "1h" ];
+            cadence-day = run ".5h";
+            cadence-hour = run " +1.h\t";
+            cadence-review = run 1.5;
+          };
+        };
+        "an ExecStart cleared, then given again" = {
+          inherit timers;
+          services = services // {
+            cadence = lib.recursiveUpdate (run "1h") {
+              Service.ExecStart = [
+                ""
+                "cadence"
+              ];
+            };
+          };
+        };
         "a timer installed as required" = {
           inherit services;
           timers = timers // {
@@ -508,20 +542,6 @@ onLinux {
           says = "cadence-pkg is named unwritten, so its run went unchecked";
         };
       };
-      # A run the account leaves unwritten, named so, is a package's to time.
-      acceptedNamed = {
-        "a timed run not cadence's named unwritten" = {
-          user = {
-            services = services // {
-              pkg.Service.ExecStart = [ ];
-            };
-            timers = timers // {
-              pkg = timer;
-            };
-          };
-          unwritten = [ "pkg" ];
-        };
-      };
       unrefused = lib.attrNames (
         lib.filterAttrs (
           _: case:
@@ -539,7 +559,7 @@ onLinux {
       );
       overrefused = lib.attrNames (
         lib.filterAttrs (_: args: problemsOf args != [ ]) (
-          lib.mapAttrs (_: user: { inherit user; }) accepted // acceptedNamed
+          lib.mapAttrs (_: user: { inherit user; }) accepted
         )
       );
       home = exampleLaptop.config.home-manager.users.joel;

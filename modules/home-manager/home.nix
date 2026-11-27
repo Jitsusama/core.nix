@@ -72,6 +72,22 @@ let
   unbounded = lib.filter (
     name: oneshot name && (runs.timeout (services.${name}.Service or { })).read == [ ]
   ) timed;
+  # Each timed run's timeout key systemd can't read, said where the
+  # account is built, so a bound dropped for its spelling is never news
+  # first heard from a run killed at three hours.
+  unread = lib.concatMap (
+    name:
+    let
+      service = services.${name}.Service or { };
+      inherit (runs.timeout service) given read;
+    in
+    map (
+      key:
+      "${name}'s ${key} ${builtins.toJSON service.${key}} is one systemd can't read, "
+      + "so it is dropped"
+      + lib.optionalString (lib.elem name unbounded) " and the run ends after three hours"
+    ) (lib.subtractLists read given)
+  ) timed;
   # A name the machine says the account doesn't write that it does write.
   written' = lib.filter (name: !runs.bare services name) cfg.unwritten;
 in
@@ -110,11 +126,13 @@ in
 
     # A switch no longer ends a oneshot's run that hangs, and a timer starts
     # no run while its last is still going, so a timed oneshot saying no
-    # TimeoutStartSec or TimeoutSec of its own ends its run after three
-    # hours. The longest timed run in a day of a loaded machine's journal
-    # took 28 minutes, and pi-keys, whose sample runs past an hour, says
-    # 2h30min itself, so three hours ends only a run that has stopped. A
-    # machine's oneshot running longer says its own, "infinity" for none.
+    # TimeoutStartSec or TimeoutSec of its own that systemd reads ends its
+    # run after three hours: a key misspelt is dropped by systemd, so it
+    # bounds nothing, and the build warns of it. The longest timed run in a
+    # day of a loaded machine's journal took 28 minutes, and pi-keys, whose
+    # sample runs past an hour, says 2h30min itself, so three hours ends
+    # only a run that has stopped. A machine's oneshot running longer says
+    # its own, "infinity" for none.
     #
     # The bound is a drop-in beside the unit rather than a key in its
     # [Service], since a key there can't read the section it's in: the
@@ -130,6 +148,8 @@ in
         '';
       }) unbounded
     );
+
+    warnings = unread;
 
     assertions = [
       {
