@@ -4586,6 +4586,12 @@
     budget of files, bytes and elements, both visits reaching only the sites' server and the second
     answered unchanged, and nothing logged
   '';
+  systemd-reads-each-span-as-core-does = ''
+    every timeout spelling timed.nix reads or refuses, loose, side by side, in micro signs or
+    misspelt, is read or refused the same way by the systemd nixpkgs ships, through
+    systemd-analyze timespan, and each comes to a microsecond or more, so bounds a start,
+    just when systemd's does, so core's copy of parse_time can't drift from it unseen
+  '';
   forage-feed-passes-what-its-page-reads = ''
     the node's feed, as a machine in a realm declares it, passes every field the forage page reads
     off a forage record, so nothing the page draws goes missing live

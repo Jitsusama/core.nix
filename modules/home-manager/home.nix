@@ -72,14 +72,15 @@ let
   unbounded = lib.filter (
     name: oneshot name && (runs.timeout (services.${name}.Service or { })).read == [ ]
   ) timed;
-  # Each timed run's timeout key systemd can't read, said where the
-  # account is built, so a bound dropped for its spelling is never news
-  # first heard from a run killed at three hours.
+  # Each timed run's timeout key systemd can't read, and each list line
+  # it drops after the one it reads, said where the account is built, so
+  # a bound dropped for its spelling is never news first heard from a run
+  # killed at three hours, or bounded by a line its author overrode.
   unread = lib.concatMap (
     name:
     let
       service = services.${name}.Service or { };
-      inherit (runs.timeout service) given read;
+      inherit (runs.timeout service) given read dropped;
     in
     map (
       key:
@@ -87,9 +88,23 @@ let
       + "so it is dropped"
       + lib.optionalString (lib.elem name unbounded) " and the run ends after three hours"
     ) (lib.subtractLists read given)
+    ++ map (
+      key:
+      "${name}'s ${key} ends in ${builtins.toJSON (runs.late service.${key})}, which systemd "
+      + "can't read, so it drops them and keeps ${builtins.toJSON (runs.said service.${key})}"
+    ) dropped
   ) timed;
-  # A name the machine says the account doesn't write that it does write.
-  written' = lib.filter (name: !runs.bare services name) cfg.unwritten;
+  # A name the machine says the account doesn't write that it does write:
+  # one with an ExecStart of its own, even one a blank last line clears,
+  # since home-manager still writes its unit file, which hides a
+  # package's unit of the same name.
+  written' = lib.filter (
+    name:
+    let
+      start = services.${name}.Service.ExecStart or [ ];
+    in
+    start != [ ] && start != "" && start != null
+  ) cfg.unwritten;
 in
 {
   options.jitsusama.timedRuns.unwritten = lib.mkOption {
@@ -154,7 +169,7 @@ in
     assertions = [
       {
         assertion = bare == [ ];
-        message = "A timer runs each of these services, which the account doesn't write, so the switch's setting would hide them: ${lib.concatStringsSep ", " bare}. Write each (an instance as its template, such as backup@), or name it in jitsusama.timedRuns.unwritten if a package writes it.";
+        message = "A timer runs each of these services, which the account doesn't write, so the switch's setting would hide them: ${lib.concatStringsSep ", " bare}. Write each (an instance as its template, such as backup@), or, where a package writes it and the account declares no ExecStart for it, name it in jitsusama.timedRuns.unwritten.";
       }
       {
         assertion = written' == [ ];
