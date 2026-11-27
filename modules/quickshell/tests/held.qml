@@ -655,6 +655,17 @@ QtObject {
         unsayable.name = Symbol("joel's secret");
         check("one whose name can't be said as text is said bare, throwing none",
             Thrown.shown(unsayable), "Error: thrown");
+        // A name that answers a kind once and its message after is said as
+        // it was tested: read twice, as shown once read it, the kind passed
+        // on the first read and the second was said, the message Thrown.js
+        // keeps out of the journal.
+        const turning = shaped(Error, "f@x:1");
+        let namesRead = 0;
+        Object.defineProperty(turning, "name", {
+            get: () => namesRead++ === 0 ? "TypeError" : "joel's secret"
+        });
+        check("a name that changes as it's read is said as it was tested",
+            Thrown.shown(turning), "TypeError: thrown at f@x:1");
         check("a thrown string says its type, never itself", Thrown.shown("joel's secret"),
             "Error: string thrown");
         check("as does a thrown object", Thrown.shown({ message: "joel's secret" }),
