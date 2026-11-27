@@ -3306,8 +3306,8 @@
     in locked memory as the secret is long, says it's ready only once it can't be read and held
     once Joel's display has the copy, one paste then pasting it whole, pastes whole and keeps
     locked a secret that outgrows its first page, pastes whole a secret of exactly its cap of a
-    MiB, refuses a standard input it can't read or one a byte past that cap, never saying it
-    held either, and refuses to say ready or held for a copy that isn't sensitive
+    MiB, which stays locked, refuses a standard input it can't read or one a byte past that cap,
+    never saying it held either, and refuses to say ready or held for a copy that isn't sensitive
   '';
   passwords-holds-no-secret = ''
     the passwords daemon holds every entry each password manager lists without a secret, even one

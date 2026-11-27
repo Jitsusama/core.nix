@@ -618,37 +618,66 @@ def test_a_password_copied_is_never_kept(desktop: Desktop) -> None:
 
 
 # What wl-paste says when nothing is offered, as the clipboard stands once a copy the history
-# didn't keep goes with its program (wl-clipboard's wl-paste.c), and the code it exits with.
-NOTHING_COPIED = "Nothing is copied\n|1"
+# didn't keep goes with its program (wl-clipboard's wl-paste.c), exiting 1. It's looked for as
+# a line of its own, since wl-paste or libwayland may say more on lines beside it.
+NOTHING_COPIED = "Nothing is copied"
 
 # What a paste reads that lands as the copier ends: the copy's pipe closes with nothing in it,
 # so wl-paste gives nothing and exits 0.
 CUT_OFF = "|0"
 
 
+def nothing_copied(said: str) -> bool:
+    """Say whether a read of the clipboard, ending with wl-paste's code, found nothing offered."""
+    told, _, code = said.rpartition("|")
+    return code == "1" and NOTHING_COPIED in (line.strip() for line in told.splitlines())
+
+
+# How far from its 30 s a clear may come, timed from the copy's first paste. That's a moment
+# after the copy began, so a hold timed from it is never longer than the copy's own, and a clear
+# come early can't pass for one held; each read takes a moment of its own on a busy host.
+CLEARS_EARLY = timedelta(seconds=5)
+CLEARS_LATE = timedelta(seconds=15)
+
+
 def test_a_password_copied_clears_once_its_time_is_up(desktop: Desktop) -> None:
     """A password copied is held, then gone from the clipboard once its 30 s are up."""
+    machine = desktop.machine
     copied = copy_a_password(desktop)
+    password = f"{STAND_IN}|0"
 
-    def cleared(_: bool) -> bool:
-        """Say whether the clipboard is empty, as the copier's end leaves it.
+    def held_for() -> timedelta:
+        """Say how long the copy has been held, from its first paste."""
+        return timedelta(seconds=time.monotonic() - copied)
 
-        Only the password still held, or a read cut off as the copier ends, is a wait, and only
-        nothing offered is the clear, so a read that fails another way, or another copy, ends
-        the wait by what it said rather than passing for the clear.
-        """
-        said = desktop.as_account("wl-paste --no-newline 2>&1; printf '|%s' $?")
-        if said in {f"{STAND_IN}|0", CUT_OFF}:
-            return False
-        assert said == NOTHING_COPIED, f"the clipboard held neither the password nor none: {said!r}"
-        return True
+    def read() -> str:
+        """Say what the clipboard pastes, with what wl-paste said, and the code it ends with."""
+        return desktop.as_account("wl-paste --no-newline 2>&1; printf '|%s' $?")
 
-    # Timed from the paste first seen, after the copy began, so a clear come early can't pass
-    # for one held, and bounded above too, as retry's wait grows on a busy host.
-    retry(cleared, timeout=CLEARS + timedelta(seconds=15))
-    held = timedelta(seconds=time.monotonic() - copied)
-    assert held >= CLEARS - timedelta(seconds=5), f"the copy went after only {held}"
-    assert held <= CLEARS + timedelta(seconds=15), f"the copy was held {held}"
+    # Until its time, only the password is read, so a read cut off or nothing offered then is a
+    # clear come early. Then the password, or a read cut off as the copier ends, is a wait, and
+    # only nothing offered is the clear, so a read that fails another way, or another copy, ends
+    # the wait by what it said rather than passing for the clear. One that never comes fails
+    # with what the clipboard last read.
+    said = read()
+    while not nothing_copied(said):
+        held = held_for()
+        if held < CLEARS - CLEARS_EARLY:
+            assert said == password, f"the clipboard read {said!r} after only {held}"
+        assert said in {password, CUT_OFF}, (
+            f"the clipboard held neither the password nor none: {said!r}"
+        )
+        assert held <= CLEARS + CLEARS_LATE, f"no clear came in {held}: the clipboard read {said!r}"
+        machine.sleep(timedelta(seconds=1))
+        said = read()
+    held = held_for()
+    assert held >= CLEARS - CLEARS_EARLY, f"the copy went after only {held}"
+    assert held <= CLEARS + CLEARS_LATE, f"the copy was held {held}"
+    # The history offers a copy again a moment after the program holding one goes, so nothing
+    # offered once could be that moment: a beat later, it's still nothing.
+    machine.sleep(timedelta(seconds=1))
+    again = read()
+    assert nothing_copied(again), f"the clear didn't stay: a moment on, it read {again!r}"
 
 
 def test_a_password_copied_is_never_read_fenced(desktop: Desktop) -> None:

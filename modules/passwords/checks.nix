@@ -111,8 +111,10 @@ onLinux {
   # in its own memory, locked and unreadable through /proc: it pastes on
   # Joel's display, and nothing is made under TMPDIR, where any process of
   # the account's could read it, nor run from PATH. It says it's ready only
-  # once it can't be read, and held once it holds the copy. One it can't
-  # read whole is refused, never said held
+  # once it can't be read, and held only once Joel's display has the copy,
+  # so one paste at once pastes it whole (case 10). One it can't read whole
+  # is refused, never said held, and told to say held of a copy that isn't
+  # sensitive, it ends saying so, never ready or held (case 14)
   # (tests/copier-keeps-a-secret-in-memory.py).
   passwords-copier-keeps-a-secret-in-memory-on-niri =
     let

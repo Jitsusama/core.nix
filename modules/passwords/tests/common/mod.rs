@@ -381,8 +381,10 @@ impl Running {
             .arg(words)
             .env("PASSWORDS_COPIER", &copier)
             .env("PASSWORDS_CLEARS_MS", "700")
-            // Long enough for a copier told to wait a second, short
-            // enough that one which never answers is soon given up on.
+            // Long enough for a copier that answers at once on a busy
+            // host, short enough that one which never says it's ready,
+            // never takes the copy or never says it holds it is soon
+            // given up on. The one told to wait first sets its own.
             .env("PASSWORDS_COPIER_PATIENCE_MS", "3000")
             .env("COPIED", folder.join("copied"))
             .env("XDG_STATE_HOME", folder.join("state"))
