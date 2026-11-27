@@ -88,8 +88,11 @@ const ALONE: usize = 5;
 
 /// How many of Joel's words heard alone, those nearest in time to a
 /// word of his, his voice is taken from to judge it: his level moves
-/// with his microphone, which he may change partway through a call.
-const NEAR: usize = 9;
+/// with his microphone, which he may change partway through a call. On
+/// the clean meetings five or nine put his side past what one level for
+/// the call reached, while eleven held it there and still follows a new
+/// microphone once six of his words are heard alone on it.
+const NEAR: usize = 11;
 
 /// Whether `line` is Joel's microphone hearing one of the others' lines,
 /// and so left out of the transcript; the meetings check says which of
