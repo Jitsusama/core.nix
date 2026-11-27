@@ -908,12 +908,12 @@ fn a_switch_before_landing_that_git_cant_judge_leaves_the_ask_unjudged() {
     let ago = 3 * 3600;
     let asks = list(&[landed("card", ago, "A", &json!({"pr": "core.nix#6835"}))]);
     let before = json!({"at": at(NOW - ago - 30)}).to_string();
-    let blind = |_: &Value, _: Repo, _: u32| None;
+    let unjudged = |_: &Value, _: Repo, _: u32| None;
     let m = unproven(
         &asks,
         Ok(&run("card", 600, true, 1199)),
         Ok(&before),
-        &blind,
+        &unjudged,
         NOW,
     );
     assert!(
