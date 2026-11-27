@@ -72,6 +72,9 @@ builtins.toJSON (
     }
     // lib.optionalAttrs (lively.memoryAvailable != null) {
       memory_available = lively.memoryAvailable;
+    }
+    // lib.optionalAttrs (lively.memoryFull != null) {
+      memory_full = lively.memoryFull;
     };
   }
 )

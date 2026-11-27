@@ -370,6 +370,51 @@ fn a_row_left_from_before_goes_once_its_searches_answer_by_turns() {
 }
 
 #[test]
+fn a_row_left_from_before_waits_on_the_round_just_before_whatever_reads_it() {
+    let round = |n: u32| AT + u64::from(n) * 30_000;
+    let mut waiting = Deaf::through_gateway();
+    assert_eq!(
+        waiting.heard(Round::Partly(Some(Search::Tag)), round(1)),
+        Change::Keep,
+        "one search answered alone"
+    );
+    assert_eq!(
+        waiting.heard(Round::Partly(None), round(2)),
+        Change::Keep,
+        "a search waiting on a later page answers neither alone"
+    );
+    assert_eq!(
+        waiting.heard(Round::Partly(Some(Search::Phrase)), round(3)),
+        Change::Keep,
+        "so the other after it isn't each heard in a row"
+    );
+    let mut unread = Deaf::through_gateway();
+    let _ = unread.heard(Round::Partly(Some(Search::Tag)), round(1));
+    assert_eq!(
+        unread.heard(Round::Deaf(Deafness::Unreadable), round(2)),
+        Change::Keep,
+        "one round unreadable isn't yet told"
+    );
+    assert_eq!(
+        unread.heard(Round::Partly(Some(Search::Phrase)), round(3)),
+        Change::Keep,
+        "an unreadable round between forgets the round before"
+    );
+    // A reader through the keyring, its searches failing by turns.
+    let mut keyring = Deaf::new();
+    assert_eq!(
+        keyring.heard(Round::Partly(Some(Search::Tag)), round(1)),
+        Change::Keep,
+        "the keyring reader's one search answered alone"
+    );
+    assert_eq!(
+        keyring.heard(Round::Partly(Some(Search::Phrase)), round(2)),
+        Change::Untell,
+        "the keyring reader read Slack whole across the two as well"
+    );
+}
+
+#[test]
 fn a_search_left_unasked_is_never_told_as_alone_while_the_gateway_answers_nothing() {
     let round = |n: u32| AT + u64::from(n) * 30_000;
     let mut deaf = Deaf::through_gateway();

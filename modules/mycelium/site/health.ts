@@ -230,8 +230,9 @@ const machineVerdict = (x: MachineFacts, at: string): Verdict => {
   }
   const pressed = p && (p.cpu >= PRESSURE_WATCH || p.memory >= PRESSURE_WATCH);
   // A filling disk is said but never watched, as the system page has it: the
-  // disk guard calls a disk filling under a quarter free and takes back what
-  // regenerates by itself, so only a nearly full one wants the reader.
+  // band calls a disk filling under a quarter free, and the disk guard, where
+  // one runs, takes back what regenerates by itself, so only a nearly full
+  // one wants the reader.
   return pressed || leaseShort(x, at) ? 1 : 0;
 };
 

@@ -257,7 +257,10 @@ mod tests {
     fn a_call_app_recording_is_seen_and_goes_when_it_stops() {
         let mut recording = Recording::default();
         recording.take(&json!([node(40, "slack", "running")]));
-        assert!(recording.any());
+        assert!(
+            recording.any(),
+            "Slack's running stream should record: {recording:?}"
+        );
         recording.take(&json!([node(40, "slack", "idle")]));
         assert!(!recording.any(), "an idle stream isn't recording");
         recording.take(&json!([node(41, "chrome", "running")]));
@@ -280,7 +283,10 @@ mod tests {
         let mut playing = node(6, "spotify", "running");
         playing["info"]["props"]["media.class"] = json!("Stream/Output/Audio");
         recording.take(&json!([playing]));
-        assert!(!recording.any());
+        assert!(
+            !recording.any(),
+            "none of these is a call recording: {recording:?}"
+        );
     }
 
     fn native(id: u64, client: u64) -> Value {
@@ -365,7 +371,10 @@ mod tests {
         let mut recording = Recording::default();
         recording.take(&json!([node(7, "zoom", "running")]));
         recording.take(&json!([{ "id": 7, "type": "PipeWire:Interface:Link", "info": {} }]));
-        assert!(recording.any());
+        assert!(
+            recording.any(),
+            "a link with node 7's id should leave it recording: {recording:?}"
+        );
     }
 
     #[test]
@@ -411,12 +420,18 @@ mod tests {
     #[test]
     fn only_the_same_node_recording_later_goes_on() {
         let first = of(&json!([node(8, "zoom", "running")]));
-        assert!(first.goes_on_in(&of(&json!([node(8, "zoom", "running")]))));
+        assert!(
+            first.goes_on_in(&of(&json!([node(8, "zoom", "running")]))),
+            "the same node recording later is the same moment of recording"
+        );
         assert!(
             !first.goes_on_in(&of(&json!([node(9, "chrome", "running")]))),
             "another node is another moment of recording"
         );
-        assert!(!first.goes_on_in(&Recording::default()));
+        assert!(
+            !first.goes_on_in(&Recording::default()),
+            "with nothing recording later, the recording doesn't go on"
+        );
     }
 
     fn on_a_mac(processes: &[(i32, &str)]) -> MacRecording {
