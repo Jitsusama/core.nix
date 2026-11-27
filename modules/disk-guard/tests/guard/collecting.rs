@@ -60,16 +60,19 @@ fn now() -> f64 {
 }
 
 std::thread_local! {
-    /// When this thread's case made its store, from which its later
-    /// moments are told.
+    /// When this thread's case first asked for a moment, from which its
+    /// later moments are told.
     static BEGUN: std::cell::Cell<Option<f64>> = const { std::cell::Cell::new(None) };
 }
 
-/// The moment `seconds` after the case made its store. Told from the
-/// present instead, a moment floated with whatever the builder spent
-/// before it was asked for, and a failed listing rests nine times its
-/// length: a listing heard 7 s late on a loaded builder, at a moment 7 s
-/// later, rested 63 s longer, past the 60 s a case looked beyond its rest.
+/// The moment `seconds` after the case first asked for one, once its
+/// store was laid out. Told from the present instead, a moment floated
+/// with whatever the builder spent before it was asked for, and a failed
+/// listing rests nine times its length: a listing heard 7 s late on a
+/// loaded builder, at a moment 7 s later, rested 63 s longer, past the 60 s
+/// a case looked beyond its rest. Told from before the store was laid out,
+/// a listing at the first moment came before its paths were written, and
+/// the guard keeps a path written since its listing.
 fn later(seconds: f64) -> f64 {
     BEGUN.with(|begun| {
         begun.get().unwrap_or_else(|| {
@@ -104,7 +107,7 @@ impl Store {
     /// it deleted and leaves, as what an evaluation registers again; while `listing-slow` is
     /// there, every listing after the first waits on it.
     fn new() -> Store {
-        BEGUN.with(|begun| begun.set(Some(now())));
+        BEGUN.with(|begun| begun.set(None));
         let dir = tempfile::tempdir().unwrap();
         let root = fs::canonicalize(dir.path()).unwrap();
         for sub in [
