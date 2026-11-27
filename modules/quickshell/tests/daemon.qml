@@ -822,6 +822,44 @@ ShellRoot {
             }
         },
         {
+            // Asks given as words each name what they act on, as two Forget Its do, so each
+            // refused waits its own try rather than the latest standing for both (round 000036
+            // on #6796, F118 and F123). One try, 4 s on.
+            what: "two refused asks given as words are each asked again",
+            polls: 300,
+            run: () => {
+                retrying.askTillTaken({ ask: "forget", value: "a" });
+                retrying.askTillTaken({ ask: "forget", value: "b" });
+            },
+            holds: () => {
+                root.triedRead("forget");
+                return root.triedOf("forget") === '["a","b","a","b"]'
+                    && retrying.refusedAgain.length === 0;
+            }
+        },
+        {
+            // The latest standing for an older try kept the older one's few tries left, so a
+            // fresh ask was given up on early (round 000036 on #6796, F139). A fresh ask and one
+            // with two tries left are both refused, then the one kept twice more: kept with the
+            // older's few it's given up at the third refusal, and with the fresh one's it's
+            // taken at the fourth try. Two tries, 4 s apart.
+            what: "the latest standing for an older ask keeps the most tries of either",
+            polls: 300,
+            run: () => {
+                root.holding = "fresh";
+                const lingering = () => ({ ask: "linger", value: root.holding });
+                retrying.askTillTaken(lingering);
+                retrying.askedTillTaken(lingering, 2);
+                root.holding = "latest";
+            },
+            holds: () => {
+                root.triedRead("linger");
+                return root.triedOf("linger") === '["fresh","fresh","latest","latest"]'
+                    && !root.gaveUpSaid.some(said => said.startsWith("linger"))
+                    && retrying.refusedAgain.length === 0;
+            }
+        },
+        {
             what: "a whole answer after a gap lets go what went in it, heard as gone",
             holds: () => root.heldBoth && whole.state === "answering"
                 && "waiting:b" in whole.held && !("waiting:a" in whole.held)

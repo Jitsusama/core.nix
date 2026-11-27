@@ -26,7 +26,9 @@ was then given, and a taken one no more. An ask to keep through a drop is answer
 time by the connection dropped, unanswered, as a daemon restarting at a switch drops it, and
 taken after. An ask to hold is refused for now twice, so two given at once are both refused,
 and taken after. An ask to refuse is refused at every try, so the test can tell one given up
-on is said. Each of those is answered, as asked, with every value asked of it in turn.
+on is said. An ask to forget is refused twice, so two given as words are each asked again; an
+ask to linger is refused three times, so one kept for an older try's few would be given up on.
+Each of those is answered, as asked, with every value asked of it in turn.
 """
 
 import json
@@ -46,8 +48,14 @@ KEPT_LOCK = threading.Lock()
 
 # Each value asked of the asks that drop or refuse more than once, by ask, in the order asked,
 # and how many of each first go unanswered or refused.
-TRIED: dict[str, list[object]] = {"keep-dropped": [], "hold": [], "refuse": []}
-UNTAKEN = {"keep-dropped": 1, "hold": 2, "refuse": sys.maxsize}
+TRIED: dict[str, list[object]] = {
+    "keep-dropped": [],
+    "hold": [],
+    "refuse": [],
+    "forget": [],
+    "linger": [],
+}
+UNTAKEN = {"keep-dropped": 1, "hold": 2, "refuse": sys.maxsize, "forget": 2, "linger": 3}
 
 # What each kind that loses records in a gap holds before it, and what it holds after.
 LAPSING = {
