@@ -50,7 +50,9 @@ COUNTED = "Three murmured, two still in the air."
 # What a first visit to the page may cost, drawn from the three murmurs. The quiet
 # day's line is two of the elements and one of the kilobytes. The kit's head.css, the head
 # every live page shares, is one of the files and a few of the kilobytes, within the room the
-# budget held before it, as the page dropped its own head rules for it.
+# budget held before it, as the page dropped its own head rules for it, and so is the kit's
+# early.js, the script the page once wrote into itself, which the sites' policy now runs only
+# from a file.
 BUDGET = Budget(files=20, kilobytes=423, elements=147)
 # How long ago each murmur was said, in seconds, oldest first.
 AGES = (40 * 60, 25 * 60, 10 * 60)

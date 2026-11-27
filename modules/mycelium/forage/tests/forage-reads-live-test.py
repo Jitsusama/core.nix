@@ -65,8 +65,9 @@ CELLS = ["KESTRL", "SKIFFS", "TERNAA", "OSPREY"]
 # on, so splitting one out raises this as a choice rather than slipping past it. The kit's
 # cell.ts is the 23rd, the one way every site names a cell, and its head.css the 24th, the
 # head every live page opens with. Its link and the eyebrow's dot are two elements more, and
-# the elements keep the one of room they had.
-BUDGET = Budget(files=24, kilobytes=516, elements=257)
+# the elements keep the one of room they had. Its early.js is the 25th, the script the page
+# once wrote into itself, which the sites' policy now runs only from a file.
+BUDGET = Budget(files=25, kilobytes=516, elements=257)
 
 
 @pytest.fixture

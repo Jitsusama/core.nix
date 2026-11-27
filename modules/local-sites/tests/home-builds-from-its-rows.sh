@@ -14,12 +14,14 @@
 # so; a theme that isn't a stylesheet fails the build; a look with no tint
 # takes the other's, and a tint or ground that isn't a colour is left out and
 # said, never written in; a second run changes no file; a broken record keeps
-# the last build; a root with no sites.json is left alone; a row Nix declares
-# stands in for the record's, or goes first, and rows.json says every row
-# listed as it was written, in the home's order, but for a recorded row's
-# claim on a kind a declared row is home to, left out and said; a recorded
+# the last build, in the home's own folder as among the documents, or, with
+# none to keep, builds from the declared rows; a root with no sites.json is
+# left alone; a row Nix declares stands in for the record's, or goes first,
+# and rows.json says every row listed as it was written, in the home's order,
+# but for a recorded row's claim on a kind a declared row is home to, left out and said; a recorded
 # row whose path leads off the sites is left out and said, and a declared one
-# fails the build; and a document loading a script file of its own is named, on any of
+# fails the build; told a folder of its own, its own files go there and none
+# stays among the documents; and a document loading a script file of its own is named, on any of
 # its pages, however its tag is spelled and even past a byte that isn't UTF-8,
 # while one loading only the kit's, and an app loading its own, are not.
 # usage: home-builds-from-its-rows.sh <python> <sources>
@@ -393,6 +395,20 @@ told=$(< "$work/shape.said")
 [[ $told == *"isn't a stylesheet"* ]] ||
   fail "the declared rows as the theme failed for another reason: $told"
 
+# Told where its own files go, the home writes them there, a folder no
+# session writes, and takes away the copies an earlier build left among the
+# documents, while the documents' own pages keep their strips.
+"$python" "$sources/home.py" "--into=$work/own" "$sources" "$root" "$root/kit/theme.css" \
+  > /dev/null
+for name in index.html home.css strip.css favicon.svg llms.txt index.md rows.json; do
+  [ -f "$work/own/$name" ] || fail "the home wrote no $name into its own folder"
+  [ ! -e "$root/$name" ] || fail "a copy of the home's $name stayed among the documents"
+done
+grep -q 'sites strip: home.py' "$root/map/index.html" ||
+  fail "a page among the documents lost its strip once the home moved"
+# Built back among the documents, for the cases that follow.
+"$python" "$sources/home.py" "$sources" "$root" "$root/kit/theme.css" > /dev/null
+
 # Without the kit, the home names no ground rather than a made-up one.
 rm "$root/kit/theme.css"
 "$python" "$sources/home.py" "$sources" "$root" "$root/kit/theme.css" > /dev/null \
@@ -415,3 +431,32 @@ case $said in
   *) fail "a broken record said: $said" ;;
 esac
 cmp -s "$work/last.html" "$index" || fail "a broken record changed the home"
+
+# Where no build is there to keep, as after a reboot empties the runtime
+# folder the home is built into, the declared rows alone make it, and the
+# broken record is said, so the sites still answer until it reads again.
+said=$("$python" "$sources/home.py" "--into=$work/rebooted" "$sources" "$root" \
+  "$root/kit/theme.css" "$work/declared.json") || fail "a reboot's broken record failed"
+case $said in
+  *"; sites.json can't be read ("*"), and no build was there to keep") ;;
+  *) fail "a reboot's broken record said: $said" ;;
+esac
+grep -q '<span class="name">The grove</span>' "$work/rebooted/index.html" ||
+  fail "a reboot's broken record left the declared rows unlisted"
+grep -q '"name": "The grove"' "$work/rebooted/rows.json" ||
+  fail "a reboot's broken record left rows.json without the declared rows"
+
+# As the home is always built, into a folder of its own that holds a build,
+# a broken record keeps that build: the one in its own folder, not one among
+# the documents, which a build into its own folder takes away, as the
+# reboot's just did.
+[ ! -e "$index" ] || fail "a build into its own folder left the home among the documents"
+cp "$work/own/index.html" "$work/own-last.html"
+said=$("$python" "$sources/home.py" "--into=$work/own" "$sources" "$root" \
+  "$root/kit/theme.css" "$work/declared.json") || fail "a broken record failed its own build"
+case $said in
+  "home: sites.json can't be read ("*"), so the last build stays") ;;
+  *) fail "a broken record beside its own build said: $said" ;;
+esac
+cmp -s "$work/own-last.html" "$work/own/index.html" ||
+  fail "a broken record changed the home's own build"

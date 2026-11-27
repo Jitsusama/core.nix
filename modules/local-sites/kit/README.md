@@ -9,6 +9,7 @@ a site's compiled imports land.
 | `ask.ts`      | a look read for its ask row, and the answers it may send      |
 | `cell.ts`     | a cell's link to the launcher, and the cell a link names      |
 | `document.ts` | a document's parts, its keys and its switch, wired on load    |
+| `early.js`    | the kept look, `js` and a page's kept room, before it's drawn |
 | `feed.ts`     | a watch of a daemon's feed: connecting, live, stale or broken |
 | `fold.ts`     | a long list folded to seven rows, how many more, what's unlisted |
 | `home.ts`     | the home's cursor over the sites, its keys and its switch     |
@@ -24,8 +25,9 @@ a site's compiled imports land.
 | `ask.css`     | the ask row's styles                                          |
 | `tests/`      | each of them tried against a stand-in socket and clock        |
 
-The `tests/` folder holds a test for each script but `theme.ts` and
-`home.ts`, which have none yet, and `known.ts`, which keyed's focus cases
+The `tests/` folder holds a test for each script but `theme.ts`,
+`home.ts` and `early.js`, which have none yet (the pages' live tests open
+them in a browser), and `known.ts`, which keyed's focus cases
 (`keyed-focus.test.ts`, and `keyed-form.test.ts` for forms) try through the
 list, drawn by `focused.ts` in `rows.ts`'s list; and the stand-ins they share,
 `stand-in.ts` for a feed's socket and `hands.ts` for a clock moved by hand. Node runs them

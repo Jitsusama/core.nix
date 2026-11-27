@@ -2,10 +2,11 @@
 //!
 //! Joel's local sites, served on loopback alone, and each live page fed
 //! by the daemon that holds its data. The config (config.rs), written by
-//! the module, names where it listens and by which names, the folder of
-//! documents sessions write, the folders Nix built that it serves at their
-//! own paths, and each feed: a daemon's socket and the kinds and fields a
-//! page may read of it.
+//! the module, names where it listens and by which names, the name the
+//! documents are served under, the folder of
+//! documents sessions write, the folder the home is written into, the
+//! folders Nix built that it serves at their own paths, and each feed: a
+//! daemon's socket and the kinds and fields a page may read of it.
 //!
 //! A page reads a feed at `/feed/<name>`, a WebSocket over which it speaks
 //! the daemon interface every daemon here speaks (docs/daemons.md), so a
@@ -14,7 +15,11 @@
 //! reads and tells every page from it (upstream.rs), it lets a page read
 //! and never act (gate.rs), and it admits only its own pages, by the name
 //! a request reaches it by and the page a feed's handshake came from
-//! (door.rs). Files are found by files.rs; one connection is http.rs.
+//! (door.rs). A document a session wrote runs under the documents' name,
+//! an origin of its own, so it reads no feed and can't act as one of the
+//! sites' own pages, which run only the scripts Nix served beside them
+//! (http.rs). Files are
+//! found by files.rs; one connection is http.rs.
 
 mod config;
 mod door;
@@ -22,6 +27,7 @@ mod files;
 mod gate;
 mod http;
 mod page;
+mod sweep;
 mod upstream;
 
 use std::net::TcpListener;
@@ -115,7 +121,7 @@ fn serve(file: &PathBuf) -> Result<(), Failure> {
         .because(why.to_string())
     })?;
     let server = Arc::new(Server {
-        door: Door::new(&config.names, config.listen.port()),
+        door: Door::new(&config.names, &config.documents_name, config.listen.port()),
         config,
         upstreams: Arc::new(Upstreams::default()),
     });

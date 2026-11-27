@@ -42,20 +42,27 @@ const NAME: &str = "{name}";
 
 impl Homes {
     /// The homes the sites under `root` say they hold, by the rows the home
-    /// lists in its `rows.json`. A home from before it listed them apart
-    /// keeps every row in its record, `sites.json`, so only a home with no
-    /// rows file is read from there; rows that can't be read hold none,
-    /// rather than the record's, whose live rows it no longer keeps. A
-    /// site's record that can't be read holds none, and the other sites'
-    /// still count.
-    pub fn read(root: &Path) -> Self {
+    /// lists in its `rows.json`, in `home`, the folder of its own it's
+    /// built into, where it's given: there alone, so rows not yet built
+    /// there, as after a reboot, hold none rather than a session's, since
+    /// what's under `root` only a session writes then. A home built into
+    /// `root` itself keeps its rows file there, and one from before it
+    /// listed rows apart keeps every row in its record, `sites.json`, read
+    /// only where the rows file is missing. Rows that can't be read hold
+    /// none, rather than an older place's, which no longer keeps the live
+    /// rows. A site's record that can't be read holds none, and the other
+    /// sites' still count.
+    pub fn read(root: &Path, home: Option<&Path>) -> Self {
         let parsed = |said: String| serde_json::from_str::<Value>(&said).ok();
-        let rows = match std::fs::read_to_string(root.join("rows.json")) {
-            Err(error) if error.kind() == ErrorKind::NotFound => {
-                std::fs::read_to_string(root.join("sites.json")).ok()
-            }
-            said => said.ok(),
+        let places = match home {
+            Some(home) => vec![home.join("rows.json")],
+            None => vec![root.join("rows.json"), root.join("sites.json")],
         };
+        let rows = places
+            .into_iter()
+            .map(std::fs::read_to_string)
+            .find(|read| !matches!(read, Err(error) if error.kind() == ErrorKind::NotFound))
+            .and_then(Result::ok);
         let Some(sites) = rows.and_then(parsed) else {
             return Self::default();
         };
@@ -843,7 +850,7 @@ mod tests {
                 ("old/homes.json", &old),
             ],
         );
-        let homes = Homes::read(&root);
+        let homes = Homes::read(&root, None);
         let _ = std::fs::remove_dir_all(&root);
         assert_eq!(
             homes.address("repository", "core"),
@@ -858,6 +865,44 @@ mod tests {
     }
 
     #[test]
+    fn the_home_reads_its_own_folders_rows_before_the_sites() {
+        let old = home("repository", "other", "other", &[], "old/#repo=other").to_string();
+        let root = folder(
+            "own",
+            &[
+                ("home/rows.json", &repositories("code/")),
+                ("rows.json", &repositories("old/")),
+                ("code/homes.json", &core_at("code/")),
+                ("old/homes.json", &old),
+            ],
+        );
+        let homes = Homes::read(&root, Some(&root.join("home")));
+        let unbuilt = Homes::read(&root, Some(&root.join("nowhere")));
+        let before = Homes::read(&root, None);
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(
+            homes.address("repository", "core"),
+            Some("code/#repo=core".into()),
+            "the rows the home lists in its own folder hold"
+        );
+        assert_eq!(
+            homes.address("repository", "other"),
+            None,
+            "the rows a build before left in the sites' folder aren't read beside them"
+        );
+        assert_eq!(
+            unbuilt,
+            Homes::default(),
+            "a session's rows in the sites' folder stood in for a home not yet built"
+        );
+        assert_eq!(
+            before.address("repository", "other"),
+            Some("old/#repo=other".into()),
+            "a home built into the sites' folder is read there"
+        );
+    }
+
+    #[test]
     fn rows_that_are_there_but_wont_open_hold_no_homes() {
         let root = folder(
             "unreadable",
@@ -867,7 +912,7 @@ mod tests {
                 ("old/homes.json", &core_at("old/")),
             ],
         );
-        let homes = Homes::read(&root);
+        let homes = Homes::read(&root, None);
         let _ = std::fs::remove_dir_all(&root);
         assert_eq!(
             homes,
@@ -885,7 +930,7 @@ mod tests {
                 ("code/homes.json", &core_at("code/")),
             ],
         );
-        let homes = Homes::read(&root);
+        let homes = Homes::read(&root, None);
         let _ = std::fs::remove_dir_all(&root);
         assert_eq!(
             homes.address("repository", "core"),
@@ -903,7 +948,7 @@ mod tests {
                 ("old/homes.json", &core_at("old/")),
             ],
         );
-        let homes = Homes::read(&root);
+        let homes = Homes::read(&root, None);
         let _ = std::fs::remove_dir_all(&root);
         assert_eq!(
             homes.address("repository", "core"),
@@ -922,7 +967,7 @@ mod tests {
                 ("old/homes.json", &core_at("old/")),
             ],
         );
-        let homes = Homes::read(&root);
+        let homes = Homes::read(&root, None);
         let _ = std::fs::remove_dir_all(&root);
         assert_eq!(
             homes,

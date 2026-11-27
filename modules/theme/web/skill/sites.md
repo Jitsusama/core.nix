@@ -32,7 +32,8 @@ that is awesome" (2026-11-11).
   home, its `llms.txt` and every page's strip within a second of the
   record changing. Write the whole record to a file beside it and rename
   it over, so the builder never reads it half written; a record it can't
-  read keeps the last build. A turned-down or settled site moves to the
+  read keeps the last build, or, with none to keep (after a reboot), the
+  home lists only the declared rows below. A turned-down or settled site moves to the
   home's Kept for Reference, below the rest.
 - **A live site's row is declared with it.** For a live site (system,
   network, forage, mycelium, web or code, on a machine that serves it),
@@ -41,8 +42,8 @@ that is awesome" (2026-11-11).
   for its row in `sites.json`. Its words change there, as a change to
   core, and reach the home at the next switch; an edit to its
   `sites.json` row no longer reaches the home. The home writes every row
-  it lists, the declared ones as declared, to `rows.json` beside
-  `sites.json`. The system's and Code's readers of the homes read
+  it lists, the declared ones as declared, to `rows.json`, served at the
+  sites' root beside `sites.json`. The system's and Code's readers of the homes read
   `rows.json`, and `sites.json` only where a home has none yet;
   `homes.js` reads `rows.json` too, and checks `sites.json` beside it.
   So a change to a live site's homes is made in `home.nix` alone. Leave
@@ -174,9 +175,14 @@ A live site built by `localSite` copies nothing: the sites' server holds
 one copy for every live site at `/local-sites/web/`, so the browser
 fetches the fonts once for them all. Its page, served one folder deep,
 loads the same lines from there, preloads included, and the build refuses
-a page still loading its own `kit/`:
+a page still loading its own `kit/`. It runs no script written into the
+page, which the server refuses the sites' own pages, so the lines that set
+the kept look and `class="js"` before the first paint are the kit's
+`early.js`, loaded first:
 
 ```html
+<!-- biome-ignore lint/performance/noSyncScripts: it runs before the first paint, setting the kept look and room, so nothing flashes or shifts. -->
+<script src="../local-sites/kit/early.js"></script>
 <link rel="stylesheet" href="../local-sites/web/theme.css">
 <link rel="stylesheet" href="../local-sites/web/base.css">
 <link rel="stylesheet" href="../local-sites/kit/switch.css">
@@ -190,8 +196,21 @@ a page still loading its own `kit/`:
 The server holds two folders there that sound alike. `/local-sites/web/`
 is the theme's web kit: `theme.css`, `base.css` and the fonts.
 `/local-sites/kit/` is the sites' own scripts and switch: `feed.js`,
-`keys.js`, `document.js`, the rest built from the kit's TypeScript, and
-`switch.css` and `head.css`. Neither holds the other's files.
+`keys.js`, `document.js`, the rest built from the kit's TypeScript,
+`early.js`, and `switch.css` and `head.css`. Neither holds the other's
+files.
+
+A document is served under a name of its own,
+`http://documents.sites.localhost:8484/<site>/`, so what a session wrote
+runs in the documents' origin and can never act as one of the sites' own,
+which read Joel's feeds and answer what he's asked. Link to it under the
+sites' name as ever: the server sends a document's address there, keeping
+its path, and a page of the sites' own back. Three things follow. It reads
+no feed. It reads what sits beside it as its own origin's: the kit, the
+fonts, `/rows.json`, `/llms.txt` and the other documents. And it keeps its
+look apart from the sites', since each origin keeps its own. A document
+loads only scripts from the documents or the kit; under the sites' name a
+script a session wrote is refused.
 
 **The head every live page opens with** is the kit's, so the pages read
 as one family; before it each drew its own, five eyebrows in five faces.

@@ -1,7 +1,8 @@
 # Joel's local sites: the mocks, tours and records made just for him, served
 # from ~/.local/share/jitsusama/sites on this machine alone, so none goes
-# to a host other people reach. Its root holds a home page listing each
-# site, and each site is a folder under it, reached at
+# to a host other people reach. Its root serves a home page listing each
+# site, written into a folder of its own (homeFolder), and each site is a
+# folder under it, reached at
 # http://sites.localhost:8484/<site>/ (a browser sends any .localhost name
 # to the machine itself). The sites are what sessions write, so they're
 # state, never a Nix value; only the server and the home's builder are
@@ -12,7 +13,12 @@
 # feed at /feed/<name> from each daemon a module declares, with the kinds
 # and fields a page may read of it, so the server enforces what a page
 # never sees. It answers only its own names on loopback and opens a feed
-# only to its own pages.
+# only to its own pages. A document a session wrote is served under a name
+# of its own, http://documents.sites.localhost:8484/<site>/, its link under
+# the sites' name sent there, so its script runs in the documents' origin
+# and can't act as one of the sites' own. It reads what sits beside it, the
+# kit and the home's rows among them, but no feed, which only the sites' own
+# pages read, and it keeps its theme apart from theirs.
 #
 # The home is built from sites.json, a row per site, which sessions write:
 # home/home.py writes the list, its llms.txt and Markdown twin, and each
@@ -57,6 +63,15 @@ let
   # home read from the one copy the sites share.
   webKit = config.xdg.dataFile."jitsusama/web".source;
   documents = "${config.xdg.dataHome}/jitsusama/sites";
+  # Where the home's builder writes the home's own page and files, under the
+  # runtime folder: a fenced session neither sees nor writes it, so the
+  # server serves them as the sites' own rather than sandboxed as a document
+  # is (src/http.rs says why), and the home can read Joel's feeds and answer
+  # what he's asked. A reboot empties it, and the home is built whole from
+  # its record before the server serves; a record that won't read then
+  # builds it from the declared rows alone until a session mends it, since
+  # the last build went with the reboot.
+  inherit (cfg) homeFolder;
   # Loopback, under the names a browser sends there by itself.
   served = pkgs.writeText "local-sites.json" (
     builtins.toJSON {
@@ -66,7 +81,9 @@ let
         "localhost"
         "127.0.0.1"
       ];
+      documentsName = "documents.sites.localhost";
       inherit documents;
+      home = homeFolder;
       inherit (cfg) mounts feeds;
     }
   );
@@ -247,9 +264,13 @@ let
   # machine serves, for a reader such as the hourly card to count with
   # --json (map-check.nix).
   mapCheck = import ./map-check.nix { inherit lib pkgs; };
-  build = lib.escapeShellArgs [
+  # The home's builder, then what it builds from; its folder goes between,
+  # where the runtime folder is known (systemd's %t, or the activation's).
+  builder = lib.escapeShellArgs [
     (lib.getExe pkgs.python3)
     "${./home/home.py}"
+  ];
+  builtFrom = lib.escapeShellArgs [
     "${import ./home-source.nix}"
     "${config.xdg.dataHome}/jitsusama/sites"
     "${webKit}/theme.css"
@@ -284,7 +305,19 @@ in
     default = { };
     description = ''
       Folders Nix built, each served at /<name>/ ahead of the documents,
-      as a live site's pages are.
+      as a live site's pages are. A page there runs only scripts served
+      beside it (script-src 'self'): one written into the page, an
+      onclick-like attribute or a javascript: link does nothing.
+    '';
+  };
+
+  options.jitsusama.local-sites.homeFolder = lib.mkOption {
+    type = lib.types.str;
+    default = "local-sites/home";
+    readOnly = true;
+    description = ''
+      The folder under the runtime folder the home is built into, where
+      it lists its rows, so what reads them reads where they're written.
     '';
   };
 
@@ -667,8 +700,13 @@ in
 
   # A switch builds the home too, since a changed builder or page changes
   # no file the path unit watches. A run that changes nothing writes nothing.
+  # Only where the runtime folder stands, as it does wherever the server
+  # runs; its unit builds the home at login on a machine that has none yet.
   config.home.activation.localSitesHome = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-    run ${build}
+    localSitesRuntime="''${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+    if [ -d "$localSitesRuntime" ]; then
+      run ${builder} "--into=$localSitesRuntime/${homeFolder}" ${builtFrom}
+    fi
   '';
 
   config.systemd.user.services = {
@@ -676,13 +714,20 @@ in
       Unit.Description = "Builds the home of Joel's local sites from its record";
       Service = {
         Type = "oneshot";
-        ExecStart = build;
+        ExecStart = "${builder} --into=%t/${homeFolder} ${builtFrom}";
         Slice = "background.slice";
       };
+      # At login too, since a reboot empties the runtime folder the home is in.
+      Install.WantedBy = [ "default.target" ];
     };
 
     local-sites = {
-      Unit.Description = "Serves Joel's local sites, on loopback only";
+      Unit = {
+        Description = "Serves Joel's local sites, on loopback only";
+        # The home is built first, or its page answers that it isn't ready.
+        Wants = [ "local-sites-home.service" ];
+        After = [ "local-sites-home.service" ];
+      };
       Service = {
         ExecStartPre = "${lib.getExe' pkgs.coreutils "mkdir"} -p ${root}";
         # Its command line says its name, as a daemon's does (docs/daemons.md).

@@ -25,7 +25,10 @@ let
   keptComments = ./kept-comments.sh;
 
   # The kit, typechecked and tested, as the browser's modules and the
-  # switch's styles, without their comments as a site's are.
+  # switch's styles, without their comments as a site's are. Kept in Nix
+  # because each line runs a tool Nix gives it on the kit's own files, and
+  # what writes a sheet or script bare is a script of its own
+  # (bare-sheet.sh, kept-comments.sh).
   kit = pkgs.runCommandLocal "local-sites-kit" { } ''
     cp -r ${./kit} kit
     chmod -R u+w kit
@@ -36,6 +39,9 @@ let
     ${lib.getExe pkgs.bash} ${bareSheet} ${esbuild} switch.css $out/kit/switch.css
     ${lib.getExe pkgs.bash} ${bareSheet} ${esbuild} head.css $out/kit/head.css
     ${lib.getExe pkgs.bash} ${bareSheet} ${esbuild} ask.css $out/kit/ask.css
+    # The script a page runs before it's drawn, written by hand as a plain
+    # script, sent without its comments as the modules are.
+    ${esbuild} early.js --legal-comments=none --log-level=warning --outfile=$out/kit/early.js
     ${lib.getExe pkgs.bash} ${keptComments} $(find $out/kit -name '*.js')
   '';
 in

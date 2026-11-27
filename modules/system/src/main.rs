@@ -181,7 +181,7 @@ pub(crate) fn read() -> (System, Notes) {
     };
     kept::mark(&mut system, &notes);
     if let Some(sites) = sites() {
-        Homes::read(&sites).place(&mut system);
+        Homes::read(&sites, home().as_deref()).place(&mut system);
     }
     (system, notes)
 }
@@ -209,6 +209,16 @@ fn sites() -> Option<PathBuf> {
             std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/share"))
         })?;
     Some(data.join("jitsusama/sites"))
+}
+
+/// The folder of its own the sites' home is built into, where it lists its
+/// rows, as the daemon's unit names it from local-sites' homeFolder; none
+/// where it names none, as on a machine whose home is built into the
+/// sites' folder.
+fn home() -> Option<PathBuf> {
+    std::env::var_os("LOCAL_SITES_HOME")
+        .filter(|home| !home.is_empty())
+        .map(PathBuf::from)
 }
 
 /// When this machine's quest backup last backed up, as the backup writes it

@@ -6,22 +6,39 @@
 //! goes with a tag of what it is served as, its real path, size, inode and
 //! times, so a browser asking again with the tag it holds is told it
 //! hasn't changed rather than sent the file once more.
+//!
+//! A session writes the documents, so what a session's page runs must
+//! never act as one of the sites' own, which read Joel's feeds and will
+//! answer what he's asked. The documents are served under a name of their
+//! own (door.rs), an origin no feed admits and no answer takes, where each
+//! may read what sits beside it, the kit and the home's rows as much as
+//! another document; a document asked for under the sites' names is sent
+//! there, and a page of the sites' own asked for there is sent back. Under
+//! the sites' names a session's file is still sandboxed in an origin of no
+//! one's, and a session's script is never served, so the sites' own pages,
+//! which Nix or the home's builder made, run only the scripts Nix served
+//! beside them, never one written into the page or left among the
+//! documents. Each origin is kept to a process of its own, so neither can
+//! loosen `document.domain` to reach the other. No page keeps a worker, and
+//! what a document left from when the two shared an origin is swept
+//! (sweep.rs).
 
 use std::fs::{File, Metadata};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io::{self, Read, Write};
-use std::net::TcpStream;
+use std::net::{Shutdown, TcpStream};
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use tungstenite::handshake::server::{ErrorResponse, Request, Response};
 
 use crate::config::{Config, Feed};
-use crate::door::Door;
+use crate::door::{Door, Side};
 use crate::files::{self, Found};
 use crate::page;
+use crate::sweep::{self, Asked};
 use crate::upstream::Upstreams;
 
 /// The most a request's head may hold.
@@ -32,6 +49,35 @@ const NOT_MODIFIED: u16 = 304;
 
 /// How long a request may take to arrive whole.
 const PATIENCE: Duration = Duration::from_secs(10);
+
+/// How much an answered client may still send, and for how long in all,
+/// before its connection is let go of whatever is left.
+const LINGERING: (usize, Duration) = (16 * 1024, Duration::from_secs(1));
+
+/// The sandbox a session's file runs in under the sites' names: its
+/// scripts, its forms and the windows it opens, each in an origin of no
+/// one's, never this server's, and no way out of it to the page holding it
+/// or a window it opens; and held in a frame only by a page served here.
+const SANDBOXED: &str = "sandbox allow-scripts allow-popups allow-forms; frame-ancestors 'self'";
+
+/// What everything under the documents' name is held to: held in a frame
+/// only by a page of theirs. Their own origin, which reads nothing of the
+/// sites', is what keeps them apart, so no sandbox is asked: one that let
+/// them keep their origin, as their storage and their own files need,
+/// would close next to nothing more, and a browser warns on every page
+/// that it can be escaped.
+const DOCUMENTS: &str = "frame-ancestors 'self'";
+
+/// What the sites' own pages may run and be held in: only scripts served
+/// from here, none written into the page or evaluated from words, no
+/// plugin, no base moving its links, and no frame around it to press its
+/// buttons through.
+const OWN: &str = "script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'";
+
+/// What the answers a file is sent with are, by version, hashed into its
+/// tag, so a copy a browser holds from before the answers it was sent with
+/// changed is sent again whole, with them, rather than kept under the old.
+const ANSWERS: u8 = 2;
 
 /// What the server holds for every connection.
 pub struct Server {
@@ -49,6 +95,14 @@ struct Head {
     length: usize,
     /// The tags of the copies the browser holds, as `If-None-Match` lists them.
     held: Option<String>,
+    /// Its cookies, as `Cookie` lists them.
+    cookies: Option<String>,
+    /// Whether the browser asks for a worker's script, as `Service-Worker` says.
+    worker: bool,
+    /// Where the browser says the request came from, as `Sec-Fetch-Site` says.
+    fetch_site: Option<String>,
+    /// What the browser says the request is for, as `Sec-Fetch-Dest` says.
+    fetch_dest: Option<String>,
 }
 
 /// Answers one connection.
@@ -70,14 +124,11 @@ pub fn answer(server: &Server, mut stream: TcpStream) {
         // It hung up or took too long, and is told nothing.
         Err(_) => return,
     };
-    let hosted = head
-        .host
-        .as_deref()
-        .is_some_and(|host| server.door.hosts(host));
+    let side = head.host.as_deref().and_then(|host| server.door.side(host));
     let feed = head
         .path
         .strip_prefix("/feed/")
-        .filter(|_| hosted && head.upgrade);
+        .filter(|_| side == Some(Side::Sites) && head.upgrade);
     if let Some(name) = feed.and_then(|name| server.config.feeds.get_key_value(name)) {
         // The handshake reads the head it was peeked from.
         return open(server, stream, name);
@@ -88,13 +139,23 @@ pub fn answer(server: &Server, mut stream: TcpStream) {
     if stream.read_exact(&mut read).is_err() {
         return;
     }
-    if !hosted {
-        send(
+    let Some(side) = side else {
+        return send(
             &mut stream,
             403,
             "Forbidden",
             "text/plain",
             b"this server answers its own names alone\n",
+        );
+    };
+    if head.worker {
+        // Refused, an old worker would keep standing; this one lets go.
+        send(
+            &mut stream,
+            200,
+            "OK",
+            "text/javascript; charset=utf-8",
+            sweep::LETTING_GO,
         );
     } else if head.upgrade {
         send(
@@ -102,10 +163,18 @@ pub fn answer(server: &Server, mut stream: TcpStream) {
             404,
             "Not Found",
             "text/plain",
-            b"a feed is at /feed/<name>, named in its config\n",
+            b"a feed is at /feed/<name> under the sites' names, named in its config\n",
+        );
+    } else if !head.path.starts_with('/') {
+        send(
+            &mut stream,
+            400,
+            "Bad Request",
+            "text/plain",
+            b"a path starts at /\n",
         );
     } else {
-        serve_file(server, &mut stream, &head);
+        serve_file(server, &mut stream, &head, side);
     }
 }
 
@@ -134,7 +203,7 @@ fn open(server: &Server, stream: TcpStream, (name, feed): (&String, &Feed)) {
     }
 }
 
-fn serve_file(server: &Server, stream: &mut TcpStream, head: &Head) {
+fn serve_file(server: &Server, stream: &mut TcpStream, head: &Head, side: Side) {
     if head.method != "GET" && head.method != "HEAD" {
         return send(
             stream,
@@ -146,7 +215,20 @@ fn serve_file(server: &Server, stream: &mut TcpStream, head: &Head) {
     }
     let path = head.path.split(['?', '#']).next().unwrap_or("/");
     match files::find(&server.config, path) {
-        Found::File(file) => send_file(stream, head, &file),
+        Found::File(file, made) => match placed(side, made, files::kind_of(&file)) {
+            Placed::Here => {
+                let told = told_for(head, made, side, files::kind_of(&file));
+                send_file(stream, head, &file, &told);
+            }
+            Placed::Across => across(&server.door, stream, head, side),
+            Placed::Refused => send(
+                stream,
+                403,
+                "Forbidden",
+                "text/plain",
+                b"a session's script runs under the documents' name alone\n",
+            ),
+        },
         Found::Folder(to) => {
             let told = Told {
                 kind: "text/plain",
@@ -168,19 +250,130 @@ fn serve_file(server: &Server, stream: &mut TcpStream, head: &Head) {
             "text/plain",
             b"that path is refused\n",
         ),
+        Found::Unready => write_answer(
+            stream,
+            (503, "Service Unavailable"),
+            &Told {
+                kind: "text/plain",
+                body: b"the home isn't built yet; if it stays so, its builder says why: \
+                    journalctl --user -u local-sites-home\n",
+                sent: true,
+            },
+            &[("Retry-After", "2")],
+        ),
     }
 }
 
+/// What a file is sent with beside its tag, by who made it.
+struct Guarded {
+    /// Its answers' own headers, sent with it whole or not.
+    headers: Vec<(&'static str, String)>,
+    /// Whether it must go whole, since what it's sent with does what a
+    /// browser would skip for a copy it keeps.
+    whole: bool,
+}
+
+/// Where a file is answered from, by the origin asked and who made it.
+#[derive(Debug, PartialEq, Eq)]
+enum Placed {
+    /// Under the name it was asked by.
+    Here,
+    /// On the other origin, where its page runs as what it is.
+    Across,
+    /// Nowhere: a session's script under the sites' names.
+    Refused,
+}
+
+/// Where a file of `kind`, which `made` made, asked for on `side`, is
+/// answered from. A page goes to the origin of whoever made it, a
+/// session's script runs only beside the documents, and everything else
+/// is read where it's asked, as a sites' page reads a session's homes.json
+/// and a document the kit.
+fn placed(side: Side, made: files::Made, kind: &str) -> Placed {
+    let page = kind.starts_with("text/html");
+    match (side, made) {
+        (Side::Sites, files::Made::Written) | (Side::Documents, files::Made::Built) if page => {
+            Placed::Across
+        }
+        (Side::Sites, files::Made::Written) if kind.starts_with("text/javascript") => {
+            Placed::Refused
+        }
+        _ => Placed::Here,
+    }
+}
+
+/// Sends `head`'s path on to the other origin from `side`, for a while,
+/// since a document's place may move back with the server.
+fn across(door: &Door, stream: &mut TcpStream, head: &Head, side: Side) {
+    // `answer` refused a path not from `/` before this, so the refusal here
+    // is the door's own, kept should another way in ever reach it.
+    let Some(to) = door.across(side, &head.path) else {
+        return send(
+            stream,
+            400,
+            "Bad Request",
+            "text/plain",
+            b"a path starts at /\n",
+        );
+    };
+    let told = Told {
+        kind: "text/plain",
+        body: b"",
+        sent: true,
+    };
+    write_answer(
+        stream,
+        (307, "Temporary Redirect"),
+        &told,
+        &[("Location", &to)],
+    );
+}
+
+/// What a file of `kind`, which `made` made, is sent with to `head` on
+/// `side`.
+fn told_for(head: &Head, made: files::Made, side: Side, kind: &str) -> Guarded {
+    let mut headers = Vec::new();
+    let mut whole = false;
+    match (side, made) {
+        (Side::Documents, _) => {
+            headers.push(("Content-Security-Policy", DOCUMENTS.to_owned()));
+        }
+        (Side::Sites, files::Made::Written) => {
+            headers.push(("Content-Security-Policy", SANDBOXED.to_owned()));
+        }
+        (Side::Sites, files::Made::Built) => {
+            headers.push(("Content-Security-Policy", OWN.to_owned()));
+            let asked = Asked {
+                cookies: head.cookies.as_deref(),
+                site: head.fetch_site.as_deref(),
+                dest: head.fetch_dest.as_deref(),
+            };
+            if kind.starts_with("text/html") && sweep::due(&asked) {
+                headers.push(("Clear-Site-Data", "\"storage\"".to_owned()));
+                headers.push(("Set-Cookie", sweep::SWEEPING.to_owned()));
+                whole = true;
+            }
+        }
+    }
+    Guarded { headers, whole }
+}
+
 /// Sends `file`, or says it hasn't changed where the browser holds its tag.
-fn send_file(stream: &mut TcpStream, head: &Head, file: &Path) {
+fn send_file(stream: &mut TcpStream, head: &Head, file: &Path, guarded: &Guarded) {
     let kind = files::kind_of(file);
     // One open gives both the tag and the body, so a file replaced between
     // the two can't go out under the other's tag.
     let Ok((mut opened, tag)) = opened(file, kind) else {
         return unreadable(stream);
     };
-    let tagged = [("ETag", tag.as_str())];
-    if head.held.as_deref().is_some_and(|held| holds(held, &tag)) {
+    let mut tagged = vec![("ETag", tag.as_str())];
+    tagged.extend(
+        guarded
+            .headers
+            .iter()
+            .map(|(name, value)| (*name, value.as_str())),
+    );
+    if !guarded.whole && head.held.as_deref().is_some_and(|held| holds(held, &tag)) {
         let told = Told {
             kind,
             body: b"",
@@ -223,7 +416,7 @@ fn opened(file: &Path, kind: &str) -> io::Result<(File, String)> {
 /// changed, so a write moves it, as does a file put in its place.
 fn tag(real: &Path, kind: &str, about: &Metadata) -> String {
     let mut hasher = DefaultHasher::new();
-    (real, kind, about.len(), about.dev(), about.ino()).hash(&mut hasher);
+    (ANSWERS, real, kind, about.len(), about.dev(), about.ino()).hash(&mut hasher);
     let times = (
         about.mtime(),
         about.mtime_nsec(),
@@ -269,6 +462,10 @@ fn head(stream: &TcpStream) -> io::Result<Option<Head>> {
                     upgrade,
                     length,
                     held: header("if-none-match").map(str::to_owned),
+                    cookies: header("cookie").map(str::to_owned),
+                    worker: header("service-worker").is_some(),
+                    fetch_site: header("sec-fetch-site").map(str::to_owned),
+                    fetch_dest: header("sec-fetch-dest").map(str::to_owned),
                 }));
             }
             Ok(httparse::Status::Partial) if peeked < HEAD => {
@@ -312,7 +509,8 @@ fn write_answer(
     // file unchanged since is answered by its tag alone.
     let mut answer = format!(
         "HTTP/1.1 {status} {reason}\r\n\
-         Cache-Control: no-cache\r\nX-Content-Type-Options: nosniff\r\nConnection: close\r\n"
+         Cache-Control: no-cache\r\nX-Content-Type-Options: nosniff\r\n\
+         Origin-Agent-Cluster: ?1\r\nConnection: close\r\n"
     );
     // An unchanged file's answer has no body, so it says neither a length
     // nor a type, which the browser keeps from the copy it holds.
@@ -332,6 +530,31 @@ fn write_answer(
             Ok(())
         }
     });
+    // What it still sends is read and dropped, so a request refused before
+    // its body was read isn't reset, and its answer lost, as it closes.
+    if stream.shutdown(Shutdown::Write).is_ok() {
+        linger(stream);
+    }
+}
+
+/// Reads and drops what a client still sends, as much and for as long in
+/// all as `LINGERING` lets, so one sending a byte at a time holds its
+/// thread no longer than one sending all at once.
+fn linger(stream: &mut TcpStream) {
+    let (most, wait) = LINGERING;
+    let until = Instant::now() + wait;
+    let mut dropped = vec![0; most];
+    let mut read = 0;
+    while read < most {
+        let left = until.saturating_duration_since(Instant::now());
+        if left.is_zero() || stream.set_read_timeout(Some(left)).is_err() {
+            return;
+        }
+        match stream.read(&mut dropped[read..]) {
+            Ok(0) | Err(_) => return,
+            Ok(more) => read += more,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -339,6 +562,70 @@ mod tests {
     use super::*;
 
     const TAG: &str = "\"00000000000000aa\"";
+
+    const PAGE: &str = "text/html; charset=utf-8";
+    const SCRIPT: &str = "text/javascript; charset=utf-8";
+    const ROWS: &str = "application/json";
+
+    #[test]
+    fn a_page_is_answered_on_the_origin_of_whoever_made_it() {
+        use files::Made::{Built, Written};
+        assert_eq!(
+            placed(Side::Sites, Written, PAGE),
+            Placed::Across,
+            "a document"
+        );
+        assert_eq!(
+            placed(Side::Documents, Written, PAGE),
+            Placed::Here,
+            "a document"
+        );
+        assert_eq!(
+            placed(Side::Sites, Built, PAGE),
+            Placed::Here,
+            "a page of the sites' own"
+        );
+        assert_eq!(
+            placed(Side::Documents, Built, PAGE),
+            Placed::Across,
+            "a page of the sites' own"
+        );
+    }
+
+    #[test]
+    fn a_sessions_script_runs_only_beside_the_documents() {
+        use files::Made::{Built, Written};
+        assert_eq!(
+            placed(Side::Sites, Written, SCRIPT),
+            Placed::Refused,
+            "a session's"
+        );
+        assert_eq!(
+            placed(Side::Documents, Written, SCRIPT),
+            Placed::Here,
+            "a session's"
+        );
+        assert_eq!(
+            placed(Side::Sites, Built, SCRIPT),
+            Placed::Here,
+            "the kit's"
+        );
+        assert_eq!(
+            placed(Side::Documents, Built, SCRIPT),
+            Placed::Here,
+            "the kit's"
+        );
+        assert_eq!(
+            placed(Side::Sites, Written, ROWS),
+            Placed::Here,
+            "a session's data, such as Code's homes.json"
+        );
+        assert_eq!(
+            placed(Side::Documents, Built, ROWS),
+            Placed::Here,
+            "the home's rows"
+        );
+    }
 
     #[test]
     fn a_list_naming_the_tag_however_it_names_it_holds_it() {
