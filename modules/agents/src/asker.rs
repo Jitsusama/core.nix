@@ -29,6 +29,10 @@
 //! alone: there the shell runs as a plain process in a build sandbox,
 //! with no manager, no unit and, on a kernel before 6.5, no pidfd peer.
 //! No installed daemon is built with it.
+//!
+//! Long because its cases are over a third of it: each holds one way an
+//! asker that isn't the shell might pass, and they read the private
+//! judge, its manager's reads and what it keeps between asks.
 
 #![cfg_attr(
     feature = "walks",
@@ -73,7 +77,59 @@ pub fn the_shell(stream: &UnixStream) -> Result<(), String> {
     let (pidfd, seen) = peer_of(stream).map_err(untold)?;
     // SAFETY: getuid has no failure and touches no memory.
     let uid = unsafe { libc::getuid() };
-    judged(&TAKEN, pidfd, &seen, uid, shells_main_pid)
+    judged(&TAKEN, pidfd, &seen, uid, || {
+        remembered(&UNTOLD, Instant::now, shells_main_pid)
+    })
+}
+
+/// The manager's last failure to name the shell's main process, and when
+/// it ended. Each as-Joel ask on a connection is answered in turn, so a
+/// slow manager's `MANAGER_PATIENCE` was paid again for each one the shell
+/// sent together, and whatever it asked after them waited behind them
+/// (round 000038 on #6796, F91).
+static UNTOLD: Mutex<Option<Untold>> = Mutex::new(None);
+
+/// How long a manager's failure answers for it: well under the launcher's
+/// 4 s before it asks a refused act again (Daemon.qml's `askAgain`), so
+/// the asks sent together are refused at once and each sent again gets a
+/// fresh look.
+const UNTOLD_FOR: Duration = Duration::from_secs(2);
+
+/// A failure of the manager's, kept by when it ended and in its words.
+struct Untold {
+    at: Instant,
+    kind: io::ErrorKind,
+    why: String,
+}
+
+/// What `ask` says, or, within `UNTOLD_FOR` of its last failure as `kept`
+/// holds it, that failure again, unasked. `clock` reads the time, so a
+/// test holds it. A success forgets the failure.
+///
+/// # Errors
+///
+/// What `ask` gave, or its last failure, still kept.
+fn remembered(
+    kept: &Mutex<Option<Untold>>,
+    clock: impl Fn() -> Instant,
+    ask: impl FnOnce() -> io::Result<u32>,
+) -> io::Result<u32> {
+    let lock = || kept.lock().unwrap_or_else(PoisonError::into_inner);
+    let still = lock()
+        .as_ref()
+        .filter(|last| clock().duration_since(last.at) < UNTOLD_FOR)
+        .map(|last| io::Error::new(last.kind, last.why.clone()));
+    if let Some(why) = still {
+        return Err(why);
+    }
+    // Not held while the manager is asked, so no other connection waits on it.
+    let asked = ask();
+    *lock() = asked.as_ref().err().map(|why| Untold {
+        at: clock(),
+        kind: why.kind(),
+        why: why.to_string(),
+    });
+    asked
 }
 
 /// Why who asked can't be told, in the words the shell says.
@@ -802,6 +858,42 @@ mod tests {
         );
         other.kill().expect("it's killed");
         other.wait().expect("it's reaped");
+    }
+
+    #[test]
+    fn a_managers_failure_answers_for_it_only_a_moment() {
+        let began = Instant::now();
+        let now = std::cell::Cell::new(began);
+        let clock = || now.get();
+        let kept = Mutex::new(None);
+        let asked = std::cell::Cell::new(0);
+        let failing = || {
+            asked.set(asked.get() + 1);
+            Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "no answer within 3s",
+            ))
+        };
+        let first = remembered(&kept, clock, failing).expect_err("it failed");
+        now.set(began + Duration::from_millis(1500));
+        let again = remembered(&kept, clock, failing).expect_err("still failed");
+        assert_eq!(asked.get(), 1, "the manager isn't asked again so soon");
+        assert_eq!(
+            (again.kind(), again.to_string()),
+            (first.kind(), first.to_string()),
+            "its failure is said again in its own words"
+        );
+        now.set(began + UNTOLD_FOR);
+        let named = remembered(&kept, clock, || {
+            asked.set(asked.get() + 1);
+            Ok(7)
+        });
+        assert_eq!(named.expect("asked afresh"), 7);
+        assert_eq!(asked.get(), 2, "once the moment passes it's asked again");
+        assert!(
+            kept.lock().expect("kept").is_none(),
+            "a success forgets the failure"
+        );
     }
 
     #[test]
