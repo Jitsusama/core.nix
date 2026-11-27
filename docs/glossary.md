@@ -521,6 +521,7 @@ signed in to and forgotten; Wi-Fi's radio can be turned off.
 | firewall | what keeps others' connections out | | nftables |
 | shaper | the program that keeps the network's queue on the machine, sorted by slice, so a call stays quick | | `shaper`, CAKE |
 | house | of the shaper, another machine on the same line out, which says each second what it sends up; this machine keeps the most the two may send between them, and holds its own upload under what the other leaves of it | | `jitsusama.shaper.networks.<router>.house`, `house.rs` |
+| download line | of the shaper, what a network's connection carries down, as declared, or what one of this machine's links reaches it at, under which a call's download is held | | `jitsusama.shaper.networks.<router>.down`, `links.<link>.down`, `networks::Line`, `networks::line_of` |
 | home network | the network at home, the eero's, its nodes and the devices on them, and its place in the launcher | eero network, mesh network | `eero` |
 | node | one eero of the home network | satellite, extender | `eeros` |
 | gateway node | the node the internet comes in through | base station, primary node | `gateway` |
