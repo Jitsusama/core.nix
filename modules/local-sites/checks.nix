@@ -451,6 +451,26 @@ import ./ask-checks.nix args
   # change trimmed to what the feed shows, an act refused before it reaches
   # the daemon, and a daemon that isn't there said broken with why.
   local-sites-serves-its-sites = pkgs.callPackage ./package.nix { };
+  # What every live page's budget says, as a run of pytest shows it, on a
+  # tab standing in for Chromium's (tests/live-page-test.py): a first visit
+  # within its budget passes, one past it names each measure past it, one
+  # asking a file twice is refused naming it, and the run's summary says
+  # what each cost, in bytes beside its kilobytes, under the test it came
+  # from. It loads live_page as each page's test does, so it builds beside
+  # theirs.
+  live-page-says-its-budget =
+    pkgs.runCommandLocal "live-page-says-its-budget"
+      {
+        env = {
+          PYTHONPATH = "${./tests}";
+          PYTHONDONTWRITEBYTECODE = "1";
+        };
+      }
+      ''
+        HOME=$TMPDIR ${python}/bin/python -m pytest -p no:cacheprovider -p pytester \
+          --import-mode=importlib --basetemp="$TMPDIR/pytest" ${./tests}/live-page-test.py
+        touch $out
+      '';
   # The system page, built on the theme's own web kit as a machine builds
   # it, read in headless Chromium through the server beside a stand-in
   # system daemon (modules/system/site/tests/reads-live-test.py): live with

@@ -21,6 +21,8 @@ interface Context {
   readonly letGo: () => void;
   /** How many of net's concern and source watches sent a line the page couldn't read. */
   readonly unheard?: number;
+  /** Whether net's feeds are live and each has told its records since, as `toldOf` says. */
+  readonly told?: boolean;
 }
 
 /** How many devices a line names before it counts the rest. */
@@ -221,20 +223,6 @@ function unreadCount(network: Network, unheard: number): number {
   return unreadOf(network).length + unheard;
 }
 
-/**
- * The words Worth a Look says beneath its rows, or alone when it has none:
- * how much couldn't be read, or that nothing needs a look.
- */
-function worthHint(context: Context): string | undefined {
-  const { network } = context;
-  const unread = unreadCount(network, context.unheard ?? 0);
-  if (unread > 0) {
-    return unreadSaid(unread);
-  }
-  const { worth, quiet } = worthOf(network);
-  return worth.length === 0 && quiet.length === 0 ? "Nothing needs a look." : undefined;
-}
-
 /** How many devices use the network: every one read, less the eeros and the modem. */
 function users(context: Context): number {
   const { network, shape } = context;
@@ -243,6 +231,17 @@ function users(context: Context): number {
 
 /** Every feed's records heard since it went live, and every answer read. */
 const ALL_HEARD: Heard = { fresh: true, unheard: 0 };
+
+/**
+ * Whether what net's feeds hold is what net says now: the worst of them
+ * live, and each kind's records come since. A feed is stale while the
+ * sites' server can't be reached, broken while the server is reached and
+ * says net isn't (the kit's feed.ts), and connecting while net's records
+ * may be from before.
+ */
+function toldOf(worst: string | undefined, heard: Heard = ALL_HEARD): boolean {
+  return worst === "live" && heard.fresh;
+}
 
 /** What net last told of the house, and what of it is worth a look, unless it's gone. */
 function asksOf(network: Network, told: boolean, unheard: number): string {
@@ -326,10 +325,7 @@ function ledeOf(
   context: Context | undefined,
   heard: Heard = ALL_HEARD,
 ): string {
-  // A feed is stale while the sites' server can't be reached, broken while
-  // the server is reached and says net isn't (the kit's feed.ts), and
-  // connecting while net's records may be from before.
-  const told = worst === "live" && heard.fresh;
+  const told = toldOf(worst, heard);
   if (context !== undefined && context.network.devices.length > 0) {
     return standsNow(context, told, heard.unheard);
   }
@@ -355,15 +351,34 @@ function sayStandsNow(
   }
 }
 
+/** What Worth a Look says while net's feeds aren't live, as the lede does. */
+const HELD =
+  "Net's feeds aren't live, so what's worth a look is as net last told it, and may have changed.";
+
+/** What Worth a Look says with nothing in it, while net's feeds are live. */
+const NOTHING = "Nothing needs a look.";
+
 /**
- * What's worth a look: net's concerns, any source that didn't answer, and
- * how much net told that couldn't be read, counted as the lede counts it.
+ * What Worth a Look says below its rows: how much net told that couldn't
+ * be read, counted as the lede counts it, and, while net's feeds aren't
+ * live, that it's as net last told it, since a source still answering as
+ * it last said would read as an all-clear, which the lede never says then.
  */
+function worthSaid(context: Context): string[] {
+  const { worth, quiet } = worthOf(context.network);
+  const unread = unreadCount(context.network, context.unheard ?? 0);
+  const said = unread > 0 ? [unreadSaid(unread)] : [];
+  if (context.told === false) {
+    return [...said, HELD];
+  }
+  return worth.length === 0 && quiet.length === 0 && said.length === 0 ? [NOTHING] : said;
+}
+
+/** What's worth a look: net's concerns, any source that didn't answer, and what's said of them. */
 function worthALook(context: Context): Child[] {
   const { network } = context;
   const { worth, quiet } = worthOf(network);
-  const hint = worthHint(context);
-  const said = hint === undefined ? [] : [h("p", { class: "hint" }, hint)];
+  const said = worthSaid(context).map((words) => h("p", { class: "hint" }, words));
   if (worth.length === 0 && quiet.length === 0) {
     return said;
   }
@@ -435,16 +450,19 @@ export type { Context };
 export {
   concernRows,
   found,
+  HELD,
   ledeOf,
   NAMELESS,
+  NOTHING,
   overview,
   REACHING,
   row,
   sayStandsNow,
   Standings,
   standsNow,
+  toldOf,
   UNANSWERED,
   UNREACHED,
   unreadSaid,
-  worthHint,
+  worthSaid,
 };

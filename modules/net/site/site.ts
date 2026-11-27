@@ -5,7 +5,7 @@
 // the moment net's does, and the head's standing line says whether what it
 // shows is live and since when.
 
-import { follow } from "../../local-sites/kit/feed.ts";
+import { follow, type Standing } from "../../local-sites/kit/feed.ts";
 import { hasOwnKeys, listen, toggle } from "../../local-sites/kit/keys.ts";
 import type { Held } from "../../local-sites/kit/records.ts";
 import { said, tell } from "../../local-sites/kit/status.ts";
@@ -15,10 +15,10 @@ import { details } from "./device.ts";
 import { type Child, element, h } from "./elements.ts";
 import { ACROSS_LEAST } from "./grid.ts";
 import { type Drawn, drawMap } from "./map.ts";
-import { Hearing } from "./hearing.ts";
+import { Hearing, heeding } from "./hearing.ts";
 import { KINDS, type Network, networkOf, type Watched } from "./model.ts";
 import { type Mycelium, myceliumOf } from "./mycelium.ts";
-import { type Context, found, overview, sayStandsNow, Standings } from "./panel.ts";
+import { type Context, found, overview, sayStandsNow, Standings, toldOf } from "./panel.ts";
 import { type Shape, study } from "./shape.ts";
 import { el } from "./svg.ts";
 import { drawTree, heedTree, markOpened } from "./tree.ts";
@@ -86,6 +86,7 @@ function context(): Context | undefined {
     open: (id) => open(id, { focusPanel: true }),
     letGo,
     unheard: hearing.now().unheard,
+    told: toldOf(standings.worst()?.state, hearing.now()),
   };
 }
 
@@ -456,29 +457,26 @@ themeSwitch();
 
 // ---- What's watched. ----
 
+/**
+ * Says how net's feeds stand, in the head and in Worth a Look, which says
+ * what the lede does, live or as net last told it; a search's finds stay.
+ */
+function sayStands(): void {
+  sayWhen();
+  sayStandsNow(lede, standings.worst()?.state, context(), hearing.now());
+  if (drawn !== undefined && (document.activeElement !== find || find.value === "")) {
+    showPanel();
+  }
+}
+
 function watch(kind: (typeof KINDS)[number]): Held {
-  return follow(
-    { feed: "net", kind },
-    {
-      moved: (_held, change) => {
-        told.add(kind);
-        hearing.moved(kind, change.whole);
-        drawSoon();
-      },
-      // A feed that never answers moves nothing, so the lede follows it here too.
-      stands: (stands) => {
-        standings.set(kind, stands);
-        hearing.stands(kind, stands.state);
-        sayWhen();
-        sayStandsNow(lede, standings.worst()?.state, context(), hearing.now());
-      },
-      // Said, and counted by the lede and the panel alike, with the next drawing.
-      problem: (what) => {
-        hearing.problem(kind, what);
-        drawSoon();
-      },
-    },
-  ).held;
+  const page = {
+    told: () => told.add(kind),
+    stood: (stands: Standing) => standings.set(kind, stands),
+    drawSoon,
+    sayStands,
+  };
+  return follow({ feed: "net", kind }, heeding(hearing, kind, page)).held;
 }
 
 const watched: Watched = {

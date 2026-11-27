@@ -42,6 +42,11 @@ let
   noFonts = pkgs.makeFontsConf { fontDirectories = [ ]; };
 in
 onLinux {
+  # The first probe's masthead (gate-test.py): a mark in the head or the
+  # one element just before it, as the live sites' head draws it, passes,
+  # and one further up, only the switch's icons, or no head at all is asked
+  # for, each rule pinned from both sides.
+  gate-probe-finds-the-sites-mark = probed "gate-probe-finds-the-sites-mark" ./gate-test.py { };
   # The homes probe (homes-test.py): a pattern's names learned from the
   # page's links on the sites alone, each row and record the system reader
   # drops named, a kind's first claim kept, and a shortened name's tail read

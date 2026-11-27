@@ -29,12 +29,14 @@ What the theme module gives a website, on every machine:
   names a page wider than its window and a shift as it arrives; `floor.js`,
   beside it, text under its floor; `words.js` faint text; and `names.js` a
   control named apart from what it shows.
+- `gate-test.py` holds `gate.js`'s masthead to the mark drawn in the head
+  or just before it, as `gate-probe-finds-the-sites-mark` runs it.
 - `homes-test.py` holds `homes.js` to its cases in headless Chromium, as the
   `homes-probe-reads-as-the-reader` check runs it, and `looks-test.py`
   holds `looks.js` to its, as `looks-probe-finds-what-a-deploy-lost` does,
   and `pixels-test.py` holds `pixels.js`, `floor.js`, `words.js` and `names.js` to theirs, as
-  `pixels-probe-holds-every-pixel` does; all three read their pages in the
-  one Chromium `probe_browser.py` opens. `checks.nix` holds those three
+  `pixels-probe-holds-every-pixel` does; every probe's test reads its pages
+  in the one Chromium `probe_browser.py` opens. `checks.nix` holds their
   checks, apart from the theme's own, since they change with the probes.
 
 A rule every site would need goes in `base.css`; a value every site would

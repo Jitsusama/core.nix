@@ -7,7 +7,7 @@
 // from them. Only a whole answer makes a watch's records complete again
 // (the kit's records.ts), so only one clears what it couldn't read.
 
-import { STRAY } from "../../local-sites/kit/feed.ts";
+import { type Hearing as Heeding, STRAY, type Standing } from "../../local-sites/kit/feed.ts";
 
 /** How the lede hears the feeds: whether all are current, and how much went unread. */
 interface Heard {
@@ -90,5 +90,43 @@ class Hearing {
   }
 }
 
-export type { Heard };
-export { Hearing };
+/** What the page does as one of net's watches is heard. */
+interface Page {
+  /** Notes that the watch's records have come. */
+  readonly told: () => void;
+  /** Notes how the watch stands now. */
+  readonly stood: (stands: Standing) => void;
+  /** Draws the page once in the next frame, its lede and panel with it. */
+  readonly drawSoon: () => void;
+  /** Says again how net's feeds stand, in the head and the panel. */
+  readonly sayStands: () => void;
+}
+
+/**
+ * What the watch of `kind` does as its feed goes: `hearing` is told
+ * first, so the drawing or the saying that follows counts what it heard.
+ * Records moved draw the page; a feed that never answers moves nothing,
+ * so its standing is said as it comes; and what it couldn't read is said,
+ * and counted by the lede and the panel alike, with the next drawing.
+ */
+function heeding(hearing: Hearing, kind: string, page: Page): Heeding {
+  return {
+    moved: (_held, change) => {
+      page.told();
+      hearing.moved(kind, change.whole);
+      page.drawSoon();
+    },
+    stands: (stands) => {
+      page.stood(stands);
+      hearing.stands(kind, stands.state);
+      page.sayStands();
+    },
+    problem: (what) => {
+      hearing.problem(kind, what);
+      page.drawSoon();
+    },
+  };
+}
+
+export type { Heard, Page };
+export { Hearing, heeding };

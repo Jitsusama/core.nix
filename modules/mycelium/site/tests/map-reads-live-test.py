@@ -2176,12 +2176,14 @@ def test_a_node_that_stops_is_said_broken_with_the_realm_kept_then_live(
     the_map_counts(page, "8 cells, 3 moving, 1 stuck", "the map back live missed a change")
 
 
+# A reading the drawing can make nothing of, handed it as site.ts hands each, as a fault in the
+# drawing would leave one.
+UNDRAWABLE = """() => document.dispatchEvent(new CustomEvent("mycelium:now", { detail: null }))"""
 # Longer than site.ts's floor between two readings handed over (FLOOR_MS), so a quiet that long
 # leaves none queued.
 QUIET_MS = 2500
-# A reading the drawing can make nothing of, handed it as site.ts hands each, as a fault in the
-# drawing would leave one, once no reading has been drawn for `quiet` milliseconds, so none
-# handed over already can clear the failure before it's read.
+# The same, once no reading has been drawn for `quiet` milliseconds, so none handed over already
+# can clear the failure before it's read.
 UNDRAWABLE_ONCE_QUIET = """(quiet) => new Promise((done) => {
   const drawn = () => {
     clearTimeout(waiting);
@@ -2332,6 +2334,28 @@ def test_a_first_reading_that_fails_twice_still_opens_the_cell_the_address_names
         page.evaluate("letReadingsThrough()")
         # Its cells are heard as a first rather than compared with none, so it draws whole.
         the_map_counts(page, COUNTED, "the first reading drawn whole failed")
+        the_map_stands(page, "live")
+        talk = page.locator(f'#panel-body a[href^="mycelium:cell/{SOUGHT}"]')
+        expect(talk.first, "the address's cell wasn't opened").to_be_visible()
+    finally:
+        opened.close()
+
+
+def test_a_first_reading_that_fails_once_is_drawn_whole_by_the_first_path(
+    browser: Browser, mycelium_served: Served
+) -> None:
+    root, _ = mycelium_served
+    opened = Opened(browser, f"{root}mycelium/#cell={SOUGHT}", SIZES[-1], "dark", READINGS_HELD)
+    try:
+        page = opened.page
+        page.wait_for_function("window.held !== null", timeout=PACE_MS)
+        # One first reading that fails leaves the first path to try the next whole once more.
+        opened.expecting("mycelium: a reading failed to draw")
+        page.evaluate(UNDRAWABLE)
+        the_map_stands(page, "broken")
+        page.evaluate("letReadingsThrough()")
+        # The first path's second try draws it whole, choosing the address's cell as it goes.
+        the_map_counts(page, COUNTED, "the first path's second try failed")
         the_map_stands(page, "live")
         talk = page.locator(f'#panel-body a[href^="mycelium:cell/{SOUGHT}"]')
         expect(talk.first, "the address's cell wasn't opened").to_be_visible()
