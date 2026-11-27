@@ -164,6 +164,11 @@ ANSWERED = timedelta(seconds=6)
 QUIET = timedelta(seconds=2)
 SETTLED = timedelta(seconds=30)
 
+# How many restarts the restart case makes to look once before home is kept. The shell answers
+# first and keeps home 1.5 s later, but on a loaded builder its first answer can come after the
+# keep, and then nothing says which changes came before it.
+KEPT_LOOKS_TRIED = 3
+
 # How long after his first chord into a restart Joel, seeing nothing open, presses it again.
 PRESSED_AGAIN = timedelta(milliseconds=300)
 
@@ -401,16 +406,16 @@ def read_shared(shell: Shell, *, shared: bool) -> None:
         time.sleep(launcher_on_niri.POLL)
 
 
-def changes_before_kept(shell: Shell) -> dict[str, int]:
+def changes_before_kept(shell: Shell) -> dict[str, int] | None:
     """Wait until home is kept after a start, and give each source's changes from before then.
 
     The changes are those read last before a look that found home not yet kept, so the keep
     came after them: a source that answers between the keep and a read made once it shows
-    counts as changed, not as unchanged since. Kept at the first look, it gives none, so each
-    source that has answered at all counts as changed.
+    counts as changed, not as unchanged since. Kept at the first look, nothing says which
+    changes came before the keep, so it gives None and the caller starts the shell again.
     """
     deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
-    before: dict[str, int] = {}
+    before: dict[str, int] | None = None
     while True:
         changes = json.loads(shell.as_account(shell.ipc("changed")))
         if shell.showing().get("kept"):
@@ -418,6 +423,24 @@ def changes_before_kept(shell: Shell) -> dict[str, int]:
         before = changes
         assert time.monotonic() < deadline, f"home was never kept:\n{shell.tail()}"
         time.sleep(launcher_on_niri.POLL)
+
+
+def restarted_until_seen_unkept(shell: Shell) -> tuple[float, dict[str, int]]:
+    """Restart the shell until a look sees home not yet kept, and give when and the changes.
+
+    Each try's start time is given with the changes from before its keep, since a later
+    try's sources answer anew from it.
+    """
+    for _ in range(KEPT_LOOKS_TRIED):
+        restarted = time.monotonic()
+        shell.restart()
+        kept = changes_before_kept(shell)
+        if kept is not None:
+            return restarted, kept
+    pytest.fail(
+        f"home was kept before the first look in each of {KEPT_LOOKS_TRIED} restarts, so no"
+        " changes were read from before it: the shell answered late, not a regression"
+    )
 
 
 def drawn_until(shell: Shell, test: Callable[[str], bool], what: str) -> str:
@@ -778,18 +801,21 @@ def test_a_chord_first_after_a_restart_makes_only_its_places_rows(shell: Shell) 
     with home kept at the start left uncounted, and with home found on every chord
     (2026-11-26): only the opening's time shows that.
     """
-    restarted = time.monotonic()
-    shell.restart()
-    kept = changes_before_kept(shell)
+    restarted, kept = restarted_until_seen_unkept(shell)
     answered_since(shell, restarted)
     made = made_by_others(shell, "windows")
-    now = json.loads(shell.as_account(shell.ipc("changed")))
+    # The place's own rows are the opening's to make, so only the others can be caught.
+    now = {
+        name: count
+        for name, count in json.loads(shell.as_account(shell.ipc("changed"))).items()
+        if name != "windows"
+    }
     changed = sorted(name for name, count in now.items() if count != kept.get(name, 0))
-    # Every source excused as changed would leave nothing for the case to catch, so a pass
-    # says how much it excused, and one that excused them all fails rather than passing.
-    print(f"excused {len(changed)} of {len(now)} sources as changed since home was kept")
+    # Every other source excused as changed would leave nothing for the case to catch, so a
+    # run that excused them all fails rather than passing.
     assert len(changed) < len(now), (
-        f"every source changed since home was kept, so nothing was left to catch: {changed}"
+        f"every other source changed since home was kept, so nothing was left to catch:"
+        f" {changed}, of {sorted(now)}"
     )
     unchanged = {name: rows for name, rows in made.items() if name not in changed}
     assert not unchanged, (
