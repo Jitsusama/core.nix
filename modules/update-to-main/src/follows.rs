@@ -129,6 +129,28 @@ pub fn heads(
     Ok(Ok(followed))
 }
 
+/// Each followed input's commit as main at `head` builds it with
+/// `followed`: its followed commit, or where its lock pins it. An input
+/// the lock no longer has isn't built, so it has none. Only locks are
+/// read, main's and followed parents' already fetched, so nothing is
+/// fetched.
+pub fn built(config: &Config, head: &str, followed: &Followed) -> Result<Followed, Failure> {
+    let mut built = followed.clone();
+    if config.follows.is_empty() {
+        return Ok(built);
+    }
+    let lock = lock(config, head)?;
+    for name in config.follows.keys() {
+        if built.contains_key(name) {
+            continue;
+        }
+        if let Some((pinned, _)) = pinned(config, &lock, name, followed)? {
+            built.insert(name.clone(), pinned);
+        }
+    }
+    Ok(built)
+}
+
 /// The commit `name` is pinned at, and what pins it: main's lock, or, under
 /// an input followed, the nearest such input's own lock at the commit
 /// followed, since that's the lock the build reads it from; core's, for

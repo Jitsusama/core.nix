@@ -12,7 +12,7 @@
 //! someone was at the machine.
 
 use crate::config::Config;
-use crate::follows::Followed;
+use crate::follows::{self, Followed};
 use crate::git::{self, Repo};
 use crate::hosted;
 use crate::run::Failure;
@@ -196,86 +196,106 @@ pub fn paused(config: &Config) -> Option<String> {
     held.paused.is_some().then(|| said_of(&held))
 }
 
-/// Why main at `head`, with `followed`, mustn't be switched to: it, or a
-/// followed input's head, holds a commit that is held. A hold neither can
-/// be seen to hold or not stops it too, since a hold is only ever asked
-/// for to keep a change off the machine.
+/// Why main at `head`, with `followed`, mustn't be switched to: it, or an
+/// input as the build reads it, holds a commit that is held. A hold
+/// neither can be seen to hold or not stops it too, since a hold is only
+/// ever asked for to keep a change off the machine.
 #[must_use]
 pub fn stops(config: &Config, head: &str, followed: &Followed) -> Option<String> {
-    for hold in &read(config).commits {
-        // A commit is one repository's, and a followed input's copy is
-        // fetched before this asks, so a commit one of them has is judged
-        // there alone. Main's host doesn't know another repository's
-        // commits, and asking it would refuse every head. Every follow's
-        // copy is asked, not only those this build overrides: an input
-        // that moves only when asked is mostly left at its lock's pin, and
-        // a hold of its commit is still its repository's. That pin isn't
-        // read here, so such a hold can't be told, and stops the build.
-        // Such a copy isn't fetched with the build, so one that lacks the
-        // commit is fetched first: a stale copy would otherwise read the
-        // commit as main's, which hasn't got it, and let it through. A
-        // fetch that fails leaves the hold untold, so it stops.
-        let mut unknown = None;
-        let theirs: Vec<(&String, Option<&String>)> = config
-            .follows
-            .iter()
-            .filter(|(name, follow)| {
-                let repo = Repo::followed(config, name, follow);
-                git::has(&repo, &hold.commit)
-                    || match git::fetch(&repo) {
-                        Ok(_) => git::has(&repo, &hold.commit),
-                        Err(failure) => {
-                            unknown.get_or_insert(failure.why);
-                            false
-                        }
-                    }
-            })
-            .map(|(name, _)| (name, followed.get(name)))
-            .collect();
-        let mut judged = |seen: Result<bool, Failure>| match seen {
-            Ok(true) => true,
-            Ok(false) => false,
-            Err(failure) => {
-                unknown = Some(failure.why);
-                false
-            }
-        };
-        let in_main = theirs.is_empty()
-            && judged(match &config.hosted {
-                Some(hosted) => hosted::holds(config, hosted, &hold.commit, head),
-                None => git::descends(&Repo::main(config), &hold.commit, head),
-            });
-        let in_followed = theirs.into_iter().any(|(name, commit)| {
-            let Some(commit) = commit else {
-                return judged(Err(Failure::new(format!(
-                    "{name} builds at its lock's pin, which isn't read for holds"
-                ))));
-            };
-            config.follows.get(name).is_some_and(|follow| {
-                judged(git::descends(
-                    &Repo::followed(config, name, follow),
-                    &hold.commit,
-                    commit,
-                ))
-            })
-        });
-        if in_main || in_followed {
+    let holds = read(config).commits;
+    let first = holds.first()?;
+    // Each input is judged at the commit the build reads, its followed one
+    // or its lock's pin, so one the lock dropped is neither asked nor
+    // fetched: its repository may have gone with it.
+    let built = match follows::built(config, head, followed) {
+        Ok(built) => built,
+        Err(failure) => {
             return Some(format!(
-                "{} is held, and main at {} holds it; `update-to-main {LIFT} {}` lets it through",
-                git::short(&hold.commit),
+                "{} is held, and what main at {} builds couldn't be read: {}",
+                git::short(&first.commit),
                 git::short(head),
-                hold.commit
+                failure.why
             ));
         }
-        if let Some(why) = unknown {
-            return Some(format!(
-                "{} is held, and whether main at {} holds it couldn't be told: {why}",
-                git::short(&hold.commit),
-                git::short(head)
-            ));
+    };
+    holds
+        .iter()
+        .find_map(|hold| stopped_by(config, head, &built, hold))
+}
+
+/// Why `hold` stops main at `head`, its inputs at `built`, if it does.
+fn stopped_by(config: &Config, head: &str, built: &Followed, hold: &Hold) -> Option<String> {
+    let main = Repo::main(config);
+    // A commit main's copy has is main's, and judged there alone, however
+    // an input's repository came to hold it: anyone who can push there,
+    // signed or not, could put it in. Otherwise each input's copy that
+    // lacks the commit, or what the build reads of it, is fetched first,
+    // since a stale copy would read it as nobody's; and one that has the
+    // commit judges it, by whether what the build reads descends from it.
+    // A fetch that fails leaves the hold untold, so it stops.
+    let mut unknown = None;
+    let theirs: Vec<(&String, &String)> = if git::has(&main, &hold.commit) {
+        Vec::new()
+    } else {
+        built
+            .iter()
+            .filter(|(name, commit)| {
+                let Some(follow) = config.follows.get(*name) else {
+                    return false;
+                };
+                let repo = Repo::followed(config, name, follow);
+                if !git::has(&repo, &hold.commit) || !git::has(&repo, commit) {
+                    if let Err(failure) = git::fetch(&repo) {
+                        unknown.get_or_insert(failure.why);
+                        return false;
+                    }
+                }
+                git::has(&repo, &hold.commit)
+            })
+            .collect()
+    };
+    let mut judged = |seen: Result<bool, Failure>| match seen {
+        Ok(true) => true,
+        Ok(false) => false,
+        Err(failure) => {
+            unknown = Some(failure.why);
+            false
         }
+    };
+    let in_followed = theirs.iter().any(|(name, commit)| {
+        config.follows.get(*name).is_some_and(|follow| {
+            judged(git::descends(
+                &Repo::followed(config, name, follow),
+                &hold.commit,
+                commit,
+            ))
+        })
+    });
+    // A copy of main reads a commit it lacks as not in main, so it is
+    // always asked. Main's host is asked only for a commit no input's copy
+    // has: it knows no other repository's commits, and asking it would
+    // refuse every head.
+    let in_main = match &config.hosted {
+        Some(hosted) => {
+            theirs.is_empty() && judged(hosted::holds(config, hosted, &hold.commit, head))
+        }
+        None => judged(git::descends(&main, &hold.commit, head)),
+    };
+    if in_main || in_followed {
+        return Some(format!(
+            "{} is held, and main at {} holds it; `update-to-main {LIFT} {}` lets it through",
+            git::short(&hold.commit),
+            git::short(head),
+            hold.commit
+        ));
     }
-    None
+    unknown.map(|why| {
+        format!(
+            "{} is held, and whether main at {} holds it couldn't be told: {why}",
+            git::short(&hold.commit),
+            git::short(head)
+        )
+    })
 }
 
 #[cfg(test)]
