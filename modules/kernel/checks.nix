@@ -48,6 +48,20 @@ let
       ${lib.getExe pkgs.bash} ${./tests/kernel-settings-hold.sh} ${kernel.configfile} ${rows}
       touch $out
     '';
+
+  # A few files of a kernel's source, with its own patches applied to them,
+  # as the machine builds it (tests/patched-kernel-source.sh).
+  kernelSource =
+    kernel: files:
+    pkgs.runCommandLocal "patched-source" { nativeBuildInputs = [ pkgs.patchutils ]; } ''
+      ${lib.getExe pkgs.bash} ${./tests/patched-kernel-source.sh} ${kernel.src} ${
+        pkgs.writeText "patches" (
+          lib.concatMapStrings (patch: "${patch.patch}\n") (
+            lib.filter (patch: patch.patch != null) kernel.kernelPatches
+          )
+        )
+      } $out ${lib.escapeShellArgs files}
+    '';
 in
 {
   # The panic screen wears the theme of the account the machine signs in, its
@@ -87,6 +101,23 @@ in
     holds "the-panic-screen-wears-the-theme"
       "The panic screen's colours aren't the account's theme, text on background."
       (follows "osaka-jade" && follows "flexoki-light" && !(bare ? DRM_PANIC_FOREGROUND_COLOR));
+}
+// onLinux {
+  # A join through wpa_supplicant recorded the network's name only after
+  # finding the access point's country, and one that names none ended the
+  # join's last step first, so networkd couldn't match the network's file.
+  # Core's kernel carried the fix for every machine until 7.3.6 took it, so
+  # the kernel it builds must still name the network first
+  # (tests/ssid-before-country.sh).
+  wifi-names-a-network-without-a-country =
+    let
+      sme = "net/wireless/sme.c";
+      source = kernelSource self.packages.x86_64-linux.kernel [ sme ];
+    in
+    pkgs.runCommandLocal "wifi-names-a-network-without-a-country" { } ''
+      ${lib.getExe pkgs.bash} ${./tests/ssid-before-country.sh} ${source}/${sme}
+      touch $out
+    '';
 }
 // onLinux (
   lib.mapAttrs kernelSettingsHold {

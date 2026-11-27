@@ -19,14 +19,25 @@ emptiest. A request for a long run passes at most a few runs in the
 last bin and may take a new chunk, but it fills at least half of it.
 The kept chunks are put in that order where they lie, which the
 partition before it already shuffles each sweep. The list the sort
-uses is the allocator's, kept from sweep to sweep, so a sweep allocates
-nothing once it's grown, and ties go by address, so the order is the
-same each time.
+uses is the allocator's, keeping its room from sweep to sweep, so a
+sweep allocates nothing once it's grown. It's emptied before each sweep,
+so it starts empty whatever came before, and after, so it holds no chunk
+a later sweep frees. Ties go by address through
+std::less, which orders any two pointers, so the order is the same from
+sweep to sweep.
 
 ---
 --- a/src/qml/memory/qv4mm.cpp
 +++ b/src/qml/memory/qv4mm.cpp
-@@ -546,6 +546,24 @@ void BlockAllocator::sweep()
+@@ -28,6 +28,7 @@
+ #include <algorithm>
+ #include <chrono>
+ #include <cstdlib>
++#include <functional>
+ 
+ //#define MM_STATS
+ 
+@@ -546,6 +547,30 @@ void BlockAllocator::sweep()
          return chunks.at(i)->sweep(engine);
      });
      const auto firstEmptyChunk = chunks.begin() + firstEmptyChunkPos;
@@ -39,15 +50,21 @@ same each time.
 +    // left of it, which should be the fullest chunk there, not the emptiest. A request of a
 +    // long run passes at most a few runs too short for it in the last bin, and may take a new
 +    // chunk, which it fills at least half of. The partition above already shuffles the chunks
-+    // each sweep, so nothing counts on the order they lay in. The list is the allocator's, kept
-+    // from sweep to sweep, so a sweep allocates nothing once it has grown, and ties go by
-+    // address, so the order is the same each time.
++    // each sweep, so nothing counts on the order they lay in. The list is the allocator's,
++    // keeping its room from sweep to sweep, so a sweep allocates nothing once it has grown.
++    // It's emptied before, so it starts empty whatever came before, and after, so it holds no
++    // chunk a later sweep frees. Ties go by address through std::less, which orders any two
++    // pointers, so the order is the same from sweep to sweep.
 +    byUse.clear();
 +    for (auto kept = chunks.begin(); kept != firstEmptyChunk; ++kept)
 +        byUse.emplace_back((*kept)->nUsedSlots(), *kept);
-+    std::sort(byUse.begin(), byUse.end());
++    std::sort(byUse.begin(), byUse.end(), [](const auto &one, const auto &other) {
++        return one.first != other.first ? one.first < other.first
++                                        : std::less<Chunk *>{}(one.second, other.second);
++    });
 +    std::transform(byUse.begin(), byUse.end(), chunks.begin(),
 +                   [](const auto &byItsUse) { return byItsUse.second; });
++    byUse.clear();
  
      nextFree = nullptr;
      nFree = 0;
@@ -57,8 +74,8 @@ same each time.
      ChunkAllocator *chunkAllocator;
      ExecutionEngine *engine;
      std::vector<Chunk *> chunks;
-+    // The chunks a sweep keeps, by the slots each uses, kept between sweeps so sorting them
-+    // allocates nothing once it has grown.
++    // The chunks a sweep keeps, by the slots each uses, which means nothing outside a sweep and
++    // is empty there; its room stays between sweeps so sorting allocates nothing once grown.
 +    std::vector<std::pair<std::size_t, Chunk *>> byUse;
      uint *allocationStats = nullptr;
  };

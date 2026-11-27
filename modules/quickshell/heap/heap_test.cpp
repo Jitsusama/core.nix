@@ -1206,7 +1206,10 @@ constexpr int LONG_RUN_STORES = 800;
 // first and none drained; no case that weighs what's made reaches the last.
 // It holds only if the last bin has runs of chunks using both more and
 // less, so a layout that left none there fails it rather than passing with
-// nothing tried.
+// nothing tried. It walks the objects' allocator alone: the shapes'
+// allocator goes through the same sweep, so it proves nothing more, and a
+// fresh engine's few shapes rarely mix chunks of differing use, so walking
+// it would read as a check with nothing tried.
 bool sortsEachBinFullestFirst() {
     QJSEngine engine;
     Heap heap(&engine);
@@ -1221,38 +1224,32 @@ bool sortsEachBinFullestFirst() {
             .arg(LONG_RUN_STORES / 8)
             .arg(LONG_RUN_STORES));
     engine.collectGarbage();
-    const QV4::MemoryManager *manager = engine.handle()->memoryManager;
-    using Allocator = QV4::BlockAllocator;
+    const QV4::BlockAllocator &allocator = engine.handle()->memoryManager->blockAllocator;
     bool ordered = true;
-    const char *outOfOrder = "";
     std::size_t badBin = 0;
     uint badBefore = 0;
     uint badAfter = 0;
     int longRuns = 0;
     uint leastUsed = std::numeric_limits<uint>::max();
     uint mostUsed = 0;
-    for (const auto &[name, allocator] :
-         {std::pair<const char *, const Allocator *>{"objects'", &manager->blockAllocator},
-          std::pair<const char *, const Allocator *>{"shapes'", &manager->icAllocator}})
-        for (std::size_t bin = 0; bin < Allocator::NumBins; ++bin) {
-            uint before = std::numeric_limits<uint>::max();
-            for (const QV4::HeapItem *m = allocator->freeBins[bin]; m; m = m->freeData.next) {
-                const uint used = m->chunk()->nUsedSlots();
-                if (used > before && ordered) {
-                    ordered = false;
-                    outOfOrder = name;
-                    badBin = bin;
-                    badBefore = before;
-                    badAfter = used;
-                }
-                before = used;
-                if (allocator == &manager->blockAllocator && bin == Allocator::NumBins - 1) {
-                    ++longRuns;
-                    leastUsed = std::min(leastUsed, used);
-                    mostUsed = std::max(mostUsed, used);
-                }
+    for (std::size_t bin = 0; bin < QV4::BlockAllocator::NumBins; ++bin) {
+        uint before = std::numeric_limits<uint>::max();
+        for (const QV4::HeapItem *m = allocator.freeBins[bin]; m; m = m->freeData.next) {
+            const uint used = m->chunk()->nUsedSlots();
+            if (used > before && ordered) {
+                ordered = false;
+                badBin = bin;
+                badBefore = before;
+                badAfter = used;
+            }
+            before = used;
+            if (bin == QV4::BlockAllocator::NumBins - 1) {
+                ++longRuns;
+                leastUsed = std::min(leastUsed, used);
+                mostUsed = std::max(mostUsed, used);
             }
         }
+    }
     // Read only once the bins are walked, since what it makes would take
     // runs from their heads and push what's left back on.
     const QJSValue read =
@@ -1280,9 +1277,9 @@ bool sortsEachBinFullestFirst() {
     else if (!ordered)
         std::fprintf(stderr,
                      "FAIL each bin's runs come fullest chunk first after a sweep: in bin %zu "
-                     "of the %s allocator a chunk using %u slots came after one using %u, and "
-                     "the last bin held %d runs, of chunks using %u to %u slots\n",
-                     badBin, outOfOrder, badAfter, badBefore, longRuns, leastUsed, mostUsed);
+                     "a chunk using %u slots came after one using %u, and the last bin held "
+                     "%d runs, of chunks using %u to %u slots\n",
+                     badBin, badAfter, badBefore, longRuns, leastUsed, mostUsed);
     return tried && intact && ordered;
 }
 

@@ -29,6 +29,7 @@ onLinux {
         root = ./.;
         fileset = pkgs.lib.fileset.unions [
           ./MarginCat.js
+          ./MarginCatCarried.js
           ./MarginCatFalls.js
           ./MarginCatFloats.js
           ./MarginCatGames.js

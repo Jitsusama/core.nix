@@ -866,9 +866,10 @@ in
   # things whose stamp moved, and only the newest yank's frame starts its
   # flash, and an opening the collector stalled says where the heap stood
   # as it was asked, as modules/quickshell/tests/pacing.qml holds
-  # launcher/ChangesPresented.js, launcher/Collector.js, launcher/Flash.js,
-  # launcher/Pacing.js, launcher/Presented.js with its launcher/KeysSaid.js,
-  # launcher/Spots.js, launcher/Thread.js and launcher/Wanted.js to it in
+  # launcher/ActsSaid.js, launcher/ChangesPresented.js, launcher/Collector.js,
+  # launcher/Flash.js, launcher/Pacing.js and launcher/Presented.js, with what
+  # they read (launcher/KeysSaid.js, launcher/Makings.js, launcher/Order.js,
+  # launcher/Spots.js, launcher/Thread.js and launcher/Wanted.js), to it in
   # Qt's own engine.
   the-launcher-paces-its-refreshes =
     let
@@ -878,6 +879,7 @@ in
     # cases, or sets what Qt's engine runs them with.
     pkgs.runCommandLocal "the-launcher-paces-its-refreshes" { } ''
       cp ${../tests/pacing.qml} pacing.qml
+      cp ${../launcher/ActsSaid.js} ActsSaid.js
       cp ${../launcher/ChangesPresented.js} ChangesPresented.js
       cp ${../launcher/Collector.js} Collector.js
       cp ${../launcher/Flash.js} Flash.js
