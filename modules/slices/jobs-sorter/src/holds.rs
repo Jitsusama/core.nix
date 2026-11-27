@@ -152,7 +152,7 @@ const ROOT: &str = "/sys/fs/cgroup";
 /// memory go to the disk whatever the tree says, so none keeps it then.
 /// The walk ends where the files do, above the root.
 pub fn kept_above(scope: &Path, read: impl Fn(&Path) -> Option<String>) -> Option<PathBuf> {
-    if !read(Path::new(ZSWAP_ON)).is_some_and(|on| on.trim() == "Y") {
+    if read(Path::new(ZSWAP_ON)).is_none_or(|on| on.trim() != "Y") {
         return None;
     }
     scope
