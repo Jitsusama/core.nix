@@ -2815,7 +2815,7 @@ Singleton {
         // (stillHeld), whoever asks: Reopen Them All, viewKept or a wake
         // would have it draw a second beside it, and its press lose the
         // late tell, as heldBack keeps a press from doing.
-        if (stillHeld(named)) {
+        if (false && stillHeld(named)) {
             console.info(`sessions: ${named} not asked for again, as the kitty that didn't `
                 + "answer for it may yet draw it");
             return false;
