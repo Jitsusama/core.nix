@@ -259,6 +259,24 @@ it("a title that draws as nothing is its tell alone, with no space at either end
   );
 });
 
+it("a lone title that draws as nothing is told by what it carries, else by its id", () => {
+  const skiff = { key: "orchestration.skiff1", name: "Rig the Skiff for the Season", carries: "" };
+  const lone = (carries: string) => [{ key: "orchestration.heron1", name: " \t ", carries }, skiff];
+  const read = (networks: readonly Named[]) => [
+    toldApart(networks).get("orchestration.heron1"),
+    labelledApart(networks).get("orchestration.heron1"),
+    toldApart(networks).get(skiff.key),
+  ];
+  assert.deepEqual(
+    [read(lone("Mend the north gauges")), read(lone(" \n "))],
+    [
+      ["Mend the north gauges", "Mend the north gauges", skiff.name],
+      ["(HERON1)", "(HERON1)", skiff.name],
+    ],
+    "a lone title that draws as nothing was told as nothing, or its neighbour told more",
+  );
+});
+
 it("what a network carries is read as drawn, so its padded name tells nothing more", () => {
   const name = "Rig the Skiff for the Season";
   const told = toldApart([

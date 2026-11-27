@@ -626,7 +626,7 @@ COULDNT_DRAW = "The map couldn't draw"
 
 
 def test_a_line_saying_the_map_couldnt_draw_outlasts_its_patience_with_messages(
-    browser: Browser, slow_talk_served: Served
+    browser: Browser, slow_talk_served: Served, slow_talk_node: StandIn
 ) -> None:
     root, _ = slow_talk_served
     opened = Opened(browser, f"{root}mycelium/", SIZES[-1], "dark")
@@ -643,6 +643,12 @@ def test_a_line_saying_the_map_couldnt_draw_outlasts_its_patience_with_messages(
     expect(asof, "the patience with messages wiped what the drawing said").to_contain_text(
         COULDNT_DRAW
     )
+    # It is that reading's line alone: the next, which draws, says how the map stands again.
+    slow_talk_node.tell("cell", changed=[{"key": f"cell:{HEARD}", "standing": "moving"}])
+    expect(asof, "a reading that drew kept the line of one that couldn't").not_to_contain_text(
+        COULDNT_DRAW, timeout=PACE_MS
+    )
+    expect(asof, "a reading that drew didn't say the map live again").to_contain_text("Live from")
     opened.close()
 
 
@@ -1998,9 +2004,13 @@ ARM = """({ selector, has, is, unlike, within }) => {
   });
 }"""
 # When the answer's frame was painted, from the last key, and the longest task from the first
-# key to then, taken from the observer's records rather than waiting on its delivery.
-KEY_PAINTED = """async () => {
-  const painted = await window.answered;
+# key to then, taken from the observer's records rather than waiting on its delivery. The
+# check before it saw the answer read, so one never painted within `pace` ms fails the case;
+# evaluate has no clock of its own, and a wait on it would hold the build to its limit.
+KEY_PAINTED = """async (pace) => {
+  const late = new Promise((_, missed) =>
+    setTimeout(() => missed(new Error(`no answer painted within ${pace} ms`)), pace));
+  const painted = await Promise.race([window.answered, late]);
   window.longTasks.push(...window.longWatch.takeRecords());
   const within = window.longTasks.filter(
     (task) => task.startTime + task.duration > window.firstKey && task.startTime < painted,
@@ -2026,7 +2036,7 @@ def answered_in(
     for key in keys.split():
         page.keyboard.press(key)
     check()
-    answered: dict[str, float] = page.evaluate(KEY_PAINTED)
+    answered: dict[str, float] = page.evaluate(KEY_PAINTED, PACE_MS)
     return {measure: round(value) for measure, value in answered.items()}
 
 

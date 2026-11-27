@@ -472,10 +472,8 @@ def test_a_quiet_day_sends_no_italic_code_face(
             opened.page.evaluate("document.fonts.ready.then(() => true)")
             opened.page.wait_for_load_state("networkidle")
             urls = [request.url for request in opened.asked]
-            assert any(url.endswith(UPRIGHT_CODE) for url in urls), (
-                f"the upright code face was never asked for, so its italic's absence says nothing: "
-                f"{urls}"
-            )
+            # The head preloads the upright code face whatever the page draws, so a
+            # request for it says nothing; that the face is loaded is what does.
             upright = opened.page.evaluate(QUIET_FACES)
             assert any(face["status"] == "loaded" for face in upright), (
                 f"the quiet line's code drew in no upright code face of its own: {upright}"
