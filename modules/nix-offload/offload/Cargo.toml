@@ -19,3 +19,5 @@ terminal-kit = { path = "../../terminal-kit" }
 
 [dev-dependencies]
 tempfile = "3"
+# How long a timed step may take on a host as busy as the one testing.
+test-pace = { path = "../../test-pace" }

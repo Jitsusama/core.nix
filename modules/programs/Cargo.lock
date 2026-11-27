@@ -60,6 +60,7 @@ dependencies = [
  "serde",
  "serde_json",
  "terminal-kit",
+ "test-pace",
 ]
 
 [[package]]
@@ -148,6 +149,10 @@ dependencies = [
  "serde_json",
  "unicode-width",
 ]
+
+[[package]]
+name = "test-pace"
+version = "0.1.0"
 
 [[package]]
 name = "unicode-ident"

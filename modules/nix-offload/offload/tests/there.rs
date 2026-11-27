@@ -896,7 +896,7 @@ fn a_send_that_falls_behind_stops_and_the_builder_builds_the_rest() {
     )
     .unwrap();
     fs::write(folder.path().join("copy-takes"), "30").unwrap();
-    let began = std::time::Instant::now();
+    let began = test_pace::Timed::start();
     let ran = there_command(folder.path(), &offload, folder.path())
         .arg("/nix/store/aaaa-system.drv")
         .env("NIX_OFFLOAD_SEND_WITHIN", "1")
@@ -905,7 +905,7 @@ fn a_send_that_falls_behind_stops_and_the_builder_builds_the_rest() {
         .unwrap();
     assert_eq!(ran.status.code(), Some(0), "{ran:?}");
     assert!(
-        began.elapsed() < std::time::Duration::from_secs(20),
+        began.within(std::time::Duration::from_secs(20)),
         "the send ran to its end: {:?}",
         began.elapsed()
     );
@@ -4144,11 +4144,11 @@ fn changed_checks_go_to_a_vm_builder_that_stands_while_no_lent_builder_answers()
     )
     .unwrap();
     fs::write(changed.bin.join("says"), "changed  a\n").unwrap();
-    let began = std::time::Instant::now();
+    let began = test_pace::Timed::start();
     let (ran, sent) = changed.run(&["--name-only", "--system", "x86_64-linux"]);
     assert_eq!(ran.status.code(), Some(0), "{ran:?}");
     assert!(
-        began.elapsed() < std::time::Duration::from_secs(60),
+        began.within(std::time::Duration::from_secs(60)),
         "sent on at once, not after waiting for a lent builder: {:?}",
         began.elapsed()
     );
@@ -4660,10 +4660,10 @@ fn a_mac_that_stalls_is_ended_and_kept_as_skipped() {
     fs::write(changed.bin.join("says"), "changed  a\n").unwrap();
     fs::write(changed.bin.join("holds-mac"), "60").unwrap();
 
-    let asked = std::time::Instant::now();
+    let asked = test_pace::Timed::start();
     let (ran, _) = changed.run_bounded(3, &GATE);
     assert!(
-        asked.elapsed() < std::time::Duration::from_secs(45),
+        asked.within(std::time::Duration::from_secs(45)),
         "the stalled Mac held the gate {:?}",
         asked.elapsed()
     );
@@ -4828,10 +4828,10 @@ fn an_evaluator_that_names_nothing_is_left_on_its_clock() {
     )
     .unwrap();
     fs::write(changed.bin.join("evaluates-forever"), "").unwrap();
-    let asked = std::time::Instant::now();
+    let asked = test_pace::Timed::start();
     let (ran, sent) = changed.run(&["--no-vm"]);
     assert!(
-        asked.elapsed() < std::time::Duration::from_secs(60),
+        asked.within(std::time::Duration::from_secs(60)),
         "it waited {:?}",
         asked.elapsed()
     );
@@ -5756,7 +5756,7 @@ fn asked_to_build_here_when_idle_it_builds_here_only_while_this_machine_is_idle(
         pressure.display().to_string(),
     )
     .unwrap();
-    let began = std::time::Instant::now();
+    let began = test_pace::Timed::start();
     let (_, sent, said) = run("checks.x.a", ("2.00", "4.50"));
     assert!(sent, "begun idle, it kept building here once busy: {said}");
     assert!(
@@ -5764,7 +5764,7 @@ fn asked_to_build_here_when_idle_it_builds_here_only_while_this_machine_is_idle(
         "{said}"
     );
     assert!(
-        began.elapsed() < std::time::Duration::from_secs(20),
+        began.within(std::time::Duration::from_secs(20)),
         "it waited {:?} to give way",
         began.elapsed()
     );
@@ -6067,14 +6067,14 @@ fn one_after_another_with(
         let said = folder.path().join(format!("said-{index}"));
         let before = vm_builds().len();
         let mut child = run(args, &said);
-        let began = std::time::Instant::now();
+        let began = test_pace::Timed::start();
         while vm_builds().len() == before
             && !fs::read_to_string(&said)
                 .unwrap_or_default()
                 .contains("so this waits for room")
         {
             assert!(
-                began.elapsed() < std::time::Duration::from_secs(30),
+                began.within(std::time::Duration::from_secs(30)),
                 "run {index} neither built nor waited"
             );
             if let Some(status) = child.try_wait().unwrap() {
@@ -6199,12 +6199,12 @@ impl TwoVm {
     /// that never moves would.
     fn finish(&self, mut running: std::process::Child) -> (Vec<(String, usize)>, String) {
         let said = self.folder.path().join("said");
-        let began = std::time::Instant::now();
+        let began = test_pace::Timed::start();
         let status = loop {
             if let Some(status) = running.try_wait().unwrap() {
                 break status;
             }
-            if began.elapsed() > std::time::Duration::from_secs(30) {
+            if !began.within(std::time::Duration::from_secs(30)) {
                 let _ = running.kill();
                 let _ = running.wait();
                 panic!(
@@ -6436,10 +6436,10 @@ fn a_vm_run_waiting_on_the_first_builder_goes_to_the_second_once_it_has_room() {
     full(&rig.vm);
     let second = full(&rig.more);
     let running = rig.start(3);
-    let began = std::time::Instant::now();
+    let began = test_pace::Timed::start();
     while !rig.said().contains("so this waits for room") {
         assert!(
-            began.elapsed() < std::time::Duration::from_secs(30),
+            began.within(std::time::Duration::from_secs(30)),
             "it never waited: {}",
             rig.said()
         );
@@ -6477,10 +6477,10 @@ fn a_vm_run_never_goes_to_a_builder_root_doesnt_vouch_for() {
     )
     .unwrap();
     let running = rig.start_with(3, &[("NIX_OFFLOAD_VOUCHED", lent.as_path())]);
-    let began = std::time::Instant::now();
+    let began = test_pace::Timed::start();
     while !rig.said().contains("so this waits for room") {
         assert!(
-            began.elapsed() < std::time::Duration::from_secs(30),
+            began.within(std::time::Duration::from_secs(30)),
             "it never waited: {}",
             rig.said()
         );
@@ -6613,13 +6613,13 @@ fn a_vm_run_holds_for_root_while_none_is_vouched_then_goes() {
     let lent = rig.folder.path().join("lent");
     fs::write(&lent, "nix-offload lend-1 ssh-ed25519 AAAA\n").unwrap();
     let running = rig.start_with(3, &[("NIX_OFFLOAD_VOUCHED", lent.as_path())]);
-    let began = std::time::Instant::now();
+    let began = test_pace::Timed::start();
     while !rig
         .said()
         .contains("root vouches for none of the VM builders yet")
     {
         assert!(
-            began.elapsed() < std::time::Duration::from_secs(30),
+            began.within(std::time::Duration::from_secs(30)),
             "it never held for root: {}",
             rig.said()
         );
@@ -6659,9 +6659,9 @@ fn a_vm_run_that_never_asks_is_not_held_for_root() {
         .stderr(fs::File::create(&said).unwrap())
         .spawn()
         .unwrap();
-    let began = std::time::Instant::now();
+    let began = test_pace::Timed::start();
     while running.try_wait().unwrap().is_none() {
-        if began.elapsed() > std::time::Duration::from_secs(30) {
+        if !began.within(std::time::Duration::from_secs(30)) {
             let _ = running.kill();
             let _ = running.wait();
             panic!("it was held: {}", rig.said());
@@ -6687,13 +6687,13 @@ fn a_vm_run_that_never_asks_is_not_held_for_root() {
 /// Waits until a run held off a builder root doesn't vouch for says it
 /// waits on one root does.
 fn wait_for_room(rig: &TwoVm) {
-    let began = std::time::Instant::now();
+    let began = test_pace::Timed::start();
     while !rig
         .said()
         .contains("instead, or for root, whichever comes first")
     {
         assert!(
-            began.elapsed() < std::time::Duration::from_secs(30),
+            began.within(std::time::Duration::from_secs(30)),
             "it never waited: {}",
             rig.said()
         );

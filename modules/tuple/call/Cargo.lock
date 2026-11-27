@@ -140,6 +140,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "test-pace"
+version = "0.1.0"
+
+[[package]]
 name = "tuple-call"
 version = "0.1.0"
 dependencies = [
@@ -148,6 +152,7 @@ dependencies = [
  "inotify",
  "serde_json",
  "terminal-kit",
+ "test-pace",
 ]
 
 [[package]]

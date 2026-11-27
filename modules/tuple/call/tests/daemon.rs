@@ -22,7 +22,9 @@ use std::os::unix::net::UnixListener;
 use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, SystemTime};
+
+use test_pace::Timed;
 
 use daemon_client::{Client, until};
 use serde_json::{Value, json};
@@ -467,7 +469,7 @@ fn tuple_starting_is_followed_at_once() {
          \"rooms\":{\"personal\":[{\"http_value\":\"https://tuple.app/c/listed\",\
          \"created_at\":\"2026-07-31T12:00:00Z\"}]}}}",
     );
-    let began = Instant::now();
+    let began = Timed::start();
     running.logs(&logged(now(), "daemon loop started, waiting for events..."));
     // What Tuple's state said is heard before that Tuple answers, so a
     // client acting on its answering holds the room already.
@@ -483,9 +485,9 @@ fn tuple_starting_is_followed_at_once() {
     }
     assert_eq!(room, "https://tuple.app/c/listed");
     assert!(
-        began.elapsed() < Duration::from_secs(3),
-        "followed only at the next look, {:?} on",
-        began.elapsed()
+        began.within(Duration::from_secs(3)),
+        "followed only at the next look: it {}",
+        began.said(Duration::from_secs(3))
     );
     assert_eq!(running.read("bin/followed").len(), 1);
 }
@@ -854,7 +856,7 @@ fn a_command_held_past_its_hold_lets_its_act_be_asked_afresh() {
     let stall = running.path("bin/stalls-webcam-stop");
     std::fs::write(&stall, "").unwrap();
     let mut asking = running.client();
-    let first = Instant::now();
+    let first = Timed::start();
     let said = asking.ask(&json!({"id": "first", "ask": "camera", "on": false}));
     assert_eq!(
         said["error"]["code"], "unanswered",
@@ -878,8 +880,9 @@ fn a_command_held_past_its_hold_lets_its_act_be_asked_afresh() {
         }
         refused = sent;
         assert!(
-            first.elapsed() < Duration::from_secs(10),
-            "the first stop's hold never ended: {said}"
+            first.within(Duration::from_secs(10)),
+            "the first stop's hold never ended: it {}: {said}",
+            first.said(Duration::from_secs(10))
         );
         // A tenth of a second between asks, which the daemon answers at
         // once within the hold, so the loop doesn't spin.

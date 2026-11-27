@@ -23,7 +23,6 @@
   "modules/night-shift/tests/away/mod.rs" = 3;
   "modules/night-shift/tests/run.rs" = 2;
   "modules/night-shift/tests/turn.rs" = 3;
-  "modules/nix-offload/offload/tests/there.rs" = 12;
   "modules/pain-points/src/hear/tests/sends.rs" = 1;
   "modules/passwords/tests/asks/mod.rs" = 1;
   "modules/passwords/tests/common/mod.rs" = 1;
@@ -47,7 +46,6 @@
   "modules/pineapple/tests/reader/live.rs" = 2;
   "modules/pineapple/tests/reader/main.rs" = 3;
   "modules/pineapple/tests/reader/said.rs" = 3;
-  "modules/programs/tests/daemon/main.rs" = 3;
   "modules/quickshell/tests/agents-on-niri-test.py" = 3;
   "modules/quickshell/tests/launcher_on_niri.py" = 3;
   "modules/quickshell/tests/margin-cat-on-niri-test.py" = 1;
@@ -56,7 +54,6 @@
   "modules/quickshell/timers/tests/daemon.rs" = 1;
   "modules/repos/tests/serve.rs" = 3;
   "modules/slack/sign-in-program/tests/printed.rs" = 1;
-  "modules/tuple/call/tests/daemon.rs" = 2;
   "modules/update-to-main/tests/update/main.rs" = 1;
   "tests/desktop/looks/desktop-looks-vi-vm-test.py" = 1;
   "tests/vm/boot/plymouth-restore-vm-test.py" = 1;

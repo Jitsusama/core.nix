@@ -48,3 +48,5 @@ required-features = ["daemon"]
 daemon-client = { path = "../daemon-client" }
 # Chrome's session files, written for a profile standing in for Chrome's.
 chrome-session = { path = "../chrome/session", default-features = false, features = ["written"] }
+# How long a timed step may take on a host as busy as the one testing.
+test-pace = { path = "../test-pace" }
