@@ -2513,7 +2513,8 @@
     names, lending that key to no machine and adding no key file to its agent, and an agent on a Mac whose sessions sign commits with that key,
     finding the system's ssh before the account's programs; the node may hold 65536 open files
     on Linux, under a hard 524288, systemd's own default, and 10240 on a Mac, naming no hard limit;
-    the home realm's node writes how it would ease the machine, asking the harness to park
+    the home realm's node writes how it would ease the machine, naming each machine lent for
+    agents it may ease onto, by a name the flag can't misread, asking the harness to park
     sessions and making its carries only where told to, on Linux and a Mac alike, and a further
     realm's doesn't; one naming none runs it dialling nothing, and one in no realm has neither a
     realm nor a node
@@ -2602,16 +2603,16 @@
     latest with either copy's networks, its drawing, reach and starter all read from that copy,
     reach judging it by both copies' networks in either order, a cell with no name the map
     can't draw found unreachable and said as words, with its machine, rather than lost,
-    a network the node sets within none growing out of the one whose cells started more of its
-    cells than any other, a tie going to starts and then by name, where the node sets a network
-    standing, no start from inside it counting, of two that started each other's cells the
-    stronger the trunk and no branch looping back round, every network's choices settled
-    strongest first so a choice left over from a loop waits behind stronger ones, a cell's
-    forage saying what it split from, else the first
-    forage listing a cell with a forage here, growing a branch where no start is said or the
-    start grows none or would loop, counting toward the trunk as a start does and counted
-    apart from the starts, a cell started and split from two networks counting toward each,
-    the drawer saying a branch's starts and splits each out of its cells, what each key asks of
+    a network the node sets within none growing out of the one whose cells started or split
+    more of its cells than any other, a tie going to starts and then by name, where the node
+    sets a network standing, no start from inside it counting, of two that started each other's
+    cells the stronger the trunk and no branch looping back round, every network's choices
+    settled strongest first so a choice left over from a loop waits behind stronger ones, a
+    cell's forage saying what it split from, else the first forage listing it, for a cell with
+    a forage here, growing a branch where no start is said or the start grows none or would
+    loop, counting toward the trunk as a start does and counted apart from the starts, a cell
+    started and split from two networks counting toward each, the drawer saying a branch's
+    starts and splits each out of its cells, what each key asks of
     the map, its tree, its find line, the
     page and the theme switch, chords, typing and a key named after an object's own asking
     nothing, the tree's networks and branches by name under a machine or a network and the
@@ -2638,7 +2639,9 @@
     while the node is away with the realm
     kept drawn and live once it's back, stale once the server goes with the realm kept, a record's
     words drawn as words and never as markup, what each spent today listed most first in Now, a
-    machine's drawer and a network's, what waits on a cell and what holds stand said as the node
+    machine's drawer and a network's, a network two machines feed listing each with the cells it
+    draws there, its branch's counted in, what waits on a cell and what holds stand said as the
+    node
     judges them, every cell drawn a step out from the whole map and folded only once too small to
     read, every line thinned as the map steps out past its own size, the talk between two networks
     drawn as one line as warm as its warmest pair until it or a cell it touches opens, a receptor's
@@ -3283,7 +3286,10 @@
     going back within seconds, keeping no page; and pain-points hear keeps what Joel said that
     hurt, or a turn that stalled him, with his words in its own 0700 state for a fortnight, and
     asks the session's own cell for a fix time, once, never the void or a cell the routes say
-    never to, sending nothing without them, and exits failed when it couldn't route
+    never to, and one the void heard or an ended session's the least-held live holder of its
+    subject through that subject's hub, by the session's purpose or his words, kept as a need,
+    and the fallback only when no hub takes it, sending nothing without them, and exits failed
+    when it couldn't route
   '';
   pain-points-passes-clippy = ''
     clippy finds nothing in pain-points or its tests
@@ -4299,9 +4305,10 @@
     leftovers after three quiet seconds
   '';
   sign-in-program-never-waits-for-good = ''
-    a sign-in program's token is taken trimmed, slow or ending after its output; one failing,
-    printing nothing, missing, printing what isn't text or past 64 KiB is none; one hanging,
-    lingering or printing for good runs over within its patience, killed with what it started
+    a sign-in program's token is taken trimmed, slow, ending after its output or once a hold
+    writing it is let go; one failing, printing nothing, missing, printing what isn't text or
+    past 64 KiB is none; one hanging, lingering or printing for good runs over within its
+    patience, killed with what it started
   '';
   sign-in-program-passes-clippy = ''
     clippy finds nothing in sign-in-program, which runs a reader's sign-in, or its tests
@@ -4457,6 +4464,17 @@
   '';
   stands-alone = ''
     nothing here names a machine, its repository or employer
+  '';
+  subject-hubs-passes-clippy = ''
+    clippy finds nothing in subject-hubs, the subjects' hubs and needs cadence and pain-points
+    share, or its tests
+  '';
+  subject-hubs-reads-hubs-and-keeps-needs = ''
+    the hubs a mycelium node lists are read from the line with the list's id, one or several a
+    subject, none from a node that holds no hubs and an error from any other refusal, a record
+    that can't be read or a subject that isn't a plain name left out; the narrowest subject
+    whose every word is said, of a live hub, takes a thing first; and each need put to a hub is
+    kept once in its UTC day's file of the mesh's needs, in the shape the harness keeps its own
   '';
   subtests-read-no-word-as-an-option = ''
     the build of a VM test's subtests hands run-subtests the check and its words past --, in
@@ -7385,15 +7403,15 @@
   '';
   vm-wifi-moves = ''
     the card moves between the access points of one network: on at once from one that doesn't
-    answer, to another when an account asks, keeping its neighbours, and to the one its point
-    names when the point warns it drops the card, in time, keeping its chooser off the point.
-    It stays for a plain ask, and says it. Warned, it looks over the named one's channel first
-    when it isn't heard, stopping a look under way too; it stops a look to move when it is
-    heard. It's let go of its point when the whole network drops it, let go rather than sent
-    back when the point it's warned to doesn't answer, and back within wifid's
-    2 s for a way back past any wait the point bids, its other networks off, from one gone
-    since it was heard, or free to join any network when it can't get back either; another
-    network forgets them
+    answer, to another when an account asks, keeping its neighbours, to another within seconds
+    of its echoes being lost during a call, and to the one its point names when the point warns
+    it drops the card, in time, keeping its chooser off the point. It stays for a plain ask, and
+    says it. Warned, it looks over the named one's channel first when it isn't heard, stopping a
+    look under way too; it stops a look to move when it is heard. It's let go of its point when
+    the whole network drops it, let go rather than sent back when the point it's warned to
+    doesn't answer, and back within wifid's 2 s for a way back past any wait the point bids, its
+    other networks off, from one gone since it was heard, or free to join any network when it
+    can't get back either; another network forgets them
   '';
   vms-reach-the-launcher = ''
     a workstation with a desktop gives its launcher the VMs, read through the daemon's own virsh,

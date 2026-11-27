@@ -89,6 +89,7 @@ import "launcher/Pacing.js" as Pacing
 import "launcher/Collector.js" as Collector
 import "launcher/Makings.js" as Makings
 import "launcher/Presented.js" as Presented
+import "launcher/ActsSaid.js" as ActsSaid
 import "launcher/ChangesPresented.js" as ChangesPresented
 import "launcher/Wanted.js" as Wanted
 import "launcher/Order.js" as Order
@@ -1563,7 +1564,7 @@ Scope {
         const whom = talk?.whom ?? { to: "none", said: String(said ?? "") };
         // A link is a page's words, so its line says whom by kind with reports off.
         console.info("launcher: asked from outside to talk to "
-            + Presented.whomShown(whom, Options.reports));
+            + ActsSaid.whomShown(whom, Options.reports));
         if (whom.to === "none")
             return { error: `the launcher has nothing called ${whom.said}` };
         if (inUse())
@@ -1602,8 +1603,8 @@ Scope {
         const agents = collections.find(one => one.settings.name === "agents") ?? null;
         const offer = agents ? agents.newWorkFor(words, from, on ?? "") : null;
         // A link names the session it's from, so with reports off its address is counted, as
-        // talkTo's is (Presented.whenceShown).
-        const whence = Presented.whenceShown(offer?.from?.address, Options.reports);
+        // talkTo's is (ActsSaid.whenceShown).
+        const whence = ActsSaid.whenceShown(offer?.from?.address, Options.reports);
         console.info("launcher: asked from outside to start new work, "
             + (offer === null ? "offering no plain words" : whence));
         if (offer === null)
@@ -1801,7 +1802,7 @@ Scope {
         const said = path.map(row => row.name).join(" \u203a ");
         const ids = path.map(row => steadyId(row));
         console.info(`launcher: asked from outside to ${Catalogue.kindOf(target)} `
-            + Presented.pathShown(path, Options.reports));
+            + ActsSaid.pathShown(path, Options.reports));
         // One held still, as an ask hidden while Joel shares, is refused,
         // saying why, rather than run or said done for nothing: any step on
         // the way, or the last one's Return's act, asked first, so a held
@@ -2044,7 +2045,7 @@ Scope {
             // The shell's own failure, said in its log in the engine's words;
             // the terminal says it in words.json's (Y2YBTS's review of #2421).
             console.warn("launcher: a terminal's do failed: "
-                + Presented.failureShown(error, Options.reports));
+                + ActsSaid.failureShown(error, Options.reports));
             return { failed: true };
         } finally {
             cataloguing = false;
@@ -2080,7 +2081,7 @@ Scope {
         const names = trail.map(one => one.name);
         const ids = trail.map(one => steadyId(one));
         console.info(`launcher: asked from a terminal to ${Catalogue.kindOf(target)} `
-            + Presented.pathShown(trail, Options.reports));
+            + ActsSaid.pathShown(trail, Options.reports));
         // One held still on the way, or as the last step's Return's act, is
         // refused, saying why, as the walk refuses it: first, so it's never
         // opened or asked about, and never said done.

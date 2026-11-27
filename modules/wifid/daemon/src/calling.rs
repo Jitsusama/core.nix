@@ -1,6 +1,8 @@
 //! Whether Joel's on a call, as his session tells wifid on the launcher's
 //! rows socket, so wifid keeps the card on its access point for the call
-//! rather than move it to a quicker one and stall the call while it does.
+//! rather than move it to a quicker one and stall the call while it does,
+//! unless its link fades: then it gives way at once to another point of
+//! its network, or looks for one every two minutes (fading.rs).
 //!
 //! ```text
 //! {"id": 1, "ask": "act", "act": "calling", "on": true}
@@ -11,8 +13,11 @@
 //! over at its end. One said on and then never again lapses after ten
 //! minutes, so a teller that stops can't hold the card forever. Any
 //! process of the wifi group's can say it, every agent of Joel's among
-//! them, so each change is logged with the process and cgroup that said it,
-//! and anything but exactly that shape is refused, logged by what was
+//! them. One said falsely over a link it loads till echoes go unanswered
+//! moves the card to another point of the network at most once each two
+//! minutes, as loss on both is taken as the network's (`fading::AWAY`).
+//! So each change is logged with the process and cgroup that said it, and
+//! anything but exactly that shape is refused, logged by what was
 //! wrong with it and never by what it said (2026-11-14).
 //!
 //! Long because its cases, over half of it, stay beside the private
