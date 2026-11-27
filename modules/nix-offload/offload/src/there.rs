@@ -385,7 +385,7 @@ impl Asked {
     /// is built as an expression, which a flake that isn't locked, as one
     /// here is, needs `--impure` to read.
     fn build_of(&self, flake: &str, locked: bool) -> Vec<String> {
-        let mut words: Vec<String> = ["build", "--no-link"]
+        let mut words: Vec<String> = ["build", "--no-link", "--max-silent-time", SILENT_LONGEST]
             .iter()
             .map(|word| (*word).to_owned())
             .collect();
@@ -505,6 +505,15 @@ pub fn builder(store: &str) -> Option<Builder> {
 /// ssh's own status when it couldn't reach the builder or lost it, which
 /// no build gives.
 pub const UNREACHED: i32 = 255;
+
+/// The seconds a build may print nothing before Nix fails it, wherever it
+/// runs, so one that hangs fails by name rather than holding its builder,
+/// and whatever waits on it, for good. On 26 November a VM test's disk
+/// image spun silent on a lent builder for 75 minutes and held the merge
+/// net's round, and a lender dropped for failing its proofs keeps the
+/// builds it already has. This is a fail-safe, not the hang's fix. An hour
+/// is chosen wide, so a build that's only slow isn't failed.
+pub const SILENT_LONGEST: &str = "3600";
 
 /// What a lent builder's gate ends a run marked [`MOVES`] with when the
 /// run would have to wait there: sysexits.h's protocol error, which
@@ -5387,8 +5396,9 @@ pub fn warmed(lent: &Builder, installables: &[String], scratch: &Path, ssh: &str
     let Ok((mut warming, known, said)) = reach(lent, scratch, ssh) else {
         return false;
     };
-    let command = ["nix", "build", "--no-link", "--keep-going"]
+    let command = ["nix", "build", "--no-link", "--max-silent-time"]
         .into_iter()
+        .chain([SILENT_LONGEST, "--keep-going"])
         .map(str::to_owned)
         .chain(installables.iter().map(|installable| quoted(installable)))
         .collect::<Vec<_>>()
@@ -9206,7 +9216,10 @@ mod tests {
         let both = asked(&words("-L /nix/store/aaaa-x.drv /nix/store/bbbb-y.drv^out")).unwrap();
         assert_eq!(
             both.build(),
-            words("build --no-link -L /nix/store/aaaa-x.drv^* /nix/store/bbbb-y.drv^out")
+            words(
+                "build --no-link --max-silent-time 3600 -L /nix/store/aaaa-x.drv^* \
+                 /nix/store/bbbb-y.drv^out"
+            )
         );
         assert_eq!(asked(&words("/nix/store/aaaa-x.drv checks.x.a")), None);
         assert_eq!(asked(&words("--apply f /nix/store/aaaa-x.drv")), None);
@@ -9244,6 +9257,8 @@ mod tests {
             [
                 "build",
                 "--no-link",
+                "--max-silent-time",
+                "3600",
                 "--impure",
                 "--expr",
                 r#"(c: c.extend {}) (builtins.getFlake "/t").checks.x.a"#,
@@ -9251,7 +9266,8 @@ mod tests {
         );
         assert_eq!(
             asked.command_of("github:o/r/abc"),
-            r#"nix build --no-link --expr '(c: c.extend {}) (builtins.getFlake "github:o/r/abc").checks.x.a'"#
+            "nix build --no-link --max-silent-time 3600 --expr '(c: c.extend {}) \
+             (builtins.getFlake \"github:o/r/abc\").checks.x.a'"
         );
     }
 
@@ -9260,7 +9276,8 @@ mod tests {
         let asked = asked(&words("--out /o github:o/r/abc checks.x.a")).unwrap();
         assert_eq!(
             asked.command(),
-            "out=$(nix build --no-link --print-out-paths 'github:o/r/abc#checks.x.a') \
+            "out=$(nix build --no-link --max-silent-time 3600 --print-out-paths \
+             'github:o/r/abc#checks.x.a') \
              && tar -czf - -C \"$out\" ."
         );
     }
@@ -9733,7 +9750,7 @@ mod tests {
         let asked = asked(&words("-L github:o/r/abc checks.x.it's")).unwrap();
         assert_eq!(
             asked.command(),
-            r"nix build --no-link -L 'github:o/r/abc#checks.x.it'\''s'"
+            r"nix build --no-link --max-silent-time 3600 -L 'github:o/r/abc#checks.x.it'\''s'"
         );
     }
 
@@ -9999,7 +10016,7 @@ mod tests {
         assert_eq!(near[0].0, &machines[0]);
         assert_eq!(
             near[0].1.command(),
-            "nix build --no-link -L 'path:/z#checks.aarch64-darwin.b' \
+            "nix build --no-link --max-silent-time 3600 -L 'path:/z#checks.aarch64-darwin.b' \
              'path:/z#checks.aarch64-linux.c'"
         );
         assert_eq!(
@@ -10252,7 +10269,8 @@ mod tests {
         assert!(warmed(&lent, &installables, &scratch, ssh));
         assert_eq!(
             fs::read_to_string(folder.path().join("told")).unwrap(),
-            "nix build --no-link --keep-going 'github:o/r#checks.x.vm-a.driver'\n"
+            "nix build --no-link --max-silent-time 3600 --keep-going \
+             'github:o/r#checks.x.vm-a.driver'\n"
         );
         fs::write(folder.path().join("fails"), "").unwrap();
         assert!(
@@ -10347,7 +10365,8 @@ mod tests {
         let vm = vm.unwrap();
         assert_eq!(
             vm.command(),
-            "nix build --no-link -L 'path:/z#checks.x86_64-linux.vm-desktop' \
+            "nix build --no-link --max-silent-time 3600 -L \
+             'path:/z#checks.x86_64-linux.vm-desktop' \
              'path:/z#usb-boots' 'path:/z#checks.x86_64-linux.vm-greeter'"
         );
         assert_eq!(
@@ -10383,11 +10402,12 @@ mod tests {
         let (vm, rest) = vm_tests(&drvs, &patterns, &featured);
         assert_eq!(
             vm.unwrap().command(),
-            "nix build --no-link -L '/nix/store/aaaa-vm-test-run-x.drv^out'"
+            "nix build --no-link --max-silent-time 3600 -L \
+             '/nix/store/aaaa-vm-test-run-x.drv^out'"
         );
         assert_eq!(
             rest.unwrap().command(),
-            "nix build --no-link -L '/nix/store/bbbb-kernel.drv^*'"
+            "nix build --no-link --max-silent-time 3600 -L '/nix/store/bbbb-kernel.drv^*'"
         );
         // Named like one, a derivation that needs no VM isn't one.
         let named = asked(&words("/nix/store/cccc-vm-test-run-y.drv")).unwrap();
