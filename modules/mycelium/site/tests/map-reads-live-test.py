@@ -612,11 +612,10 @@ BOXES = """(keys) => [document.getElementById('map-view'), document.getElementBy
 DRAWN = f"(keys) => ({BOXES})(keys).every((box) => box !== null && box[2] > box[0])"
 # A health said for one thing: its verdict, then why.
 HEALTH_SAID = re.compile(r"^(Well|Watch|Tend): \S")
-# A cell's disc, found and measured in one go: a reading's redraw between
-# finding a disc and measuring it measures a disc no longer drawn, at 0.
-DISC = """(key) => {
-  const e = document.querySelector(`#world circle.cell[data-key="${key}"]`);
-  const r = e?.getBoundingClientRect();
+# A mark on the map, found and measured in one go: a reading's redraw
+# between finding a mark and measuring it measures one no longer drawn, at 0.
+DRAWN = """(selector) => {
+  const r = document.querySelector(selector)?.getBoundingClientRect();
   return r ? [r.left, r.top, r.right, r.bottom] : null;
 }"""
 
@@ -649,9 +648,19 @@ def strongest(page: Page, cell: str) -> float:
 
 def disc_of(page: Page, cell: str) -> list[float]:
     """Where a cell's disc is drawn on the page, failing when it isn't."""
-    disc: list[float] | None = page.evaluate(DISC, f"c:{cell}")
-    assert disc, f"{cell} wasn't drawn"
-    return disc
+    return drawn_at(page, f'#world circle.cell[data-key="c:{cell}"]', cell)
+
+
+def drawn_at(page: Page, selector: str, what: str) -> list[float]:
+    """Where a mark on the map is drawn on the page, failing when it isn't."""
+    box: list[float] | None = page.evaluate(DRAWN, selector)
+    assert box, f"the map drew no {what}"
+    return box
+
+
+def middle(box: list[float]) -> tuple[float, float]:
+    """Find the middle of a box measured as left, top, right and bottom."""
+    return (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
 
 
 def in_view(page: Page, cell: str) -> bool:
@@ -726,9 +735,8 @@ def test_a_network_pointed_at_says_what_it_is_for_and_how_it_stands_unopened(
         HERONS_TITLE
     )
     before = page.url
-    ring = page.locator(f'#world .hub[data-key="h:{HERONS}"] .m-hub').bounding_box()
-    assert ring, "the map drew no ring for the heron's network to point at"
-    page.mouse.move(ring["x"] + ring["width"] / 2, ring["y"] + ring["height"] / 2)
+    ring = f'#world .hub[data-key="h:{HERONS}"] .m-hub'
+    page.mouse.move(*middle(drawn_at(page, ring, "ring for the heron's network")))
     expect(said.first, "pointing at the heron's network never peeked at it").to_have_text(
         HERONS_TITLE
     )
