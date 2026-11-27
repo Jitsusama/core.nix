@@ -9,8 +9,12 @@ use dictation::transcript;
 /// How the note opens, by which it's read back.
 const OPENS: &str = "Part of the call wasn't heard: the speech model failed on ";
 
-/// How the note opens while no line of the call has been heard.
-const OPENS_NONE: &str = "None of the call was heard: the speech model failed on ";
+/// How the note opens while no line of the call has been heard: takes
+/// heard may hold no word, so it says no more than that no word was.
+const OPENS_NONE: &str = "No words of the call were heard: the speech model failed on ";
+
+/// How that note opened before, which files written then still say.
+const OPENED_NONE: &str = "None of the call was heard: the speech model failed on ";
 
 /// The stretches of a call not heard: how many, and the sample of the
 /// call the first starts at.
@@ -59,7 +63,7 @@ impl Unheard {
     pub fn read(said: &str) -> Option<Self> {
         said.split("\n\n").find_map(|paragraph| {
             let paragraph = paragraph.trim();
-            let rest = [OPENS, OPENS_NONE]
+            let rest = [OPENS, OPENS_NONE, OPENED_NONE]
                 .iter()
                 .find_map(|opens| paragraph.strip_prefix(opens))?;
             let (stretches, at) = if let Some(at) = rest.strip_prefix("a stretch of it, at ") {
