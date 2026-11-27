@@ -2117,6 +2117,38 @@ QtObject {
                 KeyActs.reselectHere(mode, rows, chosen), has);
     }
 
+    // What Ctrl+Y's completion does (KeyActs.completing), which the
+    // launcher both does and says first, to time it as leaving a place.
+    function completings(holds) {
+        const field = more => Object.assign({ completion: "ox", fills: false, question: "",
+            selected: true, answered: false, answer: null }, more);
+        const sum = { question: "2+2", headline: "4" };
+        // [what, how the field stands, what Ctrl+Y does]
+        const cases = [
+            ["nothing with no completion shown, a command's row or not",
+                { completion: "", fills: true }, ""],
+            ["a command's row puts its start in the field", { fills: true }, "start"],
+            ["a command's start comes before a question only started",
+                { fills: true, question: "2+", answer: sum }, "start"],
+            ["a question only started is finished, with no row selected",
+                { question: "2+2", selected: false, answer: sum }, "question"],
+            ["or on the answer's own row",
+                { question: "2+2", answered: true, answer: sum }, "question"],
+            ["another row finishes what's typed, with a question beside it",
+                { question: "2+2", answer: sum }, "rest"],
+            ["what's typed is finished with no answer", { selected: false }, "rest"],
+            ["an answer alone goes in the question's place",
+                { selected: false, answer: sum }, "answer"],
+            ["its copy, where it has one",
+                { selected: false, answer: { headline: "4", copy: "four" } }, "answer"],
+            ["never one that does something",
+                { selected: false, answer: { headline: "Lock", run: true } }, ""],
+            ["nor one that says nothing", { selected: false, answer: { headline: "" } }, ""]
+        ];
+        for (const [what, more, does] of cases)
+            holds(`Ctrl+Y: ${what}`, KeyActs.completing(field(more)), does);
+    }
+
     // How tall a drawer's preview stands, on a pitch of 24, two beats of
     // 12, with groups 20 apart: so the facts after it start on the first
     // beat at least the groups' gap below a picture, never a band rounded up
@@ -3269,6 +3301,7 @@ QtObject {
         keysActing(holds);
         keysMoving(holds);
         reselectsHere(holds);
+        completings(holds);
 
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);

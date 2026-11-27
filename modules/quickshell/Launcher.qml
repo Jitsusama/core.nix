@@ -65,6 +65,7 @@ import "Arming.js" as Arming
 import "Changes.js" as Changes
 import "Hearing.js" as Hearing
 import "QueryKeys.js" as QueryKeys
+import "KeyActs.js" as KeyActs
 import "ModeMarks.js" as ModeMarks
 import "Reading.js" as Reading
 import "SetWords.js" as SetWords
@@ -2720,6 +2721,13 @@ Scope {
     // start, a command's, rather than finishing what's typed.
     function fillsStart(): bool {
         return current !== -1 && selected?.start !== undefined;
+    }
+
+    // What Ctrl+Y's completion does now (KeyActs.completing): the prompt's
+    // onCompleted does it, and fillLeaves says it first, by the one rule.
+    function completingNow(): string {
+        return KeyActs.completing({ completion, fills: fillsStart(), question,
+            selected: current !== -1, answered: !!selected?.answered, answer });
     }
 
     // What a collection says at its right, { side, sideItems }, its items
@@ -14658,21 +14666,24 @@ Scope {
                             // his Neovim's completion menu does; stepping in
                             // is normal's right arrow's (Joel, 2026-10-26).
                             // At home there's none, since nothing is typed.
-                            if (root.completion === "")
+                            // A command puts its start in the field, and a
+                            // question only started is finished first.
+                            switch (root.completingNow()) {
+                            case "":
                                 return;
-                            // A command puts its start in the field.
-                            if (root.fillsStart())
+                            case "start":
                                 root.fill(root.selected.start);
-                            // A question only started is finished first.
-                            else if (root.question !== ""
-                                && (root.current === -1 || root.selected?.answered))
+                                break;
+                            case "question":
                                 text = root.question;
-                            else if (root.current !== -1 || !root.answer)
+                                break;
+                            case "rest":
                                 text = text + root.completion;
-                            // An answer that does something has nothing to
-                            // put in the question's place.
-                            else if (!root.answer.run && (root.answer.copy ?? root.answer.headline) !== "")
+                                break;
+                            case "answer":
                                 text = root.answer.copy ?? root.answer.headline;
+                                break;
+                            }
                             root.searchNow();
                         }
                         // Normal's Escape at rest: the key list let go, or
@@ -14753,8 +14764,7 @@ Scope {
                         // asked of the row it will find, as intoHere is.
                         fillLeaves: () => {
                             root.searchNow();
-                            return root.held.length > 0 && root.completion !== ""
-                                && root.fillsStart();
+                            return root.held.length > 0 && root.completingNow() === "start";
                         }
                         upHere: root.canGoUp
                         // The ask takes a key as answerAsk does.
