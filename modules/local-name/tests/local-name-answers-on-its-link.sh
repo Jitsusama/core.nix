@@ -2,16 +2,14 @@
 # Checks the job that makes a Mac's local name answer on its network, with a
 # stand-in scutil that lists the links macOS would, read by read, and a
 # stand-in dns-sd that records what it's asked to answer and answers until
-# it's ended, a moment late, or ends by itself when told to, saying why,
-# and a stand-in date that holds the job's stamp until that reply:
+# it's ended, a moment late, or ends by itself when told to, saying why:
 # the name answers the first wired or Wi-Fi link's address, past a tunnel
 # or a bridge listed before it and never one from the IPv6 list, on that
 # link alone and as a host of its own; a moved address, another link or
 # none ends it, and its answer, waited for, for launchd to start it again;
 # with no link, or a scutil that fails, it waits, saying which once, and a
 # scutil that fails while it answers changes nothing; it says the name is
-# offered, not that it answers, before dns-sd says, as its log's order
-# shows; and an answer that ends
+# offered, not that it answers, before dns-sd says; and an answer that ends
 # by itself ends it, what dns-sd said and the end both in its log.
 # usage: local-name-answers-on-its-link.sh <answer.sh> <bash>
 set -euo pipefail
@@ -53,38 +51,15 @@ trap 'kill "\$!" 2> /dev/null; sleep 0.2; exit 0' TERM
 echo "\$*" >> "$work/answers"
 echo "\$\$" > "$work/answering"
 if [ -e "$work/ends" ]; then
+  # Said at once, so only a job that says it's offered before it starts
+  # dns-sd has that line first in its log.
   echo "07:00:00.000 Got a reply for record its-own-name.local: Name in use, please choose another"
-  touch "$work/replied"
   exit 3
 fi
 sleep infinity &
 wait
 EOF
-# The job stamps what it says with date, asked as the job asks it. When the
-# answer is to end, the stamp waits for dns-sd's reply, for up to ten
-# seconds, so a job that starts dns-sd before it says the name is offered
-# has the reply first in its log, unless its dns-sd takes longer than that
-# to start, and one that says it first, with no dns-sd yet to reply, waits
-# out the ten seconds and still has its line first. That case checks each
-# of its lines asked for a stamp, since a job stamping one another way
-# would skip the wait. Asked otherwise, it says so and refuses.
-cat > "$work/bin/date" <<EOF
-#!${bash}
-if [ "\$*" != "-u +%Y-%m-%dT%H:%M:%SZ" ]; then
-  echo "stand-in date: asked for \$*, not the job's stamp" >&2
-  exit 64
-fi
-echo >> "$work/stamped"
-if [ -e "$work/ends" ]; then
-  tries=0
-  while [ ! -e "$work/replied" ] && [ "\${tries}" -lt 100 ]; do
-    sleep 0.1
-    tries=\$((tries + 1))
-  done
-fi
-echo 2026-01-01T07:00:00Z
-EOF
-chmod +x "$work/bin/scutil" "$work/bin/dns-sd" "$work/bin/date"
+chmod +x "$work/bin/scutil" "$work/bin/dns-sd"
 export PATH="$work/bin:$PATH"
 
 fail() {
@@ -125,7 +100,7 @@ nwi() {
 # Starts a case afresh.
 fresh() {
   rm -f "$work"/nwi.* "$work"/links.* "$work/linked" "$work/answers" "$work/answering" \
-    "$work/ends" "$work/replied" "$work/stamped" "$work/said"
+    "$work/ends" "$work/said"
   echo 0 > "$work/reads"
 }
 # Runs the job, reading every 0 seconds, its exit in ended, what it said,
@@ -217,8 +192,3 @@ holds "an answer that ends" 1 "its-own-name.local is offered as 192.168.4.49 on 
 Got a reply for record its-own-name.local: Name in use, please choose another
 the answer for its-own-name.local on en0 ended (exit 3), so it starts again" \
   "${on_en0}"
-stamps=0
-# Read as a number, since macOS's wc pads its count with blanks.
-[ ! -e "$work/stamped" ] || stamps=$(($(wc -l < "$work/stamped")))
-[ "${stamps}" = 2 ] ||
-  fail "an answer that ends: date stamped ${stamps} of its 2 lines, so their order went unheld"

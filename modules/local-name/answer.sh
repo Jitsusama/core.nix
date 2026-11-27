@@ -7,9 +7,8 @@
 # spun a core). So this registers one address record of its own, for the
 # name, with dns-sd's -P, which gives the record itself rather than leaving
 # it to macOS's own host records, on one link with -i: one record, on one
-# link, whatever else the Mac has, so long as macOS keeps a record whose
-# host is spelled as its own apart from its own, which a Mac has yet to
-# show. dns-sd refuses a link it can't find rather than taking every one.
+# link, whatever else the Mac has. dns-sd refuses a link it can't find
+# rather than taking every one.
 # The link is the first wired or Wi-Fi one (en*) macOS lists for IPv4, in
 # its order of service, with its address: a tunnel, as a VPN's is, or a
 # virtual machines' bridge isn't where the network finds the Mac. Every few
