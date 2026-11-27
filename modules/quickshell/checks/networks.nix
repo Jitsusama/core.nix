@@ -149,8 +149,10 @@ let
   joinedAhead = wifiCase "wifi-holds-the-network-joined-ahead" ../tests/wifi-ahead.qml null;
 
   # Whether a case's build runs the shell and then the guard as ranJudged does
-  # with qs.
-  casesRunJudged = pkgs.lib.hasInfix (ranJudged qs) joinedAhead.buildCommand;
+  # with qs. hasInfix makes a pattern of the sequence, and a pattern may name no
+  # store path, so its qs is matched as text alone.
+  judgedText = builtins.unsafeDiscardStringContext (ranJudged qs);
+  casesRunJudged = pkgs.lib.hasInfix judgedText joinedAhead.buildCommand;
 in
 {
   # The Home Network is offered wherever eero's module brings its daemon,
