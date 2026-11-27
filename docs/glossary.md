@@ -92,7 +92,7 @@ the queue and conclude. The trees, checkouts and changes agents work in are
 
 | Word | Means | Not | In code |
 | ---- | ----- | --- | ------- |
-| agent | a model working for Joel, as a session or a subagent | AI, assistant, bot | |
+| agent | a model working for Joel, as a session or a subagent; For You's Agents holds what they raise | AI, assistant, bot, agents asking | `for-you:kind:agent` |
 | sandbox | the fence around a command an agent runs: what it may read, write, reach and be told | | `PI_SANDBOX`, landrun |
 | broker | a program outside the sandbox holding a credential or a door the sandbox shuts, which hands what's inside only a short-lived or narrow part of it | | `github-broker`, `gcloud-broker`, `jobs-broker` |
 | quest | a piece of Joel's work, with its own folder, README and documents | task, project, todo | `QEST-` ids, the `quest` tool |
@@ -342,7 +342,6 @@ screens themselves are the machine's, in Machine.
 | to-do | what only Joel can do, raised by the session that needs him and listed in For You | Needs You item, waiting on you | `WaitingOnYou.qml` |
 | to-do daemon | what finds a to-do done or ready by itself, running its check and hearing its signal | the desktop's daemon | `modules/to-do`, `verdicts.json` |
 | check | the command that settles a to-do, which succeeds once it's done, apart from the checks core.nix holds | | `doneWhen.check` |
-| agents asking | For You's row gathering the sessions waiting on Joel, once two are, the most pressing first | | `for-you:kind:agent` |
 | look | something a session points Joel at to see, a pull request, a page, a file, a diff or a terminal, kept in For You until he opens or clears it | | `on:waiting:look`, the looks folder |
 | asker | who a look comes from, in plain words: what its session writes, else its quest's name without its id, said in its row's note and its drawer's eyebrow | the quest's title, its id | a look's `asker` |
 | ask | what a look asks of Joel, at its row's side, with its choices first in its step, each answered by one Return once Joel has stepped in; Return on the row opens it and never answers | | a look's `ask` |
@@ -521,6 +520,7 @@ signed in to and forgotten; Wi-Fi's radio can be turned off.
 | firewall | what keeps others' connections out | | nftables |
 | shaper | the program that keeps the network's queue on the machine, sorted by slice, so a call stays quick | | `shaper`, CAKE |
 | house | of the shaper, another machine on the same line out, which says each second what it sends up; this machine keeps the most the two may send between them, and holds its own upload under what the other leaves of it | | `jitsusama.shaper.networks.<router>.house`, `house.rs` |
+| download line | of the shaper, what a network's connection carries down, as declared, or what one of this machine's links reaches it at, under which a call's download is held | | `jitsusama.shaper.networks.<router>.down`, `links.<link>.down`, `networks::Line`, `networks::line_of` |
 | home network | the network at home, the eero's, its nodes and the devices on them, and its place in the launcher | eero network, mesh network | `eero` |
 | node | one eero of the home network | satellite, extender | `eeros` |
 | gateway node | the node the internet comes in through | base station, primary node | `gateway` |

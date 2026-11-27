@@ -3,12 +3,13 @@
 modules/quickshell/checks/core.nix runs this through pytest inside tests/lib/nested-niri.sh, with
 the shell's reports off. A key slower to its frame than launcher/Trials.js's FELT_MS is said in the
 journal by what it was (Presented.timedShown): words typed by how many letters, a step by its
-arrow and the letters of the row it named, and a key the launcher names itself, an arrow, whole,
-since nobody wrote it. Each of Launcher.qml's callers of keyTimed says which its key is, which
-no case in Qt's engine reaches, so these press each kind and read its line. A key listed
-without a daemon's answer, and the answer that comes late, count its letters the same way, and
-a lagging program's drawer is said by its desktop entry's id (Presented.rowShown), never the
-name its window shows, so each program's drawer is timed apart.
+arrow and the key of the launcher's own place or program it took, else the letters of the row it
+named, and a key the launcher names itself, an arrow, whole, since nobody wrote it. Each of
+Launcher.qml's callers of keyTimed says which its key is, which no case in Qt's engine reaches,
+so these press each kind and read its line. A key listed without a daemon's answer, and the
+answer that comes late, count its letters the same way, and a lagging program's drawer is said by
+its desktop entry's id (Presented.rowShown), never the name its window shows, so each program's
+drawer is timed apart.
 """
 
 from __future__ import annotations
@@ -33,8 +34,9 @@ WRITTEN_WITHIN = 2.0
 TOOK = re.compile(r"launcher: (.+?) took \d+ ms to its frame")
 # An arrow as its line says it whole, quoted as Presented.typedShown quotes.
 ARROWS = {'"\u2193"', '"\u2191"'}
-# A step as its line says it with reports off: its arrow and the letters of the row it named.
-STEP = re.compile(r"[\u2192\u2190] \d+ letters?")
+# Programs' and Network's own keys, which a step into either says, so each place is timed apart.
+PROGRAMS = "collection:applications"
+NETWORK = "category:network"
 # How a step in and a step out begin.
 STEPS = {"\u2192 ", "\u2190 "}
 # What a key listed without an answer, and the answer late, say of the key's words.
@@ -43,7 +45,7 @@ LATE = re.compile(r"launcher: .+? answered (.+?) \d+ ms after its key")
 # Words typed with nothing else named by them, so no line says them but by the letters.
 UNNAMED = "zygodactyl"
 # What a program's drawer line says of its row, keyed `program:<its desktop entry's id>`: the id,
-# shaped as an app's (Presented.js's appWord), so RTOIMQ can time Chrome's drawer apart from
+# shaped as an app's (KeysSaid.js's appWord), so RTOIMQ can time Chrome's drawer apart from
 # kitty's (2026-11-24), and never more of the key.
 PROGRAMS_DRAWER = re.compile(r'drawer for "program:([A-Za-z0-9][A-Za-z0-9.-]*)"')
 # Any program's drawer line, shaped as PROGRAMS_DRAWER or said by its kind alone, but not one of
@@ -95,11 +97,11 @@ def test_an_arrow_is_said_whole(shell: Shell) -> None:
     assert "1 letter" not in said, f"an arrow was counted as typed: {said}"
 
 
-def test_a_step_in_and_out_says_its_arrow_and_counts_the_row(shell: Shell) -> None:
-    """Return into a row and - out of it say their arrow and count the row's name.
+def test_a_step_in_and_out_says_its_arrow_and_the_places_key(shell: Shell) -> None:
+    """Return into Programs and - out of it say their arrow and the place's own key.
 
-    Either said as typed would count the arrow among the letters, and said whole would say a
-    row's name, which a source may have written.
+    Either said as typed would count the arrow among the letters, and said by its name would say
+    what a source may have written; the key is the launcher's own.
     """
 
     def in_and_out() -> None:
@@ -115,12 +117,12 @@ def test_a_step_in_and_out_says_its_arrow_and_counts_the_row(shell: Shell) -> No
     said = said_by(shell, in_and_out, lambda keys: {key[:2] for key in keys} >= STEPS)
     steps = [key for key in said if key[:2] in STEPS]
     assert {key[:2] for key in steps} == STEPS, f"a step wasn't said: {said}"
-    assert all(STEP.fullmatch(key) for key in steps), f"a step said more than letters: {said}"
+    assert all(key[2:] == PROGRAMS for key in steps), f"a step said more than its key: {said}"
     assert not any("rograms" in key for key in said), f"a key said the row's name: {said}"
 
 
 def test_a_word_and_a_space_says_the_step_it_took(shell: Shell) -> None:
-    """A word and a space that step into a place say the step, its row counted, as Return's does.
+    """A word and a space that step into a place say the step by its key, as Return's does.
 
     The space's key is timed as the step it took rather than as the letters typed.
     """
@@ -135,8 +137,10 @@ def test_a_word_and_a_space_says_the_step_it_took(shell: Shell) -> None:
     said = said_by(shell, stepped_in, lambda keys: any(key[:2] == "\u2192 " for key in keys))
     steps = [key for key in said if key.startswith("\u2192 ")]
     assert steps, f"the step a space took wasn't said: {said}"
-    assert all(STEP.fullmatch(key) for key in steps), f"the step said more than letters: {said}"
-    assert not any("etwork" in key for key in said), f"a key said the row's name: {said}"
+    assert all(key[2:] == NETWORK for key in steps), f"the step said more than its key: {said}"
+    # The step's own key holds the word typed, so only the other lines are read for it.
+    others = [key for key in said if key not in steps]
+    assert not any("etwork" in key for key in others), f"a key said the row's name: {said}"
 
 
 def logged_until(shell: Shell, mark: int, wanted: re.Pattern[str]) -> list[str]:

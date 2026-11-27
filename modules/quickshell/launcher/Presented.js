@@ -1,16 +1,14 @@
 // What the launcher's journal says, apart from the shell, so tests/pacing.qml holds it in Qt's own
 // engine. Two things:
 // - How long what the launcher showed took to reach niri's screen, as its journal says it as it
-//   closes: keys from their press, and a daemon's changes from the line that made them, each
-//   place on its own (Y2YBTS, 2026-11-11), so a slow update path is seen against Joel's 50 ms bar
-//   as keys are, and a drawer from the key that selected its row (Joel, 2026-11-11 20:28: "the
-//   drawer in the launcher and its time to appear needs to be kept to the same performance
-//   requirements as everything else"). ChangesPresented.js says a daemon's changes with these.
-// - What a line may say with reports off (Options.reports): a key by its kind, words typed by how
-//   many letters, and a daemon's refusal by its code and length, since each may carry what Joel
-//   typed, a window's title or a daemon's words. Launcher.qml, SetWords.js, Trials.qml and the
-//   launcher's Agents, Displays, Now, ReadyRows, Session and Wireless say their lines through
-//   these, by the shapes and words KeysSaid.js holds.
+//   closes: keys from their press, a daemon's changes from the line that made them, each place on
+//   its own (Y2YBTS, 2026-11-11), and a drawer from the key that selected its row, all against
+//   Joel's 50 ms bar (Joel, 2026-11-11 20:28: "the drawer in the launcher and its time to appear
+//   needs to be kept to the same performance requirements as everything else").
+//   ChangesPresented.js says a daemon's changes with these.
+// - What a line may say with reports off (Options.reports), by the shapes and words KeysSaid.js
+//   holds: a key by its kind, words typed by how many letters, and a daemon's refusal by its code
+//   and length, since each may carry what Joel typed, a window's title or a daemon's words.
 .pragma library
 .import "KeysSaid.js" as KeysSaid
 
@@ -296,15 +294,14 @@ function kindsLed(parts, kinds) {
 // A row's key as a line in the journal may say it: whole where `whole`, as while reports are on;
 // otherwise its kind, after a record's `row:`, as wifid's `row:wifi:network:<name>` is `wifi`,
 // since most keys carry what someone else wrote, a network's name or a window's title. The
-// launcher's own ids are whole, and an own kind's key holding more than an id is said by that
-// kind alone. `window:<app>:<title>` is `window:<app>`, and the launcher's own
-// `program:<desktop entry's id>` whole, so each program's drawer is timed apart (RTOIMQ,
-// 2026-11-24), each only where its id is shaped as an app's and else by its kind. A `verb:` key,
-// its daemon's own words, goes to its kind, and its act where that's one of KeysSaid's actWords:
-// `verb:agent:close` whole, `verb:disk:nvme0:/home` as `verb:disk`,
-// `verb:notice:offer:<sender's id>` as `verb:notice:offer`. A new kind says nothing more until
-// it's named here, and a first part that isn't a kind's word, as a name with a colon in it,
-// nothing at all. A number is read as text.
+// launcher's own ids are whole, and an own kind's key holding more than an id is said by that kind
+// alone. `window:<app>:<title>` is `window:<app>`, and the programs daemon's `program:<id>` whole,
+// so each program's drawer is timed apart (RTOIMQ, 2026-11-24), only where its id is shaped as an
+// app's and else by its kind, as another daemon's so keyed. A `verb:` key, its daemon's own words,
+// goes to its kind, and its act where that's one of KeysSaid's actWords: `verb:agent:close` whole,
+// `verb:disk:nvme0:/home` as `verb:disk`, `verb:notice:offer:<id>` as `verb:notice:offer`. A new
+// kind says nothing more until it's named here, and a first part that isn't a kind's word, as a
+// name with a colon in it, nothing at all. A number is read as text.
 function keyShown(key, whole) {
     const text = String(key);
     if (whole) {
@@ -364,10 +361,18 @@ function typedShown(typed, whole) {
 }
 
 // A slow key's line says what was typed as typedShown does, or for a step ("→ Programs") its
-// arrow, and the row it named counted where not `whole`, so a step still reads as one.
-function timedShown(typed, step, whole) {
-    return step && !whole ? `${step.slice(0, 1)} ${typedShown(step.slice(2), false)}`
-        : typedShown(typed, whole);
+// arrow and, where not `whole`, the row it took by `key` where keyShown says that whole, a
+// launcher's own place or a program by its id, so each program's page is timed apart (RTOIMQ,
+// 2026-11-26), and otherwise the row's name counted, so a step still reads as one.
+function timedShown(typed, step, whole, key) {
+    if (!step || whole) {
+        return typedShown(typed, whole);
+    }
+    const text = String(key ?? "");
+    const own = text.startsWith("program:")
+        || KeysSaid.keysOwn.some(kind => text.startsWith(kind));
+    const said = own && keyShown(text, false) === text ? text : typedShown(step.slice(2), false);
+    return `${step.slice(0, 1)} ${said}`;
 }
 
 // A key listed before every place it waited on answered, as the journal says it: its words as
@@ -464,8 +469,7 @@ function whenceShown(address, whole) {
 
 // The rows a walk from outside or a terminal took, by their names where `whole`, and otherwise
 // each by its kind as rowShown says it, since a source named them, escaped as actShown's are,
-// though a key said whole is an id's letters alone (keyShown), so the escape is only a
-// fail-safe there.
+// though a key said whole is an id's letters alone (keyShown), so that's only a fail-safe.
 function pathShown(rows, whole) {
     return whole ? quoted(rows.map(row => row.name).join(" \u203a "))
         : quoted(rows.map(row => rowShown(row, false)).join(" \u203a ")).slice(1, -1);

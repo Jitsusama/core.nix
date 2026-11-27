@@ -341,7 +341,6 @@ pub async fn follow(
                         chooser,
                         (now, hour),
                         (&on, &carried),
-                        &around,
                         (&measures, &learned),
                         (&asks, &state, &looked),
                         call,
@@ -358,14 +357,12 @@ pub async fn follow(
                 let Some(carried) = measures.of(&on.point, now) else {
                     continue;
                 };
-                let around = state.borrow().around(&on.card);
                 let chooser = choosers.entry(on.card.clone()).or_default();
                 chooser.looked_over(now);
                 moves::choose(
                     chooser,
                     (now, hour),
                     (&on, &carried),
-                    &around,
                     (&measures, &learned),
                     (&asks, &state, &looked),
                     call,

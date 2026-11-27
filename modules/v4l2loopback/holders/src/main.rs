@@ -47,7 +47,11 @@
 //! `PipeWire` holding it finds the camera in `PipeWire`'s registry by it, and
 //! names who reads it there (modules/machine's camera.rs). A node a link
 //! names, as the relay's is, changes with each plug-in, so the link is
-//! followed first.
+//! followed first. A loopback's `.devices/` file goes as its camera goes
+//! or the run is stopped, only once its own file says nobody, so a reader
+//! never finds a holder with no node to find it by; a nobody it couldn't
+//! write, or a node file it couldn't remove, is tried again, and once more
+//! as the run is stopped.
 //!
 //! Between those it sleeps on inotify and a signal, so a camera nobody
 //! holds costs nothing. A file it couldn't write, its own or the one in
@@ -56,9 +60,10 @@
 //! while a loopback's camera is watched. What went wrong is said once as
 //! it begins and once as it clears, for each file. The first time its
 //! files say who holds the camera as a read that worked found, and which
-//! node it is, or nobody where there's no camera, its log says
-//! `ready in N ms`, once a run (src/ready.rs says why). Its help, its
-//! failures and its exits take the terminal kit's shape (`help()`).
+//! node it is, or nobody and no `.devices/` file where there's no camera,
+//! its log says `ready in N ms`, once a run (src/ready.rs says why). Its
+//! help, its failures and its exits take the terminal kit's shape
+//! (`help()`).
 //!
 //! Long because a quarter of it is the tests beside it, of how it's asked
 //! and of what its watches say, which reach its private parts.
@@ -665,6 +670,16 @@ fn say_nobody(output: &Path, run: &mut Run) -> bool {
     }
 }
 
+/// What a loopback's run still owes as it's stopped, tried once more: its
+/// nobody, then its node file once that's written. A stop can come while
+/// either waits for its next try, which would never come.
+fn last_try(output: &Path, run: &mut Run, told: bool, unnamed: bool) {
+    let told = told || say_nobody(output, run);
+    if told && !unnamed {
+        run.unname(output);
+    }
+}
+
 /// Says who holds a loopback, following the source to each node it names.
 fn loopback(events: &mut Events, options: &Options, run: &mut Run) {
     tidy(&options.output);
@@ -690,6 +705,7 @@ fn loopback(events: &mut Events, options: &Options, run: &mut Run) {
                 run.written();
             }
             if let Woken::Stopped = events.sleep(Duration::from_secs(1)) {
+                last_try(&options.output, run, told, unnamed);
                 return;
             }
             continue;
@@ -719,9 +735,7 @@ fn loopback(events: &mut Events, options: &Options, run: &mut Run) {
         }
         // So a node it can't watch is tried again, not spun on.
         if let Woken::Stopped = events.sleep(Duration::from_millis(500)) {
-            if told && !unnamed {
-                run.unname(&options.output);
-            }
+            last_try(&options.output, run, told, unnamed);
             return;
         }
     }

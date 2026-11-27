@@ -67,6 +67,9 @@ pub(super) fn judge(
         eprintln!("<3>couldn't write a decision down: {error}");
     }
     if decision.stops() {
+        // Never kept as an earlier resume of Joel's left it, however late
+        // it's heard: his account here is his agents' too, and a comment's
+        // time isn't always when its words were shown (src/resume.rs).
         let stop = record::stop(&source, &decision, now, shadow);
         match record::keep(&state.join("stops"), &said.key, &stop) {
             Ok(true) if shadow => eprintln!("<5>a stop, in shadow: {}", said.link),

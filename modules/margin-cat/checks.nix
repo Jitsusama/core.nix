@@ -98,13 +98,14 @@ onLinux {
     '';
 
   # What the cat's case runner says of each way a case ends, past its own
-  # time, killed, hung or failed, over stand-ins in about 20 s by the clock,
+  # time, killed, hung, failed or unrun under a builder's hold, and
+  # of limits that aren't whole seconds, over stand-ins in about 20 s by the clock,
   # most of it a hang's wait for its guard, as tests/runs-every-case-test.sh
   # holds it.
   the-cat-runner-names-how-each-case-ended =
     pkgs.runCommandLocal "the-cat-runner-names-how-each-case-ended" { }
       ''
-        $BASH ${./tests/runs-every-case-test.sh} ${./tests/runs-every-case.sh}
+        CAPPED_MUST_RUN=1 $BASH ${./tests/runs-every-case-test.sh} ${./tests/runs-every-case.sh}
         touch $out
       '';
 
