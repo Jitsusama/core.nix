@@ -5,6 +5,7 @@
 // same letters land on the same row, a thing is one row, and one slip
 // teaches nothing.
 import QtQuick
+import "Expect.js" as Expect
 import "Fading.js" as Fading
 import "Member.js" as Member
 import "Parts.js" as Parts
@@ -49,25 +50,52 @@ QtObject {
         return out;
     }
 
-    // A throw before the last case ends as a failure at once, naming it,
+    // Every case is asked and each failure kept, so one run says all that
+    // went wrong. A throw before the last case ends as a failure at once,
     // rather than leaving qml running until the check's timeout ends it
-    // with nothing said.
+    // with nothing said, and says first the failures kept before it, then
+    // what threw and where from, as Expect.js says a thrown case: in words
+    // even when the throw's own can't be said, its exit after the warning.
     Component.onCompleted: {
+        const tally = { failures: [], asked: 0 };
         try {
-            run();
+            run(tally);
         } catch (error) {
-            console.warn(`the test threw: ${error}`);
-            Qt.exit(1);
+            warned(tally.failures);
+            Expect.fail(`the test threw after ${tally.asked} cases, ${tally.failures.length} `
+                + `gone wrong: ${Expect.thrown(error)}\n${stackOf(error)}`);
+            return;
+        }
+        warned(tally.failures);
+        console.warn(tally.failures.length > 0
+            ? `${tally.failures.length} went wrong of ${tally.asked}` : `all ${tally.asked} held`);
+        Qt.exit(tally.failures.length > 0 ? 1 : 0);
+    }
+
+    // Said as warnings, since Qt keeps ordinary logging quiet.
+    function warned(failures) {
+        for (const failure of failures)
+            console.warn(failure);
+    }
+
+    // Where a throw came from, as the engine says it, or that it can't be
+    // said, as a thrown value's stack may itself throw.
+    function stackOf(error) {
+        try {
+            return String(error?.stack || "with no stack said");
+        } catch (unsaid) {
+            return "with a stack that can't be said";
         }
     }
 
-    function run() {
-        const failures = [];
-        let asked = 0;
+    // The cases, each counted in `tally.asked` and each failure kept in
+    // `tally.failures`, which outlive a throw.
+    function run(tally) {
         const expect = (what, got, wanted) => {
-            asked++;
+            tally.asked += 1;
             if (JSON.stringify(got) !== JSON.stringify(wanted))
-                failures.push(`${what} gave ${JSON.stringify(got)}, not ${JSON.stringify(wanted)}`);
+                tally.failures.push(
+                    `${what} gave ${JSON.stringify(got)}, not ${JSON.stringify(wanted)}`);
         };
 
         // A thing found three ways is one row, where the first was, saying
@@ -578,12 +606,5 @@ QtObject {
         const held = batches.filter(one => one.took <= 20 * one.walk + 1).length;
         expect(`latching a pick takes at most twenty walks and a ms in three batches, `
             + `${held} held, in ms: ${said}`, held >= 3, true);
-
-        // Said as warnings, since Qt keeps ordinary logging quiet.
-        for (const failure of failures)
-            console.warn(failure);
-        console.warn(failures.length > 0 ? `${failures.length} went wrong of ${asked}`
-            : `all ${asked} held`);
-        Qt.exit(failures.length > 0 ? 1 : 0);
     }
 }
