@@ -114,9 +114,25 @@ pub fn beside(fates: &[Fate], branch: &Side, main: &Side) -> Vec<String> {
     shared
 }
 
+/// The name of a fate `file` lies in that one of `side`'s paths, changed,
+/// renamed or deleted, lies in too, so a hold for it can say the fate
+/// rather than a crate or a file both change.
+pub fn sharing<'a>(fates: &'a [Fate], side: &Side, file: &str) -> Option<&'a str> {
+    fates
+        .iter()
+        .filter(|fate| fate.holds(file))
+        .find(|fate| {
+            side.changed
+                .iter()
+                .chain(side.gone)
+                .any(|path| fate.holds(path))
+        })
+        .map(|fate| fate.name.as_str())
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{Fate, beside, fates, judging, parse};
+    use super::{Fate, beside, fates, judging, parse, sharing};
     use crate::ready::Side;
 
     fn owned(files: &[&str]) -> Vec<String> {
@@ -183,6 +199,33 @@ mod tests {
         assert!(
             judging("no colon").is_err(),
             "a base's list that doesn't read was let pass"
+        );
+    }
+
+    #[test]
+    fn a_file_shares_the_fate_a_side_touched_by_name() {
+        let fates =
+            parse("the map: modules/mycelium/site/ modules/local-sites/\nnet: modules/net/")
+                .expect("the fates read");
+        let nothing = |_: &str| String::new();
+        let (changed, gone) = (
+            owned(&["docs/x.md"]),
+            owned(&["modules/mycelium/site/old.js"]),
+        );
+        let side = Side {
+            changed: &changed,
+            gone: &gone,
+            text: &nothing,
+        };
+        assert_eq!(
+            sharing(&fates, &side, "modules/local-sites/kit/head.css"),
+            Some("the map"),
+            "a file in the fate a side renamed out of wasn't named by it"
+        );
+        assert_eq!(
+            sharing(&fates, &side, "modules/net/site/panel.ts"),
+            None,
+            "a file in a fate the side never touched was named"
         );
     }
 
