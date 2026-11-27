@@ -1,7 +1,10 @@
 //! The daemon's path through the terminal kit, whose stdout is the shell's
 //! pipe: the kit writes no byte of its own there, whether the daemon ends
-//! well, fails or panics, each said on stderr alone; and how a copier's
-//! refusal is said from what it said as it ended.
+//! well, fails or panics, each said on stderr alone; how a copier's
+//! refusal is said from what it said as it ended; and that a copy nothing
+//! can wait to clear is ended at once and refused, never left held.
+
+use std::cell::Cell;
 
 use super::*;
 
@@ -105,4 +108,46 @@ fn a_copiers_reason_is_read_no_further_than_4_kib() {
         exit 1";
     let said = refused_by(copier_ended_by(script), "it never said it was ready");
     assert_eq!(said, format!("couldn't copy: {}", "x".repeat(4096)));
+}
+
+#[test]
+fn a_copy_nothing_can_wait_to_clear_is_ended_and_refused() {
+    let ended = Cell::new(0);
+    let answer = waited_to_clear(
+        |_| Err(std::io::Error::other("no threads left")),
+        || {},
+        || ended.set(ended.get() + 1),
+    );
+    assert_eq!(
+        ended.get(),
+        1,
+        "a copy nothing could wait to clear wasn't ended once"
+    );
+    let why = answer.expect_err("a copy nothing could wait to clear was answered as copied");
+    assert!(
+        why.starts_with("couldn't copy: nothing could wait to clear it:"),
+        "it was refused saying {why:?}, not that nothing could wait to clear it"
+    );
+    assert!(
+        why.contains("no threads left"),
+        "it was refused saying {why:?}, without why: no threads left"
+    );
+}
+
+#[test]
+fn a_copy_whose_wait_began_is_left_held() {
+    let ended = Cell::new(0);
+    let waited = Cell::new(0);
+    let wait = || waited.set(waited.get() + 1);
+    let answer = waited_to_clear(
+        |wait| {
+            wait();
+            Ok(())
+        },
+        wait,
+        || ended.set(ended.get() + 1),
+    );
+    assert_eq!(ended.get(), 0, "a copy whose wait began was ended at once");
+    assert_eq!(waited.get(), 1, "the wait to clear it didn't run once");
+    assert_eq!(answer, Ok(()), "a copy whose wait began was refused");
 }
