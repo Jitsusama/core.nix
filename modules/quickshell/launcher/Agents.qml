@@ -122,9 +122,12 @@ Provider {
             ?? provider.topLetStart(key, one)
         // Its served acts (Pause, Stop, Close) go straight to the daemon,
         // which takes the shell's asks as Joel's, so one a walk chose is
-        // withheld and the walk told why, as joelsOwn tells the tree's.
+        // withheld and only the walk and the journal told why, as joelsOwn tells the
+        // tree's: told on Joel's next opening, the walk's refusal would stand over
+        // whatever he opened for.
         stamp: (key, ask) => provider.joelsAsk(ask)
         whyWithheld: () => provider.actWalked()
+        withheldToWalk: true
         maker: provider
         drawn: provider.launcher?.open ?? false
     }

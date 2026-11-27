@@ -49,6 +49,11 @@ Scope {
     // Why an act the stamp withheld wasn't sent, `(key)` to its words or undefined, as Asks
     // says the share withholds a yes; by default that it wants Joel's own key press.
     property var whyWithheld: null
+    // Whether an act the stamp withheld is told only to the walk that chose it and the
+    // journal, as Agents' acts done as Joel are (Agents.qml's joelsOwn): told on Joel's next
+    // opening, any program could put words on his screen, and they'd stand over what he
+    // opened for. By default it's told then too, as a secret's yes walked from outside is.
+    property bool withheldToWalk: false
     // The keys of rows the place is about to draw more of, its selected row's, so the daemon
     // reads their drawers and inside rows only while they're ahead (ready-rows.md's Notes).
     property var ahead: []
@@ -1329,7 +1334,10 @@ Scope {
         const why = (typeof whyWithheld === "function" ? whyWithheld(key) : undefined)
             ?? Words.field.becoming?.keyed ?? "";
         console.info(`launcher: ${actSaid(one)} withheld: ${whySaid(why)}`);
-        maker?.launcher?.toldNot(toldName(key), one.ask.act ?? verbOf(one), why);
+        if (withheldToWalk)
+            maker?.launcher?.walkRefused?.(why);
+        else
+            maker?.launcher?.toldNot(toldName(key), one.ask.act ?? verbOf(one), why);
     }
 
     // Asks an act that shuts the launcher, as a paste does, which holds

@@ -1073,6 +1073,20 @@ ACT_WALKED = "a session is steered only from your own Return in the launcher"
 """What a walk from outside is told of a session's act the shell does only as Joel."""
 
 
+def opens_saying_nothing_of_the_walk(shell: Shell) -> None:
+    """Joel's next opening says nothing of a walk refused: only the walk and the journal hear it.
+
+    Told on his opening, any program's walk would put words on his screen, standing over what
+    he opened for, as a top row's withheld act once did (ReadyRows.qml's withheldToWalk).
+    """
+    in_agents(shell)
+    said = " ".join(shell.showing()["saying"]).replace("\xa0", " ")
+    assert ACT_WALKED not in said, said
+    # A refusal told on opening is marked failed (Launcher.qml's toldThat).
+    assert "\u2715" not in said, said
+    shell.close_launcher()
+
+
 def test_a_sessions_acts_walked_from_outside_steer_nothing_and_say_why(shell: Shell) -> None:
     """A walk from outside, as an agent's `launcher do` is, steers no session as Joel.
 
@@ -1092,6 +1106,7 @@ def test_a_sessions_acts_walked_from_outside_steer_nothing_and_say_why(shell: Sh
             did = json.loads(shell.as_account(shell.ipc("doing", shlex.quote(json.dumps(walked)))))
             assert did.get("refused") == ACT_WALKED, (steps, did)
             shell.close_launcher()
+            opens_saying_nothing_of_the_walk(shell)
         time.sleep(LINK_QUIET)
         after = {path for inbox in inboxes for path in inbox.glob("*.json")}
         assert after == before, sorted(after - before)
@@ -1118,6 +1133,7 @@ def test_an_orchestrators_served_acts_walked_from_outside_steer_nothing(shell: S
             did = json.loads(shell.as_account(shell.ipc("doing", shlex.quote(json.dumps(walked)))))
             assert did.get("refused") == ACT_WALKED, (steps, did)
             shell.close_launcher()
+            opens_saying_nothing_of_the_walk(shell)
         time.sleep(LINK_QUIET)
         after = set(inbox.glob("*.json"))
         assert after == before, sorted(after - before)
