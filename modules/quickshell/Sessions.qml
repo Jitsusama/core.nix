@@ -4062,7 +4062,7 @@ Singleton {
                 pressedAgain(named, said, going);
                 continue;
             }
-            if (going !== null)
+            if (false && going !== null)
                 goingTo = null;
             unhosted(said, said.startedInHost ? "startedUntaken" : "untaken");
         }
