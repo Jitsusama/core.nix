@@ -420,6 +420,18 @@ SKIPS_NOTHING = "in a box content-visibility: hidden skips nothing of"
             '<div style="display: contents; content-visibility: hidden"><h2>Mine</h2></div>',
             SKIPS_NOTHING,
         ),
+        (
+            '<div style="display: inline; content-visibility: hidden"><h2>Mine</h2></div>',
+            SKIPS_NOTHING,
+        ),
+        (
+            '<div style="display: ruby; content-visibility: hidden"><h2>Mine</h2></div>',
+            SKIPS_NOTHING,
+        ),
+        (
+            '<div style="display: math; content-visibility: hidden"><h2>Mine</h2></div>',
+            SKIPS_NOTHING,
+        ),
         ('<div hidden="until-found"><h2>Mine</h2></div>', "hidden until found"),
         (
             '<button popovertarget="p">x</button><div popover id="p"><h2>Mine</h2></div>',
@@ -484,6 +496,11 @@ def test_a_heading_in_a_dialog_a_popover_button_opens_above_the_head_is_named() 
         "<h2 hidden>Mine</h2>",
         '<div style="content-visibility: hidden"><h2>Mine</h2></div>',
         '<span style="display: inline-block; content-visibility: hidden"><h2>Mine</h2></span>',
+        '<span style="display: inline flex; content-visibility: hidden"><h2>Mine</h2></span>',
+        '<span style="display: flex; content-visibility: hidden"><h2>Mine</h2></span>',
+        '<span style="display: block ruby; content-visibility: hidden"><h2>Mine</h2></span>',
+        '<span style="display: inline flow-root; content-visibility: hidden"><h2>Mine</h2></span>',
+        '<span style="display: table-cell; content-visibility: hidden"><h2>Mine</h2></span>',
         "<dialog><h2>Mine</h2></dialog>",
         '<button commandfor="d" command="close">x</button><dialog id="d"><h2>Mine</h2></dialog>',
         '<button commandfor="d" command="--open">x</button><dialog id="d"><h2>Mine</h2></dialog>',
@@ -524,8 +541,31 @@ def test_a_heading_surely_undrawn_and_unheard_above_the_head_passes(above: str) 
 
 
 def test_a_header_svg_holds_is_no_banner() -> None:
-    """A header the parser puts in SVG is SVG's, which no screen reader hears as a banner."""
+    """SVG doesn't know a header the parser puts in it, so draws none of it, and none hears it."""
     assert heads.head_faults('<svg><header class="hero"></header></svg>' + written()) == []
+
+
+@pytest.mark.parametrize(
+    "above",
+    [
+        '<math><header class="hero"></header></math>',
+        '<math><mrow><header class="hero"></header></mrow></math>',
+    ],
+)
+def test_a_header_mathml_holds_is_no_banner(above: str) -> None:
+    """A header the parser puts in MathML is MathML's, which no screen reader hears as a banner."""
+    assert heads.head_faults(above + written()) == []
+
+
+def test_a_header_in_a_mathml_section_is_a_banner() -> None:
+    """A section the parser puts in MathML is MathML's, which holds a header in no section."""
+    above = '<math><section><mi><header class="hero">Mine</header></mi></section></math>'
+    assert heads.head_faults(above + written()) == [
+        (
+            'it may draw a <header class="hero"> above its head (held in MathML):'
+            " let the kit's head be its one banner"
+        )
+    ]
 
 
 def test_a_heading_after_a_role_a_browser_skips_is_named() -> None:
