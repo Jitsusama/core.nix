@@ -80,10 +80,10 @@ fn every_measure_the_hour_shows_has_a_line_that_holds_it_to_its_target() {
         NOW,
     ));
     // The site judged on three samples of one watch.
-    let watched =
+    let live =
         |ago: i64| serde_json::json!({"at": NOW - ago, "kinds": {"cell": 0.4}}).to_string();
-    let watches = [watched(60), watched(660), watched(1260)].join("\n");
-    shown.push(measures::site::site(&watches, NOW));
+    let site_lines = [live(60), live(660), live(1260)].join("\n");
+    shown.push(measures::site::site(&site_lines, NOW));
     let said = serde_json::json!({"none": "no pain", "none_at_ms": NOW * 1000});
     shown.extend(measures::said_none(&said.to_string(), NOW));
     // Those read from a machine's records, under the keys and targets the

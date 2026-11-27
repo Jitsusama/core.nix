@@ -1205,7 +1205,7 @@ mod tests {
     fn a_site_ask_stays_open_unjudged_and_closes_once_the_site_is_no_longer_sampled() {
         let slow = measure(site::KEY, Class::Functional, 3.1, Some(site::LIVE_AT_MOST));
         let mut ledger = Vec::new();
-        file(&mut ledger, &[slow.clone()], "2026-11-26", 1000);
+        file(&mut ledger, &[slow], "2026-11-26", 1000);
         let open = |ledger: &[Entry]| ledger.iter().any(|e| e.open && e.key == "hour:site:live");
         assert!(open(&ledger), "a slow site wasn't asked: {ledger:?}");
         let unjudged = measure(site::KEY, Class::Functional, 0.0, None);

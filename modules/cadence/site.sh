@@ -22,7 +22,7 @@ readonly WAIT=20
 case ${1-} in
   -h | --help)
     cat <<'EOF'
-cadence-site  sample how long the node's site takes to come live
+cadence-site  time the node's site to live
 
   Opens FEED, the node's feed as the site's page opens it,
   says hello and watches each kind the hello lists at once,
@@ -67,15 +67,21 @@ timed=$(mktemp -d)
 trap 'rm -rf "${timed}"' EXIT
 
 # One connection to the feed, as the page's: what is piped in is asked, and
-# it ends after `$1` answers or the wait, whichever comes first.
+# it ends after `$1` answers or the wait, whichever comes first. A feed
+# refused or slow answers what it sent, if anything, which the sample
+# reads as such, so its failure ends no run.
 socket() {
   timeout "${WAIT}" websocat --no-close --buffer-size 16777216 --max-messages-rev "$1" --text \
-    --origin "${origin}" "${feed}" 2>/dev/null
+    --origin "${origin}" "${feed}" 2>/dev/null || true
 }
 
 at=$(date +%s)
+hello=$(socket 1 <<<'{"id":1,"ask":"hello"}')
+listed=$(jq --raw-output '.kinds[]?' <<<"${hello}" 2>/dev/null) || listed=""
 kinds=()
-mapfile -t kinds < <(socket 1 <<<'{"id":1,"ask":"hello"}' | jq --raw-output '.kinds[]?' || true)
+if [[ -n ${listed} ]]; then
+  mapfile -t kinds <<<"${listed}"
+fi
 if ((${#kinds[@]} == 0)); then
   jq --null-input --compact-output --argjson at "${at}" \
     --arg error "no hello naming its kinds, refused or past ${WAIT} s" \
@@ -91,7 +97,8 @@ for kind in "${kinds[@]}"; do
       while IFS= read -r line; do
         # Its first records, or its refusal, end the watch's wait.
         if [[ ${line} == '{"id":2,"records"'* || ${line} == *'"error"'* ]]; then
-          echo $((($(date +%s%N) - start) / 1000000)) >"${timed}/${kind}"
+          end=$(date +%s%N)
+          echo $(((end - start) / 1000000)) >"${timed}/${kind}"
           break
         fi
       done
@@ -102,7 +109,8 @@ wait
 answered='{}'
 for kind in "${kinds[@]}"; do
   if [[ -s "${timed}/${kind}" ]]; then
-    answered=$(jq --compact-output --arg kind "${kind}" --argjson ms "$(<"${timed}/${kind}")" \
+    ms=$(<"${timed}/${kind}")
+    answered=$(jq --compact-output --arg kind "${kind}" --argjson ms "${ms}" \
       '.[$kind] = ($ms / 1000)' <<<"${answered}")
   else
     answered=$(jq --compact-output --arg kind "${kind}" '.[$kind] = null' <<<"${answered}")
