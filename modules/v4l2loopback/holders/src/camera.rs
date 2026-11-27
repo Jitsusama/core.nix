@@ -207,6 +207,11 @@ pub mod tests {
             !streams(&camera.sysfs, &camera.node),
             "an audio interface's alternate setting was taken as the camera streaming"
         );
+        camera.alternate("2-1:1.0", 1);
+        assert!(
+            !streams(&camera.sysfs, &camera.node),
+            "a video control interface's alternate setting was taken as the camera streaming"
+        );
     }
 
     #[test]
