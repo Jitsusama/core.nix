@@ -82,14 +82,29 @@ def said_by(
     return said
 
 
+def selected(shown: Json) -> object:
+    """Give the name of the row the launcher has selected, or None while none is."""
+    return (shown["selected"] or {}).get("name")
+
+
 def test_an_arrow_is_said_whole(shell: Shell) -> None:
-    """An arrow is said as itself, since the launcher names it and nobody typed it."""
+    """An arrow is said as itself, since the launcher names it and nobody typed it.
+
+    Each arrow waits for the one before it to have moved the selection, so each is heard in a
+    turn of its own and draws a row of its own. Pressed back to back on a loaded machine, no try
+    in six said an arrow (#6855's merge run, 2026-11-26), where alone the case passed five times
+    in five: heard in one turn, the two leave the selection where it began, with nothing new to
+    draw for them.
+    """
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
 
     def down_and_up() -> None:
+        began = selected(shell.showing())
         shell.send_key("down")
+        shell.launcher_until(lambda shown: selected(shown) != began)
         shell.send_key("up")
+        shell.launcher_until(lambda shown: selected(shown) == began)
 
     said = said_by(shell, down_and_up, lambda keys: bool(ARROWS & set(keys)))
     shell.close_launcher()
