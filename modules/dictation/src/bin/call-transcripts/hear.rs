@@ -277,8 +277,7 @@ pub fn hear(
                     .or_insert_with(|| taken_up(&mut ended, book, &key, me));
                 writing.done.insert(side);
                 if writing.done.len() == 2 {
-                    tell_apart(book, &key, writing, me);
-                    write(book, &key, writing, me, false);
+                    write_down_whole(book, &key, writing, me);
                     if let Some(writing) = calls.remove(&key) {
                         keep(&mut ended, &key, writing);
                     }
@@ -461,6 +460,13 @@ fn embed(
         return Ok(None);
     };
     voices.embed(samples)
+}
+
+/// Writes a call down whole once both its sides are done: its voices told
+/// apart, and its file written as no longer being written.
+fn write_down_whole(book: &Shared, key: &str, writing: &mut Writing, me: &str) {
+    tell_apart(book, key, writing, me);
+    write(book, key, writing, me, false);
 }
 
 /// Gives each of their lines the voice its take was grouped into, unless
