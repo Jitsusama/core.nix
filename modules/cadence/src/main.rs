@@ -296,8 +296,12 @@ fn run(args: &Args) -> io::Result<()> {
             eprintln!("cadence: telling of idle sessions: {err}");
         }
     }
+    let journals = units::journal::tick(&folder, now, |asked| {
+        let asked: Vec<&str> = asked.iter().map(String::as_str).collect();
+        command("journalctl", &asked).map_err(|err| err.to_string())
+    });
     if let Some(orchestrator) = &args.orchestrator
-        && let Err(err) = tell_units(&mesh, &folder, orchestrator, args, now)
+        && let Err(err) = tell_units(&mesh, &folder, orchestrator, args, &journals.restarts, now)
     {
         eprintln!("cadence: telling of broken units: {err}");
     }
@@ -314,7 +318,7 @@ fn run(args: &Args) -> io::Result<()> {
     {
         eprintln!("cadence: telling of reverts: {err}");
     }
-    let mut snapshot = gather(&folder, &state_home, &mesh, args, &machines, now)?;
+    let mut snapshot = gather(&folder, &state_home, &mesh, args, &machines, &journals, now)?;
     let card = card::card(&snapshot, clock);
     write_whole(&folder.join("card.txt"), &card)?;
 
@@ -405,6 +409,7 @@ fn tell_units(
     folder: &Path,
     orchestrator: &str,
     args: &Args,
+    restarts: &str,
     now: i64,
 ) -> io::Result<()> {
     let path = folder.join("units.json");
@@ -413,7 +418,7 @@ fn tell_units(
         .and_then(|b| serde_json::from_slice(&b).ok())
         .unwrap_or_default();
     let runtime = env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from);
-    let mut read = units::read(now, true, runtime.as_deref());
+    let mut read = units::read_from(restarts, now, true, runtime.as_deref());
     let mut failed = None;
     let known = mesh.known();
     units::leave_runs(&mut read.failed, |unit| {
@@ -538,35 +543,24 @@ impl Core {
     }
 }
 
-fn journal(args: &[&str]) -> String {
-    let mut all = vec!["-o", "short-unix", "--no-pager"];
-    all.extend_from_slice(args);
-    command("journalctl", &all).unwrap_or_default()
-}
-
 fn gather(
     folder: &Path,
     state_home: &Path,
     mesh: &Mesh,
     args: &Args,
     machines: &BTreeMap<String, String>,
+    journals: &units::journal::Journals,
     now: i64,
 ) -> io::Result<Snapshot> {
     let core = Core::fetched(folder)?;
-    let since = format!("--since=@{}", now - DAY);
-    let mut follower = records::parse_follower(&journal(&[
-        "--user",
-        "-u",
-        "update-to-main-follows",
-        &since,
-    ]));
-    let service = journal(&["-u", "update-to-main.service", &since]);
-    follower.saw(records::parse_looks(&service));
+    let mut follower = records::parse_follower(&journals.follows);
+    let service = &journals.updates;
+    follower.saw(records::parse_looks(service));
     // A switch a reboot cut short writes no done, yet its core runs.
     let booted = fs::read_link("/run/booted-system").unwrap_or_default();
     follower.looks.extend(
         records::boot_time(&fs::read_to_string("/proc/stat").unwrap_or_default())
-            .and_then(|at| records::boot_look(&service, &booted.to_string_lossy(), at)),
+            .and_then(|at| records::boot_look(service, &booted.to_string_lossy(), at)),
     );
     let landings = core.landings(now - DAY, &follower)?;
     let net = state_home.join("net");
@@ -580,11 +574,7 @@ fn gather(
     );
     let (available_gib, swap_gib) =
         records::memory(&fs::read_to_string("/proc/meminfo").unwrap_or_default());
-    let kernel = journal(&[
-        "-k",
-        &format!("--since=@{}", now - 7 * DAY),
-        "--grep=oom-kill:",
-    ]);
+    let kernel = &journals.kernel;
     let watcher = args.watcher.as_deref().and_then(|a| mesh.presence(a));
     let sent = args
         .watcher
@@ -616,7 +606,7 @@ fn gather(
         }),
         available_gib,
         swap_gib,
-        last_oom_kill: records::last_machine_oom_kill(&kernel),
+        last_oom_kill: records::last_machine_oom_kill(kernel),
         watched: args.watcher.is_some(),
         round,
         net_hold: records::net_hold(&fs::read_to_string(net.join("hold.json")).unwrap_or_default()),
