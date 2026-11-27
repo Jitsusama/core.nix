@@ -60,6 +60,8 @@ LINES_GIVEN = 30
 
 # The shell, started once for the file's cases.
 shell = launcher_on_niri.shell
+# The launcher closed after each case, so one failing with it open, or still opening, fails alone.
+launcher_closed_after = launcher_on_niri.launcher_closed_after
 
 
 def keys_said(shell: Shell, mark: int) -> list[str]:
@@ -94,16 +96,14 @@ def said_by(
 def where(shell: Shell) -> tuple[object, object, object]:
     """Give the place the launcher has selected, its row's name, and how many it lists in all.
 
-    The count takes in any headings, which nearly no list has. A launcher that can't be read
-    gives why in place of the name, so the case's failure still says what it saw: a read that
-    throws in the shell answers what threw (Held.js's answered), not the launcher's fields.
+    The count takes in any headings, which nearly no list has. A launcher that can't be read,
+    its read in the shell having thrown or answered nothing, gives why in place of the name, so
+    the case's failure still says what it saw.
     """
     try:
         shown = shell.showing()
     except (AssertionError, ValueError) as unread:
         return None, f"unread: {unread}", None
-    if "threw" in shown:
-        return None, f"threw: {shown['threw']}", None
     return shown.get("current"), (shown.get("selected") or {}).get("name"), shown.get("count")
 
 
@@ -115,13 +115,13 @@ def test_down_and_up_are_each_said_whole(shell: Shell) -> None:
     the selection and none was said (2026-11-26). So each try opens the launcher, presses as
     soon as it's ready, while its opening still draws, and closes it, as the step cases do. A
     frame says only its newest key, so a try ends on the arrow it's for: down and up, then down,
-    up and down, from the first row the opening selects. No try is for its first key: the
-    launcher times a key from when its handler runs, not its press, so a first key heard late
-    after the opening can stay under the felt line and go unsaid (2026-11-27), until the took
-    line counts from the press (core.nix#7087). A try that fails leaves the launcher closed, as
-    every case starts, so the next case fails only for its own reasons. A failure, whether the
-    arrows went unsaid or a try raised, gives where the selection stood after each try's arrows,
-    and the launcher's own lines.
+    up and down, from the first row the opening selects. No try is for its first key: wtype's
+    keys come with no press time (key-times/keytimes.cpp), so the launcher times them from when
+    their handler runs, and a first key heard late after the opening can stay under the felt
+    line and go unsaid (2026-11-27). core.nix#7087 times a key niri stamps from its press, but
+    none of this case's is stamped. A failure, whether the arrows went unsaid or a try's wait ran
+    out, gives where the selection stood after each try's arrows, and the launcher's own lines;
+    launcher_closed_after then closes the launcher, so the next case fails only for its own.
     """
     seen: list[tuple[object, object, object]] = []
     tries = itertools.count()
@@ -130,17 +130,11 @@ def test_down_and_up_are_each_said_whole(shell: Shell) -> None:
     def an_opening() -> None:
         keys = ["down", "up"] if next(tries) % 2 == 0 else ["down", "up", "down"]
         shell.as_account(shell.ipc("toggle"))
-        closed = False
-        try:
-            shell.launcher_ready()
-            for key in keys:
-                shell.send_key(key)
-            seen.append(where(shell))
-            shell.close_launcher()
-            closed = True
-        finally:
-            if not closed:
-                shell.launcher_left_closed()
+        shell.launcher_ready()
+        for key in keys:
+            shell.send_key(key)
+        seen.append(where(shell))
+        shell.close_launcher()
 
     def what_it_saw() -> str:
         logged = launcher_on_niri.logged_since(shell, mark).splitlines()

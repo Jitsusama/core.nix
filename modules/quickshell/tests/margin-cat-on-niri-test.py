@@ -154,9 +154,7 @@ def awake(request: pytest.FixtureRequest) -> Iterator[None]:
     with the launcher up would leave the cat held for the next, so each
     closes it, to fail alone. The cat is held from the card's first frame,
     while it's still opening, when the launcher doesn't yet say it's open,
-    so the opening is waited out first. One that never ends is unopened by
-    a toggle, and then closed if it had already opened, as the launcher's
-    own shut does; the wait's failure is still said. A case that asks for no
+    which launcher_left_closed waits out first. A case that asks for no
     shell judges logic alone, so it neither starts one nor waits on one.
     """
     if "shell" not in request.fixturenames:
@@ -165,16 +163,7 @@ def awake(request: pytest.FixtureRequest) -> Iterator[None]:
     shell: Shell = request.getfixturevalue("shell")
     wake(shell)
     yield
-    try:
-        shell.launcher_until(lambda shown: not shown["opening"])
-    finally:
-        try:
-            if shell.showing()["opening"]:
-                print("the launcher was left opening, so it's unopened for the next test")
-                shell.as_account(shell.ipc("toggle"))
-                shell.launcher_until(lambda shown: not shown["opening"], timedelta(seconds=10))
-        finally:
-            shell.launcher_left_closed()
+    shell.launcher_left_closed()
 
 
 def wake(shell: Shell) -> None:
