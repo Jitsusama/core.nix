@@ -56,6 +56,13 @@ const WAITING_TALK = " Still waiting on what passed between cells.";
  */
 const TALK_PATIENCE_MS = 10_000;
 
+/**
+ * What the drawers say of messages yet to answer, as the line says it:
+ * reading them, waiting on them past its patience, or unable to read them
+ * once their watch broke or the map went stale.
+ */
+type Unread = "reading" | "waiting" | "broken";
+
 const found = document.querySelector("#asof");
 if (!(found instanceof HTMLParagraphElement)) {
   throw new Error("the page has no #asof, where the map says how it stands");
@@ -140,17 +147,36 @@ function talkWords(now: Standing | undefined): string {
     readingSince = performance.now();
     globalThis.setTimeout(sayPastPatience, TALK_PATIENCE_MS + 1);
   }
-  return performance.now() - readingSince > TALK_PATIENCE_MS ? WAITING_TALK : READING_TALK;
+  return pastPatience() ? WAITING_TALK : READING_TALK;
+}
+
+/** Whether the map has been drawn without its messages for longer than its patience. */
+function pastPatience(): boolean {
+  return readingSince !== undefined && performance.now() - readingSince > TALK_PATIENCE_MS;
+}
+
+/** What the drawers say of the messages, as the line does, or nothing once they have answered. */
+function unreadTalk(): Unread | undefined {
+  if (answered.has("message")) {
+    return undefined;
+  }
+  const state = standings.get("message")?.state;
+  if (state === "broken" || state === "stale") {
+    return "broken";
+  }
+  return pastPatience() ? "waiting" : "reading";
 }
 
 /**
  * Says how the map stands once its patience with messages has run out,
- * unless the drawing has written the line since, as when a reading
- * couldn't draw: that stays until the next reading is handed over.
+ * and hands the drawers a reading to say it too, unless the drawing has
+ * written the line since, as when a reading couldn't draw: that stays
+ * until the next reading is handed over.
  */
 function sayPastPatience(): void {
   if (asof.textContent === saidLast) {
     sayHow();
+    owe();
   }
 }
 
@@ -159,7 +185,7 @@ function handOver(): void {
   waiting = undefined;
   owed = false;
   handed = Date.now();
-  const now = nowOf(heard, handed);
+  const now = { ...nowOf(heard, handed), unread: unreadTalk() };
   // A line the drawing wrote of a reading it couldn't draw is that reading's alone:
   // the drawing takes each reading as it's handed, so one that fails again says so again.
   if (saidLast !== undefined && asof.textContent !== saidLast) {
@@ -256,6 +282,11 @@ function watch(kind: Kind): Held {
       stands: (now) => {
         standings.set(kind, now);
         sayHow();
+        // Messages yet to answer are said in the drawers as well as the
+        // line, so a watch of them breaking hands the drawers a reading.
+        if (kind === "message" && !answered.has(kind)) {
+          owe();
+        }
       },
       problem: (what) => {
         unread.set(kind, `${kind}: ${what}`);

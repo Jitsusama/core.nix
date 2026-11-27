@@ -659,7 +659,7 @@ import {
     // A feeding is drawn only where both its ends are, as a tie is.
     const fed = Array.isArray(now.fed) ? now.fed.filter((f) => byAddress.has(f.receptor) && byAddress.has(f.cell)) : null;
     const foraged = new Set(now.foraged || []);
-    return { at: now.at, hubs, cells, byAddress, byId, startedBy, splitFrom, foraged, shared, machines, builders: now.builders || [], standOf, messages: now.messages || [], messagesHeard: Array.isArray(now.messages), judged: Array.isArray(now.waits), balance: now.balance || null, ties: Array.isArray(now.ties) ? now.ties : null, fed, repositories };
+    return { at: now.at, hubs, cells, byAddress, byId, startedBy, splitFrom, foraged, shared, machines, builders: now.builders || [], standOf, messages: now.messages || [], messagesHeard: Array.isArray(now.messages), unread: now.unread || null, judged: Array.isArray(now.waits), balance: now.balance || null, ties: Array.isArray(now.ties) ? now.ties : null, fed, repositories };
   };
 
   // ---- Places that never move. ----
@@ -3084,6 +3084,16 @@ import {
       (more > 0 ? `<p class="hint">and ${esc(plural(more, "more", "more"))} in the last ten minutes.</p>` : "")
     );
   };
+  // What a drawer says of messages the node has yet to give, in the words
+  // the standing line says it in (site.ts): reading them, waiting on them
+  // past its patience, or unable to read them once their watch broke or the
+  // map went stale. A reading that says none is still being read.
+  const UNREAD_WORDS = {
+    reading: "Still reading the node's latest messages.",
+    waiting: "Still waiting on the node's latest messages.",
+    broken: "Couldn't read the node's latest messages.",
+  };
+  const unreadHint = () => `<p class="hint">${UNREAD_WORDS[current.unread] || UNREAD_WORDS.reading}</p>`;
   const heldUp = (cells) => {
     const held = heldFirst(cells);
     const holding = holdingFirst(cells);
@@ -3470,7 +3480,7 @@ import {
       factList(facts) +
       where +
       `<h3>Lately</h3>` +
-      (lately.length ? `<ul class="lately">${lately.join("")}</ul>` : m.messagesHeard ? `<p class="hint">No message to or from it among the latest the node keeps.</p>` : `<p class="hint">Still reading the node's latest messages.</p>`)
+      (lately.length ? `<ul class="lately">${lately.join("")}</ul>` : m.messagesHeard ? `<p class="hint">No message to or from it among the latest the node keeps.</p>` : unreadHint())
     );
   };
 
@@ -3526,7 +3536,7 @@ import {
           (current.messagesHeard ? `<p class="counts mono">${esc(`${plural(said.length, "message")}\u00a0\u00b7 ${asked} asked or found something`)}</p>` : "")) +
       `<h3>Between Them</h3><ul class="rows">${ends.map(endRow).join("")}</ul>` +
       `<h3>What Passed</h3>` +
-      (rows.length ? `<ul class="lately">${rows.join("")}</ul>` : !current.messagesHeard ? `<p class="hint">Still reading the node's latest messages.</p>` : `<p class="hint">Nothing has passed between them in the last ten minutes: the page lists ten minutes of what it heard, from the latest messages the node keeps.</p>`)
+      (rows.length ? `<ul class="lately">${rows.join("")}</ul>` : !current.messagesHeard ? unreadHint() : `<p class="hint">Nothing has passed between them in the last ten minutes: the page lists ten minutes of what it heard, from the latest messages the node keeps.</p>`)
     );
   };
   // What has no place of its own on the map, named in words.
