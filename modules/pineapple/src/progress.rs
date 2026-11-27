@@ -16,7 +16,8 @@
 //! lets that go unnamed, its `since` already past it. One owed that GitHub
 //! won't read again holds when it was last read whole back for the hours
 //! until it's let go, three more while its row in For You can't be
-//! written, and on while what notifies Joel owes it afresh, so
+//! written (six on a site searched by author, a round a minute), and on
+//! while what notifies Joel owes it afresh, so
 //! it reads as a reader that isn't reading, which there it isn't.
 
 use std::path::Path;

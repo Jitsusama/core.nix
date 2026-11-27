@@ -25,9 +25,11 @@ const TRIES: u32 = 12;
 
 /// How many failed asks a thread whose row in For You can't be written is
 /// owed before it's let go anyway, the journal alone saying so: twelve
-/// more, about three hours at the longest wait, so a rows file that stays
-/// broken can't hold every such thread owed for good, each asked every
-/// quarter hour against Joel's limit and the site read as never whole.
+/// more, 384 rounds at the longest wait, about three hours at a round
+/// each half minute, six on a site searched by author, a round a minute,
+/// so a rows file that stays broken can't hold every such thread owed for
+/// good, each asked every quarter hour against Joel's limit and the site
+/// read as never whole.
 const UNTOLD: u32 = 2 * TRIES;
 
 /// How many doublings an owed thread's wait between asks grows by, so the
