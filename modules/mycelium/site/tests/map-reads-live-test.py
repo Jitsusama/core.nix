@@ -623,6 +623,11 @@ def test_the_map_says_it_still_waits_on_messages_that_never_answer(
 
 # What the map's line says when a reading fails to draw (view.js).
 COULDNT_DRAW = "The map couldn't draw"
+# The least time between two readings handed to the drawing (site.ts).
+FLOOR_MS = 2000
+# The page as hidden, as a tab put behind another is, and shown again.
+HIDDEN = "Object.defineProperty(document, 'hidden', { configurable: true, get: () => true })"
+SHOWN = "delete document.hidden; document.dispatchEvent(new Event('visibilitychange'))"
 
 
 def test_a_line_saying_the_map_couldnt_draw_outlasts_its_patience_with_messages(
@@ -635,6 +640,10 @@ def test_a_line_saying_the_map_couldnt_draw_outlasts_its_patience_with_messages(
     the_map_stands(page, "live")
     asof = page.locator("#asof")
     expect(asof, "the map didn't say it was reading what passed").to_contain_text(READING_TALK)
+    # A hidden page hands the drawing nothing, so no reading that draws comes between the one
+    # that fails and the patience; one already timed lands within the floor.
+    page.evaluate(HIDDEN)
+    page.wait_for_timeout(FLOOR_MS + 500)
     # A reading with nothing in it fails to draw, as a broken one would.
     page.evaluate("document.dispatchEvent(new CustomEvent('mycelium:now', { detail: null }))")
     expect(asof, "a reading that failed to draw wasn't said").to_contain_text(COULDNT_DRAW)
@@ -644,6 +653,7 @@ def test_a_line_saying_the_map_couldnt_draw_outlasts_its_patience_with_messages(
         COULDNT_DRAW
     )
     # It is that reading's line alone: the next, which draws, says how the map stands again.
+    page.evaluate(SHOWN)
     slow_talk_node.tell("cell", changed=[{"key": f"cell:{HEARD}", "standing": "moving"}])
     expect(asof, "a reading that drew kept the line of one that couldn't").not_to_contain_text(
         COULDNT_DRAW, timeout=PACE_MS
