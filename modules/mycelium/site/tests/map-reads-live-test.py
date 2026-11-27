@@ -90,8 +90,9 @@ CELLS = 8
 # their room; five kilobytes in all, and one more for the labels kept apart,
 # 0.4 KB of it; and 685.0 KB as the gate first measured it all, 13 bytes past
 # 685, so one more; and more once a machine's drawer starts new work on it,
-# 688.1 KB in all as the gate measured it, so one more.
-BUDGET = Budget(files=35, kilobytes=689, elements=623)
+# 688.1 KB in all as the gate measured it, so one more, and 626 elements as
+# it measured them twice.
+BUDGET = Budget(files=35, kilobytes=689, elements=626)
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000
 TWIN_NETWORKS = 200
