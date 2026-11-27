@@ -24,7 +24,6 @@
   "modules/quickshell/Prompt.qml"
   "modules/quickshell/Sessions.qml"
   "modules/quickshell/clipboard/src/main.rs"
-  "modules/quickshell/launcher/Accessories.qml"
   "modules/quickshell/launcher/Agents.qml"
   "modules/quickshell/launcher/Applications.qml"
   "modules/quickshell/launcher/Now.qml"

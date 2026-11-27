@@ -45,6 +45,10 @@
 // writes it, never for a key; a machine without the reader shows none of
 // them. "bluetooth performance", "bluetooth signal" or "interference"
 // answers with each connected device's Signal and Channels.
+//
+// Long because it is one collection over one adapter: its devices, Nearby
+// and the Adapter are rows made from the same adapter and link file. What
+// stands alone is already beside it, in Nearby.js and Links.js.
 import qs
 import Quickshell
 import Quickshell.Bluetooth
