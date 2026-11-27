@@ -866,7 +866,7 @@ mod tests {
             reaped: std::cell::Cell::new(false),
         };
         drop(writing);
-        let mut waiting = libc::pollfd {
+        let mut told = libc::pollfd {
             fd: reading.as_raw_fd(),
             events: libc::POLLIN,
             revents: 0,
@@ -874,7 +874,7 @@ mod tests {
         // SAFETY: one pollfd, for a descriptor held for the call. A child
         // that never forks says nothing, so the wait is bounded, at 10 s,
         // far past a fork on the busiest builder.
-        let ready = unsafe { libc::poll(&raw mut waiting, 1, 10_000) };
+        let ready = unsafe { libc::poll(&raw mut told, 1, 10_000) };
         assert_eq!(ready, 1, "the child never said it had asked");
         let mut child: libc::pid_t = 0;
         let size = mem::size_of::<libc::pid_t>();
