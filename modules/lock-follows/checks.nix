@@ -17,8 +17,8 @@ onLinux {
   # locking mycelium alone; behind with that one open it does nothing; a
   # newer upstream opens the newer and closes the older; and a fetch that
   # fails ends it non-zero, its line written.
-  lock-follows-opens-one-pull-request-per-rev =
-    pkgs.runCommandLocal "lock-follows-opens-one-pull-request-per-rev"
+  lock-follows-opens-one-change-per-rev =
+    pkgs.runCommandLocal "lock-follows-opens-one-change-per-rev"
       {
         nativeBuildInputs = [
           pkgs.bash

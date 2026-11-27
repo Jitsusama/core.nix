@@ -2287,8 +2287,8 @@
     each told every change trimmed to the feed's fields, refuses an act before it reaches the
     daemon, and says a missing daemon broken with why
   '';
-  lock-follows-opens-one-pull-request-per-rev = ''
-    lock-follows does nothing while main locks upstream's newest, opens one draft pull request
+  lock-follows-opens-one-change-per-rev = ''
+    lock-follows does nothing while main locks upstream's newest, opens one draft change
     locking that input alone at a newer, listing upstream's merges between, opens nothing while
     it's open, closes it naming the one opened for a newer still, and writes a line for each
     run, a failed fetch's too, which ends it non-zero
