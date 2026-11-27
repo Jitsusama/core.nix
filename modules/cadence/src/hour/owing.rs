@@ -762,9 +762,17 @@ pub fn file(
             let last = heard.entry(name.clone()).or_insert(at);
             *last = (*last).max(at);
         }
-        let held = under.iter().any(|e| e.open)
-            || (!one.names.is_empty() && one.names.iter().all(|n| heard.contains_key(n)))
-            || fixed_lately(ledger, &one.key, now);
+        // A line naming nothing is held by its key's own ask within the day.
+        let asked_today = under
+            .iter()
+            .any(|e| e.closed.is_none() && now < e.last_to + DAY);
+        let held_by_day = if one.names.is_empty() {
+            asked_today
+        } else {
+            one.names.iter().all(|n| heard.contains_key(n))
+        };
+        let held =
+            under.iter().any(|e| e.open) || held_by_day || fixed_lately(ledger, &one.key, now);
         if held {
             continue;
         }
@@ -1494,7 +1502,12 @@ mod tests {
             1000,
         );
         assert!(gone(&ledger), "the clean measure's line wasn't filed");
-        file(&mut ledger, &[other.clone()], "2026-11-26", 4600);
+        file(
+            &mut ledger,
+            std::slice::from_ref(&other),
+            "2026-11-26",
+            4600,
+        );
         assert!(
             gone(&ledger),
             "a line whose measure went an hour ago closed at once"
