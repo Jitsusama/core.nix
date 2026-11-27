@@ -21,7 +21,8 @@ const AT: i64 = 1_794_859_200_000;
 
 const CELLS: &str = r#"{"Ok":{"Sessions":[
     {"id":"s-live","address":"ABC123","state":"busy"},
-    {"id":"s-void","address":"VOID01","state":"idle"}]}}"#;
+    {"id":"s-void","address":"VOID01","state":"idle"},
+    {"id":"s-orch","address":"ORCH01","state":"idle"}]}}"#;
 
 struct Place {
     root: PathBuf,
@@ -432,7 +433,8 @@ fn the_keeper_is_told_not_asked_of_a_pain_sent_to_a_cell_its_list_leaves_to_it()
     let cells = r#"{"Ok":{"Sessions":[
         {"id":"s-live","address":"ABC123","state":"busy"},
         {"id":"s-other","address":"GHI789","state":"busy"},
-        {"id":"s-void","address":"VOID01","state":"idle"}]}}"#;
+        {"id":"s-void","address":"VOID01","state":"idle"},
+        {"id":"s-orch","address":"ORCH01","state":"idle"}]}}"#;
     let mut sent: Vec<(String, String, Put)> = Vec::new();
     let hour = hear_putting(&place.ears(), cells, &mut |to, text, put| {
         sent.push((to.into(), text.into(), put));

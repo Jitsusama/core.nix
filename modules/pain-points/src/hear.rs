@@ -483,7 +483,7 @@ pub fn hear_putting(
     hour.cellless_since = cellless_since(&ears.state, ears.at, cells.is_empty() && waiting);
     hour.troubles = troubles(
         &ears.state,
-        &routes,
+        (&routes, &cells),
         (failed, out_of_time, unstarted, given_up),
         hour.cellless_since
             .is_some_and(|since| ears.at - since >= CELLLESS_AT_MOST_MS),

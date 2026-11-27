@@ -262,6 +262,40 @@ fn routes_that_cant_be_read_or_name_no_sender_are_troubles() {
 }
 
 #[test]
+fn a_keeper_whose_session_ended_is_a_trouble_and_a_live_fallback_is_not() {
+    let place = Place::new("ended-keeper");
+    fs::write(
+        place.root.join("state/routes.json"),
+        r#"{"from":"EAR001","fallback":"ORCH01","ledgers":"GONE01","never":["NEVER1"]}"#,
+    )
+    .expect("routes");
+    a_day(&place);
+    let cells = r#"{"Ok":{"Sessions":[
+        {"id":"s-live","address":"ABC123","state":"busy"},
+        {"id":"s-void","address":"VOID01","state":"idle"},
+        {"id":"s-orch","address":"orch01","state":"idle"},
+        {"id":"s-gone","address":"GONE01","state":"ended"}]}}"#;
+    let hour = hear(&place.ears(), cells, &mut |_, _| true).expect("a run");
+    assert_eq!(
+        hour.troubles,
+        [
+            "routes.json's keeper GONE01 is no live session's, so what goes to it goes unread \
+             until the routes name who keeps it now"
+        ],
+        "an ended keeper wasn't the one thing said, or a live fallback was: {hour:?}"
+    );
+    // A node naming no sessions says that instead, not that each is gone.
+    let hour = hear(&place.ears(), "", &mut |_, _| true).expect("a run");
+    assert!(
+        !hour
+            .troubles
+            .iter()
+            .any(|t| t.contains("no live session's")),
+        "a node naming no sessions read as an ended keeper: {hour:?}"
+    );
+}
+
+#[test]
 fn routes_that_never_name_a_cell_never_to_send_nothing() {
     let place = Place::new("no-never");
     fs::write(

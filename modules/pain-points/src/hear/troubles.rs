@@ -3,9 +3,10 @@
 //! named no sessions or no hubs, each a trouble only once it has gone on,
 //! and needs that couldn't be kept, which stay a trouble for the hour.
 
-use super::route::Routes;
+use super::route::{Cell, Routes};
 use super::{HOUR_MS, Hour, SEND_TRIES};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
@@ -92,16 +93,17 @@ pub fn unkept(state: &Path, at: i64, why: Option<String>) -> Option<Unkept> {
 
 /// What kept a run from routing as it should: sends that failed this run,
 /// or wait as its time for sends ran out or the mycelium couldn't be
-/// started, pains given up on, and a node that has named no sessions for
-/// long.
+/// started, pains given up on, a node that has named no sessions for
+/// long, and a fallback or keeper no live session goes by.
 pub fn troubles(
     state: &Path,
-    routes: &Routes,
+    (routes, cells): (&Routes, &BTreeMap<String, Cell>),
     (failed, out_of_time, unstarted, given_up): (usize, usize, usize, usize),
     no_cells: bool,
 ) -> Vec<String> {
     let mut troubles: Vec<String> = Routes::trouble(state).into_iter().collect();
     troubles.extend(refused(routes));
+    troubles.extend(unanswered(routes, cells));
     if failed > 0 {
         troubles.push(format!("{failed} sends failed"));
     }
@@ -142,4 +144,31 @@ fn refused(routes: &Routes) -> Vec<String> {
         }
     }
     troubles
+}
+
+/// A fallback or keeper the routes name that no live session goes by,
+/// while the node names sessions: what goes to it is sent where nobody
+/// reads it, as Joel's ledgers were once their keeper's session ended and
+/// the routes still named it. One the routes refuse is said by `refused`,
+/// and a node naming none by the count of runs without cells.
+fn unanswered(routes: &Routes, cells: &BTreeMap<String, Cell>) -> Vec<String> {
+    if !routes.sends() || cells.is_empty() {
+        return Vec::new();
+    }
+    let answers = |to: &str| {
+        cells
+            .values()
+            .any(|cell| cell.live && cell.address.eq_ignore_ascii_case(to))
+    };
+    [("fallback", &routes.fallback), ("keeper", &routes.ledgers)]
+        .into_iter()
+        .filter_map(|(what, to)| to.as_deref().map(|to| (what, to)))
+        .filter(|(_, to)| !routes.refuses(to) && !answers(to))
+        .map(|(what, to)| {
+            format!(
+                "routes.json's {what} {to} is no live session's, so what goes to it goes \
+                 unread until the routes name who keeps it now"
+            )
+        })
+        .collect()
 }
