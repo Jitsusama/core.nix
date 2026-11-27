@@ -538,6 +538,27 @@ def test_a_categorys_word_and_a_space_step_into_it_and_a_command_finishes_by_ctr
     desktop.close_launcher()
 
 
+def test_ctrl_y_puts_a_sums_answer_in_its_place_as_it_copies(desktop: Desktop) -> None:
+    """Ctrl+Y puts a sum's answer in its place as it copies, ungrouped."""
+    machine = desktop.machine
+    # A sum has no rows and asks no question, so no row is selected: its
+    # answer stands above them at -1, said in the field's grey, grouped as
+    # it's shown but bare as it's copied. Ctrl+Y puts in what's copied, so
+    # the sum can be carried on as a number.
+    desktop.answer("1000*1000")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["current"] == -1
+            and shown["kind"] == "answer"
+            and (shown["selected"] or {}).get("name") == "1,000,000"
+            and shown["completion"] == " = 1,000,000"
+        )
+    )
+    machine.send_key("ctrl-y")
+    desktop.launcher_until(lambda shown: shown["typed"] == "1000000")
+    desktop.close_launcher()
+
+
 def opening_since(desktop: Desktop, since: int) -> Json:
     """Give the first opening the trials kept begun at or after `since`, in the machine's ms.
 

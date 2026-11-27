@@ -6837,8 +6837,8 @@
   vm-desktop-launcher-finds-by-name = ''
     the launcher lists each thing once for everything Joel types, finds a thing by every name it
     had, a collection by its name and emoji in their own place, steps in by a category's word and
-    a row's hidden words, a command finishes by Tab, and its field's keys take what's typed away
-    and put it back
+    a row's hidden words, a command finishes by Tab, Ctrl+Y puts a sum's answer in its place as
+    it copies, and its field's keys take what's typed away and put it back
   '';
   vm-desktop-launcher-draws-still = ''
     the launcher draws only what changes: a list scrolled by hand stays put as it refreshes, a
