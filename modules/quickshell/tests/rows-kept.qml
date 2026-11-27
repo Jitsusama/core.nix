@@ -266,10 +266,10 @@ QtObject {
         // those it would pass. Eight rows moving among Emoji's reach what
         // none of those do, working out which rows stay and moving each of
         // the rest, those rising into their places and those falling past
-        // the rows that stay, and are held only to what they end as: that
-        // path's healthy steps took 26 to 53 walks on a lender, and with a
-        // walk over the rows staying for each row 89 to 151 (#7167's lent
-        // runs), too near for one bound to tell apart. The other three are
+        // the rows that stay, and a walk over the rows staying for each row
+        // took them 89 to 151 walks on a lender where healthy steps took 26
+        // to 53 (#7167's lent runs), too near for one bound in walks, so
+        // they're held below to how their cost grows. The other three are
         // held to twenty, between what a healthy first letter took, a few,
         // and what it took with a Map in placesOf, staying and steps, 30 to
         // 200 (72 to 128 ms against 0.6 to 2.2, #7015's lent run), so a Map
@@ -295,9 +295,13 @@ QtObject {
         const moving = eightMoving(emoji);
         const way = step => step.move === undefined ? "no move"
             : step.to < step.move ? "up" : "down";
+        const eachWay = ["up", "up", "up", "up", "down", "down", "down", "down"];
         Expect.same("eight rows moving among Emoji's are eight moves, four up and four down",
-            RowsKept.steps(emoji, moving, 8).map(way),
-            ["up", "up", "up", "up", "down", "down", "down", "down"]);
+            RowsKept.steps(emoji, moving, 8).map(way), eachWay);
+        const fourfold = Array.from({ length: 4 * emoji.length }, (_, at) => `emoji:${at}`);
+        const movingFourfold = eightMoving(fourfold);
+        Expect.same("and among four times Emoji's rows they're the same eight moves",
+            RowsKept.steps(fourfold, movingFourfold, 8).map(way), eachWay);
         Expect.same("and the eight moves among Emoji's rows end where they're listed",
             done(emoji, moving, 8),
             { rows: moving.join(" "), drawn: "" });
@@ -328,6 +332,33 @@ QtObject {
             Expect.same(`${what} takes at most twenty walks and a ms in three batches, `
                 + `${held} held, in ms: ${said}`, held >= 3, true);
         }
+        // The eight moves are held to how their cost grows, timed over
+        // Emoji's rows and over four times as many. Each pass steps() makes
+        // for them is a walk over the rows, or one for each of the eight
+        // moves, so four times the rows cost about four times as much: a
+        // little more for staying's halving, 11 halvings a row over Emoji
+        // and 13 over four times it, and for a longer list's reach in
+        // memory. A walk for each row, as a Map or a Set in setOf, staying
+        // or the move loop makes, costs sixteen times as much over four
+        // times the rows, and over Emoji it cost two to three times all the
+        // rest (89 to 151 walks against 26 to 53), so about twelve times
+        // with the rest beside it. Held to eight times and a ms, the middle
+        // of four and sixteen, a healthy run has room for that little more
+        // and a busy batch, and such a walk fails by half again. Each of
+        // five batches times the steps over Emoji eight times and over four
+        // times its rows twice, back to back, so each timing does the same
+        // work and leaves the collector the same garbage, and it holds when
+        // three do.
+        const growing = Array.from({ length: 5 }, () => ({
+            emoji: timed(() => RowsKept.steps(emoji, moving, 8), 8),
+            fourfold: timed(() => RowsKept.steps(fourfold, movingFourfold, 8), 2)
+        }));
+        const grew = growing.map(one => `${one.fourfold} against ${one.emoji}`).join(", ");
+        console.info(`eight moves over four times Emoji's rows took, in ms against over its: `
+            + grew);
+        const grown = growing.filter(one => one.fourfold <= 8 * one.emoji + 1).length;
+        Expect.same(`eight moves over four times the rows take at most eight times as long and `
+            + `a ms in three batches, ${grown} held, in ms: ${grew}`, grown >= 3, true);
 
         // Lists drawn from a seeded sequence (Park and Miller's), the same
         // every run, each ending where it's listed and drawing only the
