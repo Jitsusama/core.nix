@@ -26,7 +26,9 @@ use crate::apart::{
 /// Whether nix-offload's record for a commit holds a changed-checks run that
 /// passed there and built what it named, against a base `on_main` says
 /// origin's main holds, so it named everything a merge onto main moves.
-/// A run that only named or only kept a base built nothing.
+/// A run that only named or only kept a base built nothing, and one for
+/// another system, as a Mac's comparison is (`macs.rs`), built nothing
+/// this machine merges: `gated::named` reads runs so too.
 pub fn built_there(record: &str, on_main: &dyn Fn(&str) -> bool) -> bool {
     record
         .lines()
@@ -38,11 +40,14 @@ pub fn built_there(record: &str, on_main: &dyn Fn(&str) -> bool) -> bool {
             let built = !words
                 .iter()
                 .any(|word| matches!(*word, "--name-only" | "--keep-base"));
-            let base = words
-                .iter()
-                .position(|word| *word == "--base")
-                .and_then(|at| words.get(at + 1));
-            built && base.is_none_or(|base| on_main(base))
+            let given = |flag: &str| {
+                words
+                    .iter()
+                    .position(|word| *word == flag)
+                    .and_then(|at| words.get(at + 1))
+            };
+            let for_system = given("--system").is_none_or(|system| *system == crate::SYSTEM);
+            built && for_system && given("--base").is_none_or(|base| on_main(base))
         })
 }
 
