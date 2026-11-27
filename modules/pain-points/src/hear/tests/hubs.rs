@@ -320,6 +320,67 @@ fn a_retry_after_a_late_send_then_a_failed_one_goes_to_another_holder() {
     );
 }
 
+#[test]
+fn a_retry_after_a_late_send_goes_where_it_went_though_its_path_changed() {
+    // From a hub's holder to where no hub takes it, and from the
+    // fallback to where a hub does: either way the late send may have
+    // landed, so a second cell would work on the pain beside the first
+    // (#7022's round, F1, F12 and F16).
+    let hub = || vec![Hub::new("launcher", "HUB001", &["FIT002"])];
+    for (n, (first, then, late_at)) in [(hub(), vec![], "FIT002"), (vec![], hub(), "ORCH01")]
+        .into_iter()
+        .enumerate()
+    {
+        let place = Place::new(&format!("hub-late-path-{n}"));
+        place.routes();
+        a_day(&place);
+        let went = asked_in(&ears_with(&place, first), HELD, |to| {
+            if to == late_at {
+                Sent::Late
+            } else {
+                Sent::Went
+            }
+        });
+        assert_eq!(owners_of(&went, VOIDS), [late_at], "the first send");
+        let retried = asked_in(&ears_with(&place, then), HELD, |_| Sent::Went);
+        assert_eq!(
+            owners_of(&retried, VOIDS),
+            [late_at],
+            "its path changed, the retry after a late send went to a second cell"
+        );
+        assert!(
+            place.needs().is_empty(),
+            "a need was kept by a hub the retry didn't go by"
+        );
+    }
+}
+
+#[test]
+fn a_retry_after_a_late_send_goes_on_once_that_holder_has_ended() {
+    let place = Place::new("hub-late-ended");
+    place.routes();
+    a_day(&place);
+    let ears = ears_with(&place, vec![Hub::new("launcher", "HUB001", &["FIT002"])]);
+    let _ = asked_in(&ears, HELD, |to| {
+        if to == "FIT002" {
+            Sent::Late
+        } else {
+            Sent::Went
+        }
+    });
+    let ended = r#"{"Ok":{"Sessions":[
+        {"id":"s-live","address":"ABC123","state":"busy"},
+        {"id":"s-void","address":"VOID01","state":"idle"},
+        {"id":"s-never","address":"NEVER1","state":"idle"},
+        {"id":"s-hub","address":"HUB001","state":"idle"}]}}"#;
+    let retried = asked_in(&ears, ended, |_| Sent::Went);
+    assert_eq!(
+        owners_of(&retried, VOIDS),
+        ["ORCH01"],
+        "the retry waited on a holder that has ended"
+    );
+}
+
 /// A run whose send to FIT002 answers `first`, then one whose hub names
 /// its holders in `order`: the owners the retry gave the void's pain to.
 fn retried_after(name: &str, order: &[&str], first: Sent) -> Vec<String> {

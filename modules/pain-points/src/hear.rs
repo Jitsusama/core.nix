@@ -708,6 +708,47 @@ fn voids_of(following: &BTreeMap<String, Following>) -> BTreeSet<String> {
         .collect()
 }
 
+/// The live cells that may hold another's pain. Nothing goes to the void,
+/// so no session known to be the void holds one, even where the routes
+/// forgot its address (#6774's round, F10), nor one heard in the void
+/// whose pains are all gone from what's kept (j176, F6).
+fn holders_of(
+    live: &BTreeSet<String>,
+    cells: &BTreeMap<String, Cell>,
+    voids: &BTreeSet<String>,
+    kept: &[Heard],
+) -> BTreeSet<String> {
+    let mut holders = live.clone();
+    let void_sessions = kept
+        .iter()
+        .filter(|h| h.void)
+        .map(|h| &h.session)
+        .chain(voids);
+    for session in void_sessions {
+        if let Some(cell) = cells.get(session) {
+            holders.remove(&cell.address);
+        }
+    }
+    holders
+}
+
+/// The cell a pain's last send ran late at, while it can still be sent
+/// to: a holder, or the fallback, the routes don't refuse. A late send
+/// may have landed, so its retry goes back there whatever path the pain
+/// would take now, its own cell come live, the fallback or another hub,
+/// and no second cell works on it beside the first (#7022's round, F1,
+/// F12 and F16).
+fn late_holder<'a>(
+    pain: &'a Heard,
+    holders: &BTreeSet<String>,
+    routes: &Routes,
+) -> Option<&'a String> {
+    pain.sent_late_at.as_ref().filter(|late| {
+        !routes.refuses(late)
+            && (holders.contains(*late) || routes.fallback.as_ref() == Some(*late))
+    })
+}
+
 /// How a pain no live cell of its own takes went to a holder of its
 /// subject: the hub's cell, and the subject it holds the pain by.
 struct Through {
@@ -732,21 +773,7 @@ fn owners_for(
         .filter(|cell| cell.live)
         .map(|cell| cell.address.clone())
         .collect();
-    // Nothing goes to the void, so no session known to be the void holds
-    // another's pain, even where the routes forgot its address (#6774's
-    // round, F10), nor one heard in the void whose pains are all gone
-    // from what's kept (j176, F6).
-    let mut holders = live.clone();
-    let void_sessions = kept
-        .iter()
-        .filter(|h| h.void)
-        .map(|h| &h.session)
-        .chain(voids);
-    for session in void_sessions {
-        if let Some(cell) = cells.get(session) {
-            holders.remove(&cell.address);
-        }
-    }
+    let holders = holders_of(&live, cells, voids, kept);
     // A holder is given the pain while it holds the fewest still open,
     // counting each it is given now.
     let mut held: BTreeMap<String, usize> = BTreeMap::new();
@@ -773,7 +800,8 @@ fn owners_for(
         let Some(cell) = cells.get(&pain.session) else {
             continue;
         };
-        let owner = route::own(&pain.session, pain.void, cells, routes).or_else(|| {
+        let late = late_holder(pain, &holders, routes);
+        let mut owner = route::own(&pain.session, pain.void, cells, routes).or_else(|| {
             // Never back to its own cell, which the void's or a refused
             // one may be, live as it is.
             let mut takers = holders.clone();
@@ -813,6 +841,14 @@ fn owners_for(
             );
             Some(fit.to_owned())
         });
+        // Held to the cell its send ran late at, whose path today isn't
+        // the one it went by, so neither its hub nor the want of hubs is
+        // said of it (#7022's round, F1, F12 and F16).
+        if let Some(late) = late.filter(|late| owner.as_ref() != Some(late)) {
+            through.remove(&n);
+            for_want_of_hubs.remove(&n);
+            owner = Some(late.clone());
+        }
         if let Some(owner) = owner {
             *held.entry(owner.clone()).or_default() += 1;
             by_owner.entry(owner).or_default().push(n);
