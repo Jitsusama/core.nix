@@ -46,6 +46,9 @@ WAITING = timedelta(seconds=30)
 # How often what the launcher shows is asked again while a wait has heard nothing, and the
 # pause between two keys typed, as the desktop test's keys are.
 POLL = 0.05
+# How long a launcher opened for something Joel didn't ask drops his keys, in seconds, from
+# its opening by the wall clock (Prompt.qml's linkQuiet).
+LINK_QUIET = 0.7
 KEY_PACE_MS = 50
 # Far enough to take the pointer to the screen's top left corner from anywhere on it.
 TO_THE_CORNER = -10000
@@ -507,6 +510,11 @@ class Shell:
         Escape gives normal from the find, lets the key list go if it's shown, and cancels a
         count or a key begun, but never closes (Joel, 2026-11-05: "fuck escape quitting"), so
         :q does, from any depth.
+
+        A launcher opened to say something Joel didn't ask for, as a Go To's why it couldn't
+        go (Launcher.qml's toldHere), drops every key for its first LINK_QUIET, so a key it
+        dropped is counted as an answer and sent again once that's over, never left to wait on
+        a move it can't make, nor a :q's Return let through alone to act on the row.
         """
 
         def where(shown: Json) -> tuple[object, ...]:
@@ -517,6 +525,7 @@ class Shell:
                 shown.get("listing"),
                 shown.get("command") is not None,
                 shown["operator"] or shown["counted"] or shown["begun"],
+                shown["quietDropped"],
             )
 
         def moved(was: tuple[object, ...], shown: Json) -> bool:
@@ -526,13 +535,15 @@ class Shell:
             was = where(self.showing())
             if not was[0]:
                 return
-            _, mode, _, listing, commanding, pending = was
+            _, mode, _, listing, commanding, pending, dropped = was
             if mode == "normal" and not (listing or commanding or pending):
                 self.send_chars(":q")
                 self.send_key("ret")
             else:
                 self.send_key("esc")
             self.launcher_until(functools.partial(moved, was))
+            if self.showing()["quietDropped"] != dropped:
+                time.sleep(LINK_QUIET)
         still = self.showing()
         message = f"the launcher was still open after 12 Escapes: {still}"
         raise AssertionError(message)

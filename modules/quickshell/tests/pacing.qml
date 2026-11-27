@@ -1,8 +1,8 @@
 // How an open launcher paces the refreshes its sources ask for, run in Qt's
 // own JavaScript engine, the one the shell runs it in. The
-// `the-launcher-paces-its-refreshes` check copies
-// modules/quickshell/launcher/Pacing.js beside this file and runs
-// `qml -platform offscreen pacing.qml`, with launcher/Wanted.js. A burst of
+// `the-launcher-paces-its-refreshes` check copies the launcher's files its
+// cases read beside this file, as its copy lines list, and runs
+// `qml -platform offscreen pacing.qml`. A burst of
 // changes is taken a pace apart, and never two refreshes closer than that,
 // however the first was asked for; a source's rows are wanted only where
 // they're shown or searched, so a change nobody sees asks none; a key's
@@ -317,6 +317,22 @@ QtObject {
             "; its thread ran 15 ms of the stall, waited 9 for a CPU and slept 0");
         check(failures, "an opening that never stalled says nothing of it",
             Thread.said(0, { ran: 0, waited: 0 }, "the stall"), "");
+        check(failures, "a frame's drawing is said apart by its render thread's times",
+            Thread.drawingApart({ syncing: 3, rendering: 117, heard: 1 }),
+            " (3 syncing, 117 rendering, 1 before the shell heard it swapped)");
+        check(failures, "a frame whose times weren't read says nothing of them",
+            Thread.drawingApart(null), "");
+        check(failures, "nor does a split without its sync",
+            Thread.drawingApart({ rendering: 117, heard: 1 }), "");
+        check(failures, "a 0 ms sync is said",
+            Thread.drawingApart({ syncing: 0, rendering: 117, heard: 1 }),
+            " (0 syncing, 117 rendering, 1 before the shell heard it swapped)");
+        check(failures, "an opening drawn in the frame it's sized in is split by that frame",
+            Thread.drawingIsFrame(-1, 1040, 1040), true);
+        check(failures, "one a key filled while its first frame drew, sized a frame on, isn't",
+            Thread.drawingIsFrame(-1, 1040, 1057), false);
+        check(failures, "nor is one whose first frame swapped before",
+            Thread.drawingIsFrame(1052, 1040, 1040), false);
         const paging = [[16, { ran: 5, waited: 1, faulted: 3 }],
             [132, { ran: 20, waited: 2, faulted: 1206 }]];
         const pagedStall = paging.reduce((was, [at, thread]) => Pacing.feltTicked(was, at, pace,
@@ -1215,9 +1231,12 @@ QtObject {
         check(failures, "and a step into a place of the launcher's own says its id",
             Presented.timedShown("\u2192 Programs", "\u2192 Programs", false,
                 "collection:applications"), "\u2192 collection:applications");
-        check(failures, "and an own place's id past keyShown's cut counts the row",
+        check(failures, "and an own place's key as long as keyShown's cut is said whole",
             Presented.timedShown("\u2192 Harbour", "\u2192 Harbour", false,
-                `collection:${"a".repeat(64)}`), "\u2192 7 letters");
+                `collection:${"a".repeat(53)}`), `\u2192 collection:${"a".repeat(53)}`);
+        check(failures, "but one a letter past the cut counts the row",
+            Presented.timedShown("\u2192 Harbour", "\u2192 Harbour", false,
+                `collection:${"a".repeat(54)}`), "\u2192 7 letters");
         check(failures, "but an own kind holding more than an id counts the row",
             Presented.timedShown("\u2192 Harbour House", "\u2192 Harbour House", false,
                 "place:wifi:Harbour House"), "\u2192 13 letters");

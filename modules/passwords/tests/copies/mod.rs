@@ -2,9 +2,11 @@
 //! copier is named, and then refused before any secret is read; a copy
 //! marked sensitive, held in the foreground and cleared when its time is
 //! up; and that time 30 s unless told otherwise, as the fence's terms for
-//! copying ask. A copy goes with the daemon however it ends, since the
-//! shell starts a new one at once, which knows of no copy to clear, and
-//! Joel would read the password as gone while it could still be pasted.
+//! copying ask. A copy copied over is ended at once, and its clear neither
+//! ends the copy after it nor waits on to its own time. A copy goes with
+//! the daemon however it ends, since the shell starts a new one at once,
+//! which knows of no copy to clear, and Joel would read the password as
+//! gone while it could still be pasted.
 //! The copier is given the secret only once it says it's ready, having
 //! shut the account's other processes out of its memory, and a copy is
 //! answered as copied only once it says it holds it: one it refuses is
@@ -90,6 +92,56 @@ fn a_refused_copy_is_answered_with_its_reason() {
 }
 
 #[test]
+fn a_copier_that_refuses_before_its_ready_is_answered_with_its_reason() {
+    let running = Running::with_env(
+        "copy-refused-early",
+        &[("keeping", KEEPING)],
+        &[("COPIER_REFUSES_EARLY", "it can't go undumpable")],
+    );
+    let mut client = running.client();
+    client.ask(&json!({"id": 1, "ask": "list", "asked": true}));
+    let refused = client.ask(&json!({"id": 2, "ask": "copy", "key": "entry:keeping:gh"}));
+    assert_eq!(refused["error"]["code"], "refused", "{refused}");
+    assert!(
+        refused["error"]["message"]
+            .as_str()
+            .is_some_and(|said| said.contains("it can't go undumpable")),
+        "a copier refusing before it was ready wasn't answered with its reason: {refused}"
+    );
+    holds_no_secret(&refused);
+    let given = std::fs::read_to_string(running.copied()).unwrap_or_default();
+    assert!(
+        given.is_empty(),
+        "a copier that refused before it was ready was given {given:?}"
+    );
+}
+
+#[test]
+fn a_copier_that_refuses_partway_through_is_answered_with_its_reason() {
+    let running = Running::with_env(
+        "copy-refused-part",
+        &[("long", LONG)],
+        &[("COPIER_REFUSES_PART", "it is past 1 MiB")],
+    );
+    let mut client = running.client();
+    client.ask(&json!({"id": 1, "ask": "list", "asked": true}));
+    let refused = client.ask(&json!({"id": 2, "ask": "copy", "key": "entry:long:gh"}));
+    assert_eq!(refused["error"]["code"], "refused", "{refused}");
+    // Its own reason, not the write it broke off, which the daemon would
+    // say in its place.
+    assert!(
+        refused["error"]["message"]
+            .as_str()
+            .is_some_and(|said| said.contains("it is past 1 MiB")),
+        "a copier refusing partway through wasn't answered with its reason: {refused}"
+    );
+    assert!(
+        !refused.to_string().contains(&"x".repeat(64)),
+        "a copier refusing partway through had the secret said back: {refused}"
+    );
+}
+
+#[test]
 fn a_copier_that_never_says_its_ready_is_given_nothing() {
     let running = Running::with_env(
         "copy-unready",
@@ -117,7 +169,13 @@ fn nothing_is_written_to_the_copier_before_its_ready() {
     let running = Running::with_env(
         "copy-waits",
         &[("keeping", KEEPING)],
-        &[("COPIER_WAITS", "1"), ("PASSWORDS_CLEARS_MS", "600000")],
+        // Its own patience, since it waits 1.3 s before it's ready, which
+        // the tests' 3 s left too little room over on a busy host.
+        &[
+            ("COPIER_WAITS", "1"),
+            ("PASSWORDS_CLEARS_MS", "600000"),
+            ("PASSWORDS_COPIER_PATIENCE_MS", "20000"),
+        ],
     );
     let mut client = running.client();
     client.ask(&json!({"id": 1, "ask": "list", "asked": true}));
@@ -244,6 +302,84 @@ fn a_copy_goes_as_the_daemon_is_killed() {
     until("the copy goes with it", || !copier_runs(&running.copied()));
 }
 
+#[test]
+fn a_copy_copied_over_stays_past_the_time_the_one_before_it_clears() {
+    // Each copy clears 5 s on and the second is asked 2 s after the first,
+    // so between their two times only the first one's clear could end the
+    // second, and it's held past the first's time by half a second.
+    let running = Running::with_env(
+        "copy-copied-over",
+        &[("keeping", KEEPING)],
+        &[("PASSWORDS_CLEARS_MS", "5000")],
+    );
+    let mut client = running.client();
+    client.ask(&json!({"id": 1, "ask": "list", "asked": true}));
+    let (_, first_clears) = held(&running, &mut client, 2);
+    // Two of the first copy's 5 s pass, so the second's time falls 2 s past it.
+    std::thread::sleep(std::time::Duration::from_secs(2));
+    // held waits until a new copier is the only one, so the first is gone.
+    let (second, second_clears) = held(&running, &mut client, 3);
+    // The daemon took the second copy at its time less the 5 s, which must
+    // come well before the first's own clear, or a slow machine had the
+    // first clear by itself and nothing was copied over.
+    let taken = second_clears - 5_000;
+    assert!(
+        taken + 1_000 <= first_clears,
+        "the second copy was taken only {} ms before the first's time, so none was copied over",
+        i128::from(first_clears) - i128::from(taken)
+    );
+    while since_the_epoch() < first_clears + 500 {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let looked = since_the_epoch();
+    assert!(
+        looked < second_clears,
+        "the second copy's own time came first, {} ms on",
+        looked - second_clears
+    );
+    assert!(
+        copier_pids(&running.copied()).contains(&second),
+        "the copy before it cleared the copy copied over it"
+    );
+    until("the second copy clears", || !copier_runs(&running.copied()));
+    // Seen cleared within a poll of it going, so no earlier than its time
+    // less a poll's slack, and no later than its time and a loaded
+    // machine's oversleep, as a sleep only ever runs long.
+    let cleared = i128::from(since_the_epoch()) - i128::from(second_clears);
+    assert!(
+        (-100..=5_000).contains(&cleared),
+        "the second copy cleared {cleared} ms from its own time"
+    );
+}
+
+#[test]
+fn a_copy_copied_over_stops_waiting_to_clear() {
+    // Each copy waits to clear on a thread of its own. The one copied over
+    // was ended as it was, so its thread ends at its next look rather than
+    // waking on to its own ten minutes: the daemon's threads fall back to
+    // what they were with one copy held.
+    let running = held_copy("copy-stops-waiting");
+    let mut client = running.client();
+    // The thread that gave the copier its copy ends once it's given, so
+    // the count is taken once it holds still, never with that one in it,
+    // which would hide a wait left running.
+    let holding_one = settled_threads(running.pid());
+    held(&running, &mut client, 3);
+    let started = std::time::Instant::now();
+    loop {
+        let running_now = threads_of(running.pid());
+        if running_now <= holding_one {
+            break;
+        }
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(20),
+            "the copy copied over never stopped waiting to clear: {running_now} threads, \
+             {holding_one} with one copy held"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+}
+
 /// A daemon holding a copy far longer than a test takes, so only its
 /// ending can end the copy.
 fn held_copy(test: &str) -> Running {
@@ -263,6 +399,56 @@ fn held_copy(test: &str) -> Running {
     running
 }
 
+/// The copier of a copy asked now, once it's the one copier holding the
+/// password, and when the daemon says that copy clears.
+fn held(running: &Running, client: &mut crate::common::Client, id: u64) -> (u32, u64) {
+    let before = copier_pids(&running.copied());
+    let copied = client.ask(&json!({"id": id, "ask": "copy", "key": "entry:keeping:gh"}));
+    assert_eq!(copied["copied"], true, "{copied}");
+    holds_no_secret(&copied);
+    let clears = copied["clears"]
+        .as_u64()
+        .expect("the copy's answer says when it clears");
+    // The copier the wait saw, rather than a second look's, which could
+    // find it already gone.
+    let seen = std::cell::Cell::new(None);
+    until("one new copier holds the password", || {
+        let holding = copier_pids(&running.copied());
+        let new = holding.len() == 1 && !before.contains(&holding[0]);
+        if new {
+            seen.set(Some(holding[0]));
+        }
+        new
+    });
+    (seen.get().expect("the wait saw the copier"), clears)
+}
+
+/// How many threads a process runs once two looks half a second apart
+/// agree, so a thread on its way out isn't counted.
+fn settled_threads(pid: u32) -> usize {
+    let started = std::time::Instant::now();
+    let mut last = threads_of(pid);
+    loop {
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        let now = threads_of(pid);
+        if now == last {
+            return now;
+        }
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(20),
+            "the daemon's threads never held still: {last} then {now}"
+        );
+        last = now;
+    }
+}
+
+/// How many threads a process runs.
+fn threads_of(pid: u32) -> usize {
+    std::fs::read_dir(format!("/proc/{pid}/task"))
+        .expect("the daemon runs")
+        .count()
+}
+
 /// Milliseconds since the epoch, as the daemon tells a clear time.
 fn since_the_epoch() -> u64 {
     let since = std::time::SystemTime::now()
@@ -273,14 +459,21 @@ fn since_the_epoch() -> u64 {
 
 /// Whether the stand-in copier still holds the clipboard.
 fn copier_runs(copied: &Path) -> bool {
+    !copier_pids(copied).is_empty()
+}
+
+/// The stand-in copiers holding the clipboard.
+fn copier_pids(copied: &Path) -> Vec<u32> {
     let wanted = copied.to_string_lossy().into_owned();
     std::fs::read_dir("/proc")
         .unwrap()
         .flatten()
-        .any(|process| {
+        .filter(|process| {
             std::fs::read(process.path().join("environ"))
                 .is_ok_and(|environ| String::from_utf8_lossy(&environ).contains(&wanted))
                 && std::fs::read_to_string(process.path().join("cmdline"))
                     .is_ok_and(|line| line.contains("copier"))
         })
+        .filter_map(|process| process.file_name().to_str()?.parse().ok())
+        .collect()
 }

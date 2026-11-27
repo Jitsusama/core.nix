@@ -25,12 +25,16 @@ the cat then running the real one so a copier that leans on it still holds its c
    TMPDIR, running nothing and staying locked in memory once grown. It's copied with no type
    given, where stock wl-copy asks xdg-mime for one, so case 3's xdg-mime has a copy to run on.
 9. It says it's ready before it's given the secret, and by then can't be read through /proc.
-10. It says it holds the copy once it's given it.
+10. It says it holds the copy once it's given it, and by then Joel's display has it: read
+    before any paste, one paste at once pastes it whole, as the daemon answers copied then.
 11. A copy it refuses is never said to be held.
 12. The copy is offered marked secret, as x-kde-passwordManagerHint, the mark niri, the
     clipboard door and the clipboard's history each keep it from others by.
-13. A secret of exactly the cap pastes whole, so only a byte past it is refused: with case 7,
-    it pins the edge the copier grows its buffer a byte past the cap to tell.
+13. A secret of exactly the cap pastes whole and stays locked in memory, so only a byte past it
+    is refused: with case 7, it pins the edge the copier grows its buffer a byte past the cap
+    to tell. A copier that refuses it instead is failed with what it said as it ended.
+14. Told to say it holds a copy that isn't sensitive, it ends saying so, never ready or held,
+    making nothing under TMPDIR and running nothing, as only a sensitive copy says either.
 
 Every case is checked and reported before it fails. Cases 7 and 13 lock past 2 MiB at once, as
 the copier grows its buffer, so the limit on locked memory is raised to its hard limit first,
@@ -70,6 +74,8 @@ LONG = 64 * 1024
 REFUSED = "wl-copy: refused a sensitive copy: "
 UNREADABLE = REFUSED + os.strerror(errno.EISDIR)
 PAST_THE_CAP = REFUSED + "it is past 1 MiB"
+# What it says, ending, when told to say ready and held for a copy that isn't sensitive.
+SENSITIVE_ONLY = "--say-held needs --sensitive"
 # The mark of a secret copy, which every wall keeping one from others looks for.
 HINT = "x-kde-passwordManagerHint"
 # The locked memory cases 7 and 13 need, in bytes: as the buffer grows from the cap to a byte
@@ -80,7 +86,7 @@ LIBC = ctypes.CDLL(None, use_errno=True)
 
 
 class Cases:
-    """The thirteen cases, run against one copier, with how each came out."""
+    """The fourteen cases, run against one copier, with how each came out."""
 
     def __init__(self, copier: str, shell: str, folder: Path) -> None:
         """Run them against `copier`, its stand-ins run by `shell` and its TMPDIR in `folder`."""
@@ -160,12 +166,14 @@ class Cases:
         self.check("it says it's ready first", unready or readable(copier.pid))
         given(writing, held)
         try:
-            pasted = pasted_once_held(held)
-            self.check("the secret pastes whole", None if pasted else "it never pasted")
-            self.check("it's offered marked secret", ended(copier) or unmarked())
             said = said_next(copier)
             unheld = None if said == "held" else f"it said {said!r} rather than held"
             self.check("it says it holds the copy", unheld)
+            once = None if unheld else pasted_now(held)
+            self.check("once it says it's held, one paste has it", once)
+            pasted = pasted_once_held(held)
+            self.check("the secret pastes whole", None if pasted else "it never pasted")
+            self.check("it's offered marked secret", ended(copier) or unmarked())
             self.check("nothing is made under TMPDIR", self.anything_made())
             self.check("nothing on PATH runs", self.anything_ran())
             self.check("it can't be read through /proc", ended(copier) or readable(copier.pid))
@@ -194,7 +202,7 @@ class Cases:
             copier.wait()
 
     def copied_at_the_cap(self) -> None:
-        """Run case 13: a secret of exactly the cap, pasted whole rather than refused."""
+        """Run case 13: a secret of exactly the cap, pasted whole and locked, not refused."""
         held = secrets.token_hex(CAP // 2)
         reading, writing = os.pipe()
         copier = self.copier_started(reading)
@@ -202,10 +210,12 @@ class Cases:
         given(writing, held)
         try:
             pasted = pasted_once_held(held)
-            never = None if pasted else "it never pasted"
+            never = None if pasted else refused_instead(copier) or "it never pasted"
             self.check("a secret of exactly the cap pastes whole", never)
             self.check("a secret of exactly the cap makes nothing", self.anything_made())
             self.check("a secret of exactly the cap runs nothing", self.anything_ran())
+            locked = ended(copier) or unlocked(copier.pid, len(held))
+            self.check("a secret of exactly the cap is locked", locked)
         finally:
             copier.kill()
             copier.wait()
@@ -235,6 +245,36 @@ class Cases:
         self.check("a stdin a byte past the cap runs nothing", self.anything_ran())
         self.check("a stdin a byte past the cap is never said held", said_held(told))
 
+    def unsensitive(self) -> None:
+        """Run case 14: told to say it holds a copy that isn't sensitive, it ends saying so."""
+        copier = subprocess.Popen(
+            [self.copier, "--say-held", "--foreground", "--type", TEXT],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=self.environment,
+        )
+        ended, said, told = ended_within(copier)
+        made = self.anything_made()
+        failed = refusal(ended, said, SENSITIVE_ONLY)
+        self.check("a copy not sensitive can't be said held", failed or made)
+        self.check("a copy not sensitive runs nothing", self.anything_ran())
+        quiet = None if told.split() == [] else f"it said {told.split()}"
+        self.check("a copy not sensitive is never said ready or held", quiet)
+
+
+def pasted_now(held: str) -> str | None:
+    """Say what one paste on Joel's display gave in place of the secret, if not the secret."""
+    pasted = subprocess.run(
+        ["wl-paste", "--no-newline", "--type", TEXT],
+        capture_output=True,
+        check=False,
+    )
+    if pasted.stdout == held.encode():
+        return None
+    why = pasted.stderr.decode(errors="replace").strip()
+    return f"it pasted {len(pasted.stdout)} other bytes, exiting {pasted.returncode}: {why!r}"
+
 
 def pasted_once_held(held: str) -> bool:
     """Answer whether Joel's display pastes the secret, waiting for the copier to hold it."""
@@ -263,7 +303,7 @@ def locks_enough() -> str | None:
     _, hard = resource.getrlimit(resource.RLIMIT_MEMLOCK)
     resource.setrlimit(resource.RLIMIT_MEMLOCK, (hard, hard))
     if hard != resource.RLIM_INFINITY and hard < LOCKS:
-        return f"only {hard} bytes may be locked, under the {LOCKS} cases 7 and 8 need"
+        return f"only {hard} bytes may be locked, under the {LOCKS} cases 7 and 13 need"
     return None
 
 
@@ -312,6 +352,15 @@ def ended(copier: subprocess.Popen[bytes]) -> str | None:
     """Say a copier has ended, so nothing of its memory can be judged, if it has."""
     code = copier.poll()
     return None if code is None else f"it ended with {code} while it should hold the copy"
+
+
+def refused_instead(copier: subprocess.Popen[bytes]) -> str | None:
+    """Say how a copier that should hold its copy ended instead, and why, if it ended."""
+    code = copier.poll()
+    if code is None or copier.stderr is None:
+        return None
+    said = copier.stderr.read().decode(errors="replace").strip()
+    return f"it ended with {code}, saying {said!r}"
 
 
 def readable(pid: int) -> str | None:
@@ -365,6 +414,7 @@ def main() -> None:
         cases.copied_long()
         cases.copied_at_the_cap()
         cases.refused()
+        cases.unsensitive()
     for case, failed in cases.outcomes:
         print(f"{case}: {failed or 'held'}", file=sys.stderr if failed else sys.stdout)
     if any(failed for _, failed in cases.outcomes):

@@ -10,8 +10,10 @@ pragma ComponentBehavior: Bound
 // undrawn as a place that never sets them. Lost again and the history back
 // a while on, each is asked again at its hello, and the answer to what was
 // typed in the group isn't taken as its key's own (foundMore's fresh), so
-// Emoji keeps its rows where they are. It exits 0 once every case holds,
-// and otherwise 1, saying which didn't.
+// Emoji keeps its rows where they are. An emoji's row is keyed by its
+// thing, kept under `row:` where that claims the launcher's own kind, and
+// by its key where it has none. It exits 0 once every case holds, and
+// otherwise 1, saying which didn't.
 import Quickshell
 import QtQuick
 import "Expect.js" as Expect
@@ -152,6 +154,16 @@ ShellRoot {
                     && served.typedAsking === "" && served.asking === "turt", root.said());
             Expect.expect("and isn't taken as its key's own",
                 root.fresh.length === 1 && root.fresh[0] === false, JSON.stringify(root.fresh));
+
+            // An emoji's row is keyed by its thing where it has one, kept under `row:` where
+            // that claims the launcher's own kind, and by its key where it has none.
+            const claiming = theEmoji.made({ thing: "place:Harbour", kind: "emoji", acts: [] },
+                "emoji:x");
+            Expect.expect("an emoji whose thing claims a place is kept under row:",
+                claiming?.key === "row:place:Harbour", String(claiming?.key));
+            const thingless = theEmoji.made({ kind: "emoji", acts: [] }, "emoji:x");
+            Expect.expect("and one with no thing is keyed by its key",
+                thingless?.key === "emoji:x", String(thingless?.key));
         });
     }
 }

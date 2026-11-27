@@ -577,9 +577,8 @@ def test_the_map_draws_how_cells_connect_and_answers_a_click_in_one_window(
     )
     assert window[1] <= window[0], f"the map's page scrolls: {window[1]} px in {window[0]}"
     assert window[2] <= window[0], f"the map runs {window[2]} px down a {window[0]} px window"
-    box = page.locator('#world circle.cell[data-key="c:TERN03"]').bounding_box()
-    assert box, "the map drew no TERN03 to click"
-    page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+    left, top, right, bottom = drawn_boxes(page, ["TERN03"], "the map drew no TERN03 to click")[2]
+    page.mouse.click((left + right) / 2, (top + bottom) / 2)
     expect(page, "a click on a cell didn't open it").to_have_url(re.compile("#cell=TERN03$"))
     expect(
         page.locator('#panel-body a[href^="mycelium:cell/TERN03"][href$="/go"]'),
@@ -601,7 +600,35 @@ HERONS_TITLE = "Chart the Harbour"
 # .focused .far is 0.22), with room either side for a mark's own opacity.
 STRONG_ALPHA = 0.9
 STEPPED_BACK_ALPHA = 0.5
-RECT = "(e) => { const r = e.getBoundingClientRect(); return [r.left, r.top, r.right, r.bottom]; }"
+# The view's box, the drawer's and each named cell's, read in one task. A cell
+# found in one call and measured in the next can be redrawn between the two,
+# and a circle taken out of the page measures all zeros, as on 27 November.
+BOXES = """(keys) => [document.getElementById('map-view'), document.getElementById('panel'),
+  ...keys.map((key) => document.querySelector(`#world circle.cell[data-key="c:${key}"]`))]
+  .map((e) => { if (!e || !e.isConnected) return null; const r = e.getBoundingClientRect();
+    return [r.left, r.top, r.right, r.bottom]; })"""
+DRAWN = f"(keys) => ({BOXES})(keys).every((box) => box !== null && box[2] > box[0])"
+
+
+def drawn_boxes(page: Page, cells: list[str], why: str) -> list[list[float]]:
+    """Give the view's box, the drawer's and each cell's, once every cell is drawn.
+
+    A cell that never draws, or one redrawn away between the wait and the read,
+    fails by name.
+    """
+    try:
+        page.wait_for_function(DRAWN, arg=cells, timeout=PACE_MS)
+    except PlaywrightTimeoutError as undrawn:
+        boxes = page.evaluate(BOXES, cells)[2:]
+        missing = [cell for cell, box in zip(cells, boxes, strict=True) if not box]
+        message = f"{why}: {missing or cells} undrawn"
+        raise AssertionError(message) from undrawn
+    view, drawer, *boxes = page.evaluate(BOXES, cells)
+    assert view, f"{why}: the map's view went from the page"
+    assert drawer, f"{why}: the drawer went from the page"
+    gone = [cell for cell, box in zip(cells, boxes, strict=True) if not box]
+    assert not gone, f"{why}: {gone} redrawn away once drawn"
+    return [view, drawer, *boxes]
 
 
 def strongest(page: Page, cell: str) -> float:
@@ -625,12 +652,8 @@ def test_a_network_opened_is_put_into_view_whole_and_what_it_joins_stands_out(
         SKIFF_TITLE
     )
     settled(page, "the skiff's network never stood still once opened")
-    view = page.locator("#map-view").evaluate(RECT)
-    drawer = page.locator("#panel").evaluate(RECT)
-    for cell in SKIFF_JOINS:
-        left, top, right, bottom = page.locator(
-            f'#world circle.cell[data-key="c:{cell}"]'
-        ).evaluate(RECT)
+    view, drawer, *boxes = drawn_boxes(page, list(SKIFF_JOINS), "opening the skiff left cells")
+    for cell, (left, top, right, bottom) in zip(SKIFF_JOINS, boxes, strict=True):
         inside = view[0] <= left and right <= view[2] and view[1] <= top and bottom <= view[3]
         assert inside, f"opening the skiff left {cell} at {left, top, right, bottom} outside {view}"
         under = left < drawer[2] and drawer[0] < right and top < drawer[3] and drawer[1] < bottom
