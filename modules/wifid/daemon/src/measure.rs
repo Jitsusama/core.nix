@@ -436,14 +436,8 @@ pub async fn follow(
                 }
             }
             Some(answer) = came.recv() => {
-                let card = match answer {
-                    Back::Looked(card) => card,
-                    Back::Refused { card, to } => {
-                        if let Some(chooser) = choosers.get_mut(&card) {
-                            chooser.refused(Instant::now(), &to);
-                        }
-                        continue;
-                    }
+                let Some(card) = took_back(&mut choosers, answer) else {
+                    continue;
                 };
                 let (now, hour) = (Instant::now(), learn::hour_here());
                 let call = calling.borrow().on(now);
@@ -465,6 +459,35 @@ pub async fn follow(
                     call,
                 );
             }
+        }
+    }
+}
+
+/// Hands what came back of a move to its card's chooser, and gives back
+/// the card whose look ended, which is chosen for again at once. A refusal
+/// that undoes nothing was of an earlier move than the chooser's last, or
+/// one the card is on already, and is said so it isn't lost unseen.
+fn took_back(choosers: &mut HashMap<String, Chooser>, answer: Back) -> Option<String> {
+    let now = Instant::now();
+    match answer {
+        Back::Looked(card) => Some(card),
+        Back::Answered { card, to, asked } => {
+            if let Some(chooser) = choosers.get_mut(&card) {
+                chooser.answered(now, &to, asked);
+            }
+            None
+        }
+        Back::Refused { card, to, asked } => {
+            let undone = choosers
+                .get_mut(&card)
+                .is_some_and(|chooser| chooser.refused(now, &to, asked));
+            if !undone {
+                println!(
+                    "<6>{card}'s refused move to {to} was of no give-way or trial still open, \
+                     so nothing it asked is undone"
+                );
+            }
+            None
         }
     }
 }
