@@ -309,6 +309,15 @@ holding a space, as one broken across two lines does, is counted too.
 - Over costs him: "502" on his own screen mid-turn, as he saw at 16:38 on 26 November before
   anything else did.
 
+## The Node's Site Coming Live
+
+- Measures: `site:live`
+- Target: 2 seconds, the hour's median wait for every watch the site's page opens to answer.
+- Joel, 26 Nov 16:42: "we need some set of cells maintaining the health of mycelium at all
+  timees"
+- Over costs him: the page he reads the mycelium by shows nothing new until its slowest watch
+  answers, as at 22:40 on 26 November, when the message watch took 3.5 s.
+
 ## Broken on Main
 
 - Measures: `broken`

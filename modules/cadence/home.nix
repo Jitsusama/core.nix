@@ -78,7 +78,9 @@
 # pi made and how they ended, from the tail of each session's log; the
 # model relay's counts from its journal; and, given `origins`, the path to
 # each, which cadence-path (./path.sh) samples every ten minutes, said
-# beside the calls so a red of them names the route.
+# beside the calls so a red of them names the route. Given `site`, it
+# reads how long the node's site took to come live, which cadence-site
+# (./site.sh) samples every ten minutes as the site's page opens its feed.
 #
 # cadence-spec (./spec) serves the axes to the launcher's Spec place over
 # $XDG_RUNTIME_DIR/daemons/cadence-spec.sock in the shell's daemon interface,
@@ -110,6 +112,16 @@ let
       pkgs.jq
     ];
     text = builtins.readFile ./path.sh;
+  };
+  # The site's sampler, shellcheck run on it as it builds.
+  watcher = pkgs.writeShellApplication {
+    name = "cadence-site";
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.jq
+      pkgs.websocat
+    ];
+    text = builtins.readFile ./site.sh;
   };
   # Who Friday's review goes to: the orchestrator, and the owner of `review`.
   reviewed = lib.filter (address: address != null) [
@@ -244,6 +256,17 @@ in
         ten minutes over HTTPS, as path.sh says, for the hour to hold each
         one's median TLS setup to its ceiling and say it beside the
         sessions' failed model calls; none samples nothing.
+      '';
+    };
+    site = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      example = "ws://sites.localhost:8484/feed/node";
+      description = ''
+        The node's feed as the site's page opens it, which cadence-site
+        samples every ten minutes, as site.sh says, for the hour to hold
+        the median wait for every watch to answer to its ceiling; none
+        samples nothing.
       '';
     };
     path = lib.mkOption {
@@ -505,7 +528,10 @@ in
         # whether or not a sample came, a comma apart as systemd would split
         # a space. Named even when empty, since an hour with no list at all
         # is one run by hand, which measures what was sampled instead.
-        ++ [ "CADENCE_ORIGINS=${lib.concatStringsSep "," cfg.origins}" ];
+        ++ [ "CADENCE_ORIGINS=${lib.concatStringsSep "," cfg.origins}" ]
+        # The feed cadence-site samples, so the hour measures the site only
+        # where it's sampled, and every hour it is, a sample come or not.
+        ++ lib.optional (cfg.site != null) "CADENCE_SITE=${cfg.site}";
         Slice = "background.slice";
         # The hour's ten days of journals and World's history pass through
         # this unit as file pages: at 23:10 on 19 November it peaked at
@@ -534,6 +560,28 @@ in
     };
     systemd.user.timers.cadence-path = lib.mkIf (cfg.origins != [ ]) {
       Unit.Description = "Samples the path to each origin every ten minutes";
+      Timer = {
+        OnCalendar = "*:0/10";
+        AccuracySec = "30s";
+      };
+      Install.WantedBy = [ "timers.target" ];
+    };
+    systemd.user.services.cadence-site = lib.mkIf (cfg.site != null) {
+      Unit.Description = "Samples how long the node's site takes to come live";
+      Service = {
+        Type = "oneshot";
+        ExecStart = lib.escapeShellArgs [
+          (lib.getExe watcher)
+          cfg.site
+        ];
+        Slice = "background.slice";
+        # The hello and the watches, opened together, wait 20 s each at
+        # most, so a minute and a half bounds a run.
+        TimeoutStartSec = "90s";
+      };
+    };
+    systemd.user.timers.cadence-site = lib.mkIf (cfg.site != null) {
+      Unit.Description = "Samples the node's site every ten minutes";
       Timer = {
         OnCalendar = "*:0/10";
         AccuracySec = "30s";

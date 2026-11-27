@@ -18,7 +18,7 @@ use super::measures::queues::{self, QUEUE};
 use super::measures::way_out::{calls, path, relay};
 use super::measures::{
     BLIND, Class, FINDINGS, HELD, Measure, UNRUN, UNSEEN, UNTESTED, apps, causes, drag,
-    held_for_good, held_unseen, rounds, told_late,
+    held_for_good, held_unseen, rounds, site, told_late,
 };
 
 /// How long a queue's ask has before it goes late: long enough for the
@@ -467,6 +467,11 @@ fn back_in(key: &str, measures: &[Measure]) -> bool {
             .iter()
             .any(|m| m.key == key && m.says.ends_with(relay::QUIET))
     {
+        return true;
+    }
+    // The site is measured each hour its feed is named, judged or not, so a
+    // site gone from the hour is one no longer sampled, settled likewise.
+    if key == site::KEY && !measures.iter().any(|m| m.key == key) {
         return true;
     }
     // An unread file leaves only its one line, never a figure, so a drag
@@ -1193,6 +1198,24 @@ mod tests {
                 .iter()
                 .any(|e| e.open && e.key == "hour:path:tls:forge.example"),
             "an origin gone from the hour held its ask open: {ledger:?}"
+        );
+    }
+
+    #[test]
+    fn a_site_ask_stays_open_unjudged_and_closes_once_the_site_is_no_longer_sampled() {
+        let slow = measure(site::KEY, Class::Functional, 3.1, Some(site::LIVE_AT_MOST));
+        let mut ledger = Vec::new();
+        file(&mut ledger, &[slow.clone()], "2026-11-26", 1000);
+        let open = |ledger: &[Entry]| ledger.iter().any(|e| e.open && e.key == "hour:site:live");
+        assert!(open(&ledger), "a slow site wasn't asked: {ledger:?}");
+        let unjudged = measure(site::KEY, Class::Functional, 0.0, None);
+        file(&mut ledger, &[unjudged], "2026-11-26", 4600);
+        assert!(open(&ledger), "an unjudged hour closed the ask: {ledger:?}");
+        let other = measure("broken", Class::Ship, 0.0, Some(0.0));
+        file(&mut ledger, &[other], "2026-11-27", 1000 + DAY);
+        assert!(
+            !open(&ledger),
+            "a site no longer sampled held its ask open: {ledger:?}"
         );
     }
 
