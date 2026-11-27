@@ -329,6 +329,36 @@ fn a_link_put_at_a_copy_s_name_gets_no_copy_through_it_and_the_list_ends_cut() {
 }
 
 #[test]
+fn a_link_put_at_a_copy_s_own_name_as_it_crosses_is_never_read_through() {
+    let mut kind = kind("");
+    kind.brings_back = vec!["out".into()];
+    // A cp that, once the first file is copied, puts a link at that very
+    // copy's name to a file of the job's, as a job of the quest may
+    // meanwhile: the copy's size, read after, would be that file's, and
+    // it would be listed as crossed at it.
+    let planting = "PATH=${PATH#*:} cp \"$@\" || exit\n\
+         [ -e \"$HOME/planted\" ] || \
+         { rm -f \"$2\" && ln -s \"$HOME/target\" \"$2\" && : > \"$HOME/planted\"; }";
+    let programs = [("cp", planting)];
+    let job = "mkdir out && printf a > out/a && printf b > out/b && \
+         printf target > \"$HOME/target\"";
+    let (code, err, home) = far_line(Left::Whole, &[("x", "x")], job, &kind, None, &programs);
+    let target = std::fs::read_to_string(home.join("target")).unwrap_or_default();
+    let listed = std::fs::read_to_string(handover(&home).join(BROUGHT)).unwrap_or_default();
+    assert!(
+        home.join("planted").exists() && target == "target",
+        "the far line wrote or cleared through a link put at a copy's own name \
+         ({code:?}): {target:?} {err}"
+    );
+    assert!(
+        code == Some(0) && err.contains(HALTED) && listed == "\ncut\n",
+        "the far line didn't say nothing more is brought back, or listed the file a link \
+         at its copy's name took, or didn't end its list cut ({code:?}): {listed:?} {err}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
 fn a_link_pinned_at_the_handover_of_a_kind_bringing_nothing_back_gets_no_end_through_it() {
     let mut nothing = kind("");
     nothing.brings_back = Vec::new();
