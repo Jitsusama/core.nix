@@ -24,7 +24,7 @@ which leaves this note behind.
 | `reach.ts`     | whether the drawing reaches every cell, said when asked     |
 | `lineage.ts`   | who started each cell, what it split from, and its branches |
 | `balance.ts`   | the realm's balance, and each machine's share of the work   |
-| `sprout.ts`    | the link that hands new work to the Launcher, and its words |
+| `sprout.ts`    | new work handed to the Launcher: link, words, offer, Return |
 | `acts.ts`      | what a cell's drawer offers, in order, and what it asks     |
 | `lines.ts`     | how wide a line is drawn as the map steps in and out        |
 | `motion.ts`    | how the map's motion is timed, the legend's samples' too    |
@@ -44,8 +44,9 @@ outline.ts which rows the tree shows and where its keys go, words.ts what
 each thing is in words, when.ts how a time is said, health.ts how each
 thing stands, doing.ts what each is doing, spend.ts what each spent,
 waits.ts what waits and what holds, sprout.ts what new work hands the
-Launcher, acts.ts what a cell's drawer offers and asks, lines.ts how
-wide a line is drawn and motion.ts how the map's motion is timed, so
+Launcher, from where, and what Return on its line does, acts.ts what a
+cell's drawer offers and asks, lines.ts how wide a line is drawn and
+motion.ts how the map's motion is timed, so
 those decisions are typed and unit-tested while the drawing carries them out. They come under
 the linters as the drawing is rewritten in TypeScript on the kit, and
 until then `treefmt.nix` names them as kept out.

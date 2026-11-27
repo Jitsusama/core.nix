@@ -4,7 +4,8 @@
 //! a fresh listing by the farther back, and judged once; one GitHub says
 //! is gone stays owed; a spent rate limit or three failures stop the
 //! round's reads, search hits read first; and one failing in every try is
-//! let go, the journal naming the span unread. How often one is asked, and
+//! let go, the journal naming the span unread, and a row in For You
+//! beside it with its link, when live. How often one is asked, and
 //! in what order, is owed.rs's own cases'.
 //! Each case waits a round past what it counts, so stopping the reader
 //! can't cut short a read it counts.
@@ -20,8 +21,10 @@ use serde_json::{Value, json};
 use super::{LOGIN, MARK, answer_with, commented, github_reader, journal, read_lately, searches};
 use crate::{Answered, PATIENCE, answering_whole, decisions, each};
 
-/// When every thread a search gives last changed: a minute before its
-/// first answer, and the same in every round after, as nothing changes.
+/// When every thread a search gives last changed: a minute before the
+/// first answer any case here is given, and the same in every round and
+/// case after, as nothing changes. Cases share it, so it's never later
+/// than a case's own first answer.
 static CHANGED: OnceLock<String> = OnceLock::new();
 
 /// What a search for Joel's words gives at `now`: example/shop's pull
@@ -417,13 +420,65 @@ fn github_one_failing_in_every_try_is_let_go_naming_the_span_nobody_read() {
         "one failing in every try is owed and asked no more: {seen:?}"
     );
     let gone = format!(
-        "<3>couldn't read github:example/shop#14 in 12 tries since {}, so what was said there \
-         from {} on goes unjudged: look there for a stop",
+        "<3>couldn't read github:example/shop#14 in 12 tries since {}, each failing or answered \
+         gone, so what was said there from {} on goes unjudged: look there for a stop",
         stamp(last - 3 * 60 * 60),
         stamp(last - 60)
     );
     assert!(
         said.contains(&gone),
         "the journal says so, loudly, naming the span: {said}"
+    );
+}
+
+#[test]
+fn github_one_let_go_live_is_told_to_joel_in_a_row_with_its_link() {
+    let last = last();
+    let owed = json!({"repo": "example/shop", "number": 14, "pull": true,
+        "from": last - 60, "read_from": last - 60, "at": last - 3 * 60 * 60,
+        "tries": 11, "skip": 0});
+    let case = Case {
+        found: &[],
+        failing: &[14],
+        quiet: true,
+        ..Case::default()
+    };
+    let (origin, asked) = answering_whole(stand_in(case));
+    let (home, _) = read_lately();
+    let seeded = json!({"since": last, "keys": [], "owed": [owed]});
+    std::fs::write(home.join("state/pineapple").join(MARK), seeded.to_string()).expect("the mark");
+    let mut reading = github_reader(&home, &origin, &["--live"]);
+    until_searched(&asked, &mut reading, 3);
+    let waiting = home.join("state/mission/waiting/pineapple-github-missed.json");
+    let rows: Value = std::fs::read_to_string(&waiting)
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or_default();
+    let shadow = home.join("state/pineapple/missed-github.json").exists();
+    let said = journal(&home);
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+
+    let row = &rows["items"][0];
+    let (id, step) = (row["id"].as_str().unwrap_or_default(), &row["steps"][0]);
+    assert!(
+        id.starts_with("pineapple-github-missed-thread-")
+            && id.contains(&format!("-{}-", (last - 60) * 1000)),
+        "one row, beside For You's, named for the thread and from where it was owed: {rows}"
+    );
+    assert_eq!(
+        (rows["items"].as_array().map(Vec::len), &row["title"]),
+        (Some(1), &json!("The Safe Word Missed a Thread on GitHub")),
+        "one row, saying what it missed: {rows}"
+    );
+    assert_eq!(
+        step,
+        &json!(format!(
+            "Read {origin}/example/shop/pull/14 for a stop said then"
+        )),
+        "it carries the thread's link, so Joel reads it himself: {rows}"
+    );
+    assert!(
+        !shadow && said.contains("<5>wrote Joel's row in "),
+        "live, the row goes to For You alone, and the journal says it was written: {said}"
     );
 }
