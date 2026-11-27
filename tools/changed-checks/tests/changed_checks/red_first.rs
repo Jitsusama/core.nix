@@ -5,6 +5,8 @@ use std::fs;
 
 use super::{StandIn, text};
 
+mod unjudged;
+
 /// The base's checks, and the tree's, where the change moved `a`.
 const BASE: &str = r#"{"a": "a.drv", "vm-x": "v.drv"}"#;
 const WORKING: &str = r#"{"a": "a2.drv", "vm-x": "v2.drv"}"#;
@@ -351,63 +353,6 @@ fn the_checks_running_tests_are_built_over_the_base_before_the_systems() {
     assert!(
         !built.contains("?rev=a1a1a1a1a1a1a1a1a1a1#checks.x86_64-linux.example-a"),
         "the system was built over the base before the check running the tests: {built}"
-    );
-}
-
-#[test]
-fn a_macs_run_leaves_the_tests_to_linux_and_builds_nothing_over_the_base() {
-    let stand_in = committed("red-mac", CHANGE, "a3.drv");
-
-    let ran = stand_in.run(&["--system", "aarch64-darwin"]);
-
-    assert!(
-        ran.status.success(),
-        "a Mac's run refused: {}",
-        text(&ran.stderr)
-    );
-    assert!(
-        text(&ran.stderr).contains("asked to fail on the base on Linux"),
-        "{}",
-        text(&ran.stderr)
-    );
-    assert!(!stand_in.built().contains("?rev="), "{}", stand_in.built());
-}
-
-#[test]
-fn a_train_candidate_the_train_marks_is_not_judged_again() {
-    let stand_in = committed("red-train", CHANGE, "a3.drv");
-
-    let told = [("CHANGED_CHECKS_CANDIDATE", "1")];
-    let ran = stand_in.run_told(&["--system", "x86_64-linux"], &told);
-
-    assert!(ran.status.success(), "{}", text(&ran.stderr));
-    assert!(
-        text(&ran.stderr).contains("the train's candidate merges changes each judged"),
-        "{}",
-        text(&ran.stderr)
-    );
-    assert!(!stand_in.built().contains("?rev="), "{}", stand_in.built());
-}
-
-#[test]
-fn a_change_of_merges_alone_is_taken_for_the_trains_candidate_and_not_judged() {
-    let stand_in = committed("red-merges", CHANGE, "a3.drv");
-    fs::write(stand_in.path("log"), "").expect("written");
-
-    let ran = stand_in.run(&["--system", "x86_64-linux"]);
-
-    assert!(ran.status.success(), "{}", text(&ran.stderr));
-    assert!(
-        text(&ran.stderr).contains("every commit since the base merges another change"),
-        "{}",
-        text(&ran.stderr)
-    );
-    assert!(!stand_in.built().contains("?rev="), "{}", stand_in.built());
-    assert_eq!(
-        verdict(&stand_in)["why"],
-        "merges alone",
-        "{}",
-        verdict(&stand_in)
     );
 }
 

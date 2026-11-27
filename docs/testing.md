@@ -82,7 +82,10 @@ its own besides merges is taken for one. A run on a person's machine
 whose own build went to the lent builder leaves red first to the gate,
 since the builds over the base would fall to the machine. Nix's log of
 the builds over the base is kept out of the run's, since one failing
-there as it should says nix's words for a failed build. A test that pins
+there as it should says nix's words for a failed build. Those builds
+stop after ten minutes in all (`CHANGED_CHECKS_RED_FIRST_SECONDS` sets
+another), since a test waiting on what only the change does may never
+end there, and the change is said, unjudged. A test that pins
 behaviour already right passes on the base by design: a commit saying
 `Red-first: none, <why>` excuses its change, and the run says so.
 

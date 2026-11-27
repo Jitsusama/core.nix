@@ -41,7 +41,10 @@ fn starting() -> MutexGuard<'static, ()> {
 ///
 /// Asked of the change as red first asks it, its commits and their
 /// Red-first trailers are `log` (one commit of its own with none, without
-/// it), its files with renames found are `diff.whole`, the
+/// it), asked of its own commits alone, and otherwise a rider's, as the
+/// train's candidate holds, its files with renames found are `diff.whole`,
+/// a file of its head's is `show/` and its path (or main's quarantine
+/// list, as any other `show` is), the
 /// lines each adds and takes are `diff.counted` (one added to each file
 /// asked, without it), and its added lines are `diff.lines`. Laying its tests
 /// over the base, each file it lists, only as its literal path, is a blob
@@ -84,7 +87,12 @@ case "$1" in
           printf 'tree basetree\nauthor someone <a@b> 7 +0000\n'
           printf 'committer someone <a@b> 7 +0000\n\nbase\n'
         else grep -qxF "${5#*:}" "$STAND_IN/based" 2>/dev/null; fi ;;
-      log) cat "$STAND_IN/log" 2>/dev/null || printf 'change\037\036' ;;
+      log)
+        case " $* " in
+          *" --first-parent --no-merges "*)
+            cat "$STAND_IN/log" 2>/dev/null || printf 'change\037\036' ;;
+          *) printf 'feat(b): a rider\037\036' ;;
+        esac ;;
       read-tree|write-tree)
         if [ -e "$STAND_IN/unwritable" ]; then exit 1; fi
         echo laidtree ;;
@@ -101,7 +109,10 @@ case "$1" in
             *) echo a1a1a1a1a1a1a1a1a1a1 ;;
           esac
         else cat > /dev/null; echo e69de29bb2d1d6434b8b29ae775ad8c2e48c5391; fi ;;
-      show) cat "$STAND_IN/quarantine.json" 2>/dev/null || exit 128 ;;
+      show)
+        if [ "${4%%:*}" = fedcba9876543210fedc ] && [ -e "$STAND_IN/show/${4#*:}" ]; then
+          cat "$STAND_IN/show/${4#*:}"
+        else cat "$STAND_IN/quarantine.json" 2>/dev/null || exit 128; fi ;;
     esac ;;
 esac
 "#;
@@ -110,7 +121,8 @@ esac
 /// derivations, the base's being any flake at a revision but red first's
 /// commits, `a1a1`'s being `over` and `b0b0`'s `probed`; and a build,
 /// which it records, and which fails when it names a check `failing` lists,
-/// or, of a flake at a revision, one `failing-over` lists,
+/// or, of a flake at a revision, one `failing-over` lists, or never ends
+/// once a test writes `hangs-over`,
 /// saying `failing.said` as its log. It refuses an evaluation through its evaluation
 /// cache, which two at once would find busy. Once a test writes `meet`, an
 /// evaluation of
@@ -138,6 +150,9 @@ case "$1" in
     echo "$@" | sed 's/ --option pure-eval true --option accept-flake-config false//' \
       >> "$STAND_IN/built"
     exec 3>&2
+    case "$*" in
+      *'?rev='*) while [ -e "$STAND_IN/hangs-over" ]; do sleep 1; done ;;
+    esac
     for word in "$@"; do
       list="$STAND_IN/failing"
       case "$word" in *'?rev='*) list="$STAND_IN/failing-over" ;; esac
@@ -362,6 +377,8 @@ impl StandIn {
             .env("CHANGED_CHECKS_STRACE", self.folder.join("bin/strace"))
             // A run is the train's candidate only where a case says so.
             .env_remove("CHANGED_CHECKS_CANDIDATE")
+            // Red first's budget is its own, where a case doesn't set one.
+            .env_remove("CHANGED_CHECKS_RED_FIRST_SECONDS")
             .envs(told.iter().copied())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())

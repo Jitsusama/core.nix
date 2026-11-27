@@ -57,6 +57,10 @@
 //!   download fails, says nothing of its tests, is said, and refuses
 //!   nothing. Nix's log of these builds is kept out of the run's, where
 //!   merge-net would read a failed build as the change's.
+//!   The builds stop once they've taken red first's budget, ten minutes
+//!   unless `CHANGED_CHECKS_RED_FIRST_SECONDS` says otherwise, since a
+//!   test waiting on what only the change does may never end there, and
+//!   the run waits on them; the change is then said, unjudged.
 //!
 //! Red first judges a change only when it can lay the change's whole test
 //! side over the base as the head has it, since a check reading every test
@@ -97,14 +101,13 @@
 //! them, and is excused too.
 
 use std::collections::BTreeSet;
-use std::fs;
-use std::process::Stdio;
+use std::time::Instant;
 
+use ended::{Built, built_over};
 use laying::{git, laid_over};
 use serde_json::json;
 pub use telling::{Apart, Change, adding, inline_tests, tests_begin};
 
-use crate::building;
 use crate::checks::Derivations;
 use crate::evaluating::evaluated;
 use crate::runs::Run;
@@ -152,38 +155,6 @@ impl<'a> At<'a> {
     #[must_use]
     pub fn built_elsewhere(self, lent: bool) -> Self {
         Self { lent, ..self }
-    }
-}
-
-/// How a check's build over the base ended, from its exit and nix's log.
-#[derive(Debug, PartialEq, Eq)]
-pub enum Built {
-    /// It built, so its tests pass there.
-    Passed,
-    /// A builder ran it and it failed, as a test failing does.
-    Red,
-    /// It failed without a builder failing, as when one is lost, a
-    /// download fails or the disk fills, which says nothing of its tests.
-    Unbuilt,
-}
-
-/// How a build over the base that `passed` or not, saying `log`, ended.
-/// Only nix's own lines say a builder failed it, not a builder's, which
-/// `-L` gives as `name> ...` and a test may fill with any words.
-pub fn built(passed: bool, log: &str) -> Built {
-    let builders = |line: &str| {
-        line.split_once("> ")
-            .is_some_and(|(name, _)| !name.is_empty() && !name.contains(char::is_whitespace))
-    };
-    if passed {
-        Built::Passed
-    } else if log
-        .lines()
-        .any(|line| !builders(line) && line.contains("failed with exit code"))
-    {
-        Built::Red
-    } else {
-        Built::Unbuilt
     }
 }
 
@@ -577,28 +548,52 @@ fn over_the_base(
     // and a system only carrying the tests passes there by design, so the
     // checks that run tests go first.
     moved.sort_by_key(|name| name.starts_with("example-") || name.starts_with("vm-"));
-    // A check that only carries the tests, as a system holding a package
-    // whose source holds them does, passes over the base by design, so
-    // one failing there proves them, and the rest needn't be built.
+    asked(at, &flake, &moved, &on_base, tests)
+}
+
+/// Build each of the checks `moved` over the base, at `flake`, until one
+/// fails there, proving the change's `tests`, or red first's budget ends.
+/// A check that only carries the tests, as a system holding a package
+/// whose source holds them does, passes over the base by design, so one
+/// failing there proves them, and the rest needn't be built.
+fn asked(
+    at: &At,
+    flake: &str,
+    moved: &[String],
+    on_base: &Derivations,
+    tests: &[String],
+) -> Result<Verdict, String> {
     let mut passing = Vec::new();
     let mut unbuilt = false;
+    let deadline = Instant::now() + ended::budget();
     for (done, name) in moved.iter().enumerate() {
+        if Instant::now() >= deadline {
+            say_over_budget(name);
+            return Ok(Verdict::Unjudged("over budget"));
+        }
         // A build's log is held back, so the run says what it waits on.
         eprintln!(
             "changed-checks: building {name} over the base ({} of {})",
             done + 1,
             moved.len()
         );
-        match built_over(&flake, at.system, name, &on_base)? {
+        match built_over(flake, at.system, name, on_base, deadline)? {
             Built::Red => {
                 eprintln!(
                     "changed-checks: {name} fails with the change's tests laid over the base, \
                      as it should"
                 );
-                return Ok(red(name));
+                return Ok(Verdict::Red {
+                    check: name.clone(),
+                    tests: tests.to_vec(),
+                });
             }
             Built::Passed => passing.push(name.as_str()),
             Built::Unbuilt => unbuilt = true,
+            Built::Late => {
+                say_over_budget(name);
+                return Ok(Verdict::Unjudged("over budget"));
+            }
         }
     }
     // One unbuilt might have been the check that runs the tests.
@@ -615,35 +610,14 @@ fn over_the_base(
     })
 }
 
-/// Build the check `name` over the base, keeping nix's log out of the
-/// run's: a test failing there as it should prints nix's words for a
-/// failed build, which merge-net reads as a check of the change failing.
-/// The log is kept in the cache, and named when it says nothing of the
-/// tests.
-fn built_over(
-    flake: &str,
-    system: &str,
-    name: &str,
-    on_base: &Derivations,
-) -> Result<Built, String> {
-    let ran = building::building_here(flake, system, &[name], on_base)
-        .stdin(Stdio::null())
-        .output()
-        .map_err(|error| format!("running nix: {error}"))?;
-    let log = String::from_utf8_lossy(&ran.stderr);
-    let ended = built(ran.status.success(), &log);
-    if ended == Built::Unbuilt {
-        let folder = crate::cache().join("changed-checks");
-        // Runs judging the same check at once each keep their own.
-        let kept = folder.join(format!("red-first-{}-{name}.log", std::process::id()));
-        let _ = fs::create_dir_all(&folder).and_then(|()| fs::write(&kept, &*log));
-        eprintln!(
-            "changed-checks: {name} couldn't be built over the base, though no builder failed \
-             it (nix's words are in {}), so its tests weren't asked to fail there",
-            kept.display()
-        );
-    }
-    Ok(ended)
+/// Say that red first's budget for building over the base ran out at the
+/// check `name`, so the change wasn't judged.
+fn say_over_budget(name: &str) {
+    eprintln!(
+        "changed-checks: red first's {} seconds of building over the base ran out at {name}, \
+         so the change's tests weren't asked to fail there, rather than hold the run",
+        ended::budget().as_secs()
+    );
 }
 
 /// Say that each check built over the base passed there, none failing,
@@ -788,6 +762,7 @@ fn evaluated_as(
     Ok(found)
 }
 
+mod ended;
 mod laying;
 mod telling;
 
