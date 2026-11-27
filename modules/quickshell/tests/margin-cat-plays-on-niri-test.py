@@ -125,6 +125,10 @@ def story(said: list[str]) -> str:
         if line.startswith((PLAYED, TURNED, LET_GO)):
             told.append(line)
             repeats = 1
+        # A refusal leaves the place as it was, so a cat still where it was refused tells no
+        # line between, and the refusal after is counted on the first; a play or a let-go
+        # tells the place after it afresh.
+        if line.startswith((PLAYED, LET_GO)):
             was = None
         if not line.startswith(SITS):
             continue
