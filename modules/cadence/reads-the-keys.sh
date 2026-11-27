@@ -15,7 +15,7 @@
 # by hand beside it. The runtime folder is pinned from the variable each
 # side reads it from.
 # It takes cadence's unbilled.rs, unresolved.rs and watch/budgets.rs, then
-# spend-watch's collection.rs, detect.rs, standing.rs, status.rs,
+# spend-watch's collection.rs, detect/billing.rs, standing.rs, status.rs,
 # config.rs and daemon.rs, then cadence's main.rs.
 # reads-the-keys-catches.sh shows it fails each rename it guards.
 set -euo pipefail

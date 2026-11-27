@@ -18,7 +18,7 @@ let
     "${./src/hour/measures/unresolved.rs}"
     "${./src/watch/budgets.rs}"
     "${../spend-watch/src/collection.rs}"
-    "${../spend-watch/src/detect.rs}"
+    "${../spend-watch/src/detect/billing.rs}"
     "${../spend-watch/src/standing.rs}"
     "${../spend-watch/src/status.rs}"
     "${../spend-watch/src/config.rs}"

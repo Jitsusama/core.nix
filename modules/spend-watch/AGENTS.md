@@ -202,7 +202,7 @@ feed speaks.
   told with how many sessions missed it, the day they start rather
   than a day later. Cadence counts both kinds of finding each hour
   while spend-watch's heartbeat is current.
-  `src/detect.rs` holds them all, and `spend-watch backtest` replays the
+  `src/detect/` holds them all, and `spend-watch backtest` replays the
   forecast, the burn and the caps on the history.
 - **Sources.** A feed's source that can't be read is nothing for its first
   fifteen minutes, since a machine booting or waking fails every read until
