@@ -4663,10 +4663,10 @@
   carry-back-asks-the-node-only-a-carry = ''
     Carry Back asks the realm's node only a carry of a quest's id to a machine's name, rebuilt from
     the act's parts so nothing else it holds is sent, and says it done once the carry ended
-    carried, else the node's own why, that its why couldn't be read, or that no answer came; a
-    carried row reads as carrying back until then, and has a refusal said on it, under the key
-    ReadyRows made it with, its thing or else its record's key, kept under row: where its thing
-    claims a kind of the launcher's own
+    carried, else the node's own why, that its why couldn't be read, or that no answer came; an
+    ask that is no carry is never sent, and is refused on its row; a carried row reads as carrying
+    back until then, and has a refusal said on it, under the key ReadyRows made it with, its thing
+    or else its record's key, kept under row: where its thing claims a kind of the launcher's own
   '';
   talk-to-opens-only-on-whom-it-names = ''
     the launcher's talkTo opens a talk on the first word it's given alone: a session's address in

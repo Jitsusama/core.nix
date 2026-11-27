@@ -120,5 +120,27 @@ QtObject {
             [["becomes", "row:place:Harbour", side, "Harbour", "carry back"],
                 ["refused", "row:place:Harbour", "skiff is out of reach"]]);
         Expect.same("and never ends carrying back as done", refused.until.done(), false);
+
+        const kept = recording();
+        CarryBack.carry({
+            row: { thing: "carry:7", name: "Harbour" },
+            key: "carry:7",
+            ask: { ask: "carry", quest: "QEST-20261115-HARBOR", to: "skiff",
+                checked: true, by: "KELP01" }
+        }, words, kept);
+        Expect.same("a served ask is sent as asked rebuilds it, nothing else it holds",
+            kept.told.slice(1), [["find", ask]]);
+
+        const unasked = recording();
+        CarryBack.carry({
+            row: { thing: "carry:7", name: "Harbour" },
+            key: "carry:7",
+            ask: { ask: "update", quest: "QEST-20261115-HARBOR", to: "skiff" }
+        }, { carrying: "carrying back", unasked: "it named no carry to send" }, unasked);
+        Expect.same("one that is no carry is never sent, and is refused on its row",
+            unasked.told,
+            [["becomes", "carry:7", side, "Harbour", "carry back"],
+                ["refused", "carry:7", "it named no carry to send"]]);
+        Expect.same("nor ever ends carrying back as done", unasked.until.done(), false);
     }
 }

@@ -478,7 +478,8 @@
       "said": {
         "carrying": "carrying back",
         "unanswered": "its machine didn't answer",
-        "unread": "its refusal couldn't be read"
+        "unread": "its refusal couldn't be read",
+        "unasked": "it named no carry to send"
       }
     },
     {
