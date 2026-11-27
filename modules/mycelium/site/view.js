@@ -599,11 +599,12 @@ import {
     // Where they run is said only to tell two such groups apart.
     if (loose.size === 1) for (const h of loose.values()) h.name = "Working alone";
     // A network the node sets within none grows out of the network whose
-    // cells started more of its cells than any other, as a hypha branches
-    // from another: who started each cell comes from its own record, else
-    // its forage, else what its forage says it split from, and which grows
-    // out of which is lineage.ts's to say. A starter is known only while it
-    // is drawn, since its network is where it is drawn.
+    // cells started or split more of its cells than any other, as a hypha
+    // branches from another: who started each cell comes from its own
+    // record, else its forage, and what it split from from its forage, each
+    // counting toward its own network, and which grows out of which is
+    // lineage.ts's to say. A starter is known only while it is drawn, since
+    // its network is where it is drawn.
     const startedBy = new Map(now.started.map((x) => [x.cell, x.by]));
     const splitFrom = new Map((now.split || []).map((x) => [x.cell, x.from]));
     const cellNamed = new Map(cells.map((s) => [s.address, s]));
@@ -930,11 +931,12 @@ import {
   });
   // What one cell's marks are painted in, by its key, for the page's
   // checks: which kind of cell it reads as is in these inks and widths,
-  // which a cell keeps at every zoom.
+  // which a cell keeps at every zoom, and whether it steps back from what
+  // is open is in their alpha.
   groundEl.marksOf = (key) =>
     cellLayer.filter((p) => p.key === key).map((p) => {
       const ink = inkOf(p.tag, p.cls, p.parent);
-      return { cls: p.cls, fill: ink.fill, stroke: ink.stroke, width: ink.width };
+      return { cls: p.cls, fill: ink.fill, stroke: ink.stroke, width: ink.width, alpha: ink.alpha };
     });
   groundEl.dataset.lines = "";
   groundEl.lines = () => {

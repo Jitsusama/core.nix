@@ -36,7 +36,7 @@ Nothing on it acts on the network.
   started inside another hangs from its parent's hub by a cord of its own.
   So does a network grown out of another, one whose cells were started by
   cells of the other: it branches from the network whose cells started
-  more of its cells than any other, and its drawer names them. A branch
+  or split more of its cells than any other, and its drawer names them. A branch
   lasts only while the cell that started it, or that it split from, is on
   the map, since that cell's network is known from where it is drawn. Who started a cell is
   said by the node that started it and carried to every machine, so a
@@ -48,7 +48,7 @@ Nothing on it acts on the network.
   one where no start is said, or where its start grows none, as one from a
   receptor, from inside its own network or from a branch of it. A cell
   started from one network and split from another counts toward both, and
-  the drawer of the network it grows out of says how it came. Both drawers
+  the branch's drawer says how it came. The branch's drawer and the cell's
   say it split rather than that anybody started it, since a split is not a
   start, and a cell's drawer says a split from the cell that started it
   only once. Only a forage here says a split, and
@@ -253,9 +253,10 @@ The keyboard comes first and the pointer works too.
   still on the map as the line opens, else from the one open now.
   Words for a machine that has left go with it, so s opens an empty
   line, and a machine that leaves while the line is open is let go of
-  at Return, which says so. A drawer's own Start New Work button
-  offers its own cell or machine, over any kept words. Escape closes
-  the line, and the control beside Now opens it too.
+  at Return, which sends nothing and says so; the next Return starts
+  the work where new work starts. A drawer's own Start New Work
+  button offers its own cell or machine, over any kept words. Escape
+  closes the line, and the control beside Now opens it too.
 - **Now holds the same network as a tree**, for a screen reader and
   for anyone who would rather walk a list: j and k step, l opens a branch,
   h closes it or climbs, g and G go to the first and last, and Return
