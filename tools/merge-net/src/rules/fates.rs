@@ -36,6 +36,29 @@ pub fn fates() -> Vec<Fate> {
     parse(FATES).expect("fates.txt reads as fates, which its own test holds")
 }
 
+/// The fates a head is judged by: those built in, from the head's own
+/// `fates.txt`, with every folder `base`'s copy names, `base` being the
+/// merge base's text of it, empty where it has none. A head can so add a
+/// fate but take none away from its own judgement, as `lock-after.txt` is
+/// read from the merge base alone.
+pub fn judging(base: &str) -> Result<Vec<Fate>, String> {
+    let mut judged = fates();
+    let based = parse(base).map_err(|why| format!("the merge base's {FATES_TXT}: {why}"))?;
+    for fate in based {
+        match judged.iter_mut().find(|held| held.name == fate.name) {
+            Some(held) => {
+                for folder in fate.folders {
+                    if !held.folders.contains(&folder) {
+                        held.folders.push(folder);
+                    }
+                }
+            }
+            None => judged.push(fate),
+        }
+    }
+    Ok(judged)
+}
+
 /// Read fates from lines of `name: folder/...`, skipping comments and
 /// blank lines, or say which line doesn't read. A folder ends in `/`, so
 /// it never holds a sibling whose name only begins with its own.
@@ -93,7 +116,7 @@ pub fn beside(fates: &[Fate], branch: &Side, main: &Side) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Fate, beside, fates, parse};
+    use super::{Fate, beside, fates, judging, parse};
     use crate::ready::Side;
 
     fn owned(files: &[&str]) -> Vec<String> {
@@ -127,6 +150,40 @@ mod tests {
     fn the_map() -> Vec<Fate> {
         parse("the map: modules/mycelium/site/ modules/local-sites/kit/")
             .expect("the map's fate reads")
+    }
+
+    #[test]
+    fn a_head_is_judged_by_every_fate_its_merge_base_names_too() {
+        let built = fates();
+        assert_eq!(
+            judging("").as_ref(),
+            Ok(&built),
+            "a base with no list added a fate"
+        );
+        let map = &built[0].name;
+        let based = format!("{map}: modules/lost/\ngone: modules/gone/\n");
+        let judged = judging(&based).expect("the base's list reads");
+        let holding = |name: &str, folder: &str| {
+            judged
+                .iter()
+                .any(|fate| fate.name == name && fate.folders.iter().any(|held| held == folder))
+        };
+        assert!(
+            holding(map, "modules/lost/"),
+            "a folder the head dropped was dropped"
+        );
+        assert!(
+            holding(map, &built[0].folders[0]),
+            "the head's own folder went"
+        );
+        assert!(
+            holding("gone", "modules/gone/"),
+            "a fate the head dropped was dropped"
+        );
+        assert!(
+            judging("no colon").is_err(),
+            "a base's list that doesn't read was let pass"
+        );
     }
 
     #[test]
