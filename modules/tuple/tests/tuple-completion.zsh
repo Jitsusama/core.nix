@@ -55,7 +55,8 @@ expect() {
   local typed=$1 wanted
   local -a got
   shift
-  # Named first, so a run cut off for time says which editor hung.
+  # Named first, so a run cut off for time says which editor hung
+  # (tuple-completes-in-zsh.sh).
   print -ru2 -- "typing \"$typed\""
   got=("${(@f)$(offered $typed)}")
   for wanted in "$@"; do

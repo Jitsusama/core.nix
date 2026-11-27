@@ -166,7 +166,8 @@ onLinux {
 
   # The tuple command completes in zsh with Tuple's own completion, which
   # only shows when Tab offers nothing, so the check completes commands
-  # in a real line editor with the real tuple (tests/tuple-completion.zsh).
+  # in a real line editor with the real tuple (tests/tuple-completion.zsh),
+  # held to a time (tests/tuple-completes-in-zsh.sh).
   tuple-completes-in-zsh =
     let
       home = account graphical;
@@ -180,21 +181,8 @@ onLinux {
         ];
       }
       ''
-        export HOME=$PWD XDG_DATA_HOME=$PWD/data XDG_RUNTIME_DIR=$PWD/run
-        mkdir -m 700 run
-        # Tab runs the real tuple, which may start its daemon, so the dozen
-        # or so editors are held to five minutes together, room for a
-        # loaded builder, and stopping the daemon to ten seconds.
-        # Each editor is named as it's typed in, so a cut-off's last name is
-        # the one that hung.
-        ended=0
-        timeout -k 5 300 zsh -f ${./tests/tuple-completion.zsh} \
-          ${tuple}/share/zsh/site-functions/_tuple || ended=$?
-        timeout -k 5 10 tuple stop > /dev/null 2>&1 || true
-        if [ $ended -eq 124 ] || [ $ended -eq 137 ]; then
-          echo "zsh was cut off (status $ended) in the last editor it named"
-        fi
-        if [ $ended -ne 0 ]; then exit $ended; fi
+        ${lib.getExe pkgs.bash} ${./tests/tuple-completes-in-zsh.sh} \
+          ${./tests/tuple-completion.zsh} ${tuple}/share/zsh/site-functions/_tuple
         touch $out
       '';
 
@@ -203,20 +191,17 @@ onLinux {
   # ending its flags there would leave every such row doing nothing. Each is
   # asked with one name too many, which the real tuple refuses by counting,
   # in a sandbox with no network or account, so it reaches nobody
-  # (tests/tuple-ends-its-flags.sh).
+  # (tests/tuple-ends-its-flags.sh). It stops Tuple's daemon, so it's run
+  # first from the shells a person would run it from, each of which it
+  # must refuse (tests/tuple-ends-its-flags-outside.sh).
   tuple-ends-its-flags =
     let
       home = account graphical;
       tuple = lib.findFirst (package: lib.getName package == "tuple") null home.home.packages;
-      reached = pkgs.writeShellScriptBin "tuple" "touch \"$NIX_BUILD_TOP\"/reached";
     in
     pkgs.runCommandLocal "tuple-ends-its-flags" { nativeBuildInputs = [ tuple ]; } ''
-      # Run first as a person's shell would, with a stand-in tuple that
-      # marks being reached, so a guard that let it through fails here.
-      if PATH=${reached}/bin:$PATH ${lib.getExe pkgs.bash} ${./tests/tuple-ends-its-flags.sh} \
-        2> refused || [ -e "$NIX_BUILD_TOP"/reached ]; then
-        echo "tuple-ends-its-flags.sh went on outside its build:"; cat refused; exit 1
-      fi
+      ${lib.getExe pkgs.bash} ${./tests/tuple-ends-its-flags-outside.sh} \
+        ${./tests/tuple-ends-its-flags.sh}
       export HOME=$PWD XDG_DATA_HOME=$PWD/data XDG_RUNTIME_DIR=$PWD/run
       mkdir -m 700 run
       ${lib.getExe pkgs.bash} ${./tests/tuple-ends-its-flags.sh}

@@ -14,11 +14,13 @@ set -euo pipefail
 
 # The check stops Tuple's daemon as it ends, and on a machine signed in to
 # Tuple that would be the person's own. Tuple finds its daemon by HOME and
-# XDG_RUNTIME_DIR, so the script runs only where both are in the folder it
-# runs in, as its check sets them, and the daemon it reaches is the one the
-# probes started. A shell of the repository's, or any shell of the
-# person's, has neither there.
-if [[ ${HOME:-} != "$PWD" || ${XDG_RUNTIME_DIR:-} != "$PWD"/* ]]; then
+# XDG_RUNTIME_DIR, and keeps its account and log in XDG_DATA_HOME, so the
+# script runs only where each is in the folder it runs in, as its check
+# sets them, and the daemon it reaches is the one the probes started. A
+# shell of the repository's, or any shell of the person's, has none there
+# (tuple-ends-its-flags-outside.sh runs it from each).
+if [[ ${HOME:-} != "$PWD" || ${XDG_RUNTIME_DIR:-} != "$PWD"/* ]] ||
+  [[ -n ${XDG_DATA_HOME:-} && $XDG_DATA_HOME != "$PWD"/* ]]; then
   echo "tuple-ends-its-flags.sh stops Tuple's daemon, so it runs only in its check's build:" \
     "build checks.<system>.tuple-ends-its-flags instead" >&2
   exit 1
@@ -63,5 +65,5 @@ for name in -dashed@example.com --dashed@example.com; do
   refuses "received 2" contacts favorite -- "$name" another
   refuses "received 2" contacts unfavorite -- "$name" another
 done
-refuses "unknown shorthand flag" call start -dashed@example.com another more
+refuses "unknown shorthand flag" call start -dashed@example.com another more still
 refuses "unknown flag" call start --dashed@example.com another more still
