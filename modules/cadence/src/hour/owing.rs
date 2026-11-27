@@ -1165,7 +1165,7 @@ mod tests {
     }
 
     #[test]
-    fn a_path_ask_closes_once_its_origin_is_no_longer_sampled() {
+    fn a_path_ask_stays_open_unsampled_and_closes_once_its_origin_is_no_longer_named() {
         let mut slow = measure("path:tls:forge.example", Class::Functional, 7.2, Some(1.0));
         slow.owner = "OXUW1Y".to_owned();
         let mut ledger = Vec::new();
