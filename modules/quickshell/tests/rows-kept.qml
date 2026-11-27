@@ -264,28 +264,40 @@ QtObject {
         // are; a narrowing of a ranking holds 844 rows and lists 77, and
         // with a Map costs fewer than twenty walks over Emoji, so held to
         // those it would pass. Eight rows moving among Emoji's reach what
-        // none of those do, working out which rows stay and each move, and
-        // are held only to what they end as: that path's healthy steps took
-        // 26 to 53 walks on a lender, and with a walk over the rows staying
-        // for each row 89 to 151 (#7167's lent runs), too near for one
-        // bound to tell apart. The other three are held to twenty, between
-        // what a healthy first letter took, a few, and what it took with a
-        // Map in placesOf, staying and steps, 30 to 200 (72 to 128 ms
-        // against 0.6 to 2.2, #7015's lent run), so a Map fails every
-        // batch and a busy lender's healthy run has room. Timed as
-        // ranking.qml's latching is, to the same twenty: each of five
-        // batches times a walk over fifty rounds and the steps over ten
-        // back to back, and it holds when three batches do. A walk's fifty
-        // rounds leave fifty objects of its rows behind, so the collector
-        // runs twice before each timing and the steps never pay to collect
-        // them. Timed apart, as the fastest walk against the fastest steps,
-        // a quiet walk could be held against steps that were all busy, as
+        // none of those do, working out which rows stay and moving each of
+        // the rest, those rising into their places and those falling past
+        // the rows that stay, and are held only to what they end as: that
+        // path's healthy steps took 26 to 53 walks on a lender, and with a
+        // walk over the rows staying for each row 89 to 151 (#7167's lent
+        // runs), too near for one bound to tell apart. The other three are
+        // held to twenty, between what a healthy first letter took, a few,
+        // and what it took with a Map in placesOf, staying and steps, 30 to
+        // 200 (72 to 128 ms against 0.6 to 2.2, #7015's lent run), so a Map
+        // fails every batch and a busy lender's healthy run has room. Timed
+        // as ranking.qml's latching is, to the same twenty: each of five
+        // batches times a walk over fifty rounds and the steps over ten back
+        // to back, and it holds when three batches do. A walk's fifty rounds
+        // leave fifty objects of its rows behind, so the collector runs
+        // twice before each timing and the steps never pay to collect them.
+        // Timed apart, as the fastest walk against the fastest steps, a
+        // quiet walk could be held against steps that were all busy, as
         // ranking.qml's latching was (A4315520, 2026-11-26).
-        const moving = emoji.filter((_, at) => at % 240 !== 7)
-            .concat(emoji.filter((_, at) => at % 240 === 7).reverse());
-        Expect.same("eight rows moving among Emoji's are eight moves",
-            RowsKept.steps(emoji, moving, 8).map(step => step.move !== undefined),
-            Array(8).fill(true));
+        // Eight of the rows `keys` spread through them moving: the last four
+        // rising to the top in their order, and the first four falling to
+        // the end turned round, so steps() moves rows both ways.
+        const eightMoving = keys => {
+            const apart = Math.floor(keys.length / 8);
+            const moves = at => at % apart === 7 && at < 8 * apart;
+            const moved = keys.filter((_, at) => moves(at));
+            return moved.slice(4).concat(keys.filter((_, at) => !moves(at)),
+                moved.slice(0, 4).reverse());
+        };
+        const moving = eightMoving(emoji);
+        const way = step => step.move === undefined ? "no move"
+            : step.to < step.move ? "up" : "down";
+        Expect.same("eight rows moving among Emoji's are eight moves, four up and four down",
+            RowsKept.steps(emoji, moving, 8).map(way),
+            ["up", "up", "up", "up", "down", "down", "down", "down"]);
         Expect.same("and the eight moves among Emoji's rows end where they're listed",
             done(emoji, moving, 8),
             { rows: moving.join(" "), drawn: "" });
