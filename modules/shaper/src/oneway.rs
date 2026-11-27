@@ -159,7 +159,7 @@ pub(crate) const VPN_MARGIN_MS: f64 = 5.0;
 /// 25 to 62 ms on 11 November, under a queue of 100 to 350 ms standing for
 /// minutes, and counted none of it; a path that moved is learned within
 /// this, or at once when the guard lets go. The least is the third-least
-/// heard in it, or the least while fewer are, since a base from one
+/// heard in it, or the least while too few are (`third_least`), since a base from one
 /// sample on 27 November, 58.9 ms among round trips of 60 to 75, held for
 /// five minutes and read their jitter as a queue hidden past ours.
 const VPN_LEAST_S: f64 = 300.0;
@@ -2129,13 +2129,33 @@ impl crate::replay::Controller for Controller {
     }
 }
 
-/// The third-least of `heard`, or its least while it holds fewer than
-/// three, or none while it holds none: three running minima, so the five
-/// minutes of round trips `VPN_LEAST_S` keeps aren't sorted each second.
+/// How many round trips `third_least` needs before it answers the
+/// third-least, not the least. With three alone the third-least is the
+/// highest of them, so after the guard lets go a queue still standing
+/// would be its own base (base third-least round 1's F2); ten seconds in,
+/// three dips are the path's.
+const THIRD_FROM: usize = 10;
+
+/// A round trip this close to the one heard before it is that one again:
+/// the controller is told the VPN's median about once a second, and
+/// stamps it on every second drained since, so one lucky median can be
+/// heard twice in a row (base third-least round 1's F33).
+const SAME_MS: f64 = 0.001;
+
+/// The third-least of `heard`, each run of one round trip heard again in a
+/// row counted once, or its least while it holds fewer than `THIRD_FROM`,
+/// or none while it holds none: three running minima, so the five minutes
+/// of round trips `VPN_LEAST_S` keeps aren't sorted each second.
 fn third_least(heard: impl ExactSizeIterator<Item = f64>) -> Option<f64> {
-    let enough = heard.len() >= 3;
+    let enough = heard.len() >= THIRD_FROM;
     let (mut first, mut second, mut third) = (f64::INFINITY, f64::INFINITY, f64::INFINITY);
+    let mut before = f64::NAN;
     for ms in heard {
+        let again = (ms - before).abs() < SAME_MS;
+        before = ms;
+        if again {
+            continue;
+        }
         if ms < first {
             (first, second, third) = (ms, first, second);
         } else if ms < second {
@@ -4151,6 +4171,49 @@ mod tests {
                 "40 ms heard {dips} times among round trips of 60"
             );
         }
+    }
+
+    #[test]
+    fn a_few_round_trips_answer_their_least_not_their_highest() {
+        // After the guard lets go, a queue still standing: 90, 92 and 140
+        // ms. As the third-least the base would be 140, the queue's own.
+        assert_eq!(
+            third_least([90.0, 92.0, 140.0].into_iter()),
+            Some(90.0),
+            "three round trips answered other than their least"
+        );
+        let ten = [
+            140.0, 90.0, 141.0, 92.0, 142.0, 95.0, 143.0, 144.0, 145.0, 146.0,
+        ];
+        assert_eq!(
+            third_least(ten.into_iter()),
+            Some(95.0),
+            "ten round trips didn't answer their third-least"
+        );
+        assert_eq!(
+            third_least(std::iter::empty()),
+            None,
+            "no round trip answered one"
+        );
+    }
+
+    #[test]
+    fn one_median_stamped_on_two_seconds_is_one_dip() {
+        let mut heard = vec![60.0; 20];
+        heard[5] = 40.0;
+        heard[6] = 40.0;
+        heard[12] = 41.0;
+        assert_eq!(
+            third_least(heard.iter().copied()),
+            Some(60.0),
+            "one median heard twice in a row counted as two dips"
+        );
+        heard[15] = 42.0;
+        assert_eq!(
+            third_least(heard.iter().copied()),
+            Some(42.0),
+            "three dips apart didn't move the base"
+        );
     }
 
     #[test]
