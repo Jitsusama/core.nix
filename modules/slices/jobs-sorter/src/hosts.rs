@@ -253,7 +253,8 @@ pub fn orchestrating(
 }
 
 /// What busctl is given to set a host unit's rank, as runtime properties
-/// gone at the next boot.
+/// gone at the next boot. Its weight is the disk's as well as the
+/// processor's, as `low::weigh_call` says why.
 pub fn rank_call(unit: &str, rank: &Rank) -> Vec<String> {
     let weight = rank.weight.to_string();
     let floor = rank.floor.to_string();
@@ -270,7 +271,7 @@ pub fn rank_call(unit: &str, rank: &Rank) -> Vec<String> {
         "sba(sv)",
         unit,
         "true",
-        "5",
+        "6",
         "CPUWeight",
         "t",
         &weight,
@@ -286,6 +287,9 @@ pub fn rank_call(unit: &str, rank: &Rank) -> Vec<String> {
         "MemoryMin",
         "t",
         &hard,
+        "IOWeight",
+        "t",
+        &weight,
     ]
     .iter()
     .map(|arg| (*arg).to_string())
@@ -1005,7 +1009,7 @@ mod tests {
     }
 
     #[test]
-    fn the_call_sets_all_five_properties() {
+    fn the_call_sets_all_six_properties() {
         let call = rank_call(
             "pi-host-work-attended.service",
             &wanted(&attended(), Signs::default(), 10),
@@ -1015,7 +1019,7 @@ mod tests {
             tail,
             [
                 "true",
-                "5",
+                "6",
                 "CPUWeight",
                 "t",
                 "100",
@@ -1030,7 +1034,10 @@ mod tests {
                 "avoid",
                 "MemoryMin",
                 "t",
-                "0"
+                "0",
+                "IOWeight",
+                "t",
+                "100"
             ],
             "the call gives back the unit's own floors and preference"
         );

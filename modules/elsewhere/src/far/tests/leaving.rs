@@ -1,6 +1,6 @@
 //! The near side leaving a job's files in the handover: which tracked
 //! names it takes, its archives, the list of them, and the bytes it says
-//! they take.
+//! they take; and the cache the far line finds that handover in.
 
 use super::{kind, scratch};
 use crate::far::{
@@ -246,4 +246,75 @@ fn what_is_left_over_several_archives_is_said_to_take_them_all() {
         "the archives weren't each listed at the size it was written at"
     );
     let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn both_sides_take_a_cache_or_home_that_isn_t_absolute_as_none() {
+    use crate::far::steps::{CACHE, cache};
+    use std::ffi::OsStr;
+    use std::path::PathBuf;
+    let line = format!("{CACHE}\nprintf %s \"$cache\"");
+    // The gate names dash, the strictest sh a far machine may have.
+    let sh = std::env::var("ELSEWHERE_FAR_SH").unwrap_or_else(|_| "sh".to_owned());
+    for (xdg, home, found) in [
+        (Some("rel/cache"), Some("/h"), "/h/.cache"),
+        (Some(""), Some("/h"), "/h/.cache"),
+        (None, Some("/h"), "/h/.cache"),
+        (Some("/c"), Some("/h"), "/c"),
+        (Some("/c"), None, "/c"),
+        (None, Some(""), ""),
+        (None, Some("rel"), ""),
+        (Some("rel/cache"), None, ""),
+    ] {
+        let mut far = std::process::Command::new(&sh);
+        far.args(["-c", &line]);
+        for (name, value) in [("XDG_CACHE_HOME", xdg), ("HOME", home)] {
+            match value {
+                Some(value) => far.env(name, value),
+                None => far.env_remove(name),
+            };
+        }
+        let said = far.output().unwrap().stdout;
+        let here = cache(xdg.map(OsStr::new), home.map(OsStr::new));
+        assert_eq!(
+            (String::from_utf8_lossy(&said).into_owned(), here),
+            (
+                found.to_owned(),
+                Some(found).filter(|it| !it.is_empty()).map(PathBuf::from)
+            ),
+            "a cache of {xdg:?} and a home of {home:?} weren't found where the line finds them"
+        );
+    }
+}
+
+#[test]
+fn a_far_machine_with_no_cache_leaves_the_job_untaken_as_its_own_fault() {
+    use crate::far::{Heard, UNTAKEN, script};
+    let command = ["true"].map(str::to_owned);
+    let line = script(
+        "QEST-20261115-ABC123",
+        "1",
+        0,
+        ".s",
+        Path::new(""),
+        &kind(""),
+        &command,
+    );
+    // The gate names dash, the strictest sh a far machine may have.
+    let sh = std::env::var("ELSEWHERE_FAR_SH").unwrap_or_else(|_| "sh".to_owned());
+    let far = std::process::Command::new(sh)
+        .args(["-c", &line])
+        .env("HOME", "rel")
+        .env_remove("XDG_CACHE_HOME")
+        .output()
+        .unwrap();
+    let said = String::from_utf8_lossy(&far.stdout);
+    assert_eq!(
+        (
+            far.status.code(),
+            said.lines().any(|it| it == Heard::Untaken.line("1"))
+        ),
+        (Some(i32::from(UNTAKEN)), true),
+        "a far machine with no cache didn't leave the job untaken: {said}"
+    );
 }

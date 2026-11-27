@@ -222,6 +222,17 @@ let
   carryingAloneNode =
     toString
       (linux (links // { easesCarry = true; })).systemd.user.services.mycelium.Service.ExecStart;
+  # The home realm's node for a machine naming the machines lent for agents
+  # it may ease onto,
+  # forced whole so a name the option's type refuses fails here.
+  ontoNode =
+    onto:
+    let
+      words =
+        toString
+          (linux (links // { easesOnto = onto; })).systemd.user.services.mycelium.Service.ExecStart;
+    in
+    builtins.deepSeq words words;
   # The home realm's node for a machine naming one via, forced whole so a
   # value the option's type refuses fails here.
   viaNode =
@@ -503,7 +514,7 @@ in
   # harness's pi-carry, which a carry runs by name.
   mycelium-links-what-a-machine-names =
     holds "mycelium-links-what-a-machine-names"
-      "A machine's links, over SSH or through a provider's program, don't each get dialled in its realm, its providers' programs aren't each asked, a via or a provider naming its program by no path or a place it could misread evaluates, Linux's node signs in with a key that may ask for a PIN or not the one its realm names, or through an agent the account's SSH config names, a Mac's node starts sessions whose commits wait on its sensor or finds the system's ssh after the account's programs or none of them, Linux's node isn't given a soft 65536 and a hard 524288 open files, or a Mac's a soft 10240 and no hard limit of its own, the home realm's node doesn't write how it would ease the machine or a further realm's does, it asks the harness to park sessions or makes its carries though its machine doesn't say to or doesn't where it does, on Linux or a Mac, a machine in a realm naming none runs no node, or one in none runs one."
+      "A machine's links, over SSH or through a provider's program, don't each get dialled in its realm, its providers' programs aren't each asked, a via or a provider naming its program by no path or a place it could misread evaluates, Linux's node signs in with a key that may ask for a PIN or not the one its realm names, or through an agent the account's SSH config names, a Mac's node starts sessions whose commits wait on its sensor or finds the system's ssh after the account's programs or none of them, Linux's node isn't given a soft 65536 and a hard 524288 open files, or a Mac's a soft 10240 and no hard limit of its own, the home realm's node doesn't write how it would ease the machine or a further realm's does, it doesn't name each machine lent for agents it may ease onto, or names one where none is set, in a further realm's node, or by a name it could misread, it asks the harness to park sessions or makes its carries though its machine doesn't say to or doesn't where it does, on Linux or a Mac, a machine in a realm naming none runs no node, or one in none runs one."
       (
         lib.hasInfix "--realm personal node --ssh one --ssh two" linuxNode
         && lib.hasInfix "--health-socket %t/daemons/system.sock --eases" linuxNode
@@ -515,12 +526,28 @@ in
               // {
                 easesSleep = true;
                 easesCarry = true;
+                easesOnto = [ "tern" ];
               }
             )).systemd.user.services.mycelium-other.Service.ExecStart
         ))
         && !(lib.hasInfix "--eases-sleep" linuxNode)
         && !(lib.hasInfix "--eases-carry" linuxNode)
         && !(lib.hasInfix "--eases-carry" sleepingNode)
+        && !(lib.hasInfix "--eases-onto" linuxNode)
+        && lib.hasInfix "--eases --eases-onto tern-2 --eases-onto osprey" (ontoNode [
+          "tern-2"
+          "osprey"
+        ])
+        && lib.hasInfix "--eases-onto tern" (
+          toString
+            (mac (easing // { easesOnto = [ "tern" ]; })).launchd.agents.mycelium.config.ProgramArguments
+        )
+        && lib.all (wrong: !(builtins.tryEval (ontoNode [ wrong ])).success) [
+          "Tern"
+          "tern osprey"
+          "--eases-carry"
+          "tern%h"
+        ]
         && lib.hasInfix "--eases --eases-carry --eases-sleep" carryingNode
         && lib.hasInfix "--eases --eases-carry" carryingAloneNode
         && !(lib.hasInfix "--eases-sleep" carryingAloneNode)
@@ -831,6 +858,7 @@ in
           sleepingNode
           carryingNode
           carryingAloneNode
+          (ontoNode [ "tern" ])
           apartAgentsNode
           (viaNode "/bin/cell:cell-1")
           (providerNode "/bin/cell")
@@ -1221,14 +1249,27 @@ in
         touch $out
       '';
 
+  # Every realm's node runs among the sessions, and what it swaps out stays
+  # compressed in memory rather than going to disk, as the sessions' kitty's
+  # does, so a wake after a quiet spell faults back from memory. On
+  # 2026-11-26 a node held 1.43 GB in swap, 25 KB of it in zswap, the kernel
+  # having reclaimed it past its floor 3,986,771 times; while the disk was
+  # busiest, 12 of 41 calls to it took 1.8 to 44 s. With writeback off, 38
+  # of 40 calls took under 0.7 s through the same load, and none hung.
   mycelium-runs-among-the-sessions =
     holds "mycelium-runs-among-the-sessions"
-      "A mycelium node runs outside agents.slice, where its wakeups preempt Joel's programs."
+      "A mycelium node runs outside agents.slice, where its wakeups preempt Joel's programs, or writes its swapped memory out to disk, where a wake waits to read it back."
       (
-        lib.all (node: (node.Service.Slice or null) == "agents.slice") [
-          bothLinux.mycelium
-          bothLinux.mycelium-other
-        ]
+        lib.all
+          (
+            node:
+            (node.Service.Slice or null) == "agents.slice"
+            && (node.Service.MemoryZSwapWriteback or true) == false
+          )
+          [
+            bothLinux.mycelium
+            bothLinux.mycelium-other
+          ]
       );
 
   mycelium-serves-the-harness-files =
@@ -1493,7 +1534,7 @@ in
   # One that declares nothing has no file, which mycelium reads as unknown.
   mycelium-declares-what-a-machine-says =
     holds "mycelium-declares-what-a-machine-says"
-      "What a machine declares, its probes of either kind included, isn't written in mycelium's shape, its node doesn't say whether a call is on there with a-call-is-on asked about that machine alone, a held session's outlives isn't each system's, a fence it doesn't say is written, whether pi fences itself isn't written only when a Mac says so beside its fences or isn't refused on Linux, doors it accepts for another machine aren't or take a machine no realm could name, an agent's run in a fenced or strict fence isn't said to start through its system's launcher, an unfenced one's is, one is when runs are refused, a machine of either system can't declare every fence, or a machine declaring nothing gets a file anyway."
+      "What a machine declares, its probes of either kind included, isn't written in mycelium's shape, its node doesn't say whether a call is on there with a-call-is-on asked about that machine alone, a held session's outlives isn't each system's, a fence it doesn't say is written, whether pi fences itself isn't written only when a Mac says so beside its fences or isn't refused on Linux, doors it accepts for another machine aren't or take a machine no realm could name, an agent's run in a fenced or strict fence isn't said to start through its system's launcher, an unfenced one's is, one is when runs are refused, a machine of either system can't declare every fence, a machine kept lively doesn't say its ceiling or one not kept lively says one, or a machine declaring nothing gets a file anyway."
       (
         declared linux == {
           reach = [ "internet" ];
@@ -1523,6 +1564,19 @@ in
         && !((declared linux) ? hosts)
         && !((declared linux) ? fence)
         && !((declared linux) ? pi_fences_itself)
+        && !((declared linux) ? kept_lively)
+        && (declaredAs { keptLively.cpu = 28; }).kept_lively or null == { cpu = 28; }
+        && (
+          (declaredAs {
+            keptLively = {
+              cpu = 28;
+              memoryAvailable = 1024;
+            };
+          }).kept_lively or null == {
+            cpu = 28;
+            memory_available = 1024;
+          }
+        )
         && !((launching mac everyKind) ? pi_fences_itself)
         && (saidBy (selfFenced mac)).pi_fences_itself or false
         && (saidBy (selfFenced mac)).fence.strict.runs or null == macLauncher

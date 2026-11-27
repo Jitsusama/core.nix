@@ -8,8 +8,9 @@ use std::collections::VecDeque;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
 use std::os::fd::AsRawFd;
+use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::UnixDatagram;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::rc::Rc;
 use std::sync::mpsc::{self, Receiver};
@@ -156,11 +157,37 @@ pub fn git_in(tree: &std::path::Path, args: &[&str]) {
     assert!(ran.status.success(), "git {args:?} failed: {ran:?}");
 }
 
-/// A stand-in for wl-copy in the foreground: what it's given goes to its
-/// file, and it holds on until it's ended, as wl-copy holds the clipboard.
+/// A stand-in for Passwords' wl-copy in the foreground: it says it's ready,
+/// what it's given goes to its file, it says it holds it, and it holds on
+/// until it's ended, as wl-copy holds the clipboard. A test sets how it
+/// strays: `COPIER_WAITS` has it wait a second before saying it's ready,
+/// noting in `.early` a byte it was given before then, read with a blocking
+/// read cut short so the pipe stays as `cat` expects it; `COPIER_SILENT`
+/// has it never say it's ready, leaving a child of its own behind that
+/// holds its standard error; `COPIER_REFUSES` has it refuse the copy for
+/// that reason, as Passwords' wl-copy refuses one it can't hold whole;
+/// `COPIER_UNHELD` has it read the copy and never say it holds it; and
+/// `COPIER_DEAF` has it say it's ready and never read at all.
 const COPIER: &str = r#"
+if [ -n "$COPIER_WAITS" ]; then
+  sleep 1
+  timeout 0.3 dd bs=1 count=1 of="$COPIED.early" 2>/dev/null
+fi
+if [ -n "$COPIER_SILENT" ]; then
+  sleep 60 &
+else
+  echo ready
+fi
+if [ -n "$COPIER_DEAF" ]; then
+  while :; do sleep 1; done
+fi
 cat > "$COPIED"
 printf '%s\n' "$*" > "$COPIED.flags"
+if [ -n "$COPIER_REFUSES" ]; then
+  echo "wl-copy: refused a sensitive copy: $COPIER_REFUSES" >&2
+  exit 1
+fi
+[ -n "$COPIER_UNHELD" ] || echo held
 while :; do sleep 1; done
 "#;
 
@@ -259,9 +286,7 @@ impl Running {
             &words,
             &also,
         );
-        std::fs::write(&bwrap, format!("#!/bin/sh\n{BWRAP}")).unwrap();
-        std::fs::set_permissions(&bwrap, std::os::unix::fs::PermissionsExt::from_mode(0o755))
-            .unwrap();
+        program(&bwrap, &format!("#!/bin/sh\n{BWRAP}"));
         std::fs::write(running.fence_list(), FENCE_LIST).unwrap();
         for folder in [".secret-folder", ".ssh", ".cache", ".docker"] {
             std::fs::create_dir_all(home.join(folder)).unwrap();
@@ -336,9 +361,7 @@ impl Running {
         let copier = folder.join("copier");
         // Run as wl-copy is, by its path alone, so it names its own shell;
         // it needs nothing past POSIX sh, which Nix's build sandbox has too.
-        std::fs::write(&copier, format!("#!/bin/sh\n{COPIER}")).unwrap();
-        std::fs::set_permissions(&copier, std::os::unix::fs::PermissionsExt::from_mode(0o755))
-            .unwrap();
+        program(&copier, &format!("#!/bin/sh\n{COPIER}"));
         let mut daemon = Command::new(env!("CARGO_BIN_EXE_passwords"))
             .current_dir(&folder)
             .arg("daemon")
@@ -346,6 +369,9 @@ impl Running {
             .arg(words)
             .env("PASSWORDS_COPIER", &copier)
             .env("PASSWORDS_CLEARS_MS", "700")
+            // Long enough for a copier told to wait a second, short
+            // enough that one which never answers is soon given up on.
+            .env("PASSWORDS_COPIER_PATIENCE_MS", "3000")
             .env("COPIED", folder.join("copied"))
             .env("XDG_STATE_HOME", folder.join("state"))
             .envs(set.iter().copied())
@@ -395,6 +421,13 @@ impl Running {
     /// The daemon's process id.
     pub fn pid(&self) -> u32 {
         self.daemon.id()
+    }
+
+    /// Ends the daemon at once, as a crash or the kernel's out-of-memory
+    /// killer does, with no chance to tidy anything up.
+    pub fn kill(&mut self) {
+        self.daemon.kill().unwrap();
+        self.daemon.wait().unwrap();
     }
 
     /// Whether the daemon has ended.
@@ -568,6 +601,37 @@ impl Breaches {
     pub fn requests(&self) -> Vec<String> {
         self.requests.lock().unwrap().clone()
     }
+}
+
+/// Writes `script` to `path` as a program that runs. The tests run on many
+/// threads, and a child forked on one keeps every file the process had open
+/// for writing until it runs its own program, so a program this process
+/// had just written would fail to start as busy (ETXTBSY) meanwhile, saying
+/// so only to whoever reads its starter's errors. It's written to a draft,
+/// then copied into place by `cp`, a process of its own, so nothing a test
+/// forks ever holds the program itself open.
+pub fn program(path: &Path, script: &str) {
+    let draft = path.with_extension("draft");
+    std::fs::write(&draft, script).unwrap();
+    program_copied(&draft, path);
+    std::fs::remove_file(&draft).unwrap();
+}
+
+/// Copies the program at `from` to `to` as `program` writes one: by `cp`,
+/// so this process never holds `to` open, made runnable by its path alone.
+pub fn program_copied(from: &Path, to: &Path) {
+    let copied = Command::new("cp")
+        .arg(from)
+        .arg(to)
+        .status()
+        .expect("cp runs");
+    assert!(
+        copied.success(),
+        "cp {} {} failed",
+        from.display(),
+        to.display()
+    );
+    std::fs::set_permissions(to, PermissionsExt::from_mode(0o755)).unwrap();
 }
 
 pub fn until(what: &str, holds: impl Fn() -> bool) {

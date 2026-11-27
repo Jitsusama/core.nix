@@ -89,7 +89,7 @@
   # For You stands what needs Joel now under the cell behind each, the cells
   # by their heaviest and what a cell asks leading it, heads each in Agents'
   # words for it, finds a session's own notices by the cell they name, and
-  # sets Agents Asking above every heading, as
+  # sets Agents above every heading, as
   # modules/quickshell/tests/for-you-cells.qml holds ForYouCells.js to it in
   # Qt's own engine.
   for-you-stands-each-under-its-cell =

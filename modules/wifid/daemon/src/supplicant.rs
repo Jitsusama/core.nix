@@ -304,6 +304,10 @@ pub trait Interface {
 
     fn scan(&self, args: HashMap<&str, zvariant::Value<'_>>) -> zbus::Result<()>;
 
+    /// Ends the look under way, if any, so a join asked meanwhile needn't
+    /// wait for it.
+    fn abort_scan(&self) -> zbus::Result<()>;
+
     /// Leaves the network it's on, and joins none until asked.
     fn disconnect(&self) -> zbus::Result<()>;
 

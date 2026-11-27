@@ -128,6 +128,67 @@ fn a_mycelium_that_names_no_sessions_for_a_quarter_hour_is_a_trouble() {
 }
 
 #[test]
+fn a_node_that_named_no_hubs_past_a_blink_is_a_trouble_by_its_error() {
+    let place = Place::new("hubless-node");
+    place.routes();
+    let minute = 60_000;
+    let run = |at: i64, hubless: Option<&str>| {
+        let ears = Ears {
+            at,
+            hubless: hubless.map(String::from),
+            ..place.ears()
+        };
+        let hour = hear(&ears, "", &mut |_, _| false).expect("a run");
+        let said = hour
+            .troubles
+            .iter()
+            .any(|t| t.contains("named no hubs") && t.contains("connection refused"));
+        (said, hour)
+    };
+    let refused = Some("connection refused");
+    let (said, hour) = run(AT, refused);
+    assert!(!said, "a node that blinked for one run failed it: {hour:?}");
+    assert_eq!(hour.hubless_since, Some(AT), "the outage wasn't counted");
+    assert!(!run(AT + 10 * minute, refused).0, "failed within the grace");
+    let (said, hour) = run(AT + 15 * minute, refused);
+    assert!(
+        said,
+        "pains going back to the fallback past a blink weren't said on the card: {hour:?}"
+    );
+    let (said, hour) = run(AT + 20 * minute, None);
+    assert!(
+        !said && hour.hubless_since.is_none(),
+        "a node naming hubs again still counted out: {hour:?}"
+    );
+    fs::remove_file(place.root.join("state/routes.json")).expect("routes gone");
+    run(AT + 25 * minute, refused);
+    let (said, hour) = run(AT + 40 * minute, refused);
+    assert!(
+        !said && hour.hubless_since.is_none(),
+        "a listener nobody set up counted or said the node out: {hour:?}"
+    );
+}
+
+#[test]
+fn a_node_that_couldnt_be_asked_for_hubs_is_named_by_its_socket() {
+    let place = Place::new("hubless-socket");
+    let runtime = place.root.join("run");
+    let (hubs, why) = hubs_named(&place.root, Some(runtime.clone()), Some("nowhere".into()));
+    let socket = runtime.join("mycelium/nowhere.sock");
+    assert!(hubs.is_empty(), "a node never asked named hubs: {hubs:?}");
+    let why = why.expect("a node not there couldn't be asked");
+    assert!(
+        why.starts_with(&format!("{}: ", socket.display())),
+        "the socket asked isn't named: {why}"
+    );
+    assert_eq!(
+        hubs_named(&place.root, None, Some("nowhere".into())),
+        (Vec::new(), None),
+        "a machine with no runtime folder read as a node that couldn't be asked"
+    );
+}
+
+#[test]
 fn an_earlier_run_dated_ahead_of_this_one_holds_no_outage_back() {
     let place = Place::new("future-hour");
     place.routes();
