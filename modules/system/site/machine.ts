@@ -4,7 +4,7 @@
 // so the page leads with them. Nothing here touches the page.
 
 import { capital, type Health, numbered, type System, type Thing, WORDS } from "./model.ts";
-import type { Figures, Place, Ties } from "./ties.ts";
+import type { Cells, Figures, Place, Ties } from "./ties.ts";
 
 /** A gigabyte and a terabyte, as a node counts bytes. */
 const GIGABYTE = 1e9;
@@ -162,7 +162,12 @@ function keptSaid<T extends Said>(said: T, note: string | undefined): T {
   return { ...said, aside: said.aside === "" ? told : `${said.aside} ${told}` };
 }
 
-/** A machine's cells, busy and idle, with those that have ended aside. */
+/**
+ * A machine's cells: those running, busy and idle, with the parked and the
+ * ended aside, or the two together where the node's health doesn't tell
+ * them apart, so a parked cell, which the node still counts, is never
+ * called ended.
+ */
 function cellsSaid(ties: Ties): Said {
   return keptSaid(cellsNow(ties), ties.kept.cells);
 }
@@ -172,18 +177,42 @@ function cellsNow(ties: Ties): Said {
   if (cells === undefined) {
     return { said: NOT_READ, aside: "The mycelium's health couldn't be had." };
   }
+  return { said: runningSaid(cells), aside: parkedAndEnded(cells.parked, cells.ended) };
+}
+
+/**
+ * A machine's running cells, busy and idle, and those out of reach: a
+ * machine the node can't reach has its cells counted there rather than
+ * busy or idle, and they are running still, since only the parked aren't.
+ */
+function runningSaid(cells: Cells): string {
   const counted = (count: number): string => (count === 0 ? "none" : count.toLocaleString("en-CA"));
-  const said =
-    cells.busy === 0 && cells.idle === 0
-      ? "None busy or idle"
-      : capital(`${counted(cells.busy)} busy and ${counted(cells.idle)} idle`);
-  return {
-    said,
-    aside:
-      cells.ended === 0
-        ? "None has ended."
-        : `And ${cells.ended.toLocaleString("en-CA")} that ${cells.ended === 1 ? "has" : "have"} ended.`,
-  };
+  const reached = cells.busy + cells.idle;
+  const far = `${cells.unreachable.toLocaleString("en-CA")} out of reach`;
+  if (reached === 0) {
+    return cells.unreachable === 0 ? "None running" : capital(far);
+  }
+  const running = (reached + cells.unreachable).toLocaleString("en-CA");
+  if (cells.unreachable === 0) {
+    return `${running} running: ${counted(cells.busy)} busy and ${counted(cells.idle)} idle`;
+  }
+  return `${running} running: ${counted(cells.busy)} busy, ${counted(cells.idle)} idle and ${far}`;
+}
+
+/** A machine's parked and ended cells, told apart where the node's health does. */
+function parkedAndEnded(parked: number | undefined, ended: number): string {
+  const grouped = (count: number): string => count.toLocaleString("en-CA");
+  if ((parked ?? 0) === 0 && ended === 0) {
+    return "None parked or ended.";
+  }
+  if (parked === undefined) {
+    return `And ${grouped(ended)} parked or ended.`;
+  }
+  const first = parked === 0 ? "None parked" : `And ${grouped(parked)} parked`;
+  if (ended === 0) {
+    return `${first}; none has ended.`;
+  }
+  return `${first}; ${grouped(ended)} ${ended === 1 ? "has" : "have"} ended.`;
 }
 
 /**

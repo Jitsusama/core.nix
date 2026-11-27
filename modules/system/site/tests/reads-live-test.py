@@ -46,8 +46,10 @@ COUNTED = "Two machines, both worth a look."
 # 403 elements since each machine's look carries its act, opening it in the launcher. One file
 # is the kit's head.css, the head every live page shares; its parts are four elements more in
 # the markup, within the budget's room. 451 KB since each look also says why it matters, which
-# with the head came to 450.6 KB.
-BUDGET = Budget(files=26, kilobytes=451, elements=410)
+# with the head came to 450.6 KB; 452 KB since each machine counts its running cells by one
+# rule, those out of reach with them, and says the parked apart from the ended, about 0.9 KB of
+# script.
+BUDGET = Budget(files=26, kilobytes=452, elements=410)
 
 
 @pytest.fixture
@@ -627,7 +629,8 @@ def test_a_machine_out_of_reach_is_named_apart(system_page: Page, system_daemon:
         "ties": {
             "reached": False,
             "heard_at": "2026-11-16T11:00:00Z",
-            "cells": {"busy": 1, "idle": 0, "ended": 0},
+            # The node counts an unreached machine's cells out of reach, never busy.
+            "cells": {"busy": 0, "idle": 0, "unreachable": 1, "ended": 0},
             "network": None,
             "code": None,
             "figures": None,

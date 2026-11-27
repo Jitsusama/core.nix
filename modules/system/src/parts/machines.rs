@@ -13,7 +13,7 @@ use serde_json::Value;
 use super::ties::ties;
 use super::{Answer, and, count, side_of, unread};
 use crate::record::{Deeper, Health, Look, Part, Thing};
-use crate::words::grouped;
+use crate::words::running;
 
 /// A gigabyte, as a disk's free room is said.
 const GIGABYTE: f64 = 1e9;
@@ -180,6 +180,11 @@ pub fn machines(
     }
 }
 
+/// Whether a machine's node says no link reaches it.
+fn away(said: &Value) -> bool {
+    said.get("state").and_then(Value::as_str) == Some("unreachable")
+}
+
 fn name_of(said: &Value) -> &str {
     said.get("name").and_then(Value::as_str).unwrap_or("")
 }
@@ -244,7 +249,7 @@ fn machine(
         line.push("is ready".to_owned());
     }
     if let Some(sessions) = sessions {
-        line.push(format!("runs {}", sessions_said(sessions)));
+        line.push(sessions_said(sessions, away(said)));
     }
     let thing = Thing {
         kind: "machine",
@@ -276,7 +281,7 @@ fn machine(
 /// its record doesn't say which it is.
 fn looked(said: &Value, own: Option<&Value>, backup: Option<Backup>) -> Said {
     let mut words = Said::default();
-    if said.get("state").and_then(Value::as_str) == Some("unreachable") {
+    if away(said) {
         words.look(
             Health::Bad,
             "is out of reach".to_owned(),
@@ -438,17 +443,28 @@ fn resource(said: &str) -> &str {
     }
 }
 
-/// A machine's sessions by how they stand: the busy and the idle, since
-/// the ended ones are history.
-fn sessions_said(sessions: &Value) -> String {
+/// A machine's running cells by how they stand, the busy, the idle and
+/// those out of reach, since the parked are said on its page and the ended
+/// ones are history. They are cells, the one name every page gives the
+/// mycelium's sessions. A machine itself out of reach holds its cells
+/// rather than runs them, as how each stands there is unknown; its line
+/// already says it's out of reach, so they are said once, together.
+fn sessions_said(sessions: &Value, away: bool) -> String {
     let of = |key: &str| sessions.get(key).and_then(Value::as_u64).unwrap_or(0);
-    let (busy, idle) = (of("busy"), of("idle"));
-    match (busy, idle) {
-        (0, 0) => "no session".to_owned(),
-        (busy, 0) => format!("{} busy", count(busy, "session", "sessions")),
-        (0, idle) => format!("{} idle", count(idle, "session", "sessions")),
-        (busy, idle) => format!("{} busy and {} idle sessions", grouped(busy), grouped(idle)),
+    let (busy, idle, far) = (of("busy"), of("idle"), of("unreachable"));
+    // A machine out of reach holds every cell on it, the parked among them,
+    // as the machines page's away row counts them: the node counts each
+    // cell in one of these alone (its health's `counted`).
+    if away {
+        let held = [busy, idle, far, of("parked")]
+            .into_iter()
+            .fold(0, u64::saturating_add);
+        return match held {
+            0 => "holds no cell".to_owned(),
+            held => format!("holds {}", count(held, "cell", "cells")),
+        };
     }
+    format!("runs {}", running(busy, idle, far))
 }
 
 #[cfg(test)]
@@ -633,15 +649,15 @@ mod tests {
         );
         assert_eq!(
             of("laptop")["cells"],
-            json!({"busy": 55, "idle": 33, "ended": 27})
+            json!({"busy": 55, "idle": 33, "unreachable": 0, "ended": 27})
         );
         assert_eq!(
             of("studio")["cells"],
-            json!({"busy": 2, "idle": 1, "ended": 0})
+            json!({"busy": 2, "idle": 1, "unreachable": 0, "ended": 0})
         );
         assert_eq!(
             of("spare")["cells"],
-            json!({"busy": 0, "idle": 0, "ended": 0}),
+            json!({"busy": 0, "idle": 0, "unreachable": 0, "ended": 0}),
             "a machine the health read lists none on says none, not unread"
         );
         assert_eq!(of("laptop")["network"][0]["by"], "wired");
@@ -671,11 +687,11 @@ mod tests {
         assert_eq!(
             part.things[0].says,
             "is short of memory and processor, has a filling disk, 279 GB free, \
-             is on battery at 12%, runs 55 busy and 33 idle sessions"
+             is on battery at 12%, runs 55 busy and 33 idle cells"
         );
         assert_eq!(
             part.things[1].says,
-            "is ready, runs 2 busy and 1 idle sessions"
+            "is ready, runs 2 busy and 1 idle cells"
         );
         assert!(
             part.says.starts_with("laptop is short of memory"),
@@ -701,8 +717,43 @@ mod tests {
         said["sessions"]["laptop"] = json!({"busy": 1_200, "idle": 3_400, "ended": 0});
         let part = machines(&Ok(realm(&[laptop(&[], "healthy")])), &Ok(said), None, None);
         assert_eq!(
-            part.things[0].says, "is ready, runs 1,200 busy and 3,400 idle sessions",
-            "a machine's session count is grouped, as the part's line says it"
+            part.things[0].says, "is ready, runs 1,200 busy and 3,400 idle cells",
+            "a machine's cell count is grouped, as the part's line says it"
+        );
+    }
+
+    #[test]
+    fn a_reached_machine_runs_the_cells_its_health_counts_out_of_reach() {
+        let mut said = said_health();
+        said["sessions"]["laptop"] = json!({"busy": 0, "idle": 0, "ended": 0, "unreachable": 12});
+        let part = machines(&Ok(realm(&[laptop(&[], "healthy")])), &Ok(said), None, None);
+        assert_eq!(
+            part.things[0].says, "is ready, runs 12 cells out of reach",
+            "an unreached machine's cells were said as none"
+        );
+    }
+
+    #[test]
+    fn a_machine_s_cells_out_of_reach_are_said_beside_its_busy_ones() {
+        let mut said = said_health();
+        said["sessions"]["laptop"] = json!({"busy": 2, "idle": 0, "ended": 0, "unreachable": 3});
+        let part = machines(&Ok(realm(&[laptop(&[], "healthy")])), &Ok(said), None, None);
+        assert_eq!(
+            part.things[0].says, "is ready, runs 2 cells busy, and 3 out of reach",
+            "three cells out of reach were lost beside two busy"
+        );
+    }
+
+    #[test]
+    fn a_machine_itself_out_of_reach_holds_its_cells_said_once() {
+        let mut said = said_health();
+        said["sessions"]["spare"] =
+            json!({"busy": 1, "idle": 0, "parked": 2, "ended": 4, "unreachable": 11});
+        let away = json!({"name": "spare", "state": "unreachable"});
+        let part = machines(&Ok(realm(&[away])), &Ok(said), None, None);
+        assert_eq!(
+            part.things[0].says, "is out of reach, holds 14 cells",
+            "an unreached machine said out of reach twice, its ended as held or its parked as not"
         );
     }
 

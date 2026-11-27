@@ -8,7 +8,7 @@
 use serde_json::Value;
 
 use crate::record::{Deeper, Health, Part};
-use crate::words::grouped;
+use crate::words::{grouped, running};
 
 mod machines;
 mod ties;
@@ -76,12 +76,12 @@ pub fn mycelium(health: &Answer) -> Part {
                 .sum::<u64>()
         })
     };
-    let (busy, idle) = (of("busy"), of("idle"));
+    // The cells running, said as each machine's line says its own, the
+    // out of reach among them.
+    let cells = running(of("busy"), of("idle"), of("unreachable"));
     let across = machines.map_or(0, serde_json::Map::len);
     let mut held = vec![format!(
-        "{} busy and {} idle sessions on {}",
-        grouped(busy),
-        grouped(idle),
+        "{cells} on {}",
         count(across as u64, "machine", "machines")
     )];
     // A session whose process has gone is an agent's leftover, as a gone
@@ -365,12 +365,12 @@ mod tests {
         assert_eq!(part.health, Health::Good);
         assert_eq!(
             part.says,
-            "57 busy and 34 idle sessions on 2 machines; 1 link up"
+            "57 busy and 34 idle cells on 2 machines; 1 link up"
         );
         assert_eq!(part.side, NO_LOOK, "what it holds is no look");
         assert_eq!(
             part.holds.as_deref(),
-            Some("57 busy and 34 idle sessions on 2 machines; 1 link up"),
+            Some("57 busy and 34 idle cells on 2 machines; 1 link up"),
             "what it holds is said apart"
         );
     }
@@ -388,7 +388,7 @@ mod tests {
         assert_eq!(held.side, NO_LOOK);
         assert_eq!(
             held.holds.as_deref(),
-            Some("57 busy and 34 idle sessions on 2 machines; 7 sessions gone; 1 link up")
+            Some("57 busy and 34 idle cells on 2 machines; 7 sessions gone; 1 link up")
         );
         said["links"][0]["state"] = json!("unreachable");
         let part = mycelium(&Ok(said));
@@ -602,8 +602,19 @@ mod tests {
         said["sessions"]["laptop"] = json!({"busy": 1_200, "idle": 3_400, "ended": 0});
         assert_eq!(
             mycelium(&Ok(said)).says,
-            "1,202 busy and 3,401 idle sessions on 2 machines; 1 link up",
+            "1,202 busy and 3,401 idle cells on 2 machines; 1 link up",
             "a session count is grouped, as a machine's card says it"
+        );
+    }
+
+    #[test]
+    fn cells_out_of_reach_are_counted_with_the_running() {
+        let mut said = said_health();
+        said["sessions"]["laptop"] = json!({"busy": 0, "idle": 0, "ended": 0, "unreachable": 5});
+        assert_eq!(
+            mycelium(&Ok(said)).says,
+            "2 busy and 1 idle cells, and 5 out of reach on 2 machines; 1 link up",
+            "the cells out of reach were left out of the mycelium's count"
         );
     }
 }

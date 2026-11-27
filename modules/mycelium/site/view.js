@@ -348,6 +348,9 @@ import {
   };
   // What a group of cells is counted as: receptors when it holds only them.
   const kindWord = (cells) => (cells.length && cells.every((s) => s.kind === "receptor") ? "receptor" : "cell");
+  // How many cells there are, as every page counts them: the sessions that
+  // haven't ended, parked ones too, the receptors at the edge counted apart.
+  const cellsCounted = (marks) => marks.filter((s) => s.kind === "session").length;
   // The group a cell is walked in: its network, or the receptors' edge.
   const netOf = (s) => s?.hub || (s?.loose?.edge ? s.loose : null);
 
@@ -1016,9 +1019,12 @@ import {
   // The mark says only whether it is chosen: it is never seen, so whether
   // it is far is the paint's to say, and a new choice leaves it alone.
   const cellMarkClass = (s) => (chosen?.kind === "cell" && chosen.id === s.address ? "cell chosen m-hit" : "cell m-hit");
+  // A receptor's mark says so, since the status sentence counts sessions
+  // alone as cells, and whatever checks the two against each other must too.
   const cellMarkup = (s, [x, y]) => {
     const net = esc(netOf(s)?.key || "");
-    return `<circle class="${cellMarkClass(s)}" data-key="c:${esc(s.address)}" data-level="${net || LOOSE_LEVEL}" data-within="${net}"${s.standing === "asks" ? ' data-asks=""' : ""} cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${R + 4}"/>`;
+    const receptor = s.kind === "receptor" ? ' data-receptor=""' : "";
+    return `<circle class="${cellMarkClass(s)}" data-key="c:${esc(s.address)}" data-level="${net || LOOSE_LEVEL}" data-within="${net}"${receptor}${s.standing === "asks" ? ' data-asks=""' : ""} cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${R + 4}"/>`;
   };
   // What a cell paints, innermost last: what changed, what waits on it,
   // its membrane and what it is doing.
@@ -3201,7 +3207,7 @@ import {
       `<h2 id="panel-title">Now</h2>` +
       needsLines(m.cells) +
       heldUp(m.cells) +
-      `<p class="carries">${esc(`Your whole network: ${plural(m.cells.length - sensing, "cell")} in ${plural(tops.length, "orchestration")}${sensing ? `, ${plural(sensing, "receptor")} at its edge` : ""}, on ${used.size} of ${plural(everyMachine().length, "machine")}.`)}</p>` +
+      `<p class="carries">${esc(`Your whole network: ${plural(cellsCounted(m.cells), "cell")} in ${plural(tops.length, "orchestration")}${sensing ? `, ${plural(sensing, "receptor")} at its edge` : ""}, on ${used.size} of ${plural(everyMachine().length, "machine")}.`)}</p>` +
       glance(
         esc("Every cell you run, the networks they work in and the machines they run on."),
         esc(groupDoing(m.cells)),
@@ -4992,8 +4998,13 @@ import {
   };
   const drawStatus = () => {
     if (!current) return;
+    // Cells are counted as Now counts them, so this sentence and every
+    // other page say the same number. What
+    // moves, sticks or asks is read over every mark, receptors too, so one
+    // reading mail keeps the sentence from saying all is quiet; how many are
+    // at work is a share of the same marks.
+    const all = cellsCounted(current.cells);
     const n = countsOf(current.cells);
-    const all = current.cells.length;
     const stuck = n.stuck ? `, ${NUMBER.format(n.stuck)} stuck` : "";
     const asks = n.asks === 1 ? "one needs you" : n.asks ? `${NUMBER.format(n.asks)} need you` : "";
     const clauses = [["cells", plural(all, "cell")]];
@@ -5015,7 +5026,7 @@ import {
       asksWords.innerHTML = asked;
       if (had) (sentenceLine.querySelector(`[data-count="${had}"]`) || view).focus({ preventScroll: true });
     }
-    const said = `${atWork(n.moving, all)}${stuck}${asks ? `; ${asks}` : ""}`;
+    const said = `${atWork(n.moving, current.cells.length)}${stuck}${asks ? `; ${asks}` : ""}`;
     if (said === statusShown) return;
     statusShown = said;
     statusSaid.textContent = said;

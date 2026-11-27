@@ -38,8 +38,8 @@
         "kind": "part",
         "part": "mycelium",
         "health": "watch",
-        "holds": "6 busy and 9 idle sessions on 2 machines; 1 link up",
-        "says": "4 sessions say they run with their processes gone; 6 busy and 9 idle sessions on 2 machines",
+        "holds": "6 busy and 9 idle cells on 2 machines; 1 link up",
+        "says": "4 sessions say they run with their processes gone; 6 busy and 9 idle cells on 2 machines",
         "side": ["4 sessions say they run with their processes gone"],
         "things": [],
         "deeper": { "command": "mycelium networks", "launcher": "Agents", "site": "mycelium/" }
@@ -75,12 +75,12 @@
         "name": "kestrel",
         "health": "watch",
         "address": null,
-        "says": "is short of processor, has a filling disk, 135 GB free, booted 3 hours ago after a firmware error, runs 4 busy and 5 idle sessions",
+        "says": "is short of processor, has a filling disk, 135 GB free, booted 3 hours ago after a firmware error, runs 4 busy and 5 idle cells",
         "side": ["booted 3 hours ago after a firmware error"],
         "ties": {
           "reached": true,
           "heard_at": null,
-          "cells": { "busy": 4, "idle": 5, "ended": 2 },
+          "cells": { "busy": 4, "idle": 5, "unreachable": 0, "parked": 0, "ended": 2 },
           "network": [
             { "device": "mac:0a", "by": "2.4 GHz", "point": "Hall", "bars": 4, "room_mbps": 180 }
           ],
@@ -111,12 +111,12 @@
         "name": "osprey",
         "health": "watch",
         "address": null,
-        "says": "says its code wants a look, runs 2 busy and 4 idle sessions",
+        "says": "says its code wants a look, runs 2 busy and 4 idle cells",
         "side": ["code wants a look"],
         "ties": {
           "reached": true,
           "heard_at": null,
-          "cells": { "busy": 2, "idle": 4, "ended": 0 },
+          "cells": { "busy": 2, "idle": 4, "unreachable": 0, "parked": 0, "ended": 0 },
           "network": [{ "device": "mac:0b", "by": "wired", "point": "Den", "room_mbps": 900 }],
           "code": null,
           "figures": {

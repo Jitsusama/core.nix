@@ -493,8 +493,9 @@ import ./ask-checks.nix args
   # answer a tap, an arrow on the theme switch chooses a look and leaves the
   # cursor, the look holds to the next visit, its mark takes each look's tint, a
   # document under a hero answers a tap on its keys, and the web-design
-  # skill's page checks pass at two widths in both looks with nothing logged.
-  # Chromium builds only on Linux.
+  # skill's page checks pass at two widths in both looks with nothing logged,
+  # and a laptop's short screen shows its first site whole while a tall one
+  # keeps the whole crest. Chromium builds only on Linux.
   home-answers-its-keys =
     pkgs.runCommandLocal "home-answers-its-keys"
       {

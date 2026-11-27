@@ -10,10 +10,11 @@ its list of keys and Escape closes it, the keys its head shows answer a tap,
 the arrows on the theme switch choose a look and leave the cursor where it was,
 and the look chosen holds on the next visit. Its mark is drawn in each look's
 own tint from the kit. It passes the web-design skill's page checks at a
-phone's width and a desk's in both looks, and anything it logs fails it. A
-document whose head is a hero rather than a head answers a tap on its shown
-keys too. The server, the browser and the tab are
-modules/local-sites/tests/live_page.py's.
+phone's width and a desk's in both looks, and anything it logs fails it. On a
+laptop's short screen its first site stands whole in the first screen, and a
+tall one draws its crest whole. A document whose head is a hero rather than a
+head answers a tap on its shown keys too. The server, the browser and the tab
+are modules/local-sites/tests/live_page.py's.
 """
 
 import json
@@ -72,6 +73,25 @@ PAST_TWICE_MS = 1000
 LIGHT = "@media (prefers-color-scheme: light)"
 DARK_STROKE = re.compile(r"dark\) \{ g \{ stroke: ([^;]+); \}")
 LIGHT_STROKE = re.compile(r"^    g \{ stroke: ([^;]+); \}", re.MULTILINE)
+# A laptop's short screens, on which the first site must stand whole in the
+# first screen; one tall enough for the crest at its 13rem, as home.css draws
+# it from about 70rem tall; and one between, past the 60rem the threshold
+# tightens under, whose crest still follows its height: 30svh less 8rem.
+# Each crest is said as pixels of the height and a number of rems, since an
+# interface's rem is its body's size, which grows with the width from 15 px
+# to 16 px (theme/web/web.nix).
+LAPTOPS = [(1280, 800), (1024, 768)]
+TALL = (1280, 1200)
+FULL_CREST = (0, 13)
+BETWEEN = (1280, 1000)
+BETWEEN_CREST = (300, -8)
+# A phone, narrow and short, whose crest goes by its width alone, at 9rem: a
+# short screen's shrinking is the wide one's, so the crest doesn't fall to its
+# least on a phone or change size as its address bar slides.
+PHONE = (375, 667)
+PHONE_CREST = (0, 9)
+# The page's rem, in pixels.
+REM = "() => parseFloat(getComputedStyle(document.documentElement).fontSize)"
 
 
 @pytest.fixture
@@ -209,3 +229,72 @@ def test_the_home_passes_the_skills_page_checks(
     expect(opened.page.locator(CURSOR), "the home drew no sites").to_have_text(NAMES[0])
     opened.passes_the_skills_checks()
     opened.close()
+
+
+@pytest.mark.parametrize("size", LAPTOPS, ids=[f"{width}x{height}" for width, height in LAPTOPS])
+def test_a_laptops_first_screen_shows_a_site_whole(
+    browser: Browser, home: str, size: tuple[int, int]
+) -> None:
+    """On a laptop's short screen the threshold gives way, and the first site stands whole."""
+    opened = Opened(browser, home, size, "dark")
+    try:
+        first = opened.page.locator(".bed .sites a").first
+        expect(first, "the home drew no sites").to_be_visible()
+        box = first.bounding_box()
+        assert box, "the first site was drawn with no box"
+        ends, (_, height) = box["y"] + box["height"], size
+        assert ends <= height, f"the first site ends at {ends:.0f} px, past the {height} px screen"
+    finally:
+        opened.close()
+
+
+@pytest.mark.parametrize(
+    ("size", "crest"),
+    [(TALL, FULL_CREST), (BETWEEN, BETWEEN_CREST), (PHONE, PHONE_CREST)],
+    ids=["tall", "between", "phone"],
+)
+def test_a_screens_crest_follows_its_height_when_wide_and_its_width_on_a_phone(
+    browser: Browser, home: str, size: tuple[int, int], crest: tuple[int, int]
+) -> None:
+    """A tall screen draws its crest whole, a shorter one smaller, and a phone at its width's."""
+    opened = Opened(browser, home, size, "dark")
+    try:
+        box = opened.page.locator(".crest").bounding_box()
+        assert box, "the crest was drawn with no box"
+        pixels, rems = crest
+        wanted = pixels + rems * opened.page.evaluate(REM)
+        # Within a pixel, since the browser lays boxes out in 1/64 px steps.
+        drawn = box["width"]
+        assert abs(drawn - wanted) < 1, f"a {size} screen drew the crest {drawn} px, not {wanted}"
+    finally:
+        opened.close()
+
+
+# What the threshold's own gaps measure: the crest's below it and the
+# contents' above them, which a short wide screen takes to nothing.
+GAPS = """() => [".crest", ".contents"].map((part) => {
+    const style = getComputedStyle(document.querySelector(part));
+    return part === ".crest" ? style.marginBlockEnd : style.marginBlockStart;
+})"""
+
+
+# The threshold's gaps once a short wide screen has taken them to nothing.
+SHUT = ["0px", "0px"]
+
+
+@pytest.mark.parametrize(
+    ("size", "threshold"),
+    [(LAPTOPS[0], "shut"), (BETWEEN, "open")],
+    ids=["laptop", "between"],
+)
+def test_only_a_screen_under_60rem_tall_tightens_the_threshold(
+    browser: Browser, home: str, size: tuple[int, int], threshold: str
+) -> None:
+    """The threshold's gaps go only on a wide screen shorter than 60rem."""
+    opened = Opened(browser, home, size, "dark")
+    try:
+        gaps = opened.page.evaluate(GAPS)
+        shut = gaps == SHUT
+        assert shut == (threshold == "shut"), f"a {size} screen's gaps were {gaps}"
+    finally:
+        opened.close()

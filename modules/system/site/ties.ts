@@ -20,6 +20,10 @@ const EMPTY: Fields = {};
 interface Cells {
   readonly busy: number;
   readonly idle: number;
+  /** On a machine the node can't reach, counted here rather than busy or idle. */
+  readonly unreachable: number;
+  /** None where the node's health doesn't tell the parked apart, and `ended` holds them. */
+  readonly parked: number | undefined;
   readonly ended: number;
 }
 
@@ -108,6 +112,8 @@ function cellsOf(said: Fields | undefined): Cells | undefined {
   return {
     busy: counted(said, "busy") ?? 0,
     idle: counted(said, "idle") ?? 0,
+    unreachable: counted(said, "unreachable") ?? 0,
+    parked: counted(said, "parked"),
     ended: counted(said, "ended") ?? 0,
   };
 }

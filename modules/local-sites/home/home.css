@@ -16,6 +16,8 @@
   --leaf: var(--success);
   --column: 46rem;
   --threshold: 58rem;
+  /* The crest grows with the window's width; a wide window that is short
+     shrinks it too, in the queries at the end of this file. */
   --crest: clamp(9rem, 22vw, 13rem);
   --gutter: 1.75rem;
 }
@@ -380,5 +382,53 @@ main {
   .what {
     grid-row: auto;
     grid-column: 1 / -1;
+  }
+}
+
+/* A wide screen's crest gives way as the screen gets shorter: 7rem at a
+   laptop's 800 px, never under 5rem, and its whole 13rem from about
+   70rem tall. It follows the height alone, unbounded, so a window resized
+   past the query below grows it smoothly rather than at a jump. Measured
+   on the small viewport, it holds still while a tablet's address bar
+   slides; a phone's goes by its width alone. */
+@media (width >= 34rem) {
+  :root {
+    --crest: max(5rem, min(clamp(9rem, 22vw, 13rem), 30svh - 8rem));
+  }
+}
+
+/* A wide screen that is short, as a laptop's is, keeps the threshold's
+   axis but tightens it: the gaps take a rung less, and the keys and the
+   switch share one line, so the first bed's sites stand in the first
+   screen (the first whole at 1280 by 800 and at 1024 by 768). A taller
+   screen keeps the threshold as it was drawn, and a phone scrolls to its
+   sites anyway. It comes last, so it wins over the rules it tightens. */
+@media (width >= 34rem) and (height < 60rem) {
+  .threshold {
+    padding-block-start: var(--inset);
+  }
+
+  .crest {
+    margin-block-end: 0;
+  }
+
+  .threshold .page-head {
+    gap: var(--apart);
+    margin-block-end: 0;
+  }
+
+  .threshold .page-head .quiet {
+    flex-flow: row wrap;
+    justify-content: center;
+    align-items: center;
+    gap: var(--items);
+  }
+
+  .contents {
+    margin-block-start: 0;
+  }
+
+  .bed:first-of-type {
+    padding-block-start: var(--groups);
   }
 }

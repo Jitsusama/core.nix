@@ -18,8 +18,8 @@
 //   machine's says "machine" and a cell's says "cell";
 // - layer: the whole map draws no machine until "m" shows them, and "m"
 //   then draws at least one;
-// - reach: until the map folds, every cell the sentence counts has a
-//   mark, and no group of cells working alone lists a receptor;
+// - reach: until the map folds, every cell the sentence counts (sessions,
+//   never receptors) has a mark, and no group of cells working alone lists a receptor;
 // - screen: at the whole map and one and two zooms in, at most
 //   NAMES_ON_SCREEN names past the ones he's engaged with, no name over a
 //   cell or a network's mark, and every cell drawn at CELL_PX across or
@@ -233,7 +233,7 @@
   };
   const reach = async () => {
     const counted = Number((document.querySelector('[data-count="cells"]')?.textContent || "").replace(/\D/g, ""));
-    const drawn = marks('[data-key^="c:"]').length;
+    const drawn = marks('[data-key^="c:"]:not([data-receptor])').length;
     const folds = document.getElementById("map-ground")?.painted?.().folded ?? 0;
     if (counted <= FOLD_OVER && folds === 0 && drawn !== counted) {
       faults.push(`reach: the sentence counts ${counted} cells and the map marks ${drawn}`);

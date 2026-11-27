@@ -141,6 +141,18 @@ it("cells the mycelium still holds on a machine out of reach are said on its lin
   assert.ok(!row.slice(0, row.indexOf("</li>")).includes("(bad)"), "said once, above");
 });
 
+it("cells the node counts out of reach, and parked ones, are still on its line", () => {
+  // How the node's health counts a machine it can't reach: its cells out
+  // of reach, none busy or idle.
+  const far = tiesOf({
+    reached: false,
+    heard_at: "2026-11-23T19:02:00Z",
+    cells: { busy: 0, idle: 0, unreachable: 12, parked: 2, ended: 4 },
+  });
+  const drawn = partsOf(system([{ ...away("cloud-1"), ties: far }]), when);
+  assert.ok(drawn.includes("Last heard at 19:02, 14 cells still on it"), drawn);
+});
+
 it("the bridge stands a pier only for a machine in reach, and says the rest", () => {
   const read = system(FOURTEEN);
   const drawn = bridgeOf(reachedOf(read), awayOf(read).length);
