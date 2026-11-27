@@ -249,5 +249,18 @@
       "test_the_vpns_next_socket_goes_the_quick_way"
     ],
     "test": "vm-the-vpn-takes-the-quick-way"
+  },
+  {
+    "at": 1795787332,
+    "commit": "9adb110c49997b410467f8f131b6447eff612eb6",
+    "due": "2026-11-29",
+    "due_why": "Its owner, XY9H5C, mends it with #7137: niri says the cat's window scrolled off before it says the keys left it, and seatless, the cat never rode that scroll. It failed so at 9adb110c, and at #7157's gate, which doesn't touch the cat. While it stands, nothing catches a change that stops the cat walking along the strip to a column off the screen.",
+    "owner_pr": 7137,
+    "owner_session": "XY9H5C",
+    "reason": "failed at 9adb110c, the cat left behind as its window scrolled off",
+    "subtests": [
+      "test_a_column_off_the_screen_is_walked_to_along_the_strip"
+    ],
+    "test": "the-margin-cat-follows-the-keys-on-niri"
   }
 ]
