@@ -9010,7 +9010,7 @@ mod tests {
         assert_eq!(ran.map(|ran| ran.status), Some(0));
         assert_eq!(
             fs::read_to_string(&sent).unwrap(),
-            far_saying_where(&in_turn_nearby(&asked.command())),
+            far_saying_where(&super::in_turn_nearby(&asked.command())),
             "a build sent nearby waits for a turn and says which machine it runs on"
         );
     }
