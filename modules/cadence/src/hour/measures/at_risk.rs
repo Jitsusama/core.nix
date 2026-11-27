@@ -50,7 +50,7 @@ pub fn at_risk(
 ) -> Measure {
     let mut latest: BTreeMap<[String; 2], Value> = BTreeMap::new();
     for ask in asks(text) {
-        latest.insert([ask["at"].to_string(), ask["words"].to_string()], ask);
+        latest.insert(tracking::asked(&ask), ask);
     }
     let mut risks: Vec<Risk> = Vec::new();
     let mut unread = 0;

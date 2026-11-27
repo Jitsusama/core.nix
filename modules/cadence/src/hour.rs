@@ -18,9 +18,12 @@
 
 mod card;
 mod good;
-mod ledger;
+// The axes judge whether each line of the asks list is a record by the
+// hour's rule; the hour alone keeps the count that finds a list written over.
+pub(crate) mod ledger;
 mod lines;
-mod measures;
+// The axes read an ask's dates as the hour's measures do.
+pub(crate) mod measures;
 mod met;
 mod moved;
 mod net;

@@ -115,7 +115,7 @@ fn sent_at(m: &Message) -> Option<i64> {
 fn dated(text: &str, now: i64) -> BTreeSet<String> {
     let mut latest = BTreeMap::new();
     for ask in super::asks(text) {
-        let asked = [ask["at"].to_string(), ask["words"].to_string()];
+        let asked = crate::tracking::asked(&ask);
         let open = ask["landed"].is_null() && ask["closed"].is_null();
         let due = seconds(&ask["expected"]).is_some_and(|expected| expected > now);
         let hold = ask["hold"]

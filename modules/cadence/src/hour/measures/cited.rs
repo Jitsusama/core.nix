@@ -12,6 +12,10 @@
 //! a time only when that message says it. Which cell owns a piece of work
 //! is the orchestrator's to say, so only a switch time is held to one
 //! cell: the one running the switches.
+//!
+//! Long because reading a line's times, its halves of the day and its
+//! sentences is one reading the three counts share, and split apart
+//! they would drift, as a time read one way and judged another.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
@@ -458,11 +462,29 @@ fn timed_uncited<'a>(
             continue;
         }
         let switch = said.iter().any(|w| w.starts_with("switch"));
-        let gives = |cite: &&Cite, clock: &String| {
-            let told = senders.get(&cite.msgid).map(|sent| sent.text.as_str());
-            clock_times(&cite.item).contains(clock)
-                && told.is_some_and(|told| clock_times(told).contains(clock))
-                && (!switch || cite.owner.eq_ignore_ascii_case(SWITCHES))
+        // The citation and the message it names must give the one time,
+        // so a line on the dial isn't backed by a citation of the morning
+        // that cites the evening. Only a time to Joel on the dial is
+        // widened to its other half: the owner's word gives the half
+        // whenever the line names one, so an owner's dial "9:05" never
+        // backs a line of "21:05".
+        let gives = |cite: &&Cite, clock: &Clock| {
+            if switch && !cite.owner.eq_ignore_ascii_case(SWITCHES) {
+                return false;
+            }
+            let quoted = clock_times(&cite.item);
+            if !quoted.iter().any(|q| q.is(clock)) {
+                return false;
+            }
+            let Some(told) = senders.get(&cite.msgid) else {
+                return false;
+            };
+            let told = clock_times(&told.text);
+            let owner_gives = |t: &Clock| t.is(clock) && (t.hour == clock.hour || clock.dial);
+            quoted
+                .iter()
+                .filter(|q| q.is(clock))
+                .any(|q| told.iter().any(|t| owner_gives(t) && t.is(q)))
         };
         if !clocks
             .iter()
@@ -656,7 +678,10 @@ fn shown(said: &str) -> String {
 
 /// The sentences of `text`, by its lines and the stops ending them, a
 /// stop ending one only before a space or the line's end, so a name such
-/// as `core.nix` stays whole.
+/// as `core.nix` stays whole. The stop after a half of the day, as in
+/// "p.m." or "pm.", closes the half alone before a word in lower case
+/// or a digit, and ends its sentence before anything else: a capital, or
+/// the bold, quote or bracket an ask may open with.
 fn sentences(text: &str) -> Vec<&str> {
     let mut found = Vec::new();
     for line in text.lines() {
@@ -664,7 +689,14 @@ fn sentences(text: &str) -> Vec<&str> {
         let mut chars = line.char_indices().peekable();
         while let Some((at, c)) = chars.next() {
             let next_is_space = chars.peek().is_none_or(|(_, next)| next.is_whitespace());
-            if matches!(c, '.' | '?' | '!') && next_is_space {
+            if !matches!(c, '.' | '?' | '!') || !next_is_space {
+                continue;
+            }
+            let runs_on = c == '.' && ends_half(&line[..at]) && {
+                let next = line[at + 1..].trim_start().chars().next();
+                next.is_some_and(|next| next.is_lowercase() || next.is_ascii_digit())
+            };
+            if !runs_on {
                 found.push(line[start..=at].trim());
                 start = at + 1;
             }
@@ -675,6 +707,25 @@ fn sentences(text: &str) -> Vec<&str> {
     found
 }
 
+/// Whether `before` ends in a half of the day as a stop would close it:
+/// "a.m" or "p.m", or "am" or "pm" alone or straight after a time's
+/// digits, in either case. Only its last word is read, so a line of
+/// many stops costs no more than its length.
+fn ends_half(before: &str) -> bool {
+    let word = before
+        .rsplit(char::is_whitespace)
+        .next()
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if word.ends_with("a.m") || word.ends_with("p.m") {
+        return true;
+    }
+    let Some(lead) = word.strip_suffix("am").or_else(|| word.strip_suffix("pm")) else {
+        return false;
+    };
+    lead.is_empty() || lead.ends_with(|c: char| c.is_ascii_digit())
+}
+
 /// The words of `text`, lower case, of letters and digits.
 fn words(text: &str) -> BTreeSet<String> {
     text.split(|c: char| !c.is_alphanumeric())
@@ -683,9 +734,34 @@ fn words(text: &str) -> BTreeSet<String> {
         .collect()
 }
 
-/// Each clock time in `text`, as `9:05` or `10:06`, leaving out the
-/// seconds of one given to the second.
-fn clock_times(text: &str) -> Vec<String> {
+/// A clock time, on the 24-hour clock, and whether it was written as
+/// one of the 12-hour dial's, from 1 to 12 with no "am" or "pm" and no
+/// nought before it, which could be either half of the day; "09:05" is
+/// written to the 24-hour clock's two digits, so it is the morning's.
+#[derive(Debug, Clone, Copy)]
+struct Clock {
+    hour: u32,
+    minute: u32,
+    dial: bool,
+}
+
+impl Clock {
+    /// Whether two clock times can be the one time: lines to Joel say
+    /// "10:45" where the owner said "22:45", but "22:45" is never "10:45"
+    /// in the morning, nor "10:45 am" the evening's.
+    fn is(self, other: &Self) -> bool {
+        let turned = |hour: u32| (hour + 12) % 24;
+        self.minute == other.minute
+            && (self.hour == other.hour
+                || self.dial && other.hour == turned(self.hour)
+                || other.dial && self.hour == turned(other.hour))
+    }
+}
+
+/// Each clock time in `text`, as `9:05`, `10:06`, `22:45` or `10:45 pm`,
+/// leaving out the seconds of one given to the second, and any hour past
+/// 23 or minute past 59, which no clock shows.
+fn clock_times(text: &str) -> Vec<Clock> {
     let bytes = text.as_bytes();
     let digit = |at: usize| bytes.get(at).is_some_and(u8::is_ascii_digit);
     let mut found = Vec::new();
@@ -702,9 +778,61 @@ fn clock_times(text: &str) -> Vec<String> {
         if before.is_some_and(|b| b.is_ascii_digit() || *b == b':') {
             continue;
         }
-        found.push(text[start..at + 3].to_owned());
+        let (hour, minute) = (&text[start..at], &text[at + 1..at + 3]);
+        let (Ok(hour), Ok(minute)) = (hour.parse::<u32>(), minute.parse::<u32>()) else {
+            continue;
+        };
+        if hour > 23 || minute > 59 {
+            continue;
+        }
+        let on_dial = (1..=12).contains(&hour);
+        let padded = bytes[start] == b'0';
+        found.push(match (on_dial, half(&text[at + 3..])) {
+            (true, Some(pm)) => Clock {
+                hour: hour % 12 + if pm { 12 } else { 0 },
+                minute,
+                dial: false,
+            },
+            _ => Clock {
+                hour,
+                minute,
+                dial: on_dial && !padded,
+            },
+        });
     }
     found
+}
+
+/// Whether what follows a clock time's minutes names the half of the
+/// day, past any seconds: `Some(true)` for "pm" or "p.m.", `Some(false)`
+/// for "am" or "a.m.", in either case, its last stop or not, and after
+/// any space on its line, the narrow one a formatter puts there included,
+/// and `None` when it names neither. A word on the next line is that
+/// line's. Only the few letters that could name it are read.
+fn half(after: &str) -> Option<bool> {
+    let seconds = after
+        .strip_prefix(':')
+        .filter(|s| s.len() >= 2 && s.as_bytes()[..2].iter().all(u8::is_ascii_digit));
+    let rest = seconds
+        .map_or(after, |s| &s[2..])
+        .trim_start_matches(|c: char| c.is_whitespace() && c != '\n' && c != '\r');
+    let low = rest
+        .chars()
+        .take(5)
+        .collect::<String>()
+        .to_ascii_lowercase();
+    let named = [
+        ("a.m.", false),
+        ("p.m.", true),
+        ("a.m", false),
+        ("p.m", true),
+        ("am", false),
+        ("pm", true),
+    ];
+    named.iter().find_map(|&(word, pm)| {
+        let tail = low.strip_prefix(word)?;
+        (!tail.starts_with(|c: char| c.is_alphanumeric())).then_some(pm)
+    })
 }
 
 #[cfg(test)]

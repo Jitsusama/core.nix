@@ -8,7 +8,6 @@
 //! itself, and asks the watcher only when no landing names one.
 
 use std::collections::BTreeMap;
-use std::fs;
 use std::io;
 use std::path::Path;
 
@@ -117,19 +116,7 @@ impl Told {
     ///
     /// When the record can't be read, or isn't JSON of its shape.
     pub fn read(path: &Path) -> io::Result<Self> {
-        match fs::read(path) {
-            Ok(bytes) => serde_json::from_slice(&bytes).map_err(|err| {
-                io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!(
-                        "{} isn't JSON, so it's kept as it is: {err}",
-                        path.display()
-                    ),
-                )
-            }),
-            Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(Self::default()),
-            Err(err) => Err(err),
-        }
+        crate::whole::read_kept(path)
     }
 }
 
@@ -204,6 +191,8 @@ fn said(names: &[String]) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
     use super::*;
 
     #[test]

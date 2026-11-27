@@ -43,7 +43,7 @@ type Late = (i64, String, String);
 pub fn told_late(text: &str, now: i64, which: Tracking) -> Measure {
     let mut written: BTreeMap<[String; 2], (usize, Vec<Value>)> = BTreeMap::new();
     for (order, ask) in asks(text).enumerate() {
-        let asked = [ask["at"].to_string(), ask["words"].to_string()];
+        let asked = tracking::asked(&ask);
         written
             .entry(asked)
             .or_insert_with(|| (order, Vec::new()))

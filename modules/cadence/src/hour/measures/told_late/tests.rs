@@ -472,8 +472,9 @@ fn a_twin_folded_into_an_ask_doesnt_close_its_late_move() {
         (NOW - 1000, NOW - 1360),
         &json!({"id": "0a1b2c3d"}),
     );
-    // A folded copy carries no dates of its own; read as the ask's latest
-    // line, it would take the moves with it.
+    // A folded copy carries the ask's dates, here taken away to show what
+    // reading it as the ask's latest line would do: it would take the
+    // moves with it.
     let mut twin = super::super::slipped::twin(&ask, NOW - 60);
     twin["promised"] = Value::Null;
     let m = told_late(&list(&[ask, twin]), NOW, Tracking::His);

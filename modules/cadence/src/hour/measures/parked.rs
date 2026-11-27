@@ -38,7 +38,7 @@ pub fn parked(text: &str, which: Tracking) -> Measure {
     let mut latest: BTreeMap<[String; 2], Option<String>> = BTreeMap::new();
     for ask in asks(text) {
         let ours = tracking::of(&ask) == Some(which) && seconds(&ask["landed"]).is_none();
-        let asked = [ask["at"].to_string(), ask["words"].to_string()];
+        let asked = tracking::asked(&ask);
         latest.insert(asked, ruling(&ask).filter(|_| ours).map(str::to_owned));
     }
     let mut by_ruling: BTreeMap<String, usize> = BTreeMap::new();

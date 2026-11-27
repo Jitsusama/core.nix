@@ -40,6 +40,8 @@ pub struct Sources {
     pub waiting: Vec<String>,
     /// `mission/asks.jsonl`, the orchestrator's record of his asks.
     pub asks: String,
+    /// Why the asks list was left unread, when it was.
+    pub asks_unread: Option<String>,
     /// `niri msg -j windows`, when niri answered.
     pub windows: Option<String>,
     /// `notices/notices.json`.
@@ -185,7 +187,7 @@ fn time(s: &Sources) -> Axis {
     });
     // His asks first, read from his words to his laptop; the card's
     // three follow, each starting at a merge he never sees.
-    let mut readings = asks::readings(&s.asks, s.now);
+    let mut readings = asks::readings(&s.asks, s.asks_unread.as_deref(), s.now);
     readings.extend([
         Reading::new("merge to on {}", on, " min", "80ECO2")
             .bar(Bar::AtMost(18.0))
@@ -621,6 +623,7 @@ pub fn gather(folder: &Path, state_home: &Path, now: i64) -> Sources {
         )
     });
     let days = kept_days(folder);
+    let gathered = asks::gather(state_home);
     Sources {
         often: often_on(state_home, &days),
         measures,
@@ -640,7 +643,8 @@ pub fn gather(folder: &Path, state_home: &Path, now: i64) -> Sources {
             .flatten()
             .map(|e| text(e.path()))
             .collect(),
-        asks: asks::gather(state_home),
+        asks: gathered.0,
+        asks_unread: gathered.1,
         windows: command("niri", &["msg", "-j", "windows"]).ok(),
         notices: text(state_home.join("notices/notices.json")),
         pressure: text(PathBuf::from("/proc/pressure/cpu")),

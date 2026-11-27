@@ -7,6 +7,9 @@
 //! the list's own are told apart, and owner-tracked ones are another
 //! system's to measure.
 
+use std::collections::BTreeSet;
+
+use jiff::Timestamp;
 use serde_json::Value;
 
 /// Which of the list's kinds an ask is.
@@ -48,10 +51,68 @@ pub fn of(ask: &Value) -> Option<Tracking> {
     })
 }
 
+/// The list's lines but its twins: a line the keeper folded into another
+/// ask with the same moment and words, its id marked `~`. Every reader of
+/// the list keeps an ask by its latest line, so a twin written after the
+/// ask it copies would stand in its place. A twin whose ask isn't in the
+/// list is the only line of that ask, so it is kept.
+#[must_use]
+pub fn untwinned(lines: Vec<Value>) -> Vec<Value> {
+    let marked = |ask: &Value| ask["id"].as_str().is_some_and(|id| id.contains('~'));
+    let copied: BTreeSet<[String; 2]> =
+        lines.iter().filter(|ask| !marked(ask)).map(asked).collect();
+    lines
+        .into_iter()
+        .filter(|ask| !marked(ask) || !copied.contains(&asked(ask)))
+        .collect()
+}
+
+/// Which ask a line of the list is, as every reader of the list keys it:
+/// the moment it was asked, as seconds when it reads as a time, so one
+/// moment written two ways is one ask, and its words. Later lines of the
+/// same ask stand for it.
+#[must_use]
+pub fn asked(ask: &Value) -> [String; 2] {
+    let at = ask["at"]
+        .as_str()
+        .and_then(|at| at.parse::<Timestamp>().ok())
+        .map_or_else(|| ask["at"].to_string(), |at| at.as_second().to_string());
+    let words = ask["words"]
+        .as_str()
+        .map_or_else(|| ask["words"].to_string(), str::to_owned);
+    [at, words]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn one_moment_written_two_ways_is_one_ask_and_other_words_another() {
+        let utc = json!({"at": "2026-11-13T17:00:00Z", "words": "fix it"});
+        let local = json!({"at": "2026-11-13T12:00:00-05:00", "words": "fix it"});
+        let other = json!({"at": "2026-11-13T12:00:00-05:00", "words": "fix that"});
+        assert_eq!(asked(&utc), asked(&local), "one moment read as two asks");
+        assert_ne!(
+            asked(&local),
+            asked(&other),
+            "other words read as the same ask"
+        );
+    }
+
+    #[test]
+    fn a_twin_is_left_out_beside_its_ask_and_kept_where_it_is_the_only_line() {
+        let ask = json!({"id": "0000000a", "at": "t1", "words": "fix it"});
+        let twin = json!({"id": "0000000a~1", "at": "t1", "words": "fix it", "closed": "t2"});
+        let alone = json!({"id": "0000000b~1", "at": "t3", "words": "fix that"});
+        let other = json!({"id": "0000000c", "at": "t1", "words": "fix this"});
+        assert_eq!(
+            untwinned(vec![ask.clone(), twin, alone.clone(), other.clone()]),
+            [ask, alone, other],
+            "a twin beside its ask was read, or a lone one or another ask dropped"
+        );
+    }
 
     #[test]
     fn an_ask_is_his_unless_the_list_marks_it_otherwise() {

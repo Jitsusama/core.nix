@@ -50,10 +50,15 @@ pub fn run(folder: &Path, state_home: &Path, told: &Told, now: i64) -> io::Resul
     let held = |unit: &str| holders::owner(unit, &told.owners, &known).is_some();
     let today = read(state_home, now - DAY, now, &held);
     let before = kept(&days, now);
-    let judged = judge::judge(&today, &before);
+    let mut judged = judge::judge(&today, &before);
+    let host = terminal_kit::environment::machine();
+    on_machine(&mut judged.worse, &host, today.to);
     let kept_at = folder.join("findings.jsonl");
     let _held = findings::lock(&kept_at)?;
     let mut ledger = findings::read(&kept_at);
+    found_since(&mut judged.worse, &ledger, now, |from| {
+        read(state_home, from, now, &held)
+    });
     // An owner with no session to answer leaves its findings with the
     // watcher, and the orchestrator hears which flags to change.
     let boot = fs::read_to_string("/proc/sys/kernel/random/boot_id")
@@ -379,9 +384,237 @@ fn utc_date(at: i64) -> String {
         .unwrap_or_default()
 }
 
+/// Says in each of `worse` that names a unit or a program which machine
+/// read it and when its day ended, so its owner reads the same journal over
+/// the same hours: a unit's failure is in no other machine's records, and
+/// a day run by hand ends at any hour, in the zone it ended in. A machine
+/// that can't name itself is "this machine", as terminal-kit says it. Only
+/// a unit's failure, a program's crash or an unstamped run is named so: a
+/// flaky test or a queue isn't the machine's.
+fn on_machine(worse: &mut [judge::Finding], machine: &str, to: i64) {
+    let ended = ended(to);
+    let read = format!("read on {machine} over the day to {ended}");
+    let of_machine = |f: &judge::Finding| {
+        ["failed:", "crashes:", "unstamped:"]
+            .iter()
+            .any(|kind| f.key.starts_with(kind))
+    };
+    for finding in worse.iter_mut().filter(|f| of_machine(f)) {
+        finding.words = format!("{}, {read}", finding.words);
+    }
+}
+
+/// Leaves out of `worse` each unit's failure or program's crash that a run
+/// again within half a day of the read that last found it finds none of
+/// since that read. Such a run, typed or a timer that fired twice, reads
+/// mostly the same hours, so its day's count can't tell a failure slid out
+/// of the day from one new; only the hours since the last read say whether
+/// it failed again. Left out, its line keeps the first read's words and
+/// hours, any fix said since and the day its close is counted from. Any
+/// other finding, and one failed again since, is found as ever, and
+/// forgets a fix said before. `since` reads the day from a moment to now,
+/// and is read only when a finding may be left out.
+fn found_since(
+    worse: &mut Vec<judge::Finding>,
+    ledger: &[findings::Entry],
+    now: i64,
+    since: impl FnOnce(i64) -> Day,
+) {
+    fn named(key: &str) -> Option<(&str, &str)> {
+        key.split_once(':')
+            .filter(|(kind, _)| matches!(*kind, "failed" | "crashes"))
+    }
+    let last_read = |key: &str| {
+        ledger
+            .iter()
+            .rev()
+            .find(|e| e.key == key)
+            .filter(|e| e.open && now - e.last_to < DAY / 2)
+            .map(|e| e.last_to)
+    };
+    let Some(from) = worse
+        .iter()
+        .filter(|f| named(&f.key).is_some())
+        .filter_map(|f| last_read(&f.key))
+        .min()
+    else {
+        return;
+    };
+    let gap = since(from);
+    worse.retain(|f| {
+        let Some((kind, name)) = named(&f.key) else {
+            return true;
+        };
+        let again = gap
+            .named
+            .get(kind)
+            .and_then(|names| names.get(name))
+            .is_some_and(|&times| times > 0);
+        again || last_read(&f.key).is_none()
+    });
+}
+
+/// When a day that ended at `to` ended, to the minute, with its zone.
+fn ended(to: i64) -> String {
+    Timestamp::from_second(to)
+        .map(|t| {
+            t.to_zoned(TimeZone::system())
+                .strftime("%Y-%m-%d %H:%M %:z")
+                .to_string()
+        })
+        .unwrap_or_default()
+}
+
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
+
     use super::*;
+
+    /// A crash of tec found over the day to `DAY` and its fix said, then
+    /// the day read again `after` seconds on, finding `again` over its
+    /// day and `since` over the hours since the first read; the line as
+    /// it stands after, and whether those hours were read.
+    fn read_again(after: i64, again: &str, since: u32) -> (findings::Entry, bool) {
+        let crash = |key: &str, words: &str| judge::Finding {
+            key: key.to_owned(),
+            bar: None,
+            before: Some(0.0),
+            now: 1.0,
+            words: words.to_owned(),
+        };
+        let day = |to: i64| Day {
+            date: "d1".to_owned(),
+            from: to - DAY,
+            to,
+            ..Day::default()
+        };
+        let (owners, known) = (BTreeMap::new(), BTreeSet::new());
+        let mut ledger = Vec::new();
+        let first = [crash(again, "a crash of tec, read over the day to 10:00")];
+        findings::update(&mut ledger, &day(DAY), &first, &owners, &known);
+        ledger[0].fixed = Some("core #6000".to_owned());
+        let mut worse = vec![crash(again, "a crash of tec, read over the day to 13:00")];
+        let mut read = false;
+        found_since(&mut worse, &ledger, DAY + after, |from| {
+            read = true;
+            assert_eq!(from, DAY, "the hours since weren't read from the last read");
+            let mut gap = day(DAY + after);
+            gap.from = from;
+            gap.named.insert(
+                "crashes".to_owned(),
+                [("tec".to_owned(), since)].into_iter().collect(),
+            );
+            gap
+        });
+        findings::update(&mut ledger, &day(DAY + after), &worse, &owners, &known);
+        (ledger.swap_remove(0), read)
+    }
+
+    #[test]
+    fn a_run_again_the_same_evening_keeps_a_fix_unless_it_failed_since() {
+        let (kept, read) = read_again(3 * 3600, "crashes:tec", 0);
+        assert_eq!(
+            (
+                kept.fixed.as_deref(),
+                kept.last_to,
+                kept.words.as_str(),
+                read
+            ),
+            (
+                Some("core #6000"),
+                DAY,
+                "a crash of tec, read over the day to 10:00",
+                true
+            ),
+            "a run again that evening, with no crash since, forgot the fix, put off its close \
+             or took its own hours' words"
+        );
+        // The day's count is the same, one, but the crash it holds is a new
+        // one: the first slid out of the day as the day moved on.
+        let (slid, _) = read_again(3 * 3600, "crashes:tec", 1);
+        assert_eq!(
+            (slid.fixed, slid.last_to),
+            (None, DAY + 3 * 3600),
+            "a crash since the last read, the day's count no higher, kept the fix"
+        );
+        let (late, read) = read_again(13 * 3600, "crashes:tec", 0);
+        assert_eq!(
+            (late.fixed, read),
+            (None, false),
+            "a run again past half a day kept the fix, or read the hours since"
+        );
+        let (flaky, read) = read_again(3 * 3600, "flaky:vm-a", 0);
+        assert_eq!(
+            (flaky.fixed, read),
+            (None, false),
+            "a finding of no unit or program kept its fix through a run again"
+        );
+    }
+
+    #[test]
+    fn a_units_finding_names_the_machine_and_the_hours_it_was_read_over() {
+        let first = judge::Finding {
+            key: "failed:serve-a-*.service".to_owned(),
+            bar: None,
+            before: Some(0.0),
+            now: 1.0,
+            words: "a failure of serve-a-*.service, new, once".to_owned(),
+        };
+        let other = |key: &str, words: &str| judge::Finding {
+            key: key.to_owned(),
+            words: words.to_owned(),
+            ..first.clone()
+        };
+        let mut worse = vec![
+            first.clone(),
+            other("oom.machine", "kills went from 0 to 2"),
+            other("flaky:vm-a", "a flaky test"),
+            other("code.queued-on:a", "a queue"),
+            other("crashes:tec", "a crash of tec"),
+            other("unstamped:a.service", "a run of a.service unstamped"),
+        ];
+        on_machine(&mut worse, "host-a", 10 * DAY);
+        let ended = ended(10 * DAY);
+        let zone = ended.rsplit(' ').next().unwrap_or_default().as_bytes();
+        assert!(
+            zone.len() == 6 && (zone[0] == b'+' || zone[0] == b'-') && zone[3] == b':',
+            "the day's end didn't say its zone: {ended}"
+        );
+        let said: Vec<&str> = worse.iter().map(|f| f.words.as_str()).collect();
+        assert_eq!(
+            said,
+            [
+                format!(
+                    "a failure of serve-a-*.service, new, once, read on host-a over the day \
+                     to {ended}"
+                )
+                .as_str(),
+                "kills went from 0 to 2",
+                "a flaky test",
+                "a queue",
+                format!("a crash of tec, read on host-a over the day to {ended}").as_str(),
+                format!("a run of a.service unstamped, read on host-a over the day to {ended}")
+                    .as_str(),
+            ],
+            "a unit's or a program's finding didn't name where and when it was read, \
+             or another's did"
+        );
+        let mut unnamed = vec![other("failed:a.service", "a failure of a.service")];
+        on_machine(
+            &mut unnamed,
+            &terminal_kit::environment::machine(),
+            10 * DAY,
+        );
+        assert!(
+            unnamed[0]
+                .words
+                .starts_with("a failure of a.service, read on ")
+                && !unnamed[0].words.contains("read on  "),
+            "the machine's own name didn't name where it was read: {}",
+            unnamed[0].words
+        );
+    }
 
     #[test]
     fn a_day_kept_today_isnt_held_against_itself() {
