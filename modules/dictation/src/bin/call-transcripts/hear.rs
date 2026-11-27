@@ -32,7 +32,7 @@
 //! Long because it is the one thread holding each call as it's heard,
 //! and each step a take goes through, heard, embedded, written down or
 //! told it wasn't, changes that call's state here; its cases are kept
-//! apart, in hear_tests.rs.
+//! apart, in `hear_tests.rs`.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
