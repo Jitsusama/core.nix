@@ -253,8 +253,8 @@ pub fn run(args: impl Iterator<Item = String>, now: i64) -> Result<(), Failure> 
             .because(err.to_string())
     })?;
     let mut ledger = findings::read(&kept_at).map_err(|err| {
-        Failure::new(Exit::Failed, format!("reading {}", kept_at.display()))
-            .because(err.to_string())
+        // The read's error names the ledger, so the head needn't again.
+        Failure::new(Exit::Failed, "reading the findings ledger").because(err.to_string())
     })?;
     let said = match asked {
         Asked::Owe(owed) => {
