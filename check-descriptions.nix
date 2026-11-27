@@ -1993,6 +1993,11 @@
   kernel-settings-hold-with-a-theme = ''
     the kernel holds every setting with an account's theme, its panic colours among them
   '';
+  kernel-source-files-are-taken-as-built = ''
+    a few files of a kernel's source are taken from a folder or its tarball, one missing that a
+    patch creates let be, one missing that none creates refused, and one the source has that a
+    patch would create refused, naming that patch
+  '';
   kernel-trouble-is-named = ''
     `device-check` names a kernel that oopsed, locked up, saw a hardware fault or held a task stuck,
     once, and not its harmless taints
@@ -2721,8 +2726,12 @@
     a fenced or strict one says its system's launcher for an agent's run, which runs pi's strict
     profile, and an unfenced one none, no fence says a launcher when agents' runs are turned
     off, a machine of either system declaring every fence evaluates, a machine kept lively
-    says its ceiling and one not kept lively none, one declaring nothing has no file, and
-    agents in a realm it doesn't join are refused
+    says its ceiling, a memory_full of 0 included, and one not kept lively none, the locked
+    mycelium reads that ceiling as kept_lively, an Option<Lively> whose cpu is a u32,
+    memory_available an Option<u64> and, from the lock that first has it, memory_full an
+    Option<u32>, read by a scan that fails on what it can't read, with nothing over Lively
+    refusing a field it doesn't know, one declaring nothing has no file, and agents in a realm
+    it doesn't join are refused
   '';
   mycelium-lends-from-the-store = ''
     a NixOS machine that lends evaluates, and its home realm mycelium node is given what it lends
@@ -6491,7 +6500,9 @@
     session's own twin with it; the window of a twin put back after the walk on the connector a
     window put back before it didn't take, unless a session took that connector, when the
     session's twin goes with it; gives windows no connector from sessions handed over outside a
-    walk; keeps, for a walk joined after Joel's focus moved, the screen in use as it began; notes a
+    walk; keeps, for a walk joined after Joel's focus moved, the screen in use as it began; gives
+    twin sessions of one boot a connector each, as the places their boot kept say; puts a session
+    kept on a screen that's gone on the screen in use as its walk began, the other twin; notes a
     window away from a screen named constructor or __proto__ as any other, without a throw; and
     ends each walk before the next case begins, starting nothing for a session in a gone folder
   '';
@@ -7524,7 +7535,7 @@
   '';
   wifi-sessions-survive-fragmented-memory = ''
     the XPS 14's kernel lets Wi-Fi's block-ack reorder buffers come from vmalloc when memory is
-    too fragmented for an order-5 block, and frees them nowhere with kfree()
+    too fragmented for an order-5 block, and frees them nowhere with kfree() or kfree_sensitive()
   '';
   wifid-calls-passes-clippy = ''
     clippy finds nothing in what tells wifid of calls, or its tests

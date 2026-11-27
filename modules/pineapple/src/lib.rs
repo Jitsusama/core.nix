@@ -35,7 +35,9 @@
 //! - [`phone`] says the same alert in Joel's own note-to-self IM in
 //!   Slack, the one place it can send to, so it reaches his phone.
 //! - [`deaf`] tells Joel where Slack isn't needed when the Slack reader
-//!   can't hear Slack, since that alert goes through it.
+//!   can't hear Slack, since that alert goes through it, and [`missed`]
+//!   keeps the rows telling him what a reader read on past, so he can look
+//!   there himself.
 //! - [`judged`] keeps how far the Slack reader has read, so a restart
 //!   neither judges a message twice nor misses one.
 //! - [`pause`] is the stop on everything Joel says himself, as before a
@@ -59,6 +61,7 @@ pub mod github;
 mod judge;
 pub mod judged;
 pub mod mcp;
+pub mod missed;
 pub mod pause;
 pub mod peer;
 pub mod phone;
