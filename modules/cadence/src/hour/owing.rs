@@ -669,6 +669,7 @@ pub fn file(
     for key in closing {
         owe::settle(ledger, &key);
     }
+    forget_spent_claims(ledger, now);
     let rest: Vec<Measure> = measures
         .iter()
         .filter(|m| m.class != Class::Apps)
@@ -794,6 +795,21 @@ pub fn ask_claims(
         told.push((one.owner, one.text));
     }
     told
+}
+
+/// Drops the asks about claims of his rule that are closed and were last
+/// sent more than a day before `now`. Each claim is asked under a key of
+/// its own, never filed again once its claim has left the count, so the
+/// ledger would otherwise grow by every ask for good; [`asked_lately`]
+/// looks back a day and no further, and every other kind of entry is kept.
+fn forget_spent_claims(ledger: &mut Vec<Entry>, now: i64) {
+    let keyed = format!("hour:{}:", ruled::KEY);
+    ledger.retain(|e| {
+        e.open
+            || e.kind.as_deref() != Some("drag")
+            || !e.key.starts_with(&keyed)
+            || e.last_to > now - DAY
+    });
 }
 
 #[cfg(test)]
@@ -1885,6 +1901,51 @@ mod tests {
             8 - RULED_HOURLY,
             "the next hour's run, started a little early, counted the last hour's asks \
              against its cap"
+        );
+    }
+
+    /// Each claim is asked under a key of its own, so the hour forgets
+    /// the asks closed and last sent more than a day ago, which no hour
+    /// reads again, and keeps every other entry, a closed miss's included.
+    #[test]
+    fn the_hour_forgets_closed_claims_asks_a_day_old_and_nothing_else() {
+        let mut claims = measure(ruled::KEY, Class::Cells, 2.0, Some(0.0));
+        claims.behind = vec![
+            "[0000000a] Joel wants it. · T6E7X6".to_owned(),
+            "[0000000b] Joel wants it. · 5UTLKM".to_owned(),
+        ];
+        let mut misses = measure("misses", Class::Miss, 1.0, Some(0.0));
+        misses.behind = vec!["the map had no network · KNURBN".to_owned()];
+        let mut ledger = Vec::new();
+        let both = [claims.clone(), misses.clone()];
+        file_all(&mut ledger, &both, "2026-11-26", 1000);
+        claims.behind.remove(0);
+        misses.behind.clear();
+        misses.now = 0.0;
+        let settled = [claims.clone(), misses.clone()];
+        file_all(&mut ledger, &settled, "2026-11-26", 2000);
+        let kept = |ledger: &[Entry]| -> Vec<(String, bool)> {
+            ledger.iter().map(|e| (e.key.clone(), e.open)).collect()
+        };
+        let (miss, answered, open) = (
+            ("hour:miss:the map had no network".to_owned(), false),
+            (format!("hour:{}:T6E7X6:0000000a", ruled::KEY), false),
+            (format!("hour:{}:5UTLKM:0000000b", ruled::KEY), true),
+        );
+        let within = [claims.clone(), misses.clone()];
+        file_all(&mut ledger, &within, "2026-11-27", 1000 + DAY - 1);
+        assert_eq!(
+            kept(&ledger),
+            [miss.clone(), answered, open],
+            "an ask was forgotten within the day of its sending, which holds its sender's next"
+        );
+        claims.behind.clear();
+        let gone = [claims, misses];
+        file_all(&mut ledger, &gone, "2026-11-27", 1000 + DAY + 1);
+        assert_eq!(
+            kept(&ledger),
+            [miss],
+            "a closed ask a day old was kept for good, or another kind of entry was dropped"
         );
     }
 
