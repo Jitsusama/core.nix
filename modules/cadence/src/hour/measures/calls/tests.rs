@@ -1,16 +1,10 @@
 use std::fs;
 
+use super::super::by_key;
 use super::*;
 
 /// An hour ending at 20:00 UTC on 26 November.
 const NOW: i64 = 1_795_723_200;
-
-fn by_key<'a>(measures: &'a [Measure], key: &str) -> &'a Measure {
-    measures
-        .iter()
-        .find(|m| m.key == key)
-        .unwrap_or_else(|| panic!("no {key}"))
-}
 
 /// A turn `ago` seconds before the hour's end, failed on `error` if given.
 fn turn_at(ago: i64, error: Option<&str>) -> Turn {

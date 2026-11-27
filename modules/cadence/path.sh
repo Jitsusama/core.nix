@@ -8,12 +8,47 @@
 # November TLS to the model origin took 6 to 10 s through a starved WARP
 # lane while warp-cli said Connected; a sample asks no more of the path
 # than a session's first call does.
+#
+# Its help and failures take the shape every command of ours does
+# (docs/commands.md), by hand.
 set -o errexit
 set -o nounset
 set -o pipefail
 
 # As long as path.rs counts a failed sample's wait.
 readonly WAIT=20
+
+case ${1-} in
+  -h | --help)
+    cat <<'EOF'
+cadence-path  sample the path to each origin
+
+  For each ORIGIN, times TCP and TLS setup and the first
+  byte over HTTPS, with the device its route takes, and
+  adds a line of JSON to the day's file in the state
+  folder's cadence/path, for cadence hour to judge.
+
+EXAMPLES
+  cadence-path github.com model.example
+
+EXIT
+  0   each origin sampled, a failed sample written too
+  64  asked wrongly: no origin named
+EOF
+    exit 0
+    ;;
+  -*)
+    printf '%s\n' "cadence-path takes origins, not ${1}" \
+      "  try  cadence-path --help" >&2
+    exit 64
+    ;;
+  '')
+    printf '%s\n' "cadence-path takes at least one origin" \
+      "  try  cadence-path --help" >&2
+    exit 64
+    ;;
+  *) ;;
+esac
 
 folder="${XDG_STATE_HOME:-${HOME}/.local/state}/cadence/path"
 mkdir -p "${folder}"

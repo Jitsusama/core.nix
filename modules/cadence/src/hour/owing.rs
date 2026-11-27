@@ -985,7 +985,7 @@ mod tests {
         failing.owner = "OXUW1Y".to_owned();
         failing.behind = vec![
             "176 on Request timed out.".to_owned(),
-            "TLS to model.example via CloudflareWARP: median 7.20 s".to_owned(),
+            "TLS to model.example via tunnel0: median 7.20 s".to_owned(),
         ];
         let mut slow = measure("path:tls:model.example", Class::Functional, 7.2, Some(1.0));
         slow.owner = "OXUW1Y".to_owned();
@@ -1000,7 +1000,7 @@ mod tests {
             asked
                 .iter()
                 .any(|text| text.contains("the sessions' model calls is past")
-                    && text.contains("via CloudflareWARP")),
+                    && text.contains("via tunnel0")),
             "the calls' ask doesn't name the path: {asked:?}"
         );
         assert!(

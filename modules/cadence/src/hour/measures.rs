@@ -453,6 +453,16 @@ fn strings(list: &Value) -> impl Iterator<Item = &str> {
         .filter_map(Value::as_str)
 }
 
+/// The measure under `key` among those a source gave, for its tests to
+/// read one by one.
+#[cfg(test)]
+fn by_key<'a>(measures: &'a [Measure], key: &str) -> &'a Measure {
+    measures
+        .iter()
+        .find(|m| m.key == key)
+        .unwrap_or_else(|| panic!("no {key}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::card::{CARD_FRESH_FOR, card_median};

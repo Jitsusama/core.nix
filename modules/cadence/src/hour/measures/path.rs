@@ -135,7 +135,7 @@ fn measured(origin: &str, samples: &[Sample]) -> Measure {
 }
 
 /// The path's figures said in a line each, as behind a measure of the
-/// calls that took it: `TLS to github.com via CloudflareWARP: median
+/// calls that took it: `TLS to forge.example via tunnel0: median
 /// 0.25 s`, so a red of the calls names the path too.
 #[must_use]
 pub fn said(paths: &[Measure]) -> Vec<String> {

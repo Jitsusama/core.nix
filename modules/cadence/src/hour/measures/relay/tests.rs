@@ -1,3 +1,4 @@
+use super::super::by_key;
 use super::*;
 
 const RESET: &str = "model-relay: the origin reset a request on connection 0.407, kept, as one \
@@ -29,13 +30,6 @@ fn tally(asked: u64) -> String {
          reset or left out and sent again; pi cancelled 7214; 0 cut as it was stopped; 147 \
          connections opened, 4 taking requests; 36 broken off midway"
     )
-}
-
-fn by_key<'a>(measures: &'a [Measure], key: &str) -> &'a Measure {
-    measures
-        .iter()
-        .find(|m| m.key == key)
-        .unwrap_or_else(|| panic!("no {key}"))
 }
 
 #[test]
@@ -202,6 +196,12 @@ fn behind_each_count_its_commonest_causes_come_first() {
 fn the_journal_is_the_users_relay_for_the_hour() {
     let args = journal(7200);
     assert_eq!(args[..3], ["--user", "-u", "model-relay-agents.service"]);
-    assert!(args.contains(&"--since=@3600".to_owned()));
-    assert!(args.contains(&"--until=@7200".to_owned()));
+    assert!(
+        args.contains(&"--since=@3600".to_owned()),
+        "read from the hour's start: {args:?}"
+    );
+    assert!(
+        args.contains(&"--until=@7200".to_owned()),
+        "read to the hour's end: {args:?}"
+    );
 }

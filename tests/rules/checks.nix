@@ -211,6 +211,7 @@
             { };
         boot-fell-back = script "boot-fell-back" ../../modules/lanzaboote/fell-back.sh { };
         boot-fell-back-told = script "boot-fell-back-told" ../../modules/lanzaboote/fell-back-told.sh { };
+        cadence-path = script "cadence-path" ../../modules/cadence/path.sh { };
         camera = script "camera" ../../modules/camera/camera.sh { };
         camera-loopback = script "camera-loopback" ../../modules/v4l2loopback/loopback.sh { };
         cargo-builds = script "cargo-builds" ../../modules/cargo/builds.sh { };
