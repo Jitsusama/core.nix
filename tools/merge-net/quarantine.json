@@ -187,14 +187,5 @@
       "test_the_second_screen_goes_with_the_launcher_open_on_it"
     ],
     "test": "vm-screens-keep-the-launcher"
-  },
-  {
-    "at": 1795739917,
-    "commit": "009147baf0d8a81401d18b3e63203d1787ddf612",
-    "due": "2026-11-29",
-    "owner_pr": 6166,
-    "owner_session": "orchestrator",
-    "reason": "has been broken since #6166, whose revert won't apply; its owner fixes it forward and takes it off this list",
-    "test": "a-macs-checks-since-2dc45751527486542c12ac15f1155e5071b30f90"
   }
 ]
