@@ -9,7 +9,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use jiff::Timestamp;
 use serde::Deserialize;
 
-use crate::axes::messages::Note;
+use crate::axes::messages::{self, Note};
 use crate::mesh;
 
 /// What one sender sent of one kind over the week.
@@ -159,8 +159,9 @@ pub fn landings(text: &str, since: i64, tallies: &mut Tallies) {
 /// The week's messages, by sender. A question counts as unanswered when
 /// no message answers it and it was asked before `until`, in seconds, so
 /// one asked a moment ago isn't held against its sender; one of cadence's
-/// own a day before it, as its hourly questions give their owners a day.
-pub fn messages(notes: &[Note], until: i64, tallies: &mut Tallies) {
+/// hourly questions, by the ids in `asked`, a day before it, as they give
+/// their owners a day.
+pub fn messages(notes: &[Note], until: i64, asked: &BTreeSet<String>, tallies: &mut Tallies) {
     let answered: BTreeSet<&str> = notes.iter().filter_map(|n| n.re.as_deref()).collect();
     let mut sorted: Vec<&Note> = notes.iter().collect();
     sorted.sort_by_key(|n| mesh::stamped_at(&n.id));
@@ -168,7 +169,7 @@ pub fn messages(notes: &[Note], until: i64, tallies: &mut Tallies) {
     for note in sorted {
         let tally = tallies.entry(("messages", note.from.clone())).or_default();
         tally.said += 1;
-        let by = if note.from == crate::FROM {
+        let by = if messages::hourly(note, asked) {
             until - crate::DAY
         } else {
             until
@@ -306,7 +307,7 @@ mod tests {
             note(ms + 7_200_000, "e", "question", 10, None),
         ];
         let mut tallies = Tallies::new();
-        messages(&notes, SINCE + 3600, &mut tallies);
+        messages(&notes, SINCE + 3600, &BTreeSet::new(), &mut tallies);
         assert_eq!(
             tally(&tallies, "messages", "AAAAAA"),
             Tally {
@@ -333,16 +334,21 @@ mod tests {
             said,
             ..Note::default()
         };
+        // Its hourly two hours old waits; its day-old is held; and an
+        // alarm of its own two hours old, which the ledger never asked, is
+        // held as anyone's.
         let notes = vec![
             question(2 * 3600, "a", 1),
             question(crate::DAY + 60, "b", 2),
+            question(2 * 3600, "c", 3),
         ];
+        let asked: BTreeSet<String> = notes[..2].iter().map(|n| n.id.clone()).collect();
         let mut tallies = Tallies::new();
-        messages(&notes, until, &mut tallies);
+        messages(&notes, until, &asked, &mut tallies);
         assert_eq!(
             tally(&tallies, "messages", crate::FROM).unacted,
-            1,
-            "cadence's question two hours old was held against it, or its day-old one wasn't"
+            2,
+            "cadence's hourly two hours old was held, or its day-old or its alarm wasn't"
         );
     }
 }

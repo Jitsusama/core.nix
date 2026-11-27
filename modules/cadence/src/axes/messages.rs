@@ -56,9 +56,20 @@ fn fnv(text: &str) -> u64 {
     })
 }
 
+/// Whether `note` is one of cadence's hourly questions, which give their
+/// owners a day: its id among those the ledger keeps as `asked`, which
+/// only cadence writes, so no `from` or id a peer writes claims the day.
+/// Cadence's other questions, as a revert's alarm, wait half an hour as
+/// anyone's do.
+#[must_use]
+pub fn hourly(note: &Note, asked: &BTreeSet<String>) -> bool {
+    asked.contains(&note.id)
+}
+
 /// Every message sent since `since`, in seconds, under the mesh's `root`,
-/// each once. What each file said is kept at `kept`, when given, and read
-/// from there rather than opened again.
+/// each once, and only those whose id is the file's name. What each file
+/// said is kept at `kept`, when given, and read from there rather than
+/// opened again.
 #[must_use]
 pub fn read(root: &Path, since: i64, kept: Option<&Path>) -> Vec<Note> {
     let folder = root.join("mesh-workflow/messages");
@@ -91,7 +102,10 @@ pub fn read(root: &Path, since: i64, kept: Option<&Path>) -> Vec<Note> {
         let note = known
             .remove(&name)
             .or_else(|| serde_json::from_slice::<Note>(&fs::read(entry.path()).ok()?).ok());
-        if let Some(note) = note {
+        // Only a note whose id is the name the mesh filed it under, as
+        // `Mesh::senders` holds them, so the sender its id stamps is the
+        // one that wrote it, not words its body claims.
+        if let Some(note) = note.filter(|n| name.strip_suffix(".json") == Some(n.id.as_str())) {
             said.insert(name, note);
         }
     }

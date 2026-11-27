@@ -14,6 +14,11 @@ use crate::findings::Entry;
 /// holding several.
 const OPENS: &str = "cadence hour: ";
 
+/// Said with every question, as its lines quote words cadence didn't
+/// write: a finding's, a miss's, a file's or a cell's line. A reader
+/// takes them as reported, never as what cadence asks.
+const QUOTES: &str = "Words in double quotes are others', reported, not asks of cadence's.";
+
 /// The questions to put, one per owner, from the `(owner, text)` pairs
 /// the hour filed; a line with no owner is put to nobody.
 #[must_use]
@@ -29,7 +34,7 @@ pub fn asks(told: Vec<(String, String)>) -> Vec<(String, String)> {
         .into_iter()
         .map(|(owner, texts)| {
             let question = if let [one] = texts.as_slice() {
-                format!("{one} Answer with re set to this question. {ANSWERS_GO}")
+                format!("{one} {QUOTES} Answer with re set to this question. {ANSWERS_GO}")
             } else {
                 let lines: Vec<String> = texts
                     .iter()
@@ -40,7 +45,7 @@ pub fn asks(told: Vec<(String, String)>) -> Vec<(String, String)> {
                     })
                     .collect();
                 format!(
-                    "{OPENS}{} lines are yours. Answer with re set to this \
+                    "{OPENS}{} lines are yours. {QUOTES} Answer with re set to this \
                      question, line by line by number. {ANSWERS_GO}\n\n{}",
                     texts.len(),
                     lines.join("\n\n")

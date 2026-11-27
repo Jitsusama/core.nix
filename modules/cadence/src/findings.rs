@@ -27,8 +27,8 @@ pub mod gone;
 pub mod hubs;
 
 /// The kind the hour files a measure past its target as when nothing but
-/// its being red asks it: not the lead, a miss, a finding, a date told
-/// late, fruitless rounds or the worst queue. Those go late as one count.
+/// its being red asks it. Those go late as one count; which keep a late
+/// line of their own is listed once, at the hour's `owing::kind`.
 pub const RED: &str = "red";
 
 /// One finding as the ledger keeps it.
@@ -101,6 +101,18 @@ pub struct Entry {
 )]
 fn is_zero(count: &u32) -> bool {
     *count == 0
+}
+
+/// The ids of the questions the hour asked its lines in, from the ledger
+/// as `text`, a line an entry; a line that isn't one names none. Only
+/// cadence writes them, so they tell its hourly questions from its others
+/// and from a peer's claiming to be its.
+#[must_use]
+pub fn asked_in(text: &str) -> BTreeSet<String> {
+    text.lines()
+        .filter_map(|line| serde_json::from_str::<Entry>(line).ok())
+        .filter_map(|e| e.asked)
+        .collect()
 }
 
 /// The ledger kept at `path`, a line each; a line that isn't an entry is

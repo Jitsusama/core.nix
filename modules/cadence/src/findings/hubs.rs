@@ -281,8 +281,8 @@ pub fn put_late(
         entry.late = true;
         // The hour files every measure past its target, so its red lines
         // go late together; each is said as one count, which would
-        // otherwise crowd the day's worse and better off its note. Its
-        // misses, findings, dates told late and queue keep a line each.
+        // otherwise crowd the day's worse and better off its note. Which
+        // keep a line each is listed once, at the hour's `owing::kind`.
         if entry.kind.as_deref() == Some(RED) {
             dragged += 1;
             drags.insert(entry.owner.clone().unwrap_or_else(|| "no owner".to_owned()));

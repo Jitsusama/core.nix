@@ -106,7 +106,8 @@ pub fn falling(kept: &[Hour], this: Hour) -> Measure {
     }
 }
 
-/// When `at`, in seconds, was, as the card says it.
+/// When `at`, in seconds, was, as a moment in UTC, since it lies a week
+/// back, where the card's local clock alone would leave the day unsaid.
 fn when(at: i64) -> String {
     Timestamp::from_second(at).map_or_else(|_| at.to_string(), |t| t.to_string())
 }

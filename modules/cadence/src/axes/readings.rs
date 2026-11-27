@@ -277,19 +277,11 @@ fn quality(s: &Sources) -> Axis {
 /// question of cadence's left a day is there to count.
 const MESSAGES_FOR: i64 = 2 * DAY;
 
-/// Whether `m` is cadence's own, by its sender and the sender its id was
-/// stamped with, so a `from` written alone doesn't claim a day's grace.
-fn ours(m: &Note) -> bool {
-    m.from == crate::FROM && m.id.split('-').nth(1) == Some(crate::FROM)
-}
-
 /// The questions of `messages` with no answer from any peer: another's
 /// asked in the last day, more than half an hour before `now`, and one of
-/// cadence's asked more than a day before it, within the two days read.
-/// Cadence's hourly questions give their owners a day; its wakes and
-/// alarms wait as long, as only a hash of what a message said is kept to
-/// tell them apart.
-fn unanswered(messages: &[Note], now: i64) -> usize {
+/// cadence's hourly questions, by the ids in `asked`, more than a day
+/// before it, within the two days read.
+fn unanswered(messages: &[Note], now: i64, asked: &BTreeSet<String>) -> usize {
     let answered: BTreeSet<&str> = messages.iter().filter_map(|m| m.re.as_deref()).collect();
     let (day, asked_by) = ((now - DAY) * 1000, (now - 30 * 60) * 1000);
     messages
@@ -297,7 +289,7 @@ fn unanswered(messages: &[Note], now: i64) -> usize {
         .filter(|m| m.intent == "question" && !answered.contains(m.id.as_str()))
         .filter(|m| {
             mesh::stamped_at(&m.id).is_some_and(|at| {
-                if ours(m) {
+                if messages::hourly(m, asked) {
                     at < day
                 } else {
                     (day..asked_by).contains(&at)
@@ -316,7 +308,7 @@ fn collaboration(s: &Sources) -> Axis {
         .collect();
     let all = recent.len();
     let fyi = recent.iter().filter(|m| m.intent == "fyi").count();
-    let unanswered = unanswered(&s.messages, s.now);
+    let unanswered = unanswered(&s.messages, s.now, &crate::findings::asked_in(&s.ledger));
     let read = all > 0;
     axis(
         "collaboration",
@@ -338,14 +330,16 @@ fn collaboration(s: &Sources) -> Axis {
             }))
             .from("the mesh's messages"),
             Reading::new(
-                "{} questions with no answer after 30 min",
+                "{} questions with no answer after 30 min, or a day for cadence's hourly ones",
                 read.then_some(count(unanswered)),
                 "",
                 "85PKB2",
             )
             .bar(Bar::AtMost(0.0))
             .detail(Some(
-                "over the last day, an answer from any peer counting".into(),
+                "asked over the last day, or the day before for cadence's, an answer from any \
+                 peer counting"
+                    .into(),
             ))
             .from("the mesh's messages"),
             counted::died(&s.counted),
@@ -776,8 +770,10 @@ The net tests 6f8501688 (9 merges behind main), merged 28 min ago.
             ..Note::default()
         };
         let asked = format!("{old}-A-1-aa");
+        let hourly = format!("{old}-CADENCE-1-ee");
         let s = Sources {
             now: NOW,
+            ledger: ledger_asking(&[&hourly]),
             messages: vec![
                 note(asked.clone(), "question", None),
                 note(format!("{old}-B-1-bb"), "question", None),
@@ -787,8 +783,11 @@ The net tests 6f8501688 (9 merges behind main), merged 28 min ago.
                 // a question giving them a day, not half an hour.
                 Note {
                     from: crate::FROM.into(),
-                    ..note(format!("{old}-CADENCE-1-ee"), "question", None)
+                    ..note(hourly.clone(), "question", None)
                 },
+                // An fyi from the day before is read, for cadence's
+                // questions, but isn't of the last day's share.
+                note(format!("{}-E-1-ff", (NOW - DAY - 60) * 1000), "fyi", None),
             ],
             ..Sources::default()
         };
@@ -813,20 +812,52 @@ The net tests 6f8501688 (9 merges behind main), merged 28 min ago.
         };
         let stamp =
             |ago: i64, from: &str, tag: &str| format!("{}-{from}-1-{tag}", (NOW - ago) * 1000);
-        // Cadence's 25 h old counts; its hour old doesn't yet; another's
-        // 25 h old is past the day the others are counted over; and one
-        // saying it's cadence's under another's stamp gets no day.
-        write(&stamp(DAY + 3600, crate::FROM, "aa"), crate::FROM);
-        write(&stamp(3600, crate::FROM, "bb"), crate::FROM);
+        // Cadence's hourly 25 h old counts; its hourly an hour old doesn't
+        // yet; another's 25 h old is past the day the others are counted
+        // over; one saying it's cadence's that the ledger never asked gets
+        // no day, nor does an alarm of cadence's own; and one whose body
+        // claims an hourly id under another file's name isn't read, so it
+        // can't stand in for that question as an fyi.
+        let (old, new) = (
+            stamp(DAY + 3600, crate::FROM, "aa"),
+            stamp(3600, crate::FROM, "bb"),
+        );
+        write(&old, crate::FROM);
+        write(&new, crate::FROM);
         write(&stamp(DAY + 3600, "BBBBBB", "cc"), "BBBBBB");
         write(&stamp(3600, "BBBBBB", "dd"), crate::FROM);
+        write(&stamp(3600, crate::FROM, "ee"), crate::FROM);
+        let claimed = format!(r#"{{"id":"{old}","intent":"fyi","from":"CADENCE"}}"#);
+        std::fs::write(
+            folder.join(format!("{}.json", stamp(60, "CCCCCC", "ff"))),
+            claimed,
+        )
+        .expect("a message claiming another's id");
         let read = messages::read(root.path(), NOW - MESSAGES_FOR, None);
-        assert_eq!(read.len(), 4, "the reader didn't keep two days: {read:?}");
         assert_eq!(
-            unanswered(&read, NOW),
-            2,
-            "cadence's day-old question and the forged one weren't the two unanswered"
+            read.len(),
+            5,
+            "the reader didn't keep two days, its own: {read:?}"
         );
+        let asked: BTreeSet<String> = crate::findings::asked_in(&ledger_asking(&[&old, &new]));
+        assert_eq!(
+            unanswered(&read, NOW, &asked),
+            3,
+            "cadence's day-old question, the forged one and its alarm weren't the three unanswered"
+        );
+    }
+
+    /// A ledger whose entries were asked in the questions `ids`.
+    fn ledger_asking(ids: &[&str]) -> String {
+        ids.iter()
+            .map(|id| {
+                serde_json::json!({"key": "hour:x", "owner": "A", "first": "", "last": "",
+                    "last_to": 0, "due": 0, "words": "", "axis": "", "evidence": "",
+                    "fell_when": "", "open": true, "told": null, "late": false, "asked": id})
+                .to_string()
+                    + "\n"
+            })
+            .collect()
     }
 
     #[test]
