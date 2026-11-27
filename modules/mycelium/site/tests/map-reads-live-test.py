@@ -40,6 +40,7 @@ import copy
 import json
 import os
 import re
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -675,6 +676,37 @@ def test_a_stale_map_says_nothing_of_reading_its_messages(
     opened.loses(server)
     the_map_stands(page, "stale")
     expect(asof, "a stale map said it was reading what it can't").not_to_contain_text(READING_TALK)
+    opened.close()
+
+
+def asked_of(node: StandIn, kind: str) -> dict[str, object]:
+    """Give what the server's watch of `kind` asked `node`, once it has, within PACE_MS."""
+    deadline = time.monotonic() + PACE_MS / 1000
+    while (asked := node.asked.get(kind)) is None:
+        assert time.monotonic() < deadline, f"the server never watched {kind} on the node"
+        time.sleep(0.05)
+    return asked
+
+
+# The map keeps the latest LATEST_MESSAGES messages (model.ts), and the node
+# feed asks the node for its `latest` (home.nix), so a node with 12,179 of
+# them sends only those. The two numbers live in two files, so the watch the
+# server opens is held to what the served page keeps: a node asked for fewer
+# leaves the map short of talk, and one asked for more sends what it drops.
+KEPT = re.compile(r"const LATEST_MESSAGES = (\d+);")
+
+
+def test_the_message_watch_asks_for_as_many_as_the_map_keeps(
+    browser: Browser, slow_talk_served: Served, slow_talk_node: StandIn
+) -> None:
+    root, _ = slow_talk_served
+    opened = Opened(browser, f"{root}mycelium/", SIZES[-1], "dark")
+    kept = KEPT.search((Path(os.environ["MYCELIUM_SITE"]) / "model.js").read_text())
+    assert kept, "the served model.js keeps no LATEST_MESSAGES"
+    asked = asked_of(slow_talk_node, "message")
+    assert asked.get("latest") == int(kept[1]), (
+        f"the message watch asked {asked} of the node, but the map keeps {kept[1]}"
+    )
     opened.close()
 
 
