@@ -264,7 +264,7 @@ fn carry_each(plan: &pause::Plan, state: &Path, host: &str) {
             match one.failed {
                 None => eprintln!("gave {} {what} {}", one.machine, one.name),
                 Some(why) if one.machine.is_empty() => {
-                    eprintln!("<4>gave {what} {}, but {why}", one.name);
+                    eprintln!("<4>{what} {}: {why}", one.name);
                 }
                 Some(why) => eprintln!(
                     "<4>couldn't give {} {what} {}, tried again in a minute: {why}",

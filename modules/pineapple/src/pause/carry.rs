@@ -11,7 +11,8 @@
 //! stands is given it too. Whatever follows (a resume, a narrowing, a
 //! widening) goes to each machine that may hold the stop, one whose give
 //! failed included, since a run can fail after its script wrote the stop
-//! there; one that never held it is given nothing. A stop no longer kept
+//! there, and one noted lacking it while it waited out its minute; one
+//! never given it nor noted so is given nothing. A stop no longer kept
 //! here, such as one read from an answer that couldn't be read, forgotten
 //! once the answer could be, is taken away from each machine given it. A
 //! machine that couldn't take what it was given is tried again after a
@@ -193,9 +194,12 @@ impl Carrier {
             }
             if self.waits(&target.machine, here.at) {
                 // A machine waiting out its minute after another stop is
-                // noted as lacking this one too, so Joel's row names it
-                // until it takes it.
-                if holds.is_none() {
+                // noted as lacking this one as it stands, whether it holds
+                // none or an older copy, as after Joel widens it, so Joel's
+                // row names it until it takes it.
+                let lacks = holds.is_none_or(|holds| !holds.is_null());
+                if lacks {
+                    held.retain(|(reached, _)| reached.machine != target.machine);
                     held.push((target.clone(), Value::Null));
                     waiting = true;
                 }
@@ -223,7 +227,8 @@ impl Carrier {
         if (waiting || !carried.is_empty())
             && let Err(error) = keep_given(here.state, name, &held)
         {
-            carried.push(unnoted(name, gift, &error));
+            let noted = unnoted(name, gift, &error, &carried);
+            carried.push(noted);
         }
         carried
     }
@@ -260,7 +265,8 @@ impl Carrier {
             keep_given(here.state, name, &kept)
         };
         if let Err(error) = noted {
-            carried.push(unnoted(name, Gift::Removal, &error));
+            let noted = unnoted(name, Gift::Removal, &error, &carried);
+            carried.push(noted);
         }
         carried
     }
@@ -319,14 +325,23 @@ fn give(plan: &Plan, runs: &mut dyn Runs, at: &Reached, script: &str) -> Result<
         .map_err(|why| reach::without_begun(&why))
 }
 
-/// What a give answers when what each machine was given couldn't be noted:
-/// it is given again next time, which writes the same record.
-fn unnoted(name: &str, gift: Gift, error: &io::Error) -> Carried {
+/// What a give answers when what each machine holds couldn't be noted,
+/// after `carried`: whether any took it, all it was tried on refused it,
+/// or it was tried on none, as each was waiting. Each is noted again the
+/// next time it's given or found waiting.
+fn unnoted(name: &str, gift: Gift, error: &io::Error, carried: &[Carried]) -> Carried {
+    let why = if carried.iter().any(|one| one.failed.is_none()) {
+        format!("given, but what was given couldn't be noted: {error}")
+    } else if carried.is_empty() {
+        format!("the machines waiting to be given it couldn't be noted: {error}")
+    } else {
+        format!("given to none, and the machines it was tried on couldn't be noted: {error}")
+    };
     Carried {
         name: name.to_owned(),
         machine: String::new(),
         gift,
-        failed: Some(format!("couldn't note what was given: {error}")),
+        failed: Some(why),
     }
 }
 
