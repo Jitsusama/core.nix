@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test as it } from "node:test";
 import {
+  type Asked,
   CLOUD,
   handedWords,
   isAddress,
@@ -15,7 +16,9 @@ import {
   leftWords,
   NO_MACHINE,
   NO_WORDS,
+  offered,
   onWords,
+  type Standing,
   sproutLink,
   sproutWords,
   unsprouted,
@@ -166,6 +169,162 @@ it("keeps words for a machine only while the map still has it", () => {
   assert.equal(keptOnStands("heron", names), false, "a machine that left should go");
   assert.equal(keptOnStands(CLOUD, []), true, "the cloud is no machine, and should stand");
   assert.equal(keptOnStands(null, []), true, "words sent on no machine should stand");
+});
+
+// A map with kestrel and osprey on it and the cell TERN02 gone from it, its drawer open on
+// `drawer`: a cell's address, a machine's name, or nothing.
+const onMap = (drawer: string | null): Standing => ({
+  machines: ["kestrel", "osprey"],
+  drawerOn: drawer === "kestrel" || drawer === "osprey" ? drawer : null,
+  offersFrom: (address) => address === drawer,
+  stands: (address) => address !== "TERN02",
+});
+
+// What the s key asks with `drawer` open, with what `rest` says in place of its own.
+const askedOn = (drawer: string | null, rest: Partial<Asked> = {}): Asked => ({
+  from: drawer === "HERON1" || drawer === "EGRET2" ? drawer : null,
+  on: onMap(drawer).drawerOn,
+  named: false,
+  kept: null,
+  typed: "",
+  ...rest,
+});
+
+const keptWords = { words: "tidy the rows", from: "EGRET2", on: "kestrel" };
+
+it("offers the open drawer's cell or machine when no words are kept", () => {
+  assert.deepEqual(
+    offered(askedOn("HERON1"), onMap("HERON1")),
+    { from: "HERON1", on: null, kept: false },
+    "a cell's drawer should offer its cell",
+  );
+  assert.deepEqual(
+    offered(askedOn("osprey"), onMap("osprey")),
+    { from: null, on: "osprey", kept: false },
+    "a machine's drawer should offer its machine",
+  );
+  assert.deepEqual(
+    offered(askedOn(null), onMap(null)),
+    { from: null, on: null, kept: false },
+    "the whole map should offer nothing",
+  );
+  assert.deepEqual(
+    offered(askedOn("HERON1", { from: "EGRET2", on: "osprey" }), onMap("HERON1")),
+    { from: null, on: null, kept: false },
+    "a cell or machine the open drawer doesn't offer should be left out",
+  );
+  assert.deepEqual(
+    offered(askedOn("osprey", { from: "tern02" }), { ...onMap("osprey"), offersFrom: () => true }),
+    { from: null, on: "osprey", kept: false },
+    "what isn't an address should never be offered, whatever the drawer has",
+  );
+});
+
+it("offers kept words from their cell and on their machine, whatever drawer is open", () => {
+  for (const drawer of [null, "HERON1", "osprey"]) {
+    assert.deepEqual(
+      offered(askedOn(drawer, { kept: keptWords, typed: keptWords.words }), onMap(drawer)),
+      { from: "EGRET2", on: "kestrel", kept: true },
+      `with ${JSON.stringify(drawer)} open, the kept words should go where they went`,
+    );
+  }
+  const fromNone = { ...keptWords, from: null };
+  assert.deepEqual(
+    offered(askedOn("HERON1", { kept: fromNone, typed: fromNone.words }), onMap("HERON1")),
+    { from: null, on: "kestrel", kept: true },
+    "words that went from no cell should go from none, not from the open one",
+  );
+  const onNone = { ...keptWords, on: null };
+  assert.deepEqual(
+    offered(askedOn("osprey", { kept: onNone, typed: onNone.words }), onMap("osprey")),
+    { from: "EGRET2", on: null, kept: true },
+    "words that went on no machine should go on none, not on the open drawer's",
+  );
+  const onCloud = { ...keptWords, on: CLOUD };
+  assert.deepEqual(
+    offered(askedOn(null, { kept: onCloud, typed: onCloud.words }), {
+      ...onMap(null),
+      machines: [],
+    }),
+    { from: "EGRET2", on: CLOUD, kept: true },
+    "words for the cloud should stand with no machine on the map",
+  );
+});
+
+it("offers kept words from the open cell once theirs has gone, still on their machine", () => {
+  const gone = { ...keptWords, from: "TERN02" };
+  assert.deepEqual(
+    offered(askedOn("HERON1", { kept: gone, typed: gone.words }), onMap("HERON1")),
+    { from: "HERON1", on: "kestrel", kept: true },
+    "a gone cell's words should go from the cell open now",
+  );
+  assert.deepEqual(
+    offered(askedOn("osprey", { kept: gone, typed: gone.words }), onMap("osprey")),
+    { from: null, on: "kestrel", kept: true },
+    "on a machine's drawer they should go from no cell, on the machine they went to",
+  );
+  const goneOnNone = { ...gone, on: null };
+  assert.deepEqual(
+    offered(askedOn("osprey", { kept: goneOnNone, typed: goneOnNone.words }), onMap("osprey")),
+    { from: null, on: null, kept: true },
+    "a gone cell should never send its words on the open drawer's machine, where they never went",
+  );
+});
+
+it("offers afresh for a drawer's button, new words or a machine that has left", () => {
+  assert.deepEqual(
+    offered(
+      askedOn("osprey", { named: true, kept: keptWords, typed: keptWords.words }),
+      onMap("osprey"),
+    ),
+    { from: null, on: "osprey", kept: false },
+    "a drawer's button should offer its own machine over the kept words'",
+  );
+  assert.deepEqual(
+    offered(
+      askedOn("HERON1", { named: true, kept: keptWords, typed: keptWords.words }),
+      onMap("HERON1"),
+    ),
+    { from: "HERON1", on: null, kept: false },
+    "a drawer's button should offer its own cell over the kept words'",
+  );
+  for (const drawer of [null, "HERON1", "osprey"]) {
+    assert.deepEqual(
+      offered(askedOn(drawer, { kept: keptWords, typed: "tidy the rows again" }), onMap(drawer)),
+      offered(askedOn(drawer), onMap(drawer)),
+      `words typed over the kept ones with ${JSON.stringify(drawer)} open should be new work`,
+    );
+  }
+  const left = { ...keptWords, on: "heron" };
+  assert.deepEqual(
+    offered(askedOn("HERON1", { kept: left, typed: left.words }), onMap("HERON1")),
+    { from: "HERON1", on: null, kept: false },
+    "words for a machine that has left should never go there, nor from their cell",
+  );
+});
+
+it("offers only the kept words' machine or the open drawer's, in every combination", () => {
+  for (const drawer of [null, "HERON1", "EGRET2", "osprey", "kestrel"]) {
+    for (const named of [false, true]) {
+      for (const typed of ["tidy the rows", "other words"]) {
+        for (const from of [null, "EGRET2", "TERN02"]) {
+          for (const on of [null, "kestrel", "heron", CLOUD]) {
+            const kept = { words: "tidy the rows", from, on };
+            const asked = askedOn(drawer, { named, kept, typed });
+            const map = onMap(drawer);
+            const got = offered(asked, map);
+            const keeps = !named && typed === kept.words && on !== "heron";
+            const said = JSON.stringify({ drawer, named, typed, from, on });
+            assert.equal(got.kept, keeps, `${said}: whether the kept words are offered`);
+            assert.equal(got.on, keeps ? on : map.drawerOn, `${said}: the machine offered`);
+            const fresh = asked.from !== null && map.offersFrom(asked.from) ? asked.from : null;
+            const stays = keeps && (from === null || map.stands(from));
+            assert.equal(got.from, stays ? from : fresh, `${said}: the cell offered`);
+          }
+        }
+      }
+    }
+  }
 });
 
 it("says a machine that left before Return, and where the work starts instead", () => {

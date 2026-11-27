@@ -57,6 +57,72 @@ export const onWords = (on: string): string => `On ${placeWords(on)}`;
 export const keptOnStands = (on: string | null, names: readonly string[]): boolean =>
   on === null || on === CLOUD || names.includes(on);
 
+/** Words last handed on, the cell they went from and the machine they went to. */
+export interface Kept {
+  readonly words: string;
+  readonly from: string | null;
+  readonly on: string | null;
+}
+
+/** What the line is asked to offer as it opens, or as words are typed on it. */
+export interface Asked {
+  /** The cell asked from: the open cell, or the one a drawer's button names. */
+  readonly from: string | null;
+  /** The machine asked on: the open drawer's, or the one its button names. */
+  readonly on: string | null;
+  /** Whether a drawer's button asked, naming its own cell or machine. */
+  readonly named: boolean;
+  /** The words kept to send again, or null. */
+  readonly kept: Kept | null;
+  /** The words on the line now. */
+  readonly typed: string;
+}
+
+/** What the map holds now that bears on what the line offers. */
+export interface Standing {
+  /** The machines on the map, by name. */
+  readonly machines: readonly string[];
+  /** The machine the open drawer's Start New Work Here names, or null. */
+  readonly drawerOn: string | null;
+  /** Whether the open drawer has a Start New Work button for this cell. */
+  readonly offersFrom: (address: string) => boolean;
+  /** Whether this cell is still on the map. */
+  readonly stands: (address: string) => boolean;
+}
+
+/** The cell and machine the line offers, and whether they are the kept words'. */
+export interface Offer {
+  readonly from: string | null;
+  readonly on: string | null;
+  readonly kept: boolean;
+}
+
+/**
+ * What the line offers. Kept words come back with the machine they went
+ * to, or none, and from the cell they went from while it is still on the
+ * map, else from the one open now; a cell that leaves never sends its
+ * words on the open drawer's machine, where they never went. A drawer's
+ * button, words typed over the kept ones, or kept words for a machine that
+ * has left offer afresh: the cell asked from where the open drawer offers
+ * it, and the machine asked on where it is the open drawer's own.
+ */
+export const offered = (asked: Asked, map: Standing): Offer => {
+  const { kept } = asked;
+  const fresh = (address: string | null) =>
+    isAddress(address) && map.offersFrom(address) ? address : null;
+  if (
+    kept !== null &&
+    !asked.named &&
+    asked.typed === kept.words &&
+    keptOnStands(kept.on, map.machines)
+  ) {
+    const from = kept.from === null || map.stands(kept.from) ? kept.from : fresh(asked.from);
+    return { from, on: isMachine(kept.on) ? kept.on : null, kept: true };
+  }
+  const on = isMachine(asked.on) && asked.on === map.drawerOn ? asked.on : null;
+  return { from: fresh(asked.from), on, kept: false };
+};
+
 /**
  * What the map says when `on`, the machine the open line would start work
  * on, left the map before Return. It lets the machine go rather than send
