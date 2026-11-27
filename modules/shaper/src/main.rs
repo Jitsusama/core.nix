@@ -386,7 +386,7 @@ struct Shaped {
     /// What the controller held its download to at the last step, apart
     /// from a call's hold, and whether it left the download unlimited:
     /// what a follower takes (`hold_followers`).
-    asked_down: (u64, bool),
+    asked_down: Asked,
     /// The bytes the upload's CAKE had sent at its last good read, and at
     /// the last good read before the controller was last told, each with
     /// when it was read: what crossed the line, apart from the home
@@ -749,7 +749,10 @@ fn start(
         room: room::Room::default(),
         line: None,
         line_told: (false, None),
-        asked_down: (down, true),
+        asked_down: Asked {
+            down,
+            unlimited: true,
+        },
         sent_read: None,
         sent_told: None,
         lanes,
@@ -1850,7 +1853,7 @@ fn watch_real_time(shaped: &mut BTreeMap<String, Shaped>, t: f64) {
 struct Followed {
     up: u64,
     up_most: u64,
-    asked_down: (u64, bool),
+    asked_down: Asked,
     under: Option<u64>,
 }
 
@@ -1876,8 +1879,11 @@ struct Taken {
 /// most then, under its room: a cable's wire never holds the Wi-Fi
 /// following it (a link's own line round 9's F2).
 fn taken(follows: &Followed, room: Option<u64>, most: Held) -> Taken {
-    let asked = if follows.asked_down.1 {
-        (most.down, true)
+    let asked = if follows.asked_down.unlimited {
+        Asked {
+            down: most.down,
+            unlimited: true,
+        }
     } else {
         follows.asked_down
     };
@@ -1956,14 +1962,34 @@ fn line_said(
     ((true, now), said)
 }
 
+/// What the controller asked of a link's download at a step, apart from
+/// a call's hold: the rate it held it to, and whether it left it unlimited
+/// (a link's own line round 8's F6).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Asked {
+    down: u64,
+    unlimited: bool,
+}
+
+impl Asked {
+    /// What the controller's `rates` ask of a download held to `down`: one
+    /// it gives no rate goes unlimited.
+    fn of(down: u64, rates: replay::Rates) -> Self {
+        Self {
+            down,
+            unlimited: rates.down.is_none(),
+        }
+    }
+}
+
 /// What a link's download is held to, and whether it goes straight in,
-/// given what the controller holds it to and whether it leaves it
-/// unlimited, and a call's `room`: under both, never over what the
-/// controller asks, and straight in only where neither holds it.
-fn held_down((down, unheld): (u64, bool), room: Option<u64>) -> (u64, bool) {
+/// given what the controller `asked` of it and a call's `room`: under
+/// both, never over what the controller asks, and straight in only where
+/// neither holds it.
+fn held_down(asked: Asked, room: Option<u64>) -> (u64, bool) {
     (
-        lower(Some(down), room).unwrap_or(down),
-        unheld && room.is_none(),
+        lower(Some(asked.down), room).unwrap_or(asked.down),
+        asked.unlimited && room.is_none(),
     )
 }
 
@@ -2322,7 +2348,7 @@ fn hold(s: &mut Shaped, rates: replay::Rates, why: &why::Judged, room: Option<u6
     };
     let spell = spell(&s.uplink.name, (s.told, s.ceiling), rates, most, why);
     s.up.rate = spell.held.up;
-    s.asked_down = (spell.held.down, rates.down.is_none());
+    s.asked_down = Asked::of(spell.held.down, rates);
     let (down, state, straight) = under_room(rates, spell.held.down, room);
     (s.down.rate, s.state) = (down, state);
     if let Some(line) = &spell.said {
@@ -2407,7 +2433,7 @@ fn under_room(rates: replay::Rates, down: u64, room: Option<u64>) -> (u64, State
     } else {
         State::Resting
     };
-    let (held, straight) = held_down((down, rates.down.is_none()), room);
+    let (held, straight) = held_down(Asked::of(down, rates), room);
     (held, state, straight)
 }
 
@@ -2840,7 +2866,10 @@ mod tests {
         let mut cable = room::Room::default();
         let cable_line = networks::line_of(&lines, "home", "enp0s20f0u2u2");
         let (followed, _) = cable.follow(("enp0s20f0u2u2", "wlp0s20f3"), "home", true, cable_line);
-        let unlimited = (2_000_000, true);
+        let unlimited = Asked {
+            down: 2_000_000,
+            unlimited: true,
+        };
         assert_eq!(held_down(unlimited, held), (18_000, false), "Wi-Fi leading");
         assert_eq!(
             held_down(unlimited, followed),
@@ -2848,11 +2877,48 @@ mod tests {
             "the cable following it, under the network's line, not Wi-Fi's"
         );
         assert_eq!(
-            held_down((10_000, false), followed),
+            held_down(
+                Asked {
+                    down: 10_000,
+                    unlimited: false,
+                },
+                followed
+            ),
             (10_000, false),
             "never over what the controller asks of the one connection"
         );
-        assert_eq!(held_down(unlimited, None), unlimited, "no call");
+        assert_eq!(held_down(unlimited, None), (2_000_000, true), "no call");
+    }
+
+    // What the controller asked is what a follower takes, so a download
+    // it gives a rate must read as held, and one it gives none as
+    // unlimited, whatever it's held to (a link's own line round 9's F6).
+    #[test]
+    fn a_download_the_controller_gives_no_rate_is_asked_unlimited() {
+        let held = replay::Rates {
+            up: None,
+            down: Some(50_000),
+        };
+        assert_eq!(
+            Asked::of(50_000, held),
+            Asked {
+                down: 50_000,
+                unlimited: false,
+            },
+            "a download given a rate is held to it"
+        );
+        let unheld = replay::Rates {
+            up: Some(9_000),
+            down: None,
+        };
+        assert_eq!(
+            Asked::of(83_000, unheld),
+            Asked {
+                down: 83_000,
+                unlimited: true,
+            },
+            "a download given no rate goes unlimited, at its link's most"
+        );
     }
 
     // What a follower takes is worked out apart from its link, so each
@@ -2866,7 +2932,10 @@ mod tests {
         let follows = Followed {
             up: 9_000,
             up_most: 12_000,
-            asked_down: (50_000, false),
+            asked_down: Asked {
+                down: 50_000,
+                unlimited: false,
+            },
             under: Some(10_800),
         };
         let most = Held {
@@ -2889,7 +2958,10 @@ mod tests {
             "outside a call, what the controller asked of its leader"
         );
         let unlimited = Followed {
-            asked_down: (2_000_000, true),
+            asked_down: Asked {
+                down: 2_000_000,
+                unlimited: true,
+            },
             ..follows
         };
         assert_eq!(
@@ -2903,7 +2975,10 @@ mod tests {
             "a call's room holds it though its leader goes unlimited"
         );
         let wired = Followed {
-            asked_down: (83_000, true),
+            asked_down: Asked {
+                down: 83_000,
+                unlimited: true,
+            },
             ..follows
         };
         assert_eq!(
