@@ -37,6 +37,7 @@ const calm: readonly Told[] = [...records.filter((record) => record.kind !== "co
 /** How the lede ends with one source quiet, and with nothing but the ceiling told. */
 const ONE_WORTH = /, and 1 thing worth a look\.$/u;
 const TWO_WORTH = /, and 2 things worth a look\.$/u;
+const THREE_WORTH = /, and 3 things worth a look\.$/u;
 const NOTHING_WORTH = /, and nothing needs a look\.$/u;
 const WORTH_A_LOOK = /needs a look|worth a look/u;
 
@@ -147,10 +148,22 @@ it("the lede counts what a concern or source watch couldn't read as worth a look
 // The panel's Worth a Look says what the lede counts, rather than nothing.
 it("the panel counts what couldn't be read as the lede does", () => {
   const unreadable: Told = { key: "concern:unreadable", kind: "concern" };
-  const lede = ledeOf("live", contextOf([...calm, unreadable]), { fresh: true, unheard: 1 });
-  assert.match(lede, TWO_WORTH);
-  assert.equal(unreadSaid(2), "2 things net told couldn't be read, and may be worth a look.");
+  const context = { ...contextOf([...calm, unreadable]), unheard: 1 };
+  assert.match(ledeOf("live", context, { fresh: true, unheard: 1 }), TWO_WORTH);
+  assert.deepEqual(
+    worthSaid(context),
+    ["2 things net told couldn't be read, and may be worth a look."],
+    "the panel's Worth a Look counted otherwise than the lede",
+  );
   assert.equal(unreadSaid(1), "1 thing net told couldn't be read, and may be worth a look.");
+});
+
+it("the panel says nothing needs a look only when the lede does", () => {
+  const context = contextOf(calm);
+  assert.match(ledeOf("live", context), NOTHING_WORTH);
+  assert.deepEqual(worthSaid(context), [NOTHING]);
+  assert.match(ledeOf("live", contextOf()), THREE_WORTH);
+  assert.deepEqual(worthSaid(contextOf()), [], "the panel spoke beside rows it drew");
 });
 
 // A page opened or reloaded while net is down is given the records the

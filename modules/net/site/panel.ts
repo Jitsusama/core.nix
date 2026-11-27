@@ -212,6 +212,17 @@ function unreadSaid(count: number): string {
   return `${plural(count, "thing")} net told couldn't be read, and may be worth a look.`;
 }
 
+/**
+ * How many things net told that the page couldn't read, each maybe worth a
+ * look: the records in `network` it couldn't make out, and the watches that
+ * sent a line it couldn't read at all, as a line that isn't JSON or a record
+ * with no key, which never reaches the network. The lede and the panel both
+ * count this.
+ */
+function unreadCount(network: Network, unheard: number): number {
+  return unreadOf(network).length + unheard;
+}
+
 /** How many devices use the network: every one read, less the eeros and the modem. */
 function users(context: Context): number {
   const { network, shape } = context;
@@ -241,10 +252,9 @@ function asksOf(network: Network, told: boolean, unheard: number): string {
   }
   const { worth, quiet } = worthOf(network);
   // A concern or a source the page couldn't read may be one worth a look,
-  // so it's counted as one rather than read as an all-clear; so may one the
-  // watch couldn't read at all, as a line that isn't JSON or a record with
-  // no key, which never reaches the network. The panel counts the same.
-  const looks = worth.length + quiet.length + unreadOf(network).length + unheard;
+  // so it's counted as one rather than read as an all-clear, as the panel
+  // counts it.
+  const looks = worth.length + quiet.length + unreadCount(network, unheard);
   return looks === 0 ? "and nothing needs a look" : `and ${plural(looks, "thing")} worth a look`;
 }
 
@@ -356,7 +366,7 @@ const NOTHING = "Nothing needs a look.";
  */
 function worthSaid(context: Context): string[] {
   const { worth, quiet } = worthOf(context.network);
-  const unread = unreadOf(context.network).length + (context.unheard ?? 0);
+  const unread = unreadCount(context.network, context.unheard ?? 0);
   const said = unread > 0 ? [unreadSaid(unread)] : [];
   if (context.told === false) {
     return [...said, HELD];

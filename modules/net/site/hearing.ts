@@ -7,7 +7,7 @@
 // from them. Only a whole answer makes a watch's records complete again
 // (the kit's records.ts), so only one clears what it couldn't read.
 
-import type { Hearing as Heeding, Standing } from "../../local-sites/kit/feed.ts";
+import { type Hearing as Heeding, STRAY, type Standing } from "../../local-sites/kit/feed.ts";
 
 /** How the lede hears the feeds: whether all are current, and how much went unread. */
 interface Heard {
@@ -18,12 +18,6 @@ interface Heard {
 /** The watches whose unread answers may have been worth a look. */
 const ASKING = ["concern", "source"];
 
-/**
- * How the kit's feed begins what it says of an answer to another ask, which
- * was never this watch's and so can hide none of its records.
- */
-const STRAY = "an answer to no ask of this page";
-
 class Hearing {
   readonly #kinds: readonly string[];
   // The last thing each watch couldn't read, said until a whole answer comes.
@@ -31,15 +25,23 @@ class Hearing {
   // The watches whose unread lines may have held a record, until a whole answer comes.
   readonly #hiding = new Set<string>();
   readonly #raising = new Set<string>();
+  readonly #stopped = new Set<string>();
   readonly #fresh = new Set<string>();
 
   constructor(kinds: readonly string[]) {
     this.#kinds = kinds;
   }
 
-  /** The watch of `kind` handed over records, all of them when `whole`. */
+  /**
+   * The watch of `kind` handed over records, all of them when `whole`. A
+   * page joining is told them before the state, so they count as current
+   * unless told while the watch stood stale or broken, when they're only
+   * what it held from before.
+   */
   moved(kind: string, whole: boolean): void {
-    this.#fresh.add(kind);
+    if (!this.#stopped.has(kind)) {
+      this.#fresh.add(kind);
+    }
     if (whole && !this.#raising.has(kind)) {
       this.#problems.delete(kind);
       this.#hiding.delete(kind);
@@ -48,6 +50,11 @@ class Hearing {
 
   /** The watch of `kind` now stands as `state`. */
   stands(kind: string, state: string): void {
+    if (state === "stale" || state === "broken") {
+      this.#stopped.add(kind);
+    } else {
+      this.#stopped.delete(kind);
+    }
     if (state !== "live") {
       this.#fresh.delete(kind);
     }
@@ -55,8 +62,14 @@ class Hearing {
 
   /** The watch of `kind` couldn't read `what`. */
   problem(kind: string, what: string): void {
+    const stray = what.startsWith(STRAY);
+    // A stray answer hid no record, so it never takes the place of a line
+    // that may have, which the count beside it still counts.
+    if (stray && this.#hiding.has(kind)) {
+      return;
+    }
     this.#problems.set(kind, `${kind}: ${what}`);
-    if (!what.startsWith(STRAY)) {
+    if (!stray) {
       this.#hiding.add(kind);
     }
     this.#raising.add(kind);

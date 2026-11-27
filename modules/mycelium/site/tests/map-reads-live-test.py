@@ -2291,6 +2291,28 @@ window.letReadingsThrough = () => {
   document.removeEventListener("mycelium:now", holding, { capture: true });
   document.dispatchEvent(new CustomEvent("mycelium:now", { detail: window.held }));
 };
+window.passHeld = () => {
+  document.removeEventListener("mycelium:now", holding, { capture: true });
+  document.dispatchEvent(new CustomEvent("mycelium:now", { detail: window.held }));
+  document.addEventListener("mycelium:now", holding, { capture: true });
+};
+"""
+
+# A drawer that refuses its next `panelFails` writings, so a whole reading fails part way
+# through the first path, after it was read and sown, as no reading of nothing can.
+PANEL_FAILS = """
+window.panelFails = 0;
+const inner = Object.getOwnPropertyDescriptor(Element.prototype, "innerHTML");
+Object.defineProperty(Element.prototype, "innerHTML", {
+  ...inner,
+  set(html) {
+    if (this.id === "panel-body" && window.panelFails > 0) {
+      window.panelFails -= 1;
+      throw new Error("a drawer that can't be written");
+    }
+    inner.set.call(this, html);
+  },
+});
 """
 
 
@@ -2298,15 +2320,17 @@ def test_a_first_reading_that_fails_twice_still_opens_the_cell_the_address_names
     browser: Browser, mycelium_served: Served
 ) -> None:
     root, _ = mycelium_served
-    opened = Opened(browser, f"{root}mycelium/#cell={SOUGHT}", SIZES[-1], "dark", READINGS_HELD)
+    address = f"{root}mycelium/#cell={SOUGHT}"
+    opened = Opened(browser, address, SIZES[-1], "dark", READINGS_HELD + PANEL_FAILS)
     try:
         page = opened.page
         page.wait_for_function("window.held !== null", timeout=PACE_MS)
-        # Two first readings that fail leave the first path to the ordinary one.
+        # Two whole readings that fail inside the first path leave it to the ordinary one.
         opened.expecting("mycelium: a reading failed to draw")
-        page.evaluate(UNDRAWABLE)
-        page.evaluate(UNDRAWABLE)
+        page.evaluate("window.panelFails = 2; passHeld(); passHeld()")
         the_map_stands(page, "broken")
+        failed = page.evaluate("window.panelFails")
+        assert failed == 0, f"the first path wasn't failed twice, {failed} failings left"
         page.evaluate("letReadingsThrough()")
         # Its cells are heard as a first rather than compared with none, so it draws whole.
         the_map_counts(page, COUNTED, "the first reading drawn whole failed")

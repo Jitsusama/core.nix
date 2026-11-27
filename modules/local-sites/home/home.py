@@ -181,8 +181,9 @@ def bed(number: str, bed: Bed, rows: list[Site]) -> list[str]:
 def standing(sites: list[Site]) -> str:
     """Say in one line how the home stands: how many grow, how many ask, how many are kept.
 
-    Only the words: the page's standing line holds its glyph and the status
-    they're written in, as every live page's head does.
+    Only the words: the page's standing line holds the status they're
+    written in, as every live page's head does, with no glyph, since the
+    home is written rather than fed.
     """
     fresh = [site for site in sites if not site.kept]
     asking = sum(bool(site.asks) for site in fresh)

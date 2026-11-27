@@ -2,8 +2,7 @@
 // mycelium, the network and the code, as the system daemon holds them. The
 // head's lede counts the machines and says how they stand, a list under it
 // names everything worth a look, the bridge draws them, each a pier, and
-// each machine has a section of its own below, with the other three parts
-// after them.
+// each machine has its own section below, the other three parts after them.
 // It watches the daemon's summary, parts and things over the sites'
 // server, so a machine redraws the moment its owner's answer moves, and
 // the head's standing line says whether what it shows is live and since
@@ -48,6 +47,7 @@ const title = element("#headline", HTMLParagraphElement);
 const looks = element("#looks", HTMLDivElement);
 const standingLine = element("#standing", HTMLParagraphElement);
 const standingWords = element("#standing-words", HTMLSpanElement);
+const readAt = element("#read-at", HTMLSpanElement);
 const bridge = element("#bridge", HTMLElement);
 const places = element("#places", HTMLElement);
 const note = element("#note", HTMLParagraphElement);
@@ -142,10 +142,8 @@ function sayWhen(): void {
   const words: string[] = [];
   if (system !== undefined) {
     const at = Date.parse(system.readAt);
-    words.push(
-      system.machine,
-      Number.isNaN(at) ? "read at an unknown time" : `read ${clockTime(at)}`,
-    );
+    words.push(system.machine);
+    readAt.textContent = Number.isNaN(at) ? " Read at an unknown time." : ` Read ${clockTime(at)}.`;
   }
   if (now !== undefined) {
     words.push(now.state === "live" ? "live" : said(now));

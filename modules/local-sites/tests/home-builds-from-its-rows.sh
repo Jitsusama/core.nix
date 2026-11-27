@@ -129,6 +129,9 @@ if grep -q 'href="#explained"' "$index"; then
 fi
 grep -q '2 growing <span class="sep">·</span> 1 asking something of you' "$index" ||
   fail "the standing line doesn't count the sites"
+# Written rather than fed, the home draws no glyph, whose every shape says a feed's state.
+grep -q '<p class="standing"><span id="status" role="status">' "$index" ||
+  fail "the home's standing line draws more than its words"
 if grep -q '@standing@\|@contents@' "$index"; then
   fail "a placeholder was left in the home"
 fi
