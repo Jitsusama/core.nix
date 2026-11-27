@@ -199,8 +199,15 @@ in
         # least weight but level with it (modules/slices/tiers.nix), since
         # a sweep walks thousands of trees and none of it is waited on.
         # A weight counts only where the disk is shared by weight, by BFQ
-        # or io.cost; elsewhere only a cap holds a sweep back.
+        # or io.cost; elsewhere only a cap holds a sweep back, so its
+        # reads are capped too: on 27 November a sweep read 107 MB/s,
+        # mostly git's status of tree after tree, and was the disk's
+        # largest reader while agents' and Joel's apps waited on it.
+        # Capped at 40 MB/s, the 34 GB it read takes 15 minutes, within
+        # its two hours. The state folder names the disk the trees are on,
+        # under it as %S, which systemd finds itself.
         IOWeight = 1;
+        IOReadBandwidthMax = "${config.xdg.stateHome} 40M";
         ExecStart = "${lib.getExe pkgs.nodejs} --disable-warning=MODULE_TYPELESS_PACKAGE_JSON ${sweepScript}";
         # Where agents' own commands run, beneath everything Joel uses, and
         # a place the polkit rules and the TPM agent's gate both take as an
