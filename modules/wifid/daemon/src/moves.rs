@@ -225,10 +225,13 @@ fn given(
     if let Some((unreached, lasts)) = chooser.unreached() {
         println!("<6>{}", kept_off(on, &unreached, lasts));
     }
-    if !chooser.may_give_way(now) {
-        return None;
+    if chooser.began_holding() {
+        println!("<6>{}", holding(on));
     }
     let gone = measured.0 >= fading::GONE;
+    if !chooser.may_give_way(now, gone) {
+        return None;
+    }
     let kept_off = |point: &str| chooser.call_keeps_off(point, now, gone);
     let way = fading::giving_way(&on.point, measured, around, kept_off);
     // Losing on the point it gave way to for loss, as on the one it left,
@@ -288,6 +291,18 @@ fn given(
             None
         }
     }
+}
+
+/// That a card on a call holds its give-ways a settle, as a second within
+/// the hour never got there, which otherwise reads as a call left losing
+/// with nothing said of why.
+fn holding(on: &Joined) -> String {
+    format!(
+        "{} gives way during a call only once its link is gone for {} minutes, as a second \
+         give-way within an hour never got there",
+        on.card,
+        choose::SETTLE.as_secs() / 60
+    )
 }
 
 /// That a card on a call is fading with nowhere to give way to, naming
@@ -1360,9 +1375,11 @@ mod tests {
         air.heard("/Interfaces/0/BSSs/2", Some(heard(HALL, -60)));
         air.at("wlan2", Some("/Interfaces/0/BSSs/2".into()));
         let start = Instant::now();
-        // Let go, as one whose look found nowhere to move it: no heed of
-        // wifid's is under way to wait on.
-        air.warned_off("wlan2", HALL, (None, start + Duration::from_secs(600)));
+        // Looked first for the points named, then let go as its look found
+        // none: no heed of wifid's is under way to wait on.
+        let until = start + Duration::from_secs(600);
+        air.warned_off("wlan2", HALL, (Some(start), until));
+        air.warned_off("wlan2", HALL, (None, until));
 
         let given = given_hearing(&mut Chooser::default(), start, &joined(HALL), &air, LOSING);
 
@@ -1468,6 +1485,16 @@ mod tests {
                  echoes in 10 s"
             ),
             "a give-way says where, how loud, and what faded"
+        );
+    }
+
+    #[test]
+    fn a_call_held_after_two_misses_says_for_how_long_and_what_still_moves_it() {
+        assert_eq!(
+            holding(&joined(DESK)),
+            "wlan2 gives way during a call only once its link is gone for 10 minutes, as a \
+             second give-way within an hour never got there",
+            "a held call doesn't say how long it's held, or that a gone link still moves"
         );
     }
 
