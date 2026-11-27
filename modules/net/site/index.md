@@ -2,8 +2,9 @@
 
 Every device on the home network this minute, drawn floor by floor. The
 page watches net's records live over the sites' server, and redraws the
-moment net has read the network again (about once a minute). The line
-under the title says whether it's live, and since when. Nothing on it
+moment net has read the network again (about once a minute). Under the
+title, a sentence says what stands, and the line beside it whether it's
+live, and since when. Nothing on it
 changes the network or any device on it.
 
 ## How to Read It

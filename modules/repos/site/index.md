@@ -14,9 +14,10 @@ something to do.
 
 ## How to Read It
 
-- **One sentence for the whole:** how many repositories there are, how many
-  are growing (a tree written today), then at most two things worth a look,
-  worst first, and which repository grew most today.
+- **Under the title, which never moves, one sentence for the whole:** how
+  many repositories there are, how many are growing (a tree written today),
+  then at most two things worth a look, worst first, and which repository
+  grew most today.
 - **What's worth a look,** in this order: cells waiting on Joel, changes
   whose checks fail, changes with changes asked for, trees git still lists
   whose folders are gone, and ten or more trees resting over a week.
