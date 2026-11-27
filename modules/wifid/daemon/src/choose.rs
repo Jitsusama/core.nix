@@ -3389,7 +3389,10 @@ pub(crate) mod tests {
         let later = gave + fading::BETWEEN;
         chooser.followed(later, DESK);
 
-        assert!(!undone, "the trial's refusal undid the give-way asked after it");
+        assert!(
+            !undone,
+            "the trial's refusal undid the give-way asked after it"
+        );
         assert_eq!(
             chooser.unreached(),
             Some((HALL.into(), SPURNED)),
@@ -3415,12 +3418,18 @@ pub(crate) mod tests {
         let early = late.unreached();
         late.followed(answered + fading::BETWEEN, DESK);
 
-        assert!(undone, "a refusal past BETWEEN found its give-way judged already");
+        assert!(
+            undone,
+            "a refusal past BETWEEN found its give-way judged already"
+        );
         assert!(
             !chooser.keeps_off(HALL, unanswered),
             "the hall was kept off for a move still being asked"
         );
-        assert_eq!(early, None, "a give-way was judged before its move had BETWEEN");
+        assert_eq!(
+            early, None,
+            "a give-way was judged before its move had BETWEEN"
+        );
         assert_eq!(
             late.unreached(),
             Some((HALL.into(), SPURNED)),
