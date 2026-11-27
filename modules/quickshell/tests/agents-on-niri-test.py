@@ -171,6 +171,8 @@ LANDINGS += [
 ]
 # How many rows' keys a step into Landed may weigh: one of each run alike, not each of them.
 WEIGHED_INTO_LANDED = 3
+# A quest document's item, as a plan's ticked one names it, never a change.
+DOCUMENT_ITEM = re.compile(r"[A-Z]+-\d{8}-[0-9A-Z]{6}#\d+")
 
 
 def landed_today() -> str:
@@ -464,10 +466,15 @@ def test_the_first_step_into_landed_after_a_start_makes_no_landings_row_anew(
     Landed holds only the last day's landings, a row for each day before standing for the
     rest, so the step may make those days' rows but none of a landing's. The warm is waited
     for until it has kept every one of the last day's, as a daemon slow to tell them at a
-    start would have it kept again once they come.
+    start would have it kept again once they come. Those are the ones worth reading: a plan
+    item ticked, saying nothing to try, is never told (landed.rs's worth_reading).
     """
     day = timedelta(days=1)
-    lasts = sum(1 for one in LANDINGS if LANDED - datetime.fromisoformat(one["at"]) < day)
+    lasts = sum(
+        1
+        for one in LANDINGS
+        if LANDED - datetime.fromisoformat(one["at"]) < day and worth_reading(one)
+    )
     launcher_on_niri.warmed(shell)
     kept_all_lasts(shell, lasts)
     opened(shell)
@@ -478,6 +485,11 @@ def test_the_first_step_into_landed_after_a_start_makes_no_landings_row_anew(
     shell.launcher_until(lambda shown: shown["rows"][:2] == [STOPPED, TRY_FIRST])
     made = [key for key in made_since(shell, before) if key.startswith("agents:landed:")]
     assert not made, f"the first step into Landed made {made}: {made_lately(shell)}"
+
+
+def worth_reading(landing: Json) -> bool:
+    """Say whether the daemon tells a landing: a change merged, or one saying what to try."""
+    return "person" in landing or not DOCUMENT_ITEM.fullmatch(str(landing["ref"]))
 
 
 def kept_all_lasts(shell: Shell, lasts: int) -> None:
