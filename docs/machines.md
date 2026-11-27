@@ -586,6 +586,14 @@ The machine repository follows core.nix's pins, so updating is one input:
 nix flake update core
 ```
 
+A machine whose account imports `lock-follows` opens core.nix's lock pull
+requests by itself: every 15 minutes it compares the mycelium rev main locks
+with mycelium's main, and once main is behind it opens a draft pull request
+locking mycelium alone at the newest, closing the one it replaces. It never
+merges, so each lock still lands through review and the checks. Its inputs
+are `jitsusama.lock-follows.inputs`, and each run adds a line to
+`runs.jsonl` in its state folder.
+
 [1]: ../examples/
 [2]: hardware.md
 [3]: testing.md

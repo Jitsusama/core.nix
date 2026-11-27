@@ -2287,6 +2287,16 @@
     each told every change trimmed to the feed's fields, refuses an act before it reaches the
     daemon, and says a missing daemon broken with why
   '';
+  lock-follows-opens-one-pull-request-per-rev = ''
+    lock-follows does nothing while main locks upstream's newest, opens one draft pull request
+    locking that input alone at a newer, listing upstream's merges between, opens nothing while
+    it's open, closes it naming the one opened for a newer still, and writes a line for each
+    run, a failed fetch's too, which ends it non-zero
+  '';
+  lock-follows-runs-every-quarter-hour = ''
+    lock-follows runs every 15 minutes in the background, catching up on a quarter slept
+    through, following mycelium alone unless the account names more
+  '';
   locking-asked-wrongly-does-nothing = ''
     lock-screen, lock-for-sleep and swayidle-away answer --help and refuse an unknown word with
     64, asking nothing of the shell, niri or swayidle
