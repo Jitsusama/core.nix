@@ -201,23 +201,33 @@ class Shell:
         given = os.environ.get("QS_GIVEN", "").split()
         with self.log.open(mode) as log:
             self.launched = self.log.stat().st_size
-            self.process = subprocess.Popen(
+            process = subprocess.Popen(
                 ["qs", "-p", str(self.folder), *given],
                 stdout=log,
                 stderr=subprocess.STDOUT,
             )
+        self.process = process
         deadline = time.monotonic() + STARTING.total_seconds()
+        status: int | None = None
         said = ""
         while time.monotonic() < deadline:
+            # A shell that exited never answers, so its log is said at once rather than after
+            # the whole of STARTING.
+            if process.poll() is not None:
+                exited = f"the shell exited {process.returncode} before it answered closed"
+                failed = f"{exited}:\n{self.tail()}"
+                raise AssertionError(failed)
             status, said = self.execute(self.ipc("showing"))
-            # An answer that came empty or says what threw, as one may while the shell's objects
-            # still load, isn't yet one: the wait goes on, and fails saying it and the log.
+            # An answer that came empty, says what threw or says nothing of open, as one may while
+            # the shell's objects still load, isn't yet one: the wait goes on, and fails saying
+            # it, how the call last exited and the log.
             with contextlib.suppress(ValueError):
                 shown = json.loads(said) if status == 0 else None
-                if isinstance(shown, dict) and "threw" not in shown and not shown["open"]:
+                if isinstance(shown, dict) and "threw" not in shown and shown.get("open") is False:
                     return
             time.sleep(POLL * 2)
-        failed = f"the shell never answered closed, last saying {said!r}:\n{self.tail()}"
+        last = f"last exiting {status} and saying {said!r}"
+        failed = f"the shell never answered closed, {last}:\n{self.tail()}"
         raise AssertionError(failed)
 
     def daemon(self, name: str, program: str, *given: str, socket: Path | None = None) -> None:
