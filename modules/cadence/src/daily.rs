@@ -420,10 +420,10 @@ fn found_since(
     now: i64,
     since: impl FnOnce(i64) -> Day,
 ) {
-    let named = |key: &str| {
+    fn named(key: &str) -> Option<(&str, &str)> {
         key.split_once(':')
             .filter(|(kind, _)| matches!(*kind, "failed" | "crashes"))
-    };
+    }
     let last_read = |key: &str| {
         ledger
             .iter()
