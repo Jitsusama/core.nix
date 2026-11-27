@@ -25,9 +25,14 @@ use super::measures::{
 /// dated change it asks for to land.
 const QUEUE_DUE: i64 = 7 * DAY;
 
-/// How long the ask about a claim of his rule is given: past the day it
-/// closes in by itself, by a day of hours that may be missed.
-const RULED_DUE: i64 = 2 * DAY;
+/// How long the ask about a claim of his rule is given. Its claim is at
+/// most a day old when it's filed and leaves the count a day after it was
+/// sent, so the first hour a day after the ask closes it by its age alone,
+/// whatever the mesh reads. The day's run marks late what's past due
+/// before any hour has run, as on a machine waking from a weekend asleep,
+/// so the ask is given a week: only a week with no hour run leaves one
+/// open to go late.
+const RULED_DUE: i64 = 7 * DAY;
 
 /// One drag as the ledger files it: its key, owner, words, and what its
 /// owner is told.
@@ -314,22 +319,16 @@ fn told_late_asked(m: &Measure, says: &str) -> Vec<Filed> {
 /// line opening with the message's short id in brackets and naming its
 /// sender last. A message can't be taken back, so it closes once its line
 /// is gone: when its sender answers, or a day after it was sent. Each
-/// sender is asked about its oldest one at a time, as [`RULED_EACH`] says,
-/// and the next once that one closes, so a day's backlog never wakes a
-/// cell for every message in it; the card names the same one and counts
-/// the rest. Only [`back_in`] closes these, by this measure's key, so a
+/// sender is asked about its oldest ones, as [`ruled::asked_of_each`]
+/// gives them, and the next once one closes, so a day's backlog never
+/// wakes a cell for every message in it; the card names the same ones and
+/// counts the rest. Only [`back_in`] closes these, by this measure's key, so a
 /// revert of the measure must first settle every open
 /// `hour:rulings-unsourced:` entry, or each goes late and stays open.
 fn ruled_asked(m: &Measure) -> Vec<Filed> {
-    let mut asked: BTreeMap<&str, usize> = BTreeMap::new();
-    m.behind
-        .iter()
+    ruled::asked_of_each(&m.behind)
+        .into_iter()
         .filter_map(|line| line.rsplit_once(" · "))
-        .filter(|&(_, owner)| {
-            let each = asked.entry(owner).or_default();
-            *each += 1;
-            *each <= RULED_EACH
-        })
         .filter_map(|(claim, owner)| {
             let (id, said) = claim.strip_prefix('[')?.split_once("] ")?;
             Some(Filed {
@@ -381,12 +380,6 @@ fn causes_asked(m: &Measure) -> Vec<Filed> {
         })
         .collect()
 }
-
-/// How many claims of his rule each sender is asked about at once. A day
-/// of the mesh on 26 November held some 180 messages using the words of a
-/// claim, from a few dozen senders, so the first hour would otherwise wake
-/// some cells many times over.
-const RULED_EACH: usize = 1;
 
 /// Each owner's ask for a test that runs to catch their misses again, in
 /// the orchestrator's ruling (23 November): every miss gets a check that
@@ -636,6 +629,7 @@ pub fn file(
         .filter(|e| e.open && e.kind.as_deref() == Some("drag"))
         .filter(|e| match e.key.strip_prefix("hour:") {
             Some(key) if key.starts_with(QUEUE) => queues::answered(key, measures),
+            Some(key) if key.starts_with(ruled::KEY) && e.due - RULED_DUE + DAY <= now => true,
             _ => back_in(&e.key, measures),
         })
         .map(|e| e.key.clone())
@@ -694,9 +688,8 @@ pub fn file(
                 owner: one.owner.clone(),
                 // A queue's ask is answered by a change weighed against
                 // others, which takes longer than a day to land. A claim's
-                // closes by itself a day after its message, at the latest
-                // by the hour a day after it was filed, so it's due a day
-                // past that, and an hour missed never makes its sender late.
+                // closes by its age a day after it was filed, so its due
+                // is only ever reached with no hour run for a week.
                 due: now
                     + match m.class {
                         Class::Queues => QUEUE_DUE,
@@ -1595,8 +1588,9 @@ mod tests {
             .expect("the claim's ask wasn't in the ledger");
         assert_eq!(
             filed.due,
-            1000 + 2 * DAY,
-            "the ask fell due by the hour it closes in by itself, so a missed hour made it late"
+            1000 + 7 * DAY,
+            "the ask fell due within a week, so a weekend asleep could mark it late before an \
+             hour closed it"
         );
         let late = format!("Late: {}, open since 26 Nov, with T6E7X6", filed.words);
         assert_eq!(
@@ -1628,6 +1622,15 @@ mod tests {
             open(&ledger),
             [format!("hour:{}:5UTLKM:5a6b7c8d", ruled::KEY)],
             "a claim closed while its line stood, or stayed open once it was gone"
+        );
+        let mut unread = measure(ruled::KEY, Class::Cells, 0.0, None);
+        unread.behind.clear();
+        file(&mut ledger, &[unread], "2026-11-27", 1000 + DAY);
+        assert_eq!(
+            open(&ledger),
+            Vec::<String>::new(),
+            "an ask a day old, its claim gone from the count by its age, stayed open while \
+             the mesh went unread"
         );
     }
 

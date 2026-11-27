@@ -22,6 +22,11 @@ use super::stuck::Out;
 /// asked to steer it.
 const UNMOVED_FOR: u32 = 2;
 
+/// The words opening the card's list of his misses, each set in beneath
+/// in its owner's own words, so a cell passing the card on is read as
+/// passing them on rather than saying them.
+pub(super) const WHY_MISSED: &str = "Why didn't our checks catch these?";
+
 /// What the hour remembers until the next: its drag, and the misses that
 /// were open, so one that closes is told once.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -170,8 +175,8 @@ pub fn compose(
     if !open.is_empty() {
         let _ = writeln!(
             card,
-            "Why didn't our checks catch these? Each stays open until its owner names the \
-             check that would have, it merges, and any measure it names judges it gone:"
+            "{WHY_MISSED} Each stays open until its owner names the check that would have, \
+             it merges, and any measure it names judges it gone:"
         );
         for miss in &open {
             let _ = writeln!(card, "  - {miss}");

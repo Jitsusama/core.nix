@@ -24,26 +24,32 @@
 //!
 //! A denial, as "not Joel's rule", claims nothing, and nor does a line
 //! of cadence's own card passed on: a measure's line, every line set in
-//! beneath it, as `  [0000000a] ... · T6E7X6`, or what a measure says it
-//! counts, as `pains Joel said ...`, wherever the card puts it. Wherever
+//! deeper beneath it, as `    [0000000a] ... · T6E7X6`, or beneath the
+//! list of his misses, or what a measure says it counts, as `pains Joel
+//! said ...`, wherever the card puts it. Wherever
 //! else cadence repeats a claim, in its ask and in its ledger, it quotes
 //! it whole, so passing those on claims nothing either.
 //!
 //! Cadence's own messages are left out, and so is every reply to its ask
-//! from the cell asked, and its first reply re the claim after the ask:
-//! the ask tells it to say the claim is dropped, and the words it drops
-//! it in name the claim. Either answers, and takes its claim off the
-//! count, whatever it says: cadence can't judge whether the words given
-//! are his, so the answer is read by whoever reads the mesh. A later
-//! reply re the claim is judged as any message, so a thread of its own
-//! hides no fresh claim. Its asks are read back over [`ASKS_READ`] days,
-//! so an answer sent long after is still one. A message whose id isn't
-//! well formed, or names another sender, is read as no one's, since its
-//! asks would go astray.
+//! from the cell asked, and its first reply re the claim after the ask,
+//! within the two days the claims are read: the ask tells it to say the
+//! claim is dropped, and the words it drops it in name the claim. Either
+//! answers, and takes its claim off the count, whatever it says: cadence
+//! can't judge whether the words given are his, so the ask has the answer
+//! sent where the claim went, to be read by those it bound. The ask asks
+//! for a reply re itself, so a later reply re the claim is judged as any
+//! message, and a thread of its own hides no fresh claim. Its asks are
+//! read back over [`ASKS_READ`] days, so an answer sent long after is
+//! still one. A message whose id isn't well formed, or names another
+//! sender, is read as no one's, since its asks would go astray.
 //!
 //! The mesh is a shared folder with nothing signed, so this counts the
 //! cells that write through the harness as it is meant to be used: a
 //! cell writing files by hand can send as cadence or as another cell.
+//!
+//! Long because a claim is read in plain words: each way of naming him,
+//! dating his saying, denying, quoting and passing the card on is a rule
+//! of its own, and they hold together only read side by side.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -170,6 +176,35 @@ const TO_HIM: [&str; 12] = [
     "sent", "send",
 ];
 
+/// How far back, in seconds, the messages that may claim or answer are
+/// read: the day judged, and the day before it, for a reply re a claim
+/// asked late in its day. A reply re the claim answers only within this
+/// of its ask, so the first such reply is always among those read.
+const CLAIMS_READ: i64 = 2 * DAY;
+
+/// How many claims of his rule each sender is asked about at once, and
+/// the card names. A day of the mesh on 26 November held some 180
+/// messages using the words of a claim, from a few dozen senders, so the
+/// first hour would otherwise wake some cells many times over.
+const EACH: usize = 1;
+
+/// The lines of `lines`, as the measure gives them, of the claims each
+/// sender is asked about: its first [`EACH`], in the order given. The card
+/// names these and the asks go for these, so the two never part.
+#[must_use]
+pub fn asked_of_each<'a>(lines: impl IntoIterator<Item = &'a String>) -> Vec<&'a String> {
+    let mut asked: BTreeMap<&str, usize> = BTreeMap::new();
+    lines
+        .into_iter()
+        .filter(|line| {
+            let owner = line.rsplit_once(" · ").map_or("", |(_, owner)| owner);
+            let each = asked.entry(owner).or_default();
+            *each += 1;
+            *each <= EACH
+        })
+        .collect()
+}
+
 /// How many days of cadence's own asks are read back, so an answer to
 /// one sent days late, as by a cell parked over a weekend, is still read
 /// as an answer rather than judged as a claim. Only cadence's own files
@@ -215,7 +250,7 @@ pub fn read(state_home: &Path, now: i64) -> Measure {
     }
     let ask = |m: &Message| m.from == CADENCE && about(&m.text).is_some();
     let used = |m: &Message| ask(m) || m.re.is_some() || m.text.to_lowercase().contains("joel");
-    let two_days = (now - 2 * DAY) * 1000;
+    let two_days = (now - CLAIMS_READ) * 1000;
     let read = mesh
         .sent_as_named(two_days, (now + AHEAD) * 1000, used)
         .and_then(|(mut sent, mut torn)| {
@@ -258,7 +293,7 @@ pub fn unread(why: &str) -> Measure {
 /// round, breaks a line or draws as nothing, so a file's name or a
 /// sender's words can't write a line of the card that reads as cadence's,
 /// seem to name another sender, or carry words no reader of the card
-/// sees, as the Unicode tags do.
+/// sees, as the Unicode tags and the variation selectors do.
 fn clean(text: &str) -> String {
     let unseen = |c: char| {
         c.is_control()
@@ -267,13 +302,15 @@ fn clean(text: &str) -> String {
                 c,
                 '\u{00ad}'
                     | '\u{061c}'
-                    | '\u{180e}'
+                    | '\u{180b}'..='\u{180f}'
                     | '\u{200b}'..='\u{200f}'
                     | '\u{2028}'..='\u{202e}'
                     | '\u{2060}'..='\u{206f}'
+                    | '\u{fe00}'..='\u{fe0f}'
                     | '\u{feff}'
                     | '\u{fff9}'..='\u{fffb}'
                     | '\u{e0000}'..='\u{e007f}'
+                    | '\u{e0100}'..='\u{e01ef}'
             )
     };
     text.replace(unseen, " ")
@@ -294,13 +331,18 @@ pub fn quoted(said: &str) -> String {
 /// [`about`] reads the claim's id back from its opening words, so the two
 /// are kept here together. Its own words claim nothing, as
 /// [`unbacked`] reads them, so a cell passing it on isn't asked in turn.
+/// It asks for the answer re itself, which is never judged, and sent
+/// where the claim went: no peer goes by cadence's name, and the cells
+/// the claim bound are the ones to read whether it stands.
 #[must_use]
 pub fn ask(id: &str, said: &str) -> String {
     format!(
         "{ASKS}{id} {ASKED}, with no word of when he said it: {}. \
-         Only his own words bind a cell. Please answer on the mesh, re this ask or re {id}, \
-         with his words and when he said them, or say the claim is dropped and whose caution \
-         it was. Your answer closes this ask; unanswered, it closes a day after the message.",
+         Only his own words bind a cell. Please answer on the mesh re this ask, with his \
+         words and when he said them, or say the claim is dropped and whose caution it was. \
+         Send it where the claim went, so whoever read the claim reads the answer; cadence \
+         reads it from what you send. Your answer closes this ask; unanswered, it closes a \
+         day after the message.",
         quoted(said)
     )
 }
@@ -384,8 +426,9 @@ fn stamp(m: &Message) -> Option<i64> {
 /// cell it asked, re its ask or re the claim the ask names. Every reply
 /// re the ask is left unjudged, since it answers cadence and a cell
 /// dropping the claim names it; of those re the claim, only the first
-/// after the ask is, so a cell's thread on its own report hides no fresh
-/// claim for the days the ask is read. The ask, not the claim, says who
+/// after the ask, within [`CLAIMS_READ`] of it, is, so a cell's thread on
+/// its own report hides no fresh claim, and the first is always among
+/// the messages read. The ask, not the claim, says who
 /// may answer, so an answer counts after its claim has left the day. A
 /// reply before the ask, one re a message never asked about, or one re
 /// any other of cadence's, is judged as any other.
@@ -397,11 +440,16 @@ fn answers<'a>(sent: &[&'a Message]) -> (BTreeSet<&'a str>, BTreeSet<(&'a str, &
         .filter_map(|m| Some((short_id(&m.id), about(&m.text)?, m)))
         .collect();
     let claim_of: BTreeMap<&str, &str> = asks.iter().map(|&(ask, claim, _)| (ask, claim)).collect();
-    let asked_before = |claim: &str, of: &str, at: Option<i64>| {
+    // A reply re the ask answers it however late; one re the claim only
+    // within the span read after its ask, since an earlier first reply
+    // past that span would go unseen and leave a later one taken first.
+    let asked_before = |claim: &str, of: &str, at: Option<i64>, within: Option<i64>| {
         asks.iter().any(|&(_, about, ask)| {
+            let sent = stamped_at(&ask.id);
             about == claim
                 && ask.to.iter().any(|to| to == &format!("@{of}"))
-                && stamped_at(&ask.id) < at
+                && sent < at
+                && within.is_none_or(|within| sent.zip(at).is_some_and(|(s, a)| a - s <= within))
         })
     };
     let (mut answers, mut answered) = (BTreeSet::new(), BTreeSet::new());
@@ -413,7 +461,8 @@ fn answers<'a>(sent: &[&'a Message]) -> (BTreeSet<&'a str>, BTreeSet<(&'a str, &
         let via_ask = claim_of.get(re).copied();
         let claim = via_ask.unwrap_or(re);
         let at = stamped_at(&m.id);
-        if !asked_before(claim, &m.from, at) {
+        let within = via_ask.is_none().then_some(CLAIMS_READ * 1000);
+        if !asked_before(claim, &m.from, at, within) {
             continue;
         }
         answered.insert((m.from.as_str(), claim));
@@ -489,8 +538,9 @@ const FILLERS: [char; 8] = [
 /// the drag's `Drag: ..., 3 against at most 0, ...`, nor what this
 /// measure says it counts. The card is made to be passed on, and a cell
 /// passing it on claims nothing of its own. Each is held to the card's
-/// own shape, a short id of eight hex digits or a measure's figure, so a
-/// line merely bracketed or ticked is still read.
+/// own shape, a short id of eight hex digits or a measure's figure and
+/// target, as `: 3, at most 0` or `: 2, unjudged`, so a line merely
+/// bracketed or ticked, as `✓ cargo test: 892 passed`, is still read.
 fn uncarded(text: &str) -> String {
     let own = [SAYS, pains::SAYS];
     let plain = |part: &str| !part.is_empty() && part.chars().all(|c| c.is_ascii_alphanumeric());
@@ -500,9 +550,15 @@ fn uncarded(text: &str) -> String {
                 .bytes()
                 .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
     };
+    let number = |n: &str| n.starts_with(|c: char| c.is_ascii_digit()) && n.parse::<f64>().is_ok();
     let figured = |line: &str| {
-        line.rsplit_once(": ")
-            .is_some_and(|(_, figure)| figure.starts_with(|c: char| c.is_ascii_digit()))
+        line.trim_end()
+            .rsplit_once(": ")
+            .and_then(|(_, figure)| figure.split_once(", "))
+            .is_some_and(|(now, target)| {
+                number(now)
+                    && (target == "unjudged" || target.strip_prefix("at most ").is_some_and(number))
+            })
     };
     let carded = |line: &str| {
         let line = line.trim_start_matches(|c: char| c.is_whitespace() || c == '-' || c == '*');
@@ -519,19 +575,24 @@ fn uncarded(text: &str) -> String {
         let drag = line
             .strip_prefix("Drag: ")
             .is_some_and(|rest| rest.contains(" against at most "));
-        named || measured || drag
+        let missed = line.starts_with(super::super::card::WHY_MISSED);
+        named || measured || drag || missed
     };
-    // The card sets each thing behind a measure in beneath its line, as
-    // lines.rs draws it, and some are a cell's own words, as the uncited
-    // lines' sentences, so every line set in under a measure's is the
-    // card's, whatever its shape.
-    let mut beneath = false;
+    // The card sets each thing behind a measure in deeper than its line,
+    // as lines.rs draws it under the card's own indent, and some are a
+    // cell's own words, as the uncited lines' sentences or his misses, so
+    // every line set in deeper than a line of the card's, until one that
+    // isn't, is the card's, whatever its shape.
+    let indent = |line: &str| line.len() - line.trim_start().len();
+    let mut beneath: Option<usize> = None;
     let kept = text
         .lines()
         .filter(|line| {
-            let set_in = line.starts_with("  ") && !line.trim().is_empty();
-            let card = carded(line) || (beneath && set_in);
-            beneath = card && (beneath || !set_in);
+            let deeper = !line.trim().is_empty() && beneath.is_some_and(|by| indent(line) > by);
+            let card = deeper || carded(line);
+            if !deeper {
+                beneath = card.then(|| indent(line));
+            }
             !card
         })
         .collect::<Vec<_>>()

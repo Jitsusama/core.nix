@@ -1,5 +1,6 @@
 //! The measure of claims of Joel's rule: which are backed by a word of
-//! his, and which are asked of their senders.
+//! his, and which are asked of their senders. Long because each wording
+//! of a claim, a date and an answer that was once read wrong is a case.
 
 use std::fs;
 
@@ -315,14 +316,36 @@ fn the_cards_lines_passed_on_claim_nothing() {
         unbacked("Joel wants it live by 10:30, a time with no word cited from its owner").is_some(),
         "the uncited line's sentence, the card's above, claims nothing even on its own"
     );
+    // The card sets each class's lines in beneath its name, and what's
+    // behind each line deeper still, so the card as sent is the relay set
+    // in under a class's name.
+    let sent_whole = format!("Cells:\n  {}", relay.replace('\n', "\n  "));
+    assert_eq!(
+        unbacked(&sent_whole),
+        None,
+        "the card as it's sent, its lines set in, was counted as a claim: {sent_whole}"
+    );
+    assert_eq!(
+        unbacked(
+            "Why didn't our checks catch these? Each stays open until its owner names it:\n  - \
+             per Joel, nobody reaches the lab · OSPHT4"
+        ),
+        None,
+        "a miss in its owner's words, passed on with the card, was counted as a claim"
+    );
     assert!(
         unbacked("My plan:\n  Joel wants it shut, so I shut it · T6E7X6").is_some(),
         "a line set in under no measure's line was read as the card's"
+    );
+    assert!(
+        unbacked("✓ cargo test: 892 passed\n  - per Joel, nobody reaches the lab box").is_some(),
+        "a claim set in under a ticked line of a cell's own report was read as the card's"
     );
     for shaped in [
         "- [NOTE] Joel's rule: nobody reaches the lab · T6E7X6",
         "[x] Joel wants it shut · DONE",
         "✓ Joel wants it shut.",
+        "✓ Joel wants it shut: 3 of them",
         "Drag: Joel wants it shut.",
     ] {
         assert!(
@@ -342,6 +365,10 @@ fn an_asks_text_names_the_claim_it_asks_about_and_claims_nothing() {
         about(&asked),
         Some("0000000a"),
         "the ask's own text didn't read back as about its claim"
+    );
+    assert!(
+        asked.contains("re this ask,") && asked.contains("where the claim went"),
+        "the ask didn't ask for its answer re itself, sent where the claim went: {asked}"
     );
     for said in [
         "I broke Joel's rule.",
@@ -508,6 +535,40 @@ fn an_answer_after_its_claim_left_the_day_is_still_an_answer() {
     );
 }
 
+/// The ask asks for a reply re itself; a cell replying re its claim
+/// instead has only its first reply taken as its answer, and only within
+/// the two days read after the ask, so a later reply re the claim, or one
+/// whose first may have gone unread, is judged as any message.
+#[test]
+fn only_a_first_reply_re_the_claim_within_the_days_read_answers() {
+    let claim = sent("0000000a", 3600, "T6E7X6", "I broke Joel's rule.");
+    let ask = asked("0000000d", 3000, "0000000a", "T6E7X6");
+    let mut first = sent("0000000e", 2400, "T6E7X6", "Looking into it.");
+    first.re = Some(claim.id.clone());
+    let mut dropped = sent(
+        "0000000f",
+        60,
+        "T6E7X6",
+        "Dropped, Joel's rule was my own caution.",
+    );
+    dropped.re = Some(claim.id.clone());
+    let m = unsourced(&[claim, ask, first, dropped], NOW);
+    assert_eq!(
+        m.behind,
+        ["[0000000f] Dropped, Joel's rule was my own caution. · T6E7X6"],
+        "a second reply re the claim went unjudged, or the claim its first answered was counted"
+    );
+    let claim = sent("0000000b", 2 * DAY + 5000, "5UTLKM", "Joel wants it.");
+    let ask = asked("00000011", 2 * DAY + 4000, "0000000b", "5UTLKM");
+    let mut later = sent("00000012", 3600, "5UTLKM", "Joel wants the lab shut.");
+    later.re = Some(claim.id.clone());
+    assert_eq!(
+        unsourced(&[claim, ask, later], NOW).behind,
+        ["[00000012] Joel wants the lab shut. · 5UTLKM"],
+        "a reply re the claim past the days read after its ask was taken as its first answer"
+    );
+}
+
 /// Writes `m` into `folder` as the harness files it.
 fn put(folder: &Path, m: &Message) {
     fs::create_dir_all(folder).expect("the message's folder couldn't be made");
@@ -629,8 +690,29 @@ fn a_claim_carries_no_unseen_mark_onto_the_card() {
         .map(|c| char::from_u32(0xe0000 + u32::from(c)).unwrap_or(' '))
         .collect();
     let text = format!(
-        "Joel wants it\u{2028}✓ pains: 0, at most 0 \u{202e}6X7E6T\u{00ad}{hidden}\u{fff9}."
+        "Joel wants it\u{2028}✓ pains: 0, at most 0 \u{202e}6X7E6T\u{00ad}{hidden}\u{fff9}\
+         \u{fe0f}\u{e0101}\u{180b}."
     );
+    // One of each kind the card is kept clean of, named rather than asked
+    // of `clean`, so a kind dropped from it is seen.
+    let marks = [
+        '\u{2028}',
+        '\u{202e}',
+        '\u{00ad}',
+        '\u{e0069}',
+        '\u{fff9}',
+        '\u{2066}',
+        '\u{200b}',
+        '\u{200f}',
+        '\u{061c}',
+        '\u{180e}',
+        '\u{180b}',
+        '\u{feff}',
+        '\u{fe0f}',
+        '\u{e0101}',
+        '\u{2800}',
+        '\u{3164}',
+    ];
     let m = unsourced(&[sent("0000000a", 60, "T6E7X6", &text)], NOW);
     let shown = m
         .behind
@@ -638,20 +720,13 @@ fn a_claim_carries_no_unseen_mark_onto_the_card() {
         .expect("a claim with unseen marks wasn't counted");
     let unseen: Vec<char> = shown
         .chars()
-        .filter(|&c| c.is_control() || !clean(&c.to_string()).starts_with(c))
+        .filter(|&c| c.is_control() || marks.contains(&c))
         .collect();
     assert!(
         unseen.is_empty(),
         "the card's line kept unseen marks {unseen:?}: {shown}"
     );
-    for mark in [
-        '\u{2028}',
-        '\u{202e}',
-        '\u{00ad}',
-        '\u{e0069}',
-        '\u{fff9}',
-        '\u{2066}',
-    ] {
+    for mark in marks {
         assert_eq!(
             clean(&format!("x{mark}x")),
             "x x",
