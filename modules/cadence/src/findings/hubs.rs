@@ -120,7 +120,15 @@ pub fn put_late(
         // keep a line each is listed once, at the hour's `owing::red`.
         if entry.red {
             dragged += 1;
-            drags.insert(entry.owner.clone().unwrap_or_else(|| "no owner".to_owned()));
+            // An owner is a peer's word, so only one in an address's
+            // letters is said in the note, never one carrying words.
+            drags.insert(match entry.owner.as_deref() {
+                None => "no owner".to_owned(),
+                Some(o) if !o.is_empty() && o.bytes().all(|b| b.is_ascii_alphanumeric()) => {
+                    o.to_owned()
+                }
+                Some(_) => "an owner that reads as no address".to_owned(),
+            });
             continue;
         }
         lines.push(format!(

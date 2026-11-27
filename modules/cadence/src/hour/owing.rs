@@ -65,7 +65,7 @@ fn name_of(key: &str, line: &str) -> String {
 
 /// Whether `word` reads as a cell's address: six to eight capitals and
 /// digits, at least one of them a capital.
-fn address(word: &str) -> bool {
+pub(super) fn address(word: &str) -> bool {
     (6..=8).contains(&word.len())
         && word
             .bytes()

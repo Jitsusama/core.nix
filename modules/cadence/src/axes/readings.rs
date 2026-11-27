@@ -830,7 +830,9 @@ The net tests 6f8501688 (9 merges behind main), merged 28 min ago.
         write(&stamp(DAY + 3600, "BBBBBB", "cc"), "BBBBBB");
         write(&stamp(3600, "BBBBBB", "dd"), crate::FROM);
         write(&stamp(3600, crate::FROM, "ee"), crate::FROM);
-        let claimed = format!(r#"{{"id":"{old}","intent":"fyi","from":"CADENCE"}}"#);
+        // Its body names its file's own sender, so only the id kept in its
+        // file's name can turn it away.
+        let claimed = format!(r#"{{"id":"{old}","intent":"fyi","from":"CCCCCC"}}"#);
         std::fs::write(
             folder.join(format!("{}.json", stamp(60, "CCCCCC", "ff"))),
             claimed,

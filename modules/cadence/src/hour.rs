@@ -742,7 +742,7 @@ fn reaching<'a>(mesh: &Mesh, presences: &'a [Presence], now: i64) -> impl Fn(&st
     let rosters = mesh.rostered(now);
     let here = terminal_kit::environment::machine();
     move |address: &str| {
-        put::reaches(address, presences, &here, |p| {
+        put::reaches(address, presences, &here, now, |p| {
             reachable(p, &boot, &rosters, |pid| {
                 Path::new(&format!("/proc/{pid}")).exists()
             })
@@ -753,11 +753,9 @@ fn reaching<'a>(mesh: &Mesh, presences: &'a [Presence], now: i64) -> impl Fn(&st
 /// The cell orchestrating the session going by `address`, by its newest
 /// presence, when it names one.
 fn orchestrator_of(presences: &[Presence], address: &str) -> Option<String> {
-    presences
-        .iter()
-        .filter(|p| p.addresses.iter().any(|a| a == address))
-        .max_by_key(|p| p.at.to_string())
+    put::newest(presences, address)
         .and_then(|p| p.orchestrated_by.clone())
+        .filter(|o| !o.is_empty())
 }
 
 /// Whether the session `presence` describes can still be told of a merge's
