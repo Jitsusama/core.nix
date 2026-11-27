@@ -21,7 +21,7 @@ import shlex
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
-from pi_conversations_read import failure_read
+from pi_conversations_read import read_for_failure
 from vm_helpers import as_account
 
 if TYPE_CHECKING:
@@ -132,14 +132,10 @@ class Host:
     def reading(self, command: str) -> str:
         """Give what a command run as root printed, for a failure, or why it couldn't be read."""
         # Its errors too, since a read that fails says why only there.
-        try:
-            status, out = self.machine.execute(
-                f"{{ {command}; }} 2>&1",
-                timeout=READING_SECONDS,
-            )
-        except Exception as error:  # noqa: BLE001 # A failure's read mustn't hide what failed.
-            return f"nothing, as reading it failed: {error!r}"
-        return failure_read(status, out, READING_SECONDS)
+        return read_for_failure(
+            lambda: self.machine.execute(f"{{ {command}; }} 2>&1", timeout=READING_SECONDS),
+            READING_SECONDS,
+        )
 
     def standing(self) -> str:
         """Say how the unit stands, for a failure: its states, its result and its status line."""
@@ -179,15 +175,17 @@ class Host:
     def until_started_again(self, killed: str) -> None:
         """Wait until a process other than the killed one runs the host and says it holds both."""
         # The unit keeps the killed process's status line until another replaces it, so the
-        # new process's own ready line is what says it holds both.
+        # new process's own ready line is what says it holds both. The wait keeps the process
+        # it vetted, since a second read could find none, or another, if the host restarted.
+        vetted = f"/home/alice/started-after-{killed}"
         self.waited(
             "started again",
             lambda: self.until(
                 f"pid=$(systemctl --user show -p MainPID --value {UNIT});"
-                f' test "$pid" -ne 0 && test "$pid" -ne {killed}',
+                f' test "$pid" -ne 0 && test "$pid" -ne {killed} && echo "$pid" > {vetted}',
             ),
         )
-        started = self.show("MainPID")
+        started = int(self.run(f"cat {vetted}"))
         # This boot's alone, since an earlier boot's process may have had the same id.
         process = f"_PID={started}"
         self.waited(
@@ -238,7 +236,8 @@ def journal_tail(lines: str) -> str:
     """Give the command reading a journal match's last lines this boot, for a failure."""
     # Each line names its process and when, so one process's lines can be told from another's.
     # -a gives a line holding a control code as it was written, which failure_read escapes,
-    # rather than as journalctl's "[N blob data]".
+    # rather than as journalctl's "[N blob data]". A byte that isn't UTF-8 costs only itself:
+    # the driver's execute decodes with errors="replace", so it reads as U+FFFD.
     return f"journalctl --no-pager -a -o short-precise -n {JOURNAL_LINES} -b {lines}"
 
 
@@ -300,6 +299,30 @@ def rebooted(held: Host) -> Host:
     held.machine.wait_for_unit("user@1000.service")
     held.until_serving_both(REBOOTING)
     return held
+
+
+def test_a_failed_wait_quotes_the_manager_and_the_host_apart(held: Host) -> None:
+    """A wait that fails says how the unit stands and quotes its manager's and its own lines."""
+    # A real failure is the only other way this message is ever built, so it is built here on
+    # purpose, from what a running host's unit and journals say.
+    cause = "a wait no host can pass"
+
+    def never() -> None:
+        raise TimeoutError(cause)
+
+    with pytest.raises(AssertionError) as failed:
+        held.waited("did what no host does", never)
+    said = str(failed.value)
+    assert isinstance(failed.value.__cause__, TimeoutError), (
+        f"the wait's own failure is chained: {said}"
+    )
+    standing, _, tails = said.partition("; its manager's journal ends ")
+    manager, _, own = tails.partition("; its own ends ")
+    assert "ActiveState=active" in standing, f"the unit's states are said: {said}"
+    assert "systemd[" in manager, f"the manager's tail holds its manager's lines: {said}"
+    assert own, f"the host's own tail is said apart: {said}"
+    assert not own.startswith("nothing"), f"the host's own tail was read: {said}"
+    assert "systemd[" not in own, f"the host's own tail holds none of the manager's: {said}"
 
 
 def test_a_killed_host_comes_back_holding_both_unchanged(held: Host) -> None:
