@@ -858,6 +858,20 @@ mod tests {
     }
 
     #[test]
+    fn each_bullet_goes_on_with_its_list() {
+        let none: Vec<&str> = Vec::new();
+        // Each bullet as he'd type it, so one dropped from its list is caught.
+        for bullet in ['-', '*', '+', '\u{2022}'] {
+            let filler = format!("consider:\n{bullet} brackets\n{bullet} and shit");
+            assert_eq!(
+                kinds(&filler, AT, &[]),
+                none,
+                "a bulleted list's filler swore: {filler}"
+            );
+        }
+    }
+
+    #[test]
     fn a_word_that_lists_nothing_opens_no_list() {
         for word in [
             "oh", "ah", "ugh", "well", "so", "yeah", "man", "god", "jeez", "ok", "okay", "hey",
@@ -1011,6 +1025,15 @@ mod tests {
             assert!(
                 kinds(&hurt, AT, &[]).contains(&"swore"),
                 "ease beside giving up spared a swear: {hurt}"
+            );
+        }
+        // Each word shortened as he'd say it, so one dropped from its list
+        // ends the ask at its stop, and the ease before it spares the swear.
+        for word in ["e.g", "i.e", "vs", "etc"] {
+            let hurt = format!("shit, it's fine, {word}. the old page?");
+            assert!(
+                kinds(&hurt, AT, &[]).contains(&"swore"),
+                "a shortened word's stop ended the ask: {hurt}"
             );
         }
         // Each word that leaves the choice, so one dropped from the list is caught.
