@@ -229,7 +229,8 @@ pub fn finding(pains: &[&Heard], cells: &BTreeMap<String, Cell>, offset_s: i64) 
          (same day for a quick fix); if it isn't yours, send it to its owner. It stays open \
          until its fix runs here: once it lands, reply to this with \"merged at\" and the \
          commit, or name its #entry beside them in your landing note. If it was no hurt, \
-         say why on its misses line with pain-points test --none, which closes it.",
+         say why with pain-points test --miss AT --none \"why\", AT being its misses \
+         line's time; that closes it, and Joel reads the why on cadence's card.",
     );
     for (n, pain) in pains.iter().take(NAMED_AT_MOST).enumerate() {
         let mut parts = vec![line(n, pain, "", cells, offset_s)];
