@@ -132,5 +132,11 @@ ShellRoot {
         console.log("twin monitors each take their own windows back");
     }
 
-    Component.onCompleted: Expect.run(root.cases)
+    // Run on a tick rather than as the shell is made, since Quickshell hears
+    // no exit asked of it before then, so the case would run to its timeout.
+    Timer {
+        running: true
+        interval: 100
+        onTriggered: Expect.run(root.cases)
+    }
 }
