@@ -3,7 +3,8 @@
 # stand-in cases a stand-in qml plays out, under a limit of a second of the
 # processor's: a pass, a failure, a case past its own time and one killed
 # from outside with a pass after it, under a guard of a minute by the clock, so a loaded builder
-# slowing the spinning case never makes it a hang; then, under a guard of
+# slowing the spinning case never makes it a hang; a second bash's `time`
+# rounded up to and wrote as 0.:00, read as that second; then, under a guard of
 # three seconds, a hang that stops the run and one that ignores the guard's
 # signal until its kill, each with a case left unrun after it; limits
 # refused as a case is run, past the runner's first try, leaving it unrun; a
@@ -86,6 +87,17 @@ mktemp() {
   made=\$(command mktemp "\$@") || return
   echo "\$made" >>"$here/made-ends"
   echo "\$made"
+}
+EOF
+
+# The timing bash's `time` writes of a case whose second it rounded up to
+# but never carried, its seconds and the clock's each 1.000, read from
+# BASH_ENV as the refusing ulimit is: the runner reads a case's timing as
+# the last line `tail` gives of it, and a function is found before the
+# program of its name.
+cat >"$here/rounding" <<'EOF'
+tail() {
+  echo "0.:00 0.000 0.:00"
 }
 EOF
 
@@ -174,6 +186,15 @@ took d-dies 0 "[0-9]+"
 # A kill from outside is no hang, so the run goes on past it.
 took e-after 0 "[0-9]+"
 
+# A second bash rounded up to and wrote as 0.:00 is read as the whole
+# second it is, its own and the clock's, rather than as time unread.
+start=$here/rounding
+runs rounded-up 1 60 a-passes:pass
+start=
+ends 0
+never "time couldn't be read"
+took a-passes 1 1
+
 runs hangs 1 3 e-hangs:hang f-follows:pass
 ends 1
 holds "e-hangs.qml ran past the clock's 3 s, waiting on something"
@@ -222,9 +243,9 @@ holds "mktemp: refused the second"
 never "a-marks.qml"
 [ ! -e "$here/one-scratch-file/a-marks.qml.ran" ] || failing "a-marks.qml ran"
 # A mark never made is said as a failure, rather than ending this run here.
-made=
-[ ! -e "$here/scratch/.made" ] || made=$(<"$here/scratch/.made")
-[[ $made == "$here/scratch/"?* ]] || failing "the stand-in made no first scratch file: '$made'"
+first=
+[ ! -e "$here/scratch/.made" ] || first=$(<"$here/scratch/.made")
+[[ $first == "$here/scratch/"?* ]] || failing "the stand-in made no first scratch file: '$first'"
 left=$(ls -A "$here/scratch")
 [ "$left" = .made ] || failing "the runner left its scratch folder holding: $left"
 
