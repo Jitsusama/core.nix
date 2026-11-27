@@ -245,10 +245,11 @@ fn stopped_by(config: &Config, head: &str, built: &Followed, hold: &Hold) -> Opt
     // signed or not, can put another's commit in it, so no copy having it
     // or lacking it settles whose it is. Each input is judged in its own
     // copy alone, fetched first when it lacks the commit the build reads:
-    // one holding that commit holds its whole history, so lacking the held
-    // one proves the input doesn't build it, and nothing another copy holds
-    // spares the fetch. So a repository out of reach fails a hold only when
-    // its copy is behind what the build reads of it.
+    // its main, then, for a lock pinning a commit off its main, that commit
+    // by its id. One holding that commit holds its whole history, so lacking
+    // the held one proves the input doesn't build it, and nothing another
+    // copy holds spares the fetch. So a repository out of reach fails a hold
+    // only when its copy is behind what the build reads of it.
     let mut unknown = None;
     let mut theirs = false;
     let mut in_followed = false;
@@ -259,6 +260,12 @@ fn stopped_by(config: &Config, head: &str, built: &Followed, hold: &Hold) -> Opt
         let repo = Repo::followed(config, name, follow);
         if !git::has(&repo, commit)
             && let Err(failure) = git::fetch(&repo)
+        {
+            unknown.get_or_insert(failure.why);
+            continue;
+        }
+        if !git::has(&repo, commit)
+            && let Err(failure) = git::fetch_commit(&repo, commit)
         {
             unknown.get_or_insert(failure.why);
             continue;

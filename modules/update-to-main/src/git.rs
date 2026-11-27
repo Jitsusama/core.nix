@@ -4,6 +4,7 @@
 //! repository is one; each input that follows its own main is another.
 
 use crate::config::{Config, Follow, Signers};
+use crate::hosted;
 use crate::run::{self, Failure};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -153,6 +154,30 @@ pub fn fetch(repo: &Repo) -> Result<String, Failure> {
         &format!("reading {}", repo.called),
         ["rev-parse", "--verify", MAIN],
     )
+}
+
+/// Fetches `commit` into root's copy by its id, with its history. A lock
+/// can pin an input at a commit off its main, as one taken from a branch
+/// does, which fetching main never brings, and without it whether the
+/// input builds a held commit can't be told. Git's protocol serves a
+/// commit asked for by its whole id; anything else would be read as a
+/// ref, or a refspec that writes one, so nothing else is asked for.
+pub fn fetch_commit(repo: &Repo, commit: &str) -> Result<(), Failure> {
+    if !hosted::is_commit(commit) {
+        return Err(Failure::new(format!(
+            "what the build reads of {} isn't a whole commit id, so it wasn't fetched",
+            repo.called
+        )));
+    }
+    make_copy(repo)?;
+    retried(&FETCH_AGAIN, thread::sleep, || {
+        run::output(
+            git(repo),
+            &format!("fetching {} for {}", short(commit), repo.called),
+            ["fetch", "--quiet", "--no-tags", repo.url, commit],
+        )
+    })?;
+    Ok(())
 }
 
 /// What `attempt` gives, tried again after each of `waits` while it fails,
