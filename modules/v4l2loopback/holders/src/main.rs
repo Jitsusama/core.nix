@@ -47,7 +47,10 @@
 //! `PipeWire` holding it finds the camera in `PipeWire`'s registry by it, and
 //! names who reads it there (modules/machine's camera.rs). A node a link
 //! names, as the relay's is, changes with each plug-in, so the link is
-//! followed first.
+//! followed first. A loopback's `.devices/` file goes as its camera goes
+//! or the run is stopped, only once its own file says nobody, so a reader
+//! never finds a holder with no node to find it by; one it couldn't remove
+//! as its camera went is tried again.
 //!
 //! Between those it sleeps on inotify and a signal, so a camera nobody
 //! holds costs nothing. A file it couldn't write, its own or the one in
@@ -56,9 +59,10 @@
 //! while a loopback's camera is watched. What went wrong is said once as
 //! it begins and once as it clears, for each file. The first time its
 //! files say who holds the camera as a read that worked found, and which
-//! node it is, or nobody where there's no camera, its log says
-//! `ready in N ms`, once a run (src/ready.rs says why). Its help, its
-//! failures and its exits take the terminal kit's shape (`help()`).
+//! node it is, or nobody and no `.devices/` file where there's no camera,
+//! its log says `ready in N ms`, once a run (src/ready.rs says why). Its
+//! help, its failures and its exits take the terminal kit's shape
+//! (`help()`).
 //!
 //! Long because a quarter of it is the tests beside it, of how it's asked
 //! and of what its watches say, which reach its private parts.
@@ -220,8 +224,16 @@ fn say_device(output: &Path, node: Option<&Path>) -> Result<(), String> {
                 .and_then(|()| fs::set_permissions(folder, fs::Permissions::from_mode(0o755)))
                 .and_then(|()| replace(&file, &said))
         }
+        // A folder that isn't there, or isn't a folder, holds no node file.
         None => match fs::remove_file(&file) {
-            Err(error) if error.kind() != io::ErrorKind::NotFound => Err(error),
+            Err(error)
+                if !matches!(
+                    error.kind(),
+                    io::ErrorKind::NotFound | io::ErrorKind::NotADirectory
+                ) =>
+            {
+                Err(error)
+            }
             _ => Ok(()),
         },
     };
@@ -436,14 +448,21 @@ impl Run {
 
     /// Removes what says the node, as the camera goes or the run ends, so
     /// nothing owed is said after, and a trouble the file had clears.
-    fn unname(&mut self, output: &Path) {
+    /// Says whether it's gone, so a removal that failed is tried again.
+    fn unname(&mut self, output: &Path) -> bool {
         self.owed = None;
         let Some(file) = device_file(output) else {
-            return;
+            return true;
         };
         match say_device(output, None) {
-            Ok(()) => self.device.now(&file, &[]),
-            Err(trouble) => self.device.now(&file, &[trouble]),
+            Ok(()) => {
+                self.device.now(&file, &[]);
+                true
+            }
+            Err(trouble) => {
+                self.device.now(&file, &[trouble]);
+                false
+            }
         }
     }
 
@@ -633,17 +652,13 @@ fn forget(options: &Options) {
 }
 
 /// Writes that nobody holds a loopback, answering whether the file took it,
-/// so one it didn't is written again. Nobody said is the watch serving
-/// only where it's so, no camera or its node gone, which `so` says: one it
-/// couldn't watch is still there, and nobody is a guess until the watch
-/// is tried again, so it isn't ready.
-fn say_nobody(output: &Path, run: &mut Run, so: bool) -> bool {
+/// so one it didn't is written again. It says nothing of ready: that's for
+/// its caller, since nobody is so only with no camera and its node file
+/// gone, and a guess for one it couldn't watch, until it's tried again.
+fn say_nobody(output: &Path, run: &mut Run) -> bool {
     match write(output, &BTreeSet::new()) {
         Ok(()) => {
             run.trouble.now(output, &[]);
-            if so {
-                run.written();
-            }
             true
         }
         Err(error) => {
@@ -660,27 +675,29 @@ fn loopback(events: &mut Events, options: &Options, run: &mut Run) {
     if let Some(file) = device_file(&options.output) {
         tidy(&file);
     }
-    // Whether the camera's going was seen, and whether nobody was written
-    // since, which is tried each second until it is.
-    let mut gone = false;
+    // Whether nobody was written and the node unnamed since the last
+    // camera, each tried each second with no camera until it is.
     let mut told = false;
+    let mut unnamed = false;
     loop {
         let Some(node) = camera::node_of(&options.sysfs, &options.source, options.card.as_deref())
         else {
-            if !gone {
-                run.unname(&options.output);
-                gone = true;
-                told = false;
-            }
+            // Its holders file first, as the removals keep it, so a node
+            // file goes only once no holder is said beside it.
             if !told {
-                told = say_nobody(&options.output, run, true);
+                told = say_nobody(&options.output, run);
+            }
+            if told && !unnamed {
+                unnamed = run.unname(&options.output);
+            }
+            if told && unnamed {
+                run.written();
             }
             if let Woken::Stopped = events.sleep(Duration::from_secs(1)) {
                 return;
             }
             continue;
         };
-        gone = false;
         run.owe(&node);
         let ended = watch(
             events,
@@ -691,20 +708,24 @@ fn loopback(events: &mut Events, options: &Options, run: &mut Run) {
             None,
             run,
         );
-        let gone_now = !node.exists();
         // A camera gone is said no more, so a node that comes next, which
-        // may not be sayable yet, never leaves the last one said.
-        if gone_now {
-            run.unname(&options.output);
+        // may not be sayable yet, never leaves the last one said: nobody
+        // first, then a node gone or stopping is unnamed. What fails is
+        // tried again by the pass with no camera, which these tell.
+        told = say_nobody(&options.output, run);
+        unnamed = false;
+        let stopped = matches!(ended, Ended::Stopped);
+        if told && (stopped || !node.exists()) {
+            unnamed = run.unname(&options.output);
         }
-        say_nobody(&options.output, run, gone_now);
-        if let Ended::Stopped = ended {
-            run.unname(&options.output);
+        if stopped {
             return;
         }
         // So a node it can't watch is tried again, not spun on.
         if let Woken::Stopped = events.sleep(Duration::from_millis(500)) {
-            run.unname(&options.output);
+            if told && !unnamed {
+                run.unname(&options.output);
+            }
             return;
         }
     }
