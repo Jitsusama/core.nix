@@ -1084,6 +1084,8 @@ def test_a_sessions_drawer_beside_the_one_drawn_comes_with_its_key(shell: Shell)
 
 ACT_WALKED = "a session is steered only from your own Return in the launcher"
 """What a walk from outside is told of a session's act the shell does only as Joel."""
+AGENTS_ASKING = ("now", "For You", "Agents")
+"""A walk's steps to For You's Agents, where each session's ask stands under its cell."""
 
 
 def opens_saying_nothing_of_the_walk(shell: Shell) -> None:
@@ -1169,19 +1171,19 @@ def test_a_wants_acts_walked_from_outside_are_refused_as_chosen(shell: Shell) ->
     lay("DEALER", "Dealing Quest", {"state": "listening", "busy": False, "wants": wants})
     inbox = STEER / "DEALER"
     try:
-        in_for_you(shell)
+        in_for_yous_agents(shell)
         shell.launcher_until(lambda shown: "Dealing Quest" in shown["rows"])
         shell.close_launcher()
         # Nor does a walk put the want off, which would take it off For You for an hour as
         # Joel's (round 000022 on #6796, F48 and F57): it's refused, and the want stays.
-        walked = {"steps": ["now", "For You", "Dealing Quest", "Put It Off"], "sure": True}
+        walked = {"steps": [*AGENTS_ASKING, "Dealing Quest", "Put It Off"], "sure": True}
         did = json.loads(shell.as_account(shell.ipc("doing", shlex.quote(json.dumps(walked)))))
         assert did.get("refused") == ACT_WALKED, did
         shell.close_launcher()
-        in_for_you(shell)
+        in_for_yous_agents(shell)
         shell.launcher_until(lambda shown: "Dealing Quest" in shown["rows"])
         shell.close_launcher()
-        walked = {"steps": ["now", "For You", "Dealing Quest", "Deal With It"], "sure": True}
+        walked = {"steps": [*AGENTS_ASKING, "Dealing Quest", "Deal With It"], "sure": True}
         did = json.loads(shell.as_account(shell.ipc("doing", shlex.quote(json.dumps(walked)))))
         # Deal With It runs once the launcher's gone, so it's refused as it's chosen, and the
         # walk is told, rather than told done and refused once it runs (round 000038, F69).
@@ -1645,6 +1647,19 @@ def in_for_you(shell: Shell) -> None:
     shell.down_to("For You")
     shell.step_in()
     shell.launcher_until(lambda shown: shown["held"] == ["now", "For You"])
+
+
+def in_for_yous_agents(shell: Shell) -> None:
+    """Step into For You's Agents, where what each session asks of Joel stands under its cell.
+
+    For You gathers every cell's rows into Agents however few (ForYouCells.js's laidOut; Joel,
+    2026-11-25: "it also makes no sense for the agents to be top level").
+    """
+    in_for_you(shell)
+    shell.launcher_until(lambda shown: "Agents" in shown["rows"])
+    shell.down_to("Agents")
+    shell.step_in()
+    shell.launcher_until(lambda shown: shown["held"] == ["now", "For You", "Agents"])
 
 
 def test_an_orchestrations_waiting_sessions_fold_into_one_row_return_steps_into(
@@ -5099,15 +5114,15 @@ def test_a_for_you_choice_walked_from_outside_is_told_to_the_walk_alone(shell: S
     _, inbox, steered = asking_left_or_right(shell, "WALKAN", "Walked Quest")
     walked_words = "what Walked Quest asks is answered only from your own Return in the launcher"
     try:
-        in_for_you(shell)
+        in_for_yous_agents(shell)
         shell.launcher_until(lambda shown: "Walked Quest" in shown["rows"])
         shell.close_launcher()
-        walked = {"steps": ["now", "For You", "Walked Quest", "Left"], "sure": True}
+        walked = {"steps": [*AGENTS_ASKING, "Walked Quest", "Left"], "sure": True}
         did = json.loads(shell.as_account(shell.ipc("doing", shlex.quote(json.dumps(walked)))))
         assert did.get("refused") == walked_words, did
         shell.close_launcher()
         # The next opening's foot says nothing of it, and nothing reached the session.
-        in_for_you(shell)
+        in_for_yous_agents(shell)
         shell.launcher_until(lambda shown: "Walked Quest" in shown["rows"])
         footer = shell.showing()["footer"].replace("\xa0", " ")
         assert "only from your own Return" not in footer, footer

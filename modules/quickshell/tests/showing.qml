@@ -56,6 +56,10 @@ QtObject {
         expect("an empty step names nothing", Showing.step(home, "", idOf), { near: [] });
         expect("a row with no name is never named", Showing.step([{ key: "x", name: "" }],
             "x", idOf), { near: [] });
+        const cell = [{ key: "h", name: "Dealing Quest", heading: true },
+            { key: "w", name: "Dealing Quest" }];
+        expect("a heading is never named", Showing.step(cell, "Dealing Quest", idOf).row?.key,
+            "w");
         // A row as the terminal reads it.
         expect("a figure", Showing.shaped({ key: "disk:space", name: "Space", side: "412 GB free",
             figure: true, glyph: "\u25c6", hue: "machine", run: () => {} },
