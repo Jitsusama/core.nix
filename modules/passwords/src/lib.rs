@@ -28,7 +28,7 @@
 //! never a password.
 
 use std::collections::{BTreeMap, HashMap};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde_json::{Map, Value, json};
 
@@ -1018,6 +1018,34 @@ pub fn now() -> u64 {
         })
 }
 
+/// The longest a wait for a clock sleeps before it reads the clocks again.
+pub const LOOKS: Duration = Duration::from_millis(250);
+
+/// Waits until the wall clock reads `until`, milliseconds since the epoch as
+/// `now` gives them and the foot and margin show a copy's clearing by, or
+/// until `longest` has passed `awake`, whichever comes first, sleeping by
+/// `sleep` at most LOOKS at a time. A sleep stops while the machine is
+/// suspended and the wall clock doesn't, so a time that ran out while the lid
+/// was closed ends the wait within LOOKS of waking, rather than as long
+/// after as was left; `longest` ends it as meant when the wall clock is set
+/// back meanwhile.
+pub fn waited_until(
+    until: u64,
+    longest: Duration,
+    clock: impl Fn() -> u64,
+    awake: impl Fn() -> Duration,
+    sleep: impl Fn(Duration),
+) {
+    loop {
+        let by_clock = Duration::from_millis(until.saturating_sub(clock()));
+        let left = by_clock.min(longest.saturating_sub(awake()));
+        if left.is_zero() {
+            return;
+        }
+        sleep(left.min(LOOKS));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1471,5 +1499,62 @@ mod tests {
         assert_eq!(named(&key("1password", "abc")), Some(("1password", "abc")));
         assert_eq!(named("entry:1password:"), None);
         assert_eq!(named("person:ada"), None);
+    }
+
+    /// What a wait for 30 s from 10,000 s on the wall clock slept, each sleep
+    /// in turn, over clocks that `slept` moves on by each sleep given: the
+    /// wall clock's milliseconds and the awake time.
+    fn sleeps(slept: impl Fn(Duration, &mut u64, &mut Duration)) -> Vec<Duration> {
+        let clocks = std::cell::RefCell::new((10_000_000_u64, Duration::ZERO, Vec::new()));
+        waited_until(
+            10_030_000,
+            Duration::from_secs(30),
+            || clocks.borrow().0,
+            || clocks.borrow().1,
+            |given| {
+                let (wall, awake, sleeps) = &mut *clocks.borrow_mut();
+                sleeps.push(given);
+                slept(given, wall, awake);
+            },
+        );
+        clocks.into_inner().2
+    }
+
+    fn ms(duration: Duration) -> u64 {
+        u64::try_from(duration.as_millis()).unwrap()
+    }
+
+    #[test]
+    fn a_wait_for_the_clock_sleeps_its_time_in_short_steps() {
+        let slept = sleeps(|given, wall, awake| {
+            *wall += ms(given);
+            *awake += given;
+        });
+        assert_eq!(slept.iter().sum::<Duration>(), Duration::from_secs(30));
+        assert!(slept.iter().all(|sleep| *sleep <= LOOKS), "{slept:?}");
+    }
+
+    #[test]
+    fn a_time_run_out_while_suspended_ends_the_wait_on_waking() {
+        // The first sleep spans a 40 s suspend: the wall clock goes on, and
+        // the sleep, as the awake time, stops.
+        let slept = sleeps(|given, wall, awake| {
+            *wall += ms(given) + if *awake == Duration::ZERO { 40_000 } else { 0 };
+            *awake += given;
+        });
+        assert_eq!(slept, vec![LOOKS], "slept past waking");
+    }
+
+    #[test]
+    fn a_wall_clock_set_back_still_ends_the_wait_in_its_time() {
+        // The first sleep sees the wall clock set back an hour.
+        let slept = sleeps(|given, wall, awake| {
+            if *awake == Duration::ZERO {
+                *wall -= 3_600_000;
+            }
+            *wall += ms(given);
+            *awake += given;
+        });
+        assert_eq!(slept.iter().sum::<Duration>(), Duration::from_secs(30));
     }
 }

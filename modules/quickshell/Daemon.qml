@@ -502,6 +502,7 @@ Scope {
             onConnectionStateChanged: {
                 if (connected) {
                     daemon.refusals = 0;
+                    daemon.failedWith = null;
                     daemon.wire = socket;
                     daemon.greet();
                 } else {
@@ -510,6 +511,7 @@ Scope {
                 }
             }
             onError: failed => {
+                daemon.failedWith = failed;
                 daemon.gone();
                 if (failed !== daemon.serverNotFound || daemon.refusals < daemon.missingTries)
                     daemon.tryAgain();
@@ -628,6 +630,11 @@ Scope {
 
     // How many times it's been refused since it last answered.
     property int refusals: 0
+
+    // The QLocalSocket error its link's last try failed with, null since it last connected, so a
+    // check that fails waiting on it says whether nothing was there or something refused. Null
+    // rather than -1, which is Qt's UnknownSocketError.
+    property var failedWith: null
 
     // How long to wait before trying again, after so many refusals.
     function waitAfter(refused) {

@@ -72,6 +72,9 @@ let
           node = "${macRuntime}/node";
           proof = macProof;
           path = [ "/first/bin" ];
+          # Conversations' own, which a Mac starts none of, so its host keeps
+          # V8's own growth.
+          conversationHeapGrowingPercent = 30;
           environment = {
             # A launchd start reads no specifier, so a % stays single.
             PROXY_ORIGIN = "https://proxy.example.com/a%40b";
@@ -325,6 +328,7 @@ in
           program = lib.head (lib.splitString " " (lib.removePrefix "  " last));
         in
         lib.hasSuffix "/scripts/pi-host.ts ${kind}" last
+        && !lib.hasInfix "--heap-growing-percent" start
         # Each kind writes its own log, and its own record of starts.
         && lib.hasInfix "/Users/someone/Library/Logs/pi-host-one-${kind}.log" start
         && daemon.Label or null == "org.jitsusama.pi-host-one-${kind}"
@@ -360,7 +364,7 @@ in
         && lib.hasSuffix "-pi-host/bin/pi-host" program;
     in
     holds "the-mac-pi-host-outlives-a-log-out"
-      "A Mac's pi host isn't a launchd daemon run as its primary account, so a log-out ends it, or isn't started as its own kind with a log of its own, or it isn't started at boot once the store is mounted, is restarted after a clean stop or not after a failure, has less than the 150 s it parks within or launchd's 256 open files, names a store path a switch would restart it for, has launchd open its log as root, runs node under a name mycelium doesn't tell as an agent's, the machine doesn't evaluate whole, or a Mac naming no realm gets one."
+      "A Mac's pi host isn't a launchd daemon run as its primary account, so a log-out ends it, or isn't started as its own kind with a log of its own, or it isn't started at boot once the store is mounted, is restarted after a clean stop or not after a failure, has less than the 150 s it parks within or launchd's 256 open files, names a store path a switch would restart it for, has launchd open its log as root, runs node under a name mycelium doesn't tell as an agent's, grows its heap other than V8's own because its realm names a percent for conversations, the machine doesn't evaluate whole, or a Mac naming no realm gets one."
       (
         builtins.seq mac.config.system.build.toplevel.drvPath true
         && outlives "attended"
@@ -727,6 +731,21 @@ in
       holds
       lib
       loadsCode
+      pkgs
+      proofOf
+      self
+      ;
+  }
+)
+# The state folders' subvolumes change with state-subvolumes/home.nix and the
+# hosts' names alone, so their check sits beside these.
+// onLinux (
+  import ./state-subvolumes/checks.nix {
+    inherit
+      account
+      bareNixos
+      holds
+      lib
       pkgs
       proofOf
       self
