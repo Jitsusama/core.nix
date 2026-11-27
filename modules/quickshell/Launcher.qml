@@ -3142,15 +3142,17 @@ Scope {
         return `:${endsLine(choice)}`;
     }
 
-    // When the key or button being handled was pressed, on the monotonic
-    // clock, or now when it's handling none or its press came with no time
-    // (KeyTimes.pressed), so the doubled-key guards time two presses by when
-    // they were pressed: timed when the shell got to each, a stall between
-    // a bounced pair would part them past the wait, and the second would
-    // end the session the first armed.
+    // When the key being handled was pressed, on the monotonic clock, or now
+    // when it's handling none or its press came with no time (KeyTimes.pressed,
+    // read by Arming.pressedAt), so the doubled-key guards time two presses by
+    // when they were pressed: timed when the shell got to each, a stall
+    // between a bounced pair would part them past the wait, and the second
+    // would end the session the first armed. A click is timed otherwise:
+    // KeyTimes stamps a button's press and lets go of it once the event loop
+    // has gone round, and onClicked runs on the release, so a click reads
+    // none and is timed when its release is handled.
     function pressedNow() {
-        const pressed = KeyTimes.pressed();
-        return pressed > 0 ? pressed : KeyTimes.now();
+        return Arming.pressedAt(KeyTimes.pressed(), KeyTimes.now());
     }
 
     // When Return last wrote an ending row's line, so a Return doubled
@@ -14598,10 +14600,9 @@ Scope {
                                 root.keyActs("Return");
                             const heard = KeyTimes.now();
                             const pressed = KeyTimes.pressed();
-                            // When this Return was pressed, or heard when
-                            // its press came with no time, which every
-                            // guard below times it by (pressedNow).
-                            const at = pressed > 0 ? pressed : heard;
+                            // When this Return was pressed, by pressedNow's
+                            // rule, which every guard below times it by.
+                            const at = Arming.pressedAt(pressed, heard);
                             root.searchNow();
                             trials.pressed("returns");
                             // A held row is held before all else
@@ -14653,7 +14654,7 @@ Scope {
                             if (arming)
                                 root.landedKey = "";
                             else if (act === "gave")
-                                root.give(pressed > 0 ? pressed : heard);
+                                root.give(at);
                             else if (act === "entered")
                                 root.enter(root.selected);
                             else if (act === "lined")

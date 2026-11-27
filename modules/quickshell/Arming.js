@@ -171,6 +171,14 @@ function pressed(armed, id, how) {
     return { act: "ends", armed: rest() };
 }
 
+// When a press was pressed, on the monotonic clock: `stamped`, where it's
+// a number above 0, or `now` where it isn't, as KeyTimes.pressed says 0
+// for a press with no time and for none being handled. The one rule
+// Launcher.qml's pressedNow and its Return's onAccepted time a press by.
+function pressedAt(stamped, now) {
+    return typeof stamped === "number" && stamped > 0 ? stamped : now;
+}
+
 // Whether a press at `at` comes within `wait` ms of the one at `since`, so
 // it's that one doubled, a key bounced, which does nothing: the one rule
 // for an arming's, a landing's and a line's Returns. A press whose time
