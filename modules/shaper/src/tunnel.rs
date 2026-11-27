@@ -104,7 +104,9 @@ impl Hold {
     /// last `HEIGHTS` shows a far path no hold drains, which goes unheeded
     /// a while, as the controller's own far rule does. So does a wait
     /// standing `FAR_CUTS` times in `AT_LEAST_S` with the share at `LEAST`,
-    /// which no cut takes lower, each time finding no new low.
+    /// which no cut takes lower, each time finding no new low. Each far
+    /// path found goes unheeded twice as long as the last, unless
+    /// `FAR_MOST_S` passed since that one was heeded again.
     pub fn step(&mut self, at: f64, dt: f64, waiting: Option<f64>, late_ms: f64) {
         let waiting = waiting.filter(|_| at >= self.unheeded_until);
         if let Some(ms) = waiting {
@@ -121,11 +123,9 @@ impl Hold {
         (self.judged_at, self.sum_ms, self.heard) = (Some(at), 0.0, 0);
         self.clear = !standing;
         if !standing {
-            // Drained, or never there: a run of cuts ends, and a far path
-            // found again later is unheeded for the first while again.
-            if self.cuts > 0 {
-                self.unheeded_for = 0.0;
-            }
+            // Drained, or never there: a run of cuts ends. A spike that
+            // falls away by itself ends its run alike, so this leaves the
+            // time a far path goes unheeded as it was.
             self.end_run();
             self.rise(dt);
             return;
@@ -137,8 +137,7 @@ impl Hold {
         // waver read as a drain: on 26 November a 68 ms wait held the VPN's
         // queue at 37% of its lane, while the link carried about 8 of its
         // 10.8 Mb/s and the agents inside the VPN waited three seconds on
-        // average. A cut never ends the doubling of the time a far path
-        // goes unheeded: only a run that drains does.
+        // average.
         let height = self
             .heights
             .iter()
@@ -154,6 +153,12 @@ impl Hold {
         // CAKE at 1 to 1.4 Mbit/s, under what bulk uploads got.
         let floored = self.share <= LEAST && self.unlowered_at_least(at, mean);
         if floored || (self.cuts >= FAR_CUTS && mean >= height - VPN_MARGIN_MS) {
+            // On 27 November by air the spikes came back after each
+            // unheeded while; a far path found again within as long as one
+            // goes unheeded at most is the same path.
+            if at - self.unheeded_until > FAR_MOST_S {
+                self.unheeded_for = 0.0;
+            }
             self.unheeded_for = (self.unheeded_for * 2.0).clamp(FAR_S, FAR_MOST_S);
             self.unheeded_until = at + self.unheeded_for;
             self.end_run();
@@ -413,19 +418,52 @@ mod tests {
         );
     }
 
-    // A run that drains is a tunnel's own queue, not a far path, so the
-    // next far path found is unheeded for the first while again.
+    // A spiking wait let go at the least comes back once heeded again,
+    // each run ended by a clear judgement as the spike falls away, and
+    // is unheeded twice as long the second time, not the first while
+    // over again.
     #[test]
-    fn a_run_that_drains_starts_the_unheeded_time_over() {
-        let mut hold = Hold {
+    fn a_spiking_wait_found_again_goes_unheeded_longer() {
+        let cycle = [150.0, 60.0, 40.0, 30.0, 10.0, 10.0];
+        let waits: Vec<f64> = (0..300).map(|window| cycle[window % cycle.len()]).collect();
+        let mut hold = Hold::default();
+        judged(&mut hold, 0.0, &waits);
+        assert!(
+            (hold.unheeded_for - 2.0 * FAR_S).abs() < f64::EPSILON,
+            "a spiking wait found again went unheeded {:.0} s",
+            hold.unheeded_for
+        );
+    }
+
+    // A far path found again within `FAR_MOST_S` of being heeded again is
+    // unheeded twice as long; one found later, for the first while again.
+    #[test]
+    fn a_far_path_found_long_after_starts_the_unheeded_time_over() {
+        let waits: Vec<f64> = (0..20)
+            .map(|window| [68.0, 60.0, 74.0][window % 3])
+            .collect();
+        let mut soon = Hold {
+            unheeded_until: 0.0,
+            unheeded_for: FAR_S,
+            ..Hold::default()
+        };
+        judged(&mut soon, 10.0, &waits);
+        assert!(
+            (soon.unheeded_for - 2.0 * FAR_S).abs() < f64::EPSILON,
+            "a far path found 10 s after the last was heeded went unheeded {:.0} s",
+            soon.unheeded_for
+        );
+        let mut late = Hold {
+            unheeded_until: 0.0,
             unheeded_for: FAR_MOST_S,
             ..Hold::default()
         };
-        judged(&mut hold, 0.0, &[100.0, 60.0, 10.0]);
+        judged(&mut late, FAR_MOST_S + 10.0, &waits);
         assert!(
-            hold.unheeded_for.abs() < f64::EPSILON,
-            "a run that drained left the unheeded time at {:.0} s",
-            hold.unheeded_for
+            (late.unheeded_for - FAR_S).abs() < f64::EPSILON,
+            "a far path found {:.0} s after the last was heeded went unheeded {:.0} s",
+            FAR_MOST_S + 10.0,
+            late.unheeded_for
         );
     }
 
