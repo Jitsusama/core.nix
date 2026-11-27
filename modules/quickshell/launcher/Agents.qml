@@ -286,19 +286,11 @@ Provider {
     }
 
     function carryBack(key, row, ask) {
-        const said = Words.of("verb:carry:back").said ?? {};
-        const shown = CarryBack.keyed(row, key);
-        let answered = false;
-        provider.becomes(shown, {
-            side: said.carrying ?? "",
-            sideItems: [{ said: said.carrying ?? "", keep: 4 }]
-        }, row.name ?? "", "carry back", { done: () => answered });
-        node.find(ask, answer => {
-            const ended = CarryBack.ended(answer, said);
-            if (ended.done)
-                answered = true;
-            else
-                provider.refused(shown, ended.why);
+        CarryBack.carry(row, key, ask, Words.of("verb:carry:back").said ?? {}, {
+            becomes: (shown, side, name, doing, until) =>
+                provider.becomes(shown, side, name, doing, until),
+            refused: (shown, why) => provider.refused(shown, why),
+            find: (asked, answered) => node.find(asked, answered)
         });
     }
 

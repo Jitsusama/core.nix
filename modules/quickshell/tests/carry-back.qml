@@ -5,7 +5,9 @@
 // this file and runs it offscreen. That Return on a carried row sends it
 // is tests/agents-on-niri-test.py's, whose carries' things claim no kind of
 // the launcher's own and match their keys, so the key a carried row reads
-// as carrying back under is pinned here.
+// as carrying back under, and has its refusal said on, is pinned here,
+// through CarryBack.carry, which Agents.qml's carryBack hands everything
+// to but the provider's and the node's calls.
 import QtQuick
 import "Expect.js" as Expect
 import "launcher/CarryBack.js" as CarryBack
@@ -70,5 +72,50 @@ QtObject {
             CarryBack.keyed({ key: "carry:served" }, "carry:7"), "carry:7");
         Expect.same("and one whose thing claims the launcher's own place stays under row:",
             CarryBack.keyed({ thing: "place:Harbour" }, "carry:7"), "row:place:Harbour");
+
+        carrying();
+    }
+
+    // A shell's calls recorded in order, and the node's answer held to be
+    // given when a case says.
+    function recording() {
+        const shell = { told: [], until: null, answer: null };
+        shell.becomes = (shown, side, name, doing, until) => {
+            shell.told.push(["becomes", shown, side, name, doing]);
+            shell.until = until;
+        };
+        shell.refused = (shown, why) => shell.told.push(["refused", shown, why]);
+        shell.find = (asked, answered) => {
+            shell.told.push(["find", asked]);
+            shell.answer = answered;
+        };
+        return shell;
+    }
+
+    function carrying() {
+        const ask = { ask: "carry", quest: "QEST-20261115-HARBOR", to: "skiff" };
+        const words = { carrying: "carrying back", unread: said.unread };
+        const side = { side: "carrying back", sideItems: [{ said: "carrying back", keep: 4 }] };
+
+        const done = recording();
+        CarryBack.carry({ thing: "carry:7", key: "carry:other", name: "Harbour" },
+            "carry:other", ask, words, done);
+        Expect.same("Carry Back has its row, keyed by its thing, read as carrying back, then asks",
+            done.told, [["becomes", "carry:7", side, "Harbour", "carry back"], ["find", ask]]);
+        Expect.same("which stays carrying back while the node hasn't answered",
+            done.until.done(), false);
+        done.answer({ id: 3, carried: { step: "carried", state: "done" } });
+        Expect.same("and is done once the carry ended carried", done.until.done(), true);
+        Expect.same("with no refusal said", done.told.length, 2);
+
+        const refused = recording();
+        CarryBack.carry({ thing: "place:Harbour", name: "Harbour" }, "carry:7", ask, words,
+            refused);
+        refused.answer({ id: 3, refused: true, error: { message: "skiff is out of reach" } });
+        Expect.same("a refusal is said on the row it read as carrying back, row: kept",
+            refused.told.slice(0, 1).concat(refused.told.slice(2)),
+            [["becomes", "row:place:Harbour", side, "Harbour", "carry back"],
+                ["refused", "row:place:Harbour", "skiff is out of reach"]]);
+        Expect.same("and never ends carrying back as done", refused.until.done(), false);
     }
 }

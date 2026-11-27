@@ -17,13 +17,16 @@
 }:
 let
   # What Qt says of a line that threw or a value it couldn't assign: any error
-  # a file's line threw, as Quickshell says one, and the words Qt's own use.
-  # A binding that quietly comes out undefined into a `var` says nothing, so
-  # it passes unseen.
+  # a file's line threw, as Quickshell says one, and the words Qt's own use,
+  # which also catch its unbracketed "file:///…/X.qml:12: TypeError:" and a
+  # throw said with no file at all. A binding that quietly comes out undefined
+  # into a `var` says nothing, so it passes unseen.
   threw = pkgs.lib.concatStringsSep "|" [
     ''\.(qml|js)\[[0-9-]+:[0-9-]+\]: [A-Za-z]*Error:''
     "TypeError"
     "ReferenceError"
+    "RangeError"
+    "SyntaxError"
     "Unable to assign"
   ];
 
@@ -44,6 +47,37 @@ let
         exit 2
         ;;
     esac
+  '';
+
+  # A stand-in for qs that says `line`, then exits `status`, and the lines the
+  # throw guard's own check has one say.
+  saying =
+    name: line: status:
+    pkgs.writeShellScript name ''
+      echo ${pkgs.lib.escapeShellArg line}
+      exit ${toString status}
+    '';
+  thrown = "WARN scene: @launcher/Wireless.qml[131:-1]: TypeError: walked";
+  quiet = "INFO launcher: took 12 ms to draw down, heard 3 ms after its press";
+
+  # Runs a Wi-Fi case's shell.qml with `shell`, then judges what it said
+  # whatever the run ended in, failed or timed out: a plain pipeline would end
+  # the build under set -e before the guard read a throw that caused the
+  # failure. Kept whole, and given its shell, so the-wifi-cases-fail-on-a-throw
+  # runs it with stand-ins and holds every case to running it with qs.
+  ranJudged = shell: ''
+    set -o pipefail
+    ran=0
+    timeout 60 ${shell} -p shell.qml 2>&1 | tee said || ran=$?
+    failed=0
+    if [ "$ran" -eq 124 ]; then
+      echo "the cases were still running after 60 s"
+      failed=1
+    elif [ "$ran" -ne 0 ]; then
+      echo "the cases ended failed (exit $ran)"
+      failed=1
+    fi
+    ${judged}
   '';
 
   # A Wi-Fi case run through the real Wireless.qml, ReadyRows.qml and
@@ -102,24 +136,21 @@ let
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
-      set -o pipefail
-      ran=0
-      timeout 60 ${qs} -p shell.qml 2>&1 | tee said || ran=$?
-      failed=0
-      if [ "$ran" -eq 124 ]; then
-        echo "the cases were still running after 60 s"
-        failed=1
-      elif [ "$ran" -ne 0 ]; then
-        echo "the cases ended failed (exit $ran)"
-        failed=1
-      fi
-      ${judged}
+      ${ranJudged qs}
       ${reading}
       if [ "$failed" -ne 0 ]; then
         exit 1
       fi
       touch $out
     '';
+
+  # Wi-Fi's network joined ahead, its case kept here so the throw guard's
+  # check reads its script, as wifiCase writes every case's, never building it.
+  joinedAhead = wifiCase "wifi-holds-the-network-joined-ahead" ../tests/wifi-ahead.qml null;
+
+  # Whether a case's build runs the shell and then the guard as ranJudged does
+  # with qs.
+  casesRunJudged = pkgs.lib.hasInfix (ranJudged qs) joinedAhead.buildCommand;
 in
 {
   # The Home Network is offered wherever eero's module brings its daemon,
@@ -322,15 +353,33 @@ in
   # step onto Wi-Fi or into it finds its drawer held, and a change to that
   # drawer alone, nobody looking at it, tells the launcher nothing
   # (modules/quickshell/tests/wifi-ahead.qml).
-  wifi-holds-the-network-joined-ahead =
-    wifiCase "wifi-holds-the-network-joined-ahead" ../tests/wifi-ahead.qml
-      null;
+  wifi-holds-the-network-joined-ahead = joinedAhead;
 
   # The Wi-Fi cases' throw guard fails a run whose shell said a line threw, in
-  # each shape it names, and passes one saying only the launcher's own lines,
-  # so an edit that broke its pattern can't switch it off while the cases stay
-  # green. Kept in Nix because it runs the very guard the cases are built with.
+  # each shape it names, passes one saying only the launcher's own lines, and
+  # stops the build where what was said can't be read, so an edit that broke
+  # its pattern can't switch it off while the cases stay green. Every case runs
+  # the shell and then the guard as ranJudged does, whatever the run ended in,
+  # which is run here with stand-in shells, so neither can be dropped or ended
+  # early by an edit to how a case runs either. Kept in Nix because it runs the
+  # very guard and run the cases are built with.
   the-wifi-cases-fail-on-a-throw = pkgs.runCommandLocal "the-wifi-cases-fail-on-a-throw" { } ''
+    ${pkgs.lib.optionalString (!casesRunJudged) (
+      throw "a Wi-Fi case no longer runs its shell and then the throw guard as ranJudged does"
+    )}
+    ran_judged() {
+      if [ "$failed" -ne "$1" ]; then
+        echo "a run $2 judged $failed, not $1"
+        exit 1
+      fi
+    }
+    ${ranJudged (saying "throws-then-fails" thrown 1)}
+    ran_judged 1 "that threw and failed"
+    ${ranJudged (saying "throws-then-passes" thrown 0)}
+    ran_judged 1 "that threw and passed"
+    ${ranJudged (saying "passes-quietly" quiet 0)}
+    ran_judged 0 "that passed saying only the launcher's own lines"
+
     judge() {
       printf '%s\n' "$2" > said
       failed=0
@@ -344,8 +393,22 @@ in
     judge 1 "WARN scene: @launcher/ReadyRows.qml[917:9]: ReferenceError: Presented is not defined"
     judge 1 "WARN scene: @launcher/Presented.js[42:5]: RangeError: Maximum call stack size exceeded"
     judge 1 "WARN scene: @launcher/Wireless.qml[88:5]: Unable to assign [undefined] to QString"
+    judge 1 "file:///build/launcher/Wireless.qml:131: TypeError: Cannot read property walked"
+    judge 1 "file:///build/launcher/ReadyRows.qml:917: ReferenceError: Presented is not defined"
+    judge 1 "<Unknown File>: RangeError: Maximum call stack size exceeded"
+    judge 1 "file:///build/launcher/Presented.js:42: SyntaxError: Unexpected token"
     judge 0 "INFO launcher: took 12 ms to draw down, heard 3 ms after its press"
     judge 0 "INFO launcher: a join refused by its code, and an Error: in no file's line"
+
+    # What was said gone, grep can't read it, and the guard stops the build
+    # rather than take that for nothing found.
+    rm said
+    unread=0
+    (${judged}) || unread=$?
+    if [ "$unread" -ne 2 ]; then
+      echo "a guard that couldn't read what was said exited $unread, not 2"
+      exit 1
+    fi
     touch $out
   '';
 
