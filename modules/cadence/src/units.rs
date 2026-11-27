@@ -28,6 +28,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::holders::a_run;
 
+pub mod journal;
 mod shown;
 
 pub use shown::leave_runs;
@@ -374,10 +375,30 @@ pub fn paired(journal: &str, at: i64, show: impl Fn(&str) -> String) -> Read {
     read
 }
 
-/// Reads what a tick needs: the restarts systemd scheduled in the
-/// account's units in the `WITHIN` before `at`, and, when `now`, the units
-/// failed and each daemon's socket under `runtime`, which can't be read as
-/// they were in the past.
+/// The reader of the restarts a tick keeps: the journal's lines of a
+/// restart scheduled or a process exited, looked back on as far as
+/// `read_from` reads them.
+pub const RESTARTS: journal::Want = journal::Want {
+    name: "restarts",
+    journal: journal::Journal::User,
+    keep: WITHIN + EXITS_BEFORE,
+    fill: &[
+        "MESSAGE_ID=5eb03494b6584870a536b337290809b3",
+        "MESSAGE_ID=98e322203f7a4ed290d09fe03c09fe15",
+    ],
+    takes: a_restart,
+};
+
+/// Whether a journal line is a restart scheduled or a process exited.
+fn a_restart(fields: &serde_json::Map<String, serde_json::Value>) -> bool {
+    journal::is(fields, "MESSAGE_ID", RESTART_SCHEDULED)
+        || journal::is(fields, "MESSAGE_ID", PROCESS_EXITED)
+}
+
+/// Reads what `cadence units` asks of a moment: the restarts systemd
+/// scheduled in the account's units in the `WITHIN` before `at`, read by
+/// their match, as a look by hand is too rare for its cost to count, and
+/// the rest as [`read_from`] reads it.
 #[must_use]
 pub fn read(at: i64, now: bool, runtime: Option<&Path>) -> Read {
     let journal = run(
@@ -395,6 +416,16 @@ pub fn read(at: i64, now: bool, runtime: Option<&Path>) -> Read {
             &format!("MESSAGE_ID={PROCESS_EXITED}"),
         ],
     );
+    read_from(&journal.unwrap_or_default(), at, now, runtime)
+}
+
+/// Reads what a tick needs, given the `journal`'s JSON lines of restarts
+/// and exits from `EXITS_BEFORE` before the `WITHIN` before `at` on: the
+/// restarts in that `WITHIN`, and, when `now`, the units failed and each
+/// daemon's socket under `runtime`, which can't be read as they were in
+/// the past.
+#[must_use]
+pub fn read_from(journal: &str, at: i64, now: bool, runtime: Option<&Path>) -> Read {
     let systemctl_show = |unit: &str| {
         let asked = [
             "--user",
@@ -412,7 +443,7 @@ pub fn read(at: i64, now: bool, runtime: Option<&Path>) -> Read {
         ];
         run("systemctl", &asked).unwrap_or_default()
     };
-    let mut read = paired(&journal.unwrap_or_default(), at, systemctl_show);
+    let mut read = paired(journal, at, systemctl_show);
     if !now {
         return read;
     }
