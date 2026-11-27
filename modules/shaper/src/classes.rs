@@ -36,9 +36,7 @@ pub struct Sets {
     /// Each account's apps, whose UDP to anything but 443 is a call, as is
     /// anything they send Meet's media servers.
     pub app4: Vec<String>,
-    /// Programs that are calls through and through: Tuple's daemon; and
-    /// while no call is on, the windows running a typed turn
-    /// (`place_typed`).
+    /// Programs that are calls through and through: Tuple's daemon.
     pub video5: Vec<String>,
     /// The work Joel waits on at a terminal, which the slices keep inside
     /// jobs and ahead of the rest of it: it goes at an app's pace, not
@@ -53,9 +51,8 @@ pub struct Sets {
     /// typed, which `untyped` finds.
     pub bulk5: Vec<String>,
     /// The windows and hosts whose pi sessions run a turn a person typed,
-    /// which `typed` finds, while a call is on: each packet they send goes
-    /// as best effort, even on a connection a turn nobody typed opened as
-    /// bulk.
+    /// which `typed` finds: each packet they send goes as best effort,
+    /// even on a connection a turn nobody typed opened as bulk.
     pub typed5: Vec<String>,
     /// The protocols whose every packet from an app goes as video, which
     /// `calling` gives: UDP while a call is on, and none otherwise.
@@ -252,21 +249,6 @@ pub fn untyped(root: &Path, sessions: &[Session]) -> Vec<String> {
 /// after one nobody typed went as bulk on the connection that one opened.
 pub fn typed(root: &Path, sessions: &[Session]) -> Vec<String> {
     units(root, sessions, true)
-}
-
-/// Puts the units running a typed turn, `typed`, where their packets go:
-/// as video while no call is on, as best effort while one is. Agents'
-/// model calls go as best effort to the same origin a typed turn reaches,
-/// and CAKE shares one host flow by flow, so beside the relay's many
-/// connections a typed turn would have had about one flow's part of it
-/// (model calls ahead round 1's F17). While a call is on, the call goes
-/// first, as it always does.
-pub fn place_typed(sets: &mut Sets, typed: Vec<String>) {
-    if sets.calling.is_empty() {
-        sets.video5.extend(typed);
-    } else {
-        sets.typed5 = typed;
-    }
 }
 
 /// The units with no typed turn, then those with one: the two sets the
@@ -492,42 +474,6 @@ mod tests {
             sets.bulk4,
             [format!("{ACCOUNT}/background.slice")],
             "the rest of background wasn't left as bulk"
-        );
-    }
-
-    #[test]
-    fn a_typed_turn_goes_as_video_until_a_call_is_on() {
-        let window = format!("{ACCOUNT}/app.slice/pi-window.service");
-        let tuple = format!("{ACCOUNT}/app.slice/tuple.service");
-        let mut sets = Sets {
-            video5: vec![tuple.clone()],
-            ..Sets::default()
-        };
-        place_typed(&mut sets, vec![window.clone()]);
-        assert_eq!(
-            sets.video5,
-            [tuple.clone(), window.clone()],
-            "with no call on, a typed turn wasn't put ahead of the model calls"
-        );
-        assert!(
-            sets.typed5.is_empty(),
-            "a typed turn was named twice: {sets:?}"
-        );
-        let mut sets = Sets {
-            video5: vec![tuple.clone()],
-            calling: calling(true),
-            ..Sets::default()
-        };
-        place_typed(&mut sets, vec![window.clone()]);
-        assert_eq!(
-            sets.video5,
-            [tuple],
-            "a typed turn went beside a call's video"
-        );
-        assert_eq!(
-            sets.typed5,
-            [window],
-            "during a call a typed turn left best effort"
         );
     }
 

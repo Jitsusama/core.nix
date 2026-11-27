@@ -1245,10 +1245,8 @@ fn sorted(
     now: Instant,
 ) -> classes::Sets {
     let mut sets = classes::read(&options.cgroups);
-    let typed;
-    (sets.bulk5, typed) = classes::by_typing(&options.cgroups, sessions);
+    (sets.bulk5, sets.typed5) = classes::by_typing(&options.cgroups, sessions);
     sets.calling = call.heed(now, &options.users);
-    classes::place_typed(&mut sets, typed);
     sets.first = first.heed(&options.cgroups, &options.users);
     sets
 }

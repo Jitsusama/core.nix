@@ -440,10 +440,7 @@ def test_apps(connection: Connection) -> None:
 
 
 def test_pi_sessions(connection: Connection) -> None:
-    """A pi window running a turn nobody typed goes in bulk, and one a person typed as video.
-
-    A typed turn goes as video while no call is on, as here, ahead of agents' model calls,
-    which go as best effort to the same origin.
+    """A pi window running a turn nobody typed goes in bulk, and one a person typed doesn't.
 
     The harness keeps /run/user/<uid>/pi/typed/<pid> while a pi runs a typed turn, so
     the shaper reads it through its sandbox. A send is run inside the window's cgroup, as
@@ -490,8 +487,10 @@ def test_pi_sessions(connection: Connection) -> None:
     connection.still("eth1")
     client.succeed(f"mkdir -p /run/user/1000/pi/typed && touch /run/user/1000/pi/typed/{pid}")
     client.wait_until_fails(listed, timeout=HOLDING)
-    connection.reaches("video", "a typed pi's open connection", send_again, "eth1", LEAST_TRANSFER)
-    connection.reaches("video", "a typed pi", send, "eth1", LEAST_TRANSFER)
+    connection.reaches(
+        "best effort", "a typed pi's open connection", send_again, "eth1", LEAST_TRANSFER
+    )
+    connection.reaches("best effort", "a typed pi", send, "eth1", LEAST_TRANSFER)
     client.succeed(f"rm /run/user/1000/pi/typed/{pid}")
     client.wait_until_succeeds(listed, timeout=HOLDING)
     client.succeed("systemctl -M alice@ --user stop pi-window.service")

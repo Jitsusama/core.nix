@@ -34,10 +34,9 @@
 #
 # The relay runs in background.slice, which the shaper sends in the agents'
 # lane, though it names the relay's own unit apart and sends what it carries
-# as best effort, ahead of agents' uploads and behind a typed turn
-# (modules/shaper/shaper.nft says why). Its connections are the account's
-# own, so they ride the work VPN as pi's did. It holds no credential: each
-# request's own goes as it came.
+# as best effort, ahead of agents' uploads (modules/shaper/shaper.nft says
+# why). Its connections are the account's own, so they ride the work VPN as
+# pi's did. It holds no credential: each request's own goes as it came.
 # A fence keeps the runtime folder from what it runs, so a fenced command
 # can't reach the socket, and the folder mustn't be bound into one: it is a
 # way to the origin with whatever key the asker holds. A unit of the account
@@ -136,9 +135,7 @@ in
           cfg.origin
         ];
         TimeoutStopSec = drainsWithin + 10;
-        # The agents' own slice, never app.slice, where it would be one of
-        # Joel's apps: the shaper names this unit there and sends it as
-        # best effort, behind a turn he typed.
+        # The agents' lane, never app.slice, where it would ride Joel's.
         Slice = "background.slice";
         Restart = "on-failure";
         # It holds every agent's key while it carries a request, so it sees
