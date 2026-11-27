@@ -198,14 +198,19 @@ const WORDS_NOT_TAKEN: &str = "(the words are at the link)";
 
 /// Sends one alert to Joel from himself through `gateway`. It refuses a
 /// mention, so `@here`, `@channel` and `@everyone` in what others wrote
-/// are said as `(at)here` and so on; any other refusal of what they wrote
-/// is met by sending it once more with the words left to the link, so
-/// the title and where still reach his phone. A rate spent is no refusal
-/// of the words, so it's tried again whole the next round.
+/// are said as `(at)here` and so on; any failing of the tool, or a
+/// refusal of it before it ran, is met by sending it once more with the
+/// words left to the link, so the title and where still reach his phone.
+/// Only that second answer is judged, as it holds nothing anyone in Slack
+/// wrote: a rate spent there, Slack refusing the gateway's sign-in, or a
+/// refusal before it ran did nothing, so the alert is tried again whole
+/// the next round.
 ///
 /// The tool's failing promises nothing of whether Slack took the message,
 /// so a second failing is counted as may have gone: two such rounds and
-/// it's given up on, rather than sent twice a round for ten minutes.
+/// it's given up on, rather than sent twice a round for ten minutes. One
+/// that failed before the tool was asked, as a session opened or its
+/// backend was turned on, went nowhere, so it's tried again each round.
 /// It gives the text that went, its mentions said otherwise or its words
 /// left to the link as they were.
 ///
@@ -215,36 +220,63 @@ const WORDS_NOT_TAKEN: &str = "(the words are at the link)";
 pub fn tell_self(gateway: &mut Gateway, alert: Alert) -> Result<String, Missed> {
     let ask = |gateway: &mut Gateway, alert| {
         let said = unmentioned(&text(alert));
-        gateway
-            .call(TO_SELF, &json!({ "message": &said }))
-            .map(|_| said)
+        let called = gateway.call(TO_SELF, &json!({ "message": &said }));
+        (said, called)
     };
-    let sent = match ask(gateway, alert) {
-        Err(Called::Failed(why)) if spent(&why) => Err(Called::NotReached(why)),
-        Err(Called::Failed(_)) if !alert.words.is_empty() => {
+    let (said, sent) = match ask(gateway, alert) {
+        (_, Err(called)) if !alert.words.is_empty() && plainly(gateway, &called) => {
             let plain = Alert {
                 words: WORDS_NOT_TAKEN,
                 ..alert
             };
             ask(gateway, plain)
         }
-        sent => sent,
+        asked => asked,
     };
-    sent.map_err(|called| match called {
-        Called::Failed(why) if spent(&why) => Missed::NotSent(why),
+    let put = gateway.put_to(TO_SELF);
+    sent.map(|_| said).map_err(|called| match called {
+        Called::Unreachable(why) | Called::Unreadable(why) | Called::Failed(why) if !put => {
+            Missed::NotSent(why)
+        }
+        Called::Failed(why) if spent(&why) || refuses_the_sign_in(&why) => Missed::NotSent(why),
         Called::Unreachable(why) | Called::Unreadable(why) | Called::Failed(why) => {
             Missed::Unsure(why)
         }
-        Called::NotReached(why) => Missed::NotSent(why),
+        Called::NotReached(why) | Called::Declined(why) => Missed::NotSent(why),
         Called::Refused => Missed::NotSent("the gateway refused Joel's sign-in".to_owned()),
         Called::NoSignIn(_) => Missed::NotSent("no sign-in to the gateway was given".to_owned()),
     })
 }
 
-/// Whether a tool's failing says Slack's rate was spent, which did nothing.
+/// Whether a send that came back `called` is sent once more without its
+/// words: its tool's failing or refusal, or a failing after the tool was
+/// asked, as its backend was turned on, when nothing had run.
+fn plainly(gateway: &Gateway, called: &Called) -> bool {
+    if gateway.put_to(TO_SELF) {
+        matches!(called, Called::Failed(_) | Called::Declined(_))
+    } else {
+        gateway.asked_of(TO_SELF)
+    }
+}
+
+/// Whether a tool's failing says Slack's rate was spent, which did nothing:
+/// either of Slack's words for it, `ratelimited` and `rate_limited`, or
+/// HTTP's or a person's. It's asked only of a failing to send what nobody
+/// in Slack wrote, so nobody can hold an alert back by saying "rate
+/// limit" in words the gateway won't take.
 fn spent(why: &str) -> bool {
     let why = why.to_ascii_lowercase();
-    why.contains("ratelimited") || why.contains("rate limit")
+    why.split(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+        .any(|word| word == "ratelimited" || word == "rate_limited")
+        || why.contains("rate limit")
+        || why.contains("too many requests")
+}
+
+/// Whether a tool's failing says Slack refused the gateway's sign-in, so
+/// nothing was posted, as the reader's ears tell it.
+fn refuses_the_sign_in(why: &str) -> bool {
+    why.split(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+        .any(crate::deaf::refuses_the_sign_in)
 }
 
 /// The words that mention everyone said so they don't, as the gateway
@@ -425,8 +457,14 @@ mod tests {
     #[test]
     fn only_a_rate_spent_is_said_as_spent() {
         assert!(spent("Slack said: ratelimited"), "Slack's own word");
+        assert!(spent("Slack said: rate_limited"), "Slack's other word");
         assert!(spent("Rate limit exceeded"), "in other words");
+        assert!(spent("429 Too Many Requests"), "in HTTP's");
         assert!(!spent("Slack said: not_allowed"), "a refusal is no rate");
+        assert!(
+            !spent("Slack said: ratelimitedness"),
+            "Slack's words count only whole"
+        );
     }
 
     #[test]

@@ -321,16 +321,10 @@ fn mains_commit_pushing_a_shared_file_past_a_checks_limit_is_refused() {
     let before = checked_before(&candidates, &record, &on_main, &|at: &str| {
         sharing(&files, moved(at))
     });
-    let lands_unchecked = before.speaks_for_the_head();
-    let main_after = if lands_unchecked || holds(merged) {
-        merged
-    } else {
-        mains
-    };
     assert!(
-        holds(own) && holds(main_after),
+        !before.speaks_for_the_head(),
         "ready let a head merge as it stands over main's move past a check's limit: \
-         {main_after} lines on main"
+         {merged} lines on main"
     );
     assert_eq!(
         before,
@@ -340,7 +334,7 @@ fn mains_commit_pushing_a_shared_file_past_a_checks_limit_is_refused() {
 }
 
 #[test]
-fn passes_sharing_main_s_moves_are_read_no_further_than_two() {
+fn passes_sharing_mains_moves_are_read_no_further_than_two() {
     // Each read of a sharing pass diffs what main moved since its base,
     // so a change that passed four times in a day reads two of its
     // sharing passes. Another change's pass, and a commit with no
