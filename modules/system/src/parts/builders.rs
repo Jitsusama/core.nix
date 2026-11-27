@@ -32,7 +32,9 @@ const PROOFS: [&str; 6] = ["none", "unproven", "passing", "failing", "dropped", 
 /// Each builder the answer names, worst first, then by name, with the
 /// words for a side of what in it is worth a look. None where the answer
 /// names none: one from a node too old to say them, or one that couldn't
-/// read them, since the node then writes no builders' line at all.
+/// read them, since the node then writes no builders' line at all. Two
+/// builders whose names are drawn alike are one to the reader and one
+/// record, so only the worse is kept: a fine one never hides a failing one.
 pub fn builders(said: &Value) -> Vec<(Thing, Vec<String>)> {
     let mut read: Vec<(Thing, Vec<String>)> = said
         .pointer("/Ok/Builders")
@@ -40,6 +42,8 @@ pub fn builders(said: &Value) -> Vec<(Thing, Vec<String>)> {
         .map(|all| all.iter().filter_map(builder).collect())
         .unwrap_or_default();
     read.sort_by(|(a, _), (b, _)| b.health.cmp(&a.health).then_with(|| a.name.cmp(&b.name)));
+    let mut named = std::collections::HashSet::new();
+    read.retain(|(thing, _)| named.insert(thing.name.clone()));
     read
 }
 
@@ -64,9 +68,11 @@ fn builder(said: &Value) -> Option<(Thing, Vec<String>)> {
         return None;
     }
     let word = |key: &str| said.get(key).and_then(Value::as_str);
+    // A word as it reads, its hidden characters and padding gone.
+    let drawn = |word: &str| crate::plain::words(word).trim().to_owned();
     let proof = word("said")
-        .map(str::trim)
-        .filter(|said| PROOFS.contains(said));
+        .map(drawn)
+        .filter(|said| PROOFS.contains(&said.as_str()));
     let why = word("said").filter(|_| proof.is_none()).and_then(plain);
     let unknown = |words: String| (Health::Watch, words.clone(), Some(words));
     let lent = said.get("lent").and_then(Value::as_bool) == Some(true);
@@ -83,18 +89,18 @@ fn builder(said: &Value) -> Option<(Thing, Vec<String>)> {
     // state this build knows, so it fails closed as one; only a state the node
     // left out is unheard.
     let state = match said.get("state") {
-        None | Some(Value::Null) => "unknown",
+        None | Some(Value::Null) => "unknown".to_owned(),
         Some(state) => state
             .as_str()
-            .map(str::trim)
+            .map(drawn)
             .filter(|state| plain(state).is_some())
-            .unwrap_or("unreadable"),
+            .unwrap_or_else(|| "unreadable".to_owned()),
     };
-    let (health, says, look) = match state {
+    let (health, says, look) = match state.as_str() {
         "answering" => (Health::Good, format!("answers and {takes}"), None),
         "running" => match &why {
             Some(why) => unknown(format!("runs, its lender saying {why}")),
-            None => running(lent, &takes, proof),
+            None => running(lent, &takes, proof.as_deref()),
         },
         "not running" => (
             Health::Good,
