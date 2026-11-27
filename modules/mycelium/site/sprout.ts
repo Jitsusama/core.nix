@@ -179,6 +179,14 @@ export const unsprouted = (typed: string, on: string | null): string | null => {
   return on && !isMachine(on) ? NO_MACHINE : null;
 };
 
+// The link for words and a machine unsprouted lets through, said once so
+// sproutLink and returned can't hand on different links.
+const linkFor = (typed: string, from: string | null, on: string | null): string => {
+  const link = `mycelium:sprout?words=${encodeURIComponent(sproutWords(typed))}`;
+  const fromLink = isAddress(from) ? `${link}&from=${from}` : link;
+  return on ? `${fromLink}&on=${on}` : fromLink;
+};
+
 /**
  * The link that hands the launcher new work: its words, percent-encoded,
  * the cell it comes from when `from` is an address, and the machine it
@@ -193,13 +201,40 @@ export const sproutLink = (
   typed: string,
   from: string | null,
   on: string | null = null,
-): string | null => {
-  if (unsprouted(typed, on) !== null) {
-    return null;
+): string | null => (unsprouted(typed, on) === null ? linkFor(typed, from, on) : null);
+
+/**
+ * What Return on the line comes to: the machine it would start work on
+ * left the map, and is let go of and said; no link can be given, and why;
+ * or the link that hands the words on, with what to keep to send again.
+ */
+export type Returned =
+  | { readonly kind: "left"; readonly on: string; readonly said: string }
+  | { readonly kind: "refused"; readonly why: string }
+  | { readonly kind: "link"; readonly href: string; readonly kept: Kept };
+
+/**
+ * What Return does with `typed` from `from` on `on`, each already left out
+ * where its tick is cleared, while the map holds `machines`. A machine
+ * that left comes first, so words never go to one the map no longer has,
+ * whatever else is wrong with them; then why no link can be given, so the
+ * map says it rather than hand on nothing; else the link, keeping the words
+ * as typed, since offered brings them back only while the line reads so.
+ */
+export const returned = (
+  typed: string,
+  from: string | null,
+  on: string | null,
+  machines: readonly string[],
+): Returned => {
+  if (on !== null && !keptOnStands(on, machines)) {
+    return { kind: "left", on, said: leftWords(on) };
   }
-  const link = `mycelium:sprout?words=${encodeURIComponent(sproutWords(typed))}`;
-  const fromLink = isAddress(from) ? `${link}&from=${from}` : link;
-  return on ? `${fromLink}&on=${on}` : fromLink;
+  const why = unsprouted(typed, on);
+  if (why !== null) {
+    return { kind: "refused", why };
+  }
+  return { kind: "link", href: linkFor(typed, from, on), kept: { words: typed, from, on } };
 };
 
 /**
