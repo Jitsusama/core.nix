@@ -209,6 +209,9 @@ struct Daemon {
     since: u64,
     /// The copy on the clipboard now, cleared when its time is up.
     copied: Option<Child>,
+    /// Where a copier is asked to start, by the one thread that starts
+    /// them all (`copiers`).
+    copiers: Sender<Starting>,
     /// Whether an audit is running, so a second is refused rather than
     /// reading every password again beside it.
     auditing: bool,
@@ -292,6 +295,7 @@ fn daemon(managers: &str, words: Option<&str>) -> Result<(), Failure> {
             took: VecDeque::new(),
             since: now(),
             copied: None,
+            copiers: copiers(),
             auditing: false,
             kept,
             rows: Rows {
@@ -1302,17 +1306,14 @@ fn copy(shared: &Shared, value: &str) -> Result<u64, String> {
         .ok()
         .and_then(|clears| clears.parse().ok())
         .map_or(CLEARS, Duration::from_millis);
-    let mut child = Command::new(program)
-        .args([
-            "--sensitive",
-            "--foreground",
-            "--type",
-            "text/plain;charset=utf-8",
-        ])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
+    let (told, started) = mpsc::channel();
+    lock(shared)
+        .copiers
+        .send((program, told))
+        .map_err(|_| "couldn't copy: nothing is left to start a copier".to_owned())?;
+    let mut child = started
+        .recv()
+        .map_err(|_| "couldn't copy: nothing is left to start a copier".to_owned())?
         .map_err(|why| format!("couldn't copy: {why}"))?;
     if let Some(mut input) = child.stdin.take() {
         input
@@ -1488,6 +1489,62 @@ const TYPIST_PATIENCE: Duration = Duration::from_secs(10);
 /// Why a secret holding a control character, such as a line break, isn't
 /// typed.
 const KEYS_IN_IT: &str = "it holds a line break or tab, which would be typed as a key";
+
+/// An ask to start the copier at a path, and where its start is told.
+type Starting = (String, Sender<std::io::Result<Child>>);
+
+/// Starts every copier from one thread that runs as long as the daemon,
+/// each told to end as that thread does, so a copy goes with the daemon
+/// however it ends: the shell starts a new daemon at once, which knows
+/// of no copy to clear, and a copier left behind would hold the password
+/// on the clipboard while the foot and the margin say it's gone. Each
+/// ask's own thread ends as it answers, so a copier started there would
+/// end at once. Only the copier is started here: the secret is written
+/// to it by the ask that read it, and never crosses to this thread.
+fn copiers() -> Sender<Starting> {
+    let (asked, starting) = mpsc::channel::<Starting>();
+    std::thread::spawn(move || {
+        for (program, told) in starting {
+            let _ = told.send(copier_started(&program));
+        }
+    });
+    asked
+}
+
+/// The copier at `program`, holding in the foreground what it's given,
+/// marked sensitive so a clipboard history leaves it out, and killed as
+/// the thread starting it ends: it has nothing to tidy, and the
+/// compositor clears the clipboard as it goes.
+fn copier_started(program: &str) -> std::io::Result<Child> {
+    let daemon = std::process::id();
+    let mut command = Command::new(program);
+    command
+        .args([
+            "--sensitive",
+            "--foreground",
+            "--type",
+            "text/plain;charset=utf-8",
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    // SAFETY: prctl and getppid are async-signal-safe and touch only the
+    // child.
+    unsafe {
+        command.pre_exec(move || {
+            if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL, 0, 0, 0) != 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            // A daemon that ended before the signal was asked for sends
+            // none, so the copier holds nothing past it.
+            if u32::try_from(libc::getppid()).ok() != Some(daemon) {
+                return Err(std::io::Error::other("the daemon has ended"));
+            }
+            Ok(())
+        });
+    }
+    command.spawn()
+}
 
 /// How long a manager may take to give every password: 1Password asks
 /// Joel to let it in first where its leave has lapsed, as letting in does.

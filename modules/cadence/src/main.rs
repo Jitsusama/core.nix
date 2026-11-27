@@ -369,10 +369,7 @@ fn tell_reverted(
     now: i64,
 ) -> io::Result<()> {
     let path = folder.join("reverted.json");
-    let mut told: reverted::Told = fs::read(&path)
-        .ok()
-        .and_then(|b| serde_json::from_slice(&b).ok())
-        .unwrap_or_default();
+    let mut told = reverted::Told::read(&path)?;
     let findings = net.join("findings");
     let reverts = reverted::reverts(&findings, now - 3600);
     let unrun = unrun::unrun(&findings, now - 3600);

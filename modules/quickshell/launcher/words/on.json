@@ -565,8 +565,8 @@
     {
       "id": "for-you:kind:agent",
       "in": "on:waiting",
-      "name": "Agents Asking",
-      "term": "Desktop/agents asking",
+      "name": "Agents",
+      "term": "Agents/agent",
       "glyph": "agent"
     },
     {

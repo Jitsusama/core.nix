@@ -339,6 +339,10 @@ QVariantMap Heap::weigh() const {
     const std::optional<std::size_t> resident = residentHeld(*manager);
     const std::optional<std::size_t> freeObjects = freePages(manager->blockAllocator);
     const std::optional<std::size_t> freeShapes = freePages(manager->icAllocator);
+    // A chunk the kernel won't say the pages of makes free unknown, rather
+    // than nothing, as it does resident.
+    const double freeMB =
+        freeObjects && freeShapes ? megabytes(*freeObjects + *freeShapes) : -1.0;
     return {
         {QStringLiteral("live"), megabytes(manager->getRegularItemsMem() + large)},
         {QStringLiteral("held"), megabytes(manager->getAllocatedMem())},
@@ -347,9 +351,7 @@ QVariantMap Heap::weigh() const {
         {QStringLiteral("collectsAt"), megabytes(manager->heldBeforeCollecting())},
         {QStringLiteral("collectsOutsideAt"), megabytes(manager->unmanagedHeapSizeGCLimit)},
         {QStringLiteral("outside"), megabytes(manager->unmanagedHeapSize)},
-        // A chunk the kernel won't say the pages of makes free unknown, rather
-        // than nothing, as it does resident.
-        {QStringLiteral("free"), freeObjects && freeShapes ? megabytes(*freeObjects + *freeShapes) : -1.0},
+        {QStringLiteral("free"), freeMB},
     };
 }
 
