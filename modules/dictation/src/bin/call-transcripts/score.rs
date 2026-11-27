@@ -270,7 +270,19 @@ fn score_meeting(speech: &mut Parakeet, meeting: &Meeting) -> Result<(Scored, Ti
             .flat_map(|line| said(&line.text))
             .collect()
     };
-    let (cut, cuts) = echo::cut_echoes(&lines, &word_times, said::spoken);
+    let their_sound = &sounds[index(Side::Theirs)];
+    let loud = |word: &Word| {
+        let gap = loudest_before(their_sound, word.at) - word.level;
+        (gap >= SOUND).then_some(gap)
+    };
+    let (cut, cuts) = echo::cut_echoes_heard(&lines, &word_times, said::spoken, loud);
+    println!(
+        "{name} lab: words cut by level, sound at {SOUND} dB: {}",
+        cuts.iter()
+            .filter(|cut| cut.below.is_some())
+            .map(|cut| cut.text.split_whitespace().count())
+            .sum::<usize>()
+    );
     for taken in &cuts {
         println!(
             "{name}: Joel's words at {} taken for an echo, {}: {}",
@@ -358,9 +370,14 @@ fn lab_kept(
         };
         let step = |db: f32| ((db / 5.0).floor() * 5.0) as i32;
         let voice = voice.map_or("unknown".to_owned(), |v| step(v).to_string());
-        let key = format!("{whose} kept, {why}, below theirs {} voice {voice}", step(below));
+        let key = format!(
+            "{whose} kept, {why}, below theirs {} voice {voice}",
+            step(below)
+        );
         *counts.entry((key, why)).or_default() += 1;
-        *counts.entry((format!("{whose} kept, {why}"), "")).or_default() += 1;
+        *counts
+            .entry((format!("{whose} kept, {why}"), ""))
+            .or_default() += 1;
         if let Some(&level) = levels.get(&at) {
             let above = step(loudest_before(their_sound, at) - level);
             let key = format!("{whose} kept, sound above {above}");
@@ -373,6 +390,10 @@ fn lab_kept(
         println!("{name} lab: {key}: {count}");
     }
 }
+
+/// Lab only: how far their sound must stand above a word of his for it
+/// to be cut as their echo, in dB.
+const SOUND: f32 = 20.0;
 
 /// Lab only: the loudest quarter second of `sound` starting from a
 /// second before `at` to three tenths after, in 50 ms steps, in dB of

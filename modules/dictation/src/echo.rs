@@ -301,6 +301,17 @@ pub fn cut_echoes<S: BuildHasher>(
     words: &HashMap<usize, Vec<Word>, S>,
     tidy: impl Fn(&str) -> Option<String>,
 ) -> (Vec<Line>, Vec<Cut>) {
+    cut_echoes_heard(lines, words, tidy, |_| None)
+}
+
+/// Lab only: `cut_echoes`, also cutting each word of his that `loud`
+/// says their sound stands far enough above, by how far.
+pub fn cut_echoes_heard<S: BuildHasher>(
+    lines: &[Line],
+    words: &HashMap<usize, Vec<Word>, S>,
+    tidy: impl Fn(&str) -> Option<String>,
+    loud: impl Fn(&Word) -> Option<f32>,
+) -> (Vec<Line>, Vec<Cut>) {
     let mut theirs: Vec<Word> = lines
         .iter()
         .enumerate()
@@ -331,7 +342,15 @@ pub fn cut_echoes<S: BuildHasher>(
             .zip(mine)
             .map(|((by_spelling, by_level), word)| {
                 let below = |j: usize| (j, Some(theirs[j].level - word.level));
-                by_spelling.map(|j| (j, None)).or(by_level.map(below))
+                let heard = || {
+                    let last = theirs.len().checked_sub(1)?;
+                    let j = theirs.partition_point(|their| their.at < word.at).min(last);
+                    loud(word).map(|gap| (j, Some(gap)))
+                };
+                by_spelling
+                    .map(|j| (j, None))
+                    .or(by_level.map(below))
+                    .or_else(heard)
             })
             .collect();
         if echoes.iter().all(Option::is_none) {
