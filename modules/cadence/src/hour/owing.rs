@@ -262,13 +262,13 @@ fn told_late_asked(m: &Measure, says: &str) -> Vec<Filed> {
 /// over, or once the class is found on fewer; a case after that brings the
 /// same line back, counted as reopened. The class is quoted, since an
 /// unfolded one is in a sender's own words, so it never reads as
-/// cadence's. A measure that couldn't read the mesh asks nobody: its line
-/// names no class.
+/// cadence's. A line saying the mesh couldn't be read, or what was read
+/// couldn't be kept, asks nobody: it names no class.
 fn causes_asked(m: &Measure) -> Vec<Filed> {
     m.behind
         .iter()
         .filter_map(|line| line.rsplit_once(" · "))
-        .filter(|(line, _)| causes::class_of(line) != "unread")
+        .filter(|(line, _)| !causes::names_no_class(line))
         .map(|(line, owner)| {
             let class = causes::class_of(line);
             let found = line.get(class.len() + 1..).unwrap_or_default().trim();
@@ -385,7 +385,7 @@ fn back_in(key: &str, measures: &[Measure]) -> bool {
             .is_some_and(|m| {
                 !m.behind
                     .iter()
-                    .any(|line| causes::class_of(line) == "unread")
+                    .any(|line| causes::class_of(line) == causes::UNREAD)
                     && !m.behind.iter().any(|line| causes::class_of(line) == class)
             });
     }

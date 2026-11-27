@@ -108,10 +108,11 @@ pub fn owe(ledger: &mut Vec<Entry>, owed: Owed, date: &str, now: i64) {
         return;
     }
     // A drag that closed and is due again is the same drag come back, so
-    // its line reopens, counted, as a fix of cadence's own that didn't
-    // hold does, rather than a second line that reads as new. It takes
-    // today as its first day, as a new line would, so an ask made once a
-    // day still reads as made today.
+    // its line reopens, counted, rather than a second line that reads as
+    // new. Unlike a finding of cadence's own, it takes today as its first
+    // day, as a new line would, so an ask made once a day still reads as
+    // made today; when it first opened is lost, and `reopened` says how
+    // often it has come back.
     if owed.kind == "drag"
         && let Some(entry) = ledger
             .iter_mut()
@@ -127,6 +128,8 @@ pub fn owe(ledger: &mut Vec<Entry>, owed: Owed, date: &str, now: i64) {
         entry.owner = Some(owed.owner);
         entry.due = owed.due;
         entry.words = owed.says;
+        entry.evidence = evidence;
+        entry.fell_when = fell_when;
         date.clone_into(&mut entry.last);
         entry.last_to = now;
         entry.hub = None;
@@ -495,6 +498,7 @@ mod tests {
             let again = Owed {
                 due: DUE + 3 * DAY,
                 says: format!("{key} is back"),
+                owner: "T".to_owned(),
                 ..drag()
             };
             owe(&mut ledger, again, "d3", 3 * DAY);
@@ -518,6 +522,11 @@ mod tests {
                 ),
                 (DUE + 3 * DAY, format!("{key} is back").as_str(), None, None),
                 "{key} reopened kept its closed run's date, words or fix: {entry:?}"
+            );
+            assert_eq!(
+                (entry.owner.as_deref(), entry.evidence.as_str()),
+                (Some("T"), "filed by T with `cadence owe`"),
+                "{key} reopened with a new owner still named the old: {entry:?}"
             );
             assert!(
                 !entry.late && entry.put_to.is_empty(),

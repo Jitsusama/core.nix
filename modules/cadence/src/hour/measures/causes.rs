@@ -129,7 +129,7 @@ pub fn read(state_home: &Path, folder: &Path, now: i64, keeps: bool) -> Measure 
     let unread = |why: &str| Measure {
         now: 1.0,
         behind: vec![format!(
-            "unread: {why}, so no cause line could be read · {KEEPER}"
+            "{UNREAD}: {why}, so no cause line could be read · {KEEPER}"
         )],
         ..recurring(&[], now)
     };
@@ -205,20 +205,43 @@ pub fn read(state_home: &Path, folder: &Path, now: i64, keeps: bool) -> Measure 
     cases.sort();
     cases.dedup();
     cases.retain(|case| case.at > now - KEPT_FOR);
-    if keeps {
-        let next = Kept {
-            v: VERSION,
-            through_ms: now * 1000,
-            cases: cases.clone(),
-        };
-        // Unkept, the next hour reads the same messages again, so a write
-        // that fails loses nothing but time.
-        if let Ok(text) = serde_json::to_string(&next) {
-            let _ = write_whole(&kept_at, &text);
-        }
-    }
+    // Unkept, the next hour reads the same messages again, at the cost of
+    // a week's files, and a case the mesh lets go meanwhile is lost; so
+    // the card says so, though it names no class to ask of anyone.
+    let unkept = keeps
+        .then(|| {
+            let next = Kept {
+                v: VERSION,
+                through_ms: now * 1000,
+                cases: cases.clone(),
+            };
+            serde_json::to_string(&next)
+                .map_err(|error| error.to_string())
+                .and_then(|text| write_whole(&kept_at, &text).map_err(|error| error.to_string()))
+                .err()
+        })
+        .flatten();
     cases.extend(reviewed(&review));
-    recurring(&cases, now)
+    let mut m = recurring(&cases, now);
+    if let Some(why) = unkept {
+        m.behind.push(format!(
+            "{UNKEPT}: what this hour read couldn't be kept ({why}), so the next reads the \
+             week again · {KEEPER}"
+        ));
+    }
+    m
+}
+
+/// What a measure's line opens with when it names no class: the mesh
+/// couldn't be read, or what was read couldn't be kept.
+pub const UNREAD: &str = "unread";
+pub const UNKEPT: &str = "unkept";
+
+/// Whether a line of the measure names no class, only that it couldn't
+/// read or keep, so it asks nobody for a fix.
+#[must_use]
+pub fn names_no_class(line: &str) -> bool {
+    [UNREAD, UNKEPT].contains(&class_of(line))
 }
 
 /// The classes in `cases` found on `AT_LEAST` changes or more in the week
