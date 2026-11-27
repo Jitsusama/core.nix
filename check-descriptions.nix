@@ -5530,6 +5530,11 @@
     slow key's line says how many letters, a slow step's keeping its arrow, and a key the
     launcher names itself, such as page down, is said whole
   '';
+  the-launcher-keys-and-tells-the-timers = ''
+    a timer the daemon keys as one of the launcher's own kinds is a row keyed under the node's
+    row:, its acts asking by the record's own key, and what the daemon refuses of a timer, a
+    typed start or the stopwatch is told in the foot by its name and what wasn't done
+  '';
   the-launcher-lands-where-it-did = ''
     a thing is one row, the same letters keep their row, one slip teaches nothing
   '';
@@ -6083,6 +6088,11 @@
     a letter of Hebrew, Arabic or CJK asked for in any of the theme's faces is drawn from the
     script face's family for that script, not DejaVu Sans, and each cut named for one script beside
     the serif or mono face is installed and has that script's letter
+  '';
+  the-selections-rows-keep-the-records-key = ''
+    a pi-verbs record keyed as one of the launcher's own kinds is a row keyed under the node's
+    row:, what its Return posed is held by the record's own key, and its answer, standing in
+    the row's place, keeps the row's key
   '';
   the-serif-is-its-variable-files = ''
     asked for the theme's serif face, the machine's fontconfig lists its two variable files and no

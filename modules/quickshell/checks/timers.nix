@@ -2,13 +2,71 @@
 # folder's checks.nix gathers with every other place's; its opening comment says
 # why each place keeps its own.
 {
+  account,
+  copied,
+  graphical,
   noFonts,
   passesClippy,
   pkgs,
+  qs,
   shellFolderLint,
+  singleton,
   ...
 }:
 {
+  # A timer's row is kept under the node's row: though the daemon keys it as
+  # one of the launcher's own kinds, while its acts ask by the record's own
+  # key, and what the daemon refuses of a timer, a typed start or the
+  # stopwatch is told in the foot by its name and what wasn't done
+  # (modules/quickshell/tests/timers.qml), with the timers daemon's held
+  # timers stood in, answering each ask as the case says.
+  the-launcher-keys-and-tells-the-timers =
+    let
+      held = singleton "HeldTimers.qml" ''
+        property var timers: []
+        property var stopwatch: null
+        property var asked: []
+        property var refusal: null
+        property var started: null
+        signal heard(var keys)
+        function timer(key) { return null; }
+        function asking(act, key, then) {
+          asked = asked.concat([key === "" ? act : `''${act} ''${key}`]);
+          then?.(refusal);
+        }
+        function start(span, name, then) { then?.(started); }
+        function pause(key, then) { asking("pause", key, then); }
+        function resume(key, then) { asking("resume", key, then); }
+        function again(key, then) { asking("again", key, then); }
+        function add(key, span, then) { asking("add", key, then); }
+        function end(key, then) { asking("end", key, then); }
+        function run(then) { asking("run", "", then); }
+        function stop(then) { asking("stop", "", then); }
+        function lap(then) { asking("lap", "", then); }
+        function reset(then) { asking("reset", "", then); }
+      '';
+    in
+    pkgs.runCommandLocal "the-launcher-keys-and-tells-the-timers" { } ''
+      mkdir launcher
+      ${copied [
+        "Words.qml"
+        "launcher/Becoming.js"
+        "launcher/Provider.qml"
+        "launcher/Timers.qml"
+        "launcher/words.json"
+      ]}
+      cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+      cp ${../tests/timers.qml} shell.qml
+      cp ${../../../tests/lib/Expect.js} Expect.js
+      cp ${held} HeldTimers.qml
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      mkdir -m 700 $XDG_RUNTIME_DIR
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      timeout 60 ${qs} -p shell.qml
+      touch $out
+    '';
+
   # A timer's span and name are read from what's typed after "timer", its time
   # left told as a clock and its span in its largest units, and timers listed
   # rung first, and what Now's Timers row says, as

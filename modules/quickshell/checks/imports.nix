@@ -261,6 +261,11 @@
     "pieces/Holding.js"
   ];
   "launcher/NowGroups.js" = [ "launcher/Order.js" ];
+  "launcher/OnSelection.qml" = [
+    "Fuzzy.js"
+    "launcher/OnSelection.js"
+    "launcher/Presented.js"
+  ];
   "launcher/Orchestrators.qml" = [
     "launcher/Order.js"
   ];
@@ -350,6 +355,11 @@
   ];
   "launcher/TalkAnswers.js" = [ "TalkLine.js" ];
   "launcher/TalkOn.js" = [ "launcher/Order.js" ];
+  "launcher/Timers.qml" = [
+    "Fuzzy.js"
+    "launcher/Presented.js"
+    "launcher/Timing.js"
+  ];
   "launcher/Today.qml" = [
     "launcher/Moment.js"
     "launcher/NowDrawers.js"
