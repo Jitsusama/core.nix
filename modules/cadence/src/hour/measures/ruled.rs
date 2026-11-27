@@ -637,7 +637,9 @@ fn wrapped(text: &str) -> (Vec<&str>, Vec<bool>) {
     for (at, &line) in lines.iter().enumerate() {
         let these = sentences(line);
         let goes_on = !line.trim_end().ends_with(['.', '?', '!'])
-            && lines.get(at + 1).is_some_and(|next| !next.trim().is_empty());
+            && lines
+                .get(at + 1)
+                .is_some_and(|next| !next.trim().is_empty());
         cut.extend((1..=these.len()).map(|n| goes_on && n == these.len()));
         said.extend(these);
     }
