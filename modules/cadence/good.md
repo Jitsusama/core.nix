@@ -312,10 +312,11 @@ holding a space, as one broken across two lines does, is counted too.
 ## The Node's Site Coming Live
 
 - Measures: `site:live`
-- Target: 2 seconds, the hour's median wait for every watch the site's page opens to answer.
+- Target: 2 seconds, the hour's median wait for the four watches the site's page waits on to
+  answer.
 - Joel, 26 Nov 16:42: "we need some set of cells maintaining the health of mycelium at all
   timees"
-- Over costs him: the page he reads the mycelium by shows nothing new until its slowest watch
+- Over costs him: the page he reads the mycelium by lays no map until the slowest of those
   answers, as at 22:40 on 26 November, when the message watch took 3.5 s.
 
 ## Broken on Main

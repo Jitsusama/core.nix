@@ -265,8 +265,8 @@ in
       description = ''
         The node's feed as the site's page opens it, which cadence-site
         samples every ten minutes, as site.sh says, for the hour to hold
-        the median wait for every watch to answer to its ceiling; none
-        samples nothing.
+        the median wait for the watches the page waits on to its
+        ceiling; none samples nothing.
       '';
     };
     path = lib.mkOption {
