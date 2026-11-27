@@ -183,20 +183,30 @@ pub(super) fn kept(
         if tries >= TRIES {
             let told = tell.thread(thread, *from);
             if told || tries >= UNTOLD {
+                // So the journal tells one Joel was told of from one he wasn't.
+                let untold = if told {
+                    ""
+                } else {
+                    ", and his row in For You saying so couldn't be written"
+                };
                 eprintln!(
                     "<3>couldn't read {} in {tries} tries since {}, each failing or answered gone, \
-                     so what was said there from {} on goes unjudged: look there for a stop",
+                     so what was said there from {} on goes unjudged{untold}: look there for a \
+                     stop",
                     thread.key(),
                     github::stamp(at),
                     github::stamp(*from)
                 );
                 continue;
             }
-            eprintln!(
-                "<4>{} is owed still, as Joel's row saying it went unread isn't written, until \
-                 the row is or it's failed {UNTOLD} tries",
-                thread.key()
-            );
+            // Said only on a try, not each round a busy thread is listed.
+            if chosen {
+                eprintln!(
+                    "<4>{} is owed still, as Joel's row saying it went unread isn't written, \
+                     until the row is or it's failed {UNTOLD} tries",
+                    thread.key()
+                );
+            }
         }
         // Asked the round after a first failure, then after waits doubling;
         // one asked early, or not at all, is a round nearer due.
