@@ -135,6 +135,13 @@ const DEPARTED: usize = 4;
 /// joining or on (`dbus_new_handlers.c`, 2.12).
 const NOT_CONNECTED: &str = "fi.w1.wpa_supplicant1.NotConnected";
 
+/// What wpa_supplicant answers a move to an access point it no longer
+/// holds, having not heard it for 180 s (`wpas_dbus_handler_roam` in
+/// hostap's `dbus_new_handlers.c`): the name every bad argument shares,
+/// and words only this case says.
+const INVALID_ARGS: &str = "fi.w1.wpa_supplicant1.InvalidArgs";
+const BSS_FORGOTTEN: &str = "Target BSS not found";
+
 /// wpa_supplicant's name on the bus.
 const SUPPLICANT: WellKnownName<'static> =
     WellKnownName::from_static_str_unchecked("fi.w1.wpa_supplicant1");
@@ -1610,6 +1617,12 @@ fn refused(failure: store::Failure) -> Refused {
     }
 }
 
+/// Whether wpa_supplicant refused a move, by its error's name and words,
+/// as it no longer holds the access point asked for.
+fn forgot(name: &str, said: Option<&str>) -> bool {
+    name == INVALID_ARGS && said == Some(BSS_FORGOTTEN)
+}
+
 /// How often a card on a network reads its link while someone asks for a
 /// network in detail.
 const POLLING: Duration = Duration::from_secs(2);
@@ -3079,6 +3092,10 @@ impl Wifid<'_> {
             }
         };
         if let Err(error) = roamed.await {
+            let forgotten = matches!(
+                &error,
+                zbus::Error::MethodError(name, said, _) if forgot(name.as_str(), said.as_deref())
+            );
             if let Some(before) = before {
                 let to = before.to().to_owned();
                 println!("<6>{card} keeps on its move to {to}, as the move to {bssid} failed");
@@ -3092,6 +3109,15 @@ impl Wifid<'_> {
             } else {
                 self.together(&card, joining != Some(card.as_str())).await;
                 self.let_go(&card, false).await;
+            }
+            // One wpa_supplicant forgot is out of reach as one wifid
+            // doesn't hear is, so a chooser keeps it off as never reached
+            // rather than taking the move as never asked and asking again.
+            if forgotten {
+                println!(
+                    "<6>{card} didn't move to {bssid}, which wpa_supplicant no longer holds"
+                );
+                return Err(Refused::NotNearby);
             }
             return Err(Refused::Failed {
                 reason: format!("{card} didn't move to {bssid}: {error}"),
@@ -3994,6 +4020,26 @@ impl Wifid<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_move_to_a_point_wpa_supplicant_forgot_is_told_from_other_bad_asks() {
+        assert!(
+            forgot(INVALID_ARGS, Some("Target BSS not found")),
+            "a move to a forgotten point wasn't refused as out of reach"
+        );
+        assert!(
+            !forgot(INVALID_ARGS, Some("02:00:00:00:0x:00")),
+            "a malformed address was taken for a forgotten point"
+        );
+        assert!(
+            !forgot(INVALID_ARGS, None),
+            "an argument refused with no words was taken for a forgotten point"
+        );
+        assert!(
+            !forgot(NOT_CONNECTED, Some("Target BSS not found")),
+            "another refusal was taken for a forgotten point"
+        );
+    }
 
     #[test]
     fn a_card_is_gone_under_its_own_path_or_any_above_it_alone() {
