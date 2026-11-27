@@ -407,8 +407,11 @@ export interface Named {
  * as another's told name is, by their whole keys until none are.
  */
 export const toldApart = (networks: readonly Named[]): ReadonlyMap<string, string> => {
-  const names = new Map(networks.map((n) => [n.key, n.name]));
-  tell(networks, names, (n) => (n.carries && n.carries !== n.name ? `: ${n.carries}` : ""));
+  const names = new Map(networks.map((n) => [n.key, asDrawn(n.name)]));
+  tell(networks, names, (n) => {
+    const carries = asDrawn(n.carries);
+    return carries && carries !== asDrawn(n.name) ? `: ${carries}` : "";
+  });
   tell(networks, names, (n) => ` ${idHint(n)}`);
   // Keys are unique, so each pass leaves fewer alike; one per network
   // bounds it whatever the titles say.
@@ -513,8 +516,17 @@ const hintedLabel = (
 ): string => {
   const hint = idHint(n);
   const left = room - hint.length - 1;
-  return left < LEAST_NAME ? clip(hint, room) : `${clip(n.name, left)} ${hint}`;
+  return left < LEAST_NAME ? clip(hint, room) : `${clip(asDrawn(n.name), left)} ${hint}`;
 };
+
+// Any run of spaces, tabs or line breaks.
+const SPACES = /\s+/gu;
+
+/**
+ * A name as a page draws it, each run of spaces as one and none at its
+ * ends, so two that read alike there are alike here too.
+ */
+const asDrawn = (text: string): string => text.replace(SPACES, " ").trim();
 
 /** A network's id as a hint: the part of its key after its kind. */
 const idHint = (n: Named): string => `(${n.key.slice(n.key.indexOf(".") + 1).toUpperCase()})`;
