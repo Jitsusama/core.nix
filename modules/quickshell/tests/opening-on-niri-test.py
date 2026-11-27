@@ -158,11 +158,18 @@ COLLECTED_AFTER = timedelta(seconds=1)
 
 # How long after a start every source here has first answered: what warming once waited out by
 # beginning at 6 s. The restart case passed waiting 5 s past home kept (2026-11-12), but on a
-# gate's loaded builder Networks, Traffic and Displays answered later still, so past it the
-# case waits until no source has said a change for QUIET, for at most SETTLED.
+# gate's loaded builder some sources answered later still, so past it the case waits until no
+# source outside CAUGHT_UP has said a change for QUIET, for at most SETTLED.
 ANSWERED = timedelta(seconds=6)
 QUIET = timedelta(seconds=2)
 SETTLED = timedelta(seconds=30)
+
+# The sources that read what they show late, past home being kept, so the first chord after a
+# restart may still catch up their rows. No wait settles them, so none waits on them: on a
+# loaded gate's builder that chord made 4, 3 and 4 of their rows after the quiet (2026-11-26),
+# and Traffic says no change at all while the launcher is shut, so a wait on each having said
+# one ran out every time (#6890's run, 2026-11-26).
+CAUGHT_UP = ("networks", "traffic", "displays")
 
 # How long after his first chord into a restart Joel, seeing nothing open, presses it again.
 PRESSED_AGAIN = timedelta(milliseconds=300)
@@ -746,19 +753,35 @@ def test_a_viewers_command_line_makes_no_rows(shell: Shell) -> None:
     assert not whole, f"a viewer's command line was said as home opened whole: {whole}"
 
 
-def test_a_chord_first_after_a_restart_makes_only_its_places_rows(shell: Shell) -> None:
-    """The first chord after a restart, with home kept as the shell started, makes only its rows.
+def test_a_chord_first_after_a_restart_searches_no_more_than_a_later_one(shell: Shell) -> None:
+    """The first chord after a restart searches no more than a later one, home kept as it started.
 
     Home kept as the shell started wasn't counted as kept for an opening into a place, so the
     first chord after each switch found home again whole on its way into the place, as no
-    later one does.
+    later one does. Home found again says no line of its own on a chord into a place ("home
+    opened whole" is a home chord's), and makes no rows where its sources haven't changed
+    since warming found it, but it always runs a search, which the launcher counts: the first
+    chord's first try may run no more searches than a later chord into the same place, opened
+    once home is kept again. Its rows aren't held. With home found again put back, a check on
+    other sources' rows passed (#6890's run, 2026-11-26), while a change a source says late
+    makes its row on whichever chord follows, as Spend's 1 row failed one (z6569, 2026-11-27).
     """
     restarted = time.monotonic()
     shell.restart()
     shell.launcher_until(lambda shown: shown.get("kept"))
     answered_since(shell, restarted)
-    made = made_by_others(shell, "windows")
-    assert not made, f"first into Windows after a restart, other sources made rows: {made}"
+    made, first, tries = opened_into(shell, "windows")
+    shell.close_launcher()
+    shell.launcher_until(lambda shown: not shown["open"] and shown.get("kept"))
+    _, later, _ = opened_into(shell, "windows")
+    assert later >= 1, (
+        f"a later chord into Windows searched {later} times, so searches can't show home found"
+    )
+    assert first <= later, (
+        f"first into Windows after a restart searched {first} times on its first try, a later"
+        f" chord {later}, as home found again would; it took {tries} tries, the last making"
+        f" other sources' rows: {made}"
+    )
 
 
 def test_a_chord_first_after_a_restart_is_drawn_from_its_place_kept_as_it_started(
@@ -1442,37 +1465,58 @@ def test_a_restart_after_a_switch_starts_from_files_compiled_before_it(shell: Sh
 
 
 def answered_since(shell: Shell, restarted: float) -> None:
-    """Wait until every source has first answered since the restart at `restarted`.
+    """Wait until every source outside CAUGHT_UP has first answered since the restart.
 
-    Home and the chords' places are kept a second and a half after a start, before Networks
-    and Displays first answer here, so the next opening's fill makes their rows again, as it
-    catches up any source changed since it was kept: 6 here, which aren't what this counts.
-    It waits out ANSWERED, then until the changes each source has said hold still for QUIET.
+    Home and the chords' places are kept a second and a half after a start, and a source that
+    answers after that would leave its place to be searched again, or its rows made again, by
+    the next chord, which aren't what the case counts. It waits out ANSWERED from `restarted`,
+    then until the changes each such source has said hold still for QUIET, for at most
+    SETTLED. CAUGHT_UP's changes aren't watched, since no wait settles them.
     """
+
+    def changes() -> dict[str, int]:
+        said = json.loads(shell.as_account(shell.ipc("changed")))
+        return {name: count for name, count in said.items() if name not in CAUGHT_UP}
+
     time.sleep(max(0.0, restarted + ANSWERED.total_seconds() - time.monotonic()))
-    deadline = time.monotonic() + SETTLED.total_seconds()
-    said = json.loads(shell.as_account(shell.ipc("changed")))
+    watched = time.monotonic()
+    deadline = watched + SETTLED.total_seconds()
+    said = changes()
     still = time.monotonic()
     while time.monotonic() - still < QUIET.total_seconds():
         if time.monotonic() > deadline:
-            pytest.fail(f"sources still changing {SETTLED} after a restart: {said}")
+            pytest.fail(
+                f"sources still changing {SETTLED.total_seconds():.0f} s into a watch begun"
+                f" {watched - restarted:.1f} s after a restart: {said}"
+            )
         time.sleep(launcher_on_niri.POLL)
-        now = json.loads(shell.as_account(shell.ipc("changed")))
+        now = changes()
         if now != said:
             said, still = now, time.monotonic()
 
 
 def made_by_others(shell: Shell, place: str) -> dict[str, int]:
-    """Open into the place by its chord, and give the rows each other source made meanwhile.
+    """Open into the place by its chord, and give the rows each other source made meanwhile."""
+    return opened_into(shell, place)[0]
 
-    A try a closing's spots landed in counts nothing of the opening's, so it's closed, its own
-    spots waited for, and made again.
+
+def opened_into(shell: Shell, place: str) -> tuple[dict[str, int], int, int]:
+    """Open into the place by its chord: the rows each other source made, searches and tries.
+
+    A try a closing's spots landed in counts nothing of the opening's rows, so it's closed, its
+    own spots waited for, and made again; the rows are the last try's, and the tries say how
+    many it took. The searches are the first try's whatever follows, since a closing's spots
+    search nothing and only the first chord may find home again.
     """
-    for _ in range(REOPENINGS_TRIED):
+    searches = 0
+    for tries in range(1, REOPENINGS_TRIED + 1):
         began = shell.mark()
         before = json.loads(shell.as_account(shell.ipc("made")))["rows"]
+        searched = launcher_on_niri.searched(shell)
         shell.as_account(shell.ipc("collection", place))
         shell.launcher_ready()
+        if tries == 1:
+            searches = launcher_on_niri.searched(shell) - searched
         after = json.loads(shell.as_account(shell.ipc("made")))["rows"]
         said, _ = shell.said_since(began)
         if not any(line.startswith(SPOTS_MADE_SHUT) for line in said):
@@ -1482,11 +1526,12 @@ def made_by_others(shell: Shell, place: str) -> dict[str, int]:
         shell.reported(SPOTS_MADE_SHUT[0], lambda _: True, closing)
     else:
         pytest.fail(f"a closing's spots were made as each of {REOPENINGS_TRIED} tries opened")
-    return {
+    made = {
         name: rows - before.get(name, 0)
         for name, rows in after.items()
         if name != place and rows > before.get(name, 0)
     }
+    return made, searches, tries
 
 
 def working_spent(opening: Json) -> None:

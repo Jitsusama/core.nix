@@ -184,11 +184,14 @@ const turns = ["one", "two"].map((name) => {
 const turnGate = gate("turn");
 const atOnce = [open("x", [turns[0]]), open("y", [turns[1]]), open("z", [turns[0]])];
 await turnGate.reached;
+// A load that didn't wait would be held at the same gate, so pending says
+// little; that it evaluated nothing of the package says it waited.
 assert.deepEqual(
   await Promise.all(atOnce.slice(1).map((load) => pendingAfter(load, 100))),
   [true, true],
-  "a load didn't wait its turn",
+  "a load waiting its turn ended",
 );
+assert.deepEqual(evaluations(), { turn: 1 }, "a load didn't wait its turn");
 turnGate.putAway();
 turnGate.open();
 const [x, y, z] = await within(Promise.all(atOnce), "loads taking turns never ended");
