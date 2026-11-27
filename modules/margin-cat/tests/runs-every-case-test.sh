@@ -3,7 +3,8 @@
 # stand-in cases a stand-in qml plays out, under a limit of a second of the
 # processor's: a pass, a failure, a case past its own time and one killed
 # from outside with a pass after it, under a guard of a minute by the clock, so a loaded builder
-# slowing the spinning case never makes it a hang; then, under a guard of
+# slowing the spinning case never makes it a hang; a second bash's `time`
+# rounded up to and wrote as 0.:00, read as that second; then, under a guard of
 # three seconds, a hang that stops the run and one that ignores the guard's
 # signal until its kill, each with a case left unrun after it; limits
 # refused as a case is run, past the runner's first try, leaving it unrun; a
@@ -11,6 +12,7 @@
 # with the limit in force said once, wherever this user can't raise a hard
 # limit; limits and guards that aren't whole seconds, refused; and a second
 # scratch file that can't be made, every case left unrun and the first let go.
+# A run whose cases fail lets both go as it ends, each seen made there first.
 # usage: runs-every-case-test.sh <runs-every-case.sh>
 # CAPPED_MUST_RUN, set by the check, fails the run where the capped case
 # can't be shown, rather than leaving it out, so a build passes only having
@@ -60,15 +62,42 @@ EOF
 
 # A mktemp making the runner's first scratch file and refusing its second,
 # read from BASH_ENV as the refusing ulimit is. Each is made in a subshell,
-# so the first leaves a mark in the scratch folder for the second to see.
+# so the first leaves a mark in the scratch folder for the second to see,
+# naming the file it made, so a case can tell one let go from one never made.
+# mktemp's own failure is passed on, whatever the runner's shell options.
 cat >"$here/making-one" <<'EOF'
 mktemp() {
+  local made
   if [ -e "$TMPDIR/.made" ]; then
     echo "mktemp: refused the second" >&2
     return 1
   fi
-  : >"$TMPDIR/.made"
-  command mktemp "$@"
+  made=$(command mktemp "$@") || return
+  echo "$made" >"$TMPDIR/.made"
+  echo "$made"
+}
+EOF
+
+# A mktemp naming each file it makes in a list outside the scratch folder,
+# so a run that leaves that folder empty is seen to have made its files
+# there rather than nowhere.
+cat >"$here/recording" <<EOF
+mktemp() {
+  local made
+  made=\$(command mktemp "\$@") || return
+  echo "\$made" >>"$here/made-ends"
+  echo "\$made"
+}
+EOF
+
+# The timing bash's `time` writes of a case whose second it rounded up to
+# but never carried, its seconds and the clock's each 1.000, read from
+# BASH_ENV as the refusing ulimit is: the runner reads a case's timing as
+# the last line `tail` gives of it, and a function is found before the
+# program of its name.
+cat >"$here/rounding" <<'EOF'
+tail() {
+  echo "0.:00 0.000 0.:00"
 }
 EOF
 
@@ -96,8 +125,10 @@ runs() {
     echo "${each#*:}" >"$folder/${each%%:*}.qml"
   done
   code=0
+  # TMPDIR is set only where scratch is, so a caller without one keeps none.
   said=$(cd "$folder" && { [ -z "$cap" ] || { ulimit -St $((cap - 2)) && ulimit -Ht "$cap"; }; } &&
-    TMPDIR=${scratch:-${TMPDIR-}} BASH_ENV=$start CASE_LIMIT=$limit CASE_GUARD=$guard \
+    { [ -z "$scratch" ] || export TMPDIR=$scratch; } &&
+    BASH_ENV=$start CASE_LIMIT=$limit CASE_GUARD=$guard \
     "$BASH" "$runner" "$here/qml" 2>&1) ||
     code=$?
   echo "$said"
@@ -120,8 +151,23 @@ took() {
     failing "$1.qml never said its time as $2 of its own and $3 by the clock"
 }
 
+# Its two scratch files are made in a folder of its own, which it leaves
+# empty.
+scratch=$here/scratch-ends
+mkdir "$scratch"
+start=$here/recording
 runs ends 1 60 a-passes:pass b-fails:fail c-spins:spin d-dies:die e-after:pass
+start=
+scratch=
 ends 1
+made=()
+[ ! -e "$here/made-ends" ] || mapfile -t made <"$here/made-ends"
+[ "${#made[@]}" = 2 ] || failing "the run made ${#made[@]} scratch files, not 2: ${made[*]}"
+for each in "${made[@]}"; do
+  [[ $each == "$here/scratch-ends/"?* ]] || failing "a scratch file was made elsewhere: $each"
+done
+left=$(ls -A "$here/scratch-ends")
+[ -z "$left" ] || failing "the run left its scratch folder holding: $left"
 holds "b-fails.qml failed, exit code 2"
 holds "c-spins.qml ran past its 1 s of its own time"
 holds "d-dies.qml was killed: out of memory, or past its hard 11 s"
@@ -139,6 +185,15 @@ took c-spins "1|2" "[0-9]+"
 took d-dies 0 "[0-9]+"
 # A kill from outside is no hang, so the run goes on past it.
 took e-after 0 "[0-9]+"
+
+# A second bash rounded up to and wrote as 0.:00 is read as the whole
+# second it is, its own and the clock's, rather than as time unread.
+start=$here/rounding
+runs rounded-up 1 60 a-passes:pass
+start=
+ends 0
+never "time couldn't be read"
+took a-passes 1 1
 
 runs hangs 1 3 e-hangs:hang f-follows:pass
 ends 1
@@ -183,8 +238,14 @@ start=
 scratch=
 ends 1
 holds "the runner couldn't make its scratch files"
+# mktemp's own reason reaches the log, as the runner passes it on.
+holds "mktemp: refused the second"
 never "a-marks.qml"
 [ ! -e "$here/one-scratch-file/a-marks.qml.ran" ] || failing "a-marks.qml ran"
+# A mark never made is said as a failure, rather than ending this run here.
+first=
+[ ! -e "$here/scratch/.made" ] || first=$(<"$here/scratch/.made")
+[[ $first == "$here/scratch/"?* ]] || failing "the stand-in made no first scratch file: '$first'"
 left=$(ls -A "$here/scratch")
 [ "$left" = .made ] || failing "the runner left its scratch folder holding: $left"
 

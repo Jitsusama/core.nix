@@ -104,6 +104,17 @@ ended() {
     echo "$case failed, exit code $code"
   fi
 }
+# A figure `time` gave, as it's meant. Bash rounds a fraction of .9995 s or
+# more up to a thousand thousandths without carrying the second, and writes
+# the digit past 9 as ':', so a case its limit signalled at 1.000 s of its
+# own reads 0.:00; that's the next whole second.
+carried() {
+  if [[ $1 =~ ^([0-9]+)\.:0*$ ]]; then
+    echo "$((BASH_REMATCH[1] + 1)).000"
+  else
+    echo "$1"
+  fi
+}
 cases=(*.qml)
 if [ "${#cases[@]}" = 0 ]; then
   echo "no cases to run in $PWD" >&2
@@ -125,6 +136,9 @@ for case in "${cases[@]}"; do
   # The timing is the last line: bash says a job a signal ended above it.
   timing=$(tail -n 1 "$used")
   read -r user kernel clock <<<"$timing"
+  user=$(carried "$user")
+  kernel=$(carried "$kernel")
+  clock=$(carried "$clock")
   seconds=
   if [[ $user =~ ^[0-9.]+$ && $kernel =~ ^[0-9.]+$ && $clock =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
     seconds=${clock%.*}
