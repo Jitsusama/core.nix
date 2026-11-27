@@ -122,6 +122,25 @@ fn answer(base: &str) -> Result<ExitCode, String> {
     if found.touched.is_empty() {
         return Ok(ExitCode::SUCCESS);
     }
+    say_touched(&found);
+    if found.tests.is_empty() {
+        println!("no VM test it runs moved from {base}, so none runs whole first");
+        return Ok(ExitCode::SUCCESS);
+    }
+    println!("run these VM tests whole before merging, since they moved from {base}:");
+    for test in &found.tests {
+        println!("{}", rules::named(test, &list));
+    }
+    if known.is_none() {
+        println!("(the names are patterns: no list of the checks was found to match them against)");
+    }
+    Ok(ExitCode::SUCCESS)
+}
+
+/// Say which areas `found` touches and what each asks before the merge
+/// beyond its VM tests: a machine's system built, or one VM test sent
+/// through the change.
+fn say_touched(found: &rules::Needs) {
     println!("the change touches");
     for (area, hits) in &found.touched {
         println!("  {area}: {}", hits.join(" "));
@@ -140,18 +159,6 @@ fn answer(base: &str) -> Result<ExitCode, String> {
              subtests with run-subtests --there, with the change's own {area} first on PATH"
         );
     }
-    if found.tests.is_empty() {
-        println!("no VM test it runs moved from {base}, so none runs whole first");
-        return Ok(ExitCode::SUCCESS);
-    }
-    println!("run these VM tests whole before merging, since they moved from {base}:");
-    for test in &found.tests {
-        println!("{}", rules::named(test, &list));
-    }
-    if known.is_none() {
-        println!("(the names are patterns: no list of the checks was found to match them against)");
-    }
-    Ok(ExitCode::SUCCESS)
 }
 
 /// Whether `needs` may answer no without asking changed-checks which VM
