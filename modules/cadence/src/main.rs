@@ -42,6 +42,10 @@
 //!
 //! `cadence --help`, and each command's, say what each takes
 //! (commands.rs).
+//!
+//! Long because the tick's order, each record read before the next is
+//! written, is the one thing every command shares, and its cases sit
+//! beside it.
 
 mod asking;
 mod axes;
@@ -748,6 +752,26 @@ mod tests {
                  from what you send."
             ),
             "{asked}"
+        );
+    }
+
+    #[test]
+    fn a_tick_refuses_a_torn_record_of_reverts_told_and_leaves_it_as_it_is() {
+        let root = tempfile::tempdir().expect("a scratch folder");
+        let (folder, net) = (root.path().join("cadence"), root.path().join("net"));
+        fs::create_dir_all(&folder).expect("cadence's folder");
+        let path = folder.join("reverted.json");
+        let torn = "{\"reverts\":{\"abc\":";
+        fs::write(&path, torn).expect("a torn record");
+        let mesh = Mesh {
+            root: root.path().join("pi"),
+        };
+        let told = tell_reverted(&mesh, &net, &folder, "WATCHER", 1_000);
+        assert!(told.is_err(), "a torn record of reverts told was read as none told");
+        assert_eq!(
+            fs::read_to_string(&path).expect("the record is still there"),
+            torn,
+            "the tick wrote over a record it couldn't read"
         );
     }
 

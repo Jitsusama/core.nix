@@ -6,8 +6,11 @@
 //! was looked at. A file not there is one never written, and holds nothing:
 //! the tick writes `reverted.json` only where a watcher is set, and the net
 //! writes its results only with its first run, as its own journal reads.
-//! A results line that isn't text or isn't JSON leaves the line unread too,
-//! as a check read from its other runs could be broken by a pass dropped.
+//! A results line that isn't text or isn't JSON is read past and named on
+//! the line, rather than leaving it unread: the net's results are only ever
+//! appended to, so one bad line would leave the line unread for good, and
+//! read past, the worst it costs is a check shown broken until its next run.
+//! A failure to read the file at all still leaves the line unread.
 
 use std::fs;
 use std::io::ErrorKind;
@@ -48,39 +51,49 @@ pub fn read_both(
         Ok(text) => measures::reverts(&text, now, NET_RULES),
         Err(why) => measures::unread(measures::reverts("", now, NET_RULES), &why),
     };
-    let broken = |text: &str, main: &measures::Main| {
+    let judged = |text: &str, main: &measures::Main| {
         measures::broken(text, now, NET, main, &measures::failed_in)
     };
-    let results = read(&state_home.join("net/results.jsonl"))
-        .and_then(|bytes| results(&bytes.unwrap_or_default()));
-    let broken = match results {
-        Ok(text) => broken(&text, &measures::Main::read(core, quarantine)),
-        Err(why) => measures::unread(broken("", &measures::Main::default()), &why),
+    let broken = match read(&state_home.join("net/results.jsonl")) {
+        Ok(bytes) => {
+            let (text, past) = results(&bytes.unwrap_or_default());
+            let mut m = judged(&text, &measures::Main::read(core, quarantine));
+            if !past.is_empty() {
+                m.says = format!("{} (read past results.jsonl {})", m.says, past.join(", "));
+            }
+            m
+        }
+        Err(why) => measures::unread(judged("", &measures::Main::default()), &why),
     };
     [reverts, broken]
 }
 
-/// The net's results as text with every line JSON, or the first line that
-/// isn't, since dropped it could be the pass that ends a check's failing
-/// runs. A last line with no end yet is one the net is still appending, in
-/// its one write per line, and is left for the next hour to read.
-fn results(bytes: &[u8]) -> Result<String, String> {
+/// The net's results as text of its ended lines that are JSON, and what
+/// was read past: the first line that isn't text, as `text_lines` finds
+/// it, and each that isn't JSON. A last line with no end yet is one the
+/// net is still appending, in its one write per line, and is left for the
+/// next hour to read.
+fn results(bytes: &[u8]) -> (String, Vec<String>) {
     let (text, not_text) = text_lines(bytes);
-    if let Some(n) = not_text {
-        return Err(format!("results.jsonl line {n} isn't text"));
-    }
+    let mut past: Vec<String> = not_text
+        .map(|n| format!("line {n}, which isn't text"))
+        .into_iter()
+        .collect();
     let ended = if text.is_empty() || text.ends_with('\n') {
         text.as_str()
     } else {
         text.rsplit_once('\n').map_or("", |(ended, _)| ended)
     };
-    let torn = ended.lines().position(|line| {
-        !line.trim().is_empty() && serde_json::from_str::<serde_json::Value>(line).is_err()
-    });
-    match torn {
-        Some(n) => Err(format!("results.jsonl line {} isn't JSON", n + 1)),
-        None => Ok(ended.to_owned()),
+    let mut kept = String::new();
+    for (n, line) in ended.lines().enumerate() {
+        if line.trim().is_empty() || serde_json::from_str::<serde_json::Value>(line).is_ok() {
+            kept.push_str(line);
+            kept.push('\n');
+        } else {
+            past.push(format!("line {}, which isn't JSON", n + 1));
+        }
     }
+    (kept, past)
 }
 
 #[cfg(test)]
@@ -93,32 +106,41 @@ mod tests {
     fn run_lines(runs: &[(i64, bool)]) -> String {
         runs.iter()
             .map(|(at, passed)| {
-                let run = serde_json::json!({"check": "broke", "commit": "", "at": at,
-                    "passed": passed, "stalled": false, "log": ""});
-                format!("{run}\n")
+                serde_json::json!({"check": "broke", "commit": "", "at": at,
+                    "passed": passed, "stalled": false, "log": ""})
+                .to_string()
+                    + "\n"
             })
             .collect()
     }
 
     #[test]
-    fn a_results_line_torn_or_misshapen_leaves_its_line_unread_and_one_being_written_waits() {
+    fn a_results_line_torn_or_not_text_is_read_past_and_named_and_one_being_written_waits() {
         let (root, folder, state) = folders();
         let core = root.path().join("core.git");
         let path = state.join("net/results.jsonl");
         let failing = run_lines(&[(100, true), (880, false), (940, false)]);
-        // Dropped, the torn pass at 960 would leave "broke" failing since 880.
+        // Read past, the torn pass at 960 leaves "broke" failing since
+        // 880, and the line says which it read past.
         let torn = format!("{failing}{{\"check\":\"broke\",\"at\":960\n");
         let not_text = [failing.as_bytes(), b"\xff\n"].concat();
         for (bytes, why) in [
-            (torn.into_bytes(), "results.jsonl line 4 isn't JSON"),
-            (not_text, "results.jsonl line 4 isn't text"),
+            (
+                torn.into_bytes(),
+                "read past results.jsonl line 4, which isn't JSON",
+            ),
+            (not_text, "read past results.jsonl line 4, which isn't text"),
         ] {
             fs::write(&path, bytes).expect("results that aren't whole");
             let [_, broken] = read_both(&folder, &state, &core, "", 1_000);
-            assert_eq!(broken.target, None, "results not whole were judged: {why}");
+            assert_eq!(
+                (broken.target, broken.now),
+                (Some(0.0), 1.0),
+                "results with a bad line weren't judged by the rest: {why}"
+            );
             assert!(
                 broken.says.contains(why),
-                "results not whole didn't say {why:?}: {}",
+                "results with a bad line didn't say {why:?}: {}",
                 broken.says
             );
         }
