@@ -2867,11 +2867,13 @@ def test_emoji_says_how_many_it_found_past_those_it_answers(shell: Shell) -> Non
     assert counted, f"Emoji's head never said how many it found past those it shows: {said}"
     shown, found = (int(part) for part in counted.groups())
     # N and M are both counted from the launcher's own list, so each is held to the history's
-    # answer instead: M past N is what it found past the keys it gave, every one made a row,
-    # and M past what it found is Emoji's groups matching, no more than it has.
-    past, groups = answer["foundAll"] - answer["keysHeld"], found - answer["foundAll"]
+    # answer instead: M past N is what it found past the keys it gave, every one made a row.
+    # M past what it found is what the launcher listed beside the answer: Emoji's words name no
+    # parts and the history finds no group (clipboard/src/search.rs keeps only emoji), so only a
+    # row acted on and still offered (Launcher.qml's stillActed), at most one.
+    past, beside = answer["foundAll"] - answer["keysHeld"], found - answer["foundAll"]
     assert found - shown == past, f"the head said {said}, the history {answer}"
-    assert 0 <= groups <= EMOJI_MADE_MOST, f"the head said {said}, the history {answer}"
+    assert 0 <= beside <= 1, f"the head listed {beside} beside the answer: {said}, {answer}"
 
 
 def test_a_cheap_drawer_comes_in_its_keys_own_frame(shell: Shell) -> None:
