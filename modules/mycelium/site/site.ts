@@ -20,11 +20,16 @@
 // serves it, and a map without it draws no feeding at all. So are the
 // forages, which say who started each of this machine's cells where the
 // cell's own record doesn't, as an older node's doesn't.
+//
+// The looks waiting on Joel are drawn beside the drawer and answered there
+// (the kit's waits.ts), loaded only once one waits: every one under Now and
+// a cell's own under it, as view.js says what's open with each drawing.
 
 import { follow, type Standing } from "../../local-sites/kit/feed.ts";
 import { watchForKeys } from "../../local-sites/kit/keys.ts";
 import type { Held } from "../../local-sites/kit/records.ts";
 import { clockTime, said, tell } from "../../local-sites/kit/status.ts";
+import { asksOnceOneWaits } from "../../local-sites/kit/waits.ts";
 import { expiryOf, type Heard, nowOf } from "./model.ts";
 import { asked, sayReach } from "./reach.ts";
 
@@ -205,12 +210,47 @@ const heard: Heard = {
   },
 };
 
+/** What view.js says is open, for the asks beside the drawer. */
+interface Chosen {
+  readonly showing: boolean;
+  readonly address: string | null;
+}
+
+/** The looks waiting on Joel, beside the drawer, following what it shows. */
+function followTheAsks(): void {
+  const part = document.querySelector<HTMLElement>("#asks-part");
+  const holder = part?.querySelector("#asks");
+  if (part === null || holder === null || holder === undefined) {
+    return;
+  }
+  let showing = true;
+  let count = 0;
+  const shown = (): void => {
+    part.hidden = !showing || count === 0;
+  };
+  const asks = asksOnceOneWaits<Element>({
+    holder,
+    make: (tag) => document.createElement(tag),
+    counted: (counted) => {
+      count = counted;
+      shown();
+    },
+  });
+  document.addEventListener("mycelium:chosen", (event) => {
+    const chosen = (event as CustomEvent<Chosen>).detail;
+    showing = chosen.showing;
+    asks.narrow(chosen.address);
+    shown();
+  });
+}
+
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden && owed) {
     owe();
   }
 });
 sayHow();
+followTheAsks();
 // A reading that fails to draw says so on the standing line, broken, until
 // the next is drawn whole, which says how the map stands again, rather than
 // leaving a live map reading as broken until a feed's standing moves.

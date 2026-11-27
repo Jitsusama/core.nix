@@ -15,7 +15,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::sync::mpsc::{self, Sender};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
 use tungstenite::{Message, WebSocket};
@@ -28,7 +28,7 @@ use crate::upstream::{Reader, Upstreams};
 /// change waits on its way to the page.
 const TURN: Duration = Duration::from_millis(20);
 
-/// How long a daemon has to answer an ask asked once.
+/// How long a daemon has to answer an ask asked once, in all.
 const PATIENCE: Duration = Duration::from_secs(10);
 
 /// Serves one page's feed until it closes.
@@ -147,15 +147,25 @@ fn asked(
 }
 
 /// Asks the daemon at `socket` one thing after the hello, and answers what
-/// it said to it.
-fn once(socket: &Path, asked: &Value) -> io::Result<Value> {
+/// it said to it, or that it didn't in time: a daemon telling line after
+/// line of something else can't hold the asker past its patience either.
+pub fn once(socket: &Path, asked: &Value) -> io::Result<Value> {
+    let deadline = Instant::now() + PATIENCE;
     let mut stream = UnixStream::connect(socket)?;
-    stream.set_read_timeout(Some(PATIENCE))?;
+    stream.set_write_timeout(Some(PATIENCE))?;
     let mut ask = asked.clone();
     ask["id"] = json!(2);
     writeln!(stream, "{}\n{ask}", json!({"id": 1, "ask": "hello"}))?;
     let mut lines = BufReader::new(stream);
     loop {
+        let left = deadline.saturating_duration_since(Instant::now());
+        if left.is_zero() {
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "it didn't answer in time",
+            ));
+        }
+        lines.get_ref().set_read_timeout(Some(left))?;
         let mut line = String::new();
         if lines.read_line(&mut line)? == 0 {
             return Err(io::Error::new(

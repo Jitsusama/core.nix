@@ -443,13 +443,13 @@ import ./ask-checks.nix args
 }
 # The server is a Linux user service, and builds only there.
 // onLinux {
-  # Its tests run as it builds, the server started as its unit starts it
-  # beside a stand-in daemon (tests/serve.rs): the documents and a mount
-  # served, a file the browser holds answered by its tag alone and one
-  # written since sent again, a stranger's name and a stranger's page
-  # refused, two pages sharing one watch on the daemon and each told every
-  # change trimmed to what the feed shows, an act refused before it reaches
-  # the daemon, and a daemon that isn't there said broken with why.
+  # Its tests run as it builds, the server started as its unit starts it beside a stand-in
+  # daemon (tests/serve.rs): the documents and a mount served, a file the browser holds answered
+  # by its tag alone and one written since sent again, a stranger's name and a stranger's page
+  # refused, two pages sharing one watch on the daemon and each told every change trimmed to what
+  # the feed shows, an act refused before it reaches the daemon, and a daemon that isn't there
+  # said broken with why; and an answer pressed on a page carried once, only from the person's
+  # process as a stood-in kernel tells it (tests/answer.rs).
   local-sites-serves-its-sites = pkgs.callPackage ./package.nix { };
   # The system page, built on the theme's own web kit as a machine builds
   # it, read in headless Chromium through the server beside a stand-in
@@ -505,6 +505,7 @@ import ./ask-checks.nix args
           WEB_SKILL = "${../theme/web/skill}";
           WEB_KIT = "${webKit}";
           HOME_SOURCES = "${import ./home-source.nix}";
+          GATE_PLACES = "${../ssh-tpm-agent/gate.conf}";
           PLAYWRIGHT_BROWSERS_PATH = "${pkgs.playwright-driver.browsers}";
           PYTHONPATH = "${./tests}";
           PYTHONDONTWRITEBYTECODE = "1";
@@ -551,6 +552,7 @@ import ./ask-checks.nix args
           LOCAL_SITES_SHARED = "${shared}";
           STRIP = "${./home/strip.css}";
           WEB_SKILL = "${../theme/web/skill}";
+          GATE_PLACES = "${../ssh-tpm-agent/gate.conf}";
           # The browsers mycelium-map-check carries, so the map's tests
           # launch what a machine runs it with.
           PLAYWRIGHT_BROWSERS_PATH = "${pkgs.callPackage ./headless-browsers.nix { }}";

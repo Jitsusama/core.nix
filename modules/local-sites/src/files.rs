@@ -234,6 +234,7 @@ mod tests {
             home: None,
             mounts: BTreeMap::from([("kit".to_owned(), kit), ("code".to_owned(), code)]),
             feeds: BTreeMap::new(),
+            answers: None,
         };
         Folders { config, top }
     }

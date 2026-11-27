@@ -12,8 +12,11 @@ and the look chosen holds on the next visit. Its mark is drawn in each look's
 own tint from the kit. It passes the web-design skill's page checks at a
 phone's width and a desk's in both looks, and anything it logs fails it. A
 document whose head is a hero rather than a head answers a tap on its shown
-keys too. The server, the browser and the tab are
-modules/local-sites/tests/live_page.py's.
+keys too. A look waiting on Joel, from a stand-in to-do daemon, is drawn
+after the sites with its title's markup shown as written, and a press on
+one of its answers is carried once to the session that asked, through a
+stand-in node, as For You carries one. The server, the browser and the tab
+are modules/local-sites/tests/live_page.py's.
 """
 
 import json
@@ -22,12 +25,14 @@ import re
 import shutil
 import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
 from live_page import DOCUMENTS_NAME, LOOKS, SIZES, Opened, serving
 from playwright.sync_api import Browser, Page, expect
+from stand_in_daemon import StandIn
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -64,6 +69,31 @@ DOCUMENT = """<!doctype html>
 </body>
 </html>
 """
+# A look a session left for Joel, waiting, its title carrying markup that must
+# show as written. It came as the test runs, so it never goes quiet under one.
+TITLE = "<b>Merge</b> it?"
+
+
+def waiting_look() -> dict[str, object]:
+    """Give the look the stand-in to-do daemon holds, as the harness writes one."""
+    return {
+        "v": 1,
+        "id": "l1",
+        "at": datetime.now(UTC).isoformat(),
+        "kind": "pr",
+        "target": "https://example.com/pull/1",
+        "title": TITLE,
+        "why": "Its checks passed.",
+        "ask": "Say whether it merges.",
+        "choices": [
+            {"value": "yes", "label": "Merge It"},
+            {"value": "no", "label": "Leave It"},
+        ],
+        "state": "waiting",
+        "address": "abc123",
+    }
+
+
 # The name of the site whose link says it's the cursor.
 CURSOR = '.sites a[aria-current="true"] .name'
 # Longer than the kit's 600 ms for a second g to count as the pair.
@@ -75,10 +105,21 @@ LIGHT_STROKE = re.compile(r"^    g \{ stroke: ([^;]+); \}", re.MULTILINE)
 
 
 @pytest.fixture
-def home(tmp_path: Path) -> Iterator[str]:
+def to_do(tmp_path: Path) -> Iterator[StandIn]:
+    """Stand in for the to-do daemon holding one look, and for the node it's answered through."""
+    look: dict[str, object] = {"key": "look:l1", "kind": "look", "look": waiting_look()}
+    stand_in = StandIn(tmp_path / "to-do.sock", "to-do", {"look": [look]}).start()
+    yield stand_in
+    stand_in.leave()
+
+
+@pytest.fixture
+def home(tmp_path: Path, to_do: StandIn) -> Iterator[str]:
     """Serve the home as home.py builds it into a folder of its own, giving its address."""
     own = tmp_path / "home"
-    with serving(tmp_path, {}, {}, home=own) as (address, _):
+    feeds = {"to-do": {"socket": str(to_do.path), "kinds": {"look": {}}}}
+    answers = {"looks": str(to_do.path), "node": str(to_do.path)}
+    with serving(tmp_path, {}, feeds, home=own, answers=answers) as (address, _):
         documents = tmp_path / "documents"
         # The documents keep a kit of their own, as a document must stand
         # alone; the home reads none of it, but the copy the sites share.
@@ -201,6 +242,28 @@ def test_the_arrows_on_the_switch_choose_a_look_and_leave_the_cursor(tab: Page) 
     )
     dark = tab.locator('.switch input[value="dark"]')
     expect(dark, "the switch forgot its look by the next visit").to_be_checked()
+
+
+def test_a_look_waiting_is_drawn_and_answered_once_where_it_is_asked(
+    tab: Page, to_do: StandIn
+) -> None:
+    """The look shows after the sites as written, and a press is carried once, as For You's."""
+    row = tab.locator(".waiting article.ask")
+    expect(row, "the look waiting wasn't drawn").to_have_count(1)
+    expect(row.locator("h3"), "the title's markup was read as markup").to_have_text(TITLE)
+    expect(row.locator("h3 b"), "the title's markup became an element").to_have_count(0)
+    row.get_by_role("button", name="Merge It").click()
+    expect(row.locator(".ask-told"), "the press wasn't said").to_have_text(
+        "Answered Merge It: sent to the session that asked."
+    )
+    expect(row.get_by_role("button"), "the answers stayed once one was pressed").to_have_count(0)
+    steers = [ask["steer"] for ask in to_do.steered]
+    assert len(steers) == 1, f"the press was carried {len(steers)} times: {steers}"
+    steer = steers[0]
+    assert isinstance(steer, dict), steer
+    assert to_do.steered[0]["address"] == "ABC123", to_do.steered
+    said = {name: steer.get(name) for name in ("act", "look", "value", "from")}
+    assert said == {"act": "answer", "look": "l1", "value": "yes", "from": "joel"}, steer
 
 
 @pytest.mark.parametrize("look", LOOKS)

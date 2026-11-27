@@ -3,8 +3,11 @@
 // go to the first and the last, ? and F1 list the keys, the keys its head
 // names can be pressed as well as typed, and the theme switch keeps its
 // look. The home loads it as /local-sites/kit/home.js; its sites are the
-// links in `.sites`, and its list of keys is the dialog `#keys`.
+// links in `.sites`, and its list of keys is the dialog `#keys`. The looks
+// waiting on Joel are drawn into `#asks`, answerable there (asks.ts, fetched
+// once one waits by waits.ts), and the part holding them shows only then.
 
+import { asksOnceOneWaits } from "./waits.ts";
 import { listen, toggle } from "./keys.ts";
 import { answersAt, onTwice, pressable, stepped } from "./steps.ts";
 import { themeSwitch } from "./theme.ts";
@@ -58,6 +61,17 @@ function wire(): void {
   }
   links[0]?.setAttribute("aria-current", "true");
   themeSwitch();
+  const asks = document.getElementById("asks");
+  const part = asks?.closest<HTMLElement>(".waiting") ?? null;
+  if (asks !== null && part !== null) {
+    asksOnceOneWaits<Element>({
+      holder: asks,
+      make: (tag) => document.createElement(tag),
+      counted: (count) => {
+        part.hidden = count === 0;
+      },
+    });
+  }
 }
 
 // Imported where there is no page, as a test might, it wires nothing.

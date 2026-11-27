@@ -17,10 +17,16 @@ rustPlatform.buildRustPackage rec {
       ./Cargo.lock
       ./src
       ./tests/serve.rs
+      ./tests/answer.rs
+      ./tests/common/mod.rs
+      # The looks a page and the server must each read alike.
+      ./kit/tests/offered.json
       ../daemon-serve/Cargo.toml
       ../daemon-serve/src
       ../terminal-kit/Cargo.toml
       ../terminal-kit/src
+      # The places agents' work runs in, which a press is judged by.
+      ../ssh-tpm-agent/gate.conf
     ];
   };
   sourceRoot = "${src.name}/local-sites";

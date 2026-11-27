@@ -30,16 +30,29 @@ Every page Joel opens from this machine comes from one server,
 
 What holds it together:
 
-- **A page reads and never acts.** A feed passes only reads (a watch, a
+- **A feed reads and never acts.** A feed passes only reads (a watch, a
   list, a get, the daemon's health) and refuses the rest
   ([`src/gate.rs`][gate]). Records come trimmed to the kinds and fields
   declared; health comes as the daemon gives it. The server answers only
   its own names on loopback, and opens a feed only to a request naming a
   page of its own as its origin. A browser can't forge that, but any
-  process on this machine can. Any page here, documents included, can
-  read every feed and send what it reads wherever it can reach. So a feed
-  declares only kinds and fields fit for any page and any process here,
-  and it stays safe because it never acts.
+  process on this machine can. Any page here can read every feed and send
+  what it reads wherever it can reach. So a feed declares only kinds and
+  fields fit for any page and any process here, and it stays safe because
+  it never acts.
+- **One act, an answer, goes only by `/answer`** ([`src/answer.rs`][answer]):
+  Joel's answer to a look, pressed on a page of the sites' own, carried
+  to the session that asked as For You carries one. A session takes it as
+  his, so it's carried only when every guard holds: the page's own origin,
+  named exactly and said same-origin by the browser; a JSON body, which no
+  form sends; the cookie a page of the sites' own is given; the look, read
+  again, offering the value (by the table both sides read,
+  `kit/tests/offered.json`); and the process holding the connection being
+  his, not an agent's, by the ssh-tpm-agent gate's own places, as the
+  kernel tells it ([`src/peer.rs`][peer]). Headers are any process's to
+  forge; only that last guard is not, and it holds only on Linux, so
+  elsewhere the server takes no answers. Documents run in an origin of
+  their own, `documents.sites.localhost`, which `/answer` never takes.
 - **The build writes the strip**, straight after a page's skip link, and
   refuses a page that carries its own, reads no theme from the shared
   copy, names a `kit/` of its own, or has other than one skip link
@@ -137,6 +150,7 @@ it's served from, and draws what answers there, the commands it offers to
 copy into a terminal among them, so a folder belongs only on a host whose
 feed the reader trusts. Deploying it stays outside core.
 
+[answer]: ./src/answer.rs
 [baresheet]: ../theme/web/bare-sheet.sh
 [checks]: ./checks.nix
 [daemons]: ../../docs/daemons.md
@@ -146,6 +160,7 @@ feed the reader trusts. Deploying it stays outside core.
 [kit]: ./kit
 [livepage]: ./tests/live_page.py
 [module]: ./home.nix
+[peer]: ./src/peer.rs
 [readme]: ./README.md
 [site]: ./site.nix
 [sitesh]: ./site.sh

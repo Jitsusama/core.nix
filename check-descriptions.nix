@@ -1822,8 +1822,9 @@
     opens the site under the cursor, ? and F1 show its keys and Escape hides them, its shown keys
     answer a tap, an arrow on the theme switch chooses a look and leaves the cursor, the look holds
     to the next visit, its mark takes each look's own tint from the kit, a document under a hero
-    answers a tap on its keys, and the web-design skill's page checks pass at a phone's width and a
-    desk's in both looks, with nothing logged
+    answers a tap on its keys, a look waiting is drawn after the sites as written and a press on it
+    is carried to the session that asked once, as For You's, and the web-design skill's page checks
+    pass at a phone's width and a desk's in both looks, with nothing logged
   '';
   home-builds-from-its-rows = ''
     the local sites' home lists each site from its row in sites.json, the settled apart and every
@@ -2272,7 +2273,11 @@
     its tag alone and sends one written since again, even at the same size and time, refuses a
     stranger's host name and a stranger's page, has two pages share one watch on a daemon with
     each told every change trimmed to the feed's fields, refuses an act before it reaches the
-    daemon, and says a missing daemon broken with why
+    daemon, says a missing daemon broken with why, and carries an answer pressed on a page of its
+    own once, to the session that asked or once that has ended to its quest's, only from the
+    person's process as the kernel tells it, refusing one an agent's process, a document, another
+    site or a form presses, one without the page's cookie and one the look doesn't offer by the
+    table the kit reads too, with no session slow to take its answer holding up another look's
   '';
   locking-asked-wrongly-does-nothing = ''
     lock-screen, lock-for-sleep and swayidle-away answer --help and refuse an unknown word with

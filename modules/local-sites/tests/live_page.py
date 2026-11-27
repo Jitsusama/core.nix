@@ -9,7 +9,9 @@ page holds. A test loads this as a pytest plugin (`-p live_page`), which gives
 it the `browser` fixture. The server and the kit come from LOCAL_SITES and
 LOCAL_SITES_SHARED (what every site shares: the kit, and the theme's web kit
 as web/), the home's strip styles from STRIP and the skill from
-WEB_SKILL, as the check running the test sets them. Each page also keeps to
+WEB_SKILL, and the places an answer is refused from, the ssh-tpm-agent
+gate's own, from GATE_PLACES where a test answers, as the check running the
+test sets them. Each page also keeps to
 a budget (Budget, Opened.keeps_to), so the cost Joel asked to be cut on 17
 November can't creep back unseen.
 """
@@ -124,11 +126,16 @@ def serving(
     feeds: Mapping[str, object],
     *,
     home: Path | None = None,
+    answers: Mapping[str, str] | None = None,
 ) -> Iterator[Served]:
     """Run the sites' server on `mounts` and `feeds`, giving its root and its process.
 
     The home's own folder is `home` where it's given, which the server serves
-    ahead of the documents as the sites' own, as a machine's serves it.
+    ahead of the documents as the sites' own, as a machine's serves it. An
+    answer pressed on a page is checked against the looks socket `answers`
+    names and sent through its node socket, where it's given, and refused
+    from the gate's places as a machine's server refuses it, so a press from
+    the test's browser is judged by the very file a machine's is.
     """
     port = a_free_port()
     documents = folder / "documents"
@@ -143,8 +150,14 @@ def serving(
         "documentsName": DOCUMENTS_NAME,
         "documents": str(documents),
         "mounts": {**mounts, "local-sites": os.environ["LOCAL_SITES_SHARED"]},
-        "feeds": feeds,
+        # Every page watches the to-do feed for the looks waiting on Joel, as
+        # a machine serves it; a test that holds none is given one whose
+        # daemon isn't there, which the server says is broken, as a machine
+        # whose to-do daemon is down does, so no socket fails in the page.
+        "feeds": {"to-do": {"socket": str(folder / "no-to-do.sock"), "kinds": {"look": {}}}}
+        | dict(feeds),
         "home": None if home is None else str(home),
+        "answers": None if answers is None else {"places": os.environ["GATE_PLACES"], **answers},
     }
     (folder / "config.json").write_text(json.dumps(config))
     server = subprocess.Popen([os.environ["LOCAL_SITES"], "--config", str(folder / "config.json")])

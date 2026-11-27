@@ -26,7 +26,7 @@
 use std::fs::{File, Metadata};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io::{self, Read, Write};
-use std::net::{Shutdown, TcpStream};
+use std::net::{Shutdown, SocketAddr, TcpStream};
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 use std::sync::Arc;
@@ -34,6 +34,7 @@ use std::time::{Duration, Instant};
 
 use tungstenite::handshake::server::{ErrorResponse, Request, Response};
 
+use crate::answer::Answers;
 use crate::config::{Config, Feed};
 use crate::door::{Door, Side};
 use crate::files::{self, Found};
@@ -41,11 +42,16 @@ use crate::page;
 use crate::sweep::{self, Asked};
 use crate::upstream::Upstreams;
 
+mod press;
+
 /// The most a request's head may hold.
 const HEAD: usize = 16 * 1024;
 
 /// The status of a file the browser already holds.
 const NOT_MODIFIED: u16 = 304;
+
+/// How much of an answer pressed on a page the journal keeps.
+const JOURNALLED: usize = 256;
 
 /// How long a request may take to arrive whole.
 const PATIENCE: Duration = Duration::from_secs(10);
@@ -72,7 +78,7 @@ const DOCUMENTS: &str = "frame-ancestors 'self'";
 /// from here, none written into the page or evaluated from words, no
 /// plugin, no base moving its links, and no frame around it to press its
 /// buttons through.
-const OWN: &str = "script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'";
+const OWN: &str = "script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'";
 
 /// What the answers a file is sent with are, by version, hashed into its
 /// tag, so a copy a browser holds from before the answers it was sent with
@@ -84,6 +90,8 @@ pub struct Server {
     pub config: Config,
     pub door: Door,
     pub upstreams: Arc<Upstreams>,
+    /// Where an answer pressed on a page is checked and sent, where any is.
+    pub answers: Option<Answers>,
 }
 
 /// A request's head, as much of it as the server reads.
@@ -95,6 +103,8 @@ struct Head {
     length: usize,
     /// The tags of the copies the browser holds, as `If-None-Match` lists them.
     held: Option<String>,
+    /// The page asking, as `Origin` says it, where it says one.
+    origin: Option<String>,
     /// Its cookies, as `Cookie` lists them.
     cookies: Option<String>,
     /// Whether the browser asks for a worker's script, as `Service-Worker` says.
@@ -103,6 +113,12 @@ struct Head {
     fetch_site: Option<String>,
     /// What the browser says the request is for, as `Sec-Fetch-Dest` says.
     fetch_dest: Option<String>,
+    /// How long its body is, as `Content-Length` says, where it says.
+    body_length: Option<usize>,
+    /// What its body is, as `Content-Type` says.
+    content_type: Option<String>,
+    /// The connection's ends, the asker's then the server's.
+    ends: Option<(SocketAddr, SocketAddr)>,
 }
 
 /// Answers one connection.
@@ -173,6 +189,20 @@ pub fn answer(server: &Server, mut stream: TcpStream) {
             "text/plain",
             b"a path starts at /\n",
         );
+    } else if head.path.split(['?', '#']).next() == Some("/answer") {
+        // Under the documents' name a document's own origin would be the
+        // one asked, so answers are taken under the sites' names alone.
+        if side == Side::Sites {
+            press::press(server, &mut stream, &head);
+        } else {
+            send(
+                &mut stream,
+                403,
+                "Forbidden",
+                "text/plain",
+                b"an answer is pressed under the sites' names alone\n",
+            );
+        }
     } else {
         serve_file(server, &mut stream, &head, side);
     }
@@ -464,8 +494,13 @@ fn head(stream: &TcpStream) -> io::Result<Option<Head>> {
                     held: header("if-none-match").map(str::to_owned),
                     cookies: header("cookie").map(str::to_owned),
                     worker: header("service-worker").is_some(),
+                    origin: header("origin").map(str::to_owned),
                     fetch_site: header("sec-fetch-site").map(str::to_owned),
                     fetch_dest: header("sec-fetch-dest").map(str::to_owned),
+                    body_length: header("content-length")
+                        .and_then(|length| length.trim().parse().ok()),
+                    content_type: header("content-type").map(str::to_owned),
+                    ends: stream.peer_addr().ok().zip(stream.local_addr().ok()),
                 }));
             }
             Ok(httparse::Status::Partial) if peeked < HEAD => {

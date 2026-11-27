@@ -85,6 +85,21 @@ let
       inherit documents;
       home = homeFolder;
       inherit (cfg) mounts feeds;
+      # An answer pressed on a page is checked against the look as the to-do
+      # daemon holds it and sent to the session that asked through the node,
+      # as For You's is (src/answer.rs); a machine in no realm has no node,
+      # so its pages take no answers.
+      answers =
+        if realm == null then
+          null
+        else
+          {
+            looks = "daemons/to-do.sock";
+            node = "mycelium/${realm}.sock";
+            # A press is told an agent's where the ssh-tpm-agent gate would
+            # refuse it a signature, by the same places.
+            places = "${../ssh-tpm-agent/gate.conf}";
+          };
     }
   );
   # What the home says of a live site, as a row of sites.json says it.
@@ -466,6 +481,13 @@ in
       };
     };
     feeds = {
+      # Each look a session left for Joel, as the to-do daemon holds it
+      # (modules/to-do), told whole: the look record every page's ask row
+      # reads (kit/ask.ts) as For You reads it.
+      to-do = {
+        socket = "daemons/to-do.sock";
+        kinds.look = { };
+      };
       # The system daemon's summary, its parts and their things
       # (modules/system), each told whole: a page shows all of each.
       system = {

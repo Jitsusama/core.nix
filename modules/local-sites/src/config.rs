@@ -38,6 +38,27 @@ pub struct Config {
     pub mounts: BTreeMap<String, PathBuf>,
     /// The daemons a page may read, by the name in `/feed/<name>`.
     pub feeds: BTreeMap<String, Feed>,
+    /// Where an answer Joel presses on a page of the sites' own is checked
+    /// and sent (answer.rs); none where no page answers.
+    pub answers: Option<Answering>,
+}
+
+/// The daemons an answer goes through, each socket absolute or under the
+/// user's runtime folder.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Answering {
+    /// The looks' daemon, asked for a look as it stands.
+    pub looks: PathBuf,
+    /// The node, which carries a steer to the session it names.
+    pub node: PathBuf,
+    /// Where the kernel tells who holds each connection (peer.rs): `/proc`,
+    /// unless a test stands a folder laid out as it in, so the guard reads
+    /// the same anywhere the test runs, whatever unit runs the test.
+    pub processes: PathBuf,
+    /// The ssh-tpm-agent gate's places, where agents' work runs, by which
+    /// a press's process is told an agent's (peer.rs), so the two judge
+    /// alike.
+    pub places: PathBuf,
 }
 
 /// One daemon a page may read, and how much of it.
@@ -129,6 +150,10 @@ impl Config {
             })
             .transpose()?
             .unwrap_or_default();
+        let answers = match said.get("answers") {
+            None | Some(Value::Null) => None,
+            Some(answers) => Some(answering(answers, runtime)?),
+        };
         Ok(Self {
             listen,
             names,
@@ -137,6 +162,7 @@ impl Config {
             home,
             mounts,
             feeds,
+            answers,
         })
     }
 }
@@ -175,6 +201,36 @@ fn feed_of(name: &str, said: &Value, runtime: Option<&Path>) -> Result<Feed, Str
         })
         .collect::<Result<_, String>>()?;
     Ok(Feed { socket, kinds })
+}
+
+fn answering(said: &Value, runtime: Option<&Path>) -> Result<Answering, String> {
+    let socket = |name: &str| {
+        let path = said
+            .get(name)
+            .and_then(Value::as_str)
+            .ok_or_else(|| format!("answers names no {name} socket"))?;
+        under(path, runtime).ok_or_else(|| {
+            format!("answers' {name} socket is under the runtime folder, and none is set")
+        })
+    };
+    let processes = match said.get("processes") {
+        None | Some(Value::Null) => PathBuf::from("/proc"),
+        Some(Value::String(path)) if Path::new(path).is_absolute() => PathBuf::from(path),
+        Some(_) => return Err("answers' processes isn't an absolute folder".to_owned()),
+    };
+    let (looks, node) = (socket("looks")?, socket("node")?);
+    let places = said
+        .get("places")
+        .and_then(Value::as_str)
+        .map(PathBuf::from)
+        .filter(|path| path.is_absolute())
+        .ok_or("answers names no absolute file of the places agents' work runs in")?;
+    Ok(Answering {
+        looks,
+        node,
+        processes,
+        places,
+    })
 }
 
 /// `path` as it stands where it's absolute, else under `runtime`, or none
@@ -223,6 +279,10 @@ mod tests {
         assert_eq!(config.listen.port(), 8484);
         assert_eq!(config.mounts["kit"], PathBuf::from("/nix/store/kit"));
         assert_eq!(config.home, None, "a home among the documents names none");
+        assert_eq!(
+            config.answers, None,
+            "a server that takes no answers names nothing"
+        );
         assert_eq!(
             config.documents_name, "documents.sites.localhost",
             "a name's case is the browser's"
@@ -285,6 +345,67 @@ mod tests {
         let unnamed = WHOLE.replace(r#""documentsName": "Documents.Sites.Localhost","#, "");
         let why = Config::from_json(&unnamed, Some(Path::new("/run"))).expect_err("refused");
         assert!(why.contains("documentsName is missing"), "{why}");
+    }
+
+    #[test]
+    fn the_answers_daemons_are_read_under_the_runtime_folder_or_refused() {
+        let answering = WHOLE.replace(
+            r#""mounts""#,
+            r#""answers": {"looks": "daemons/to-do.sock", "node": "/run/node.sock",
+                "places": "/etc/gate"}, "mounts""#,
+        );
+        let config =
+            Config::from_json(&answering, Some(Path::new("/run/user/1000"))).expect("it reads");
+        assert_eq!(
+            config.answers,
+            Some(Answering {
+                looks: PathBuf::from("/run/user/1000/daemons/to-do.sock"),
+                node: PathBuf::from("/run/node.sock"),
+                processes: PathBuf::from("/proc"),
+                places: PathBuf::from("/etc/gate"),
+            }),
+            "the kernel's own was not asked where none is named"
+        );
+        for unplaced in ["", r#", "places": "gate""#] {
+            let said = answering.replace(
+                r#",
+                "places": "/etc/gate""#,
+                unplaced,
+            );
+            let why = Config::from_json(&said, Some(Path::new("/run"))).expect_err("refused");
+            assert!(why.contains("no absolute file of the places"), "{why}");
+        }
+        let stood_in = answering.replace(
+            r#""/run/node.sock""#,
+            r#""/run/node.sock", "processes": "/tmp/kernel""#,
+        );
+        let config =
+            Config::from_json(&stood_in, Some(Path::new("/run/user/1000"))).expect("it reads");
+        assert_eq!(
+            config.answers.map(|at| at.processes),
+            Some(PathBuf::from("/tmp/kernel")),
+            "a stood-in kernel was not asked"
+        );
+        let relative = answering.replace(
+            r#""/run/node.sock""#,
+            r#""/run/node.sock", "processes": "kernel""#,
+        );
+        let why = Config::from_json(&relative, Some(Path::new("/run"))).expect_err("refused");
+        assert!(why.contains("processes isn't an absolute folder"), "{why}");
+        // The feed's socket made absolute, so only the answers' looks socket
+        // can need the runtime folder that isn't set.
+        let fixed = answering.replace("\"mycelium/work.sock\"", "\"/run/work.sock\"");
+        let why = Config::from_json(&fixed, None).expect_err("refused");
+        assert!(
+            why.contains("looks socket is under the runtime folder"),
+            "{why}"
+        );
+        let nodeless = WHOLE.replace(
+            r#""mounts""#,
+            r#""answers": {"looks": "/run/to-do.sock"}, "mounts""#,
+        );
+        let why = Config::from_json(&nodeless, Some(Path::new("/run"))).expect_err("refused");
+        assert!(why.contains("names no node socket"), "{why}");
     }
 
     #[test]

@@ -15,18 +15,25 @@
 //! reads and tells every page from it (upstream.rs), it lets a page read
 //! and never act (gate.rs), and it admits only its own pages, by the name
 //! a request reaches it by and the page a feed's handshake came from
-//! (door.rs). A document a session wrote runs under the documents' name,
-//! an origin of its own, so it reads no feed and can't act as one of the
-//! sites' own pages, which run only the scripts Nix served beside them
-//! (http.rs). Files are
+//! (door.rs). An answer Joel presses on one of the sites' own pages is
+//! the one thing a page sends that acts, checked and carried by answer.rs,
+//! against times its looks write as clock.rs reads them. A document a
+//! session wrote runs under the documents' name, an origin of its own, so
+//! it reads no feed, presses no answer and can't act as one of the sites'
+//! own pages, which run only the scripts Nix served beside them (http.rs).
+//! Files are
 //! found by files.rs; one connection is http.rs.
 
+mod answer;
+mod clock;
 mod config;
 mod door;
 mod files;
 mod gate;
 mod http;
 mod page;
+mod peer;
+mod posing;
 mod sweep;
 mod upstream;
 
@@ -40,9 +47,11 @@ use terminal_kit::failure::{Exit, Failure};
 use terminal_kit::flags;
 use terminal_kit::help::Help;
 
+use crate::answer::Answers;
 use crate::config::Config;
 use crate::door::Door;
 use crate::http::Server;
+use crate::peer::{Places, Processes};
 use crate::upstream::Upstreams;
 
 fn help() -> Help {
@@ -120,10 +129,51 @@ fn serve(file: &PathBuf) -> Result<(), Failure> {
         )
         .because(why.to_string())
     })?;
+    // Only a kernel that tells who holds a connection lets an answer be
+    // known as the person's (peer.rs); elsewhere the pages answer in For You.
+    let places = config
+        .answers
+        .as_ref()
+        .map(|at| {
+            std::fs::read_to_string(&at.places)
+                .map_err(|why| why.to_string())
+                .and_then(|text| Places::read(&text))
+                .map_err(|why| {
+                    Failure::new(
+                        Exit::Failed,
+                        "local-sites can't read where agents' work runs",
+                    )
+                    .because(why)
+                })
+        })
+        .transpose()?;
+    let answers = config
+        .answers
+        .as_ref()
+        .zip(places)
+        .and_then(|(at, places)| {
+            let processes = Processes::under(&at.processes, places);
+            if processes.is_none() {
+                eprintln!(
+                    "local-sites: takes no answers here, since it can't tell who presses one"
+                );
+            }
+            processes.map(|processes| (at, processes))
+        })
+        .map(|(at, processes)| {
+            let tell = Box::new(move |peer, server| processes.tell(peer, server));
+            Answers::new(at.looks.clone(), at.node.clone(), tell)
+        })
+        .transpose()
+        .map_err(|why| {
+            Failure::new(Exit::Failed, "local-sites can't draw its answers' cookie")
+                .because(why.to_string())
+        })?;
     let server = Arc::new(Server {
         door: Door::new(&config.names, &config.documents_name, config.listen.port()),
         config,
         upstreams: Arc::new(Upstreams::default()),
+        answers,
     });
     for stream in listener.incoming().flatten() {
         let server = Arc::clone(&server);

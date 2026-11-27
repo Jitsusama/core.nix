@@ -7,6 +7,9 @@ a site's compiled imports land.
 | File          | What it holds                                                 |
 | ------------- | ------------------------------------------------------------- |
 | `ask.ts`      | a look read for its ask row, and the answers it may send      |
+| `asks.ts`     | the looks waiting on Joel, drawn as ask rows and answered there |
+| `answer.ts`   | an answer pressed on a page, posted, and what came of it said |
+| `waits.ts`    | the asks loaded only once a look waits, so a quiet visit pays for none |
 | `cell.ts`     | a cell's link to the launcher, and the cell a link names      |
 | `document.ts` | a document's parts, its keys and its switch, wired on load    |
 | `early.js`    | the kept look, `js` and a page's kept room, before it's drawn |

@@ -24,6 +24,8 @@ use serde_json::{Value, json};
 use tungstenite::client::IntoClientRequest;
 use tungstenite::{Message, WebSocket};
 
+mod common;
+
 /// How long a test waits for the server, or for a line it's owed.
 const PATIENCE: Duration = Duration::from_secs(10);
 
@@ -123,15 +125,7 @@ struct Served {
 
 impl Drop for Served {
     fn drop(&mut self) {
-        let ended = self.child.try_wait().ok().flatten();
-        let _ = self.child.kill();
-        let _ = self.child.wait();
-        let _ = std::fs::remove_dir_all(&self.folder);
-        if let Some(status) = ended
-            && !thread::panicking()
-        {
-            panic!("the server ended under the test: {status}");
-        }
+        common::stop(&mut self.child, &self.folder);
     }
 }
 
@@ -456,7 +450,7 @@ const SANDBOXED: &str = "sandbox allow-scripts allow-popups allow-forms; frame-a
 const DOCUMENTED: &str = "frame-ancestors 'self'";
 
 /// The policy every page of the sites' own is served under.
-const OWN: &str = "script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'";
+const OWN: &str = "script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'";
 
 #[test]
 fn every_document_keeps_its_policy_whatever_it_is_and_however_its_answered() {

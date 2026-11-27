@@ -9,6 +9,7 @@
        <ul class="ask-answers">
          <li><button>a choice's label</button> <span>what follows</span></li>
        </ul>
+       <p class="ask-told" aria-live="polite">what came of a press, or why no answers show</p>
        <p class="ask-act"><a href="ask.opens">ask.act</a></p>
      </article>
 
@@ -72,6 +73,18 @@
 
 .ask-answers button:hover {
   border-color: var(--tint);
+}
+
+/* Always drawn, so a screen reader hears what a press comes to the moment
+   it's written; while it says nothing it gives back the gap it would take. */
+.ask-told {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--step-small);
+}
+
+.ask-told:empty {
+  margin-block-start: calc(var(--mark) * -1);
 }
 
 .ask-act {
