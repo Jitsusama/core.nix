@@ -1,5 +1,5 @@
 use crate::discover::file;
-use crate::pool::{on_btrfs, subvolume};
+use crate::pool::{assert_on_btrfs, subvolume};
 use disk_guard::opens::{MOST_GROUPS, Seen, Watch};
 use std::fs;
 use std::path::Path;
@@ -116,11 +116,7 @@ fn opens_in_builds_of_two_subvolumes_are_both_seen() {
     // own, so on 26 November 40 build folders an hour went unmarked with
     // EXDEV, their builds dated by the hour rather than their opens.
     let root = tempfile::tempdir().unwrap();
-    assert!(
-        on_btrfs(root.path()),
-        "{} isn't on Btrfs",
-        root.path().display()
-    );
+    assert_on_btrfs(root.path());
     let watch = watch();
     let mut opened = Vec::new();
     for name in ["one", "two"] {
@@ -162,11 +158,7 @@ fn a_watch_makes_no_group_past_its_most() {
     // An account may hold 128 groups, and every work tree is a subvolume,
     // so a watch keeps to half and leaves its other programs room.
     let root = tempfile::tempdir().unwrap();
-    assert!(
-        on_btrfs(root.path()),
-        "{} isn't on Btrfs",
-        root.path().display()
-    );
+    assert_on_btrfs(root.path());
     let watch = watch();
     for n in 0..MOST_GROUPS {
         let name = format!("tree-{n}");

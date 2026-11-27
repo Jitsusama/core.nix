@@ -15,6 +15,16 @@ pub(crate) fn on_btrfs(path: &Path) -> bool {
     i128::from(rustix::fs::statfs(path).unwrap().f_type) == i128::from(BTRFS_SUPER_MAGIC)
 }
 
+/// Fails, saying how to run it, unless `path` is on Btrfs, so a case run
+/// with TMPDIR elsewhere doesn't read as the guard's failure.
+pub(crate) fn assert_on_btrfs(path: &Path) {
+    assert!(
+        on_btrfs(path),
+        "{} isn't on Btrfs; set TMPDIR to a Btrfs folder",
+        path.display()
+    );
+}
+
 /// `BTRFS_IOC_SUBVOL_SETFLAGS`, `_IOW(0x94, 26, __u64)`, and the flag it
 /// sets to make a subvolume read-only, as a snapshot taken with `-r` is.
 const BTRFS_IOC_SUBVOL_SETFLAGS: libc::c_ulong = 0x4008_941a;
@@ -172,11 +182,7 @@ fn a_pipe_with_no_writer_s_pool_is_its_own_device_read_without_opening_it() {
             run with --ignored and TMPDIR on a Btrfs folder"]
 fn a_leased_file_s_pool_is_its_subvolume_s_read_without_waiting_out_the_lease() {
     let dir = tempfile::tempdir().unwrap();
-    assert!(
-        on_btrfs(dir.path()),
-        "{} isn't on Btrfs",
-        dir.path().display()
-    );
+    assert_on_btrfs(dir.path());
     says_subvolumes(dir.path());
     let expected = pool(dir.path()).unwrap();
     let file = dir.path().join("leased");
@@ -214,16 +220,20 @@ fn a_leased_file_s_pool_is_its_subvolume_s_read_without_waiting_out_the_lease() 
 fn a_file_nobody_may_read_s_pool_is_its_subvolume_s() {
     use std::os::unix::fs::PermissionsExt;
     let dir = tempfile::tempdir().unwrap();
-    assert!(
-        on_btrfs(dir.path()),
-        "{} isn't on Btrfs",
-        dir.path().display()
-    );
+    assert_on_btrfs(dir.path());
     says_subvolumes(dir.path());
     let expected = pool(dir.path()).unwrap();
     let file = dir.path().join("unreadable");
     fs::write(&file, "written").unwrap();
     fs::set_permissions(&file, fs::Permissions::from_mode(0o000)).unwrap();
+    // Root, or an account with CAP_DAC_OVERRIDE or CAP_DAC_READ_SEARCH,
+    // may read it whatever its mode, and there a reading open would pass.
+    assert!(
+        fs::File::open(&file).is_err(),
+        "{} opened for reading despite its mode, so this account can't show a mode \
+         refusing the guard: run as one without CAP_DAC_OVERRIDE",
+        file.display()
+    );
     assert_eq!(
         pool(&file).ok(),
         Some(expected),
