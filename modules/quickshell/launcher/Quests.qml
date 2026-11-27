@@ -215,8 +215,10 @@ Provider {
     // quest's own row, its acts and drawer, saying what landed or that a
     // date moved where its note was, and the next date it owes at its
     // side; and as `movedAsks`, how many of its asks moved and how many of
-    // those landed, for What Moved's drawer. One whose quest isn't served
-    // is left out, as nothing could go to it.
+    // those landed, for What Moved's drawer, left off where the daemon
+    // gave either count as no number, so Now can tell unknown from
+    // nought. One whose quest isn't served is left out, as nothing could
+    // go to it.
     function moved() {
         return (ready.held["moved:quests"]?.moved ?? []).map(one => {
             const served = ready.served(`row:quests:${one.held?.id}`);
@@ -224,7 +226,9 @@ Provider {
                 return null;
             const row = provider.made(Object.assign({}, served,
                 { key: one.key, note: one.note, side: one.side }), one.key);
-            row.movedAsks = { landed: one.held?.landed ?? 0, moved: one.held?.moved ?? 0 };
+            const { landed, moved } = one.held ?? {};
+            if (Number.isFinite(landed) && Number.isFinite(moved))
+                row.movedAsks = { landed, moved };
             return row;
         }).filter(row => row !== null);
     }

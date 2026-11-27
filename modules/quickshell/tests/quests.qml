@@ -839,8 +839,10 @@ ShellRoot {
                 landed: root.askedAt };
             const next = { at: root.askedAt, owner: "LAPTOP (PROMPT)", words: "the dock",
                 landed: root.askedAt };
+            // One not landed moves too, so landed and moved count apart.
+            const open = { at: root.askedAt, owner: "LAPTOP", words: "the cable" };
             root.waiting = "what moved heard";
-            asksFile.setText(`${JSON.stringify(first)}\n${JSON.stringify(next)}\n`);
+            asksFile.setText([first, next, open].map(one => `${JSON.stringify(one)}\n`).join(""));
         } catch (error) {
             fail(error.message);
         }
@@ -852,6 +854,9 @@ ShellRoot {
             const moved = theQuests.moved();
             if (root.waiting === "what moved heard" && moved.length === 1)
                 Qt.callLater(root.movedHeard);
+            if (root.waiting === "what moved looked at once" && moved.length === 1
+                    && moved[0].note === "taken on: the cable")
+                Qt.callLater(root.movedLookedOnce);
             if (root.waiting === "what moved looked at" && moved.length === 0)
                 Qt.callLater(() => Qt.exit(0));
         }
@@ -872,9 +877,9 @@ ShellRoot {
             expect("saying what landed where its note was", row.note === "landed: the dock",
                 row.note);
             // What What Moved's drawer counts, as the daemon served it: the
-            // one ask that moved since the start, which landed.
+            // two asks that moved since the start, one of them landed.
             expect("its asks counted as the daemon served them",
-                JSON.stringify(row.movedAsks) === JSON.stringify({ landed: 1, moved: 1 }),
+                JSON.stringify(row.movedAsks) === JSON.stringify({ landed: 1, moved: 2 }),
                 JSON.stringify(row.movedAsks));
             expect("acted on as the quest's own row is",
                 JSON.stringify(row.verbs().map(verb => verb.name))
@@ -883,7 +888,26 @@ ShellRoot {
             const seen = theQuests.movedSeen();
             expect("what it shows of the ask that moved", seen.length === 1
                 && seen[0].key === `${root.askedAt}\tthe dock`, JSON.stringify(seen));
+            root.waiting = "what moved looked at once";
             theQuests.looked(seen);
+        } catch (error) {
+            fail(error.message);
+        }
+    }
+
+    // The ask taken on behind the landing wasn't named by the note, so
+    // the daemon never counted it as seen (moved.rs's record): the row
+    // stays, saying it now, and goes once that is looked at too.
+    function movedLookedOnce() {
+        if (root.waiting !== "what moved looked at once")
+            return;
+        root.waiting = "what moved looked at";
+        try {
+            const row = theQuests.moved()[0];
+            expect("an ask its note didn't name is counted at the next look",
+                JSON.stringify(row.movedAsks) === JSON.stringify({ landed: 0, moved: 1 }),
+                JSON.stringify(row.movedAsks));
+            theQuests.looked(theQuests.movedSeen());
         } catch (error) {
             fail(error.message);
         }

@@ -1188,7 +1188,7 @@ ShellRoot {
                 && row.note === "Bootstrap the laptop",
             JSON.stringify([row.name, row.side, row.note]));
         // Its drawer gives what the note can't: how many that moved
-        // landed, and where most moved, its count said as one or many.
+        // landed, and where most moved, which moved at least two.
         const facts = () => moved().drawer()?.facts ?? null;
         quests.movedRows = [quest, { key: "moved:quests:QEST-B", name: "Tune the dock",
             note: "a date moved: the dock", movedAsks: { landed: 0, moved: 1 } }];
@@ -1206,22 +1206,26 @@ ShellRoot {
         quests.movedRevision += 1;
         same("a tie for the most has no busiest", facts(), [
             { label: "Asks Landed", value: "1", qualifier: "of 6 that moved" }]);
-        quests.movedRows = [quest, { key: "moved:quests:QEST-B", name: "Tune the dock",
-            note: "a date moved: the dock", movedAsks: { landed: 0, moved: 1 } },
-            { key: "moved:quests:QEST-D", name: "Mend the mail",
-                note: "landed: the mail", movedAsks: { landed: 1, moved: 1 } }];
-        quests.movedRevision += 1;
-        same("the one that moved most of several is busiest", facts()[1],
-            { label: "Busiest", value: "Bootstrap the laptop", qualifier: "3 asks" });
+        // The daemon orders workstreams by their latest moment, so the one
+        // that moved most may come anywhere.
         quests.movedRows = [{ key: "moved:quests:QEST-B", name: "Tune the dock",
             note: "a date moved: the dock", movedAsks: { landed: 0, moved: 1 } },
-            { key: "moved:quests:QEST-C", name: "Uncounted", note: "" }];
+            { key: "moved:quests:QEST-D", name: "Mend the mail",
+                note: "landed: the mail", movedAsks: { landed: 1, moved: 1 } }, quest];
         quests.movedRevision += 1;
-        same("one ask is said as one", facts()[1],
-            { label: "Busiest", value: "Tune the dock", qualifier: "1 ask" });
+        same("the one that moved most of several is busiest, wherever it comes", facts(), [
+            { label: "Asks Landed", value: "2", qualifier: "of 5 that moved" },
+            { label: "Busiest", value: "Bootstrap the laptop", qualifier: "3 asks" }]);
+        quests.movedRows = [{ key: "moved:quests:QEST-B", name: "Tune the dock",
+            note: "a date moved: the dock", movedAsks: { landed: 0, moved: 1 } },
+            quest, { key: "moved:quests:QEST-C", name: "Uncounted", note: "" }];
+        quests.movedRevision += 1;
+        expect("a workstream the daemon never counted leaves every count out, so no drawer",
+            moved().drawer() === null, JSON.stringify(moved().drawer()));
         quests.movedRows = [{ key: "moved:quests:QEST-C", name: "Uncounted", note: "" }];
         quests.movedRevision += 1;
-        same("counts the daemon never gave are no facts, so no drawer", facts(), null);
+        expect("counts the daemon never gave are no facts, so no drawer",
+            moved().drawer() === null, JSON.stringify(moved().drawer()));
         quests.movedRows = [quest];
         quests.movedRevision += 1;
         expect("it steps into each quest's row", row.verbs()[0] === quest,
