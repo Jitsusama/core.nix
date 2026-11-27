@@ -1255,9 +1255,11 @@ Provider {
     // Only his own reading counts: a walk's Switch goes to the session but
     // marks nothing read, and says nothing of it, since the walk did what it
     // asked.
+    // It says when he opened it as `seen`, asked again as it was, so a retry taken late marks
+    // read no answer that came since, which he never saw (round 000035 on #6796, F19).
     function heard(address) {
         if (Sprouting.fromJoel(launcher))
-            rowsKind?.askTillTaken({ ask: "heard", address });
+            rowsKind?.askTillTaken({ ask: "heard", address, seen: Date.now() });
     }
 
     // What the foot says once words have gone to a session.
@@ -2986,9 +2988,10 @@ Provider {
             if (provider.launcher.open) {
                 provider.startPlacesAsked = false;
                 provider.askOffers();
-                // A share is the shell's alone to tell, so one refused through every try,
-                // as while the user manager is slow, is told again as Joel next looks
-                // (round 000036 on #6796, F121 and F133).
+                // A share's end is the shell's alone to tell, so one refused through every
+                // try, as while the user manager is slow, is told again as Joel next looks,
+                // which also ends a start any program may tell, as it only hides amounts
+                // (round 000036 on #6796, F121 and F133; round 000035, F20).
                 provider.tellSharing();
             }
             // Shut, no drawer shows, so none is watched.
@@ -3206,11 +3209,20 @@ Provider {
         const to = String(address).toUpperCase();
         // An answer goes as Joel's, so it goes only from his own Return, whichever row gives it
         // (Sprouting.fromJoel), and only his first to an ask, For You's choices too. Refused,
-        // nothing is kept, so its Talk shows no words he didn't send; a walk is told why
-        // (Launcher.qml's walkedRun), and `then` hears it refused, its row saying why.
+        // nothing is kept, so its Talk shows no words he didn't send. A walk is told why
+        // (Launcher.qml's walkedRun) and only the walk, since `then` says it in Joel's foot,
+        // where a terminal's walk would write over what he reads (round 000035 on #6796,
+        // F2); his own second Return hears it refused, its row saying why.
+        const said = Words.of("verb:agent:talk").said ?? {};
+        const name = sessionAt(address)?.title ?? to;
+        const walked = TalkAnswers.walkRefused(Sprouting.fromJoel(launcher),
+            said.answerWalked ?? "", name);
+        if (walked !== null) {
+            launcher?.walkRefused?.(walked);
+            return;
+        }
         const asked = { list: answeredTo[to], want: chose.answers.want, nowMs: Date.now() };
-        const refused = TalkAnswers.answerRefused(Sprouting.fromJoel(launcher), asked,
-            Words.of("verb:agent:talk").said ?? {}, sessionAt(address)?.title ?? to);
+        const refused = TalkAnswers.answerRefused(true, asked, said, name);
         if (refused !== null) {
             launcher?.walkRefused?.(refused);
             then(false, refused, false, true);

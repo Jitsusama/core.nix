@@ -64,9 +64,10 @@ pub enum Heard {
     /// Joel reads these landings, by their keys, at this moment in
     /// milliseconds, as the shell says.
     Read(Vec<String>, i64),
-    /// Joel opened a session's drawer, by its address, at this moment in
-    /// milliseconds, as the shell says, so he's read what it answered.
-    Opened(String, i64),
+    /// Joel opened a session's drawer, by its address, so he's read what
+    /// it answered before then (answered.rs's `opened`): at this moment
+    /// in milliseconds, then when the shell says he opened it.
+    Opened(String, i64, i64),
     /// Where the windows of sessions moving onto pi's host sat, all of
     /// them, as the shell says each time one's kept or let go.
     KeepPlaces(KeptPlaces),
@@ -300,11 +301,9 @@ impl Inputs {
             }
             // The node tells the read line back with the rest of the talk,
             // which takes the answer away, so nothing is held here.
-            Heard::Opened(address, now) => {
+            Heard::Opened(address, now, seen) => {
                 let answers = self.answers();
-                if let Some(answer) = answers
-                    .iter()
-                    .find(|one| one.address == address && !one.read)
+                if let Some(answer) = answered::opened(&answers, &address, seen)
                     && let Err(why) = answered::read(&paths.steer, answer, now)
                 {
                     eprintln!("agents: can't say {} was read: {why}", answer.talk);

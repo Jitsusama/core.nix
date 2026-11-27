@@ -257,14 +257,16 @@ fn own(told: mpsc::Sender<Heard>, wants: Wants) -> Own {
             return Some(json!({"read": count}));
         }
         // Joel opens a session's drawer, by its address, so he's read what
-        // it answered him, if anything.
+        // it answered him, if anything, before `seen`, when the shell says
+        // he opened it; one not saying is taken as now.
         if said["ask"] == "heard" {
             let Some(address) = said["address"].as_str().filter(|one| !one.is_empty()) else {
                 return Some(json!({"error": {"code": "not-an-ask",
                     "message": "a heard names no `address`"}}));
             };
             let now = i64::try_from(now).unwrap_or(0);
-            let _ = told.send(Heard::Opened(address.to_owned(), now));
+            let seen = said["seen"].as_i64().unwrap_or(now);
+            let _ = told.send(Heard::Opened(address.to_owned(), now, seen));
             return Some(json!({"heard": address}));
         }
         // Joel's Not Now on the ask a session's row showed him, refused
@@ -346,10 +348,7 @@ fn for_the_shell_alone(
     shared.peered(
         &SHELLS_ALONE,
         Box::new(move |said, stream| {
-            if said["ask"]
-                .as_str()
-                .is_some_and(|ask| AS_JOEL.contains(&ask))
-            {
+            if held_to_the_shell(said) {
                 return match asker::the_shell(stream) {
                     Ok(()) => as_joel(said),
                     Err(why) => Some(not_as_joel(&why, said)),
@@ -492,6 +491,20 @@ const SLOW: [&str; 7] = [
     "feedback",
 ];
 
+/// Whether `said` is one of [`AS_JOEL`] the shell's check holds: each but
+/// a share's start, which only hides Joel's amounts, so it's taken from
+/// anyone. Held to the shell, one refused through a slow user manager
+/// left amounts served on a shared screen till the next opening; an
+/// agent saying it hides them only until the shell tells the share's
+/// end, at that opening (round 000035 on #6796, F20).
+fn held_to_the_shell(said: &Value) -> bool {
+    let starts_a_share = said["ask"] == "sharing" && said["sharing"] == true;
+    said["ask"]
+        .as_str()
+        .is_some_and(|ask| AS_JOEL.contains(&ask))
+        && !starts_a_share
+}
+
 /// What one of [`AS_JOEL`] is told where the shell's check refused it,
 /// in the form each is read: an act as the shell reads a steer
 /// refused (Sessions.qml's steered), journalled with what it named, so
@@ -625,6 +638,10 @@ fn started(words: Words, paths: &Paths, starts: Keeping) -> Inputs {
             clock::now_ms(),
         ),
         starts,
+        // No amount is said until the shell says the screen isn't shared,
+        // as it does once it reaches the daemon, so a share begun while the
+        // daemon was down shows none (round 000035 on #6796, F20).
+        sharing: true,
         ..Inputs::default()
     }
 }
