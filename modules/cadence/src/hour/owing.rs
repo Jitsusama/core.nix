@@ -472,7 +472,10 @@ fn back_in(key: &str, measures: &[Measure]) -> bool {
 /// Whether `key` is a class of cause its owner closed by naming its fix
 /// within the week before `now`: its cases still count from before the
 /// fix, so filing it again would ask for the fix just named. A bare
-/// `--done`, which names none, holds nothing.
+/// `--done`, which names none, holds nothing. The measure can't tell a
+/// case from before the fix from one after it, so a fix that didn't hold
+/// is asked of again only once its week is out: the cost of not asking
+/// for a fix just named.
 fn fixed_lately(ledger: &[Entry], key: &str, now: i64) -> bool {
     key.strip_prefix("hour:")
         .is_some_and(|key| key.starts_with(causes::KEY))

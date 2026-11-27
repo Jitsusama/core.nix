@@ -112,12 +112,20 @@ fn a_class_by_another_name_is_counted_as_one() {
         TEST_PASSES_UNDONE,
         "an alias wasn't folded to the name it counts under"
     );
+}
+
+#[test]
+fn an_unfolded_class_keeps_only_its_senders_first_hundred_letters() {
     let long = "word ".repeat(60);
     assert_eq!(
         class_named(&plain(&long)).chars().count(),
         folds::UNFOLDED.len() + UNFOLDED_AT_MOST - 1,
         "an unfolded class kept a sender's words at any length"
     );
+}
+
+#[test]
+fn a_change_is_read_by_its_repository_however_it_is_written() {
     assert_eq!(
         changes("harness#2123 and core#6310, #6311"),
         ["agentic-harness.pi#2123", "core.nix#6310", "core.nix#6311"],
@@ -136,6 +144,46 @@ fn a_class_by_another_name_is_counted_as_one() {
     assert!(
         changes("#6310").is_empty(),
         "a number with no repository before it was read as a change"
+    );
+    assert_eq!(
+        changes("core.nix#1, mycelium #8, plus #9"),
+        ["core.nix#1"],
+        "a number after a repository unknown was counted in the one before it"
+    );
+}
+
+/// One message of many junk wordings, each on three changes, counts only
+/// its first few unfolded classes, and an hour names only its first
+/// several classes, saying how many more are over to the keeper alone.
+#[test]
+fn one_message_or_one_hour_puts_only_so_many_classes_to_their_owners() {
+    let text: String = (0..UNFOLDED_PER_MESSAGE + 3)
+        .map(|n| format!("cause: junk {n} | change: core.nix#1, #2, #3\n"))
+        .collect();
+    let cases = said(&[heard(sent(&text, 60, "@1JQPPC"))]);
+    let classes: BTreeSet<&str> = cases.iter().map(|c| c.class.as_str()).collect();
+    assert_eq!(
+        classes.len(),
+        UNFOLDED_PER_MESSAGE,
+        "one message counted unfolded classes past its share: {classes:?}"
+    );
+    let cases: Vec<Case> = (0..NAMED_AT_MOST + 2)
+        .flat_map(|n| (1..=3).map(move |c| case(&format!("class {n:02}"), &format!("r#{c}"), 60)))
+        .collect();
+    let m = recurring(&cases, NOW);
+    assert_eq!(
+        m.now,
+        count(NAMED_AT_MOST + 2),
+        "the classes an hour didn't name weren't counted"
+    );
+    let named: Vec<&str> = m.behind.iter().map(|l| class_of(l)).collect();
+    assert!(
+        named.len() == NAMED_AT_MOST + 1
+            && named.last() == Some(&MORE)
+            && names_no_class(&m.behind[NAMED_AT_MOST])
+            && m.behind[NAMED_AT_MOST].contains("2 more classes"),
+        "an hour named classes past its share, or didn't say the rest: {:?}",
+        m.behind
     );
 }
 
@@ -297,7 +345,9 @@ fn what_the_mesh_said_is_kept_for_the_next_hour_and_a_look_keeps_nothing() {
     stranger.id = format!("{}-STRANGER-1-0000000b", (NOW + 3650) * 1000);
     stranger.supersedes = Some(third.clone());
     write(&messages, &stranger, -3650);
-    // A file named for one message whose body claims the sender's own.
+    // A file named for one message whose body claims the sender's own: a
+    // check that the file agrees with itself, since one that agrees with
+    // itself passes whoever wrote it.
     let mut forged = sent("not mine either", -3650, "@1JQPPC");
     forged.id = format!("{}-SENDER-1-0000000c", (NOW + 3650) * 1000);
     forged.supersedes = Some(third.clone());
@@ -374,6 +424,7 @@ fn a_kept_case_is_folded_again_by_its_wording() {
         v: VERSION,
         through_ms: (NOW - 600) * 1000,
         cases,
+        withdrawn: BTreeSet::new(),
     };
     let text = serde_json::to_string(&kept).expect("serialised");
     fs::write(folder.path().join("causes.json"), text).expect("kept");
@@ -410,6 +461,70 @@ fn what_couldnt_be_kept_is_said_and_names_no_class() {
         kept.behind.is_empty(),
         "a reading kept whole said it wasn't: {:?}",
         kept.behind
+    );
+}
+
+/// A line relayed here after its sender's withdrawal was read, and let go
+/// by the mesh, still stays out.
+#[test]
+fn a_withdrawal_is_kept_for_a_line_written_here_after_it() {
+    let home = tempfile::tempdir().expect("a temporary home");
+    let folder = tempfile::tempdir().expect("a temporary folder");
+    let messages = home
+        .path()
+        .join("pi/agentic-harness.pi/mesh-workflow/messages");
+    fs::create_dir_all(&messages).expect("the messages folder");
+    let first = format!("{}-SENDER-1-00000001", (NOW - 1200) * 1000);
+    let mut withdraws = sent("no cause here after all", 600, "@1JQPPC");
+    withdraws.supersedes = Some(first.clone());
+    write(&messages, &withdraws, 600);
+    let heard = read(home.path(), folder.path(), NOW, true);
+    assert_eq!(
+        heard.now, 0.0,
+        "a withdrawal alone read as a cause: {:?}",
+        heard.behind
+    );
+    fs::remove_dir_all(&messages).expect("the mesh lets the withdrawal go");
+    fs::create_dir_all(&messages).expect("an empty messages folder");
+    for n in 1..=3 {
+        let line = format!("cause: flaky gate | change: core.nix#{n}");
+        let mut m = sent(&line, 1200, "@1JQPPC");
+        m.id = format!("{}-SENDER-1-0000000{n}", (NOW - 1200) * 1000);
+        write(&messages, &m, -7200);
+    }
+    let later = read(home.path(), folder.path(), NOW + 7300, true);
+    assert_eq!(
+        later.now, 0.0,
+        "a line written here after its withdrawal was let go counted: {:?}",
+        later.behind
+    );
+}
+
+/// A kept reading that doesn't parse is unread, as symbiosis's is, since
+/// read as none the cases only it holds would be lost; one of another
+/// version reads the mesh's week anew.
+#[test]
+fn a_kept_reading_that_doesnt_parse_is_unread_and_another_version_is_read_anew() {
+    let home = tempfile::tempdir().expect("a temporary home");
+    let folder = tempfile::tempdir().expect("a temporary folder");
+    let messages = home
+        .path()
+        .join("pi/agentic-harness.pi/mesh-workflow/messages");
+    fs::create_dir_all(&messages).expect("the messages folder");
+    let kept_at = folder.path().join("causes.json");
+    fs::write(&kept_at, "{not json").expect("a torn reading");
+    let torn = read(home.path(), folder.path(), NOW, true);
+    assert!(
+        torn.past().is_some() && torn.behind.len() == 1 && class_of(&torn.behind[0]) == UNREAD,
+        "a kept reading that doesn't parse passed as none: {:?}",
+        torn.behind
+    );
+    fs::write(&kept_at, r#"{"v":1,"through_ms":1,"cases":[]}"#).expect("an old reading");
+    let old = read(home.path(), folder.path(), NOW, true);
+    assert!(
+        old.past().is_none() && old.behind.is_empty(),
+        "a kept reading of another version wasn't read anew: {:?}",
+        old.behind
     );
 }
 

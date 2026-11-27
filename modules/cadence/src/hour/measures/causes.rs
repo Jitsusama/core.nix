@@ -65,6 +65,20 @@ const VERSION: u32 = 2;
 /// line sent makes a key or an ask of any length.
 const UNFOLDED_AT_MOST: usize = 100;
 
+/// The most unfolded classes one message counts, so a message of many
+/// junk wordings can't put each over the bar; the folded classes are few
+/// by their making.
+const UNFOLDED_PER_MESSAGE: usize = 5;
+
+/// The most classes an hour names, and so asks of their owners; the rest
+/// are counted and said in one line to the keeper, and asked once these
+/// close.
+const NAMED_AT_MOST: usize = 10;
+
+/// The words that join one change's number to the next within a line,
+/// keeping the repository named before them.
+const JOINING: &[&str] = &["and", "or", "also", "plus", "then", "&"];
+
 /// Who owns fixing each class, by its counted name and the repository its
 /// change is in, or any repository where that is empty, as the keeper
 /// named them on 26 November. A class whose owner differs by repository is
@@ -114,6 +128,9 @@ struct Kept {
     v: u32,
     through_ms: i64,
     cases: Vec<Case>,
+    /// The messages whose lines their senders withdrew, so one written
+    /// here after the reading that heard its withdrawal still stays out.
+    withdrawn: BTreeSet<String>,
 }
 
 /// The measure at `now`, in seconds, from the mesh and the review folder
@@ -151,12 +168,37 @@ pub fn read(state_home: &Path, folder: &Path, now: i64, keeps: bool) -> Measure 
             ));
         }
     };
+    // A kept reading that can't be read or doesn't parse is unread, as
+    // symbiosis's is: read as none, the cases only it holds, past the
+    // mesh's week, would be lost and their asks closed. One of another
+    // version reads the week anew.
     let kept_at = folder.join("causes.json");
-    let kept: Kept = fs::read_to_string(&kept_at)
-        .ok()
-        .and_then(|text| serde_json::from_str(&text).ok())
-        .filter(|kept: &Kept| kept.v == VERSION)
-        .unwrap_or_default();
+    let kept: Kept = match fs::read(&kept_at) {
+        Ok(json) => match serde_json::from_slice::<Kept>(&json) {
+            Ok(kept) if kept.v == VERSION => kept,
+            Ok(kept) => {
+                eprintln!(
+                    "cadence: {} is of version {}, so the mesh's week is read anew",
+                    kept_at.display(),
+                    kept.v
+                );
+                Kept::default()
+            }
+            Err(error) => {
+                return unread(&format!(
+                    "the reading kept in {} doesn't parse ({error})",
+                    kept_at.display()
+                ));
+            }
+        },
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Kept::default(),
+        Err(error) => {
+            return unread(&format!(
+                "the reading kept in {} can't be read ({error})",
+                kept_at.display()
+            ));
+        }
+    };
     let now_ms = now * 1000;
     // A mark past now says this machine's clock stepped back since it was
     // kept, and a file written in the step would sit behind it, so the
@@ -174,20 +216,22 @@ pub fn read(state_home: &Path, folder: &Path, now: i64, keeps: bool) -> Measure 
     let heard: Vec<(Message, i64)> = listed
         .into_iter()
         .filter_map(|(path, name, written)| {
-            let message: Message = serde_json::from_slice(&fs::read(&path).ok()?).ok()?;
+            let json = symbiosis::opened_at_most(&path).ok()?;
+            let message: Message = serde_json::from_slice(&json).ok()?;
             genuine(&message, &name).then_some((message, written))
         })
         .collect();
-    // Only its sender withdraws a line, so another's word leaves it
-    // counted.
-    let withdrawn: BTreeSet<&str> = heard
-        .iter()
-        .filter_map(|(m, _)| {
-            m.supersedes
-                .as_deref()
-                .filter(|id| sender_of(id) == Some(m.from.as_str()))
-        })
-        .collect();
+    // Only a message from its line's own sender withdraws it, so another's
+    // word leaves it counted. That a message is from whom it says rests on
+    // the mesh, which signs nothing yet. A withdrawal is kept as long as
+    // the line it withdraws could be, since that may be written here later.
+    let mut withdrawn = kept.withdrawn;
+    withdrawn.extend(heard.iter().filter_map(|(m, _)| {
+        m.supersedes
+            .clone()
+            .filter(|id| sender_of(id) == Some(m.from.as_str()))
+    }));
+    withdrawn.retain(|id| stamped_at(id).is_some_and(|ms| ms > (now - KEPT_FOR) * 1000));
     let mut cases: Vec<Case> = kept
         .cases
         .into_iter()
@@ -214,6 +258,7 @@ pub fn read(state_home: &Path, folder: &Path, now: i64, keeps: bool) -> Measure 
                 v: VERSION,
                 through_ms: now * 1000,
                 cases: cases.clone(),
+                withdrawn: withdrawn.clone(),
             };
             serde_json::to_string(&next)
                 .map_err(|error| error.to_string())
@@ -221,6 +266,12 @@ pub fn read(state_home: &Path, folder: &Path, now: i64, keeps: bool) -> Measure 
                 .err()
         })
         .flatten();
+    if let Some(why) = &unkept {
+        eprintln!(
+            "cadence: keeping the causes read in {}: {why}",
+            kept_at.display()
+        );
+    }
     cases.extend(reviewed(&review));
     let mut m = recurring(&cases, now);
     if let Some(why) = unkept {
@@ -233,15 +284,18 @@ pub fn read(state_home: &Path, folder: &Path, now: i64, keeps: bool) -> Measure 
 }
 
 /// What a measure's line opens with when it names no class: the mesh
-/// couldn't be read, or what was read couldn't be kept.
+/// couldn't be read, what was read couldn't be kept, or more classes were
+/// over the bar than an hour names.
 pub const UNREAD: &str = "unread";
 pub const UNKEPT: &str = "unkept";
+pub const MORE: &str = "more";
 
 /// Whether a line of the measure names no class, only that it couldn't
-/// read or keep, so it asks nobody for a fix.
+/// read or keep, or how many more it didn't name, so it asks nobody for a
+/// fix.
 #[must_use]
 pub fn names_no_class(line: &str) -> bool {
-    [UNREAD, UNKEPT].contains(&class_of(line))
+    [UNREAD, UNKEPT, MORE].contains(&class_of(line))
 }
 
 /// The classes in `cases` found on `AT_LEAST` changes or more in the week
@@ -263,10 +317,21 @@ pub fn recurring(cases: &[Case], now: i64) -> Measure {
         .filter(|(_, on)| on.len() >= AT_LEAST)
         .collect();
     over.sort_by(|(a, on_a), (b, on_b)| on_b.len().cmp(&on_a.len()).then(a.cmp(b)));
-    let behind: Vec<String> = over
+    let mut behind: Vec<String> = over
         .iter()
+        .take(NAMED_AT_MOST)
         .flat_map(|(class, on)| lines_of(class, on))
         .collect();
+    if let Some(more) = over
+        .len()
+        .checked_sub(NAMED_AT_MOST)
+        .filter(|&more| more > 0)
+    {
+        behind.push(format!(
+            "{MORE}: {more} more classes are on {AT_LEAST} or more changes, asked once those \
+             above close · {KEEPER}"
+        ));
+    }
     Measure {
         key: KEY.to_owned(),
         class: Class::Functional,
@@ -333,7 +398,10 @@ fn owner_of(class: &str, repo: &str) -> &'static str {
 }
 
 /// Whether `message` is the one its file `name` names, sent by whom its
-/// id says, so no file can stand in for another message or sender.
+/// id says, so no file can stand in for another message or sender. It
+/// checks that a file agrees with itself, not who wrote it: every writer
+/// to the mesh is the same local user, so a forger who writes the id and
+/// sender alike passes, until the mesh signs what it carries.
 fn genuine(message: &Message, name: &str) -> bool {
     name.strip_suffix(".json") == Some(message.id.as_str())
         && sender_of(&message.id) == Some(message.from.as_str())
@@ -347,6 +415,7 @@ fn sender_of(id: &str) -> Option<&str> {
 /// The cases the cells' cause lines in `heard` say, those sent to the
 /// keeper, each with when this machine wrote it, in ms, dated when its
 /// message was sent, or written where its stamp is later, and naming it.
+/// One message counts at most `UNFOLDED_PER_MESSAGE` unfolded classes.
 fn said(heard: &[(Message, i64)]) -> Vec<Case> {
     let to_keeper = format!("@{KEEPER}");
     heard
@@ -354,12 +423,21 @@ fn said(heard: &[(Message, i64)]) -> Vec<Case> {
         .filter(|(m, _)| m.to.iter().any(|to| *to == to_keeper || to == KEEPER))
         .filter_map(|(m, written)| Some((stamped_at(&m.id)?.min(*written) / 1000, m)))
         .flat_map(|(at, m)| {
-            m.text.lines().flat_map(move |line| {
-                cause_line(line, at).into_iter().map(|case| Case {
+            let mut unfolded = BTreeSet::new();
+            m.text
+                .lines()
+                .flat_map(|line| cause_line(line, at))
+                .filter(|case| {
+                    !case.class.starts_with(folds::UNFOLDED)
+                        || unfolded.contains(&case.class)
+                        || (unfolded.len() < UNFOLDED_PER_MESSAGE
+                            && unfolded.insert(case.class.clone()))
+                })
+                .map(|case| Case {
                     said_in: Some(m.id.clone()),
                     ..case
                 })
-            })
+                .collect::<Vec<_>>()
         })
         .collect()
 }
@@ -399,7 +477,10 @@ fn cause_line(line: &str, at: i64) -> Vec<Case> {
 
 /// The changes `named` names, as `<repo>#<number>`: "core.nix#6310, #6311"
 /// names two, the second in the first's repository, and "core #6310" one,
-/// its repository written apart from its number.
+/// its repository written apart from its number. A word before a bare
+/// number that is neither a repository known nor a joining word names a
+/// repository unknown, so the number is left out rather than counted in
+/// the repository before it.
 fn changes(named: &str) -> Vec<String> {
     let words: Vec<&str> = named
         .split([',', ' ', ';'])
@@ -413,6 +494,8 @@ fn changes(named: &str) -> Vec<String> {
             let apart = words.get(at + 1).is_some_and(|next| next.starts_with('#'));
             if apart && is_repo(word) {
                 repo = repo_named(word);
+            } else if apart && !JOINING.contains(&word.to_lowercase().as_str()) {
+                repo.clear();
             }
             continue;
         };
