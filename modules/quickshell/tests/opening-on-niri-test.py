@@ -401,6 +401,25 @@ def read_shared(shell: Shell, *, shared: bool) -> None:
         time.sleep(launcher_on_niri.POLL)
 
 
+def changes_before_kept(shell: Shell) -> dict[str, int]:
+    """Wait until home is kept after a start, and give each source's changes from before then.
+
+    The changes are those read last before a look that found home not yet kept, so the keep
+    came after them: a source that answers between the keep and a read made once it shows
+    counts as changed, not as unchanged since. Kept at the first look, it gives none, so each
+    source that has answered at all counts as changed.
+    """
+    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+    before: dict[str, int] = {}
+    while True:
+        changes = json.loads(shell.as_account(shell.ipc("changed")))
+        if shell.showing().get("kept"):
+            return before
+        before = changes
+        assert time.monotonic() < deadline, f"home was never kept:\n{shell.tail()}"
+        time.sleep(launcher_on_niri.POLL)
+
+
 def drawn_until(shell: Shell, test: Callable[[str], bool], what: str) -> str:
     """Wait until the JSON of the texts drawn on the card and its drawer passes `test`, and give it.
 
@@ -761,8 +780,7 @@ def test_a_chord_first_after_a_restart_makes_only_its_places_rows(shell: Shell) 
     """
     restarted = time.monotonic()
     shell.restart()
-    shell.launcher_until(lambda shown: shown.get("kept"))
-    kept = json.loads(shell.as_account(shell.ipc("changed")))
+    kept = changes_before_kept(shell)
     answered_since(shell, restarted)
     made = made_by_others(shell, "windows")
     now = json.loads(shell.as_account(shell.ipc("changed")))
