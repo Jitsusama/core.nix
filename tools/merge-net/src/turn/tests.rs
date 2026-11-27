@@ -55,7 +55,7 @@ fn a_change_to_a_crate_reading_an_earlier_gates_crate_waits_behind_it() {
     );
     let theirs = owned(&["modules/terminal-kit/src/lib.rs"]);
     let ours = owned(&["modules/cadence/src/hour.rs", "modules/sun/src/main.rs"]);
-    let touch = |_: &Gate| Some(shares(theirs.clone(), &ours, &crates));
+    let touch = |_: &Gate| Some(shares(theirs.clone(), &ours, &crates, &[]));
     let gates = [gate(1, "/kit", 100)];
     let held = ahead(
         &gates,
@@ -164,6 +164,47 @@ fn a_head_whose_change_main_took_rebased_counts_as_merged() {
         said,
         (Some(true), Some(false)),
         "a head main took rebased, or one it never took, was misjudged as merged or not"
+    );
+}
+
+#[test]
+fn a_change_in_an_earlier_gates_fate_waits_behind_it() {
+    // Two changes in different files the map's check is built from each
+    // fit its budget's room alone. Were the later to merge while the
+    // earlier's gate ran, that pass would go stale on the map all the same.
+    let fates = fates::parse("the map: modules/mycelium/site/ modules/local-sites/")
+        .expect("the map's fate reads");
+    let theirs = owned(&["modules/mycelium/site/view.js"]);
+    let ours = owned(&["modules/local-sites/kit/head.css", "docs/testing.md"]);
+    let crates = Crates::of("");
+    let touch = |_: &Gate| Some(shares(theirs.clone(), &ours, &crates, &fates));
+    let gates = [gate(1, "/map", 100)];
+    let held = ahead(
+        &gates,
+        &asking(200, "/kit", &ours),
+        NOW,
+        &own,
+        &everyone,
+        &touch,
+    );
+    assert_eq!(
+        held.map(|held| held.shared),
+        Some(owned(&["modules/local-sites/kit/head.css"])),
+        "a change in the map's fate merged ahead of the map's earlier gate"
+    );
+    let apart = owned(&["modules/net/site/panel.ts"]);
+    let touch_apart = |_: &Gate| Some(shares(theirs.clone(), &apart, &crates, &fates));
+    assert_eq!(
+        ahead(
+            &gates,
+            &asking(200, "/net", &apart),
+            NOW,
+            &own,
+            &everyone,
+            &touch_apart,
+        ),
+        None,
+        "a change outside the map's fate waited behind its gate"
     );
 }
 

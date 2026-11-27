@@ -43,6 +43,8 @@ use std::process::{Command, ExitCode};
 
 use crate::kit;
 use crate::places::Places;
+use crate::ready::Side;
+use crate::rules::fates::{self, Fate};
 use crate::waited::Waited;
 use crate_reach::Crates;
 
@@ -298,6 +300,7 @@ pub fn waits(commit: &str, passes: &[&str], ours: &[String]) -> Option<(String, 
     };
     let place = |gate: &Gate| places.start(&gate.folder, gate.started, now);
     let crates = Crates::at(Path::new("."), commit);
+    let fates = fates::fates();
     let mut gates = gates;
     gates.extend(finished(&heads(&places), now, &passed_at, &on_main));
     let queue = Queue::of(&here, patch.as_deref(), ours, &gates, &crates, now);
@@ -317,7 +320,7 @@ pub fn waits(commit: &str, passes: &[&str], ours: &[String]) -> Option<(String, 
             .into_iter()
             .filter(|file| !will_stand_apart(gate, commit, file))
             .collect();
-        Some(shares(apart, ours, &crates))
+        Some(shares(apart, ours, &crates, &fates))
     };
     let going = |gate: &Gate| gate.pid == 0 || alive(gate);
     let held = ahead(&gates, &asking, now, &place, &going, &touched)?;
@@ -508,12 +511,25 @@ fn keep_held(patch: Option<&str>, tree: &Path, file: &Path, now: u64) {
 }
 
 /// What a gate changing `theirs` shares with a change to `ours`: the files
-/// they both change, and those of ours in a crate one of theirs is in,
-/// reads or is read by, which `ready` counts as moved under the gate once
-/// ours merges, so its pass would go stale for them all the same.
-fn shares(theirs: Vec<String>, ours: &[String], crates: &Crates) -> Vec<String> {
+/// they both change, those of ours in a crate one of theirs is in, reads
+/// or is read by, and those of ours in a fate one of theirs is in
+/// (`fates.txt`), which `ready` counts as moved under the gate once ours
+/// merges, so its pass would go stale for them all the same.
+fn shares(theirs: Vec<String>, ours: &[String], crates: &Crates, fates: &[Fate]) -> Vec<String> {
+    let nothing = |_: &str| String::new();
+    let gate = Side {
+        changed: &theirs,
+        gone: &[],
+        text: &nothing,
+    };
+    let merging = Side {
+        changed: ours,
+        gone: &[],
+        text: &nothing,
+    };
+    let in_a_fate = fates::beside(fates, &gate, &merging);
     let beside = crates.beside(&theirs, ours);
-    let shared: BTreeSet<String> = theirs.into_iter().chain(beside).collect();
+    let shared: BTreeSet<String> = theirs.into_iter().chain(beside).chain(in_a_fate).collect();
     shared.into_iter().collect()
 }
 
