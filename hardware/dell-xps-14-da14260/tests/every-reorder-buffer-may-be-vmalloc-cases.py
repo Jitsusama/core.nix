@@ -17,13 +17,14 @@ import tempfile
 from pathlib import Path
 
 AGG = "agg.c"
-MLD = "mld.c"
 ALLOCATED = "baid_data = kvzalloc("
 FREED = "\tkvfree(baid_data);"
 READ = "\tba_data = rcu_dereference(mld->fw_id_to_ba[baid]);"
 DECLARED = "\tstruct iwl_mld_baid_data *ba_data;"
 TAKEN = "\t\tdata = wiphy_dereference(mld->wiphy, mld->fw_id_to_ba[baid]);"
-OTHER = "\tkfree(mld->nvm_data);"
+RCU_FREED = "\tkvfree_rcu(baid_data, rcu_head);"
+# In iwl_mld_stop_ba_in_fw(), which follows a function naming its session data data.
+STOPPED = '\tIWL_DEBUG_HT(mld, "RX BA Session stopped in fw\\n");'
 KMALLOC = "takes only kmalloc's memory"
 
 # Each case: its name, the file it edits by its name's end, what it replaces and with
@@ -31,6 +32,13 @@ KMALLOC = "takes only kmalloc's memory"
 CASES: list[tuple[str, str, str, str, str | None]] = [
     ("the allocation back to kzalloc", AGG, ALLOCATED, "baid_data = kzalloc(", "order-5"),
     ("baid_data freed by kfree", AGG, FREED, "\tkfree(baid_data);", KMALLOC),
+    ("baid_data freed by kfree_sensitive", AGG, FREED, "\tkfree_sensitive(baid_data);", KMALLOC),
+    ("baid_data freed through a cast", AGG, FREED, "\tkfree((void *)baid_data);", KMALLOC),
+    ("baid_data freed past a space", AGG, FREED, "\tkfree (baid_data);", KMALLOC),
+    ("baid_data freed with spaces inside", AGG, FREED, "\tkfree( baid_data );", KMALLOC),
+    ("baid_data freed over two lines", AGG, FREED, "\tkfree(\n\t\tbaid_data);", KMALLOC),
+    ("baid_data freed by kvfree_sensitive", AGG, FREED, "\tkvfree_sensitive(baid_data);", None),
+    ("baid_data freed by kfree_rcu", AGG, RCU_FREED, "\tkfree_rcu(baid_data, rcu_head);", None),
     ("ba_data freed by kfree", AGG, READ, READ + "\n\tkfree(ba_data);", KMALLOC),
     ("data freed by kfree", AGG, TAKEN, TAKEN + "\n\t\tkfree(data);", KMALLOC),
     (
@@ -48,13 +56,22 @@ CASES: list[tuple[str, str, str, str, str | None]] = [
         KMALLOC,
     ),
     (
+        "freed by kfree_sensitive as it leaves its scope",
+        AGG,
+        DECLARED,
+        "\tstruct iwl_mld_baid_data *ba_data __free(kfree_sensitive) = NULL;",
+        KMALLOC,
+    ),
+    (
         "the table's entry freed",
         AGG,
         READ,
         READ + "\n\tkfree(rcu_access_pointer(mld->fw_id_to_ba[baid]));",
         KMALLOC,
     ),
-    ("another type's data freed", MLD, OTHER, OTHER + "\n\tkfree(data);", None),
+    # The function before names its session data data, so only its names being let go
+    # where it ends spares a data of the next function's own.
+    ("another function's data freed", AGG, STOPPED, "\tkfree(data);\n" + STOPPED, None),
 ]
 
 
