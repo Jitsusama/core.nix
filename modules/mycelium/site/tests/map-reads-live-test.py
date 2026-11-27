@@ -100,6 +100,9 @@ BASIN = "shoal"
 BASIN_MARK = f"{BASIN} basin"
 BASIN_MACHINES = ("pool-a", "pool-b")
 BASIN_CELLS = ("HERON1", "HERON2")
+# A machine naming itself as new work's cloud is: a link naming it would
+# start the work on any of the cloud's machines, so its drawer offers none.
+CLOUD_NAMED = "cloud"
 # A cloud machine made for the person to keep declares its end in this year.
 KEPT_UNTIL = "9999-01-01T00:00:00Z"
 # A cell find is asked for by name, and the title its drawer heads it with.
@@ -307,6 +310,15 @@ def lent() -> dict[str, list[dict[str, object]]]:
     return {**reading, "machine": machines}
 
 
+def cloud_named() -> dict[str, list[dict[str, object]]]:
+    """Node.json's realm with osprey named CLOUD_NAMED wherever its name is said."""
+    text = (HERE / "node.json").read_text()
+    named = text.replace('"osprey"', f'"{CLOUD_NAMED}"').replace(
+        "machine:osprey", f"machine:{CLOUD_NAMED}"
+    )
+    return json.loads(named)["kinds"]
+
+
 def feeding(cell: str, ago: timedelta = timedelta()) -> dict[str, object]:
     """FED_RECEPTOR feeding `cell` a call's summary, `ago` before now, as the node serves it."""
     said = datetime.now(UTC) - ago
@@ -427,6 +439,13 @@ def basins_served(tmp_path: Path) -> Iterator[Served]:
 @pytest.fixture
 def lent_served(tmp_path: Path) -> Iterator[Served]:
     stand_in = StandIn(tmp_path / "lent.sock", "node", lent()).start()
+    yield from serve(tmp_path, stand_in)
+    stand_in.leave()
+
+
+@pytest.fixture
+def cloud_named_served(tmp_path: Path) -> Iterator[Served]:
+    stand_in = StandIn(tmp_path / "cloud-named.sock", "node", cloud_named()).start()
     yield from serve(tmp_path, stand_in)
     stand_in.leave()
 
@@ -609,7 +628,10 @@ BOXES = """(keys) => [document.getElementById('map-view'), document.getElementBy
   ...keys.map((key) => document.querySelector(`#world circle.cell[data-key="c:${key}"]`))]
   .map((e) => { if (!e || !e.isConnected) return null; const r = e.getBoundingClientRect();
     return [r.left, r.top, r.right, r.bottom]; })"""
-DRAWN = f"(keys) => ({BOXES})(keys).every((box) => box !== null && box[2] > box[0])"
+# BOXES once every box is drawn, and nothing before: the wait's own read is
+# the one measured, so no redraw lands between drawn and measured.
+DRAWN = f"""(keys) => {{ const boxes = ({BOXES})(keys);
+  return boxes.every((box) => box !== null && box[2] > box[0]) ? boxes : null; }}"""
 # A health said for one thing: its verdict, then why.
 HEALTH_SAID = re.compile(r"^(Well|Watch|Tend): \S")
 # A mark on the map, found and measured in one go: a reading's redraw
@@ -623,22 +645,17 @@ MARK_BOX = """(selector) => {
 def drawn_boxes(page: Page, cells: list[str], why: str) -> list[list[float]]:
     """Give the view's box, the drawer's and each cell's, once every cell is drawn.
 
-    A cell that never draws, or one redrawn away between the wait and the read,
-    fails by name.
+    The boxes are the ones the wait saw drawn, so a redraw after it can't
+    measure a cell half drawn; a cell that never draws fails by name.
     """
     try:
-        page.wait_for_function(DRAWN, arg=cells, timeout=PACE_MS)
+        drawn = page.wait_for_function(DRAWN, arg=cells, timeout=PACE_MS)
     except PlaywrightTimeoutError as undrawn:
         boxes = page.evaluate(BOXES, cells)[2:]
         missing = [cell for cell, box in zip(cells, boxes, strict=True) if not box]
         message = f"{why}: {missing or cells} undrawn"
         raise AssertionError(message) from undrawn
-    view, drawer, *boxes = page.evaluate(BOXES, cells)
-    assert view, f"{why}: the map's view went from the page"
-    assert drawer, f"{why}: the drawer went from the page"
-    gone = [cell for cell, box in zip(cells, boxes, strict=True) if not box]
-    assert not gone, f"{why}: {gone} redrawn away once drawn"
-    return [view, drawer, *boxes]
+    return drawn.json_value()
 
 
 def strongest(page: Page, cell: str) -> float:
@@ -2613,6 +2630,35 @@ def test_a_kept_cloud_machine_says_so_and_opens_its_row(
         expect(row, "GULL01's machine row counted down a kept lease").to_contain_text(
             "a cloud machine, kept until you let it go"
         )
+    finally:
+        opened.close()
+
+
+def test_a_machine_named_cloud_offers_no_new_work(
+    browser: Browser, cloud_named_served: Served
+) -> None:
+    root, _ = cloud_named_served
+    opened = Opened(browser, f"{root}mycelium/#machine={CLOUD_NAMED}", SIZES[-1], "light")
+    try:
+        page = opened.page
+        the_map_stands(page, "live")
+        title = page.locator("#panel-title")
+        expect(title, "the machine named cloud never opened").to_have_text(CLOUD_NAMED)
+        body = page.locator("#panel-body")
+        # Its drawer is drawn whole, its row in the Launcher offered, but no
+        # new work: a link naming it would start that on any of the cloud's.
+        expect(
+            body.get_by_role("link", name="Open It in the Launcher"),
+            "the machine named cloud didn't open its row",
+        ).to_have_attribute("href", f"mycelium:machine/{CLOUD_NAMED}")
+        expect(
+            body.locator("[data-sprout-on]"), "the machine named cloud offered new work"
+        ).to_have_count(0)
+        # Another machine's drawer still offers it, on that machine alone.
+        page.evaluate("location.hash = '#machine=kestrel'")
+        expect(title, "kestrel's drawer never opened").to_have_text("kestrel")
+        here = body.get_by_role("button", name="Start New Work Here")
+        expect(here, "kestrel offered no new work").to_have_attribute("data-sprout-on", "kestrel")
     finally:
         opened.close()
 
