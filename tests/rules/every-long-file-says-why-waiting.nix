@@ -6,7 +6,6 @@
   "modules/desk-facts/facts.rs"
   "modules/disk-guard/src/daemon.rs"
   "modules/disk-guard/src/linux.rs"
-  "modules/disk-guard/src/survey.rs"
   "modules/disk-guard/tests/guard/collecting.rs"
   "modules/disk-guard/tests/guard/daemon.rs"
   "modules/hibernate/unlock/src/main.rs"
