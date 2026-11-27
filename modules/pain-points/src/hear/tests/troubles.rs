@@ -217,6 +217,64 @@ fn a_node_out_of_reach_while_no_pain_needs_a_hub_is_no_trouble() {
 }
 
 #[test]
+fn a_pain_for_want_of_hubs_whose_send_failed_is_not_said_to_have_gone() {
+    let place = Place::new("hubless-failed");
+    place.routes();
+    a_day(&place);
+    let minute = 60_000;
+    let mut hour = Hour::default();
+    // Runs five minutes apart, as its timer runs them, so the outage is
+    // carried from each to the next until it is past a blink.
+    for at in [AT, AT + 5 * minute, AT + 10 * minute, AT + 15 * minute] {
+        let ears = Ears {
+            at,
+            hubless: Some("connection refused".into()),
+            ..place.ears()
+        };
+        hour = hear(&ears, CELLS, &mut |owner, _| owner != "ORCH01").expect("a run");
+    }
+    assert!(
+        !hour.troubles.iter().any(|t| t.contains("named no hubs")),
+        "a fallback send that failed was said to have gone for want of hubs: {hour:?}"
+    );
+}
+
+#[test]
+fn a_stall_no_hub_could_take_goes_to_the_fallback_at_once_while_the_node_blinks() {
+    let place = Place::new("hubless-stall");
+    place.routes();
+    let said = [user("a", "2026-11-16T19:50:00.000Z", "make the bar green")];
+    place.log("src", "s-live", Path::new("/home/j/src"), &said);
+    // 19:50 UTC, and a three-minute wait for pi's first call, in a
+    // session that has ended and named no purpose, so the stall says no
+    // word a hub could take it by.
+    timed(&place, "s-live", 1_794_858_600_000, 180_000);
+    let cells = r#"{"Ok":{"Sessions":[
+        {"id":"s-live","address":"ABC123","state":"ended"}]}}"#;
+    let ears = Ears {
+        hubless: Some("connection refused".into()),
+        ..place.ears()
+    };
+    let mut to = Vec::new();
+    let hour = hear(&ears, cells, &mut |owner, text| {
+        if text.contains("stalled") && !text.contains(route::FOR_THE_KEEPER) {
+            to.push(owner.to_owned());
+        }
+        true
+    })
+    .expect("a run");
+    assert_eq!(
+        to,
+        ["ORCH01"],
+        "a stall no hub could take waited out a blink: {hour:?}"
+    );
+    assert!(
+        !hour.troubles.iter().any(|t| t.contains("named no hubs")),
+        "a stall no hub could take was said to go for want of hubs: {hour:?}"
+    );
+}
+
+#[test]
 fn a_node_that_couldnt_be_asked_for_hubs_is_named_by_its_socket() {
     let place = Place::new("hubless-socket");
     let runtime = place.root.join("run");

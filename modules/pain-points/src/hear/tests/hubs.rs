@@ -134,12 +134,9 @@ fn an_ended_sessions_pain_goes_to_a_holder_of_what_it_worked_on() {
 #[test]
 fn a_session_known_to_be_the_void_holds_no_others_pain_though_the_routes_forgot_it() {
     let place = Place::new("hub-void-holder");
-    // Routes that leave the void's VOID01 off their never list.
-    fs::write(
-        place.root.join("state/routes.json"),
-        r#"{"from":"EAR001","fallback":"ORCH01","ledgers":"ORCH01","never":["NEVER1"]}"#,
-    )
-    .expect("routes written");
+    // The routes name only NEVER1 never to send to, so nothing in them
+    // keeps the void's VOID01 from holding a pain.
+    place.routes();
     a_day(&place);
     let cells = r#"{"Ok":{"Sessions":[
         {"id":"s-live","address":"ABC123","state":"ended","working_on":"the launcher"},
@@ -151,6 +148,36 @@ fn a_session_known_to_be_the_void_holds_no_others_pain_though_the_routes_forgot_
         owners_of(&asked, "broken again"),
         ["ORCH01"],
         "an ended session's pain went to the void, a hub's only holder: {asked:?}"
+    );
+}
+
+#[test]
+fn a_session_heard_in_the_void_holds_no_others_pain_though_none_of_its_own_is_kept() {
+    let place = Place::new("hub-void-painless");
+    place.routes();
+    a_day(&place);
+    // A second session in the void that said nothing a pain is made of.
+    place.log(
+        "void",
+        "s-void2",
+        &place.root.join("void"),
+        &[user("w1", "2026-11-16T19:50:00.000Z", "I love this page!")],
+    );
+    let cells = r#"{"Ok":{"Sessions":[
+        {"id":"s-live","address":"ABC123","state":"ended","working_on":"the launcher"},
+        {"id":"s-void","address":"VOID01","state":"idle"},
+        {"id":"s-void2","address":"VOID02","state":"idle"},
+        {"id":"s-hub","address":"HUB001","state":"idle"}]}}"#;
+    let ears = ears_with(&place, vec![Hub::new("launcher", "HUB001", &["VOID02"])]);
+    let asked = asked_in(&ears, cells, |_| Sent::Went);
+    assert!(
+        place.heard().iter().all(|h| h.session != "s-void2"),
+        "the second void session's words were kept as a pain"
+    );
+    assert_eq!(
+        owners_of(&asked, "broken again"),
+        ["ORCH01"],
+        "a pain went to a void session with no pain of its own kept: {asked:?}"
     );
 }
 
@@ -253,6 +280,44 @@ fn a_retry_after_a_send_that_ran_late_goes_to_the_same_holder() {
             "named {order:?}, the retry after a late send went to a second holder"
         );
     }
+}
+
+#[test]
+fn a_retry_after_a_late_send_then_a_failed_one_goes_to_another_holder() {
+    let place = Place::new("hub-late-failed");
+    place.routes();
+    a_day(&place);
+    let cells = r#"{"Ok":{"Sessions":[
+        {"id":"s-live","address":"ABC123","state":"busy"},
+        {"id":"s-void","address":"VOID01","state":"idle"},
+        {"id":"s-fit","address":"FIT002","state":"idle"},
+        {"id":"s-fit3","address":"FIT003","state":"idle"},
+        {"id":"s-hub","address":"HUB001","state":"idle"}]}}"#;
+    let ears = ears_with(
+        &place,
+        vec![Hub::new("launcher", "HUB001", &["FIT002", "FIT003"])],
+    );
+    let mut runs = [Sent::Late, Sent::Failed].into_iter().map(|first| {
+        let tried = asked_in(&ears, cells, |to| {
+            if to == "FIT002" { first } else { Sent::Went }
+        });
+        owners_of(&tried, VOIDS)
+            .into_iter()
+            .map(str::to_owned)
+            .collect::<Vec<_>>()
+    });
+    assert_eq!(runs.next().expect("late"), ["FIT002"], "the first send");
+    assert_eq!(
+        runs.next().expect("failed"),
+        ["FIT002"],
+        "the retry after a late send went to a second holder"
+    );
+    let retried = asked_in(&ears, cells, |_| Sent::Went);
+    assert_eq!(
+        owners_of(&retried, VOIDS),
+        ["FIT003"],
+        "once its send failed, the holder it ran late at kept the pain"
+    );
 }
 
 /// A run whose send to FIT002 answers `first`, then one whose hub names

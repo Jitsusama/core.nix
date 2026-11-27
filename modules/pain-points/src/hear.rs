@@ -473,7 +473,7 @@ pub fn hear_putting(
     let (owned, unkept, hubless_sent) = route_waiting(
         ears,
         &routes,
-        (&cells, hubs_wait),
+        (&cells, &voids_of(&following), hubs_wait),
         &mut kept,
         &mut asked,
         &heard_at,
@@ -698,6 +698,16 @@ fn keep_stalls(
     }
 }
 
+/// Every session heard in the void, its pains kept or not, so none of
+/// them holds another's pain (j176, F6).
+fn voids_of(following: &BTreeMap<String, Following>) -> BTreeSet<String> {
+    following
+        .values()
+        .filter(|log| log.void)
+        .map(|log| log.session.clone())
+        .collect()
+}
+
 /// How a pain no live cell of its own takes went to a holder of its
 /// subject: the hub's cell, and the subject it holds the pain by.
 struct Through {
@@ -710,11 +720,11 @@ struct Through {
 /// carried, nor out of tries: its own live cell, else the least-held live
 /// holder of its subject, else the fallback. A pain said in a session the
 /// mycelium doesn't know has none yet, nor, while `hubs_wait`, one only a
-/// hub would take.
+/// hub would take. No session of `voids`, heard in the void, holds one.
 fn owners_for(
     ears: &Ears,
     routes: &Routes,
-    (cells, hubs_wait): (&BTreeMap<String, Cell>, bool),
+    (cells, voids, hubs_wait): (&BTreeMap<String, Cell>, &BTreeSet<String>, bool),
     kept: &[Heard],
 ) -> Owners {
     let live: BTreeSet<String> = cells
@@ -724,10 +734,16 @@ fn owners_for(
         .collect();
     // Nothing goes to the void, so no session known to be the void holds
     // another's pain, even where the routes forgot its address (#6774's
-    // round, F10).
+    // round, F10), nor one heard in the void whose pains are all gone
+    // from what's kept (j176, F6).
     let mut holders = live.clone();
-    for void in kept.iter().filter(|h| h.void) {
-        if let Some(cell) = cells.get(&void.session) {
+    let void_sessions = kept
+        .iter()
+        .filter(|h| h.void)
+        .map(|h| &h.session)
+        .chain(voids);
+    for session in void_sessions {
+        if let Some(cell) = cells.get(session) {
             holders.remove(&cell.address);
         }
     }
@@ -743,7 +759,7 @@ fn owners_for(
     }
     let mut by_owner: BTreeMap<String, Vec<usize>> = BTreeMap::new();
     let mut through: BTreeMap<usize, Through> = BTreeMap::new();
-    let mut for_want_of_hubs = 0;
+    let mut for_want_of_hubs = BTreeSet::new();
     for (n, pain) in kept.iter().enumerate() {
         if pain.carried
             || pain.routed_at.is_some()
@@ -763,6 +779,12 @@ fn owners_for(
             let mut takers = holders.clone();
             takers.remove(&cell.address);
             let said = route::said(pain, cells, routes);
+            // One that names nothing no hub could ever take, so it goes
+            // to the fallback at once, never waiting out a blink nor said
+            // to have gone for want of hubs (j176, F1).
+            if said.is_empty() {
+                return routes.fallback.clone();
+            }
             let Some((hub, fit, words)) = route::holder(
                 &said,
                 &ears.hubs,
@@ -778,7 +800,7 @@ fn owners_for(
                 if hubs_wait {
                     return None;
                 }
-                for_want_of_hubs += 1;
+                for_want_of_hubs.insert(n);
                 return routes.fallback.clone();
             };
             through.insert(
@@ -812,8 +834,9 @@ struct Owners {
     by_owner: BTreeMap<String, Vec<usize>>,
     /// The hub each pain put through one went by, by its place.
     through: BTreeMap<usize, Through>,
-    /// How many go to the fallback only as the node named no hubs.
-    for_want_of_hubs: usize,
+    /// Those going to the fallback only as the node named no hubs, by
+    /// their place.
+    for_want_of_hubs: BTreeSet<usize>,
 }
 
 /// Sends each pain of the last two hours not yet sent, nor carried, to its
@@ -823,11 +846,12 @@ struct Owners {
 /// holder of its subject that its hub names, kept as a need the way the
 /// harness keeps every need put to a hub, and only with no hub to take it
 /// to the fallback, or, while `hubs_wait`, waits. It also gives how many
-/// went to the fallback only as the node named no hubs.
+/// went to the fallback only as the node named no hubs, counting only
+/// sends that went (j176, F2). No session of `voids` holds a pain.
 fn route_waiting(
     ears: &Ears,
     routes: &Routes,
-    (cells, hubs_wait): (&BTreeMap<String, Cell>, bool),
+    (cells, voids, hubs_wait): (&BTreeMap<String, Cell>, &BTreeSet<String>, bool),
     kept: &mut [Heard],
     send: &mut dyn FnMut(&str, &str) -> Sent,
     heard_at: &Path,
@@ -842,9 +866,9 @@ fn route_waiting(
         by_owner,
         through,
         for_want_of_hubs,
-    } = owners_for(ears, routes, (cells, hubs_wait), kept);
+    } = owners_for(ears, routes, (cells, voids, hubs_wait), kept);
     let mut owned = Vec::new();
-    let (mut put, mut unkept) = (0, None);
+    let (mut put, mut unkept, mut hubless_sent) = (0, None, 0);
     for (owner, mut pains) in by_owner {
         pains.sort_by_key(|n| (std::cmp::Reverse(kept[*n].hits), kept[*n].at));
         pains.truncate(route::NAMED_AT_MOST);
@@ -858,6 +882,7 @@ fn route_waiting(
             Sent::Went => {
                 let mut needs = Vec::new();
                 for n in pains {
+                    hubless_sent += usize::from(for_want_of_hubs.contains(&n));
                     kept[n].to = Some(owner.clone());
                     kept[n].routed_at = Some(ears.at);
                     owned.push(kept[n].key.clone());
@@ -891,10 +916,15 @@ fn route_waiting(
                     kept[n].sent_late_at = Some(owner.clone());
                 }
             }
-            // Only a send made and failed spends a try.
+            // Only a send made and failed spends a try. A holder its last
+            // send failed at no longer keeps it for having run late
+            // before, so the retry may go to another (j176, F7).
             Sent::Failed => {
                 for n in pains {
                     kept[n].tries += 1;
+                    if kept[n].sent_late_at.as_ref() == Some(&owner) {
+                        kept[n].sent_late_at = None;
+                    }
                     if !kept[n].sends_failed_at.contains(&owner) {
                         kept[n].sends_failed_at.push(owner.clone());
                     }
@@ -905,7 +935,7 @@ fn route_waiting(
         }
         let _ = keep(heard_at, kept);
     }
-    (owned, unkept, for_want_of_hubs)
+    (owned, unkept, hubless_sent)
 }
 
 /// Asks the ledgers' keeper of the pains just sent and those heard too

@@ -93,7 +93,7 @@ pub fn run(folder: &Path, state_home: &Path, told: &Told, now: i64) -> io::Resul
     // its holder is told it with the day's findings all the same. Its
     // cells are the sessions there now: every address ever known would
     // count a cell of two addresses twice, and one long gone.
-    let live = mesh.living(|pid| Path::new(&format!("/proc/{pid}")).exists());
+    let live = mesh.living(running);
     let needs = hubs::needs(&put, crate::FROM, now * 1000, live);
     if let Err(error) = hubs::keep(&mesh.root, &needs) {
         eprintln!("cadence day: the needs for late findings put to hubs weren't kept: {error}");

@@ -282,14 +282,16 @@ impl Mesh {
     }
 
     /// How many sessions on the mesh are there now, one each however many
-    /// addresses it goes by, as `alive` judges them by `process_exists`:
-    /// the cells a need's realm holds, as pain-points and the harness
-    /// count them (#6774's round, F6).
+    /// addresses it goes by: each parked, or `running` as its caller judges
+    /// it. These are the cells a need's realm holds, as pain-points and the
+    /// harness count them (#6774's round, F6). `running` is the boot-aware
+    /// judge, since a presence left from another boot may carry a pid some
+    /// other process holds now (j176, F4).
     #[must_use]
-    pub fn living(&self, process_exists: impl Fn(u32) -> bool) -> usize {
+    pub fn living(&self, running: impl Fn(&Presence) -> bool) -> usize {
         self.all()
             .iter()
-            .filter(|p| alive(Some(p), &process_exists))
+            .filter(|p| p.state == "parked" || running(p))
             .count()
     }
 
@@ -650,20 +652,28 @@ mod tests {
             root: dir.path().to_owned(),
         };
         fs::create_dir_all(mesh.presences()).unwrap();
-        for (name, pid) in [("two", 7), ("gone", 8), ("one", 9)] {
+        // The old one's pid is alive, but in another boot, so some other
+        // process holds it now.
+        for (name, pid, boot) in [
+            ("two", 7, "this"),
+            ("gone", 8, "this"),
+            ("old", 9, "before"),
+            ("one", 9, "this"),
+        ] {
             let presence = serde_json::json!({
                 "session": name, "addresses": [format!("{name}-A"), format!("{name}-B")],
-                "state": "listening", "owner": {"pid": pid}});
+                "state": "listening", "owner": {"pid": pid, "bootId": boot}});
             fs::write(
                 mesh.presences().join(format!("{name}.json")),
                 presence.to_string(),
             )
             .unwrap();
         }
+        let rosters = mesh.rostered(0);
         assert_eq!(
-            mesh.living(|pid| pid != 8),
+            mesh.living(|p| running(p, "this", &rosters, |pid| pid != 8)),
             2,
-            "a session of two addresses counted twice, or a gone one counted"
+            "a session of two addresses counted twice, or a gone or old one counted"
         );
     }
 
