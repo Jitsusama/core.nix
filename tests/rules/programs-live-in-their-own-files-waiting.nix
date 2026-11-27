@@ -6,7 +6,7 @@
 {
   "checks.nix" = 1;
   "hardware/dell-xps-14-da14260/camera/camera.nix" = 1;
-  "hardware/dell-xps-14-da14260/checks.nix" = 10;
+  "hardware/dell-xps-14-da14260/checks.nix" = 9;
   "hardware/microsoft-surface-laptop-4-1958/checks.nix" = 1;
   "modules/bluetooth-disk-prompt/checks.nix" = 1;
   "modules/btop/checks.nix" = 3;

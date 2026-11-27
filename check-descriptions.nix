@@ -5924,6 +5924,10 @@
     ready now; and while the place is off, its one row opens the browser a manager fills, else
     a manager's own app, else nothing, its note saying which
   '';
+  the-patches-from-linux-next-apply-exactly = ''
+    each patch the XPS 14 takes from linux-next applies to its kernel's source, after every patch
+    applied before it, with no offset or fuzz, as next.nix says they do
+  '';
   the-people-are-one-person-each = ''
     every source's people join into one person per email address, a source that knows two
     addresses for someone joining them, each standing as the first source that says, favourites
