@@ -463,18 +463,38 @@ mod tests {
 
     #[test]
     fn an_edit_moves_a_mark_with_its_words_before_its_block_at_another_width() {
-        // A paragraph saved in above "two" renumbers its block: by its
-        // block, a mark on it would land on "one". Set at another width
-        // too, a line still says "two", so its words are taken and its
-        // block never read; one no line says goes by its block, below.
-        let old = [line(20.0, "one"), line(40.0, "two")];
-        let new = [line(20.0, "new"), line(40.0, "one"), line(60.0, "two")];
-        let before = [(0, 0.0), (1, 25.0)];
-        let after = [(0, 0.0), (1, 25.0), (2, 45.0)];
+        // A paragraph saved in above the marked one renumbers its block,
+        // and words saved into it, set at another width, stand it taller:
+        // by its block, half way through it, a mark on "three" would land
+        // on "four". A line still says "three", so its words are taken and
+        // its block never read; one no line says goes by its block, below.
+        let old = [
+            line(20.0, "one"),
+            line(40.0, "two"),
+            line(60.0, "three"),
+            line(90.0, "end"),
+        ];
+        let new = [
+            line(20.0, "new"),
+            line(40.0, "one"),
+            line(60.0, "two"),
+            line(80.0, "three"),
+            line(100.0, "four"),
+            line(120.0, "five"),
+            line(150.0, "end"),
+        ];
+        let before = [(0, 0.0), (1, 25.0), (2, 75.0)];
+        let after = [(0, 0.0), (1, 25.0), (2, 45.0), (3, 135.0)];
+        let ends: Vec<(f64, f64)> = new.iter().map(moves::ends_of).collect();
         assert_eq!(
-            moving(true, true, &before, &after, &old, &new, 30.0),
-            50.0,
-            "edited, it goes with \"two\""
+            place::moved_into(&before, &after, (50.0, 60.0), &ends, |_| 2),
+            Some(90.0),
+            "by its block, it would land on \"four\""
+        );
+        assert_eq!(
+            moving(true, true, &before, &after, &old, &new, 50.0),
+            70.0,
+            "edited, it goes with \"three\""
         );
     }
 
