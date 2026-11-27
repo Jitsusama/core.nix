@@ -606,10 +606,19 @@ class Camera:
         self.machine.wait_until_succeeds(self.desktop.in_session(CAMERA), timeout=WAKING)
 
     def gone(self) -> None:
-        """Wait until the viewfinder has gone."""
-        self.machine.wait_until_fails(
-            self.desktop.in_session(CAMERA), timeout=timedelta(seconds=30)
-        )
+        """Wait until the viewfinder has gone.
+
+        Twice on the 26th of November a ZZ pressed as the viewfinder appeared left it open
+        (the net, b084c578 and 3155eae4), each time the step where Escape and q come first,
+        so what mpv was doing then is printed, to say whether it was stuck or never heard.
+        """
+        try:
+            self.machine.wait_until_fails(
+                self.desktop.in_session(CAMERA), timeout=timedelta(seconds=30)
+            )
+        except Exception:
+            self.said()
+            raise
 
     def probe(self, entries: str, files: str) -> str:
         """Give what ffprobe says of each file there, which it reads one at a time."""
