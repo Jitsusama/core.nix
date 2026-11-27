@@ -281,19 +281,14 @@ fn words_of(look: &Value) -> String {
 }
 
 /// The byte-order mark, which JavaScript's `trim` takes as a space.
-const BYTE_ORDER_MARK: u32 = 0xFEFF;
-/// The next-line control, which JavaScript's `trim` keeps.
-const NEXT_LINE: u32 = 0x85;
+const BYTE_ORDER_MARK: char = '\u{feff}';
 
-/// `part` trimmed as For You trims it, with JavaScript's `trim`: of
-/// Unicode's spaces and line ends and the byte-order mark, though not the
-/// next-line control, where Rust's own `trim` takes the one and not the
-/// other, so a look's words read the same in both.
+/// `part` trimmed as For You trims it, with `trim` in Qt's JavaScript
+/// engine: of what `QChar::isSpace` takes, Unicode's spaces and line ends
+/// with the next-line control among them, and the byte-order mark, which
+/// Rust's own `trim` keeps, so a look's words read the same in both.
 fn trimmed(part: &str) -> &str {
-    part.trim_matches(|c: char| {
-        let code = u32::from(c);
-        code == BYTE_ORDER_MARK || (c.is_whitespace() && code != NEXT_LINE)
-    })
+    part.trim_matches(|c: char| c.is_whitespace() || c == BYTE_ORDER_MARK)
 }
 
 /// `part` ending as a sentence ends, as LookForm.js's `ENDED` reads one: a
@@ -475,10 +470,7 @@ mod tests {
             ),
             (("It flickers.", "   "), ("It flickers.", "It flickers.")),
             (("\u{feff}", "Merge it?"), ("Merge it?", "")),
-            (
-                ("It flickers.", "\u{85}"),
-                ("It flickers.\n\n\u{85}", "It flickers."),
-            ),
+            (("It flickers.", "\u{85}"), ("It flickers.", "It flickers.")),
             (("   ", "Merge it?"), ("Merge it?", "")),
             ((" ", " "), ("", "")),
         ];
