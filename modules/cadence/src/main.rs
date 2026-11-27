@@ -767,7 +767,10 @@ mod tests {
             root: root.path().join("pi"),
         };
         let told = tell_reverted(&mesh, &net, &folder, "WATCHER", 1_000);
-        assert!(told.is_err(), "a torn record of reverts told was read as none told");
+        assert!(
+            told.is_err(),
+            "a torn record of reverts told was read as none told"
+        );
         assert_eq!(
             fs::read_to_string(&path).expect("the record is still there"),
             torn,
