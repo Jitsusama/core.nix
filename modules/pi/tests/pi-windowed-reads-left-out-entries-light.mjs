@@ -5,7 +5,8 @@
 // Mac held 8,831 MB, and a 78 MB log held 104 MB of heap, where read light it
 // holds 43 MB. Every reader still sees each entry whole, a write that moves
 // the log's lines holds them whole first, and a log pi would change as it
-// reads it is read whole, as before.
+// reads it is read whole, as before. A left-out value is read again from
+// its line's bytes on disk, and a line moved from under it fails the read.
 // Run as: node THIS PI_ROOT
 import assert from "node:assert/strict";
 import fs, { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -15,9 +16,17 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const root = resolve(process.argv[2]);
-const { SessionManager, buildSessionContext } = await import(
-  pathToFileURL(`${root}/dist/core/session-manager.js`).href
+const managerSource = `${root}/dist/core/session-manager.js`;
+const { SessionManager, buildSessionContext, loadEntriesFromFile } = await import(
+  pathToFileURL(managerSource).href
 );
+// pi reads a log in chunks of this many bytes, carrying a line one ends in
+// into the next.
+const sizeFound = /SESSION_READ_BUFFER_SIZE = (?<kib>\d+) \* (?<unit>\d+);/u.exec(
+  readFileSync(managerSource, "utf8"),
+);
+assert.ok(sizeFound, "pi's read buffer size wasn't found");
+const chunk = Number(sizeFound.groups.kib) * Number(sizeFound.groups.unit);
 
 const dir = mkdtempSync(join(tmpdir(), "pi-windowed-"));
 const big = (seed) => `${seed} `.repeat(1000);
@@ -85,7 +94,8 @@ const entries = [
   assistant("m7", "m6", [{ type: "text", text: big("reply") }]),
 ];
 // Each line starts with spaces pi never writes, so a rewrite moves every line.
-const lines = entries.map((entry) => `  ${JSON.stringify(entry)}\n`).join("");
+const indented = (list) => list.map((entry) => `  ${JSON.stringify(entry)}\n`).join("");
+const lines = indented(entries);
 const plain = entries.slice(1);
 
 let opened = 0;
@@ -106,6 +116,23 @@ function anyLight(value) {
 const part = (manager, id, i = 0) => manager.getEntry(id).message.content[i];
 const same = (actual, expected, what) =>
   assert.equal(JSON.stringify(actual), JSON.stringify(expected), what);
+// What `run` answers, or a failure saying `what` where it throws, as a read
+// of a line that no longer holds its entry does.
+function failsAs(what, run) {
+  try {
+    return run();
+  } catch (error) {
+    if (error instanceof assert.AssertionError) {
+      throw error;
+    }
+    throw new Error(`${what}: ${error.message}`, { cause: error });
+  }
+}
+// The log with the entries `instead` where entry `id` was.
+const swapped = (id, instead) =>
+  indented(entries.flatMap((entry) => (entry.id === id ? instead : [entry])));
+const sameLength = (a, b, what) =>
+  assert.equal(Buffer.byteLength(JSON.stringify(a)), Buffer.byteLength(JSON.stringify(b)), what);
 
 // Read light, every reader still sees what a whole read sees.
 {
@@ -124,6 +151,100 @@ const same = (actual, expected, what) =>
   );
   same(ids(manager.getBranch("b1")), ["m1", "m2", "m3", "m4", "b1"], "b1's branch differs");
   same(manager.getBranch("b1").at(-1), plain[6], "b1 differs from the log's");
+}
+
+// A left-out value is read from the log each time it's asked for, never
+// still held: written over in place, its line gives the new value.
+{
+  const { file, manager } = open();
+  const m1 = user("m1", null, big("ASK"));
+  sameLength(m1, entries[1], "m1's new line moves the others");
+  writeFileSync(file, swapped("m1", [m1]));
+  same(part(manager, "m1").text, big("ASK"), "m1's text wasn't read again from its line");
+}
+
+// A line that moves under a light read, leaving another entry in its old
+// place, fails the read rather than give that entry's values.
+{
+  const { file, manager } = open();
+  const x1 = user("x1", null, big("ASK"));
+  sameLength(x1, entries[1], "x1's line won't fill m1's old place");
+  writeFileSync(file, swapped("m1", [x1, entries[1]]));
+  assert.throws(
+    () => part(manager, "m1").text,
+    /changed under/u,
+    "m1 read another entry's values from its old place",
+  );
+}
+
+// Values of several bytes a character, before and inside left-out entries,
+// read again from where their lines lie in bytes.
+{
+  const wide = [
+    entries[0],
+    user("w1", null, "café, 日本, 🙂"),
+    user("w2", "w1", big("é日本🙂")),
+    assistant("w3", "w2", [
+      { type: "text", text: big("naïve 🙂") },
+      { type: "toolCall", id: "c1", name: "bash", arguments: { command: big("日本") } },
+    ]),
+    message("w4", "w3", {
+      role: "toolResult",
+      toolCallId: "c1",
+      toolName: "bash",
+      content: [{ type: "text", text: big("🙂é") }],
+      isError: false,
+      timestamp: 0,
+    }),
+    user("w5", "w4", "hi"),
+    { ...entries[6], parentId: "w5", summary: big("résumé"), firstKeptEntryId: "w5" },
+    user("w6", "k1", big("après 日本")),
+  ];
+  const { manager } = open(indented(wide));
+  const w3 = manager.getEntry("w3").message.content;
+  assert.ok(
+    light(part(manager, "w2"), "text") &&
+      light(w3[0], "text") &&
+      light(w3[1], "arguments") &&
+      light(manager.getEntry("w4").message, "content"),
+    "a wide left-out value is still held whole",
+  );
+  const differs = "a wide left-out value read again differs";
+  failsAs(differs, () => same(manager.getEntries(), wide.slice(1), differs));
+}
+
+// A line longer than a chunk, and one begun just before a chunk ends, are
+// read whole, and their left-out values read again whole.
+{
+  const lineOf = (entry) => `${JSON.stringify(entry)}\n`;
+  const long = user("l1", null, "a".repeat(chunk + chunk / 2));
+  const pad = (length) => user("l2", "l1", "p".repeat(length));
+  const taken = [entries[0], long, pad(0)].map(lineOf).join("");
+  const filler = pad(2 * chunk - 5 - Buffer.byteLength(taken));
+  const spanning = [
+    entries[0],
+    long,
+    filler,
+    user("l3", "l2", big("edge")),
+    user("l4", "l3", "hi"),
+    { ...entries[6], parentId: "l4", firstKeptEntryId: "l4" },
+    user("l5", "k1", big("after")),
+  ];
+  const text = spanning.map(lineOf).join("");
+  assert.equal(
+    Buffer.byteLength(spanning.slice(0, 3).map(lineOf).join("")),
+    2 * chunk - 5,
+    "l3's line doesn't begin just before a chunk ends",
+  );
+  const { manager } = open(text);
+  const differs = "a line read across chunks differs";
+  failsAs(differs, () => {
+    same(manager.getEntries(), spanning.slice(1), differs);
+    assert.ok(
+      light(part(manager, "l1"), "text") && light(part(manager, "l3"), "text"),
+      "a line read across chunks is still held whole",
+    );
+  });
 }
 
 // The entries the kept view leaves out read their large values again; what
@@ -163,7 +284,8 @@ const same = (actual, expected, what) =>
   same(m2[2].arguments, { command: big("cmd") }, "m2's arguments read again differ");
 }
 
-// Moving to a left-out entry holds whole what the model reads from there.
+// Moving to a left-out entry holds whole what the model reads from there,
+// and a compaction made later from there that leaves it out lets go of it.
 {
   const { manager } = open();
   manager.branch("m2");
@@ -172,6 +294,17 @@ const same = (actual, expected, what) =>
     !(light(part(manager, "m1"), "text") || light(part(manager, "m2", 1), "text")),
     "m2's context is still read light",
   );
+  const u1 = manager.appendMessage({
+    role: "user",
+    content: [{ type: "text", text: big("u1") }],
+    timestamp: 0,
+  });
+  manager.appendCompaction(big("later"), u1, 200);
+  assert.ok(
+    light(part(manager, "m1"), "text") && light(part(manager, "m2", 1), "text"),
+    "m2's context, left out again, is still held whole",
+  );
+  same(part(manager, "m2", 1).text, big("say"), "m2's text read again differs");
 }
 
 // A compaction made later lets go of what it leaves out: entries the kept
@@ -253,6 +386,12 @@ const same = (actual, expected, what) =>
 // whole, as unpatched pi reads it, and the unfinished line is ended.
 {
   const older = lines.replace('"version":3', '"version":2');
+  const olderFile = join(dir, "older.jsonl");
+  writeFileSync(olderFile, older);
+  assert.ok(
+    !loadEntriesFromFile(olderFile).some(anyLight),
+    "a log pi migrates was read light before its rewrite",
+  );
   assert.ok(!lightAnywhere(open(older).manager), "a log pi migrates was read light");
   const unfinished = lines.trimEnd();
   const { file, manager } = open(unfinished);
