@@ -1,6 +1,6 @@
 //! Red first: each check whose tests a change adds or edits is built again
-//! with those tests laid over the base's code, and a check that still
-//! passes there is refused, since its tests would pass without the change.
+//! with those tests laid over the base's code, and a change none of whose
+//! checks fails there is refused, since its tests would pass without it.
 //!
 //! On 26 November, across 18 sessions and 42 changes, the most common
 //! cause behind a review's findings was a test that passed with its fix
@@ -29,12 +29,15 @@
 //! - one whose derivation moves too with a file nothing names at the root
 //!   reads the whole tree, as a formatter or a scan of every file does, so
 //!   no file of the change is its test, and it's said, not refused;
-//! - each other is built over the base, and refused if it passes. One a
-//!   builder failed is red, as it should be; one that failed with no
-//!   builder failing it, as when one is lost or a download fails, says
-//!   nothing of its tests, and is said. Nix's log of these builds is kept
-//!   out of the run's, where merge-net would read a failed build as the
-//!   change's.
+//! - each other is built over the base, until one a builder fails, red as
+//!   the change's tests should be. A check may carry tests without running
+//!   them, as a system holding a package whose source holds its tests
+//!   does, and passes there by design, so one red proves the change and
+//!   the rest go unbuilt. The change is refused when every one passes.
+//!   One that failed with no builder failing it, as when one is lost or a
+//!   download fails, says nothing of its tests, is said, and refuses
+//!   nothing. Nix's log of these builds is kept out of the run's, where
+//!   merge-net would read a failed build as the change's.
 //!
 //! A change of tests alone is said and not built, a moved test file is
 //! said and not laid over the base, a test file the change only takes
@@ -103,7 +106,9 @@ pub fn is_test(path: &str) -> bool {
 /// laid over the base it's never compiled, and its check passes there.
 fn declared_by_code(path: &str) -> bool {
     let folders = path.rsplit_once('/').map_or("", |(folders, _)| folders);
-    Path::new(path).extension().is_some_and(|extension| extension == "rs")
+    Path::new(path)
+        .extension()
+        .is_some_and(|extension| extension == "rs")
         && folders.split('/').any(|folder| folder == "src")
 }
 
@@ -274,9 +279,9 @@ pub fn over(name: &str, before: &Derivations, after: &Derivations, laid: &Deriva
     }
 }
 
-/// Whether each check the gate built, `asked`, fails with the change's
-/// tests laid over the base's code, saying what it found; false when one
-/// passes there, as it would without the change. A run that builds
+/// Whether a check the gate built, `asked`, fails with the change's
+/// tests laid over the base's code, saying what it found; false when
+/// each built there passes, as it would without the change. A run that builds
 /// nothing asks nothing, and a change not yet `committed` has no commit
 /// to take its tests from, so is said and passes.
 pub fn judged(
@@ -417,17 +422,30 @@ fn over_the_base(
         }
     }
     let moved = by_their_files(at, tests, &on_base, moved, noted)?;
+    // A check that only carries the tests, as a system holding a package
+    // whose source holds them does, passes over the base by design, so
+    // one failing there proves them, and the rest needn't be built.
     let mut passing = Vec::new();
-    let mut red = Vec::new();
+    let mut unbuilt = false;
     for name in &moved {
         match built_over(&flake, at.system, name, &on_base)? {
+            Built::Red => {
+                eprintln!(
+                    "changed-checks: {name} fails with the change's tests laid over the base, \
+                     as it should"
+                );
+                return Ok(true);
+            }
             Built::Passed => passing.push(name.as_str()),
-            Built::Red => red.push(name.clone()),
-            Built::Unbuilt => {}
+            Built::Unbuilt => unbuilt = true,
         }
     }
-    say_verdict(&passing, &red, tests);
-    Ok(passing.is_empty())
+    // One unbuilt might have been the check that runs the tests.
+    if unbuilt || passing.is_empty() {
+        return Ok(true);
+    }
+    say_refused(&passing, tests);
+    Ok(false)
 }
 
 /// Build the check `name` over the base, keeping nix's log out of the
@@ -460,10 +478,9 @@ fn built_over(
     Ok(ended)
 }
 
-/// Say which of the checks built over the base passed there, and so
-/// refuse the change's `tests`, or which failed there, `red`, as they
-/// should.
-fn say_verdict(passing: &[&str], red: &[String], tests: &[String]) {
+/// Say that each check built over the base passed there, none failing,
+/// and so refuse the change's `tests`.
+fn say_refused(passing: &[&str], tests: &[String]) {
     let tests = tests.join(", ");
     for name in passing {
         eprintln!(
@@ -474,14 +491,7 @@ fn say_verdict(passing: &[&str], red: &[String], tests: &[String]) {
     }
     // The trailer goes on a line of its own, so it's copied whole into a
     // commit message rather than retyped from inside a sentence.
-    if !passing.is_empty() {
-        eprintln!("\n    {TRAILER}: none, <why the tests pin what was already right>\n");
-    } else if !red.is_empty() {
-        eprintln!(
-            "changed-checks: {} fails with the change's tests laid over the base, as it should",
-            red.join(", ")
-        );
-    }
+    eprintln!("\n    {TRAILER}: none, <why the tests pin what was already right>\n");
 }
 
 /// Say each test file the change moved, or added for its code alone to

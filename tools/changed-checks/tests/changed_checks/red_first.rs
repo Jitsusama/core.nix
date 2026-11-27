@@ -115,6 +115,77 @@ fn a_new_test_that_fails_on_the_base_and_passes_at_the_head_goes_through() {
     );
 }
 
+/// The change of `committed`, where it moved `b` as well as `a`, which
+/// have the derivations `a3` and `b3` over the base.
+fn both_moved(test: &str) -> StandIn {
+    let stand_in = committed(test, CHANGE, "a3.drv");
+    stand_in.checks("base", r#"{"a": "a.drv", "b": "b.drv"}"#);
+    stand_in.checks("working", r#"{"a": "a2.drv", "b": "b2.drv"}"#);
+    let over = r#"{"a": "a3.drv", "b": "b3.drv"}"#;
+    fs::write(stand_in.path("over.json"), over).expect("written");
+    fs::write(stand_in.path("probed.json"), over).expect("written");
+    stand_in
+}
+
+#[test]
+fn one_check_failing_over_the_base_proves_tests_another_only_carries() {
+    let stand_in = both_moved("red-one-of-two");
+    fs::write(stand_in.path("failing-over"), "b\n").expect("written");
+
+    let ran = stand_in.run(&["--system", "x86_64-linux"]);
+
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    let said = text(&ran.stderr);
+    assert!(
+        said.contains("b fails with the change's tests laid over the base, as it should"),
+        "{said}"
+    );
+    assert!(
+        !said.contains("passes with the change's tests"),
+        "a check only carrying the tests was refused beside one they fail: {said}"
+    );
+}
+
+#[test]
+fn a_check_failing_over_the_base_leaves_the_rest_unbuilt_there() {
+    let stand_in = both_moved("red-first-of-two");
+    fs::write(stand_in.path("failing-over"), "a\n").expect("written");
+
+    let ran = stand_in.run(&["--system", "x86_64-linux"]);
+
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    let built = stand_in.built();
+    assert!(
+        built.contains(&over_the_base(&stand_in)),
+        "a wasn't built over the base: {built}"
+    );
+    assert!(
+        !built.contains("?rev=a1a1a1a1a1a1a1a1a1a1#checks.x86_64-linux.b"),
+        "b was built over the base after a failed there: {built}"
+    );
+}
+
+#[test]
+fn a_change_whose_every_check_passes_over_the_base_is_refused_naming_each() {
+    let stand_in = both_moved("red-both-pass");
+
+    let ran = stand_in.run(&["--system", "x86_64-linux"]);
+
+    assert!(
+        !ran.status.success(),
+        "tests passing on the base went through"
+    );
+    let said = text(&ran.stderr);
+    for name in ["a", "b"] {
+        assert!(
+            said.contains(&format!(
+                "changed-checks: {name} passes with the change's tests laid over the base's code"
+            )),
+            "{name} wasn't named: {said}"
+        );
+    }
+}
+
 #[test]
 fn a_build_over_the_base_no_builder_failed_is_said_and_not_counted_red() {
     let stand_in = committed("red-unbuilt", CHANGE, "a3.drv");

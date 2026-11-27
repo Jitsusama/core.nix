@@ -38,8 +38,10 @@ makes the loop slow, and the load it adds is what makes VM tests time out.
 A test proves a change only if it fails without it, so once a committed
 change's checks pass, `changed-checks` builds again each it built that the
 change's added or edited tests reach, with those tests laid over the
-base's code, and refuses the change if one still passes there, naming the
-check and the tests. On 26 November the most common cause behind review
+base's code, and refuses the change if every one still passes there,
+naming the checks and the tests. One failing there is enough, since a
+system carrying a package whose source holds its tests passes there by
+design. On 26 November the most common cause behind review
 findings, across 42 changes, was a test that passed with its fix undone.
 Tests are told from code by path: a `tests`, `test` or `checks` folder, a
 `checks.nix`, or a name starting `test_` or ending `_test`, `-test`, `.test`
