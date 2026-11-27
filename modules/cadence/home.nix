@@ -74,6 +74,11 @@
 # record (the priority workflow's outcomes, nix-offload's sends, the merge
 # train's landings) against a target for its p90, with its flow beside it,
 # and asks the owner of the worst one for its next change once a day.
+# It also reads what the sessions met on their way out: the model calls
+# pi made and how they ended, from the tail of each session's log; the
+# model relay's counts from its journal; and, given `origins`, the path to
+# each, which cadence-path (./path.sh) samples every ten minutes, said
+# beside the calls so a red of them names the route.
 #
 # cadence-spec (./spec) serves the axes to the launcher's Spec place over
 # $XDG_RUNTIME_DIR/daemons/cadence-spec.sock in the shell's daemon interface,
@@ -94,6 +99,18 @@ let
   cfg = config.jitsusama.cadence;
   package = pkgs.callPackage ./package.nix { };
   spec = pkgs.callPackage ./spec/package.nix { };
+  # The path's sampler, shellcheck run on it as it builds.
+  probe = pkgs.writeShellApplication {
+    name = "cadence-path";
+    runtimeInputs = [
+      pkgs.curl
+      pkgs.getent
+      pkgs.gawk
+      pkgs.iproute2
+      pkgs.jq
+    ];
+    text = builtins.readFile ./path.sh;
+  };
   # Who Friday's review goes to: the orchestrator, and the owner of `review`.
   reviewed = lib.filter (address: address != null) [
     cfg.orchestrator
@@ -216,6 +233,17 @@ in
         its `main`. Only the hourly card fetches, and only mycelium's
         `origin/main`, with `--no-write-fetch-head` so the checkout's
         `FETCH_HEAD` stays its own; every other main is read as it stands.
+      '';
+    };
+    origins = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      example = [ "github.com" ];
+      description = ''
+        The hosts the sessions reach whose path cadence-path samples every
+        ten minutes over HTTPS, as path.sh says, for the hour to hold each
+        one's median TLS setup to its ceiling and say it beside the
+        sessions' failed model calls; none samples nothing.
       '';
     };
     path = lib.mkOption {
@@ -487,6 +515,24 @@ in
         # so the next hour's run starts rather than being skipped behind it.
         TimeoutStartSec = "30min";
       };
+    };
+    systemd.user.services.cadence-path = lib.mkIf (cfg.origins != [ ]) {
+      Unit.Description = "Samples the path to each origin the sessions reach";
+      Service = {
+        Type = "oneshot";
+        ExecStart = lib.escapeShellArgs ([ (lib.getExe probe) ] ++ cfg.origins);
+        Slice = "background.slice";
+        # A sample waits 20 s at most for each origin.
+        TimeoutStartSec = "5min";
+      };
+    };
+    systemd.user.timers.cadence-path = lib.mkIf (cfg.origins != [ ]) {
+      Unit.Description = "Samples the path to each origin every ten minutes";
+      Timer = {
+        OnCalendar = "*:0/10";
+        AccuracySec = "30s";
+      };
+      Install.WantedBy = [ "timers.target" ];
     };
     systemd.user.timers.cadence-hour = {
       Unit.Description = "Measures the hour at ten past each hour";

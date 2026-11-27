@@ -16,8 +16,8 @@ use crate::owe::{self, Owed};
 use super::lines::figure;
 use super::measures::queues::{self, QUEUE};
 use super::measures::{
-    BLIND, Class, FINDINGS, HELD, Measure, UNRUN, UNSEEN, UNTESTED, apps, causes, drag,
-    held_for_good, held_unseen, relay, rounds, told_late,
+    BLIND, Class, FINDINGS, HELD, Measure, UNRUN, UNSEEN, UNTESTED, apps, calls, causes, drag,
+    held_for_good, held_unseen, path, relay, rounds, told_late,
 };
 
 /// How long a queue's ask has before it goes late: long enough for the
@@ -177,8 +177,8 @@ fn filed(m: &Measure) -> Vec<Filed> {
     if m.key == UNTESTED {
         return untested_asked(m, &says);
     }
-    if m.key.starts_with(relay::PREFIX) {
-        return vec![relay_asked(m, says)];
+    if let Some(what) = on_the_way(&m.key) {
+        return vec![on_the_way_asked(m, &what, says)];
     }
     let owners = by_owner(m);
     if !owners.is_empty() {
@@ -217,9 +217,24 @@ fn filed(m: &Measure) -> Vec<Filed> {
     }]
 }
 
-/// The ask to the relay's keeper about one of its counts past its
-/// ceiling, with its commonest causes, so the cause comes back tested.
-fn relay_asked(m: &Measure, says: String) -> Filed {
+/// What a measure of the way the sessions' calls go out names, by its
+/// key: the model relay, pi's calls themselves, or the path to an origin;
+/// none for any other.
+fn on_the_way(key: &str) -> Option<String> {
+    if key.starts_with(relay::PREFIX) {
+        return Some("the model relay".to_owned());
+    }
+    if key.starts_with(calls::PREFIX) {
+        return Some("the sessions' model calls".to_owned());
+    }
+    key.strip_prefix(path::PREFIX)
+        .map(|origin| format!("the path to {origin}"))
+}
+
+/// The ask to the keeper of the way out about one of its counts past its
+/// ceiling, with what is behind it (its commonest causes, and the path
+/// beside the calls), so the cause comes back tested.
+fn on_the_way_asked(m: &Measure, what: &str, says: String) -> Filed {
     let causes = if m.behind.is_empty() {
         String::new()
     } else {
@@ -229,7 +244,7 @@ fn relay_asked(m: &Measure, says: String) -> Filed {
         key: format!("hour:{}", m.key),
         owner: m.owner.clone(),
         text: format!(
-            "cadence hour: the model relay is past its ceiling, {says}.{causes} Please reply \
+            "cadence hour: {what} is past its ceiling, {says}.{causes} Please reply \
              with its tested cause, its fix and when it lands. It closes by itself once its \
              figure is back in."
         ),
@@ -553,11 +568,11 @@ pub fn file(
     // Never the lead, which passes them over, so filed whatever leads; a
     // measure filed twice is owed once, as the ledger holds it open. A
     // miss with no test that runs is asked of its owner the same way, and
-    // so is each of the model relay's counts past its ceiling, since every
-    // session's turns wait on the relay whatever else drags.
+    // so is each count past its ceiling of the way the calls go out (the
+    // relay, pi's calls and the path), since every session's turns wait on
+    // it whatever else drags.
     dragging.extend(measures.iter().filter(|m| {
-        let beside =
-            [FINDINGS, UNTESTED].contains(&m.key.as_str()) || m.key.starts_with(relay::PREFIX);
+        let beside = [FINDINGS, UNTESTED].contains(&m.key.as_str()) || on_the_way(&m.key).is_some();
         let apart = m.key.starts_with(rounds::FRUITLESS)
             || m.key.starts_with(told_late::KEY)
             || m.key == causes::KEY;
@@ -964,12 +979,46 @@ mod tests {
     }
 
     #[test]
+    fn failing_calls_and_a_slow_path_are_each_asked_naming_the_path() {
+        let lead = measure("misses", Class::Miss, 1.0, Some(0.0));
+        let mut failing = measure(calls::SHARE, Class::Functional, 33.0, Some(2.0));
+        failing.owner = "OXUW1Y".to_owned();
+        failing.behind = vec![
+            "176 on Request timed out.".to_owned(),
+            "TLS to model.example via CloudflareWARP: median 7.20 s".to_owned(),
+        ];
+        let mut slow = measure("path:tls:model.example", Class::Functional, 7.2, Some(1.0));
+        slow.owner = "OXUW1Y".to_owned();
+        let told = file(&mut Vec::new(), &[lead, failing, slow], "2026-11-26", 1000);
+        let asked: Vec<&str> = told
+            .iter()
+            .filter(|(to, _)| to == "OXUW1Y")
+            .map(|(_, text)| text.as_str())
+            .collect();
+        assert_eq!(asked.len(), 2, "each is asked apart: {told:?}");
+        assert!(
+            asked
+                .iter()
+                .any(|text| text.contains("the sessions' model calls is past")
+                    && text.contains("via CloudflareWARP")),
+            "the calls' ask doesn't name the path: {asked:?}"
+        );
+        assert!(
+            asked
+                .iter()
+                .any(|text| text.contains("the path to model.example is past")),
+            "the path isn't asked: {asked:?}"
+        );
+    }
+
+    #[test]
     fn each_relay_count_past_its_ceiling_is_asked_of_its_keeper_whatever_leads() {
         let lead = measure("misses", Class::Miss, 1.0, Some(0.0));
         let mut past = measure(relay::ANSWERED_502, Class::Functional, 704.0, Some(50.0));
         past.owner = "OXUW1Y".to_owned();
         past.behind = vec!["700 on http2 error: keep-alive timed out".to_owned()];
-        let within = measure(relay::RESETS, Class::Functional, 12.0, Some(400.0));
+        let mut within = measure(relay::RESETS, Class::Functional, 12.0, Some(400.0));
+        within.owner = "OXUW1Y".to_owned();
         let mut ledger = Vec::new();
         let hour = [lead, past.clone(), within];
         let told = file(&mut ledger, &hour, "2026-11-26", 1000);
@@ -985,6 +1034,15 @@ mod tests {
                 .iter()
                 .all(|(to, _)| to != "OXUW1Y"),
             "an open ask was told again"
+        );
+        let mut unread = past.clone();
+        unread.target = None;
+        file(&mut ledger, &[unread], "2026-11-26", 6400);
+        assert!(
+            ledger
+                .iter()
+                .any(|e| e.open && e.key.starts_with("hour:relay:")),
+            "an hour its journal went unread closed the ask"
         );
         past.now = 10.0;
         file(&mut ledger, &[past], "2026-11-26", 8200);

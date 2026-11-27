@@ -246,6 +246,33 @@ holding a space, as one broken across two lines does, is counted too.
 - Over costs him: whoever waits on a date learns it moved only once it was too late to plan
   around.
 
+## The Sessions' Failed Model Calls
+
+- Measures: `calls:failed`
+- Target: 100 model calls the sessions made in the hour that stopped on an error.
+- Joel, 26 Nov 16:42: "we need some set of cells maintaining the health of mycelium at all
+  timees"
+- Over costs him: each one is a turn of his sessions that stalls and retries, whatever route it
+  took, as a third of them did on the evening of 26 November.
+
+## The Sessions' Failed Call Share
+
+- Measures: `calls:failed-share`
+- Target: 2 per cent of the sessions' model calls in the hour stopped on an error.
+- Joel, 26 Nov 16:42: "we need some set of cells maintaining the health of mycelium at all
+  timees"
+- Over costs him: a quiet hour hides failures in its count, so the share says when the way out
+  is failing whatever the load.
+
+## The Path to Each Origin
+
+- Measures: `path:tls:*`
+- Target: 1 second, the hour's median TLS setup to the origin.
+- Joel, 26 Nov 16:42: "we need some set of cells maintaining the health of mycelium at all
+  timees"
+- Over costs him: a slow path stalls every call and push his sessions make through it, and
+  names where the fault is when the calls fail.
+
 ## The Model Relay's Origin Resets
 
 - Measures: `relay:origin-resets`
@@ -267,7 +294,7 @@ holding a space, as one broken across two lines does, is counted too.
 ## The Model Relay's Reset Share
 
 - Measures: `relay:reset-share`
-- Target: 2 per cent of the requests carried in the hour reset by the origin.
+- Target: 2 per cent of the requests asked of the relay in the hour reset by the origin.
 - Joel, 26 Nov 16:42: "we need some set of cells maintaining the health of mycelium at all
   timees"
 - Over costs him: a busy hour hides resets in its count, so the share says when the origin is

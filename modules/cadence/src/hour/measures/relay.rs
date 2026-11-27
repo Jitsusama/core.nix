@@ -1,7 +1,7 @@
 //! The model relay as the sessions meet it, from model-relay-agents's
-//! lines in the user journal. On 26 November proxy.shopify.ai reset the
-//! relay's streams 1,900 to 10,250 times an hour from 08:00, against about
-//! 150 an hour the day before, and the relay answered pi 502 hundreds of
+//! lines in the user journal. On 26 November the model origin reset the
+//! relay's streams 1,900 to 10,250 times an hour from 08:00, against 4 to
+//! 808 an hour the day before, and the relay answered pi 502 hundreds of
 //! times an hour, which Joel saw in his own sessions at 16:38 before any
 //! card did (WCJQSG, d892570d). Four counts of the hour say it, each held
 //! to the relay keeper's ceiling (OXUW1Y, cdb89d6a): the origin's resets,
@@ -38,9 +38,16 @@ pub const ANSWERED_502_AT_MOST: f64 = 50.0;
 /// How many of each count's causes the card shows behind it.
 const CAUSES_SHOWN: usize = 3;
 
+/// The most of a cause the card and the keeper's ask carry. A cause is
+/// the error text another machine sent, so it is cut short rather than
+/// carried whole into a request an agent reads.
+const CAUSE_AT_MOST: usize = 120;
+
 /// How long the hour waits for journalctl's reading of the relay's lines
-/// before reading the measures as unread, as wifid's are.
-const READ_WITHIN: std::time::Duration = std::time::Duration::from_secs(30);
+/// before reading the measures as unread, as wifid's are. An hour of a
+/// flood held about 15,000 lines on 26 November, read in under 3 s, so a
+/// minute leaves the worst hour room to be read.
+const READ_WITHIN: std::time::Duration = std::time::Duration::from_secs(60);
 
 /// The four measures of the hour to `now`, read from the relay's journal.
 #[must_use]
@@ -83,9 +90,12 @@ struct Tally {
     resets: usize,
     direct: usize,
     answered_502: usize,
-    /// The requests carried by the connections that closed in the hour,
-    /// from their "carried N asked" lines.
+    /// The requests asked of the relay between its first and last
+    /// ten-minute tally of the hour, and the resets between them.
     asked: u64,
+    resets_tallied: usize,
+    /// Its last tally's requests asked, and the resets counted by then.
+    last_tally: Option<(u64, usize)>,
     reset_why: BTreeMap<String, usize>,
     direct_why: BTreeMap<String, usize>,
     answered_why: BTreeMap<String, usize>,
@@ -93,36 +103,45 @@ struct Tally {
 
 /// The four measures of the hour, from the relay's lines as journalctl
 /// printed them, or each unjudged where they couldn't be read. An hour
-/// with no line from the relay is judged, each count nought, since the
-/// relay exits when idle and an idle relay failed nobody. The share is
-/// unjudged in an hour no connection closed in, as it has nothing carried
-/// to weigh its resets against.
+/// with no line from the relay is unjudged too: the relay carried
+/// nothing, so pi went to the origin itself, and on 26 November, with the
+/// relay stopped, its nought read green while a third of pi's calls
+/// failed; pi's own calls (calls.rs) judge that hour. The share is
+/// unjudged in an hour holding fewer than two of the relay's tallies, as
+/// it has nothing asked to weigh its resets against.
 #[must_use]
 pub fn relay(journal: Option<&str>) -> Vec<Measure> {
-    let Some(journal) = journal else {
+    let why = match journal {
+        None => ": the relay's journal unread",
+        Some(journal) if journal.trim().is_empty() => {
+            ": no line from the relay this hour, so it carried nothing"
+        }
+        Some(_) => "",
+    };
+    let Some(journal) = journal.filter(|_| why.is_empty()) else {
         return [RESETS, DIRECT, SHARE, ANSWERED_502]
             .into_iter()
-            .map(|key| unjudged(key, ": the relay's journal unread"))
+            .map(|key| unjudged(key, why))
             .collect();
     };
     let tally = tallied(journal);
     let share = if tally.asked == 0 {
         unjudged(
             SHARE,
-            ": no connection closed this hour, so nothing carried to weigh",
+            ": fewer than two of its tallies this hour, so nothing asked to weigh",
         )
     } else {
         #[expect(
             clippy::cast_precision_loss,
             reason = "an hour's requests are far below where f64 loses a unit"
         )]
-        let percent = count(tally.resets) * 100.0 / tally.asked as f64;
+        let percent = count(tally.resets_tallied) * 100.0 / tally.asked as f64;
         Measure {
             key: SHARE.to_owned(),
             class: Class::Functional,
             says: format!(
                 "per cent of the model relay's requests the origin reset this hour, of {} \
-                 carried by the connections that closed in it",
+                 asked between its tallies",
                 tally.asked
             ),
             now: (percent * 10.0).round() / 10.0,
@@ -134,7 +153,7 @@ pub fn relay(journal: Option<&str>) -> Vec<Measure> {
     vec![
         judged(
             RESETS,
-            "requests proxy.shopify.ai reset on the model relay this hour",
+            "requests the model origin reset on the model relay this hour",
             tally.resets,
             RESETS_AT_MOST,
             &tally.reset_why,
@@ -188,7 +207,10 @@ fn causes(why: &BTreeMap<String, usize>) -> Vec<String> {
     most.sort_by(|a, b| b.1.cmp(a.1).then_with(|| a.0.cmp(b.0)));
     most.into_iter()
         .take(CAUSES_SHOWN)
-        .map(|(cause, n)| format!("{n} on {cause}"))
+        .map(|(cause, n)| {
+            let cause: String = cause.chars().take(CAUSE_AT_MOST).collect();
+            format!("{n} on {cause}")
+        })
         .collect()
 }
 
@@ -200,8 +222,11 @@ fn causes(why: &BTreeMap<String, usize>) -> Vec<String> {
 ///   is a request given back to pi;
 /// - `a request couldn't be carried, so pi is answered 502: <error>` is a
 ///   502;
-/// - `connection 1.432 carried 56 asked, 11 of them cancelled and 0 cut`
-///   is what a closed connection carried.
+/// - `172694 asked, 0 refused, 745 failed, ...` is the relay's tally of
+///   what it was asked since it started, written each ten minutes and as
+///   it stops. The share weighs the resets between the hour's first and
+///   last tally against the requests asked between them, as a share of
+///   what closed connections carried swings on which closed when.
 fn tallied(journal: &str) -> Tally {
     let mut tally = Tally::default();
     for line in journal.lines() {
@@ -225,8 +250,18 @@ fn tallied(journal: &str) -> Tally {
             tally.answered_502 += 1;
             *tally.answered_why.entry(cause.to_owned()).or_default() += 1;
         }
-        if let Some(asked) = carried(line) {
-            tally.asked += asked;
+        if let Some(asked) = tallied_asked(line) {
+            if let Some((before, resets_then)) = tally.last_tally {
+                // A tally below the last is a relay started again, which
+                // counts from nought.
+                tally.asked += if asked >= before {
+                    asked - before
+                } else {
+                    asked
+                };
+                tally.resets_tallied += tally.resets - resets_then;
+            }
+            tally.last_tally = Some((asked, tally.resets));
         }
     }
     tally
@@ -240,20 +275,22 @@ fn direct(line: &str) -> Option<&str> {
         return Some(cause);
     }
     let before = line.strip_suffix("; pi goes directly")?;
-    Some(
-        before
-            .split_once(" on it: ")
-            .map_or(before, |(_, cause)| cause),
-    )
+    // A reset's error follows "on it: "; a request no connection would
+    // take says why after its connection, which is left out so the same
+    // cause groups whichever connection it was.
+    Some(before.split_once(" on it: ").map_or_else(
+        || before.rsplit_once(", ").map_or(before, |(_, cause)| cause),
+        |(_, cause)| cause,
+    ))
 }
 
-/// The requests a closed connection carried, from its `connection N
-/// carried N asked, ...` line.
-fn carried(line: &str) -> Option<u64> {
-    let rest = line.strip_prefix("connection ")?;
-    let (_, rest) = rest.split_once(" carried ")?;
-    let (asked, _) = rest.split_once(" asked")?;
-    asked.parse().ok()
+/// The requests asked of the relay since it started, from its tally line
+/// `N asked, N refused, ...`.
+fn tallied_asked(line: &str) -> Option<u64> {
+    let (asked, rest) = line.split_once(" asked, ")?;
+    rest.starts_with(|c: char| c.is_ascii_digit())
+        .then(|| asked.parse().ok())
+        .flatten()
 }
 
 #[cfg(test)]
