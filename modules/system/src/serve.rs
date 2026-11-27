@@ -139,7 +139,7 @@ mod tests {
         let read = System {
             machine: "laptop".to_owned(),
             read_at: "2026-11-15T19:00:00Z".to_owned(),
-            parts: vec![parts::machines(&Ok(said), &none, None, None)],
+            parts: vec![parts::machines(&Ok(said), &none, None, None, None)],
         };
         let kinds: Vec<String> = read
             .records()
