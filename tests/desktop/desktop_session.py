@@ -1604,29 +1604,38 @@ def what_moved(desktop: Desktop, reads: int = 5, apart: float = 0.3) -> str:
     waits for two to agree; a word whose text or place differs between any two reads is one
     that moved. Showing holds the drawer's facts, which laidOut leaves out. It runs inside a
     shot's failure, so a read that hangs is cut short and one that isn't whole is passed
-    over: neither may raise in place of the failure it explains.
+    over: neither may raise in place of the failure it explains. A read is kept only when
+    both calls came back whole, since one holding only showing's paths would read every
+    laidOut path as moved, burying the words that did (round 1 on #6998, F1, F7 and F19).
     """
     seen: list[dict[str, object]] = []
+    calls = ("laidOut", "showing")
     for n in range(reads):
-        read: dict[str, object] = {}
-        for call in ("laidOut", "showing"):
+        parts: list[dict[str, object]] = []
+        for call in calls:
             status, said = desktop.machine.execute(
                 desktop.in_session(f"timeout 5 qs ipc call launcher {call}"), timeout=15
             )
-            if status == 0:
-                read |= flattened(whole(said), call)
-        if read:
-            seen.append(read)
+            part = flattened(whole(said), call) if status == 0 else {}
+            if part:
+                parts.append(part)
+        if len(parts) == len(calls):
+            seen.append({path: value for part in parts for path, value in part.items()})
         if n < reads - 1:
             # Apart by a span the shot found the screen changing within.
             time.sleep(apart)
     if len(seen) < TWO_READS:
         return "the launcher's laidOut couldn't be read twice to say what moved"
     paths = sorted({path for one in seen for path in one})
+
+    def worded(one: dict[str, object], path: str) -> str:
+        # A path a read lacks, as a list grown shorter, apart from one that is null.
+        return repr(one[path]) if path in one else "absent"
+
     moved = [
-        f"{path}: {' / '.join(dict.fromkeys(repr(one.get(path)) for one in seen))}"
+        f"{path}: {' / '.join(dict.fromkeys(worded(one, path) for one in seen))}"
         for path in paths
-        if len({repr(one.get(path)) for one in seen}) > 1
+        if len({worded(one, path) for one in seen}) > 1
     ]
     if not moved:
         return f"none of the launcher's laid-out words moved over {len(seen)} reads"

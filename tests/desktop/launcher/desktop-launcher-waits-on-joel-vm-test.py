@@ -286,10 +286,15 @@ def test_the_launchers_home_says_how_its_sessions_stand_rather_than_naming_them(
             for thing in shown["things"]
         )
     )
-    desktop.shoot("launcher-home-agents", ticking=NOWS_CLOCK)
-    desktop.close_launcher()
-    desktop.as_account(f"niri msg action close-window --id {desktop.window_titled(long)['id']}")
-    desktop.as_account(f"rm -f {PI_PRESENCE}/testqc.json")
+    try:
+        desktop.shoot("launcher-home-agents", ticking=NOWS_CLOCK)
+    finally:
+        # Left, a failed shot's open launcher and busy session would wait on
+        # Joel in the cases after it, hiding its failure behind theirs.
+        desktop.close_launcher()
+        window = desktop.window_titled(long)["id"]
+        desktop.as_account(f"niri msg action close-window --id {window}")
+        desktop.as_account(f"rm -f {PI_PRESENCE}/testqc.json")
 
 
 def test_the_launchers_agents_hold_still_as_one_changes_the_selection_on_its_row(
