@@ -123,6 +123,7 @@
       ${copied [
         "launcher/Openings.js"
         "launcher/Sprouting.js"
+        "launcher/StartSaid.js"
       ]}
       cp ${(import ../launcher/words.nix).places.agents} words.json
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
@@ -153,6 +154,26 @@
       touch $out
     '';
 
+  # Start New Work's In the Cloud is offered only where the node's providers
+  # could make a machine, lists the places another machine knows by name, and
+  # asks a sprout that needs the cloud, as
+  # modules/quickshell/tests/start-new-work-cloud.qml holds launcher/Cloud.js to
+  # it in Qt's own engine.
+  start-new-work-goes-to-the-cloud =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "start-new-work-goes-to-the-cloud" { } ''
+      cp ${../tests/start-new-work-cloud.qml} start-new-work-cloud.qml
+      cp ${../../../tests/lib/Expect.js} Expect.js
+      ${copied [ "launcher/Cloud.js" ]}
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml start-new-work-cloud.qml
+      touch $out
+    '';
+
   # Starts Stopped's Return steps in rather than lifting the stop, and only
   # Joel's own Return asks Let Them Start, never a walk from outside, as
   # modules/quickshell/tests/starts-stopped.qml holds launcher/StartsStopped.js
@@ -177,8 +198,8 @@
 
   # Carry Back asks the realm's node only a carry of a quest to a machine,
   # rebuilt from the act's parts, and says how it ended in the node's own words,
-  # as modules/quickshell/tests/carry-back.qml holds launcher/CarryBack.js to it
-  # in Qt's own engine.
+  # on the row keyed as ReadyRows keyed it, as modules/quickshell/tests/
+  # carry-back.qml holds launcher/CarryBack.js to it in Qt's own engine.
   carry-back-asks-the-node-only-a-carry =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -201,7 +222,9 @@
   # go to the cell, or show the network or machine it names, by its name alone;
   # to offer a sprout's plain words as new work, the cell they say they're from
   # kept only as an address; and nothing for a link naming none of them, or a
-  # second within a few seconds
+  # second within a few seconds. Each function it calls must be one the
+  # launcher's IpcHandler has, taking as many arguments as it passes, since qs
+  # refuses any other
   # (modules/quickshell/tests/mycelium-links-open-in-the-launcher.sh). Its tests
   # run as it builds.
   mycelium-links-open-in-the-launcher =
@@ -242,6 +265,8 @@
             entry
             (pkgs.writeText "niri-mimeapps.list" defaults)
             (lib.getExe askingStandIn)
+            "${../Launcher.qml}"
+            "${../mycelium-link/src/main.rs}"
           ]
         }
         touch $out

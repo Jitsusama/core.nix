@@ -387,8 +387,9 @@
   # told as the mycelium node tells them, and a watch answered whole of only some
   # keys, as the passwords child answers its asks' rows (daemon-kinds.py); and a
   # line's handlers read when it was heard (Hearing.js); and a client the shell
-  # lets go with an ask in flight says it let the connection go, never that it
-  # went, read from the log under the name its own link to the socket gives it.
+  # lets go with an ask in flight says, as information, that it let the
+  # connection go, never that it went, read from the log under the name its own
+  # link to the socket gives it.
   # The stand-ins are in modules/quickshell/tests/stand-ins.
   the-desktop-holds-a-daemons-records =
     let
@@ -409,8 +410,23 @@
       export FONTCONFIG_FILE=${noFonts} PEOPLE=${lib.getExe people} SOURCES=$PWD/sources.json
       export PYTHON=${lib.getExe pkgs.python3} KINDS=${../tests/stand-ins/daemon-kinds.py}
       ${shellFolderLint}
-      timeout 90 ${qs} -p shell.qml 2>&1 | tee log
-      grep -F 'letting-go: let its connection go with 1 ask unanswered' log
+      set -o pipefail
+      # Well past the 110 s the cases end themselves at, counted from their file
+      # loading rather than the shell starting, so they say where they were.
+      timeout 150 ${qs} -p shell.qml 2>&1 | tee log
+      # Said as information, since nothing went wrong: a warning here is one
+      # a journal read for the shell's faults would find (Daemon.qml's gone).
+      # Quickshell says a line's level before it, as INFO or WARN. Each is a
+      # grep of the log alone, as a pipe's first grep cut off by a quiet
+      # second would fail it under pipefail.
+      if grep -E 'WARN.*letting-go: let its connection go' log; then
+        echo 'a connection the shell let go was said as a warning' >&2
+        exit 1
+      fi
+      if ! grep -E 'INFO.*letting-go: let its connection go with 1 ask unanswered' log; then
+        echo 'no INFO line says letting-go let its connection go with 1 ask unanswered' >&2
+        exit 1
+      fi
       if grep -F 'letting-go: the connection went' log; then
         echo 'a connection the shell let go was said as one gone wrong' >&2
         exit 1

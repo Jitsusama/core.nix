@@ -9,9 +9,10 @@ real columns reach it: a single pose held a moment while the keys come, which mo
 and draws a frame each way, plays in place once they stop, and once they've been gone a while
 a hop that rises and lands where it sat, a wander a few cells along the margin, a key
 ending it at once, the cat walking back, and a ball of yarn batted off and a pounce on
-nothing, each shown whole and each walking it back after. How a hop, the yarn and a pounce
-move is held in Qt's engine too (modules/margin-cat/tests/margin-cat-games.qml). Each case
-asks the shell for the play it watches, so none waits on chance.
+nothing, each shown whole and each walking it back after, and the puppy's visit, the cat
+hopping where it sits. How a hop, the yarn, a pounce and the puppy move is held in Qt's
+engine too (modules/margin-cat/tests/margin-cat-games.qml and margin-cat-puppy.qml). Each
+case asks the shell for the play it watches, so none waits on chance.
 """
 
 from __future__ import annotations
@@ -26,7 +27,7 @@ import pytest
 from launcher_on_niri import placed
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
     from launcher_on_niri import Json, Shell
 
@@ -55,6 +56,11 @@ BACK, HOME = 1.0, timedelta(seconds=15)
 # show, since a loaded nested frame can skip the shortest, the drawings of a hop, and how
 # long a play may take: about 6 s, and some for a loaded builder.
 PLAYED = "played cat "
+# A play a case asked for, turned down by a cat, with why (MarginCatScreen.qml's turnedDown).
+TURNED = "turned cat "
+# A play a case asked for, let go after its refusals outlasted MarginCatPlays.js's
+# REFUSED_FOR, so a story of refusals that stop says the ask was dropped, not met.
+LET_GO = "let go cat "
 HOP = ["crouches", "hops", "lands"]
 YARN = [
     "waits",
@@ -71,6 +77,14 @@ YARN = [
 ]
 POUNCE = ["notices", "eyes", "crouches", "wiggles", "leaps", "lands", "looks"]
 YARN_SEEN, POUNCE_SEEN = {"waits", "watches", "sends"}, {"eyes", "leaps", "looks"}
+# The puppy's visit (modules/margin-cat/MarginCatPuppy.js), on the cat's beats, and how long
+# it may take: it trots in and off at the cat's walking pace, at most 80 cells a second,
+# which over a nested column of a cell a pixel is up to about 10 s each way.
+PUPPY = ["waits", "notices", "eyes", "crouches", "hops", "lands", "looks", "watches"]
+PUPPY_SEEN = {"waits", "eyes", "hops", "watches"}
+VISITS = timedelta(seconds=45)
+# How long the shell may take to hear a key, through niri's word that he's no longer idle.
+HEARS = timedelta(seconds=10)
 HOPPING = {"pouncing", "leaping", "tucked", "falling"}
 PLAYS = timedelta(seconds=20)
 POLL = 0.05
@@ -99,17 +113,33 @@ def story(said: list[str]) -> str:
     """
     told: list[str] = []
     was: dict[str, object] | None = None
+    repeats = 1
     for line in said:
-        if line.startswith(PLAYED):
+        # A cat turns an asked play down again with each scene drawn for it, two to five a
+        # second for up to 20 s, so a refusal said again with nothing changed between is
+        # counted on its first line, not told again.
+        if line.startswith(TURNED) and told and told[-1].startswith(line):
+            repeats += 1
+            told[-1] = f"{line} ({repeats} times)"
+            continue
+        if line.startswith((PLAYED, TURNED, LET_GO)):
             told.append(line)
+            repeats = 1
+        # A refusal leaves the place as it was, so a cat still where it was refused tells no
+        # line between, and the refusal after is counted on the first; a play or a let-go
+        # tells the place after it afresh.
+        if line.startswith((PLAYED, LET_GO)):
             was = None
         if not line.startswith(SITS):
             continue
         at = placed(line[len(SITS) :]) or {}
         walk = at.get("walk") or {}
         move = at.get("move") or {}
-        keys = ("window", "strolling", "pose", "stilled", "held", "departing", "asleep")
+        # A walk's pose turns with each stride, which would tell a line each step and part a
+        # refusal said again mid-walk from the one before, so a walk is told by its beats.
+        keys = ("window", "strolling", "stilled", "held", "departing", "asleep")
         now: dict[str, object] = {key: at.get(key) for key in keys} | {
+            "pose": None if walk else at.get("pose"),
             "restBegun": at.get("restBegun"),
             "beats": walk.get("beats"),
             "play": walk.get("play"),
@@ -121,6 +151,41 @@ def story(said: list[str]) -> str:
             told.append(f"x {at.get('x')}: {json.dumps(now)}")
             was = now
     return "\n".join(told)
+
+
+def test_a_story_counts_a_refusal_said_again_mid_walk() -> None:
+    """A refusal said again as the cat strides on is counted, not told again (#6968's round).
+
+    The story runs only on a failed wait, so its counting is held here on lines of its own.
+    """
+
+    def step(pose: str, x: int) -> str:
+        walk = {"beats": ["goes"], "to": 318, "play": None}
+        # As MarginCatScreen.qml's say has it: its screen, where it is, and the column under it.
+        return f"{SITS}winit {json.dumps({'x': x, 'pose': pose, 'walk': walk})} over {{}}"
+
+    refused = f"{TURNED}yarn walking"
+    said = [step("walkingA", 900), refused, step("walkingB", 897), refused]
+    said.append(step("walkingC", 894))
+    told = story(said).splitlines()
+    assert told[1:] == [f"{refused} (2 times)"], told
+
+
+def reported_since_ask(
+    shell: Shell, found: Callable[[str], bool], since: int, timeout: timedelta
+) -> None:
+    """Wait for a place said since a play was asked for, or fail with the cat's story since.
+
+    A play or visit that never came said nothing of why (2026-11-23, 2026-11-24 and
+    2026-11-26), so a failed wait names each time a cat turned it down, and what held it.
+    """
+    try:
+        shell.reported(SITS, found, since, timeout)
+    except AssertionError as failed:
+        said, _ = shell.said_since(since)
+        # The wait's own failure, its log tail with it, is printed once as this one's cause.
+        told = f"what the cat did since the ask:\n{story(said)}"
+        raise AssertionError(told) from failed
 
 
 def reports(shell: Shell, since: int) -> tuple[list[Json], int]:
@@ -139,6 +204,39 @@ def cat_frames(shell: Shell) -> int:
 def ask(shell: Shell, play: str) -> None:
     """Ask that the cat's next play be the one named, once its level has it (MarginCat.qml)."""
     shell.as_account(f"qs -p {shell.folder} ipc call cat next {play}")
+
+
+def leaves_then_asks(shell: Shell, play: str) -> int:
+    """Press a key, and once the shell has heard it, ask for `play`, giving the mark before.
+
+    The ask waits until the shell's level is typing, which only a key heard makes it: idle or
+    paused, the cat draws plays the key would cut short, and typing it draws none. Asked before
+    the key was heard, the scene the ask draws could come up first, spending the ask on a play
+    the key then cut short, and the yarn and the puppy rest for minutes once begun: on a lender
+    running 12 builds, no yarn came in 20 s (2026-11-26).
+
+    The key is pressed again before each read, since typing lasts only the 3 s pause, which a
+    slow read on a busy lender could pass between one key and the read after it; a key more
+    only keeps the level typing. A level left typing by an earlier key passes at once, which is
+    as safe, since typing draws no play for the key to cut. A level held still fails at once,
+    since the ask would be refused.
+    """
+    level = f"qs -p {shell.folder} ipc call cat level"
+    deadline = time.monotonic() + HEARS.total_seconds()
+    while True:
+        shell.send_key("F24")
+        now = shell.as_account(level).strip()
+        if now == "typing":
+            break
+        assert now != "still", f"the cat is held still, so it would refuse:\n{shell.tail()}"
+        assert time.monotonic() < deadline, (
+            f"the shell never heard a key in {HEARS}, its cat left {now}:\n{shell.tail()}"
+        )
+        # niri says he's no longer idle on its own time, with no word the test could wait on.
+        time.sleep(POLL)
+    since = shell.mark()
+    ask(shell, play)
+    return since
 
 
 def sitting_over(shell: Shell, title: str) -> tuple[Json, Json]:
@@ -184,32 +282,23 @@ def home(at: Json | None, sat: Json, seat: Json) -> bool:
     )
 
 
-def plays_out(shell: Shell, kind: str) -> tuple[list[Json], Json, Json]:
-    """Sit over a column, ask for a play, leave the keys, and give it once it's done.
+def plays_out(shell: Shell, kind: str, lasts: timedelta = PLAYS) -> tuple[list[Json], Json, Json]:
+    """Sit over a column, leave the keys, ask for a play, and give it once it's done.
 
     It gives each place said while it played, how niri showed it, and where it sat before;
-    and it waits for the cat to sit still over the column again, where it sat. A play already
-    under way when it asks plays out first, so it reads from the asked play's first step, and
-    only that play's steps (2026-11-15: a hop's beats were read as a pounce's).
+    and it waits for the cat to sit still over the column again, where it sat. The key ends a
+    play already under way, and it reads from the asked play's first step, and only that
+    play's steps (2026-11-15: a hop's beats were read as a pounce's).
     """
     sat, seat = sitting_over(shell, f"a column played beside, {kind}")
-    asking = shell.mark()
-    ask(shell, kind)
-    shell.send_key("F24")
-    since = shell.mark()
+    since = leaves_then_asks(shell, kind)
 
     def asked(said: str) -> bool:
         return (playing(placed(said)) or {}).get("play") == kind
 
-    try:
-        shell.reported(SITS, asked, since, STROLLS)
-    except AssertionError as failed:
-        said, _ = shell.said_since(asking)
-        # The wait's own failure, its log tail with it, is printed once as this one's cause.
-        told = f"what the cat did since the ask:\n{story(said)}"
-        raise AssertionError(told) from failed
+    reported_since_ask(shell, asked, since, STROLLS)
     began = shell.mark()
-    shell.reported(PLAYED, lambda said: said.split(" ", 1)[1].startswith("{"), began, PLAYS)
+    shell.reported(PLAYED, lambda said: said.split(" ", 1)[1].startswith("{"), began, lasts)
     said, _ = shell.said_since(since)
     steps = [line[len(SITS) :] if line.startswith(SITS) else None for line in said]
     start = next(at for at, step in enumerate(steps) if step is not None and asked(step))
@@ -384,8 +473,10 @@ def behind_its_edge(yarn: Json, size: float) -> bool:
     return bool(yarn["x"] < yarn["within"]["left"] or yarn["x"] + size > yarn["within"]["right"])
 
 
-def came_behind(frames: list[Json], size: float) -> Json | None:
+def came_behind(frames: list[Json], size: float, key: str = "yarn") -> Json | None:
     """Give where the yarn was as it came, or None where it came from behind its edge.
+
+    The puppy (`key` "puppy") is read the same way, since it too comes on the cat's clock.
 
     The yarn rolls on the cat's clock, so a frame drawn late finds it a few pixels on: a loaded
     builder's 50 ms frame showed it first 5 px out from its edge, though it rolled from behind
@@ -396,9 +487,9 @@ def came_behind(frames: list[Json], size: float) -> Json | None:
     start, so one that started in open space stays there. Its going needs no such roll, since
     a play reports no frame after the yarn's last.
     """
-    shown = [at for at, frame in enumerate(frames) if frame["walk"]["yarn"]]
+    shown = [at for at, frame in enumerate(frames) if frame["walk"][key]]
     edge = shown[0]
-    yarn: Json = frames[edge]["walk"]["yarn"]
+    yarn: Json = frames[edge]["walk"][key]
     if behind_its_edge(yarn, size):
         return None
     after = edge + 1
@@ -408,9 +499,30 @@ def came_behind(frames: list[Json], size: float) -> Json | None:
     now, later = frames[edge]["walk"]["t"], frames[after]["walk"]["t"]
     if later == now:
         return yarn
-    pace = (frames[after]["walk"]["yarn"]["x"] - yarn["x"]) / (later - now)
+    pace = (frames[after]["walk"][key]["x"] - yarn["x"]) / (later - now)
     there = {**yarn, "x": yarn["x"] + pace * (then - now)}
     return None if behind_its_edge(there, size) else yarn
+
+
+def went_behind(frames: list[Json], size: float) -> Json | None:
+    """Give where the puppy was as it went, or None where it went behind its edge.
+
+    It trots off to the play's end, behind its edge only for its last few cells, which a
+    loaded builder can leave undrawn: so where its last frame isn't behind the edge, it trots
+    it on at its last two frames' pace to the play's end (`walk`'s `ends`), and only a puppy
+    that wasn't behind the edge then went in open space.
+    """
+    shown = [frame["walk"] for frame in frames if frame["walk"]["puppy"]]
+    last = shown[-1]
+    puppy: Json = last["puppy"]
+    if behind_its_edge(puppy, size):
+        return None
+    before = shown[-2] if len(shown) > 1 else last
+    if last["t"] == before["t"]:
+        return puppy
+    pace = (puppy["x"] - before["puppy"]["x"]) / (last["t"] - before["t"])
+    there = {**puppy, "x": puppy["x"] + pace * (last["ends"] - last["t"])}
+    return None if behind_its_edge(there, size) else puppy
 
 
 def test_away_it_bats_a_ball_of_yarn_off_and_walks_back(shell: Shell) -> None:
@@ -441,3 +553,69 @@ def test_away_it_pounces_on_nothing_and_walks_back(shell: Shell) -> None:
     assert min(at["y"] for at in frames) < seat["y"], f"it never left the ground: {frames}"
     assert not any(at["walk"]["yarn"] for at in frames), f"a pounce brought yarn: {frames}"
     assert shown["unseen"] == 0, f"niri never showed {shown['unseen']} of its frames: {shown}"
+
+
+def test_away_a_puppy_visits_and_the_cat_hops_where_it_sits(shell: Shell) -> None:
+    """Away, the puppy trots in from behind its room's edge, and off again; the cat hops.
+
+    Its beats come in order, the puppy never appearing or going in open space, the cat never
+    leaving its seat but to hop a cell up and land, and niri shows every frame of it.
+    """
+    frames, shown, seat = plays_out(shell, "puppy", VISITS)
+    beats = beats_of(frames)
+    assert in_order(beats, PUPPY), f"the visit's beats came as {beats}"
+    assert set(beats) >= PUPPY_SEEN, f"the visit's beats came as {beats}"
+    seen = [at["walk"]["puppy"] for at in frames if at["walk"]["puppy"]]
+    assert seen, f"the puppy was never shown: {frames}"
+    lit = max(at.get("puppyLit", 0) for at in frames)
+    assert lit > 0, f"the puppy was placed but drawn in no cell: {frames}"
+    size = frames[0]["size"]
+    came = came_behind(frames, size, "puppy")
+    assert came is None, f"the puppy came from nowhere: {came}"
+    went = went_behind(frames, size)
+    assert went is None, f"the puppy went in open space: {went}"
+    assert all(abs(at["x"] - seat["x"]) <= 1 for at in frames), f"the cat moved off: {frames}"
+    aloft = [at for at in frames if at["y"] < seat["y"]]
+    assert len(aloft) > 1, f"its hop was in the air for {len(aloft)} frames: {frames}"
+    assert not any(at["walk"]["yarn"] for at in frames), f"a visit brought yarn: {frames}"
+    assert shown["unseen"] == 0, f"niri never showed {shown['unseen']} of its frames: {shown}"
+
+
+def test_a_key_ends_the_puppys_visit(shell: Shell) -> None:
+    """The puppy visits only while he's away, so a key mid-visit ends it: it goes, the cat sits.
+
+    A visit lasts up to about 25 s, and played on it would have the cat hopping as he types and
+    asking niri for every tile (#6573's council, 2026-11-25).
+    """
+    sat, seat = sitting_over(shell, "a column a visit is cut short over")
+    since = leaves_then_asks(shell, "puppy")
+
+    def visiting(said: str) -> bool:
+        return (playing(placed(said)) or {}).get("play") == "puppy"
+
+    def in_sight(said: str) -> bool:
+        step = playing(placed(said)) or {}
+        return step.get("play") == "puppy" and step.get("beat") in PUPPY[1:-1]
+
+    # Pressed once the puppy stands by the cat in plain sight, so it ends a visit he can see,
+    # not one still behind the room's edge, where the puppy is drawn nowhere either way.
+    reported_since_ask(shell, in_sight, since, VISITS)
+    since = shell.mark()
+    keyed = time.monotonic()
+    shell.send_key("F24")
+    shell.reported(SITS, lambda said: not visiting(said), since)
+    ended = time.monotonic() - keyed
+    assert ended <= BACK, f"a key took {ended:.2f} s to end the visit"
+    # `walk` says no puppy once the cat sits, so only the report's own `puppy` shows it gone.
+    shell.reported(
+        SITS,
+        lambda said: (
+            (at := placed(said)) is not None
+            and not walking(at)
+            and at.get("window") == sat["id"]
+            and abs(at["x"] - seat["x"]) <= 1
+            and not at.get("puppy")
+        ),
+        since,
+        HOME,
+    )

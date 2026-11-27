@@ -24,11 +24,13 @@
     name = "the-passwords-place-copies-through-its-daemon-on-niri";
     tests = ../tests/passwords-on-niri-test.py;
     # On here, where no agent runs and no secret is real, copying through
-    # wl-copy and typing through the module's wtype, its one manager the
-    # stand-in, which logs where the test's environment says.
+    # Passwords' own wl-copy, since the daemon copies only once a copier
+    # says it's ready and holds the copy, which stock wl-copy never says,
+    # and typing through the module's wtype, its one manager the stand-in,
+    # which logs where the test's environment says.
     shell.launcher.providers.passwords = {
       off = lib.mkForce false;
-      copier = "wl-copy";
+      copier = lib.getExe' (pkgs.callPackage ../../passwords/copier.nix { }) "wl-copy";
       daemon = lib.mkForce [
         (lib.getExe (pkgs.callPackage ../../passwords/package.nix { }))
         "daemon"

@@ -56,6 +56,7 @@ use agents::feedback::{self, Landings};
 use agents::inputs::Inputs;
 use agents::kept_places::KeptPlaces;
 use agents::landed::Reading;
+use agents::offers;
 use agents::places;
 use agents::reopen::Kept;
 use agents::row::Words;
@@ -310,7 +311,8 @@ fn own(
     })
 }
 
-/// Start New Work, where it can begin, and Let Them Start, asked of
+/// Start New Work, where it can begin, whether the cloud can take it, and
+/// Let Them Start, asked of
 /// `node` only for the shell, told apart by the connection each came on,
 /// so no agent lifts the stop Joel put on their starts or reads his
 /// places; what the node says of the starts once they're let start is
@@ -333,6 +335,7 @@ fn sprouts_for_the_shell(
         &[
             sprout::ASK,
             places::ASK,
+            offers::ASK,
             starts::TOLD,
             starts::KEPT,
             starts_stopped::ASK,
@@ -340,6 +343,9 @@ fn sprouts_for_the_shell(
         Box::new(move |said, stream| {
             if said["ask"] == places::ASK {
                 return Some(places::answer(|| asker::the_shell(stream), node.as_deref()));
+            }
+            if said["ask"] == offers::ASK {
+                return Some(offers::answer(|| asker::the_shell(stream), node.as_deref()));
             }
             if said["ask"] == starts_stopped::ASK {
                 let (answer, now) =
@@ -400,6 +406,7 @@ fn sprouts_for_the_shell(
         "feedback",
         sprout::ASK,
         places::ASK,
+        offers::ASK,
         starts::TOLD,
         starts_stopped::ASK,
     ]);

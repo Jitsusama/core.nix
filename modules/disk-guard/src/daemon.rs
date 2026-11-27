@@ -9,6 +9,7 @@ use crate::config::{Config, Source};
 use crate::decide::{Decision, Fill, Situation, calm, decide, overloaded, powered, roomy, spare};
 use crate::dedupe::{self, Deduped};
 use crate::discover;
+use crate::disk_reads::{Walk, Walked};
 use crate::finished::{self, Answers, Predicate};
 use crate::garbage::{self, BATCH_BYTES, Batch, GC_TIMEOUT, Listed, Listing};
 use crate::generations::{self, Boot};
@@ -564,9 +565,9 @@ pub struct Guard {
     /// What holds the disks, as last measured and when, in wall seconds,
     /// and how much each grew in the day before.
     measured: Measured,
-    /// The thread measuring them, while it does, giving how long it took,
-    /// in seconds.
-    measuring: Option<std::thread::JoinHandle<f64>>,
+    /// The thread measuring them, while it does, giving how long it took
+    /// and what it read from disk.
+    measuring: Option<std::thread::JoinHandle<Walked>>,
     /// When the last measure began, how full each disk was then, and how
     /// long it took once it's done.
     began: Option<crate::holders::LastMeasure>,
@@ -979,9 +980,15 @@ impl Guard {
             return;
         }
         if let Some(thread) = self.measuring.take()
-            && let (Ok(took), Some(began)) = (thread.join(), self.began.as_mut())
+            && let Ok(walked) = thread.join()
         {
-            began.took = took;
+            // Stamped when it began, as every other walk is, so it sorts
+            // beside the pass it ran with rather than at this later step.
+            let at = self.began.as_mut().map_or(now, |began| {
+                began.took = walked.seconds;
+                began.at
+            });
+            self.journal_walk(at, "holders", walked);
         }
         let budget = self.config.budget;
         let pressed = self.watched.values().any(|watched| {
@@ -1020,7 +1027,7 @@ impl Guard {
                 // process, passes too, so there it runs as it is.
                 #[cfg(target_os = "linux")]
                 crate::commands::idle();
-                let clock = std::time::Instant::now();
+                let walk = Walk::start();
                 let sized = crate::holders::measure(places);
                 // A ledger that won't write leaves the holders unsaid only
                 // in how much they grew.
@@ -1029,7 +1036,7 @@ impl Guard {
                     crate::ledger::Grown::new()
                 });
                 *measured.lock().unwrap_or_else(PoisonError::into_inner) = Some((now, sized, grew));
-                clock.elapsed().as_secs_f64()
+                walk.end()
             });
         match started {
             Ok(thread) => self.measuring = Some(thread),
@@ -1330,6 +1337,7 @@ impl Guard {
             return;
         }
         self.marked_at = Some(tick.wall);
+        let walk = Walk::start();
         let mut marked = Vec::new();
         let mut unmarked = 0_usize;
         let mut why = None;
@@ -1369,6 +1377,7 @@ impl Guard {
                 }
             }
         }
+        self.journal_walk(tick.wall, "marks", walk.end());
         if let Some(why) = why {
             say!(
                 "disk-guard: {unmarked} build folders couldn't be marked ({why}, the first), \
@@ -1630,14 +1639,28 @@ impl Guard {
         if asks.is_empty() {
             return Ok(false);
         }
-        // Joel asks most as the disk fills, when the status may not fit:
-        // the clear goes on, and so does every pass after it.
-        if let Err(error) = self.write_status(tick.wall) {
+        // Told as at work from before its survey, which walks for minutes:
+        // under a writers' hold the disk otherwise says it waits, as if
+        // the clear Joel asked for never started.
+        // Disks are known by their pool, as a Btrfs subvolume's own device
+        // number names none of them.
+        let first = asks.iter().find_map(|(_, ask)| {
+            let watched = self.watched.get(&pool(&ask.path).ok()?)?;
+            Some((watched.path.clone(), watched.band))
+        });
+        if let Some((path, band)) = first {
+            self.tell_passing(tick, &path, band, Why::Clear);
+        } else if let Err(error) = self.write_status(tick.wall) {
+            // Joel asks most as the disk fills, when the status may not
+            // fit: the clear goes on, and so does every pass after it.
             say!("disk-guard: writing the status before a clear: {error}");
         }
         let folders: Vec<PathBuf> = asks.iter().map(|(_, ask)| ask.path.clone()).collect();
         let scoped = crate::survey::within(&self.config, &folders);
-        let (mut scan, offers, surveyed) = self.offers(tick, Some(&scoped))?;
+        let (mut scan, offers, surveyed) = self
+            .offers(tick, Some(&scoped))
+            .inspect_err(|_| self.stop_telling(tick))?;
+        let mut ended = Ok(());
         for (file, ask) in asks {
             // A source's root may be named through a link, and an ask's
             // folder never is.
@@ -1653,9 +1676,15 @@ impl Guard {
             let cleared = self.clear_on(tick, &inside, &mut scan, surveyed);
             // Ended whatever the pass did, since one that failed would
             // fail again, each step surveying everything to.
-            crate::clears::done(&file)?;
-            cleared?;
+            ended = crate::clears::done(&file).and(cleared);
+            if ended.is_err() {
+                break;
+            }
         }
+        // A clear that found nothing inside its folder ran no pass to end
+        // the telling, and its disk would say it clears until the next.
+        self.stop_telling(tick);
+        ended?;
         self.remeasure = true;
         Ok(true)
     }
@@ -1701,13 +1730,13 @@ impl Guard {
     }
 
     /// A clear's passes over `inside`, one on each filesystem it spans,
-    /// offered by a survey that took `surveyed` seconds.
+    /// offered by the survey `surveyed`.
     fn clear_on(
         &mut self,
         tick: &Tick,
         inside: &[Offer],
         scan: &mut Scan,
-        surveyed: f64,
+        surveyed: Walked,
     ) -> io::Result<()> {
         let devices: BTreeSet<u64> = inside.iter().map(|offer| offer.device).collect();
         for device in devices {
@@ -2639,7 +2668,7 @@ impl Guard {
             if let Some((path, aimed)) = first {
                 self.tell_passing(tick, &path, aimed.band, aimed.why);
             }
-            let (scan, offers, seconds) = self
+            let (scan, offers, walked) = self
                 .offers(tick, None)
                 .inspect_err(|_| self.end_passing())?;
             // Kept for a plan to read; one that can't be kept only means
@@ -2648,7 +2677,7 @@ impl Guard {
             if let Err(error) = crate::surveyed::save(self.state(), &kept) {
                 say!("disk-guard: keeping the survey: {error}");
             }
-            (scan, offers, Some(seconds))
+            (scan, offers, Some(walked))
         };
         for &(device, decision, thresholds) in due {
             if !self.watched.contains_key(&device) {
@@ -2801,16 +2830,17 @@ impl Guard {
     /// What the sources offer now, or with `part`, only what its sources
     /// offer, for a clear or a producer with news: a survey of that part
     /// leaves what the holders say of the rest as the last whole one did.
-    /// With it, how long the survey took, in seconds, for each pass it
-    /// serves to journal, since a pass's own seconds leave out this walk.
+    /// With it, how long the survey took and what it read from disk, for
+    /// each pass it serves to journal, since a pass's own leave out this
+    /// walk.
     fn offers(
         &mut self,
         tick: &Tick,
         part: Option<&Config>,
-    ) -> io::Result<(Scan, Vec<Offer>, f64)> {
-        let surveying = Instant::now();
+    ) -> io::Result<(Scan, Vec<Offer>, Walked)> {
+        let walk = Walk::start();
         let (scan, offers) = self.survey(tick, part)?;
-        Ok((scan, offers, surveying.elapsed().as_secs_f64()))
+        Ok((scan, offers, walk.end()))
     }
 
     /// What `offers` answers, untimed.
@@ -2997,6 +3027,20 @@ impl Guard {
         }
     }
 
+    /// Journals a walk no pass took, `step` naming it, and tells of a
+    /// journal that won't take it, as a pass's line does.
+    fn journal_walk(&mut self, at: f64, step: &'static str, walked: Walked) {
+        let line = Line::Walk {
+            at,
+            step,
+            seconds: walked.seconds,
+            read: walked.read,
+        };
+        if let Err(error) = self.journal.write(&line) {
+            say!("disk-guard: journalling a walk: {error}");
+        }
+    }
+
     /// Tells the status a pass is at work on `path` for `why` in `band`,
     /// from when the first of its steps began, its survey or its judging,
     /// and writes it, telling none if the write fails. The pass goes on
@@ -3024,6 +3068,16 @@ impl Guard {
     /// a step that fails before its next status leaves none told.
     fn end_passing(&mut self) {
         no_pass_at_work(&mut self.passing, &self.beaten);
+    }
+
+    /// Ends the telling of a clear and writes the status again, since a
+    /// held disk's waiting is judged by whether a pass is told on it: the
+    /// status the clear left says it neither waits nor clears.
+    fn stop_telling(&mut self, tick: &Tick) {
+        self.end_passing();
+        if let Err(error) = self.write_status(tick.wall) {
+            say!("disk-guard: writing the status after a clear: {error}");
+        }
     }
 
     /// Runs a pass over what lies on the watched filesystem `device` and
@@ -3054,6 +3108,7 @@ impl Guard {
         self.tell_passing(tick, &path, band, why);
         let candidates: Vec<_> = here.iter().map(|offer| offer.candidate.clone()).collect();
         let started = Instant::now();
+        let walk = Walk::start();
         let since = self.stepped;
         let gentle = band < Band::NearlyFull;
         let pacer = Rc::new(RefCell::new(self.pacer(&path, band, thresholds)));
@@ -3118,7 +3173,9 @@ impl Guard {
             why: why.word(),
             offered: here.len(),
             judged: report.actions.len(),
-            surveyed,
+            surveyed: surveyed.map(|walked| walked.seconds),
+            read: walk.end().read,
+            survey_read: surveyed.and_then(|walked| walked.read),
         };
         if let Err(error) = self.journal.write(&line) {
             say!("disk-guard: journalling a pass: {error}");
@@ -3712,19 +3769,18 @@ impl Why {
 }
 
 /// What a pass plans by and is for, what set it going, and how long the
-/// survey that offered it its candidates took, in seconds, when one did.
-/// Every pass one survey served says so, the passes of one step sharing
-/// its seconds, so none reads as having needed no walk.
+/// survey that offered it its candidates took and what it read, when one
+/// did. Every pass one survey served says so, the passes of one step
+/// sharing its walk, so none reads as having needed none.
 struct Aim {
     band: Band,
     goal: Goal,
     why: Why,
-    surveyed: Option<f64>,
+    surveyed: Option<Walked>,
 }
 
-/// A decision's aim, offered by a survey that took `surveyed` seconds,
-/// when one did.
-fn aim(decision: Decision, surveyed: Option<f64>) -> Aim {
+/// A decision's aim, offered by the survey `surveyed`, when one did.
+fn aim(decision: Decision, surveyed: Option<Walked>) -> Aim {
     let (band, goal, why) = match decision {
         Decision::Reach(band) => (band, Goal::Reach, Why::Reach),
         Decision::Collect => (Band::Healthy, Goal::Upkeep, Why::Garbage),
@@ -4062,7 +4118,7 @@ impl Reclaimer for Pretending {
 // so this test doesn't cover it.
 #[cfg(test)]
 mod tests {
-    use super::{Band, Decision, Goal, Why, aim, min_free_again};
+    use super::{Band, Decision, Goal, Walked, Why, aim, min_free_again};
 
     #[test]
     fn a_failing_min_free_read_waits_twice_as_long_each_time_up_to_an_hour() {
@@ -4074,6 +4130,13 @@ mod tests {
         );
     }
 
+    fn walked(seconds: f64) -> Walked {
+        Walked {
+            seconds,
+            read: Some(4096),
+        }
+    }
+
     #[test]
     fn each_decision_aims_its_pass_with_its_why_and_the_survey_it_was_given() {
         let garbage = aim(Decision::Collect, None);
@@ -4081,15 +4144,21 @@ mod tests {
             (garbage.goal, garbage.why, garbage.surveyed),
             (Goal::Upkeep, Why::Garbage, None)
         );
-        let beside = aim(Decision::Collect, Some(1.5));
-        assert_eq!((beside.why, beside.surveyed), (Why::Garbage, Some(1.5)));
-        let reach = aim(Decision::Reach(Band::Filling), Some(2.0));
+        let beside = aim(Decision::Collect, Some(walked(1.5)));
+        assert_eq!(
+            (beside.why, beside.surveyed),
+            (Why::Garbage, Some(walked(1.5)))
+        );
+        let reach = aim(Decision::Reach(Band::Filling), Some(walked(2.0)));
         assert_eq!(
             (reach.goal, reach.why, reach.surveyed),
-            (Goal::Reach, Why::Reach, Some(2.0))
+            (Goal::Reach, Why::Reach, Some(walked(2.0)))
         );
         assert_eq!(reach.band, Band::Filling);
-        let upkeep = aim(Decision::Upkeep, Some(3.0));
-        assert_eq!((upkeep.why, upkeep.surveyed), (Why::Upkeep, Some(3.0)));
+        let upkeep = aim(Decision::Upkeep, Some(walked(3.0)));
+        assert_eq!(
+            (upkeep.why, upkeep.surveyed),
+            (Why::Upkeep, Some(walked(3.0)))
+        );
     }
 }
