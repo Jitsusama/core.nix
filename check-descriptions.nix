@@ -7415,10 +7415,6 @@
     terminal's show walked into it; never open on another place, at home or on another's find,
     and at once on stepping in
   '';
-  wifi-names-a-network-without-a-country = ''
-    the XPS 14's kernel records the name of the network a card joined even when its access point
-    names no country, so networkd matches that network's file
-  '';
   wifi-sessions-survive-fragmented-memory = ''
     the XPS 14's kernel lets Wi-Fi's block-ack reorder buffers come from vmalloc when memory is
     too fragmented for an order-5 block, and frees them nowhere with kfree()
