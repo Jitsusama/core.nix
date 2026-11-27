@@ -400,9 +400,8 @@ code,
 
 /* ---- The room the feeds draw into, held from the last visit until they draw (page.ts). ---- */
 
-/* With no room kept, as on a first visit, the headline and lede hold the two lines their
-   opening words and their usual live words take, so a count or a lede that wraps onto one
-   line in some browser or at some width doesn't pull the page up as the feeds arrive. */
+/* With no room kept, as on a first visit, the head holds the two lines its opening and usual
+   live words take, so the page doesn't move as the feeds arrive. */
 #title {
   min-block-size: var(--room-title, 2lh);
 }

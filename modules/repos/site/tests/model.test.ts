@@ -344,7 +344,7 @@ it("says a pile of resting trees once it reaches ten", () => {
   const grove = groveOf(told([reading, core, ...resting]), [], NOW);
   assert.deepEqual(
     grove?.worth.map((each) => each.says),
-    ["rests 10 trees unwritten for over a week."],
+    ["rests 10 trees unwritten past a week."],
   );
 });
 

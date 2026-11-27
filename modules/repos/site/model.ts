@@ -460,7 +460,7 @@ function worthOf(repositories: readonly Repository[]): readonly Worth[] {
       found.push({
         weight: resting,
         repository,
-        says: `rests ${plural(resting, "tree")} unwritten for over a week.`,
+        says: `rests ${plural(resting, "tree")} unwritten past a week.`,
       });
     }
   }

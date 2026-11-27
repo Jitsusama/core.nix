@@ -34,7 +34,7 @@ function headOf(grove: Grove): Head {
   )[0];
   const most =
     busiest === undefined
-      ? "No tree was written today; the grove is resting."
+      ? "No tree grew today; the grove rests."
       : `${named(busiest)} grew most today, ${escaped(plural(busiest.seasons.today, "tree"))} written.`;
   return {
     title: `<a href="#every" data-place="every">${escaped(plural(all, "repository", "repositories"))}</a>, <em><a href="#growing" data-place="growing">${grew.toLocaleString("en-CA")} growing.</a></em>`,
