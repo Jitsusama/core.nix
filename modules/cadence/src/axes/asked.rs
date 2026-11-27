@@ -77,7 +77,7 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<(), Failure> {
     let open = open(&asks);
     let owners: BTreeSet<&str> = open.iter().map(|ask| ask.answers.as_str()).collect();
     let titles = titled(&quests(&home), &owners);
-    let probed = probes::gather(&state_home)
+    let probed = probes::gather(&state_home, now)
         .inspect_err(|why| {
             eprintln!("cadence: the probes record is unread, as {why}, so every probe reads so");
         })
@@ -583,6 +583,25 @@ mod tests {
         };
         assert_eq!(side("p1"), "probe can't be read");
         assert_eq!(side("n4"), "no probe yet");
+    }
+
+    #[test]
+    fn a_probe_is_given_only_where_it_names_a_check() {
+        let given_as = [
+            (json!({"check": "z"}), true),
+            (json!([{"check": "z"}]), true),
+            (json!("launcher show asked"), true),
+            (json!({}), false),
+            (json!([]), false),
+            (json!(""), false),
+            (json!(false), false),
+            (json!(true), false),
+            (json!(1), false),
+            (Value::Null, false),
+        ];
+        for (probe, meant) in given_as {
+            assert_eq!(given(&probe), meant, "{probe}");
+        }
     }
 
     #[test]

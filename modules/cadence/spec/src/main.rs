@@ -23,8 +23,10 @@
 //! cadence is stopped with all it started and the place keeps its last
 //! rows, so a Spec read that hangs, on a git lock or a niri that doesn't
 //! answer, holds Asked For back for no longer than Spec's deadline. The
-//! places are read one after the other, so Asked For asked while Spec is
-//! being read waits out that read, its seconds.
+//! places are read one after the other, Asked For first, so both watched
+//! at once see Asked For's rows before Spec's read begins; Asked For
+//! watched while a Spec read is already going waits out that read, its
+//! seconds.
 
 use std::io::Read;
 use std::os::unix::process::CommandExt;
@@ -58,21 +60,23 @@ struct Place {
     deadline: Duration,
 }
 
-/// The places it serves, Spec first.
+/// The places it serves, read in this order: Asked For first, since it
+/// takes milliseconds and Spec seconds, so Asked For's first answer never
+/// waits out a Spec read begun beside it (round 6 on #6875, F119).
 const PLACES: [Place; 2] = [
-    Place {
-        name: "spec",
-        flag: "--served",
-        fresh: Duration::from_mins(5),
-        // It takes seconds, so a minute is a read gone wrong.
-        deadline: Duration::from_mins(1),
-    },
     Place {
         name: "asked",
         flag: "--asked",
         fresh: Duration::from_mins(1),
         // It reads two files in milliseconds.
         deadline: Duration::from_secs(10),
+    },
+    Place {
+        name: "spec",
+        flag: "--served",
+        fresh: Duration::from_mins(5),
+        // It takes seconds, so a minute is a read gone wrong.
+        deadline: Duration::from_mins(1),
     },
 ];
 
@@ -140,28 +144,28 @@ fn serving(socket: &Path, asking: &Asking) -> Result<(), Failure> {
     let mut kept: [Kept; 2] = Default::default();
     let mut last: [Option<Instant>; 2] = [None; 2];
     loop {
-        let mut moved = false;
-        let mut wait: Option<Duration> = None;
+        let mut waits: [Option<Duration>; 2] = [None; 2];
         for (at, place) in PLACES.iter().enumerate() {
             let watched = shared.watches("row", place.name) || shared.watches("head", place.name);
             if watched && last[at].is_none_or(|made| made.elapsed() >= place.fresh) {
                 last[at] = Some(Instant::now());
                 let made = made(asking, place);
-                moved |= took(&mut kept[at], made, || {
+                let moved = took(&mut kept[at], made, || {
                     unread_head(&asking.words, place.name)
                 });
+                // Handed as soon as this place moves, before the next
+                // place's read, so Asked For isn't held back by Spec's;
+                // every place's rows are handed at once, since a record
+                // left out is told as gone.
+                if moved {
+                    let all = kept.iter().flat_map(Kept::all).cloned().collect();
+                    shared.change(all, json!({}));
+                }
             }
             let since = last[at].map(|made| made.elapsed());
-            if let Some(this) = waiting(watched, since, place.fresh) {
-                wait = Some(wait.map_or(this, |other| other.min(this)));
-            }
+            waits[at] = waiting(watched, since, place.fresh);
         }
-        // Every place's rows are handed at once, since a record left out
-        // is told as gone.
-        if moved {
-            let all = kept.iter().flat_map(Kept::all).cloned().collect();
-            shared.change(all, json!({}));
-        }
+        let wait = soonest(waits);
         // Woken as a watch begins or ends, else when the soonest rows
         // watched go stale.
         let ended = match wait {
@@ -185,6 +189,12 @@ fn serving(socket: &Path, asking: &Asking) -> Result<(), Failure> {
 /// came.
 fn waiting(watched: bool, since: Option<Duration>, fresh: Duration) -> Option<Duration> {
     watched.then(|| since.map_or(fresh, |since| fresh.saturating_sub(since)))
+}
+
+/// The soonest of each place's waits, so no place watched goes stale while
+/// another's longer wait is slept; none where no place is watched.
+fn soonest(waits: [Option<Duration>; 2]) -> Option<Duration> {
+    waits.into_iter().flatten().min()
 }
 
 /// What cadence made of a place: its rows in the order shown, or none
@@ -412,7 +422,7 @@ mod tests {
 
     #[test]
     fn unwatched_it_sleeps_until_a_watch_however_stale_the_rows() {
-        let fresh = PLACES[0].fresh;
+        let fresh = Duration::from_mins(5);
         let stale = Some(fresh + Duration::from_secs(60));
         assert_eq!(
             waiting(false, stale, fresh),
@@ -432,9 +442,31 @@ mod tests {
     }
 
     #[test]
+    fn it_sleeps_the_soonest_wait_of_the_places_watched() {
+        let minute = Duration::from_mins(1);
+        let four = Duration::from_mins(4);
+        assert_eq!(soonest([Some(four), Some(minute)]), Some(minute));
+        assert_eq!(soonest([Some(minute), Some(four)]), Some(minute));
+        assert_eq!(
+            soonest([None, Some(four)]),
+            Some(four),
+            "a place unwatched waits on nothing"
+        );
+        assert_eq!(
+            soonest([None, None]),
+            None,
+            "nothing watched sleeps till a watch"
+        );
+    }
+
+    #[test]
     fn each_place_is_asked_of_cadence_by_its_own_flag_and_keeps_its_own_head() {
         let names: Vec<(&str, &str)> = PLACES.iter().map(|p| (p.name, p.flag)).collect();
-        assert_eq!(names, [("spec", "--served"), ("asked", "--asked")]);
+        assert_eq!(
+            names,
+            [("asked", "--asked"), ("spec", "--served")],
+            "Asked For, read in milliseconds, before Spec's seconds"
+        );
         let printed = br#"{"rows": [], "head": {"said": "3 open"}}"#;
         let Made { head, .. } = parsed(printed, "asked").expect("a headline");
         assert_eq!(head["key"], "head:asked");

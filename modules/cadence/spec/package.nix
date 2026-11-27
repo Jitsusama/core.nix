@@ -4,7 +4,9 @@
 # every daemon's rows take (../../ready-rows), takes its shape from the
 # terminal kit (../../terminal-kit), and its test asks it with the client
 # every daemon's tests share (../../daemon-client), so the source is cut
-# from the modules folder holding them all, and built from this one.
+# from the modules folder holding them all, and built from this one. Its
+# test words its heads with the launcher's own words, as cadence's tests
+# do (../tests/words.json), so it reads those too.
 { lib, rustPlatform }:
 rustPlatform.buildRustPackage rec {
   pname = "cadence-spec";
@@ -16,6 +18,7 @@ rustPlatform.buildRustPackage rec {
       ./Cargo.lock
       ./src
       ./tests
+      ../tests/words.json
       ../../daemon-client/Cargo.toml
       ../../daemon-client/src
       ../../daemon-serve/Cargo.toml
