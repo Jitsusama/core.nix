@@ -33,11 +33,14 @@ pub struct Hold {
     heard: u32,
     /// Whether the last judgement found no wait, so the share climbs.
     clear: bool,
-    /// The lowest the wait's mean has come to while a run of cuts lasts.
+    /// The wait's mean before the last cut, while a run of cuts lasts.
+    before_ms: Option<f64>,
+    /// The lowest the wait's mean has come to in a run of cuts, once a
+    /// cut first lowered it.
     lowest_ms: Option<f64>,
     /// The wait's mean that set the last cut, for saying.
     waited_ms: f64,
-    /// Cuts in a row after which the wait came to no new low.
+    /// Futile cuts in a row.
     futile: u32,
     unheeded_until: f64,
     unheeded_for: f64,
@@ -51,6 +54,7 @@ impl Default for Hold {
             sum_ms: 0.0,
             heard: 0,
             clear: true,
+            before_ms: None,
             lowest_ms: None,
             waited_ms: 0.0,
             futile: 0,
@@ -80,8 +84,9 @@ impl Hold {
     /// Steps the hold `dt` seconds on to `at`, with the VPN's wait past
     /// the line in ms when it's the tunnel's, or none, and the wait past
     /// which a queue counts as standing. A wait cuts the share every
-    /// `ELSEWHERE_S` it averages past `late_ms`; a cut after which it came
-    /// to no new low is futile, and `FAR_CUTS` of those in a row show a far
+    /// `ELSEWHERE_S` it averages past `late_ms`; a cut after which it was
+    /// no lower, or once one has lowered it came to no new low, is futile,
+    /// and `FAR_CUTS` of those in a row show a far
     /// path no hold drains, which goes unheeded a while, as the
     /// controller's own far rule does.
     pub fn step(&mut self, at: f64, dt: f64, waiting: Option<f64>, late_ms: f64) {
@@ -102,36 +107,43 @@ impl Hold {
         if !standing {
             // Drained, or never there: a run of cuts ends, and a far path
             // found again later is unheeded for the first while again.
-            if self.lowest_ms.take().is_some() {
+            self.lowest_ms = None;
+            if self.before_ms.take().is_some() {
                 self.unheeded_for = 0.0;
             }
             self.futile = 0;
             self.rise(dt);
             return;
         }
-        // A cut works only if it takes the wait to a new low: a far path's
-        // wait wavers, and one window's dip under the last would otherwise
-        // count as one drained, so a run of futile cuts may never come to
-        // `FAR_CUTS`. On 26 November a 68 ms wait held the VPN's queue at
-        // 37% of its lane, while the link carried about 8 of its 10.8 Mb/s
-        // and the agents inside the VPN waited three seconds on average.
-        match self.lowest_ms {
-            Some(lowest) if mean >= lowest - VPN_MARGIN_MS => self.futile += 1,
+        // Once a cut has lowered the wait, a cut works only if it takes the
+        // wait to a new low: a far path's wait wavers, and one window's dip
+        // under the last would otherwise count as one drained, so a run of
+        // futile cuts may never come to `FAR_CUTS`. On 26 November a 68 ms
+        // wait held the VPN's queue at 37% of its lane, while the link
+        // carried about 8 of its 10.8 Mb/s and the agents inside the VPN
+        // waited three seconds on average. Until a cut first lowers it,
+        // each is judged against the window before, as a tunnel's queue
+        // still grows for the first cuts over its pace.
+        match self.lowest_ms.or(self.before_ms) {
+            Some(than) if mean >= than - VPN_MARGIN_MS => {
+                self.futile += 1;
+                self.lowest_ms = self.lowest_ms.map(|lowest| lowest.min(mean));
+            }
             Some(_) => {
                 self.futile = 0;
                 self.unheeded_for = 0.0;
+                self.lowest_ms = Some(mean);
             }
             None => {}
         }
         if self.futile >= FAR_CUTS {
             self.unheeded_for = (self.unheeded_for * 2.0).clamp(FAR_S, FAR_MOST_S);
             self.unheeded_until = at + self.unheeded_for;
-            (self.share, self.lowest_ms, self.futile) = (1.0, None, 0);
+            (self.share, self.before_ms, self.lowest_ms, self.futile) = (1.0, None, None, 0);
             self.clear = true;
             return;
         }
-        self.lowest_ms = Some(self.lowest_ms.map_or(mean, |lowest| lowest.min(mean)));
-        self.waited_ms = mean;
+        (self.before_ms, self.waited_ms) = (Some(mean), mean);
         self.share = (self.share * CUT).max(LEAST);
     }
 
