@@ -1544,6 +1544,10 @@
   example-apple-laptop = ''
     a laptop on the MacBook Air M2, aarch64-linux with no TPM or Secure Boot, evaluates
   '';
+  example-apple-laptop-kernel = ''
+    the Apple laptop's kernel evaluates, its derivation written down so a change that moves it
+    builds a machine's system on a builder before it merges
+  '';
   example-darwin = ''
     a Mac workstation evaluates
   '';
@@ -1553,6 +1557,14 @@
   example-laptop-initrd = ''
     the example laptop's initrd evaluates, its derivation written down so a change that moves it
     runs the VM tests that boot through it first
+  '';
+  example-laptop-kernel = ''
+    the example laptop's kernel evaluates, its derivation written down so a change that moves it
+    builds a machine's system on a builder before it merges
+  '';
+  example-laptop-qt = ''
+    the example laptop's Qt evaluates, its derivations written down so a change that moves it
+    builds a machine's system on a builder before it merges
   '';
   example-nixos = ''
     a NixOS workstation with a screen evaluates

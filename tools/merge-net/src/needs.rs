@@ -106,7 +106,11 @@ fn answer(base: &str) -> Result<ExitCode, String> {
         .ok()
         .and_then(|text| serde_json::from_str(&text).ok())
         .unwrap_or_default();
-    if found.tests.is_empty() && found.there.is_empty() && owning.is_empty() {
+    if found.tests.is_empty()
+        && found.there.is_empty()
+        && found.system.is_empty()
+        && owning.is_empty()
+    {
         println!(
             "no: none of the VM tests the change touches moved from {base}, so each would \
              give main's result; the net runs the rest after"
@@ -121,6 +125,14 @@ fn answer(base: &str) -> Result<ExitCode, String> {
     println!("the change touches");
     for (area, hits) in &found.touched {
         println!("  {area}: {}", hits.join(" "));
+    }
+    for area in &found.system {
+        println!(
+            "build a machine's system with the change on a builder before merging, since it \
+             moves {area}, which takes a builder past half an hour: build it with core at \
+             the head, then run merge-net built DRV here with the system's derivation, which \
+             ready asks for"
+        );
     }
     for area in &found.there {
         println!(

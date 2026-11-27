@@ -19,10 +19,16 @@ pub struct Area {
     /// Whether a change to it is also sent through one VM test end to end,
     /// for what runs VM tests, whose change moves none of them.
     pub there: bool,
+    /// Whether a change to it builds a machine's system on a builder
+    /// before it merges, for what takes a builder past half an hour.
+    pub system: bool,
 }
 
 /// The word among an area's tests that sets `there`.
 const THERE: &str = "there";
+
+/// The word among an area's tests that sets `system`.
+const SYSTEM: &str = "system";
 
 /// The areas `must-run.txt` names.
 pub fn areas() -> Vec<Area> {
@@ -49,14 +55,16 @@ pub fn parse(text: &str) -> Result<Vec<Area>, String> {
             };
             let mut tests = words(tests);
             let there = tests.iter().any(|test| test == THERE);
-            tests.retain(|test| test != THERE);
+            let system = tests.iter().any(|test| test == SYSTEM);
+            tests.retain(|test| test != THERE && test != SYSTEM);
             let area = Area {
                 name: name.trim().to_owned(),
                 paths: words(paths),
                 tests,
                 there,
+                system,
             };
-            if area.paths.is_empty() || (area.tests.is_empty() && !area.there) {
+            if area.paths.is_empty() || (area.tests.is_empty() && !area.there && !area.system) {
                 return Err(format!("an area needs paths and tests: {line}"));
             }
             Ok(area)
@@ -65,14 +73,16 @@ pub fn parse(text: &str) -> Result<Vec<Area>, String> {
 }
 
 /// What a change has to run first: each area it touches, with the files
-/// that touch it, the VM tests among `known` the areas name, sorted, and
-/// the areas to send through one VM test. With no names known, the tests
-/// are the areas' patterns.
+/// that touch it, the VM tests among `known` the areas name, sorted, the
+/// areas to send through one VM test, and those whose change builds a
+/// machine's system first. With no names known, the tests are the areas'
+/// patterns.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Needs {
     pub touched: Vec<(String, Vec<String>)>,
     pub tests: Vec<String>,
     pub there: Vec<String>,
+    pub system: Vec<String>,
 }
 
 /// Say which areas `files` touch, and which of `known`'s VM tests they run.
@@ -91,6 +101,9 @@ pub fn needs(areas: &[Area], files: &[String], known: Option<&[String]>) -> Need
             found.touched.push((area.name.clone(), hit));
             if area.there {
                 found.there.push(area.name.clone());
+            }
+            if area.system {
+                found.system.push(area.name.clone());
             }
             patterns.extend(area.tests.iter().map(String::as_str));
         }
@@ -267,9 +280,11 @@ mod tests {
             "must-run.txt names no area for the lock"
         );
         assert_eq!(
-            areas.iter().find(|area| area.tests.is_empty()),
+            areas
+                .iter()
+                .find(|area| area.tests.is_empty() && !area.system),
             None,
-            "an area in must-run.txt runs no tests"
+            "an area in must-run.txt names no test and builds no system"
         );
     }
 
@@ -398,6 +413,31 @@ mod tests {
         assert_eq!(needs.tests, [] as [std::string::String; 0]);
         assert_eq!(needs.there, words("nix-offload"));
         parse("a: a/* => there").expect("an area whose only test is there was refused");
+    }
+
+    #[test]
+    fn a_change_that_moves_a_machines_kernel_or_qt_builds_a_system_first() {
+        // #6748's kernel held every switch from 17:14 to about 22:15 on 26
+        // November, since each main after it compiled it again; velocity's
+        // ruling has such a change build a machine's system first.
+        let long = vec!["long builds".to_owned()];
+        let files = words("hardware/dell-xps-14-da14260/kernel/local.nix");
+        let said = "changed  example-laptop\nchanged  example-laptop-kernel\n";
+        let found = first(&areas(), &files, Some(said), None);
+        assert_eq!(
+            found.system, long,
+            "a change that moved the laptop's kernel built no system first"
+        );
+        let said = "changed  example-laptop\nchanged  example-laptop-qt\n";
+        let found = first(&areas(), &words("flake.lock"), Some(said), None);
+        assert_eq!(found.system, long, "one that moved Qt built none");
+        let said = "changed  example-laptop\n";
+        let found = first(&areas(), &files, Some(said), None);
+        assert!(
+            found.system.is_empty(),
+            "a kernel file that moved no kernel built a system first"
+        );
+        assert!(parse("a: a/* => system").is_ok());
     }
 
     #[test]
