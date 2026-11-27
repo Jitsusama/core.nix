@@ -251,7 +251,10 @@ pub fn run(args: impl Iterator<Item = String>, now: i64) -> Result<(), Failure> 
         Failure::new(Exit::Failed, format!("locking {}", kept_at.display()))
             .because(err.to_string())
     })?;
-    let mut ledger = findings::read(&kept_at);
+    let mut ledger = findings::read(&kept_at).map_err(|err| {
+        Failure::new(Exit::Failed, format!("reading {}", kept_at.display()))
+            .because(err.to_string())
+    })?;
     let said = match asked {
         Asked::Owe(owed) => {
             let key = owed.key.clone();
