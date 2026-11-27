@@ -97,13 +97,10 @@ def where(shell: Shell) -> tuple[object, object, object]:
     """Give the place the launcher has selected, its row's name, and how many it lists in all.
 
     The count takes in any headings, which nearly no list has. A launcher that can't be read,
-    its read in the shell having thrown or answered nothing, gives why in place of the name, so
-    the case's failure still says what it saw.
+    its read in the shell having thrown or answered nothing, fails the case as ShowingError,
+    whose wrapping still says what each try before it saw, never pressed past as a try missed.
     """
-    try:
-        shown = shell.showing()
-    except (AssertionError, ValueError) as unread:
-        return None, f"unread: {unread}", None
+    shown = shell.showing()
     return shown.get("current"), (shown.get("selected") or {}).get("name"), shown.get("count")
 
 
@@ -143,9 +140,9 @@ def test_down_and_up_are_each_said_whole(shell: Shell) -> None:
 
     try:
         said = said_by(shell, an_opening, lambda keys: set(keys) >= ARROWS, ARROW_TRIES)
-    except AssertionError as failed:
+    except (AssertionError, launcher_on_niri.ShowingError) as failed:
         message = f"{failed}\n{what_it_saw()}"
-        raise AssertionError(message) from failed
+        raise type(failed)(message) from failed
     assert set(said) >= ARROWS, f"an arrow went unsaid as itself: {said}\n{what_it_saw()}"
     assert "1 letter" not in said, f"an arrow was counted as typed: {said}"
     # How many openings both took, which a run read with -s shows, so up's margin of its six
