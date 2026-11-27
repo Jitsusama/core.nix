@@ -45,8 +45,11 @@ in
             options = {
               file = lib.mkOption {
                 # One plain name, never a path, and never hidden, since the
-                # shell and the light skip a dotted one.
-                type = lib.types.strMatching "[^./][^/]*";
+                # shell and the light skip a dotted one. Its claim in
+                # .claimed/ is a tmpfiles line, which nixpkgs quotes with no
+                # escaping and tmpfiles reads %s in, so a quote, a backslash,
+                # a % or a line end would claim some other name.
+                type = lib.types.strMatching "[^./'\\%\n][^/'\\%\n]*";
                 default = name;
                 defaultText = lib.literalMD "the camera's name in `holders`";
                 example = "MX Brio 705 for Business";
