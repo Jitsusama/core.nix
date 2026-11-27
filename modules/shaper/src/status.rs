@@ -682,15 +682,16 @@ mod tests {
 
     #[test]
     fn names_and_a_why_from_outside_draw_no_escape() {
-        // The leader's name sits on a line that fits, so it reads the
-        // path a line set whole takes, as every line into a pipe does.
+        // The leader's name fits its line and the why below wraps, so in
+        // a terminal both of a hang's outcomes see the controls; piped, one.
         let mut link = LinkStatus {
             name: "wlp0\u{1b}]0;owned\u{7}s20f3".to_owned(),
             network: "6c:ae\u{1b}]0;owned\u{7}:f6".to_owned(),
             follows: Some("enp0\u{1b}[2J\u{7}s13f0".to_owned()),
             ..held()
         };
-        // A why long enough to wrap at 60, so the hang's path is read.
+        // A why that wraps at 60 and at the 80 that 200 is held to, so it
+        // hangs under its first line in both, and is one line piped.
         if let Some(heard) = link.heard.as_mut() {
             heard.why = heard
                 .why
@@ -710,6 +711,20 @@ mod tests {
                     .iter()
                     .all(|line| !line.contains('\u{1b}') && !line.contains('\u{7}')),
                 "into {room:?} a control was drawn: {lines:#?}"
+            );
+            // The why's own lines, so the round trips' hang can't stand in,
+            // and its last word, past the control, on a line it hangs.
+            let at = lines
+                .iter()
+                .position(|line| line.starts_with("  Upload"))
+                .expect("the why is said");
+            let hung = lines[at + 1..]
+                .iter()
+                .take_while(|line| line.starts_with("    "))
+                .any(|line| line.contains("cleared"));
+            assert!(
+                room == Room::Unbounded || hung,
+                "into {room:?} the why didn't hang under its first line: {lines:#?}"
             );
         }
     }

@@ -661,11 +661,16 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         does, so the shot waits for the rest of the picture to hold still. Outside the gallery
         it takes nothing and waits for nothing, so a test must never lean on it to let the
         screen settle.
+
+        A shot that fails says too what the launcher's laid-out words did meanwhile
+        (what_moved), since the picture of it goes with the failed build, and the box the
+        screen changed in names no word: the waits-on-joel gallery's home shots failed so on
+        25 and 26 Nov, a box a glyph wide changing about three times a second.
         """
         if self.values["shots"]:
             why = self.unsettled(timeout, shell_only=bool(moving), ticking=bool(ticking))
             self.machine.screenshot(name)
-            assert why is None, f"{name} was shot moving: {why}"
+            assert why is None, f"{name} was shot moving: {why}; {what_moved(self)}"
 
     def screen_now(self) -> Image.Image:
         """Give the screen as it is, from QEMU's own picture of it."""
@@ -1565,6 +1570,78 @@ def kept(desktop: Desktop, path: str, read: dict[str, Any]) -> None:
         f"mkdir -p $(dirname {path}) && printf %s {shlex.quote(json.dumps(read))} > {path}.q"
         f" && mv {path}.q {path}"
     )
+
+
+# The fewest reads that can show a word moving, and the most moved words a shot's
+# failure names before saying how many more (what_moved).
+TWO_READS = 2
+MOVED_NAMED = 30
+
+
+def flattened(value: object, at: str = "") -> dict[str, object]:
+    """Give each leaf of a JSON value by its path, as rows[2].words[0].text, to compare two."""
+    if isinstance(value, dict):
+        pairs = cast("dict[str, object]", value).items()
+        return {k: v for key, one in pairs for k, v in flattened(one, f"{at}.{key}").items()}
+    if isinstance(value, list):
+        items = enumerate(cast("list[object]", value))
+        return {k: v for n, one in items for k, v in flattened(one, f"{at}[{n}]").items()}
+    return {at.lstrip("."): value}
+
+
+def whole(said: str) -> object:
+    """Give what a read said as JSON, or nothing for one empty or cut short."""
+    try:
+        return json.loads(said)
+    except ValueError:
+        return {}
+
+
+def what_moved(desktop: Desktop, reads: int = 5, apart: float = 0.3) -> str:
+    """Say which of the launcher's laid-out words changed over a few reads, for a moving shot.
+
+    Each read is the launcher's own laidOut and showing, once each, unlike laid_out, which
+    waits for two to agree; a word whose text or place differs between any two reads is one
+    that moved. Showing holds the drawer's facts, which laidOut leaves out. It runs inside a
+    shot's failure, so a read that hangs is cut short and one that isn't whole is passed
+    over: neither may raise in place of the failure it explains. A read is kept only when
+    both calls came back whole, since one holding only showing's paths would read every
+    laidOut path as moved, burying the words that did (round 1 on #6998, F1, F7 and F19).
+    """
+    seen: list[dict[str, object]] = []
+    calls = ("laidOut", "showing")
+    for n in range(reads):
+        parts: list[dict[str, object]] = []
+        for call in calls:
+            status, said = desktop.machine.execute(
+                desktop.in_session(f"timeout 5 qs ipc call launcher {call}"), timeout=15
+            )
+            part = flattened(whole(said), call) if status == 0 else {}
+            if part:
+                parts.append(part)
+        if len(parts) == len(calls):
+            seen.append({path: value for part in parts for path, value in part.items()})
+        if n < reads - 1:
+            # Apart by a span the shot found the screen changing within.
+            time.sleep(apart)
+    if len(seen) < TWO_READS:
+        return "the launcher's laidOut couldn't be read twice to say what moved"
+    paths = sorted({path for one in seen for path in one})
+
+    def worded(one: dict[str, object], path: str) -> str:
+        # A path a read lacks, as a list grown shorter, apart from one that is null.
+        return repr(one[path]) if path in one else "absent"
+
+    moved = [
+        f"{path}: {' / '.join(dict.fromkeys(worded(one, path) for one in seen))}"
+        for path in paths
+        if len({worded(one, path) for one in seen}) > 1
+    ]
+    if not moved:
+        return f"none of the launcher's laid-out words moved over {len(seen)} reads"
+    shown = "; ".join(moved[:MOVED_NAMED])
+    more = f" and {len(moved) - MOVED_NAMED} more" if len(moved) > MOVED_NAMED else ""
+    return f"the launcher's laid-out words that moved over {len(seen)} reads: {shown}{more}"
 
 
 def laid_out(desktop: Desktop) -> Json:

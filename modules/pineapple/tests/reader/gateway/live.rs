@@ -6,7 +6,8 @@
 //! it reads on past is said in a row beside his row in For You. A second
 //! reader started on the folder it keeps ends at once, beside the keyring's
 //! reader too, an alert left untold for its ten minutes is said to be let
-//! go, once, and searches failing round after round write Joel's row.
+//! go, once, one written down twice is sent as once, and searches failing
+//! round after round write Joel's row.
 
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -20,6 +21,8 @@ use super::{
     OWN, PATIENCE, an_alert_waits, decisions_in, each, gateway, home, journal, kept_stops, reading,
     said, serving, sign_in, stand_in, tools, until_decided_in,
 };
+
+mod twice;
 
 /// Where For You's row of what waits goes, under a case's home, as the
 /// unit names it.
@@ -431,6 +434,23 @@ fn aged(home: &Path, ages: &[(&str, u64)]) {
     std::fs::write(&waiting, each.join("\n") + "\n").expect("the alerts made old");
 }
 
+/// Marks the alert waiting in `home` keyed `key` as written in shadow.
+fn in_shadow(home: &Path, key: &str) {
+    let waiting = home.join("state/pineapple/would-tell.jsonl");
+    let each: Vec<String> = std::fs::read_to_string(&waiting)
+        .expect("the alerts waiting")
+        .lines()
+        .map(|line| {
+            let mut one: Value = serde_json::from_str(line).expect("an alert reads");
+            if one["key"] == key {
+                one["shadow"] = json!(true);
+            }
+            one.to_string()
+        })
+        .collect();
+    std::fs::write(&waiting, each.join("\n") + "\n").expect("the alert put in shadow");
+}
+
 /// The time `minutes` ago, in milliseconds.
 fn minutes_ago(minutes: u64) -> u64 {
     let now = SystemTime::now()
@@ -455,27 +475,38 @@ fn an_alert_untold_for_its_ten_minutes_is_said_let_go_once() {
     an_alert_waits(&home);
     aged(
         &home,
-        &[("untold", 15), ("older", 30), ("unsure", 12), ("twice", 13)],
+        &[
+            ("untold", 15),
+            ("older", 30),
+            ("unsure", 12),
+            ("twice", 13),
+            ("told", 14),
+            ("doubled", 16),
+            ("doubled", 16),
+            ("shadowed", 15),
+        ],
     );
-    let unsure = |key: &str| {
+    in_shadow(&home, "shadowed");
+    let kept = |key: &str, sent: Value| {
         json!({
             "at": minutes_ago(3),
             "key": key,
             "saying": "stopped",
-            "sent": "unsure",
+            "sent": sent,
             "shadow": false,
         })
     };
     std::fs::write(
         home.join("state/pineapple/phoned.jsonl"),
         format!(
-            "{}\n{}\n{}\n",
-            unsure("unsure"),
-            unsure("twice"),
-            unsure("twice")
+            "{}\n{}\n{}\n{}\n",
+            kept("unsure", json!("unsure")),
+            kept("twice", json!("unsure")),
+            kept("twice", json!("unsure")),
+            kept("told", json!(true)),
         ),
     )
-    .expect("sends that may have gone");
+    .expect("sends that may have gone, and one told");
     live_for_rounds(&home, &url, &called, 12);
     assert!(
         sent_to_self(&called).is_empty(),
@@ -483,10 +514,16 @@ fn an_alert_untold_for_its_ten_minutes_is_said_let_go_once() {
     );
     assert_eq!(
         let_go(&home),
-        [json!("untold"), json!("unsure"), json!("twice")],
+        [
+            json!("untold"),
+            json!("unsure"),
+            json!("twice"),
+            json!("doubled")
+        ],
         "each past its ten minutes is kept as let go, once, however many rounds pass, even \
-         one left after two sends that may have gone, but one from twenty minutes before \
-         the phone was last told isn't: {:?}",
+         one left after two sends that may have gone or written down twice, but one told, \
+         one in shadow, and one from twenty minutes before the phone was last told \
+         aren't: {:?}",
         phoned(&home)
     );
     let journal = journal(&home);

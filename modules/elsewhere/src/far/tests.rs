@@ -3,6 +3,7 @@ use crate::settings::{Copies, Kind};
 use std::path::{Path, PathBuf};
 
 mod crossing;
+mod cutting;
 mod handing;
 mod heard;
 mod holding;
@@ -87,7 +88,7 @@ fn the_far_line_waits_for_the_files_then_runs_the_setup_and_the_job_by_name() {
     );
     for says in [
         "/quest-workspace/QEST-20261115-ABC123/handover/elsewhere/7-9\n",
-        "work=\"${XDG_CACHE_HOME:-$HOME/.cache}\"/pi/agentic-harness.pi/quest-workspace/\
+        "work=\"$cache\"/pi/agentic-harness.pi/quest-workspace/\
          QEST-20261115-ABC123/.e/7-9\n",
         "bytes=1048576\n",
         "until arrived; do",
@@ -298,13 +299,18 @@ pub(super) fn far_line_in(
     );
     // The gate names dash, the strictest sh a far machine may have.
     let sh = std::env::var("ELSEWHERE_FAR_SH").unwrap_or_else(|_| "sh".to_owned());
-    let far = std::process::Command::new(sh)
+    let mut far = std::process::Command::new(sh);
+    if leaving::HOME_GONE.get() {
+        far.env("HOME", home.join("gone"))
+            .env("XDG_CACHE_HOME", home.join(".cache"));
+    } else {
+        far.env("HOME", &home).env_remove("XDG_CACHE_HOME");
+    }
+    let far = far
         .args(["-c", &line])
-        .env("HOME", &home)
         .env("PATH", path)
         // As though inherited, so a line keeping it clears another's copy.
         .env("mine", "1")
-        .env_remove("XDG_CACHE_HOME")
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()

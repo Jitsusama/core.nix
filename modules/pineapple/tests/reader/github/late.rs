@@ -364,13 +364,21 @@ fn cut_then_failing(line: &str, now: u64) -> Value {
     searched_short(line, now, &CUT_FAILING, None)
 }
 
-/// How many times the stand-in of a cut whose round can't read a thread
-/// was searched, and when what it gives changed.
+/// When the thread a cut search gives in [`cut_twice_unread`] last
+/// changed.
 static CUT_UNREAD: AtomicU64 = AtomicU64::new(0);
 
-/// How many times the stand-in of a cut whose older search gives nothing
-/// it can read was searched, and when what it gives changed.
+/// When the thread a cut search gives in [`cut_then_empty`] last changed.
 static CUT_EMPTY: AtomicU64 = AtomicU64::new(0);
+
+/// When the thread a cut search gives in [`cut_twice_first`] last
+/// changed.
+static CUT_FIRST: AtomicU64 = AtomicU64::new(0);
+
+/// A search cut short twice, as [`cut_twice`], for a reader's first start.
+fn cut_twice_first(line: &str, now: u64) -> Value {
+    searched_short(line, now, &CUT_FIRST, Some(5))
+}
 
 /// A search cut short twice, in a round that can never read #13.
 fn cut_twice_unread(line: &str, now: u64) -> Answered {
@@ -502,6 +510,38 @@ fn github_a_search_cut_short_twice_says_what_it_left_unread_and_moves_on() {
 }
 
 #[test]
+fn github_a_search_cut_short_twice_on_a_first_start_names_its_floor_as_the_next_reach() {
+    let (origin, asked) = answering(cut_twice_first);
+    // Nothing kept, so a first start: its floor, ten minutes before its
+    // look back, is later than an hour before any round in this case.
+    let home = home();
+    let mut reading = github_reader(&home, &origin, &[]);
+    let began = Instant::now();
+    while searches(&asked).len() < 3 {
+        assert!(began.elapsed() < PATIENCE, "it never searched three times");
+        thread::sleep(Duration::from_millis(50));
+    }
+    reading.kill().expect("the reader stops");
+    reading.wait().expect("the reader is gone");
+
+    let searched = searches(&asked);
+    let next = next_reach(&searched);
+    assert_eq!(
+        searched_from(&searched[0]),
+        Some(next.clone()),
+        "in a first start's first hour the floor is the reach, round after round: {searched:?}"
+    );
+    let said = journal(&home);
+    assert!(
+        said.contains(&format!(
+            "searched again only from {next}, where the next round reaches"
+        )),
+        "the journal names the floor the next round searches from: {said}"
+    );
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+#[test]
 fn github_a_search_of_whats_older_that_fails_says_so_and_moves_on() {
     let (origin, asked) = answering(cut_then_failing);
     let (home, last) = read_lately();
@@ -543,28 +583,36 @@ fn github_a_search_of_whats_older_that_fails_says_so_and_moves_on() {
 }
 
 #[test]
-fn github_a_cut_search_in_a_round_that_cant_read_a_thread_names_nothing_left_out() {
+fn github_a_cut_search_in_a_round_that_cant_read_a_thread_moves_on_owing_it() {
     let (origin, asked) = answering_whole(cut_twice_unread);
     let (home, last) = read_lately();
     let mut reading = github_reader(&home, &origin, &[]);
     let began = Instant::now();
-    while searches(&asked).len() < 3 {
-        assert!(began.elapsed() < PATIENCE, "it never searched three times");
+    // Two searches a round, so the fifth begins the round after the second
+    // read of what it owes.
+    while searches(&asked).len() < 5 {
+        assert!(began.elapsed() < PATIENCE, "it never searched five times");
         thread::sleep(Duration::from_millis(50));
     }
     reading.kill().expect("the reader stops");
     reading.wait().expect("the reader is gone");
 
     let searched = searches(&asked);
-    assert_eq!(
-        searched_from(&searched[2]),
-        Some(stamp(last - 3600)),
-        "a round that couldn't read a thread holds, so searches it all again: {searched:?}"
+    let next = next_reach(&searched);
+    assert_ne!(
+        next,
+        stamp(last - 3600),
+        "a round that couldn't read a thread moves on, owing it: {searched:?}"
     );
+    assert!(read(&asked, 13) >= 2, "the thread it owes is read again");
+    let oldest = stamp(CUT_UNREAD.load(Ordering::SeqCst) - 500);
     let said = journal(&home);
     assert!(
-        !said.contains("found 5 but gave 2"),
-        "nothing is named as left out, which the next round searches again: {said}"
+        said.contains(&format!("found 5 but gave 2, back to {oldest},"))
+            && said.contains(&format!(
+                "searched again only from {next}, where the next round"
+            )),
+        "what the cut left out is named, from where the next round reaches: {said}"
     );
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }

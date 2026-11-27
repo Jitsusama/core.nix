@@ -208,6 +208,12 @@ hours at most: it has room only from two readings a minute or more apart,
 both at 35% free or over, with nothing swapped out between. Its load isn't
 read, since a load counts work nothing can move.
 
+A refusal ends with the command's last line on standard error only with
+`saysWhy`, as mac-room.sh's readings do, since a line said beside, as
+the call check's caution that a peer went unheard, is no reason it's
+busy. A machine's own command that explains itself there sets it; what
+one that can't tell says is kept either way.
+
 A repository whose host signs nothing is followed by what the host names
 instead. With `hosted` set, root asks the host for main over TLS with a
 token the account's `token` command prints, reads that commit's objects from

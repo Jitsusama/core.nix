@@ -27,7 +27,7 @@ import pytest
 from launcher_on_niri import placed
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
     from launcher_on_niri import Json, Shell
 
@@ -56,6 +56,11 @@ BACK, HOME = 1.0, timedelta(seconds=15)
 # show, since a loaded nested frame can skip the shortest, the drawings of a hop, and how
 # long a play may take: about 6 s, and some for a loaded builder.
 PLAYED = "played cat "
+# A play a case asked for, turned down by a cat, with why (MarginCatScreen.qml's turnedDown).
+TURNED = "turned cat "
+# A play a case asked for, let go after its refusals outlasted MarginCatPlays.js's
+# REFUSED_FOR, so a story of refusals that stop says the ask was dropped, not met.
+LET_GO = "let go cat "
 HOP = ["crouches", "hops", "lands"]
 YARN = [
     "waits",
@@ -78,6 +83,8 @@ YARN_SEEN, POUNCE_SEEN = {"waits", "watches", "sends"}, {"eyes", "leaps", "looks
 PUPPY = ["waits", "notices", "eyes", "crouches", "hops", "lands", "looks", "watches"]
 PUPPY_SEEN = {"waits", "eyes", "hops", "watches"}
 VISITS = timedelta(seconds=45)
+# How long the shell may take to hear a key, through niri's word that he's no longer idle.
+HEARS = timedelta(seconds=10)
 HOPPING = {"pouncing", "leaping", "tucked", "falling"}
 PLAYS = timedelta(seconds=20)
 POLL = 0.05
@@ -106,9 +113,22 @@ def story(said: list[str]) -> str:
     """
     told: list[str] = []
     was: dict[str, object] | None = None
+    repeats = 1
     for line in said:
-        if line.startswith(PLAYED):
+        # A cat turns an asked play down again with each scene drawn for it, two to five a
+        # second for up to 20 s, so a refusal said again with nothing changed between is
+        # counted on its first line, not told again.
+        if line.startswith(TURNED) and told and told[-1].startswith(line):
+            repeats += 1
+            told[-1] = f"{line} ({repeats} times)"
+            continue
+        if line.startswith((PLAYED, TURNED, LET_GO)):
             told.append(line)
+            repeats = 1
+        # A refusal leaves the place as it was, so a cat still where it was refused tells no
+        # line between, and the refusal after is counted on the first; a play or a let-go
+        # tells the place after it afresh.
+        if line.startswith((PLAYED, LET_GO)):
             was = None
         if not line.startswith(SITS):
             continue
@@ -130,6 +150,23 @@ def story(said: list[str]) -> str:
     return "\n".join(told)
 
 
+def reported_since_ask(
+    shell: Shell, found: Callable[[str], bool], since: int, timeout: timedelta
+) -> None:
+    """Wait for a place said since a play was asked for, or fail with the cat's story since.
+
+    A play or visit that never came said nothing of why (2026-11-23, 2026-11-24 and
+    2026-11-26), so a failed wait names each time a cat turned it down, and what held it.
+    """
+    try:
+        shell.reported(SITS, found, since, timeout)
+    except AssertionError as failed:
+        said, _ = shell.said_since(since)
+        # The wait's own failure, its log tail with it, is printed once as this one's cause.
+        told = f"what the cat did since the ask:\n{story(said)}"
+        raise AssertionError(told) from failed
+
+
 def reports(shell: Shell, since: int) -> tuple[list[Json], int]:
     """Give each place the cat has said it's at since the mark, and the mark they end at."""
     said, since = shell.said_since(since)
@@ -146,6 +183,39 @@ def cat_frames(shell: Shell) -> int:
 def ask(shell: Shell, play: str) -> None:
     """Ask that the cat's next play be the one named, once its level has it (MarginCat.qml)."""
     shell.as_account(f"qs -p {shell.folder} ipc call cat next {play}")
+
+
+def leaves_then_asks(shell: Shell, play: str) -> int:
+    """Press a key, and once the shell has heard it, ask for `play`, giving the mark before.
+
+    The ask waits until the shell's level is typing, which only a key heard makes it: idle or
+    paused, the cat draws plays the key would cut short, and typing it draws none. Asked before
+    the key was heard, the scene the ask draws could come up first, spending the ask on a play
+    the key then cut short, and the yarn and the puppy rest for minutes once begun: on a lender
+    running 12 builds, no yarn came in 20 s (2026-11-26).
+
+    The key is pressed again before each read, since typing lasts only the 3 s pause, which a
+    slow read on a busy lender could pass between one key and the read after it; a key more
+    only keeps the level typing. A level left typing by an earlier key passes at once, which is
+    as safe, since typing draws no play for the key to cut. A level held still fails at once,
+    since the ask would be refused.
+    """
+    level = f"qs -p {shell.folder} ipc call cat level"
+    deadline = time.monotonic() + HEARS.total_seconds()
+    while True:
+        shell.send_key("F24")
+        now = shell.as_account(level).strip()
+        if now == "typing":
+            break
+        assert now != "still", f"the cat is held still, so it would refuse:\n{shell.tail()}"
+        assert time.monotonic() < deadline, (
+            f"the shell never heard a key in {HEARS}, its cat left {now}:\n{shell.tail()}"
+        )
+        # niri says he's no longer idle on its own time, with no word the test could wait on.
+        time.sleep(POLL)
+    since = shell.mark()
+    ask(shell, play)
+    return since
 
 
 def sitting_over(shell: Shell, title: str) -> tuple[Json, Json]:
@@ -192,29 +262,20 @@ def home(at: Json | None, sat: Json, seat: Json) -> bool:
 
 
 def plays_out(shell: Shell, kind: str, lasts: timedelta = PLAYS) -> tuple[list[Json], Json, Json]:
-    """Sit over a column, ask for a play, leave the keys, and give it once it's done.
+    """Sit over a column, leave the keys, ask for a play, and give it once it's done.
 
     It gives each place said while it played, how niri showed it, and where it sat before;
-    and it waits for the cat to sit still over the column again, where it sat. A play already
-    under way when it asks plays out first, so it reads from the asked play's first step, and
-    only that play's steps (2026-11-15: a hop's beats were read as a pounce's).
+    and it waits for the cat to sit still over the column again, where it sat. The key ends a
+    play already under way, and it reads from the asked play's first step, and only that
+    play's steps (2026-11-15: a hop's beats were read as a pounce's).
     """
     sat, seat = sitting_over(shell, f"a column played beside, {kind}")
-    asking = shell.mark()
-    ask(shell, kind)
-    shell.send_key("F24")
-    since = shell.mark()
+    since = leaves_then_asks(shell, kind)
 
     def asked(said: str) -> bool:
         return (playing(placed(said)) or {}).get("play") == kind
 
-    try:
-        shell.reported(SITS, asked, since, STROLLS)
-    except AssertionError as failed:
-        said, _ = shell.said_since(asking)
-        # The wait's own failure, its log tail with it, is printed once as this one's cause.
-        told = f"what the cat did since the ask:\n{story(said)}"
-        raise AssertionError(told) from failed
+    reported_since_ask(shell, asked, since, STROLLS)
     began = shell.mark()
     shell.reported(PLAYED, lambda said: said.split(" ", 1)[1].startswith("{"), began, lasts)
     said, _ = shell.said_since(since)
@@ -506,9 +567,7 @@ def test_a_key_ends_the_puppys_visit(shell: Shell) -> None:
     asking niri for every tile (#6573's council, 2026-11-25).
     """
     sat, seat = sitting_over(shell, "a column a visit is cut short over")
-    ask(shell, "puppy")
-    shell.send_key("F24")
-    since = shell.mark()
+    since = leaves_then_asks(shell, "puppy")
 
     def visiting(said: str) -> bool:
         return (playing(placed(said)) or {}).get("play") == "puppy"
@@ -519,7 +578,7 @@ def test_a_key_ends_the_puppys_visit(shell: Shell) -> None:
 
     # Pressed once the puppy stands by the cat in plain sight, so it ends a visit he can see,
     # not one still behind the room's edge, where the puppy is drawn nowhere either way.
-    shell.reported(SITS, in_sight, since, VISITS)
+    reported_since_ask(shell, in_sight, since, VISITS)
     since = shell.mark()
     keyed = time.monotonic()
     shell.send_key("F24")

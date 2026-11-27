@@ -363,11 +363,12 @@ let
       # number would set the hard limit too, so the hard limit is named
       # as systemd's own default, 524288, rather than lowered.
       LimitNOFILE = "65536:524288";
-      # The node wakes with every session it carries, so it runs among
-      # them rather than among Joel's programs, whose tasks each wakeup
-      # would preempt. Moving it restarts it once, which the sessions,
-      # in their terminals' scopes, outlive.
+      # It wakes with every session it carries, so it runs among them, not
+      # among Joel's programs, whose tasks each wakeup would preempt. What it
+      # swaps out stays compressed in memory (checks.nix has the numbers):
+      # waking to read it back from the disk held its calls up to 44 s.
       Slice = "agents.slice";
+      MemoryZSwapWriteback = false;
     };
     Install.WantedBy = [ "default.target" ];
   };

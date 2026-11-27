@@ -40,6 +40,13 @@ let
   follows = followed.launchd.user.agents.update-to-main-follows.serviceConfig;
   refusesOnAMac =
     why: lib.filter (refusal: refusal.why == why) followed.jitsusama.update-to-main.refuseWhile;
+  # What a Mac's daemon reads of each, from the config it serves by.
+  servesOnAMac =
+    why:
+    lib.filter (busy: busy.why == why)
+      (builtins.fromJSON (
+        builtins.unsafeDiscardStringContext followed.jitsusama.update-to-main.configFile.text
+      )).refuse_while;
 in
 {
   # update-to-main's tests run as it builds: a signed main is built and
@@ -106,13 +113,14 @@ in
   # naming no store path, so a switch never reloads it under its own ask.
   # Every Mac refuses an update during a call, and refuses the ask alone,
   # for two hours at most, while mac-room.sh says it's short of memory,
-  # with the floor 35% and its record in the daemon's state; and the
+  # with the floor 35% and its record in the daemon's state, its refusal
+  # ending with the readings it judged, as the config it serves by says,
+  # and a call's never ending with the call check's cautions; and the
   # follower's switch waits while someone is at the Mac, for 45 minutes at
-  # most. When the
-  # Mac can't update, the follower tells its person.
+  # most. When the Mac can't update, the follower tells its person.
   update-to-main-follows-on-a-mac =
     holds "update-to-main-follows-on-a-mac"
-      "A Mac's follower wouldn't start again after follow ends, names a store path a switch would reload it for, tells nobody when the Mac can't update, or a Mac would switch during a call or under someone at it, or build while short of memory, or let that hold its own switch or every update for good."
+      "A Mac's follower wouldn't start again after follow ends, names a store path a switch would reload it for, tells nobody when the Mac can't update, or a Mac would switch during a call or under someone at it, or build while short of memory, or let that hold its own switch or every update for good, or a refusal would lose the Mac's readings or carry the call check's cautions."
       (
         follows.Label == "org.jitsusama.update-to-main-follows"
         && follows.RunAtLoad
@@ -124,12 +132,18 @@ in
         && !(darwin.launchd.user.agents ? update-to-main-follows)
         && followed.jitsusama.update-to-main.followerTells != null
         && lib.all (refusal: !refusal.followerWaits) (refusesOnAMac "a call is on")
+        && lib.all (refusal: !refusal.saysWhy) (refusesOnAMac "a call is on")
         && refusesOnAMac "a call is on" != [ ]
+        && servesOnAMac "a call is on" != [ ]
+        && lib.all (busy: busy.says == "beside") (servesOnAMac "a call is on")
+        && servesOnAMac "the Mac is short of memory" != [ ]
+        && lib.all (busy: busy.says == "why") (servesOnAMac "the Mac is short of memory")
         && lib.any (
           refusal:
           !refusal.followerWaits
           && refusal.refusesTheAskAlone
           && refusal.refusesAtMost == 2 * 60 * 60
+          && refusal.saysWhy
           && lib.hasSuffix "/bin/bash" (lib.head refusal.command)
           && lib.hasSuffix "mac-room.sh" (builtins.elemAt refusal.command 1)
           &&

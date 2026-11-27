@@ -2,7 +2,8 @@
 # onto 7.3 so the laptop has it before 7.4. Each patch in ./next names the
 # commits it holds and the series they were posted as, and applies to 7.3
 # with no offset or fuzz. Moving the kernel to 7.4 fails here, and the way
-# through is to drop each patch that kernel has, then this file.
+# through is to drop each patch that kernel has, then this file and the
+# the-patches-from-linux-next-apply-exactly check that holds it.
 { config, lib, ... }:
 let
   next = name: {
