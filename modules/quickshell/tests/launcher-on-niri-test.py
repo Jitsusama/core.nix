@@ -64,7 +64,7 @@ STRETCH = 4096
 # shows on Joel's own screen, where niri presents at the display's flip.
 COPIED_BEFORE_PRESENTED = timedelta(milliseconds=250)
 
-# How a key's line says its drawing, and what its render thread's times make of it (Trials.qml's
+# How a key's line says its drawing, and what its render thread's times make of it (Thread.js's
 # drawingApart), each part rounded to a millisecond apart, so the three may miss the whole by two.
 DRAWING_SPLIT = re.compile(
     r"(?P<drawing>\d+) drawing it \((?P<syncing>\d+) syncing, (?P<rendering>\d+) rendering,"
@@ -2632,8 +2632,9 @@ FIRST_GROUP = "Smileys & Emotion"
 EMOJI_MADE_MOST = 20
 # How many emoji Desktop's Emoji says it holds at least, though its own rows are its groups.
 EMOJI_LISTED_LEAST = 1000
-# How each of Emoji's group rows' keys begins (clipboard/src/emoji.rs), and no emoji's does.
-EMOJI_GROUP_KEY = "row:emoji:group:"
+# How the tally keys each of Emoji's group rows: by its thing (clipboard/src/emoji.rs's
+# group_record), which Presented.keyMade keeps as it is. An emoji's is `emoji:<name>`.
+EMOJI_GROUP_KEY = "emoji:group:"
 
 DRAWER_SAID = re.compile(
     r'launcher: drawer for "((?:[^"\\]|\\.)*)" presented (\d+) ms from the key: a median (\d+) ms '
@@ -2773,7 +2774,9 @@ def test_emoji_makes_a_row_only_for_an_emoji_it_shows(shell: Shell) -> None:
     )
     made_moving = shell.made_since("emoji", before + made)
     emoji = [key for key in made_moving if not key.startswith(EMOJI_GROUP_KEY)]
-    assert not emoji, f"moving to the next group made {len(emoji)} of its emoji: {emoji}"
+    assert not emoji, (
+        f"moving to the next group made {len(emoji)} of its emoji: {shell.made_lately('emoji')}"
+    )
     shell.send_chars("k")
     shell.launcher_until(lambda shown: (shown.get("selected") or {}).get("name") == FIRST_GROUP)
     shell.step_in()
@@ -2845,15 +2848,18 @@ def test_emoji_says_how_many_it_found_past_those_it_answers(shell: Shell) -> Non
         return cast("str", shown["found"]) != ""
 
     shell.launcher_until(says_found)
-    said, listed = cast("str", heads[-1]["found"]), int(heads[-1]["count"])
+    said = cast("str", heads[-1]["found"])
+    answer = json.loads(shell.searching("emoji"))
     shell.close_launcher()
     counted = FOUND_OF.fullmatch(said)
     assert counted, f"Emoji's head never said how many it found past those it shows: {said}"
     shown, found = (int(part) for part in counted.groups())
-    # The head says "N of M" only where M is more, so what pins it is that N is the list it
-    # stood over, its groups found with the history's hundred.
-    assert shown == listed, f"the head said {shown} of {found} found over {listed} rows: {said}"
-    assert shown < found, f"the head said {shown} of {found} found: {said}"
+    # N and M are both counted from the launcher's own list, so each is held to the history's
+    # answer instead: M past N is what it found past the keys it gave, every one made a row,
+    # and M past what it found is Emoji's groups matching, no more than it has.
+    past, groups = answer["all"] - answer["held"], found - answer["all"]
+    assert found - shown == past, f"the head said {said}, the history {answer}"
+    assert 0 <= groups <= EMOJI_MADE_MOST, f"the head said {said}, the history {answer}"
 
 
 def test_a_cheap_drawer_comes_in_its_keys_own_frame(shell: Shell) -> None:

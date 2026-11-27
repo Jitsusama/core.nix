@@ -116,4 +116,14 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   );
 
   tests = ./pi-conversations-come-back-vm-test.py;
+  # How a failure says what it read from the machine, a module of the driver's
+  # Python only this test is given, so a change to it moves no other VM test.
+  extraPythonPackages = python: [
+    (python.toPythonModule (
+      pkgs.runCommandLocal "pi-conversations-read" { } ''
+        mkdir -p $out/${python.python.sitePackages}
+        cp ${./pi_conversations_read.py} $out/${python.python.sitePackages}/pi_conversations_read.py
+      ''
+    ))
+  ];
 }

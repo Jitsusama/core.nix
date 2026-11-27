@@ -206,18 +206,23 @@ ShellRoot {
 
     // Told records keyed by names every object inherits, as a node could
     // key one: each is held, not read as held already or set as the
-    // map's prototype.
+    // map's prototype, then mended and let go as any other.
     Daemon {
         id: inheriting
 
         socket: `${root.runtime}/daemons/kinds.sock`
         kind: "inherited"
+        changesDiffer: true
+        watching: ({ deep: ["presence"] })
         onHeard: (changed, gone) => {
+            root.inheritedChanged = root.inheritedChanged.concat(changed);
             root.inheritedGone = root.inheritedGone.concat(gone);
         }
     }
-    // What it said it let go: none, since its answer's gone "toString" was
-    // never held, though a map that inherits reads it as held.
+    // What it said changed, and what it let go: "constructor" alone, told
+    // gone in the change, since its answer's gone "toString" was never
+    // held, though a map that inherits reads it as held.
+    property var inheritedChanged: []
     property var inheritedGone: []
 
     // Answered whole and watching a key ahead that its kind's whole answer never names, as a
@@ -729,13 +734,15 @@ ShellRoot {
             }
         },
         {
-            what: "records keyed as names every object inherits are held as any other",
-            holds: () => Object.keys(inheriting.held).sort().join(" ")
-                === "__proto__ constructor"
-                && inheriting.held["__proto__"]?.heard === 1
-                && inheriting.held["constructor"]?.heard === 1
-                && !("toString" in inheriting.held) && root.inheritedGone.length === 0,
-            shows: () => `held ${Object.keys(inheriting.held).sort().join(" ")},`
+            what: "records keyed as names every object inherits are held, mended and let go"
+                + " as any other, and one keyed by a number is never held",
+            holds: () => Object.keys(inheriting.held).join(" ") === "__proto__"
+                && inheriting.held["__proto__"]?.heard === 2
+                && inheriting.held["__proto__"]?.kind === "constructor"
+                && root.inheritedChanged.join(" ") === "__proto__ constructor __proto__"
+                && root.inheritedGone.join(" ") === "constructor",
+            shows: () => `held ${JSON.stringify(inheriting.held)},`
+                + ` changed ${JSON.stringify(root.inheritedChanged)},`
                 + ` let go ${JSON.stringify(root.inheritedGone)}`
         },
         {
