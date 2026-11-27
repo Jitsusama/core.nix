@@ -46,17 +46,15 @@ impl Unheard {
     pub fn read(said: &str) -> Option<Self> {
         said.split("\n\n").find_map(|paragraph| {
             let rest = paragraph.trim().strip_prefix(OPENS)?;
-            let (stretches, at) = match rest.strip_prefix("a stretch of it, at ") {
-                Some(at) => (1, at),
-                None => {
-                    let (stretches, at) = rest.split_once(" stretches of it, the first at ")?;
-                    (stretches.parse().ok()?, at)
-                }
+            let (stretches, at) = if let Some(at) = rest.strip_prefix("a stretch of it, at ") {
+                (1, at)
+            } else {
+                let (stretches, at) = rest.split_once(" stretches of it, the first at ")?;
+                (stretches.parse().ok()?, at)
             };
-            let seconds = at
-                .strip_suffix('.')?
-                .split(':')
-                .try_fold(0, |sum, part| part.parse::<usize>().ok().map(|n| sum * 60 + n))?;
+            let seconds = at.strip_suffix('.')?.split(':').try_fold(0, |sum, part| {
+                part.parse::<usize>().ok().map(|n| sum * 60 + n)
+            })?;
             Some(Self {
                 stretches,
                 first: seconds * RATE,
