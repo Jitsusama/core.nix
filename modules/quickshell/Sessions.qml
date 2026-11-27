@@ -3573,7 +3573,7 @@ Singleton {
     function stillHeld(named) {
         const still = stillSaid[named];
         return still !== undefined && (still.under ?? "") !== ""
-            && still.under === sessionsKittyPid && Date.now() - still.at < answerPatience;
+            && still.under === sessionsKittyPid && Date.now() - still.at < comingPatience;
     }
     // Whether a viewer `named` was asked for within viewPatience and niri
     // hasn't listed it since (viewerCame).
