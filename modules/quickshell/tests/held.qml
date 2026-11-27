@@ -366,25 +366,6 @@ QtObject {
             "a key's act; nothing holds | a key's act; a Return next holds"
                 + " | no key's act; nothing holds | a key's act, joined; a Return next holds");
 
-        // Held.movesClock: only a key that may act moves the clock; a
-        // modifier alone and a key the find types itself leave it at the
-        // key before them.
-        check("a modifier alone, and a letter, Space or é in the find, keep the clock",
-            [Held.movesClock(true, false, ""), Held.movesClock(false, true, "a"),
-                Held.movesClock(false, true, "Space"), Held.movesClock(false, true, "")]
-                .join(" "), "false false false false");
-        // Shift+Space types a space as Space does, and the caret keys only
-        // move the caret; in normal, Left is a key that acts.
-        check("Shift+Space and the caret keys in the find keep it, Left in normal moves it",
-            ["Shift+Space", "Left", "Right", "Home", "End"]
-                .map(name => Held.movesClock(false, true, name))
-                .concat([Held.movesClock(false, false, "Left")]).join(" "),
-            "false false false false false true");
-        // Backspace on an empty find leaves it for normal, so it may act.
-        check("Escape and Backspace in the find, j and an unnamed key in normal move it",
-            [Held.movesClock(false, true, "Escape"), Held.movesClock(false, true, "Backspace"),
-                Held.movesClock(false, false, "j"), Held.movesClock(false, false, "")]
-                .join(" "), "true true true true");
         // Held.movedSaid: j the 4th key taken, the clock's. The prompt
         // clears its word as each key comes, and says a move once it's read.
         check("a move said of the clock's own key is its",
@@ -407,7 +388,9 @@ QtObject {
             };
             const count = name => {
                 at.keys += 1;
-                if (Held.movesClock(name === "Shift", false, name)) {
+                // Shift alone acts on nothing (KeyActs.acts, held in
+                // query-keys.qml), so it leaves the clock where it was.
+                if (name !== "Shift") {
                     at.heard = at.keys;
                     at.word = Held.movedSaid(false, at.keys, at.keys, at.moved);
                 }

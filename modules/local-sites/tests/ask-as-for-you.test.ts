@@ -191,6 +191,14 @@ const LOOKS: Record<string, object> = {
   "one mattering only spaces": { ...LOOK, matters: "  " },
   "one with no word of why it matters": { ...LOOK, matters: undefined },
   "one padded with spaces": { ...LOOK, happened: " Ready! ", matters: " It's said. " },
+  // What it asks, which only the first form shows, and what follows doing
+  // nothing, which both do: padded, only spaces, or not said.
+  "one of the first form asking padded": { ...LOOK, happened: "", act: "", ask: " Merge it? " },
+  "one of the first form asking only spaces": { ...LOOK, happened: "", act: "", ask: "  " },
+  "one of the first form asking nothing": { ...LOOK, happened: "", act: "", ask: undefined },
+  "one saying padded what follows nothing": { ...LOOK, ifNothing: " It waits. " },
+  "one saying only spaces follow nothing": { ...LOOK, ifNothing: "  " },
+  "one saying nothing of what follows nothing": { ...LOOK, ifNothing: undefined },
   "one with a stop inside each part, none ending it": {
     ...LOOK,
     happened: "Merged v1.2 of the kit",
@@ -311,9 +319,16 @@ function parted(ask: Ask | null, read: Read | null, now: number, shell: ForYou):
   // The first form is laid out apart on purpose, its question on its own.
   const second = form.secondForm(read as never) === true;
   const leads = !second || ask.said.join(" ") === read.words;
+  // What For You's row asks and its drawer says follows doing nothing,
+  // while the row, stricter, asks, each as For You reads it.
+  const question = second ? "" : String(looks.askOf(read as never));
+  const ifNothing = String(looks.ifNothingOf(held as never));
   return [
     leads ? "" : `leads with ${ask.said.join(" ")}, not ${read.words}`,
-    second && ask.question !== "" ? "asks a question For You doesn't show" : "",
+    !ask.asks || ask.question === question ? "" : `asks ${ask.question}, not ${question}`,
+    !ask.asks || ask.ifNothing === ifNothing
+      ? ""
+      : `says ${ask.ifNothing} if nothing, not ${ifNothing}`,
     ask.asks === waits ? "" : "waits otherwise",
     ask.choices.map(sent).join(" | ") === offered.join(" | ") ? "" : "offers otherwise",
     ask.opens === opens ? "" : `opens ${ask.opens}, not ${opens}`,

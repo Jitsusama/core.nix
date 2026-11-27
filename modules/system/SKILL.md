@@ -56,7 +56,9 @@ is worth a look, an item each, worded to stand at a side: lower case
 unless a name leads, no closing stop, without what the part holds, at
 most three, and empty when nothing is), `holds` (what it holds, counted
 in a few words, as "21 devices", or null when it wasn't read), `things`
-(the machines, worst first, each with
+(the machines, worst first, then the builders the machines send Nix
+builds to, worst first; a builder has `kind` builder, `name`, `health`,
+`says` and `side`, a null `address` and null `ties`; a machine has
 `kind`, `name`, `health`, `says`, `address`, its home on the local
 sites as the site home to it gives it, or null while none is, and
 `ties`, what ties it to the other parts: `reached` (false when the
@@ -99,7 +101,11 @@ system --json | jq -c '{health, parts: [.parts[] | {part, health, says}]}'
   calls a disk filling under a quarter free and takes back what
   regenerates by itself, so only a nearly full one is the person's.
   Each machine's record carries its own `side`, worded for a row ("nearly
-  full disk, 40 GB free"), its worst first. Another
+  full disk, 40 GB free"), its worst first, and `looks`, every look in
+  it in the same order, each an object with its own `health` (the
+  machine's is the worst of them), its `side` words and `matters`, a
+  sentence saying why it matters to the person; the side is cut to
+  three for a line, and the looks keep them all. Another
   machine whose own health says its code is failing is bad, and one
   whose code wants a look is worth a look; its node carries that word
   in its machine record. Only code is taken from it, since the network,
@@ -117,6 +123,14 @@ system --json | jq -c '{health, parts: [.parts[] | {part, health, says}]}'
   read, the machines part says a late backup itself. The backup runs
   hourly and catches up on waking, so a laptop waking from a night reads
   late for the minute or two that run takes.
+- **Builders,** in the machines part after them, as `mycelium machines`
+  says them on its second line. Only one that should take builds and
+  can't is worth a look: one not answering, or one running that
+  nix-offload has left out, its proofs failing or its store full. One
+  resting until its lender runs it, one not heard from (as one behind a
+  jump host left undialled) and one whose last proof failed are said,
+  never worth a look. What the part holds counts them after the
+  machines ("2 machines and 1 builder"); "ready" counts only machines.
 - **Mycelium.** A link that isn't up is bad. A session whose process is
   gone is an agent's leftover, said in what the part holds ("3 sessions
   gone") and never worth a look.

@@ -3,7 +3,15 @@
 // each one. A machine is the bridge between the others (Joel, 2026-11-17),
 // so the page leads with them. Nothing here touches the page.
 
-import { capital, type Health, numbered, type System, type Thing, WORDS } from "./model.ts";
+import {
+  capital,
+  type Health,
+  numbered,
+  type System,
+  type Thing,
+  thingsOf,
+  WORDS,
+} from "./model.ts";
 import type { Figures, Place, Ties } from "./ties.ts";
 
 /** A gigabyte and a terabyte, as a node counts bytes. */
@@ -18,7 +26,7 @@ const FAIR_BARS = 3;
 const FULL = 100;
 
 /** How a sentence ends. */
-const ENDED = /[.?!]$/u;
+const ENDED = /[.?!\u2026]$/u;
 
 /** How each system a node names is said. */
 const SYSTEMS: { readonly [system: string]: string } = {
@@ -77,17 +85,20 @@ function howMany(count: number, all: number): string {
   return count === all && all > 2 ? "all" : numbered(count);
 }
 
-/** The headline over the machines: how many there are, then how they stand. */
+/**
+ * The headline over the machines: how many there are, then how they stand.
+ * The builders they send builds to are no machines, so it counts none.
+ */
 function machineHeadline(system: System): MachineHeadline {
   const part = system.parts.find((each) => each.part === "machines");
-  const things = part?.things ?? [];
+  const things = thingsOf(part, "machine");
   // A part not told, or naming machines whose records haven't come, isn't none.
-  const awaited = part === undefined || (things.length === 0 && part.untold > 0);
+  const awaited = part === undefined || (things.length === 0 && part.machinesUntold > 0);
   if (awaited || part.health === "unread") {
     return { machines: "Your machines", stand: "not read", health: "unread" };
   }
   // Those named whose records haven't come are counted, as not read.
-  const all = things.length + part.untold;
+  const all = things.length + part.machinesUntold;
   const machines = capital(`${numbered(all)} ${all === 1 ? "machine" : "machines"}`);
   if (all === 0) {
     return { machines, stand: "none known", health: "unread" };
@@ -100,7 +111,7 @@ function machineHeadline(system: System): MachineHeadline {
   const outOfReach = { health: worstOf(away), count: away.length, words: "out of reach" };
   const stands = [
     ...STANDS.map(([health, words]) => {
-      const untold = health === "unread" ? part.untold : 0;
+      const untold = health === "unread" ? part.machinesUntold : 0;
       const count = reached.filter((thing) => thing.health === health).length + untold;
       return { health, count, words };
     }),
@@ -333,19 +344,36 @@ function power(charge: number, onBattery: boolean | undefined): string {
   return onBattery === false ? `${charged} and plugged in` : charged;
 }
 
-/** A machine's last update, as a sentence, when its node says one. */
+/**
+ * A machine's last update, as a sentence, when its node says one, with why
+ * when it didn't all go ahead: beside a refusal, a failure, or a done or
+ * unchanged update whose system isn't the one it boots, as the system command says it
+ * (said.rs `updated`), so a why beside a step a newer node knows, which an
+ * earlier attempt may have left, is never said as this one's. A why may end
+ * in its own mark, so the sentence ends once.
+ */
 function updated(figures: Figures, when: (at: string) => string): string | undefined {
   if (figures.updatedAt === undefined) {
     return undefined;
   }
   const at = when(figures.updatedAt);
+  const why = figures.updateWhy;
   switch (figures.updateStep) {
     case "done":
-      return `Updated ${at}.`;
+      return why === undefined ? `Updated ${at}.` : stopped(`Updated ${at}, but ${why}`);
     case "unchanged":
-      return `Unchanged at its update ${at}.`;
+      return why === undefined
+        ? `Unchanged at its update ${at}.`
+        : stopped(`Unchanged at its update ${at}, but ${why}`);
+    // A node too old to say its step, or one whose step couldn't be read,
+    // which the daemon leaves out: either way, not known to have gone ahead.
     case undefined:
-      return `Last updated ${at}.`;
+      return `Its last update was ${at}.`;
+    case "refused":
+    case "failed":
+      return why === undefined
+        ? `Its update ${at} says ${figures.updateStep}.`
+        : stopped(`Its update ${at} says ${figures.updateStep}: ${why}`);
     default:
       return `Its update ${at} says ${figures.updateStep}.`;
   }

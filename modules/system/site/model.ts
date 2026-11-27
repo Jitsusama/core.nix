@@ -4,24 +4,43 @@
 // case is proven in node, and a reading the page couldn't make sense of is
 // said rather than drawn as if it were whole.
 
-import type { Held } from "../../local-sites/kit/records.ts";
-import { object, text, texts } from "../../local-sites/kit/records.ts";
+import type { Fields, Held, Record } from "../../local-sites/kit/records.ts";
+import { isObject, object, text, texts } from "../../local-sites/kit/records.ts";
 import { copyable, type Ties, tiesOf } from "./ties.ts";
 
 /** How a part or thing stands, as the daemon words it. */
 type Health = "good" | "watch" | "bad" | "unread";
 
-/** One thing in a part: a machine, for now. */
+/**
+ * One thing in a part: a machine, or a builder the machines send builds to,
+ * which is no machine of the realm and has no ties.
+ */
 interface Thing {
+  /** Its kind, as its key opens: machine or builder. */
+  readonly kind: string;
   readonly name: string;
   readonly health: Health;
   readonly says: string;
   /** What in it is worth a look, worded for a side, worst first. */
   readonly side: readonly string[];
+  /**
+   * Every look in it, worst first, each with why it matters, as the daemon
+   * judged it; none from a daemon too old to say them, which leaves the
+   * side to say what is worth a look.
+   */
+  readonly looks: readonly ThingLook[] | undefined;
   /** Its home's address from the sites' root, when its home publishes one. */
   readonly address: string | undefined;
   /** What ties it to the other parts, a machine's (ties.ts). */
   readonly ties: Ties;
+}
+
+/** One look in a thing: its words for a side, and why it matters to Joel. */
+interface ThingLook {
+  readonly side: string;
+  readonly matters: string;
+  /** How bad it is by itself, where the daemon says; its thing's otherwise. */
+  readonly health?: Health;
 }
 
 /** The ways deeper into a part. */
@@ -45,6 +64,8 @@ interface Part {
   readonly named: readonly string[];
   /** How many things it names whose records haven't arrived yet. */
   readonly untold: number;
+  /** How many of those are machines, as a headline counts them. */
+  readonly machinesUntold: number;
   readonly deeper: Deeper;
 }
 
@@ -128,11 +149,34 @@ function capital(said: string): string {
 }
 
 /**
+ * A thing's looks, or none when its record carries no list of them, or one
+ * with a look missing its words: its side then says them all, as from a
+ * daemon that lists none, rather than a list that leaves one out. A look
+ * missing its why is kept with none.
+ */
+function looksOf(record: Fields): readonly ThingLook[] | undefined {
+  const looks: unknown = record["looks"];
+  if (!Array.isArray(looks)) {
+    return undefined;
+  }
+  const read = looks.flatMap((look: unknown) => {
+    const side = isObject(look) ? text(look, "side") : undefined;
+    if (!isObject(look) || side === undefined || side === "") {
+      return [];
+    }
+    const health = text(look, "health");
+    const own = health === undefined ? {} : { health: healthOf(health) };
+    return [{ side, matters: text(look, "matters") ?? "", ...own }];
+  });
+  return read.length === looks.length ? read : undefined;
+}
+
+/**
  * The thing `key` names, read from its record. A thing not told yet is left
  * out unsaid: its part and its record are two watches, so a new machine can
  * reach its part one push before its own record arrives.
  */
-function thingOf(held: Held, key: string, unread: string[]): Thing | undefined {
+function thingOf(held: Holds, key: string, unread: string[]): Thing | undefined {
   const record = held.get(key);
   if (record === undefined) {
     return undefined;
@@ -142,18 +186,62 @@ function thingOf(held: Held, key: string, unread: string[]): Thing | undefined {
     unread.push(`${key} has no name`);
     return undefined;
   }
+  const sided = texts(record, "side");
+  const listed = looksOf(record);
+  // A list and a side that disagree on whether there is anything to look at
+  // are a record caught between its two fields, either way round, so the side
+  // says them, as the machine's health is read beside it. A side the page
+  // can't read is no tear: the list is then all there is to go by.
+  const torn =
+    listed !== undefined && sided !== undefined && (listed.length === 0) !== (sided.length === 0);
+  const sent = record["looks"] !== undefined && record["looks"] !== null;
+  if (sent && (listed === undefined || torn)) {
+    unread.push(`${key}'s looks, so the page goes by its side alone, with no whys`);
+  }
+  // A side sent but unreadable is said too, since beside an empty list a bad
+  // machine would otherwise read as having nothing worth a look.
+  if (record["side"] !== undefined && record["side"] !== null && sided === undefined) {
+    unread.push(`${key}'s side, so the page goes by its looks alone`);
+  }
   return {
+    kind: kindOf(key),
     name,
     health: healthOf(text(record, "health")),
     says: text(record, "says") ?? "",
-    side: texts(record, "side") ?? [],
+    side: sided ?? [],
+    looks: torn ? undefined : listed,
     address: text(record, "address"),
     ties: tiesOf(record["ties"]),
   };
 }
 
+/** Where a thing's record is found by its key: one watch's, or several kinds'. */
+interface Holds {
+  get(key: string): Record | undefined;
+}
+
+/**
+ * The things of the two watches as one, each key found in its kind's: a
+ * machine's record and a builder's come on watches of their own.
+ */
+function thingsHeld(machines: Held, builders: Held): Holds {
+  return {
+    get: (key) => (kindOf(key) === "builder" ? builders : machines).get(key),
+  };
+}
+
+/** The kind a thing's key names, as `machine:kestrel` opens. */
+function kindOf(key: string): string {
+  return key.slice(0, Math.max(0, key.indexOf(":")));
+}
+
+/** The things of the kind `kind` in `part`, in its order. */
+function thingsOf(part: Part | undefined, kind: string): readonly Thing[] {
+  return part?.things.filter((thing) => thing.kind === kind) ?? [];
+}
+
 /** The part `name`, read from its record and its things'. */
-function partOf(parts: Held, things: Held, name: string, unread: string[]): Part | undefined {
+function partOf(parts: Held, things: Holds, name: string, unread: string[]): Part | undefined {
   const record = parts.get(`part:${name}`);
   if (record === undefined) {
     unread.push(`part:${name} wasn't told`);
@@ -165,6 +253,7 @@ function partOf(parts: Held, things: Held, name: string, unread: string[]): Part
     return typeof value === "string" ? value : "";
   };
   const keys = texts(record, "things") ?? [];
+  const untold = keys.filter((key) => things.get(key) === undefined);
   return {
     part: name,
     health: healthOf(text(record, "health")),
@@ -173,7 +262,8 @@ function partOf(parts: Held, things: Held, name: string, unread: string[]): Part
     holds: text(record, "holds"),
     things: keys.map((key) => thingOf(things, key, unread)).filter((thing) => thing !== undefined),
     named: keys.map((key) => key.slice(key.indexOf(":") + 1)),
-    untold: keys.filter((key) => things.get(key) === undefined).length,
+    untold: untold.length,
+    machinesUntold: untold.filter((key) => kindOf(key) === "machine").length,
     deeper: {
       command: copyable(says("command")) ? says("command") : "",
       site: says("site"),
@@ -182,8 +272,11 @@ function partOf(parts: Held, things: Held, name: string, unread: string[]): Part
   };
 }
 
-/** The system the three watches hold, or none until the summary is told. */
-function systemOf(summaries: Held, parts: Held, things: Held): System | undefined {
+/**
+ * The system the watches hold, or none until the summary is told: the
+ * summary's, the parts' and the things' (`thingsHeld`).
+ */
+function systemOf(summaries: Held, parts: Held, things: Holds): System | undefined {
   const summary = summaries.get("summary");
   if (summary === undefined) {
     return undefined;
@@ -221,5 +314,5 @@ function allTold(
   });
 }
 
-export type { Deeper, Health, Part, System, Thing };
-export { allTold, capital, named, numbered, systemOf, WORDS };
+export type { Deeper, Health, Part, System, Thing, ThingLook };
+export { allTold, capital, named, numbered, systemOf, thingsHeld, thingsOf, WORDS };

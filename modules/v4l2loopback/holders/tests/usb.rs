@@ -119,7 +119,16 @@ impl Watch {
             let full = || File::options().write(true).open("/dev/full").unwrap();
             command.stdout(full()).stderr(full());
         } else {
-            command.stdout(File::create(&log).unwrap());
+            command
+                .stdout(File::create(&log).unwrap())
+                // Appended to, so a test can empty it as the watch runs.
+                .stderr(
+                    File::options()
+                        .create(true)
+                        .append(true)
+                        .open(root.join("complaints"))
+                        .unwrap(),
+                );
         }
         if blind {
             fs::set_permissions(&node, Permissions::from_mode(0o000)).unwrap();
@@ -157,7 +166,13 @@ impl Watch {
             }
             sleep(Duration::from_millis(50));
         }
-        panic!("{what}");
+        panic!("{what}: it complained {:?}", self.complaints());
+    }
+
+    /// What the watch has complained of, so a wait that fails says why the
+    /// watch thought it was wrong; nothing where its complaints go nowhere.
+    fn complaints(&self) -> String {
+        fs::read_to_string(self.root.join("complaints")).unwrap_or_default()
     }
 
     /// Waits up to five seconds for the camera's file to name someone, or
@@ -169,7 +184,18 @@ impl Watch {
             }
             sleep(Duration::from_millis(50));
         }
-        panic!("{what}");
+        panic!("{what}: it complained {:?}", self.complaints());
+    }
+
+    /// Waits up to five seconds for the watch to complain of something.
+    fn until_complained(&self, about: &str, what: &str) {
+        for _ in 0..100 {
+            if self.complaints().contains(about) {
+                return;
+            }
+            sleep(Duration::from_millis(50));
+        }
+        panic!("{what}: it complained {:?}", self.complaints());
     }
 
     /// Stops the program as systemd does.
@@ -194,6 +220,9 @@ impl Drop for Watch {
     fn drop(&mut self) {
         let _ = self.program.kill();
         let _ = self.program.wait();
+        // A test that failed while its folder took no write left it so.
+        let folder = self.root.join("camera-holders");
+        let _ = fs::set_permissions(folder, Permissions::from_mode(0o755));
         let _ = fs::remove_dir_all(&self.root);
     }
 }
@@ -241,6 +270,24 @@ fn the_file_is_there_while_the_camera_is_and_names_nobody_idle() {
         log.contains("forgot \"Unplugged\", whose node file said "),
         "what a killed run left went unsaid: {log}"
     );
+    // Said just after the file was first written, so it may follow the
+    // test's look by a moment; it's looked for each 50 ms, for 5 s.
+    let mut log = log;
+    for _ in 0..100 {
+        if log.contains("ready in ") {
+            break;
+        }
+        sleep(Duration::from_millis(50));
+        log = fs::read_to_string(&watch.log).unwrap();
+    }
+    let ready: Vec<_> = log
+        .lines()
+        .filter(|line| line.starts_with("ready in "))
+        .collect();
+    assert!(
+        ready.len() == 1 && ready[0].ends_with(" ms"),
+        "the watch didn't say once that it's ready: {log}"
+    );
 }
 
 #[test]
@@ -262,8 +309,11 @@ fn while_the_camera_streams_its_log_says_what_it_gave() {
     // it has counted 300 frames over ten to eleven seconds.
     for _ in 0..600 {
         let log = fs::read_to_string(&watch.log).unwrap();
-        // After what it forgot as it started.
-        if let Some(line) = log.lines().find(|line| !line.starts_with("forgot ")) {
+        // After what it forgot as it started, and its ready line.
+        let mut said = log
+            .lines()
+            .filter(|line| !line.starts_with("forgot ") && !line.starts_with("ready in "));
+        if let Some(line) = said.next() {
             assert!(line.starts_with("streams to \""), "{line}");
             let rate: f64 = line
                 .split_once("gave ")
@@ -280,6 +330,14 @@ fn while_the_camera_streams_its_log_says_what_it_gave() {
             let log = fs::read_to_string(&watch.log).unwrap();
             let last = log.lines().last().unwrap();
             assert!(last.ends_with("; then the watch stopped"), "{log}");
+            // Its file was written again as the test held the camera and
+            // as it streamed, and it's ready only once.
+            let ready = log.lines().filter(|line| line.starts_with("ready in "));
+            assert_eq!(
+                ready.count(),
+                1,
+                "the watch didn't say once that it's ready: {log}"
+            );
             return;
         }
         sleep(Duration::from_millis(50));
@@ -447,6 +505,54 @@ fn the_file_goes_when_it_is_stopped() {
     assert_eq!(watch.ended(), Some(0));
     assert!(!watch.file.exists());
     assert!(!watch.device().exists(), "its node was still said");
+}
+
+/// Takes writes from the camera's folder, as a full or read-only /run
+/// would, and gives back the folder.
+fn unwritable(watch: &Watch) -> PathBuf {
+    let folder = watch.file.parent().unwrap().to_owned();
+    fs::set_permissions(&folder, Permissions::from_mode(0o555)).unwrap();
+    assert!(
+        File::create(folder.join("probe")).is_err(),
+        "a privileged run may write in any folder, so no write here fails"
+    );
+    folder
+}
+
+#[test]
+fn a_file_it_couldnt_write_is_written_once_it_can_be() {
+    // /dev/random stands in for the camera's node, which nothing else holds
+    // (programs keep /dev/urandom open), so its holders change only with
+    // the test's; the other tests' watches hold /dev/zero and /dev/full.
+    let watch = Watch::on("unwritten", Some(Path::new("/dev/random")));
+    watch.until_there(true, "no file while the camera's there");
+    // While the camera streams, as it's looked at each second.
+    let folder = unwritable(&watch);
+    let held = File::open(&watch.node).unwrap();
+    fs::write(&watch.streaming, " 1\n").unwrap();
+    watch.until_complained("Permission denied", "a write that failed went unsaid");
+    let unwritten = fs::read_to_string(&watch.file).unwrap();
+    fs::set_permissions(&folder, Permissions::from_mode(0o755)).unwrap();
+    assert_eq!(unwritten, "", "a folder it may not write in was written in");
+    // Nothing changes from here, so only a watch that tries again writes.
+    watch.until_named(true, "a file it couldn't write wasn't tried again");
+    watch.until_complained("right again", "a write that worked again went unsaid");
+    // And once it's idle, when nothing wakes the watch but its own timer.
+    fs::write(watch.root.join("complaints"), "").unwrap();
+    unwritable(&watch);
+    fs::write(&watch.streaming, " 0\n").unwrap();
+    drop(held);
+    watch.until_complained(
+        "Permission denied",
+        "an idle camera's failed write went unsaid",
+    );
+    let unwritten = fs::read_to_string(&watch.file).unwrap();
+    fs::set_permissions(&folder, Permissions::from_mode(0o755)).unwrap();
+    assert_ne!(unwritten, "", "a folder it may not write in was written in");
+    watch.until_named(
+        false,
+        "an idle camera's file it couldn't write wasn't tried again",
+    );
 }
 
 #[test]

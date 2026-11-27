@@ -67,17 +67,32 @@ let
     else
       null;
   named = if systemd ? version then "systemd ${systemd.version}" else "one of unknown version";
-  # The first few flags only one side has, so a reader sees what to drop.
-  ownFlags = lib.take 3 (lib.subtractLists (alike builders) (alike systemd));
-  missing = lib.take 3 (lib.subtractLists (alike systemd) (alike builders));
-  flagsSaid = lib.concatStringsSep ", " (ownFlags ++ map (flag: "no ${flag}") missing);
-  whatDiffers =
-    lib.concatStringsSep ", " differs
-    + lib.optionalString (lib.elem "flags" differs && flagsSaid != "") " (${flagsSaid})";
+  # The first few flags only one side has, so a reader sees what to match,
+  # and how many more; flags both have, in another order or count, are
+  # said as such, since no one flag then differs.
+  ownFlags = lib.subtractLists (alike builders) (alike systemd);
+  missing = lib.subtractLists (alike systemd) (alike builders);
+  shown = lib.take 3 ownFlags ++ map (flag: "no ${flag}") (lib.take 3 missing);
+  more = lib.length ownFlags + lib.length missing - lib.length shown;
+  flagsSaid =
+    if shown == [ ] then
+      "the same flags in another order or count"
+    else
+      lib.concatStringsSep ", " shown + lib.optionalString (more > 0) ", and ${toString more} more";
+  flagsNote = lib.optionalString (lib.elem "flags" differs) " (${flagsSaid})";
+  whatDiffers = lib.concatStringsSep ", " differs + flagsNote;
+  # Each reason is told what to match for it, so a patched or re-sourced
+  # systemd isn't pointed at override arguments that set no patch or source.
+  kept = lib.filter (reason: reason != "flags") differs;
+  flagsMatched = "its flags, an override argument such as withTimedated showing as its flag";
+  matching =
+    lib.optional (kept != [ ]) "its ${lib.concatStringsSep " and " kept}"
+    ++ lib.optional (lib.elem "flags" differs) flagsMatched;
   why =
     if canHave then
       "has none built alike, since the machine's differs in its ${whatDiffers}; build it on "
-      + "${stdenv.hostPlatform.system}, or drop what differs from nixpkgs' systemd, to hold it"
+      + "${stdenv.hostPlatform.system}, or match the builder's systemd in "
+      + "${lib.concatStringsSep ", and in " matching}, to hold it"
     else
       "can't build systemd at all; build it on ${stdenv.hostPlatform.system} to hold it";
   unheld =

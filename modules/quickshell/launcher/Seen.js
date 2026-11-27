@@ -61,7 +61,7 @@ function foundIn(rows) {
 // Machine holds Heat, or about to: a place holding one that the selection
 // rests on (the launcher's `restsOn`), so a step in already says how it
 // stands rather than drawing it again a daemon's answer later, which in
-// Desktop drew the screen's light 51 to 71 ms from the key and held the
+// Desktop, where Screens was then, drew the screen's light 51 to 71 ms from the key and held the
 // step's swap 11 to 16 ms (XY9H5C's GPU rig, 2026-11-14); or what's typed
 // asks it, by `asking`, a
 // function of the words typed, since its answer is made only from what

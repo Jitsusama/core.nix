@@ -4,12 +4,15 @@
 //! Long because each run is told from the day of his it hears, which the
 //! tests here share.
 
+use super::node::node_took;
 use super::*;
 use serde_json::json;
 use std::fs;
 use std::io::Write;
 
 mod answered;
+mod hubs;
+mod sends;
 mod standing;
 mod troubles;
 
@@ -46,9 +49,29 @@ impl Place {
             switches: self.root.join("switches.jsonl"),
             core: self.root.join("core.git"),
             git: "git".into(),
+            asks_end: Instant::now() + Duration::from_secs(3600),
             at: AT,
             offset_s: -5 * 3600,
+            hubs: Vec::new(),
+            hubless: None,
+            mesh: self.root.join("mesh"),
         }
+    }
+
+    /// The needs this place's listener kept as put to hubs, from every day.
+    fn needs(&self) -> Vec<serde_json::Value> {
+        let Ok(days) = fs::read_dir(self.root.join("mesh/mesh-workflow/needs")) else {
+            return Vec::new();
+        };
+        days.flatten()
+            .flat_map(|day| {
+                fs::read_to_string(day.path())
+                    .unwrap_or_default()
+                    .lines()
+                    .filter_map(|line| serde_json::from_str(line).ok())
+                    .collect::<Vec<_>>()
+            })
+            .collect()
     }
 
     fn routes(&self) {
@@ -413,7 +436,7 @@ fn the_keeper_is_told_not_asked_of_a_pain_sent_to_a_cell_its_list_leaves_to_it()
     let mut sent: Vec<(String, String, Put)> = Vec::new();
     let hour = hear_putting(&place.ears(), cells, &mut |to, text, put| {
         sent.push((to.into(), text.into(), put));
-        true
+        Sent::Went
     })
     .expect("a run");
     let to_keeper = |put: Put| -> Vec<&str> {
@@ -448,8 +471,11 @@ fn the_keeper_is_told_not_asked_of_a_pain_sent_to_a_cell_its_list_leaves_to_it()
 #[test]
 fn a_told_note_that_did_not_go_is_a_trouble() {
     let place = a_told_day("told-failed");
-    let hour =
-        hear_putting(&place.ears(), CELLS, &mut |_, _, put| put == Put::Asked).expect("a run");
+    let hour = hear_putting(&place.ears(), CELLS, &mut |_, _, put| match put {
+        Put::Asked => Sent::Went,
+        Put::Told => Sent::Failed,
+    })
+    .expect("a run");
     assert!(
         !hour.troubles.is_empty(),
         "a told note that failed passed as a clean hour: {hour:?}"

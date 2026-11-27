@@ -211,6 +211,7 @@
             { };
         boot-fell-back = script "boot-fell-back" ../../modules/lanzaboote/fell-back.sh { };
         boot-fell-back-told = script "boot-fell-back-told" ../../modules/lanzaboote/fell-back-told.sh { };
+        cadence-path = script "cadence-path" ../../modules/cadence/path.sh { };
         camera = script "camera" ../../modules/camera/camera.sh { };
         camera-loopback = script "camera-loopback" ../../modules/v4l2loopback/loopback.sh { };
         cargo-builds = script "cargo-builds" ../../modules/cargo/builds.sh { };
@@ -226,6 +227,9 @@
           script "disk-guard-merged-on-github" ../../modules/disk-guard/merged-on-github.sh
             { };
         disk-order = script "disk-order" ../../modules/slices/disk-order.sh { };
+        du = script "du" ../../modules/du/du.sh {
+          words = "/usr/bin/du ${../../modules/ripgrep/ignore} /System/Volumes/Data /Users/someone";
+        };
         efficient-cores = script "efficient-cores" ../../modules/slices/efficient-cores.sh { };
         ergodox = script "ergodox" ../../modules/ergodox/ergodox.sh { };
         find = script "find" ../../modules/find/find.sh {
@@ -262,13 +266,15 @@
             { };
         niri-off-cpu-begun = script "niri-off-cpu-begun" ../../modules/niri-off-cpu/off-cpu-begun.sh { };
         option-rom-check = script "option-rom-check" ../../modules/lanzaboote/option-rom-check.sh { };
+        own-subvolumes = script "own-subvolumes" ../../modules/subvolumes/own-subvolumes.sh { };
         pi-agent-proxy-os-login =
           script "pi-agent-proxy-os-login" ../../modules/pi/agent-proxy/os-login.sh
             { };
         pi-ask = script "pi-ask" ../../modules/pi/ask.sh { };
-        pi-claude = script "pi-claude" ../../modules/pi/claude.sh { };
+        pi-claude = script "pi-claude" ../../modules/pi/claude/claude.sh { };
         pi-compress-logs = script "pi-compress-logs" ../../modules/pi/timers/compress-logs.sh { };
         pi-host-down = script "pi-host-down" ../../modules/pi/host-down.sh { };
+        pi-sweep-room = script "pi-sweep-room" ../../modules/pi/timers/sweep-room.sh { };
         pi-settings = script "pi-settings" ../../modules/pi/settings.sh { };
         qt-javascript-lint = script "qt-javascript-lint" ../../modules/treefmt/qt-javascript-lint.sh { };
         quickshell-starts-warm =
@@ -325,6 +331,7 @@
         cadence-spec = pkgs.callPackage ../../modules/cadence/spec/package.nix { };
         call-transcripts = dictation;
         call-under-load = pkgs.callPackage ../../modules/call-under-load/package.nix { };
+        camera-guard = pkgs.callPackage ../../modules/camera-guard/package.nix { };
         changed-checks = pkgs.callPackage ../../tools/changed-checks/package.nix { };
         chrome-pack-extension = pkgs.callPackage ../../modules/chrome/pack-extension/package.nix { };
         chrome-open-tabs = pkgs.callPackage ../../modules/chrome/open-tabs/host/package.nix { };

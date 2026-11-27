@@ -1,20 +1,24 @@
 // Drives the shell's Tuple (modules/tuple/Tuple.qml) through Quickshell
 // itself, over the real tuple-call daemon following a stand-in tuple: its
 // stream says each line this writes to it, and any other command is kept,
-// as a stand-in notify-send keeps what it was asked to say. Joel's room is
+// as a stand-in notify-send keeps what it was asked to say and a stand-in
+// busctl the notices it was asked to close. Joel's room is
 // the one Tuple lists until he opens one; a call connecting says who's in
 // it by name and since when; muting counts only once connected; whose
 // screen and camera are shown, and Joel's own, are said; someone coming and
 // going is told once the call has settled; muting, opening the room and
 // Joel's camera are asked of the daemon, which runs Tuple for each, a
 // camera stopped turning the row back to the picker before Tuple's stream
-// says so, a stop Tuple refuses told as a kept notice, and a picker it
-// refuses told as a passing one; the call ending ends it and is kept in
-// Recent with everyone who was in it, though they'd left; and a ring and
-// a missed call, from Tuple's log, are told, the missed call kept in
-// Recent ahead of the call; and a call in the room Joel opened is kept as
-// his, where the first was kept with nobody seen to ring. It exits 0 once
-// every case holds, and otherwise 1, saying which didn't.
+// says so, a stop Tuple refuses told as a kept notice, its reason as
+// plain text, offering the call's window if Tuple has one as it answers,
+// and putting away the notice before it, and a picker it refuses told as
+// a passing one, though neither once the camera is said off or the call
+// is over by the time Tuple answers; the call ending ends it and is
+// kept in Recent with everyone who was in it, though they'd left; and a
+// ring and a missed call, from Tuple's log, are told, the missed call kept
+// in Recent ahead of the call; and a call in the room Joel opened is kept
+// as his, where the first was kept with nobody seen to ring. It exits 0
+// once every case holds, and otherwise 1, saying which didn't.
 pragma ComponentBehavior: Bound
 import qs
 import Quickshell
@@ -83,19 +87,32 @@ ShellRoot {
         write(root.log, `${new Date().toISOString().slice(11, 23)}|1|2|info|calls|${message}`);
     }
 
-    // What notify-send was asked to say, and what was asked of Tuple, as
-    // each line their stand-ins kept.
+    // What notify-send was asked to say, what was asked of Tuple, and the
+    // notices busctl was asked to close, as each line their stand-ins kept.
     property string told: ""
     property string asked: ""
+    property string closed: ""
+    // When the read under way began, and when the one that gave what's
+    // told now did. Asks are read before what's told, so a refusal seen
+    // given was given before the told beside it was read.
+    property real readBegan: 0
+    property real toldAsOf: 0
+    // Whether a read has begun that its collector hasn't finished, which
+    // the process may say it no longer runs ahead of.
+    property bool collecting: false
 
     Process {
         id: reading
-        command: ["sh", "-c", "cat \"$0/told\"; echo ---; cat \"$0/asked\" 2>/dev/null", root.runtime]
+        command: ["sh", "-c", "cat \"$0/asked\" 2>/dev/null; echo ---; cat \"$0/told\"; "
+            + "echo ---; cat \"$0/closed\" 2>/dev/null", root.runtime]
         stdout: StdioCollector {
             onStreamFinished: {
-                const [told, asked] = this.text.split("---\n");
-                root.told = told;
-                root.asked = asked ?? "";
+                const [asked, told, closed] = this.text.split("---\n");
+                root.asked = asked;
+                root.told = told ?? "";
+                root.closed = closed ?? "";
+                root.toldAsOf = root.readBegan;
+                root.collecting = false;
                 Qt.callLater(root.heard);
             }
         }
@@ -103,11 +120,18 @@ ShellRoot {
 
     Timer {
         // Reads again a while after each case asks, as notices are sent
-        // and Tuple is run.
+        // and Tuple is run. A tick while a read is still under way starts
+        // none, so it mustn't say when that read began.
         interval: 200
         repeat: true
-        running: /^(told|asked)/.test(root.waiting)
-        onTriggered: reading.running = true
+        running: /^(told|asked|closed)/.test(root.waiting)
+        onTriggered: {
+            if (!reading.running && !root.collecting) {
+                root.collecting = true;
+                root.readBegan = Date.now();
+                reading.running = true;
+            }
+        }
     }
 
     readonly property real started: Date.now() - 60 * 1000
@@ -259,21 +283,84 @@ ShellRoot {
             () => /Your camera may still be in the call/.test(root.told), root.refused);
     }
 
-    // The line Tuple's notice was told in, saying what's given.
+    // The last line a notice of Tuple's was told in, saying what's given.
     function noticeSaying(said) {
-        return root.told.split("\n").find(line => line.includes(said)) ?? "";
+        return root.told.split("\n").filter(line => line.includes(said)).pop() ?? "";
     }
 
-    // A stop Tuple refused is told with its reason, kept, offering the
-    // call's window under a key of its own, and leaves the camera said on.
+    // How many notices of Tuple's said what's given.
+    function noticesSaying(said) {
+        return root.told.split("\n").filter(line => line.includes(said)).length;
+    }
+
+    // How many times Tuple was asked what's given.
+    function timesAsked(command) {
+        return root.asked.split("\n").filter(line => line === command).length;
+    }
+
+    // Tells Tuple's stand-in to answer the camera command asked the time
+    // given (tests/stand-ins/tuple-stand-in.sh says how).
+    function letTupleAnswer(command, time) {
+        root.write(`${root.runtime}/go-${command}-${time}`, "");
+    }
+
+    // A stop Tuple refused is told with its reason as plain text after
+    // notify-send's flags, kept and waited on, and leaves the camera said
+    // on; with no window of Tuple's, it offers none.
     function refused() {
+        const told = root.noticeSaying("may still be in the call");
+        expect("told why as plain text, kept and waited on, offering nothing",
+            told.includes("-- Your camera may still be in the call no webcam to stop &lt;&amp;&gt;")
+            && !told.includes("--transient") && told.includes("--wait")
+            && !told.includes("--action"), told);
+        expect("a refused stop leaves the camera on", Tuple.filming, Tuple.filming);
+        root.camera()?.run();
+        root.step("asked a third stop", () => root.timesAsked("webcam stop") === 3,
+            root.stoppingBeforeItsWindow);
+    }
+
+    // Tuple's window opens while Tuple has yet to answer the stop, so it's
+    // offered once Tuple refuses.
+    function stoppingBeforeItsWindow() {
+        Niri.windows = { "9": { id: 9, app_id: "Tuple" } };
+        root.letTupleAnswer("stop", 3);
+        root.step("told again my camera may still be in the call",
+            () => root.noticesSaying("may still be in the call") === 2,
+            root.refusedBesideItsWindow);
+    }
+
+    // A new notice of a stop refused puts away the one before it, closed by
+    // its id, the line it was told on.
+    function refusedBesideItsWindow() {
         const told = root.noticeSaying("may still be in the call");
         expect("told why, kept, offering the call's window",
             told.includes("no webcam to stop") && !told.includes("--transient")
-            && told.includes("--action=camera=Go To the Call"), told);
-        expect("a refused stop leaves the camera on", Tuple.filming, Tuple.filming);
+            && !told.includes("--wait") && told.includes("--action=camera=Go To the Call"), told);
+        const first = root.told.split("\n")
+            .findIndex(line => line.includes("may still be in the call")) + 1;
+        root.step("closed the first notice of the stop",
+            () => root.closed.split("\n")
+                .some(line => line.endsWith(` CloseNotification u ${first}`)),
+            root.withdrawnOnce);
+    }
+
+    // A fourth stop, which Tuple refuses only once its stream has said the
+    // camera off, so it's no news.
+    function withdrawnOnce() {
+        root.camera()?.run();
+        root.step("asked a fourth stop", () => root.timesAsked("webcam stop") === 4,
+            root.stoppingAStaleOne);
+    }
+
+    function stoppingAStaleOne() {
+        Niri.windows = {};
         root.says(root.call("connected", root.started, [false, false, false], []));
-        root.step("my camera off, as Tuple's stream says", () => !Tuple.filming, root.picking);
+        root.step("my camera off, as Tuple's stream says", () => !Tuple.filming, root.saidOff);
+    }
+
+    function saidOff() {
+        root.letTupleAnswer("stop", 4);
+        root.picking();
     }
 
     function picking() {
@@ -292,6 +379,28 @@ ShellRoot {
         expect("told why, not kept, offering nothing",
             told.includes("no webcam to start") && told.includes("--transient")
             && !told.includes("--action"), told);
+        root.camera()?.run();
+        root.step("asked for a third picker", () => root.timesAsked("webcam start") === 3,
+            root.pickingAcrossTheEnd);
+    }
+
+    // A picker asked again while Tuple has yet to answer the last is
+    // answered at once as unanswered, and told as a passing notice that
+    // Tuple hasn't said it opened, since it may have.
+    function pickingAcrossTheEnd() {
+        root.camera()?.run();
+        root.step("told the picker hasn't been said open",
+            () => root.noticesSaying("hasn't said its camera picker opened") === 1,
+            root.pickedAgain);
+    }
+
+    // The third picker, which Tuple refuses only once the call is over, so
+    // it's no news.
+    function pickedAgain() {
+        const told = root.noticeSaying("hasn't said its camera picker opened");
+        expect("told it hasn't answered the last, not kept, offering nothing",
+            told.includes("answered the last time it was asked") && told.includes("--transient")
+            && !told.includes("--action"), told);
         Tuple.mute(true);
         root.step("asked to mute", () => /^call mute$/m.test(root.asked), root.muting);
     }
@@ -302,6 +411,7 @@ ShellRoot {
     }
 
     function ended() {
+        root.letTupleAnswer("start", 3);
         expect("no mute without a call", Tuple.muted === null, Tuple.muted);
         expect("no camera without a call", root.camera() === null, JSON.stringify(root.camera()));
         const kept = Tuple.recent[0] ?? {};
@@ -354,13 +464,39 @@ ShellRoot {
 
     function inHisRoom() {
         root.says(null);
-        root.step("Joel's call kept", () => Tuple.recent.length === 3, root.his);
+        root.step("Joel's call kept", () => Tuple.recent.length === 3, root.keptHis);
+    }
+
+    // The stale stop and picker are refused, and what's told is read a
+    // second after, so nothing told reads as their refusals ignored, not
+    // yet given or not yet heard. The shell shows nothing as it ignores
+    // one, so a second, five reads, stands for its milliseconds.
+    property real staleRefusedBy: 0
+    function keptHis() {
+        root.step("asked's stale stop and picker refused",
+            () => /^answered webcam stop 4$/m.test(root.asked)
+                && /^answered webcam start 3$/m.test(root.asked),
+            root.toldPastStale);
+    }
+
+    function toldPastStale() {
+        root.staleRefusedBy = root.toldAsOf;
+        root.step("told read a second past the stale refusals",
+            () => root.toldAsOf >= root.staleRefusedBy + 1000, root.his);
     }
 
     function his() {
         const kept = Tuple.recent[0];
         expect("kept as Joel's", kept.since === root.inRoom && kept.caller === "",
             JSON.stringify(Tuple.recent));
+        // Tuple refused the stale stop and picker a second before, as the
+        // steps before saw.
+        expect("a stop refused once the camera was said off told nothing",
+            root.timesAsked("webcam stop") === 4
+            && root.noticesSaying("may still be in the call") === 2, root.told);
+        expect("a picker refused once the call was over told nothing",
+            root.timesAsked("webcam start") === 3
+            && root.noticesSaying("picker") === 2, root.told);
         Qt.exit(0);
     }
 

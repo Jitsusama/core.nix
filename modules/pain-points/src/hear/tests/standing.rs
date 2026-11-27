@@ -15,7 +15,7 @@ fn pain(entry: &str, words: &str, hits: usize) -> Heard {
 /// Writes a script aside and copies it in, so no thread here holds it
 /// open for writing when another test forks: a script run then is refused
 /// as busy (ETXTBSY), as nix-offload's tests found on 31 October.
-fn runnable(path: &Path, script: &str) {
+pub(super) fn runnable(path: &Path, script: &str) {
     let draft = path.with_extension("draft");
     fs::write(&draft, script).expect("a draft");
     let copied = Command::new("cp")
@@ -79,13 +79,12 @@ fn a_machine(place: &Place) -> (PathBuf, PathBuf) {
     (git, asks)
 }
 
-#[test]
-fn a_git_that_fails_says_why_no_pain_closes() {
-    let place = Place::new("git-fails");
-    place.routes();
+/// Three pains sent to ABC123, the first asked of and answered with a
+/// landing, merged at 255494bb414c.
+fn a_landing(place: &Place) {
     let messages = place.root.join("messages");
     fs::create_dir_all(&messages).expect("a messages folder");
-    let kept = three_pains(&place);
+    let kept = three_pains(place);
     let question = route::finding(&[&kept[0]], &route::cells(CELLS), 0);
     let asked = format!("{}-EAR001-1-086eeb39", AT - 49_000);
     let landed = format!("{}-ABC123-1-a85417d8", AT - 40_000);
@@ -102,6 +101,33 @@ fn a_git_that_fails_says_why_no_pain_closes() {
         let at = messages.join(format!("{id}.json"));
         fs::write(at, message.to_string()).expect("a message");
     }
+}
+
+#[test]
+fn a_run_out_of_time_asks_git_nothing_and_says_why_no_pain_closes() {
+    let place = Place::new("git-late");
+    place.routes();
+    a_landing(&place);
+    let (git, asks) = a_machine(&place);
+    let ears = Ears {
+        git,
+        asks_end: Instant::now(),
+        ..place.ears()
+    };
+    let hour = hear(&ears, CELLS, &mut |_, _| true).expect("a run");
+    assert!(!asks.exists(), "git was asked past the run's end for it");
+    assert_eq!(
+        hour.unclosed.as_deref(),
+        Some("the run's time for asking git ran out"),
+        "a run out of time isn't a fix not on: {hour:?}"
+    );
+}
+
+#[test]
+fn a_git_that_fails_says_why_no_pain_closes() {
+    let place = Place::new("git-fails");
+    place.routes();
+    a_landing(&place);
     let (git, _) = a_machine(&place);
     runnable(
         &git,

@@ -20,10 +20,18 @@ plist = { version = "1.10", default-features = false }
 # The kernel's socket diagnostics over netlink, for who fills the uplink
 # (src/uplink/diag.rs); std has no netlink socket.
 libc = "0.2"
+# A TV's certificate pinned by its SHA-256 (src/television/remote.rs).
+ring = "0.17"
+# TLS to a Samsung TV, whose remote keys go only over wss on :8002 and
+# whose certificate is its own, pinned rather than checked against roots.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1"
 # The shape every command of ours takes: help, the answer's form, the
 # terminal's colours and the shared exits (../terminal-kit).
 terminal-kit = { path = "../terminal-kit" }
+# The WebSocket a Samsung TV takes its remote keys over, run on the TLS
+# stream above; no TLS of its own.
+tungstenite = { version = "0.30.0", default-features = false, features = ["handshake"] }
 # The modem's status pages, over plain HTTP on the home network, so no TLS.
 ureq = { version = "3", default-features = false }

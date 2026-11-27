@@ -133,6 +133,12 @@ pub enum Waved {
     /// organization nor a collaborator (Joel's orchestrator, 16
     /// November), so a stranger can't stop his agents, nor sound an alert.
     Outsider,
+    /// Written by Joel's own account on a markdown host, where his agents
+    /// post as him, without opening with the phrase: only a saying that
+    /// opens with it, after any tags, is his command. An agent's findings
+    /// quoting the phrase once stopped everything (WCJQSG, 25 November).
+    /// It's shown to him to stop from, in case it was his.
+    Unopened,
 }
 
 impl fmt::Display for Verdict {
@@ -157,6 +163,7 @@ impl fmt::Display for Waved {
             Self::Quoted => "quoted",
             Self::Bot => "bot",
             Self::Outsider => "outsider",
+            Self::Unopened => "unopened",
         })
     }
 }
@@ -187,6 +194,14 @@ pub fn judge(saying: &Saying<'_>, joel: &Joel) -> Judgement {
     };
     let anywhere = tokens(saying.text);
     let phrase_anywhere = has_run(&anywhere, &OVERRIDE) || has_run(&anywhere, &RESUME);
+    // Joel's account on a markdown host is his agents' too, so there his
+    // own saying counts only when it opens with the phrase.
+    let unopened = |run: &[&str]| {
+        by_joel && saying.platform == Platform::Markdown && !opens_with(saying.text, run)
+    };
+    // One of his that opens with a resume is weighed as one, whatever
+    // override it names after.
+    let resumes_first = unopened(&OVERRIDE) && !unopened(&RESUME);
 
     if saying.by_bot {
         let verdict = if phrase_anywhere {
@@ -196,8 +211,10 @@ pub fn judge(saying: &Saying<'_>, joel: &Joel) -> Judgement {
         };
         return found(verdict, Vec::new());
     }
-    if let Some(at) = find_run(&words, &OVERRIDE) {
-        let verdict = if talked_about(&words, at) {
+    if let Some(at) = find_run(&words, &OVERRIDE).filter(|_| !resumes_first) {
+        let verdict = if unopened(&OVERRIDE) {
+            Verdict::Waved(Waved::Unopened)
+        } else if talked_about(&words, at) {
             Verdict::Waved(Waved::TalkedAbout)
         } else if !tagged && !by_joel {
             Verdict::Waved(Waved::NoTag)
@@ -210,7 +227,9 @@ pub fn judge(saying: &Saying<'_>, joel: &Joel) -> Judgement {
     }
     if let Some(at) = find_run(&words, &RESUME) {
         let named = targets(&own, &words, at + RESUME.len());
-        return if talked_about(&words, at) {
+        return if unopened(&RESUME) {
+            found(Verdict::Waved(Waved::Unopened), Vec::new())
+        } else if talked_about(&words, at) {
             found(Verdict::Waved(Waved::TalkedAbout), Vec::new())
         } else if by_joel {
             found(Verdict::Resume, named)
@@ -227,6 +246,31 @@ pub fn judge(saying: &Saying<'_>, joel: &Joel) -> Judgement {
         return found(Verdict::StopAsked, Vec::new());
     }
     found(Verdict::Nothing, Vec::new())
+}
+
+/// Whether `text` opens with the run `run` as Joel types it: its first
+/// letters the run's, after any tags that lead it, as "@jitsusama
+/// pineapple override" and "@jitsusama, pineapple override" do. Anything
+/// before them, a quote, a heading, bold or a quotation mark, is someone
+/// writing about the phrase rather than saying it.
+fn opens_with(text: &str, run: &[&str]) -> bool {
+    let mut rest = text.trim_start();
+    while let Some(tag) = rest.strip_prefix('@') {
+        let end = tag
+            .find(|letter: char| !(letter.is_alphanumeric() || "-_.@".contains(letter)))
+            .unwrap_or(tag.len());
+        rest = tag[end..].trim_start_matches(|letter: char| {
+            letter.is_whitespace() || letter == ',' || letter == ':'
+        });
+    }
+    let Some(first) = run.first() else {
+        return false;
+    };
+    let starts = rest
+        .get(..first.len())
+        .is_some_and(|start| start.eq_ignore_ascii_case(first));
+    let opening = tokens(rest);
+    starts && opening.len() >= run.len() && opening.iter().zip(run).all(|(word, want)| word == want)
 }
 
 /// Whether the phrase at `at` is being talked about rather than said, as

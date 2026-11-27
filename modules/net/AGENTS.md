@@ -190,12 +190,60 @@ what net says of the day.
   only once eero knows it neither on nor off. A minute net can't read
   eero's record (it's missing, can't be opened or doesn't parse), or
   one listing no devices, asks no TV and forgets none. The answer stays as
-  `detail.samsung`, but for its ids and the addresses eero gives. Sending
-  it a key waits on Joel pressing Allow on the TV, so none is sent.
+  `detail.samsung`, but for its ids and the addresses eero gives. The
+  daemon only reads it: keys are pressed by the command, below.
 
 It listens on nothing and asks nothing outside the home network. Away
 from home the modem doesn't answer, and the record says so while eero's
 devices stay.
+
+## The TV's Remote
+
+`net devices NAME press KEY` and `net devices NAME wake`
+(`src/television/`) act on a device the record names a television, or
+one whose hardware address has a kept file, since a TV in standby says
+nothing on its page and the daemon may have started since it last did.
+They run from the command rather than the daemon, since only a person or
+an agent asked to presses a key. A key goes to the TV's first IPv4
+address in the record. They answer `net.pressed/1` (`device`, `key`,
+`allowed_now`) and `net.woken/1` (`device`, `heard`) under `--json`.
+
+- Keys go over `wss://` on 8002 to `samsung.remote.control`, the only way
+  a TV saying `TokenAuthSupport` takes them. Only the fourteen words in
+  `television::KEYS` are sent; any other is refused before the TV is
+  reached, so no word reaches a TV as a key code it wasn't meant to be.
+- The first press makes the TV ask on its own screen whether to allow
+  "net on" this machine's hostname, read at run time, and the press
+  waits 35 s for Allow. Once allowed, the TV hands a token, and later
+  presses carry it and ask nothing. One deadline holds the TLS and
+  WebSocket handshakes and the wait alike: `Due` gives each read and
+  write only what's left of it, so a TV slow to answer or trickling a
+  byte at a time fails once, at the end. After the key the channel
+  closes as WebSocket does, waiting up to 1 s for the TV's close.
+- A TV that refuses at once (told Deny, or it forgot the token) and one
+  nobody answered are told apart, and only a broken socket offers a
+  retry: TLS or WebSocket spoken otherwise than a TV speaks it fails
+  as `Failed`, since a retry reaches the same.
+- The TV's certificate is self-signed, so it's pinned on first use by
+  its SHA-256 and any other is refused (`NotTheTv`), rather than any
+  certificate being trusted each time. A reset TV shows a new one; the
+  refusal says which file to remove to allow it again.
+- The token and the pin are sealed with `systemd-creds --user` under
+  `$XDG_STATE_HOME/net/televisions/`, one file named by the TV's hardware
+  address and sealed under a name of its own, as eero-daemon seals its
+  session, so a fenced agent can't read them and one TV's file can't
+  stand in for another's. A half-made file goes when sealing fails, and
+  one a stopped net left goes the next time its TV is kept.
+- A TV in standby answers nothing, so `wake` sends Wake-on-LAN to its
+  hardware address, broadcast and to its last address, then asks its
+  page about once a second, each ask at most 2 s, until it says `on` or
+  15 s pass. A TV eero gives no address is sent its wake by broadcast
+  alone, answered with `heard` false, since net can't hear it wake. A
+  TV on Wi-Fi hears it only with Power On with Mobile turned on in its
+  network settings, which the refusal says.
+
+Its tests talk to a TV played on a local socket without TLS
+(`remote_tests.rs`); no real TV is reached by any check.
 
 ## The Switch's Reader
 

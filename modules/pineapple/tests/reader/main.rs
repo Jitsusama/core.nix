@@ -11,6 +11,8 @@
 //! be trusted in kept.rs, and GitHub's reader, against its own stand-in,
 //! in github.rs, the reader hearing Slack through a tool gateway in
 //! gateway.rs, and the guard each case holds its reader by in guard.rs.
+//! A stop of Joel's heard only after he resumed what he said it before
+//! is in late.rs.
 
 mod deaf;
 mod gateway;
@@ -18,6 +20,7 @@ mod github;
 mod guard;
 mod kept;
 mod keyring;
+mod late;
 mod live;
 mod said;
 
@@ -166,14 +169,17 @@ fn answering_whole(
                 continue;
             }
             // Its headers end at an empty line; a GET has no body, and a
-            // post's form is as long as its Content-Length says.
+            // post's form is as long as its Content-Length says. A tag it
+            // asks after is said at the end of its line.
             let mut header = String::new();
             let mut length = 0;
             while reader.read_line(&mut header).unwrap_or(0) > 0 && !header.trim().is_empty() {
-                if let Some((name, value)) = header.split_once(':')
-                    && name.eq_ignore_ascii_case("content-length")
-                {
-                    length = value.trim().parse().unwrap_or(0);
+                if let Some((name, value)) = header.split_once(':') {
+                    if name.eq_ignore_ascii_case("content-length") {
+                        length = value.trim().parse().unwrap_or(0);
+                    } else if name.eq_ignore_ascii_case("if-none-match") {
+                        line = format!("{} if-none-match={}", line.trim_end(), value.trim());
+                    }
                 }
                 header.clear();
             }

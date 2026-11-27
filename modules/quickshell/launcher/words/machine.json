@@ -719,7 +719,8 @@
         "on": "on {mount}, of {size}",
         "clearing": "clearing old builds",
         "clearingAll": "clearing all it can",
-        "cleared": "nothing left to clear"
+        "cleared": "nothing left to clear",
+        "waiting": "waits out heavy writing"
       }
     },
     {

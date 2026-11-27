@@ -28,8 +28,10 @@
 # launcher, since its command line goes stale once a link opens another
 # file in place, a space where a paragraph's line wraps in the file, which
 # it dropped, joining the words either side, and a zoom it opens at, which
-# Ctrl+0 goes back to. A seventh holds these keys to Vim's in its own
-# tests, as it's built.
+# Ctrl+0 goes back to. A seventh holds q, Escape, j, k, gg, G, the :q
+# sequences, ZZ, Space w, Space ?, F1 and the Ctrl chords for a screen,
+# the pages followed and the size to Vim's in its own tests, as it's built;
+# the arrows, Page keys, Home, End and Ctrl+C aren't pressed there.
 #
 # It opens at one and a half times the screen's own scale. At its own size
 # Joel found its text too small to read (2026-11-01); a logical pixel is
@@ -71,6 +73,20 @@ let
     env = (old.env or { }) // {
       INLYNE_KEYBINDINGS = "${bindingsFile}";
     };
+    # Two of inlyne's test groups run against the clock: each interpreter
+    # test fails past 8 s, and each file watcher test waits a set time for
+    # its notice. A Mac builds its update beside the work it's used for,
+    # so on 26 November its update failed on slowly_swap_file with
+    # fseventsd at a whole core, then on image_loading_fails_gracefully at
+    # 8.4 s with its load at 48. Linux runs both groups over the same
+    # source and patches, so a Mac skips them rather than letting its load
+    # hold its update, and still runs the tests that keep no clock.
+    checkFlags =
+      (old.checkFlags or [ ])
+      ++ lib.optionals pkgs.stdenv.hostPlatform.isDarwin [
+        "--skip=file_watcher::tests"
+        "--skip=interpreter::tests"
+      ];
     postFixup =
       (old.postFixup or "")
       + lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
@@ -406,9 +422,9 @@ let
 
   file = (pkgs.formats.toml { }).generate "inlyne.toml" settings;
 
-  # The keys alone, which inlyne's own tests read as it's built, so a key
-  # bound here that inlyne would read otherwise fails its build
-  # (speaks-vim.patch).
+  # The keys alone, which inlyne's own tests read as it's built, so a
+  # binding it can't read fails its build, and a key those tests press that
+  # inlyne would read otherwise does too (speaks-vim.patch).
   bindings.keybindings.base = lib.concatMap (
     key:
     map (chords: [
