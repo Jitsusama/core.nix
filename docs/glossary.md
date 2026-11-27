@@ -519,7 +519,7 @@ signed in to and forgotten; Wi-Fi's radio can be turned off.
 | work network | the place in Network saying how the machine's link to work stands, through WARP | | `warp` |
 | firewall | what keeps others' connections out | | nftables |
 | shaper | the program that keeps the network's queue on the machine, sorted by slice, so a call stays quick | | `shaper`, CAKE |
-| house | of the shaper, another machine on the same line out, which says each second what it sends up; this machine keeps the most the two may send between them, and holds its own upload under what the other leaves of it | | `jitsusama.shaper.networks.<router>.house`, `house.rs` |
+| house | of the shaper, another machine on the same connection out, which says each second what it sends up; this machine keeps the most the two may send between them, and holds its own upload under what the other leaves of it | | `jitsusama.shaper.networks.<router>.house`, `house.rs` |
 | download line | of the shaper, what a network's connection carries down, as declared, or what one of this machine's links reaches it at, under which a call's download is held | | `jitsusama.shaper.networks.<router>.down`, `links.<link>.down`, `networks::Line`, `networks::line_of` |
 | home network | the network at home, the eero's, its nodes and the devices on them, and its place in the launcher | eero network, mesh network | `eero` |
 | node | one eero of the home network | satellite, extender | `eeros` |
@@ -527,7 +527,7 @@ signed in to and forgotten; Wi-Fi's radio can be turned off.
 | backhaul | how a node reaches the node before it, over Ethernet or Wi-Fi | mesh link, backbone | |
 | device | one box on the home network, whatever it does, listed once with each role it plays | station | `clients`, net's `devices` |
 | role | what a device does on the home network: modem, router, access point, switch, receiver, printer, television or client, one box playing several, as one eero is a router and an access point | | net's `roles` |
-| modem | the device that turns the internet provider's line into Ethernet, with its channels and event log | cable modem | net's `modem` |
+| modem | the device that turns the internet provider's cable into Ethernet, with its channels and event log | cable modem | net's `modem` |
 | router | the device that hands out the home network's addresses and carries its traffic out to the internet | | |
 | access point | the device whose radios devices join over Wi-Fi; each node is one | AP | `access-point` |
 | switch | the device that joins cables to the home network, port by port | | net's `switch` |
