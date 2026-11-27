@@ -158,7 +158,10 @@ pub(crate) const VPN_MARGIN_MS: f64 = 5.0;
 /// a millisecond a second whenever the VPN's CAKE held nothing went from
 /// 25 to 62 ms on 11 November, under a queue of 100 to 350 ms standing for
 /// minutes, and counted none of it; a path that moved is learned within
-/// this, or at once when the guard lets go.
+/// this, or at once when the guard lets go. The least is the third-least
+/// heard in it, or the least while fewer are, since a base from one
+/// sample on 27 November, 58.9 ms among round trips of 60 to 75, held for
+/// five minutes and read their jitter as a queue hidden past ours.
 const VPN_LEAST_S: f64 = 300.0;
 /// How many cuts of a run for a queue only the VPN's round trip meets
 /// must find it back where the run's first found it, less the round
@@ -1716,8 +1719,8 @@ impl Controller {
 
     /// The upload's queue in the router that only the VPN's flow waits in,
     /// in ms.
-    /// It's what the VPN's round trip took over the least heard in the last
-    /// `VPN_LEAST_S`, whatever its CAKE held then, past what the
+    /// It's what the VPN's round trip took over the third-least heard in the
+    /// last `VPN_LEAST_S`, whatever its CAKE held then, past what the
     /// probes on the link found each way, while the VPN's CAKE held a
     /// queue: then the VPN sends as fast as it's let, and what it fills is
     /// the upload's. With our CAKE holding nothing, the VPN's flow is
@@ -1740,7 +1743,7 @@ impl Controller {
         {
             self.vpn_heard.pop_front();
         }
-        let base = self.vpn_heard.iter().map(|&(_, ms)| ms).fold(vpn, f64::min);
+        let base = third_least(self.vpn_heard.iter().map(|&(_, ms)| ms)).unwrap_or(vpn);
         self.vpn_base = Some(base);
         let Some(ours) = queued else {
             return 0.0;
@@ -2124,6 +2127,25 @@ impl crate::replay::Controller for Controller {
             down: limits.down,
         }
     }
+}
+
+/// The third-least of `heard`, or its least while it holds fewer than
+/// three, or none while it holds none: three running minima, so the five
+/// minutes of round trips `VPN_LEAST_S` keeps aren't sorted each second.
+fn third_least(heard: impl ExactSizeIterator<Item = f64>) -> Option<f64> {
+    let enough = heard.len() >= 3;
+    let (mut first, mut second, mut third) = (f64::INFINITY, f64::INFINITY, f64::INFINITY);
+    for ms in heard {
+        if ms < first {
+            (first, second, third) = (ms, first, second);
+        } else if ms < second {
+            (second, third) = (ms, second);
+        } else if ms < third {
+            third = ms;
+        }
+    }
+    let least = if enough { third } else { first };
+    least.is_finite().then_some(least)
 }
 
 #[cfg(test)]
@@ -4103,6 +4125,32 @@ mod tests {
             Some(25.0),
             "a queue of minutes was taken for the path"
         );
+    }
+
+    // As on 27 November: one round trip through the VPN, 58.9 ms among
+    // round trips of 60 to 75, was its least for five minutes, and the
+    // jitter over it read as a queue hidden past ours. One dip, or two,
+    // leave the least where the rest put it; three are the path's.
+    #[test]
+    fn one_dip_in_the_vpn_s_round_trip_doesn_t_lower_its_least() {
+        const DIPS: [u32; 3] = [50, 100, 150];
+        for (dips, least) in [(1, 60.0), (2, 60.0), (3, 40.0)] {
+            let mut c = Controller::new(None, None);
+            for moment in 0..200_u32 {
+                let at = f64::from(moment) * 0.1;
+                let dipped = DIPS[..dips].contains(&moment);
+                let ms = if dipped { 40.0 } else { 60.0 };
+                c.step(&Seen {
+                    at_s: at,
+                    ..through_the_vpn(false, ms)(at)
+                });
+            }
+            assert_eq!(
+                c.vpn_base().map(f64::round),
+                Some(least),
+                "40 ms heard {dips} times among round trips of 60"
+            );
+        }
     }
 
     #[test]
