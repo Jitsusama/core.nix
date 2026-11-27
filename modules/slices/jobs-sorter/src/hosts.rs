@@ -1009,25 +1009,36 @@ mod tests {
     }
 
     #[test]
-    fn the_disk_weighs_a_host_as_the_processor_does() {
-        let rank = Rank {
-            weight: 400,
-            floor: 0,
-            hard: 0,
-            writeback: true,
-            preference: "none".to_string(),
+    fn the_disk_weighs_a_host_as_the_processor_does_above_and_below_systemds_100() {
+        // One rank above systemd's 100, which BFQ scales down, and one below it, which BFQ
+        // passes as it stands, so a call pinned to 100, or floored at it, fails one of them.
+        let viewed = Signs {
+            viewed: 1,
+            ..Signs::default()
         };
-        let call = rank_call("pi-host-work-attended.service", &rank);
-        let weight = |name: &str| {
-            let at = call.iter().position(|arg| arg == name).expect(name);
-            call[at + 2].clone()
+        let marked = Signs {
+            marked: true,
+            ..Signs::default()
         };
-        assert_eq!(weight("CPUWeight"), "400");
-        assert_eq!(
-            weight("IOWeight"),
-            "400",
-            "the disk follows the rank, not systemd's 100"
-        );
+        for signs in [viewed, marked] {
+            let rank = wanted(&attended(), signs, 10);
+            assert_ne!(
+                rank.weight,
+                low::AT,
+                "each rank tells its weight from systemd's 100"
+            );
+            let call = rank_call("pi-host-work-attended.service", &rank);
+            let weight = |name: &str| {
+                let at = call.iter().position(|arg| arg == name).expect(name);
+                call[at + 2].clone()
+            };
+            assert_eq!(weight("CPUWeight"), rank.weight.to_string());
+            assert_eq!(
+                weight("IOWeight"),
+                rank.weight.to_string(),
+                "the disk follows the rank, not systemd's 100"
+            );
+        }
     }
 
     #[test]

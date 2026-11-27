@@ -6,7 +6,8 @@
 //! it reads on past is said in a row beside his row in For You. A second
 //! reader started on the folder it keeps ends at once, beside the keyring's
 //! reader too, an alert left untold for its ten minutes is said to be let
-//! go, once, and searches failing round after round write Joel's row.
+//! go, once, one written down twice is sent as once, and searches failing
+//! round after round write Joel's row.
 
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -20,6 +21,9 @@ use super::{
     OWN, PATIENCE, an_alert_waits, decisions_in, each, gateway, home, journal, kept_stops, reading,
     said, serving, sign_in, stand_in, tools, until_decided_in,
 };
+
+mod let_go;
+mod twice;
 
 /// Where For You's row of what waits goes, under a case's home, as the
 /// unit names it.
@@ -533,6 +537,19 @@ fn an_alert_untold_for_its_ten_minutes_is_said_let_go_once() {
             "after ten minutes, each send that may have gone unanswered: {LINK}-twice"
         )),
         "and the journal says so, and which may have gone: {journal}"
+    );
+    assert_eq!(
+        journal
+            .matches(&format!("untold after ten minutes: {LINK}-doubled"))
+            .count(),
+        1,
+        "one written down twice is said let go once: {journal}"
+    );
+    assert!(
+        ["told", "shadowed", "older"]
+            .iter()
+            .all(|key| !journal.contains(&format!("{LINK}-{key}"))),
+        "and the journal names none of those not let go: {journal}"
     );
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }

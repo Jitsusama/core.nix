@@ -21,6 +21,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::UnixListener;
 use std::path::PathBuf;
 use std::process::{Child, Command};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant, SystemTime};
 
 use daemon_client::{Client, until};
@@ -60,6 +61,11 @@ case "$*" in
   "call accept") echo "no call is ringing" >&2; exit 1 ;;
 esac
 "#;
+
+/// How many daemons this run has started, which makes each one's folder
+/// its own: two tests given the same name once shared one, and each
+/// clearing it at its start took away the other's sockets.
+static STARTED: AtomicUsize = AtomicUsize::new(0);
 
 /// The daemon, with a folder standing in for the runtime, data and state
 /// folders, and Tuple's daemon's socket, which answers while it's held.
@@ -120,8 +126,24 @@ impl Running {
     /// Started by `launcher` and its arguments, each given the socket's
     /// path where it says `{socket}`, rather than on its own.
     fn through(test: &str, answering: bool, launcher: &[&str], waits: &[&str]) -> Running {
-        let folder = std::env::temp_dir().join(format!("tuple-call-{test}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&folder);
+        let folder = std::env::temp_dir().join(format!(
+            "tuple-call-{test}-{}-{}",
+            std::process::id(),
+            STARTED.fetch_add(1, Ordering::Relaxed)
+        ));
+        // A removal that fails says why, which the folder left behind can't.
+        if let Err(error) = std::fs::remove_dir_all(&folder) {
+            assert_eq!(
+                error.kind(),
+                std::io::ErrorKind::NotFound,
+                "{} should be cleared: {error}",
+                folder.display()
+            );
+        }
+        // Made afresh, so a folder made again since, or a link planted
+        // there, fails here rather than feeding this run what it holds.
+        std::fs::create_dir(&folder)
+            .unwrap_or_else(|error| panic!("{} should be made afresh: {error}", folder.display()));
         for inner in ["run/daemons", "data/tuple/0", "state", "bin"] {
             std::fs::create_dir_all(folder.join(inner)).unwrap();
         }
@@ -325,7 +347,11 @@ fn a_call_is_said_to_a_watch_as_it_changes() {
         json!([{"id": "7", "name": "Ada Brightwater", "email": "ada@example.com",
                 "connection": "connected", "muted": true, "sharing": true, "camera": true}])
     );
-    assert!(record["heard"].as_i64().is_some());
+    assert!(
+        record["heard"].as_i64().is_some(),
+        "the call should say when it was heard, not {}",
+        record["heard"]
+    );
     let said = client.ask(&json!({"id": 2, "ask": "get", "keys": ["call:current"]}));
     assert_eq!(said["records"][0]["state"], "connected");
     running.streams("{\"type\":\"current_call\",\"data\":null}");
@@ -898,7 +924,7 @@ fn a_command_held_past_its_hold_lets_its_act_be_asked_afresh() {
 
 #[test]
 fn a_stream_followed_afresh_journals_the_camera_it_says_on() {
-    let running = Running::start("afresh", true);
+    let running = Running::start("camera-afresh", true);
     running.streams(STATE);
     running.streams(&filming());
     let mut watching = running.client();

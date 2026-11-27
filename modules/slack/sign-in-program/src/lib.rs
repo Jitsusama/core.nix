@@ -44,8 +44,10 @@ pub const LOCKED: i32 = 75;
 pub enum SignIn {
     /// The sign-in it printed, trimmed.
     Token(String),
-    /// None: it couldn't be run, failed, printed nothing, as a keyring
-    /// lacking the item does, or printed what can't be a sign-in.
+    /// None: it couldn't be run, as one held for writing for its whole
+    /// patience can't, since it never ran; or it failed, printed
+    /// nothing, as a keyring lacking the item does, or printed what
+    /// can't be a sign-in.
     Missing,
     /// It ended [`LOCKED`]: the keyring holding the sign-in is locked.
     Locked,
@@ -106,7 +108,8 @@ pub fn token(program: &OsStr, patience: Duration) -> SignIn {
 /// with it, or none where it can't be run by `until`. A program still held
 /// open for writing can't be run yet (`ETXTBSY`), as one just written is
 /// while any other thread forks a child that holds it a moment, so it's
-/// tried again until it can or its time is up.
+/// tried again until it can or its time is up. One let go just before
+/// then is run with what is left, and may run over.
 fn started(program: &OsStr, until: Instant) -> Option<Child> {
     loop {
         let spawned = Command::new(program)

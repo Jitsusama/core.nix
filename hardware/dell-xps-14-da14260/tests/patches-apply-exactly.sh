@@ -3,14 +3,21 @@
 # offset or fuzz, after every patch the build applies before them. A patch
 # taken from elsewhere onto a kernel that drifted under it can still apply
 # at an offset, or with fuzz, to code it was never tested against, and the
-# build says nothing of it.
-# usage: patches-apply-exactly.sh <source> <patch list> <exact list> <out>
+# build says nothing of it. The files are taken by core's kernel's
+# kernel-source-files.sh, handed in first.
+# usage: patches-apply-exactly.sh <kernel-source-files.sh> <source> <patch list> <exact list> <out>
 set -euo pipefail
+# A failure inside a command substitution, such as one of the library's,
+# stops the check too, rather than passing an empty value along.
+shopt -s inherit_errexit
 
-source=$1
-patches=$2
-exact=$3
-out=$4
+# The library is handed in by its store path; shellcheck reads it from here.
+# shellcheck source=SCRIPTDIR/../../../modules/kernel/tests/kernel-source-files.sh
+source "$1"
+source=$2
+patches=$3
+exact=$4
+out=$5
 
 if ! [ -s "$exact" ]; then
   echo "No patch was given to hold exactly."
@@ -21,29 +28,7 @@ fi
 listed=$(xargs lsdiff --strip=1 --no-filename <"$exact")
 sorted=$(sort -u <<<"$listed")
 mapfile -t files <<<"$sorted"
-# A file some patch creates isn't in the source to take out: that patch
-# makes it.
-statuses=$(xargs lsdiff --status --strip=1 --no-filename <"$patches")
-created=$(sed -n 's/^+ //p' <<<"$statuses")
-kept=$sorted
-if [ -n "$created" ]; then
-  kept=$(grep -v -x -F "$created" <<<"$sorted" || true)
-fi
-mapfile -t taken <<<"$kept"
-mkdir -p "$out"
-if [ -z "$kept" ]; then
-  :
-elif [ -d "$source" ]; then
-  for file in "${taken[@]}"; do
-    install -D -m 644 "$source/$file" "$out/$file"
-  done
-else
-  wanted=()
-  for file in "${taken[@]}"; do
-    wanted+=("*/$file")
-  done
-  tar xf "$source" -C "$out" --strip-components=1 --wildcards "${wanted[@]}"
-fi
+take_kernel_files "$source" "$patches" "$out" "${files[@]}"
 
 only=()
 for file in "${files[@]}"; do
@@ -54,9 +39,7 @@ failed=0
 while IFS= read -r patch; do
   [ -n "$patch" ] || continue
   if grep -q -x -F "$patch" "$exact"; then
-    # Its name as it was written, without the store's hash before it.
-    name=${patch##*/}
-    name=${name#*-}
+    name=$(patch_name "$patch")
     # Applied whole, as the build does, but held to its hunks' own lines.
     said=$(patch -p1 --forward --batch --fuzz=0 <"$patch" 2>&1) || {
       echo "$name no longer applies with no fuzz, after the patches before it:"

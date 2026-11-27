@@ -587,9 +587,10 @@ in
     # The disk's weight is ten times too, as session.slice's is, since
     # io.cost on a measured disk shares it by weight: at systemd's 100 his
     # programs would get no more of it than agents' sessions. The latency
-    # target a disk with no model keeps ignores it, and systemd scales it
-    # down for the BFQ scheduler, 1000 to 181 against 100 left at 100, so
-    # on a disk BFQ runs his programs get under twice agents' share.
+    # target a disk with no model keeps ignores it. For the BFQ scheduler
+    # systemd scales a weight above 100 down, 1000 to 181, while
+    # agents.slice's 100 stays 100, so on a disk BFQ runs his programs get
+    # under twice agents' share.
     systemd.user.slices.app.sliceConfig = {
       CPUWeight = 1000;
       IOWeight = 1000;
@@ -1060,7 +1061,8 @@ in
             # jobs-work.slice, at the weight pi's sessions give the quest by
             # its priority, so a quest Joel drives gets more of what agents'
             # work gets, and never more than that. The disk's share acts only
-            # under io.cost or BFQ, not on io.latency targets alone.
+            # under io.cost or BFQ, not on io.latency targets alone, and BFQ
+            # squeezes a weight above 100: 400 becomes about 127.
             "--by-quest"
             "jobs-work.slice"
             "--quests"

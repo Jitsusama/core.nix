@@ -120,7 +120,7 @@ Provider {
                 provider.topNetwork(row))), row)
         actMade: (key, one, row) => provider.topTalk(key, one, row)
             ?? provider.topGoTo(one)
-            ?? provider.topCarryBack(one, row)
+            ?? provider.topCarryBack(key, one, row)
             ?? provider.topLetStart(key, one)
         // Its served acts (Pause, Stop, Close) go straight to the daemon,
         // which takes the shell's asks as Joel's, so one a walk chose is
@@ -283,8 +283,9 @@ Provider {
     // Carry Back on a carry under Carried is the shell's, asked of the
     // realm's node, never the daemon (CarryBack.js): its row reads as
     // carrying back until the node says the carry has ended, and a refusal
-    // is said in place in the node's own words. Null for any other act.
-    function topCarryBack(one, row) {
+    // is said in place in the node's own words, both on the row keyed as
+    // ReadyRows keyed it from its record's key. Null for any other act.
+    function topCarryBack(key, one, row) {
         const ask = one.key === "verb:carry:back" ? CarryBack.asked(one.ask) : null;
         if (ask === null)
             return null;
@@ -295,18 +296,18 @@ Provider {
             glyph: Words.glyph(one.key),
             hue: "action",
             stays: true,
-            run: () => provider.carryBack(row, ask)
+            run: () => provider.carryBack(key, row, ask)
         });
     }
 
     // Joel's alone to choose: the node weighs a carry's starts by who asks, and the shell
     // asks as him, and the top rows' stamp never sees it, since it's made here (round
     // 000036 on #6796, F137).
-    function carryBack(row, ask) {
+    function carryBack(key, row, ask) {
         if (!provider.joelsOwn("carry back"))
             return;
         const said = Words.of("verb:carry:back").said ?? {};
-        const shown = row.thing ?? row.key;
+        const shown = CarryBack.keyed(row, key);
         let answered = false;
         provider.becomes(shown, {
             side: said.carrying ?? "",

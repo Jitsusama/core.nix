@@ -8,10 +8,15 @@
 //! unchanged is answered 304, which his rate limit doesn't count; while
 //! his agents are busy most change, so a round costs up to seven of the
 //! 5,000 requests an hour his sign-in is allowed, 840 an hour at most.
+//! That limit is shared with everything else asking as him, and reading a
+//! pull request or issue the search names takes from it too, so once
+//! GitHub says fewer than [`SPARED`] are left, the watch rests until the
+//! limit's hour starts again, and his words wait on the search (own.rs).
 //! Where GitHub can't be asked, the round lists no more, so a slow GitHub
-//! costs one wait, and his words wait on the search (own.rs). A
-//! repository gone, or not his sign-in's to read, is passed by, so one
-//! refused every round can't keep the others unlisted.
+//! costs one wait, and the repository it failed on is listed last the
+//! next round, so one failing every round can't keep the others
+//! unlisted. A repository gone, or not his sign-in's to read, is passed
+//! by.
 
 use std::collections::HashMap;
 
@@ -33,12 +38,22 @@ const WATCHED: usize = 6;
 /// it waits on the search.
 const NEWEST: &str = "sort=created&direction=desc&per_page=100";
 
+/// The requests of Joel's hour the watch leaves to reading what it and the
+/// search find: a fifth of the 5,000, so a busy hour of his agents' can't
+/// leave a stop named by the search unread.
+const SPARED: u64 = 1_000;
+
 /// Where Joel's account was last active, and the answers GitHub gave each
-/// list asked, by what was asked, with the tag it gave each.
+/// list asked, by what was asked, with the tag it gave each; the
+/// repository whose list last failed, listed last; and when, in seconds
+/// since the epoch, the watch may ask again, once its rate limit's left
+/// fell below [`SPARED`].
 #[derive(Default)]
 pub(super) struct Watched {
     repos: Vec<String>,
     kept: HashMap<String, (String, Value)>,
+    failed: Option<String>,
+    rests_until: u64,
 }
 
 impl Watched {
@@ -52,30 +67,43 @@ impl Watched {
         reach: u64,
         judged: &[String],
     ) -> Vec<Thread> {
+        if self.resting() {
+            return Vec::new();
+        }
         let feed = format!("/users/{login}/events?per_page={}", super::PAGE);
         let newest = |repo: &str| format!("/repos/{repo}/issues/comments?{NEWEST}");
         let events = match self.ask(github, &feed) {
             Ok(events) => events,
-            Err(Unread::Gone(why) | Unread::Failed(why)) => {
+            Err(Unread::Gone(why) | Unread::Failed(why) | Unread::Limited(why)) => {
                 eprintln!("<4>{why}, {WAITS}");
                 return Vec::new();
             }
         };
         self.repos = active_in(&events);
+        if let Some(failed) = self.failed.take()
+            && let Some(at) = self.repos.iter().position(|repo| *repo == failed)
+        {
+            let last = self.repos.remove(at);
+            self.repos.push(last);
+        }
         // Only what's still watched is kept, so the lists kept stay few.
         let watched: Vec<String> = self.repos.iter().map(String::as_str).map(&newest).collect();
         self.kept
             .retain(|path, _| *path == feed || watched.contains(path));
         let mut threads = Vec::new();
         for repo in self.repos.clone() {
+            if self.resting() {
+                break;
+            }
             let comments = match self.ask(github, &newest(&repo)) {
                 Ok(comments) => comments,
                 Err(Unread::Gone(why)) => {
                     eprintln!("<4>{why}; it's passed by, {WAITS}");
                     continue;
                 }
-                Err(Unread::Failed(why)) => {
+                Err(Unread::Failed(why) | Unread::Limited(why)) => {
                     eprintln!("<4>{why}, {WAITS}");
+                    self.failed = Some(repo);
                     break;
                 }
             };
@@ -92,10 +120,37 @@ impl Watched {
         threads
     }
 
+    /// Whether the watch rests now, its rate limit's left under [`SPARED`]
+    /// when GitHub last said.
+    fn resting(&self) -> bool {
+        super::seconds() < self.rests_until
+    }
+
+    /// Rests the watch until `reset`, the second GitHub says the limit's
+    /// hour starts again, once it says only `left` are left, fewer than
+    /// [`SPARED`], and says so as it begins.
+    fn spare(&mut self, name: &str, left: Option<u64>, reset: Option<u64>) {
+        let (Some(left), Some(reset)) = (left, reset) else {
+            return;
+        };
+        if left >= SPARED || reset <= self.rests_until {
+            return;
+        }
+        if !self.resting() {
+            eprintln!(
+                "<4>{name} has {left} requests left this hour, fewer than the {SPARED} kept for \
+                 reading, so the newest comments aren't listed until {}, {WAITS}",
+                github::stamp(reset)
+            );
+        }
+        self.rests_until = reset;
+    }
+
     /// One list, asked with the tag GitHub last gave it: the list it
     /// keeps when GitHub answers that nothing changed. One gone or not
-    /// Joel's to read is told from GitHub failing, its rate limit included,
-    /// as a round tells them.
+    /// Joel's to read is told from GitHub failing, and both from his rate
+    /// limit spent, as a round tells them. What GitHub says is left of
+    /// the limit, 304 or not, may rest the watch ([`Self::spare`]).
     fn ask(&mut self, github: &GitHub<'_>, path: &str) -> Result<Value, Unread> {
         let url = format!("{}{path}", github.origin);
         let mut request = github
@@ -113,12 +168,6 @@ impl Watched {
             .call()
             .map_err(|error| Unread::Failed(format!("couldn't list {path} on {name}: {error}")))?;
         let status = answer.status().as_u16();
-        if status == 304 {
-            let kept = self.kept.get(path).map(|(_, kept)| kept.clone());
-            return kept.ok_or_else(|| {
-                Unread::Failed(format!("{name} answered 304 for {path}, with nothing kept"))
-            });
-        }
         let header = |key: &str| {
             let value = answer.headers().get(key)?;
             value.to_str().ok().map(str::to_owned)
@@ -126,6 +175,15 @@ impl Watched {
         let tag = header("etag");
         let remaining = header("x-ratelimit-remaining");
         let retry_after = header("retry-after").is_some();
+        let number = |said: Option<String>| said?.trim().parse().ok();
+        let reset = number(header("x-ratelimit-reset"));
+        self.spare(name, number(remaining.clone()), reset);
+        if status == 304 {
+            let kept = self.kept.get(path).map(|(_, kept)| kept.clone());
+            return kept.ok_or_else(|| {
+                Unread::Failed(format!("{name} answered 304 for {path}, with nothing kept"))
+            });
+        }
         if status != 200 {
             let said: Value = answer.body_mut().read_json().unwrap_or_default();
             let message = said["message"].as_str().unwrap_or("no reason");
@@ -133,6 +191,7 @@ impl Watched {
             let limited = github::rate_limited(status, remaining.as_deref(), retry_after, message);
             return Err(match status {
                 403 | 404 | 410 if !limited => Unread::Gone(why),
+                _ if limited => Unread::Limited(why),
                 _ => Unread::Failed(why),
             });
         }

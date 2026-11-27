@@ -626,10 +626,11 @@
     a switch is told to leave each cadence run an installed timer starts be rather than restarting
     it and waiting on its start, which under load outlasts home-manager's wait and sends the whole
     switch back, and each is a oneshot setting a start timeout of its own systemd reads that ends a
-    hang now that no switch does; each timer's run is found as the base module finds it, the tick,
-    day, review and hour must each be among the runs found, a failure names each run and what it
-    lacks, stand-in units each wrong one way must each be refused, and ones right in each way
-    allowed must each pass
+    hang now that no switch does, a key it can't read refused as such; each timer's run is found
+    by the reading the base module finds it with, the tick, day, review and hour must each be
+    among the runs found, a failure names each run and what it lacks, stand-in units each wrong
+    one way must each be refused in their own words, and ones right in each way allowed must each
+    pass
   '';
   cadence-passes-clippy = ''
     clippy finds nothing in cadence or its tests
@@ -1280,7 +1281,9 @@
     with nothing at the clipboard history's socket, Emoji's rows are drawn only while the launcher
     is open: shut, a search and one typed inside a group that went unanswered are let go; open,
     each is kept, and asked again at the history's hello, the answer to what was typed in the
-    group not taken as its key's own a while after the key, so Emoji's rows stay where they are
+    group not taken as its key's own a while after the key, so Emoji's rows stay where they are;
+    and an emoji's row is keyed by its thing, kept under row: where that claims the launcher's own
+    kind, and by its key where it has none
   '';
   ergodox-on-every-workstation = ''
     every workstation can flash the ErgoDox, a Mac as much as Linux
@@ -1328,6 +1331,11 @@
     said unless -H or -P follows; du's own nonzero end is kept; a working folder gone still
     counts a whole path, and no home found is said; a count above none runs as given and ends
     0, and --help runs no du
+  '';
+  every-failed-read-says-why = ''
+    every Rust file read outside tests whose failure its expression takes as nothing says why in
+    a comment, but those still waiting to say it couldn't read, once a planted tree shows each
+    shape counted
   '';
   every-fixed-wait-says-why = ''
     every sleep in a test polls, or says what passes while it waits in a comment or by a named
@@ -1993,6 +2001,11 @@
   '';
   kernel-settings-hold-with-a-theme = ''
     the kernel holds every setting with an account's theme, its panic colours among them
+  '';
+  kernel-source-files-are-taken-as-built = ''
+    a few files of a kernel's source are taken from a folder or its tarball, one missing that a
+    patch creates let be, one missing that none creates refused, and one the source has that a
+    patch would create refused, naming that patch
   '';
   kernel-trouble-is-named = ''
     `device-check` names a kernel that oopsed, locked up, saw a hardware fault or held a task stuck,
@@ -2722,8 +2735,12 @@
     a fenced or strict one says its system's launcher for an agent's run, which runs pi's strict
     profile, and an unfenced one none, no fence says a launcher when agents' runs are turned
     off, a machine of either system declaring every fence evaluates, a machine kept lively
-    says its ceiling and one not kept lively none, one declaring nothing has no file, and
-    agents in a realm it doesn't join are refused
+    says its ceiling, a memory_full of 0 included, and one not kept lively none, the locked
+    mycelium reads that ceiling as kept_lively, an Option<Lively> whose cpu is a u32,
+    memory_available an Option<u64> and, from the lock that first has it, memory_full an
+    Option<u32>, read by a scan that fails on what it can't read, with nothing over Lively
+    refusing a field it doesn't know, one declaring nothing has no file, and agents in a realm
+    it doesn't join are refused
   '';
   mycelium-lends-from-the-store = ''
     a NixOS machine that lends evaluates, and its home realm mycelium node is given what it lends
@@ -3308,9 +3325,10 @@
     it, pastes it whole on Joel's display, offered marked secret, makes nothing under TMPDIR,
     runs nothing from PATH, typed or not, can't be read through /proc and holds as much of it
     in locked memory as the secret is long, says it's ready only once it can't be read and held
-    once it holds the copy, pastes whole and keeps locked a secret that outgrows its first page,
-    pastes whole a secret of exactly its cap of a MiB, and refuses a standard input it can't
-    read or one a byte past that cap, never saying it held either
+    once Joel's display has the copy, one paste then pasting it whole, pastes whole and keeps
+    locked a secret that outgrows its first page, pastes whole a secret of exactly its cap of a
+    MiB, refuses a standard input it can't read or one a byte past that cap, never saying it
+    held either, and refuses to say ready or held for a copy that isn't sensitive
   '';
   passwords-holds-no-secret = ''
     the passwords daemon holds every entry each password manager lists without a secret, even one
@@ -3318,12 +3336,13 @@
     held list or get without asking a manager, gives a secret only to the ask for it, never to a
     watch, or to the clipboard marked sensitive and cleared when its time is up, writes it to the
     copier only once the copier says it's ready and answers it copied only once the copier says it
-    holds it, answering a refused copy with the copier's reason, ends the copy it holds as it
-    ends itself, killed or not, refuses a copy
-    before reading any secret while no copier is named, types a password only into the niri
-    window it was asked for once the launcher has let go of the keys and while that window still
-    has them, refusing a second while one is under way, never into one an agent's process is
-    behind, above or below (pi, pi-spawner,
+    holds it, answering a copy the copier refuses, before it's ready, partway through or once
+    it has it all, with the copier's first line of reason, read no further than 4 KiB, or its
+    own where the copier says none, ends the copy it holds as it ends itself, killed or not,
+    refuses a copy before reading any secret while no copier is named, types a password only
+    into the niri window it was asked for once the launcher has let go of the keys and while
+    that window still has them, refusing a second while one is under way, never into one an
+    agent's process is behind, above or below (pi, pi-spawner,
     mycelium, the hosted runtime, or the agents' or jobs' slices), nor a kitty whose foreground
     runs one or a multiplexer or that can't say, and writes one journal line for each type
     naming no secret, can't be read through /proc by the
@@ -3691,6 +3710,12 @@
     and told so, left running through a switch, its host's restart and the kernel killing one
     of its commands for memory, and a Mac gets none
   '';
+  pi-conversations-read-says-what-it-read = ''
+    what the pi host VM test's failures read from the machine is said on one line, blank lines
+    dropped, an empty read and a failed one saying so with its exit, one cut short by its
+    timeout naming its own seconds, and every character a terminal would act on but a newline
+    written as its escape within its line, readable words kept as they are
+  '';
   pi-conversations-set-heap-growth = ''
     a realm's conversationHeapGrowingPercent reaches each of its conversations' own processes,
     attended and background, as V8's --heap-growing-percent after their heap and before the
@@ -3846,6 +3871,12 @@
   pi-wears-the-theme = ''
     pi's text, strings and deepest thinking are the account's text, string and alert colours, and
     every colour it names is hex
+  '';
+  pi-windowed-reads-left-out-entries-light = ''
+    a windowed pi reads light the large values of what its log's kept view leaves out, while its
+    entries, context and branches read as a whole read gives them, a move to a left-out entry and
+    a rewrite of the log hold what they need whole, a later compaction lets go only of entries
+    whose place pi knows, and a log pi migrates or with an unfinished last line is read whole
   '';
   pixels-probe-holds-every-pixel = ''
     the web-design skill's pixels probe, and its words and names probes beside it, in headless
@@ -4312,9 +4343,10 @@
   '';
   sign-in-program-never-waits-for-good = ''
     a sign-in program's token is taken trimmed, slow, ending after its output or once a hold
-    writing it is let go; one failing, printing nothing, missing, printing what isn't text or
-    past 64 KiB is none; one hanging, lingering or printing for good runs over within its
-    patience, killed with what it started
+    writing it is let go; one failing, printing nothing, printing what isn't text or past 64
+    KiB is none, as is one held for writing all its patience; one missing is none at once; one
+    hanging, lingering or printing for good runs over within its patience, killed with what it
+    started
   '';
   sign-in-program-passes-clippy = ''
     clippy finds nothing in sign-in-program, which runs a reader's sign-in, or its tests
@@ -4663,7 +4695,9 @@
   carry-back-asks-the-node-only-a-carry = ''
     Carry Back asks the realm's node only a carry of a quest's id to a machine's name, rebuilt from
     the act's parts so nothing else it holds is sent, and says it done once the carry ended
-    carried, else the node's own why, that its why couldn't be read, or that no answer came
+    carried, else the node's own why, that its why couldn't be read, or that no answer came; a
+    carried row reads as carrying back under the key ReadyRows made it with, its thing or else its
+    record's key, kept under row: where its thing claims a kind of the launcher's own
   '';
   talk-to-opens-only-on-whom-it-names = ''
     the launcher's talkTo opens a talk on the first word it's given alone: a session's address in
@@ -4750,7 +4784,8 @@
     made before the share is never sent and is told as hidden, the share withholding it or, before
     niri has said, not knowing, a row held as it becomes from just before the share is held
     again hidden and as itself once the share ends, another source's hold left be, what's told
-    and unread forgotten as the share begins, and the shell's own recording of one window hides
+    and unread forgotten as the share begins, two asks hidden at once told apart by nothing but
+    their keys and when each was asked, and the shell's own recording of one window hides
     nothing
   '';
   the-asks-place-releases-through-its-daemon = ''
@@ -4806,7 +4841,8 @@
     below a case's hard limit, says so once with the hard limit in force, what would fit and
     ulimit's reason, and runs no case; the check fails where that can't be shown; a case
     whose limits are refused as it is run fails unrun rather than running with none; and a run
-    that can't make both its scratch files stops before any case, leaving neither behind
+    that can't make both its scratch files stops before any case, saying mktemp's reason and
+    leaving neither behind, while one that makes both lets both go as it ends
   '';
   the-cats-walk-is-read-only-from-its-lists = ''
     the cat's code is read as no walk, by the rule it breaks, when WALKS holds anything but
@@ -5325,7 +5361,7 @@
     it says, its note saying when it's signed out or out of reach
   '';
   the-launcher-says-a-lagging-keys-kind-on-niri = ''
-    on niri with reports off, a lagging key's journal line says an arrow whole, and a step in by
+    on niri with reports off, a lagging key's journal line says down and up whole, and a step in by
     Return, out by - and in by a word and a space by its arrow and the key of the launcher's own
     place it took, never the place's name; a key listed without the notices' answer, and their
     answer late, say what was typed by how many letters; and a program's lagging drawer is said by
@@ -5887,8 +5923,8 @@
     refused saying why the next time the launcher opens, types an entry's password on Return
     into the window the launcher opened over, landing on the row from the find first, copies it
     by Copy the Password through the daemon and Passwords' own wl-copy to the clipboard as the
-    launcher goes, the
-    margin wearing the clipboard's mark and the foot, opened again, counting to its clearing,
+    launcher goes, the margin wearing the clipboard's mark and the foot, opened again, counting
+    to its clearing,
     nothing on screen saying it, reads an entry in full as the selection rests on it, never as
     Joel's own ask, its drawer never saying its password, and holds its acts in the design's order
     once it's stepped into, Open the Website handing a stand-in Chrome its website as the
@@ -6353,6 +6389,11 @@
     theme as its light one, a first view's three faces come in under 350 KB, and every type step,
     and code set in small text, starts at 12 px or more
   '';
+  the-wifi-cases-fail-on-a-throw = ''
+    the guard every Wi-Fi case runs over what the shell said fails a run holding a file's line that
+    threw a TypeError, a ReferenceError or a RangeError, or a value Qt couldn't assign, and passes
+    one holding only the launcher's own lines, an Error: in no file's line among them
+  '';
   the-window-buffers-stay-under-load = ''
     the XPS 14's udev sets xe's `shrinker_non_purgeable_seeks` to 64, so reclaim under a build
     leaves window buffers alone
@@ -6427,15 +6468,19 @@
   '';
   tuple-completes-in-zsh = ''
     Tab in zsh offers tuple's commands and subcommands, through Tuple's own completion and the real
-    tuple, among them every command core runs against it and the flags its followers pass
+    tuple, among them every command core runs against it and the flags its followers pass, in a
+    folder of its own whose daemon alone it stops; its editors' script refuses to run with a
+    runtime or data folder outside that folder
   '';
   tuple-ends-its-flags = ''
     The real tuple takes a name that starts with a dash after "--" as a name, never a flag, for each
     command the launcher runs on a contact: call start, call join, and contacts favorite and
     unfavorite; and its script, which stops Tuple's daemon, refuses before reaching tuple from a
-    person's shell in their home or a checkout, the repository's dev shell, a bare environment,
-    the root, a home holding its own runtime folder, and shells holding only some of the build's
-    folders
+    person's shell in their home or a checkout, the repository's dev shell, a bare environment and
+    a home holding its own runtime and data folders, and from the build with any one of its four
+    signs moved or unset, its build folder set above or below the one it's in with a dev shell's
+    sign or without, or a runtime or data folder whose name only begins with the build folder's,
+    while run as the build is it reaches tuple
   '';
   tuple-keeps-its-logs = ''
     Tuple's service keeps the daemon's last three logs, newest first, before it starts, and an empty
@@ -6463,11 +6508,27 @@
     Started line from health is refused, each refusal proven first on a table of settings
   '';
   tuple-shares-through-the-portal = ''
-    Tuple reads the portal setting where the switch writes it
+    Tuple reads the portal setting where the switch writes it, and the script refuses an empty data
+    folder to find; first, the folder of its own that the checks running the real tuple share
+    sends tuple's stop only to its own home, runtime and data folders, the runtime folder made
+    first, ends before any tuple runs when it can't be made, keeps a script's status, and is
+    removed as a script ends but for a stop cut off, which keeps it and says how to stop it
   '';
   tuple-takes-no-real-time-priority = ''
     Tuple's daemon may take no real-time priority, and goes first by a nice below 0 and a CPU weight
     above 100
+  '';
+  twin-screens-each-take-their-own-windows-back = ''
+    Reopen Them All, with two screens of one model back on new connectors, puts a window kept on
+    one twin on the connector its session kept on the other didn't take, and one kept on the
+    session's own twin with it; the window of a twin put back after the walk on the connector a
+    window put back before it didn't take, unless a session took that connector, when the
+    session's twin goes with it; gives windows no connector from sessions handed over outside a
+    walk; keeps, for a walk joined after Joel's focus moved, the screen in use as it began; gives
+    twin sessions of one boot a connector each, as the places their boot kept say; puts a session
+    kept on a screen that's gone on the screen in use as its walk began, the other twin; notes a
+    window away from a screen named constructor or __proto__ as any other, without a throw; and
+    ends each walk before the next case begins, starting nothing for a session in a gone folder
   '';
   type-is-set-by-level = ''
     no QML file of the shell's sets a font's size, weight, axes, letter spacing or case other than
@@ -6525,12 +6586,13 @@
   usb-camera-holders-follow-the-stream = ''
     a USB camera's watch names its holders only while a streaming interface has a nonzero alternate
     setting, names its file for the camera, made a plain file name, and removes it when the node
-    goes or the watch is stopped; a holder's name is one printable line, and only a unit in its
-    cgroup is left out; and while it streams, the running watch says every ten seconds the frames a
-    second uvcvideo counted it giving to a holder it sees; its line adds them up across a stream
-    started afresh between wakes, says a stream's end, as it stops, the camera goes or the watch
-    is stopped, up to the last wake that saw it, even with no count, and counts the next from its
-    own start, survives a log that takes no write, quotes each holder, gives the packets in
+    goes or the watch is stopped; a holder's name is one printable line, and only a system unit its
+    cgroup is in is left out, never a person's own unit of the same name; and while it streams,
+    the running watch says every ten seconds the frames a second uvcvideo counted it giving to a
+    holder it sees; its line adds them up across a stream started afresh between wakes, says a
+    stream's end, as it stops, the camera goes or the watch is stopped, up to the last wake that
+    saw it, even with no count, and counts the next from its own start, survives a log that takes
+    no write, quotes each holder, gives the packets in
     error, each interface by number when there are several, why a count, format or rate is
     unknown, and the controls under the names v4l2-ctl gives them, a control it can't read said
     so, and one that timed out, or a list that stalled there, kept unasked, one asked again each
@@ -6762,7 +6824,8 @@
   '';
   vm-commits-are-signed = ''
     commits are signed with the TPM's keys, PINs asked for; the agents' socket stays off until
-    their key is made, and its path unit starts it once it is
+    their key is made and listens once it is; stopped by hand, it listens and serves
+    again, and stays off once its path unit is stopped first, until that unit starts again
   '';
   vm-desk-facts-follow-a-replug = ''
     desk-facts names a USB sound card plugged into a running machine, stops naming it once it's
@@ -7481,21 +7544,22 @@
     the launcher's Wi-Fi holds the network joined ahead while the launcher's open and Wi-Fi's on,
     so its drawer is served before Joel steps onto it; a change to that drawer alone tells the
     launcher nothing while nobody looks at it, the row it holds drawing the drawer as served
-    now, and one looked at, a drawer coming or going, or a change past it, is told
+    now, and one looked at, a drawer coming or going, or a change past it, is told; and no line
+    throws, names nothing or goes unassigned while it does
   '';
   wifi-looks-only-while-its-rows-are-shown = ''
     the launcher's Wi-Fi asks wifid to look for networks only while its rows are shown: Wi-Fi or
     something in it held, or a find from the root showing a row of its, the launcher open, or a
     terminal's show walked into it; never open on another place, at home or on another's find,
-    and at once on stepping in
+    and at once on stepping in; and no line throws, names nothing or goes unassigned while it does
   '';
   wifi-names-a-network-without-a-country = ''
-    core's kernel, which every machine on it builds, records the name of the network a card
-    joined even when its access point names no country, so networkd matches that network's file
+    core's kernel, with its own patches, records the name of the network a card joined even
+    when its access point names no country, so networkd matches that network's file
   '';
   wifi-sessions-survive-fragmented-memory = ''
     the XPS 14's kernel lets Wi-Fi's block-ack reorder buffers come from vmalloc when memory is
-    too fragmented for an order-5 block, and frees them nowhere with kfree()
+    too fragmented for an order-5 block, and frees them nowhere with kfree() or kfree_sensitive()
   '';
   wifid-calls-passes-clippy = ''
     clippy finds nothing in what tells wifid of calls, or its tests

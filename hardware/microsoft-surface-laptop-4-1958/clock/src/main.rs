@@ -31,8 +31,10 @@ const TARGET_CATEGORY_SAM: u8 = 0x01;
 const TARGET_ID_SAM: u8 = 0x01;
 const COMMAND_SET_UNIX_TIME: u8 = 0x0f;
 const COMMAND_GET_UNIX_TIME: u8 = 0x10;
-/// Time zones run from 12 hours behind UTC to 14 ahead, so an offset past
-/// that can't be the firmware's own and is refused.
+/// Time zones run from 12 hours behind UTC to 14 ahead. Which sign the
+/// firmware's offset takes depends on which of its two clocks keeps local
+/// time, so either is taken up to the widest zone's 14 hours, and an offset
+/// past that can't be the firmware's own and is refused.
 const OFFSET_LIMIT: i64 = 14 * 3600;
 /// What adjtimex answers while the kernel's time isn't synchronised.
 const TIME_ERROR: i32 = 5;
@@ -57,7 +59,10 @@ struct Request {
     response: Buffer,
 }
 
-const _: () = assert!(std::mem::size_of::<Request>() == 40);
+const _: () = assert!(
+    std::mem::size_of::<Request>() == 40,
+    "a request must be the 40 bytes its ioctl number says"
+);
 
 /// The kernel's `struct timex`, 208 bytes on x86-64. Only its first field,
 /// the modes to change, matters, and it's left at none, so adjtimex only
@@ -149,10 +154,16 @@ fn read_cmos(rtc: &Path) -> Result<i64, String> {
     Err(format!("no CMOS clock under {}", rtc.display()))
 }
 
+/// Whether `offset` is one a time zone could give, the one check of both
+/// the offset measured and the offset kept, so the two can't drift apart.
+fn a_zones(offset: i64) -> bool {
+    offset.abs() <= OFFSET_LIMIT
+}
+
 /// The firmware's offset, checked to be one a time zone could give.
 fn offset_from(controller: i64, cmos: i64) -> Result<i64, String> {
     let offset = controller - cmos;
-    if offset.abs() > OFFSET_LIMIT {
+    if !a_zones(offset) {
         return Err(format!(
             "the Aggregator's clock is {offset} s from the CMOS clock, past any time zone's offset"
         ));
@@ -165,7 +176,7 @@ fn parse_offset(text: &str) -> Result<i64, String> {
         .trim()
         .parse()
         .map_err(|error| format!("the offset kept, {text:?}: {error}"))?;
-    if offset.abs() > OFFSET_LIMIT {
+    if !a_zones(offset) {
         return Err(format!(
             "the offset kept, {offset} s, is past any time zone's offset"
         ));
@@ -324,14 +335,49 @@ mod tests {
 
     #[test]
     fn an_offset_past_any_time_zone_is_refused() {
-        assert!(offset_from(1_747_475_245, 1_793_366_371).is_err());
-        assert!(parse_offset("-50401\n").is_err());
+        offset_from(1_747_475_245, 1_793_366_371)
+            .expect_err("a measured offset of over a year was taken");
+        parse_offset("-50401\n").expect_err("a kept offset past 14 hours behind was read");
+        parse_offset("50401\n").expect_err("a kept offset past 14 hours ahead was read");
+    }
+
+    #[test]
+    fn a_measured_offset_is_taken_to_14_hours_either_way_and_no_further() {
+        let cmos = 1_747_446_445;
+        assert_eq!(
+            offset_from(cmos + 50_400, cmos),
+            Ok(50_400),
+            "an Aggregator 14 hours ahead of the CMOS clock should be taken"
+        );
+        assert_eq!(
+            offset_from(cmos - 50_400, cmos),
+            Ok(-50_400),
+            "an Aggregator 14 hours behind the CMOS clock should be taken"
+        );
+        offset_from(cmos + 50_401, cmos)
+            .expect_err("an Aggregator past 14 hours ahead of the CMOS clock was taken");
+        offset_from(cmos - 50_401, cmos)
+            .expect_err("an Aggregator past 14 hours behind the CMOS clock was taken");
+    }
+
+    #[test]
+    fn a_kept_offset_of_exactly_14_hours_is_read() {
+        assert_eq!(
+            parse_offset("50400\n"),
+            Ok(50_400),
+            "14 hours ahead should be read"
+        );
+        assert_eq!(
+            parse_offset("-50400\n"),
+            Ok(-50_400),
+            "14 hours behind should be read too, the offset's sign following which clock is local"
+        );
     }
 
     #[test]
     fn a_kept_offset_is_read_back() {
         assert_eq!(parse_offset("28800\n"), Ok(28_800));
-        assert!(parse_offset("eight hours").is_err());
+        parse_offset("eight hours").expect_err("words were read as an offset");
     }
 
     #[test]
@@ -355,8 +401,9 @@ mod tests {
 
     #[test]
     fn a_time_past_the_aggregator_s_clock_is_refused() {
-        assert!(controller_time(i64::from(u32::MAX), 1).is_err());
-        assert!(controller_time(0, -1).is_err());
+        controller_time(i64::from(u32::MAX), 1)
+            .expect_err("a time past the 32-bit clock's last second was set");
+        controller_time(0, -1).expect_err("a time before the clock's first second was set");
     }
 
     #[test]

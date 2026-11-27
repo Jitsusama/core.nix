@@ -106,9 +106,10 @@
   {
     "at": 1795414135,
     "commit": "c733a13dc676d59eefb86cce91e81c8823dd1565",
-    "due": "2026-11-25",
+    "due": "2026-12-01",
+    "due_why": "Its owner, the shaper's, took it on 26 Nov past its due. Each failure since reads as a starved rig, untested: run alone on a loaded builder, test_unshaped erred at setup 3 of 3, at e0810ee7, 5079c8bd and main b6ec65a3, and all four subtests erred so on main 0a03c1fb on 27 Nov, each its fixture's 90 s wait for the queue to be taken back timing out, while on a quiet builder at b6ec65a3 all four passed. In the run at b6ec65a3 the router let 7.1 Mbit/s of its 8 through, the trace's seconds swung from 2557 to 8675 kbit/s under a shaper holding 6782, and the router's queue kept shedding, so the 5 s it must shed nothing never came. The rig ran its client and router on one core each, as the rate test's client did until a second core ended its starving (#6254), and the fix gives each two. It comes off once twenty net runs in a row after that fix exit 0 with none of its subtests failing; a red run past the seventh after the fix starts the count again and moves the due. While it stands every check in this test goes unguarded, among them that an app beside 32 jobs gets more than half the connection with the shaper and about a fifth or less without.",
     "owner_pr": 6152,
-    "owner_session": "orchestrator",
+    "owner_session": "6EAC3DA6",
     "reason": "failed, then passed, at c733a13dc676",
     "subtests": [
       "test_an_app_outruns_the_jobs",
@@ -183,18 +184,18 @@
     "at": 1795760740,
     "commit": "536a6d77e989efb78e8c42f115830b566a4df64d",
     "due": "2026-11-29",
-    "owner_pr": 6763,
-    "owner_session": "orchestrator",
-    "reason": "has been broken since #6763, but fails with it reverted too, so a later merge breaks it as well; whoever finds that merge fixes it forward and takes it off this list",
+    "owner_pr": 7042,
+    "owner_session": "80ECO2",
+    "reason": "fails only because the net's lent-only setting sends a Mac's comparisons to Linux lenders, which refuse each check for its platform, not through #6763; #7042 reads such a run as not run, and 80ECO2 takes this off once the net runs it",
     "test": "a-macs-checks-since-063296b4dae0652f63e1c3d95ddd9e30a80d7c7d"
   },
   {
     "at": 1795762789,
     "commit": "84ec95294d0cda750cc873c6cf024eb596db1a8d",
     "due": "2026-11-29",
-    "owner_pr": 6204,
-    "owner_session": "orchestrator",
-    "reason": "has been broken since #6204, whose revert won't apply; its owner fixes it forward and takes it off this list",
+    "owner_pr": 7042,
+    "owner_session": "80ECO2",
+    "reason": "fails only because the net's lent-only setting sends a Mac's comparisons to Linux lenders, which refuse each check for its platform, not through #6204; #7042 reads such a run as not run, and 80ECO2 takes this off once the net runs it",
     "test": "a-macs-checks-since-6b3efce3479449e4385a7c608c587a64b45eee82"
   },
   {
@@ -208,5 +209,45 @@
       "test_a_detail_inside_a_thing_is_found_from_the_root_and_return_goes_there"
     ],
     "test": "vm-desktop-launcher-goes-places"
+  },
+  {
+    "at": 1795785057,
+    "commit": "f4954625f987835aa026752c1b3b52d865b36b2d",
+    "due": "2026-11-29",
+    "owner_pr": 7053,
+    "owner_session": "orchestrator",
+    "reason": "failed, then passed, at f4954625f987",
+    "subtests": [
+      "test_the_house_holds_the_upload_under_what_it_leaves"
+    ],
+    "test": "vm-the-house-holds-the-upload"
+  },
+  {
+    "at": 1795789654,
+    "commit": "c06280ba548e891ff671079094e1dd38b6a74a6a",
+    "due": "2026-11-29",
+    "owner_pr": 7119,
+    "owner_session": "orchestrator",
+    "reason": "failed, then passed, at c06280ba548e",
+    "subtests": [
+      "test_each_track_is_full_once_the_image_is_read",
+      "test_the_kernel_fills_each_track_as_it_reads"
+    ],
+    "test": "vm-boot-says-it-wakes-from-hibernation"
+  },
+  {
+    "at": 1795807227,
+    "commit": "6b5965d226c94714ce829f96c8cbbb888352072d",
+    "due": "2026-11-29",
+    "owner_pr": 7133,
+    "owner_session": "orchestrator",
+    "reason": "failed, then passed, at 6b5965d226c9",
+    "subtests": [
+      "test_a_held_port_yields_the_other",
+      "test_a_pin_is_kept_through_a_restart_and_a_stop",
+      "test_a_pin_no_flow_gets_through_lets_go",
+      "test_the_vpns_next_socket_goes_the_quick_way"
+    ],
+    "test": "vm-the-vpn-takes-the-quick-way"
   }
 ]

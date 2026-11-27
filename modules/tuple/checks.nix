@@ -56,8 +56,11 @@ onLinux {
   # Tuple shares a screen through the portal: the switch writes the setting
   # where Tuple keeps it, and Tuple, which ignores a folder it doesn't know
   # and a value not written as it writes one, has to read it back. So the
-  # check runs the switch's own steps, with the data folder moved here
-  # (tests/tuple-shares-through-the-portal.sh).
+  # check runs the switch's own steps, with the data folder moved into a
+  # folder of its own (tests/tuple-shares-through-the-portal.sh). That
+  # folder's library is held first to its promise that a stop reaches only
+  # its own daemon, with a stand-in tuple, as a person's shell would run it
+  # (tests/tuple-in-a-folder-of-its-own-outside.sh).
   tuple-shares-through-the-portal =
     let
       home = account graphical;
@@ -65,8 +68,15 @@ onLinux {
       data = home.xdg.dataHome;
     in
     pkgs.runCommandLocal "tuple-shares-through-the-portal" { nativeBuildInputs = [ tuple ]; } ''
-      ${lib.getExe pkgs.bash} ${./tests/tuple-shares-through-the-portal.sh} \
-        ${home.home.activationPackage}/activate ${data}
+      ${lib.getExe pkgs.bash} ${./tests/tuple-in-a-folder-of-its-own-outside.sh} \
+        ${./tests/tuple-in-a-folder-of-its-own.sh}
+      ${lib.getExe pkgs.bash} ${./tests/tuple-shares-through-the-portal.sh} ${
+        lib.escapeShellArgs [
+          "${./tests/tuple-in-a-folder-of-its-own.sh}"
+          "${home.home.activationPackage}/activate"
+          data
+        ]
+      }
       touch $out
     '';
 
@@ -154,7 +164,8 @@ onLinux {
   # The tuple command completes in zsh with Tuple's own completion, which
   # only shows when Tab offers nothing, so the check completes commands
   # in a real line editor with the real tuple (tests/tuple-completion.zsh),
-  # held to a time (tests/tuple-completes-in-zsh.sh).
+  # held to a time, in a folder of its own whose daemon alone it stops
+  # (tests/tuple-completes-in-zsh.sh).
   tuple-completes-in-zsh =
     let
       home = account graphical;
@@ -169,7 +180,8 @@ onLinux {
       }
       ''
         ${lib.getExe pkgs.bash} ${./tests/tuple-completes-in-zsh.sh} \
-          ${./tests/tuple-completion.zsh} ${tuple}/share/zsh/site-functions/_tuple
+          ${./tests/tuple-in-a-folder-of-its-own.sh} ${./tests/tuple-completion.zsh} \
+          ${tuple}/share/zsh/site-functions/_tuple
         touch $out
       '';
 
@@ -179,8 +191,9 @@ onLinux {
   # asked with one name too many, which the real tuple refuses by counting,
   # in a sandbox with no network or account, so it reaches nobody
   # (tests/tuple-ends-its-flags.sh). It stops Tuple's daemon, so it's run
-  # first from the shells a person would run it from, each of which it
-  # must refuse (tests/tuple-ends-its-flags-outside.sh). To see what a
+  # first from the shells a person would run it from, and as the build with
+  # each of its signs moved, each of which it must refuse, and as the build
+  # is, which it must let through (tests/tuple-ends-its-flags-outside.sh). To see what a
   # command takes by hand, `tuple help <cmd>` prints it without running it,
   # as package.nix says.
   tuple-ends-its-flags =

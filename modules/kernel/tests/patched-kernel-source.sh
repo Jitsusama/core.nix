@@ -3,27 +3,22 @@
 # from the source, a tarball or a folder, into the output folder, with
 # each patch listed applied to just those files. A check then reads what
 # the kernel the machine boots does, without unpacking or building all of
-# it.
-# usage: patched-kernel-source.sh <source> <patch list> <out> <file>...
+# it. The files are taken by kernel-source-files.sh, handed in first.
+# usage: patched-kernel-source.sh <kernel-source-files.sh> <source> <patch list> <out> <file>...
 set -euo pipefail
+# A failure inside a command substitution, such as one of the library's,
+# stops the check too, rather than passing an empty value along.
+shopt -s inherit_errexit
 
-source=$1
-patches=$2
-out=$3
-shift 3
+# The library is handed in by its store path; shellcheck reads it from here.
+# shellcheck source=SCRIPTDIR/kernel-source-files.sh
+source "$1"
+source=$2
+patches=$3
+out=$4
+shift 4
 
-mkdir -p "$out"
-if [ -d "$source" ]; then
-  for file in "$@"; do
-    install -D -m 644 "$source/$file" "$out/$file"
-  done
-else
-  wanted=()
-  for file in "$@"; do
-    wanted+=("*/$file")
-  done
-  tar xf "$source" -C "$out" --strip-components=1 --wildcards "${wanted[@]}"
-fi
+take_kernel_files "$source" "$patches" "$out" "$@"
 
 # Each patch, cut to the files given, as the build applies it.
 only=()

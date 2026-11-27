@@ -210,8 +210,12 @@ Scope {
     // asked cold a second time is read afresh (Y2YBTS's review of #2433).
     property bool answeredThisWatch: false
 
-    // Every record held, by key: plain fields, read beside `revision`.
-    readonly property var held: ({})
+    // Every record held, by key: plain fields, read beside `revision`. It
+    // inherits nothing, so a record a node keys "__proto__" or
+    // "constructor" is held as any other, rather than reading as held
+    // already or setting the map's prototype and hiding from
+    // Object.values (#6848's council).
+    readonly property var held: Object.create(null)
     property int revision: 0
     // How it stands: "starting", the daemon's own word, or "not answering".
     property string state: "starting"
@@ -628,7 +632,8 @@ Scope {
             waiting[id](null);
     }
 
-    // How many times it's been refused since it last answered.
+    // How many times it has backed off to try again since it last answered, whether its socket
+    // refused, dropped it or wasn't there, so one short of its tries when nothing answered.
     property int refusals: 0
 
     // The QLocalSocket error its link's last try failed with, null since it last connected, so a

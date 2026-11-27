@@ -1073,11 +1073,7 @@ pub fn switch(config: &Config, system: &Path) -> Result<Switched, Failure> {
     set_profile(config, system)?;
     match config.kind {
         Kind::Nixos => {
-            let booted = &config.booted;
-            let waits = booted
-                .exists()
-                .then(|| for_next_boot(booted, system))
-                .flatten();
+            let waits = next_boot(config, system);
             let unbooted = waits.is_some() && config.boot_check.is_some();
             // It says what it stopped, started and restarted on its error
             // stream.
@@ -1113,6 +1109,23 @@ pub fn switch(config: &Config, system: &Path) -> Result<Switched, Failure> {
             })
         }
     }
+}
+
+/// What only the next boot brings in switching to NixOS system `system`
+/// from the one the machine booted, as `for_next_boot` says it.
+fn next_boot(config: &Config, system: &Path) -> Option<String> {
+    let booted = &config.booted;
+    booted
+        .exists()
+        .then(|| for_next_boot(booted, system))
+        .flatten()
+}
+
+/// Whether switching to `system` makes it the boot default at once, as
+/// NixOS's switch does for one that needn't wait on its boot check.
+pub fn boots_at_once(config: &Config, system: &Path) -> bool {
+    matches!(config.kind, Kind::Nixos)
+        && (config.boot_check.is_none() || next_boot(config, system).is_none())
 }
 
 /// How many units a failed switch quotes, and how many of each one's
@@ -1256,7 +1269,8 @@ pub fn healthy(config: &Config) -> Result<(), Failure> {
     }
 }
 
-fn set_profile(config: &Config, system: &Path) -> Result<(), Failure> {
+/// Points the profile at `system`, as a generation of its own, newest of all.
+pub fn set_profile(config: &Config, system: &Path) -> Result<(), Failure> {
     let mut nix_env = run::command(&config.tools.nix_env, &config.state);
     nix_env.arg("--profile").arg(&config.profile).arg("--set");
     run::output(nix_env, "pointing the profile at the system", [system]).map(|_| ())

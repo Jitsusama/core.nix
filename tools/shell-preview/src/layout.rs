@@ -112,7 +112,19 @@ mod tests {
         fn new(test: &str) -> Self {
             let root =
                 std::env::temp_dir().join(format!("shell-preview-{}-{test}", std::process::id()));
-            let _ = fs::remove_dir_all(&root);
+            if let Err(error) = fs::remove_dir_all(&root) {
+                assert_eq!(
+                    error.kind(),
+                    std::io::ErrorKind::NotFound,
+                    "{} should be cleared: {error}",
+                    root.display()
+                );
+            }
+            // Made afresh, so an earlier run's files, or a folder planted
+            // there, fail the test rather than feed it.
+            fs::create_dir(&root).unwrap_or_else(|error| {
+                panic!("{} should be made afresh: {error}", root.display())
+            });
             for folder in ["built/launcher", "work/modules/quickshell/launcher"] {
                 fs::create_dir_all(root.join(folder)).expect("a folder");
             }
@@ -175,8 +187,16 @@ mod tests {
             }
         );
         let copy = folders.at("into/Theme.qml");
-        assert!(!copy.is_symlink());
-        assert!(fs::read_to_string(copy).expect("copied").contains("accent"));
+        assert!(
+            !copy.is_symlink(),
+            "a built file should be copied, not linked: {}",
+            copy.display()
+        );
+        let copied = fs::read_to_string(copy).expect("copied");
+        assert_eq!(
+            copied, "QtObject { property color accent }\n",
+            "the copy should hold what was built"
+        );
     }
 
     #[test]
@@ -229,7 +249,11 @@ mod tests {
     #[test]
     fn a_tracked_file_deleted_from_the_working_copy_is_passed_over() {
         let folders = Folders::new("deleted");
-        assert!(folders.known(&["modules/quickshell/Gone.qml"]).is_empty());
+        let known = folders.known(&["modules/quickshell/Gone.qml"]);
+        assert!(
+            known.is_empty(),
+            "a file gone from the working copy should be passed over: {known:?}"
+        );
     }
 
     #[test]

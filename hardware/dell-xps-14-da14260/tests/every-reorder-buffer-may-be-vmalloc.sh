@@ -1,8 +1,9 @@
 # shellcheck shell=bash
 # Checks that iwlmld's block-ack session data, reorder buffers and all, is
 # allocated so it may come from vmalloc, and that no file given frees it
-# with kfree(), which takes only kmalloc's memory and corrupts the slab on
-# vmalloc's. kfree_rcu() is kvfree_rcu() in 7.3, so it may stay. A newer
+# with kfree() or kfree_sensitive(), which take only kmalloc's memory and
+# corrupt the slab on vmalloc's. kfree_rcu() is kvfree_rcu() in 7.3, so it
+# may stay, as kvfree() and kvfree_sensitive() may. A newer
 # kernel's new free path, carried onto the patch, would otherwise turn a
 # refused session into a crash. The driver names the session data
 # baid_data, ba_data or data from one function to the next, so each
@@ -16,22 +17,57 @@ if ! grep -q 'baid_data = kvzalloc(' "$1"; then
 fi
 # Within each function, from its opening line to the brace closing it at the
 # line's start, a name declared as the session data's pointer, as a
-# parameter or a local, is held; a kfree() of a name held is reported.
+# parameter or a local, the first on its declaration or one after, is held;
+# a kfree() or kfree_sensitive() of a name held is reported. So is such a
+# free of what the session table holds, whatever reads it out, and the
+# session data's pointer declared to be freed so as it leaves its scope.
+# The lines of a statement are read as one, up to the semicolon or brace
+# ending it, so a call broken over lines is read whole, with any space or
+# cast in it.
 freed=$(awk '
-  /^[A-Za-z].*\(/ { delete names }
-  {
-    line = $0
+  # Reads one statement: its names for the session data first, then its frees.
+  function judge(statement, from,    line, name, hit) {
+    line = statement
     while (match(line, /struct iwl_mld_baid_data \*[A-Za-z_][A-Za-z0-9_]*/)) {
       name = substr(line, RSTART, RLENGTH)
       sub(/.*\*/, "", name)
       names[name] = 1
       line = substr(line, RSTART + RLENGTH)
-    }
-    for (name in names) {
-      if ($0 ~ ("(^|[^A-Za-z0-9_])kfree\\(" name "([^A-Za-z0-9_]|$)")) {
-        print FILENAME ":" FNR ":" $0
+      while (match(line, /^[^;)(]*, *\*[A-Za-z_][A-Za-z0-9_]*/)) {
+        name = substr(line, RSTART, RLENGTH)
+        sub(/.*\*/, "", name)
+        names[name] = 1
+        line = substr(line, RSTART + RLENGTH)
       }
     }
+    hit = statement ~ (kfree "[^;]*fw_id_to_ba")
+    hit = hit || statement ~ /struct iwl_mld_baid_data .*__free\( *kfree(_sensitive)? *\)/
+    for (name in names) {
+      hit = hit || statement ~ (kfree cast name "([^A-Za-z0-9_]|$)")
+    }
+    if (hit) {
+      print FILENAME ":" from ":" statement
+    }
+  }
+  BEGIN {
+    # A call of kfree() or kfree_sensitive(), which zeroes the memory and then
+    # calls kfree(), with any space between its name and its parenthesis, and
+    # any cast of its argument after them.
+    kfree = "(^|[^A-Za-z0-9_])kfree(_sensitive)?[ \t]*\\([ \t]*"
+    cast = "(\\([^()]*\\)[ \t]*)*"
+  }
+  /^[A-Za-z].*\(/ { delete names; statement = "" }
+  {
+    if (statement == "") {
+      from = FNR
+      statement = $0
+    } else {
+      statement = statement " " $0
+    }
+  }
+  /[;{}]/ {
+    judge(statement, from)
+    statement = ""
   }
   /^}/ { delete names }
 ' "$@")

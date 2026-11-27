@@ -617,11 +617,11 @@ mod tests {
 
     #[test]
     fn a_run_passes_only_when_every_step_did_and_nothing_stopped_it() {
-        let save = Failed {
+        let save = [Failed {
             signal: "save",
             missing: None,
             figures: vec![("p99_ms", "p99 40.0 ms against 9.0 ms idle".to_owned())],
-        };
+        }];
         let step = |builds, failed: &[Failed]| Step {
             builds,
             failed: failed.to_vec(),
@@ -634,11 +634,17 @@ mod tests {
             run(vec![step(4, &[]), step(8, &[])], None).passed(),
             "a run whose steps all passed didn't pass"
         );
-        let failed = run(vec![step(4, &[]), step(8, &[save])], None);
+        // A pass between the two failures tells the first failed step
+        // apart from where the last run of failures begins.
+        let failed = run(
+            vec![step(4, &[]), step(8, &save), step(12, &[]), step(20, &save)],
+            None,
+        );
         assert_eq!(
             (failed.passed(), failed.first_failed()),
             (false, Some(8)),
-            "a run with a failed save wasn't failed at its step"
+            "a run whose save failed at 8 builds, passed at 12 and failed at 20 \
+             wasn't failed at 8"
         );
         assert!(
             !run(vec![step(4, &[])], Some(8 * GIB)).passed(),

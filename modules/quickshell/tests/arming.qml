@@ -68,6 +68,14 @@ QtObject {
             presses([{ id: "reboot", keys: 5, at: 0 }, { id: "reboot", keys: 6, at: 100 },
                 { id: "reboot", keys: 7, at: 2000 }]),
             "armed  ends | not");
+        // A second press whose time can't be told from the arming's, as one
+        // not a number, or an arming at none, is held as doubled, so a slip
+        // there never ends the session.
+        expect("a second press timed at no number, or after an arming at none, does nothing",
+            [[0, NaN], [NaN, 2000], [0, undefined]].map(([first, second]) =>
+                presses([{ id: "reboot", keys: 5, at: first },
+                    { id: "reboot", keys: 6, at: second }])).join(", "),
+            "armed  | armed, armed  | armed, armed  | armed");
         // A click counts no key, so a click on the row a Return armed does
         // it, and a second click does what a second Return does.
         expect("a click after a Return does it",
@@ -185,8 +193,43 @@ QtObject {
             Arming.keepsSteps(null, [stepOf({}), stepOf(never)]), false);
         expect("nor one whose named source says so",
             Arming.keepsSteps(never, [stepOf({})]), false);
+        expect("nor one holding a never-kept source's row by shownBy, as For You an ask",
+            Arming.keepsSteps(null, [stepOf({}), { row: { key: "ask", shownBy: never } }]),
+            false);
+        expect("nor one whose row says a kept from but a never-kept shownBy",
+            Arming.keepsSteps(null, [{ row: { key: "ask", from: {}, shownBy: never } }]), false);
+        expect("nor one holding an ask made hidden, which says no source but holds still",
+            Arming.keepsSteps(null, [stepOf({}), { row: { key: "ask", still: true } }]), false);
         expect("one whose steps and name keep is, a step with no source among them",
             Arming.keepsSteps(null, [stepOf({}), { row: {} }]), true);
+
+        // Whether run changes no source, in its own order, for the line's
+        // key run from inside a step: what only asks, steps in or does
+        // nothing changes none, and the rest may act.
+        const run = () => {};
+        // Each is [choice, inside, heldStill], said as what each gave.
+        const none = cases => cases.map(one => Arming.changesNone(...one)).join(" ");
+        expect("a verb asking for a target inside a step, or for words, changes none",
+            none([[{ targets: true }, true, false], [{ targets: true, run, verb: "more" }, true,
+                false], [{ given: true, run }, false, false]]), "true true true");
+        expect("nor does a gone row, one held still, or a category or group stepped into",
+            none([[{ gone: true, run }, true, false], [{ run, returns: "run" }, true, true],
+                [{ category: true }, true, false], [{ group: true }, false, false]]),
+            "true true true true");
+        // Each in run's order: gone before a Return's act or a start, and a
+        // category's step-in after a start.
+        expect("a gone row changes none whatever its Return does, and a category's start acts",
+            none([[{ gone: true, returns: { run } }, true, false],
+                [{ gone: true, start: "vol " }, true, false],
+                [{ category: true, start: "vol " }, true, false]]), "true true false");
+        expect("a start put in the field, or a Return's act, may act, though they ask too",
+            none([[{ start: "vol ", given: true }, true, false],
+                [{ returns: { run }, targets: true }, true, false]]), "false false");
+        expect("but a Return's act that only asks for words changes none, as ranReturn asks",
+            none([[{ returns: { given: true, run }, run }, true, false]]), "true");
+        expect("as does a target verb with its own run, or one outside a step",
+            none([[{ targets: true, run, verb: "close" }, true, false],
+                [{ targets: true }, false, false], [{ run }, true, false]]), "false false false");
 
         // What Return does on the selected row, as onAccepted asks: a held
         // row is held before anything else it might be stepped into,

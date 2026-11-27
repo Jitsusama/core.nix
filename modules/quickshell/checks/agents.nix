@@ -199,8 +199,8 @@
 
   # Carry Back asks the realm's node only a carry of a quest to a machine,
   # rebuilt from the act's parts, and says how it ended in the node's own words,
-  # as modules/quickshell/tests/carry-back.qml holds launcher/CarryBack.js to it
-  # in Qt's own engine.
+  # on the row keyed as ReadyRows keyed it, as modules/quickshell/tests/
+  # carry-back.qml holds launcher/CarryBack.js to it in Qt's own engine.
   carry-back-asks-the-node-only-a-carry =
     let
       qt = pkgs.qt6.qtdeclarative;

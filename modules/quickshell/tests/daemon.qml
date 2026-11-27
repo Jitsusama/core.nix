@@ -33,7 +33,9 @@
 // go never said as changed, and a whole answer says only the keys whose
 // records differ from what was held and those it dropped, so a rewatch
 // answered with the same records hears nothing, and lets go nothing
-// watched ahead, which it never names. A handler of a told change
+// watched ahead, which it never names. Records keyed as names every
+// object inherits, "__proto__" among them, are held as any other, and
+// one never held is never said as let go. A handler of a told change
 // reads when its line was heard, and one of a watch's whole answer, or one
 // it puts off, reads none. Each daemon's lines and their length are
 // counted by its name, for the launcher's census, and begun again once
@@ -41,7 +43,9 @@
 // shell let the connection go itself. A client holding its wire watches
 // neither its socket nor its folder. A socket that refuses is tried again
 // twice as late each time, a minute at most, counted again from its next
-// answer. Each step waits on what the client says, at most ten seconds.
+// answer. Each step waits on what the client says, ten seconds unless it
+// says it needs longer, and the whole run waits at most 110 s, so a slow
+// run fails naming the step it was on and how long each before it took.
 // It exits 0 once every case holds, and otherwise 1, saying which didn't.
 // Its stand-ins are in modules/quickshell/tests/stand-ins. Long because
 // its cases run in turn against one real people daemon and its stand-ins,
@@ -201,6 +205,27 @@ ShellRoot {
         }
     }
     property int rewatchHeard: -1
+
+    // Told records keyed by names every object inherits, as a node could
+    // key one: each is held, not read as held already or set as the
+    // map's prototype, then mended and let go as any other.
+    Daemon {
+        id: inheriting
+
+        socket: `${root.runtime}/daemons/kinds.sock`
+        kind: "inherited"
+        changesDiffer: true
+        watching: ({ deep: ["presence"] })
+        onHeard: (changed, gone) => {
+            root.inheritedChanged = root.inheritedChanged.concat(changed);
+            root.inheritedGone = root.inheritedGone.concat(gone);
+        }
+    }
+    // What it said changed, and what it let go: "constructor" alone, told
+    // gone in the change, since its answer's gone "toString" was never
+    // held, though a map that inherits reads it as held.
+    property var inheritedChanged: []
+    property var inheritedGone: []
 
     // Answered whole and watching a key ahead that its kind's whole answer never names, as a
     // place's ready rows watch a drawer served apart: watched again, as each opening watches.
@@ -377,9 +402,9 @@ ShellRoot {
     }
 
     function fail(what) {
-        // Its refusals and whether its daemon runs say which of a restart's
-        // tries a failing step was waiting on.
-        console.warn(`FAIL ${what}: state ${people.state}, refused ${people.refusals} times,`
+        // How often it backed off and whether its daemon runs say which of a
+        // restart's tries a failing step was waiting on.
+        console.warn(`FAIL ${what}: state ${people.state}, backed off ${people.refusals} times,`
             + ` its daemon ${peopleRunning.running ? "running" : "stopped"}`
             + `, held ${JSON.stringify(people.held)}`
             + `, listed ${Object.keys(listed.held).join(" ")}`
@@ -389,19 +414,22 @@ ShellRoot {
             + `, letting go ${lettingGo.state} ${root.letGo} ${JSON.stringify(root.letGoGiven)}`
             + ` awaiting ${Object.keys(lettingGo.awaited).length}`
             + `, relinked ${root.relinked}, backed off ${lettingGo.refusals} times`
-            + `, its last try ${root.failure(lettingGo.failedWith)}`
+            + `, its tries ${root.failure(lettingGo.failedWith)}`
             + `, the census heard ${root.heardSaid} of ${root.heardLines.join(" and ")}`);
         Qt.exit(1);
     }
 
     // A link's last failure in words, by QLocalSocket's LocalSocketError, so a FAIL line read
-    // from any step says it without Qt's enum beside it.
+    // from any step says it without Qt's enum beside it. Those past 3 are what a connect
+    // starved on a busy builder may end as: out of the kernel's resources, timed out, or a
+    // failure Qt names no further.
     function failure(code) {
         if (code === null)
-            return "none failed since it last connected or was relinked, if it tried at all";
+            return "haven't failed since it last connected or was relinked, if it tried at all";
         const named = { "-1": "unknown", 0: "refused", 1: "closed by the daemon",
-            2: "found nothing there", 3: "not allowed" }[code];
-        return `failed with ${code}${named === undefined ? "" : `, ${named}`}`;
+            2: "found nothing there", 3: "not allowed", 4: "out of resources",
+            5: "timed out", 7: "a connection error" }[code];
+        return `last failed with ${code}${named === undefined ? "" : `, ${named}`}`;
     }
 
     function heldWay(key) {
@@ -411,6 +439,10 @@ ShellRoot {
     // The steps in order, each with what it does and what it waits for.
     property int step: 0
     property int left: 0
+    // When the step now waiting began, and how long each before it took, in seconds, so a run
+    // stopped at 110 s says which step spent its time, not only which it stopped on.
+    property real stepBegan: 0
+    property var took: []
     property var answered: undefined
     property int aheadToldBefore: 0
     // The stages an ask answered in steps was given, in order.
@@ -419,10 +451,14 @@ ShellRoot {
     readonly property var steps: [
         {
             what: "no daemon is said as not answering",
-            // The let-go link's socket is a symlink to the daemon's, not there yet, so its
-            // first try says it found nothing, as its FAIL line's words would.
             holds: () => people.state === "not answering" && !none.answered
-                && lettingGo.failedWith === lettingGo.serverNotFound
+        },
+        {
+            what: "a link to a socket's symlink with nothing behind it says it found nothing there",
+            // The let-go link's socket is a symlink to the daemon's, not there yet, so each of
+            // its tries fails with Qt's ServerNotFoundError, which Daemon.qml's serverNotFound
+            // and its FAIL line's words take as 2.
+            holds: () => lettingGo.failedWith === lettingGo.serverNotFound
         },
         {
             what: "a get with no daemon is given none at once",
@@ -448,6 +484,9 @@ ShellRoot {
             // at all, 2, 6 and 14 s on, each inside the 20 s it's given. What
             // its tries failed with counts afresh too, so a FAIL line names
             // only the relink's, and it's said gone once the relink connects.
+            // On the path a passing run takes, the link connects by itself
+            // after failing with 2 above, so its failure still being there
+            // once it's connected would show Daemon.qml no longer clears it.
             polls: 400,
             holds: () => {
                 const answering = people.state === "answering" && "slack" in people.sources;
@@ -711,6 +750,18 @@ ShellRoot {
             }
         },
         {
+            what: "records keyed as names every object inherits are held, mended and let go"
+                + " as any other, and one keyed by a number is never held",
+            holds: () => Object.keys(inheriting.held).join(" ") === "__proto__"
+                && inheriting.held["__proto__"]?.heard === 2
+                && inheriting.held["__proto__"]?.kind === "constructor"
+                && root.inheritedChanged.join(" ") === "__proto__ constructor __proto__"
+                && root.inheritedGone.join(" ") === "constructor",
+            shows: () => `held ${JSON.stringify(inheriting.held)},`
+                + ` changed ${JSON.stringify(root.inheritedChanged)},`
+                + ` let go ${JSON.stringify(root.inheritedGone)}`
+        },
+        {
             what: "a handler of a change reads when its line was heard, one of a watch's"
                 + " whole answer and one put off read none",
             holds: () => root.wholeMarkedAt === 0 && root.markedAt > 0 && root.markedAt <= root.markedThen
@@ -746,7 +797,7 @@ ShellRoot {
                 if (root.heardSaid === null) {
                     root.heardLines = [heardBy([people, listed, forgetting, refreshed, paced]),
                         heardBy([kinds, differing, flat, whole, wholeFor, rewatched, wholeAhead,
-                            marked, repaced, none])];
+                            inheriting, marked, repaced, none])];
                     root.heardSaid = Hearing.heardMost(99).said;
                 }
                 const peopleSaid = /(?:^|, )people ([0-9]+) lines?, ([0-9]+) characters/
@@ -825,6 +876,7 @@ ShellRoot {
         const now = steps[step];
         // Ten seconds a step, or as many polls as a step says it may need.
         left = now.polls ?? 200;
+        stepBegan = Date.now();
         if (now.run)
             now.run();
         waiting.start();
@@ -839,6 +891,7 @@ ShellRoot {
             const now = root.steps[root.step];
             if (now.holds()) {
                 stop();
+                root.took = [...root.took, Math.round((Date.now() - root.stepBegan) / 100) / 10];
                 root.step += 1;
                 if (root.step === root.steps.length) {
                     peopleRunning.running = false;
@@ -851,7 +904,7 @@ ShellRoot {
                 root.left -= 1;
                 if (root.left === 0) {
                     stop();
-                    root.fail(now.what);
+                    root.fail(now.shows ? `${now.what} (${now.shows()})` : now.what);
                 }
             }
         }
@@ -860,13 +913,15 @@ ShellRoot {
     // The whole run ends here, short of the check's 150 s timeout, so a run slowed past it
     // fails with its FAIL line, naming the step it was on, rather than killed with none. This
     // counts from the file loading, the timeout from the shell starting, so the 40 s between
-    // are the shell's own start as well as the FAIL line's.
+    // are the shell's own start as well as the FAIL line's. A hang that stops the shell's
+    // event loop fires no timer, so it's still killed at 150 s with no FAIL line.
     Timer {
         running: true
         interval: 110000
         onTriggered: {
             waiting.stop();
-            root.fail(`${root.steps[root.step]?.what ?? "its end"}, still waiting at 110 s`);
+            root.fail(`${root.steps[root.step]?.what ?? "its end"}, still waiting at 110 s`
+                + `, the steps before it taking ${root.took.join(", ")} s in turn`);
         }
     }
 

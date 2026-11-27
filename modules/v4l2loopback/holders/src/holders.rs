@@ -107,14 +107,38 @@ fn own_name(proc: &Path) -> io::Result<String> {
     Ok(name)
 }
 
-/// Whether a process is in one of the units, by its cgroup, which no
-/// program can put itself in as it can take any name.
+/// Whether a process is in one of the system's units, by its cgroup.
+/// A program can take any name, and a person's own manager can start a
+/// unit of any name too, but only under user@UID.service; so the unit
+/// counts only where the system's manager puts it, as the first part of
+/// the path that isn't a slice. Only the unified hierarchy's line is read,
+/// since a legacy hierarchy can be shaped by whoever it's delegated to,
+/// and a process with no such line, or more than the one the kernel
+/// writes, is never left out: naming the relay shows the camera on, while
+/// leaving out a reader would show it off. The kernel refuses a newline in
+/// a cgroup's name, so a second line is no more than a guard.
 pub fn ignored(cgroup: &str, units: &[String]) -> bool {
-    cgroup.lines().any(|line| {
-        let path = line.rsplit_once(':').map_or(line, |(_, path)| path);
-        path.split('/')
-            .any(|part| units.iter().any(|unit| unit == part))
-    })
+    let mut unified = cgroup.lines().filter_map(|line| line.strip_prefix("0::/"));
+    let (Some(path), None) = (unified.next(), unified.next()) else {
+        return false;
+    };
+    path.split('/')
+        .find(|part| {
+            part.rsplit_once('.')
+                .is_none_or(|(_, kind)| kind != "slice")
+        })
+        .is_some_and(|part| units.iter().any(|unit| unit == part))
+}
+
+/// Whether a process is left out, by what reading its cgroup file gave.
+/// It's read as bytes, since a person can name a cgroup of their own with
+/// any byte but a slash or a newline; and a file that can't be read names
+/// the process rather than leaving it out, as one that has ended fails to
+/// be named anyway.
+pub fn left_out(cgroup: &io::Result<Vec<u8>>, units: &[String]) -> bool {
+    cgroup
+        .as_ref()
+        .is_ok_and(|text| ignored(&String::from_utf8_lossy(text), units))
 }
 
 /// Whether a process's maps still hold the node's buffers, as a reader
@@ -132,7 +156,11 @@ pub fn maps(mapped: &[u8], node: &Path, inode: u64) -> bool {
 }
 
 /// Whether a process has the node open, under any name: a by-id link, or
-/// /dev/videoN.
+/// /dev/videoN. A process in a mount namespace of its own, as a sandboxed
+/// app is, still reads as /dev, its own namespace's path. Only a node
+/// bound somewhere outside any /dev is missed, since telling it apart
+/// would mean asking every open file what it is, and one on a network or
+/// FUSE filesystem that hangs would hang the watch for every camera.
 fn holds(proc: &Path, device: u64) -> io::Result<bool> {
     for fd in fs::read_dir(proc.join("fd"))? {
         let fd = fd?.path();
@@ -157,11 +185,22 @@ pub fn holders(
     units: &[String],
     before: &HashSet<u32>,
 ) -> io::Result<(BTreeSet<String>, HashSet<u32>)> {
+    holders_in(Path::new("/proc"), node, units, before)
+}
+
+/// The programs holding the node, and their processes, as the process
+/// folder given has them, so a test can walk a folder it made.
+fn holders_in(
+    proc_root: &Path,
+    node: &Path,
+    units: &[String],
+    before: &HashSet<u32>,
+) -> io::Result<(BTreeSet<String>, HashSet<u32>)> {
     let status = fs::metadata(node)?;
     let own = std::process::id();
     let mut names = BTreeSet::new();
     let mut pids = HashSet::new();
-    for entry in fs::read_dir("/proc")?.flatten() {
+    for entry in fs::read_dir(proc_root)?.flatten() {
         let Some(pid) = entry
             .file_name()
             .to_str()
@@ -178,7 +217,7 @@ pub fn holders(
             if !held && before.contains(&pid) {
                 held = maps(&fs::read(proc.join("maps"))?, node, status.ino());
             }
-            if !held || ignored(&fs::read_to_string(proc.join("cgroup"))?, units) {
+            if !held || left_out(&fs::read(proc.join("cgroup")), units) {
                 return Ok(None);
             }
             program(&proc).map(Some)
@@ -209,15 +248,109 @@ mod tests {
         assert_eq!(unwrapped(".hidden"), ".hidden");
     }
 
+    /// Holds each cgroup file to whether its process is left out, with
+    /// the relay's unit ignored.
+    fn each_left_out(cases: &[(&str, bool)]) {
+        each_left_out_of(&["stand-in.service"], cases);
+    }
+
+    /// Holds each cgroup file, read as the watch reads it, to whether its
+    /// process is left out with these units ignored.
+    fn each_left_out_of(units: &[&str], cases: &[(&str, bool)]) {
+        let units: Vec<String> = units.iter().map(|&unit| unit.to_owned()).collect();
+        for (cgroup, out) in cases {
+            assert_eq!(
+                left_out(&Ok(cgroup.as_bytes().to_vec()), &units),
+                *out,
+                "whether {cgroup:?} is left out"
+            );
+        }
+    }
+
     #[test]
-    fn only_a_unit_in_the_cgroup_path_is_ignored() {
+    fn only_a_system_unit_in_the_cgroup_path_is_ignored() {
+        each_left_out(&[
+            ("0::/system.slice/stand-in.service\n", true),
+            ("0::/system.slice/stand-in.service/relay\n", true),
+            ("0::/a.slice/a-b.slice/stand-in.service\n", true),
+            ("0::/user.slice/user-1000.slice/app.slice/x.scope\n", false),
+            ("0::/system.slice/stand-in.service.d\n", false),
+        ]);
+    }
+
+    #[test]
+    fn a_unit_a_person_starts_by_the_same_name_is_not_ignored() {
+        // Anyone can run systemd-run --user --unit=stand-in.service, or
+        // make a cgroup by that name in the subtree their manager is given.
+        let user = "0::/user.slice/user-1000.slice/user@1000.service";
+        each_left_out(&[
+            (&format!("{user}/app.slice/stand-in.service\n"), false),
+            (&format!("{user}/stand-in.service\n"), false),
+            (
+                &format!("{user}/app.slice/x.service/stand-in.service\n"),
+                false,
+            ),
+            ("0::/system.slice/x.service/stand-in.service\n", false),
+        ]);
+    }
+
+    #[test]
+    fn only_the_unified_hierarchy_says_a_unit() {
+        each_left_out(&[
+            ("1:name=systemd:/system.slice/stand-in.service\n", false),
+            (
+                "1:name=systemd:/user.slice\n0::/system.slice/stand-in.service\n",
+                true,
+            ),
+            // The kernel writes one unified line, so a file with two
+            // says nothing trustworthy, whichever way round they are.
+            (
+                "0::/user.slice/x.scope\n0::/system.slice/stand-in.service\n",
+                false,
+            ),
+            (
+                "0::/system.slice/stand-in.service\n0::/user.slice/x.scope\n",
+                false,
+            ),
+        ]);
+    }
+
+    #[test]
+    fn a_process_in_no_unit_is_never_left_out() {
+        // Only root can put a process straight in a slice, or at the root,
+        // but either has no unit to leave out, even with its slice named.
+        let slices = ["stand-in.service", "system.slice", "user-1000.slice"];
+        each_left_out_of(
+            &slices,
+            &[
+                ("0::/system.slice/x.service\n", false),
+                ("0::/\n", false),
+                ("0::/system.slice\n", false),
+                ("0::/user.slice/user-1000.slice\n", false),
+                ("", false),
+            ],
+        );
+    }
+
+    #[test]
+    fn a_cgroup_file_that_isnt_text_or_cant_be_read_leaves_out_only_the_relay() {
         let units = ["stand-in.service".to_owned()];
-        assert!(ignored("0::/system.slice/stand-in.service\n", &units));
-        assert!(!ignored(
-            "0::/user.slice/user-1000.slice/app.slice/x.scope\n",
-            &units
-        ));
-        assert!(!ignored("0::/system.slice/stand-in.service.d\n", &units));
+        let user = b"0::/user.slice/user-1000.slice/user@1000.service";
+        let odd = Ok([&user[..], b"/\xff/stand-in.service\n"].concat());
+        assert!(
+            !left_out(&odd, &units),
+            "a cgroup named with a byte that isn't text is named"
+        );
+        let gone = Err(io::Error::from(io::ErrorKind::NotFound));
+        assert!(
+            !left_out(&gone, &units),
+            "a cgroup file that can't be read is named"
+        );
+        let relay = Ok(b"0::/system.slice/stand-in.service/\xff\n".to_vec());
+        assert!(
+            left_out(&relay, &units),
+            "a relay's own odd cgroup is still left out"
+        );
     }
 
     #[test]
@@ -246,5 +379,108 @@ mod tests {
             assert_eq!(program(&proc).unwrap(), "?", "a comm of {comm:?}");
         }
         fs::remove_dir_all(&proc).unwrap();
+    }
+
+    /// An empty process folder of the test's own, named by its case, so
+    /// tests that run at once never share one. One a failed run left is
+    /// cleared first.
+    fn fake_proc(case: &str) -> std::path::PathBuf {
+        let name = format!("holders-{case}-{}", std::process::id());
+        let root = std::env::temp_dir().join(name);
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        root
+    }
+
+    /// A process named reader in the fake folder, whose descriptor 3 links
+    /// to what it holds, and whose cgroup file holds the bytes given, or is
+    /// missing when there are none.
+    fn fake_process(root: &Path, pid: u32, held: &Path, cgroup: Option<&[u8]>) {
+        let proc = root.join(pid.to_string());
+        fs::create_dir_all(proc.join("fd")).unwrap();
+        fs::write(proc.join("comm"), "reader\n").unwrap();
+        fs::write(proc.join("cmdline"), "").unwrap();
+        std::os::unix::fs::symlink(held, proc.join("fd/3")).unwrap();
+        if let Some(cgroup) = cgroup {
+            fs::write(proc.join("cgroup"), cgroup).unwrap();
+        }
+    }
+
+    /// What a walk of the fake folder names as holding /dev/null, with the
+    /// stand-in unit the one left out. The folder is removed after, even
+    /// when the walk fails. The walk follows descriptor links and compares
+    /// devices, so /dev/null stands in for a camera and none is ever opened.
+    fn walked(root: &Path) -> (BTreeSet<String>, HashSet<u32>) {
+        let units = ["stand-in.service".to_owned()];
+        let found = holders_in(root, Path::new("/dev/null"), &units, &HashSet::new());
+        fs::remove_dir_all(root).unwrap();
+        found.unwrap()
+    }
+
+    #[test]
+    fn a_process_whose_cgroup_file_isnt_text_is_named() {
+        // A person can name a cgroup of their own with a byte that isn't
+        // text, and skipping its reader would show a camera in use as off.
+        let root = fake_proc("not-text");
+        let user = b"0::/user.slice/user-1000.slice/user@1000.service";
+        let cgroup = [&user[..], b"/\xff/stand-in.service\n"].concat();
+        fake_process(&root, 4_000_001, Path::new("/dev/null"), Some(&cgroup));
+        let (names, pids) = walked(&root);
+        assert_eq!(
+            names,
+            BTreeSet::from(["reader".to_owned()]),
+            "a reader whose cgroup file isn't text is named"
+        );
+        assert_eq!(pids, HashSet::from([4_000_001]), "its process is seen");
+    }
+
+    #[test]
+    fn a_process_with_no_cgroup_file_is_named() {
+        let root = fake_proc("no-cgroup");
+        fake_process(&root, 4_000_001, Path::new("/dev/null"), None);
+        let (names, pids) = walked(&root);
+        assert_eq!(
+            names,
+            BTreeSet::from(["reader".to_owned()]),
+            "a reader whose cgroup file can't be read is named"
+        );
+        assert_eq!(pids, HashSet::from([4_000_001]), "its process is seen");
+    }
+
+    #[test]
+    fn a_process_in_a_left_out_unit_is_not_named() {
+        // A reader beside it shows the walk saw the folder, so the relay's
+        // absence is its unit's doing.
+        let root = fake_proc("left-out");
+        let null = Path::new("/dev/null");
+        let relay = b"0::/system.slice/stand-in.service\n";
+        let reader = b"0::/user.slice/user-1000.slice\n";
+        fake_process(&root, 4_000_001, null, Some(relay));
+        fake_process(&root, 4_000_002, null, Some(reader));
+        let (_, pids) = walked(&root);
+        assert_eq!(
+            pids,
+            HashSet::from([4_000_002]),
+            "only the process outside the stand-in unit is seen"
+        );
+    }
+
+    #[test]
+    fn a_process_that_holds_nothing_under_dev_is_not_named() {
+        // The link leads to /dev/null by way of a file outside /dev, so the
+        // device alone would match; only the walk's filter on /dev leaves
+        // it out. A reader beside it shows the walk saw the folder.
+        let root = fake_proc("outside-dev");
+        let outside = root.join("null");
+        std::os::unix::fs::symlink("/dev/null", &outside).unwrap();
+        let cgroup = b"0::/user.slice/user-1000.slice\n";
+        fake_process(&root, 4_000_001, &outside, Some(cgroup));
+        fake_process(&root, 4_000_002, Path::new("/dev/null"), Some(cgroup));
+        let (_, pids) = walked(&root);
+        assert_eq!(
+            pids,
+            HashSet::from([4_000_002]),
+            "only the process whose link is under /dev is seen"
+        );
     }
 }
