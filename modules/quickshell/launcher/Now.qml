@@ -2441,9 +2441,15 @@ Provider {
     // many milliseconds each as it holds items (2026-11-10). The agents
     // daemon takes the banding over once it serves them banded, with the
     // time each changes (KP0L6A, 2026-11-14).
+    // A read at another minute than this one, as a case reading home later
+    // makes, is banded apart, so it never puts the live bands out of the
+    // kept (#7014's review, F4).
     function bandsAt(now) {
         const items = forYouItems;
         const minute = Math.floor(now / 60000);
+        if (minute !== Math.floor(Math.max(liftedAt, Date.now()) / 60000)) {
+            return ForYou.banded(items, now);
+        }
         if (bandsKept.items !== items || bandsKept.minute !== minute) {
             bandsKept.items = items;
             bandsKept.minute = minute;
@@ -3360,8 +3366,8 @@ Provider {
     // at \u00b7 2 to try"; and with none of those, nothing, since a calm home
     // says nothing (VKCF3Z, bd5cb965, a31a0e1b, 3a92c450). For You is his
     // one place for attention, so home leads with it.
-    function homeSays() {
-        return homeItems().map(item => item.said).join(" \u00b7 ");
+    function homeSays(clock = Date.now()) {
+        return homeItems(clock).map(item => item.said).join(" \u00b7 ");
     }
 
     // Never how many rows it holds, which tells Joel nothing: calm, its
@@ -3375,17 +3381,22 @@ Provider {
     // never give way (Reading.js's keptItems).
     // It leads with what needs him now, never a later item as `first`
     // falls back to, so "N more" counts the rest of what needs him now,
-    // never what To Look At and To Try hold.
-    function homeItems() {
-        if (toDoCount === 0) {
-            return ForYou.bandsRun({ look: toLookAtCount, try: toTryCount },
+    // never what To Look At and To Try hold. It's read at `clock`, now but
+    // for a case reading it later, as time alone moves what leads: what
+    // leads, how many more and whether any need him, all from one banding
+    // at it (#7014's review, F2).
+    function homeItems(clock = Date.now()) {
+        const bands = bandsAt(clock);
+        const toDo = bands.now.length + bands.agent.length + criticalNotices.length;
+        if (toDo === 0) {
+            return ForYou.bandsRun({ look: bands.look.length, try: bands.try.length },
                 Words.of("on:waiting").said ?? {});
         }
         // The row of Lately's that leads For You (waitingRows) leads home
         // too, by the same test over the same bands, never making its rows,
         // so home names what Return, Return reaches: its critical notice,
         // or the row's own name once that's read or has no summary.
-        const leading = latelyBands(Date.now()).bands.map(band => band.source)
+        const leading = latelyBands(clock).bands.map(band => band.source)
             .find(source => latelyComingIn({ forYou: { source: source } })) ?? null;
         const held = leading === null ? [] : latelyCriticalHeld[leading] ?? [];
         const critical = leading === null ? ""
@@ -3397,12 +3408,12 @@ Provider {
         // to-do of a session asking nothing among them (round 5, F43).
         // Banded at this minute, as waitingRows is, since time alone moves a
         // to-do's weight and forYouBands isn't banded again for it (round 6).
-        const led = critical === "" ? Cells.leading(cellsOf(bandsAt(Date.now()).all)) : null;
+        const led = critical === "" ? Cells.leading(cellsOf(bands.all)) : null;
         const asker = led?.item.kind === "agent" ? led.item.cell() : null;
         const lead = led?.item.toDo ?? null;
         const title = critical !== "" ? critical
             : asker ? `${asker.title} ${Sessions.wanted(asker.presence?.wants?.kind)}`
-            : lead ? lead.title : led?.item.make(Date.now())?.name ?? "";
+            : lead ? lead.title : led?.item.make(clock)?.name ?? "";
         if (title === "") {
             return [];
         }
@@ -3410,7 +3421,7 @@ Provider {
             ? waitingSaid("minutes", { minutes: lead.minutes }) : "";
         // What it names is one of what needs him now, but for a row whose
         // notice is read while the launcher is open, which nothing counts.
-        const more = toDoCount - (critical !== "" && held.length === 0 ? 0 : 1);
+        const more = toDo - (critical !== "" && held.length === 0 ? 0 : 1);
         return [{ said: title, keep: 1, words: true, stays: true },
             { said: minutes, keep: 2, stays: true },
             { said: more > 0 ? waitingSaid("more", { count: more }) : "", keep: 3, stays: true }]

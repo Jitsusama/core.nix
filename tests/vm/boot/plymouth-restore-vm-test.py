@@ -293,7 +293,7 @@ def kept(machine: QemuMachine, path: Path, name: str) -> None:
 def swapping(machine: BaseMachine, values: dict[str, Any]) -> QemuMachine:
     """Give the machine swapping to a file on btrfs inside LUKS, as a laptop does."""
     # Only a machine QEMU runs can be stopped and started again.
-    assert isinstance(machine, QemuMachine)
+    assert isinstance(machine, QemuMachine), f"QEMU doesn't run the machine: {machine!r}"
     machine.wait_for_unit("default.target")
     passphrase = values["passphrase"]
     machine.succeed(

@@ -1009,6 +1009,30 @@ mod tests {
     }
 
     #[test]
+    fn the_disk_weighs_a_host_joel_is_at_as_the_processor_does() {
+        // Built through wanted(), as a sweep builds it, so the case fails both when the call
+        // drops the weight and when a viewed host stops being raised to the focus weight.
+        let viewed = Signs {
+            viewed: 1,
+            ..Signs::default()
+        };
+        let call = rank_call(
+            "pi-host-work-attended.service",
+            &wanted(&attended(), viewed, 10),
+        );
+        let weight = |name: &str| {
+            let at = call.iter().position(|arg| arg == name).expect(name);
+            call[at + 2].clone()
+        };
+        assert_eq!(weight("CPUWeight"), focus::WEIGHT.to_string());
+        assert_eq!(
+            weight("IOWeight"),
+            focus::WEIGHT.to_string(),
+            "the disk follows the rank, not systemd's 100"
+        );
+    }
+
+    #[test]
     fn the_call_sets_all_six_properties() {
         let call = rank_call(
             "pi-host-work-attended.service",

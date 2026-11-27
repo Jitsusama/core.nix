@@ -192,15 +192,16 @@ ShellRoot {
                 pool === "fleet-live, council on core.nix#380, fleet-new", pool);
             const since = names(runs.search("coun").rows);
             expect("found through an update", since === "council on core.nix#380", since);
-            // A run come since that the letters match is found as typing goes on,
-            // as the row the list now holds, never an earlier list's.
+            // A run come since that the letters match is found as typing goes
+            // on. That it's found as the row the list now holds, never an
+            // earlier list's, is shown by the letter-at-a-time loop below,
+            // where the one at work's row is made again before each letter.
             runs.records = runs.records.concat([{ key: "run:fleet.council-late", kind: "run",
                 id: "fleet.council-late", about: "council-late", parent: "s-gone",
                 state: "done" }]);
             const late = runs.search("counc").rows;
             expect("a run come since, found as typing goes on",
-                names(late).includes("council-late")
-                    && late.every(row => runs.all.includes(row)), names(late));
+                names(late).includes("council-late"), names(late));
 
             // Typed on a letter at a time, with a session coming or going
             // between letters to make the one at work's row again, each
@@ -253,6 +254,15 @@ ShellRoot {
             const judged = runs.everything();
             expect("its kind as the harness wrote it", names(judged) === "judge on core.nix#381",
                 names(judged));
+
+            // A round named as what every object inherits is a review, not a
+            // function said in its row.
+            runs.records = [{ key: "run:review.constructor-1", kind: "run",
+                id: "review.constructor-1", about: "core.nix#382", parent: "s-gone",
+                state: "done" }];
+            const inherited = runs.everything();
+            expect("a round named constructor is a review",
+                names(inherited) === "review on core.nix#382", names(inherited));
             Qt.callLater(() => Qt.exit(0));
         } catch (error) {
             fail(error.message);

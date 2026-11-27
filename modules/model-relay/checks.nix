@@ -99,7 +99,7 @@ onLinux {
           (lib.findFirst (lib.hasPrefix "const ${name}:") "")
           (lib.match ".*= ([0-9]+);")
         ];
-      unless = sourced "CONNECTIONS";
+      default = sourced "CONNECTIONS";
       most = sourced "MOST_CONNECTIONS";
       # Left past those for the relay to end its connections and say its
       # counts.
@@ -127,9 +127,9 @@ onLinux {
         # It keeps more connections than its default, but no more than
         # it takes.
         && kept != null
-        && unless != null
+        && default != null
         && most != null
-        && lib.toInt (lib.head kept) > lib.toInt (lib.head unless)
+        && lib.toInt (lib.head kept) > lib.toInt (lib.head default)
         && lib.toInt (lib.head kept) <= lib.toInt (lib.head most)
         # It holds every agent's key while it carries a request, so it
         # sees no more of the machine than reaching the origin needs.

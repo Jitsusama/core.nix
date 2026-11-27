@@ -61,8 +61,11 @@ in
   # when the manager starts, at login or at boot for a lingering account, is
   # started by sockets.target; one made after it starts is caught by
   # agent-signing-key.path, which starts the socket when it appears. While the
-  # key is there the path unit starts the socket again whenever it stops, so a
-  # hand stop that should hold stops agent-signing-key.path first.
+  # key is there the path unit starts the socket again whenever it stops, as
+  # tests/vm/keys/signing-vm-test.py shows, so a hand stop that should hold
+  # stops agent-signing-key.path first. Nothing keeps the stop: the manager
+  # starts both again when it next starts, since its targets want them, and so
+  # does a home-manager switch, as docs/installing.md says.
   systemd.user.sockets.agent-signing = {
     Unit = {
       Description = "The agents' signing key's own ssh-tpm-agent, which asks nothing";

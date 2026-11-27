@@ -66,7 +66,7 @@ function placed(key, session) {
 // agents daemon, and the daemon's ready rows take over this sorting for
 // Now and the windows' readers too, with the session acts, Thu 12 Nov.
 function sorted(held) {
-    return resorted(held, {}, Object.keys(held));
+    return resorted(held, Object.create(null), Object.keys(held));
 }
 
 // The node's records sorted again as `sorted` sorts them, placing anew
@@ -75,7 +75,8 @@ function sorted(held) {
 // `{ into, entry }`, and is mended in place, so a session the change
 // didn't name keeps its entry, the same object, and whatever compares it
 // stops at once. Joel's 126 sessions were placed again at each of the
-// node's changes, about one a second (2026-11-14).
+// node's changes, about one a second (2026-11-14). `kept` has no
+// prototype, so a key "__proto__" is placed as any other.
 function resorted(held, kept, heard) {
     for (let at = 0; at < (heard?.length ?? 0); at += 1) {
         const key = heard[at];

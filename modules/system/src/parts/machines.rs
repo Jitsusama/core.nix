@@ -10,6 +10,7 @@ use std::io;
 
 use serde_json::Value;
 
+use super::builders::builders;
 use super::ties::ties;
 use super::{Answer, and, count, side_of, unread};
 use crate::record::{Deeper, Health, Look, Part, Thing};
@@ -88,7 +89,8 @@ const OWN_MATTERS: &str =
 /// sessions from `mycelium health` where that was read, and its ties to
 /// the network and the code from `net --json` and `repos --json` where
 /// those were, and this machine's with when its quest backup last backed up,
-/// where it keeps one.
+/// where it keeps one; then the builders they send builds to, as the same
+/// answer names them (builders.rs), each a thing of its own kind.
 pub fn machines(
     machines: &Answer,
     health: &Answer,
@@ -111,14 +113,15 @@ pub fn machines(
         }
         part
     };
-    let list = match machines {
-        Ok(said) => said
-            .pointer("/Ok/Machines")
-            .and_then(Value::as_array)
-            .cloned()
-            .unwrap_or_default(),
+    let said = match machines {
+        Ok(said) => said,
         Err(why) => return unknown(why),
     };
+    let list = said
+        .pointer("/Ok/Machines")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
     if list.is_empty() {
         return unknown("the node knows of no machine");
     }
@@ -138,12 +141,16 @@ pub fn machines(
             (thing, looks)
         })
         .collect();
-    // The worst first, then by name, so the line a look wants leads.
+    // The worst first, then by name, so the line a look wants leads. The
+    // builders follow the machines, each kind the worst first.
     read.sort_by(|(a, _), (b, _)| b.health.cmp(&a.health).then_with(|| a.name.cmp(&b.name)));
+    let machine_count = read.len();
+    read.extend(builders(said));
+    let builder_count = read.len() - machine_count;
     let side = side_of(
         read.iter()
             .filter(|(thing, _)| thing.health > Health::Good)
-            .map(|(thing, looks)| format!("{} {}", thing.name, looks.join(", ")))
+            .map(|(thing, looks)| format!("{} {}", named(thing), looks.join(", ")))
             .collect(),
     );
     let things: Vec<Thing> = read.into_iter().map(|(thing, _)| thing).collect();
@@ -159,16 +166,23 @@ pub fn machines(
     {
         0 => format!(
             "{} ready",
-            count(things.len() as u64, "machine", "machines")
+            count(machine_count as u64, "machine", "machines")
         ),
         _ => things
             .iter()
             .filter(|thing| thing.health > Health::Good)
-            .map(|thing| format!("{} {}", thing.name, thing.says))
+            .map(|thing| format!("{} {}", named(thing), thing.says))
             .collect::<Vec<_>>()
             .join("; "),
     };
-    let holds = count(things.len() as u64, "machine", "machines");
+    let holds = match builder_count {
+        0 => count(machine_count as u64, "machine", "machines"),
+        _ => format!(
+            "{} and {}",
+            count(machine_count as u64, "machine", "machines"),
+            count(builder_count as u64, "builder", "builders")
+        ),
+    };
     Part {
         name: "machines",
         health,
@@ -182,6 +196,17 @@ pub fn machines(
 
 fn name_of(said: &Value) -> &str {
     said.get("name").and_then(Value::as_str).unwrap_or("")
+}
+
+/// How the part's line names a thing: a machine by its name, and anything
+/// else by its kind too, since a builder often bears a machine's name and
+/// "gull isn't answering" beside a healthy gull reads as the machine down.
+fn named(thing: &Thing) -> String {
+    if thing.kind == "machine" {
+        thing.name.clone()
+    } else {
+        format!("{} {}", thing.kind, thing.name)
+    }
 }
 
 /// What a machine's line says, in the order it's found, and what in it is
@@ -774,6 +799,40 @@ mod tests {
     }
 
     #[test]
+    fn a_machines_looks_of_one_health_keep_the_order_they_were_found_in() {
+        // Its battery and its firmware, each worth a look, are found before
+        // its failing code, which the worst first moves ahead of them both.
+        let mut studio = laptop(&[], "healthy");
+        studio["name"] = json!("studio");
+        studio["power"] = json!({"on_battery": true, "charge": 12});
+        studio["firmware"] = json!({"error_before_boot": 600});
+        studio["health"] = json!({"parts": {"code": "bad"}});
+        let part = machines(
+            &Ok(realm(&[laptop(&[], "healthy"), studio])),
+            &Err(String::new()),
+            None,
+            None,
+        );
+        let looks: Vec<(&str, Health)> = part.things[0]
+            .looks
+            .iter()
+            .map(|look| (look.side.as_str(), look.health))
+            .collect();
+        assert_eq!(
+            looks,
+            [
+                ("code failing", Health::Bad),
+                ("on battery at 12%", Health::Watch),
+                (
+                    "booted under an hour ago after a firmware error",
+                    Health::Watch
+                )
+            ],
+            "the bad first, then the worth a look in the order they were found"
+        );
+    }
+
+    #[test]
     fn every_look_says_why_it_matters_and_the_side_cuts_them_where_looks_keep_all() {
         let mut studio = laptop(&[], "nearly-full");
         studio["name"] = json!("studio");
@@ -1132,6 +1191,64 @@ mod tests {
             "this machine's code is its own part, and the rest are the same whole \
              read from every machine: {}",
             part.says
+        );
+    }
+
+    #[test]
+    fn the_builders_follow_the_machines_and_a_stalled_one_is_worth_a_look() {
+        let mut said = realm(&[laptop(&[], "healthy")]);
+        said["Ok"]["Builders"] = json!([
+            {"name": "osprey", "state": "running", "lent": true, "jobs": 16},
+            {"name": "gull", "state": "not answering"},
+        ]);
+        let part = machines(&Ok(said.clone()), &Err(String::new()), None, None);
+        let kinds: Vec<(&str, &str)> = part
+            .things
+            .iter()
+            .map(|thing| (thing.kind, thing.name.as_str()))
+            .collect();
+        assert_eq!(
+            kinds,
+            [
+                ("machine", "laptop"),
+                ("builder", "gull"),
+                ("builder", "osprey")
+            ],
+            "the machines first, then the builders, each the worst first"
+        );
+        assert_eq!(
+            part.health,
+            Health::Watch,
+            "a stalled builder is the part's"
+        );
+        assert_eq!(
+            part.side,
+            ["builder gull isn't answering"],
+            "a builder's side says it is one, since it often bears a machine's name"
+        );
+        assert_eq!(
+            part.says, "builder gull isn't answering",
+            "a builder's line says it is one, since it often bears a machine's name"
+        );
+        assert_eq!(part.holds.as_deref(), Some("1 machine and 2 builders"));
+        said["Ok"]["Builders"] = json!([{"name": "osprey", "state": "running"}]);
+        let part = machines(&Ok(said), &Err(String::new()), None, None);
+        assert_eq!(
+            (part.health, part.says.as_str()),
+            (Health::Good, "1 machine ready"),
+            "a ready part counts its machines, which a builder isn't"
+        );
+        assert_eq!(part.holds.as_deref(), Some("1 machine and 1 builder"));
+        let part = machines(
+            &Ok(realm(&[laptop(&[], "healthy")])),
+            &Err(String::new()),
+            None,
+            None,
+        );
+        assert_eq!(
+            part.holds.as_deref(),
+            Some("1 machine"),
+            "an answer naming no builders holds none"
         );
     }
 }
