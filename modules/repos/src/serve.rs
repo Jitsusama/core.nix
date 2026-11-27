@@ -248,6 +248,10 @@ struct Working {
     /// `using::reading`, which only the real walk sets, so a case stands
     /// one in to make a holder appear.
     reading: Box<dyn Fn() -> Option<u32> + Send + Sync>,
+    /// Whether the journal has named what holds the reading up since one
+    /// last answered, so a holder found only after the late line is named,
+    /// and named once.
+    named: bool,
     used: BTreeMap<PathBuf, Use>,
     measured: bool,
     placed: BTreeSet<PathBuf>,
@@ -381,6 +385,7 @@ impl Working {
             standing: Standing::Unwaited,
             say,
             reading: Box::new(reading),
+            named: false,
             used: BTreeMap::new(),
             measured: false,
             placed: BTreeSet::new(),
@@ -395,7 +400,8 @@ impl Working {
     /// that waited in the slot past that is never said as now. Where none
     /// has answered by then, the journal says so, as a restart reaching a
     /// process still holding its memory map would leave it: what it says,
-    /// once as the reading grows stale and once as it answers, is
+    /// once as the reading grows stale, once as what holds it up is found
+    /// where the stale line couldn't name it, and once as it answers, is
     /// returned.
     #[must_use = "its line is the only word that /proc is held up"]
     fn read(&mut self, folders: Vec<PathBuf>) -> Option<String> {
@@ -420,6 +426,8 @@ impl Working {
         let age = self.at.unwrap_or(self.since).elapsed();
         let was = self.standing.late();
         if age < self.old {
+            // A reading that answers ends the spell its holder was named in.
+            self.named = false;
             let again = self.standing.ever_fresh();
             self.standing = if self.at.is_some() {
                 Standing::Fresh
@@ -443,20 +451,29 @@ impl Working {
         };
         self.used.clear();
         self.measured = false;
-        if was {
-            return None;
-        }
         // A restart reads the same process again, and waits on it again,
         // so the line names it rather than offering one. A reading that
         // just landed was held up by nothing, and the process the next
         // walk reads is only passing through, so none is named then.
-        let held = if landed {
-            String::new()
-        } else {
-            (self.reading)().map_or(String::new(), |pid| {
-                format!(", held up reading the memory of process {pid}")
-            })
-        };
+        let holder = if landed { None } else { (self.reading)() };
+        if was {
+            // A restart, or a slow reading of the disk, can leave a walk
+            // stuck on one process after the late line was said without
+            // it, and that process is what the operator acts on, so it's
+            // named once found, and once in a spell.
+            if self.named {
+                return None;
+            }
+            let pid = holder?;
+            self.named = true;
+            return Some(format!(
+                "the reading of /proc is held up reading the memory of process {pid}"
+            ));
+        }
+        self.named = holder.is_some();
+        let held = holder.map_or(String::new(), |pid| {
+            format!(", held up reading the memory of process {pid}")
+        });
         // A first reading that lands already old never answered either,
         // so it's said as none, as its answer will be said at last.
         let late = if answered {

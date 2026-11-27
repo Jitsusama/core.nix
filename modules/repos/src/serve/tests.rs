@@ -544,6 +544,100 @@ fn a_first_reading_that_lands_old_is_said_as_none_answering_and_then_at_last() {
 }
 
 #[test]
+fn a_holder_found_after_the_late_line_is_named_once() {
+    // A walk that lands old is held up by nothing, so its late line names
+    // no process; when the walk after it is then stuck on one, as a
+    // restart or a slow disk leaves it, that process is named on its own
+    // line, once, and not again before the reading answers. The first
+    // walk answers at once, the second is held past `old` and freed
+    // between two takes, and the third holds until the case frees it.
+    // The third, freed a few paces after it began, lands young however
+    // late a wake comes, as `old` leaves it two whole late wakes of room.
+    let old = LATE * 3;
+    let holder = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
+    let held = std::sync::Arc::clone(&holder);
+    let (walking, walked) = mpsc::channel::<Instant>();
+    let (free, freed) = mpsc::channel::<()>();
+    let (again, freed_again) = mpsc::channel::<()>();
+    let (landed, heard_landed) = mpsc::channel::<()>();
+    let mut calls = 0_u32;
+    let (tell, told) = mpsc::channel();
+    let folders = vec![PathBuf::from("/home/someone/trees/fix")];
+    let mut working = Working::start_saying(
+        BRISK,
+        old,
+        folders.clone(),
+        move |_: &[PathBuf]| {
+            calls += 1;
+            if calls == 2 {
+                let _ = walking.send(Instant::now());
+                let _ = freed.recv_timeout(SAMPLED * 8);
+            } else if calls == 3 {
+                let _ = landed.send(());
+                let _ = freed_again.recv_timeout(SAMPLED * 8);
+            }
+            Sample::default()
+        },
+        move || {
+            let pid = held.load(std::sync::atomic::Ordering::Relaxed);
+            (pid != 0).then_some(pid)
+        },
+        move |said| {
+            let _ = tell.send(said);
+        },
+    );
+    let until = Instant::now() + LATE;
+    working.take(folders.clone());
+    while working.unread() && Instant::now() < until {
+        std::thread::sleep(BRISK);
+        working.take(folders.clone());
+    }
+    assert!(!working.unread(), "the first walk never answered");
+    let began = walked
+        .recv_timeout(LATE)
+        .expect("the second walk never began");
+    std::thread::sleep(old.saturating_sub(began.elapsed()) + BRISK);
+    drop(free);
+    heard_landed
+        .recv_timeout(LATE)
+        .expect("the second walk never landed");
+    let mut heard: Vec<String> = Vec::new();
+    working.take(folders.clone());
+    heard.extend(told.try_iter().filter(|said| of_the_reading(said)));
+
+    // Stuck on a process the late line couldn't name, and still so over
+    // the takes after the one that names it.
+    holder.store(4_242, std::sync::atomic::Ordering::Relaxed);
+    for _ in 0..4 {
+        working.take(folders.clone());
+        heard.extend(told.try_iter().filter(|said| of_the_reading(said)));
+        std::thread::sleep(BRISK);
+    }
+
+    holder.store(0, std::sync::atomic::Ordering::Relaxed);
+    drop(again);
+    let until = Instant::now() + LATE;
+    let answers = |said: &String| said.starts_with("the reading of /proc answers");
+    while !heard.iter().any(answers) && Instant::now() < until {
+        std::thread::sleep(BRISK);
+        working.take(folders.clone());
+        heard.extend(told.try_iter().filter(|said| of_the_reading(said)));
+    }
+    let stale = concat!(
+        " s old with none newer,",
+        " so what works in each repository is said unread until it answers",
+    );
+    assert!(
+        heard.len() == 3
+            && heard[0].starts_with("the reading of /proc is ")
+            && heard[0].ends_with(stale)
+            && heard[1] == "the reading of /proc is held up reading the memory of process 4242"
+            && heard[2] == "the reading of /proc answers again",
+        "a holder found after the late line wasn't named once before the answer: {heard:?}"
+    );
+}
+
+#[test]
 fn a_first_reading_slower_than_a_wait_that_answers_young_says_nothing() {
     // The daemon's commonest slow start: its first walk outlasts the
     // wait, then answers long before it's old, so nothing was late and
