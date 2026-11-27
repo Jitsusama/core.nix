@@ -175,8 +175,11 @@ let
   # Where Words.qml reads the launcher's words, under the config folder.
   wordsAt = "quickshell/launcher/words.json";
   # The file Words.qml reads, as this machine writes it; none where it has
-  # no launcher, whose words are then no one's.
-  wordsFile = config.xdg.configFile.${wordsAt} or null;
+  # no launcher, whose words are then no one's. Home-manager writes each
+  # xdg.configFile entry as the home.file entry named by its whole path
+  # (misc/xdg/default.nix), so a machine's own home.file definitions at
+  # that name join it; that entry is what's written, so it's the one read.
+  wordsFile = config.home.file."${config.xdg.configHome}/${wordsAt}" or null;
   # Whether the file is written where Words.qml reads it: one switched off
   # or moved leaves that place to a file written some other way, which
   # local-sites can't see, so it's refused below. No other entry can write
@@ -625,7 +628,8 @@ in
     {
       assertion = !unreadWords;
       message = lib.concatStrings [
-        "the launcher's words, xdg.configFile.\"${wordsAt}\", are switched off, moved "
+        "the launcher's words, xdg.configFile.\"${wordsAt}\" or its home.file entry, "
+        "are switched off, moved "
         "or given as a source, which local-sites can't read "
         "to hold the launcher's acts on a look to core's names: write it in place as text, "
         "setting its text with lib.mkForce, or set jitsusama.quickshell.launcher.words"

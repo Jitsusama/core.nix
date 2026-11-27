@@ -2256,8 +2256,8 @@
     in place or by a later entry keyed by a list of one set or a set words.json writes as the id
     by its outPath or __toString, or by a whole entry so written, reading the words as words.json
     writes them, or in a words.json a machine writes itself, and refuses that file given as a
-    source it can't read, a path among them, or switched off or moved from where Words.qml reads
-    it, saying the option to set and lib.mkForce, though never one made from its text, core's or
+    source it can't read, a path among them, even through the home.file entry home-manager
+    writes it as, or switched off or moved from where Words.qml reads it, saying the option to set and lib.mkForce, though never one made from its text, core's or
     a machine's; it names only each act's old and new word though another word is renamed beside
     them, even to no name, and takes core's own words and ids Words.qml keys as no act: objects,
     lists of several or none, whichever end holds the act, and a path in the store
