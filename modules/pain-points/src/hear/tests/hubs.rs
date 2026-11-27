@@ -347,3 +347,42 @@ fn a_need_unkept_ahead_of_the_run_is_no_trouble() {
         "one dated ahead was carried"
     );
 }
+
+/// read's state of one session's turn begun at `enter` whose first call
+/// failed at the provider and was tried again three minutes on.
+fn failed_at_the_provider(place: &Place, session: &str, enter: i64) {
+    let turns = json!([{"offset": 0, "enter": enter, "delivered": enter,
+        "calls": [{"start": enter + 500, "ms": 2000, "stop": "error"},
+                  {"start": enter + 180_000, "ms": 3000, "stop": "done"}],
+        "again": false, "correction": false, "status": false}]);
+    let name = format!("2026-11-16T10-00-00-000Z_{session}.jsonl");
+    let kept = json!({"reader": "r", "logs": {name: {"end": 0, "open": false, "turns": turns}}});
+    fs::write(place.root.join("state/pi-logs.json"), kept.to_string()).expect("written");
+}
+
+/// A stall the model's provider caused is its owner's, whichever session
+/// it hit: on 27 November two went to the sessions they stalled, and each
+/// answered that it couldn't fix a provider.
+#[test]
+fn a_stall_the_provider_caused_goes_to_the_providers_holder_not_its_session() {
+    for (hubs, to, why) in [
+        (
+            vec![Hub::new("provider", "HUB001", &["FIT002"])],
+            "FIT002",
+            "a hub holds the provider",
+        ),
+        (vec![], "ORCH01", "no hub holds the provider"),
+    ] {
+        let place = Place::new("hub-provider");
+        place.routes();
+        let said = [user("a", "2026-11-16T19:50:00.000Z", "make the bar green")];
+        place.log("src", "s-live", Path::new("/home/j/src"), &said);
+        failed_at_the_provider(&place, "s-live", 1_794_858_600_000);
+        let asked = asked_in(&ears_with(&place, hubs), HELD, |_| Sent::Went);
+        assert_eq!(
+            owners_of(&asked, "the provider failing"),
+            [to],
+            "{why}: the provider's stall went to another than its owner: {asked:?}"
+        );
+    }
+}
