@@ -280,9 +280,13 @@ const throughStuck = ["hangs", "behind", "early"].map((one) =>
 );
 const releaseGate = gate("release");
 await heldUpUntil("link", throughStuck, async () => {
-  // The queued load waits at this gate too, so pending can't say it waited.
-  const skipped = !(await pendingAfter(releaseGate.reached, 0));
-  assert.equal(skipped, false, "a load behind a hung one skipped its turn");
+  // The queued load waits at this gate too, so pending can't say it waited;
+  // it has stayed queued QUEUED_MS by now, so whether it reached the gate does.
+  assert.equal(
+    await pendingAfter(releaseGate.reached, 0),
+    true,
+    "a load behind a hung one skipped its turn",
+  );
   pointAt(stuck, join(scratch, "hung-second"));
   await within(open("link-moved", throughStuck), "a load through a moved link never ended");
   releaseGate.putAway();
@@ -348,19 +352,22 @@ await within(
 );
 // Has `holder`, which waits at the gate `hold`, take its package's turn,
 // then expects `kept` to open meanwhile without waiting or evaluating, as
-// a factory kept for it does, and `waiting`, which must take the turn, to
-// wait, evaluating nothing.
+// a factory kept for it does, though `waiting`, which must take the turn,
+// is queued for it, and `waiting` to stay queued, evaluating nothing.
 const opensWhileHeld = async (what, holder, kept, waiting) => {
   const holdGate = gate("hold");
   const holding = open(`${what}-holding`, [holder]);
   await holdGate.reached;
   const whileHeld = evaluations();
+  const waited = open(`${what}-waited`, [waiting]);
   const reopened = open(`${what}-reopened`, [kept]);
   assert.equal(await pendingAfter(reopened, SETTLES_MS), false, `${what}: a kept factory waited`);
   assert.deepEqual(evaluations(), whileHeld, `${what}: a kept factory evaluated afresh`);
-  const waited = open(`${what}-waited`, [waiting]);
-  const ended = !(await pendingAfter(waited, QUEUED_MS));
-  assert.equal(ended, false, `${what}: a load ended while another held the turn it needs`);
+  assert.equal(
+    await pendingAfter(waited, QUEUED_MS),
+    true,
+    `${what}: a load settled, by ending or failing, while another held the turn it needs`,
+  );
   assert.deepEqual(evaluations(), whileHeld, `${what}: a load evaluated without waiting its turn`);
   holdGate.putAway();
   holdGate.open();

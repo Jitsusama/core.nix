@@ -87,6 +87,21 @@ export const open = async (name, entries) => {
 };
 /** How many times each counted library has been evaluated. */
 export const evaluations = () => ({ ...globalThis.evaluations });
+/** How many times `name` has been evaluated once it reaches `count`, or
+ * once `ms` have passed, so a slow builder still sees an evaluation that
+ * comes, and one that never comes is counted short. */
+export const evaluatedBy = (name, count, ms) => {
+  const until = Date.now() + ms;
+  const look = async () => {
+    const now = evaluations()[name] ?? 0;
+    if (now >= count || Date.now() >= until) {
+      return now;
+    }
+    await new Promise((go) => setTimeout(go, 10));
+    return look();
+  };
+  return look();
+};
 /** Reloads, and starts the counts again. */
 export const afresh = () => {
   clearExtensionCache();
@@ -462,19 +477,21 @@ export const heldUpUntil = async (what, [hangs, behind, early], letGo) => {
   const earlyMs = Date.now() - startedEarly;
   const hangGate = gate("hang");
   const inTime = beforeTheBound();
+  const bounded = Date.now();
   const hanging = open(`${what}-hanging`, [hangs]);
   await hangGate.reached;
   const waiting = open(`${what}-waiting`, [behind]);
-  const queued = await pendingAfter(waiting, 200);
+  const queued = await pendingAfter(waiting, QUEUED_MS);
   assert.equal(queued, true, `a load didn't wait behind one that never ends, before ${what}`);
   const lettingGo = Date.now();
   await letGo();
   const letGoMs = Date.now() - lettingGo;
+  const releaseMs = 8000 - (Date.now() - bounded);
   const released = await inTime(
     waiting,
     `${what} didn't let go of a load waiting behind one that never ends within 8 s, which ` +
       "pays for the hung load, the queued one, letting go and the release (one load " +
-      `took ${earlyMs} ms, letting go ${letGoMs} ms)`,
+      `took ${earlyMs} ms, letting go ${letGoMs} ms, leaving the release ${releaseMs} ms)`,
   );
   assert.equal(await released("behind-version"), "behind", `a load ${what} let go of failed`);
   assert.equal(
