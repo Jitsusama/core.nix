@@ -423,9 +423,11 @@ code,
     block-size: 62px;
   }
 
+  /* Smaller on a phone, though never under the 12 px the kit holds its
+     own type to: 0.72rem alone was 10.8 px where a phone's root is 15. */
   .stand .nm {
     max-inline-size: 64px;
-    font-size: 0.72rem;
+    font-size: max(0.72rem, 12px);
   }
 
   .find,

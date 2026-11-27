@@ -199,6 +199,33 @@ def test_the_arrows_on_the_switch_choose_a_look_and_leave_the_cursor(tab: Page) 
     expect(dark, "the switch forgot its look by the next visit").to_be_checked()
 
 
+# Each separator's colour beside muted's, as the browser computes both.
+SEPARATORS = """() => {
+  const probe = document.createElement("span");
+  probe.style.color = "var(--muted)";
+  document.body.append(probe);
+  const muted = getComputedStyle(probe).color;
+  probe.remove();
+  const drawn = [...document.querySelectorAll(".sep")].map((each) => getComputedStyle(each).color);
+  return { muted, drawn };
+}"""
+
+
+@pytest.mark.parametrize("look", LOOKS)
+def test_a_separator_is_drawn_in_words_that_read(browser: Browser, home: str, look: str) -> None:
+    """The dot between the home's phrases is read with them, so it's muted, not a rule's shade."""
+    opened = Opened(browser, home, SIZES[-1], look)
+    try:
+        expect(opened.page.locator(CURSOR), "the home drew no sites").to_have_text(NAMES[0])
+        said = opened.page.evaluate(SEPARATORS)
+        assert said["drawn"], f"the home drew no separator to judge in the {look} look"
+        assert all(each == said["muted"] for each in said["drawn"]), (
+            f"a separator on the home wasn't drawn in muted in the {look} look: {said}"
+        )
+    finally:
+        opened.close()
+
+
 @pytest.mark.parametrize("look", LOOKS)
 @pytest.mark.parametrize("size", SIZES, ids=[f"{width}px" for width, _ in SIZES])
 def test_the_home_passes_the_skills_page_checks(
