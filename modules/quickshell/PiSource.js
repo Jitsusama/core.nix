@@ -266,7 +266,7 @@ function keptBy(entries, kept, make) {
 // every record again took 2 of the 2.1 ms of each change at 126
 // sessions, in Qt's engine (2026-11-15).
 function sessions(sorting, machine, made) {
-    const kept = made ?? {};
+    const kept = made ?? Object.create(null);
     const seen = new Set();
     const recordOf = (one, how) => {
         const was = kept[one.file];

@@ -38,9 +38,11 @@ Provider {
 
     // The session that started each, by its own id, which a run's record
     // names as its `parent`: its address. Said as text first, which
-    // changes only when they do. A parked one is still its session.
+    // changes only when they do. A parked one is still its session. With
+    // no prototype, read back too, so a session named "constructor" is
+    // one of its own, and a run naming it is gone when it is.
     readonly property string holding: {
-        const by = {};
+        const by = Object.create(null);
         for (const session of Sessions.running)
             by[session.presence.session ?? ""] = { address: session.address, live: true };
         for (const session of Sessions.parked ?? []) {
@@ -51,7 +53,7 @@ Provider {
         delete by[""];
         return JSON.stringify(by);
     }
-    readonly property var started: JSON.parse(holding)
+    readonly property var started: Object.assign(Object.create(null), JSON.parse(holding))
 
     // The runs, each as the rows are made from it: its bare id, its kind,
     // what it's about, the session it's of, and its participants. The
@@ -171,8 +173,8 @@ Provider {
     // nothing. What it was made from is compared in place rather than as
     // text, since the text of Joel's 538 runs, about 1.3 million
     // characters, started a garbage collection at every change of a
-    // session (2026-11-10).
-    readonly property var kept: ({})
+    // session (2026-11-10). By a run's id, with no prototype.
+    readonly property var kept: Object.create(null)
 
     // A run as its session leaves it: one the node says runs whose session
     // is gone has nothing left to finish it, so its participants still at
@@ -191,7 +193,7 @@ Provider {
             run => String(run.started ?? ""), busy));
         const sharing = Quiet.sharing;
         const sessions = started;
-        const next = {};
+        const next = Object.create(null);
         const rows = sorted.map(run => {
             if (busy(run))
                 return made(run);

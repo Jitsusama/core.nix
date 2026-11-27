@@ -15,18 +15,33 @@ function plain(value) {
 // level in, as the node says it: only what moved inside it. What didn't
 // move is the very object it was, so comparing it costs nothing.
 function mended(was, change, deep) {
-    const now = Object.assign({}, was);
+    const now = {};
+    for (const field of Object.keys(was)) {
+        put(now, field, was[field]);
+    }
     for (const field of Object.keys(change)) {
         const said = change[field];
         if (said === null) {
             delete now[field];
         } else if (deep.includes(field) && plain(now[field]) && plain(said)) {
-            now[field] = mended(now[field], said, []);
+            put(now, field, mended(now[field], said, []));
         } else {
-            now[field] = said;
+            put(now, field, said);
         }
     }
     return now;
+}
+
+// A field set as a field of its own: one named "__proto__", which JSON
+// parses as any other, is defined rather than assigned, since assigning
+// it sets what the record inherits and loses the field.
+function put(into, field, value) {
+    if (field === "__proto__") {
+        Object.defineProperty(into, field,
+            { value, writable: true, enumerable: true, configurable: true });
+    } else {
+        into[field] = value;
+    }
 }
 
 // The fields each kind's changes say deep: those a watch asked deep that

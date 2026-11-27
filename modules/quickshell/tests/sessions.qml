@@ -1182,6 +1182,17 @@ ShellRoot {
         windowsTell({ changed: [windowRecord(23, 600, "pi-session.7")], gone: ["window:21"] });
         expect("a window opened anew by its app id is its session's once niri says so",
             find("OTHER2")?.window?.id === 23, JSON.stringify(find("OTHER2")?.window));
+        // Any program names its own app id, so one opened as what every
+        // object inherits is indexed as any other, and the windows after it
+        // still are.
+        windowsTell({ changed: [windowRecord(77, 610, "constructor")] });
+        const inheritedApp = Sessions.niriWindows.opened.constructor;
+        expect("a window opened as constructor is indexed by its app id",
+            Array.isArray(inheritedApp) && inheritedApp.length === 1 && inheritedApp[0].id === 77,
+            String(inheritedApp));
+        windowsTell({ changed: [], gone: ["window:77"] });
+        expect("and is let go when it goes", !("constructor" in Sessions.niriWindows.opened),
+            Object.keys(Sessions.niriWindows.opened).join(" "));
         // A window used is told with when, and the one used last goes
         // first where they're shown or picked, while the focus moving,
         // as it does while the launcher is shut, makes nothing again: no

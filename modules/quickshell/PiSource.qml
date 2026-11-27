@@ -215,9 +215,10 @@ Singleton {
         }
     }
     // Every session it tells of, as the contract's records.
-    // Each record is made again only where its session was placed anew.
+    // Each record is made again only where its session was placed anew,
+    // kept by session with no prototype, as `placedBy` is.
     readonly property var sessions: Pi.sessions(sorting, machine, made)
-    readonly property var made: ({})
+    readonly property var made: Object.create(null)
 
     // Whether an ask made now would reach the node: with no connection it's
     // answered none at once and never sent (Daemon.qml's sent).
