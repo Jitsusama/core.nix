@@ -84,25 +84,47 @@ fn a_link_put_at_the_quest_s_scratch_as_a_file_crosses_brings_no_more() {
     // A cp that, once the first file crossed, moves the quest's scratch
     // aside to `beyond` in the far run's home, with a link to it at its
     // name, so every folder below it is reached through the link though
-    // none of them is one. Named whole, since the copy the far line runs
-    // in moves with it.
-    let swapping = "PATH=${PATH#*:} cp \"$@\" || exit\n\
-         [ -e \"$HOME/swapped\" ] || { s=$(cd ../.. && pwd) && mv \"$s\" \"$HOME/beyond\" && \
-         ln -s \"$HOME/beyond\" \"$s\" && : > \"$HOME/swapped\"; }";
-    let programs = [("cp", swapping)];
+    // none of them is one, and notes all that `beyond` then holds. Named
+    // whole, since the copy the far line runs in moves with it.
+    let held = "cd \"$1\" && find . | LC_ALL=C sort";
+    let swapping = format!(
+        "PATH=${{PATH#*:}} cp \"$@\" || exit\n\
+         [ -e \"$HOME/swapped\" ] || {{ s=$(cd ../.. && pwd) && mv \"$s\" \"$HOME/beyond\" && \
+         ln -s \"$HOME/beyond\" \"$s\" && (set -- \"$HOME/beyond\" && {held}) > \"$HOME/held\" \
+         && : > \"$HOME/swapped\"; }}"
+    );
+    let programs = [("cp", swapping.as_str())];
     let job = "mkdir out && printf a > out/a && printf b > out/b";
     let (code, err, home) = far_line(Left::Whole, &[("x", "x")], job, &kind, None, &programs);
-    let back = home.join("beyond").join(HANDOVER).join("1").join(BACK);
-    let listed = std::fs::read_to_string(handover(&home).join(BROUGHT)).unwrap_or_default();
+    let beyond = home.join("beyond");
+    let holds = std::process::Command::new("sh")
+        .args(["-c", held, "sh"])
+        .arg(&beyond)
+        .output()
+        .unwrap()
+        .stdout;
+    let job = beyond.join(HANDOVER).join("1");
+    let listed = std::fs::read_to_string(job.join(BROUGHT)).unwrap_or_default();
+    let copied = std::fs::read_to_string(job.join(BACK).join("0")).unwrap_or_default();
+    // Nothing cleared where the link leads, its copy and lists included,
+    // nor any file written there past the one that crossed as it was put.
     assert!(
-        home.join("swapped").exists() && left_in(&back) == ["0"],
-        "the far line copied the second file through a link at the quest's scratch \
-         ({code:?}): {err}"
+        home.join("swapped").exists()
+            && std::fs::read(home.join("held")).unwrap() == holds
+            && left_in(&job.join(BACK)) == ["0"]
+            && copied == "a"
+            && listed.is_empty(),
+        "the far line cleared or wrote through a link at the quest's scratch ({code:?}): \
+         {listed:?} {err}"
     );
+    let scratch = work(&home).parent().unwrap().to_path_buf();
     assert!(
-        code == Some(0) && err.contains(HALTED) && !listed.contains("out/"),
-        "a link at the quest's scratch as a file crossed didn't stop it, or had a file \
-         listed ({code:?}): {listed:?} {err}"
+        code == Some(0)
+            && err.contains(HALTED)
+            && err.contains("so its copy stays")
+            && std::fs::symlink_metadata(&scratch).is_ok_and(|it| it.is_symlink()),
+        "a link at the quest's scratch as a file crossed didn't stop it, or the far line \
+         didn't keep its copy, or cleared the link ({code:?}): {err}"
     );
     let _ = std::fs::remove_dir_all(&home);
 }
@@ -197,13 +219,15 @@ fn a_link_that_stands_at_the_handover_though_none_was_cleared_is_said_as_standin
     kind.brings_back = vec!["out".into()];
     // A cp that puts a link at the first copy's own name, so the far line
     // stops with no link at its handover to clear, then an rm that, as it
-    // clears the job's tree, puts a link at the job's handover or at the
-    // list's name, to a folder `back` in the far run's home: the cut would
-    // go through it, and no link was cleared there, so none was put back.
+    // clears the job's tree, puts a link at the quest's scratch, the job's
+    // handover or the list's name, to a folder `back` in the far run's
+    // home: the handover's remaking or the cut would go through it, and no
+    // link was cleared there, so none was put back.
     let planting = "PATH=${PATH#*:} cp \"$@\" || exit\n\
          [ -e \"$HOME/planted\" ] || \
          { rm -f \"$2\" && ln -s \"$HOME/target\" \"$2\" && : > \"$HOME/planted\"; }";
     for linking in [
+        "s=${j%/*/*/*} && mv \"$s\" \"$HOME/aside\" && ln -s \"$HOME/back\" \"$s\"".to_owned(),
         "mv \"$j\" \"$HOME/aside\" && ln -s \"$HOME/back\" \"$j\"".to_owned(),
         format!("rm -f \"$j/{BROUGHT}\" && ln -s \"$HOME/back/list\" \"$j/{BROUGHT}\""),
     ] {

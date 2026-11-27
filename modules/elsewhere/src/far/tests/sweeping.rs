@@ -281,8 +281,9 @@ exec head \"$@\""
     let said = sweep_with(&runs.join("9"), &[("head", &head), ("rm", &rm)]);
     assert_eq!(
         said,
-        "elsewhere: a link at its copies' folder couldn't be cleared, so the sweep stops, and \
-         this run is untaken if it still stands once its files cross\n",
+        "elsewhere: a link at its copies' folder couldn't be cleared, or one stands at the \
+         quest's scratch, so the sweep stops, and this run is untaken if it still stands once \
+         its files cross\n",
         "the sweep didn't say why it stopped, once and alone"
     );
     assert_eq!(
