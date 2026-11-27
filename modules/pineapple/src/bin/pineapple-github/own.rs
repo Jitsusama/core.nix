@@ -219,15 +219,14 @@ impl Searched {
             let reach = self.reach();
             self.from = began;
             self.read = found.seen;
-            let next = self.reach();
-            let stamp = github::stamp(next);
+            let next = github::stamp(self.reach());
             for (left, to) in found.left {
-                eprintln!("{left} searched again only from {stamp}, where the next round reaches");
-                // What changed from where the next round reaches is
-                // searched again, so only what's before it is unread.
-                if let Some(to) = github::seconds(&to).map(|to| to.min(next))
-                    && to > reach
-                {
+                eprintln!("{left} searched again only from {next}, where the next round reaches");
+                // A thread changed again from where the next round reaches
+                // is found again, but what was said on it before then is
+                // older than that round judges, so the row runs to the
+                // oldest the search gave, as far as a stop it missed may be.
+                if let Some(to) = github::seconds(&to) {
                     tell.own(&found.login, reach, to);
                 }
             }

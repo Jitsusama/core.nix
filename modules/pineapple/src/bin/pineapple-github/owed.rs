@@ -5,7 +5,8 @@
 //! often each time, so a broken thread costs his shared limit little, and
 //! after [`TRIES`] failed asks it's let go, the journal and a row in For
 //! You naming the span nobody read, with its link, so he can look there
-//! himself. One his search or his notifications list again, as it
+//! himself; while that row can't be written, after [`UNTOLD`], the
+//! journal alone saying so. One his search or his notifications list again, as it
 //! changed, is asked early at no try; one the watch lists again waits its
 //! turn, as the watch lists it each round until his words there are read.
 
@@ -21,6 +22,13 @@ use super::Left;
 /// couldn't start, asks a spent limit kept back, or asks made early
 /// because it changed, so a busy thread is let go no sooner.
 const TRIES: u32 = 12;
+
+/// How many failed asks a thread whose row in For You can't be written is
+/// owed before it's let go anyway, the journal alone saying so: twelve
+/// more, about three hours at the longest wait, so a rows file that stays
+/// broken can't hold every such thread owed for good, each asked every
+/// quarter hour against Joel's limit and the site read as never whole.
+const UNTOLD: u32 = 2 * TRIES;
 
 /// How many doublings an owed thread's wait between asks grows by, so the
 /// longest is 31 rounds, about a quarter hour, half an hour by author.
@@ -169,18 +177,26 @@ pub(super) fn kept(
         let chosen = asked && was.is_none_or(|owed| owed.skip == 0);
         let at = was.map_or(began, |owed| owed.at);
         let tries = was.map_or(0, |owed| owed.tries) + u32::from(chosen);
-        // Let go only once Joel's row says so; one whose row can't be
-        // written is owed still, its row tried again each round that
-        // lists it and doesn't read it.
-        if tries >= TRIES && tell.thread(thread, *from) {
+        // Let go once Joel's row says so; one whose row can't be written
+        // is owed still, its row tried again each round that lists it and
+        // doesn't read it, until its tries reach [`UNTOLD`].
+        if tries >= TRIES {
+            let told = tell.thread(thread, *from);
+            if told || tries >= UNTOLD {
+                eprintln!(
+                    "<3>couldn't read {} in {tries} tries since {}, each failing or answered gone, \
+                     so what was said there from {} on goes unjudged: look there for a stop",
+                    thread.key(),
+                    github::stamp(at),
+                    github::stamp(*from)
+                );
+                continue;
+            }
             eprintln!(
-                "<3>couldn't read {} in {TRIES} tries since {}, each failing or answered gone, so \
-                 what was said there from {} on goes unjudged: look there for a stop",
-                thread.key(),
-                github::stamp(at),
-                github::stamp(*from)
+                "<4>{} is owed still, as Joel's row saying it went unread isn't written, until \
+                 the row is or it's failed {UNTOLD} tries",
+                thread.key()
             );
-            continue;
         }
         // Asked the round after a first failure, then after waits doubling;
         // one asked early, or not at all, is a round nearer due.
@@ -297,6 +313,30 @@ mod tests {
             owing,
             [owed(14, 100, TRIES, 31)],
             "not let go untold, its row tried again when it's next listed"
+        );
+
+        std::fs::remove_file(&rows.home).expect("the rows' home freed");
+        let threads = list(Vec::new(), vec![(thread(14), 100, 100)], &owing);
+        let owing = kept(&rows.left, &threads, (&[0], &[], 1), &owing, 950);
+        let written = std::fs::read_to_string(rows.home.join("pineapple/missed-github.json"))
+            .unwrap_or_default();
+        assert!(
+            owing.is_empty() && written.contains("pineapple-github-missed-thread-"),
+            "listed again, unread, its row is written and it's let go: {written}"
+        );
+    }
+
+    #[test]
+    fn one_whose_row_cant_be_written_is_let_go_at_its_last_held_try() {
+        let rows = Rows::new("untold");
+        std::fs::write(&rows.home, "").expect("a file where the rows' home would be");
+        let before = [owed(14, 100, UNTOLD - 1, 0)];
+        let threads = list(Vec::new(), vec![(thread(14), 100, 100)], &before);
+        let owing = kept(&rows.left, &threads, (&[0], &[], 1), &before, 900);
+
+        assert!(
+            owing.is_empty(),
+            "a rows file that stays broken holds it no longer, the journal alone saying so"
         );
     }
 

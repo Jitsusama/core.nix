@@ -81,8 +81,8 @@ impl Left {
             &format!("The Safe Word Missed Part of {}", self.name),
             &format!(
                 "The safe word never read {what} was said in pull requests and issues you take \
-                 part in that changed {}, as more changed than its search could give, so a stop \
-                 said there then wasn't heard",
+                 part in that changed {}, as its search was cut short or failed, so a stop said \
+                 there then wasn't heard",
                 missed::when(from, Some(to), at)
             ),
             &format!(

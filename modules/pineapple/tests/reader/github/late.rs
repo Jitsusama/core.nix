@@ -554,23 +554,18 @@ fn github_a_search_cut_short_twice_tells_joel_in_one_row_however_many_rounds_lea
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 
     let (reach, oldest) = (last - 3600, CUT_TOLD.load(Ordering::SeqCst) - 500);
-    // Where the third round reaches, which the second's row ends at, or
-    // the third's later, if it moved on before the reader stopped.
-    let third = searched_from(&searches(&asked)[4]).unwrap_or_default();
-    let ended = own_ended(&rows, reach).unwrap_or_default();
     let row = &rows["items"][0];
     assert!(
         rows["items"].as_array().map(Vec::len) == Some(1)
             && row["whole"] == true
-            && stamp(ended) >= third
-            && ended < oldest,
+            && own_ended(&rows, reach) == Some(oldest),
         "in shadow, in its own folder, one row spans what both rounds left out, from the \
-         first's reach to where the last searches again, as the two meet: {rows}"
+         first's reach to the oldest the search gave, as the two meet: {rows}"
     );
     let search = format!(
         "pineapple involves:{LOGIN} updated:{}..{}",
         stamp(reach),
-        stamp(ended)
+        stamp(oldest)
     );
     assert!(
         row["steps"][0]
@@ -579,11 +574,10 @@ fn github_a_search_cut_short_twice_tells_joel_in_one_row_however_many_rounds_lea
             && row["title"] == "The Safe Word Missed Part of GitHub",
         "it names the search that finds what was left out: {rows}"
     );
-    // Rounds here come within the second, so a later round's next reach
-    // is where it reached, leaving it nothing unread to say.
+    // A third round may have moved on before the reader stopped.
     assert!(
-        said.matches("<5>wrote Joel's row in ").count() >= 1,
-        "the round that left it out said so as it moved on: {said}"
+        said.matches("<5>wrote Joel's row in ").count() >= 2,
+        "each round that left it out said so as it moved on, so the one row met both: {said}"
     );
 }
 
@@ -647,11 +641,17 @@ fn github_a_search_of_whats_older_that_fails_says_so_and_moves_on() {
         "the journal names the search that failed, and from when the next searches: {said}"
     );
     let rows = shadow_rows(&home);
-    let ended = stamp(own_ended(&rows, last - 3600).unwrap_or_default());
+    let ended = own_ended(&rows, last - 3600).map(stamp);
     assert!(
-        rows["items"].as_array().map(Vec::len) == Some(1) && ended >= next && ended < oldest,
-        "one row says what's unread, from the reach to where the next round searches again, \
-         short of what the failing search would have reached: {rows}"
+        rows["items"].as_array().map(Vec::len) == Some(1) && ended.as_ref() == Some(&oldest),
+        "one row says what's unread, from the reach to the oldest the search before gave, as \
+         a stop said then on a thread changed since is too old for the next round: {rows}"
+    );
+    assert!(
+        rows["items"][0]["why"]
+            .as_str()
+            .is_some_and(|why| why.contains("as its search was cut short or failed")),
+        "its words fit a search that failed: {rows}"
     );
     assert!(
         searched[2].contains("updated%3A%3E%3D")
