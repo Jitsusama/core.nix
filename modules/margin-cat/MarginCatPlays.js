@@ -210,6 +210,27 @@ function handed(was, beat, taken, now) {
     };
 }
 
+// What the shell's ipc asking for `play` next leaves of the ask (`was`, its
+// `asked` and `refusedAt` as MarginCat.qml holds them): that play, its
+// refusals forgotten, `taken` so the scene waiting is drawn again with it.
+// Only a shell that reports (`reports`), as a test's does, takes it; any
+// other leaves the ask as it was, so nothing else on Joel's desktop steers
+// his cat. It's worked out here rather than in the ipc's handler, which
+// no Qt case can reach, so a case fails if the gate goes.
+function ipcAsked(reports, was, play) {
+    if (!reports) {
+        return { asked: was.asked, refusedAt: was.refusedAt, taken: false };
+    }
+    return { asked: play, refusedAt: null, taken: true };
+}
+
+// The level the shell's ipc says, `lively` in a shell that reports
+// (`reports`), as a test's does, and "" in any other, so nothing else on
+// Joel's desktop reads from his cat how long he's been away.
+function ipcLevel(reports, lively) {
+    return reports ? lively : "";
+}
+
 // Where a short wander goes, from `at` as sits takes it with the `seat` it
 // sits at: its `cells`, each `step` across, along the margin the `way` it
 // was drawn, or the other where that one's off its window's `column`,

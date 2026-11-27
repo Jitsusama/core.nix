@@ -5752,7 +5752,8 @@
     thinks, crouches back, eases in and out with strides stepped by the ground covered,
     overshoots, steps back and crouches as it stops, hurries far and stretches with the slowdown;
     it's livelier the less Joel is engaged and still on a call, locked or drawn nowhere, its waits
-    and plays at random, no play twice running, and its wander and hop kept to the margin
+    and plays at random, no play twice running, and its wander and hop kept to the margin; only
+    a shell that reports takes an ask over the shell's ipc or says its level there
   '';
   the-margin-takes-its-pieces = ''
     a machine moves, cuts, retunes and adds the margin's pieces

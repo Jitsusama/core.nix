@@ -268,6 +268,24 @@ QtObject {
             Plays.scene("idle", draws(0), "", { asked: "yarn", restsIn: { yarn: 60_000 } }).name,
             "yarn");
         // How often the yarn comes is margin-cat-games.qml's, beside the yarn.
+
+        // Only a shell that reports, as a test's does, takes an ask or says
+        // its level over the shell's ipc (MarginCat.qml's IpcHandler), so
+        // nothing else on his desktop steers his cat or reads from it how
+        // long he's been away. Any other leaves the ask as it was, none or
+        // one a cat turned down 5 s in.
+        const fresh = { asked: "", refusedAt: null };
+        const standing = { asked: "yarn", refusedAt: 5000 };
+        expect("a shell that doesn't report takes no ask",
+            Plays.ipcAsked(false, fresh, "puppy"), { asked: "", refusedAt: null, taken: false });
+        expect("nor forgets the refusals of one under way",
+            Plays.ipcAsked(false, standing, "puppy"),
+            { asked: "yarn", refusedAt: 5000, taken: false });
+        expect("one that reports takes it, its refusals forgotten",
+            Plays.ipcAsked(true, standing, "puppy"),
+            { asked: "puppy", refusedAt: null, taken: true });
+        expect("a shell that doesn't report says no level", Plays.ipcLevel(false, "idle"), "");
+        expect("one that reports says it", Plays.ipcLevel(true, "idle"), "idle");
     }
 
     // A walk of 100 cells of 1 to the right, thinking 200 ms: it turns,
