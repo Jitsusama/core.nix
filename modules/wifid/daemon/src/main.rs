@@ -1715,13 +1715,15 @@ fn take_in_warnings(
     let boot = match Boot::now() {
         Ok(boot) => boot,
         Err(error) => {
-            eprintln!("<4>forgets the warnings kept before, as it can't read the boot clock: {error}");
+            eprintln!(
+                "<4>wifid forgets the warnings it kept, as it can't read the boot clock: {error}"
+            );
             return Warned::none(file);
         }
     };
     let (warned, forgotten) = Warned::kept_in(file, boot);
     for said in forgotten {
-        eprintln!("<4>{said}");
+        eprintln!("<4>wifid {said}");
     }
     for (card, point, until) in warned.lasting(Instant::now(), boot) {
         arrivals.borrow_mut().warned(&card, &point, until);

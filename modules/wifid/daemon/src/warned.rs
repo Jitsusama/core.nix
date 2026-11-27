@@ -97,7 +97,8 @@ impl Warned {
             Ok(read) => read,
             Err(error) if error.kind() == io::ErrorKind::NotFound => return (warned, Vec::new()),
             Err(error) => {
-                let said = format!("forgets the warnings kept before, as it can't read them: {error}");
+                let said =
+                    format!("forgets the warnings kept before, as it can't read them: {error}");
                 return (warned, vec![said]);
             }
         };
@@ -238,7 +239,12 @@ mod tests {
         let now = Instant::now();
         let mut warned = Warned::none(&file);
         warned
-            .warned("wlan2", DESK, now + Duration::from_secs(5), (now, boot(600)))
+            .warned(
+                "wlan2",
+                DESK,
+                now + Duration::from_secs(5),
+                (now, boot(600)),
+            )
             .expect("kept");
 
         let later = boot(605);
