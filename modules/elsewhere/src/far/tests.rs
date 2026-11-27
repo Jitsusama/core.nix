@@ -3,6 +3,7 @@ use crate::settings::{Copies, Kind};
 use std::path::{Path, PathBuf};
 
 mod crossing;
+mod cutting;
 mod handing;
 mod heard;
 mod holding;
@@ -87,7 +88,7 @@ fn the_far_line_waits_for_the_files_then_runs_the_setup_and_the_job_by_name() {
     );
     for says in [
         "/quest-workspace/QEST-20261115-ABC123/handover/elsewhere/7-9\n",
-        "work=\"${XDG_CACHE_HOME:-$HOME/.cache}\"/pi/agentic-harness.pi/quest-workspace/\
+        "work=\"$cache\"/pi/agentic-harness.pi/quest-workspace/\
          QEST-20261115-ABC123/.e/7-9\n",
         "bytes=1048576\n",
         "until arrived; do",

@@ -28,6 +28,7 @@ pub mod fence;
 pub mod folder;
 
 use std::env;
+use std::ffi::OsString;
 use std::fs;
 use std::io::Write;
 use std::os::unix::fs::OpenOptionsExt;
@@ -320,35 +321,50 @@ pub fn forge() -> String {
 
 /// The folder each quest's scratch is in on this machine: the one
 /// `NIX_OFFLOAD_QUEST_SCRATCH` names, as a test asks, or the harness's,
-/// under XDG's cache folder.
+/// under XDG's cache folder, found as elsewhere finds it. None where
+/// there's no cache, rather than one found from wherever this runs.
 #[must_use]
-pub fn scratches() -> PathBuf {
+pub fn scratches() -> Option<PathBuf> {
     if let Some(folder) = env::var_os("NIX_OFFLOAD_QUEST_SCRATCH") {
-        return PathBuf::from(folder);
+        return Some(PathBuf::from(folder));
     }
-    let cache = env::var_os("XDG_CACHE_HOME").map_or_else(
-        || PathBuf::from(env::var_os("HOME").unwrap_or_default()).join(".cache"),
-        PathBuf::from,
-    );
-    cache.join("pi/agentic-harness.pi/quest-workspace")
+    xdg("XDG_CACHE_HOME", ".cache").map(|cache| cache.join("pi/agentic-harness.pi/quest-workspace"))
+}
+
+/// The folder XDG's `variable` names, else `fallback` in the home: a
+/// relative one, as the XDG spec says, is none, and a home that isn't
+/// absolute gives none either.
+fn xdg(variable: &str, fallback: &str) -> Option<PathBuf> {
+    found(env::var_os(variable), env::var_os("HOME"), fallback)
+}
+
+/// The XDG folder `named`, else `fallback` in `home`, as [`xdg`] finds it.
+fn found(named: Option<OsString>, home: Option<OsString>, fallback: &str) -> Option<PathBuf> {
+    let absolute = |it: &OsString| Path::new(it).is_absolute();
+    named.filter(absolute).map(PathBuf::from).or_else(|| {
+        home.filter(absolute)
+            .map(|home| Path::new(&home).join(fallback))
+    })
 }
 
 /// What `nix-offload/NAME` under XDG's config folder says, as the home
 /// module writes it, or nothing when it isn't there.
 #[must_use]
 pub fn configured(name: &str) -> Option<String> {
-    let config = env::var_os("XDG_CONFIG_HOME").map_or_else(
-        || PathBuf::from(env::var_os("HOME").unwrap_or_default()).join(".config"),
-        PathBuf::from,
-    );
+    let config = xdg("XDG_CONFIG_HOME", ".config")?;
     fs::read_to_string(config.join("nix-offload").join(name)).ok()
 }
 
-/// A gate's folder in a quest's scratch.
+/// A gate's folder in a quest's scratch, where there is one.
 #[must_use]
-pub fn folder(quest: &str, commit: &str) -> PathBuf {
-    scratches().join(quest).join(GATES).join(commit)
+pub fn folder(quest: &str, commit: &str) -> Option<PathBuf> {
+    Some(scratches()?.join(quest).join(GATES).join(commit))
 }
+
+/// Why a gate has no folder here: there's no cache, so no quest's
+/// scratch, as [`scratches`] finds them.
+pub const NO_SCRATCH: &str =
+    "neither XDG_CACHE_HOME nor HOME is absolute, so no quest's scratch is here";
 
 /// Reads a request, once, from a gate's folder.
 ///
@@ -558,5 +574,29 @@ mod tests {
             Some(found),
             "a result should read back whole"
         );
+    }
+
+    #[test]
+    fn a_folder_or_home_that_isn_t_absolute_finds_no_cache() {
+        for (named, home, cache) in [
+            (Some("/c"), Some("/h"), Some("/c")),
+            (Some("/c"), None, Some("/c")),
+            (Some("rel/cache"), Some("/h"), Some("/h/.cache")),
+            (Some(""), Some("/h"), Some("/h/.cache")),
+            (None, Some("/h"), Some("/h/.cache")),
+            (None, Some(""), None),
+            (None, Some("rel"), None),
+            (Some("rel/cache"), None, None),
+        ] {
+            assert_eq!(
+                found(
+                    named.map(OsString::from),
+                    home.map(OsString::from),
+                    ".cache"
+                ),
+                cache.map(PathBuf::from),
+                "a folder of {named:?} and a home of {home:?} found the wrong cache"
+            );
+        }
     }
 }

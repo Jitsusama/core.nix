@@ -1656,7 +1656,10 @@ works the same way everywhere.
   the charger and the battery, since its own choice isn't a mode Joel
   left on). For You is a place, so Return steps into it whatever it
   holds, and Return on what's first goes where it's done; Super+O,
-  Return, Return reaches the pressing thing, each press foreseen. Every place
+  Return, Return reaches the pressing thing, each press foreseen, and
+  what sessions raise is one Return deeper, inside Agents, never at
+  For You's top (Joel, 2026-11-25 21:52: "it also makes no sense for
+  the agents to be top level"). Every place
   and list opens on its first row, Now and For You included, so the same
   keys land on the same row every time: what's pressing earns the top by
   order, never by the selection travelling to it (Joel, 2026-10-29:
