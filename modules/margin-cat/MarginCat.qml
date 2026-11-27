@@ -121,8 +121,9 @@ Scope {
         // Asks that the next play be `play`, as a test watching it asks:
         // the scene waiting is drawn again with it, its rest left running.
         // Only a shell that reports, as a test's does, takes it or says its
-        // level, so nothing else on his desktop steers his cat or reads from
-        // it how long he's been away.
+        // level. Elsewhere the cat neither lets another program steer it
+        // nor tells one how long he's been away, though niri and his
+        // session may still say he's idle.
         function next(play: string): void {
             if (!Options.reports)
                 return;
