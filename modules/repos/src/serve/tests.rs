@@ -20,7 +20,7 @@ use repos::using::{LONGEST as LONGEST_SHARE, Process, Sample};
 
 use super::{
     Disk, Journal, LONGEST, Of, QUIET, SAMPLED, SPACED, STALE, Working, folders_of, health,
-    measures, ready, settle,
+    journalled, measures, ready, settle,
 };
 
 fn of(name: &str) -> Of {
@@ -1154,6 +1154,11 @@ fn it_says_how_long_it_took_to_be_ready_in_the_words_health_times() {
         ready(Duration::from_micros(1_234_567)),
         "repos: ready in 1234 ms, every repository read and the socket listening"
     );
+}
+
+#[test]
+fn each_line_of_the_readings_is_journalled_after_the_daemons_name() {
+    assert_eq!(journalled("x".to_owned()), "repos: x");
 }
 
 #[test]

@@ -306,9 +306,7 @@ impl Working {
         folders: Vec<PathBuf>,
         sample: impl FnMut(&[PathBuf]) -> Sample + Send + 'static,
     ) -> Self {
-        Self::start_saying(pace, old, folders, sample, using::reading, |said| {
-            eprintln!("repos: {said}");
-        })
+        Self::start_saying(pace, old, folders, sample, using::reading, journal)
     }
 
     /// Starts as [`Working::start`] does, asking `reading` which process
@@ -662,6 +660,20 @@ fn follow_again(folders: &mut Folders, moved: &BTreeSet<Of>) {
 fn ready(took: Duration) -> String {
     let ms = took.as_millis();
     format!("repos: ready in {ms} ms, every repository read and the socket listening")
+}
+
+/// A line of the readings as the journal is told it: every line the daemon
+/// journals opens with its name, as `ready`'s does, so one read out of the
+/// journal alone still says whose it is.
+fn journalled(mut said: String) -> String {
+    said.insert_str(0, "repos: ");
+    said
+}
+
+/// Tells the journal a line of the readings, on standard error, which the
+/// journal reads.
+fn journal(said: String) {
+    eprintln!("{}", journalled(said));
 }
 
 /// What `reading` gives, saying how long it took for health.
