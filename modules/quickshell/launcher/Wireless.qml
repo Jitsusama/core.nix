@@ -33,6 +33,7 @@ import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "ActsSaid.js" as ActsSaid
 import "Order.js" as Order
+import "Presented.js" as Presented
 import "ReadyRows.js" as Ready
 import "ActForms.js" as Forms
 import "WirelessPlate.js" as Plate
