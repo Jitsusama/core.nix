@@ -180,7 +180,9 @@ let
   # order they lay what lived long scattered over chunks nearly empty and
   # none emptied to be freed: in five hours the shell held 284 MB around
   # 72 live, 135 MB of it free slots on pages still holding something
-  # (qtdeclarative-chunks-fullest-filled-first.patch).
+  # (qtdeclarative-chunks-fullest-filled-first.patch). The heap module's
+  # own tests hold it, fillsTheFullestFirst and sortsEachBinFullestFirst,
+  # which run in its build, so dropping it means dropping those two cases.
   # An animation starting asks only the windows it changes for a frame
   # while Qt's system timer advances animations, as it does unless one
   # window alone is shown on a vsync Qt trusts, since every window drew a

@@ -512,30 +512,34 @@ QtObject {
 
         // Latching a pick costs a few walks over the rows picked, never a
         // walk for each latch: a Set in Qt's engine looks a key up by
-        // walking every key it holds (H6EDLC, 2026-11-11). It's held to a
-        // multiple of one walk making and reading an object of the keys,
-        // the fastest of five batches, since a slower one is the builder's
-        // other work or the collector.
-        const fastest = work => {
-            let least = Infinity;
-            for (let batch = 0; batch < 5; batch += 1) {
-                const began = Date.now();
-                for (let round = 0; round < 10; round += 1) {
-                    work();
-                }
-                least = Math.min(least, (Date.now() - began) / 10);
+        // walking every key it holds (H6EDLC, 2026-11-11). It's held to
+        // twenty walks making and reading an object of the keys: healthy
+        // latching took 5 to 14 on lenders, and a Set 46 to 63 (2026-11-27).
+        // Each batch times a walk and the latching back to back, and the
+        // collector runs before each so neither pays for the other's
+        // garbage. Timed apart, as the fastest of the walks against the
+        // fastest of the latchings, a quiet walk could be held against latchings that
+        // were all busy: 5.2 ms against 0.4 on a lender running 315
+        // builds, and 2.5 alone (A4315520, 2026-11-26). It holds when
+        // three of the five batches do, so one stall in a short walk,
+        // raising its batch's bound, can't let a slow latching through.
+        const timed = work => {
+            gc();
+            const began = Date.now();
+            for (let round = 0; round < 10; round += 1) {
+                work();
             }
-            return least;
+            return (Date.now() - began) / 10;
         };
         const everyRow = Array.from({ length: 1914 }, (_, at) =>
             row(`emoji:${at}`, `Emoji ${at}`));
         const everyKey = {};
         everyRow.forEach((one, at) => { everyKey[one.key] = at; });
-        const walk = fastest(() => {
+        const walking = () => {
             const places = Object.create(null);
             everyRow.forEach((one, at) => { places[one.key] = at; });
             return everyRow.filter(one => places[one.key] !== undefined).length;
-        });
+        };
         const pickedOf = {};
         everyRow.forEach((one, at) => {
             const asked = `q${at % 40}`;
@@ -544,10 +548,15 @@ QtObject {
         const latchedAt = {};
         everyRow.forEach((one, at) => { latchedAt[`r${at}`] = one.key; });
         const there = Rank.standing(everyKey);
-        const took = fastest(() => Rank.relatch(latchedAt, pickedOf, "em", there));
-        console.info(`latching a pick took ${took} ms against a walk's ${walk}`);
-        expect(`latching a pick takes ${took} ms, at most ten walks of ${walk} ms`,
-            took <= 10 * walk + 1, true);
+        const batches = Array.from({ length: 5 }, () => {
+            const walk = timed(walking);
+            return { walk, took: timed(() => Rank.relatch(latchedAt, pickedOf, "em", there)) };
+        });
+        const said = batches.map(one => `${one.took} against ${one.walk}`).join(", ");
+        console.info(`latching a pick took, in ms against a walk's: ${said}`);
+        const held = batches.filter(one => one.took <= 20 * one.walk + 1).length;
+        expect(`latching a pick takes at most twenty walks and a ms in three batches, `
+            + `${held} held, in ms: ${said}`, held >= 3, true);
 
         // Said as warnings, since Qt keeps ordinary logging quiet.
         for (const failure of failures)

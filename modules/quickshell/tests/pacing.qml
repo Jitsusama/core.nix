@@ -1100,6 +1100,10 @@ QtObject {
             Presented.keyShown("place:Harbour House", false), "place");
         check(failures, "as is one forging a walk's steps",
             Presented.keyShown("category:power \u203a wifi", false), "category");
+        check(failures, "or forging them with no spaces about the step",
+            Presented.keyShown("category:power\u203awifi", false), "category");
+        check(failures, "or holding a colon, as a daemon's key of another kind would",
+            Presented.keyShown("place:wifi:Harbour", false), "place");
         check(failures, "or holding nothing after its kind",
             Presented.keyShown("collection:", false), "collection");
         check(failures, "but any other key only by its kind, as a network's name is",

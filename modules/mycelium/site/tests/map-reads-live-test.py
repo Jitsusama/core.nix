@@ -80,9 +80,10 @@ CELLS = 8
 # once a cloud machine says it's kept, a little more once a long lease counts
 # days, about 0.4 KB more once every label is kept apart and in its room,
 # about 2.4 KB more once a machine's drawer starts new work on it, 686.0 KB
-# once what each cell split from is read, and about 0.9 KB more once new
-# work keeps to the machine chosen, under the 689 KB allowed; new work's line
-# and its hidden controls draw about 20 elements of the 611.
+# once what each cell split from is read, about 0.9 KB more once new work
+# keeps to the machine chosen, and a little more once the kit draws a field's
+# placeholder in muted, under the 689 KB allowed; new work's line and its
+# hidden controls draw about 20 elements of the 611.
 BUDGET = Budget(files=33, kilobytes=689, elements=620)
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000
@@ -2964,6 +2965,42 @@ def test_the_map_keeps_to_its_budget(browser: Browser, mycelium_served: Served) 
         the_map_counts(opened.page, COUNTED, "the map didn't draw")
         opened.keeps_to(BUDGET)
         the_map_stands(opened.page, "live")
+    finally:
+        opened.close()
+
+
+# Every raster the page fetched, shows as an image or paints from a style, by
+# its address: a file of a raster kind, or a raster's data written inline.
+RASTERS = r"""() => {
+  const raster = /\.(png|jpe?g|gif|webp|avif|bmp|ico)([?#]|$)|^data:image\/(?!svg)/iu;
+  const fetched = performance.getEntriesByType("resource").map((each) => each.name);
+  const shown = [...document.querySelectorAll("img, picture source, image, input[type=image]")]
+    .map((each) => each.currentSrc || each.src || each.getAttribute("href") || each.srcset || "");
+  const url = /url\("?([^")]*)"?\)/gu;
+  const painted = [...document.querySelectorAll("*")].flatMap((each) =>
+    [...getComputedStyle(each).backgroundImage.matchAll(url)].map((found) => found[1])
+  );
+  return {
+    fetched: fetched.filter((each) => raster.test(each)),
+    shown: shown.filter((each) => raster.test(each)),
+    painted: painted.filter((each) => raster.test(each)),
+  };
+}"""
+
+
+def test_the_map_is_drawn_as_vectors_with_no_raster_picture(
+    browser: Browser, mycelium_served: Served
+) -> None:
+    """The map is drawn from shapes, never a picture (Joel, 14 November: "stick to svgs")."""
+    root, _ = mycelium_served
+    opened = Opened(browser, f"{root}mycelium/", SIZES[-1], "dark")
+    try:
+        the_map_stands(opened.page, "live")
+        the_map_counts(opened.page, COUNTED, "the map didn't draw")
+        found = opened.page.evaluate(RASTERS)
+        assert found == {"fetched": [], "shown": [], "painted": []}, (
+            f"the map fetched, showed or painted a raster picture: {found}"
+        )
     finally:
         opened.close()
 
