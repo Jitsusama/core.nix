@@ -59,47 +59,42 @@ NEWEST = (
     "Gulls are back on the breakwater, a week before the almanac said they would be, and "
     "they're nesting low on the seaward side where the spring tides reach the rocks."
 )
-# Every other headline and lede the page writes, by its own model, which must take the lines
-# the ones it opens on do. The headlines: a node never reached (site.ts's own words), nothing
-# said, all settled, none settled, and counts past ten, said in numerals, in site.ts's markup.
-# The ledes: nothing said, all settled, and the longest the model writes, a quest's name in
-# Title Case or lower case cut at its 48 characters and a murmur's prose at its 84, which must
-# fit the four lines the lede's box holds.
+# Every other headline and lede the page writes, made by its own model and markup, which must
+# take the lines the ones it opens on do. The headlines: a node never reached, and every count
+# said in words, any part of it settled, then counts past them in numerals. The ledes: a node
+# never reached, nothing said, all settled, and the longest the model writes, a quest's name in
+# Title Case or lower case cut at its whole 48 characters and a murmur's prose at its 84, which
+# must fit the four lines the lede's box holds.
 HEAD_FORMS = """async () => {
-  const { headline, lede } = await import("./model.js");
+  const { headline, lede, UNHEARD } = await import("./model.js");
+  const { escaped, headlineOf } = await import("./draw.js");
   const said = (count, open, quest = "Watch the shore", words = "The tide turned.") =>
     Array.from({ length: count }, (_, at) => ({
       key: `murmur:SHORES:${at}`, writer: "SHORES", quest, words, ties: [],
       settled: at < open ? null : "Done.", at: count - at }));
-  const markup = (murmurs) => {
-    const { lead, turn, said: count, open } = headline(murmurs);
-    if (count === 0) {
-      return `${lead} <em>${turn}</em>`;
+  const counts = [[110, 0], [110, 7], [1204, 117]];
+  for (let count = 0; count <= 12; count += 1) {
+    for (let open = 0; open <= count; open += 1) {
+      counts.push([count, open]);
     }
-    const all = `<a href="#all" data-show="all">${lead}</a>`;
-    if (open === 0 || open === count) {
-      return `${all} <em>${turn}</em>`;
-    }
-    return `${all} <em><a href="#air" data-show="air">${turn}</a></em>`;
-  };
-  const text = (words) => {
-    const held = document.createElement("p");
-    held.textContent = words;
-    return held.innerHTML;
-  };
-  const prose = "Gulls are back on the breakwater, a week before the almanac said they " +
-    "would be, and they're nesting low on the seaward side.";
+  }
+  const lower = "gulls are back on the breakwater, a week before the almanac said they " +
+    "would be, and they nest low on the seaward side.";
+  const title = "Gulls Are Back On The Breakwater, A Week Before The Almanac Said They " +
+    "Would Be, And They Nest Low On The Seaward Side.";
   return {
     headline: [
-      "Not hearing the mycelium node.",
-      ...[[0, 0], [7, 0], [110, 0], [7, 7], [110, 7], [1204, 117]].map(
-        ([count, open]) => markup(said(count, open))),
+      escaped(UNHEARD.headline),
+      ...counts.map(([count, open]) => headlineOf(headline(said(count, open)))),
     ],
     lede: [
-      said(0, 0), said(3, 0),
-      said(1, 1, "Keep Mycelia Fast and Whole Through Every Switch, Every Night", prose),
-      said(1, 1, "make the nightly audit find everything in order, every morning", prose),
-    ].map((murmurs) => text(lede(murmurs))),
+      UNHEARD.lede,
+      ...[
+        said(0, 0), said(3, 0),
+        said(1, 1, "Keep Mycelia Fast and Whole Through Every Switch Tonight Again", lower),
+        said(1, 1, "make the nightly audits find everything in order and keep it", title),
+      ].map(lede),
+    ].map(escaped),
   };
 }"""
 # The lines the lede's box holds, which every lede the model writes fits.
