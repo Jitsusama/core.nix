@@ -597,6 +597,7 @@ fn hear_logs(
                 tries: 0,
                 sends_failed_at: Vec::new(),
                 sent_late_at: None,
+                hubs_waited_since: None,
                 unnoted_since: None,
                 taken_by: None,
                 answered_at: None,
@@ -765,7 +766,8 @@ struct Through {
 /// carried, nor out of tries: its own live cell, else the least-held live
 /// holder of its subject, else the fallback. A pain said in a session the
 /// mycelium doesn't know has none yet, nor, while `hubs_wait`, one only a
-/// hub would take. No session of `voids`, heard in the void, holds one.
+/// hub would take, for as long as a blink lasts from when it began to
+/// wait. No session of `voids`, heard in the void, holds one.
 fn owners_for(
     ears: &Ears,
     routes: &Routes,
@@ -790,7 +792,7 @@ fn owners_for(
     }
     let mut by_owner: BTreeMap<String, Vec<usize>> = BTreeMap::new();
     let mut through: BTreeMap<usize, Through> = BTreeMap::new();
-    let mut for_want_of_hubs = BTreeSet::new();
+    let (mut for_want_of_hubs, mut waiting) = (BTreeSet::new(), BTreeSet::new());
     for (n, pain) in kept.iter().enumerate() {
         if pain.carried
             || pain.routed_at.is_some()
@@ -829,7 +831,11 @@ fn owners_for(
                 if ears.hubless.is_none() {
                     return routes.fallback.clone();
                 }
-                if hubs_wait {
+                // Its own wait is counted too, as a skipped run starts
+                // the outage's count again (#7022's round, F20).
+                let waited = pain.hubs_waited_since.map_or(0, |since| ears.at - since);
+                if hubs_wait && waited < CELLLESS_AT_MOST_MS {
+                    waiting.insert(n);
                     return None;
                 }
                 for_want_of_hubs.insert(n);
@@ -863,6 +869,7 @@ fn owners_for(
         by_owner,
         through,
         for_want_of_hubs,
+        waiting,
     }
 }
 
@@ -877,6 +884,8 @@ struct Owners {
     /// Those going to the fallback only as the node named no hubs, by
     /// their place.
     for_want_of_hubs: BTreeSet<usize>,
+    /// Those waiting for the node to name hubs, by their place.
+    waiting: BTreeSet<usize>,
 }
 
 /// Sends each pain of the last two hours not yet sent, nor carried, to its
@@ -906,7 +915,13 @@ fn route_waiting(
         by_owner,
         through,
         for_want_of_hubs,
+        waiting,
     } = owners_for(ears, routes, (cells, voids, hubs_wait), kept);
+    for (n, pain) in kept.iter_mut().enumerate() {
+        pain.hubs_waited_since = waiting
+            .contains(&n)
+            .then(|| pain.hubs_waited_since.unwrap_or(ears.at));
+    }
     let mut owned = Vec::new();
     let (mut put, mut unkept, mut hubless_sent) = (0, None, 0);
     for (owner, mut pains) in by_owner {

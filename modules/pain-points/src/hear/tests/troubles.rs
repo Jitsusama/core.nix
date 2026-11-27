@@ -192,6 +192,44 @@ fn a_pain_a_hub_would_take_waits_out_a_blink_then_goes_to_the_fallback_said() {
 }
 
 #[test]
+fn a_pain_waits_out_one_blink_however_far_apart_the_runs_are() {
+    let place = Place::new("hubless-gap");
+    place.routes();
+    a_day(&place);
+    let minute = 60_000;
+    let run = |at: i64| {
+        let ears = Ears {
+            at,
+            hubless: Some("connection refused".into()),
+            ..place.ears()
+        };
+        let mut to = Vec::new();
+        let hour = hear(&ears, CELLS, &mut |owner, text| {
+            if text.contains("why is the launcher so slow") && !text.contains(route::FOR_THE_KEEPER)
+            {
+                to.push(owner.to_owned());
+            }
+            true
+        })
+        .expect("a run");
+        (to, hour)
+    };
+    let (to, _) = run(AT);
+    assert!(
+        to.is_empty(),
+        "the void's pain didn't wait out the blink: {to:?}"
+    );
+    // Runs skipped between, so the outage's count starts again.
+    let (to, hour) = run(AT + 15 * minute);
+    assert_eq!(hour.hubless_since, Some(AT + 15 * minute), "{hour:?}");
+    assert_eq!(
+        to,
+        ["ORCH01"],
+        "a gap between runs started the pain's wait again: {hour:?}"
+    );
+}
+
+#[test]
 fn a_node_out_of_reach_while_no_pain_needs_a_hub_is_no_trouble() {
     let place = Place::new("hubless-quiet");
     place.routes();

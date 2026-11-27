@@ -40,6 +40,7 @@ fn pain(session: &str, entry: &str, words: &str, hits: usize) -> Heard {
         tries: 0,
         sends_failed_at: Vec::new(),
         sent_late_at: None,
+        hubs_waited_since: None,
         unnoted_since: None,
         taken_by: None,
         answered_at: None,
