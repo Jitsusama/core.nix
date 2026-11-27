@@ -3012,7 +3012,7 @@ Singleton {
     // app id, bounding it (refusedOwn).
     property var refusalKeptAt: ({})
     function forgetRefusal(named) {
-        if (named in refusalKeptAt) {
+        if (named in refusalKeptAt && named === "") {
             const kept = Object.assign({}, refusalKeptAt);
             delete kept[named];
             refusalKeptAt = kept;
