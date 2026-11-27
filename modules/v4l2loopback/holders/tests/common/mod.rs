@@ -197,7 +197,7 @@ impl Drop for Watch {
 
 /// Locks a folder, so no file can be written in it, checking it took: root
 /// writes in any folder, which would pass the tests of a write that fails.
-pub fn lock(folder: &Path) {
+fn lock(folder: &Path) {
     fs::set_permissions(folder, Permissions::from_mode(0o555)).unwrap();
     assert!(
         File::create(folder.join("probe")).is_err(),

@@ -13,7 +13,7 @@
 
 mod common;
 
-use common::{Watch, complaints_of, lock, ready, right_again};
+use common::{Watch, complaints_of, ready, right_again};
 use std::fs::{self, File, Permissions};
 use std::os::unix::fs::{PermissionsExt, symlink};
 use std::path::PathBuf;
