@@ -23,7 +23,6 @@
 // A cell's link, and the cell a link or a hash names, are the kit's cell.ts,
 // the one way every site names a cell.
 import { addressIn, cellLink, isNamed } from "../../local-sites/kit/cell.js";
-import { tell } from "../../local-sites/kit/status.js";
 import { asksOrFinds, cellDoing as cellDoingAt, fedWords, groupDoing as groupDoingAt, sensesDoing, talkLineWords } from "./doing.js";
 import {
   contextWords,
@@ -153,7 +152,6 @@ import {
   const svg = document.getElementById("map-draw");
   const world = document.getElementById("world");
   const labelsEl = document.getElementById("labels");
-  const asof = document.getElementById("asof");
   const panelBody = document.getElementById("panel-body");
   const find = document.getElementById("find");
   const findLine = document.getElementById("find-line");
@@ -4942,8 +4940,9 @@ import {
       // The next change brings the next reading, which is drawn whole: a
       // draw cut short leaves no shape behind for that reading to match.
       drawnFor = null;
-      // Through the kit, broken, so the line's glyph says it as its words do.
-      tell(asof, `The map couldn't draw: ${err?.message || err}. It tries again with the next change.`, "broken");
+      // The page says why on the standing line, broken, until a reading is
+      // drawn whole, whatever a feed's standing says meanwhile (site.ts).
+      document.dispatchEvent(new CustomEvent("mycelium:undrawn", { detail: { why: `${err?.message || err}` } }));
     }
   };
   document.addEventListener("mycelium:now", (e) => take(e.detail));

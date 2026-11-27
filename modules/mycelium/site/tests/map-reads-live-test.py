@@ -2063,6 +2063,24 @@ def test_a_reading_that_fails_to_draw_is_said_broken_until_the_next_draws(
     expect(asof, "the map still said it couldn't draw").not_to_contain_text("couldn't draw")
 
 
+def test_a_reading_that_fails_to_draw_is_said_though_a_feeds_standing_moves(
+    mycelium_opened: Opened, mycelium_served: Served
+) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    mycelium_opened.expecting("mycelium: a reading failed to draw")
+    page.evaluate(UNDRAWABLE)
+    the_map_stands(page, "broken")
+    # Every watch goes stale once the server goes, which the line would say over the failure.
+    _, server = mycelium_served
+    mycelium_opened.loses(server)
+    page.wait_for_timeout(REDRAWN_MS)
+    the_map_stands(page, "broken")
+    expect(
+        page.locator("#asof"), "a feed's standing hid that the map couldn't draw"
+    ).to_contain_text("The map couldn't draw")
+
+
 def test_a_server_that_goes_is_said_stale(mycelium_opened: Opened, mycelium_served: Served) -> None:
     page = mycelium_opened.page
     the_map_stands(page, "live")
