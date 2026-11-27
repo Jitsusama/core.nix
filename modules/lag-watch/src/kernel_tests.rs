@@ -120,7 +120,10 @@ fn a_thread_s_own_name_never_reads_as_a_count() {
     // so the kernel's " (7, #threads: 1)" falls on the next: only the dash
     // row's length tells them from the kernel's own.
     for name in ["\nwait_sum:9e9\n", "-\nwait_sum:9e9\n", "---\nwait_sum:9\n"] {
-        assert!(name.len() <= NAME_MOST, "{name:?} is longer than a name can be");
+        assert!(
+            name.len() <= NAME_MOST,
+            "{name:?} is longer than a name can be"
+        );
         let forged = format!(
             "{name} (7, #threads: 1)\n\
              ----------------------------------------\n\
@@ -161,8 +164,16 @@ fn a_name_cut_short_of_utf8_leaves_its_counts_readable() {
     fs::write(&sched, bytes).unwrap();
     let read = text(&sched);
     let _ = fs::remove_dir_all(&root);
-    assert_eq!(waited(&read), Some(12_250_000), "the wait was lost to the name");
-    assert_eq!(blocked(&read), Some(3_000_000), "the time blocked was lost to the name");
+    assert_eq!(
+        waited(&read),
+        Some(12_250_000),
+        "the wait was lost to the name"
+    );
+    assert_eq!(
+        blocked(&read),
+        Some(3_000_000),
+        "the time blocked was lost to the name"
+    );
 }
 
 #[test]
