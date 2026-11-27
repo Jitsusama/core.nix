@@ -3786,6 +3786,7 @@ impl Wifid<'_> {
                 Ok(()) => println!("<6>{card} moves to {bssid} before it's dropped"),
                 Err(refused) => {
                     println!("<4>{card} couldn't move to {bssid} before it's dropped: {refused:?}");
+                    self.heed_ended(card, from.as_deref());
                 }
             },
             Heed::Look(channels) => {
@@ -3797,18 +3798,33 @@ impl Wifid<'_> {
                     });
                 }
                 println!("<6>{card} can't look for the points asked, so may join any again");
+                self.heed_ended(card, from.as_deref());
                 self.let_go(card, joining != Some(card)).await;
             }
             Heed::LetGo if looked == Looked::Failed => {
                 println!("<6>{card}'s look for the points asked failed, so may join any again");
+                self.heed_ended(card, from.as_deref());
                 self.let_go(card, joining != Some(card)).await;
             }
             Heed::LetGo => {
                 println!("<6>{card} hears none of the points asked, so may join any again");
+                // A look this warning began was its heed, and has ended.
+                if looked != Looked::Not {
+                    self.heed_ended(card, from.as_deref());
+                }
                 self.let_go(card, joining != Some(card)).await;
             }
         }
         None
+    }
+
+    /// Ends the heed of the warning from the point a card is on, as
+    /// wifid's move off it couldn't start, so a call's give-way doesn't
+    /// wait on it (`State::heed_ended`).
+    fn heed_ended(&self, card: &str, from: Option<&str>) {
+        if let Some(from) = from {
+            change(self.state, |state| state.heed_ended(card, from));
+        }
     }
 
     /// Has a card look over these channels for the points a request names,

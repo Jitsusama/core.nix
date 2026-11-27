@@ -29,9 +29,11 @@ pub struct State {
     saved: Vec<Saved>,
     /// By the access point's path in wpa_supplicant, which names its card.
     heard: BTreeMap<String, Heard>,
-    /// When a look last heard each of those, by the same path: what each
-    /// says is as of then, and its age grows from it.
-    heard_when: BTreeMap<String, Instant>,
+    /// When each of those was taken in, by the same path, and its age
+    /// then: what each says is as of a look that long before, and its age
+    /// grows from it. Kept so, not as the look's own instant, as an age
+    /// older than the clock `Instant` counts from can't be one.
+    heard_when: BTreeMap<String, (Instant, u32)>,
     radio_off: bool,
     wired: bool,
     /// How many times each card, by name, has begun joining a network,
@@ -421,10 +423,8 @@ impl State {
     /// no longer heard, and when a look last heard it, from its age now.
     pub fn heard(&mut self, path: &str, heard: Option<Heard>) {
         if let Some(heard) = heard {
-            let now = Instant::now();
-            let ago = Duration::from_secs(heard.age.into());
-            let when = now.checked_sub(ago).unwrap_or(now);
-            self.heard_when.insert(path.into(), when);
+            self.heard_when
+                .insert(path.into(), (Instant::now(), heard.age));
             self.heard.insert(path.into(), heard);
         } else {
             self.heard_when.remove(path);
@@ -622,9 +622,9 @@ impl State {
             })
             .map(|(path, heard)| {
                 let mut heard = heard.clone();
-                if let Some(when) = self.heard_when.get(path) {
-                    let ago = now.saturating_duration_since(*when).as_secs();
-                    heard.age = u32::try_from(ago).unwrap_or(u32::MAX);
+                if let Some(&(taken, then)) = self.heard_when.get(path) {
+                    let since = now.saturating_duration_since(taken).as_secs();
+                    heard.age = then.saturating_add(u32::try_from(since).unwrap_or(u32::MAX));
                 }
                 heard
             })
@@ -671,6 +671,17 @@ impl State {
             .filter(|before| before.point.eq_ignore_ascii_case(point))
             .and_then(|before| before.at);
         self.warned_off(card, point, (at, until));
+    }
+
+    /// Ends the heed of a card's warning from this point where wifid's
+    /// move off it, or its look first, couldn't start, so a call no
+    /// longer waits on a move that isn't under way (`warned_on`). The
+    /// point stays kept off for as long as it warned.
+    pub fn heed_ended(&mut self, card: &str, point: &str) {
+        let warning = self.warned_off.get_mut(card);
+        if let Some(warning) = warning.filter(|warning| warning.point.eq_ignore_ascii_case(point)) {
+            warning.at = None;
+        }
     }
 
     /// Keeps the access point that warned a card before a restart from
@@ -1593,6 +1604,29 @@ mod tests {
         );
     }
 
+    #[tokio::test(start_paused = true)]
+    async fn a_point_heard_before_the_clock_began_isn_t_heard_just_now() {
+        let mut state = at_the_inn();
+        let mut aged = heard("Roadside Inn", -60);
+        aged.bssid = "02:00:00:00:02:00".into();
+        // Older than the boot `Instant` counts from, on any machine.
+        aged.age = u32::MAX - 1;
+        state.heard("/Interfaces/0/BSSs/2", Some(aged));
+
+        let later = Instant::now() + Duration::from_secs(40);
+        let oldest = state
+            .around_to_choose("wlan2", later)
+            .into_iter()
+            .map(|heard| heard.age)
+            .max();
+
+        assert_eq!(
+            oldest,
+            Some(u32::MAX),
+            "a point heard longer ago than the clock reaches read as heard lately"
+        );
+    }
+
     #[test]
     fn a_card_s_chooser_hears_nothing_of_the_point_that_warned_it_while_that_holds() {
         let mut state = at_the_inn();
@@ -1700,6 +1734,34 @@ mod tests {
             state.warned_on("wlan2", now + Duration::from_secs(1)),
             None,
             "a let-go after a look kept the look's heed, so a call waited on nothing"
+        );
+    }
+
+    #[test]
+    fn a_heed_that_couldn_t_start_ends_the_wait_but_keeps_its_point_off() {
+        let mut state = at_the_inn();
+        let on = state.point_of("wlan2").expect("on a point");
+        let now = Instant::now();
+        state.warned_off("wlan2", &on, (Some(now), now + Duration::from_secs(600)));
+
+        state.heed_ended("wlan2", "02:00:00:00:02:00");
+        assert_eq!(
+            state.warned_on("wlan2", now),
+            Some(now),
+            "another point's heed ending ended the wait on this one's"
+        );
+
+        state.heed_ended("wlan2", &on.to_uppercase());
+        assert_eq!(
+            state.warned_on("wlan2", now),
+            None,
+            "a call still waited on a move off its point that never started"
+        );
+        state.at("wlan2", Some("/Interfaces/0/BSSs/2".into()));
+        assert_eq!(
+            state.warned_from("wlan2", now),
+            Some(&*on),
+            "ending the heed stopped keeping its point off"
         );
     }
 
