@@ -158,7 +158,9 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
     };
     specialisation.kernel.configuration = {
       boot.kernelPackages = pkgs.linuxPackages_6_12;
-      environment.etc.kernel.text = "kernel\n";
+      # Not /etc/kernel, which bootctl reads as kernel-install's folder: a
+      # file there fails every boot loader install while this system runs.
+      environment.etc.other-kernel.text = "kernel\n";
       systemd.services.userland.environment.SYSTEM = pkgs.lib.mkForce "kernel";
     };
   };

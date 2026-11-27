@@ -397,7 +397,12 @@ def test_going_back_unchecked_puts_back_the_boot_default(booting_: Machine) -> N
     booting_.commit(booting_.unhealthy)
     status, lines, said = booting_.ask()
     assert status == FAILED, said
-    assert "went back to what it ran" in lines[-1]["why"], said
+    why = lines[-1]["why"]
+    # Only its health check failed it, after its boot loader install made it the default.
+    assert why.startswith("the health check"), f"the switch failed before its health: {said}"
+    assert why.endswith(
+        "the machine went back to what it ran, booting what it booted before next"
+    ), said
     assert booting_.running() == kernel
     assert boot_default(machine) == booting_.switched, (
         f"going back left the switch that failed what the machine boots: {said}"
@@ -432,7 +437,7 @@ def test_a_new_kernels_userland_runs_now_and_its_kernel_from_the_next_boot(
     # Its userland runs now, on the kernel the machine booted, whose
     # modules still load.
     assert booting_.running() == kernel
-    machine.succeed("test -e /etc/kernel")
+    machine.succeed("test -e /etc/other-kernel")
     machine.succeed("systemctl show -p Environment userland | grep -q SYSTEM=kernel")
     assert machine.succeed("readlink -f /run/booted-system").strip() == booting_.first
     assert machine.succeed("uname -r").strip() == booted
