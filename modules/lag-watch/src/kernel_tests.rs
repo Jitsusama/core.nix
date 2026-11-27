@@ -110,7 +110,11 @@ fn a_thread_s_own_name_never_reads_as_a_count() {
         "a line in the thread's name was read as its wait"
     );
     let no_header = "wait_sum : 2.000000\nstats.sum_block_runtime : 3.000000\n";
-    assert_eq!(waited(no_header), None, "a file without its header was read");
+    assert_eq!(
+        waited(no_header),
+        None,
+        "a file without its header was read"
+    );
     assert_eq!(
         blocked(no_header),
         None,
