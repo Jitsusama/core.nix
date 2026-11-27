@@ -4312,9 +4312,10 @@
   '';
   sign-in-program-never-waits-for-good = ''
     a sign-in program's token is taken trimmed, slow, ending after its output or once a hold
-    writing it is let go; one failing, printing nothing, missing, printing what isn't text or
-    past 64 KiB is none; one hanging, lingering or printing for good runs over within its
-    patience, killed with what it started
+    writing it is let go; one failing, printing nothing, printing what isn't text or past 64
+    KiB is none, as is one held for writing all its patience; one missing is none at once; one
+    hanging, lingering or printing for good runs over within its patience, killed with what it
+    started
   '';
   sign-in-program-passes-clippy = ''
     clippy finds nothing in sign-in-program, which runs a reader's sign-in, or its tests
@@ -6476,6 +6477,12 @@
   tuple-takes-no-real-time-priority = ''
     Tuple's daemon may take no real-time priority, and goes first by a nice below 0 and a CPU weight
     above 100
+  '';
+  twin-screens-each-take-their-own-windows-back = ''
+    Reopen Them All, with two screens of one model back on new connectors, puts a window kept on
+    one twin on the connector its session kept on the other didn't take, and the window of a twin
+    put back after the walk on the connector a window put back before it didn't take; and notes a
+    window away from a screen named constructor or __proto__ as any other, without a throw
   '';
   type-is-set-by-level = ''
     no QML file of the shell's sets a font's size, weight, axes, letter spacing or case other than
