@@ -24,6 +24,7 @@ import Quickshell.Io
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "OnSelection.js" as OnSelection
+import "Presented.js" as Presented
 
 Provider {
     id: provider
@@ -172,7 +173,7 @@ Provider {
         const answering = one !== null && one.message !== undefined
             && asker?.posed === one.message;
         return answering ? answerRow(record.key, one) : member({
-            key: record.key,
+            key: Presented.keyServed(record.key),
             name: String(record.words ?? record.id ?? ""),
             note: one?.refused ? one.refused : String(record.says ?? ""),
             glyph: Words.glyph("verb:selection:act"),
@@ -191,7 +192,7 @@ Provider {
         const first = OnSelection.firstSentence(whole);
         const done = asker.stage === "answered";
         return member({
-            key: key,
+            key: Presented.keyServed(key),
             name: whole === "" ? "\u2026" : first,
             reads: first === whole ? "" : whole,
             note: OnSelection.noted(asker.stage, one.result, said),

@@ -265,13 +265,19 @@ function ownKind(key) {
     return KeysSaid.keysOwn.find(kind => text.startsWith(kind));
 }
 
+// The key a row a daemon serves is made with, from the key it wrote: kept as written, unless it
+// claims a kind of the launcher's own, as `place:`, which is kept under `row:` as a daemon's
+// record is, since keyShown says a key of those kinds whole as the launcher's id, and a daemon's
+// may hold a name. Timers', Runs' and OnSelection's rows are made with it; the daemon is still
+// asked by its own key. Kept here beside ownKind, as ReadyRows.js is at biome's length.
+function keyServed(key) {
+    return ownKind(key) === undefined ? key : `row:${key}`;
+}
+
 // The key a served row is made with (ReadyRows.qml): its thing, else its key, as its daemon
-// wrote them. One claiming a kind of the launcher's own, as `place:`, is kept under `row:` as a
-// daemon's record is, since keyShown says a key of those kinds whole as the launcher's id, and a
-// daemon's may hold a name. Kept here beside ownKind, as ReadyRows.js is at biome's length.
+// wrote them, made as keyServed makes one.
 function keyMade(row, key) {
-    const made = row.thing ?? key;
-    return ownKind(made) === undefined ? made : `row:${made}`;
+    return keyServed(row.thing ?? key);
 }
 
 // A program's own id, as a power profile's hold names it: whole where `whole`, else where it's
