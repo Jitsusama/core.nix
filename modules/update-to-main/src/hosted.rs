@@ -243,11 +243,14 @@ pub fn descends(config: &Config, older: &str, newer: &str) -> Result<bool, Failu
 }
 
 /// Whether main at `head` holds `commit`: by root's copy when it has
-/// `head`, whose history it then has whole, and otherwise by the host's
-/// word.
+/// both, and otherwise by the host's word. The copy borrows a checkout
+/// holding only part of main's history, so one with `head` may still lack
+/// `commit`, and that proves nothing; with no host to ask, it reads as not
+/// held, as it always has.
 pub fn holds(config: &Config, hosted: &Hosted, commit: &str, head: &str) -> Result<bool, Failure> {
     let main = Repo::main(config);
-    if git::has(&main, head) {
+    let in_copy = git::has(&main, head);
+    if in_copy && (git::has(&main, commit) || hosted.api.is_none()) {
         return git::descends(&main, commit, head);
     }
     let Some(api) = &hosted.api else {
