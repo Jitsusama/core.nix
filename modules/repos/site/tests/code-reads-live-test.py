@@ -740,7 +740,9 @@ def test_a_reload_holds_the_page_still(code_page: Page) -> None:
 HELD_ROOM = """document.addEventListener("DOMContentLoaded", () => {
   const style = document.documentElement.style;
   globalThis.held = Object.fromEntries(
-    ["lede", "list", "open"].map((id) => [id, style.getPropertyValue(`--room-${id}`)]),
+    ["lede", "standing", "grove", "list", "open"].map(
+      (id) => [id, style.getPropertyValue(`--room-${id}`)],
+    ),
   );
   globalThis.loadedAt = performance.now();
   addEventListener("resize", () => { globalThis.resizedAt ??= performance.now(); });
@@ -753,6 +755,21 @@ HELD_ROOM = """document.addEventListener("DOMContentLoaded", () => {
 });"""
 
 
+# A visit kept before the kit's head took the lede, its heights taken of other parts, and none
+# since, at this width.
+KEPT_BEFORE = """localStorage.removeItem("code-rooms");
+localStorage.setItem("code-room", JSON.stringify({ width: innerWidth, heights: { lede: 999 } }));"""
+
+
+def test_a_room_kept_before_the_kits_head_is_never_put_back(code_page: Page) -> None:
+    code_page.add_init_script(KEPT_BEFORE)
+    code_page.add_init_script(HELD_ROOM)
+    code_page.reload()
+    says_it_stands(code_page, "live")
+    held = code_page.evaluate("() => globalThis.held")
+    assert held["lede"] == "", f"the reload held {held['lede']} from a visit kept before"
+
+
 def test_a_reload_holds_no_room_for_a_name_it_forgets(code_page: Page) -> None:
     says_it_stands(code_page, "live")
     code_page.locator("#find").fill("notes")
@@ -762,6 +779,8 @@ def test_a_reload_holds_no_room_for_a_name_it_forgets(code_page: Page) -> None:
     says_it_stands(code_page, "live")
     held = code_page.evaluate("() => globalThis.held")
     assert held["lede"] != "", "the reload held no room at all"
+    # The standing line always says how the feeds stand, so its room is held on every reload.
+    assert held["standing"] != "", "the reload held no room for the standing line"
     # The reload forgets what was found, so the list it draws is every repository.
     assert held["list"] == "", f"the reload held {held['list']} for a list it won't draw"
 

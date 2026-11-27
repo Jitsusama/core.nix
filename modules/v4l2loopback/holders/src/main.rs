@@ -47,7 +47,10 @@
 //! `PipeWire` holding it finds the camera in `PipeWire`'s registry by it, and
 //! names who reads it there (modules/machine's camera.rs). A node a link
 //! names, as the relay's is, changes with each plug-in, so the link is
-//! followed first.
+//! followed first. A loopback's `.devices/` file goes as its camera goes
+//! or the run is stopped, only once its own file says nobody, so a reader
+//! never finds a holder with no node to find it by; one it couldn't remove
+//! as its camera went is tried again.
 //!
 //! Between those it sleeps on inotify and a signal, so a camera nobody
 //! holds costs nothing. A file it couldn't write, its own or the one in
@@ -56,9 +59,10 @@
 //! while a loopback's camera is watched. What went wrong is said once as
 //! it begins and once as it clears, for each file. The first time its
 //! files say who holds the camera as a read that worked found, and which
-//! node it is, or nobody where there's no camera, its log says
-//! `ready in N ms`, once a run (src/ready.rs says why). Its help, its
-//! failures and its exits take the terminal kit's shape (`help()`).
+//! node it is, or nobody and no `.devices/` file where there's no camera,
+//! its log says `ready in N ms`, once a run (src/ready.rs says why). Its
+//! help, its failures and its exits take the terminal kit's shape
+//! (`help()`).
 //!
 //! Long because a quarter of it is the tests beside it, of how it's asked
 //! and of what its watches say, which reach its private parts.

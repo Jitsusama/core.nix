@@ -3,7 +3,16 @@
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
 import { KINDS, networkOf } from "../model.ts";
-import { type Context, ledeOf, standsNow, UNANSWERED } from "../panel.ts";
+import {
+  type Context,
+  ledeOf,
+  NAMELESS,
+  REACHING,
+  STOPPED,
+  standsNow,
+  UNANSWERED,
+  UNREACHED,
+} from "../panel.ts";
 import { study } from "../shape.ts";
 import { records, type Told, told } from "./house.ts";
 
@@ -62,18 +71,24 @@ it("the lede says nothing needs a look when only the internet's ceiling is told"
 // empty, before any feed was live.
 const empty = contextOf([], true);
 
-it("the lede says net hasn't answered once its feeds stop reaching it before any was live", () => {
+it("the lede says net hasn't answered once the server says it can't reach net", () => {
   assert.equal(ledeOf({ answered: false, worst: "broken" }, undefined), UNANSWERED);
-  assert.equal(ledeOf({ answered: false, worst: "stale" }, undefined), UNANSWERED);
+});
+
+// A feed goes stale while the sites' server itself can't be reached, which
+// says nothing of net.
+it("the lede blames the sites' server, not net, while the page can't reach it", () => {
+  assert.equal(ledeOf({ answered: false, worst: "stale" }, undefined), UNREACHED);
+  assert.equal(ledeOf({ answered: false, worst: "stale" }, empty), UNREACHED);
 });
 
 it("the lede says net hasn't answered over an empty net no feed was live for", () => {
   assert.equal(ledeOf({ answered: false, worst: "broken" }, empty), UNANSWERED);
 });
 
-it("the lede is left as it is while net is still being reached", () => {
-  assert.equal(ledeOf({ answered: false, worst: "connecting" }, undefined), null);
-  assert.equal(ledeOf({ answered: false, worst: undefined }, empty), null);
+it("the lede says net is being reached while it is, as the page first does", () => {
+  assert.equal(ledeOf({ answered: false, worst: "connecting" }, undefined), REACHING);
+  assert.equal(ledeOf({ answered: false, worst: undefined }, empty), REACHING);
 });
 
 // A page opened or reloaded while net is down is given the records the
@@ -87,13 +102,15 @@ it("the lede counts the devices the map draws from held records though no feed w
 it("the lede counts what stands once a feed was live, and keeps its words once net goes", () => {
   assert.equal(ledeOf({ answered: true, worst: "live" }, contextOf()), standsNow(contextOf()));
   assert.equal(ledeOf({ answered: true, worst: "broken" }, contextOf()), standsNow(contextOf()));
-  assert.equal(ledeOf({ answered: true, worst: "broken" }, undefined), null);
 });
 
-// A live feed's records may not have come yet, and a whole answer may be
-// empty once net goes: neither is an all-clear.
-it("the lede never counts an empty net, though a feed was live", () => {
-  for (const worst of ["live", "connecting", "stale", "broken"]) {
-    assert.equal(ledeOf({ answered: true, worst }, empty), null, worst);
+// Net serves every kind empty until its first reading is done, and a whole
+// answer may be empty once net goes: neither is an all-clear, and words said
+// of an earlier standing never outlast it.
+it("the lede says how net stands over an empty net, though a feed was live", () => {
+  const said = { broken: STOPPED, connecting: REACHING, live: NAMELESS, stale: UNREACHED };
+  for (const [worst, words] of Object.entries(said)) {
+    assert.equal(ledeOf({ answered: true, worst }, empty), words, worst);
+    assert.equal(ledeOf({ answered: true, worst }, undefined), words, worst);
   }
 });

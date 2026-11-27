@@ -417,6 +417,15 @@ pub fn sql(error: rusqlite::Error) -> String {
     error.to_string()
 }
 
+/// Whether `error` is another connection holding the history, by SQLite's
+/// own code rather than its words: busy while another writes, or locked.
+fn held(error: &rusqlite::Error) -> bool {
+    matches!(
+        error.sqlite_error_code(),
+        Some(rusqlite::ErrorCode::DatabaseBusy | rusqlite::ErrorCode::DatabaseLocked)
+    )
+}
+
 /// Runs `step` with SQLite's sorts going through files, then puts them back
 /// in memory whether it worked or not. A step sorts every turn at once,
 /// unlike a pass, and once rather than every few minutes: on a history of
@@ -466,10 +475,7 @@ impl History {
         // Another connection holding the history is no sign it doesn't
         // read, and setting it aside then would lose every kept bill.
         if let Err(error) = &read
-            && matches!(
-                error.sqlite_error_code(),
-                Some(rusqlite::ErrorCode::DatabaseBusy | rusqlite::ErrorCode::DatabaseLocked)
-            )
+            && held(error)
         {
             return Err(error.to_string());
         }
@@ -523,17 +529,23 @@ impl History {
     /// that's tried without waiting: every pi session's reader opens the
     /// history, and one waiting the database's ten seconds on a writer
     /// would hold up its answer, or the watch's start, for an index the
-    /// next open makes. One that can't be made is gone on from unsaid,
-    /// since without it the history still reads the same, only slower to
-    /// forget a log, and a reader asked for JSON keeps its stderr for the
-    /// error alone.
+    /// next open makes. One a writer holds is gone on from unsaid, since
+    /// without it the history still reads the same, only slower to forget
+    /// a log, and a reader asked for JSON keeps its stderr for the error
+    /// alone. Any other failure is the open's, as it was before the try
+    /// went without waiting, so one that would recur at every open, never
+    /// making the index, is said rather than gone on from each time.
     fn index_sessions(&self) -> Result<(), String> {
         self.db.busy_timeout(Duration::ZERO).map_err(sql)?;
-        // Left for the next open, which makes it once no writer holds it.
-        let _ = self
+        let made = self
             .db
             .execute_batch("CREATE INDEX IF NOT EXISTS files_session ON files (session);");
-        self.db.busy_timeout(WAIT).map_err(sql)
+        self.db.busy_timeout(WAIT).map_err(sql)?;
+        match made {
+            // Left for the next open, which makes it once no writer holds it.
+            Err(error) if held(&error) => Ok(()),
+            made => made.map_err(sql),
+        }
     }
 
     /// The shape of the history at `path`, when a newer spend-watch keeps
@@ -1060,8 +1072,8 @@ mod tests {
             began.elapsed() < Duration::from_secs(5),
             "a reader waited on the writer to make the index"
         );
+        let opened = opened.unwrap();
         let waits: u64 = opened
-            .unwrap()
             .db
             .query_row("PRAGMA busy_timeout", [], |row| row.get(0))
             .unwrap();
@@ -1070,20 +1082,48 @@ mod tests {
             WAIT,
             "the open didn't put back its wait on a writer after trying the index"
         );
+        assert!(
+            !indexed(&opened),
+            "the index was made beside the writer, so the open didn't go without it"
+        );
         writer.execute_batch("COMMIT;").unwrap();
-        let indexed: bool = History::open(&path)
+        assert!(
+            indexed(&History::open(&path).unwrap()),
+            "the open after the writer let go didn't make the index"
+        );
+    }
+
+    // Only a writer holding the history leaves the index for the next
+    // open: a failure that would recur at every open is the open's, so it's
+    // said rather than gone on from with the index never made.
+    #[test]
+    fn an_index_that_cant_be_made_fails_the_open() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("history.db");
+        History::open(&path)
             .unwrap()
+            .db
+            .execute_batch("DROP INDEX files_session; DROP TABLE files;")
+            .unwrap();
+        let opened = History::open(&path);
+        assert!(
+            opened
+                .as_ref()
+                .is_err_and(|why| why.contains("no such table")),
+            "an index that can't be made was gone on from: {:?}",
+            opened.err()
+        );
+    }
+
+    fn indexed(history: &History) -> bool {
+        history
             .db
             .query_row(
                 "SELECT EXISTS (SELECT 1 FROM sqlite_master WHERE name = 'files_session')",
                 [],
                 |row| row.get(0),
             )
-            .unwrap();
-        assert!(
-            indexed,
-            "the open after the writer let go didn't make the index"
-        );
+            .unwrap()
     }
 
     #[test]
