@@ -527,6 +527,12 @@ impl Live {
         self.follow.hear_vpn(self.vpn.heard(Instant::now()));
     }
 
+    /// Whether today's file has been read to its end since the start, so
+    /// what `poll` answers is the recorder's now.
+    pub fn caught_up(&self) -> bool {
+        self.caught_up
+    }
+
     /// Reads what the recorder wrote since, up to `at_most` bytes of it,
     /// and answers the link it follows and the rates to hold it to. A
     /// day's file is read to its end before the next day's is begun.
