@@ -249,7 +249,12 @@ fn stopped_by(config: &Config, head: &str, built: &Followed, hold: &Hold) -> Opt
     // by its id. One holding that commit holds its whole history, so lacking
     // the held one proves the input doesn't build it, and nothing another
     // copy holds spares the fetch. So a repository out of reach fails a hold
-    // only when its copy is behind what the build reads of it.
+    // only when its copy is behind what the build reads of it. A copy that
+    // lacks the held commit fetches its main once more, so one landed there
+    // since its last fetch is seen to be its own: an input moved only when
+    // asked is otherwise never fetched, and a hosted main's 404 for the
+    // commit would then leave every update refused as untold. That fetch
+    // failing changes nothing, since the copy still proves what it builds.
     let mut unknown = None;
     let mut theirs = false;
     let mut in_followed = false;
@@ -277,6 +282,9 @@ fn stopped_by(config: &Config, head: &str, built: &Followed, hold: &Hold) -> Opt
                 git::short(commit)
             ));
             continue;
+        }
+        if !git::has(&repo, &hold.commit) {
+            let _ = git::fetch(&repo);
         }
         if git::has(&repo, &hold.commit) {
             theirs = true;
