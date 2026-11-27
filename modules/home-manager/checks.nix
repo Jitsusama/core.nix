@@ -63,6 +63,8 @@ let
   #   padded and in capitals, and no-0 to no-5 refuse a stop in each of
   #   its no spellings;
   # - timeout-probe bounds itself by TimeoutSec alone;
+  # - misspelt-probe says only a TimeoutStartSec systemd can't read, and
+  #   half-probe one it can't read beside a TimeoutSec it can;
   # - unit-probe's timer names the service it runs, unit-probe-run;
   # - probe@one runs an instance of the template probe@;
   # - untimed-probe is a oneshot no timer runs;
@@ -127,6 +129,8 @@ let
         "kept-stop-probe"
         "one-probe"
         "timeout-probe"
+        "misspelt-probe"
+        "half-probe"
         "probe@one"
         "stray-probe"
       ] (_: daily)
@@ -187,6 +191,13 @@ let
       };
       one-probe = oneshot { Unit.X-ReloadIfChanged = 1; };
       timeout-probe = oneshot { Service.TimeoutSec = "10min"; };
+      misspelt-probe = oneshot { Service.TimeoutStartSec = "10 minuets"; };
+      half-probe = oneshot {
+        Service = {
+          TimeoutStartSec = "10 minuets";
+          TimeoutSec = "10min";
+        };
+      };
       unit-probe-run = oneshot { };
       "probe@" = oneshot { };
       untimed-probe = oneshot { };
@@ -237,6 +248,10 @@ let
       method home "kept-stop-probe" == "keep-old";
     "a legacy key said as the number 1 is read as yes" = method home "one-probe" == "reload";
     "a TimeoutSec alone bounds the start too" = bound home "timeout-probe" == null;
+    "a bound systemd can't read is no bound, so it ends after three hours" =
+      bound home "misspelt-probe" == "3h";
+    "a readable TimeoutSec bounds the start beside an unreadable TimeoutStartSec" =
+      bound home "half-probe" == null;
     "a timer's Timer.Unit is the service it keeps" =
       method home "unit-probe-run" == "keep-old" && !(home.systemd.user.services ? unit-probe);
     "a template's instance keeps its run, and its bound, on the template" =

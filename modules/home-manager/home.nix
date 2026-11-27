@@ -65,13 +65,12 @@ let
     else
       "keep-old";
   oneshot = name: (services.${name}.Service.Type or "simple") == "oneshot";
-  # A timed oneshot saying no bound of its own. systemd reads TimeoutSec
-  # as the start's bound too.
+  # A timed oneshot saying no bound of its own that systemd reads, as
+  # timed.nix reads it: systemd reads TimeoutSec as the start's bound too,
+  # and drops a key it can't read, so a run saying only such a key is
+  # bounded here, the drop-in read after the unit.
   unbounded = lib.filter (
-    name:
-    oneshot name
-    && !(services.${name}.Service ? TimeoutStartSec)
-    && !(services.${name}.Service ? TimeoutSec)
+    name: oneshot name && (runs.timeout (services.${name}.Service or { })).read == [ ]
   ) timed;
   # A name the machine says the account doesn't write that it does write.
   written' = lib.filter (name: !runs.bare services name) cfg.unwritten;
