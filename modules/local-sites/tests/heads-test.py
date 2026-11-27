@@ -390,14 +390,27 @@ FIRST_OUTSIDE = "its first heading, <h2>, sits outside its head: make the head's
         '<h2 style="opacity: var(--one)">Mine</h2>',
         '<h2 hidden style="display: -webkit-box">Mine</h2>',
         '<h2 style="display: none; display: -webkit-box">Mine</h2>',
+        '<div style="visibility: hidden"><h2 style="visibility: initial">Mine</h2></div>',
+        '<div style="visibility: hidden"><h2 style="visibility: var(--shown)">Mine</h2></div>',
+        '<div style="content-visibility: var(--shown)"><h2>Mine</h2></div>',
+        '<span style="content-visibility: hidden"><h2>Mine</h2></span>',
+        '<div style="display: contents; content-visibility: hidden"><h2>Mine</h2></div>',
+        '<div hidden="until-found"><h2>Mine</h2></div>',
+        '<button popovertarget="p">x</button><div popover id="p"><h2>Mine</h2></div>',
+        "<details><summary>more</summary><h2>Mine</h2></details>",
+        "<details><summary><h2>Mine</h2></summary></details>",
+        "<details><summary>more</summary><summary><h2>Mine</h2></summary></details>",
+        "<svg><g hidden><foreignObject><h2>Mine</h2></foreignObject></g></svg>",
     ],
 )
 def test_a_heading_a_browser_may_draw_or_hear_above_the_head_is_named(above: str) -> None:
     """What may not be there is sought wherever a browser may draw it or a reader hear it.
 
     HTML in SVG or MathML, a canvas's or an object's fallback, one shown
-    again under visibility, one heard though drawn clear, and a style this
-    can't read, which a browser may keep, all count.
+    again under visibility, one heard though drawn clear, a style this can't
+    read, which a browser may keep, content-visibility on a box it skips
+    nothing of, and what a person shows with no script, by find-in-page, a
+    popover's button or a summary, all count. HTML's hidden hides no SVG.
     """
     assert heads.head_faults(above + written()) == [FIRST_OUTSIDE]
 
@@ -409,13 +422,47 @@ def test_a_heading_a_browser_may_draw_or_hear_above_the_head_is_named(above: str
         '<h2 style="display: none">Mine</h2>',
         "<h2 hidden>Mine</h2>",
         '<div style="content-visibility: hidden"><h2>Mine</h2></div>',
-        "<details><summary>more</summary><h2>Mine</h2></details>",
+        '<span style="display: inline-block; content-visibility: hidden"><h2>Mine</h2></span>',
+        "<dialog><h2>Mine</h2></dialog>",
         "<template><h2>Mine</h2></template>",
+        "<datalist><h2>Mine</h2></datalist>",
+        "<rp><h2>Mine</h2></rp>",
+        "<audio><h2>Mine</h2></audio>",
+        "<audio controls><h2>Mine</h2></audio>",
+        "<video><h2>Mine</h2></video>",
+        "<noembed><h2>Mine</h2></noembed>",
+        "<noframes><h2>Mine</h2></noframes>",
+        "<svg><header><foreignObject><h2>Mine</h2></foreignObject></header></svg>",
+        "<svg><section><foreignObject><h2>Mine</h2></foreignObject></section></svg>",
     ],
 )
 def test_a_heading_surely_undrawn_and_unheard_above_the_head_passes(above: str) -> None:
-    """Invisible all through, not displayed, skipped, shut or a template's says nothing."""
+    """Invisible all through, not displayed, skipped, shut, a template's or media's says nothing.
+
+    HTML's own sheet hides a datalist, a ruby's fallback and audio with no
+    controls, media draws none of what it holds, and SVG draws no element it
+    doesn't know, a header or a section say, nor anything in one.
+    """
     assert heads.head_faults(above + written()) == []
+
+
+def test_a_header_svg_holds_is_no_banner() -> None:
+    """A header the parser puts in SVG is SVG's, which no screen reader hears as a banner."""
+    assert heads.head_faults('<svg><header class="hero"></header></svg>' + written()) == []
+
+
+def test_a_heading_after_a_role_a_browser_skips_is_named() -> None:
+    """A browser skips a role it doesn't know, hyphen or not, and takes the heading after it."""
+    faults = heads.head_faults('<div role="x-y heading" aria-level="2">Mine</div>' + written())
+    assert faults == [
+        "its first heading, <div>, sits outside its head: make the head's title first"
+    ]
+
+
+def test_a_header_marked_a_role_no_browser_knows_is_a_banner() -> None:
+    """A header's unknown role is skipped, so it's heard as the banner it is above the head."""
+    faults = heads.head_faults('<header role="site-header"><p>Mine</p></header>' + written())
+    assert faults == ["it draws a <header> above its head: let the kit's head be its one banner"]
 
 
 def test_a_banner_in_svg_above_the_head_is_named() -> None:
@@ -427,11 +474,21 @@ def test_a_banner_in_svg_above_the_head_is_named() -> None:
 
 
 @pytest.mark.parametrize(
-    "holder", ['<div role="img" aria-label="Sites">', '<div role="image">', "<button>"]
+    ("holder", "closing"),
+    [
+        ('<div role="img" aria-label="Sites">', "</div>"),
+        ('<div role="image">', "</div>"),
+        ("<button>", "</button>"),
+        ('<button role="none">', "</button>"),
+        ('<button role="generic">', "</button>"),
+        ("<progress>", "</progress>"),
+    ],
 )
-def test_a_head_held_by_what_flattens_its_children_is_unheard(holder: str) -> None:
-    """An image's or a button's children are heard only as its words, never as a banner."""
-    closing = "</button>" if holder == "<button>" else "</div>"
+def test_a_head_held_by_what_flattens_its_children_is_unheard(holder: str, closing: str) -> None:
+    """An image's, a button's or a progress bar's children are heard only as its words.
+
+    A browser ignores none on what takes focus, as a button does, and takes its own role.
+    """
     assert heads.head_faults(holder + written() + closing) == [
         "its head is hidden from screen readers: let them hear it"
     ]
@@ -439,9 +496,31 @@ def test_a_head_held_by_what_flattens_its_children_is_unheard(holder: str) -> No
 
 @pytest.mark.parametrize("mode", ['shadowrootmode="open"', 'shadowroot="closed"'])
 def test_a_shadow_root_is_named(mode: str) -> None:
-    """A browser draws a host's children only where its shadow root's slot puts them."""
+    """A browser draws a host's children only where its shadow root's slot puts them.
+
+    The old name attaches no root any longer, but is refused all the same.
+    """
     host = f"<div><template {mode}><h2>Mine</h2><slot></slot></template>{written()}</div>"
     assert heads.page_faults(page(host)) == [heads.SHADOWED]
+
+
+def test_an_element_owned_elsewhere_is_named() -> None:
+    """Aria-owns moves what a screen reader hears away from where it's written."""
+    owner = '<div aria-owns="status"></div>'
+    assert heads.page_faults(page(owner + written())) == [heads.OWNED]
+
+
+@pytest.mark.parametrize(
+    "framed",
+    [
+        '<iframe src="banner.html"></iframe>',
+        '<embed src="banner.svg">',
+        '<object data="banner.html"></object>',
+    ],
+)
+def test_another_document_drawn_in_the_page_is_named(framed: str) -> None:
+    """A frame, an embed or an object with data draws a document whose markup isn't this one."""
+    assert heads.page_faults(page(framed + written())) == [heads.FRAMED]
 
 
 def test_a_head_after_html_written_in_svg_left_open_is_drawn() -> None:
@@ -548,10 +627,20 @@ def test_a_head_never_drawn_is_no_head(holder: str) -> None:
     assert faults == ['it draws 0 heads: open it with one <header class="page-head">']
 
 
-@pytest.mark.parametrize("holder", ["<dialog>", "<details><summary>more</summary>"])
-def test_a_head_shut_away_is_no_head(holder: str) -> None:
-    """A dialog not open, or details not open past its summary, draws none of the head."""
-    closing = "</dialog>" if holder == "<dialog>" else "</details>"
+@pytest.mark.parametrize(
+    ("holder", "closing"),
+    [
+        ("<dialog>", "</dialog>"),
+        ("<details><summary>more</summary>", "</details>"),
+        ("<details><summary>more</summary><summary>", "</summary></details>"),
+        ("<details><summary hidden>more</summary><summary>", "</summary></details>"),
+    ],
+)
+def test_a_head_shut_away_is_no_head(holder: str, closing: str) -> None:
+    """A dialog not open, or details not open past their first summary, draw none of the head.
+
+    A second summary is the details' content, drawn no more when the first is hidden.
+    """
     markup = f'<div class="hero"><p class="big">Mine</p></div>{holder}{written()}{closing}'
     assert heads.head_faults(markup) == [
         'it draws 0 heads: open it with one <header class="page-head">'
@@ -919,13 +1008,18 @@ def test_a_standing_line_with_no_status_is_named() -> None:
             "Reaching its daemon.</span>",
             'Reaching its daemon.</span><span style="opacity: 0" aria-live="polite">.</span>',
         ),
+        (
+            '<span id="status" role="status">Reaching its daemon.</span>',
+            '<canvas><span id="status" role="status">Reaching its daemon.</span></canvas>',
+        ),
     ],
 )
 def test_a_standing_line_speaking_otherwise_is_named(old: str, new: str) -> None:
     """Another live role, an alert, a status silenced, cutting in, unheard, or two of them.
 
     A glyph written closed stays open, as a browser leaves it, so the status
-    lands under its aria-hidden and is never heard.
+    lands under its aria-hidden and is never heard; one a canvas holds may be
+    heard, but is never surely drawn.
     """
     assert heads.head_faults(changed(old, new)) == [NO_STATUS]
 
@@ -965,11 +1059,12 @@ SPEAKS = "1 more of its head speaks as it changes: only the standing line's stat
             'Seven<svg><foreignObject><span role="status">.</span></foreignObject></svg> sites',
         ),
         ('<p class="lede">', '<p class="lede" role="wobble status">'),
+        ('<p class="lede">', '<p class="lede" role="x-y status">'),
         ('<header class="page-head">', '<header class="page-head" aria-live="polite">'),
     ],
 )
 def test_a_head_speaking_beyond_its_status_is_named(old: str, new: str) -> None:
-    """An output is a status, and so is a part marked one, and a head live is heard whole."""
+    """An output is a status, and so is a part marked one past a role skipped, and a head live."""
     assert heads.head_faults(changed(old, new)) == [SPEAKS]
 
 

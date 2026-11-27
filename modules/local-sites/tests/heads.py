@@ -13,22 +13,43 @@ a lede being rewritten.
 This reads each page's markup as written, since every page writes its head
 there, parsed as a browser running scripts parses it, by lexbor, which builds
 HTML's own tree: what's implied, ended, moved out of a table, read as
-words or left in SVG or MathML is where a browser puts it. What `<template>`,
+words or left in SVG or MathML is where a browser puts it. It walks that tree
+twice, and each walk settles a doubt its own way.
+
+The strict walk finds the head and its parts, and settles a doubt toward
+undrawn, so a head that may not show fails. To it, what `<template>`,
 `<noscript>`, an element read as words, a list of options, a ruby's fallback
 or what draws itself (media, a canvas, an object) holds, what SVG or MathML
-holds, even where they hold HTML, which fails closed, what a shut `<dialog>`
-or `<details>` holds past its summary, and what's
-`hidden` or a `popover` no script has shown, unless its own `style` displays it,
-or styled out by its own `style`'s display, visibility or opacity, each
+holds, even where they hold HTML, what a shut `<dialog>` or `<details>` holds
+past its first summary, and an HTML element `hidden` or a `popover` no script
+has shown, unless its own `style` displays it, or styled out by its own
+`style`'s display, visibility, content-visibility or opacity, each
 declaration's last value read, is never drawn; nor is it heard, and neither is
 what's `inert` or under `aria-hidden`. What's in one undrawn is too, though its
-own style shows it again, which fails closed. A `<base>` anywhere moving where
-links read from fails, since the sheet can't be known to be the kit's. What a
-sheet's rules hide, and what a script later puts in the head, are the page's
-own tests' to hold; Home's standing line is the one its build fills (home.py),
-so its template writes the status around what's filled. The gate reads each
-page's source, which matches what's served while each skip link is a line of
-its own before the head, since site.sh puts the strip after that line.
+own style shows it again.
+
+The generous walk seeks what may not be there beside the head, a rival
+banner, heading or live region, and settles a doubt toward drawn, so a rival
+that may show fails. To it, HTML in SVG or MathML, a canvas's or an object's
+fallback, an opacity of nothing, one shown again under visibility: hidden, a
+style this can't read, and what a person can show with no script all count:
+what's hidden until found or held past a shut `<details>`'s summary, which
+find-in-page opens, and a `popover`, which a `popovertarget` shows. It leaves
+out only what's surely undrawn and unheard: display: none and what keeps it, as
+`hidden`, a tag HTML's own sheet hides or audio with no controls do, what media
+or a template holds, a shut `<dialog>`, an element SVG doesn't know, and what
+content-visibility: hidden skips on a box it applies to.
+
+A `<base>` anywhere moving where links read from fails, since the sheet can't
+be known to be the kit's. So does a page writing a shadow root template,
+marking `aria-owns`, or drawing another document in an `<iframe>`, an `<embed>`
+or an `<object>` with data, since what a browser draws or a screen reader
+hears there isn't the tree this reads. What a sheet's rules hide, and what a
+script later puts in the head, are the page's own tests' to hold; Home's
+standing line is the one its build fills (home.py), so its template writes the
+status around what's filled. The gate reads each page's source, which matches
+what's served while each skip link is a line of its own before the head, since
+site.sh puts the strip after that line.
 
 Long because it holds each of the head's rules and what a browser draws and
 hears of a parsed page, read together: a rule moves when what's drawn does.
@@ -60,6 +81,20 @@ FIRST_WAITING = {"Code", "Forage", "Home", "Machines", "Map", "Murmurs", "Networ
 
 # Where HTML gives way to another language's elements, all they hold read as theirs.
 FOREIGN = {"svg", "math"}
+
+# The namespace an element is parsed into, as HTML's parser puts it.
+HTML = "html"
+
+# Where SVG or MathML holds HTML again, as HTML's parser reads what's in them:
+# SVG's integration points, MathML's text integration points, which keep
+# their own two glyphs, and an annotation of HTML.
+HOLDS_HTML = {"svg": {"foreignobject", "desc", "title"}, "math": {"mi", "mo", "mn", "ms", "mtext"}}
+MATH_GLYPHS = {"mglyph", "malignmark"}
+HTML_ANNOTATIONS = {"text/html", "application/xhtml+xml"}
+
+# What SVG holds that it doesn't know as one of its own, so draws none of, of
+# those HTML would read as a banner or a section.
+UNKNOWN_TO_SVG = {"article", "aside", "footer", "header", "main", "nav", "section"}
 
 # What only does its work in the page's `<head>`, drawn or not.
 HEAD_ONLY = {"base", "link", "meta", "style", "title"}
@@ -94,6 +129,61 @@ UNDRAWN = {
 # What draws only its summary, or nothing, until it's open.
 SHUT = {"details", "dialog"}
 
+# What HTML's own sheet draws none of, beside what's hidden; audio without
+# controls is one too.
+SHEET_HIDDEN = {"datalist", "noembed", "noframes", "rp"}
+
+# What draws itself and never what it holds, unlike a canvas's or an
+# object's fallback, which a browser may draw or a screen reader hear.
+MEDIA = {"audio", "video"}
+
+# The tags HTML's own sheet draws as a block, which content-visibility
+# applies to; one not here, a span or a custom element, is inline.
+BLOCKS = {
+    "address",
+    "article",
+    "aside",
+    "blockquote",
+    "body",
+    "center",
+    "dd",
+    "details",
+    "dialog",
+    "dir",
+    "div",
+    "dl",
+    "dt",
+    "fieldset",
+    "figcaption",
+    "figure",
+    "footer",
+    "form",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "header",
+    "hgroup",
+    "hr",
+    "html",
+    "legend",
+    "li",
+    "listing",
+    "main",
+    "menu",
+    "nav",
+    "ol",
+    "p",
+    "pre",
+    "search",
+    "section",
+    "summary",
+    "table",
+    "ul",
+}
+
 # Where a header is a section's, not the page's banner: in one of these, or
 # in an element marked as one, as HTML-AAM maps a header.
 SECTIONS = {"article", "aside", "main", "nav", "section"}
@@ -105,8 +195,8 @@ SPACE = " \t\n\f\r"
 # The roles a head may be marked with and still be the page's banner.
 BANNER = {None, "banner"}
 
-# The roles ARIA knows; of a role list, a browser takes the first it knows.
-# One of DPUB's or SVG's, written with a hyphen, counts as known too.
+# The roles ARIA knows, DPUB's and SVG's graphics roles among them; of a role
+# list, a browser takes the first it knows and skips any other.
 ROLES = {
     "alert",
     "alertdialog",
@@ -128,12 +218,56 @@ ROLES = {
     "deletion",
     "dialog",
     "directory",
+    "doc-abstract",
+    "doc-acknowledgments",
+    "doc-afterword",
+    "doc-appendix",
+    "doc-backlink",
+    "doc-biblioentry",
+    "doc-bibliography",
+    "doc-biblioref",
+    "doc-chapter",
+    "doc-colophon",
+    "doc-conclusion",
+    "doc-cover",
+    "doc-credit",
+    "doc-credits",
+    "doc-dedication",
+    "doc-endnote",
+    "doc-endnotes",
+    "doc-epigraph",
+    "doc-epilogue",
+    "doc-errata",
+    "doc-example",
+    "doc-footnote",
+    "doc-foreword",
+    "doc-glossary",
+    "doc-glossref",
+    "doc-index",
+    "doc-introduction",
+    "doc-noteref",
+    "doc-notice",
+    "doc-pagebreak",
+    "doc-pagefooter",
+    "doc-pageheader",
+    "doc-pagelist",
+    "doc-part",
+    "doc-preface",
+    "doc-prologue",
+    "doc-pullquote",
+    "doc-qna",
+    "doc-subtitle",
+    "doc-tip",
+    "doc-toc",
     "document",
     "emphasis",
     "feed",
     "figure",
     "form",
     "generic",
+    "graphics-document",
+    "graphics-object",
+    "graphics-symbol",
     "grid",
     "gridcell",
     "group",
@@ -224,6 +358,11 @@ FLATTENING = {
 }
 IMPLICIT = {"button": "button", "meter": "meter", "option": "option", "progress": "progressbar"}
 
+# The roles a browser ignores on what takes focus, taking its own instead, as
+# ARIA says of none and presentation; generic is read the same way, which
+# fails closed, as a holder flattening what it holds hears less.
+IGNORED_ON_FOCUS = {"none", "presentation", "generic"}
+
 # What a template carries to attach a shadow root as it's parsed, the old
 # name beside the new.
 SHADOW_ROOTS = {"shadowrootmode", "shadowroot"}
@@ -276,6 +415,11 @@ ALONE = {
     "table-row",
     "table-row-group",
 }
+
+# The displays content-visibility applies to that say their kind alone: an
+# atomic inline's, or a table cell's; an inline's, contents or another of a
+# table's insides, it skips nothing of.
+CONTAINING = {"inline-block", "inline-flex", "inline-grid", "inline-table", "table-cell"}
 
 # What a visibility or content-visibility may say.
 VISIBILITIES = {"visibility": {"visible", "hidden", "collapse"}}
@@ -331,11 +475,19 @@ EVERY_SCREEN = {"", "all", "screen"}
 class Element:
     """One element as written: its tag, its attributes, what's in it."""
 
-    def __init__(self, tag: str, attributes: dict[str, str], parent: Element | None) -> None:
-        """Take the element's tag and attributes, under its parent."""
+    def __init__(
+        self,
+        tag: str,
+        attributes: dict[str, str],
+        parent: Element | None,
+        namespace: str = HTML,
+    ) -> None:
+        """Take the element's tag and attributes, under its parent, in the namespace parsed into."""
         self.tag = tag
         self.attributes = attributes
         self.parent = parent
+        self.namespace = namespace
+        self.html = namespace == HTML
         self.children: list[Element] = []
         self.content: list[Element | str] = []
 
@@ -372,17 +524,33 @@ class Element:
                 return True
         return False
 
+    def until_found(self) -> bool:
+        """Say whether it's hidden until found, which find-in-page or a fragment link shows."""
+        return self.html and self.attributes.get("hidden", "").strip(SPACE).lower() == "until-found"
+
+    def kept(self) -> bool:
+        """Say whether HTML's own sheet gives it display: none that no person shows without script.
+
+        Hidden, a tag the sheet hides and audio with no controls are; what's
+        hidden until found and a popover are shown with none. HTML's sheet
+        draws only HTML's elements, so an SVG element marked hidden is drawn.
+        """
+        if not self.html:
+            return False
+        hidden = "hidden" in self.attributes and not self.until_found()
+        silent = self.tag == "audio" and "controls" not in self.attributes
+        return hidden or silent or self.tag in SHEET_HIDDEN
+
     def held(self) -> bool:
-        """Say whether hidden, or a popover never shown, keeps the browser's display: none."""
+        """Say whether HTML's own sheet draws none of it until a script or a person shows it."""
         # The element's own display beats the browser's, unless it rolls back
         # to it; hidden=until-found draws nothing it holds whatever it says.
-        return ("hidden" in self.attributes or "popover" in self.attributes) and (
-            self.styled().get("display", "revert") in ROLLED_BACK
-            or self.attributes.get("hidden", "").strip(SPACE).lower() == "until-found"
-        )
+        rolled_back = self.styled().get("display", "revert") in ROLLED_BACK
+        popover = self.html and "popover" in self.attributes
+        return ((self.kept() or popover) and rolled_back) or self.until_found()
 
     def hides(self) -> bool:
-        """Say whether it draws none of itself: hidden, a popover never shown, or styled out."""
+        """Say whether it draws none of itself: held by HTML's own sheet, or styled out."""
         # A hidden link or meta still does its work; only what's drawn is hidden.
         if self.tag in HEAD_ONLY:
             return False
@@ -395,13 +563,39 @@ class Element:
 
     def gone(self) -> bool:
         """Say whether, beyond doubt, nothing draws it or anything it holds, and none hears it."""
-        # Only display: none and what keeps it do; an opacity of nothing is
-        # still heard, and a child may show itself again under visibility.
+        # Only display: none and what keeps it do, and an element SVG doesn't
+        # know; an opacity of nothing is still heard, a child may show itself
+        # again under visibility, and a person may show what's hidden until
+        # found or a popover.
         if self.tag in HEAD_ONLY:
             return False
-        return (self.held() or self.styled().get("display") == "none") and not self.doubts(
-            "display"
+        if self.namespace == "svg" and self.tag in UNKNOWN_TO_SVG:
+            return True
+        styled = self.styled()
+        kept = self.kept() and styled.get("display", "revert") in ROLLED_BACK
+        return (kept or styled.get("display") == "none") and not self.doubts("display")
+
+    def contains(self) -> bool:
+        """Say whether content-visibility applies to its box, as CSS Containment says it does.
+
+        It does to a block's, an atomic inline's or a table cell's, by its tag or
+        its own display, and not to an inline's, contents or a table's insides,
+        nor where this can't read the display, which fails closed for rivals.
+        """
+        if not self.html or self.doubts("display"):
+            return False
+        display = self.styled().get("display", "revert")
+        if display in ROLLED_BACK:
+            return self.tag in BLOCKS
+        words = display.split()
+        if display in GLOBAL or (len(words) == 1 and words[0] in ALONE):
+            return display in CONTAINING
+        inner = next((word for word in words if word in INNER), "flow")
+        outer = next(
+            (word for word in words if word in OUTER),
+            "inline" if inner in {"ruby", "math"} else "block",
         )
+        return outer == "block" or inner not in {"flow", "ruby", "math"}
 
     def unseen(self, *, above: bool) -> bool:
         """Say whether it's drawn invisible, by its own visibility or that of what holds it."""
@@ -422,8 +616,9 @@ class Element:
                 continue
             found.append(child)
             if child.tag in SHUT and "open" not in child.attributes:
-                summary = next((each for each in child.shown() if each.tag == "summary"), None)
-                if child.tag == "details" and summary is not None:
+                # Shut details draw their first summary alone, and none if it's hidden.
+                summary = next((each for each in child.children if each.tag == "summary"), None)
+                if child.tag == "details" and summary is not None and not summary.hides():
                     found.append(summary)
                     found.extend(summary.within())
             # SVG and MathML draw none of what they hold as the page's own,
@@ -437,11 +632,10 @@ class Element:
     def rivals(self, *, above: bool = False) -> list[Element]:
         """Give every element inside it a browser may draw or a screen reader hear, in order.
 
-        What the page may not hold beside its head is sought here, so each
-        doubt counts it: HTML in SVG or MathML, a canvas's or an object's
-        fallback, an opacity of nothing, one shown again under visibility:
-        hidden, and a style this can't read. Only what's surely undrawn and
-        unheard is left out: display: none, a template's or shut content.
+        This is the generous walk: what the page may not hold beside its head
+        is sought here, so each doubt counts it, as the module says, a shut
+        details' content and a popover among them. Only what's surely undrawn
+        and unheard is left out.
         """
         found = []
         for child in self.children:
@@ -450,17 +644,16 @@ class Element:
             unseen = child.unseen(above=above)
             if not unseen:
                 found.append(child)
-            if child.tag == "template" or (
+            skipped = (
                 child.styled().get("content-visibility") == "hidden"
                 and not child.doubts("content-visibility")
+                and child.contains()
+            )
+            if child.html and (
+                child.tag in {"template", *MEDIA}
+                or (child.tag == "dialog" and "open" not in child.attributes)
+                or skipped
             ):
-                continue
-            if child.tag in SHUT and "open" not in child.attributes:
-                for summary in (each for each in child.children if each.tag == "summary"):
-                    if child.tag == "details" and not summary.gone():
-                        invisible = summary.unseen(above=unseen)
-                        found.extend([] if invisible else [summary])
-                        found.extend(summary.rivals(above=invisible))
                 continue
             found.extend(child.rivals(above=unseen))
         return found
@@ -512,12 +705,19 @@ class Element:
     def role(self) -> str | None:
         """Give the role a browser takes it as: the first it knows, or an output's status."""
         written = self.attributes.get("role", "").lower().split()
-        known = next((role for role in written if role in ROLES or "-" in role), None)
+        known = next((role for role in written if role in ROLES), None)
         return known or ("status" if self.tag == "output" else None)
+
+    def focusable(self) -> bool:
+        """Say whether it may take focus: a button, or what's marked with a tabindex."""
+        return self.html and (self.tag == "button" or "tabindex" in self.attributes)
 
     def flattens(self) -> bool:
         """Say whether a screen reader hears what it holds only as its words."""
-        return (self.role() or IMPLICIT.get(self.tag)) in FLATTENING
+        role = self.role()
+        if role in IGNORED_ON_FOCUS and self.focusable():
+            role = None
+        return (role or IMPLICIT.get(self.tag)) in FLATTENING
 
     def silenced(self) -> bool:
         """Say whether it's marked so no screen reader hears it: aria-hidden or inert."""
@@ -567,7 +767,7 @@ class Element:
         """Give the section it sits in, by its tag or the role it's marked with, if any."""
         section = self.parent
         while section is not None and not (
-            section.tag in SECTIONS or section.role() in SECTION_ROLES
+            (section.html and section.tag in SECTIONS) or section.role() in SECTION_ROLES
         ):
             section = section.parent
         return section
@@ -576,7 +776,7 @@ class Element:
         """Say whether it's heard as the page's banner: marked one, or a header in no section."""
         role = self.role()
         return role == "banner" or (
-            self.tag == "header" and role is None and self.section() is None
+            self.html and self.tag == "header" and role is None and self.section() is None
         )
 
     def is_heading(self) -> bool:
@@ -607,13 +807,13 @@ def adopt(node: LexborNode, parent: Element) -> None:
         return
     tag = (node.tag or "").lower()
     attributes = {str(name): value or "" for name, value in node.attributes.items()}
-    element = Element(tag, attributes, parent)
+    element = Element(tag, attributes, parent, namespace_of(tag, parent))
     parent.children.append(element)
     parent.content.append(element)
     # A template's content sits apart from the page's tree, which a script
-    # copies out to use; it's read as the template's own.
+    # copies out to use; it's read as the template's own. SVG's is no template.
     holders = [node]
-    if tag == "template":
+    if tag == "template" and element.html:
         holders = [
             fragment
             for fragment in node.template_fragments()
@@ -622,6 +822,25 @@ def adopt(node: LexborNode, parent: Element) -> None:
     for holder in holders:
         for child in holder.iter(include_text=True):
             adopt(child, element)
+
+
+def namespace_of(tag: str, parent: Element) -> str:
+    """Give the namespace HTML's parser puts an element written `tag` in, under `parent`.
+
+    SVG and MathML begin at their own tags, and HTML again inside what holds it
+    there. What HTML ends them at, a <p> say, the parser has already moved out.
+    """
+    if tag in FOREIGN:
+        return tag
+    if parent.html:
+        return HTML
+    if tag in MATH_GLYPHS and parent.namespace == "math":
+        return parent.namespace
+    encoding = parent.attributes.get("encoding", "").strip(SPACE).lower()
+    annotates = parent.tag == "annotation-xml" and encoding in HTML_ANNOTATIONS
+    if annotates or parent.tag in HOLDS_HTML.get(parent.namespace, set()):
+        return HTML
+    return parent.namespace
 
 
 def read(markup: str) -> Element:
@@ -900,11 +1119,36 @@ BASED = (
 
 
 # What a page writing a shadow root must change, since its host then draws
-# what it holds only where a slot in that root puts it.
+# what it holds only where a slot in that root puts it. A template marked
+# with the old name no longer attaches one, but is refused all the same.
 SHADOWED = (
-    "it attaches a shadow root, whose host draws what it holds only where a <slot> puts it:"
-    " write the page in its own tree"
+    "it writes a shadow root template, whose host would draw what it holds only where"
+    " a <slot> puts it: write the page in its own tree"
 )
+
+
+# What a page marking aria-owns must change, since a screen reader then hears
+# what it names inside the owner, not where it's written.
+OWNED = (
+    "it marks aria-owns, so a screen reader hears what it names somewhere other"
+    " than where it's written: write each element where it's heard"
+)
+
+
+# What a page drawing another document must change, since what that document
+# draws, a banner or a heading say, can't be read from this one's markup.
+FRAMED = (
+    "it draws another document in an <iframe>, an <embed> or an <object> with data,"
+    " whose banner and headings can't be read here: draw the page in its own markup"
+)
+
+
+def frames(element: Element) -> bool:
+    """Say whether `element` draws another document in the page: a frame, an embed or an object."""
+    return element.html and (
+        element.tag in {"iframe", "embed"}
+        or (element.tag == "object" and "data" in element.attributes)
+    )
 
 
 # What a page whose skip link shares its line must change, since site.sh puts
@@ -941,13 +1185,17 @@ def page_faults(markup: str) -> list[str]:
         sheet = []
     else:
         sheet = [NO_SHEET]
-    # The parser here builds no shadow tree, so a page writing one is named.
+    # The parser here builds no shadow tree, so a page writing one is named;
+    # nor does it read what aria-owns moves, or another document drawn in this.
     shadowed = [
         SHADOWED
         for element in parsed.every()
         if element.tag == "template" and SHADOW_ROOTS & element.attributes.keys()
     ][:1]
-    return sheet + shadowed + skip_line_faults(markup) + head_faults(markup)
+    written = parsed.written()
+    owned = [OWNED] if any("aria-owns" in element.attributes for element in written) else []
+    framed = [FRAMED] if any(frames(element) for element in written) else []
+    return sheet + shadowed + owned + framed + skip_line_faults(markup) + head_faults(markup)
 
 
 def main() -> int:
