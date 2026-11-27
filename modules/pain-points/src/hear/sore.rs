@@ -934,20 +934,39 @@ mod tests {
         );
     }
 
+    /// How many times longer `kinds` takes to read `long(4)` than
+    /// `long(1)`, the fastest of five reads of each: near four for a
+    /// reading in linear time, and near sixteen for one in time growing
+    /// with its square, in a build of any speed.
+    fn growth(long: impl Fn(usize) -> String) -> f64 {
+        let fastest = |times| {
+            let text = long(times);
+            (0..5)
+                .map(|_| {
+                    let started = std::time::Instant::now();
+                    std::hint::black_box(kinds(&text, AT, &[]));
+                    started.elapsed()
+                })
+                .min()
+                .unwrap_or_default()
+                .as_secs_f64()
+        };
+        fastest(4) / fastest(1).max(1e-9)
+    }
+
     #[test]
-    fn a_long_run_of_stops_with_no_space_is_read_in_bounded_time() {
+    fn a_long_run_of_stops_with_no_space_is_read_in_linear_time() {
         // Each stop here is read back to its word; read back to the last
         // space, as before, the run took time growing with its square.
-        let run = "a.,".repeat(40_000);
-        let started = std::time::Instant::now();
+        let run = |times: usize| "a.,".repeat(10_000 * times);
         assert!(
-            kinds(&run, AT, &[]).is_empty(),
+            kinds(&run(1), AT, &[]).is_empty(),
             "a run of stops and commas was heard as a pain"
         );
+        let grew = growth(run);
         assert!(
-            started.elapsed() < std::time::Duration::from_secs(5),
-            "a run of 120,000 marks took {:?} to read",
-            started.elapsed()
+            grew < 10.0,
+            "four times the run of marks took {grew:.1} times as long to read"
         );
     }
 
@@ -971,24 +990,24 @@ mod tests {
     }
 
     #[test]
-    fn a_long_message_of_swears_is_read_in_bounded_time() {
+    fn a_long_message_of_swears_is_read_in_linear_time() {
         // Each swear read back to its sentence's opening, as before, took
         // time growing with the square of a long pasted message.
-        for long in [
-            "yes ".repeat(15_000) + &"and shit ".repeat(7_000),
-            "damn, ".repeat(20_000),
-            "the costs and shit ".repeat(8_000),
-        ] {
-            let started = std::time::Instant::now();
+        let longs: [fn(usize) -> String; 3] = [
+            |times| "yes ".repeat(3_750 * times) + &"and shit ".repeat(1_750 * times),
+            |times| "damn, ".repeat(5_000 * times),
+            |times| "the costs and shit ".repeat(2_000 * times),
+        ];
+        for long in longs {
             assert!(
-                kinds(&long, AT, &[]).contains(&"swore"),
+                kinds(&long(1), AT, &[]).contains(&"swore"),
                 "a long run of swears wasn't heard"
             );
+            let grew = growth(long);
             assert!(
-                started.elapsed() < std::time::Duration::from_secs(5),
-                "a message of {} bytes took {:?} to read",
-                long.len(),
-                started.elapsed()
+                grew < 10.0,
+                "four times a message of {} bytes took {grew:.1} times as long to read",
+                long(1).len()
             );
         }
     }
