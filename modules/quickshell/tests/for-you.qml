@@ -499,6 +499,18 @@ QtObject {
                 LookForm.poses("\u202etI raelC", [])],
             [true, true, true, true, true, true, true, true, true, true, true, true, true,
                 true, true, false, false, false]);
+        // Nor by borrowing another script's letters that draw as its own, a
+        // Cyrillic Es or I, a Greek Tau, or a fullwidth letter (#6562's twelfth
+        // review, F170); a name in that script, drawing as no act, is its own.
+        expect("a choice borrowing letters that draw as an act's poses as it",
+            [LookForm.poses("\u0421lear It", ["Clear It"]),
+                LookForm.poses("Clear \u0406t", ["Clear It"]),
+                LookForm.poses("\u03a4alk", ["Talk"]),
+                LookForm.poses("\u041epen", ["Open"]),
+                LookForm.poses("\uff34alk", ["Talk"]),
+                LookForm.poses("\u0414\u0430", ["Clear It", "Talk"]),
+                LookForm.poses("\u039d\u03b1\u03b9", ["Clear It", "Talk"])],
+            [true, true, true, true, true, false, false]);
         // A verb cut short where it runs out of room shows only its first
         // words, so one opening with an act's words poses as it, however
         // short what follows: the line's room isn't known where it's judged

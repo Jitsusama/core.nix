@@ -336,6 +336,10 @@ const LOOKS: Record<string, object> = {
     ...LOOK,
     choices: labelled([` Talk ${"x".repeat(19)}`, " Talk", "Talk now"]),
   },
+  "choices borrowing another script's letters that draw as an act's": {
+    ...LOOK,
+    choices: labelled(["\u0421lear It", "\u03a4alk", "\uff34alk", "\u0414\u0430"]),
+  },
   "choices whose stop after the act the cut strips": {
     ...LOOK,
     choices: labelled([

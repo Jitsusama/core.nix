@@ -64,6 +64,7 @@
 // Every word here is free text a session wrote, so a page draws each as
 // text, never as markup.
 
+import { unborrowed } from "./borrowed.ts";
 import { type Fields, isObject } from "./records.ts";
 
 /** How many of a look's choices are offered, as Looks.js's OFFERED. */
@@ -315,10 +316,11 @@ function weighed(text: string): number {
 
 /**
  * A name as it reads, to tell two apart, as LookForm.js's readAs: what
- * draws as nothing gone, its spaces one, its closing stops gone, small.
+ * draws as nothing gone, its spaces one, its closing stops gone, a letter
+ * borrowed from another script as the one it draws as, small.
  */
 function readAs(name: string): string {
-  return name
+  return unborrowed(name)
     .replace(UNDRAWN, "")
     .replace(UNSEEN, "")
     .replace(UNMARKED, "")

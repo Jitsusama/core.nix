@@ -22,6 +22,72 @@ const UNSEEN = /[\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff\ufff0-\ufff8]/gu;
 const UNMARKED = /[\u00ad\u061c\u180e]|\u034f/gu;
 const FILLERS = /[\u115f\u1160\u2800\u3164\uffa0]/gu;
 const STOPS = /[\s.!?,;:\u2026]+$/u;
+// The letters of Greek and Cyrillic that draw as a Latin one, and the
+// fullwidth forms, which a name may borrow to pass for another, "Clear It"
+// with a Cyrillic Es (round 12 on #6562, F170): each reads as the letter
+// it draws as.
+const BORROWED = /[\u0391-\u03c7\u0405-\u04cf\u0501-\u051d\uff01-\uff5e]/gu;
+const LOOKS_LATIN = {
+    "\u0391": "a",
+    "\u0392": "b",
+    "\u0395": "e",
+    "\u0396": "z",
+    "\u0397": "h",
+    "\u0399": "i",
+    "\u039a": "k",
+    "\u039c": "m",
+    "\u039d": "n",
+    "\u039f": "o",
+    "\u03a1": "p",
+    "\u03a4": "t",
+    "\u03a5": "y",
+    "\u03a7": "x",
+    "\u03b1": "a",
+    "\u03b3": "y",
+    "\u03b9": "i",
+    "\u03ba": "k",
+    "\u03bd": "v",
+    "\u03bf": "o",
+    "\u03c1": "p",
+    "\u03c4": "t",
+    "\u03c5": "u",
+    "\u03c7": "x",
+    "\u0405": "s",
+    "\u0406": "i",
+    "\u0408": "j",
+    "\u0410": "a",
+    "\u0412": "b",
+    "\u0415": "e",
+    "\u041a": "k",
+    "\u041c": "m",
+    "\u041d": "h",
+    "\u041e": "o",
+    "\u0420": "p",
+    "\u0421": "c",
+    "\u0422": "t",
+    "\u0423": "y",
+    "\u0425": "x",
+    "\u0430": "a",
+    "\u0435": "e",
+    "\u043e": "o",
+    "\u0440": "p",
+    "\u0441": "c",
+    "\u0443": "y",
+    "\u0445": "x",
+    "\u0455": "s",
+    "\u0456": "i",
+    "\u0458": "j",
+    "\u04bb": "h",
+    "\u04c0": "l",
+    "\u04cf": "l",
+    "\u0501": "d",
+    "\u051a": "q",
+    "\u051b": "q",
+    "\u051c": "w",
+    "\u051d": "w"
+};
+// Where the fullwidth forms stand from the letters they widen.
+const FULLWIDTH_FROM = 0xfee0;
 // A digit, which goes on a word as a letter does (opensWith).
 const DIGIT = /[0-9]/u;
 // Where a verb's one line stops showing what follows: a line break, or two
@@ -107,10 +173,19 @@ function wordsOf(read) {
             .filter(part => part !== "").join("\n\n");
 }
 
+// A letter as the Latin one it draws as, where it's borrowed (BORROWED).
+function asLatin(each) {
+    const code = each.charCodeAt(0);
+    return code >= 0xff01 ? String.fromCharCode(code - FULLWIDTH_FROM)
+        : LOOKS_LATIN[each] ?? each;
+}
+
 // A name as it reads, to tell two apart: what draws as nothing gone, its
-// spaces one, its closing stops gone, in small letters.
+// spaces one, its closing stops gone, a letter borrowed from another
+// script as the one it draws as, in small letters.
 function readAs(name) {
-    return drawnOf(String(name)).replace(UNSEEN, "").replace(UNMARKED, "").replace(FILLERS, " ")
+    return drawnOf(String(name)).replace(BORROWED, asLatin).replace(UNSEEN, "")
+        .replace(UNMARKED, "").replace(FILLERS, " ")
         .replace(SPACES, " ").replace(STOPS, "").trim().toLowerCase();
 }
 
@@ -119,8 +194,8 @@ function readAs(name) {
 // label, one a label opens with or opening with one, or a name another of
 // its acts goes by (`taken`), however it's
 // spaced, stopped or hides what draws as nothing, so it can't pass itself
-// off as Clear It or an answer, or turn its letters around. A letter from
-// another script that draws alike still could; the drawer's eyebrow says
+// off as Clear It or an answer, or turn its letters around, nor borrow
+// another script's letters that draw alike; the drawer's eyebrow says
 // whose words they are.
 function actOf(one, taken = []) {
     const act = secondForm(one) ? written(one.act).trim() : "";
