@@ -46,11 +46,11 @@ pub struct Sched {
     pub wait_ns: u64,
     pub slices: u64,
     pub fair_ns: Option<u64>,
-    /// Where each count, the schedstat's and the fair one, stood as taken
-    /// by the window that ended at this read (`credit_since`): what of it
-    /// was counted as waited, or let go as a sleep. None takes them where
-    /// they were read.
-    pub credited: Option<(u64, u64)>,
+    /// What each count, the schedstat's and the fair one, grew by in the
+    /// window that ended at this read and the other didn't match
+    /// (`credit_since`), kept for one window in case the other books it
+    /// late.
+    pub owed: (u64, u64),
 }
 
 impl Sched {
@@ -66,37 +66,46 @@ impl Sched {
     /// The two credit a wait at different moments: the schedstat adds a
     /// queued thread's wait so far when it moves between CPUs, the fair
     /// count only when the wait ends, and the two are read from two files.
-    /// So a wait one has counted by a read and the other only after it is
-    /// carried from where `old` was credited, and is counted once both
-    /// have it. A count the other didn't match by the read after is let go.
-    /// A fair count that went back, as when schedstats was turned off and
-    /// on, leaves the schedstat's alone.
+    /// So what one grew by and the other didn't in the window before is
+    /// owed (`owed`), and is counted when the other's growth this window,
+    /// past what the schedstat's own matched, books it. This window's
+    /// growth is matched to this window's first, so a sleep owed can pair
+    /// only with the other count's leftover, and what's owed is let go
+    /// after one window. Around a sleep one count booked, then, at most
+    /// the other's own excess in the windows either side is counted with
+    /// it; and a wait longer than two windows loses what the schedstat
+    /// booked of it more than a window before it ended. A fair count that
+    /// went back, as when schedstats was turned off and on, leaves the
+    /// schedstat's alone.
     pub fn waited_since(&self, old: &Sched) -> u64 {
-        let counted = self.wait_ns.saturating_sub(old.wait_ns);
-        match (self.fair_ns, old.fair_ns) {
-            (Some(now), Some(then)) if now >= then => {
-                let (stat, fair) = old.credited.unwrap_or((old.wait_ns, then));
-                self.wait_ns
-                    .saturating_sub(stat)
-                    .min(now.saturating_sub(fair))
-            }
-            _ => counted,
-        }
+        self.matched(old)
+            .map_or(self.wait_ns.saturating_sub(old.wait_ns), |(waited, _)| waited)
     }
 
-    /// Takes from `old` where each count stands for the window after this
-    /// read (`credited`): moved on by what `waited_since` counted, and
-    /// never behind `old`'s read, so a count left unmatched for a whole
-    /// window, a sleep it booked, is let go.
+    /// Takes what each count is owed for the window after this read
+    /// (`owed`): what it grew by since `old` that nothing matched, never
+    /// what `old` was owed, which is let go.
     pub fn credit_since(&mut self, old: &Sched) {
-        self.credited = match (self.fair_ns, old.fair_ns) {
-            (Some(now), Some(then)) if now >= then => {
-                let (stat, fair) = old.credited.unwrap_or((old.wait_ns, then));
-                let waited = self.waited_since(old);
-                Some(((stat + waited).max(old.wait_ns), (fair + waited).max(then)))
-            }
-            _ => None,
+        self.owed = self.matched(old).map_or((0, 0), |(_, owed)| owed);
+    }
+
+    /// What `waited_since` counts and `credit_since` owes, where both
+    /// counts were read and the fair one didn't go back.
+    fn matched(&self, old: &Sched) -> Option<(u64, (u64, u64))> {
+        let (Some(now), Some(then)) = (self.fair_ns, old.fair_ns) else {
+            return None;
         };
+        let fair = now.checked_sub(then)?;
+        let stat = self.wait_ns.saturating_sub(old.wait_ns);
+        let both = stat.min(fair);
+        let (stat_left, fair_left) = (stat - both, fair - both);
+        let (stat_owed, fair_owed) = old.owed;
+        let stat_paid = stat_owed.min(fair_left);
+        let fair_paid = fair_owed.min(stat_left);
+        Some((
+            both + stat_paid + fair_paid,
+            (stat_left - fair_paid, fair_left - stat_paid),
+        ))
     }
 }
 
@@ -140,7 +149,7 @@ pub fn sched(text: &str) -> Option<Sched> {
         wait_ns: n.next()??,
         slices: n.next()??,
         fair_ns: None,
-        credited: None,
+        owed: (0, 0),
     })
 }
 

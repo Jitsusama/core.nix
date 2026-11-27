@@ -108,7 +108,7 @@ pub fn book(
     }
 }
 
-/// Takes into each of `now`'s threads where its counts stand for the next
+/// Takes into each of `now`'s threads what each count is owed for the next
 /// window (`Sched::credit_since`), from where it was at `then`, or where it
 /// rested hidden, so a wait one count had by the read and the other only
 /// after it is counted in the next.

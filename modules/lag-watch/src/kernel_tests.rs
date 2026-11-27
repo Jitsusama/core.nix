@@ -52,7 +52,7 @@ fn a_schedstat_gives_run_wait_and_slices() {
             wait_ns: 163_383_489_014,
             slices: 6_999_273,
             fair_ns: None,
-            credited: None
+            owed: (0, 0)
         })
     );
     assert_eq!(sched(""), None);
@@ -109,7 +109,7 @@ fn a_thread_s_fair_count_is_read_beside_its_schedstat() {
             wait_ns: 999_000_000,
             slices: 40,
             fair_ns: Some(2_000_000),
-            credited: None
+            owed: (0, 0)
         }),
         "the fair count wasn't read beside the schedstat"
     );
@@ -208,6 +208,26 @@ fn a_sleep_one_count_books_is_let_go_after_a_window() {
         windows(&[(0, 0), (10, 300), (30, 320), (60, 350)]),
         [10, 20, 30],
         "a sleep the fair count booked passed as a wait"
+    );
+    // Let go means let go: when the fair count later runs ahead with a
+    // sleep of its own, the schedstat's old 4 s isn't there to pair with.
+    assert_eq!(
+        windows(&[(0, 0), (4_000, 10), (4_020, 30), (4_040, 530)]),
+        [10, 20, 20],
+        "a sleep one count booked was kept past a window"
+    );
+}
+
+#[test]
+fn a_sleep_one_count_booked_lends_the_other_s_excess_only_beside_it() {
+    // A real wait of 20 a window, the fair count 10 over it each window
+    // (a sleeper queued before it leaves), and one 4 s sleep the
+    // schedstat books. The fair count's excess is counted only in the
+    // windows either side of the sleep, never after.
+    assert_eq!(
+        windows(&[(0, 0), (20, 30), (4_040, 60), (4_060, 90), (4_080, 120), (4_100, 150)]),
+        [20, 40, 30, 20, 20],
+        "the fair count's excess went on being counted after a sleep"
     );
 }
 

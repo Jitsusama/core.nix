@@ -36,7 +36,7 @@ fn snapshot(at: f64, groups: &[(&str, Group)], niri_wait: u64, niri_slices: u64)
             wait_ns: niri_wait,
             slices: niri_slices,
             fair_ns: None,
-            credited: None,
+            owed: (0, 0),
         },
     );
     s
@@ -322,7 +322,7 @@ fn ran(s: &mut Snapshot, label: &'static str, name: &str, wait_ns: u64, slices: 
             wait_ns,
             slices,
             fair_ns: None,
-            credited: None,
+            owed: (0, 0),
         },
     );
 }
@@ -506,8 +506,30 @@ fn sched(wait_ns: u64, slices: u64) -> Sched {
         wait_ns,
         slices,
         fair_ns: None,
-        credited: None,
+        owed: (0, 0),
     }
+}
+
+#[test]
+fn a_read_books_the_lesser_of_the_two_counts() {
+    let thread = Thread {
+        label: "slack-ui",
+        name: "migrated".into(),
+        schedstat: "/proc/slack/migrated".into(),
+        call: false,
+    };
+    let at = |wait_ns, fair| Sched {
+        fair_ns: Some(fair),
+        ..sched(wait_ns, 1)
+    };
+    // A sleeper the schedstat books 4 s for as it moves between CPUs,
+    // while the fair count grows 1 ms: no wait longer than the read, so
+    // nothing is booked to be taken from the window's waits.
+    let before = BTreeMap::from([(thread.clone(), at(0, 0))]);
+    let after = BTreeMap::from([(thread.clone(), at(4_000_000_000, 1_000_000))]);
+    let mut booked = BTreeMap::new();
+    book(&mut booked, &before, &BTreeSet::from([thread]), &after, 2.0);
+    assert!(booked.is_empty(), "a sleep one count booked was booked: {booked:?}");
 }
 
 #[test]

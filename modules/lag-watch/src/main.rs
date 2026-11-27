@@ -574,11 +574,12 @@ fn run() -> Result<(), Failure> {
                 sched: read_of(&then),
                 asleep: sleeping,
             };
-            // A thread still watched keeps where its counts stood, after
-            // the ticks' read, which counts each tick alone.
+            // A thread still watched keeps what each count is owed, after
+            // the ticks' read, which counts each tick alone; what grew
+            // between the two reads is left out, as it was before.
             for (key, s) in &mut then.threads {
                 if let Some(was) = now.threads.get(key) {
-                    s.credited = was.credited;
+                    s.owed = was.owed;
                 }
             }
         } else {
