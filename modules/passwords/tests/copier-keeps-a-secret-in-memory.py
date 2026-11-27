@@ -29,8 +29,9 @@ the cat then running the real one so a copier that leans on it still holds its c
 11. A copy it refuses is never said to be held.
 12. The copy is offered marked secret, as x-kde-passwordManagerHint, the mark niri, the
     clipboard door and the clipboard's history each keep it from others by.
-13. A secret of exactly the cap pastes whole, so only a byte past it is refused: with case 7,
-    it pins the edge the copier grows its buffer a byte past the cap to tell.
+13. A secret of exactly the cap pastes whole and stays locked in memory, so only a byte past it
+    is refused: with case 7, it pins the edge the copier grows its buffer a byte past the cap
+    to tell. A copier that refuses it instead is failed with what it said as it ended.
 
 Every case is checked and reported before it fails. Cases 7 and 13 lock past 2 MiB at once, as
 the copier grows its buffer, so the limit on locked memory is raised to its hard limit first,
@@ -194,7 +195,7 @@ class Cases:
             copier.wait()
 
     def copied_at_the_cap(self) -> None:
-        """Run case 13: a secret of exactly the cap, pasted whole rather than refused."""
+        """Run case 13: a secret of exactly the cap, pasted whole and locked, not refused."""
         held = secrets.token_hex(CAP // 2)
         reading, writing = os.pipe()
         copier = self.copier_started(reading)
@@ -202,10 +203,12 @@ class Cases:
         given(writing, held)
         try:
             pasted = pasted_once_held(held)
-            never = None if pasted else "it never pasted"
+            never = None if pasted else refused_instead(copier) or "it never pasted"
             self.check("a secret of exactly the cap pastes whole", never)
             self.check("a secret of exactly the cap makes nothing", self.anything_made())
             self.check("a secret of exactly the cap runs nothing", self.anything_ran())
+            locked = ended(copier) or unlocked(copier.pid, len(held))
+            self.check("a secret of exactly the cap is locked", locked)
         finally:
             copier.kill()
             copier.wait()
@@ -263,7 +266,7 @@ def locks_enough() -> str | None:
     _, hard = resource.getrlimit(resource.RLIMIT_MEMLOCK)
     resource.setrlimit(resource.RLIMIT_MEMLOCK, (hard, hard))
     if hard != resource.RLIM_INFINITY and hard < LOCKS:
-        return f"only {hard} bytes may be locked, under the {LOCKS} cases 7 and 8 need"
+        return f"only {hard} bytes may be locked, under the {LOCKS} cases 7 and 13 need"
     return None
 
 
@@ -312,6 +315,15 @@ def ended(copier: subprocess.Popen[bytes]) -> str | None:
     """Say a copier has ended, so nothing of its memory can be judged, if it has."""
     code = copier.poll()
     return None if code is None else f"it ended with {code} while it should hold the copy"
+
+
+def refused_instead(copier: subprocess.Popen[bytes]) -> str | None:
+    """Say how a copier that should hold its copy ended instead, and why, if it ended."""
+    code = copier.poll()
+    if code is None or copier.stderr is None:
+        return None
+    said = copier.stderr.read().decode(errors="replace").strip()
+    return f"it ended with {code}, saying {said!r}"
 
 
 def readable(pid: int) -> str | None:
