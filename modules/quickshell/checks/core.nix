@@ -277,6 +277,8 @@ in
     let
       qt = pkgs.qt6.qtdeclarative;
     in
+    # Kept in Nix because each line copies a file Nix gives it beside the
+    # cases, or sets what Qt's engine runs them with.
     pkgs.runCommandLocal "the-launcher-lands-where-it-did" { } ''
       cp ${../tests/ranking.qml} ranking.qml
       cp ${../launcher/Rank.js} Rank.js

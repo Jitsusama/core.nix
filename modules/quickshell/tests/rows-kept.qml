@@ -343,8 +343,9 @@ QtObject {
         // times the rows, and over Emoji it cost two to three times all the
         // rest (89 to 151 walks against 26 to 53), so about twelve times
         // with the rest beside it. Held to eight times and a ms, the middle
-        // of four and sixteen, a healthy run has room for that little more
-        // and a busy batch, and such a walk fails by half again. Each of
+        // of four and sixteen, a healthy run (timed at four to six times)
+        // has room for that little more and a busy batch, and such a walk
+        // (timed at seven to eleven times) fails in most batches. Each of
         // five batches times the steps over Emoji eight times and over four
         // times its rows twice, back to back, so each timing does the same
         // work and leaves the collector the same garbage, and it holds when
