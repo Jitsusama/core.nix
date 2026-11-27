@@ -73,6 +73,12 @@ QtObject {
         expect("under a minute is just now", FileFacts.when(now - 20_000, now, words), "just now");
         expect("under an hour is minutes ago", FileFacts.when(now - 12 * 60_000, now, words),
             kept("12_min ago"));
+        // The minutes a whole one has passed, never the nearest, which the
+        // drawings lately check leaves to this case, since its clock moves.
+        expect("minutes round down, past the half", FileFacts.when(now - 760_000, now, words),
+            kept("12_min ago"));
+        expect("and just short of the next", FileFacts.when(now - 1_019_875, now, words),
+            kept("16_min ago"));
         expect("earlier today is its time", FileFacts.when(at(2026, 11, 10, 9, 5), now, words),
             "09:05");
         expect("the day before is yesterday, however late",

@@ -83,6 +83,18 @@ onLinux {
         (lib.findFirst (lib.hasPrefix "const SAYS_GO_DIRECT_WITHIN:") "")
         (lib.match ".*from_secs\\(([0-9]+)\\);")
       ];
+      # The connections it's told to keep, and the most its source takes,
+      # since a count past that fails the relay at its start, and pi then
+      # goes direct for every request.
+      kept = lib.match ".* --connections ([0-9]+) .*" (
+        lib.concatStringsSep " " (lib.toList service.ExecStart)
+      );
+      most = lib.pipe ./src/main.rs [
+        builtins.readFile
+        (lib.splitString "\n")
+        (lib.findFirst (lib.hasPrefix "const MOST_CONNECTIONS:") "")
+        (lib.match ".*= ([0-9]+);")
+      ];
       # Left past those for the relay to end its connections and say its
       # counts.
       spare = 2;
@@ -90,7 +102,7 @@ onLinux {
       needs = lib.toInt (lib.head drain) + lib.toInt (lib.head goodbyes) + spare;
     in
     holds "model-relay-runs-in-background-slice"
-      "model-relay is installed where no origin is named, lets other accounts ask, leaves its socket behind, runs without its socket or outside background.slice, forwards somewhere other than the origin named, sees more of the machine than its origin needs, is restarted by a switch, waits on its answers once stopped past what its stop timeout leaves for its goodbyes, or doesn't tell pi where it is."
+      "model-relay is installed where no origin is named, lets other accounts ask, leaves its socket behind, runs without its socket or outside background.slice, forwards somewhere other than the origin named, sees more of the machine than its origin needs, is restarted by a switch, waits on its answers once stopped past what its stop timeout leaves for its goodbyes, keeps its default four connections or more than it takes, or doesn't tell pi where it is."
       (
         !(bare.systemd.user.sockets ? model-relay-agents)
         && !(bare.systemd.user.sessionVariables ? PI_PROXY_RELAY)
@@ -106,6 +118,12 @@ onLinux {
         && drain != null
         && goodbyes != null
         && service.TimeoutStopSec or 0 >= needs
+        # It keeps more connections than its default, but no more than
+        # it takes.
+        && kept != null
+        && most != null
+        && lib.toInt (lib.head kept) > 4
+        && lib.toInt (lib.head kept) <= lib.toInt (lib.head most)
         # It holds every agent's key while it carries a request, so it
         # sees no more of the machine than reaching the origin needs.
         && service.ProtectSystem or null == "strict"

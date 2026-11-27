@@ -67,13 +67,15 @@ REDRAWN_MS = 2500
 # What node.json's realm comes to on the map, every part of the count.
 COUNTED = "8 cells, 2 moving, 1 stuck"
 CELLS = 8
-# What a first visit to the map may cost, drawn from the stand-in's cells: what
-# it last measured (33 files, about 686.9 KB, at most 620 elements) with room
-# for four files, about 8 KB and 16 elements more, so most changes never touch
-# this line and parallel ones never clash on it. The room lets the map grow
-# that much unnoticed. A change that would pass it sets it again to what the
-# gate measures plus that room; why the map costs what it does is in each
-# change's commit.
+# What a first visit to the map may cost, drawn from the stand-in's cells: its
+# cost when this line was last set, plus room for four files, 8 KB and 16
+# elements, so most changes never touch the line and parallel ones never clash
+# on it. The room lets the map grow that much unnoticed. Every run's summary
+# says what the map cost, and a change that grows it says so in its commit. One
+# that would pass the line sets it again to that cost plus the room. Two that
+# each fit can pass it together, as neither moves this file, so a change that
+# grows the map runs this test again at its head over main once main has moved
+# the map or the kit since (local-sites/AGENTS.md).
 BUDGET = Budget(files=37, kilobytes=695, elements=636)
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000
@@ -574,6 +576,144 @@ def test_the_map_draws_how_cells_connect_and_answers_a_click_in_one_window(
     expect(
         page.locator('#panel-body a[href^="mycelium:cell/TERN03"][href$="/go"]'),
         "a click on a cell left its drawer shut",
+    ).to_be_visible()
+
+
+# On 15 November 2026 Joel said of the map: "clicking on networks is
+# confusing, often the entire line isn't put into view", and "when I select a
+# network lane, nodes directly connected to it should be more prominent". The
+# skiff's network, opened, is fitted whole with its branch, clear of its
+# drawer; the cells it joins stay strong while the heron's step back.
+SKIFF_TITLE = "Rig the Skiff for the Season"
+SKIFF_JOINS = ("SKIFF1", "TERN01", "TERN02", "GULL01", "TERN03")
+SKIFF_LEAVES = ("HERON1", "HERON2")
+HERONS = "orchestration.heron1"
+HERONS_TITLE = "Chart the Harbour"
+# The alpha a cell's marks are drawn at, strong and stepped back (site.css's
+# .focused .far is 0.22), with room either side for a mark's own opacity.
+STRONG_ALPHA = 0.9
+STEPPED_BACK_ALPHA = 0.5
+RECT = "(e) => { const r = e.getBoundingClientRect(); return [r.left, r.top, r.right, r.bottom]; }"
+
+
+def strongest(page: Page, cell: str) -> float:
+    """Say the alpha of the strongest mark a cell is drawn with."""
+    return max(float(mark["alpha"] or 0) for mark in marks_of(page, f"c:{cell}"))
+
+
+def test_a_network_opened_is_put_into_view_whole_and_what_it_joins_stands_out(
+    mycelium_opened: Opened,
+) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    the_map_counts(page, COUNTED, "the map miscounted the realm")
+    page.locator("#map-view").focus()
+    page.keyboard.press("0")
+    settled(page, "0 didn't fit the whole map")
+    for cell in SKIFF_LEAVES:
+        assert strongest(page, cell) >= STRONG_ALPHA, f"{cell} stepped back with nothing open"
+    page.evaluate(f"location.hash = '#net={BRANCHED_FROM}'")
+    expect(page.locator("#panel-title"), "the skiff's drawer never opened").to_have_text(
+        SKIFF_TITLE
+    )
+    settled(page, "the skiff's network never stood still once opened")
+    view = page.locator("#map-view").evaluate(RECT)
+    drawer = page.locator("#panel").evaluate(RECT)
+    for cell in SKIFF_JOINS:
+        left, top, right, bottom = page.locator(
+            f'#world circle.cell[data-key="c:{cell}"]'
+        ).evaluate(RECT)
+        inside = view[0] <= left and right <= view[2] and view[1] <= top and bottom <= view[3]
+        assert inside, f"opening the skiff left {cell} at {left, top, right, bottom} outside {view}"
+        under = left < drawer[2] and drawer[0] < right and top < drawer[3] and drawer[1] < bottom
+        assert not under, f"opening the skiff left {cell} under its drawer at {drawer}"
+        assert strongest(page, cell) >= STRONG_ALPHA, f"{cell}, joined to the skiff, stepped back"
+    for cell in SKIFF_LEAVES:
+        assert strongest(page, cell) <= STEPPED_BACK_ALPHA, (
+            f"{cell}, joined to nothing of the skiff's, stood out as strong as its cells"
+        )
+    hub = page.locator(f'#world .hub[data-key="h:{HERONS}"]')
+    expect(hub, "the heron's network stood out beside the skiff's").to_have_class(
+        re.compile(r"\bfar\b")
+    )
+    branch = page.locator(f'#world .hub[data-key="h:{BRANCH}"]')
+    expect(branch, "the skiff's branch stepped back").not_to_have_class(re.compile(r"\bfar\b"))
+
+
+# The same day: "i want to be able to hover over a network and have some small
+# bit hover giving me awareness of its purpose without drilling in." Pointing
+# at the heron's network says its name, what it is for and how it stands,
+# and opens nothing.
+def test_a_network_pointed_at_says_what_it_is_for_and_how_it_stands_unopened(
+    mycelium_opened: Opened,
+) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    peek = page.locator("#peek")
+    expect(peek, "a peek stood with nothing pointed at").to_be_hidden()
+    # The map taking focus walks to the first machine and peeks at it in
+    # the corner, so the pointer's peek must then name the heron's instead.
+    page.locator("#map-view").focus()
+    page.keyboard.press("0")
+    settled(page, "0 didn't fit the whole map")
+    before = page.url
+    ring = page.locator(f'#world .hub[data-key="h:{HERONS}"] .m-hub').bounding_box()
+    assert ring, "the map drew no ring for the heron's network to point at"
+    page.mouse.move(ring["x"] + ring["width"] / 2, ring["y"] + ring["height"] / 2)
+    expect(peek, "pointing at a network said nothing of it").to_be_visible()
+    said = peek.locator("p")
+    expect(said, "the peek should say a name, a purpose and a health").to_have_count(3)
+    expect(said.nth(0), "the peek misnamed the network").to_have_text(HERONS_TITLE)
+    expect(said.nth(1), "the peek said nothing of what it is for").to_have_text(re.compile(r"\S"))
+    expect(said.nth(2), "the peek said nothing of how it stands").to_have_text(re.compile(r": \S"))
+    assert page.url == before, f"pointing at a network went from {before} to {page.url}"
+
+
+# The same day: "i need to be able to get an overview at any cell about its
+# purpose, what is is doing, it's health at various levels and other stuff.
+# this also includes networks, and collections of cells that are celled off
+# of a parent." A cell's drawer and a network's each open on its purpose,
+# what it is doing and its health, the network's by its own cells, each
+# branch and the whole.
+def test_a_cell_and_a_network_each_open_on_its_purpose_doing_and_health(
+    mycelium_opened: Opened,
+) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    glance = page.locator("#panel-body dl.glance").first
+    page.evaluate("location.hash = '#cell=TERN01'")
+    # A cell's title is set in title case, as its drawer names it.
+    expect(page.locator("#panel-title"), "TERN01's drawer never opened").to_contain_text(
+        "Mend The Sails"
+    )
+    expect(glance.locator("dt"), "a cell's drawer opened on no glance").to_have_text(
+        ["Purpose", "Doing", "Health"]
+    )
+    told = glance.locator("dd")
+    expect(told.nth(1), "the cell's glance missed what it's doing").to_contain_text(
+        "Stitch the jib"
+    )
+    for n in (0, 2):
+        expect(told.nth(n), f"the cell's glance left its row {n} empty").to_have_text(
+            re.compile(r"\S")
+        )
+    page.evaluate(f"location.hash = '#net={BRANCHED_FROM}'")
+    expect(page.locator("#panel-title"), "the skiff's drawer never opened").to_have_text(
+        SKIFF_TITLE
+    )
+    expect(glance.locator("dt"), "a network's drawer opened on no glance").to_have_text(
+        ["Purpose", "Doing", "Health"]
+    )
+    levels = glance.locator("dd").nth(2).locator(".row .name")
+    expect(levels, "the skiff's health wasn't said by its cells, its branch and all").to_have_text(
+        [
+            re.compile(r"^Its own \d+ cells?$"),
+            re.compile(r", \d+ cells?$"),
+            re.compile(r"^All \d+ together$"),
+        ]
+    )
+    expect(
+        glance.locator(f'dd .row[data-go="net={BRANCH}"]'), "the branch's health opens no branch"
     ).to_be_visible()
 
 
@@ -2541,6 +2681,8 @@ def test_new_works_words_from_a_gone_cell_never_take_the_open_machine(
     expect(page.locator("#sprout-on-words"), "new words didn't take the open machine").to_have_text(
         "On kestrel"
     )
+    page.evaluate("window.talkedTo = null")
+    sent_as(page, "mended", "mycelium:sprout?words=mended&on=kestrel")
 
 
 def test_new_works_machine_that_leaves_while_the_line_is_open_is_let_go_at_return(

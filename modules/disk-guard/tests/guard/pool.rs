@@ -167,7 +167,8 @@ fn a_pipe_with_no_writer_s_pool_is_its_own_device_read_without_opening_it() {
 /// file off every disk and so out of every freeze.
 #[cfg(target_os = "linux")]
 #[test]
-#[ignore = "needs TMPDIR on Btrfs, which the sandbox and the shell's tmpfs aren't: \
+#[ignore = "needs TMPDIR on Btrfs, which the sandbox and the shell's tmpfs aren't, \
+            and Linux 6.10 or later, before which a lease still refuses the read: \
             run with --ignored and TMPDIR on a Btrfs folder"]
 fn a_leased_file_s_pool_is_its_subvolume_s_read_without_waiting_out_the_lease() {
     let dir = tempfile::tempdir().unwrap();
@@ -205,7 +206,8 @@ fn a_leased_file_s_pool_is_its_subvolume_s_read_without_waiting_out_the_lease() 
 /// could keep its file off every disk and so out of every freeze.
 #[cfg(target_os = "linux")]
 #[test]
-#[ignore = "needs TMPDIR on Btrfs, which the sandbox and the shell's tmpfs aren't: \
+#[ignore = "needs TMPDIR on Btrfs, which the sandbox and the shell's tmpfs aren't, \
+            and Linux 6.10 or later, before which a mode still refuses the read: \
             run with --ignored and TMPDIR on a Btrfs folder"]
 fn a_file_nobody_may_read_s_pool_is_its_subvolume_s() {
     use std::os::unix::fs::PermissionsExt;

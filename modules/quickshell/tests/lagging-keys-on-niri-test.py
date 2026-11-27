@@ -45,7 +45,7 @@ LATE = re.compile(r"launcher: .+? answered (.+?) \d+ ms after its key")
 # Words typed with nothing else named by them, so no line says them but by the letters.
 UNNAMED = "zygodactyl"
 # What a program's drawer line says of its row, keyed `program:<its desktop entry's id>`: the id,
-# shaped as an app's (Presented.js's appWord), so RTOIMQ can time Chrome's drawer apart from
+# shaped as an app's (KeysSaid.js's appWord), so RTOIMQ can time Chrome's drawer apart from
 # kitty's (2026-11-24), and never more of the key.
 PROGRAMS_DRAWER = re.compile(r'drawer for "program:([A-Za-z0-9][A-Za-z0-9.-]*)"')
 # Any program's drawer line, shaped as PROGRAMS_DRAWER or said by its kind alone, but not one of

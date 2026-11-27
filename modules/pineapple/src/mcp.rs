@@ -261,6 +261,10 @@ impl Gateway {
                     body: None,
                 }
             };
+            // A pass refused or forgotten did nothing, so it asked nothing.
+            if opened && (refuses(answer.status) || (answer.status == NOT_FOUND && !forgotten)) {
+                self.asked_of.pop();
+            }
             match answer.status {
                 status if refuses(status) && !refused => {
                     refused = true;
