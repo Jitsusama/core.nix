@@ -2992,6 +2992,47 @@ ShellRoot {
         expect("a read later keeps the bands kept for now",
             now.bandsKept.minute === keptMinute && now.bandsKept.times === keptTimes,
             JSON.stringify([keptMinute, now.bandsKept.minute, keptTimes, now.bandsKept.times]));
+        // And time alone moves how many need him, not only what leads, so
+        // home counts them from the bands at its clock, never from the live
+        // count (toDoCount), which a read later would say as now's. Three
+        // looks Agents gives stand in To Look At now, since a look lifts into
+        // what needs him only once it blocks or its due is a day off or less
+        // (ForYou.js's pressingBy and dueing). Sixteen hours on, Read A, due
+        // in 30 hours, and Read B, due in 34, are due within the day and
+        // lifted; Read C, due in 60, isn't. Read A waited three hours already,
+        // so it weighs 35 then to Read B's 15 (ForYou.js's weighBy: due within
+        // the day 10, a look 5, and waiting 20 at most) and leads.
+        WaitingOnYou.now = [];
+        Sessions.wanting = [];
+        const lookIn = (name, hours, since) => ({ row: { key: `agent:look:${name}`, name: name,
+            forYou: { kind: "look", source: "sessions" } }, thing: { kind: "look",
+            due: Date.now() + hours * 3600000, since: since ?? null } });
+        agents.forYou = [lookIn("Read A", 30, Date.now() - 3 * 3600000), lookIn("Read B", 34),
+            lookIn("Read C", 60)];
+        expect("time alone lifting looks, home says To Look At now and names one then",
+            now.homeSays() === "3 to look at" && now.homeSays(later) === "Read A \u00b7 1 more",
+            JSON.stringify([now.homeSays(), now.homeSays(later)]));
+        // A to-do of his needs him at both clocks, and outweighs both looks
+        // then (a to-do 10, ready 20 and waiting 20 at most, ForYou.js's
+        // weighBy), so it leads at both, and only how many more moves: none
+        // now, the two lifted looks then.
+        WaitingOnYou.now = [toDo("Sign In")];
+        expect("time alone lifting looks under his to-do, home counts them more then",
+            now.homeSays() === "Sign In" && now.homeSays(later) === "Sign In \u00b7 2 more",
+            JSON.stringify([now.homeSays(), now.homeSays(later)]));
+        // Time only lifts a look, never puts one back, so only an earlier
+        // clock finds one in To Look At that needs him now. Read D, due in 10
+        // hours, is due within the day and needs him now (ForYou.js's
+        // dueing); sixteen hours before, it was due in 26 and stood in To
+        // Look At beside Read C, so home said both then, from the bands at
+        // that clock, where To Look At holds Read C alone now.
+        WaitingOnYou.now = [];
+        agents.forYou = [lookIn("Read D", 10), lookIn("Read C", 60)];
+        const earlier = Date.now() - 16 * 3600000;
+        expect("a look lifted since, home names it now and said To Look At before",
+            now.homeSays() === "Read D" && now.homeSays(earlier) === "2 to look at",
+            JSON.stringify([now.homeSays(), now.homeSays(earlier)]));
+        agents.forYou = [];
         Location.here = here;
         Facts.all = [];
         WaitingOnYou.now = [];
