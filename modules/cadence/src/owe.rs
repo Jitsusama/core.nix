@@ -120,7 +120,6 @@ pub fn owe(ledger: &mut Vec<Entry>, owed: Owed, date: &str, now: i64) {
             .find(|e| e.key == owed.key && e.kind.as_deref().is_some_and(drags))
     {
         entry.open = true;
-        entry.kind = Some(owed.kind);
         entry.reopened += 1;
         entry.late = false;
         entry.told = Some(date.to_owned());
@@ -179,9 +178,10 @@ pub fn settle(ledger: &mut [Entry], key: &str) -> bool {
         .is_some()
 }
 
-/// Whether a line of `kind` is one of the hour's: a drag, or a red line,
-/// which is filed as a drag marked red, so either may come back as the
-/// other.
+/// Whether a line of `kind` is one of the hour's. Its drags and its red
+/// lines are both of kind "drag", a red line marked red beside it, so
+/// either may come back as the other; said once here, so a kind the hour
+/// files later is added in one place.
 fn drags(kind: &str) -> bool {
     kind == "drag"
 }

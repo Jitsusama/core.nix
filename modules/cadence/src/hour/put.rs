@@ -248,6 +248,28 @@ mod tests {
     }
 
     #[test]
+    fn a_line_asked_past_the_cap_keeps_the_newest_ids_and_the_question_just_asked() {
+        let mut line = entry("hour:a", "ABC123", NOW, "drag");
+        let stamped = |n: i64| format!("{}-CADENCE-1-{n}", (NOW - 3600 + n) * 1000);
+        let cap = i64::try_from(ASKED_AT_MOST).expect("the cap fits");
+        line.asked = (0..=cap).map(stamped).collect();
+        let mut ledger = vec![line];
+        let newest = stamped(cap + 1);
+        mark_asked(&mut ledger, "ABC123", NOW, &newest);
+        let asked = &ledger[0].asked;
+        assert_eq!(
+            asked.len(),
+            ASKED_AT_MOST,
+            "a line asked past the cap wasn't cut to it"
+        );
+        assert_eq!(
+            (asked.first(), asked.last()),
+            (Some(&stamped(2)), Some(&newest)),
+            "the cap dropped the newest ids rather than the oldest"
+        );
+    }
+
+    #[test]
     fn only_the_lines_filed_for_that_owner_this_hour_carry_the_question_s_id() {
         // hour:b was filed the same day an hour before, and its question
         // never went, so this one doesn't hold it. hour:e came back, asked

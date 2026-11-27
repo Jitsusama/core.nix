@@ -231,9 +231,11 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
     Ok(())
 }
 
-/// Asks each owner its lines, then keeps the lines of those whose
-/// questions went, as the hour left them, before anything else can fail.
-/// A send that fails keeps the questions gone before it, then says why.
+/// Asks each owner its lines, sent to whom `whom` says reaches it, marks
+/// the lines of each question gone with its id, and keeps the lines of
+/// every owner asked so far, as the hour left them, before the next send.
+/// So a send that fails, or a run stopped between two, leaves the ids of
+/// the questions gone before it standing, and a failure is then said.
 fn ask_and_keep(
     mesh: &Mesh,
     whom: impl Fn(&str, &str) -> (String, String),
@@ -243,27 +245,12 @@ fn ask_and_keep(
     at: &Path,
     now: i64,
 ) -> io::Result<()> {
-    let failed = ask_owners(mesh, whom, asks, ledger, now).err();
-    let went = failed.as_ref().map_or(asks.len(), |(n, _)| *n);
-    keep_asked(at, ledger, before, &asks[..went])?;
-    failed.map_or(Ok(()), |(_, err)| Err(err))
-}
-
-/// Asks each owner its lines, sent to whom `whom` says reaches it, and
-/// marks the lines of each question gone with its id. A send that fails
-/// stops the asking, saying how many went.
-fn ask_owners(
-    mesh: &Mesh,
-    whom: impl Fn(&str, &str) -> (String, String),
-    asks: &[(String, String)],
-    ledger: &mut [findings::Entry],
-    now: i64,
-) -> Result<(), (usize, io::Error)> {
     for (n, (owner, text)) in asks.iter().enumerate() {
         let (to, text) = whom(owner, text);
         let ask = message(&to, "question", text);
-        mesh.send(&ask).map_err(|err| (n, err))?;
+        mesh.send(&ask)?;
         put::mark_asked(ledger, owner, now, &ask.id);
+        keep_asked(at, ledger, before, &asks[..=n])?;
     }
     Ok(())
 }

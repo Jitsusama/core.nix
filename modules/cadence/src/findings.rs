@@ -82,8 +82,9 @@ pub struct Entry {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fixed: Option<String>,
     /// The ids of the questions its owner was asked it in, the latest
-    /// last, each kept for `ASKED_FOR`, so each question of the two days
-    /// the mesh is read over is known as the hour's. Nothing reads a
+    /// last, pruned to those within `ASKED_FOR` whenever the line is asked
+    /// again, so each question of the two days the mesh is read over is
+    /// known as the hour's. Nothing reads a
     /// reply against them yet: a line closes when its measure is back in.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub asked: Vec<String>,
