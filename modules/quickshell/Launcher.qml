@@ -2697,6 +2697,12 @@ Scope {
         restart(start);
     }
 
+    // Whether Ctrl+Y's completion fills the field with the selected row's
+    // start, a command's, rather than finishing what's typed.
+    function fillsStart(): bool {
+        return current !== -1 && selected?.start !== undefined;
+    }
+
     // What a collection says at its right, { side, sideItems }, its items
     // made once: said as items, its side is them joined, as Now's first
     // thing waiting is, else what it says whole (homeSays), null for
@@ -3564,6 +3570,8 @@ Scope {
         tagsBack = left.tags;
         lastPlace = left.last;
         markLetGo(wasLetGo, had);
+        if (Arming.stood(armed, prompt.keysTaken))
+            console.info("launcher: let go of an arm, as the screen may be shared");
         armed = Arming.rest();
         if (forgotten > 0)
             console.info(`launcher: forgot ${forgotten} words told and unread, `
@@ -3583,6 +3591,9 @@ Scope {
         if (left.quiet)
             say([]);
         heldSaying = [];
+        // Said in the journal, never the row's name, which a source served.
+        if (Arming.stood(armed, prompt.keysTaken))
+            console.info("launcher: let go of an arm, as a screen share turned");
         armed = left.armed;
         forgetLetGo();
     }
@@ -4506,8 +4517,7 @@ Scope {
     // as an answer holding parts, where it stays the next row.
     function tabbedIn(mode) {
         const row = matches[current] ?? null;
-        const stepping = !!row && (stepsIn(row) || stepsThing(row));
-        if (goesIn(row) && !(mode === "find" && stepping)) {
+        if (tabGoesIn(row, mode)) {
             follow(row);
             return true;
         }
@@ -4515,6 +4525,12 @@ Scope {
             return false;
         say([[hintKey("into"), (Words.field.hints ?? {}).notHere ?? ""]]);
         return true;
+    }
+    // Whether Tab in `mode` goes into `row`, as tabbedIn takes it and the
+    // prompt's clock asks it (its intoHere).
+    function tabGoesIn(row, mode) {
+        const stepping = !!row && (stepsIn(row) || stepsThing(row));
+        return goesIn(row) && !(mode === "find" && stepping);
     }
     // Where Ctrl+] takes a row, as the old step in by l did, so no walk is
     // lost (Joel's rule): a found act into its program, a row into its
@@ -10951,12 +10967,14 @@ Scope {
     property string openInto: ""
     property string openChord: ""
     // A place that marks itself never kept, as asks do, isn't kept
-    // (Arming.keepsPlace); every other place is, and while the screen may
-    // be shared its kept rows are never drawn (Wanted.keptPlaceListed), nor
-    // left drawn once a share begins as it opens (sharedMidOpening).
+    // (Arming.keepsSteps, by its name's source and its steps'); every
+    // other place is, and while the screen may be shared its kept rows are
+    // never drawn (Wanted.keptPlaceListed), nor left drawn once a share
+    // begins as it opens (sharedMidOpening).
     function keepPlace(name) {
         if (held.length === 0
-            || !Arming.keepsPlace(collections.find(one => one.settings.name === name)))
+            || !Arming.keepsSteps(collections.find(one => one.settings.name === name) ?? null,
+                held))
             return;
         placesKept[name] = { held: held, matches: matches, depth: homeDepth,
             under: keptUnder(name), led: ledPlaces.includes(name) };
@@ -14516,8 +14534,9 @@ Scope {
                         // writes its command on the : line.
                         onAccepted: {
                             // A secret's Return, which its line never reads,
-                            // hands over words, so it's timed as acting.
-                            if (prompt.secret)
+                            // hands over words, so it's timed as acting; with
+                            // none typed it hands over nothing (give).
+                            if (prompt.secret && prompt.text !== "")
                                 root.keyActs("Return");
                             const heard = KeyTimes.now();
                             const pressed = KeyTimes.pressed();
@@ -14604,7 +14623,7 @@ Scope {
                             if (root.completion === "")
                                 return;
                             // A command puts its start in the field.
-                            if (root.current !== -1 && root.selected?.start !== undefined)
+                            if (root.fillsStart())
                                 root.fill(root.selected.start);
                             // A question only started is finished first.
                             else if (root.question !== ""
@@ -14688,9 +14707,16 @@ Scope {
                         // a key that only says it can't acts on nothing.
                         // Tab is asked of the row it will find: a search
                         // held back runs first, as onStepped runs it.
-                        intoHere: () => {
+                        intoHere: mode => {
                             root.searchNow();
-                            return root.goesIn(root.matches[root.current] ?? null);
+                            return root.tabGoesIn(root.matches[root.current] ?? null, mode);
+                        }
+                        // Ctrl+Y on a command's row in a place leaves it,
+                        // asked of the row it will find, as intoHere is.
+                        fillLeaves: () => {
+                            root.searchNow();
+                            return root.held.length > 0 && root.completion !== ""
+                                && root.fillsStart();
                         }
                         upHere: root.canGoUp
                         // The ask takes a key as answerAsk does.

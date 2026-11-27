@@ -194,13 +194,18 @@ Item {
         if (!drawerHere && QueryKeys.paged(mode))
             mode = "normal";
     }
-    // Whether Tab in normal goes into the selected row, asked only of Tab
+    // Whether Tab in a mode goes into the selected row, asked only of Tab
     // so the launcher can run a search held back first, and whether - goes
-    // up from where the rows stand (Launcher.qml's goesIn and canGoUp), so
-    // a key that only says it can't is read as acting on nothing
-    // (KeyActs.acts).
+    // up from where the rows stand (Launcher.qml's tabGoesIn and canGoUp),
+    // so a key that only says it can't is read as acting on nothing
+    // (KeyActs.acts), and the find's Tab going on to the next row as a
+    // move (KeyActs.moves).
     property var intoHere: () => true
     property bool upHere: true
+    // Whether Ctrl+Y's completion puts a command's start in the field out
+    // at the top, leaving a place (Launcher.qml's fill), asked only of
+    // Ctrl+Y, so it acts there (KeyActs.acts).
+    property var fillLeaves: () => false
     // The mode typing goes back to: the find, or insert on words.
     readonly property string typingMode: words ? "insert" : "find"
     // Words handed over or left go back to the find, never to an insert
@@ -742,6 +747,7 @@ Item {
             commands: QueryKeys.opensCommands(key, mode, input.text),
             drawerHere,
             intoHere,
+            fillLeaves,
             upHere,
             reselectHere: KeyActs.reselectHere(mode, reselectable, lastChosen),
             mode,
@@ -779,7 +785,7 @@ Item {
             prompt.commanded("");
             return;
         }
-        keyMoved = QueryKeys.repeats(read.act);
+        keyMoved = KeyActs.moves(read.act, { mode, intoHere });
         // A key held where nothing types repeats only a move, as Vim's
         // motions do: any other act, and a count or a sequence begun, is a
         // press's once, and Return is everywhere, so a key let go late by
