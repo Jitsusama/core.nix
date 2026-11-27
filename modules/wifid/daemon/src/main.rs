@@ -1571,6 +1571,16 @@ fn joined_to(point: &ObjectPath<'_>) -> Option<String> {
     (point.as_str() != "/").then(|| point.to_string())
 }
 
+/// Whether a card read twice, its step then its access point each time,
+/// stayed joined to one point throughout. A move that left for another
+/// point and failed back between the reads reads completed both times,
+/// but at two points: taken as landed at the first, the card would count
+/// as having left a point that warned it, and the landing back there
+/// would forget the warning.
+fn joined_throughout(steps: [&str; 2], points: [Option<&str>; 2]) -> bool {
+    steps == ["completed"; 2] && points[0] == points[1]
+}
+
 /// Turns every Wi-Fi radio on or off.
 fn radio(on: bool) -> Result<(), Refused> {
     let turned = OpenOptions::new()
@@ -2013,16 +2023,19 @@ impl Wifid<'_> {
         // A card found partway through a join, as wifid starts mid-move,
         // hasn't left a point that warned it until that join lands, so the
         // warning taken in from before stays if the join fails. Its step
-        // is read on both sides of its point, as a join could fail back
-        // between two reads: only a card joined throughout has landed
-        // where its point says.
+        // and its point are each read twice, as a move could leave for
+        // another point and fail back between two reads.
         let before = interface.state().await?;
         // A card kept on its network as wifid restarts says nothing of the
         // access point it's at until it moves, so it's asked.
         let point = interface.current_access_point().await.ok();
         let point = point.filter(|point| joined_to(point).is_some());
         let joined = point.as_ref().map(ToString::to_string);
-        let landed = before == "completed" && interface.state().await? == "completed";
+        let after = interface.state().await?;
+        let again = interface.current_access_point().await.ok();
+        let again = again.as_ref().and_then(|again| joined_to(again));
+        let steps = [before.as_str(), after.as_str()];
+        let landed = joined_throughout(steps, [joined.as_deref(), again.as_deref()]);
         change(self.state, |state| {
             if landed {
                 state.landed_at(&card.name, joined);
@@ -3971,6 +3984,29 @@ impl Wifid<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_card_handed_over_has_landed_only_if_it_stayed_on_one_point_throughout() {
+        const DESK: &str = "/fi/w1/wpa_supplicant1/Interfaces/1/BSSs/3";
+        const HALL: &str = "/fi/w1/wpa_supplicant1/Interfaces/1/BSSs/4";
+        let completed = ["completed"; 2];
+        assert!(
+            joined_throughout(completed, [Some(DESK), Some(DESK)]),
+            "a card joined to one point throughout wasn't taken as landed there"
+        );
+        assert!(
+            !joined_throughout(completed, [Some(HALL), Some(DESK)]),
+            "a move that failed back between the reads was taken as landed at its target"
+        );
+        assert!(
+            !joined_throughout(["completed", "associating"], [Some(DESK), Some(DESK)]),
+            "a card that began a join between the reads was taken as landed"
+        );
+        assert!(
+            !joined_throughout(["4way_handshake", "completed"], [Some(HALL), Some(HALL)]),
+            "a join that ended between the reads was taken as landed before its signal"
+        );
+    }
 
     #[test]
     fn a_card_is_gone_under_its_own_path_or_any_above_it_alone() {
