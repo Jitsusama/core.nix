@@ -138,7 +138,17 @@ fn busctl(dir: &Path, server: &Path, closed: &Path) -> PathBuf {
 /// knocked for the live stop: the daemon, and where its server's name and
 /// what it closed are kept.
 fn knocked(case: &str) -> (Daemon, PathBuf, PathBuf, PathBuf) {
+    knocked_for(case, |_| {})
+}
+
+/// The same, once `said` has changed the live stop's record.
+fn knocked_for(case: &str, said: impl FnOnce(&mut Value)) -> (Daemon, PathBuf, PathBuf, PathBuf) {
     let dir = state(case);
+    let live = dir.join("pineapple/stops/live.json");
+    let mut record: Value =
+        serde_json::from_str(&fs::read_to_string(&live).expect("kept")).expect("json");
+    said(&mut record);
+    fs::write(&live, record.to_string()).expect("the stop is said");
     let socket = dir.join("pineapple.sock");
     let notified = dir.join("notified");
     let server = dir.join("server");
@@ -201,6 +211,28 @@ fn a_live_stops_notice_is_closed_once_it_is_resumed() {
           org.freedesktop.Notifications CloseNotification u 7"
         ],
         "the resumed stop's notice alone is closed, by the number it was given"
+    );
+    drop(daemon);
+}
+
+#[test]
+fn a_stops_notice_goes_out_plain_whatever_its_words_hold() {
+    let (daemon, dir, _, _) = knocked_for("plain", |record| {
+        record["reaches"] = json!(["pr:exa\u{0}mple/shop#12"]);
+        // As Slack's API sends it: `<a href="https://x">override</a> &amp;`
+        // said, its `&`, `<` and `>` as entities.
+        record["words"] =
+            json!("pineapple &lt;a href=\"https://x\"&gt;override&lt;/a&gt; &amp;amp;\u{0} now");
+    });
+    let knock = fs::read_to_string(dir.join("notified")).expect("the knock was heard");
+    assert!(
+        knock.contains("Someone stopped agents on pull request exa mple/shop#12"),
+        "a NUL in what it reaches parts the title's words rather than losing the notice: {knock}"
+    );
+    assert!(
+        knock.contains("pineapple &lt;a href=\"https://x\"&gt;override&lt;/a&gt; &amp;amp; now"),
+        "its words are shown as said, read back from Slack's entities once and never \
+         drawn as markup: {knock}"
     );
     drop(daemon);
 }

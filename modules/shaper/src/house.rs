@@ -112,7 +112,8 @@ const BYTES_MOST: u64 = 3_750_000_000;
 /// sawtooth, and a ceiling that moved with it would clamp the controller
 /// to each second's low and let it climb back only by its 5% a second, so
 /// it would hold this machine under the lowest of the last several, not
-/// what the house leaves. The link is held to each second's all the same.
+/// what the house leaves. The link's rate is held to each second's all the
+/// same, and its queues take it to within 1% (`due` in main).
 pub const STEADY: Duration = Duration::from_secs(5);
 
 /// The step the controller's ceiling moves by, in kbit/s, so it is tuned
@@ -517,7 +518,10 @@ impl Said {
     /// report heard for each house that took it, named as its refusals
     /// are, so a reporter given another house's key is seen heard as that
     /// house's, and a second house's first report from the address is
-    /// still said (every verdict round 2's F7); each house's refusal at
+    /// still said (every verdict round 2's F7), and under a key two houses
+    /// share, each new address says one for each, the machine on either
+    /// network or not, as each takes it (names its taker round 2's F14);
+    /// each house's refusal at
     /// most once each `SAID_APART` for whose it is, whatever kinds of
     /// refusal come; and, once that has
     /// passed, that address's or house's reports taken again. Refusals no
@@ -542,8 +546,10 @@ impl Said {
                     "the first report from {address} for {house} was heard"
                 ));
             }
-            // Each source is in `taken` once, so its end is said once
-            // (names its taker round 1's F1, F8 and F12).
+            // Its end is said at most once, since `remove` finds the
+            // refusal only the first time, whatever `taken` holds (names
+            // its taker round 1's F1, F8 and F12; round 2's F3, F5, F7
+            // and F12).
             let kin = Some(source.clone());
             if !lately(&self.troubled, &kin) && self.troubled.remove(&kin).is_some() {
                 lines.push(format!(
@@ -1802,6 +1808,60 @@ mod tests {
                 format!("the first report from {from} for the house was heard"),
             ],
             "a house taking the report beside another wasn't said to: {said:?}"
+        );
+    }
+
+    // A house's end is said when it isn't the first to take the report:
+    // beside an address with its own key, which takes first, a house whose
+    // key comes to be read past the minute says its end (names its taker
+    // round 2's F4).
+    #[test]
+    fn a_house_taking_after_an_address_s_own_key_says_its_end() {
+        let folder =
+            std::env::temp_dir().join(format!("shaper-taken-second-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&folder);
+        fs::create_dir_all(&folder).expect("a folder");
+        let own = folder.join("own.key");
+        fs::write(&own, vector_key()).expect("a key");
+        let key = folder.join("house.key");
+        let one = "00:00:5e:00:53:01".to_owned();
+        let from: IpAddr = "192.0.2.12".parse().expect("an address");
+        let reporters = Reporters {
+            named: BTreeMap::from([(from, Some(own))]),
+            unnamed: vec![(one.clone(), key.clone())],
+        };
+        let ear = Ear::default();
+        let mut said = Said::default();
+        let at = Instant::now();
+        let mut hear = |s: u64| {
+            let stamp = STAMP + s * 1_000;
+            let report = sign(
+                &format!("{} {}", s * 250_000, s * 1_000),
+                stamp,
+                &vector_key(),
+            );
+            let now = at + Duration::from_secs(s);
+            let verdicts = ear.verdicts(&reporters, from, report.as_bytes(), now, stamp);
+            said.of(from, &verdicts, now)
+        };
+        let unread = hear(0);
+        fs::write(&key, vector_key()).expect("a key");
+        let past = hear(63);
+        let _ = fs::remove_dir_all(&folder);
+        let house_one = format!("the house on {one}");
+        assert!(
+            unread
+                .iter()
+                .any(|line| line.contains(&house_one) && line.contains("can't be read")),
+            "the house's unread key went unsaid: {unread:?}"
+        );
+        assert_eq!(
+            past,
+            [
+                format!("the first report from {from} for {house_one} was heard"),
+                format!("the reports from {from} for {house_one} are taken again"),
+            ],
+            "the house taking second wasn't said to end its refusal: {past:?}"
         );
     }
 

@@ -31,12 +31,18 @@ const TICKS: u64 = 100;
 /// What one copy of a program held when looked at.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Held {
-    /// In memory, in KiB.
+    /// In memory, in KiB: its own share, its Pss, where the kernel says
+    /// it, so pages every copy shares, as node's own program, count once
+    /// across them rather than once in each.
     pub kib: u64,
     /// Put out to swap, in KiB.
     pub swap_kib: u64,
     /// How long it had run, in seconds.
     pub age: u64,
+    /// Whether `kib` is all it had resident, shared pages and all, since
+    /// its share couldn't be read: on a Mac, where `ps` says only that,
+    /// or for a process whose rollup this user may not read.
+    pub by_rss: bool,
 }
 
 impl Held {
@@ -105,6 +111,7 @@ fn from_ps(said: &str) -> BTreeMap<String, Vec<Held>> {
             kib,
             swap_kib: 0,
             age,
+            by_rss: true,
         });
     }
     seen
@@ -153,16 +160,24 @@ fn started_by(process: &Path) -> Option<String> {
     (!name.is_empty()).then_some(name)
 }
 
-/// What a process holds, from its status, and its age, from when its stat
-/// says it started; a kernel thread, holding none of its own, is passed
-/// over.
+/// The KiB `said` gives for `field`, a line of `/proc`'s `Field:  n kB`.
+fn kib_in(said: &str, field: &str) -> Option<u64> {
+    said.lines()
+        .find_map(|line| line.strip_prefix(field))
+        .and_then(|value| value.split_whitespace().next()?.parse::<u64>().ok())
+}
+
+/// What a process holds, by its own share and its swap from the rollup of
+/// its mappings, or by its status where the rollup can't be read; and its
+/// age, from when its stat says it started. A kernel thread, holding none
+/// of its own, is passed over.
 fn held(process: &Path, uptime: u64) -> Option<Held> {
     let status = fs::read_to_string(process.join("status")).ok()?;
-    let kib_of = |field: &str| {
-        status
-            .lines()
-            .find_map(|line| line.strip_prefix(field))
-            .and_then(|said| said.split_whitespace().next()?.parse::<u64>().ok())
+    let rss = kib_in(&status, "VmRSS:")?;
+    let rollup = fs::read_to_string(process.join("smaps_rollup")).unwrap_or_default();
+    let (kib, swap_kib, by_rss) = match kib_in(&rollup, "Pss:") {
+        Some(pss) => (pss, kib_in(&rollup, "Swap:").unwrap_or(0), false),
+        None => (rss, kib_in(&status, "VmSwap:").unwrap_or(0), true),
     };
     let stat = fs::read_to_string(process.join("stat")).ok()?;
     // Fields after the name, which may hold spaces, closed by its bracket:
@@ -170,9 +185,10 @@ fn held(process: &Path, uptime: u64) -> Option<Held> {
     let (_, after) = stat.rsplit_once(')')?;
     let started = after.split_whitespace().nth(19)?.parse::<u64>().ok()?;
     Some(Held {
-        kib: kib_of("VmRSS:")?,
-        swap_kib: kib_of("VmSwap:").unwrap_or(0),
+        kib,
+        swap_kib,
         age: uptime.saturating_sub(started / TICKS),
+        by_rss,
     })
 }
 
@@ -213,6 +229,10 @@ pub struct Memory {
     pub median_sum_kib: u64,
     /// The sum of those looks' heavy copies, the same way.
     pub p95_sum_kib: u64,
+    /// The copies at the last look counted by their own share, Pss, rather
+    /// than by all they had resident, as `Held::by_rss` says. A day kept
+    /// before shares were read has none, as every copy then was by Rss.
+    pub by_pss: u64,
 }
 
 /// The copies of an age, and what they held in memory and swap, in KiB.
@@ -228,6 +248,7 @@ impl Memory {
     pub fn saw(&mut self, at: i64, copies: &[Held]) {
         self.at = at;
         self.copies = copies.len() as u64;
+        self.by_pss = copies.iter().filter(|held| !held.by_rss).count() as u64;
         self.kib = copies.iter().map(|held| held.kib).sum();
         self.swap_kib = copies.iter().map(|held| held.swap_kib).sum();
         self.largest_kib = copies.iter().map(Held::total).max().unwrap_or(0);
@@ -252,6 +273,19 @@ impl Memory {
             self.by_age[group].copies += 1;
             self.by_age[group].kib += held.total();
         }
+    }
+}
+
+/// What the last look counted its copies by: their own share (Pss), all
+/// they had resident (Rss), or, when it was both, how many were by Rss;
+/// nothing when none was running.
+#[must_use]
+pub fn measure(held: &Memory) -> String {
+    match (held.copies, held.by_pss) {
+        (0, _) => String::new(),
+        (_, 0) => "by Rss".to_owned(),
+        (all, pss) if pss == all => "by Pss".to_owned(),
+        (all, pss) => format!("by Pss, {} by Rss", all - pss),
     }
 }
 
@@ -339,12 +373,63 @@ mod tests {
             vec![Held {
                 kib: 1_000,
                 swap_kib: 24,
-                age: 3_600
+                age: 3_600,
+                by_rss: true
             }],
             "pi, an hour old; the copy holding nothing of its own passed over"
         );
         assert_eq!(seen["quickshell"][0].age, 7_200, "the shell, by its path");
         assert_eq!(seen.len(), 2, "nothing else is watched: {seen:?}");
+    }
+
+    #[test]
+    fn a_copy_is_counted_by_its_own_share_where_the_kernel_says_it() {
+        let proc = tempfile::tempdir().expect("a stand-in /proc");
+        fs::write(proc.path().join("uptime"), "7200.55 14000.10\n").expect("uptime");
+        process(proc.path(), 10, "pi\0", Some(1_000), 0);
+        fs::write(
+            proc.path().join("10/smaps_rollup"),
+            concat!(
+                "00400000-7fff00000000 ---p 00000000 00:00 0    [rollup]\n",
+                "Rss:                1000 kB\n",
+                "Pss:                 700 kB\n",
+                "Pss_Anon:            650 kB\n",
+                "Pss_File:             50 kB\n",
+                "Swap:                 40 kB\n",
+                "SwapPss:              30 kB\n",
+            ),
+        )
+        .expect("its rollup");
+        process(proc.path(), 11, "pi\0", Some(2_000), 0);
+        process(proc.path(), 12, "pi\0", Some(3_000), 0);
+        fs::write(proc.path().join("12/smaps_rollup"), "").expect("an empty rollup");
+        let mut seen = look(proc.path()).remove("pi").expect("pi");
+        seen.sort_unstable_by_key(|held| held.kib);
+        assert_eq!(
+            seen,
+            vec![
+                Held {
+                    kib: 700,
+                    swap_kib: 40,
+                    age: 7_200,
+                    by_rss: false
+                },
+                Held {
+                    kib: 2_000,
+                    swap_kib: 24,
+                    age: 7_200,
+                    by_rss: true
+                },
+                Held {
+                    kib: 3_000,
+                    swap_kib: 24,
+                    age: 7_200,
+                    by_rss: true
+                },
+            ],
+            "by its rollup's Pss and Swap, not Pss_Anon or SwapPss; by its \
+             status where the rollup can't be read or says nothing"
+        );
     }
 
     #[test]
@@ -457,6 +542,7 @@ mod tests {
             kib,
             swap_kib: 0,
             age,
+            by_rss: true,
         };
         let seen = from_ps(said);
         assert_eq!(
@@ -477,6 +563,7 @@ mod tests {
             kib,
             swap_kib: 1,
             age,
+            by_rss: false,
         };
         let mut memory = Memory::default();
         memory.saw(1, &[copy(10, 60), copy(20, 7_200), copy(30, 90_000)]);
@@ -507,6 +594,7 @@ mod tests {
             kib,
             swap_kib: kib / 10,
             age: 60,
+            by_rss: false,
         };
         let mut memory = Memory::default();
         // Twenty-one copies, out of order, so the middle and the heavy one
@@ -539,6 +627,34 @@ mod tests {
             (2, 143, 242),
             "a look with no copy running says nothing of a copy's size"
         );
+    }
+
+    #[test]
+    fn the_copies_counted_by_rss_are_kept_each_look() {
+        let copy = |by_rss| Held {
+            kib: 10,
+            swap_kib: 0,
+            age: 60,
+            by_rss,
+        };
+        let mut memory = Memory::default();
+        memory.saw(1, &[copy(true), copy(false), copy(true)]);
+        assert_eq!(memory.by_pss, 1, "one of three by Pss");
+        memory.saw(2, &[copy(false)]);
+        assert_eq!(memory.by_pss, 1, "the last look's, not the day's");
+        assert_eq!(measure(&memory), "by Pss");
+        memory.saw(3, &[]);
+        assert_eq!(measure(&memory), "", "none running");
+        let kept: Memory = serde_json::from_str(r#"{"copies": 2, "kib": 20}"#).expect("a day");
+        assert_eq!(
+            measure(&kept),
+            "by Rss",
+            "a day kept before shares were read"
+        );
+        memory.saw(3, &[copy(true), copy(true)]);
+        assert_eq!(measure(&memory), "by Rss");
+        memory.saw(4, &[copy(true), copy(false), copy(false)]);
+        assert_eq!(measure(&memory), "by Pss, 1 by Rss");
     }
 
     #[test]

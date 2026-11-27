@@ -12,7 +12,7 @@ use jiff::tz::Offset;
 use serde_json::Value;
 
 use super::promised::promised;
-use super::{Class, DAY, Measure, count, first_owner, lines, parked, seconds, short};
+use super::{Class, DAY, Measure, asks, count, first_owner, parked, seconds, short};
 use crate::tracking::{self, Tracking};
 
 /// The key of Joel's dates told late; the list's own add their kind to it.
@@ -42,7 +42,7 @@ type Late = (i64, String, String);
 #[must_use]
 pub fn told_late(text: &str, now: i64, which: Tracking) -> Measure {
     let mut written: BTreeMap<[String; 2], (usize, Vec<Value>)> = BTreeMap::new();
-    for (order, ask) in lines(text).enumerate() {
+    for (order, ask) in asks(text).enumerate() {
         let asked = [ask["at"].to_string(), ask["words"].to_string()];
         written
             .entry(asked)
@@ -50,9 +50,9 @@ pub fn told_late(text: &str, now: i64, which: Tracking) -> Measure {
             .1
             .push(ask);
     }
-    let mut asks: Vec<(usize, Vec<Value>)> = written.into_values().collect();
-    asks.sort_by_key(|(order, _)| *order);
-    let mut late: Vec<Late> = asks
+    let mut in_order: Vec<(usize, Vec<Value>)> = written.into_values().collect();
+    in_order.sort_by_key(|(order, _)| *order);
+    let mut late: Vec<Late> = in_order
         .iter()
         .flat_map(|(_, versions)| moved_late(versions, now, which))
         .collect();

@@ -1,7 +1,8 @@
 """The desktop test's keeps copies area.
 
 Here the clipboard keeps what's copied, text and pictures, past the programs that copied
-them, gives it back by Super+V into the window it opened over, and forgets it all when asked.
+them, gives it back by Super+V into the window it opened over, and forgets it all when asked;
+and a password Passwords copies pastes, is never kept or read by a fenced command, and clears.
 
 tests/desktop/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
 its opening comment says what the test proves. Every test asks for the desktop, started once a run
@@ -478,6 +479,154 @@ def test_a_fenced_command_reads_no_secret_copy_through_x11(desktop: Desktop) -> 
     # the walls are proven with or without the copy.
     failure = fence_failure(said)
     assert failure is None, f"{failure}: {said}"
+
+
+# Passwords' copy, walked as Joel walks it: the stand-in for op lists the
+# console's login (tests/desktop/stand-ins/op-stand-in.sh), whose Copy the Password copies it.
+ENTRY = "Lighthouse Console"
+STAND_IN = "stand-in-password"
+# Passwords clears its copy this long after it's made (modules/passwords/src/main.rs).
+CLEARS = timedelta(seconds=30)
+# A page that takes a paste, saying what it holds in its title, which niri lists.
+PAGE = (
+    "data:text/html,<title>paste-page</title>"
+    '<input autofocus oninput="document.title = &quot;pasted:&quot; + this.value">'
+)
+
+
+def copy_a_password(desktop: Desktop) -> float:
+    """Copy the console's password from Passwords, and give when it pasted.
+
+    When is monotonic, once the copy first pastes, a moment after it began.
+
+    The first step in asks 1Password, through op, and leads with it locked until it's
+    answered, so the place is opened again once it has, to stand as Joel finds it then. Its
+    Copy the Password is chosen by name among the entry's acts, since the entry's own Return
+    types it instead while a window is under the launcher, as a terminal or a page is here.
+
+    A copy from before still held is cleared first, so the paste found after is this copy's
+    own: a copy that never happened, or a password typed instead, can't pass on the last one.
+    Any other copy is left as it is, for the step that reads what came before.
+    """
+    machine = desktop.machine
+    desktop.as_account(
+        f"if wl-paste --no-newline 2>/dev/null | grep -qx {STAND_IN}; then wl-copy --clear; fi"
+    )
+    machine.wait_until_fails(
+        desktop.in_session(f"wl-paste --no-newline 2>/dev/null | grep -qx {STAND_IN}"),
+        timeout=timedelta(seconds=10),
+    )
+    desktop.answer("passwords")
+    desktop.launcher_until(
+        lambda shown: (shown["selected"] or {}).get("is") == "collection:passwords"
+    )
+    desktop.step_in("ret")
+    desktop.launcher_until(lambda shown: ENTRY in shown["rows"])
+    desktop.close_launcher()
+    desktop.as_account("qs ipc call launcher collection passwords")
+    desktop.launcher_ready()
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == ENTRY)
+    desktop.follow()
+    desktop.launcher_until(lambda shown: "Copy the Password" in shown["rows"])
+    desktop.down_to("Copy the Password")
+    machine.send_key("ret")
+    desktop.launcher_until(lambda shown: not shown["open"])
+    machine.wait_until_succeeds(
+        desktop.in_session(f"wl-paste --no-newline | grep -qx {STAND_IN}"),
+        timeout=timedelta(seconds=10),
+    )
+    return time.monotonic()
+
+
+def focused(desktop: Desktop, title: str) -> None:
+    """Wait until niri's focused window is titled so."""
+    desktop.machine.wait_until_succeeds(
+        desktop.in_session(f"niri msg focused-window | grep -q {title}"), timeout=STARTING
+    )
+
+
+# Joel's rule for turning copying on (2026-11-16): each path it opens runs for real first. A
+# password Passwords copies pastes into a terminal and into a page, a command pi fences can't
+# read it while it's held, the clipboard's history never keeps it, and it's gone in 30 s.
+
+
+def test_a_password_copied_pastes_is_never_kept_or_fenced_and_clears(desktop: Desktop) -> None:
+    """A password copied pastes, is never kept or read fenced, and clears in 30 s."""
+    machine = desktop.machine
+    # Into a terminal, by its Ctrl+Shift+V.
+    desktop.as_account(
+        "niri msg action spawn -- kitty --title paste-here "
+        "sh -c 'stty -icanon -echo; cat > /tmp/pasted'"
+    )
+    focused(desktop, "paste-here")
+    copy_a_password(desktop)
+    focused(desktop, "paste-here")
+    machine.send_key("ctrl-shift-v")
+    machine.wait_until_succeeds(
+        desktop.in_session(f"grep -qx {STAND_IN} /tmp/pasted"), timeout=timedelta(seconds=10)
+    )
+    # Each pattern's bracket keeps it from matching the shell running it, whose own
+    # command line holds the words, and which pkill would otherwise end mid-command.
+    desktop.as_account("pkill -f '[c]at > /tmp/pasted'; rm -f /tmp/pasted")
+    machine.wait_until_fails(
+        desktop.in_session("niri msg windows | grep -q paste-here"), timeout=timedelta(seconds=30)
+    )
+
+    # Into a page, by Ctrl+V, the browser opened first since it's slow to start here.
+    desktop.as_account(
+        "niri msg action spawn -- chromium --ozone-platform=wayland --disable-gpu --no-first-run "
+        "--no-default-browser-check --password-store=basic "
+        f"--user-data-dir=/tmp/paste-page-profile '--app={PAGE}'"
+    )
+    focused(desktop, "paste-page")
+    copy_a_password(desktop)
+    focused(desktop, "paste-page")
+    machine.send_key("ctrl-v")
+    machine.wait_until_succeeds(
+        desktop.in_session(f"niri msg focused-window | grep -q 'pasted:{STAND_IN}'"),
+        timeout=timedelta(seconds=10),
+    )
+    desktop.as_account("pkill -f '[p]aste-page-profile'")
+    machine.wait_until_fails(
+        desktop.in_session("niri msg windows | grep -q pasted:"), timeout=timedelta(seconds=30)
+    )
+
+    # Never kept: Super+V lists no row of it, which is where a kept text copy would show, since
+    # the history keeps text in memory alone; and no picture it writes to its folder holds it
+    # either. A secret's copy says nothing as it's heard, so a copy after it is waited on: the
+    # history hears copies in turn, so by then it has heard the password's too.
+    copy_a_password(desktop)
+    with desktop.told("heard copy after the password"):
+        desktop.as_account("echo -n 'after the password' | wl-copy > /dev/null 2>&1")
+    machine.send_key("meta_l-v")
+    desktop.launcher_ready()
+    desktop.launcher_until(
+        lambda shown: (shown["selected"] or {}).get("reads") == "after the password"
+    )
+    assert STAND_IN not in json.dumps(desktop.showing()), desktop.showing()["rows"]
+    desktop.close_launcher()
+    machine.fail(desktop.in_session(f"grep -rqF {STAND_IN} $XDG_RUNTIME_DIR/clipboard-history"))
+
+    # Gone once its time is up, and held till then.
+    copied = copy_a_password(desktop)
+
+    def cleared(_: bool) -> bool:
+        """Say whether the clipboard no longer holds the password."""
+        return desktop.as_account("wl-paste --no-newline 2>/dev/null || true") != STAND_IN
+
+    # Timed from the paste first seen, after the copy began, so a clear come early can't pass
+    # for one held, and bounded above too, as retry's wait grows on a busy host.
+    retry(cleared, timeout=CLEARS + timedelta(seconds=15))
+    held = timedelta(seconds=time.monotonic() - copied)
+    assert held >= CLEARS - timedelta(seconds=5), f"the copy went after only {held}"
+    assert held <= CLEARS + timedelta(seconds=15), f"the copy was held {held}"
+
+    # A fenced command can't read it while it's held (modules/passwords/tests); this area
+    # alone has the script.
+    copy_a_password(desktop)
+    said = desktop.as_account(f"fence-reads-no-copy {STAND_IN} 2>&1; echo ended $?")
+    # The script says why it failed, a read copy or its own trouble, so that's passed on.
+    assert said.rstrip().endswith("ended 0"), f"fence-reads-no-copy failed: {said}"
 
 
 # A binding that throws or assigns the wrong type only warns, and
