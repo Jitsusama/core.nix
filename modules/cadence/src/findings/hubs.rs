@@ -19,7 +19,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-use super::Entry;
+use super::{Entry, RED};
 use crate::DAY;
 
 /// A subject's hub, as the node names it: the cells it names as holding
@@ -304,11 +304,6 @@ pub fn put_late(
     }
     (put, lines)
 }
-
-/// The kind the hour files a measure past its target as when nothing
-/// but its being red asks it: not the lead, a miss, a finding, a date told
-/// late, fruitless rounds or the worst queue.
-const RED: &str = "red";
 
 /// Each of `put` as the need the mesh keeps, asked by `asker` at `at_ms`,
 /// its id the asker's and the moment's with its place among them, so no

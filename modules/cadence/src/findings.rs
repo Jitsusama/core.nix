@@ -26,6 +26,11 @@ use crate::{DAY, holders, write_whole};
 pub mod gone;
 pub mod hubs;
 
+/// The kind the hour files a measure past its target as when nothing but
+/// its being red asks it: not the lead, a miss, a finding, a date told
+/// late, fruitless rounds or the worst queue. Those go late as one count.
+pub const RED: &str = "red";
+
 /// One finding as the ledger keeps it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Entry {
@@ -77,8 +82,9 @@ pub struct Entry {
     /// `cadence owe --done`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fixed: Option<String>,
-    /// The id of the question its owner was asked it in, so a reply whose
-    /// re names that id answers this line.
+    /// The id of the question its owner was asked it in, kept beside the
+    /// line so its question can be found from it. Nothing reads a reply
+    /// against it yet: a line closes when its measure is back in.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub asked: Option<String>,
 }

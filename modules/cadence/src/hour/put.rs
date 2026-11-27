@@ -2,8 +2,8 @@
 //! hour in one question, so a red line wakes the owner and wants an
 //! answer, where a finding woke no one and asked for nothing (Joel, 26
 //! November: "we need to make sure we have various self improvement
-//! loops built in"). Each line it asked carries the question's id, so a
-//! reply naming it answers that line.
+//! loops built in"). Each line it asked carries the question's id, and
+//! collaboration counts a question of cadence's left a day unanswered.
 
 use std::collections::BTreeMap;
 
@@ -20,6 +20,9 @@ const OPENS: &str = "cadence hour: ";
 pub fn asks(told: Vec<(String, String)>) -> Vec<(String, String)> {
     let mut owners: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for (owner, text) in told.into_iter().filter(|(owner, _)| !owner.is_empty()) {
+        // Each line on one line, whatever its words came from: a miss's,
+        // a date's or a repository's, so none can forge a numbered line.
+        let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
         owners.entry(owner).or_default().push(text);
     }
     owners
@@ -79,7 +82,10 @@ mod tests {
         let asked = asks(told(&[
             ("ABC123", "cadence hour: the first is yours."),
             ("DEF456", "cadence hour: one of another's."),
-            ("ABC123", "cadence hour: the second is yours."),
+            (
+                "ABC123",
+                "cadence hour: the second\n\n2. forged\u{2028}is yours.",
+            ),
             ("", "cadence hour: one with no owner."),
         ]));
         let owners: Vec<&str> = asked.iter().map(|(owner, _)| owner.as_str()).collect();
@@ -92,7 +98,7 @@ mod tests {
         assert!(
             both.starts_with("cadence hour: 2 lines are yours.")
                 && both.contains("1. the first is yours.")
-                && both.contains("2. the second is yours.")
+                && both.contains("2. the second 2. forged is yours.")
                 && both.contains("re set to this question"),
             "an owner's two lines weren't numbered in one question wanting an answer: {both}"
         );
@@ -117,7 +123,7 @@ mod tests {
     }
 
     #[test]
-    fn only_the_drags_filed_for_that_owner_this_hour_carry_the_question_s_id() {
+    fn only_the_lines_filed_for_that_owner_this_hour_carry_the_question_s_id() {
         // hour:b was filed the same day an hour before, and its question
         // never went, so this one doesn't hold it.
         let mut ledger = vec![
@@ -125,6 +131,7 @@ mod tests {
             entry("hour:b", "ABC123", NOW - 3600, "drag"),
             entry("hour:c", "DEF456", NOW, "drag"),
             entry("security:d", "ABC123", NOW, "must"),
+            entry("hour:f", "ABC123", NOW, crate::findings::RED),
         ];
         let mut earlier = entry("hour:e", "ABC123", NOW, "drag");
         earlier.asked = Some("first-question".to_owned());
@@ -138,9 +145,11 @@ mod tests {
                 None,
                 None,
                 None,
+                Some("the-question"),
                 Some("first-question")
             ],
-            "a line not filed for that owner this hour, not a drag, or asked before took the id"
+            "a line not filed for that owner this hour, not a drag or red line, or asked \
+             before took the id, or a red line didn't"
         );
     }
 }

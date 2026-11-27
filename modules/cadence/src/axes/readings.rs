@@ -277,14 +277,23 @@ fn collaboration(s: &Sources) -> Axis {
     let fyi = s.messages.iter().filter(|m| m.intent == "fyi").count();
     let answered: BTreeSet<&str> = s.messages.iter().filter_map(|m| m.re.as_deref()).collect();
     let asked_by = (s.now - 30 * 60) * 1000;
-    // Cadence's own hourly questions give their owners a day, and the loop
-    // asks again of each one past it, so they aren't held to half an hour.
+    // Cadence's hourly questions give their owners a day, so each of its
+    // questions counts once a day has passed unanswered, rather than half
+    // an hour. Its wakes and alarms wait as long, as only a hash of what a
+    // message said is kept to tell them apart.
+    let ours_by = (s.now - DAY) * 1000;
     let unanswered = s
         .messages
         .iter()
         .filter(|m| m.intent == "question" && !answered.contains(m.id.as_str()))
-        .filter(|m| m.from != crate::FROM)
-        .filter(|m| mesh::stamped_at(&m.id).is_some_and(|at| at < asked_by))
+        .filter(|m| {
+            let by = if m.from == crate::FROM {
+                ours_by
+            } else {
+                asked_by
+            };
+            mesh::stamped_at(&m.id).is_some_and(|at| at < by)
+        })
         .count();
     let read = all > 0;
     axis(
@@ -736,7 +745,8 @@ The net tests 6f8501688 (9 merges behind main), merged 28 min ago.
 
     #[test]
     fn a_question_answered_by_anyone_is_not_counted() {
-        let old = (10_000 - 3600) * 1000;
+        const NOW: i64 = 200_000;
+        let old = (NOW - 3600) * 1000;
         let note = |id: String, intent: &str, re: Option<&str>| Note {
             id,
             intent: intent.into(),
@@ -745,11 +755,11 @@ The net tests 6f8501688 (9 merges behind main), merged 28 min ago.
         };
         let asked = format!("{old}-A-1-aa");
         let s = Sources {
-            now: 10_000,
+            now: NOW,
             messages: vec![
                 note(asked.clone(), "question", None),
                 note(format!("{old}-B-1-bb"), "question", None),
-                note(format!("{}-C-1-cc", 9_999_000), "question", None),
+                note(format!("{}-C-1-cc", (NOW - 1) * 1000), "question", None),
                 note(format!("{old}-D-1-dd"), "fyi", Some(&asked)),
                 // Since 26 November the hour asks each red line's owner as
                 // a question giving them a day, not half an hour.
@@ -757,16 +767,29 @@ The net tests 6f8501688 (9 merges behind main), merged 28 min ago.
                     from: crate::FROM.into(),
                     ..note(format!("{old}-CADENCE-1-ee"), "question", None)
                 },
+                // One of cadence's left a day unanswered counts.
+                Note {
+                    from: crate::FROM.into(),
+                    ..note(
+                        format!("{}-CADENCE-1-ff", (NOW - DAY - 60) * 1000),
+                        "question",
+                        None,
+                    )
+                },
             ],
             ..Sources::default()
         };
         // The agents he corrected come first, from health; the mesh's two
         // follow.
         let readings = collaboration(&s).readings;
-        assert_eq!(readings[1].now, Some(20.0), "one fyi of five");
-        // B alone: A was answered, C was asked under 30 min ago, and the
-        // hour's own gives a day.
-        assert_eq!(readings[2].now, Some(1.0), "B alone is unanswered");
+        assert_eq!(readings[1].now, Some(100.0 / 6.0), "one fyi of six");
+        // B and cadence's day-old one: A was answered, C was asked under
+        // 30 min ago, and the hour's own an hour ago has its day.
+        assert_eq!(
+            readings[2].now,
+            Some(2.0),
+            "B and cadence's day-old question weren't the unanswered"
+        );
     }
 
     #[test]

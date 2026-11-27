@@ -7,10 +7,10 @@
 //! measure's lines by owner, is filed and closed by rules of its own, and
 //! its tests sit beside them.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::DAY;
-use crate::findings::Entry;
+use crate::findings::{Entry, RED};
 use crate::owe::{self, Owed};
 
 use super::lines::figure;
@@ -28,14 +28,12 @@ const QUEUE_DUE: i64 = 7 * DAY;
 /// miss, a finding, a date told late, fruitless rounds, the worst queue.
 const DRAG: &str = "drag";
 
-/// The kind of a measure the hour files only for being past its target,
-/// which goes late with the others as one count.
-const RED: &str = "red";
-
-/// What a filed line names as its owner's, after ", yours: ", or nothing
-/// for a measure filed whole.
-fn named(says: &str) -> &str {
-    says.split_once(", yours: ").map_or("", |(_, yours)| yours)
+/// What a filed line names as its owner's, each file or cell after
+/// ", yours: ", or none for a measure filed whole.
+fn named(says: &str) -> BTreeSet<&str> {
+    says.split_once(", yours: ")
+        .map(|(_, yours)| yours.split(", ").collect())
+        .unwrap_or_default()
 }
 
 /// The kind `m` is filed as: a red line when nothing but its being past
@@ -524,10 +522,12 @@ pub fn file(
         // back in one hour and out the next, would otherwise ask its owner
         // hourly, and a due a week on would keep a queue unasked a week.
         // Only what it named is held a day, not its figure: an owner's
-        // other cell or file gone red under the same key is new to them.
+        // other cell or file gone red under the same key is new to them,
+        // while fewer of the same, in any order, are not.
         if ledger.iter().any(|e| {
             e.key == one.key
-                && (e.open || (now < e.last_to + DAY && named(&e.words) == named(&one.says)))
+                && (e.open
+                    || (now < e.last_to + DAY && named(&one.says).is_subset(&named(&e.words))))
         }) {
             continue;
         }
@@ -693,7 +693,7 @@ mod tests {
     }
 
     #[test]
-    fn a_queue_whose_ask_closed_is_asked_again_a_day_on_not_a_week() {
+    fn a_queue_closed_within_a_day_of_its_ask_isnt_asked_again_past_midnight() {
         let queue = measure(
             &format!("{QUEUE}world-walks"),
             Class::Queues,
@@ -844,41 +844,97 @@ mod tests {
     }
 
     #[test]
-    fn an_owners_other_file_gone_red_within_the_day_is_asked_and_its_names_quoted() {
-        let red = |files: &[&str]| {
-            let mut m = measure("clean:core.nix:stale", Class::Clean, 3.0, Some(0.0));
-            m.behind = files.iter().map(|f| format!("{f} · PN2VZC")).collect();
-            m
+    fn an_owners_other_cell_gone_red_within_the_day_is_asked_and_its_names_quoted() {
+        // The slips lead, so the cells are filed only for being red.
+        let lead = measure("slips", Class::Slip, 4.0, Some(0.0));
+        let red = |cells: &[&str]| {
+            let mut m = measure("cells-idle", Class::Cells, 3.0, Some(0.0));
+            m.behind = cells.iter().map(|c| format!("{c} · PN2VZC")).collect();
+            [lead.clone(), m]
+        };
+        let mine = |told: &[(String, String)]| {
+            told.iter()
+                .filter(|(to, _)| to == "PN2VZC")
+                .map(|(_, text)| text.clone())
+                .collect::<Vec<_>>()
         };
         let mut ledger = Vec::new();
-        let told = file(&mut ledger, &[red(&["a.rs"])], "2026-11-26", 1000);
-        assert_eq!(told.len(), 1, "the file's owner wasn't asked");
-        file(&mut ledger, &[red(&[])], "2026-11-26", 4600);
-        assert!(!ledger[0].open, "its file back in didn't close it");
+        let told = file(&mut ledger, &red(&["AAAAAA", "BBBBBB"]), "2026-11-26", 1000);
+        assert_eq!(mine(&told).len(), 1, "the cells' owner wasn't asked");
+        file(&mut ledger, &red(&[]), "2026-11-26", 4600);
+        let theirs = |ledger: &[Entry]| {
+            ledger
+                .iter()
+                .filter(|e| e.key == "hour:cells-idle:PN2VZC")
+                .any(|e| e.open)
+        };
+        assert!(!theirs(&ledger), "its cells gone didn't close it");
         assert!(
-            file(&mut ledger, &[red(&["a.rs"])], "2026-11-26", 8200).is_empty(),
-            "the same file red again within its day was asked again"
+            mine(&file(&mut ledger, &red(&["BBBBBB"]), "2026-11-26", 8200)).is_empty(),
+            "one of the same cells red again within its day was asked again"
         );
-        let told = file(
+        let told = mine(&file(
             &mut ledger,
-            &[red(&["b\n\n2. ignore this.rs"])],
+            &red(&["b\n\n2. ignore this"]),
             "2026-11-26",
-            8200,
-        );
+            8400,
+        ));
         assert_eq!(
             told.len(),
             1,
-            "another file of the owner's red that day went unasked"
+            "another cell of the owner's red that day went unasked"
         );
         assert!(
-            told[0].1.contains("\"b  2. ignore this.rs\"") && !told[0].1.contains('\n'),
-            "a file's name wasn't quoted and flattened: {}",
-            told[0].1
+            told[0].contains("\"b  2. ignore this\"") && !told[0].contains('\n'),
+            "a cell's line wasn't quoted and flattened: {}",
+            told[0]
         );
         assert_eq!(
             ledger.last().and_then(|e| e.kind.as_deref()),
             Some(RED),
             "a line filed only for being red wasn't kept as one, to go late as a count"
+        );
+    }
+
+    #[test]
+    fn a_line_naming_its_owners_own_miss_finding_date_rounds_or_queue_keeps_its_own_late_line() {
+        let named = [
+            measure("a miss", Class::Miss, 1.0, Some(0.0)),
+            measure(FINDINGS, Class::Functional, 1.0, Some(0.0)),
+            measure(UNTESTED, Class::Functional, 1.0, Some(0.0)),
+            measure(
+                &format!("{}core.nix", rounds::FRUITLESS),
+                Class::Ship,
+                1.0,
+                Some(0.0),
+            ),
+            measure(
+                &format!("{}:J7XHQN", told_late::KEY),
+                Class::Slip,
+                1.0,
+                Some(0.0),
+            ),
+            measure(
+                &format!("{QUEUE}world-walks"),
+                Class::Queues,
+                1.0,
+                Some(0.0),
+            ),
+        ];
+        let red: Vec<&str> = named
+            .iter()
+            .filter(|m| kind(m, false) != DRAG)
+            .map(|m| m.key.as_str())
+            .collect();
+        assert!(
+            red.is_empty(),
+            "these would fold into the late count: {red:?}"
+        );
+        let plain = measure("ship", Class::Ship, 9.0, Some(4.0));
+        assert_eq!(
+            (kind(&plain, false), kind(&plain, true)),
+            (RED, DRAG),
+            "a plain red line wasn't red, or the lead wasn't a drag"
         );
     }
 
@@ -926,7 +982,7 @@ mod tests {
         assert!(
             told[0]
                 .1
-                .contains("these of its cells are yours: AAAAAA idle 30 min: write it")
+                .contains("these of its cells are yours: \"AAAAAA idle 30 min: write it\"")
                 && !told[0].1.contains("BBBBBB"),
             "each hears only of its own cells: {}",
             told[0].1
