@@ -75,7 +75,7 @@ import { grewWords, grownOf, oneCopyEach, originsOf, splitSaid } from "./lineage
 import { drawnWidth } from "./lines.js";
 import { durationOf, easedInOut, goneAndBack } from "./motion.js";
 import { shapeOf as shapeOfReading } from "./shape.js";
-import { drawerOffersOn, FULL_WORDS, handedWords, keptOnStands, LONGEST_WORDS, leftWords, offered, onWords, sproutLink, unsprouted } from "./sprout.js";
+import { drawerOffersOn, FULL_WORDS, handedWords, keptOnStands, LONGEST_WORDS, offered, onWords, returned } from "./sprout.js";
 import { EVERY_TREE_STEP, hasKids as hangsAny, kidsOf, openedTo, rootsOf, rowsOf, rowWords, upOf, walked, worstFirst } from "./outline.js";
 import {
   allCells,
@@ -3824,30 +3824,29 @@ import {
     e.preventDefault();
     const from = sproutFrom !== null && sproutFromBox.checked ? sproutFrom : null;
     const on = sproutOn !== null && sproutOnBox.checked ? sproutOn : null;
+    // What Return does is sprout.ts's returned; this only carries it out.
+    const done = returned(sproutInput.value, from, on, mapMachines());
     // A machine that left the map while the line was open is let go of
-    // and said, so the work never goes to a machine the map no longer
-    // has, and the next Return starts it where new work starts. The
-    // Return is held, so its repeat never sends before Joel has read why.
-    if (!keptOnStands(on, mapMachines())) {
+    // and said. The Return is held, so its repeat never sends before Joel
+    // has read why.
+    if (done.kind === "left") {
       holdKeysDown();
       offerOn(null);
-      where.textContent = leftWords(on);
+      where.textContent = done.said;
       return;
     }
-    const link = sproutLink(sproutInput.value, from, on);
     // No words, or a machine no link can name, is said where the words go,
     // in the field's own bubble, and once to a screen reader, until a word
     // is typed.
-    if (!link) {
-      const why = unsprouted(sproutInput.value, on);
-      sproutInput.setCustomValidity(why);
+    if (done.kind === "refused") {
+      sproutInput.setCustomValidity(done.why);
       sproutInput.reportValidity();
-      where.textContent = why;
+      where.textContent = done.why;
       return;
     }
-    sproutGo.href = link;
+    sproutGo.href = done.href;
     sproutGo.click();
-    sproutKept = { words: sproutInput.value, from, on };
+    sproutKept = done.kept;
     const short = from === null ? null : current?.byAddress.get(from)?.short || from;
     closeSprout({ said: false, keep: true });
     where.textContent = handedWords(short, on);
