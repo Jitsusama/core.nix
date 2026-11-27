@@ -2498,6 +2498,10 @@ ShellRoot {
         Sessions.forgetAsk(unansweredNamed);
         Sessions.goTo(unansweredRow);
         Sessions.untaken(unansweredNamed, String(Date.now()), "unanswered");
+        // Past answerPatience, as one sooner asks nothing (stillHeld).
+        const sinceHad = Sessions.stillSaid[unansweredNamed];
+        Sessions.stillSaid = Object.assign({}, Sessions.stillSaid, { [unansweredNamed]:
+            Object.assign({}, sinceHad, { at: Date.now() - Sessions.answerPatience - 1 }) });
         Sessions.goTo(unansweredRow);
         untell();
         Sessions.windowHeard({ id: 131, pid: 4242, opened: unansweredNamed });
@@ -2525,6 +2529,27 @@ ShellRoot {
         Sessions.forgetAsk(unansweredNamed);
         kittyPidFile.setText("4242\n");
         Sessions.readKittyPid();
+        // Asked again of the kitty that didn't answer, it could draw both
+        // windows once it catches up, so a press within answerPatience of
+        // the give-up is told it may yet come and takes the late tell,
+        // asking nothing; past it, the kitty is asked afresh.
+        Sessions.goTo(unansweredRow);
+        Sessions.untaken(unansweredNamed, String(Date.now()), "unanswered");
+        const stillFrom = Niri.spawns.length;
+        untell();
+        Sessions.goTo(unansweredRow);
+        const pressedStill = `${heard()} ${spawnsOf(unansweredNamed, stillFrom)}`;
+        const stillHad = Sessions.stillSaid[unansweredNamed];
+        Sessions.stillSaid = Object.assign({}, Sessions.stillSaid, { [unansweredNamed]:
+            Object.assign({}, stillHad, { at: Date.now() - Sessions.answerPatience - 1 }) });
+        untell();
+        Sessions.goTo(unansweredRow);
+        const pressedPast = `${heard()} ${spawnsOf(unansweredNamed, stillFrom)}`;
+        expect("a press soon after its kitty didn't answer asks it nothing more, said may yet come",
+            pressedStill === "UNANSWERED stillComing x1 0" && pressedPast === "  x0 1",
+            `${pressedStill} / ${pressedPast}`);
+        Sessions.forgetAsk(unansweredNamed);
+        Niri.windows = unforged;
         const unansweredStart = "pi-hosted.s-unanswered-start";
         Sessions.viewStarted("harbour-attended", "s-unanswered-start", unansweredStart, "Reef",
             "/tmp", footedStart);
