@@ -47,6 +47,7 @@ use crate::{DAY, axes, clock, command, failed, folders, message, now_ms, write_w
 use card::{Kept, compose};
 use measures::{Class, Measure};
 use moved::{HARNESS, moved};
+pub use owing::held_when_fixed;
 use owing::{ask_claims, file};
 use records::{RECORD_READ, aboard, tail};
 

@@ -15,7 +15,9 @@ two records the first time, and the connection then dropped, and with one of the
 as the node's whole answer is once one went in a gap. A watch of what lapses is answered the
 same way with an ask's row and an entry, and with neither after, as the passwords child answers
 once it starts again, its asks' rows whole and its entries not yet listed. One of verdicts is
-answered with none. An ask of steps
+answered with none, and one of what's inherited with records keyed "__proto__" and "constructor",
+names every object inherits, and "toString" said gone, never held, so the test can tell a client
+holds them as any other and says no such key let go. An ask of steps
 is answered in three, as wifid answers a join: two saying they aren't done, then the last.
 An unwatch is answered as wifid answers one, and each record says how many watches ahead its
 connection has unwatched, so the test can tell an emptied watch ahead was let go.
@@ -42,6 +44,18 @@ LAPSING = {
         ["lapsing:ask", "lapsing:entry"],
         [],
     ),
+}
+
+
+# What each kind answered the same every time holds: verdicts none, and what's inherited the
+# records keyed by names every object inherits, with one such name said gone though never held.
+FIXED: dict[str, list[dict[str, object]]] = {
+    "verdict": [],
+    "inherited": [
+        {"key": "__proto__", "kind": "inherited", "heard": 1},
+        {"key": "constructor", "kind": "inherited", "heard": 1},
+        {"key": "toString", "kind": "inherited", "gone": True},
+    ],
 }
 
 
@@ -114,8 +128,8 @@ def answer(asked: dict[str, object], unwatched: int) -> list[dict[str, object]]:
         return [
             {"id": asked.get("id"), "stage": stage, "done": stage == "online"} for stage in stages
         ]
-    if asked.get("kind") == "verdict":
-        return [{"id": asked.get("id"), "records": []}]
+    if isinstance(kind, str) and kind in FIXED:
+        return [{"id": asked.get("id"), "records": FIXED[kind]}]
     kinds = kinds_of(asked)
     keys = asked.get("keys")
     named = (
