@@ -132,13 +132,13 @@ Caught mid-walk by the scroll standing on its window's top, it stops where
 it's drawn and rides the same way, then walks on to its seat as the keys come
 back; caught mid-leap or anywhere else, or carried by a drag or a column
 moved beside it rather than a scroll, it walks on to that window where it
-moved. Back on its column grown or shrunk across, it walks to its seat. A ride isn't a rest: no play sets off
-and no pet starts till it ends. A scroll runs for niri's spring from when
-niri says it began, so a scroll's word left on a window long after reads as
-ended. Moved to another workspace while it's off the edge, it holds out of
-sight through niri's slide, then comes in at that edge head first over the
-new workspace's windows; with its workspace emptied, it comes in at that
-edge along the floor.
+moved. Back on its column grown or shrunk across, it walks to its seat. A
+ride isn't a rest: no play sets off and no pet starts till it ends. A scroll
+runs for niri's spring from when niri says it began, so a scroll's word left
+on a window long after reads as ended. Moved to another workspace while it's
+off the edge, it holds out of sight through niri's slide, then comes in at
+that edge head first over the new workspace's windows; with its workspace
+emptied, it comes in at that edge along the floor.
 
 - Held by `margin-cat-one-screen.qml`: "its window scrolled, it's carried as far"
 - Held by `margin-cat-one-screen.qml`: "drawn where it was as niri sets off, nearer as it
