@@ -14,6 +14,9 @@ draws them.
   its side: each readable, absent, unreadable or torn from the other, the
   side said from the looks where it can't be read, and what the page says
   it couldn't read.
+- `look-health.test.ts` tries what health the page gives each of a machine's
+  looks: the daemon's own word where it says good, watch, bad or not read,
+  none for any other word, and the look then listed as its machine is.
 - `looks.test.ts` tries what the page lists first as worth a look: worst
   first across the machines and the parts, whose each is and where it
   leads, a part not read, eight at most and the rest counted, nothing
@@ -21,6 +24,11 @@ draws them.
 - `machine.test.ts` tries the words a machine is said in: the headline
   over the machines, its kind, each of its ties, and when it was
   updated, today, yesterday or on a date.
+- `builders.test.ts` tries the builders the machines send builds to: read
+  from a watch of their own as things of their own kind after the machines,
+  never counted among them, said in the aside while none is worth a look,
+  none drawn where the node names none, and a look at one led to it on the
+  map, kept apart from a machine's of the same name.
 - `bridge.test.ts` tries the bridge drawing: a pier for each machine, wide
   and narrow, its name and health over it, a dot for each cell and one
   for several past what a pier holds, on one scale, what lies past its
@@ -36,8 +44,8 @@ draws them.
   an address for one lands.
 - `page.test.ts` tries that the page preloads every module of its own
   that it reaches only through another, so its first draw comes whole.
-- Node's own test runner runs all seven as the local sites build the
-  page, so `system-site-holds` fails when one does.
+- Node's own test runner runs every `*.test.ts` here as the local sites
+  build the page, so `system-site-holds` fails when one does.
 - `reads-live-test.py` reads the page Nix builds in a headless browser, beside
   a stand-in daemon holding `system.json`: the page as the records change,
   stop and come back, the cursor landing on a machine's address, even
