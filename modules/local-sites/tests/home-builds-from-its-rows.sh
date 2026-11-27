@@ -422,6 +422,7 @@ grep -q "the theme $root/kit/theme.css isn't there" "$work/gone.said" ||
 # A record caught half written, or broken by a slip, keeps the last good
 # build and says why, rather than failing and leaving the home to it.
 cp "$index" "$work/last.html"
+cp "$root/sites.json" "$work/whole.json"
 head -c 200 "$root/sites.json" > "$work/cut.json"
 mv "$work/cut.json" "$root/sites.json"
 said=$("$python" "$sources/home.py" "$sources" "$root" "$root/kit/theme.css") ||
@@ -445,6 +446,29 @@ grep -q '<span class="name">The grove</span>' "$work/rebooted/index.html" ||
   fail "a reboot's broken record left the declared rows unlisted"
 grep -q '"name": "The grove"' "$work/rebooted/rows.json" ||
   fail "a reboot's broken record left rows.json without the declared rows"
+
+# A record that reads is kept where it's told, as home.nix keeps it where no
+# session writes and a reboot doesn't reach, and a reboot's broken record
+# then builds the home from it, so every session's site stays listed.
+cp "$root/sites.json" "$work/broken.json"
+cp "$work/whole.json" "$root/sites.json"
+"$python" "$sources/home.py" "--into=$work/keeping" "--kept=$work/state/sites.json" "$sources" \
+  "$root" "$root/kit/theme.css" "$work/declared.json" > /dev/null ||
+  fail "a record that reads failed to build where it's kept"
+cmp -s "$work/whole.json" "$work/state/sites.json" || fail "a record that read wasn't kept"
+cp "$work/broken.json" "$root/sites.json"
+said=$("$python" "$sources/home.py" "--into=$work/rebooted-kept" "--kept=$work/state/sites.json" \
+  "$sources" "$root" "$root/kit/theme.css" "$work/declared.json") ||
+  fail "a reboot's broken record beside a kept one failed"
+case $said in
+  *"; sites.json can't be read ("*"), so the last record that read is built") ;;
+  *) fail "a reboot's broken record beside a kept one said: $said" ;;
+esac
+grep -q '<span class="name">The map</span>' "$work/rebooted-kept/index.html" ||
+  fail "a reboot's broken record left a session's site unlisted though its record was kept"
+grep -q '<span class="name">The grove</span>' "$work/rebooted-kept/index.html" ||
+  fail "a reboot's broken record built from the kept one left the declared rows unlisted"
+cmp -s "$work/whole.json" "$work/state/sites.json" || fail "a broken record replaced the kept one"
 
 # As the home is always built, into a folder of its own that holds a build,
 # a broken record keeps that build: the one in its own folder, not one among

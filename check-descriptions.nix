@@ -1838,8 +1838,9 @@
     theme that isn't there and fails on one that isn't a stylesheet, leaves out and says a tint or
     ground that isn't a colour, leaves out and says a recorded row whose path leads off the sites
     however a browser would read it and fails on a declared one before writing anything, keeps the
-    last build for a record holding NaN, an infinity or a lone surrogate, and changes nothing on a
-    second run
+    last build for a record holding NaN, an infinity or a lone surrogate, keeps each record that
+    reads where it's told and, where no build is left, builds a broken record's home from that
+    kept one, and changes nothing on a second run
   '';
   homes-probe-reads-as-the-reader = ''
     the web-design skill's homes probe, in headless Chromium over small sites of its own, learns a

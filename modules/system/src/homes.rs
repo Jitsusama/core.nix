@@ -865,7 +865,7 @@ mod tests {
     }
 
     #[test]
-    fn the_home_reads_its_own_folders_rows_before_the_sites() {
+    fn a_home_of_its_own_is_read_there_alone_and_the_sites_folder_only_without_one() {
         let old = home("repository", "other", "other", &[], "old/#repo=other").to_string();
         let root = folder(
             "own",

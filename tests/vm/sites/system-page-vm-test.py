@@ -58,6 +58,25 @@ def test_the_server_serves_the_system_page_and_its_kit(served: BaseMachine) -> N
     served.succeed(f"curl -sf {SITES}/local-sites/web/fonts/fraunces.woff2 -o /dev/null")
 
 
+def test_the_home_is_built_where_the_server_and_the_daemon_read_it(served: BaseMachine) -> None:
+    """The home's unit builds into the login's runtime folder, which the server serves at its root.
+
+    The unit's `--into=%t/...`, the server's home and the daemon's LOCAL_SITES_HOME each name
+    that folder on their own, so only a machine running all three shows they agree.
+    """
+    served.wait_until_succeeds(
+        as_the_account("test -f $XDG_RUNTIME_DIR/local-sites/home/rows.json")
+    )
+    page = served.succeed(f"curl -sf {SITES}/")
+    assert "<h1" in page, "the home wasn't served at the server's root"
+    rows = served.succeed(f"curl -sf {SITES}/rows.json")
+    assert rows.lstrip().startswith(("[", "{")), f"the home's rows weren't JSON: {rows[:80]!r}"
+    environment = served.succeed(as_the_account("systemctl --user show -p Environment system"))
+    assert "LOCAL_SITES_HOME=/run/user/1000/local-sites/home" in environment, (
+        f"the daemon reads its home elsewhere: {environment}"
+    )
+
+
 def test_the_feed_reaches_the_daemon_over_its_socket(served: BaseMachine) -> None:
     """The page's feed says live and hands over the daemon's summary, read over its socket."""
     heard = stands(served, FEED, "live")

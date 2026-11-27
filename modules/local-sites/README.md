@@ -48,7 +48,9 @@ longer reaches the home. A home rolled back
 to before `rows.json` leaves the last one in the home's folder until a reboot
 empties it, so remove it then, or its readers keep its rows. A `sites.json`
 the builder can't read keeps the last build, or, where a reboot left none,
-builds the home from the declared rows alone. The system page
+builds the home from the last record that read, which the builder keeps in
+`~/.local/state/local-sites/`, and from the declared rows alone where none
+was kept. The system page
 ([`modules/system/site`][system]) is the first, and the mycelium map
 ([`modules/mycelium/site`][map]) is fed live by the node. Code
 ([`modules/repos/site`][code]) draws every repository live from the repos
