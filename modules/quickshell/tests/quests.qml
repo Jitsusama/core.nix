@@ -103,9 +103,8 @@ ShellRoot {
                 frameDrawn.restart();
         }
         function drawFrame() {
-            const due = framed;
-            framed = [];
-            Thrown.runEach(due, said => console.warn(`what waited on a frame threw: ${said}`));
+            Thrown.drained(theLauncher, ["framed"],
+                said => console.warn(`what waited on a frame threw: ${said}`));
         }
         // Shut, or an opening ended unopened, what waits on a frame runs
         // in that turn, as Launcher.qml's afterFramesDue does from its close

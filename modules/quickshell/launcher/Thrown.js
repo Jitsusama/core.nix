@@ -41,3 +41,16 @@ function runEach(due, said) {
         }
     }
 }
+
+// What waits on a frame in `owner`'s lists, by name, taken in their order and each list set
+// empty before any runs, so one queued as they run waits for the next frame rather than
+// being let go unrun, and then each run in turn as runEach runs them. Each is set anew, not
+// emptied in place, so a binding that reads it, as Launcher.qml's frame handler's `enabled`
+// does, hears it's empty. Launcher.qml's two drains and the quests case's stand-in run theirs
+// so, held in one place by tests/pacing.qml.
+function drained(owner, names, said) {
+    const due = [].concat(...names.map(name => owner[name]));
+    for (const name of names)
+        owner[name] = [];
+    runEach(due, said);
+}

@@ -7712,15 +7712,12 @@ Scope {
         card.Window.window?.update();
     }
     function afterFramesDue() {
-        const due = afterFramesDrawing.concat(afterFrames);
-        afterFramesDrawing = [];
-        afterFrames = [];
-        afterFramesRun(due);
+        afterFramesDrained(["afterFramesDrawing", "afterFrames"]);
     }
-    // Each in turn, one that throws said and the rest run still
-    // (launcher/Thrown.js's runEach).
-    function afterFramesRun(due) {
-        Thrown.runEach(due, said => console.warn(
+    // The lists named, taken and set empty, then each in turn, one that
+    // throws said and the rest run still (launcher/Thrown.js's drained).
+    function afterFramesDrained(names) {
+        Thrown.drained(root, names, said => console.warn(
             `launcher: what waited on a frame threw: ${said}`));
     }
 
@@ -14289,9 +14286,7 @@ Scope {
             function onFrameSwapped() {
                 Thrown.runEach([() => root.keysFrameSwapped(), () => root.actsFrameSwapped()],
                     said => console.warn(`launcher: timing a frame threw: ${said}`));
-                const due = root.afterFramesDrawing;
-                root.afterFramesDrawing = [];
-                root.afterFramesRun(due);
+                root.afterFramesDrained(["afterFramesDrawing"]);
                 if (root.afterFrames.length > 0)
                     card.Window.window?.update();
             }
