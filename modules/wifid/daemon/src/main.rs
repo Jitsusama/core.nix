@@ -1189,6 +1189,7 @@ impl<'a> Air<'a> {
                 }
                 if step == "completed" && before != "completed" {
                     landed = true;
+                    change(&self.state, |state| state.landed(&card));
                     let said = credited(point, self.at.get(path.as_str()).map(String::as_str));
                     let on = self.joined(bus, path, said.as_deref()).await;
                     let arrived = self.arrivals.borrow_mut().joined(&card, on.as_deref(), now);
