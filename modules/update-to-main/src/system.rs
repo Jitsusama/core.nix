@@ -1269,7 +1269,8 @@ pub fn healthy(config: &Config) -> Result<(), Failure> {
     }
 }
 
-fn set_profile(config: &Config, system: &Path) -> Result<(), Failure> {
+/// Points the profile at `system`, as a generation of its own, newest of all.
+pub fn set_profile(config: &Config, system: &Path) -> Result<(), Failure> {
     let mut nix_env = run::command(&config.tools.nix_env, &config.state);
     nix_env.arg("--profile").arg(&config.profile).arg("--set");
     run::output(nix_env, "pointing the profile at the system", [system]).map(|_| ())

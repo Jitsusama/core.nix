@@ -685,7 +685,6 @@ fn going_back(
     let unchecked = unchecked(config, &previous);
     match system::go_back(config, &previous, unchecked) {
         Ok(()) => {
-            end_switch(config);
             failure
                 .why
                 .push_str("; the machine went back to what it ran");
@@ -695,6 +694,9 @@ fn going_back(
                 // Going back switched, which made it the boot default.
                 boot_default::keep(config, &previous);
             }
+            // Ended only once the boot default is back, so a daemon cut
+            // off before then leaves the switch to go back from again.
+            end_switch(config);
         }
         Err(back) => {
             failure.why.push_str("; going back failed too: ");

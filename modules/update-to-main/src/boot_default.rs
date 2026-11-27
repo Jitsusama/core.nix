@@ -30,8 +30,12 @@ pub fn kept(config: &Config, ours: &[PathBuf]) -> Result<PathBuf, String> {
         return Err(format!("{} won't read", file.display()));
     };
     let named = fs::canonicalize(&config.profile).ok();
+    // One naming the kept system itself is a put-back cut off before it was
+    // kept again, and puts back nothing another hand chose.
     let our_own = ours
         .iter()
+        .map(PathBuf::as_path)
+        .chain([Path::new(system)])
         .any(|ours| named.is_some() && fs::canonicalize(ours).ok() == named);
     if fs::read_link(&config.profile).ok().as_deref() != Some(Path::new(profile)) && !our_own {
         return Err(
@@ -105,8 +109,11 @@ pub fn boots_as_before(
     failure.why.push_str(&next);
 }
 
-/// Makes `system` the boot default again, leaving what runs and the
-/// profile as they are, as switch-to-configuration's `boot` does.
+/// Makes `system` the boot default again, leaving what runs as it is.
+/// The profile is pointed at it first, since a loader such as lanzaboote's
+/// starts the profile's newest generation whichever system ran `boot`, and
+/// going back has just made what runs that generation. As the newest, it is
+/// also never one a configuration limit leaves off the boot loader.
 fn put_back(config: &Config, system: &Path) -> Result<(), Failure> {
     let switch = system.join("bin/switch-to-configuration");
     if !switch.exists() {
@@ -115,6 +122,7 @@ fn put_back(config: &Config, system: &Path) -> Result<(), Failure> {
             system.display()
         )));
     }
+    system::set_profile(config, system)?;
     run::said(
         run::command(&switch, &config.state),
         "making what the machine booted before its boot default again",
