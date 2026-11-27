@@ -222,10 +222,11 @@ struct Sentence<'a> {
 /// swearing at it: a filler after a join that follows something listed
 /// in the same sentence, ending its clause or running on into a place,
 /// so "tax brackets, rates and shit" closes a list and "and shit, it
-/// wiped my branch" swears.
+/// wiped my branch" swears. A quote around it is no part of it, as in
+/// "add 'the costs and shit'".
 fn filler(sentence: &Sentence, at: usize) -> bool {
     let words = &sentence.words;
-    if !FILLERS.contains(&words[at]) {
+    if !FILLERS.contains(&words[at].trim_matches('\'')) {
         return false;
     }
     let between = words[..at]
@@ -793,8 +794,9 @@ mod tests {
             "the brackets and shit \u{2014} see the page",
             "the brackets and shit \u{2013} see the page",
             "the brackets and shit - see the page",
-            // An asked filler is a filler.
+            // An asked filler is a filler, and so is a quoted one.
             "can you add the costs and shit?",
+            "add 'the costs and shit'",
             // A "!" after a later clause doesn't exclaim the filler's.
             "add the costs and shit, thanks!",
             "consider:\n- brackets and shit\n- take home, thanks!",
