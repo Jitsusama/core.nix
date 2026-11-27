@@ -2524,14 +2524,17 @@ ShellRoot {
         untell();
         Sessions.kittyStarted?.();
         const anotherKitty = heard();
+        // Read before the window comes, which takes a focus left pointing at
+        // it (focusOpened), so the case can't pass on that.
+        const lostGoingTo = Sessions.goingTo?.app;
         untell();
         Sessions.windowHeard({ id: 132, pid: 6161, opened: unansweredNamed });
         expect("a press told its window may yet come is told it didn't, its kitty started again",
             sameKitty === "  x0" && anotherKitty === "UNANSWERED untaken x1" && heard() === "  x0",
             `${sameKitty} / ${anotherKitty} / ${heard()}`);
         expect("and the focus its held press took is let go",
-            heldGoingTo === unansweredNamed && Sessions.goingTo?.app !== unansweredNamed,
-            `${heldGoingTo} ${JSON.stringify(Sessions.goingTo)}`);
+            heldGoingTo === unansweredNamed && lostGoingTo !== unansweredNamed,
+            `${heldGoingTo} ${lostGoingTo}`);
         Sessions.forgetAsk(unansweredNamed);
         kittyPidFile.setText("4242\n");
         Sessions.readKittyPid();
