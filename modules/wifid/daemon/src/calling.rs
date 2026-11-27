@@ -152,7 +152,9 @@ impl Peer {
     /// poll, and an asker exiting between them would have another's path
     /// said as its own, proven. When the pidfd is had needn't matter, as
     /// the socket keeps the connecting process's pid: had after a reap,
-    /// it's refused before 6.16 and polls exited from 6.16, as `held` says.
+    /// it's refused from 6.5, where a socket first gives one
+    /// (`SO_PEERPIDFD`), to 6.15, and polls exited from 6.16, as `held`
+    /// says.
     fn read_by(
         pidfd: impl FnOnce() -> io::Result<OwnedFd>,
         pid: Option<i32>,
@@ -246,10 +248,10 @@ fn pidfd_of(socket: BorrowedFd<'_>) -> io::Result<OwnedFd> {
 /// Whether the process a pidfd names has exited, as a pidfd polls
 /// readable once it has. Polling asks no permission, so no filter or
 /// missing capability can make a process gone read as there. A zombie
-/// still holds its pid but counts as exited, which only says less. Any
-/// answer at all is taken as exited, not only `POLLIN`, since a live
-/// pidfd answers none: one that answers only `POLLHUP`, `POLLERR` or
-/// `POLLNVAL` isn't trusted to prove the path.
+/// still holds its pid but counts as exited once its whole group has,
+/// which only says less. Any answer at all is taken as exited, not only
+/// `POLLIN`, since a live pidfd answers none: one that answers only
+/// `POLLHUP`, `POLLERR` or `POLLNVAL` isn't trusted to prove the path.
 fn exited(pidfd: &OwnedFd) -> io::Result<bool> {
     let mut polled = libc::pollfd {
         fd: pidfd.as_raw_fd(),
@@ -284,10 +286,16 @@ fn answered(revents: libc::c_short) -> bool {
 /// in it (`cgroup_destroy_locked` asks `cgroup_is_populated`, which an
 /// exited task no longer counts toward), and `pidfd_poll` answers only
 /// once a process's every thread has exited, holding back a leader
-/// whose other threads run, as it has since a pidfd could be polled, in
-/// 5.3. So an asker still there reads so only as a threaded group's
-/// leader, exited in a cgroup since removed while its threads run in
-/// another, and that path is still one the asker ran in.
+/// whose other threads run. It has done so since a pidfd could be
+/// polled, in 5.3: in `kernel/fork.c` through 6.8, where 5.9 moved the
+/// test into `thread_group_exited`, and in `fs/pidfs.c` from 6.9. So an
+/// asker still there reads so in two ways. A threaded group's leader
+/// may have exited in a cgroup since removed while its threads run in
+/// another. And through 6.18, `do_exit` takes a task out of its cgroup
+/// (`cgroup_exit`) before it marks it exited (`exit_notify`), so an
+/// asker caught between them may find its cgroup removed; from 6.19 a
+/// task leaves its cgroup only once it's dead (`cgroup_task_dead`).
+/// Either way the path is still one the asker ran in.
 /// With no pidfd, the file not found says the asker was reaped, and the
 /// ending is looked up by `named`.
 fn judged(held: Held, read: io::Result<Vec<u8>>, named: impl Fn(&[u8]) -> bool) -> Cgroup {
@@ -361,13 +369,16 @@ impl fmt::Display for Peer {
 ///
 /// The kernel ends the path with ` (deleted)` once a process's cgroup is
 /// removed, as for a zombie whose unit has stopped, so that's said as the
-/// cgroup it was, since removed. A zombie's pidfd polls exited, so this
-/// is reached only where there's none, as `judged` says. A live cgroup
-/// may be named to end so too, so a path `named`, one whose cgroup exists
-/// by that whole name, keeps it as the name's, escaped as the rest.
-/// It's looked up by the bytes the kernel wrote, before any is said as
-/// `?`, so a name that isn't UTF-8 is found too. A name removed between
-/// the read and that look is said as removed, which it then is.
+/// cgroup it was, since removed. A zombie's pidfd polls exited once its
+/// whole group has, and an asker it holds back, a threaded group's
+/// leader or one caught exiting, has the ending kept as its cgroup's
+/// name, as `judged` says, so it's said as removed only where there's no
+/// pidfd. A live cgroup may be named to end so too, so a path `named`,
+/// one whose cgroup exists by that whole name, keeps it as the name's,
+/// escaped as the rest. It's looked up by the bytes the kernel wrote,
+/// before any is said as `?`, so a name that isn't UTF-8 is found too. A
+/// name removed between the read and that look is said as removed,
+/// which it then is.
 fn cgroup_of(cgroup: &[u8], named: impl Fn(&[u8]) -> bool) -> Option<String> {
     let path = cgroup
         .split(|&byte| byte == b'\n')
