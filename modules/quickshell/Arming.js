@@ -121,18 +121,22 @@ function returnAct(how) {
 // timed as acting only where it acts (commandRan). `inside` says a step
 // is held, and `heldStill` that run holds the row still (heldWhyOf). A
 // gone row does nothing, and one held still says why and stays; a start
-// put in the field leaves the place and a Return's act may do anything,
-// so both act; a category or group steps in; then a verb needing a target
-// asks for it, inside a step and with no run of its own (or more), and
-// one needing words asks for them. Anything else may act. A category
-// whose step-in is refused runs on past it in run, which is taken as the
-// step-in here, as no category has a run of its own.
+// put in the field leaves the place, so it acts; a Return's act that asks
+// for words only asks (ranReturn), and any other may do anything; a
+// category or group steps in; then a verb needing a target asks for it,
+// inside a step and with no run of its own (or more), and one needing
+// words asks for them. Anything else may act. A category whose step-in
+// is refused runs on past it in run, which is taken as the step-in here,
+// as no category has a run of its own.
 function changesNone(choice, inside, heldStill) {
     if (choice.gone || heldStill) {
         return true;
     }
-    if (choice.start !== undefined || choice.returns) {
+    if (choice.start !== undefined) {
         return false;
+    }
+    if (choice.returns) {
+        return !!choice.returns.given;
     }
     if (choice.category || choice.group) {
         return true;
