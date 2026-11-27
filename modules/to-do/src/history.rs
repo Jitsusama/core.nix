@@ -448,6 +448,27 @@ mod tests {
                 "a look that happened {happened:?} and matters {matters:?} wasn't said as For You's"
             );
         }
+        // Each stop by each closer, as ask-as-for-you.test.ts's TRIED_STOPS by
+        // TRIED_CLOSERS: ENDED's own, none of either, and marks it takes for
+        // neither, each expected as ENDED reads it, so its set of stops or of
+        // closers narrowed or widened shows.
+        let stops = ["", ".", "!", "?", "\u{2026}", ",", ":", ";"];
+        let closers = [
+            "", "\"", "'", "\u{2019}", "\u{201d}", ")", "]", "\")", "\u{bb}", "*",
+        ];
+        let (ending, unclosing) = ([".", "!", "?", "\u{2026}"], ["\u{bb}", "*"]);
+        for stop in stops {
+            for closer in closers {
+                let end = format!("{stop}{closer}");
+                let ends = ending.contains(&stop) && !unclosing.contains(&closer);
+                let said = |part: &str| format!("{part}{end}{}", if ends { "" } else { "." });
+                assert_eq!(
+                    drawn(&format!("Done{end}"), &format!("It said{end}")),
+                    json!(format!("{} {}", said("Done"), said("It said"))),
+                    "a look whose words end {end:?} wasn't ended as ENDED reads it"
+                );
+            }
+        }
     }
 
     #[test]

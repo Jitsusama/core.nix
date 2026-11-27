@@ -62,12 +62,15 @@ in
   # on a look, in place or by an entry after core's (its id a list of one,
   # or a set words.json writes as the id, or the whole entry so written, as
   # the shell's Words.qml keys it all the same), even to no name, and in
-  # the words file a machine writes itself, and refuses that file given as
-  # a source it can't read, naming
-  # only the act's old and new word. It takes core's own words and ids
+  # the words file a machine writes itself, naming only the act's old and
+  # new word. It refuses that file given as a source it can't read, a path
+  # among them, even through the home.file entry home-manager writes it as,
+  # or switched off or moved from where Words.qml reads it, its refusal
+  # saying the option to set and lib.mkForce, though never one made from
+  # its text, core's or a machine's. It takes core's own words and ids
   # Words.qml keys as no act: objects, lists of several or none, and a path
-  # in the store. Each case's machine is evaluated once, since an evaluation
-  # is most of what this costs.
+  # in the store. Each case's machine is evaluated once, since an
+  # evaluation is most of what this costs.
   local-sites-refuses-renamed-look-acts =
     let
       clear = "verb:on:look:clear";

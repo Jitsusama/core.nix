@@ -545,6 +545,10 @@ QtObject {
                 Looks.askerOf(read.waiting[1], null)],
             ["The trunk disk incident", "Trunkd Disk Saturation During Compaction",
                 "Plain Words", ""]);
+        expect("who asks, padded or only spaces, trimmed, so only spaces give way to its quest",
+            [Looks.askerOf({ asker: "  " }, { title: "Plain Words" }),
+                Looks.askerOf({ asker: " Core " }, null)],
+            ["Plain Words", "Core"]);
         expect("what it asks and what happens if nothing, as written, else none",
             [Looks.askOf(told), Looks.ifNothingOf(told), Looks.askOf(read.waiting[1]),
                 Looks.ifNothingOf(read.waiting[1])],

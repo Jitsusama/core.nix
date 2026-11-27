@@ -7,11 +7,14 @@
 // it stops; Looks.js's askOf and ifNothingOf, what one asks and says follows
 // doing nothing, only while it waits; LookForm.js's wordsOf, what the second
 // form leads with; Now.qml's lookDrawer, which kinds it links, at a web
-// address only, the page's own rule; LookForm.js's actOf decides its act,
-// beside the launcher's act names as Now.qml's lookActNames and the joined
-// words Words.qml reads name them, the last of an id's winning, and the ids local-sites' home module
-// guards as Now.qml lists them. A side saying nothing (no lapse, no link)
-// agrees only where the other has nothing to say. The launcher's scripts
+// address only, the page's own rule, and which looks it says follows doing
+// nothing on: any it holds waiting, one asking nothing under To Read too,
+// where the row is held to saying less, nothing, a named exception;
+// LookForm.js's actOf decides its act, beside the launcher's act names as
+// Now.qml's lookActNames and the joined words Words.qml reads name them,
+// the last of an id's winning, and the ids local-sites' home module guards
+// as Now.qml lists them. A side saying nothing (no lapse, no link) agrees
+// only where the other has nothing to say. The launcher's scripts
 // run in Node, not in Qt's engine, which tests/for-you.qml holds them in;
 // ask-reads-every-character.test.ts sweeps each character on its own. The
 // check the-ask-row-reads-as-for-you hands it the launcher's files by the
@@ -39,6 +42,8 @@ interface ForYou {
   readonly shows: (one: Read, choice: Read["offers"][number]) => boolean;
   /** The kinds Now.qml's drawer names a target for, which a page may link. */
   readonly linked: readonly string[];
+  /** Whether For You's drawer says what follows doing nothing, as Now.qml's lookDrawer decides. */
+  readonly saysIfNothing: (one: Read) => boolean;
   readonly acts: readonly string[];
   readonly open: string;
 }
@@ -51,6 +56,9 @@ const LOOK_OFFERS = /function lookOffers\(one\) \{\n([\s\S]*?)\n {4}\}/u;
 const FOLLOWS_UNSAID = /const followsOf = choice => (.+?) \? \{\} : \{/u;
 /** The kinds Now.qml's lookDrawer names a target for. */
 const DRAWN_KINDS = /const target = (\[[^\]]*\])\.includes\(one\.kind\)/u;
+/** The looks Now.qml's lookDrawer holds waiting, saying what follows doing nothing on each. */
+const IF_NOTHING_SAID =
+  /function lookDrawer\(one\) \{[\s\S]*?const waits = (.+?);[\s\S]*?fact\("ifNothing", waits \? /u;
 const QUOTED = /"([^"]+)"/gu;
 /** What For You calls opening a look, which its act is where it names none. */
 const OPEN_ID = "verb:on:look:open";
@@ -118,7 +126,11 @@ function forYou(): ForYou {
     { LookForm: form },
   ) as ForYou["shows"];
   const linked = JSON.parse(nowSays(DRAWN_KINDS, "lookDrawer's kinds")) as string[];
-  return { looks, form, offers, shows, linked, acts, open: nameOf(launcherWords(), OPEN_ID) };
+  const saysIfNothing = runInNewContext(
+    `(function saysIfNothing(one) { return ${nowSays(IF_NOTHING_SAID, "lookDrawer's wait")}; })`,
+  ) as ForYou["saysIfNothing"];
+  const open = nameOf(launcherWords(), OPEN_ID);
+  return { looks, form, offers, shows, linked, saysIfNothing, acts, open };
 }
 
 /** When the looks below came, and when those of them that expire do, a day on. */
@@ -265,7 +277,7 @@ const LOOKS: Record<string, object> = {
   "an act reading as nothing": { ...LOOK, act: "\u200b." },
   "a numeric came and expiry": { ...LOOK, at: CAME, expiresAt: EXPIRES },
   "an expiry written as a time": { ...LOOK, expiresAt: new Date(EXPIRES).toISOString() },
-  "one asking nothing": { ...LOOK, asks: false },
+  "one asking nothing, where the row says less than For You": { ...LOOK, asks: false },
   "one about a page by a script": { ...LOOK, kind: "page", target: "javascript:alert(1)" },
   "one of another version": { ...LOOK, v: 2 },
   "one with no title": { ...LOOK, title: "" },
@@ -304,7 +316,7 @@ function parted(ask: Ask | null, read: Read | null, now: number, shell: ForYou):
   if (ask === null || read === null) {
     return ask === null && read === null ? [] : ["read whole otherwise"];
   }
-  const { looks, form, offers, shows, linked, acts, open } = shell;
+  const { looks, form, offers, shows, linked, saysIfNothing, acts, open } = shell;
   const held = looks.quieted(read as never, now as never) as Read;
   const waits = held.state === "waiting" && looks.asksNothing(held as never) === false;
   // For You offers a waiting look's choices under To Read too, where the
@@ -320,11 +332,13 @@ function parted(ask: Ask | null, read: Read | null, now: number, shell: ForYou):
   // The first form is laid out apart on purpose, its question on its own.
   const second = form.secondForm(read as never) === true;
   const leads = !second || ask.said.join(" ") === read.words;
-  // What For You's row asks and its drawer says follows doing nothing,
-  // only while it waits, each as For You reads it, so a row saying either
-  // on a look that doesn't wait parts from it too.
+  // What For You's row asks, only while it waits, and what its drawer says
+  // follows doing nothing, on any look Now.qml's lookDrawer holds waiting,
+  // each as For You reads it, so a row saying either where For You doesn't
+  // parts from it too. On a look asking nothing, under To Read, the row is
+  // held to saying less than For You's drawer, nothing: a named exception.
   const question = waits && !second ? String(looks.askOf(read as never)) : "";
-  const ifNothing = waits ? String(looks.ifNothingOf(held as never)) : "";
+  const ifNothing = saysIfNothing(held) && waits ? String(looks.ifNothingOf(held as never)) : "";
   return [
     leads ? "" : `leads with ${ask.said.join(" ")}, not ${read.words}`,
     ask.question === question ? "" : `asks ${ask.question}, not ${question}`,
@@ -341,7 +355,7 @@ function parted(ask: Ask | null, read: Read | null, now: number, shell: ForYou):
   ].filter((one) => one !== "");
 }
 
-it("reads, holds waiting, asks, offers, acts and lapses as Looks.js, LookForm.js and lookOffers do", () => {
+it("reads, waits, asks, offers, acts and lapses as Looks.js, LookForm.js and lookOffers do", () => {
   const shell = forYou();
   for (const [name, look] of Object.entries(LOOKS)) {
     const text = JSON.stringify(look);

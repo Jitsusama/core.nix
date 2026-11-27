@@ -72,9 +72,9 @@ function look(text) {
 // nothing to Joel (attachments/what-needs-me-table.md, 2026-11-19).
 const TITLE_ID = /\s*\([A-Z][A-Z0-9]*-\d+\)\s*$/u;
 
-// Who a look comes from, in plain words: what its session says, else its
-// quest's title without its id (`quest`, the index's entry, or null), else
-// "", trimmed. Never the quest's id, which tells Joel nothing.
+// Who a look comes from, in plain words: what its session says, trimmed;
+// else its quest's title without its id (`quest`, the index's entry, or
+// null), else "". Never the quest's id, which tells Joel nothing.
 function askerOf(one, quest) {
     const asker = written(one.asker).trim();
     return asker !== "" ? asker : String(quest?.title ?? "").replace(TITLE_ID, "");

@@ -208,7 +208,8 @@ let
   unreadWords = wordsFile != null && !readWords;
   # The machine's words as the file holds them, even where a machine writes
   # that text itself; a text that isn't JSON stops the machine here, saying
-  # which file and why it likely isn't.
+  # which file and why it likely isn't. Where an evaluation cuts that
+  # context from its error, `--show-trace` names the file.
   machineWords =
     if readWords then
       builtins.addErrorContext (lib.concatStrings [
