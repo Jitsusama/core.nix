@@ -3066,6 +3066,70 @@ fn a_held_commit_the_checkout_lacks_is_asked_of_the_host() {
     assert!(why.contains("is held"), "refused for another reason: {why}");
 }
 
+/// A copy holding both commits that can't walk the history between them
+/// asks the host, rather than failing the update on its own error.
+#[test]
+fn a_copy_that_cant_walk_between_two_commits_asks_the_host() {
+    let world = with_api();
+    let one = world.hosted_commit("one", None);
+    world.answer();
+    world.system(&one);
+    assert_eq!(world.update().1, done(&one), "the first head wasn't read");
+    let between = world.hosted_commit("between", None);
+    let two = world.hosted_commit("two", None);
+    world.answer();
+    let checkout = &world.config.hosted.as_ref().unwrap().checkout;
+    git(
+        checkout,
+        &["fetch", "--quiet", "origin", "+main:refs/whole"],
+    );
+    let object = checkout
+        .join(".git/objects")
+        .join(&between[..2])
+        .join(&between[2..]);
+    fs::remove_file(&object).expect("the commit between wasn't a loose object to remove");
+    assert!(
+        world.checkout_has(&one) && world.checkout_has(&two),
+        "the checkout didn't hold both ends"
+    );
+    world.system(&two);
+    assert_eq!(
+        world.update().1,
+        done(&two),
+        "a copy that couldn't walk between the two failed the update rather than asking"
+    );
+}
+
+/// A hold on a commit nobody can say main holds stops the update, and the
+/// stop says how to let it through.
+#[test]
+fn a_hold_that_cant_be_told_says_how_to_lift_it() {
+    let world = with_api();
+    let one = world.hosted_commit("one", None);
+    world.answer();
+    world.system(&one);
+    assert_eq!(world.update().1, done(&one), "the first head wasn't read");
+    let nobody = "d".repeat(40);
+    held::ask(&world.config, &format!("hold {nobody}"), Some(1000));
+    let two = world.hosted_commit("two", None);
+    world.answer();
+    world.system(&two);
+    let ending = world.update().1;
+    let Line::Refused { why, .. } = &ending else {
+        panic!("a hold that couldn't be told let main through: {ending:?}")
+    };
+    assert!(
+        why.contains(&format!("update-to-main lift {nobody}")),
+        "a hold that couldn't be told didn't say how to lift it: {why}"
+    );
+    held::ask(&world.config, &format!("lift {nobody}"), Some(1000));
+    assert_eq!(
+        world.update().1,
+        done(&two),
+        "lifting a hold that couldn't be told didn't let main through"
+    );
+}
+
 /// A hosted world whose account names the commit that last changed the
 /// folder with the shell command `changed` gives for the world's folder.
 fn with_changed(changed: impl Fn(&Path) -> String) -> World {
