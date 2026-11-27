@@ -2587,7 +2587,7 @@
   '';
   mycelium-runs-among-the-sessions = ''
     on Linux, every realm's node runs in the agents' slice, beside Joel's programs rather than among
-    them
+    them, and keeps what it swaps out compressed in memory, never writing it to disk
   '';
   mycelium-site-holds = ''
     the mycelium map typechecks on the kit at its strictest and builds, its tests passing: the
@@ -4188,7 +4188,8 @@
   '';
   session-memory-is-protected = ''
     session.slice and app.slice carry hard memory floors and agents.slice a soft one, and every
-    slice above them carries one hard and one soft floor, the same at each
+    slice above them carries one hard and one soft floor, the same at each; session.slice and
+    app.slice keep what they swap out compressed in memory, never writing it to disk
   '';
   sessions-come-back-after-a-reboot = ''
     after a new boot or console login, sessions-come-back starts each pi session held before it

@@ -89,7 +89,9 @@
   # swap before work is ended, but for the hard part the sessions' kitty
   # keeps, which the next check holds; every slice above claims both kinds.
   # Whether the parents' floors cover them is the VM test's to say, since
-  # one is a share of memory and another a size.
+  # one is a share of memory and another a size. What session.slice and
+  # app.slice swap out stays compressed in memory, never on the disk, so
+  # what Joel comes back to faults back without waiting on it.
   session-memory-is-protected =
     let
       inherit (graphical.config) systemd;
@@ -102,13 +104,15 @@
       agents = systemd.user.slices.agents.sliceConfig;
     in
     holds "session-memory-is-protected"
-      "A slice above session.slice, app.slice or agents.slice lacks its memory floor, so they have none."
+      "A slice above session.slice, app.slice or agents.slice lacks its memory floor, so they have none, or session.slice or app.slice writes what it swaps out to the disk."
       (
         same (above "MemoryMin")
         && same (above "MemoryLow")
         && systemd.user.slices.session.sliceConfig ? MemoryMin
         && systemd.user.slices.app.sliceConfig ? MemoryMin
         && agents ? MemoryLow
+        && (systemd.user.slices.session.sliceConfig.MemoryZSwapWriteback or true) == false
+        && (systemd.user.slices.app.sliceConfig.MemoryZSwapWriteback or true) == false
       );
 
   # The compositor and the shell are how Joel drives the machine, so inside
