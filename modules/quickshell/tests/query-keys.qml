@@ -2128,8 +2128,10 @@ QtObject {
             ["nothing with no completion shown, a command's row or not",
                 { completion: "", fills: true }, ""],
             ["a command's row puts its start in the field", { fills: true }, "start"],
+            // On the answer's own row, where the question would be finished
+            // too, so the start is seen to come first.
             ["a command's start comes before a question only started",
-                { fills: true, question: "2+", answer: sum }, "start"],
+                { fills: true, question: "2+", answered: true, answer: sum }, "start"],
             ["a question only started is finished, with no row selected",
                 { question: "2+2", selected: false, answer: sum }, "question"],
             ["or on the answer's own row",
@@ -2137,16 +2139,28 @@ QtObject {
             ["another row finishes what's typed, with a question beside it",
                 { question: "2+2", answer: sum }, "rest"],
             ["what's typed is finished with no answer", { selected: false }, "rest"],
+            // An answer with a question goes the question's way, as the
+            // launcher's question is its answer's (Launcher.qml's question).
             ["an answer alone goes in the question's place",
-                { selected: false, answer: sum }, "answer"],
-            ["its copy, where it has one",
-                { selected: false, answer: { headline: "4", copy: "four" } }, "answer"],
+                { selected: false, answer: { headline: "4" } }, "answer"],
+            ["its copy, where it has one, though it heads nothing",
+                { selected: false, answer: { headline: "", copy: "four" } }, "answer"],
+            ["nor one whose copy is empty, whatever it heads",
+                { selected: false, answer: { headline: "4", copy: "" } }, ""],
             ["never one that does something",
                 { selected: false, answer: { headline: "Lock", run: true } }, ""],
             ["nor one that says nothing", { selected: false, answer: { headline: "" } }, ""]
         ];
         for (const [what, more, does] of cases)
             holds(`Ctrl+Y: ${what}`, KeyActs.completing(field(more)), does);
+        // [what, the answer, what Ctrl+Y puts in the question's place]
+        const put = [
+            ["its copy", { headline: "4", copy: "four" }, "four"],
+            ["its headline with no copy", { headline: "4" }, "4"],
+            ["nothing with an empty copy", { headline: "4", copy: "" }, ""]
+        ];
+        for (const [what, answer, text] of put)
+            holds(`Ctrl+Y puts an answer's ${what}`, KeyActs.answerPut(answer), text);
     }
 
     // How tall a drawer's preview stands, on a pitch of 24, two beats of
