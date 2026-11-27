@@ -3623,11 +3623,11 @@
     a realm whose node refuses --heap-growing-percent as a bad option fails the build its
     conversations' unit names, saying the realm, the percent, the node and what to do, as node 22
     and the tree's own node refuse an option they don't know, one whose node fails another way,
-    never ends, ignores being told to end, is killed before its limit or can't be run, a package's
-    folder among them, fails saying which and what to do, node 22, which pi is built with, takes
-    it and the rendered unit files name that proof, and a machine cross-built for another platform
-    has the proof stand unproven and warns of it unless its realm accepts that, where one built on
-    its own platform doesn't
+    exits 124 itself, never ends, ignores being told to end, is killed before its limit or can't be
+    run, a package's folder among them, fails saying which and what to do, node 22, which pi is
+    built with, takes it and the rendered unit files name that proof, and a machine cross-built
+    for another platform has the proof stand unproven and warns of it unless its realm vouches for
+    that very node, where one built on its own platform doesn't
   '';
   pi-conversations-take-heap-growth = ''
     node 22, which pi is built with, and the tree's own node, each started with the word a realm's

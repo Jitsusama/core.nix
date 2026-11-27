@@ -3,7 +3,7 @@
 # would end each conversation as it starts, which only a host's journal says
 # for a conversation woken in the background. So such a node fails the switch
 # by name instead. host.nix names this build in each conversation's unit, and
-# warns where it stands unproven unless the realm accepts that;
+# warns where it stands unproven unless the realm vouches for its node;
 # conversation-checks.nix builds it with a node that refuses the word, one
 # that fails another way, one that never ends, one that ignores being told
 # to end, one killed early, one it can't run, and for a machine it can't
@@ -42,8 +42,8 @@ let
     "with ${word}, so the build can't prove it takes the word: give the realm a node that "
     "starts and ends, or unset the percent. What it said is above."
   ];
-  # Exit 137 before the limit is a kill the build didn't send: the kernel's
-  # for memory, or another process's. Another try may pass, unlike a refusal.
+  # Exit 137 with no signal from timeout is a kill the build didn't send:
+  # the kernel's for memory, or another process's. Another try may pass, unlike a refusal.
   killed = lib.concatStrings [
     "${given}, but ${node} was killed before its ${toString seconds}-second limit once run "
     "with ${word}, as the kernel kills a process for memory or another process can, so the "
@@ -54,7 +54,7 @@ let
     "${given}, but this machine is built on another platform, whose builder can't run ${node}, so "
     "its switch doesn't prove the node takes ${word}, and a node that refuses it would end each "
     "of the realm's conversations as it starts: build the machine on its own platform, unset "
-    "the percent, or set the realm's conversationHeapGrowthMayGoUnproven once its node is "
+    "the percent, or name its node in the realm's conversationHeapGrowthVouchedNode once it is "
     "known to take it."
   ];
   name = "pi-conversation-${realm}-takes-heap-growth";

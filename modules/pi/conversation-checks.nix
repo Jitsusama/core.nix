@@ -331,12 +331,13 @@ in
   # build, naming the realm, the percent and the node, rather than ending
   # each conversation as it starts, as node 22 and this tree's own node
   # refuse an option they don't know; one whose node fails another way,
-  # never ends, ignores being told to end, is killed before its limit, or
-  # can't be run, a package's folder among them, fails saying so and what to
-  # do; node 22, which pi is built with, takes it, and the unit file
-  # home-manager renders names that proof; and a machine cross-built for
-  # another platform has the proof stand unproven and warns of it unless its
-  # realm accepts that, where a machine built on its own doesn't.
+  # exits 124 itself, never ends, ignores being told to end, is killed
+  # before its limit, or can't be run, a package's folder among them, fails
+  # saying so and what to do; node 22, which pi is built with, takes it, and
+  # the unit file home-manager renders names that proof; and a machine
+  # cross-built for another platform has the proof stand unproven and warns
+  # of it unless its realm vouches for that very node, where a machine built
+  # on its own doesn't.
   pi-conversations-refuse-a-node-without-growth =
     let
       given = "jitsusama.pi.hosts.one.conversationHeapGrowingPercent is 70, ";
@@ -369,6 +370,24 @@ in
         "build can't prove it takes the word: give the realm a node its build can run, or unset "
         "the percent."
       ];
+      # Exits 124 itself once given the word, as timeout does when it ends a
+      # node, but without timeout sending a signal, so it fails another way.
+      quitting = pkgs.writeShellScript "node" ''
+        if [ "$1" = --heap-growing-percent=70 ]; then
+          echo "$0: quitting" >&2
+          exit 124
+        fi
+      '';
+      quit = pkgs.testers.testBuildFailure (growthTakenBy "one" "${quitting}" 70);
+      quitSaid = lib.concatStrings [
+        given
+        "but ${quitting} failed with --heap-growing-percent=70 other than by refusing it, so the "
+        "build can't prove it takes the word"
+      ];
+      oneSecond = import ./heap-growth-taken {
+        inherit lib pkgs;
+        seconds = 1;
+      } "one";
       # Never ends once given the word, as a node that hangs as it starts
       # doesn't, given a second to.
       hanging = pkgs.writeShellScript "node" ''
@@ -377,12 +396,7 @@ in
           exec sleep 600
         fi
       '';
-      slow = pkgs.testers.testBuildFailure (
-        import ./heap-growth-taken {
-          inherit lib pkgs;
-          seconds = 1;
-        } "one" "${hanging}" 70
-      );
+      slow = pkgs.testers.testBuildFailure (oneSecond "${hanging}" 70);
       slowSaid =
         node:
         lib.concatStrings [
@@ -391,10 +405,6 @@ in
           "--heap-growing-percent=70, so the build can't prove it takes the word: give the realm "
           "a node that starts and ends, or unset the percent."
         ];
-      oneSecond = import ./heap-growth-taken {
-        inherit lib pkgs;
-        seconds = 1;
-      } "one";
       # Ignores being told to end once given the word, so timeout kills it
       # five seconds past its limit and exits 137.
       deaf = pkgs.writeShellScript "node" ''
@@ -406,18 +416,19 @@ in
       '';
       outlasted = pkgs.testers.testBuildFailure (oneSecond "${deaf}" 70);
       # Killed at once once given the word, as the kernel kills a process
-      # for memory, which exits 137 as timeout's own kill does, but before
-      # the limit.
+      # for memory, which exits 137 as timeout's own kill does, but with no
+      # signal from timeout. Given the minute a realm's node is, so a loaded
+      # builder can't make it outlive its limit.
       dying = pkgs.writeShellScript "node" ''
         if [ "$1" = --heap-growing-percent=70 ]; then
           echo "$0: out of memory" >&2
           kill -KILL $$
         fi
       '';
-      killed = pkgs.testers.testBuildFailure (oneSecond "${dying}" 70);
+      killed = pkgs.testers.testBuildFailure (growthTakenBy "one" "${dying}" 70);
       killedSaid = lib.concatStrings [
         given
-        "but ${dying} was killed before its 1-second limit once run with "
+        "but ${dying} was killed before its 60-second limit once run with "
         "--heap-growing-percent=70, as the kernel kills a process for memory or another process "
         "can, so the build can't prove it takes the word: build again once memory is free."
       ];
@@ -441,49 +452,56 @@ in
       renderedOf =
         kind: grown.xdg.configFile."systemd/user/pi-conversation-traced-${kind}@.service".source;
       # A workstation built here for an aarch64 machine, whose node its
-      # builder can't run, and whose realm may or may not go unproven: only
-      # evaluated, never built.
-      crossMachineOf =
-        accepted:
-        bareNixos [
-          self.nixosModules.workstation
-          (
-            { pkgs, ... }:
-            {
-              nixpkgs.buildPlatform = "x86_64-linux";
-              nixpkgs.hostPlatform = "aarch64-linux";
-              home-manager.users.someone.jitsusama.pi.hosts =
-                lib.recursiveUpdate (growingHostsOf (_: lib.getExe pkgs.nodejs_22) { one = 70; })
-                  (
-                    lib.optionalAttrs accepted {
-                      one.conversationHeapGrowthMayGoUnproven = true;
-                    }
-                  );
-            }
-          )
-        ];
-      crossMachine = crossMachineOf false;
-      crossNode = lib.getExe crossMachine.pkgs.nodejs_22;
-      unprovenSaid = lib.concatStrings [
-        given
-        "but this machine is built on another platform, whose builder can't run ${crossNode}, so "
-        "its switch doesn't prove the node takes --heap-growing-percent=70"
+      # builder can't run: realm one vouches for its own node, and realm two
+      # for another, as a realm does whose node changed after it vouched.
+      # Only evaluated, never built.
+      crossMachine = bareNixos [
+        self.nixosModules.workstation
+        (
+          { pkgs, ... }:
+          {
+            nixpkgs.buildPlatform = "x86_64-linux";
+            nixpkgs.hostPlatform = "aarch64-linux";
+            home-manager.users.someone.jitsusama.pi.hosts =
+              lib.recursiveUpdate
+                (growingHostsOf (_: lib.getExe pkgs.nodejs_22) {
+                  one = 70;
+                  two = 70;
+                })
+                {
+                  one.conversationHeapGrowthVouchedNode = lib.getExe pkgs.nodejs_22;
+                  two.conversationHeapGrowthVouchedNode = "/nowhere/node";
+                };
+          }
+        )
       ];
+      crossNode = lib.getExe crossMachine.pkgs.nodejs_22;
+      unprovenSaidOf =
+        realm:
+        lib.concatStrings [
+          "jitsusama.pi.hosts.${realm}.conversationHeapGrowingPercent is 70, "
+          "but this machine is built on another platform, whose builder can't run ${crossNode}, so "
+          "its switch doesn't prove the node takes --heap-growing-percent=70"
+        ];
       # The proof the cross-built machine's units name stands unproven,
-      # running no node, and its account warns of it, which home-manager
-      # carries into the machine's warnings; the workstation built on its
-      # own platform warns of no such proof.
+      # running no node, and says which option vouches for a node. Its
+      # account warns of the realm vouching for another node, which
+      # home-manager carries into the machine's warnings, and not of the one
+      # vouching for its own; the workstation built on its own platform
+      # warns of no such proof.
       elsewhere = import ./heap-growth-taken {
         inherit lib;
         inherit (crossMachine) pkgs;
       } "one" crossNode 70;
+      crossWarnings = (account crossMachine).warnings;
       warnsOf = home: lib.any (lib.hasInfix "built on another platform, whose builder") home.warnings;
       unproven =
         elsewhere ? unproven
-        && lib.hasPrefix unprovenSaid elsewhere.unproven
+        && lib.hasPrefix (unprovenSaidOf "one") elsewhere.unproven
+        && lib.hasInfix "name its node in the realm's conversationHeapGrowthVouchedNode" elsewhere.unproven
         && !lib.hasInfix "taken.sh" elsewhere.buildCommand
-        && lib.any (lib.hasPrefix unprovenSaid) (account crossMachine).warnings
-        && !warnsOf (account (crossMachineOf true))
+        && lib.any (lib.hasPrefix (unprovenSaidOf "two")) crossWarnings
+        && !lib.any (lib.hasPrefix (unprovenSaidOf "one")) crossWarnings
         && !warnsOf grown;
     in
     # Kept in Nix because each line reads a build Nix gives it for words
@@ -502,6 +520,8 @@ in
         "refusing the percent"
       says ${failed} ${lib.escapeShellArg failedSaid} "failing another way"
       says ${failed} ${lib.escapeShellArg "${failing}: can't start"} "failing another way"
+      says ${quit} ${lib.escapeShellArg quitSaid} "exiting 124 itself"
+      says ${quit} ${lib.escapeShellArg "${quitting}: quitting"} "exiting 124 itself"
       says ${slow} ${lib.escapeShellArg (slowSaid "${hanging}")} "that never ends"
       says ${slow} ${lib.escapeShellArg "${hanging}: still starting"} "that never ends"
       says ${outlasted} ${lib.escapeShellArg (slowSaid "${deaf}")} "ignoring being told to end"
@@ -537,7 +557,8 @@ in
       test -e ${tracedProof}
       ${lib.optionalString (!unproven) ''
         echo "a machine cross-built for another platform didn't have its proof stand" \
-          "unproven and warn of it unless its realm accepts that, or one built on its own warned"
+          "unproven, warning of a realm vouching for another node and not of one vouching for" \
+          "its own, or one built on its own platform warned"
         exit 1
       ''}
       touch $out
