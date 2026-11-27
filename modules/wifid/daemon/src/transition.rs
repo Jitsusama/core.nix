@@ -746,6 +746,41 @@ mod tests {
     }
 
     #[test]
+    fn only_a_heed_that_moves_or_looks_holds_a_call_and_only_a_move_still_leaving_keeps_it() {
+        let start = Instant::now();
+        let (again, until) = (start + Duration::from_secs(1), start + SETTLE);
+        let heeds = [
+            Heed::Stay,
+            Heed::Unheld,
+            Heed::Leaving,
+            Heed::NetworkDrops,
+            Heed::Unproven,
+            Heed::Move(NEAR.to_owned()),
+            Heed::Look(vec![2437]),
+            Heed::LetGo,
+        ];
+        for heed in heeds {
+            for leaving in [false, true] {
+                let mut state = on_the_warning_point();
+                let moved = Heed::Move(FAR.to_owned());
+                moved.keep_warned(&mut state, ("wlan2", ON), false, (start, until));
+                heed.keep_warned(&mut state, ("wlan2", ON), leaving, (again, until));
+                let waits = match (&heed, leaving) {
+                    (Heed::Move(_) | Heed::Look(_), _) => Some(again),
+                    (_, true) => Some(start),
+                    (_, false) => None,
+                };
+                assert_eq!(
+                    state.warned_on("wlan2", again),
+                    waits,
+                    "{heed:?}, heeded after a warned move with leaving {leaving}, held a call \
+                     wrongly"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn a_warning_point_is_kept_off_as_long_as_its_candidates_hold_or_a_move_settles() {
         let moved = Heed::Move(NEAR.to_owned());
         assert_eq!(
