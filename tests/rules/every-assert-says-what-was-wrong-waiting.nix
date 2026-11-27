@@ -183,7 +183,6 @@
   "modules/quickshell/in-a-terminal/src/layout.rs" = 1;
   "modules/quickshell/in-a-terminal/src/main.rs" = 12;
   "modules/quickshell/in-a-terminal/src/names.rs" = 3;
-  "modules/quickshell/keyboard-lights.rs" = 1;
   "modules/quickshell/timekeeping/src/calendar.rs" = 2;
   "modules/quickshell/timekeeping/src/candm.rs" = 6;
   "modules/quickshell/timekeeping/src/chrony.rs" = 3;
@@ -224,7 +223,6 @@
   "modules/spotify/spotify-recent/src/token.rs" = 9;
   "modules/spotify/spotify-recent/tests/stand_in.rs" = 5;
   "modules/systemd/shutdown-status/src/main.rs" = 1;
-  "modules/tuple/people.rs" = 3;
   "modules/update-to-main/src/ask.rs" = 3;
   "modules/update-to-main/src/follow.rs" = 21;
   "modules/update-to-main/src/hosted.rs" = 8;
@@ -236,8 +234,6 @@
   "modules/v4l2loopback/holders/src/main.rs" = 4;
   "modules/v4l2loopback/holders/src/wait.rs" = 3;
   "modules/v4l2loopback/holders/tests/usb.rs" = 1;
-  "modules/warp/src/read.rs" = 1;
-  "modules/warp/src/switch.rs" = 6;
   "modules/wifid/daemon/src/check.rs" = 4;
   "modules/wifid/daemon/src/detail.rs" = 2;
   "modules/wifid/daemon/src/link.rs" = 4;

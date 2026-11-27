@@ -1069,7 +1069,11 @@ mod tests {
     fn a_daemon_listening_is_running() {
         let path = socket("listening");
         let _daemon = std::os::unix::net::UnixListener::bind(&path).unwrap();
-        assert!(running(&path));
+        assert!(
+            running(&path),
+            "{} doesn't answer while a daemon listens",
+            path.display()
+        );
         fs::remove_file(&path).unwrap();
     }
 
@@ -1078,7 +1082,11 @@ mod tests {
         use std::time::{Duration, Instant};
         let path = socket("left");
         drop(std::os::unix::net::UnixListener::bind(&path).unwrap());
-        assert!(path.exists());
+        assert!(
+            path.exists(),
+            "the stopped daemon left no socket at {}",
+            path.display()
+        );
         // Other tests start programs meanwhile, and a child holds a copy of
         // the listener from its fork until it execs, which answers a
         // connection for that moment (a build saw it once, 2026-11-01). So
@@ -1096,6 +1104,9 @@ mod tests {
 
     #[test]
     fn no_socket_is_not_running() {
-        assert!(!running(&socket("none")));
+        assert!(
+            !running(&socket("none")),
+            "a socket that doesn't exist answers"
+        );
     }
 }
