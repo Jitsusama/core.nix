@@ -1,7 +1,6 @@
 //! Hearing opens: marking build folders for fanotify, taking what it
 //! heard, and the roots and holds that say a path is in use.
 
-use super::status::mark;
 use super::{Guard, Hearing, Holding};
 use crate::clock::Tick;
 use crate::config::Source;

@@ -1,22 +1,19 @@
 //! Writers that run away with a disk: measuring who holds it, freezing
 //! a runaway and thawing it once there is room.
 
-use super::status::mark;
 use super::surveying::{pinned_trees, spent_trees};
 use super::{Guard, WRITING_WINDOW, Watched};
 use crate::band::Band;
 use crate::clock::Tick;
 use crate::config::Source;
-use crate::decide::roomy;
 use crate::disk_reads::Walk;
 use crate::journal::{Journal, Line};
-use crate::pass::{Outcome, pass};
+use crate::pass::Outcome;
 use crate::pool::pool;
 use crate::state::{Memory, Owners};
-use crate::survey::{Action, named, survey};
-use crate::units::float;
+use crate::survey::named;
+use crate::writers;
 use crate::writers::{Frozen, Writers};
-use crate::{journal, state, writers};
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::{Arc, PoisonError};

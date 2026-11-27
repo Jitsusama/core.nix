@@ -5,7 +5,7 @@ use super::hearing::spoken_for;
 use super::{GARBAGE, Guard, held_off};
 use crate::band::{Band, Thresholds};
 use crate::clock::Tick;
-use crate::decide::{Decision, overloaded, powered, roomy, spare};
+use crate::decide::Decision;
 use crate::dedupe::Deduped;
 use crate::garbage::{BATCH_BYTES, Batch, GC_TIMEOUT, Listing};
 use crate::generations::Boot;

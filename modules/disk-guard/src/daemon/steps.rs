@@ -2,7 +2,7 @@
 //! it asks the rest, and what it resumes after a sleep.
 
 use super::hearing::spoken_for;
-use super::{Explained, Guard, Places, Rest, Senses, held_off, loaded, predicates};
+use super::{Explained, Guard, Places, Senses, held_off, loaded, predicates};
 use crate::anchor::Dir;
 use crate::band::{Band, Thresholds};
 use crate::clock::Tick;
@@ -17,7 +17,6 @@ use crate::pool::pool;
 use crate::replaced::Uses;
 use crate::socket::{Reply, Request};
 use crate::state::Memory;
-use crate::survey::{Action, survey};
 use crate::writers::Writers;
 use crate::{journal, state};
 use std::cmp::Reverse;
@@ -25,7 +24,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex, PoisonError};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use std::{fs, io};
 
 /// How long a pass is assumed to take before one has been timed.

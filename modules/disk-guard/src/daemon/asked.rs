@@ -1,7 +1,7 @@
 //! Clears asked for: the offers a person's or a command's ask makes,
 //! and the collects run for them.
 
-use super::{Aim, GARBAGE, Guard, Why, aim, ending, held_off};
+use super::{Aim, GARBAGE, Guard, Why, ending, held_off};
 use crate::band::{Band, Thresholds};
 use crate::clock::Tick;
 use crate::disk_reads::Walked;
@@ -10,7 +10,7 @@ use crate::pass::{End, Goal};
 use crate::plan::{Candidate, Class};
 use crate::pool::pool;
 use crate::socket::Reply;
-use crate::survey::{Action, Offer, named, survey};
+use crate::survey::{Action, Offer, named};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::{fs, io};

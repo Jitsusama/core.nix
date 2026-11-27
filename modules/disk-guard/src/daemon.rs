@@ -19,13 +19,12 @@ use crate::finished::{Answers, Predicate};
 use crate::garbage::{Listed, Listing};
 use crate::journal::Journal;
 use crate::moments::{Power, Pressure};
-use crate::pass::{End, Goal, pass};
+use crate::pass::{End, Goal};
 use crate::plan::Candidate;
 use crate::replaced::Uses;
 use crate::socket::Responder;
 use crate::state;
 use crate::state::Memory;
-use crate::survey::survey;
 use crate::writers::Writers;
 pub use hearing::LISTEN_TRIES;
 pub use status::{

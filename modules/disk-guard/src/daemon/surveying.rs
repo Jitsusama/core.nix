@@ -1,21 +1,17 @@
 //! Surveys: walking a disk's sources for offers, and learning from what
 //! a pass did with them.
 
-use super::{Guard, Why, predicates};
+use super::{Guard, Why};
 use crate::band::Thresholds;
 use crate::clock::Tick;
 use crate::config::{Config, Source};
-use crate::decide::decide;
 use crate::disk_reads::{Walk, Walked};
-use crate::generations::Boot;
 use crate::host::{Elsewhere, FRESH, Scan};
 use crate::journal::Line;
-use crate::pass::{End, Goal, Outcome, Report, pass};
+use crate::pass::{End, Goal, Outcome, Report};
 use crate::plan::Class;
 use crate::survey::{Action, Offer, World, survey};
-use crate::units::float;
 use crate::{finished, garbage};
-use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
