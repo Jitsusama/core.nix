@@ -362,11 +362,11 @@ in
 
   # Reopen Them All passes the twin connectors its sessions were given on to
   # the windows it puts back, and those of a window put back before the walk
-  # on through it, with two monitors of one model back on new connectors
+  # on through it, with two screens of one model back on new connectors
   # (modules/quickshell/tests/sessions-twins-put-back.qml), with niri stood
   # in. A window noted away from a screen named for a prototype's key is
   # noted as any other.
-  twin-monitors-each-take-their-own-windows-back =
+  twin-screens-each-take-their-own-windows-back =
     let
       options = singleton "Options.qml" ''
         readonly property var sounds: ({ wants: "", player: "" })
@@ -385,7 +385,7 @@ in
     in
     # Kept in Nix because each line copies a file Nix gives it beside the
     # cases, or sets what Quickshell runs them with.
-    pkgs.runCommandLocal "twin-monitors-each-take-their-own-windows-back" { } ''
+    pkgs.runCommandLocal "twin-screens-each-take-their-own-windows-back" { } ''
       export HOME=$TMPDIR XDG_STATE_HOME=$PWD/state XDG_DATA_HOME=$PWD/data
       ${lib.getExe pkgs.bash} ${../tests/stand-ins/sessions-behind-the-lock-state.sh} \
         $XDG_STATE_HOME
