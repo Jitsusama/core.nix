@@ -164,8 +164,15 @@ fn a_pain_a_hub_would_take_waits_out_a_blink_then_goes_to_the_fallback_said() {
          {hour:?}"
     );
     assert_eq!(hour.hubless_since, Some(AT), "the outage wasn't counted");
-    let (to, said, _) = run(AT + 10 * minute, refused);
+    let (to, said, hour) = run(AT + 10 * minute, refused);
     assert!(to.is_empty() && !said, "within the grace: {to:?}");
+    // The card says the grace, as it does a node naming no sessions
+    // (#7022's round, F8).
+    let line = super::super::said(&hour);
+    assert!(
+        line.contains("named no hubs for 10 minutes, so pains a hub would take wait"),
+        "the grace isn't said: {line}"
+    );
     let (to, said, hour) = run(AT + 15 * minute, refused);
     assert_eq!(to, ["ORCH01"], "past a blink it didn't go to the fallback");
     assert!(
@@ -261,6 +268,7 @@ fn a_pain_for_want_of_hubs_whose_send_failed_is_not_said_to_have_gone() {
     a_day(&place);
     let minute = 60_000;
     let mut hour = Hour::default();
+    let mut tried = Vec::new();
     // Runs five minutes apart, as its timer runs them, so the outage is
     // carried from each to the next until it is past a blink.
     for at in [AT, AT + 5 * minute, AT + 10 * minute, AT + 15 * minute] {
@@ -269,8 +277,18 @@ fn a_pain_for_want_of_hubs_whose_send_failed_is_not_said_to_have_gone() {
             hubless: Some("connection refused".into()),
             ..place.ears()
         };
-        hour = hear(&ears, CELLS, &mut |owner, _| owner != "ORCH01").expect("a run");
+        hour = hear(&ears, CELLS, &mut |owner, text| {
+            if text.contains("why is the launcher so slow") && !text.contains(route::FOR_THE_KEEPER)
+            {
+                tried.push(owner.to_owned());
+            }
+            owner != "ORCH01"
+        })
+        .expect("a run");
     }
+    // It was tried at the fallback, so the absence below is of a claim,
+    // not of a send (#7022's round, F7).
+    assert_eq!(tried, ["ORCH01"], "the fallback was never tried: {hour:?}");
     assert!(
         !hour.troubles.iter().any(|t| t.contains("named no hubs")),
         "a fallback send that failed was said to have gone for want of hubs: {hour:?}"

@@ -110,6 +110,34 @@ fn a_void_pain_goes_to_a_holder_of_its_words_subject_and_is_kept_as_a_need() {
 }
 
 #[test]
+fn a_pain_held_through_a_blink_goes_to_its_holder_once_hubs_are_named_again() {
+    let place = Place::new("hub-after-blink");
+    place.routes();
+    a_day(&place);
+    let blinking = Ears {
+        hubless: Some("connection refused".into()),
+        ..place.ears()
+    };
+    let asked = asked_in(&blinking, HELD, |_| Sent::Went);
+    assert!(
+        owners_of(&asked, VOIDS).is_empty(),
+        "the void's pain didn't wait out the blink: {asked:?}"
+    );
+    // The next run, five minutes on, the node names hubs again (#7022's
+    // round, F6).
+    let named = Ears {
+        at: AT + 5 * 60_000,
+        ..ears_with(&place, vec![Hub::new("launcher", "HUB001", &["FIT002"])])
+    };
+    let asked = asked_in(&named, HELD, |_| Sent::Went);
+    assert_eq!(
+        owners_of(&asked, VOIDS),
+        ["FIT002"],
+        "the pain held through a blink didn't reach its holder: {asked:?}"
+    );
+}
+
+#[test]
 fn an_ended_sessions_pain_goes_to_a_holder_of_what_it_worked_on() {
     let place = Place::new("hub-ended");
     place.routes();
