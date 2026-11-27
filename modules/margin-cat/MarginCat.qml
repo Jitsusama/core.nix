@@ -127,6 +127,13 @@ Scope {
                 root.coming = Plays.scene(root.lively, Math.random, root.played,
                     root.drawsWith(play));
         }
+
+        // How lively it may be now, so a test leaving the keys asks for a
+        // play only once the shell has heard the key: a scene asked for
+        // while still idle can come up before, and the key cut it short.
+        function level(): string {
+            return root.lively;
+        }
     }
 
     // What a scene is drawn with besides its level and last play: the play

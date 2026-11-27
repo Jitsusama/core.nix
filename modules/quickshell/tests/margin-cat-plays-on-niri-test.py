@@ -80,6 +80,8 @@ YARN_SEEN, POUNCE_SEEN = {"waits", "watches", "sends"}, {"eyes", "leaps", "looks
 PUPPY = ["waits", "notices", "eyes", "crouches", "hops", "lands", "looks", "watches"]
 PUPPY_SEEN = {"waits", "eyes", "hops", "watches"}
 VISITS = timedelta(seconds=45)
+# How long the shell may take to hear a key, through niri's word that he's no longer idle.
+HEARS = timedelta(seconds=10)
 HOPPING = {"pouncing", "leaping", "tucked", "falling"}
 PLAYS = timedelta(seconds=20)
 POLL = 0.05
@@ -150,6 +152,26 @@ def ask(shell: Shell, play: str) -> None:
     shell.as_account(f"qs -p {shell.folder} ipc call cat next {play}")
 
 
+def leaves_then_asks(shell: Shell, play: str) -> int:
+    """Press a key, and once the shell has heard it, ask for `play`, giving the mark before.
+
+    Only an idle cat draws a play that moves, so the ask waits until the shell's level isn't
+    idle. Asked before the key was heard, the scene the ask draws could come up first, spending
+    the ask on a play the key then cut short, and the yarn and the puppy rest for minutes once
+    begun: on a lender running 30 builds, no yarn came in 20 s (2026-11-26).
+    """
+    shell.send_key("F24")
+    level = f"qs -p {shell.folder} ipc call cat level"
+    deadline = time.monotonic() + HEARS.total_seconds()
+    while shell.as_account(level).strip() == "idle":
+        assert time.monotonic() < deadline, f"the shell never heard the key in {HEARS}"
+        # niri says he's no longer idle on its own time, with no word the test could wait on.
+        time.sleep(0.1)
+    since = shell.mark()
+    ask(shell, play)
+    return since
+
+
 def sitting_over(shell: Shell, title: str) -> tuple[Json, Json]:
     """Open a column, wait until the cat sits over it, still, and give both."""
     since = shell.mark()
@@ -194,18 +216,15 @@ def home(at: Json | None, sat: Json, seat: Json) -> bool:
 
 
 def plays_out(shell: Shell, kind: str, lasts: timedelta = PLAYS) -> tuple[list[Json], Json, Json]:
-    """Sit over a column, ask for a play, leave the keys, and give it once it's done.
+    """Sit over a column, leave the keys, ask for a play, and give it once it's done.
 
     It gives each place said while it played, how niri showed it, and where it sat before;
-    and it waits for the cat to sit still over the column again, where it sat. A play already
-    under way when it asks plays out first, so it reads from the asked play's first step, and
-    only that play's steps (2026-11-15: a hop's beats were read as a pounce's).
+    and it waits for the cat to sit still over the column again, where it sat. The key ends a
+    play already under way, and it reads from the asked play's first step, and only that
+    play's steps (2026-11-15: a hop's beats were read as a pounce's).
     """
     sat, seat = sitting_over(shell, f"a column played beside, {kind}")
-    asking = shell.mark()
-    ask(shell, kind)
-    shell.send_key("F24")
-    since = shell.mark()
+    since = leaves_then_asks(shell, kind)
 
     def asked(said: str) -> bool:
         return (playing(placed(said)) or {}).get("play") == kind
@@ -213,7 +232,7 @@ def plays_out(shell: Shell, kind: str, lasts: timedelta = PLAYS) -> tuple[list[J
     try:
         shell.reported(SITS, asked, since, STROLLS)
     except AssertionError as failed:
-        said, _ = shell.said_since(asking)
+        said, _ = shell.said_since(since)
         # The wait's own failure, its log tail with it, is printed once as this one's cause.
         told = f"what the cat did since the ask:\n{story(said)}"
         raise AssertionError(told) from failed
@@ -508,10 +527,7 @@ def test_a_key_ends_the_puppys_visit(shell: Shell) -> None:
     asking niri for every tile (#6573's council, 2026-11-25).
     """
     sat, seat = sitting_over(shell, "a column a visit is cut short over")
-    asking = shell.mark()
-    ask(shell, "puppy")
-    shell.send_key("F24")
-    since = shell.mark()
+    since = leaves_then_asks(shell, "puppy")
 
     def visiting(said: str) -> bool:
         return (playing(placed(said)) or {}).get("play") == "puppy"
@@ -527,7 +543,7 @@ def test_a_key_ends_the_puppys_visit(shell: Shell) -> None:
     except AssertionError as failed:
         # A visit that never came in 45 s said nothing of why (2026-11-26), so the story since
         # the ask names each time a cat turned it down, and what held it.
-        said, _ = shell.said_since(asking)
+        said, _ = shell.said_since(since)
         told = f"what the cat did since the ask:\n{story(said)}"
         raise AssertionError(told) from failed
     since = shell.mark()
