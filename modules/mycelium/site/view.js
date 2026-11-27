@@ -4924,6 +4924,8 @@ import {
   // Each reading comes from site.ts, which says over the map how the feed
   // stands; the drawing only draws.
   let first = true;
+  // How many readings the first path has been tried on.
+  let firstTries = 0;
   const take = (now) => {
     try {
       // Each redraw is measured, so its cost at any size can be read from
@@ -4934,6 +4936,11 @@ import {
       sow(current);
       if (!findLine.hidden) refind({ keep: true });
       if (first) {
+        // A first path that fails is tried whole once more, and then left to
+        // the ordinary path, so a step that always throws can't hold the
+        // line at "couldn't draw" for good.
+        firstTries += 1;
+        if (firstTries > 1) first = false;
         judgeChanged();
         firstLives();
         apply(false);
@@ -4942,7 +4949,7 @@ import {
         // heard, so it is written again now that they are.
         if (tieOf.size) panel();
         // Only once the first reading is drawn whole, so one that fails part
-        // way is drawn as a first again by the next, and never left half set.
+        // way is drawn as a first again by the next, rather than left half set.
         first = false;
       } else {
         if (chosen && !knows(chosen)) chosen = null;

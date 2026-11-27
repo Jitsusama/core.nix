@@ -209,14 +209,19 @@ function asksOf(network: Network, told: boolean): string {
     return "as net last told them";
   }
   const { worth, quiet } = worthOf(network);
-  const looks = worth.length + quiet.length;
+  // A concern or a source the page couldn't read may be one worth a look,
+  // so it's counted as one rather than read as an all-clear.
+  const unread = network.unread.filter(
+    (record) => record.startsWith("concern ") || record.startsWith("source "),
+  );
+  const looks = worth.length + quiet.length + unread.length;
   return looks === 0 ? "and nothing needs a look" : `and ${plural(looks, "thing")} worth a look`;
 }
 
 /**
- * What stands now, in one sentence: the head's lede. While net's feed is told,
- * it says what is worth a look; once the feed is stale or broken, it says the
- * counts are as net last told them.
+ * What stands now, in one sentence: the head's lede. While net's feeds are
+ * live, it says what is worth a look; otherwise it says the counts are as net
+ * last told them.
  */
 function standsNow(context: Context, told = true): string {
   const { network, shape } = context;
@@ -263,7 +268,9 @@ class Standings {
  * What the lede says, from the worst of net's feeds and the network read so
  * far, so words said of an earlier standing never outlast it. While the map
  * draws a device it counts them, saying what's worth a look only while the
- * feeds are told. A page opened while net is down is given the records the
+ * feeds are live. A page reconnecting to a server that restarted is told
+ * connecting and no records, so it still holds those from before, which
+ * only a live feed makes current again. A page opened while net is down is given the records the
  * server still holds, and draws them, so the lede counts them too rather
  * than saying none is drawn. With none drawn, the counts are never said: a
  * page joining a watch the server holds as broken is told every kind empty,
@@ -273,9 +280,10 @@ class Standings {
  * being reached.
  */
 function ledeOf(worst: string | undefined, context: Context | undefined): string {
-  // A feed is stale while the sites' server can't be reached, and broken while
-  // the server is reached and says net isn't (the kit's feed.ts).
-  const told = worst !== "stale" && worst !== "broken";
+  // A feed is stale while the sites' server can't be reached, broken while
+  // the server is reached and says net isn't (the kit's feed.ts), and
+  // connecting while net's records may be from before.
+  const told = worst === "live";
   if (context !== undefined && context.network.devices.length > 0) {
     return standsNow(context, told);
   }

@@ -2169,6 +2169,35 @@ def test_a_node_that_stops_is_said_broken_with_the_realm_kept_then_live(
 # A reading the drawing can make nothing of, handed it as site.ts hands each, as a fault in the
 # drawing would leave one.
 UNDRAWABLE = """() => document.dispatchEvent(new CustomEvent("mycelium:now", { detail: null }))"""
+# Longer than site.ts's floor between two readings handed over (FLOOR_MS), so a quiet that long
+# leaves none queued.
+QUIET_MS = 2500
+# The same, once no reading has been drawn for `quiet` milliseconds, so none handed over already
+# can clear the failure before it's read.
+UNDRAWABLE_ONCE_QUIET = """(quiet) => new Promise((done) => {
+  const drawn = () => {
+    clearTimeout(waiting);
+    waiting = setTimeout(fail, quiet);
+  };
+  const fail = () => {
+    document.removeEventListener("mycelium:modelled", drawn);
+    document.dispatchEvent(new CustomEvent("mycelium:now", { detail: null }));
+    done();
+  };
+  let waiting = setTimeout(fail, quiet);
+  document.addEventListener("mycelium:modelled", drawn);
+})"""
+# Every reading from now on, handed the drawing as one it can make nothing of, so none drawn
+# whole can clear the failure while a feed's standing moves. A listener on the document that
+# captures runs before view.js's.
+UNDRAWABLE_FROM_NOW = """() => {
+  document.addEventListener("mycelium:now", (event) => {
+    if (event.detail === null) return;
+    event.stopImmediatePropagation();
+    document.dispatchEvent(new CustomEvent("mycelium:now", { detail: null }));
+  }, { capture: true });
+  document.dispatchEvent(new CustomEvent("mycelium:now", { detail: null }));
+}"""
 
 
 def test_a_reading_that_fails_to_draw_is_said_broken_until_the_next_draws(
@@ -2178,7 +2207,7 @@ def test_a_reading_that_fails_to_draw_is_said_broken_until_the_next_draws(
     the_map_stands(page, "live")
     the_map_counts(page, COUNTED, "the map miscounted the realm")
     mycelium_opened.expecting("mycelium: a reading failed to draw")
-    page.evaluate(UNDRAWABLE)
+    page.evaluate(UNDRAWABLE_ONCE_QUIET, QUIET_MS)
     the_map_stands(page, "broken")
     asof = page.locator("#asof")
     expect(asof, "the map didn't say it couldn't draw").to_contain_text("The map couldn't draw")
@@ -2197,7 +2226,7 @@ def test_a_reading_that_fails_to_draw_is_said_though_a_feeds_standing_moves(
     # Only once the first reading is drawn can none but the next clear the failure.
     the_map_counts(page, COUNTED, "the map miscounted the realm")
     mycelium_opened.expecting("mycelium: a reading failed to draw")
-    page.evaluate(UNDRAWABLE)
+    page.evaluate(UNDRAWABLE_FROM_NOW)
     the_map_stands(page, "broken")
     asof = page.locator("#asof")
     expect(asof, "the map didn't say it tries again").to_contain_text("It tries again")
@@ -2207,6 +2236,29 @@ def test_a_reading_that_fails_to_draw_is_said_though_a_feeds_standing_moves(
     mycelium_opened.loses(server)
     expect(asof, "the failure hid that the server went").to_contain_text(
         "the sites' server can't be reached", timeout=PACE_MS
+    )
+    the_map_stands(page, "broken")
+    expect(asof, "a feed's standing hid that the map couldn't draw").to_contain_text(
+        "The map couldn't draw"
+    )
+    expect(asof, "the map promised a change that can't come").not_to_contain_text("It tries again")
+
+
+def test_a_reading_that_fails_to_draw_is_said_though_the_node_stops(
+    mycelium_opened: Opened, mycelium_node: StandIn
+) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    the_map_counts(page, COUNTED, "the map miscounted the realm")
+    mycelium_opened.expecting("mycelium: a reading failed to draw")
+    page.evaluate(UNDRAWABLE_FROM_NOW)
+    the_map_stands(page, "broken")
+    asof = page.locator("#asof")
+    # The node going leaves the server reached and every watch broken, so no
+    # change can come: the line says how the feeds stand, and stays broken.
+    mycelium_node.leave()
+    expect(asof, "the failure hid that the node went").to_contain_text(
+        "Not live since", timeout=PACE_MS
     )
     the_map_stands(page, "broken")
     expect(asof, "a feed's standing hid that the map couldn't draw").to_contain_text(

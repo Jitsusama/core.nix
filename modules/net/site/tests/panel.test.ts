@@ -67,6 +67,13 @@ it("the lede says nothing needs a look when only the internet's ceiling is told"
   assert.match(standsNow(contextOf(calm)), NOTHING_WORTH);
 });
 
+// A concern the page couldn't read is said apart as unread, so the lede
+// can't count it as an all-clear.
+it("the lede counts a concern it couldn't read as worth a look", () => {
+  const unreadable: Told = { key: "concern:unreadable", kind: "concern" };
+  assert.match(standsNow(contextOf([...calm, unreadable])), ONE_WORTH);
+});
+
 // A page joining a watch the server holds as broken is told every kind
 // empty, before any feed was live.
 const empty = contextOf([], true);
@@ -99,18 +106,19 @@ it("the lede says net has named no device over an empty net it has read", () => 
   assert.equal(ledeOf("live", empty), NAMELESS);
 });
 
-it("the lede counts what stands, and what is worth a look, while net's feeds are told", () => {
-  for (const worst of ["live", "connecting", undefined]) {
-    assert.equal(ledeOf(worst, contextOf()), standsNow(contextOf()), worst);
-  }
+it("the lede counts what stands, and what is worth a look, while net's feeds are live", () => {
+  assert.equal(ledeOf("live", contextOf()), standsNow(contextOf()));
 });
 
 // A page opened or reloaded while net is down is given the records the
 // server still holds, and the map draws them, each source still answering
 // as it last said: their counts stand, but what they ask would read as an
 // all-clear.
-it("the lede counts held records as net last told them once its feed stopped", () => {
-  for (const worst of ["broken", "stale"]) {
+//
+// A page reconnecting to a sites' server that restarted is told connecting
+// and no records, so the records it holds are from before until it's live.
+it("the lede counts held records as net last told them until its feeds are live", () => {
+  for (const worst of ["broken", "stale", "connecting", undefined]) {
     assert.equal(
       ledeOf(worst, contextOf(calm)),
       "1 device on 2 eeros across 2 floors, as net last told them.",

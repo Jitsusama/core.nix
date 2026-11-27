@@ -66,6 +66,11 @@ BUDGET = Budget(files=36, kilobytes=505, elements=335)
 # no floor would be an empty net read as an all-clear, so a count of either starts at one.
 COUNTED = re.compile(r"^\d+ devices? on [1-9]\d* eeros? across [1-9]\d* floors?, and .+\.$")
 UNANSWERED = "Net isn't answering, so no device is drawn."
+# The lede over records kept from before, which counts what stands but says nothing of what's
+# worth a look, since what they ask would read as an all-clear.
+HELD = re.compile(
+    r"^\d+ devices? on [1-9]\d* eeros? across [1-9]\d* floors?, as net last told them\.$"
+)
 
 
 @pytest.fixture
@@ -208,6 +213,8 @@ def test_a_net_that_stops_is_said_broken_then_live(network_page: Page, net_daemo
     every_device_drawn(network_page)
     net_daemon.leave()
     says_it_stands(network_page, "broken")
+    lede = network_page.locator("#lede")
+    expect(lede, "the lede asked from records net no longer tells").to_have_text(HELD)
     # What net holds moves while it's away, so only reading it again shows it.
     net_daemon.tell("device", gone=[f"device:{PRINTER}"])
     net_daemon.start()
@@ -216,6 +223,9 @@ def test_a_net_that_stops_is_said_broken_then_live(network_page: Page, net_daemo
         0, timeout=PACE_MS
     )
     expect(device(network_page, "modem"), "the modem went with the printer").to_have_count(1)
+    expect(lede, "the lede didn't count what's worth a look once net was back").to_have_text(
+        COUNTED
+    )
 
 
 def test_a_net_that_never_answers_says_so_in_the_lede(
@@ -259,6 +269,9 @@ def test_a_sites_server_that_goes_is_said_stale(
     network_page.wait_for_timeout(REDRAWN_MS)
     every_device_drawn(network_page)
     says_it_stands(network_page, "stale")
+    expect(
+        network_page.locator("#lede"), "the lede asked from records the page can't follow"
+    ).to_have_text(HELD)
 
 
 # How far right of the map's room, short of any scrollbar's gutter, each device's box reaches in
