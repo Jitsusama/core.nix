@@ -584,11 +584,14 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
                     && flaky::excuses(
                         &root,
                         url,
-                        &checkout,
-                        &base,
-                        &candidate,
-                        &log,
+                        &flaky::Red {
+                            checkout: &checkout,
+                            base: &base,
+                            candidate: &candidate,
+                            log: &log,
+                        },
                         &mut flakes,
+                        &mut flaky::Lenders,
                     ) =>
             {
                 splitting.taken();

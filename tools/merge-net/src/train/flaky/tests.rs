@@ -39,7 +39,7 @@ fn judged(
     at_base: &dyn Fn(&str) -> (Gated, String),
     again: &dyn Fn(&str) -> Gated,
     excused: usize,
-) -> Option<Vec<(String, Blame)>> {
+) -> Result<Vec<(String, Blame)>, Declined> {
     judged_whole(words, at_base, again, &|_| Gated::Passed, excused)
 }
 
@@ -50,7 +50,7 @@ fn judged_whole(
     again: &dyn Fn(&str) -> Gated,
     whole: &dyn Fn(&[String]) -> Gated,
     excused: usize,
-) -> Option<Vec<(String, Blame)>> {
+) -> Result<Vec<(String, Blame)>, Declined> {
     let mut base_build = |check: &str| at_base(check);
     let mut built_again = |check: &str| again(check);
     let mut built_whole = |checks: &[String]| whole(checks);
@@ -116,13 +116,13 @@ fn a_red_with_a_build_no_line_says_failed_is_never_judged() {
         + "error: build of '/nix/store/aaaa-a.drv^*', '/nix/store/bbbb-b.drv^*' failed\n";
     assert_eq!(
         judged(&unlisted, &passes_at_base, &passes, 0),
-        None,
+        Err(Declined::Unexplained),
         "a flake excused a red whose other failed build nothing said"
     );
     let lost = flaky + "error: unexpected end of file\n";
     assert_eq!(
         judged(&lost, &passes_at_base, &passes, 0),
-        None,
+        Err(Declined::Unexplained),
         "a flake excused a red beside an error that wasn't a build's"
     );
 }
@@ -183,6 +183,16 @@ fn a_rider_whose_unrelated_check_fails_once_stays_and_one_whose_own_fails_is_spl
         !excused(&own),
         "a check red twice at the candidate was excused for passing at the base"
     );
+    let untaken = judged(&said, &passes_at_base, &|_| Gated::Unsent, 0).unwrap();
+    assert_eq!(
+        untaken,
+        [("the-margin-cat-on-niri".to_owned(), Blame::Untaken)],
+        "a build again no builder took read as a rider's break"
+    );
+    assert!(
+        !excused(&untaken),
+        "a check no builder built again was excused"
+    );
 }
 
 #[test]
@@ -193,17 +203,44 @@ fn a_check_excused_as_a_flake_twice_in_a_ride_is_the_riders_on_its_third_red() {
         built_again.set(true);
         Gated::Passed
     };
+    let built_at_base = std::cell::Cell::new(false);
+    let at_base = |check: &str| {
+        built_at_base.set(true);
+        passes_at_base(check)
+    };
     assert_eq!(
-        judged(&said, &passes_at_base, &again, 1).unwrap(),
+        judged(&said, &at_base, &again, 1).unwrap(),
         [("vm-pi".to_owned(), Blame::Flaky)]
     );
     built_again.set(false);
+    built_at_base.set(false);
     assert_eq!(
-        judged(&said, &passes_at_base, &again, MOST_EXCUSED).unwrap(),
-        [("vm-pi".to_owned(), Blame::Riders)],
+        judged(&said, &at_base, &again, MOST_EXCUSED).unwrap(),
+        [("vm-pi".to_owned(), Blame::Spent)],
         "a check's third red in a ride was excused as a flake"
     );
     assert!(!built_again.get(), "a check out of excuses was built again");
+    assert!(
+        !built_at_base.get(),
+        "a check out of excuses, whose red at the base can't be main's, was built there"
+    );
+}
+
+/// A rule's red at the base can still be main's however often the ride
+/// excused it as a flake, so it is still built there.
+#[test]
+fn a_rule_out_of_excuses_can_still_be_mains() {
+    let said = words(&[RULE], &[RULE]);
+    assert_eq!(
+        judged(&said, &as_before, &passes, MOST_EXCUSED).unwrap(),
+        [(RULE.to_owned(), Blame::Main)],
+        "main's own red in a rule out of flake excuses wasn't main's"
+    );
+    assert_eq!(
+        judged(&said, &passes_at_base, &passes, MOST_EXCUSED).unwrap(),
+        [(RULE.to_owned(), Blame::Spent)],
+        "a rule out of excuses, passing at the base, was excused as a flake"
+    );
 }
 
 #[test]
@@ -225,7 +262,11 @@ fn a_check_failing_at_the_base_as_it_failed_is_mains_and_one_failing_anew_the_ri
     let untaken = judged(&said, &|_| (Gated::Unsent, String::new()), &passes, 0).unwrap();
     assert_eq!(
         untaken,
-        [(RULE.to_owned(), Blame::Riders)],
+        [(RULE.to_owned(), Blame::Untaken)],
+        "a build at the base no builder took excused the riders"
+    );
+    assert!(
+        !excused(&untaken),
         "a build at the base no builder took excused the riders"
     );
 }
@@ -248,7 +289,7 @@ fn mains_red_in_a_rule_the_riders_moved_is_theirs() {
     };
     assert_eq!(
         judge(&said, &mut judging).unwrap(),
-        [(RULE.to_owned(), Blame::Riders)],
+        [(RULE.to_owned(), Blame::RuleMoved)],
         "main's red in a rule the riders moved was excused as main's"
     );
     let moved = |files: &[&str]| {
@@ -339,7 +380,7 @@ fn mains_formatting_red_is_never_mains() {
     };
     assert_eq!(
         judge(&said, &mut judging).unwrap(),
-        [("formatting".to_owned(), Blame::Riders)],
+        [("formatting".to_owned(), Blame::Masked)],
         "main's formatting red was excused, though treefmt may stop before a rider's"
     );
 }
@@ -363,7 +404,7 @@ fn a_red_lands_only_once_every_other_check_it_built_builds() {
     };
     assert_eq!(
         judged_whole(&said, &at_base, &passes, &whole, 0),
-        None,
+        Err(Declined::WholeRed),
         "a red landed though not every check it built was known built"
     );
     assert_eq!(
@@ -374,7 +415,7 @@ fn a_red_lands_only_once_every_other_check_it_built_builds() {
     );
     assert!(
         judged_whole(&said, &at_base, &passes, &|_| Gated::Passed, 0)
-            .is_some_and(|judged| excused(&judged)),
+            .is_ok_and(|judged| excused(&judged)),
         "a red whose every other check built wasn't excused"
     );
 }
@@ -386,7 +427,7 @@ fn a_check_named_with_a_dot_is_never_judged() {
     let said = words(&["formatting.out"], &["formatting.out"]);
     assert_eq!(
         judged(&said, &passes_at_base, &passes, 0),
-        None,
+        Err(Declined::NotPlain),
         "a check named with a dot was rebuilt as another and excused"
     );
 }
@@ -402,7 +443,7 @@ fn a_red_whose_gate_ran_again_is_never_judged() {
     );
     assert_eq!(
         judged(&said, &passes_at_base, &passes, 0),
-        None,
+        Err(Declined::RanAgain),
         "a red beside a replay's words was judged"
     );
 }
@@ -431,19 +472,19 @@ fn a_red_without_changed_checks_verdict_on_its_builds_is_never_judged() {
     let gave_up = flaky.clone() + "\u{2715} nix eval of the VM tests failed: signal: 9\n";
     assert_eq!(
         judged(&gave_up, &passes_at_base, &passes, 0),
-        None,
+        Err(Declined::Unexplained),
         "a flake excused a red changed-checks gave up on"
     );
     let unsaid = flaky.replace("\u{2715} a check the change touched failed\n", "");
     assert_eq!(
         judged(&unsaid, &passes_at_base, &passes, 0),
-        None,
+        Err(Declined::NoVerdict),
         "a flake excused a red changed-checks never said was a failed build"
     );
     let traced = words(&["a"], &["a"]) + "error:\n       \u{2026} while evaluating\n";
     assert_eq!(
         judged(&traced, &passes_at_base, &passes, 0),
-        None,
+        Err(Declined::Unexplained),
         "a flake excused a red beside a traced nix error"
     );
 }
@@ -454,7 +495,7 @@ fn a_check_that_may_stop_at_its_first_error_is_never_mains() {
     let at_base = |_: &str| as_before("vm-test-run-vm-pi");
     assert_eq!(
         judged(&said, &at_base, &passes, 0).unwrap(),
-        [("vm-pi".to_owned(), Blame::Riders)],
+        [("vm-pi".to_owned(), Blame::Masked)],
         "a check not known to report every failure was excused as main's"
     );
 }
@@ -545,7 +586,7 @@ fn once_a_failure_is_the_riders_nothing_after_it_is_built_again() {
     let judged = judged(&said, &at_base, &|_| Gated::Red, 0).unwrap();
     assert_eq!(
         judged.iter().map(|(_, blamed)| *blamed).collect::<Vec<_>>(),
-        [Blame::Main, Blame::Riders, Blame::Riders]
+        [Blame::Main, Blame::Riders, Blame::Unbuilt]
     );
     assert_eq!(
         *asked.borrow(),
@@ -566,10 +607,40 @@ fn a_red_of_more_checks_than_are_rebuilt_is_the_riders_unbuilt() {
         built.set(true);
         as_before(check)
     };
-    assert_eq!(judged(&words(&many, &many), &at_base, &passes, 0), None);
+    assert_eq!(
+        judged(&words(&many, &many), &at_base, &passes, 0),
+        Err(Declined::TooMany)
+    );
     assert!(
         !built.get(),
         "a red across main was built again check by check"
+    );
+}
+
+/// `MOST_REBUILT` failed checks are still each built again, so the limit
+/// holds on both sides.
+#[test]
+fn a_red_of_as_many_checks_as_are_rebuilt_is_judged_check_by_check() {
+    let most = ["a", "b", "c", "d"];
+    assert_eq!(
+        most.len(),
+        MOST_REBUILT,
+        "the test's red fails other than as many checks as are rebuilt"
+    );
+    let asked = std::cell::RefCell::new(Vec::new());
+    let again = |check: &str| {
+        asked.borrow_mut().push(check.to_owned());
+        Gated::Passed
+    };
+    let judged = judged(&words(&most, &most), &passes_at_base, &again, 0).unwrap();
+    assert!(
+        excused(&judged),
+        "a red of as many flakes as are rebuilt split the train"
+    );
+    assert_eq!(
+        *asked.borrow(),
+        most,
+        "a check of a red of as many as are rebuilt wasn't built again"
     );
 }
 
@@ -590,14 +661,116 @@ fn a_check_is_red_at_the_base_only_where_a_builder_failed_there() {
 #[test]
 fn words_naming_no_failed_derivation_say_nothing_of_whose_the_red_is() {
     let said = words(&["vm-pi"], &[]);
-    assert_eq!(judged(&said, &passes_at_base, &passes, 0), None);
-    let broken = words(&["vm-pi"], &["vm-test-run-vm-pi"])
-        + "\u{2715} a check the change touched no longer evaluates\n";
+    assert_eq!(
+        judged(&said, &passes_at_base, &passes, 0),
+        Err(Declined::Unexplained)
+    );
+    let flaky = words(&["vm-pi"], &["vm-test-run-vm-pi"]);
+    let broken = flaky.clone() + "\u{2715} a check the change touched no longer evaluates\n";
     assert_eq!(
         judged(&broken, &passes_at_base, &passes, 0),
-        None,
+        Err(Declined::Unexplained),
         "a check that no longer evaluates was passed over beside a flake"
     );
+    let unmarked = flaky + "a check the change touched no longer evaluates\n";
+    assert_eq!(
+        judged(&unmarked, &passes_at_base, &passes, 0),
+        Err(Declined::NoLongerEvaluates),
+        "a check that no longer evaluates was passed over beside a flake"
+    );
+}
+
+/// Lent builders that keep each build asked of them, as (flake, checks,
+/// commit), and pass each.
+#[derive(Default)]
+struct Asked(Vec<(String, Vec<String>, String)>);
+
+impl Lent for Asked {
+    fn build(
+        &mut self,
+        _: &Path,
+        flake: &str,
+        _: &Path,
+        checks: &[&str],
+        commit: &str,
+    ) -> (Option<i32>, String) {
+        let checks = checks.iter().map(|check| (*check).to_owned()).collect();
+        self.0.push((flake.to_owned(), checks, commit.to_owned()));
+        (Some(0), String::new())
+    }
+
+    fn named(&self, _: &Path, _: &str, _: &[String]) -> BTreeMap<String, String> {
+        BTreeMap::new()
+    }
+}
+
+/// Which commit each build is at is the whole of the scheme's safety: a
+/// rider's red rebuilt at the base would pass, and land as a flake.
+#[test]
+fn a_flake_is_built_at_the_base_then_at_the_candidate_and_its_finding_names_the_red() {
+    let root = std::env::temp_dir().join(format!("merge-net-excuses-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&root);
+    let (base, candidate) = ("b".repeat(40), "c".repeat(40));
+    let log = super::super::folder(&root).join(format!("{candidate}.log"));
+    fs::create_dir_all(super::super::folder(&root)).unwrap();
+    State::at(root.clone()).make().unwrap();
+    fs::write(&log, words(&["a", "other"], &["a"])).unwrap();
+    let red = Red {
+        checkout: &root,
+        base: &base,
+        candidate: &candidate,
+        log: &log,
+    };
+    let mut asked = Asked::default();
+    let landed = excuses(
+        &root,
+        "https://github.com/someone/core.git",
+        &red,
+        &mut Flakes::default(),
+        &mut asked,
+    );
+    assert!(
+        landed,
+        "a flake, passing at the base and again, split the train"
+    );
+    let at = |flake: &str, checks: &[&str], commit: &str| {
+        (
+            flake.to_owned(),
+            checks
+                .iter()
+                .map(|check| (*check).to_owned())
+                .collect::<Vec<_>>(),
+            commit.to_owned(),
+        )
+    };
+    assert_eq!(
+        asked.0,
+        [
+            at(&format!("github:someone/core/{base}"), &["a"], &base),
+            at(".", &["a"], &candidate),
+            at(".", &["a", "other"], &candidate),
+        ],
+        "a build wasn't at the commit its judging needs"
+    );
+    let findings: Vec<Value> = fs::read_dir(root.join("findings"))
+        .unwrap()
+        .map(|entry| serde_json::from_slice(&fs::read(entry.unwrap().path()).unwrap()).unwrap())
+        .collect();
+    assert_eq!(findings.len(), 1, "a flake's finding wasn't written once");
+    assert_eq!(findings[0]["kind"], "train-flaky");
+    assert_eq!(
+        findings[0]["log"],
+        log.display().to_string(),
+        "a flake's finding didn't name the gate's log, which holds its red"
+    );
+    assert_eq!(
+        findings[0]["rebuilt_log"],
+        built_log(&root, &candidate, "a", "again")
+            .display()
+            .to_string(),
+        "a flake's finding didn't name the rebuild that passed"
+    );
+    fs::remove_dir_all(&root).unwrap();
 }
 
 #[test]
