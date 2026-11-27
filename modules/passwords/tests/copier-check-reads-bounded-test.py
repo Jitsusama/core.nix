@@ -1,4 +1,4 @@
-"""Checks the copier check's reads of how a copier ended are bounded, with fake copiers.
+"""Checks the copier check's reads of a copier are bounded and whole, with fake copiers.
 
 copier-keeps-a-secret-in-memory.py reads what a copier said, how it ended and whether it
 read its standard input, each for as long as its PATIENCE and no longer, so a copier that
@@ -7,9 +7,10 @@ the check. Its own run needs a display, so these reads are pinned here with copi
 bash scripts: each ending one way, saying one thing, saying a line in pieces or half of one,
 or never ending at all. PATIENCE is set to 2 s, so a read that waits past it plus a second
 fails its case, and one that would hang is run on a thread of its own, so it fails rather
-than hanging this test. A half line is answered as said only where the copier ended, as the
-daemon reads whole lines and would never hear one held on after. What a read took past its
-line is pinned too: it comes first in how the copier ended, and a refusal keeps none of it.
+than hanging this test. A line is answered as the daemon hears it, exactly, and a half line
+only once the copier closed its standard output, as the daemon reads whole lines and would
+never hear one held open after. What a read took past its line is pinned too: it comes
+first in how the copier ended, and a refusal keeps none of it.
 
 usage: copier-check-reads-bounded-test.py <bash> <copier-keeps-a-secret-in-memory.py>
 """
@@ -77,8 +78,8 @@ def copier(script: str) -> Iterator[subprocess.Popen[bytes]]:
     try:
         yield started
     finally:
-        # A group left with only its ended, unwaited leader has no one to kill: Linux says
-        # so with ESRCH, and Darwin with EPERM.
+        # Linux signals a group left with only its ended, unwaited leader without fault, as
+        # a zombie still counts, but Darwin refuses with EPERM; ESRCH comes once none is left.
         with contextlib.suppress(ProcessLookupError, PermissionError):
             os.killpg(started.pid, signal.SIGKILL)
         started.wait()
@@ -244,18 +245,57 @@ def a_copier_ending_on_half_a_line_is_answered_it() -> None:
 
 
 def a_copier_saying_a_line_in_pieces_is_answered_what_came_in_patience() -> None:
-    """said_next joins a line said in pieces, and stops at PATIENCE from its start."""
-    with copier("printf r; sleep 1; printf e; sleep 3; printf 'ady\\n'; exec sleep 30") as slow:
+    """said_next joins a line said in pieces, and stops at PATIENCE from its start.
+
+    Each piece comes 1.5 s after the last, inside PATIENCE, and the newline only at 4.5 s,
+    so a read bounded afresh by each piece would answer the whole line, and only one bounded
+    from its start answers what came by then. How fast bash starts decides only how many of
+    the first pieces that is.
+    """
+    script = "printf r; sleep 1.5; printf e; sleep 1.5; printf a; sleep 1.5; printf 'dy\\n'"
+    with copier(f"{script}; exec sleep 30") as slow:
         answer = answered_in_time(lambda: CHECK.said_next(slow))
     waited = PATIENCE + SLACK + HUNG
     assert answer is not None, f"a copier saying a line in pieces held it past {waited:g} s"
     said, took = answer
-    unfinished = f"re {CHECK.UNFINISHED}"
-    assert said == unfinished, (
-        f"a copier saying 'r', 'e' a second later and the rest 3 s after was said {said!r}, "
-        f"not {unfinished!r}, what it said by the patience"
+    came = [f"{begun} {CHECK.UNFINISHED}" for begun in ("r", "re")]
+    assert said in came, (
+        f"a copier saying 'r', then 'e', 'a' and 'dy' 1.5 s apart was said {said!r}, "
+        f"not one of {came!r}, what it said by the patience"
     )
     assert took < PATIENCE + SLACK, f"a copier saying a line in pieces held it {took:.1f} s"
+
+
+def a_half_line_held_at_the_patience_is_finished_by_the_next_read() -> None:
+    """said_next keeps a half line it answered as unfinished, and the next read finishes it."""
+    with copier("printf rea; sleep 3; printf 'dy\\n'; exec sleep 30") as slow:
+        first = CHECK.said_next(slow)
+        second = CHECK.said_next(slow)
+    unfinished = f"rea {CHECK.UNFINISHED}"
+    assert first == unfinished, f"'rea' held past the patience was said {first!r}"
+    assert second == "ready", f"'rea' then 'dy' was next said {second!r}, not 'ready'"
+
+
+def a_line_is_answered_as_the_daemon_hears_it_exactly() -> None:
+    """said_next takes off a line's newline and a carriage return before it, and nothing else."""
+    with copier("printf 'ready \\n held\\nready\\r\\n'") as saying:
+        saying.wait()
+        spaced = CHECK.said_next(saying)
+        led = CHECK.said_next(saying)
+        returned = CHECK.said_next(saying)
+    assert spaced == "ready ", f"'ready ', which the daemon refuses, was said {spaced!r}"
+    assert led == " held", f"' held', which the daemon refuses, was said {led!r}"
+    assert returned == "ready", f"'ready' ended by a carriage return was said {returned!r}"
+
+
+def a_copier_pouring_out_one_line_is_answered_at_the_cap() -> None:
+    """said_next answers a copier pouring out bytes with no newline once SAID_CAP has come."""
+    with copier("yes x | tr -d '\\n'") as pouring:
+        said, took = timed(lambda: CHECK.said_next(pouring))
+    assert said.endswith(CHECK.UNFINISHED), f"a line with no end was said {said[:80]!r}"
+    most = 2 * CHECK.SAID_CAP + len(CHECK.UNFINISHED) + 1
+    assert len(said) < most, f"a line with no end was answered {len(said)} characters long"
+    assert took < SLACK, f"a copier pouring out a line held it {took:.1f} s"
 
 
 def a_copier_saying_two_lines_at_once_is_answered_each_in_turn() -> None:
@@ -347,6 +387,9 @@ CASES = [
     a_copier_ending_on_half_a_line_is_answered_it,
     a_copier_saying_a_line_in_pieces_is_answered_what_came_in_patience,
     a_copier_saying_two_lines_at_once_is_answered_each_in_turn,
+    a_half_line_held_at_the_patience_is_finished_by_the_next_read,
+    a_line_is_answered_as_the_daemon_hears_it_exactly,
+    a_copier_pouring_out_one_line_is_answered_at_the_cap,
     a_copier_with_no_pipe_to_read_is_refused_by_name,
     a_read_that_raised_fails_saying_so,
     what_said_next_read_past_its_line_is_kept_for_how_the_copier_ended,

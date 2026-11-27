@@ -151,9 +151,11 @@ onLinux {
   # ended is said with its code and what it said, even with a child
   # holding its standard error open, one that never ends is killed, a
   # reader that never reads is given up on without spinning, and a copier
-  # saying nothing says nothing. A line is read whole, as the daemon reads
-  # it: one said in pieces is joined, two said at once are answered in
-  # turn, and a half line is answered as said only once the copier ended.
+  # saying nothing says nothing. A line is read whole and exactly, as the
+  # daemon reads it: one said in pieces is joined, two said at once are
+  # answered in turn, 'ready ' is never 'ready', one with no end is cut off
+  # at a cap, and a half line is answered as said only once the copier
+  # closed its standard output, the next read finishing one held open.
   # What was read past a line comes first in how the copier ended, and a
   # refusal keeps none of it. A copier with no pipe to read is refused by
   # name, and a read that raised fails by what it raised, not as a hang.

@@ -3302,9 +3302,11 @@
   passwords-copier-check-reads-are-bounded = ''
     the copier check's reads of a copier each answer within its patience, a child holding the
     copier's standard error open, a copier never ending, a reader never reading, a copier saying
-    nothing and one saying half a line and holding on included; a line is read whole, as the
-    daemon reads it, so one said in pieces is joined, two said at once are answered in turn, and
-    a half line is answered as said only once the copier ended; what was read past a line comes
+    nothing, one saying half a line and holding on and one pouring out a line with no end
+    included; a line is read whole and exactly, as the daemon reads it, so one said in pieces
+    is joined, two said at once are answered in turn, 'ready ' is never 'ready', and a half
+    line is answered as said only once the copier closed its standard output, and finished by
+    the next read if it was held open; what was read past a line comes
     first in how the copier ended, a refusal keeps none of it, a copier with no pipe to read is
     refused by name, and a read that raised fails saying what it raised
   '';
