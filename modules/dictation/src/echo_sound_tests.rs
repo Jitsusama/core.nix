@@ -99,13 +99,104 @@ fn joels_word_ten_db_under_their_sound_is_his_own() {
 
 #[test]
 fn joels_word_under_their_sound_inside_their_line_is_his_own() {
-    // Inside their line they and he may both be speaking, and his voice
-    // over theirs is no echo, however far under their sound.
+    // Inside their line, beside a word of theirs, they and he may both be
+    // speaking, and his voice over theirs is no echo, however far under
+    // their sound.
     let (written, _) = right_over(&their_sound(5_000, 7_000), 6_000, -25.0);
     assert_eq!(
         written,
         ["Fine by me. Right."],
         "Joel's word inside their line was cut for their sound"
+    );
+}
+
+/// What's written of Joel's line, and what each cut from it was cut by,
+/// when he says "Fine by me." at -20 dB a second into the call and
+/// "Right." at `level` dB `at_ms` in, inside a line of theirs at 0 dB
+/// from 5 s to 9.5 s whose model heard "Lunch at noon" from 5 s and "on
+/// Thursday then." from 8.6 s, at -20 dB, and nothing between: from
+/// 5.6 s to 8.6 s no word of theirs is heard.
+fn right_inside(at_ms: usize, level: f32) -> (Vec<String>, Vec<String>) {
+    let mut theirs = at_level(timed("Lunch at noon", 5_000), -20.0);
+    theirs.extend(at_level(timed("on Thursday then.", 8_600), -20.0));
+    let mut mine = at_level(timed("Fine by me.", 1_000), -20.0);
+    mine.extend(at_level(timed("Right.", at_ms), level));
+    let (mut lines, words) = lines_heard(&[theirs], &[mine]);
+    lines[0].end = 9_500 * RATE / 1000;
+    let sound = their_sound(5_000, 9_500);
+    let (cut, cuts) = cut_echoes(&lines, &words, &sound, |left| Some(left.to_owned()));
+    (kept(&cut), cuts.iter().map(Cut::by).collect())
+}
+
+#[test]
+fn joels_word_under_their_sound_far_from_their_words_in_their_line_is_cut() {
+    // Their take's sound goes on between the words their model heard,
+    // and his microphone hears it 22 dB down, 1.5 s from either.
+    let (written, cuts) = right_inside(7_100, -22.0);
+    assert_eq!(
+        (written, cuts),
+        (
+            vec!["Fine by me.".to_owned()],
+            vec!["22 dB under their sound".to_owned()]
+        ),
+        "Joel's word inside their line, 22 dB under their sound and 1.5 s from \
+         their words, wasn't cut for their sound"
+    );
+}
+
+#[test]
+fn joels_word_under_their_sound_half_a_second_after_their_word_is_his_own() {
+    let (written, cuts) = right_inside(6_100, -22.0);
+    assert_eq!(
+        (written, cuts),
+        (vec!["Fine by me. Right.".to_owned()], Vec::new()),
+        "Joel's word inside their line 0.5 s after their word was cut for their sound"
+    );
+}
+
+#[test]
+fn joels_word_under_their_sound_half_a_second_before_their_word_is_his_own() {
+    let (written, cuts) = right_inside(8_100, -22.0);
+    assert_eq!(
+        (written, cuts),
+        (vec!["Fine by me. Right.".to_owned()], Vec::new()),
+        "Joel's word inside their line 0.5 s before their word was cut for their sound"
+    );
+}
+
+#[test]
+fn joels_word_nineteen_db_under_their_sound_in_their_line_is_his_own() {
+    let (written, cuts) = right_inside(7_100, -19.0);
+    assert_eq!(
+        (written, cuts),
+        (vec!["Fine by me. Right.".to_owned()], Vec::new()),
+        "Joel's word inside their line 19 dB under their sound, short of 20 dB, was cut"
+    );
+}
+
+#[test]
+fn joels_word_at_his_own_voice_far_from_their_words_in_their_line_is_cut() {
+    // Seven words of his alone at -40 dB, a quiet laptop microphone, make
+    // his voice -40 dB. His word between their words is at his voice,
+    // and 25 dB under their take at -15 dB: inside their line his voice
+    // isn't asked, since there the echo is no quieter than his voice
+    // is, so his word is cut. That's the risk this rule takes.
+    let mut theirs = at_level(timed("Lunch at noon", 5_000), -15.0);
+    theirs.extend(at_level(timed("on Thursday then.", 8_600), -15.0));
+    let mut mine = at_level(timed("Fine by me, I can do that.", 1_000), -40.0);
+    mine.extend(at_level(timed("Right.", 7_100), -40.0));
+    let (mut lines, words) = lines_heard(&[theirs], &[mine]);
+    lines[0].end = 9_500 * RATE / 1000;
+    let sound = their_sound_at(5_000, 9_500, -15.0);
+    let (cut, cuts) = cut_echoes(&lines, &words, &sound, |left| Some(left.to_owned()));
+    assert_eq!(
+        (kept(&cut), cuts.iter().map(Cut::by).collect::<Vec<_>>()),
+        (
+            vec!["Fine by me, I can do that.".to_owned()],
+            vec!["25 dB under their sound".to_owned()]
+        ),
+        "Joel's word inside their line, 25 dB under their sound and far from their \
+         words, was kept for being at his own voice"
     );
 }
 
