@@ -1079,7 +1079,9 @@ pub fn run(config: &Config) -> Result<(), String> {
                 hub: &hub,
             };
             match pass(&history, config, told, &mut kept, now, &mut steps) {
-                Ok(shown) => last_status = Some((shown, Instant::now(), Instant::now())),
+                Ok(shown) => {
+                    last_status = Some((steps.cleared(shown), Instant::now(), Instant::now()));
+                }
                 Err(error) => eprintln!("a pass failed: {error}"),
             }
             last_pass = Instant::now();
@@ -1285,6 +1287,14 @@ impl Steps {
         }
     }
 
+    /// A pass that worked let go of what it held, which is a step too:
+    /// under swap, freeing its picture faults it back in. Hands back
+    /// `shown`, what the pass said, so the loop ends it where it takes it.
+    fn cleared<T>(&mut self, shown: T) -> T {
+        self.ended("cleared");
+        shown
+    }
+
     /// The step `name` ended now.
     pub fn ended(&mut self, name: &'static str) {
         self.ended_at(name, Mark::now());
@@ -1303,7 +1313,8 @@ impl Steps {
 
     /// Each step and what it cost, for the journal, then the time from the
     /// last step to `now` where it's long enough to be a step that failed
-    /// before it could end.
+    /// before it could end: a pass that worked ends its last step, letting
+    /// go of what it held, before it's said.
     fn said(&self, now: Instant) -> String {
         let mut said: Vec<String> = self.spent.iter().map(Spent::said).collect();
         let unended = now.saturating_duration_since(self.last.at);
@@ -2131,10 +2142,37 @@ mod tests {
             "a step's costs weren't said as they were spent"
         );
         assert_eq!(
+            steps.said(begun + UNENDED.saturating_sub(Duration::from_millis(1))),
+            "logs 2.1 s, 12 MB read, 40 faults waited on, 3 pages swapped in from the disk and \
+             30 from compressed memory; picture 300.0 s",
+            "the moment it takes to say a pass was said as a step that didn't end"
+        );
+        assert_eq!(
+            steps.said(begun + UNENDED),
+            "logs 2.1 s, 12 MB read, 40 faults waited on, 3 pages swapped in from the disk and \
+             30 from compressed memory; picture 300.0 s; 0.1 s in a step that didn't end",
+            "a step that didn't end, as long as the least said, wasn't said"
+        );
+        assert_eq!(
             steps.said(begun + Duration::from_secs(7)),
             "logs 2.1 s, 12 MB read, 40 faults waited on, 3 pages swapped in from the disk and \
              30 from compressed memory; picture 300.0 s; 7.0 s in a step that didn't end",
             "the time a failing step took wasn't said"
+        );
+    }
+
+    // A mark reads the pass's own thread's reads and faults where the
+    // kernel keeps them, so a path or field mistyped leaves them unread and
+    // fails here rather than dropping from every journal line unseen. The swap-ins need the service's own
+    // memory counts, which the build's sandbox doesn't mount.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_mark_reads_its_threads_reads_and_faults() {
+        let used = Mark::now().used;
+        assert!(used.read.is_some(), "a mark didn't read its thread's reads");
+        assert!(
+            used.faults.is_some(),
+            "a mark didn't read its thread's faults"
         );
     }
 
