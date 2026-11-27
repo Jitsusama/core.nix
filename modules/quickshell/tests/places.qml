@@ -109,10 +109,11 @@ QtObject {
         // prototype: gone after the screen in use's workspaces, among the
         // others, and noted away (Reopening's notedAway, noteAway's) as any.
         const proto = { output: "__proto__", workspace: 2, column: 1, tile: 1 };
+        const panelKept = { screen: panel, output: "eDP-1", workspace: 2, column: 1, tile: 1 };
         expect("a place kept on __proto__ is gone, after the screen in use's workspaces",
-            Places.placed([proto], { "eDP-1": panel }, "eDP-1")
+            Places.placed([panelKept, proto], { "eDP-1": panel }, "eDP-1")
                 .map(at => [at.output, at.workspace, at.away?.screen ?? null]),
-            [["eDP-1", 2, "__proto__"]]);
+            [["eDP-1", 2, null], ["eDP-1", 4, "__proto__"]]);
         expect("a twin kept on __proto__ is among the others it left",
             Places.whereKept(protoTwin, [protoTwin, Object.assign({}, protoTwin,
                 { output: "__proto__" })], { "eDP-1": panel }, { inUse: "eDP-1" }).away.others,
@@ -126,6 +127,12 @@ QtObject {
                 Reopening.notedAway(protoNoted, null, 9),
                 Reopening.notedAway(protoNoted, { screen: panel })],
             [[["constructor", [7]], ["__proto__", [8]]], null, null, null, null]);
+        const protoMore = Reopening.notedAway(protoNoted, { screen: "__proto__", workspace: 3,
+            output: "DP-9", others: { "eDP-1": panel } }, 9);
+        expect("a workspace noted away keeps its number, connector and others",
+            [protoMore["__proto__"], Object.getPrototypeOf(protoMore)],
+            [[{ id: 8, workspace: 2, output: "__proto__", others: {} },
+                { id: 9, workspace: 3, output: "DP-9", others: { "eDP-1": panel } }], null]);
 
         // No screen known, as when niri didn't answer: left as it was kept,
         // rather than every place taken for a gone screen's.
