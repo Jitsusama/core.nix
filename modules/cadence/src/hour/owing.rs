@@ -15,9 +15,10 @@ use crate::owe::{self, Owed};
 
 use super::lines::figure;
 use super::measures::queues::{self, QUEUE};
+use super::measures::way_out::{calls, path, relay};
 use super::measures::{
-    BLIND, Class, FINDINGS, HELD, Measure, UNRUN, UNSEEN, UNTESTED, apps, calls, causes, drag,
-    held_for_good, held_unseen, path, relay, rounds, told_late,
+    BLIND, Class, FINDINGS, HELD, Measure, UNRUN, UNSEEN, UNTESTED, apps, causes, drag,
+    held_for_good, held_unseen, rounds, told_late,
 };
 
 /// How long a queue's ask has before it goes late: long enough for the

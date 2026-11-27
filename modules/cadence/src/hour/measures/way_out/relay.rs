@@ -10,7 +10,7 @@
 
 use std::collections::BTreeMap;
 
-use super::{Class, Measure, count};
+use super::super::{Class, Measure, count};
 
 /// What each of the four is known by opens so, which files each apart
 /// with the relay's keeper, whatever leads the hour (owing.rs).

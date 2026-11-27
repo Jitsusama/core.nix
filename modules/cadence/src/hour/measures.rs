@@ -15,7 +15,6 @@ pub mod apps;
 pub mod at_risk;
 mod balanced;
 mod broken;
-pub mod calls;
 mod card;
 mod carried;
 pub mod causes;
@@ -27,10 +26,8 @@ mod misses;
 mod owner;
 mod pains;
 pub mod parked;
-pub mod path;
 mod promised;
 pub mod queues;
-pub mod relay;
 mod reports;
 pub mod rounds;
 #[cfg(test)]
@@ -42,6 +39,7 @@ pub mod told_late;
 mod tracked;
 pub mod unbilled;
 pub mod unresolved;
+pub mod way_out;
 pub mod wifi;
 
 pub use balanced::balanced;
@@ -49,7 +47,6 @@ pub use broken::{Main, broken, failed_in};
 pub use card::{card_if_fresh, commit_to_merge, merge_to_on};
 pub use carried::carried;
 pub use cells::{Quest, cells, mapped, mid_resume, quest};
-pub use cited::agent_folder;
 pub use locked::read as unlocked;
 pub use misses::{
     BLIND, FINDINGS, HELD, SAID_NONE, UNREAD, UNRUN, UNSEEN, UNTESTED, checked_beside, findings,
@@ -156,19 +153,11 @@ pub fn drag(measures: &[Measure]) -> Option<&Measure> {
     measures
         .iter()
         .filter(|m| !m.key.starts_with(rounds::FRUITLESS) && !m.key.starts_with(told_late::KEY))
-        .filter(|m| m.key != causes::KEY && !on_the_way(&m.key))
+        .filter(|m| m.key != causes::KEY && !way_out::on_the_way(&m.key))
         .filter(|m| m.class != Class::Queues)
         .filter_map(|m| m.past().map(|past| (m, past)))
         .min_by(|(a, pa), (b, pb)| a.class.cmp(&b.class).then(pb.total_cmp(pa)))
         .map(|(m, _)| m)
-}
-
-/// Whether `key` is a count of the way the sessions' calls go out.
-#[must_use]
-pub fn on_the_way(key: &str) -> bool {
-    [relay::PREFIX, calls::PREFIX, path::PREFIX]
-        .iter()
-        .any(|prefix| key.starts_with(prefix))
 }
 
 fn lines(text: &str) -> impl Iterator<Item = Value> + '_ {

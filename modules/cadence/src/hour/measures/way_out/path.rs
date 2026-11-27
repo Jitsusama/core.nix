@@ -10,7 +10,7 @@
 
 use serde_json::Value;
 
-use super::{Class, Measure};
+use super::super::{Class, Measure};
 
 /// What each origin's measure is known by opens so, which files each
 /// apart with the path's keeper, whatever leads the hour (owing.rs).

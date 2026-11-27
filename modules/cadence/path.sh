@@ -4,7 +4,7 @@
 # come, the device the route to it takes, and the answer's code, or the
 # sample's failure, a line of JSON each in the day's file of
 # $XDG_STATE_HOME/cadence/path, for `cadence hour` to hold each origin's
-# median TLS setup to its ceiling (src/hour/measures/path.rs). On 26
+# median TLS setup to its ceiling (src/hour/measures/way_out/path.rs). On 26
 # November TLS to the model origin took 6 to 10 s through a starved WARP
 # lane while warp-cli said Connected; a sample asks no more of the path
 # than a session's first call does.
