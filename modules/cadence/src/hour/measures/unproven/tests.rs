@@ -1,5 +1,6 @@
 //! Joel's asks unproven, read from asks lists and probe runs in the shapes
-//! their keepers write.
+//! their keepers write. Long because each case pins one shape a keeper's
+//! record or a switch has taken, and they read best side by side.
 
 use serde_json::{Value, json};
 
@@ -39,8 +40,11 @@ const fn asked(ago: i64) -> i64 {
 
 /// The measure over `asks`, with the runs `probes`.
 fn read(asks: &[Value], probes: &[String]) -> Measure {
-    unproven(&list(asks), Ok(&probes.join("\n")), Ok(""), NOW)
+    unproven(&list(asks), Ok(&probes.join("\n")), Ok(""), &ANY, NOW)
 }
+
+/// A judge of switches that takes each to carry every change.
+const ANY: fn(&Value, Repo, u32) -> Option<bool> = |_, _, _| Some(true);
 
 #[test]
 fn an_ask_landed_past_two_hours_with_no_probe_run_is_asked_of_who_answers_for_it() {
@@ -102,14 +106,14 @@ fn an_ask_landed_after_the_last_switch_says_it_isnt_live_yet() {
     let ago = 3 * 3600;
     let asks = list(&[landed("waits", ago, "A", &json!({}))]);
     let before = json!({"at": at(NOW - ago - 60)}).to_string();
-    let m = unproven(&asks, Ok(""), Ok(&before), NOW);
+    let m = unproven(&asks, Ok(""), Ok(&before), &ANY, NOW);
     assert!(
         m.behind[0].contains("; its probe hasn't run since it landed, not live yet,"),
         "an ask no switch has carried didn't say so: {}",
         m.behind[0]
     );
     let after = json!({"at": at(NOW - 60)}).to_string();
-    let m = unproven(&asks, Ok(""), Ok(&format!("{before}\n{after}")), NOW);
+    let m = unproven(&asks, Ok(""), Ok(&format!("{before}\n{after}")), &ANY, NOW);
     assert!(
         !m.behind[0].contains("not live yet"),
         "an ask a switch has come since said it wasn't live: {}",
@@ -251,7 +255,7 @@ fn a_pass_from_before_any_switch_since_it_landed_proves_nothing() {
     let asks = list(&[landed("early", ago, "A", &json!({}))]);
     let before = json!({"at": at(NOW - ago - 60)}).to_string();
     let early = run("early", 3600, true, 1199);
-    let m = unproven(&asks, Ok(&early), Ok(&before), NOW);
+    let m = unproven(&asks, Ok(&early), Ok(&before), &ANY, NOW);
     assert!(
         m.behind.first().is_some_and(|line| {
             line.contains("; its probe passed before a switch could carry it, not live yet,")
@@ -263,7 +267,7 @@ fn a_pass_from_before_any_switch_since_it_landed_proves_nothing() {
     // landing and that switch still doesn't.
     let switch = json!({"at": at(NOW - 1800)}).to_string();
     let switches = format!("{before}\n{switch}");
-    let m = unproven(&asks, Ok(&early), Ok(&switches), NOW);
+    let m = unproven(&asks, Ok(&early), Ok(&switches), &ANY, NOW);
     assert!(
         m.behind
             .first()
@@ -272,7 +276,7 @@ fn a_pass_from_before_any_switch_since_it_landed_proves_nothing() {
         m.behind
     );
     let late = [early, run("early", 600, true, 1200)].join("\n");
-    let m = unproven(&asks, Ok(&late), Ok(&switches), NOW);
+    let m = unproven(&asks, Ok(&late), Ok(&switches), &ANY, NOW);
     assert!(
         m.behind.is_empty(),
         "a pass after the switch that carried it didn't prove it: {:?}",
@@ -313,6 +317,7 @@ fn unread_probe_runs_leave_it_unjudged_and_an_ask_is_read_from_its_latest_line()
         &list(&[first, latest]),
         Err("permission denied"),
         Ok(""),
+        &ANY,
         NOW,
     );
     assert_eq!(
@@ -412,7 +417,7 @@ fn a_probe_record_kept_is_read_where_its_keeper_writes_it() {
     let switch = json!({"at": at(NOW - 7200)}).to_string();
     std::fs::write(home.path().join(SWITCHES), switch).expect("a switch record");
     let asks = list(&[landed("proven", 3 * 3600, "A", &json!({}))]);
-    let m = super::read(home.path(), &asks, NOW);
+    let m = super::read(home.path(), home.path(), &[], &asks, NOW);
     assert_eq!(
         (m.target, m.behind.len()),
         (Some(0.0), 0),
@@ -431,7 +436,7 @@ fn a_switch_record_that_cant_be_read_leaves_it_unjudged() {
     // A folder where the record is, so reading it fails as no file gone does.
     std::fs::create_dir_all(home.path().join(SWITCHES)).expect("a folder in its place");
     let asks = list(&[landed("proven", 3 * 3600, "A", &json!({}))]);
-    let m = super::read(home.path(), &asks, NOW);
+    let m = super::read(home.path(), home.path(), &[], &asks, NOW);
     assert_eq!(
         (m.target, m.says.contains("the switch record unread: ")),
         (None, true),
@@ -445,7 +450,7 @@ fn a_switch_record_that_cant_be_read_leaves_it_unjudged() {
 fn a_probe_record_gone_leaves_it_unjudged() {
     let home = tempfile::tempdir().expect("a state folder");
     let asks = list(&[landed("proven", 3 * 3600, "A", &json!({}))]);
-    let m = super::read(home.path(), &asks, NOW);
+    let m = super::read(home.path(), home.path(), &[], &asks, NOW);
     assert_eq!(
         (
             m.target,
@@ -464,7 +469,7 @@ fn an_emptied_probe_record_leaves_it_unjudged() {
     std::fs::create_dir_all(home.path().join("mission")).expect("a folder for the record");
     std::fs::write(home.path().join(PROBES), "\n").expect("an emptied record");
     let asks = list(&[landed("proven", 3 * 3600, "A", &json!({}))]);
-    let m = super::read(home.path(), &asks, NOW);
+    let m = super::read(home.path(), home.path(), &[], &asks, NOW);
     assert_eq!(
         (
             m.target,
@@ -660,6 +665,7 @@ fn a_run_before_the_switch_that_carries_it_is_said_so_whether_it_passed_or_faile
         &asks,
         Ok(&run("early", 3600, false, 1199)),
         Ok(&switches),
+        &ANY,
         NOW,
     );
     assert!(
@@ -685,7 +691,7 @@ fn an_ask_only_the_harness_carries_counts_a_pass_with_no_switch_since() {
     ]);
     let before = json!({"at": at(NOW - ago - 60)}).to_string();
     let passes = ["installed", "switched", "unfound"].map(|ask| run(ask, 600, true, 1199));
-    let m = unproven(&asks, Ok(&passes.join("\n")), Ok(&before), NOW);
+    let m = unproven(&asks, Ok(&passes.join("\n")), Ok(&before), &ANY, NOW);
     assert_eq!(
         m.behind
             .iter()
@@ -711,7 +717,7 @@ fn a_switch_record_in_another_shape_leaves_the_measure_unjudged() {
         (Ok(shape.as_str()), "no line names when it ran"),
         (Err("permission denied"), "permission denied"),
     ] {
-        let m = unproven(&asks, Ok(&passed), switches, NOW);
+        let m = unproven(&asks, Ok(&passed), switches, &ANY, NOW);
         assert_eq!(
             (
                 m.target,
@@ -722,4 +728,162 @@ fn a_switch_record_in_another_shape_leaves_the_measure_unjudged() {
             m.says
         );
     }
+}
+
+/// Runs git in `repo` at `when`, apart from the account's config, so it
+/// neither signs nor asks who commits, and says what it printed.
+fn git(repo: &Path, args: &[&str], when: i64) -> String {
+    let date = format!("@{when} +0000");
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .args(args)
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_AUTHOR_NAME", "here")
+        .env("GIT_AUTHOR_EMAIL", "here@example.org")
+        .env("GIT_COMMITTER_NAME", "here")
+        .env("GIT_COMMITTER_EMAIL", "here@example.org")
+        .env("GIT_AUTHOR_DATE", &date)
+        .env("GIT_COMMITTER_DATE", &date)
+        .output()
+        .expect("git runs");
+    assert!(
+        out.status.success(),
+        "git {args:?}: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    String::from_utf8_lossy(&out.stdout).trim().to_owned()
+}
+
+#[test]
+fn a_switch_counts_only_once_the_core_it_built_holds_the_merge() {
+    let home = tempfile::tempdir().expect("a state folder");
+    let core = home.path().join("core.git");
+    std::fs::create_dir_all(&core).expect("a scratch core");
+    let ago = 3 * 3600;
+    git(&core, &["init", "-q", "-b", "main"], NOW);
+    let commit = |subject: &str, when: i64| {
+        git(
+            &core,
+            &["commit", "-q", "--allow-empty", "-m", subject],
+            when,
+        );
+        git(&core, &["rev-parse", "HEAD"], when)
+    };
+    let old = commit("before", NOW - ago - 600);
+    let merge = commit("feat: the card (#6835)", NOW - ago - 60);
+    std::fs::create_dir_all(home.path().join("mission")).expect("a folder for the record");
+    std::fs::write(home.path().join(PROBES), run("card", 1800, true, 1200)).expect("a record");
+    std::fs::create_dir_all(home.path().join("integration")).expect("a folder for switches");
+    let switch =
+        |ago: i64, core: &str| json!({"at": at(NOW - ago), "revs": {"core": core}}).to_string();
+    let asks = list(&[landed("card", ago, "A", &json!({"pr": "core.nix#6835"}))]);
+    let measured = |switches: &[String]| {
+        std::fs::write(home.path().join(SWITCHES), switches.join("\n")).expect("switches");
+        super::read(home.path(), home.path(), &[], &asks, NOW)
+    };
+    // Built from a core before the merge, the pass ran on old code.
+    let m = measured(&[switch(3600, &old)]);
+    assert!(
+        m.behind.first().is_some_and(|line| line.contains(
+            "passed before a switch could carry it, not live yet, as the switch running \
+             doesn't carry it"
+        )),
+        "a pass on a switch built before the merge proved it: {:?}",
+        m.behind
+    );
+    // A revision core's checkout lacks can't be judged, so isn't live.
+    let m = measured(&[switch(3600, "0123456789abcdef")]);
+    assert!(
+        m.behind.first().is_some_and(|line| {
+            line.contains("cadence can't tell whether the switch running carries it")
+        }),
+        "a switch that couldn't be judged counted as carrying it: {:?}",
+        m.behind
+    );
+    // Built from the merge, the pass after it proves it.
+    let m = measured(&[switch(3600, &old), switch(2400, &merge)]);
+    assert_eq!(
+        (m.target, m.behind.len()),
+        (Some(0.0), 0),
+        "a pass on a switch holding the merge didn't prove it: {} {:?}",
+        m.says,
+        m.behind
+    );
+}
+
+#[test]
+fn a_part_a_switch_doesnt_carry_holds_it_back_whatever_the_harness_carries() {
+    let ago = 3 * 3600;
+    let pr = json!({"pr": "agentic-harness.pi#2326, mycelium#5"});
+    let asks = list(&[landed("mixed", ago, "A", &pr)]);
+    let switch = json!({"at": at(NOW - 3600)}).to_string();
+    let judge = |_: &Value, repo: Repo, _: u32| match repo {
+        Repo::Harness => None,
+        _ => Some(false),
+    };
+    let passed = run("mixed", 600, true, 1200);
+    let m = unproven(&asks, Ok(&passed), Ok(&switch), &judge, NOW);
+    assert!(
+        m.behind
+            .first()
+            .is_some_and(|line| line.contains("as the switch running doesn't carry it")),
+        "a pin not carrying its mycelium change let a pass count: {:?}",
+        m.behind
+    );
+}
+
+#[test]
+fn a_run_at_the_second_its_switch_came_counts() {
+    let asks = list(&[landed("same", 3 * 3600, "A", &json!({}))]);
+    let switch = json!({"at": at(NOW - 1800)}).to_string();
+    let passed = run("same", 1800, true, 1200);
+    let m = unproven(&asks, Ok(&passed), Ok(&switch), &ANY, NOW);
+    assert!(
+        m.behind.is_empty(),
+        "a pass at its switch's second didn't count: {:?}",
+        m.behind
+    );
+}
+
+#[test]
+fn probes_kept_before_any_switch_record_count_any_pass_since_landing() {
+    let home = tempfile::tempdir().expect("a state folder");
+    std::fs::create_dir_all(home.path().join("mission")).expect("a folder for the record");
+    std::fs::write(home.path().join(PROBES), run("proven", 3600, true, 1200)).expect("a record");
+    let asks = list(&[landed("proven", 3 * 3600, "A", &json!({}))]);
+    let m = super::read(home.path(), home.path(), &[], &asks, NOW);
+    assert_eq!(
+        (m.target, m.behind.len()),
+        (Some(0.0), 0),
+        "a machine never switched read its pass as unproven: {} {:?}",
+        m.says,
+        m.behind
+    );
+}
+
+#[test]
+fn marks_that_hide_text_and_a_time_not_written_as_one_stay_out_of_the_line() {
+    let ago = 3 * 3600;
+    let m = read(
+        &[
+            landed(
+                "a\u{202e}b\u{200b}c\u{061c}d\ne",
+                ago,
+                "A",
+                &json!({"at": NOW}),
+            ),
+            landed("plain", ago - 60, "A", &json!({"at": "soon"})),
+        ],
+        &[],
+    );
+    assert_eq!(
+        m.behind
+            .iter()
+            .map(|line| line.split("; ").next().unwrap_or_default())
+            .collect::<Vec<_>>(),
+        ["abcd e, asked ?", "plain, asked ?"],
+        "a mark hiding text, or a time not written as one, reached the line"
+    );
 }

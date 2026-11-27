@@ -303,7 +303,9 @@ fn gather(
     let keeps = orchestrator.is_some();
     all.push(measures::causes::read(state_home, folder, now, keeps));
     all.extend(parted::dates_at_risk(state_home, &core, &asks, now));
-    all.push(measures::unproven::read(state_home, &asks, now));
+    all.push(measures::unproven::read(
+        state_home, folder, checkouts, &asks, now,
+    ));
     all.extend(found);
     let per_merge = rounds_per_merge(state_home, &core, &core_log, &harness_log, now);
     all.extend(per_merge);

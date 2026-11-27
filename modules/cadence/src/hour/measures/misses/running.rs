@@ -541,6 +541,29 @@ pub(super) fn running(switches: &str, repos: &Checkouts) -> BTreeMap<String, Str
     revs
 }
 
+/// Whether the system the switch `line` of integration's `switches.jsonl`
+/// built carries `merge` of `repo`: core's and World's as the switch names
+/// their revisions, and each core pins as that switch's core locks it, so
+/// a pin is what carries a change, never the switch alone. `None` where
+/// cadence can't say: no checkout, no revision named or pinned, or one the
+/// checkout lacks.
+pub(in crate::hour::measures) fn holds(
+    line: &Value,
+    repo: &str,
+    merge: &str,
+    repos: &Checkouts,
+) -> Option<bool> {
+    let revs = switched(line);
+    let rev = if PINNED_BY_CORE.contains(&repo) {
+        let core = repos.get("core")?.to_string_lossy();
+        let at = format!("{}:flake.lock", revs.get("core")?);
+        input_pin(&command("git", &["-C", &core, "show", &at]).ok()?, repo)?
+    } else {
+        revs.get(repo)?.clone()
+    };
+    carries(&repos.get(repo)?.to_string_lossy(), merge, &rev)
+}
+
 /// The revisions a switch was built from, by repository, from a line of
 /// integration's `switches.jsonl`.
 fn switched(switch: &Value) -> BTreeMap<String, String> {

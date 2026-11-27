@@ -231,16 +231,22 @@ pub(crate) fn done(
             "cadence: {key} was closed already, as its line went, so nothing is held"
         ));
     }
-    // A bare close of one its cell holds changes nothing, and says so.
+    // A bare close of one its cell holds changes nothing, and says so; the
+    // why held is another's text, so it reaches the terminal on one line.
+    // A bare close again of one closed bare is told what the first was.
     if fix.is_none()
-        && let Some(held) = settled
-            .as_ref()
-            .filter(|e| e.key.starts_with(UNPROVEN))
-            .and_then(|e| e.fixed.as_deref())
+        && let Some(entry) = settled.as_ref().filter(|e| e.key.starts_with(UNPROVEN))
     {
-        return Ok(format!(
-            "cadence: {key} is held by {held}; give a why after its key to restate it"
-        ));
+        return Ok(match entry.fixed.as_deref() {
+            Some(held) => format!(
+                "cadence: {key} is held by {}; give a why after its key to restate it",
+                terminal_kit::layout::one_line(held)
+            ),
+            None => format!(
+                "cadence: {key} is closed, but asked again next hour unless its probe passes \
+                 by then; say why it can't pass after its key to hold it"
+            ),
+        });
     }
     if let (Some(entry), Some(fix)) = (settled, fix) {
         entry.closed = Some(now);

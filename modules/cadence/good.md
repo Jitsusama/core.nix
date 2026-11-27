@@ -250,12 +250,13 @@ holding a space, as one broken across two lines does, is counted too.
 
 - Measures: `asks-unproven`
 - Target: 0 of his own asks landed over two hours ago whose probe hasn't passed here since it
-  landed, its latest run deciding and a pass counting from the first switch after it landed, or
-  at once for a harness change, which its install carries, unless he confirmed it or it was
-  closed in any way. One naming no probe counts, once any ask names one; until then, or while
-  the probe runs or the switch record can't be read, it goes unjudged. Each
-  landed in the last week is asked of the cell its `answers` names, saying when no switch has
-  come since it landed; older ones count on one line, left to the probes' backfill.
+  landed, its latest run deciding and a pass counting only on a switch since it landed whose
+  core holds each change's merge, or pins it for mycelium; one that can't be judged isn't live.
+  A harness change counts at once, as its install carries it. One he confirmed, or closed in
+  any way, is out. One naming no probe counts, once any ask names one; until then, or while the
+  probe runs or the switch record can't be read, it goes unjudged. Each landed in the last week
+  is asked of the cell its `answers` names, saying when the switch running doesn't carry it;
+  older ones count on one line, left to the probes' backfill.
 - Joel, 26 Nov 11:30: "we need to make sure we have various self improvement loops built in"
 - Over costs him: an ask is called landed when it merged, so he finds for himself that what he
   asked for doesn't work, or never reached him.

@@ -366,7 +366,7 @@ fn unproven_asked(m: &Measure, says: &str) -> Vec<Filed> {
                          {ask}; {state}. No cell can prove what it was asked without one. \
                          Please write each one's probe, or say why they can't have one with \
                          `cadence owe --done {done} WHY`, which holds until their count \
-                         moves. It closes by itself once none is left."
+                         grows. It closes by itself once none is left."
                     )
                 } else {
                     format!(
@@ -450,6 +450,26 @@ fn routed(class: Class) -> bool {
     matches!(class, Class::Clean | Class::Cells)
 }
 
+/// Whether the ask unproven keyed by `rest`, its owner and its ask, is
+/// back in: it's its cell's until its line, whatever its state now, is gone
+/// from the measure, read; unjudged, it stays open.
+fn unproven_back_in(rest: &str, measures: &[Measure]) -> bool {
+    let Some((owner, ask)) = rest.split_once(':') else {
+        return false;
+    };
+    let (opens, ends) = (format!("{ask}; "), format!(" · {owner}"));
+    measures
+        .iter()
+        .find(|m| m.key == unproven::KEY)
+        .is_some_and(|m| {
+            m.target.is_some()
+                && !m
+                    .behind
+                    .iter()
+                    .any(|line| line.starts_with(&opens) && line.ends_with(&ends))
+        })
+}
+
 /// Whether the drag filed as `key` is back in: its miss no longer open,
 /// or its measure read and within its target; a drag filed for each line's
 /// owner carries that owner after its measure's key, and a cells one is
@@ -461,6 +481,7 @@ fn routed(class: Class) -> bool {
 /// unless the rounds measure couldn't read the review record. A figure of
 /// his apps gone from an hour that read their file whole was renamed or
 /// dropped by its owner, so it's back in, as nothing would bring it back.
+/// An ask unproven is back in as `unproven_back_in` says.
 fn back_in(key: &str, measures: &[Measure]) -> bool {
     let key = key.strip_prefix("hour:").unwrap_or(key);
     if key.starts_with(rounds::FRUITLESS) {
@@ -495,26 +516,11 @@ fn back_in(key: &str, measures: &[Measure]) -> bool {
             .map(|(owner, date)| format!("{date} · {owner}"));
         return m.target.is_some() && line.is_none_or(|line| !m.behind.contains(&line));
     }
-    // An ask unproven is its cell's until its line, whatever its state
-    // now, is gone from the measure, read; unjudged, it stays open.
     if let Some(rest) = key
         .strip_prefix(unproven::KEY)
         .and_then(|k| k.strip_prefix(':'))
     {
-        let Some((owner, ask)) = rest.split_once(':') else {
-            return false;
-        };
-        let (opens, ends) = (format!("{ask}; "), format!(" · {owner}"));
-        return measures
-            .iter()
-            .find(|m| m.key == unproven::KEY)
-            .is_some_and(|m| {
-                m.target.is_some()
-                    && !m
-                        .behind
-                        .iter()
-                        .any(|line| line.starts_with(&opens) && line.ends_with(&ends))
-            });
+        return unproven_back_in(rest, measures);
     }
     // A path is measured for a day after its origin was last sampled, so a
     // path gone from the hour is an origin no longer named, and its ask is
@@ -612,12 +618,27 @@ fn fixed_lately(ledger: &[Entry], key: &str, now: i64) -> bool {
 /// nor does the measure's figure, which moves with every other ask.
 fn held(ledger: &[Entry], one: &Filed) -> bool {
     let own = |says: &str| says.split_once(", yours: ").map(|(_, own)| own.to_owned());
+    // The keeper's count of asks naming no probe holds while it isn't past
+    // what it held, since one falling is a probe written or the clock.
+    let count = |own: &Option<String>| {
+        own.as_deref()?
+            .strip_prefix(unproven::UNNAMED)?
+            .strip_prefix("; ")?
+            .strip_suffix(" of them")?
+            .parse::<u64>()
+            .ok()
+    };
     ledger
         .iter()
         .rev()
         .find(|e| e.key == one.key)
         .is_some_and(|e| {
-            !e.open && e.closed.is_some() && e.fixed.is_some() && own(&e.words) == own(&one.says)
+            let (was, now) = (own(&e.words), own(&one.says));
+            let same = match (count(&was), count(&now)) {
+                (Some(was), Some(now)) => now <= was,
+                _ => was == now,
+            };
+            !e.open && e.closed.is_some() && e.fixed.is_some() && same
         })
 }
 
@@ -725,8 +746,9 @@ pub fn file(
         .into_iter()
         .flat_map(|m| filed(m).into_iter().map(move |f| (m, f)))
     {
-        // An ask unproven keeps its line's state as it moves, so its cell's
-        // close holds while the line says the same.
+        // An ask unproven keeps its line's state as it moves, so the late
+        // ask the hubs show reads as it stands, and its cell's close holds
+        // while the line says the same.
         let unproven = one.key.starts_with(&format!("hour:{}:", unproven::KEY));
         if let Some(open) = ledger.iter_mut().find(|e| e.open && e.key == one.key) {
             if unproven {
@@ -1777,6 +1799,13 @@ mod tests {
                 .is_ok_and(|said| said.contains("asked again next hour")),
             "a bare close was told it's done: {bare:?}"
         );
+        let again = owe::done(&mut ledger, &key, None, 5050).map_err(|f| f.exit);
+        assert!(
+            again
+                .as_ref()
+                .is_ok_and(|said| said.contains("asked again next hour")),
+            "a bare close again was refused as unfiled: {again:?}"
+        );
         let why = owe::done(&mut ledger, &key, Some("needs his login"), 5100).map_err(|f| f.exit);
         assert!(
             why.as_ref().is_ok_and(|said| said.contains("now held by")),
@@ -1836,6 +1865,18 @@ mod tests {
             hour(&mut ledger, failed, 8200).is_empty(),
             "a held ask was asked again while its line stood"
         );
+        // Another cell's ask beside it is that cell's, and asks only it.
+        let mut both = measure(unproven::KEY, Class::Functional, 2.0, Some(0.0));
+        both.behind = vec![
+            format!("{card}; its probe {failed} · 1JQPPC"),
+            "run the gate, asked 2026-11-26T10:00:00Z; its probe failed · 80ECO2".to_owned(),
+        ];
+        let told = file(&mut ledger, &[both], "2026-11-26", 9000);
+        assert_eq!(
+            told.iter().map(|(to, _)| to.as_str()).collect::<Vec<_>>(),
+            ["80ECO2"],
+            "a held ask was asked again beside another's"
+        );
         assert_eq!(
             hour(&mut ledger, "failed after switch 1201", 11800).len(),
             1,
@@ -1875,16 +1916,40 @@ mod tests {
             [(keeper, true)],
             "the keeper wasn't asked to write the probes once, or the backfill was filed"
         );
-        unproven.behind[0] = format!("{}; 1 of them · {keeper}", unproven::UNNAMED);
-        let told = file(
-            &mut ledger,
-            std::slice::from_ref(&unproven),
-            "2026-11-26",
-            4600,
-        );
+        let mut hour = |count: u32, at: i64| {
+            unproven.behind[0] = format!("{}; {count} of them · {keeper}", unproven::UNNAMED);
+            file(
+                &mut ledger,
+                std::slice::from_ref(&unproven),
+                "2026-11-26",
+                at,
+            )
+        };
+        let told = hour(3, 4600);
         assert!(told.is_empty(), "a count moving asked again: {told:?}");
+        let key = format!("hour:{}:{keeper}:{}", unproven::KEY, unproven::UNNAMED);
+        let why = owe::done(&mut ledger, &key, Some("the list has none"), 5000);
+        assert!(why.is_ok(), "its keeper couldn't say why");
+        // Falling, as a probe is written or an ask leaves the week, it
+        // holds; only a count grown past what it held is news.
+        let mut hour = |count: u32, at: i64| {
+            unproven.behind[0] = format!("{}; {count} of them · {keeper}", unproven::UNNAMED);
+            file(
+                &mut ledger,
+                std::slice::from_ref(&unproven),
+                "2026-11-26",
+                at,
+            )
+        };
+        assert!(hour(2, 8200).is_empty(), "its why wasn't taken");
+        assert!(hour(1, 11800).is_empty(), "a count falling asked again");
+        assert_eq!(
+            hour(3, 15400).len(),
+            1,
+            "a count grown past its hold wasn't asked"
+        );
         unproven.behind.remove(0);
-        file(&mut ledger, &[unproven], "2026-11-26", 8200);
+        file(&mut ledger, &[unproven], "2026-11-26", 19000);
         assert!(
             ledger.iter().all(|e| !e.open),
             "the ask stayed open once every probe was written"

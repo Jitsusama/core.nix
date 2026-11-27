@@ -25,6 +25,7 @@ mod tested;
 
 pub use held::{BLIND, HELD, held};
 use running::LASTING;
+pub(super) use running::holds;
 pub use running::{UNRUN, UNSEEN, hosts_started};
 pub use symbiosis::{Findings, KEY as FINDINGS, findings, held_for_good, held_unseen};
 pub use tested::{UNTESTED, untested};
@@ -179,6 +180,34 @@ fn merged(
     (found, unread)
 }
 
+/// The merges on `path`'s main since `since`, by the pull request each
+/// merged as `merged_numbers` reads its subject, the first-parent log read
+/// once rather than walked for each; `None` where git couldn't read it.
+pub(super) fn merges_since(path: &Path, since: i64) -> Option<BTreeMap<u64, String>> {
+    let path = path.to_string_lossy();
+    let log = command(
+        "git",
+        &[
+            "-C",
+            &path,
+            "log",
+            "--first-parent",
+            &format!("--since=@{since}"),
+            "--format=%H %s",
+            main_of(&path),
+        ],
+    )
+    .ok()?;
+    let mut merges = BTreeMap::new();
+    for (sha, subject) in log.lines().filter_map(|line| line.split_once(' ')) {
+        for number in merged_numbers(subject) {
+            // The newest is kept, as the log reads newest first.
+            merges.entry(number).or_insert_with(|| sha.to_owned());
+        }
+    }
+    Some(merges)
+}
+
 /// A checkout's main: its `origin/main` where it has one, else its `main`.
 fn main_of(path: &str) -> &'static str {
     if command(
@@ -264,7 +293,7 @@ fn judged<T>(
 /// The checkouts whose mains cadence reads: core's and the harness's, as
 /// `folder` and pi-packages keep them, and each of `checkouts`, as
 /// `NAME=PATH`.
-fn checkouts_of(folder: &Path, checkouts: &[String]) -> Checkouts {
+pub(super) fn checkouts_of(folder: &Path, checkouts: &[String]) -> Checkouts {
     let mut repos = Checkouts::from([
         ("core".to_owned(), folder.join("core.git")),
         ("harness".to_owned(), axes::landings::harness_mirror()),
