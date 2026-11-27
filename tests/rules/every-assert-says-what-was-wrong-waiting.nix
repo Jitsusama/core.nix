@@ -158,7 +158,7 @@
   "modules/hibernate/unlock/src/zswap.rs" = 8;
   "modules/ir-camera/src/v4l2.rs" = 6;
   "modules/key-counts/src/tally.rs" = 5;
-  "modules/lag-watch/src/kernel.rs" = 2;
+  "modules/lag-watch/src/kernel_tests.rs" = 2;
   "modules/lid/docked/src/main.rs" = 11;
   "modules/load-proof/src/frames.rs" = 2;
   "modules/load-proof/src/run.rs" = 4;
