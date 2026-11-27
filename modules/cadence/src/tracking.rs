@@ -9,6 +9,7 @@
 
 use std::collections::BTreeSet;
 
+use jiff::Timestamp;
 use serde_json::Value;
 
 /// Which of the list's kinds an ask is.
@@ -58,19 +59,50 @@ pub fn of(ask: &Value) -> Option<Tracking> {
 #[must_use]
 pub fn untwinned(lines: Vec<Value>) -> Vec<Value> {
     let marked = |ask: &Value| ask["id"].as_str().is_some_and(|id| id.contains('~'));
-    let asked = |ask: &Value| (ask["at"].to_string(), ask["words"].to_string());
-    let copied: BTreeSet<(String, String)> =
-        lines.iter().filter(|ask| !marked(ask)).map(asked).collect();
+    let copied: BTreeSet<[String; 2]> = lines
+        .iter()
+        .filter(|ask| !marked(ask))
+        .map(|ask| asked(ask))
+        .collect();
     lines
         .into_iter()
         .filter(|ask| !marked(ask) || !copied.contains(&asked(ask)))
         .collect()
 }
 
+/// Which ask a line of the list is, as every reader of the list keys it:
+/// the moment it was asked, as seconds when it reads as a time, so one
+/// moment written two ways is one ask, and its words. Later lines of the
+/// same ask stand for it.
+#[must_use]
+pub fn asked(ask: &Value) -> [String; 2] {
+    let at = ask["at"]
+        .as_str()
+        .and_then(|at| at.parse::<Timestamp>().ok())
+        .map_or_else(|| ask["at"].to_string(), |at| at.as_second().to_string());
+    let words = ask["words"]
+        .as_str()
+        .map_or_else(|| ask["words"].to_string(), str::to_owned);
+    [at, words]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn one_moment_written_two_ways_is_one_ask_and_other_words_another() {
+        let utc = json!({"at": "2026-11-13T17:00:00Z", "words": "fix it"});
+        let local = json!({"at": "2026-11-13T12:00:00-05:00", "words": "fix it"});
+        let other = json!({"at": "2026-11-13T12:00:00-05:00", "words": "fix that"});
+        assert_eq!(asked(&utc), asked(&local), "one moment read as two asks");
+        assert_ne!(
+            asked(&local),
+            asked(&other),
+            "other words read as the same ask"
+        );
+    }
 
     #[test]
     fn a_twin_is_left_out_beside_its_ask_and_kept_where_it_is_the_only_line() {

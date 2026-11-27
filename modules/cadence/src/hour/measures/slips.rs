@@ -42,7 +42,7 @@ pub fn slips(text: &str, now: i64, which: Tracking) -> Measure {
         let ours = tracking::of(&ask) == Some(which);
         let landed = seconds(&ask["landed"]);
         let given = promised(&ask);
-        let asked = [ask["at"].to_string(), ask["words"].to_string()];
+        let asked = tracking::asked(&ask);
         let on_ruling = parked::ruling(&ask).is_some();
         dated.insert(
             asked,
@@ -59,11 +59,8 @@ pub fn slips(text: &str, now: i64, which: Tracking) -> Measure {
                 || moved.is_some_and(|moved| moved <= now)
                 || i + 1 < last;
             let late = ours && expected <= now && !kept && (expected > now - DAY || !answered);
-            let key = [
-                ask["at"].to_string(),
-                ask["words"].to_string(),
-                expected.to_string(),
-            ];
+            let [at, words] = tracking::asked(&ask);
+            let key = [at, words, expected.to_string()];
             let first = latest.get(&key).map_or(order, |(first, _)| *first);
             let slip = late.then(|| {
                 (

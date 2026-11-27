@@ -90,7 +90,7 @@ pub(super) fn whole(path: &Path, seen: &mut Seen, now: i64) -> (String, Option<S
 /// from one, so a write torn within its text, and any record written on
 /// after it, isn't passed over unsaid. Every record is an object; blank
 /// lines, as after the last newline, are none of his asks.
-fn torn(text: &str) -> Option<usize> {
+pub(crate) fn torn(text: &str) -> Option<usize> {
     let record = |line: &str| serde_json::from_str::<Value>(line).is_ok_and(|v| v.is_object());
     text.split('\n')
         .position(|line| !line.trim().is_empty() && !record(line))

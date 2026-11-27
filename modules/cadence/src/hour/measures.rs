@@ -26,7 +26,7 @@ mod misses;
 mod owner;
 mod pains;
 pub mod parked;
-mod promised;
+pub mod promised;
 pub mod queues;
 mod reports;
 pub mod rounds;

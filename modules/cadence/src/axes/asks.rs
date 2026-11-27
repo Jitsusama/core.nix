@@ -15,38 +15,58 @@ use serde_json::Value;
 
 use super::{Bar, Reading, shown};
 use crate::DAY;
+use crate::hour::ledger::torn;
+use crate::hour::measures::promised::promised;
 use crate::tracking::{self, Tracking};
 use crate::whole::text_lines;
 
 /// How far back the asks are read: a week, as the card reads its merges.
 const WEEK: i64 = 7 * DAY;
 
-/// One of his asks, its times in seconds.
+/// One of his asks, its times in seconds, and whether any date its owner
+/// gave it passed unmet by `now`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Ask {
     at: i64,
     owner: String,
     expected: Option<i64>,
     landed: Option<i64>,
+    missed: bool,
 }
 
-/// The record as written, its lines that are text, so one torn byte
-/// leaves out its own line rather than all of his asks; or nothing before
-/// it's started. The week's readings judge no ask closed, so a line left
-/// out costs them only that ask.
+/// The record as written, beside why it's unread when it is; or nothing
+/// before it's started. Each ask is read from its latest line, so a line
+/// left out could stand an earlier one in its place, landed as not, or a
+/// date as never missed: a line that isn't text or isn't a record leaves
+/// the list unread, naming the first, as the hour's measures judge it.
 #[must_use]
-pub fn gather(state_home: &Path) -> String {
-    fs::read(state_home.join("mission/asks.jsonl"))
-        .map(|bytes| text_lines(&bytes).0)
-        .unwrap_or_default()
+pub fn gather(state_home: &Path) -> (String, Option<String>) {
+    let bytes = match fs::read(state_home.join("mission/asks.jsonl")) {
+        Ok(bytes) => bytes,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return (String::new(), None),
+        Err(err) => return (String::new(), Some(format!("it can't be read: {err}"))),
+    };
+    let (text, not_text) = text_lines(&bytes);
+    // The lines before the first that isn't text are numbered as written,
+    // so one of them that isn't a record is named first.
+    let why = match (torn(&text), not_text) {
+        (None, None) => return (text, None),
+        (Some(torn), line) if line.is_none_or(|line| torn < line) => {
+            format!("its line {torn} isn't a record")
+        }
+        (_, line) => format!("its line {} isn't text", line.unwrap_or_default()),
+    };
+    (String::new(), Some(why))
 }
 
 /// Each ask of his own that says when he asked, read from its latest line
 /// as the hour's measures read it: the list writes an ask again to move its
 /// date or to land, re-mark or put it down, and folds in twins. A line with
 /// no time is no ask, and one the list set itself or carries for another is
-/// not his.
-fn asks(text: &str) -> Vec<Ask> {
+/// not his. It missed a date, as the slips measure reads its dates, when
+/// one passed before it landed or was met, unless it was moved before it
+/// passed, so a date missed and then moved is still missed.
+fn asks(text: &str, now: i64) -> Vec<Ask> {
     let time = |v: &Value| {
         v.as_str()
             .and_then(|t| t.parse::<Timestamp>().ok())
@@ -56,19 +76,27 @@ fn asks(text: &str) -> Vec<Ask> {
         .lines()
         .filter_map(|line| serde_json::from_str::<Value>(line).ok())
         .collect();
-    let mut latest: BTreeMap<(String, String), Value> = BTreeMap::new();
+    let mut latest: BTreeMap<[String; 2], Value> = BTreeMap::new();
     for ask in tracking::untwinned(lines) {
-        latest.insert((ask["at"].to_string(), ask["words"].to_string()), ask);
+        latest.insert(tracking::asked(&ask), ask);
     }
     latest
         .into_values()
         .filter(|ask| tracking::of(ask) == Some(Tracking::His))
         .filter_map(|ask| {
+            let landed = time(&ask["landed"]);
+            let by = landed.unwrap_or(now);
+            let missed = promised(&ask).iter().any(|p| {
+                p.expected < by
+                    && !p.met.is_some_and(|met| met <= p.expected)
+                    && !p.moved.is_some_and(|moved| moved < p.expected)
+            });
             Some(Ask {
                 at: time(&ask["at"])?,
                 owner: ask["owner"].as_str().unwrap_or("").to_owned(),
                 expected: time(&ask["expected"]),
-                landed: time(&ask["landed"]),
+                landed,
+                missed,
             })
         })
         .collect()
@@ -80,14 +108,16 @@ fn asks(text: &str) -> Vec<Ask> {
 /// waiting raise the middle rather than drop out of it. Half within four
 /// hours is the bar, from "the smallest slice he can try within hours"
 /// (Joel, 11 November); none past its date is the other, since a date is
-/// when the owner expects it to land (Joel, 13 November).
+/// when the owner expects it to land (Joel, 13 November). A list left
+/// `unread` gives neither, saying why.
 #[must_use]
-pub fn readings(text: &str, now: i64) -> Vec<Reading> {
-    let week: Vec<Ask> = asks(text)
+pub fn readings(text: &str, unread: Option<&str>, now: i64) -> Vec<Reading> {
+    let week: Vec<Ask> = asks(text, now)
         .into_iter()
-        .filter(|ask| ask.at > now - WEEK && ask.at <= now)
+        .filter(|ask| unread.is_none() && ask.at > now - WEEK && ask.at <= now)
         .collect();
     let read = !week.is_empty();
+    let unsaid = || unread.map(|why| format!("the list of his asks is unread, as {why}"));
     let mut ages: Vec<f64> = week
         .iter()
         .map(|ask| hours(ask.landed.unwrap_or(now) - ask.at))
@@ -96,13 +126,8 @@ pub fn readings(text: &str, now: i64) -> Vec<Reading> {
     let open: Vec<&Ask> = week.iter().filter(|ask| ask.landed.is_none()).collect();
     let oldest = open.iter().map(|ask| hours(now - ask.at)).reduce(f64::max);
     let mut late: BTreeMap<&str, u32> = BTreeMap::new();
-    for ask in &week {
-        if ask
-            .expected
-            .is_some_and(|by| ask.landed.unwrap_or(now) > by)
-        {
-            *late.entry(ask.owner.as_str()).or_default() += 1;
-        }
+    for ask in week.iter().filter(|ask| ask.missed) {
+        *late.entry(ask.owner.as_str()).or_default() += 1;
     }
     let undated = week.iter().filter(|ask| ask.expected.is_none()).count();
     let from = "the orchestrator's record of his asks";
@@ -114,19 +139,22 @@ pub fn readings(text: &str, now: i64) -> Vec<Reading> {
             "WCJQSG",
         )
         .bar(Bar::AtMost(4.0))
-        .detail(read.then(|| {
-            let reached = week.len() - open.len();
-            let mut said = format!("{reached} of {} this week reached him", week.len());
-            if let Some(oldest) = oldest {
-                let _ = write!(
-                    said,
-                    "; {} still open, the oldest {}, each counted at its age so far",
-                    open.len(),
-                    shown(oldest, " h")
-                );
-            }
-            said
-        }))
+        .detail(
+            read.then(|| {
+                let reached = week.len() - open.len();
+                let mut said = format!("{reached} of {} this week reached him", week.len());
+                if let Some(oldest) = oldest {
+                    let _ = write!(
+                        said,
+                        "; {} still open, the oldest {}, each counted at its age so far",
+                        open.len(),
+                        shown(oldest, " h")
+                    );
+                }
+                said
+            })
+            .or_else(unsaid),
+        )
         .from(from)
         .his(),
         Reading::new(
@@ -136,18 +164,21 @@ pub fn readings(text: &str, now: i64) -> Vec<Reading> {
             "WCJQSG",
         )
         .bar(Bar::AtMost(0.0))
-        .detail(read.then(|| {
-            let owners: Vec<String> = late.iter().map(|(o, n)| format!("{o} {n}")).collect();
-            let mut said = if owners.is_empty() {
-                "none late this week".to_owned()
-            } else {
-                format!("late: {}", owners.join(", "))
-            };
-            if undated > 0 {
-                let _ = write!(said, "; {undated} with no date given yet");
-            }
-            said
-        }))
+        .detail(
+            read.then(|| {
+                let owners: Vec<String> = late.iter().map(|(o, n)| format!("{o} {n}")).collect();
+                let mut said = if owners.is_empty() {
+                    "none late this week".to_owned()
+                } else {
+                    format!("late: {}", owners.join(", "))
+                };
+                if undated > 0 {
+                    let _ = write!(said, "; {undated} with no date given yet");
+                }
+                said
+            })
+            .or_else(unsaid),
+        )
         .from(from)
         .his(),
     ]
@@ -208,7 +239,7 @@ mod tests {
             line("2026-11-13T19:00:00-05:00", "C", None, None),
         ]
         .join("\n");
-        let [middle, late] = readings(&text, NOW).try_into().unwrap();
+        let [middle, late] = readings(&text, None, NOW).try_into().unwrap();
         assert_eq!(middle.now, Some(2.0));
         assert!(middle.his, "his asks' time was read from our side");
         assert_eq!(
@@ -229,7 +260,7 @@ mod tests {
     #[test]
     fn no_record_reads_unread_and_a_line_with_no_time_is_no_ask() {
         for text in ["", "{\"owner\":\"A\"}\nnot json"] {
-            let [middle, late] = readings(text, NOW).try_into().unwrap();
+            let [middle, late] = readings(text, None, NOW).try_into().unwrap();
             assert_eq!((middle.now, late.now), (None, None));
             assert_eq!((middle.detail, late.detail), (None, None));
         }
@@ -243,7 +274,7 @@ mod tests {
             None,
             Some("2026-11-02T12:00:00-05:00"),
         );
-        assert_eq!(readings(&text, NOW)[0].now, None);
+        assert_eq!(readings(&text, None, NOW)[0].now, None);
     }
 
     #[test]
@@ -261,7 +292,7 @@ mod tests {
             .map(|(n, line)| line.replace("\"words\":\"\"", &format!("\"words\":\"ask {n}\"")))
             .collect::<Vec<_>>()
             .join("\n");
-        let owners: Vec<String> = asks(&text).into_iter().map(|ask| ask.owner).collect();
+        let owners: Vec<String> = asks(&text, NOW).into_iter().map(|ask| ask.owner).collect();
         assert_eq!(owners, [""], "his alone, of the three");
     }
 
@@ -272,8 +303,16 @@ mod tests {
             serde_json::from_str(&line(at, "A", Some("2026-11-13T13:00:00-05:00"), None))
                 .expect("an ask line");
         moved["id"] = "0000000a".into();
+        moved["promised"] = serde_json::json!([
+            {"expected": "2026-11-13T13:00:00-05:00", "given": "2026-11-13T12:05:00-05:00"}
+        ]);
+        // Its 13:00 passed, and only then was it moved to 22:00.
         let mut now_dated = moved.clone();
         now_dated["expected"] = "2026-11-13T22:00:00-05:00".into();
+        now_dated["promised"] = serde_json::json!([
+            {"expected": "2026-11-13T13:00:00-05:00", "given": "2026-11-13T12:05:00-05:00"},
+            {"expected": "2026-11-13T22:00:00-05:00", "given": "2026-11-13T13:30:00-05:00"}
+        ]);
         let mut landed = now_dated.clone();
         landed["landed"] = "2026-11-13T14:00:00-05:00".into();
         let mut twin = landed.clone();
@@ -284,7 +323,7 @@ mod tests {
             .map(ToString::to_string)
             .collect::<Vec<_>>()
             .join("\n");
-        let [middle, late] = readings(&text, NOW).try_into().unwrap();
+        let [middle, late] = readings(&text, None, NOW).try_into().unwrap();
         assert_eq!(
             middle.detail.as_deref(),
             Some("1 of 1 this week reached him"),
@@ -297,13 +336,53 @@ mod tests {
         );
         assert_eq!(
             late.now,
-            Some(0.0),
-            "the date it was moved from was counted late"
+            Some(1.0),
+            "a date missed and only then moved wasn't counted late"
         );
     }
 
     #[test]
-    fn a_torn_byte_leaves_out_its_line_and_no_other_of_the_week() {
+    fn a_date_moved_before_it_passed_or_met_by_it_is_not_late() {
+        let ask = |promised: Value, landed: Option<&str>| {
+            let mut ask: Value = serde_json::from_str(&line(
+                "2026-11-13T12:00:00-05:00",
+                "A",
+                Some("2026-11-13T22:00:00-05:00"),
+                landed,
+            ))
+            .expect("an ask line");
+            ask["promised"] = promised;
+            ask.to_string()
+        };
+        let moved_early = ask(
+            serde_json::json!([
+                {"expected": "2026-11-13T13:00:00-05:00", "given": "2026-11-13T12:05:00-05:00"},
+                {"expected": "2026-11-13T22:00:00-05:00", "given": "2026-11-13T12:50:00-05:00"}
+            ]),
+            Some("2026-11-13T14:00:00-05:00"),
+        );
+        let met = ask(
+            serde_json::json!([
+                {"expected": "2026-11-13T13:00:00-05:00", "given": "2026-11-13T12:05:00-05:00",
+                 "met": "2026-11-13T12:55:00-05:00"},
+                {"expected": "2026-11-13T22:00:00-05:00", "given": "2026-11-13T13:30:00-05:00"}
+            ]),
+            Some("2026-11-13T14:00:00-05:00"),
+        );
+        for (text, why) in [
+            (moved_early, "moved before it passed"),
+            (met, "met by its date"),
+        ] {
+            assert_eq!(
+                readings(&text, None, NOW)[1].now,
+                Some(0.0),
+                "a date {why} was counted late"
+            );
+        }
+    }
+
+    #[test]
+    fn a_torn_line_leaves_the_list_unread_naming_it() {
         let home = tempfile::tempdir().expect("a scratch home");
         fs::create_dir_all(home.path().join("mission")).expect("the mission folder");
         let first = line("2026-11-13T12:00:00-05:00", "A", None, None);
@@ -311,15 +390,32 @@ mod tests {
         let mut bytes = format!("{first}\n").into_bytes();
         bytes.extend_from_slice(b"{\"at\":\"2026-11-13T13:00:00-05:00\",\"owner\":\"\xff\"}\n");
         bytes.extend_from_slice(format!("{last}\n").as_bytes());
-        fs::write(home.path().join("mission/asks.jsonl"), bytes).expect("the asks list");
-        let owners: Vec<String> = asks(&gather(home.path()))
-            .into_iter()
-            .map(|ask| ask.owner)
-            .collect();
+        fs::write(home.path().join("mission/asks.jsonl"), &bytes).expect("the asks list");
+        let (text, unread) = gather(home.path());
+        let [middle, late] = readings(&text, unread.as_deref(), NOW).try_into().unwrap();
+        let said = Some("the list of his asks is unread, as its line 2 isn't text");
         assert_eq!(
-            owners,
-            ["A", "B"],
-            "a torn byte left out more than its own line, or kept it"
+            (
+                middle.now,
+                late.now,
+                middle.detail.as_deref(),
+                late.detail.as_deref()
+            ),
+            (None, None, said, said),
+            "a torn byte was read past, which could stand an earlier line in its place"
+        );
+        let mut record = format!("{first}\n").into_bytes();
+        record.extend_from_slice(b"[1]\n");
+        fs::write(home.path().join("mission/asks.jsonl"), record).expect("the asks list");
+        assert_eq!(
+            gather(home.path()).1.as_deref(),
+            Some("its line 2 isn't a record"),
+            "a line that isn't a record was read past"
+        );
+        assert_eq!(
+            gather(&home.path().join("nowhere")),
+            (String::new(), None),
+            "a list not yet started read as unread"
         );
     }
 }
