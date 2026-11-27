@@ -503,6 +503,23 @@ in
         && lib.any (lib.hasPrefix (unprovenSaidOf "two")) crossWarnings
         && !lib.any (lib.hasPrefix (unprovenSaidOf "one")) crossWarnings
         && !warnsOf grown;
+      # A realm still giving the bare yes the vouched node replaced is
+      # refused, saying what to set instead.
+      stillYes = account (bareNixos [
+        self.nixosModules.workstation
+        {
+          home-manager.users.someone.jitsusama.pi.hosts = lib.recursiveUpdate (growingHostsOf (
+            _: "${pkgs.emptyDirectory}/node"
+          ) { one = 70; }) { one.conversationHeapGrowthMayGoUnproven = true; };
+        }
+      ]);
+      yesSaid = lib.concatStrings [
+        "jitsusama.pi.hosts.one.conversationHeapGrowthMayGoUnproven is gone: name the node known "
+        "to take conversationHeapGrowingPercent in conversationHeapGrowthVouchedNode instead"
+      ];
+      yesRefused = lib.any (
+        check: !check.assertion && lib.hasPrefix yesSaid check.message
+      ) stillYes.assertions;
     in
     # Kept in Nix because each line reads a build Nix gives it for words
     # Nix makes from that build's own inputs, which a script of its own
@@ -559,6 +576,11 @@ in
         echo "a machine cross-built for another platform didn't have its proof stand" \
           "unproven, warning of a realm vouching for another node and not of one vouching for" \
           "its own, or one built on its own platform warned"
+        exit 1
+      ''}
+      ${lib.optionalString (!yesRefused) ''
+        echo "a realm still giving conversationHeapGrowthMayGoUnproven wasn't refused" \
+          "with what to set instead"
         exit 1
       ''}
       touch $out

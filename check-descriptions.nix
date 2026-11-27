@@ -3627,7 +3627,8 @@
     run, a package's folder among them, fails saying which and what to do, node 22, which pi is
     built with, takes it and the rendered unit files name that proof, and a machine cross-built
     for another platform has the proof stand unproven and warns of it unless its realm vouches for
-    that very node, where one built on its own platform doesn't
+    that very node, where one built on its own platform doesn't, and a realm still giving the bare
+    yes the vouched node replaced is refused, saying what to set instead
   '';
   pi-conversations-take-heap-growth = ''
     node 22, which pi is built with, and the tree's own node, each started with the word a realm's

@@ -587,6 +587,15 @@ in
               own platform is proven either way.
             '';
           };
+          # The bare yes conversationHeapGrowthVouchedNode replaced, kept
+          # unlisted so a machine still setting it is told what to set,
+          # rather than that no such option exists.
+          conversationHeapGrowthMayGoUnproven = lib.mkOption {
+            type = lib.types.bool;
+            default = false;
+            visible = false;
+            description = "Gone: name the node in conversationHeapGrowthVouchedNode.";
+          };
           asyncContextFrame = lib.mkOption {
             type = lib.types.bool;
             default = false;
@@ -745,7 +754,11 @@ in
           if one then "Drop it." else "Drop each one."
         } A host's node takes no option from a realm but its heap, set with heapMb, and V8's async context frame, set with asyncContextFrame; a conversation's own node takes its heap and its growth too, set with conversationHeapMb and conversationHeapGrowingPercent. The conversations' commands share the host's environment, so they get none of these from it: a command that needs one sets it itself.";
       }
-    ) cfg;
+    ) cfg
+    ++ lib.mapAttrsToList (realm: host: {
+      assertion = !host.conversationHeapGrowthMayGoUnproven;
+      message = "jitsusama.pi.hosts.${realm}.conversationHeapGrowthMayGoUnproven is gone: name the node known to take conversationHeapGrowingPercent in conversationHeapGrowthVouchedNode instead, so a node changed later warns again.";
+    }) cfg;
 
   # A realm whose proof stands unproven, as on a machine built on another
   # platform, says so here, since its switch can't.
