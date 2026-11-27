@@ -777,9 +777,15 @@ fn notifying(summary: &str, body: &str) -> Vec<String> {
         .replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;");
-    ["--app-name=Dictation", "--expire-time=2000", "--", summary, &body]
-        .map(str::to_owned)
-        .to_vec()
+    [
+        "--app-name=Dictation",
+        "--expire-time=2000",
+        "--",
+        summary,
+        &body,
+    ]
+    .map(str::to_owned)
+    .to_vec()
 }
 
 /// Sends `line` to the service and copies what it answers to standard
