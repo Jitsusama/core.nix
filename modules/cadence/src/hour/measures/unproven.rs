@@ -222,7 +222,8 @@ struct Sight<'a> {
 /// Which switch runs now.
 #[derive(Clone, Copy)]
 enum Runs {
-    /// The newest the record names, as where nothing else is known.
+    /// The newest the record names, as the tests' pure reading takes it.
+    #[cfg(test)]
     Newest,
     /// The one of this system generation.
     Generation(u64),
@@ -281,7 +282,9 @@ type Unproven = (i64, String, String);
 /// list names a probe, or while the runs can't be read, the measure says so
 /// and goes unjudged, so no ask is asked for a probe its keeper hasn't
 /// written yet and an unread record never reads as none passed. The
-/// newest switch is taken to run, and every merge to be found.
+/// newest switch is taken to run, and every merge to be found; only the
+/// tests read it so, as the hour reads what runs through `read`.
+#[cfg(test)]
 #[must_use]
 pub fn unproven(
     text: &str,
@@ -544,6 +547,7 @@ impl Switches<'_> {
             return Carry::Unmerged;
         }
         let line = match self.sight.running {
+            #[cfg(test)]
             Runs::Newest => self.switched.last(),
             Runs::Generation(running) => {
                 let named = |(_, line): &&(i64, Value)| generation(line) == Some(running);
