@@ -316,7 +316,8 @@ def cloud_named() -> dict[str, list[dict[str, object]]]:
     named = text.replace('"osprey"', f'"{CLOUD_NAMED}"').replace(
         "machine:osprey", f"machine:{CLOUD_NAMED}"
     )
-    return json.loads(named)["kinds"]
+    reading: dict[str, list[dict[str, object]]] = json.loads(named)["kinds"]
+    return reading
 
 
 def feeding(cell: str, ago: timedelta = timedelta()) -> dict[str, object]:
@@ -655,7 +656,8 @@ def drawn_boxes(page: Page, cells: list[str], why: str) -> list[list[float]]:
         missing = [cell for cell, box in zip(cells, boxes, strict=True) if not box]
         message = f"{why}: {missing or cells} undrawn"
         raise AssertionError(message) from undrawn
-    return drawn.json_value()
+    measured: list[list[float]] = drawn.json_value()
+    return measured
 
 
 def strongest(page: Page, cell: str) -> float:
