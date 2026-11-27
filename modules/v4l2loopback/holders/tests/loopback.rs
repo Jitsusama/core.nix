@@ -42,12 +42,20 @@ impl Watch {
     /// Starts the watch on a source with no node in it, as a relay that has
     /// none says, with its folder locked, so its first write fails.
     fn locked(name: &str) -> Self {
+        Self::started(name, "", lock)
+    }
+
+    /// Starts the watch on a source with no node in it, beside the files a
+    /// run killed while its camera was held left: a holders file naming a
+    /// holder, and a node file saying the camera was /dev/random. The
+    /// holders file's folder is locked, so its nobody can't be written;
+    /// the node files' folder isn't.
+    fn stale(name: &str) -> Self {
         Self::started(name, "", |folder| {
-            fs::set_permissions(folder, Permissions::from_mode(0o555)).unwrap();
-            assert!(
-                File::create(folder.join("probe")).is_err(),
-                "a locked folder still took a file, as it does for root"
-            );
+            fs::write(folder.join("Stand-in"), "firefox\n").unwrap();
+            fs::create_dir(folder.join(".devices")).unwrap();
+            fs::write(folder.join(".devices/Stand-in"), "/dev/random\n").unwrap();
+            lock(folder);
         })
     }
 
@@ -191,6 +199,16 @@ impl Drop for Watch {
         let _ = fs::set_permissions(self.folder.join(".devices"), Permissions::from_mode(0o755));
         let _ = fs::remove_dir_all(&self.root);
     }
+}
+
+/// Locks a folder, so no file can be written in it, checking it took: root
+/// writes in any folder, which would pass the tests of a write that fails.
+fn lock(folder: &Path) {
+    fs::set_permissions(folder, Permissions::from_mode(0o555)).unwrap();
+    assert!(
+        File::create(folder.join("probe")).is_err(),
+        "a locked folder still took a file, as it does for root"
+    );
 }
 
 /// How often the watch complained of one file, not the other, whose
@@ -445,17 +463,7 @@ fn a_loopback_with_no_camera_is_ready_only_once_its_node_file_is_gone() {
 
 #[test]
 fn a_node_file_stays_until_its_loopbacks_nobody_is_written() {
-    // A node file a killed run left, beside a holders file that can't be
-    // written: the folder's locked, the node files' folder isn't.
-    let watch = Watch::started("ordered", "", |folder| {
-        fs::create_dir(folder.join(".devices")).unwrap();
-        fs::write(folder.join(".devices/Stand-in"), "/dev/random\n").unwrap();
-        fs::set_permissions(folder, Permissions::from_mode(0o555)).unwrap();
-        assert!(
-            File::create(folder.join("probe")).is_err(),
-            "a locked folder still took a file, as it does for root"
-        );
-    });
+    let watch = Watch::stale("ordered");
     watch.until(
         |watch| complaints_of(watch, &watch.file()) == 1,
         "a nobody it couldn't write went unsaid",
@@ -512,17 +520,7 @@ fn a_stopped_watch_keeps_its_node_named_while_its_nobody_cant_be_written() {
 
 #[test]
 fn a_stop_with_no_camera_tries_its_nobody_and_node_file_once_more() {
-    // A node file a killed run left, beside a holders file that can't be
-    // written, as in the test of their order.
-    let mut watch = Watch::started("lasting", "", |folder| {
-        fs::create_dir(folder.join(".devices")).unwrap();
-        fs::write(folder.join(".devices/Stand-in"), "/dev/random\n").unwrap();
-        fs::set_permissions(folder, Permissions::from_mode(0o555)).unwrap();
-        assert!(
-            File::create(folder.join("probe")).is_err(),
-            "a locked folder still took a file, as it does for root"
-        );
-    });
+    let mut watch = Watch::stale("lasting");
     watch.until(
         |watch| complaints_of(watch, &watch.file()) == 1,
         "a nobody it couldn't write went unsaid",
@@ -550,31 +548,18 @@ fn a_stop_with_no_camera_tries_its_nobody_and_node_file_once_more() {
 
 #[test]
 fn a_stop_whose_nobody_still_cant_be_written_keeps_its_node_file() {
-    // A node file a killed run left, beside a holders file that can't be
-    // written, as in the test of their order.
-    let mut watch = Watch::started("kept", "", |folder| {
-        fs::create_dir(folder.join(".devices")).unwrap();
-        fs::write(folder.join(".devices/Stand-in"), "/dev/random\n").unwrap();
-        fs::set_permissions(folder, Permissions::from_mode(0o555)).unwrap();
-        assert!(
-            File::create(folder.join("probe")).is_err(),
-            "a locked folder still took a file, as it does for root"
-        );
-    });
+    let mut watch = Watch::stale("kept");
     watch.until(
         |watch| complaints_of(watch, &watch.file()) == 1,
         "a nobody it couldn't write went unsaid",
     );
     // Stopped still locked, so the stop's own try at its nobody fails too,
-    // and the node file that finds its holders file must stay.
+    // and its holders file still says the holder the killed run left: the
+    // node file a reader finds that holder's camera by must stay.
     watch.stop();
     assert!(
-        !watch.file().exists(),
-        "a holders file was written in a locked folder"
-    );
-    assert!(
         watch.named(),
-        "a stop removed its node file while its nobody still couldn't be written"
+        "a stop removed the node file of a holder its holders file still says"
     );
 }
 
