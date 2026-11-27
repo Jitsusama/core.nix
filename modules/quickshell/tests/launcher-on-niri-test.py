@@ -4689,9 +4689,12 @@ def test_the_home_network_rests_whole_where_the_wheel_leaves_it(shell: Shell) ->
     middle = ((card["left"] + card["right"]) // 2, (card["top"] + card["foot"]) // 2)
     shell.as_account(f"{wlrctl} pointer move {middle[0]} {middle[1]}")
     # Turns that aren't a whole number of rows, so the view can stop inside one: small ones
-    # past the list's end and back past its top, then larger ones down and up.
-    places = []
-    for by in [35] * 7 + [-35] * 12 + [70] * 3 + [-70] * 3:
+    # past the list's end and back to its top, then larger ones down and up. A turn may come to
+    # rest where it set off (one from 156 did, 2026-11-27), so the way back up
+    # turns until it's at the top, in under three times the turns it took down.
+    places: list[int] = []
+
+    def turn(by: int) -> int:
         was = shell.showing()["scrolled"]
         # Said, so a wait that runs out names which way the wheel went and from where.
         print(f"the wheel by {by} from {was}")
@@ -4710,10 +4713,19 @@ def test_the_home_network_rests_whole_where_the_wheel_leaves_it(shell: Shell) ->
         assert rested(shown), (by, shown["scrolled"], shown["restsOnARow"], shown["cut"])
         none_drawn_cut(shell, f"the wheel by {by} from {was}", selection_in_view=False)
         places.append(shown["scrolled"])
-    # The small turns reached past the top row and came back to it, so the places between
-    # were each rested at.
-    assert max(places[:7]) > 0, places
-    assert places[18] == 0, places
+        return int(shown["scrolled"])
+
+    down = 7
+    for _ in range(down):
+        turn(35)
+    # The small turns reached past the top row, so the places between were each rested at.
+    assert max(places) > 0, places
+    up = 0
+    while turn(-35) > 0:
+        up += 1
+        assert up < 3 * down, f"{up} small turns up never reached the top: {places}"
+    for by in [70] * 3 + [-70] * 3:
+        turn(by)
     shell.close_launcher()
 
 
