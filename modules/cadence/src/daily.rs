@@ -51,6 +51,7 @@ pub fn run(folder: &Path, state_home: &Path, told: &Told, now: i64) -> io::Resul
     let today = read(state_home, now - DAY, now, &held);
     let before = kept(&days, now);
     let mut judged = judge::judge(&today, &before);
+    // A name that can't be read leaves the findings saying only the hours.
     let machine = fs::read_to_string("/proc/sys/kernel/hostname").unwrap_or_default();
     on_machine(&mut judged.worse, machine.trim(), today.to);
     let kept_at = folder.join("findings.jsonl");
