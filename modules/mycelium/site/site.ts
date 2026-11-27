@@ -73,6 +73,8 @@ let owed = false;
 let expires: number | undefined;
 // When the map was first drawn with its messages yet to answer.
 let readingSince: number | undefined;
+// What the standing line last said, so a line the drawing wrote since is told apart.
+let saidLast: string | undefined;
 
 /**
  * The worst of the watches' states, the one the map says. Messages still
@@ -116,7 +118,8 @@ function sayHow(): void {
   const now = standing();
   const problems = [...unread.values()];
   const trouble = problems.length > 0 ? ` Couldn't read: ${problems.join("; ")}.` : "";
-  asof.textContent = `${sayStanding(now)}${talkWords(now)}${trouble}`;
+  saidLast = `${sayStanding(now)}${talkWords(now)}${trouble}`;
+  asof.textContent = saidLast;
   asof.dataset["state"] = now?.state ?? "connecting";
   // The drawing's own look for a map that isn't now.
   asof.classList.toggle("stale", now?.state === "stale" || now?.state === "broken");
@@ -134,9 +137,20 @@ function talkWords(now: Standing | undefined): string {
   }
   if (readingSince === undefined) {
     readingSince = Date.now();
-    globalThis.setTimeout(sayHow, TALK_PATIENCE_MS + 1);
+    globalThis.setTimeout(sayPastPatience, TALK_PATIENCE_MS + 1);
   }
   return Date.now() - readingSince > TALK_PATIENCE_MS ? WAITING_TALK : READING_TALK;
+}
+
+/**
+ * Says how the map stands once its patience with messages has run out,
+ * unless the drawing has written the line since, as when a reading
+ * couldn't draw: that stays until the next reading says otherwise.
+ */
+function sayPastPatience(): void {
+  if (asof.textContent === saidLast) {
+    sayHow();
+  }
 }
 
 /** Hands the drawing the map as it stands now. */
