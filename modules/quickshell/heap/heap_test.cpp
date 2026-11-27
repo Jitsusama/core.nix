@@ -27,7 +27,11 @@
 // (qtdeclarative-small-runs-split-first.patch); and what's made after a
 // sweep over chunks half and a quarter full fills the half-full ones, so the
 // others empty and are freed once what they kept is let go
-// (qtdeclarative-chunks-fullest-filled-first.patch). Its census counts all that's
+// (qtdeclarative-chunks-fullest-filled-first.patch); and a steady few hundred
+// arrays of 2 to 16 KB, a third grown afresh in their place at each of 48
+// collections, leave the chunks holding within a quarter of what they held
+// after the fifth, finding the free runs that fit them rather than new
+// chunks (qtdeclarative-large-runs-by-size.patch). Its census counts all that's
 // live and names a shape kept by its property names, but no key taken from
 // data. Its holders count names the property that keeps the most first,
 // each by the file declaring it and its folder, counts what the engine
@@ -1292,6 +1296,104 @@ bool sortsEachBinFullestFirst() {
     return tried && intact && ordered;
 }
 
+// How many arrays are kept, each of 256 to 2048 numbers grown by push, so
+// its store is 2 to 16 KB, 65 to 513 slots, and was made again at each
+// doubling; how many cycles replace a third of them with arrays grown
+// afresh, each collected after; at which cycle what's held is first read,
+// once the heap has grown into its churn; and how far past that what the
+// chunks hold, and what's live, may grow by the last.
+constexpr int CHURNED = 300;
+constexpr int CHURN_CYCLES = 48;
+constexpr int CHURN_SETTLED = 5;
+constexpr double CHURN_GROWTH = 1.25;
+constexpr double CHURN_LIVE_DRIFT = 1.10;
+
+// Whether a heap churning arrays of 2 to 16 KB in a steady live set, left
+// room as the shell is, holds about as much after 48 cycles as after five.
+// Joel's shell held 77 MB of chunks around 45 live as it started and 253 MB
+// around 79 six and a half hours on, only 51 MB of its 174 free in wholly
+// free pages (2026-11-27), as it would if a request of 63 slots or more took
+// a new chunk while free runs that fit it sat in the bins, passed in its
+// tries on runs too small for it.
+// It holds only if the arrays were made and read back, and what's live held
+// steady, so a churn that kept more each cycle fails it rather than passing
+// as growth that was live.
+bool holdsUnderLargeChurn() {
+    QJSEngine engine;
+    Heap heap(&engine);
+    heap.leaveRoom(ROOM_MB);
+    // Park and Miller's generator, whose products stay exact in a double.
+    const QJSValue churning = engine.evaluate(
+        QStringLiteral("(() => { let seed = 1; const next = () => (seed = seed * 48271 % "
+                       "2147483647); const grown = () => { const length = 256 + next() % "
+                       "1793; const each = []; for (let i = 0; i < length; i++) each.push(i); "
+                       "return each; }; const kept = []; for (let i = 0; i < %1; i++) "
+                       "kept.push(grown()); return { churn: () => { for (let i = 0; i < %1 / 3; "
+                       "i++) kept[next() % %1] = grown(); }, intact: () => kept.length === %1 && "
+                       "kept.every((each) => each.length >= 256 && each.every((value, i) => "
+                       "value === i)) }; })()")
+            .arg(CHURNED));
+    const QJSValue churn = churning.property(QStringLiteral("churn"));
+    const QV4::BlockAllocator &allocator = engine.handle()->memoryManager->blockAllocator;
+    bool churned = !churning.isError() && churn.isCallable();
+    Room settled{};
+    std::size_t settledChunks = 0;
+    for (int cycle = 1; churned && cycle <= CHURN_CYCLES; ++cycle) {
+        churned = !churn.call().isError();
+        engine.collectGarbage();
+        if (cycle == CHURN_SETTLED) {
+            settled = roomOf(heap);
+            settledChunks = allocator.chunks.size();
+        }
+    }
+    const Room last = roomOf(heap);
+    // What each large bin holds after the last sweep, and how many runs in
+    // all.
+    QStringList large;
+    for (std::size_t bin = QV4::BlockAllocator::NumExactBins;
+         bin < QV4::BlockAllocator::NumBins; ++bin) {
+        int runs = 0;
+        for (const QV4::HeapItem *m = allocator.freeBins[bin]; m; m = m->freeData.next)
+            ++runs;
+        large << QString::number(runs);
+    }
+    const bool intact =
+        churned && engine.evaluate(QStringLiteral("(churning) => churning.intact()"))
+                       .call({churning})
+                       .toBool();
+    // 300 arrays of 1150 numbers on average take over 2 MB.
+    const bool steady = intact && settled.live > 2 &&
+                        last.live < settled.live * CHURN_LIVE_DRIFT &&
+                        last.live > settled.live / CHURN_LIVE_DRIFT;
+    const bool flat = last.chunks <= settled.chunks * CHURN_GROWTH;
+    // Said whether it holds or not, so a build's log shows how far it's
+    // within its bound.
+    std::fprintf(stderr,
+                 "heap_test: churning arrays of 2 to 16 KB, the chunks held %.1f MB in %zu "
+                 "chunks around %.1f live after cycle %d, and %.1f MB in %zu around %.1f after "
+                 "cycle %d, within %.1f MB; the large bins held %s runs\n",
+                 settled.chunks, settledChunks, settled.live, CHURN_SETTLED, last.chunks,
+                 allocator.chunks.size(), last.live, CHURN_CYCLES,
+                 settled.chunks * CHURN_GROWTH, qPrintable(large.join(QLatin1Char('/'))));
+    if (!intact)
+        std::fprintf(stderr, "FAIL the churned arrays were made and read back as made%s\n",
+                     churning.isError() ? qPrintable(QStringLiteral(": ") + churning.toString())
+                                        : "");
+    else if (!steady)
+        std::fprintf(stderr,
+                     "FAIL what's live stays steady through the churn: %.1f MB after cycle %d, "
+                     "%.1f after cycle %d\n",
+                     settled.live, CHURN_SETTLED, last.live, CHURN_CYCLES);
+    else if (!flat)
+        std::fprintf(stderr,
+                     "FAIL a heap churning arrays of 2 to 16 KB holds within a quarter of what "
+                     "it held after cycle %d: %.1f MB in %zu chunks then %.1f MB in %zu, live "
+                     "%.1f then %.1f MB\n",
+                     CHURN_SETTLED, settled.chunks, settledChunks, last.chunks,
+                     allocator.chunks.size(), settled.live, last.live);
+    return intact && steady && flat;
+}
+
 bool expect(const char *what, bool holds, const Weight &before, const Weight &after) {
     if (!holds)
         std::fprintf(stderr,
@@ -2433,6 +2535,7 @@ int main(int argc, char **argv) {
     const bool whole = leavesLargeRunsWhole();
     const bool fullest = fillsTheFullestFirst();
     const bool inOrder = sortsEachBinFullestFirst();
+    const bool churnHeld = holdsUnderLargeChurn();
     const bool census = namesWhatsKept();
     const bool covered = residentCoversWhatsLive();
     const bool placed = placesWhatMadeIt();
@@ -2448,9 +2551,9 @@ int main(int argc, char **argv) {
     return grows && falls && holds && scattered && bounded && timed && collects && roomy &&
                    roomyOutside && lasting && lastingOutside && stillCollectsOutside &&
                    reckoned && ownLimits && burstPaced && litterPaced && capped && follows &&
-                   given && lent && fits && whole && fullest && inOrder && census && covered &&
-                   placed && stands && underWay && holdsIt && waitsItOut && stray && alone &&
-                   aloneOutside && swept && chained
+                   given && lent && fits && whole && fullest && inOrder && churnHeld &&
+                   census && covered && placed && stands && underWay && holdsIt && waitsItOut &&
+                   stray && alone && aloneOutside && swept && chained
                ? 0
                : 1;
 }
