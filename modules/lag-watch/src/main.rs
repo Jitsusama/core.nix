@@ -246,20 +246,19 @@ fn snapshot(
         // An app's thread blocked in the kernel, on a lock, a page read back or reclaim, hangs
         // its window without waiting for a CPU, so its time blocked is read beside its waits.
         // Its sched file is read once, for both, after its schedstat, as each
-        // two-second read takes them.
-        let stat_text = kernel::text(&thread.schedstat);
-        let sched_text = kernel::text(&thread.schedstat.with_file_name("sched"));
+        // two-second read takes them, and not at all once its schedstat is gone.
+        let Some((sched, sched_text)) = kernel::read_sched_and_text(&thread.schedstat) else {
+            continue;
+        };
         if apps::is_app(thread)
             && let Some(ns) = kernel::blocked(&sched_text)
         {
             s.blocked.insert(thread.clone(), ns);
         }
-        if let Some(sched) = kernel::read_sched_beside(&stat_text, &sched_text) {
-            if hidden {
-                s.resting.insert(thread.clone(), sched);
-            } else {
-                s.threads.insert(thread.clone(), sched);
-            }
+        if hidden {
+            s.resting.insert(thread.clone(), sched);
+        } else {
+            s.threads.insert(thread.clone(), sched);
         }
     }
     for label in lowered.into_values().flatten() {

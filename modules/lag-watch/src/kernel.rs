@@ -171,18 +171,28 @@ pub fn sched(text: &str) -> Option<Sched> {
 /// fair count grew by at most 2 ms on each (docs/kernel.md, The Patches).
 /// None for a schedstat that can't be read.
 pub fn read_sched(schedstat: &Path) -> Option<Sched> {
-    let stat_text = text(schedstat);
-    read_sched_beside(&stat_text, &text(&schedstat.with_file_name("sched")))
+    read_sched_and_text(schedstat).map(|(read, _)| read)
 }
 
-/// `read_sched`, given both files already read, so a caller that reads
-/// the `sched` for more than the wait reads it once. Each caller reads the
-/// schedstat first and the `sched` after it, the order the carry's tests
-/// describe.
-pub fn read_sched_beside(stat_text: &str, sched_text: &str) -> Option<Sched> {
-    let mut read = sched(stat_text)?;
-    read.fair_ns = waited(sched_text);
-    Some(read)
+/// `read_sched`, with the text of the `sched` it read, so a caller that
+/// reads the `sched` for more than the wait reads it once. The schedstat is
+/// read first and the `sched` after it, the order the carry's tests
+/// describe, and only once the schedstat gave a read: a thread that ended
+/// would otherwise cost a second failed open on every two-second read.
+pub fn read_sched_and_text(schedstat: &Path) -> Option<(Sched, String)> {
+    read_in_order(schedstat, text)
+}
+
+/// `read_sched_and_text`, each file read by `read`, so a test can see
+/// which files it opens, and in what order.
+fn read_in_order(
+    schedstat: &Path,
+    mut read: impl FnMut(&Path) -> String,
+) -> Option<(Sched, String)> {
+    let mut found = sched(&read(schedstat))?;
+    let sched_text = read(&schedstat.with_file_name("sched"));
+    found.fair_ns = waited(&sched_text);
+    Some((found, sched_text))
 }
 
 /// How long a thread has waited for a CPU in all, in nanoseconds, by the

@@ -227,6 +227,43 @@ fn a_thread_s_fair_count_is_read_beside_its_schedstat() {
 }
 
 #[test]
+fn a_thread_whose_schedstat_is_gone_never_has_its_sched_opened() {
+    let gone = Path::new("/proc/7/task/7/schedstat");
+    let mut asked = Vec::new();
+    let read = read_in_order(gone, |path| {
+        asked.push(path.to_path_buf());
+        String::new()
+    });
+    assert_eq!(read, None, "a thread that ended was read");
+    assert_eq!(
+        asked,
+        [gone.to_path_buf()],
+        "the sched was opened after its schedstat gave nothing"
+    );
+    // One still running is read in the order the carry's tests describe.
+    let kept = Path::new("/proc/8/task/8/schedstat");
+    let mut asked = Vec::new();
+    let read = read_in_order(kept, |path| {
+        asked.push(path.to_path_buf());
+        if path.ends_with("schedstat") {
+            "5000000 3000000 40\n".to_string()
+        } else {
+            "t (8, #threads: 1)\n----------------\nwait_sum : 2.000000\n".to_string()
+        }
+    });
+    assert_eq!(
+        read.map(|(found, _)| found.fair_ns),
+        Some(Some(2_000_000)),
+        "the fair count wasn't read after the schedstat"
+    );
+    assert_eq!(
+        asked,
+        [kept.to_path_buf(), kept.with_file_name("sched")],
+        "the files weren't read schedstat first, then sched"
+    );
+}
+
+#[test]
 fn a_wait_is_the_lesser_of_the_two_counts() {
     let at = |wait_ns, fair_ns| Sched {
         wait_ns,

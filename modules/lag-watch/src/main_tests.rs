@@ -211,6 +211,46 @@ fn a_lowered_tab_whose_name_the_kernel_cut_mid_letter_still_rests() {
     fs::remove_dir_all(&dir).unwrap();
 }
 
+// A thread that ended between the minute's looks leaves no schedstat, and
+// its sched is never opened, so nothing it left behind is read as a count.
+#[test]
+fn a_thread_whose_schedstat_is_gone_gives_nothing_from_its_sched() {
+    let dir = std::env::temp_dir().join(format!("lag-watch-gone-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    let at = dir.join("85/task/85");
+    fs::create_dir_all(&at).unwrap();
+    fs::write(
+        dir.join("85/stat"),
+        "85 (slack) S 70 1 1 0 -1 0 1 0 0 0 5 6 0 0 20 0 30 0\n",
+    )
+    .unwrap();
+    fs::write(
+        at.join("sched"),
+        "slack (85, #threads: 9)\n----------------\n\
+         wait_sum : 40.000000\nstats.sum_block_runtime : 12.500000\n",
+    )
+    .unwrap();
+    let gone = kernel::Thread {
+        label: "slack-ui",
+        name: "slack".into(),
+        schedstat: at.join("schedstat"),
+        call: false,
+    };
+    let s = snapshot(&dir, &dir, &[gone], BTreeMap::new());
+    assert!(
+        s.threads.is_empty() && s.resting.is_empty(),
+        "a thread without a schedstat was read: {:?} {:?}",
+        s.threads,
+        s.resting
+    );
+    assert!(
+        s.blocked.is_empty(),
+        "the sched of a thread without a schedstat was read: {:?}",
+        s.blocked
+    );
+    fs::remove_dir_all(&dir).unwrap();
+}
+
 #[test]
 fn a_hidden_tab_is_left_out_on_the_paths_the_watch_finds_its_threads_by() {
     use kernel::tests::{ACCOUNT, opened, write};
