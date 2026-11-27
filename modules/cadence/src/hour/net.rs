@@ -8,9 +8,11 @@
 //! writes its results only with its first run, as its own journal reads.
 //! A results line that isn't text or isn't JSON is read past and named on
 //! the line, rather than leaving it unread: the net's results are only ever
-//! appended to, so one bad line would leave the line unread for good, and
-//! read past, the worst it costs is a check shown broken until its next run.
-//! A failure to read the file at all still leaves the line unread.
+//! appended to, so one bad line would leave the line unread for good. Read
+//! past, a torn pass can show a check broken until its next run, and a torn
+//! failure can show it passing, as main's reader did before with no word of
+//! it; the note on the line is what tells the two from a whole file. A
+//! failure to read the file at all still leaves the line unread.
 
 use std::fs;
 use std::io::ErrorKind;
@@ -19,7 +21,6 @@ use std::path::Path;
 use super::measures::{self, Measure};
 use super::{NET, NET_RULES};
 use crate::reverted::Told;
-use crate::whole::text_lines;
 
 /// The file at `path` whole, `None` when it was never written, or why it
 /// can't be read.
@@ -69,28 +70,29 @@ pub fn read_both(
 }
 
 /// The net's results as text of its ended lines that are JSON, and what
-/// was read past: the first line that isn't text, as `text_lines` finds
-/// it, and each that isn't JSON. A last line with no end yet is one the
-/// net is still appending, in its one write per line, and is left for the
-/// next hour to read.
+/// was read past: each ended line that isn't text or isn't JSON, by its
+/// number in the file. A last line with no end yet is one the net is
+/// still appending, in its one write per line, and is left for the next
+/// hour to read, whatever its bytes, since its end is judged before its
+/// text.
 fn results(bytes: &[u8]) -> (String, Vec<String>) {
-    let (text, not_text) = text_lines(bytes);
-    let mut past: Vec<String> = not_text
-        .map(|n| format!("line {n}, which isn't text"))
-        .into_iter()
-        .collect();
-    let ended = if text.is_empty() || text.ends_with('\n') {
-        text.as_str()
-    } else {
-        text.rsplit_once('\n').map_or("", |(ended, _)| ended)
-    };
+    let mut past = Vec::new();
     let mut kept = String::new();
-    for (n, line) in ended.lines().enumerate() {
-        if line.trim().is_empty() || serde_json::from_str::<serde_json::Value>(line).is_ok() {
-            kept.push_str(line);
-            kept.push('\n');
-        } else {
-            past.push(format!("line {}, which isn't JSON", n + 1));
+    let Some(end) = bytes.iter().rposition(|&byte| byte == b'\n') else {
+        return (kept, past);
+    };
+    let ended = &bytes[..end];
+    for (n, line) in ended.split(|&byte| byte == b'\n').enumerate() {
+        match std::str::from_utf8(line) {
+            Err(_) => past.push(format!("line {}, which isn't text", n + 1)),
+            Ok(text)
+                if text.trim().is_empty()
+                    || serde_json::from_str::<serde_json::Value>(text).is_ok() =>
+            {
+                kept.push_str(text);
+                kept.push('\n');
+            }
+            Ok(_) => past.push(format!("line {}, which isn't JSON", n + 1)),
         }
     }
     (kept, past)
@@ -154,12 +156,48 @@ mod tests {
             "results with a line being appended weren't judged by their ended lines: {}",
             broken.says
         );
+        assert!(
+            !broken.says.contains("read past"),
+            "a line being appended was read past, not left to wait: {}",
+            broken.says
+        );
         fs::write(folder.join("reverted.json"), r#"{"reverts":5}"#).expect("a misshapen record");
         let [reverts, _] = read_both(&folder, &state, &core, "", 1_000);
         assert!(
             reverts.target.is_none() && reverts.says.contains("isn't JSON of its shape"),
             "a reverted.json of another shape was judged: {}",
             reverts.says
+        );
+    }
+
+    #[test]
+    fn each_bad_line_is_named_by_its_place_in_the_file_and_a_cut_last_one_waits() {
+        let ended = run_lines(&[(100, true), (880, false)]);
+        let bad = [ended.as_bytes(), b"\xff\n\xfe\n{torn\n"].concat();
+        assert_eq!(
+            results(&bad),
+            (
+                ended.clone(),
+                vec![
+                    "line 3, which isn't text".to_owned(),
+                    "line 4, which isn't text".to_owned(),
+                    "line 5, which isn't JSON".to_owned(),
+                ]
+            ),
+            "a bad line was named by its place among the text lines, not the file's"
+        );
+        // Cut inside a character as it is appended, a last line still
+        // waits, and the ended line before it is kept.
+        let cut = [ended.as_bytes(), b"{\"log\":\"\xc3"].concat();
+        assert_eq!(
+            results(&cut),
+            (ended, Vec::new()),
+            "a last line cut in a character was named, or dropped the line before it"
+        );
+        assert_eq!(
+            results(b"{\"at\":1"),
+            (String::new(), Vec::new()),
+            "a first line still being appended was read"
         );
     }
 
