@@ -27,7 +27,12 @@
 //! A call written down whole is given to be summed up (summarizer.rs)
 //! once no call is being heard and Parakeet is let go, so the two models
 //! are never held at once. What can't be heard is said in a notice
-//! (notices.rs).
+//! (notices.rs) and in the call's file (unheard.rs).
+//!
+//! Long because it is the one thread holding each call as it's heard,
+//! and each step a take goes through, heard, embedded, written down or
+//! told it wasn't, changes that call's state here; its cases are kept
+//! apart, in hear_tests.rs.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
@@ -236,22 +241,8 @@ pub fn hear(
                 let _ = sums.send(key);
             }
         }
-        let job = if calls.is_empty() && speech.is_some() {
-            match jobs.recv_timeout(UNUSED) {
-                Ok(job) => job,
-                Err(RecvTimeoutError::Timeout) => {
-                    speech = None;
-                    speakers = Speakers::default();
-                    eprintln!("call-transcripts: Parakeet let go");
-                    continue;
-                }
-                Err(RecvTimeoutError::Disconnected) => return,
-            }
-        } else {
-            match jobs.recv() {
-                Ok(job) => job,
-                Err(_) => return,
-            }
+        let Some(job) = next_job(jobs, calls.is_empty(), &mut speech, &mut speakers) else {
+            return;
         };
         match job {
             Job::Take {
@@ -263,18 +254,19 @@ pub fn hear(
                 let writing = calls
                     .entry(key.clone())
                     .or_insert_with(|| taken_up(&mut ended, book, &key, me));
-                let Some(parakeet) = loaded(settings, &mut speech, book, &key, &mut told) else {
-                    continue;
+                let parakeet = match loaded(settings, &mut speech) {
+                    Ok(parakeet) => parakeet,
+                    Err(why) => {
+                        let notice = || notices::not_transcribed(&title_of(book, &key), &why);
+                        shown(not_heard(book, &key, writing, me, start, &mut told, notice));
+                        continue;
+                    }
                 };
                 let heard = transcribe_take(parakeet, start, &samples);
                 let ((text, words), failed) = heard_or_left_out(heard);
                 if let Some(why) = failed {
-                    writing.unheard = Some(unheard::and(writing.unheard, start));
-                    let title = title_of(book, &key);
-                    let tell = told_once(&mut told, &key, || notices::not_all_heard(&title, &why));
-                    if let Some(notice) = tell {
-                        notices::show(&notice, |_| {});
-                    }
+                    let notice = || notices::not_all_heard(&title_of(book, &key), &why);
+                    shown(not_heard(book, &key, writing, me, start, &mut told, notice));
                 }
                 // Embedded once Parakeet has heard it, so a call's first
                 // line never waits on the speaker model's loading.
@@ -381,6 +373,29 @@ fn heard_or_left_out(
     }
 }
 
+/// A take `start` samples into `key`'s call that wasn't heard, its model
+/// not loading or failing on it: counted in what the call's file says
+/// wasn't heard, and `notice` for it, unless the call was told already.
+fn not_heard(
+    book: &Shared,
+    key: &str,
+    writing: &mut Writing,
+    me: &str,
+    start: usize,
+    told: &mut HashSet<String>,
+    notice: impl FnOnce() -> Notice,
+) -> Option<Notice> {
+    writing.unheard = Some(unheard::and(writing.unheard, start));
+    told_once(told, key, notice)
+}
+
+/// A `notice`, shown, if there is one.
+fn shown(notice: Option<Notice>) {
+    if let Some(notice) = notice {
+        notices::show(&notice, |_| {});
+    }
+}
+
 /// The `notice` for a failure in `key`'s call, the first time one is told;
 /// none once it has been, `told` holding the calls told until each ends.
 /// Its model not loading and failing on part of it share it, so a call
@@ -419,29 +434,43 @@ fn compile_ahead(settings: &Settings) {
     }
 }
 
-/// Parakeet, loaded first if it isn't; none when it won't load, which a
-/// notice says once a call, `told` holding the calls already told.
+/// Parakeet, loaded first if it isn't, or why it won't load, as a
+/// call's notice says it.
 fn loaded<'a>(
     settings: &Settings,
     speech: &'a mut Option<Parakeet>,
-    book: &Shared,
-    key: &str,
-    told: &mut HashSet<String>,
-) -> Option<&'a mut Parakeet> {
-    if speech.is_none() {
-        match settings.load() {
-            Ok(parakeet) => *speech = Some(parakeet),
-            Err(why) => {
-                eprintln!("call-transcripts: Parakeet didn't load: {why}");
-                let why = format!("The speech model didn't load: {why}");
-                let notice = || notices::not_transcribed(&title_of(book, key), &why);
-                if let Some(notice) = told_once(told, key, notice) {
-                    notices::show(&notice, |_| {});
-                }
+) -> Result<&'a mut Parakeet, String> {
+    let parakeet = match speech.take() {
+        Some(parakeet) => parakeet,
+        None => settings.load().map_err(|why| {
+            eprintln!("call-transcripts: Parakeet didn't load: {why}");
+            format!("The speech model didn't load: {why}")
+        })?,
+    };
+    Ok(speech.insert(parakeet))
+}
+
+/// The next job, or none once no more can come. With no call being
+/// heard (`idle`) and Parakeet kept, it's let go with the speaker model
+/// when no job comes within `UNUSED`, and the wait goes on.
+fn next_job(
+    jobs: &Receiver<Job>,
+    idle: bool,
+    speech: &mut Option<Parakeet>,
+    speakers: &mut Speakers,
+) -> Option<Job> {
+    while idle && speech.is_some() {
+        match jobs.recv_timeout(UNUSED) {
+            Ok(job) => return Some(job),
+            Err(RecvTimeoutError::Timeout) => {
+                *speech = None;
+                *speakers = Speakers::default();
+                eprintln!("call-transcripts: Parakeet let go");
             }
+            Err(RecvTimeoutError::Disconnected) => return None,
         }
     }
-    speech.as_mut()
+    jobs.recv().ok()
 }
 
 /// A take of theirs embedded in pieces by the speaker model, as

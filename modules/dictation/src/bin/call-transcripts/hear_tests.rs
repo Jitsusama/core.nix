@@ -582,10 +582,10 @@ fn a_call_is_told_once_whichever_failure_comes_first() {
 }
 
 #[test]
-fn a_transcript_says_what_wasnt_heard_and_keeps_it_when_taken_up() {
+fn a_transcript_says_what_wasnt_heard() {
     // Once the notice is gone, the file is all that says a call's
-    // transcript is missing part of it, so it says so, and a restart
-    // reading it back keeps saying so.
+    // transcript is missing part of it, so it says so, ahead of the
+    // record's note and its lines.
     let mut writing = Writing {
         lines: vec![line(Side::Mine, 10, None)],
         ..Writing::default()
@@ -607,6 +607,59 @@ fn a_transcript_says_what_wasnt_heard_and_keeps_it_when_taken_up() {
     assert!(
         said.contains("Invited: Ada and Bo.") && said.contains("**Joel**, 0:10: Said."),
         "saying what wasn't heard lost the note or a line: {said}"
+    );
+}
+
+#[test]
+fn a_take_not_heard_is_written_down_at_once_and_read_back_after_a_restart() {
+    // After a lost device every take may fail, so none is heard again
+    // to write the file: each take not heard writes it, and a restart
+    // reads its count back from the Transcript section alone, not from
+    // a summary that quotes the note.
+    let folder = tempfile::tempdir().unwrap();
+    let book = Shared::new(Book::default());
+    let quoted = Unheard {
+        stretches: 9,
+        first: SECOND,
+    };
+    book.lock().put(Record {
+        folder: folder.path().to_path_buf(),
+        summary: Some(quoted.note()),
+        ..record(&[], None)
+    });
+    let mut writing = Writing {
+        lines: vec![line(Side::Mine, 10, None)],
+        ..Writing::default()
+    };
+    let mut told = HashSet::new();
+    let part = || notices::not_all_heard("Planning", "the encoder failed");
+    let mut lose = |at| not_heard(&book, "call:e1", &mut writing, "Joel", at, &mut told, part);
+    let first = lose(80 * SECOND).map(|notice| notice.heading);
+    let read_back = || resumed(&book, "call:e1", "Joel").unheard;
+    let unheard = |stretches| {
+        Some(Unheard {
+            stretches,
+            first: 80 * SECOND,
+        })
+    };
+    assert_eq!(
+        first.as_deref(),
+        Some("Part of Planning Wasn't Heard"),
+        "the call's first take not heard wasn't told"
+    );
+    assert_eq!(
+        read_back(),
+        unheard(1),
+        "a take not heard wasn't written down before the next line was heard"
+    );
+    assert!(
+        lose(90 * SECOND).is_none(),
+        "a call was told twice of part not heard"
+    );
+    assert_eq!(
+        read_back(),
+        unheard(2),
+        "a restart didn't read back how much wasn't heard"
     );
 }
 
