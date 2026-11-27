@@ -35,7 +35,12 @@
 //! changes that would merge alone board it rather than move main again
 //! (`right_of_way.rs`).
 //!
-//! A candidate that fails splits: the train takes the first half of its
+//! A candidate that fails first asks whose its failed checks are: one
+//! whose failures are each on the quarantine list runs once more with the
+//! same riders, and otherwise the riders whose own passes moved what
+//! failed, or keep no pass to say they didn't, fall at once while the
+//! rest ride on, unless that would be all of them or a failure is no
+//! rider's (`blame.rs`). Otherwise it splits: the train takes the first half of its
 //! riders to board, and halves again while they fail, so the riders that
 //! broke nothing land together and the one that breaks it is found alone,
 //! five riders in five runs at most (`Splitting`). A train red for more
@@ -54,6 +59,7 @@
 //! Long because one ride, from boarding through each run to landing, is
 //! read here in order; its parts that stand alone are modules below.
 
+use std::collections::BTreeSet;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -66,6 +72,7 @@ use crate::state::short;
 use right_of_way::Ended;
 pub use right_of_way::gives_way;
 
+mod blame;
 mod gated;
 mod hub;
 mod installed;
@@ -725,9 +732,14 @@ fn unsent(
 }
 
 /// After the candidate `candidate` of `merged` riders failed, its words in
-/// `log`: the next takes fewer riders, or the rider that rode it alone
-/// falls, or every rider does, as `splitting` says.
+/// `log`: it runs once more, when its red is wholly on the quarantine
+/// list, or the riders that moved what failed fall (`blame.rs`), or else
+/// the next takes fewer riders, or the rider that rode it alone falls, or
+/// every rider does, as `splitting` says.
 fn red(root: &Path, candidate: &str, log: &Path, merged: &[String], splitting: &mut Splitting) {
+    if blamed(root, candidate, log, merged, splitting) {
+        return;
+    }
     let (falling, why) = match splitting.red(merged.len()) {
         After::Falls => (merged.to_vec(), "the candidate it rode alone"),
         After::AllFall => (
@@ -760,6 +772,66 @@ fn red(root: &Path, candidate: &str, log: &Path, merged: &[String], splitting: &
         );
         let _ = fall(root, head, &said);
     }
+}
+
+/// Whether the red of the candidate `candidate` of `merged` riders, its
+/// words in `log`, was settled by what failed in it: run once more, being
+/// wholly on the quarantine list in the train's checkout, or put on the
+/// riders whose own passes moved what failed, which fall while the rest
+/// ride on. Neither, and the search halves as before.
+fn blamed(
+    root: &Path,
+    candidate: &str,
+    log: &Path,
+    merged: &[String],
+    splitting: &mut Splitting,
+) -> bool {
+    let Some(failing) = blame::failed(&words_of(log)) else {
+        return false;
+    };
+    let failing_said = failing.iter().cloned().collect::<Vec<_>>().join(", ");
+    let listed = fs::read_to_string(folder(root).join("checkout").join(crate::world::QUARANTINE))
+        .ok()
+        .and_then(|list| serde_json::from_str::<Value>(&list).ok())
+        .map(|list| blame::listed(&list))
+        .unwrap_or_default();
+    if blame::flaky(&failing, &listed) && splitting.again() {
+        println!(
+            "merge-net: the candidate {} failed only in {failing_said}, each on the quarantine \
+             list, so it runs once more before any rider is blamed",
+            short(candidate)
+        );
+        return true;
+    }
+    if merged.len() < 2 {
+        return false;
+    }
+    let riders: Vec<(String, Option<BTreeSet<String>>)> = merged
+        .iter()
+        .map(|head| (head.clone(), blame::moved_in(&crate::ready::record(head))))
+        .collect();
+    let Some(owners) = blame::owners(&failing, &riders) else {
+        return false;
+    };
+    splitting.blamed();
+    println!(
+        "merge-net: the candidate {} failed changed-checks in {failing_said}, which {} of its \
+         {} riders moved, or can't say they didn't, so they fall back to running again alone \
+         and the rest ride on",
+        short(candidate),
+        owners.len(),
+        merged.len()
+    );
+    let said = format!(
+        "the candidate {} failed changed-checks in {failing_said}, which its own pass moved or \
+         can't say it didn't; its words are in {}",
+        short(candidate),
+        log.display()
+    );
+    for head in &owners {
+        let _ = fall(root, head, &said);
+    }
+    true
 }
 
 /// Run the gate in `checkout`, its words going to `log`: how it ended.

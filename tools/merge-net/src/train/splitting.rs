@@ -47,6 +47,9 @@ pub(super) struct Splitting {
     /// When the first of the candidates in a row no builder took ended;
     /// none since one was taken.
     untaken_since: Option<u64>,
+    /// Whether the last candidate ran again for a red wholly on the
+    /// quarantine list (`blame.rs`).
+    reran: bool,
 }
 
 impl Splitting {
@@ -60,6 +63,7 @@ impl Splitting {
 
     /// A candidate of `riding` riders failed.
     pub(super) fn red(&mut self, riding: usize) -> After {
+        self.reran = false;
         if riding > 1 {
             self.suspects = riding;
             return After::Narrows;
@@ -70,6 +74,7 @@ impl Splitting {
             fell_alone: !twice,
             turned: false,
             untaken_since: None,
+            reran: false,
         };
         if twice { After::AllFall } else { After::Falls }
     }
@@ -102,11 +107,27 @@ impl Splitting {
         self.untaken_since = None;
     }
 
+    /// A candidate's red is wholly on the quarantine list: whether it runs
+    /// again, as it does once, before anyone is blamed for it.
+    pub(super) fn again(&mut self) -> bool {
+        self.reran = !self.reran;
+        self.reran
+    }
+
+    /// A red candidate's failures were put on the riders that moved them,
+    /// which fall: the rest ride the next candidate together, and the
+    /// search, if one went on, starts afresh, since its suspects fell.
+    pub(super) fn blamed(&mut self) {
+        self.suspects = 0;
+        self.reran = false;
+    }
+
     /// A candidate of `riding` riders landed.
     pub(super) fn landed(&mut self, riding: usize) {
         self.suspects = self.suspects.saturating_sub(riding);
         self.fell_alone = false;
         self.turned = false;
+        self.reran = false;
     }
 
     /// GitHub refused a passing candidate's first rider, which leaves the
