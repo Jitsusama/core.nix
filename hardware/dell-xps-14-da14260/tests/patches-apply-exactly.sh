@@ -21,14 +21,25 @@ fi
 listed=$(xargs lsdiff --strip=1 --no-filename <"$exact")
 sorted=$(sort -u <<<"$listed")
 mapfile -t files <<<"$sorted"
+# A file some patch creates isn't in the source to take out: that patch
+# makes it.
+statuses=$(xargs lsdiff --status --strip=1 --no-filename <"$patches")
+created=$(sed -n 's/^+ //p' <<<"$statuses")
+kept=$sorted
+if [ -n "$created" ]; then
+  kept=$(grep -v -x -F "$created" <<<"$sorted" || true)
+fi
+mapfile -t taken <<<"$kept"
 mkdir -p "$out"
-if [ -d "$source" ]; then
-  for file in "${files[@]}"; do
+if [ -z "$kept" ]; then
+  :
+elif [ -d "$source" ]; then
+  for file in "${taken[@]}"; do
     install -D -m 644 "$source/$file" "$out/$file"
   done
 else
   wanted=()
-  for file in "${files[@]}"; do
+  for file in "${taken[@]}"; do
     wanted+=("*/$file")
   done
   tar xf "$source" -C "$out" --strip-components=1 --wildcards "${wanted[@]}"
@@ -48,7 +59,7 @@ while IFS= read -r patch; do
     name=${name#*-}
     # Applied whole, as the build does, but held to its hunks' own lines.
     said=$(patch -p1 --forward --batch --fuzz=0 <"$patch" 2>&1) || {
-      echo "$name no longer applies with no fuzz:"
+      echo "$name no longer applies with no fuzz, after the patches before it:"
       echo "$said"
       failed=1
       continue
@@ -56,7 +67,7 @@ while IFS= read -r patch; do
     # Only patch's report of a hunk is read, since a file's own name can hold
     # either word.
     if grep -Eq '^Hunk #[0-9]+ succeeded at [0-9]+ (\(offset|with fuzz)' <<<"$said"; then
-      echo "$name applies only at an offset or with fuzz:"
+      echo "$name applies only at an offset or with fuzz, after the patches before it:"
       echo "$said"
       failed=1
     fi

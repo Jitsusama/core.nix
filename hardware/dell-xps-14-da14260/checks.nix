@@ -18,11 +18,11 @@ let
     ipu7-drivers
     ;
   # A few files of a source, with each patch given applied to them, as the
-  # machine builds them (tests/patched-kernel-source.sh).
+  # machine builds them (core's kernel's tests/patched-kernel-source.sh).
   patched =
     source: patches: files:
     pkgs.runCommandLocal "patched-source" { nativeBuildInputs = [ pkgs.patchutils ]; } ''
-      ${lib.getExe pkgs.bash} ${./tests/patched-kernel-source.sh} ${source} ${
+      ${lib.getExe pkgs.bash} ${../../modules/kernel/tests/patched-kernel-source.sh} ${source} ${
         pkgs.writeText "patches" (lib.concatMapStrings (patch: "${patch}\n") patches)
       } $out ${lib.escapeShellArgs files}
     '';
@@ -267,17 +267,20 @@ in
   # afresh, so the power-off after found it still in its bootloader and
   # refused, rolling the hibernation back with the laptop left on. Nothing
   # takes the driver off the chip for it any more, so its thaw must be the
-  # plain wake the kernel has made it since 7.3.6, and never the resume
-  # that resets (tests/thaw-is-a-plain-wake.sh).
+  # plain wake the kernel has made it since 7.3.6, and every reset in the
+  # wake it shares must sit under a test a thaw can't meet. The driver's C
+  # is read as tests and blocks, not as words, so an else, a second reset
+  # or a braceless if is judged too (tests/thaw-is-a-plain-wake.py).
   bluetooth-lets-a-hibernation-power-off =
     let
       driver = "drivers/bluetooth/btintel_pcie.c";
     in
-    pkgs.runCommandLocal "bluetooth-lets-a-hibernation-power-off" { } ''
-      ${lib.getExe pkgs.bash} ${./tests/thaw-is-a-plain-wake.sh} \
-        ${kernelSource [ driver ]}/${driver}
-      touch $out
-    '';
+    pkgs.runCommandLocal "bluetooth-lets-a-hibernation-power-off"
+      { nativeBuildInputs = [ pkgs.python3 ]; }
+      ''
+        python3 ${./tests/thaw-is-a-plain-wake.py} ${kernelSource [ driver ]}/${driver}
+        touch $out
+      '';
 
   # The patches taken from linux-next were made against 7.3 as the XPS 14
   # builds it, and next.nix says each applies with no offset or fuzz. A
@@ -319,21 +322,6 @@ in
     pkgs.runCommandLocal "bluetooth-recovers-from-an-unread-exception" { } ''
       ${lib.getExe pkgs.bash} ${./tests/every-unread-dump-resets.sh} \
         ${kernelSource [ driver ]}/${driver}
-      touch $out
-    '';
-
-  # A join through wpa_supplicant recorded the network's name only after
-  # finding the access point's country, and one that names none ended the
-  # join's last step first, so networkd couldn't match the network's file.
-  # Core's kernel carried the fix until 7.3.6 took it, so the kernel the
-  # laptop builds must still name the network first
-  # (tests/ssid-before-country.sh).
-  wifi-names-a-network-without-a-country =
-    let
-      sme = "net/wireless/sme.c";
-    in
-    pkgs.runCommandLocal "wifi-names-a-network-without-a-country" { } ''
-      ${lib.getExe pkgs.bash} ${./tests/ssid-before-country.sh} ${kernelSource [ sme ]}/${sme}
       touch $out
     '';
 
