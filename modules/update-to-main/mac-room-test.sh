@@ -4,11 +4,11 @@
 # at the floor or over it, with nothing swapped out between; short from a
 # first reading, one too soon, too stale or from later than now, one under
 # the floor, any swap-out or a count started again; and can't tell, never
-# room, from a figure it can't read or one too long for bash to compare,
-# a record it can't keep, a floor that isn't a number or an argument left
-# out, which it names in its own words, or a reading or floor with a
-# leading zero; a record too long to compare or holding a leading zero
-# starts again; and zero alone is a number. sysctl and
+# room, from a figure it can't read, one too long for bash to compare or
+# one with a leading zero, a record it can't keep, a floor that isn't a
+# number or an argument left out, each named in its own words; a record
+# too long to compare or holding a leading zero starts again; and zero
+# alone is a number. sysctl and
 # vm_stat are stand-ins printing what the test sets, sysctl only for the
 # figure mac-room.sh must ask for. Time passing is the record set back.
 #
@@ -127,11 +127,13 @@ if [ "${read_at:0:1}" = 0 ]; then
 fi
 reading 60 40 0099
 look "a record's swap-outs with a leading zero" 40 100 0 "one reading of the Mac's room so far"
+reading 60 040 100
+look "a record's share with a leading zero" 40 100 0 "one reading of the Mac's room so far"
 # Zero alone is a number: a Mac that never swapped has room.
 reading 60 40 0
 look "no swap-outs ever" 40 0 1 "40% then 40% free"
 reading 60 0 100
-look "a first reading of nothing free" 40 100 0 "0% then 40% free"
+look "a record of nothing free" 40 100 0 "0% then 40% free"
 # A reading of the Mac now with a leading zero can't tell, as macOS never
 # prints one.
 reading 60 40 100
@@ -155,7 +157,7 @@ if [ "${ended}" != 69 ] || ! grep -qF "isn't a whole number" "${PWD}/said"; then
 fi
 ended=0
 "${BASH}" "${room}" "${bin}/sysctl" "${bin}/vm_stat" "${record}" 035 2>"${PWD}/said" || ended=$?
-if [ "${ended}" != 69 ] || ! grep -qF "isn't a whole number" "${PWD}/said"; then
+if [ "${ended}" != 69 ] || ! grep -qF "with no leading zero" "${PWD}/said"; then
   echo "FAIL a floor with a leading zero: ended ${ended}: $(<"${PWD}/said")" >&2
   failures=$((failures + 1))
 fi
