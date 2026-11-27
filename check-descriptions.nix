@@ -1325,6 +1325,11 @@
   every-folder-says-what-it-holds = ''
     every folder says what goes in it, but those still waiting for their note
   '';
+  every-linked-prompt-keeps-key-time = ''
+    every Prompt of the shell whose linked() its file calls is given keyNow in its own block, so
+    its link's quiet is timed on the launcher's monotonic clock rather than a wall clock that can
+    step back
+  '';
   every-lock-agrees-with-its-manifests = ''
     every Cargo.lock names each dependency its crates' manifests take, and none they dropped, as
     cargo locks them

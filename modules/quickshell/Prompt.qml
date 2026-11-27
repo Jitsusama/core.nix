@@ -243,7 +243,8 @@ Item {
     // quiet (linked) is timed on it too, so such a step can't drop every
     // key, Escape among them, for as long as it went back. Super+S's line
     // is given it too, as a link opens it. A prompt given none keeps the
-    // wall clock, so one a link may open must be given it.
+    // wall clock, so every-linked-prompt-keeps-key-time fails one whose
+    // linked() its file calls.
     property var keyNow: () => Date.now()
     // How soon after visual's operator the same key again is taken with
     // it (Operators.takenWith), as his Neovim's timeoutlen
