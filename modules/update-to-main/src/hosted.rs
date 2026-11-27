@@ -243,7 +243,7 @@ pub fn holds(config: &Config, hosted: &Hosted, commit: &str, head: &str) -> Resu
     };
     let account = run::account(&hosted.user)?;
     let token = token(hosted, &account)?;
-    read::descends(config, api, &token, commit, head)
+    read::holds(config, api, &token, commit, head)
 }
 
 /// The file at `path` in the folder at `commit`, or none.

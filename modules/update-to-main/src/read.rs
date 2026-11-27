@@ -100,16 +100,33 @@ pub fn read(
     Ok(found)
 }
 
-/// Whether `head` descends from `older`, by the host's word, for a head
-/// root's copy hasn't got.
-pub fn descends(
+/// Whether main at `head` holds `commit`, by the host's word, for a head
+/// root's copy hasn't got. The host answers 404 for a commit it doesn't
+/// know, and for every commit when the token can't see the repository, so
+/// a failed comparison is passed on as the host's only once the same token
+/// shows it `head`. Otherwise a token command giving a token that sees
+/// nothing would lift a hold of main's own commit.
+pub fn holds(
     config: &Config,
     api: &str,
     token: &str,
-    older: &str,
+    commit: &str,
     head: &str,
 ) -> Result<bool, Failure> {
-    Host::new(config, api, token)?.descends(older, head)
+    let host = Host::new(config, api, token)?;
+    host.descends(commit, head).map_err(|failure| {
+        let shown = host.get_one(&format!("git/commits/{head}"));
+        if shown.is_ok_and(|seen| seen["sha"].as_str() == Some(head)) {
+            failure
+        } else {
+            Failure::new(format!(
+                "the host didn't show main at {} to the account's token, so its word on {} \
+                 can't be read",
+                git::short(head),
+                git::short(commit)
+            ))
+        }
+    })
 }
 
 fn keep(config: &Config, head: &str, found: &Found, from: Option<&str>) -> Result<(), Failure> {

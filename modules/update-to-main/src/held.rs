@@ -280,8 +280,9 @@ fn stopped_by(config: &Config, head: &str, built: &Followed, hold: &Hold) -> Opt
     // always asked. Main's host is asked too, since a hosted copy may lack
     // main's latest merges. It answers 404 for a commit it doesn't know, as
     // another repository's is; only that, for a commit an input's copy has,
-    // says main doesn't hold it. A rate limit or a host that's down leaves
-    // it untold.
+    // says main doesn't hold it, and only once the same token is shown
+    // main's head, since one that can't see the repository is answered 404
+    // for every commit. A rate limit or a host that's down leaves it untold.
     let in_main = match &config.hosted {
         Some(hosted) => match hosted::holds(config, hosted, &hold.commit, head) {
             Err(failure) if theirs && unknown_to_host(&failure) => false,
