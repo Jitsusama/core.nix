@@ -267,9 +267,12 @@ pub fn unproven(
     let mut open: Vec<Unproven> = open.into_iter().map(|(_, unproven)| unproven).collect();
     // A line only cadence's own sight holds stays on the card uncounted, nor
     // names the measure's owner, so the hour's outage can't become the
-    // drag, as the misses hold theirs.
-    let seen = |(_, line, _): &&Unproven| !line.contains(BLIND);
-    let figure = count(open.iter().filter(seen).count() + unnamed.len() + older.len());
+    // drag, as the misses hold theirs; while it's all the card holds, the
+    // measure is unjudged rather than in, as cadence can't say it is.
+    let seen = |(_, line, _): &&Unproven| !blind(line);
+    let blinded = open.iter().filter(|unproven| !seen(unproven)).count();
+    let counted = open.iter().filter(seen).count() + unnamed.len() + older.len();
+    let figure = count(counted);
     // The keeper is asked for the probes it hasn't written; the older asks
     // are its backfill, already dated, so that line holds no "; " and is
     // never filed.
@@ -287,7 +290,10 @@ pub fn unproven(
     let unjudged = match (&runs, named) {
         (Err(why), _) => Some(format!("the probe runs unread: {}", clean(why))),
         (Ok(_), false) => Some("no ask names a probe yet".to_owned()),
-        (Ok(_), true) => switches_unread,
+        (Ok(_), true) => switches_unread.or_else(|| {
+            (counted == 0 && blinded > 0)
+                .then(|| format!("cadence can't tell whether {blinded} of them are live"))
+        }),
     };
     Measure {
         key: KEY.to_owned(),
@@ -300,7 +306,6 @@ pub fn unproven(
         owner: open
             .iter()
             .find(seen)
-            .or_else(|| open.first())
             .map(|(_, _, o)| o.clone())
             .unwrap_or_default(),
         behind: open.into_iter().map(|(_, line, _)| line).collect(),
@@ -352,6 +357,13 @@ fn runs(probes: &str) -> Result<BTreeMap<String, Vec<Run>>, String> {
 pub const BLIND: &str =
     ", not live yet, as cadence can't tell whether the switch running carries it";
 
+/// Whether a line of the measure's ends its state with `BLIND`, read where
+/// it is written, just before its cell, so no ask's own words can mark it.
+pub fn blind(line: &str) -> bool {
+    line.rsplit_once(" · ")
+        .is_some_and(|(line, _)| line.ends_with(BLIND))
+}
+
 /// The machine's switches, oldest first, and how each is judged to carry a
 /// change.
 struct Switches<'a> {
@@ -377,19 +389,22 @@ impl Switches<'_> {
     /// Whether the switch running at `at` carries `ask`: every change its
     /// `pr` names that a switch carries, as `carried` judges it, the
     /// harness's coming by its install instead. Where every part names a
-    /// change and each is judged carried, that is the merge itself, so a
-    /// switch from before it was marked `landed` counts too, as a merge
-    /// comes before its mark; otherwise, a part naming no change that can be
-    /// found or one that can't be judged, only a switch since it landed
-    /// counts, as there's no merge it can be shown to hold.
+    /// change a switch carries, a switch from before it was marked `landed`
+    /// is judged on its merges too, as a merge comes before its mark, and
+    /// one git can't judge is unjudged, the hour's to mend; where a part
+    /// names no change found, or the harness's, whose install isn't read
+    /// for a switch, only a switch since it landed counts, as there's no
+    /// merge it can be shown to hold.
     fn carry(&self, ask: &Value, landed: i64, at: i64) -> Carry {
         let Some((switched, line)) = self.switched.iter().rfind(|(switched, _)| *switched <= at)
         else {
             return Carry::Unswitched;
         };
         let pr = ask["pr"].as_str().unwrap_or_default();
-        let changes: Vec<(Repo, u32)> = at_risk::changes(pr)
-            .into_iter()
+        let all = at_risk::changes(pr);
+        let changes: Vec<(Repo, u32)> = all
+            .iter()
+            .copied()
             .filter(|(repo, _)| *repo != Repo::Harness)
             .collect();
         let mut carry = Carry::Carries;
@@ -400,9 +415,9 @@ impl Switches<'_> {
                 None => carry = Carry::Unjudged,
             }
         }
-        let shown =
-            carry == Carry::Carries && !changes.is_empty() && at_risk::unfound(pr).is_none();
-        if *switched < landed && !shown {
+        let merged =
+            !changes.is_empty() && changes.len() == all.len() && at_risk::unfound(pr).is_none();
+        if *switched < landed && !merged {
             return Carry::Unswitched;
         }
         carry

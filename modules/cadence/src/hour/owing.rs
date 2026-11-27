@@ -353,7 +353,7 @@ fn causes_asked(m: &Measure) -> Vec<Filed> {
 fn unproven_asked(m: &Measure, says: &str) -> Vec<Filed> {
     m.behind
         .iter()
-        .filter(|line| !line.contains(unproven::BLIND))
+        .filter(|line| !unproven::blind(line))
         .filter_map(|line| line.rsplit_once(" · "))
         .filter_map(|(ask, owner)| Some((ask.rsplit_once("; ")?, owner)))
         .map(|((ask, state), owner)| {
@@ -692,6 +692,32 @@ fn unheld(ledger: &mut [Entry], measures: &[Measure]) {
     }
 }
 
+/// Keeps each cell's open ask unproven whose line only cadence's own sight
+/// holds now saying what the line says, and not due while it does: what
+/// the hour can't see isn't the cell's to mend, so it doesn't go late on
+/// the cell, and the late ask the hubs show, once sight is back, reads as
+/// it stands rather than as it was filed.
+fn blinded(ledger: &mut [Entry], measures: &[Measure], now: i64) {
+    let Some(m) = measures.iter().find(|m| m.key == unproven::KEY) else {
+        return;
+    };
+    for line in m.behind.iter().filter(|line| unproven::blind(line)) {
+        let Some((own, owner)) = line.rsplit_once(" · ") else {
+            continue;
+        };
+        let Some((ask, _)) = own.rsplit_once("; ") else {
+            continue;
+        };
+        let key = format!("hour:{}:{owner}:{ask}", m.key);
+        for entry in ledger.iter_mut().filter(|e| e.open && e.key == key) {
+            if let Some((says, _)) = entry.words.split_once(", yours: ") {
+                entry.words = format!("{says}, yours: {own}");
+            }
+            entry.due = entry.due.max(now + DAY);
+        }
+    }
+}
+
 /// Files the hour's drag in the loop's ledger as a must of kind `drag`,
 /// due a day on, unless it's open there already, and closes each drag
 /// filed before that is back in. Says what to tell the owner of each one
@@ -723,6 +749,7 @@ pub fn file(
         owe::settle(ledger, &key);
     }
     unheld(ledger, measures);
+    blinded(ledger, measures, now);
     let rest: Vec<Measure> = measures
         .iter()
         .filter(|m| m.class != Class::Apps)
@@ -1852,9 +1879,18 @@ mod tests {
     fn an_ask_only_cadences_sight_holds_isnt_put_to_its_cell_nor_lets_go_of_one_put() {
         let card = "show the card, asked 2026-11-26T09:00:00Z";
         let key = format!("hour:{}:1JQPPC:{card}", unproven::KEY);
+        // A card holding only a line cadence can't judge reads unjudged, as
+        // the measure has it.
         let hour = |ledger: &mut Vec<Entry>, state: &str, at: i64| {
-            let mut m = measure(unproven::KEY, Class::Functional, 1.0, Some(0.0));
-            m.behind = vec![format!("{card}; its probe {state} · 1JQPPC")];
+            let line = format!("{card}; its probe {state} · 1JQPPC");
+            let judged = !unproven::blind(&line);
+            let (now, target) = if judged {
+                (1.0, Some(0.0))
+            } else {
+                (0.0, None)
+            };
+            let mut m = measure(unproven::KEY, Class::Functional, now, target);
+            m.behind = vec![line];
             file(ledger, &[m], "2026-11-26", at)
         };
         let mut ledger = Vec::new();
@@ -1878,6 +1914,13 @@ mod tests {
         // Nor is the why its cell gave let go by a blind hour.
         let why = owe::done(&mut ledger, &key, Some("needs his login"), 9000).map_err(|f| f.exit);
         assert!(why.is_ok(), "its cell couldn't close it: {why:?}");
+        // The hour takes the why, then a blind hour comes, so what holds it
+        // after is the why as the hour took it.
+        let told = hour(&mut ledger, failed, 10000);
+        assert!(
+            told.is_empty(),
+            "the why its cell gave wasn't taken: {told:?}"
+        );
         hour(&mut ledger, &blind, 11800);
         let told = hour(&mut ledger, failed, 15400);
         assert!(
@@ -1892,6 +1935,42 @@ mod tests {
             hour(&mut ledger, though, 19000).len(),
             1,
             "a failure on what carries it wasn't put to the cell, as cadence can't see what runs"
+        );
+    }
+
+    #[test]
+    fn an_ask_whose_line_went_blind_stays_its_cells_reads_as_it_stands_and_isnt_due() {
+        let card = "show the card, asked 2026-11-26T09:00:00Z";
+        let key = format!("hour:{}:1JQPPC:{card}", unproven::KEY);
+        // Another cell's line beside it keeps the card judged.
+        let other = "fix the bar, asked 2026-11-26T10:00:00Z; its probe failed · B";
+        let hour = |ledger: &mut Vec<Entry>, state: &str, at: i64| {
+            let mut m = measure(unproven::KEY, Class::Functional, 1.0, Some(0.0));
+            m.behind = vec![
+                format!("{card}; its probe {state} · 1JQPPC"),
+                other.to_owned(),
+            ];
+            file(ledger, &[m], "2026-11-26", at)
+        };
+        let mut ledger = Vec::new();
+        assert_eq!(
+            hour(&mut ledger, "failed after switch 1200", 1000).len(),
+            2,
+            "both cells weren't asked"
+        );
+        let blind = format!("passed on a switch cadence can't judge{}", unproven::BLIND);
+        let later = 1000 + 2 * DAY;
+        hour(&mut ledger, &blind, later);
+        let own = ledger.iter().find(|e| e.key == key);
+        assert!(
+            own.is_some_and(|e| e.open && e.due > later && e.words.ends_with(&blind)),
+            "a cell's ask whose line only the hour's sight held was let go, went due on the \
+             cell, or kept the words it was filed with: {own:?}"
+        );
+        let theirs = ledger.iter().find(|e| e.key != key);
+        assert!(
+            theirs.is_some_and(|e| e.open && e.due < later),
+            "a line cadence can judge stopped going due: {theirs:?}"
         );
     }
 

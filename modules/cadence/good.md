@@ -252,8 +252,9 @@ holding a space, as one broken across two lines does, is counted too.
 - Target: 0 of his own asks landed over two hours ago whose probe hasn't passed here since it
   landed, its latest run deciding and a pass counting only on a switch whose core holds each
   change's merge, or pins it for mycelium, and the newest only while it runs; a part naming no
-  change found counts on a switch since it landed. One that can't be judged isn't live, nor
-  counted, nor asked of its cell, as it's the hour's to mend, and it lets go of nothing.
+  change found, or the harness's beside another, counts on a switch since it landed. One that
+  can't be judged isn't live, nor counted, nor asked of its cell, nor due on it, as it's the
+  hour's to mend, and it lets go of nothing; while nothing else counts, it goes unjudged.
   A harness change counts at once, as its install carries it. One he confirmed, or closed in
   any way, is out. One naming no probe counts, once any ask names one; until then, or while the
   probe runs or the switch record can't be read, it goes unjudged. Each landed in the last week

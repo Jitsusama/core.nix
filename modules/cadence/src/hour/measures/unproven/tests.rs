@@ -886,14 +886,116 @@ fn a_merge_or_checkout_cadence_cant_find_leaves_the_ask_unjudged() {
             m.behind
         );
         // Its line stays on the card, uncounted, so the hour's outage
-        // isn't the drag.
+        // isn't the drag, and with nothing else there the measure can't
+        // say it's in.
         assert_eq!(
-            (m.now, m.target),
-            (0.0, Some(0.0)),
-            "{pr}, which only cadence's sight holds, counted: {}",
+            (m.now, m.target, m.owner.as_str()),
+            (0.0, None, ""),
+            "{pr}, which only cadence's sight holds, counted, named its cell or read as in: {}",
+            m.says
+        );
+        assert!(
+            m.says
+                .contains("cadence can't tell whether 1 of them are live"),
+            "an hour blind to every ask didn't say so: {}",
             m.says
         );
     }
+}
+
+#[test]
+fn a_switch_before_landing_that_git_cant_judge_leaves_the_ask_unjudged() {
+    let ago = 3 * 3600;
+    let asks = list(&[landed("card", ago, "A", &json!({"pr": "core.nix#6835"}))]);
+    let before = json!({"at": at(NOW - ago - 30)}).to_string();
+    let blind = |_: &Value, _: Repo, _: u32| None;
+    let m = unproven(
+        &asks,
+        Ok(&run("card", 600, true, 1199)),
+        Ok(&before),
+        &blind,
+        NOW,
+    );
+    assert!(
+        m.behind.first().is_some_and(|line| blind(line)),
+        "a switch before landing that git couldn't judge was put to the cell: {:?}",
+        m.behind
+    );
+    assert_eq!(
+        (m.now, m.target),
+        (0.0, None),
+        "a switch before landing that git couldn't judge was counted or read as in: {}",
+        m.says
+    );
+}
+
+#[test]
+fn a_switch_before_landing_counts_only_for_an_ask_whose_every_part_is_a_merge_it_holds() {
+    let ago = 3 * 3600;
+    let asks = list(&[
+        landed("merged", ago, "A", &json!({"pr": "core.nix#6835"})),
+        // The harness's install isn't read for a switch.
+        landed(
+            "mixed",
+            ago,
+            "B",
+            &json!({"pr": "agentic-harness.pi#2326, core.nix#6835"}),
+        ),
+        landed(
+            "unfound",
+            ago,
+            "C",
+            &json!({"pr": "core.nix#6835, elsewhere#2"}),
+        ),
+    ]);
+    let before = json!({"at": at(NOW - ago - 30)}).to_string();
+    let passes = ["merged", "mixed", "unfound"].map(|ask| run(ask, 600, true, 1199));
+    let m = unproven(&asks, Ok(&passes.join("\n")), Ok(&before), &ANY, NOW);
+    let mut waits: Vec<_> = m
+        .behind
+        .iter()
+        .filter(|line| line.contains("passed before a switch could carry it"))
+        .filter_map(|line| line.split(", asked ").next())
+        .collect();
+    waits.sort_unstable();
+    assert_eq!(
+        (waits, m.behind.len()),
+        (vec!["mixed", "unfound"], 2),
+        "a switch before landing proved a part it can't be shown to hold, or not the merge: {:?}",
+        m.behind
+    );
+}
+
+#[test]
+fn a_line_only_cadences_sight_holds_names_no_owner() {
+    let world = json!({"pr": "world#5"});
+    let core = json!({"pr": "core.nix#6835"});
+    // Cadence can judge core but not World.
+    let judge = |_: &Value, repo: Repo, _: u32| (repo == Repo::Core).then_some(true);
+    let switched = json!({"at": at(NOW - 2 * 3600)}).to_string();
+    let failed = run("core", 600, false, 1200);
+    let blind_first = list(&[
+        landed("world", 4 * 3600, "A", &world),
+        landed("core", 3 * 3600, "B", &core),
+    ]);
+    let m = unproven(&blind_first, Ok(&failed), Ok(&switched), &judge, NOW);
+    assert_eq!(
+        (m.now, m.owner.as_str(), m.behind.len()),
+        (1.0, "B", 2),
+        "a blind line counted or named the owner ahead of one its cell can mend: {:?}",
+        m.behind
+    );
+    let beside_the_keepers = list(&[
+        landed("world", 4 * 3600, "A", &world),
+        landed("long ago", 8 * DAY, "C", &json!({})),
+    ]);
+    let m = unproven(&beside_the_keepers, Ok(""), Ok(&switched), &judge, NOW);
+    assert_eq!(
+        (m.now, m.owner.as_str()),
+        (1.0, KEEPER),
+        "a blind line named the owner ahead of the keeper's: {:?}",
+        m.behind
+    );
 }
 
 #[test]
@@ -964,20 +1066,27 @@ fn an_emptied_switch_record_leaves_it_unjudged() {
 
 #[test]
 fn an_ask_past_the_week_judges_only_the_switch_its_run_was_on() {
-    let calls = std::cell::Cell::new(0);
-    let judge = |_: &Value, _: Repo, _: u32| {
-        calls.set(calls.get() + 1);
-        Some(true)
-    };
     let (old, pr) = (8 * DAY, json!({"pr": "core.nix#6835"}));
+    let first = at(NOW - old + 60);
+    // Only the switch its run was on carries it; the one running now doesn't.
+    let calls = std::cell::Cell::new(0);
+    let judge = |line: &Value, _: Repo, _: u32| {
+        calls.set(calls.get() + 1);
+        Some(line["at"] == first)
+    };
     let asks = list(&[landed("unrun", old, "A", &pr), landed("ran", old, "B", &pr)]);
-    let switch = json!({"at": at(NOW - old + 60)}).to_string();
-    let ran = run("ran", 3600, false, 1200);
-    let m = unproven(&asks, Ok(&ran), Ok(&switch), &judge, NOW);
+    let switches = format!("{}\n{}", json!({"at": &first}), json!({"at": at(NOW - 60)}));
+    let ran = run("ran", old - 120, true, 1200);
+    let m = unproven(&asks, Ok(&ran), Ok(&switches), &judge, NOW);
     assert_eq!(
         (calls.get(), m.behind.len()),
         (1, 1),
-        "an ask past the week judged the switch running now, or wasn't counted: {:?}",
+        "an ask past the week judged more than its run's switch: {:?}",
+        m.behind
+    );
+    assert!(
+        m.behind[0].starts_with("1 older than a week"),
+        "a pass on the switch that carried it didn't prove a week-old ask: {:?}",
         m.behind
     );
 }
