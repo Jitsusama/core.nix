@@ -2964,13 +2964,9 @@ fn a_main_whose_last_commit_the_checkout_lacks_is_asked_of_the_host() {
     assert_eq!(world.update().1, done(&one), "the first head wasn't read");
     let two = world.hosted_commit("two", None);
     world.answer();
-    let checkout = &world.config.hosted.as_ref().unwrap().checkout;
-    git(
-        checkout,
-        &["fetch", "--quiet", "--depth=1", "origin", "+main:refs/two"],
-    );
+    assert_eq!(shallow_checkout(&world), two, "the checkout wasn't fetched to two");
     assert!(
-        world.checkout_has(&two) && !world.checkout_has(&one),
+        !world.checkout_has(&one),
         "the checkout wasn't left holding two without one"
     );
     world.system(&two);
@@ -2979,6 +2975,68 @@ fn a_main_whose_last_commit_the_checkout_lacks_is_asked_of_the_host() {
         done(&two),
         "a main descending from what the machine ran was refused for a commit the checkout lacks"
     );
+}
+
+/// Leaves the account's checkout holding main's head alone, as a fetch
+/// of part of its history does, and gives that head.
+fn shallow_checkout(world: &World) -> String {
+    let checkout = &world.config.hosted.as_ref().unwrap().checkout;
+    git(
+        checkout,
+        &["fetch", "--quiet", "--depth=1", "origin", "+main:refs/shallow"],
+    );
+    git(checkout, &["rev-parse", "refs/shallow"]).trim().to_owned()
+}
+
+/// A main gone another way from what the machine ran, whose head the
+/// checkout holds without what it ran, is refused on the host's word.
+#[test]
+fn a_main_the_host_says_went_another_way_is_refused_though_the_checkout_lacks_its_past() {
+    let world = with_api();
+    let start = world.unsigned("start");
+    let one = world.hosted_commit("one", None);
+    world.answer();
+    world.system(&one);
+    assert_eq!(world.update().1, done(&one), "the first head wasn't read");
+    git(&world.origin, &["reset", "--quiet", "--hard", &start]);
+    let two = world.hosted_commit("two", None);
+    world.answer();
+    assert_eq!(shallow_checkout(&world), two, "the checkout wasn't fetched to two");
+    assert!(
+        !world.checkout_has(&one),
+        "the checkout held what the machine ran"
+    );
+    world.system(&two);
+    let ending = world.update().1;
+    let Line::Refused { why, .. } = &ending else {
+        panic!("a main the host says went another way wasn't refused: {ending:?}")
+    };
+    assert!(why.contains("doesn't descend"), "refused for another reason: {why}");
+}
+
+/// A held commit main holds, which the checkout lacks below the head it
+/// holds, is asked of the host rather than judged not in main.
+#[test]
+fn a_held_commit_the_checkout_lacks_is_asked_of_the_host() {
+    let world = with_api();
+    let stopped = world.hosted_commit("stopped", None);
+    world.answer();
+    world.system(&stopped);
+    assert_eq!(world.update().1, done(&stopped), "the first head wasn't read");
+    held::ask(&world.config, &format!("hold {stopped}"), Some(1000));
+    let two = world.hosted_commit("two", None);
+    world.answer();
+    assert_eq!(shallow_checkout(&world), two, "the checkout wasn't fetched to two");
+    assert!(
+        !world.checkout_has(&stopped),
+        "the checkout held the held commit"
+    );
+    world.system(&two);
+    let ending = world.update().1;
+    let Line::Refused { why, .. } = &ending else {
+        panic!("a main holding a held commit the checkout lacks wasn't refused: {ending:?}")
+    };
+    assert!(why.contains("is held"), "refused for another reason: {why}");
 }
 
 /// A hosted world whose account names the commit that last changed the
