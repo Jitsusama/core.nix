@@ -13,9 +13,11 @@ fn a_withdrawal_is_kept_for_a_line_written_here_after_it() {
         .path()
         .join("pi/agentic-harness.pi/mesh-workflow/messages");
     fs::create_dir_all(&messages).expect("the messages folder");
-    let first = format!("{}-SENDER-1-00000001", (NOW - 1200) * 1000);
+    let ids: Vec<String> = (1..=3)
+        .map(|n| format!("{}-SENDER-1-0000000{n}", (NOW - 1200) * 1000))
+        .collect();
     let mut withdraws = sent("no cause here after all", 600, "@1JQPPC");
-    withdraws.supersedes = Some(first.clone());
+    withdraws.supersedes = Some(ids[0].clone());
     write(&messages, &withdraws, 600);
     let heard = read(home.path(), folder.path(), NOW, true);
     assert_eq!(
@@ -25,12 +27,14 @@ fn a_withdrawal_is_kept_for_a_line_written_here_after_it() {
     );
     fs::remove_dir_all(&messages).expect("the mesh lets the withdrawal go");
     fs::create_dir_all(&messages).expect("an empty messages folder");
-    for n in 1..=3 {
+    for (n, id) in (1..).zip(&ids) {
         let line = format!("cause: flaky gate | change: core.nix#{n}");
         let mut m = sent(&line, 1200, "@1JQPPC");
-        m.id = format!("{}-SENDER-1-0000000{n}", (NOW - 1200) * 1000);
+        m.id.clone_from(id);
         write(&messages, &m, -7200);
     }
+    // With the first line withdrawn, the two changes left keep the class
+    // under the bar, so it counts only if the withdrawal was lost.
     let later = read(home.path(), folder.path(), NOW + 7300, true);
     assert_eq!(
         later.now, 0.0,
