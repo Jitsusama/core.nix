@@ -3137,16 +3137,12 @@ fn a_copy_that_cant_walk_between_two_commits_asks_the_host() {
 /// holding part of main's history proves nothing by lacking it.
 #[test]
 fn a_held_commit_the_checkout_lacks_with_no_host_to_ask_stops_main() {
+    // Nothing has read main yet, so the checkout holds only the head a
+    // fetch of part of its history brought.
     let world = World::hosted_from(World::new(), counted_token);
     let stopped = world.hosted_commit("stopped", None);
-    world.system(&stopped);
-    assert_eq!(
-        world.update().1,
-        done(&stopped),
-        "the first head wasn't read"
-    );
-    held::ask(&world.config, &format!("hold {stopped}"), Some(1000));
     let two = world.hosted_commit("two", None);
+    held::ask(&world.config, &format!("hold {stopped}"), Some(1000));
     assert_eq!(
         shallow_checkout(&world),
         two,
