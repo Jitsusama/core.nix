@@ -40,7 +40,7 @@ use jiff::tz::TimeZone;
 use terminal_kit::Failure;
 
 use crate::findings;
-use crate::mesh::{Mesh, Presence, Rosters, running};
+use crate::mesh::{Mesh, reachable};
 use crate::tracking::Tracking;
 use crate::{DAY, axes, clock, command, failed, folders, message, now_ms, write_whole, wrongly};
 use card::{Kept, compose};
@@ -647,28 +647,6 @@ fn measure(key: &str, class: Class, now: f64, target: Option<f64>) -> Measure {
     }
 }
 
-/// Whether the session `presence` describes can still be told of a merge's
-/// rounds: running in this `boot` and held by its host, as `running` says,
-/// since a pid from another boot may name some other process now; or
-/// parked where it will start again: on its host's roster, read, which the
-/// host resumes, or, held by no host, parked in this boot, since its
-/// holder from an earlier one is gone. A host with no roster to read can't
-/// say it holds one parked, so its rounds go to its quest instead.
-fn reachable(
-    presence: &Presence,
-    boot: &str,
-    rosters: &Rosters,
-    process_exists: impl Fn(u32) -> bool,
-) -> bool {
-    let resumes = match &presence.hosted {
-        Some(hosted) => rosters
-            .holders(&presence.session)
-            .contains(&hosted.host.as_str()),
-        None => presence.owner.as_ref().and_then(|o| o.boot_id.as_deref()) == Some(boot),
-    };
-    (presence.state == "parked" && resumes) || running(presence, boot, rosters, process_exists)
-}
-
 /// The changes the three mains landed in the hour, shown unjudged: an
 /// hour's count swings with the clock, so no one target holds for it.
 fn landed(core: &str, harness: &str, machine: &str, now: i64) -> Measure {
@@ -689,6 +667,7 @@ fn landed(core: &str, harness: &str, machine: &str, now: i64) -> Measure {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mesh::{Presence, Rosters};
 
     #[test]
     fn a_merges_rounds_go_to_the_session_that_merged_it_not_its_quest() {

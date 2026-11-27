@@ -282,17 +282,16 @@ impl Mesh {
     }
 
     /// How many sessions on the mesh are there now, one each however many
-    /// addresses it goes by: each parked, or `running` as its caller judges
-    /// it. These are the cells a need's realm holds, as pain-points and the
-    /// harness count them (#6774's round, F6). `running` is the boot-aware
-    /// judge, since a presence left from another boot may carry a pid some
-    /// other process holds now (j176, F4).
+    /// addresses it goes by, as `there` judges each: `reachable`, running
+    /// in this boot or parked where it will start again. These are the
+    /// cells a need's realm holds, as pain-points and the harness count
+    /// them (#6774's round, F6). A presence left from another boot may
+    /// carry a pid some other process holds now (j176, F4), and one parked
+    /// before a reboot by no host has no holder left to start it (#7022's
+    /// round, F2, F5 and F17), so neither is counted.
     #[must_use]
-    pub fn living(&self, running: impl Fn(&Presence) -> bool) -> usize {
-        self.all()
-            .iter()
-            .filter(|p| p.state == "parked" || running(p))
-            .count()
+    pub fn living(&self, there: impl Fn(&Presence) -> bool) -> usize {
+        self.all().iter().filter(|p| there(p)).count()
     }
 
     /// Every address a session on the mesh goes by, living or left
@@ -488,6 +487,29 @@ pub fn running(
     this_boot && held && owner.and_then(|o| o.pid).is_some_and(process_exists)
 }
 
+/// Whether the session `presence` describes is there to be told: running
+/// in this `boot` and held by its host, as `running` says, since a pid
+/// from another boot may name some other process now; or parked where it
+/// will start again: on its host's roster, read, which the host resumes,
+/// or, held by no host, parked in this boot, since its holder from an
+/// earlier one is gone. A host with no roster to read can't say it holds
+/// one parked, so it isn't counted there.
+#[must_use]
+pub fn reachable(
+    presence: &Presence,
+    boot: &str,
+    rosters: &Rosters,
+    process_exists: impl Fn(u32) -> bool,
+) -> bool {
+    let resumes = match &presence.hosted {
+        Some(hosted) => rosters
+            .holders(&presence.session)
+            .contains(&hosted.host.as_str()),
+        None => presence.owner.as_ref().and_then(|o| o.boot_id.as_deref()) == Some(boot),
+    };
+    (presence.state == "parked" && resumes) || running(presence, boot, rosters, process_exists)
+}
+
 /// The stamp a message's id starts with, in milliseconds, as the harness
 /// stamps them: `<ms>-<from>-<pid>-<hex>`.
 #[must_use]
@@ -653,16 +675,20 @@ mod tests {
         };
         fs::create_dir_all(mesh.presences()).unwrap();
         // The old one's pid is alive, but in another boot, so some other
-        // process holds it now.
-        for (name, pid, boot) in [
-            ("two", 7, "this"),
-            ("gone", 8, "this"),
-            ("old", 9, "before"),
-            ("one", 9, "this"),
+        // process holds it now. One parked in this boot will start again;
+        // one parked before a reboot, held by no host, has no holder left
+        // to start it (#7022's round, F2).
+        for (name, state, pid, boot) in [
+            ("two", "listening", 7, "this"),
+            ("gone", "listening", 8, "this"),
+            ("old", "listening", 9, "before"),
+            ("one", "listening", 9, "this"),
+            ("resting", "parked", 8, "this"),
+            ("rested", "parked", 8, "before"),
         ] {
             let presence = serde_json::json!({
                 "session": name, "addresses": [format!("{name}-A"), format!("{name}-B")],
-                "state": "listening", "owner": {"pid": pid, "bootId": boot}});
+                "state": state, "owner": {"pid": pid, "bootId": boot}});
             fs::write(
                 mesh.presences().join(format!("{name}.json")),
                 presence.to_string(),
@@ -671,9 +697,10 @@ mod tests {
         }
         let rosters = mesh.rostered(0);
         assert_eq!(
-            mesh.living(|p| running(p, "this", &rosters, |pid| pid != 8)),
-            2,
-            "a session of two addresses counted twice, or a gone or old one counted"
+            mesh.living(|p| reachable(p, "this", &rosters, |pid| pid != 8)),
+            3,
+            "a session of two addresses counted twice, a gone, old or stale parked one counted, \
+             or one parked this boot missed"
         );
     }
 
