@@ -66,24 +66,14 @@ REDRAWN_MS = 2500
 # What node.json's realm comes to on the map, every part of the count.
 COUNTED = "8 cells, 2 moving, 1 stuck"
 CELLS = 8
-# What a first visit to the map may cost, drawn from the stand-in's cells:
-# 33 files since the balance, who started each cell, the tree beside the map,
-# what each thing is in words, how a time is said, how each thing stands, what
-# each is doing, what each spent, what waits, how wide each line is drawn, how
-# a cell is named, how the map's motion is timed, where everything stands,
-# what the ground layer's canvas touches, a reading's shape, what new work
-# hands the Launcher and what a cell's drawer offers were read in modules of
-# their own; about 668 KB since the builders, the legend's moving samples and
-# new work's line, and since no comment is sent, view.js's and the styles'
-# included, a little more with the drawer's acts and its whole question, and
-# 677.4 KB once a network's label keeps what tells it apart, and 678.2 KB
-# once a cloud machine says it's kept, a little more once a long lease counts
-# days, about 0.4 KB more once every label is kept apart and in its room,
-# about 2.4 KB more once a machine's drawer starts new work on it, 686.0 KB
-# once what each cell split from is read, and about 0.9 KB more once new
-# work keeps to the machine chosen, under the 689 KB allowed; new work's line
-# and its hidden controls draw about 20 elements of the 611.
-BUDGET = Budget(files=33, kilobytes=689, elements=620)
+# What a first visit to the map may cost, drawn from the stand-in's cells: what
+# it last measured (33 files, about 686.9 KB, at most 620 elements) with room
+# for four files, about 8 KB and 16 elements more, so most changes never touch
+# this line and parallel ones never clash on it. The room lets the map grow
+# that much unnoticed. A change that would pass it sets it again to what the
+# gate measures plus that room; why the map costs what it does is in each
+# change's commit.
+BUDGET = Budget(files=37, kilobytes=695, elements=636)
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000
 TWIN_NETWORKS = 200
