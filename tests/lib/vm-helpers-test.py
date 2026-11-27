@@ -99,6 +99,31 @@ def test_output_with_no_cursor_is_refused_saying_what_it_was() -> None:
         vm_helpers.journal_cursor("No entries\n")
 
 
+def test_a_read_for_a_failure_gives_its_lines_as_one() -> None:
+    said = vm_helpers.failure_read(0, "first\n\nsecond\n", 30)
+    assert said == "first | second"
+
+
+def test_a_read_that_printed_nothing_says_so() -> None:
+    assert vm_helpers.failure_read(0, "\n", 30) == "nothing at all"
+
+
+def test_a_read_that_failed_says_its_exit_and_what_it_said() -> None:
+    said = vm_helpers.failure_read(1, "No such unit\n", 30)
+    assert said == "nothing, as it exited 1: No such unit"
+    assert vm_helpers.failure_read(3, "", 30) == "nothing, as it exited 3: saying nothing"
+
+
+def test_a_read_that_ran_out_of_time_says_so_with_what_it_had() -> None:
+    said = vm_helpers.failure_read(vm_helpers.TIMED_OUT, "partway\n", 30)
+    assert said == "nothing whole, as it ran out of its 30 seconds: partway"
+
+
+def test_a_read_writes_what_a_terminal_would_act_on_as_escapes() -> None:
+    said = vm_helpers.failure_read(0, "\x1b[31mred\x1b[0m\tdone\n", 30)
+    assert said == "\\x1b[31mred\\x1b[0m\\tdone"
+
+
 def test_a_host_with_processors_to_spare_waits_as_long_as_stated() -> None:
     assert vm_helpers.pace(0.3) == 1.0
 

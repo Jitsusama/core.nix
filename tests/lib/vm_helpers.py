@@ -53,6 +53,29 @@ def journal_cursor(said: str) -> str:
     return said.rsplit(marker, 1)[1].strip()
 
 
+# What coreutils' timeout exits with when its command ran out of time.
+TIMED_OUT = 124
+
+
+def failure_read(status: int, out: str, seconds: int) -> str:
+    """Give what a command a failure reads printed, on one line, or why it can't be read.
+
+    The driver's execute ends a command at its timeout with timeout's own exit, so that is said
+    as running out of time. Each character a terminal would act on is written as its escape,
+    so a journal's colours or a stray reset can't garble the failure that quotes it.
+    """
+    lines = (line for line in out.strip().splitlines() if line)
+    said = " | ".join(
+        "".join(c if c.isprintable() else c.encode("unicode_escape").decode() for c in line)
+        for line in lines
+    )
+    if status == TIMED_OUT:
+        return f"nothing whole, as it ran out of its {seconds} seconds: {said or 'saying nothing'}"
+    if status != 0:
+        return f"nothing, as it exited {status}: {said or 'saying nothing'}"
+    return said or "nothing at all"
+
+
 # The most times longer than it says a wait may take on a busy host. Past this the host is so
 # oversubscribed that a test should fail, in a time still bounded, rather than wait on.
 MOST_PACE = 4.0
