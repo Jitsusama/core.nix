@@ -103,6 +103,53 @@ fn their_echo_in_a_take_of_joels_is_cut_and_his_own_words_written() {
     );
 }
 
+/// Joel's line saying `text` at `level` dB, a word each 300 ms from
+/// `from_ms` milliseconds into the call, heard into `writing`.
+fn joel_says(writing: &mut Writing, from_ms: usize, text: &str, level: f32) {
+    let words: Vec<Word> = text
+        .split_whitespace()
+        .zip(0..)
+        .map(|(spelled, i)| Word {
+            level,
+            ..word(spelled, (from_ms + 300 * i) * SECOND / 1000)
+        })
+        .collect();
+    let said = Line {
+        start: words[0].at,
+        end: words[words.len() - 1].at + SECOND * 3 / 10,
+        text: text.to_owned(),
+        ..line(Side::Mine, 0, None)
+    };
+    writing.words.insert(writing.lines.len(), words);
+    writing.lines.push(said);
+}
+
+#[test]
+fn joels_words_over_bo_on_a_quieter_microphone_are_written_back_once_six_are_heard_on_it() {
+    // Six words alone on a -20 dB headset make his voice the headset's,
+    // so his line over Bo's "Not yet." on a laptop 20 dB quieter is cut
+    // as their echo and left out. Six alone on the laptop after it are
+    // nearer it than the headset's, so the call written again brings it
+    // back as his.
+    let mut writing = ada_then_bo();
+    let headset = "Morning all, I'm on my headset.";
+    joel_says(&mut writing, 2_000, headset, -20.0);
+    joel_says(&mut writing, 46_100, "Hang on.", -40.0);
+    assert_eq!(
+        joels_written(&writing),
+        [headset],
+        "Joel's line over Bo wasn't cut by his headset's voice, so its coming back shows nothing"
+    );
+    let laptop = "Sorry, I'm on my laptop now.";
+    joel_says(&mut writing, 60_000, laptop, -40.0);
+    assert_eq!(
+        joels_written(&writing),
+        [headset.to_owned(), format!("Hang on. {laptop}")],
+        "Joel's line over Bo stayed left out once six of his words were heard alone on its \
+         microphone"
+    );
+}
+
 #[test]
 fn each_echo_cut_from_joels_words_is_told_once_and_without_them() {
     let mut writing = ada_then_bo();
