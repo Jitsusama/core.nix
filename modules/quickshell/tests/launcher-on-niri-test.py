@@ -6660,6 +6660,33 @@ def test_return_is_held_once_a_step_entered_from_a_find_closes_off_its_row(
     assert again["act"] != "waited", f"the Return after the held one was held too: {again}"
 
 
+@pytest.mark.parametrize(
+    ("found", "renamed"), [("charge", "Limit"), ("charge", "Cap"), ("limit", "Charge Stop")]
+)
+def test_lab_what_a_find_holds_once_a_step_closes(  # LAB, never to land
+    shell: Shell, machine: StandIn, found: str, renamed: str
+) -> None:
+    """LAB: say what Battery's find holds once the Charge Limit's step closes, renamed."""
+    into_the_limit(shell, machine, found=found)
+    before = shell.showing()
+    depth = len(before["held"])
+    since = shell.mark()
+    told_past_the_last_key(machine, charge_limit(renamed, settable=False), LIMIT_STOPS)
+    shell.launcher_until(lambda shown: len(shown["held"]) == depth - 1)
+    landed = shell.showing()
+    time.sleep(1)
+    settled = shell.showing()
+    said = launcher_said(shell, since)
+    shell.close_launcher()
+    dump = {
+        "pair": [found, renamed],
+        "landed": {key: landed.get(key) for key in ("rows", "selected", "typed", "guessed")},
+        "settled": {key: settled.get(key) for key in ("rows", "selected", "typed")},
+        "said": said,
+    }
+    raise AssertionError("LAB " + json.dumps(dump))
+
+
 def agent_window(address: str, window: Json, title: str) -> Json:
     """Give a session's window as the agents daemon serves it, paired with niri's window."""
     return {
