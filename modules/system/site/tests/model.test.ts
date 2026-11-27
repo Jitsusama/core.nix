@@ -13,15 +13,13 @@ import { allTold, systemOf, thingsHeld } from "../model.ts";
 
 /** The four watches told `these` whole, the machines' and builders' as one, as the page reads. */
 function told(these: readonly { readonly key: string; readonly kind: string }[]) {
-  const [summary, part, machines, builders] = ["summary", "part", "machine", "builder"].map(
-    (kind) => {
-      const held = new Held();
-      held.took({ records: these.filter((record) => record.kind === kind) });
-      return held;
-    },
-  );
-  assert.ok(summary && part && machines && builders);
-  return { summary, part, machine: thingsHeld(machines, builders) };
+  const heldOf = (kind: string) => {
+    const held = new Held();
+    held.took({ records: these.filter((record) => record.kind === kind) });
+    return held;
+  };
+  const machine = thingsHeld(heldOf("machine"), heldOf("builder"));
+  return { summary: heldOf("summary"), part: heldOf("part"), machine };
 }
 
 const deeper = { command: "mycelium machines", site: "mycelium/", launcher: "Agents" };
