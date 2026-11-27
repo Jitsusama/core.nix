@@ -707,6 +707,24 @@ impl Way {
         }
     }
 
+    /// Counts a moment a router past our standing CAKE was `dropping`,
+    /// unless the VPN's own queue is held, and forgets those past
+    /// `DROPS_LOOK_S`. Answers whether they fill `DROPS_SHARE` of it.
+    fn count_drops(&mut self, at: f64, dt: f64, dropping: bool) -> bool {
+        if dropping && !self.vpn_held {
+            let moment = dt.min(1.0);
+            self.drops.push_back((at, moment));
+            self.dropped_s += moment;
+        }
+        while let Some(&(when, moment)) = self.drops.front()
+            && when <= at - DROPS_LOOK_S
+        {
+            self.drops.pop_front();
+            self.dropped_s -= moment;
+        }
+        self.dropped_s >= DROPS_LOOK_S * DROPS_SHARE - 0.05
+    }
+
     /// Counts a moment toward a queue past CAKE: one held back with the
     /// line full runs the count, a `late` one puts it off while it may,
     /// and any other ends it. Answers whether the count finished and set
@@ -835,20 +853,8 @@ impl Way {
         // Mbit/s line at 6. On 26 November the one hold such drops found
         // by cable came while the VPN's own queue was held, which is why
         // its seconds count none.
-        if heard && ours.queued && ours.waiting && !self.vpn_held && lost >= offered * DROPPED_PAST
-        {
-            let moment = dt.min(1.0);
-            self.drops.push_back((at, moment));
-            self.dropped_s += moment;
-        }
-        while let Some(&(when, moment)) = self.drops.front()
-            && when <= at - DROPS_LOOK_S
-        {
-            self.drops.pop_front();
-            self.dropped_s -= moment;
-        }
-        let by_drops =
-            self.dropped_s >= DROPS_LOOK_S * DROPS_SHARE - 0.05 && (backing_off || !line_full);
+        let dropping = heard && ours.queued && ours.waiting && lost >= offered * DROPPED_PAST;
+        let by_drops = self.count_drops(at, dt, dropping) && (backing_off || !line_full);
         // With the other way's queue standing late, our flows wait on acks
         // that come late, so they send under any rate, the router's line
         // or ours: on 18 November a download filling the router's queue
