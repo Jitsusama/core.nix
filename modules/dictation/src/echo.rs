@@ -111,7 +111,9 @@ const NEAR: usize = 11;
 /// rules kept sat 20 dB or more under it, all inside their takes, and
 /// cutting them took his side from 19.0% of its words wrong to 14.4%.
 /// Inside their lines the same rule cut his own words where both speak at
-/// once, so it holds only outside them.
+/// once, raising his side of the meetings with no echo from 12.0% to
+/// 12.9%, so it holds only outside them. There it took his echoed side to
+/// 18.0% and left the meetings with no echo as they were.
 const SOUND: f32 = 20.0;
 
 /// Whether `line` is Joel's microphone hearing one of the others' lines,
