@@ -1,6 +1,7 @@
 //! The cases of a connection that stops reading: hung up on, by a change,
-//! an ask, a slow ask or a pace, once what it's owed can't be queued, its
-//! writer ended and the hang-up said once, while the rest are still told.
+//! an ask, a slow ask, one in turn or a pace, once what it's owed can't
+//! be queued, its writer ended and the hang-up said once, while the rest
+//! are still told.
 
 use std::io::Read;
 use std::sync::mpsc::Sender;
@@ -197,6 +198,17 @@ fn a_connection_asking_slowly_without_reading_is_hung_up_on() {
         None,
         "the hang-up was said more than once"
     );
+}
+
+#[test]
+fn a_connection_asking_in_turn_without_reading_is_hung_up_on() {
+    let own: Own =
+        Box::new(|said| (said["ask"] == "share").then(|| json!({"to": "x".repeat(LONG)})));
+    let (shared, _client, folder) = served("asking-in-turn-unread", own);
+    let said = hearing(&shared);
+    shared.in_turn(&["share"]);
+    asked_without_reading(&folder, &json!({"id": 1, "ask": "share"}));
+    said_once(&said, "an ask in turn was answered");
 }
 
 #[test]

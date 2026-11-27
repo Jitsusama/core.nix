@@ -55,10 +55,12 @@ use crate::asks::{Ask, Domain, VERSION, error, place_of, trimmed};
 mod change;
 mod demand;
 mod hang_up;
+mod in_turn;
 
 use demand::joined;
 pub use demand::{Begun, Fresh, HealthToo, Read, Wanted};
 use hang_up::{Peer, Saying, Unqueued, queue};
+use in_turn::Turns;
 
 /// How many lines a connection may have waiting to be written before
 /// it's taken as no longer reading and hung up on.
@@ -202,6 +204,9 @@ pub struct Shared {
     heed: OnceLock<Heed>,
     /// The daemon's own asks answered each on a thread of its own.
     slow: OnceLock<&'static [&'static str]>,
+    /// The daemon's own asks answered in turn, off their connection's
+    /// reading thread (in_turn.rs).
+    in_turn: OnceLock<&'static [&'static str]>,
     /// The daemon's own asks answered knowing their connection, and what
     /// answers them.
     peered: OnceLock<(&'static [&'static str], Peered)>,
@@ -253,6 +258,7 @@ impl Shared {
             paced: Condvar::new(),
             heed: OnceLock::new(),
             slow: OnceLock::new(),
+            in_turn: OnceLock::new(),
             peered: OnceLock::new(),
             fresh: OnceLock::new(),
             begun: OnceLock::new(),
@@ -280,7 +286,7 @@ impl Shared {
     /// Answers these of the daemon's own asks with `answer`, which is
     /// handed the connection each came on, from then on; only the first a
     /// daemon gives is kept. Each is answered on its connection's thread,
-    /// or on one of its own when it's slow too.
+    /// on one of its own when it's slow too, or in turn when it's that.
     pub fn peered(&self, asks: &'static [&'static str], answer: Peered) {
         let _ = self.peered.set((asks, answer));
     }
@@ -422,9 +428,11 @@ fn serve(shared: &Arc<Shared>, stream: UnixStream, connection: u64) {
     // watch it asks for after is told once they've moved since, when no
     // watch was there to be told.
     let mut greeted: Option<Value> = None;
-    // What its hang-up names it by, shared with its watches and its slow
-    // asks, so whichever finds its queue full first says it, and only it.
+    // What its hang-up names it by, shared with its watches, its slow asks
+    // and its turn, so whichever finds its queue full first says it, and
+    // only it.
     let peer = Arc::new(Peer::of(connection, &hangup));
+    let mut turns = Turns::default();
     let mut reading = BufReader::new(reading);
     loop {
         let line = match next_line(&mut reading, LONGEST) {
@@ -441,6 +449,19 @@ fn serve(shared: &Arc<Shared>, stream: UnixStream, connection: u64) {
             && shared.is_slow(said)
         {
             apart(shared, (id, said), &told, &hangup, &peer);
+            continue;
+        }
+        if let Ask::Own { id, said } = &asked
+            && shared.is_in_turn(said)
+        {
+            // Gone only once its turn hung up on it, which says so itself.
+            if turns
+                .take(shared, (id, said), &told, &hangup, &peer)
+                .is_err()
+            {
+                let _ = hangup.shutdown(Shutdown::Both);
+                break;
+            }
             continue;
         }
         // The daemon's own asks are answered before the lock is taken, so

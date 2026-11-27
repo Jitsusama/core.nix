@@ -3,6 +3,7 @@
 //! asked over a socket as the shell asks.
 
 mod hang_ups;
+mod in_turn;
 
 use std::path::PathBuf;
 use std::sync::Mutex;
