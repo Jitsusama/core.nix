@@ -17,21 +17,29 @@ fi
 # 137 is also a node the kernel killed for memory or something outside
 # killed, so either reads as slow only where timeout says it sent its
 # signal. That rests on timeout's word rather than the clock, which a
-# loaded builder or a clock step would make lie. Its words are read in C,
-# so no locale translates them, and apart from the node's: a shell execs
-# the node with its errors sent to a file of their own, so the node keeps
-# the process timeout signals, and a node saying timeout's words itself
-# can't pass for it. timeout's words name that shell, not the node; the
-# message after them names the node.
+# loaded builder or a clock step would make lie. Only timeout's words are
+# read, in C so no locale translates them: a shell execs the node with the
+# locale it was given and the build's own errors, kept on descriptor 3, so
+# the node keeps the process timeout signals, runs as its unit would, says
+# what it says to the log as it says it, and can't pass for timeout by
+# saying timeout's words. timeout's words name that shell, not the node;
+# the message after them names the node.
 heard=$(mktemp)
-nodeSaid=$(mktemp)
+# The locale the node is given back: whether it was set, then its value.
+locale=("" "")
+if [ -n "${LC_ALL+set}" ]; then
+  locale=("set" "$LC_ALL")
+fi
 # shellcheck disable=SC2016 # The inner shell expands these, not this one.
+given='if [ -n "$0" ]; then LC_ALL=$1; else unset LC_ALL; fi
+shift
+exec "$@" 2>&3 3>&-'
 LC_ALL=C timeout --verbose --kill-after=5 "$seconds" \
-  "$BASH" -c 'exec "$@" 2>"$0"' "$nodeSaid" "$node" "$word" -e 0 2>"$heard"
+  "$BASH" -c "$given" "${locale[@]}" "$node" "$word" -e 0 3>&2 2>"$heard"
 said=$?
-# What the node said, then timeout, goes on to the log, as each message
-# says it's above.
-cat "$nodeSaid" "$heard" >&2
+# What timeout said follows the node's on the log, as each message says
+# it's above.
+cat "$heard" >&2
 fired=0
 if grep -q '^timeout: sending signal ' "$heard"; then
   fired=1

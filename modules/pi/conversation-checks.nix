@@ -408,11 +408,13 @@ in
           "a node that starts and ends, or unset the percent."
         ];
       # Ignores being told to end once given the word, so timeout kills it
-      # five seconds past its limit and exits 137.
+      # five seconds past its limit and exits 137. It stops listening
+      # before it speaks, so a builder slow to reach the echo can't have it
+      # ended by the TERM, exiting 124 as a hanging node does.
       deaf = pkgs.writeShellScript "node" ''
         if [ "$1" = --heap-growing-percent=70 ]; then
-          echo "$0: not listening" >&2
           trap "" TERM
+          echo "$0: not listening" >&2
           exec sleep 600
         fi
       '';

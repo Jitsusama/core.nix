@@ -5,7 +5,8 @@
 # by name instead. host.nix names this build in each conversation's unit, and
 # warns where it stands unproven unless the realm vouches for its node;
 # conversation-checks.nix builds it with a node that refuses the word, one
-# that fails another way, one that never ends, one that ignores being told
+# that fails another way, one that exits 124 itself saying what timeout
+# says, one that never ends, one that ignores being told
 # to end, one killed early, one it can't run, and for a machine it can't
 # run. The node is given `seconds` to end, so one that hangs fails the
 # switch rather than holding it.
