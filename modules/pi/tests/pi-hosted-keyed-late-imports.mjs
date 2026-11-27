@@ -157,11 +157,9 @@ const racedGate = gate("raced");
 const racingLoad = open("racing-loads", [racing.loads]);
 await racedGate.reached;
 const lateRace = racingLate("raced-late");
-assert.equal(
-  await pendingAfter(lateRace, 200),
-  true,
-  "a late import was given a module a load was still evaluating",
-);
+const lateWaited = await pendingAfter(lateRace, 200);
+assert.equal(lateWaited, true, "a late import was given a module a load was still evaluating");
+assert.equal(evaluations().raced, 2, "a late import waited on the load, not evaluating its own");
 racedGate.putAway();
 racedGate.open();
 assert.equal(await within(lateRace, "a late import beside a load never ended"), "whole");

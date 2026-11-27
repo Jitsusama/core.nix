@@ -131,6 +131,9 @@ export const beforeTheBound = () => {
 };
 /** A settling check's wait: a pass ends as it settles, well inside a held turn's 8 s. */
 export const SETTLES_MS = 3000;
+/** How long a load must stay pending to count as waiting its turn; a pass
+ * waits all of it, so a load that skips its turn has that long to show. */
+export const QUEUED_MS = 1000;
 /** Whether `promise` is still pending once `ms` have passed. */
 export const pendingAfter = (promise, ms) =>
   Promise.race([
@@ -266,24 +269,6 @@ export const stalledPackage = (where) => {
   const counts = () =>
     ["stalled", ...names.map((one) => `stalled-${one}`)].map((name) => evaluations()[name] ?? 0);
   return { entries, counts };
-};
-/** Has `holder`, which waits at the gate `hold`, take its package's turn,
- * then expects `kept` to open meanwhile without waiting, as a factory kept
- * for it does, and `waiting`, which must take the turn, to wait. */
-export const opensWhileHeld = async (what, holder, kept, waiting) => {
-  const holdGate = gate("hold");
-  const holding = open(`${what}-holding`, [holder]);
-  await holdGate.reached;
-  const held = evaluations();
-  const reopened = open(`${what}-reopened`, [kept]);
-  const waited = open(`${what}-waited`, [waiting]);
-  assert.equal(await pendingAfter(reopened, SETTLES_MS), false, `${what}: a kept factory waited`);
-  assert.equal(await pendingAfter(waited, 200), true, `${what}: a load waiting its turn ended`);
-  assert.deepEqual(evaluations(), held, `${what}: a load didn't wait its turn`);
-  holdGate.putAway();
-  holdGate.open();
-  const all = Promise.all([holding, reopened, waited]);
-  await within(all, `${what}: a load holding its turn never ended`);
 };
 /** A library counting under `name` that throws part-way through. */
 const breaks = (name) =>
@@ -482,11 +467,14 @@ export const heldUpUntil = async (what, [hangs, behind, early], letGo) => {
   const waiting = open(`${what}-waiting`, [behind]);
   const queued = await pendingAfter(waiting, 200);
   assert.equal(queued, true, `a load didn't wait behind one that never ends, before ${what}`);
+  const lettingGo = Date.now();
   await letGo();
+  const letGoMs = Date.now() - lettingGo;
   const released = await inTime(
     waiting,
-    `${what} didn't let go of a load waiting behind one that never ends within 8 s ` +
-      `(a fresh load here took ${earlyMs} ms; a builder that slow can fail this)`,
+    `${what} didn't let go of a load waiting behind one that never ends within 8 s, which ` +
+      "pays for the hung load, the queued one, letting go and the release (one load " +
+      `took ${earlyMs} ms, letting go ${letGoMs} ms)`,
   );
   assert.equal(await released("behind-version"), "behind", `a load ${what} let go of failed`);
   assert.equal(
