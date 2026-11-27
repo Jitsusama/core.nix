@@ -209,7 +209,18 @@ ShellRoot {
     }
     function reach(row) {
         firstAct(row).run();
-        return Niri.spawned.join(" ");
+        return ran();
+    }
+
+    // What was run, argument by argument, so one that runs into the next,
+    // as "-- ada" given as one, isn't taken for two.
+    function ran() {
+        return JSON.stringify(Niri.spawned);
+    }
+    // Named apart from the stand-ins' own told, which a case's lookup would
+    // find first.
+    function argv() {
+        return JSON.stringify(Array.from(arguments));
     }
 
     // A search, once the daemon has answered it.
@@ -488,15 +499,18 @@ ShellRoot {
                 const open = people.all;
                 open[0].run();
                 expect("Return steps in, never calling", launcher.entered === open[0]
-                    && Niri.spawned.length === 0, Niri.spawned.join(" "));
+                    && Niri.spawned.length === 0, ran());
                 expect("calling one who's available",
-                    reach(open[0]) === "tuple call start ada@example.com", Niri.spawned.join(" "));
+                    reach(open[0]) === argv("tuple", "call", "start", "--", "ada@example.com"),
+                    ran());
                 expect("one in a call is joined", live(open[1])[0].name === "Join Their Call",
                     live(open[1])[0].name);
                 expect("joining one in a call",
-                    reach(open[1]) === "tuple call join ben@example.com", Niri.spawned.join(" "));
+                    reach(open[1]) === argv("tuple", "call", "join", "--", "ben@example.com"),
+                    ran());
                 expect("calling one who's offline",
-                    reach(open[3]) === "tuple call start cal@example.com", Niri.spawned.join(" "));
+                    reach(open[3]) === argv("tuple", "call", "start", "--", "cal@example.com"),
+                    ran());
 
                 // Past Write in Slack's place, held while Slack is asked
                 // of her.
@@ -537,8 +551,8 @@ ShellRoot {
                         && thanks?.side === "they wrote \u00b7 yesterday",
                     `${names(ben)} ${thanks?.side}`);
                 steps[2].run();
-                expect("their page opens", steps[2].verb === "open" && Niri.spawned.join(" ")
-                    === "xdg-open https://pages.example.com/ada", Niri.spawned.join(" "));
+                expect("their page opens", steps[2].verb === "open"
+                    && ran() === argv("xdg-open", "https://pages.example.com/ada"), ran());
                 expect("one with no page has no row for it",
                     !names(open[1].verbs()).includes("Open in"), names(open[1].verbs()));
                 const calls = live(open[3]);
@@ -549,8 +563,7 @@ ShellRoot {
                     `${names(calls)}; gone ${waiting?.gone}, side ${waiting?.side}`);
                 Niri.spawned = [];
                 waiting?.run();
-                expect("and opens nothing while dimmed", Niri.spawned.length === 0,
-                    Niri.spawned.join(" "));
+                expect("and opens nothing while dimmed", Niri.spawned.length === 0, ran());
                 // Their drawer is the daemon's, a source's facts ready in
                 // it, so showing it merges no one.
                 const merges = people.merging.merges;
@@ -600,8 +613,8 @@ ShellRoot {
         seeking("hal", "one with no email", () => {
             const hal = found("hal");
             expect("found", names(hal) === "Hal", names(hal));
-            expect("called by their id", reach(hal[0]) === "tuple call start 108",
-                Niri.spawned.join(" "));
+            expect("called by their id",
+                reach(hal[0]) === argv("tuple", "call", "start", "--", "108"), ran());
             expect("and nothing of theirs to copy",
                 names(hal[0].verbs()) === "Call Them, Favourite", names(hal[0].verbs()));
         }),
@@ -611,8 +624,8 @@ ShellRoot {
                 && making.side === "no" && making.verb === "star", `${making.side} ${making.verb}`);
             making.run();
             expect("telling Tuple of a favourite",
-                Niri.spawned.join(" ") === "tuple contacts favorite eli@example.com",
-                Niri.spawned.join(" "));
+                ran() === argv("tuple", "contacts", "favorite", "--", "eli@example.com"),
+                ran());
             expect("the switch says so at once", making.side === "yes", making.side);
             expect("a new favourite at home at once",
                 names(people.all) === "Ada Brook, Ben Carrow, Dee Ellery, Eli Fenwick, Cal Dunmore",
@@ -622,8 +635,8 @@ ShellRoot {
 
             home("Dee Ellery").verbs().find(row => row.name === "Favourite").run();
             expect("telling Tuple of one no longer a favourite",
-                Niri.spawned.join(" ") === "tuple contacts unfavorite dee@example.com",
-                Niri.spawned.join(" "));
+                ran() === argv("tuple", "contacts", "unfavorite", "--", "dee@example.com"),
+                ran());
             expect("one no longer a favourite, with nothing else between them, isn't listed",
                 names(people.all) === "Ada Brook, Ben Carrow, Eli Fenwick, Cal Dunmore",
                 names(people.all));

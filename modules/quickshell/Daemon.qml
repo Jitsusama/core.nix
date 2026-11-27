@@ -210,8 +210,12 @@ Scope {
     // asked cold a second time is read afresh (Y2YBTS's review of #2433).
     property bool answeredThisWatch: false
 
-    // Every record held, by key: plain fields, read beside `revision`.
-    readonly property var held: ({})
+    // Every record held, by key: plain fields, read beside `revision`. It
+    // inherits nothing, so a record a node keys "__proto__" or
+    // "constructor" is held as any other, rather than reading as held
+    // already or setting the map's prototype and hiding from
+    // Object.values (#6848's council).
+    readonly property var held: Object.create(null)
     property int revision: 0
     // How it stands: "starting", the daemon's own word, or "not answering".
     property string state: "starting"
@@ -502,6 +506,7 @@ Scope {
             onConnectionStateChanged: {
                 if (connected) {
                     daemon.refusals = 0;
+                    daemon.failedWith = null;
                     daemon.wire = socket;
                     daemon.greet();
                 } else {
@@ -510,6 +515,7 @@ Scope {
                 }
             }
             onError: failed => {
+                daemon.failedWith = failed;
                 daemon.gone();
                 if (failed !== daemon.serverNotFound || daemon.refusals < daemon.missingTries)
                     daemon.tryAgain();
@@ -580,7 +586,9 @@ Scope {
                 daemon.greet();
             }
             onExited: code => {
-                console.warn(`${daemon.command[0]} ended with ${code}, so it starts again`);
+                // Stopped as the shell let it go (connects), it isn't started again.
+                if (daemon.connects)
+                    console.warn(`${daemon.command[0]} ended with ${code}, so it starts again`);
                 daemon.gone();
                 daemon.tryAgain();
             }
@@ -600,11 +608,17 @@ Scope {
     // with the wire, so what's held waits for the next watch's answer.
     function gone() {
         // Its asks are answered with nothing below; said, since each went
-        // unanswered and the connection's going says nothing of its own.
-        const unanswered = Object.keys(awaited);
-        if (unanswered.length > 0)
-            console.warn(`${heardAs}: the connection went with ${unanswered.length} asks `
-                + `unanswered: ${unanswered.slice(0, 8).join(", ")}`);
+        // unanswered and the connection's going says nothing of its own,
+        // as a warning only where nobody chose it (Hearing.goneSaid). One
+        // the shell let go (connects) is read from connects, not from who
+        // called: the loaders' bindings may take the socket or child down
+        // before onConnectsChanged runs, and their own handlers call this.
+        const chosen = !connects;
+        const said = Hearing.goneSaid(heardAs, Object.keys(awaited), chosen);
+        if (said !== "" && chosen)
+            console.info(said);
+        else if (said !== "")
+            console.warn(said);
         unreadSaid = false;
         wire = null;
         state = "not answering";
@@ -620,6 +634,11 @@ Scope {
 
     // How many times it's been refused since it last answered.
     property int refusals: 0
+
+    // The QLocalSocket error its link's last try failed with, null since it last connected, so a
+    // check that fails waiting on it says whether nothing was there or something refused. Null
+    // rather than -1, which is Qt's UnknownSocketError.
+    property var failedWith: null
 
     // How long to wait before trying again, after so many refusals.
     function waitAfter(refused) {

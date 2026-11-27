@@ -87,10 +87,15 @@ fn a_ride_handed_over_keeps_the_right_of_way_a_fresh_one_takes_back() {
     let root = root("handed-way");
     fs::create_dir_all(folder(&root)).unwrap();
     right_of_way::give(&root, crate::state::now());
+    right_of_way::run_begins(&root, crate::state::now());
     begin(&root, true);
     assert!(
         right_of_way::holds(&root, crate::state::now()).is_some(),
         "a ride handed over gave back the right of way its riders held"
+    );
+    assert!(
+        right_of_way::runs(&root, crate::state::now()).is_none(),
+        "a ride handed over kept a run the ride before it marked"
     );
     begin(&root, false);
     assert!(
@@ -169,8 +174,22 @@ fn an_untaken_gate_whose_words_name_a_failed_check_is_red() {
                 Gated::Red,
                 "a check that failed read as untaken with {code}: {words}"
             );
+            assert!(
+                !gated::ran_whole(Some(code)),
+                "a red with a part no builder took, exit {code}, read as built whole"
+            );
         }
     }
+    for code in [1, 100] {
+        assert!(
+            gated::ran_whole(Some(code)),
+            "a red whose builds ran, exit {code}, read as part-built"
+        );
+    }
+    assert!(
+        !gated::ran_whole(None),
+        "a gate a signal ended read as built whole"
+    );
 }
 
 /// A builder's words can hold any byte, and nix-offload sets aside a
@@ -398,6 +417,39 @@ fn a_first_rider_github_refuses_falls_alone() {
         "the refused first rider wasn't told why: {why}"
     );
     fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+fn a_run_is_clear_only_one_red_or_refusal_from_emptying_nothing() {
+    assert!(
+        Splitting::default().clear(),
+        "a train with nothing behind it wasn't clear"
+    );
+    let mut searching = Splitting::default();
+    searching.red(4);
+    assert!(!searching.clear(), "a train searching a red read as clear");
+    let mut fell = Splitting::default();
+    assert_eq!(fell.red(1), After::Falls, "a lone red didn't fall");
+    assert!(
+        !fell.clear(),
+        "a train one lone red from dropping every rider read as clear"
+    );
+    fell.landed(1);
+    assert!(fell.clear(), "a landing didn't clear a lone fall");
+    let mut turned = Splitting::default();
+    turned.turned();
+    assert!(
+        !turned.clear(),
+        "a train one refusal from dropping every rider read as clear"
+    );
+    let mut untaken = Splitting::default();
+    assert!(untaken.untaken(0), "the first untaken candidate gave up");
+    assert!(
+        !untaken.clear(),
+        "a train waiting on a builder read as clear"
+    );
+    untaken.taken();
+    assert!(untaken.clear(), "a taken candidate didn't end the wait");
 }
 
 #[test]

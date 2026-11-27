@@ -8,7 +8,9 @@
 //! placer counting only its own sessions saw a fraction of one machine's
 //! load (placement research, 15 November). A kind says what a machine
 //! must be for it (`needs`) and how long its jobs run (`lasts`), in
-//! place's own words.
+//! place's own words, and it had rather go where its quest is held
+//! already ([`holders`]): place weighs that before headroom, though a
+//! holder saturated or over its share still ranks below one that isn't.
 
 use serde_json::Value;
 
@@ -66,16 +68,45 @@ pub enum Placement {
 }
 
 /// The arguments asking `mycelium place` for a kind that `needs` these
-/// (`kind=value` each) and whose jobs last `lasts`, when it says.
-pub fn asking(needs: &[String], lasts: Option<&str>) -> Vec<String> {
+/// (`kind=value` each) and whose jobs last `lasts`, when it says, had
+/// rather go to one of `holders`, most wanted first.
+pub fn asking(needs: &[String], holders: &[String], lasts: Option<&str>) -> Vec<String> {
     let mut args = vec!["place".to_owned()];
     for need in needs {
         args.extend(["--need".to_owned(), need.clone()]);
+    }
+    for machine in holders {
+        args.extend(["--prefer".to_owned(), format!("machine={machine}")]);
     }
     if let Some(lasts) = lasts {
         args.extend(["--lasts".to_owned(), lasts.to_owned()]);
     }
     args
+}
+
+/// The machines of `allowed` already holding some of a quest's files, as
+/// the quest's ledger `text` says in `theirs`, where mycelium keeps what
+/// each other machine holds (PROTOCOL.md, Sharing a Quest), most held
+/// first. A job sent to one of them waits for only what changed since to
+/// cross, where any other waits for every file: on 25 November a job
+/// waited on a share it didn't need, its quest's holder and the machine
+/// chosen being alike in all else. A ledger it can't read names none,
+/// since a preference only ranks machines that fit already.
+pub fn holders(text: &str, allowed: &[String]) -> Vec<String> {
+    let value: Value = serde_json::from_str(text).unwrap_or_default();
+    let Some(theirs) = value.get("theirs").and_then(Value::as_object) else {
+        return Vec::new();
+    };
+    let mut held: Vec<(usize, &String)> = theirs
+        .iter()
+        .filter(|(machine, _)| allowed.contains(machine))
+        .map(|(machine, files)| (files.as_object().map_or(0, serde_json::Map::len), machine))
+        .filter(|&(files, _)| files > 0)
+        .collect();
+    held.sort_by(|one, other| other.0.cmp(&one.0).then_with(|| one.1.cmp(other.1)));
+    held.into_iter()
+        .map(|(_, machine)| machine.clone())
+        .collect()
 }
 
 /// The placement mycelium's `place` answers, or what's wrong with it.
@@ -133,7 +164,7 @@ pub fn decide(here: &str, placement: &Placement, allowed: &[String]) -> Place {
 
 #[cfg(test)]
 mod tests {
-    use super::{Place, Placement, Why, asking, decide, placement};
+    use super::{Place, Placement, Why, asking, decide, holders, placement};
 
     fn allowed(names: &[&str]) -> Vec<String> {
         names.iter().map(|it| (*it).to_owned()).collect()
@@ -209,19 +240,54 @@ mod tests {
     #[test]
     fn a_kind_asks_in_place_s_own_words() {
         assert_eq!(
-            asking(&["system=darwin".into(), "reach=home".into()], Some("2h")),
+            asking(
+                &["system=darwin".into(), "reach=home".into()],
+                &allowed(&["far", "near"]),
+                Some("2h")
+            ),
             [
                 "place",
                 "--need",
                 "system=darwin",
                 "--need",
                 "reach=home",
+                "--prefer",
+                "machine=far",
+                "--prefer",
+                "machine=near",
                 "--lasts",
                 "2h"
             ],
-            "a kind's needs and length weren't asked as place takes them"
+            "a kind's needs, holders and length weren't asked as place takes them"
         );
-        assert_eq!(asking(&[], None), ["place"], "a plain kind asked more");
+        assert_eq!(asking(&[], &[], None), ["place"], "a plain kind asked more");
+    }
+
+    #[test]
+    fn the_machines_holding_most_of_the_quest_are_preferred_first() {
+        let ledger = r#"{"files": {"a": {}, "b": {}}, "theirs": {
+            "far": {"a": {}},
+            "near": {"a": {}, "b": {}},
+            "named": {},
+            "stranger": {"a": {}, "b": {}}
+        }}"#;
+        assert_eq!(
+            holders(ledger, &allowed(&["far", "near", "named"])),
+            allowed(&["near", "far"]),
+            "holders weren't the allowed machines holding a file, most held first"
+        );
+        let even = r#"{"theirs": {"near": {"a": {}}, "far": {"a": {}}}}"#;
+        assert_eq!(
+            holders(even, &allowed(&["near", "far"])),
+            allowed(&["far", "near"]),
+            "holders alike weren't taken by name, so one ask answers as the next"
+        );
+        for unread in ["", "{", r#"{"files": {}}"#, r#"{"theirs": ["far"]}"#] {
+            assert!(
+                holders(unread, &allowed(&["far"])).is_empty(),
+                "{unread:?} named a holder"
+            );
+        }
     }
 
     #[test]

@@ -23,9 +23,11 @@
   font-size: var(--step-body);
 }
 
+/* Each group is a grid of its own, so its keys' column is held to one least
+   width, wider than any key, and every group's words start level. */
 .keypanel dl {
   display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
+  grid-template-columns: minmax(4rem, max-content) minmax(0, 1fr);
   gap: var(--mark) var(--groups);
   margin: 0;
 }

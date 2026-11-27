@@ -1,4 +1,5 @@
 .pragma library
+.import "Places.js" as Places
 // In what order and how fast Reopen Them All may go (Sessions.qml): leaders
 // first, each once, when it may begin the next session, which of those
 // begun to tell to carry on, from the machine queue's own verdict, and
@@ -208,24 +209,75 @@ function leadersFirst(queue) {
 // connected (`screens`, Places.js's connected), else the one in use `now`,
 // as with none in use then: a window needs a screen to go to.
 function inUseFor(placed, now, screens) {
-    return typeof placed === "string" && placed in (screens ?? {}) ? placed : now;
+    return typeof placed === "string" && Object.keys(screens ?? {}).includes(placed) ? placed : now;
+}
+
+// The connector a place found now (`place`, of one kept on `screen`) was given, or undefined.
+// It must be connected now (`screens`, Places.js's connected) and show that screen, and the place
+// must not be away. A place left as kept, with no screen said or none in use, keeps last boot's
+// connector, which may be gone or another screen's now, so it was given none, as with no
+// `screens` at all, which fails closed rather than stopping Reopen Them All's walk.
+function givenOn(screen, place, screens) {
+    const output = place?.output;
+    // Own keys alone, so a prototype's name is never connected, as Sprouting.js's untold.
+    const shows = Object.keys(screens ?? {}).includes(output)
+        && (!screen || screens[output] === screen);
+    return place?.away || !shows ? undefined : output;
 }
 
 // The connectors Reopen Them All's sessions were given (`places`, Places.js's placed, of the
 // places `kept`), as whereKept's `given`, so its windows put back after take the same twin
-// connectors as their sessions, whatever order they come back in: none for one gone. Those
-// windows put back took `before` stay only for a connector its screen kept that no session's place
-// on that screen given a connector was, given one no session was, so they never contradict the
-// sessions' nor leave the other twin's windows none to go to.
-function givenBy(kept, places, before) {
-    const given = kept.map((at, index) => ({ at, output: places[index]?.away ? undefined
-        : places[index]?.output })).filter(one => one.at);
+// connectors as their sessions, whatever order they come back in. A session counts as given a
+// connector only by givenOn, with `screens` connected now. An earlier window's entry (`before`)
+// stays unless a session kept on the same screen and connector was given a connector, or a
+// session was given the connector it took. So those windows never contradict the sessions, nor
+// leave the other twin's windows none to go to.
+function givenBy(kept, places, before, screens) {
+    const given = kept
+        .map((at, index) => ({ at, output: givenOn(at?.screen, places[index], screens) }))
+        .filter(one => one.at);
     const keptOn = one => JSON.stringify([one.at.screen, one.at.output]);
     const placed = given.filter(one => one.output !== undefined);
     const said = new Set(placed.map(keptOn));
     const now = new Set(placed.map(one => one.output));
     return given.concat((before ?? [])
         .filter(was => !said.has(keptOn(was)) && !now.has(was.output)));
+}
+
+// Reopen Them All's sessions placed (Places.js's placed, of the places `kept`, with the screen
+// `inUse` and each one's `moments`) and the connectors they were given (givenBy, after `before`),
+// both from the one `screens` answer, so its windows can't be given connectors by other screens
+// than its sessions were placed by.
+function placedGiven(kept, screens, inUse, { moments, before }) {
+    const places = Places.placed(kept, screens, inUse, moments);
+    return { places, given: givenBy(kept, places, before, screens) };
+}
+
+// Where a window kept at `at` (of `moment`, the windows its boot kept) goes back by its kept
+// place, `kept` (Places.js's whereKept, past the twin connectors `given` so far, by the screen
+// `inUse`), and the one entry it adds to `given`, `gives`: givenOn's connector, not the one found,
+// which is last boot's while no screen is said, so its twin's windows aren't kept off it.
+function keptBack(at, moment, screens, { given, inUse }) {
+    const kept = Places.whereKept(at, moment, screens, { given, inUse });
+    return { kept, gives: { at, output: givenOn(at.screen, kept, screens) } };
+}
+
+// The workspaces noted away (Sessions.qml's awayFrom, by screen) once workspace `id` is noted
+// away as `away` (a place's, of Places.js's awayOf) says, or null when there's nothing to note:
+// no note, no id, or that id noted from that screen already. In a map with no prototype
+// (Places.js's byName), so a place kept on a prototype's name, even __proto__, is noted as any.
+function notedAway(awayFrom, away, id) {
+    if (!away || id === null || id === undefined) {
+        return null;
+    }
+    const next = Places.byName(awayFrom);
+    const kept = next[away.screen] ?? [];
+    if (kept.some(one => one.id === id)) {
+        return null;
+    }
+    next[away.screen] = kept.concat([{ id, workspace: away.workspace, output: away.output,
+        others: away.others ?? {} }]);
+    return next;
 }
 
 // Reopen Them All's queue with `more` joined at its end, but for each one

@@ -199,8 +199,16 @@ mod tests {
     fn a_span_without_its_ids_or_times_is_refused_and_says_which() {
         let bad = r#"{"resourceSpans":[{"scopeSpans":[{"spans":[{"traceId":"ab",
             "spanId":"00f067aa0ba902b7","name":"x","startTimeUnixNano":"1","endTimeUnixNano":"2"}]}]}]}"#;
-        assert!(spans(bad).unwrap_err().contains("traceId"));
-        assert!(spans("{").unwrap_err().contains("not JSON"));
+        let refused = spans(bad).unwrap_err();
+        assert!(
+            refused.contains("traceId"),
+            "a short trace id's refusal didn't name it: {refused}"
+        );
+        let refused = spans("{").unwrap_err();
+        assert!(
+            refused.contains("not JSON"),
+            "a cut body's refusal didn't say it isn't JSON: {refused}"
+        );
     }
 
     #[test]

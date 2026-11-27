@@ -34,7 +34,7 @@ const SHELL_PROGRAMS: [&str; 2] = [".quickshell-wrapped", "quickshell"];
 const SHELL_UNIT: &str = "quickshell.service";
 
 /// What a refusal says, whichever check refused.
-const REFUSED: &str = "only the launcher starts new work here";
+pub const REFUSED: &str = "only the launcher starts new work here";
 
 /// `SO_PEERPIDFD` (Linux 6.5), the same on every architecture the
 /// machines run, which the libc crate names only in its newer layout.

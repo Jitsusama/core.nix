@@ -10,8 +10,10 @@ use serde_json::Value;
 use crate::record::{Deeper, Health, Part};
 use crate::words::grouped;
 
+mod builders;
 mod machines;
 mod ties;
+mod why;
 
 pub use machines::{Backup, backup, machines};
 

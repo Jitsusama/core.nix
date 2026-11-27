@@ -98,6 +98,20 @@ in
       default = null;
       description = "The realm mycelium is asked about, or its own default.";
     };
+    ledgers = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      # Where mycelium's home.nix has the realm's node keep its state: its
+      # own default for the home realm, and a folder of the realm's name
+      # for any other it also joins.
+      default =
+        let
+          home = config.jitsusama.mycelium.realm or null;
+          apart = settings.realm != null && settings.realm != home;
+        in
+        "${config.xdg.stateHome}/mycelium${lib.optionalString apart "/${settings.realm}"}/shared";
+      defaultText = lib.literalExpression ''"''${config.xdg.stateHome}/mycelium/shared"'';
+      description = "The folder where the realm's node keeps a ledger of each shared quest, read for the machines already holding a job's quest, which its placement then prefers, since a job sent there waits for fewer files to cross; null reads none.";
+    };
     kinds = lib.mkOption {
       type = lib.types.attrsOf kind;
       default = { };
@@ -108,7 +122,12 @@ in
   config = {
     home.packages = [ (pkgs.callPackage ./package.nix { }) ];
     xdg.configFile."elsewhere/settings.json".text = builtins.toJSON {
-      inherit (settings) machines scratch realm;
+      inherit (settings)
+        machines
+        scratch
+        realm
+        ledgers
+        ;
       kinds = lib.mapAttrs (_: kind: {
         inherit (kind)
           description

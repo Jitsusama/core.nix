@@ -50,3 +50,5 @@ ignore = [
 "tests/vm/screens/screens_session.py" = ["S101"]
 # wifid as the Wi-Fi test's areas reach it asserts what a refusal says, as the desktop does.
 "tests/vm/network/wifi/wifi_session.py" = ["S101"]
+# run-subtests' stand-ins assert what a test needs of how they were run, as the desktop does.
+"tools/run-subtests/stand_ins.py" = ["S101"]

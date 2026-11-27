@@ -35,16 +35,52 @@ QtObject {
             // void via that interface. no feedback at all".
             Expect.same("what it asks is the talk's first exchange, whole, with what it takes",
                 Answers.question(asks(want, true), "Sign the Commits", words, dayOf), {
-                    line: "Sign the Commits asks you",
-                    answers: [asked, "Yes \u00b7 No \u00b7 Partly, or your own words"],
-                    waiting: "", stands: "", by: "", side: "13:09" });
+                    line: "Sign the Commits asks you", answers: [asked], waiting: "",
+                    stands: "", by: "",
+                    takes: "Yes \u00b7 No \u00b7 Partly, or your own words", side: "13:09" });
+            // A long question is elided at eight lines (TalkSpoken.qml); what it takes is a
+            // field of its own, which TalkSpoken draws whole under it, so a long question
+            // never pushes it out of the elided answers.
+            const long = Array.from({ length: 12 }, (_, at) => `line ${at}`).join("\n");
+            const longAsked = Answers.question(asks(Object.assign({}, want, { whole: long }),
+                true), "S", words, dayOf);
+            Expect.same("a long question keeps what it takes in a field of its own",
+                [longAsked.answers, longAsked.takes],
+                [[long], "Yes \u00b7 No \u00b7 Partly, or your own words"]);
+            const untitled = { line: "S asks you", answers: [], waiting: "", stands: "",
+                by: "", takes: "Yes \u00b7 No \u00b7 Partly, or your own words", side: "13:09" };
+            Expect.same("one saying nothing of what it asks still says what it takes",
+                Answers.question(asks(Object.assign({}, want, { asked: "Sign the Commits",
+                    said: "" }), true), "S", words, dayOf), untitled);
+            Expect.same("one whose short line is only spaces still says what it takes",
+                Answers.question(asks(Object.assign({}, want, { asked: "  ", said: "  " }),
+                    true), "S", words, dayOf), untitled);
+            Expect.same("one blank, offering no answers, shows nothing",
+                Answers.question(asks(Object.assign({}, want, { asked: " ", said: "",
+                    answers: null }), true), "S", words, dayOf), null);
             Expect.same("one taking only its choices says only them",
                 Answers.question(asks(Object.assign({}, want, { answers: Object.assign({},
-                    want.answers, { own: false }) }), true), "S", words, dayOf).answers[1],
+                    want.answers, { own: false }) }), true), "S", words, dayOf).takes,
                 "Yes \u00b7 No \u00b7 Partly");
-            Expect.same("one offering no answers still shows what it asks",
-                Answers.question(asks(Object.assign({}, want, { answers: null }), true), "S",
-                    words, dayOf).answers, [asked]);
+            Expect.same("one offering no answers still shows what it asks, and no takes",
+                ["answers", "takes"].map(key => Answers.question(asks(Object.assign({}, want,
+                    { answers: null }), true), "S", words, dayOf)[key]), [[asked], ""]);
+            // Its whole question, as the harness keeps it beside the short line (85PKB2,
+            // 2026-11-24): its lines and indentation kept, its blank lines before and spaces
+            // after let go.
+            const wholly = "Which signing pause?\n\n- Yes: sign all\n  - the old ones too\n- No";
+            Expect.same("a want saying more than its short line shows it whole",
+                Answers.question(asks(Object.assign({}, want, { whole: `\n${wholly}  \n` }), true),
+                    "S", words, dayOf).answers, [wholly]);
+            Expect.same("a whole question is told where its short line is the title",
+                Answers.question(asks(Object.assign({}, want, { asked: "Sign the Commits",
+                    said: "", whole: wholly }), true), "S", words, dayOf).answers[0], wholly);
+            Expect.same("its first line's indentation is kept, its blank lines around dropped",
+                Answers.whole({ whole: "\n \n  - low\n- high \n" }), "  - low\n- high");
+            Expect.same("no want, no whole", Answers.whole(null), "");
+            Expect.same("a blank whole leaves the short line",
+                Answers.question(asks(Object.assign({}, want, { whole: " \n " }), true), "S",
+                    words, dayOf).answers[0], asked);
             Expect.same("a name with $& in it goes in as written",
                 Answers.question(asks(want, true), "A $& B", words, dayOf).line,
                 "A $& B asks you");
@@ -54,8 +90,8 @@ QtObject {
             for (const [why, shown, asking] of [
                 ["nothing while it asks nothing", want, false],
                 ["nothing for no want", null, true],
-                ["nothing where it says nothing of what", Object.assign({}, want,
-                    { asked: "Sign the Commits", said: "" }), true]
+                ["nothing where it says nothing of what nor offers answers", Object.assign({},
+                    want, { asked: "Sign the Commits", said: "", answers: null }), true]
             ]) {
                 Expect.same(why, Answers.question(asks(shown, asking), "S", words, dayOf),
                     null);
