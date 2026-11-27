@@ -146,10 +146,10 @@ fn serving(socket: &Path, asking: &Asking) -> Result<(), Failure> {
             let watched = shared.watches("row", place.name) || shared.watches("head", place.name);
             if watched && last[at].is_none_or(|made| made.elapsed() >= place.fresh) {
                 last[at] = Some(Instant::now());
-                if let Some(Made { rows, head }) = made(asking, place) {
-                    let rows = rows.unwrap_or_else(|| last_rows(&kept[at]));
-                    moved |= !kept[at].take(rows, vec![head]).is_empty();
-                }
+                let made = made(asking, place);
+                moved |= took(&mut kept[at], made, || {
+                    unread_head(&asking.words, place.name)
+                });
             }
             let since = last[at].map(|made| made.elapsed());
             if let Some(this) = waiting(watched, since, place.fresh) {
@@ -193,6 +193,42 @@ fn waiting(watched: bool, since: Option<Duration>, fresh: Duration) -> Option<Du
 struct Made {
     rows: Option<Vec<Value>>,
     head: Value,
+}
+
+/// Whether what cadence made of a place moved what it serves, taken into
+/// that place's own `kept`: its rows, or the last it served where it said
+/// keep, beside its new headline. Where cadence made nothing of a place
+/// that has served no headline yet, the headline saying its list is unread
+/// (`unread`) is served alone, so a place that waits on its headline, as
+/// Asked For does, stops asking (round 5, F91); one served a headline
+/// before keeps all it served.
+fn took(kept: &mut Kept, made: Option<Made>, unread: impl FnOnce() -> Option<Value>) -> bool {
+    match made {
+        Some(Made { rows, head }) => {
+            let rows = rows.unwrap_or_else(|| last_rows(kept));
+            !kept.take(rows, vec![head]).is_empty()
+        }
+        None if !kept.all().any(|record| record["kind"] == "head") => {
+            unread().is_some_and(|head| !kept.take(Vec::new(), vec![head]).is_empty())
+        }
+        None => false,
+    }
+}
+
+/// The headline saying a place's list is unread, in the launcher's words
+/// for it (`<place>:head`'s unread), as cadence says it; none where those
+/// words don't say one, as Spec's don't, or can't be read.
+fn unread_head(words: &Path, place: &str) -> Option<Value> {
+    let read: Value = serde_json::from_slice(&std::fs::read(words).ok()?).ok()?;
+    let id = format!("{place}:head");
+    let thing = read["things"]
+        .as_array()?
+        .iter()
+        .find(|thing| thing["id"] == id.as_str())?;
+    let said = thing["said"]["unread"].as_str()?;
+    let key = format!("head:{place}");
+    Some(json!({"key": key, "kind": "head",
+        "head": {"key": key, "place": place, "said": said, "glyph": "failed"}}))
 }
 
 /// The rows a place last served, in their order, to serve again beside a
@@ -405,27 +441,71 @@ mod tests {
         let head = json!({"key": "head:asked", "kind": "head", "head": {"said": "2 open"}});
         kept.take(rows, vec![head]);
         let printed = br#"{"keep": true, "head": {"said": "can't read the list now"}}"#;
-        let Made { rows, head } = parsed(printed, "asked").expect("a headline");
-        assert_eq!(rows, None, "no rows of its own");
-        let last = last_rows(&kept);
-        let keys: Vec<&Value> = last.iter().map(|row| &row["key"]).collect();
+        let made = parsed(printed, "asked").expect("a headline");
+        assert_eq!(made.rows, None, "no rows of its own");
+        let keys: Vec<Value> = last_rows(&kept)
+            .iter()
+            .map(|row| row["key"].clone())
+            .collect();
         assert_eq!(
             keys,
             ["row:asked:b", "row:asked:a"],
             "in the order last shown"
         );
-        let moved = kept.take(last, vec![head]);
-        assert_eq!(
-            moved.changed.len(),
-            1,
-            "only the headline is told again: {moved:?}"
-        );
-        assert!(moved.gone.is_empty(), "and no row goes");
+        // As the serving loop takes it, into this place's own kept.
+        assert!(took(&mut kept, Some(made), || None), "the headline moved");
+        assert_eq!(last_rows(&kept).len(), 2, "and its rows stay beside it");
         assert_eq!(
             kept.get("head:asked").expect("its headline")["head"]["said"],
             "can't read the list now"
         );
         assert_eq!(last_rows(&Kept::default()), Vec::<Value>::new());
+    }
+
+    #[test]
+    fn a_place_cadence_made_nothing_of_is_headed_unread_only_before_its_first_headline() {
+        let unread = || {
+            Some(json!({"key": "head:asked", "kind": "head",
+            "head": {"said": "can't read the list now", "glyph": "failed"}}))
+        };
+        let mut cold = Kept::default();
+        assert!(
+            took(&mut cold, None, unread),
+            "a place never headed is headed unread"
+        );
+        assert_eq!(
+            cold.get("head:asked").expect("its headline")["head"]["glyph"],
+            "failed"
+        );
+        assert!(last_rows(&cold).is_empty(), "with no rows");
+        let mut headed = Kept::default();
+        headed.take(
+            vec![json!({"key": "row:asked:a"})],
+            vec![json!({"key": "head:asked", "kind": "head", "head": {"said": "1 open"}})],
+        );
+        assert!(
+            !took(&mut headed, None, unread),
+            "one headed keeps all it served"
+        );
+        assert_eq!(
+            headed.get("head:asked").expect("its headline")["head"]["said"],
+            "1 open"
+        );
+    }
+
+    #[test]
+    fn the_unread_headline_is_the_launchers_words_for_it() {
+        let words = std::env::temp_dir().join(format!("cadence-spec-words-{}", std::process::id()));
+        std::fs::write(
+            &words,
+            r#"{"things": [{"id": "asked:head", "said": {"unread": "can't read it"}}]}"#,
+        )
+        .expect("the words written");
+        let head = unread_head(&words, "asked").expect("Asked For's unread headline");
+        assert_eq!(head["head"]["said"], "can't read it");
+        assert_eq!(head["head"]["glyph"], "failed");
+        assert_eq!(unread_head(&words, "spec"), None, "Spec's words say none");
+        let _ = std::fs::remove_file(&words);
     }
 
     #[test]

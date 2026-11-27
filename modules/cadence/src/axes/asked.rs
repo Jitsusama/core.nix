@@ -156,10 +156,22 @@ fn open(text: &str) -> Vec<Ask> {
                 expected: time(&ask["expected"]),
                 moved: promised(&ask).len().saturating_sub(1),
                 change: ask["pr"].as_str().unwrap_or("").to_owned(),
-                probed: ask["probe"].is_object(),
+                probed: given(&ask["probe"]),
             })
         })
         .collect()
+}
+
+/// Whether an ask was given a probe: one check as an object, several as a
+/// list, as the ledger holds both (148 and 18 on 27 Nov), or one named by
+/// a string; never one null, empty or false (round 5, F96).
+fn given(probe: &Value) -> bool {
+    match probe {
+        Value::Object(check) => !check.is_empty(),
+        Value::Array(checks) => !checks.is_empty(),
+        Value::String(named) => !named.is_empty(),
+        _ => false,
+    }
 }
 
 /// Words as one line, each run of spaces or line breaks one space.
@@ -504,7 +516,8 @@ mod tests {
                 "u3",
                 "2026-11-26T09:00:00-05:00",
                 "unrun",
-                r#", "probe": {"check": "z"}"#,
+                // Several checks, as a list, as the ledger holds some.
+                r#", "probe": [{"check": "z"}, {"check": "zz"}]"#,
             ),
             line("n4", "2026-11-26T09:00:00-05:00", "unprobed", ""),
         ]

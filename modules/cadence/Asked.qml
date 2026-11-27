@@ -22,7 +22,7 @@ Provider {
     id: provider
 
     // The words it answers whole, and by their start (Provider.qml).
-    questions: Words.answers("agents:asked")
+    questions: Words.answers("agents:asked-for")
 
     // Whether its rows can be seen: its answer, or words typed that ask
     // it, or a row of it, so the daemon reads the asks only then.
@@ -63,7 +63,7 @@ Provider {
                 parted: true,
                 rows: [],
                 asking: true,
-                glyph: Words.glyph("agents:asked"),
+                glyph: Words.glyph("agents:asked-for"),
                 note: "",
                 live: provider
             };
@@ -71,7 +71,7 @@ Provider {
         return {
             headline: head.said ?? "",
             warns: head.glyph === "failed",
-            glyph: Ready.glyphOf(head.glyph ?? "", Theme.glyph) || Words.glyph("agents:asked"),
+            glyph: Ready.glyphOf(head.glyph ?? "", Theme.glyph) || Words.glyph("agents:asked-for"),
             rows: ready.rows(),
             note: "",
             // Its answer and each row are Asked For's, so the daemon is

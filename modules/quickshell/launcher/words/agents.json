@@ -186,7 +186,7 @@
       "glyph": "agent"
     },
     {
-      "id": "agents:asked",
+      "id": "agents:asked-for",
       "in": "agents",
       "name": "Asked For",
       "term": "Agents/Asked For",
