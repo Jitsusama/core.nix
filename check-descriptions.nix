@@ -622,10 +622,11 @@
     a switch is told to leave each cadence run an installed timer starts be rather than restarting
     it and waiting on its start, which under load outlasts home-manager's wait and sends the whole
     switch back, and each is a oneshot setting a start timeout of its own systemd reads that ends a
-    hang now that no switch does; each timer's run is found as the base module finds it, the tick,
-    day, review and hour must each be among the runs found, a failure names each run and what it
-    lacks, stand-in units each wrong one way must each be refused, and ones right in each way
-    allowed must each pass
+    hang now that no switch does, a key it can't read refused as such; each timer's run is found
+    by the reading the base module finds it with, the tick, day, review and hour must each be
+    among the runs found, a failure names each run and what it lacks, stand-in units each wrong
+    one way must each be refused in their own words, and ones right in each way allowed must each
+    pass
   '';
   cadence-passes-clippy = ''
     clippy finds nothing in cadence or its tests
@@ -3690,6 +3691,12 @@
     program is missing, never restarted or watched by systemd, forgotten once ended, given 60 s to park
     and told so, left running through a switch, its host's restart and the kernel killing one
     of its commands for memory, and a Mac gets none
+  '';
+  pi-conversations-read-says-what-it-read = ''
+    what the pi host VM test's failures read from the machine is said on one line, blank lines
+    dropped, an empty read and a failed one saying so with its exit, one cut short by its
+    timeout naming its own seconds, and every character a terminal would act on but a newline
+    written as its escape within its line, readable words kept as they are
   '';
   pi-conversations-set-heap-growth = ''
     a realm's conversationHeapGrowingPercent reaches each of its conversations' own processes,
