@@ -1077,10 +1077,10 @@ PanelWindow {
             }
             return;
         }
-        if (place === null || column === null || going !== null || resting.running
-            || wanted !== sat || holding || carry !== null) {
+        const refusal = strollsNot();
+        if (refusal !== "") {
             if (to === "play")
-                turnedDown(window.scene.playing?.kind ?? "", strollsNot());
+                turnedDown(window.scene.playing?.kind ?? "", refusal);
             return;
         }
         if (to === "play") {
@@ -1115,8 +1115,9 @@ PanelWindow {
         strolled = spot;
     }
 
-    // Why a stroll is turned down, the first that holds of stroll()'s
-    // guard, by the name a turned-down report gives it.
+    // Why a stroll is turned down, by the name a turned-down report gives
+    // it, or "" where it may stroll: stroll()'s guard itself, so a reason
+    // added to it is named as it is.
     function strollsNot(): string {
         if (place === null)
             return "not on this screen";
@@ -1130,7 +1131,9 @@ PanelWindow {
             return "keys elsewhere";
         if (holding)
             return "held";
-        return "riding";
+        if (carry !== null)
+            return "riding";
+        return "";
     }
 
     // A play the scene handed it, turned down, said only for the one a
