@@ -159,7 +159,7 @@ elif [ "$reached" = old ]; then
   systemd-run --user --scope --collect --quiet --slice=agents.slice -- \
     env "MYCELIUM_APP_ID=$class" kitty -1 --instance-group pi-sessions --class "$class" \
     --directory "$dir" "$@" && exit 0
-  cause=refused
+  cause="refused"
   echo "sessions: the sessions kitty opened no $class" >&2
 else
   [ -z "$cut" ] ||
