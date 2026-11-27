@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use super::ended::{built, reason};
+use super::ended::{built, kept_as, reason};
 use super::telling::is_test;
 use super::*;
 
@@ -372,5 +372,24 @@ fn a_build_left_unbuilt_says_nixs_last_error_cut_short() {
         said[2],
         "nix said no error",
         "a log with no error line wasn't said as one"
+    );
+}
+
+#[test]
+fn a_kept_log_is_named_by_the_check_with_what_a_file_cant_hold_dashed() {
+    let kept = [
+        kept_as(7, "vm-a_b.2"),
+        kept_as(7, "../a b/\"c\""),
+        kept_as(7, "caf\u{e9}*"),
+    ];
+
+    assert_eq!(
+        kept,
+        [
+            "red-first-7-vm-a_b.2.log",
+            "red-first-7-..-a-b--c-.log",
+            "red-first-7-caf--.log",
+        ],
+        "a check's name was kept as a file's name it can't safely be"
     );
 }

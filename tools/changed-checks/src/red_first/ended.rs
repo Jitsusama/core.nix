@@ -88,6 +88,24 @@ pub fn reason(log: &str) -> String {
         )
 }
 
+/// The name the log of the check `name`'s build over the base is kept
+/// under in the cache, from this run's `pid`. A check's name is an
+/// attribute's, which may hold a slash, a space or a quote, so any
+/// character a file's name can't safely hold becomes a dash.
+pub fn kept_as(pid: u32, name: &str) -> String {
+    let name: String = name
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || matches!(character, '.' | '_' | '-') {
+                character
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    format!("red-first-{pid}-{name}.log")
+}
+
 /// Build the check `name` over the base, stopping it at `deadline` and
 /// keeping nix's log out of the run's: a test failing there as it should
 /// prints nix's words for a failed build, which merge-net reads as a check
@@ -140,7 +158,7 @@ pub fn built_over(
     if let Built::Unbuilt(reason) = &ended {
         let folder = crate::cache().join("changed-checks");
         // Runs judging the same check at once each keep their own.
-        let kept = folder.join(format!("red-first-{}-{name}.log", std::process::id()));
+        let kept = folder.join(kept_as(std::process::id(), name));
         let _ = fs::create_dir_all(&folder).and_then(|()| fs::write(&kept, &*log));
         eprintln!(
             "changed-checks: {name} couldn't be built over the base, though no builder failed \
