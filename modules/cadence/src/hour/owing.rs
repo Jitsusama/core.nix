@@ -1513,19 +1513,15 @@ mod tests {
         };
         let asked = |told: Vec<(String, String)>| told.iter().any(|(to, _)| to == "PN2VZC");
         let mut ledger = Vec::new();
-        assert!(asked(file(
-            &mut ledger,
-            &red(&["AAAAAA"]),
-            "2026-11-26",
-            1000
-        )));
+        assert!(
+            asked(file(&mut ledger, &red(&["AAAAAA"]), "2026-11-26", 1000)),
+            "the day's first idle cell went unasked"
+        );
         file(&mut ledger, &red(&[]), "2026-11-26", 4600);
-        assert!(asked(file(
-            &mut ledger,
-            &red(&["CCCCCC"]),
-            "2026-11-26",
-            8200
-        )));
+        assert!(
+            asked(file(&mut ledger, &red(&["CCCCCC"]), "2026-11-26", 8200)),
+            "a second cell, idle after the first was answered, went unasked"
+        );
         file(&mut ledger, &red(&[]), "2026-11-26", 11_800);
         assert!(
             !asked(file(
@@ -1561,14 +1557,20 @@ mod tests {
         let asked = |told: Vec<(String, String)>| told.iter().any(|(to, _)| to == "PN2VZC");
         let hour = 3600;
         let mut ledger = Vec::new();
-        assert!(asked(file(&mut ledger, &red(&["AAAAAA"]), "2026-11-26", 0)));
+        assert!(
+            asked(file(&mut ledger, &red(&["AAAAAA"]), "2026-11-26", 0)),
+            "the first idle cell went unasked"
+        );
         file(&mut ledger, &red(&[]), "2026-11-26", hour);
-        assert!(asked(file(
-            &mut ledger,
-            &red(&["CCCCCC"]),
-            "2026-11-26",
-            20 * hour
-        )));
+        assert!(
+            asked(file(
+                &mut ledger,
+                &red(&["CCCCCC"]),
+                "2026-11-26",
+                20 * hour
+            )),
+            "a cell idle twenty hours on went unasked"
+        );
         file(&mut ledger, &red(&[]), "2026-11-26", 21 * hour);
         assert!(
             asked(file(
