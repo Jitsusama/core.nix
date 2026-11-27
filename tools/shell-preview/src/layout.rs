@@ -112,7 +112,19 @@ mod tests {
         fn new(test: &str) -> Self {
             let root =
                 std::env::temp_dir().join(format!("shell-preview-{}-{test}", std::process::id()));
-            let _ = fs::remove_dir_all(&root);
+            if let Err(error) = fs::remove_dir_all(&root) {
+                assert_eq!(
+                    error.kind(),
+                    std::io::ErrorKind::NotFound,
+                    "{} should be cleared: {error}",
+                    root.display()
+                );
+            }
+            // Made afresh, so an earlier run's files, or a folder planted
+            // there, fail the test rather than feed it.
+            fs::create_dir(&root).unwrap_or_else(|error| {
+                panic!("{} should be made afresh: {error}", root.display())
+            });
             for folder in ["built/launcher", "work/modules/quickshell/launcher"] {
                 fs::create_dir_all(root.join(folder)).expect("a folder");
             }
