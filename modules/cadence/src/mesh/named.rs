@@ -43,9 +43,11 @@ impl Mesh {
     /// being named every hour for good. Only plain files are listed, and
     /// each is read only when what was opened is still one, and only to
     /// [`LARGEST`], so a link to a device or a huge file can't hold the
-    /// read for ever. A pipe put in a message's place between its listing
-    /// and its opening still can: that takes a cell writing the mesh's
-    /// files by hand, which the measures reading this can't guard against.
+    /// read for ever. A link or a pipe put in a message's place between
+    /// its listing and its opening is still followed, and a pipe can hold
+    /// the read: that takes a cell writing the mesh's files by hand, which
+    /// can forge any message anyway, so it's left to the harness's own
+    /// writing rather than guarded by each platform's flags for opening.
     /// Every file is opened and judged, but only the messages `keep` holds
     /// to are kept, so a read over days holds no more than it uses.
     pub fn sent_as_named(
@@ -55,29 +57,60 @@ impl Mesh {
         keep: impl Fn(&Message) -> bool,
     ) -> Result<(Vec<Message>, Vec<String>), String> {
         let messages = self.messages();
-        read_listed(|| files(&messages, from_ms), from_ms, to_ms, &keep)
+        read_listed(
+            || files(&messages, from_ms),
+            from_ms,
+            to_ms,
+            &|_| true,
+            &keep,
+        )
+    }
+
+    /// As [`Mesh::sent_as_named`], but only the files `from` sent, as
+    /// their names say, are opened, so a read over many days of one
+    /// sender's messages costs only what that sender wrote.
+    pub fn sent_by_as_named(
+        &self,
+        from: &str,
+        from_ms: i64,
+        to_ms: i64,
+        keep: impl Fn(&Message) -> bool,
+    ) -> Result<(Vec<Message>, Vec<String>), String> {
+        let messages = self.messages();
+        let by = |stem: &str| stem.split('-').nth(1) == Some(from);
+        read_listed(|| files(&messages, from_ms), from_ms, to_ms, &by, &keep)
     }
 }
 
 /// The messages and torn files among those `listing` gives, stamped from
-/// `from_ms` to `to_ms`, the messages only those `keep` holds to, listing
-/// again to find any that moved between a listing and their reading.
+/// `from_ms` to `to_ms` and named as `opened` holds to, the messages only
+/// those `keep` holds to, listing again to find any that moved between a
+/// listing and their reading.
 fn read_listed(
     listing: impl Fn() -> Result<Vec<PathBuf>, String>,
     from_ms: i64,
     to_ms: i64,
+    opened: &dyn Fn(&str) -> bool,
     keep: &dyn Fn(&Message) -> bool,
 ) -> Result<(Vec<Message>, Vec<String>), String> {
     let stamped = |p: &&PathBuf| {
         let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or_default();
-        stamped_at(stem).is_some_and(|at| (from_ms..=to_ms).contains(&at))
+        stamped_at(stem).is_some_and(|at| (from_ms..=to_ms).contains(&at)) && opened(stem)
     };
     let (mut read, mut moved) = (Read::default(), BTreeSet::<Option<OsString>>::new());
+    let mut done = BTreeSet::<Option<OsString>>::new();
     for path in listing()?.iter().filter(stamped) {
-        if !read.file(path, keep)? {
-            moved.insert(path.file_name().map(ToOwned::to_owned));
+        let name = path.file_name().map(ToOwned::to_owned);
+        if read.file(path, keep)? {
+            done.insert(name);
+        } else {
+            moved.insert(name);
         }
     }
+    // A message filed into its day between the listing of the messages
+    // folder and that of its day's is listed in both, and was read where
+    // it went: it's sought again only when it wasn't, so it's read once.
+    moved.retain(|name| !done.contains(name));
     if !moved.is_empty() {
         for path in listing()?.iter().filter(stamped) {
             if moved.remove(&path.file_name().map(ToOwned::to_owned)) {
@@ -442,11 +475,41 @@ mod tests {
             }])
         };
         let (sent, torn) =
-            read_listed(listing, 0, 100, &|_| true).expect("the moved message was read");
+            read_listed(listing, 0, 100, &|_| true, &|_| true).expect("the moved message was read");
         assert_eq!(
             (ids(&sent), torn.len(), listings.get()),
             (vec![id], 0, 2),
             "a message moved mid-read was lost, said unreadable or listed for again needlessly"
+        );
+        // Filed between the two folders' listings, it's listed in both.
+        let both = || Ok(vec![gone.clone(), went.clone()]);
+        let (sent, _) =
+            read_listed(both, 0, 100, &|_| true, &|_| true).expect("the moved message was read");
+        assert_eq!(
+            ids(&sent),
+            [id],
+            "a message listed where it was and where it went was read twice"
+        );
+    }
+
+    /// A read of one sender's messages opens no other sender's file, so
+    /// another's torn file isn't named, nor its message read.
+    #[test]
+    fn a_read_of_one_senders_messages_opens_only_its_files() {
+        let (_dir, mesh) = mesh();
+        put(&mesh, "", "10-A-1-aa", "A");
+        put(&mesh, "", "11-B-1-bb", "B");
+        for torn in ["12-A-1-cc", "13-B-1-dd"] {
+            fs::write(mesh.messages().join(format!("{torn}.json")), "{")
+                .expect("the torn file couldn't be written");
+        }
+        let (sent, torn) = mesh
+            .sent_by_as_named("B", 0, 100, |_| true)
+            .expect("the messages were read");
+        assert_eq!(
+            (ids(&sent), torn),
+            (vec!["11-B-1-bb"], vec!["13-B-1-dd".to_owned()]),
+            "another sender's file was opened, or the sender's own missed"
         );
     }
 

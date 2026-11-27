@@ -92,7 +92,8 @@ fn a_date_or_a_clock_given_as_when_he_said_it_backs_a_claim() {
         "Joel's rule of 22 Nov stands.",
         "On 22 Nov, Joel ruled it.",
         "Joel ruled it. He said so on 22 Nov.",
-        "He said so on 22 Nov. Joel ruled it.",
+        "Joel ruled it. His words of 22 Nov: never block the work.",
+        "Joel ruled it. Sam agreed, and on 25 Nov Joel said so.",
         "On 22 Nov he said Joel wants it.",
         "Joel wants it, his words of 10:05.",
         "Joel at 10:05 said he wants it.",
@@ -136,6 +137,13 @@ fn words_that_only_look_like_a_date_or_a_quote_back_nothing() {
         "I broke Joel's rule. I told Joel at 10:08.",
         "Joel wants the lab shut; I'll ask Joel at 14:00.",
         "Joel wants it. I pinged Joel on 26 Nov.",
+        "Joel wants the lab shut; I told Joel 10:08.",
+        "Joel wants it; I pinged Joel, 10:08.",
+        // He, his or him in another sentence may be anyone, unless it
+        // names Joel or opens the sentence just after the claim.
+        "Joel wants the lab shut. Sam agreed; on 25 Nov he said so.",
+        "Joel wants it. Sam quoted his words of 25 Nov.",
+        "He said so on 22 Nov. Joel ruled it.",
         // What he said, told with no date, is a claim of his words too.
         "Joel said the launcher hangs.",
     ];
@@ -180,6 +188,11 @@ fn every_claim_in_a_message_is_judged_past_a_backed_one_or_a_stray_quote() {
         unbacked("I typed \" by mistake. Joel wants the lab shut."),
         Some("Joel wants the lab shut.".to_owned()),
         "a stray quote mark hid the claim after it"
+    );
+    assert_eq!(
+        unbacked("I typed \" by mistake. Joel wants \"dark\" mode."),
+        Some("Joel wants \"...\" mode.".to_owned()),
+        "a stray quote mark paired with a later quote and hid the claim between"
     );
 }
 
@@ -276,7 +289,9 @@ fn the_cards_lines_passed_on_claim_nothing() {
          T6E7X6\n- [0000000b] Joel wants it. · 5UTLKM\n✓ pains Joel said that nobody has \
          taken up: 0, at most 0\n· pains Joel said that nobody has taken up: 2, unjudged\n\
          Drag: pains Joel said that nobody has taken up, 3 against at most 0, to 1JQPPC by \
-         10:00."
+         10:00.\nLast hour's drag, pains Joel said that nobody has taken up, is back in.\n\
+         Out of spec three days running:\n  - pains Joel said that nobody has taken up: 3 \
+         against at most 0, out since 2026-11-24, 1JQPPC"
     );
     assert_eq!(
         unbacked(&relay),
@@ -515,6 +530,55 @@ fn the_measure_reads_two_days_so_late_answers_and_later_retractions_are_left_alo
         Vec::<String>::new(),
         "a cell dropping its claim after a first answer was asked about its retraction"
     );
+}
+
+/// Cadence's asks are read back further than the claims, so an answer
+/// sent more than a day after its ask, which has left the two days of
+/// claims read, is still an answer, not a fresh claim to ask about.
+#[test]
+fn an_answer_sent_days_after_its_ask_is_still_an_answer() {
+    let dir = tempfile::tempdir().expect("the test's folder couldn't be made");
+    let messages = dir
+        .path()
+        .join("pi/agentic-harness.pi/mesh-workflow/messages");
+    let ask = asked("0000000d", 3 * DAY, "0000000a", "T6E7X6");
+    let mut answer = sent(
+        "0000000e",
+        60,
+        "T6E7X6",
+        "Dropped: Joel's rule was my caution.",
+    );
+    answer.re = Some(short_id(&ask.id).to_owned());
+    put(&messages, &ask);
+    put(&messages, &answer);
+    assert_eq!(
+        read(dir.path(), NOW).behind,
+        Vec::<String>::new(),
+        "an answer to an ask past the two days of claims read was counted as a claim"
+    );
+}
+
+/// A claim is given to the card and the ask by its first words and its
+/// first characters, so neither a sentence with no space in it nor one
+/// spaced by marks that only look like spaces is given whole.
+#[test]
+fn a_claim_is_given_short_however_it_is_spaced() {
+    for text in [
+        format!("Joel wants {}", "x".repeat(300)),
+        format!("Joel wants{}", "\u{2800}word".repeat(100)),
+        format!("Joel wants{}", "\u{3164}word".repeat(100)),
+    ] {
+        let m = unsourced(&[sent("0000000a", 60, "T6E7X6", &text)], NOW);
+        let shown = m
+            .behind
+            .first()
+            .unwrap_or_else(|| panic!("a claim spaced oddly wasn't counted: {text}"));
+        assert!(
+            shown.chars().count() <= CLAIM_LONGEST + 40,
+            "a claim was given whole: {} characters",
+            shown.chars().count()
+        );
+    }
 }
 
 /// A claim is aged by its id's stamp, which the harness gives, not by the

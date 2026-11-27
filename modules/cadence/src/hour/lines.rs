@@ -69,6 +69,8 @@ fn behind(m: &Measure) -> Vec<String> {
         // Sorting is stable, so each owner's keep the order they were read in.
         lines.sort_by_key(|line| line.rsplit_once(" · ").map_or("", |(_, owner)| owner));
         if m.key == ruled::KEY {
+            // One per sender, the one it's asked about, as owing's
+            // `RULED_EACH` asks one at a time: raise that, and this with it.
             let owner = |line: &String| line.rsplit_once(" · ").map(|(_, owner)| owner.to_owned());
             lines.dedup_by_key(|line| owner(line));
         }
