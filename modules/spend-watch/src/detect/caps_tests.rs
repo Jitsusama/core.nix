@@ -201,8 +201,7 @@ fn the_reach_is_said_by_its_day() {
         "{found:?}"
     );
     assert!(
-        detail(":near")
-            .ends_with(" At Wed 14 Oct 14:00's pace it's reached by Fri 16 Oct 03:00."),
+        detail(":near").ends_with(" At Wed 14 Oct 14:00's pace it's reached by Fri 16 Oct 03:00."),
         "{found:?}"
     );
 }

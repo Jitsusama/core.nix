@@ -50,14 +50,7 @@ fn billed_for(history: &History, hour: &str, tool: &str, budget: &str, dollars: 
 }
 
 /// What the warehouse billed `budget` at `hour` for `tool`, by `feed`.
-fn billed_on(
-    history: &History,
-    feed: &str,
-    hour: &str,
-    tool: &str,
-    budget: &str,
-    dollars: f64,
-) {
+fn billed_on(history: &History, feed: &str, hour: &str, tool: &str, budget: &str, dollars: f64) {
     let line = serde_json::json!({
         "v": 1, "kind": "billed", "source": "warehouse", "hour": hour, "tool": tool,
         "model": "m", "vendor": "v", "dollars": dollars, "budget": budget,

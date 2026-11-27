@@ -11,8 +11,7 @@ use crate::history::History;
 fn a_thing_said_again_with_new_figures_is_said_once() {
     let history = History::memory();
     let said = |text: &str, ago: f64| {
-        let line =
-            serde_json::json!({"v": 1, "kind": "said", "severity": "warning", "text": text});
+        let line = serde_json::json!({"v": 1, "kind": "said", "severity": "warning", "text": text});
         let record = crate::feed::parse(&line.to_string()).unwrap();
         crate::feed::store(&history, "proxy", &record, NOW - ago).unwrap();
     };
