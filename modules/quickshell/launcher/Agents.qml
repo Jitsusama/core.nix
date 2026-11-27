@@ -2702,12 +2702,9 @@ Provider {
             footCleared(launcher, taken.cleared);
     }
     // The launcher forgets the foot `shown` (sproutTell's), where it still
-    // holds it to say.
+    // holds it to say, beside words of others' waiting with it.
     function footCleared(launcher, shown) {
-        if (launcher.toldOnOpen === shown)
-            launcher.toldOnOpen = [];
-        if (launcher.saying === shown)
-            launcher.say([]);
+        launcher.untell(shown);
     }
     // What becomes of a start, to the journal on any machine, so a slow or
     // lost one can be matched to the node's record by its hold: as one line,

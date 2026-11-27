@@ -86,6 +86,7 @@ import "launcher/Joined.js" as Joined
 import "launcher/Looks.js" as Looks
 import "launcher/RowsKept.js" as RowsKept
 import "launcher/Becoming.js" as Becoming
+import "launcher/ToldShut.js" as ToldShut
 import "launcher/Pacing.js" as Pacing
 import "launcher/Collector.js" as Collector
 import "launcher/Makings.js" as Makings
@@ -3583,10 +3584,11 @@ Scope {
     // what its row said it would be, as a folder gone between the listing
     // and Return: said once the next time it opens, until the first key,
     // as `say` says a key's word, never as a notice (VKCF3Z, 2026-11-07
-    // [4a00987e]). Each is [mark, word, colour], as the foot's keys are;
-    // said again before it opens, the newer takes its place.
+    // [4a00987e]). Each is [mark, word, colour], as the foot's keys are,
+    // kept beside when it was told (ToldShut.js): a newer word about the same
+    // mark takes its place, another's waits beside it, and one told over a
+    // quarter hour before the launcher opens lapses unsaid.
     property var toldOnOpen: []
-    property bool toldLoose: false
 
     // Forgets what's told and not yet read, said in the foot or waiting
     // for the next opening, as a share begins, since it may name what the
@@ -3648,12 +3650,30 @@ Scope {
         forgetLetGo();
     }
     function tellOnOpen(told, loose) {
-        if (open) {
+        if (open)
             say(told, loose);
-        } else {
-            toldOnOpen = told;
-            toldLoose = loose === true;
-        }
+        else
+            toldOnOpen = ToldShut.waiting(toldOnOpen, told, Date.now(), loose);
+    }
+    // Takes back the words `shown` (a tellOnOpen's), from what waits for
+    // the next opening and from the foot where it says them still.
+    function untell(shown) {
+        toldOnOpen = ToldShut.without(toldOnOpen, shown);
+        if (saying === shown)
+            say([]);
+    }
+    // Says what waits to be told as the launcher opens, but for what lapsed,
+    // which the journal counts, never its words, which a source served.
+    function sayTold() {
+        const due = ToldShut.due(toldOnOpen, Date.now());
+        toldOnOpen = [];
+        if (due.lapsed > 0)
+            console.info(`launcher: let ${due.lapsed} words told lapse, `
+                + "told over 15 min before it opened");
+        if (due.said.length === 0)
+            return;
+        say(due.said, due.loose);
+        Report.say(`told ${JSON.stringify(due.said)}`);
     }
 
     // What q says, on the rows and in the drawer alike: with :q at the
@@ -11705,11 +11725,8 @@ Scope {
             if (!openingInto)
                 noteKeys();
             lap("noting");
-            if (toldOnOpen.length > 0) {
-                say(toldOnOpen, toldLoose);
-                Report.say(`told ${JSON.stringify(toldOnOpen)}`);
-                toldOnOpen = [];
-            }
+            if (toldOnOpen.length > 0)
+                sayTold();
             Report.say(`stands ${standing.said}`);
             lap("telling");
             if (openAsked >= 0) {
