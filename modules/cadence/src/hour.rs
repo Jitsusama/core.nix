@@ -12,8 +12,9 @@
 //!
 //! This file reads the measures and runs the hour; `card` composes what it
 //! says and keeps, `good` holds each measure to the definition of good,
-//! `owing` files its drag with each owner, `records` reads the queues'
-//! records, and `reviews` the harness's review records.
+//! `owing` files its drag with each owner, `net` reads the merge net's two
+//! files, `records` reads the queues' records, and `reviews` the
+//! harness's review records.
 
 mod card;
 mod good;
@@ -21,6 +22,7 @@ mod ledger;
 mod lines;
 mod measures;
 mod moved;
+mod net;
 mod owing;
 mod parted;
 mod records;
@@ -284,16 +286,9 @@ fn gather(
         measures::told_late(&asks, now, Tracking::Derived),
         measures::to_first_slice(&asks, now, Tracking::Derived),
         measures::undated(&quarantine, &today(now), NET_RULES),
-        measures::reverts(&text(&folder.join("reverted.json")), now, NET_RULES),
-        measures::broken(
-            &text(&state_home.join("net/results.jsonl")),
-            now,
-            NET,
-            &measures::Main::read(&core, &quarantine),
-            &measures::failed_in,
-        ),
         landed(&core_log, &harness_log, &machine_log, now),
     ];
+    all.extend(net::read_both(folder, state_home, &core, &quarantine, now));
     all.extend(measures::said_none(misses, now));
     all.push(measures::cited::read(
         state_home,
