@@ -156,6 +156,11 @@ PRIMED = timedelta(seconds=10)
 COLLECTED_SAID = "launcher: collected after closing"
 COLLECTED_AFTER = timedelta(seconds=1)
 
+# How many searches a chord into a plain place runs with home kept and nothing typed: its fill
+# opens the place whole, which searches it once (Launcher.qml's intoWhole), and what its sources
+# say after is shown again in place (reshow), which the launcher doesn't count as a search.
+PLACE_SEARCHES = 1
+
 # How long after his first chord into a restart Joel, seeing nothing open, presses it again.
 PRESSED_AGAIN = timedelta(milliseconds=300)
 
@@ -761,6 +766,10 @@ def test_a_chord_first_after_a_restart_searches_no_more_than_a_later_one(shell: 
     _, later, _ = opened_into(shell, "windows")
     assert later >= 1, (
         f"a later chord into Windows searched {later} times, so searches can't show home found"
+    )
+    assert later <= PLACE_SEARCHES, (
+        f"a later chord into Windows searched {later} times, more than its fill's"
+        f" {PLACE_SEARCHES}, so a first chord could find home again and search no more"
     )
     assert first <= later, (
         f"first into Windows after a restart searched {first} times on its first try, a later"
