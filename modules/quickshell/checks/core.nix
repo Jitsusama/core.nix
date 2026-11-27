@@ -866,10 +866,9 @@ in
   # things whose stamp moved, and only the newest yank's frame starts its
   # flash, and an opening the collector stalled says where the heap stood
   # as it was asked, as modules/quickshell/tests/pacing.qml holds in Qt's own
-  # engine. Beside it go the launcher's files it imports (ActsSaid.js,
-  # ChangesPresented.js, Collector.js, Flash.js, Makings.js, Pacing.js,
-  # Presented.js, Spots.js, Thread.js and Wanted.js) and the two they read
-  # that it doesn't (KeysSaid.js and Order.js).
+  # engine. The copy lines below are the list of launcher files its cases
+  # read, kept nowhere else: one left out fails the run at its import, while
+  # a list in a comment would drift unseen.
   the-launcher-paces-its-refreshes =
     let
       qt = pkgs.qt6.qtdeclarative;
