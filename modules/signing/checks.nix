@@ -70,9 +70,10 @@ in
             PathExists = "/home/someone/.ssh/agent-signing.tpm";
             Unit = "agent-signing.socket";
           }
-        && (linux.systemd.user.paths.agent-signing-key.Install.WantedBy or [ ]) == [
-          "paths.target"
-        ]
+        &&
+          (linux.systemd.user.paths.agent-signing-key.Install.WantedBy or [ ]) == [
+            "paths.target"
+          ]
         && lib.hasSuffix "/bin/se-sign" onMac.gpg.ssh.program
         && onMac.user.signingKey == "/Users/someone/.ssh/joel-signing"
         && mac.jitsusama.signing.signer.sshKeygen == "/usr/bin/ssh-keygen"
