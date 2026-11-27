@@ -1338,6 +1338,7 @@ fn run(options: &Options) -> Result<(), Failure> {
     let mut last_resent: Option<(u64, Instant)> = None;
     let mut heard: BTreeMap<String, Heard> = BTreeMap::new();
     let mut up_tins = qdisc::TinRates::default();
+    let mut up_counted = qdisc::TinRates::default();
     let mut primary: Option<String> = None;
     let mut call = Call::default();
     let mut live = started_live(options);
@@ -1400,7 +1401,12 @@ fn run(options: &Options) -> Result<(), Failure> {
         // the sets are also written every few seconds, changed or not.
         let sets = sorted(options, &sessions, &mut call, &mut first, now);
         let rides = primary.as_ref().and_then(|p| shaped.get_mut(p));
-        read_vpns(&vpns.0, (&mut heard, &mut up_tins), rides, t);
+        read_vpns(
+            &vpns.0,
+            (&mut heard, &mut up_tins, &mut up_counted),
+            rides,
+            t,
+        );
         let on_a_call = call.may_be_on();
         let text = [
             classes::transaction(TABLE, &sets, &reach),
@@ -1422,11 +1428,12 @@ fn run(options: &Options) -> Result<(), Failure> {
         });
         write_status(&options.runtime, &shaped, heard.as_ref());
         if let Some(second) = live.traced() {
-            let sending = (
-                up_tins.kbit().map(|k| k.bulk + k.best + k.video + k.voice),
-                &vpns.0,
-            );
-            traces.write(&traced(second, &shaped, &house, sending));
+            traces.write(&traced(
+                second,
+                &shaped,
+                &house,
+                (up_counted.kbit(), &vpns.0),
+            ));
         }
         thread::sleep(STEP);
     }
@@ -1552,29 +1559,27 @@ fn since(before: Option<u64>, now: u64) -> u64 {
 
 /// Counts each VPN's CAKE at every step, at `t` seconds: whether any held
 /// a queue, and what they dropped, are counted to the primary uplink they
-/// ride, whose queue it is, and what each of their tins sent to `tins`.
-/// The VPN's tins are read rather than the uplink's, where the tunnel's
-/// packets all wait in best effort, whatever class they carry.
+/// ride, whose queue it is, and what each of their tins sent to `tins`
+/// and `counted` (`take_vpn_tins`). The VPN's tins are read rather than
+/// the uplink's, where the tunnel's packets all wait in best effort,
+/// whatever class they carry.
 fn read_vpns(
     vpns: &BTreeMap<String, Vpn>,
-    (heard, tins): (&mut BTreeMap<String, Heard>, &mut qdisc::TinRates),
+    (heard, tins, counted): (
+        &mut BTreeMap<String, Heard>,
+        &mut qdisc::TinRates,
+        &mut qdisc::TinRates,
+    ),
     primary: Option<&mut Shaped>,
     t: f64,
 ) {
     heard.retain(|name, _| vpns.contains_key(name));
     let mut read = (0, 0);
     let mut dropped = 0;
-    let mut sent: Vec<u64> = Vec::new();
+    let mut each = Vec::new();
     for name in vpns.keys() {
         let json = sh(&words(&format!("tc -s -j qdisc show dev {name}"))).unwrap_or_default();
-        let these: Vec<u64> = qdisc::tins(&json).iter().map(|tin| tin.bytes).collect();
-        if sent.is_empty() {
-            sent = these;
-        } else if these.len() == sent.len() {
-            sent.iter_mut()
-                .zip(these)
-                .for_each(|(all, one)| *all += one);
-        }
+        each.push(qdisc::tins(&json));
         let h = heard.entry(name.clone()).or_default();
         if let Some(now) = held::holding(&json) {
             let queued = held::queued(h.held.replace(now), now);
@@ -1584,12 +1589,50 @@ fn read_vpns(
             dropped += since(h.drops.replace(now), now);
         }
     }
-    tins.take(sent, t);
+    take_vpn_tins(&each, (tins, counted), t);
     if let Some(s) = primary {
         s.vpn_reads.0 += read.0;
         s.vpn_reads.1 += read.1;
         s.dropped += dropped;
     }
+}
+
+/// Takes in what each VPN's CAKE's tins have sent, `each`, read at `t`
+/// seconds, summed over the VPNs tin by tin: their bytes to `tins`, and
+/// what their CAKEs counted, the header with each packet, to `counted`,
+/// which their holds are a rate of. A VPN whose read failed has no four
+/// tins, and `counted` says nothing that second and keeps the bytes
+/// before, rather than reading under by that VPN's part, then over by
+/// all it ever sent once it's read again.
+fn take_vpn_tins(
+    each: &[Vec<qdisc::Tin>],
+    (tins, counted): (&mut qdisc::TinRates, &mut qdisc::TinRates),
+    t: f64,
+) {
+    let mut sent: Vec<u64> = Vec::new();
+    for these in each {
+        let these: Vec<u64> = these.iter().map(|tin| tin.bytes).collect();
+        if sent.is_empty() {
+            sent = these;
+        } else if these.len() == sent.len() {
+            sent.iter_mut()
+                .zip(these)
+                .for_each(|(all, one)| *all += one);
+        }
+    }
+    tins.take(sent, t);
+    if each.iter().any(|these| these.len() != 4) {
+        counted.miss();
+        return;
+    }
+    let sent = if each.is_empty() {
+        Vec::new()
+    } else {
+        (0..4)
+            .map(|tin| each.iter().map(|these| these[tin].counted_bytes()).sum())
+            .collect()
+    };
+    counted.take(sent, t);
 }
 
 /// The mark a VPN's own packets carry, read from the routing rules.
@@ -2159,7 +2202,7 @@ fn traced(
     second: trace::Line,
     shaped: &BTreeMap<String, Shaped>,
     house: &HouseHolds,
-    (vpn_sent, vpns): (Option<u64>, &BTreeMap<String, Vpn>),
+    (vpn_sent, vpns): (Option<qdisc::Tins>, &BTreeMap<String, Vpn>),
 ) -> trace::Line {
     let its = shaped.get(&second.link);
     let network = its.map(|s| s.network.clone());
@@ -2170,13 +2213,20 @@ fn traced(
     line
 }
 
-/// What the VPNs' CAKEs sent up, `sent`, and the rates they were held
-/// to, summed, for a traced second: none while no VPN is held.
-fn vpn_traced(sent: Option<u64>, vpns: &BTreeMap<String, Vpn>) -> (Option<u64>, Option<u64>) {
+/// What the VPNs' CAKEs counted sending up, `sent`, each tin's rate, and
+/// the rates they were held to, summed, for a traced second: none while
+/// no VPN is held.
+fn vpn_traced(
+    sent: Option<qdisc::Tins>,
+    vpns: &BTreeMap<String, Vpn>,
+) -> (Option<u64>, Option<u64>) {
     if vpns.is_empty() {
         return (None, None);
     }
-    (sent, Some(vpns.values().map(|v| v.up).sum()))
+    (
+        sent.map(|k| k.bulk + k.best + k.video + k.voice),
+        Some(vpns.values().map(|v| v.up).sum()),
+    )
 }
 
 /// Puts in the traced `line` what its link's house heard and held, when
@@ -3903,20 +3953,17 @@ mod tests {
     // to, summed over them, and nothing of either while none is held.
     #[test]
     fn a_trace_says_what_the_vpns_sent_beside_their_hold() {
-        let held_at = |up: u64| Vpn {
-            up,
-            down: 0,
-            ifb: String::new(),
-            mark: None,
+        let vpns = two_vpns_held();
+        let sent = qdisc::Tins {
+            bulk: 1_000,
+            best: 1_500,
+            video: 300,
+            voice: 100,
         };
-        let vpns = BTreeMap::from([
-            ("wg0".to_string(), held_at(2_400)),
-            ("wg1".to_string(), held_at(600)),
-        ]);
         assert_eq!(
-            vpn_traced(Some(2_900), &vpns),
+            vpn_traced(Some(sent), &vpns),
             (Some(2_900), Some(3_000)),
-            "what both sent, beside both holds"
+            "what both sent in every tin, beside both holds"
         );
         assert_eq!(
             vpn_traced(None, &vpns),
@@ -3924,9 +3971,98 @@ mod tests {
             "a hold before a second's sending was read"
         );
         assert_eq!(
-            vpn_traced(Some(2_900), &BTreeMap::new()),
+            vpn_traced(Some(sent), &BTreeMap::new()),
             (None, None),
             "no VPN held"
+        );
+    }
+
+    /// Two VPNs, held at 2400 and 600 kbit/s.
+    fn two_vpns_held() -> BTreeMap<String, Vpn> {
+        let held_at = |up: u64| Vpn {
+            up,
+            down: 0,
+            ifb: String::new(),
+            mark: None,
+        };
+        BTreeMap::from([
+            ("wg0".to_string(), held_at(2_400)),
+            ("wg1".to_string(), held_at(600)),
+        ])
+    }
+
+    /// A VPN's four tins, with `packets` of `bytes` sent in best effort.
+    fn best_effort_sent(packets: u64, bytes: u64) -> Vec<qdisc::Tin> {
+        let best = qdisc::Tin {
+            packets,
+            bytes,
+            ..qdisc::Tin::default()
+        };
+        vec![
+            qdisc::Tin::default(),
+            best,
+            qdisc::Tin::default(),
+            qdisc::Tin::default(),
+        ]
+    }
+
+    // A tunnel held at its hold sends under it by the header its CAKE
+    // counts each packet with, a twentieth in 1400-byte packets and over
+    // a quarter in 200-byte ones, so the trace counts what CAKE counted.
+    #[test]
+    fn a_tunnel_at_its_hold_traces_its_hold_whatever_its_packets() {
+        let vpns = two_vpns_held();
+        let hold: u64 = vpns.values().map(|v| v.up).sum();
+        for size in [1_400, 200] {
+            // Each VPN's packets a second at its hold, as CAKE counts them.
+            let packets = |up: u64| up * 1_000 / 8 / (size + u64::from(qdisc::VPN_OVERHEAD));
+            let sent = |seconds: u64| -> Vec<Vec<qdisc::Tin>> {
+                vpns.values()
+                    .map(|v| packets(v.up) * seconds)
+                    .map(|n| best_effort_sent(n, n * size))
+                    .collect()
+            };
+            let (mut tins, mut counted) = (qdisc::TinRates::default(), qdisc::TinRates::default());
+            take_vpn_tins(&sent(0), (&mut tins, &mut counted), 0.0);
+            take_vpn_tins(&sent(1), (&mut tins, &mut counted), 1.0);
+            let traced = vpn_traced(counted.kbit(), &vpns).0;
+            assert!(
+                traced.is_some_and(|kbit| kbit.abs_diff(hold) * 100 <= hold),
+                "{size}-byte packets at a hold of {hold} kbit/s traced {traced:?}"
+            );
+        }
+    }
+
+    // With two VPNs, one whose read failed traces nothing that second,
+    // rather than the other's part alone, and the next second traces what
+    // both sent since, rather than all the missed one ever sent.
+    #[test]
+    fn a_vpn_s_missed_read_traces_nothing_and_no_spike_after() {
+        let vpns = two_vpns_held();
+        // What a VPN sending `kbit` has sent at `seconds`, after a
+        // hundred seconds of it before.
+        let sent =
+            |kbit: u64, seconds: u64| best_effort_sent(0, kbit * 1_000 / 8 * (100 + seconds));
+        let (mut tins, mut counted) = (qdisc::TinRates::default(), qdisc::TinRates::default());
+        let mut read = |each: &[Vec<qdisc::Tin>], t: f64| {
+            take_vpn_tins(each, (&mut tins, &mut counted), t);
+            vpn_traced(counted.kbit(), &vpns)
+        };
+        read(&[sent(2_000, 0), sent(500, 0)], 0.0);
+        assert_eq!(
+            read(&[sent(2_000, 1), sent(500, 1)], 1.0),
+            (Some(2_500), Some(3_000)),
+            "both VPNs read"
+        );
+        assert_eq!(
+            read(&[sent(2_000, 2), Vec::new()], 2.0),
+            (None, Some(3_000)),
+            "a second whose read of one VPN failed"
+        );
+        assert_eq!(
+            read(&[sent(2_000, 3), sent(500, 3)], 3.0),
+            (Some(2_500), Some(3_000)),
+            "the second after a missed read"
         );
     }
 
