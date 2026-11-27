@@ -2968,11 +2968,12 @@ Singleton {
     // closes, a stray listed before the ask is no reason to ask none, so
     // Go To opens its own beside it, saying unowned. One kept as the
     // kitty didn't answer (refusedUntaken) holds only within
-    // comingPatience of that give-up, as its own may come no later: past
-    // it, a stray listed for good would hold the viewer unopened.
+    // answerPatience of that give-up, as a press it holds opens nothing,
+    // as long as one held by that kitty asks none (stillHeld): past it, a
+    // stray listed for good would hold the viewer unopened.
     function refusedOwn(named) {
         const kept = refusalKeptAt[named];
-        if (kept !== undefined && Date.now() - kept >= comingPatience)
+        if (kept !== undefined && Date.now() - kept >= answerPatience)
             return false;
         return named in refusedAsks && listedAs(named)
             .some(window => String(window.id) === refusedAsks[named] && !drawnHere(window));
@@ -3037,7 +3038,7 @@ Singleton {
     // To says unowned), rather than none while it stays. A kitty that only
     // didn't answer in time (`cause`, "unanswered") may yet draw its own,
     // which is taken as come, and may have drawn the refused one under a
-    // pid read wrong, so its refusal stays, within comingPatience: only
+    // pid read wrong, so its refusal stays, within answerPatience: only
     // one refused or with no kitty to ask, or a give-up that says no
     // cause, ends it sooner.
     // Only a give-up timed within answerPatience of the ask is that ask's,
@@ -3053,10 +3054,10 @@ Singleton {
         if (cause === "unanswered") {
             console.info(`sessions: the sessions kitty didn't answer for ${named}, so window `
                 + `${refusedAsks[named]}, come refused, may yet be its own`);
-            // Kept within comingPatience only (refusedOwn), and the press
-            // told disowned is told its own came within it too (viewerCame),
-            // as one drawn late comes past answerPatience, the give-up
-            // itself a minute after the ask.
+            // Kept within answerPatience only (refusedOwn), while the press
+            // told disowned is told its own came within comingPatience
+            // (viewerCame), as one drawn late comes past answerPatience, the
+            // give-up itself a minute after the ask.
             refusalKeptAt = Object.assign({}, refusalKeptAt, { [named]: Date.now() });
             const told = disownedSaid[named] ?? null;
             if (told !== null)
