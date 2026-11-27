@@ -39,15 +39,20 @@
 //! another's path, as a dot does, or splice an expression into its
 //! evaluation, or whose rule crashed, which said nothing of what it never
 //! reached. A derivation that failed for another reason than its builder or
-//! a dependency, one no check names, a check that no longer evaluates, a
-//! check the riders added, whose flake is theirs to fix before it reaches
-//! main, a build no builder took, more failed checks than `MOST_REBUILT`, and a
-//! check excused as a flake twice already in the ride count as the riders',
-//! so the train splits on them as before, its log saying why of each, so a
-//! judging that couldn't finish reads apart from a rider's break. Each
-//! check excused is told to its owner as a finding naming the gate's log
-//! and the rebuild's, and each flake is a line in the train's log, naming
-//! the check and both commits, so flakes can be counted.
+//! a dependency, one no check names, or one a check the riders added may
+//! build under another's name, a check that no longer evaluates, a check
+//! the riders added under a new name, whose flake is theirs to fix before
+//! it reaches main, a build no builder took, more failed checks than
+//! `MOST_REBUILT`, and a check excused as a flake twice already in the ride
+//! count as the riders', so the train splits on them as before, its log
+//! saying why of each, so a judging that couldn't finish reads apart from
+//! a rider's break. Each check excused is told to its owner as a finding
+//! naming the gate's log and the rebuild's, and each flake is a line in the
+//! train's log, naming the check and both commits, so flakes can be
+//! counted. A check the riders rewrote under a name main has isn't added:
+//! changed-checks lists it as changed, so it is built at the base as any
+//! check is, and its flake lands as any flake does, at most `MOST_EXCUSED`
+//! times a ride.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -59,6 +64,7 @@ use serde_json::json;
 pub(super) use self::lent::{Lenders, Lent};
 use checks_said::{added, built, held_at, quarantined};
 use owner::owner_in;
+use placed::checks_of;
 
 use super::gated::{CHANGED_FAILED, Gated, RUNS_AGAIN, gated};
 use crate::state::{State, now, short};
@@ -87,7 +93,9 @@ pub(super) enum Blame {
     /// It wasn't built again, since a check before it was taken as the
     /// riders', for whichever reason that one says.
     Unbuilt,
-    /// The riders added it, so its red, flake or break, is theirs.
+    /// changed-checks says the riders added it, under a name main lacks,
+    /// so its red, flake or break, is theirs. One they rewrote under a
+    /// name main has reads as changed, and its flake lands as any does.
     Added,
     /// It passed at the base, and at the candidate when built again.
     Flaky,
@@ -118,7 +126,8 @@ pub(super) enum Declined {
     NoVerdict,
     /// The gate built a check named with more than a plain name.
     NotPlain,
-    /// A failed derivation is no check the gate built.
+    /// A failed derivation is no check the gate built, or may be one the
+    /// riders added though named like another (`checks_of`).
     Unplaced,
     /// The checks the gate built didn't all build again together.
     WholeRed,
@@ -134,7 +143,7 @@ impl Declined {
             Self::RanAgain => "its gate's words say it ran again on its own base",
             Self::NoVerdict => "changed-checks didn't say a check it built failed",
             Self::NotPlain => "a check it built isn't plainly named",
-            Self::Unplaced => "a failed derivation is no check its gate built",
+            Self::Unplaced => "a failed derivation can't be placed on one check its gate built",
             Self::WholeRed => "the checks its gate built didn't all build again",
         }
     }
@@ -272,47 +281,6 @@ const VM_TEST: &str = "vm-";
 /// can't be read as main's however alike it reads.
 const CRASHED: &str = "Traceback (most recent call last):";
 
-/// The check each of the `failed` derivations builds, of the checks
-/// `built`: the one of its name, the VM test it runs, or the one `named`
-/// says, asked only of names neither gives; none when one of them names
-/// no check, since what broke can't then be told.
-pub(super) fn checks_of(
-    failed: &[String],
-    built: &[String],
-    named: &dyn Fn(&[String]) -> BTreeMap<String, String>,
-) -> Option<Vec<String>> {
-    let by_name = |name: &str| {
-        let check = name.strip_prefix(VM_RUN).unwrap_or(name);
-        built
-            .iter()
-            .any(|one| one == check)
-            .then(|| check.to_owned())
-    };
-    let unplaced: Vec<String> = failed
-        .iter()
-        .filter(|name| by_name(name).is_none())
-        .cloned()
-        .collect();
-    let others: Vec<String> = built
-        .iter()
-        .filter(|check| {
-            !failed
-                .iter()
-                .any(|name| by_name(name).as_deref() == Some(check))
-        })
-        .cloned()
-        .collect();
-    let named = if unplaced.is_empty() {
-        BTreeMap::new()
-    } else {
-        named(&others)
-    };
-    failed
-        .iter()
-        .map(|name| by_name(name).or_else(|| named.get(name).cloned()))
-        .collect()
-}
-
 /// What the builder of `derivation` said in `words`, as nix's `-L` prefixes
 /// it, each line with its store hashes and its durations taken out, so a
 /// build's time doesn't make the same failure differ. Other numbers stay:
@@ -391,8 +359,8 @@ pub(super) fn fails_as_at_base(words: &str, base: &str, derivation: &str) -> boo
 /// passes there, at the candidate. A check the ride can excuse no more
 /// is built at the base only where its red there could still be main's.
 fn blame(words: &str, check: &str, derivation: &str, judging: &mut Judging<'_>) -> Blame {
-    // No commit but the riders' holds a check they added, so none else can
-    // own its red, and a flake of it would reach main with them.
+    // No commit but the riders' holds a check they added under a new name,
+    // so none else can own its red, and a flake of it would reach main.
     if added(words).contains(check) {
         return Blame::Added;
     }
@@ -458,7 +426,8 @@ pub(super) fn judge(
     if !gate_built.iter().all(|check| plainly_named(check)) {
         return Err(Declined::NotPlain);
     }
-    let checks = checks_of(&failed, &gate_built, judging.named).ok_or(Declined::Unplaced)?;
+    let checks =
+        checks_of(&failed, &gate_built, &added(words), judging.named).ok_or(Declined::Unplaced)?;
     let mut riders = false;
     let judged: Vec<(String, Blame)> = checks
         .into_iter()
@@ -608,7 +577,12 @@ pub(super) fn excuses(
         .join("; ");
     if excused(&judged) {
         // Only a red that lands is told: one that splits is its riders'.
-        tell(root, url, red, &judged);
+        let owner = |check: &str, failed: &[String]| {
+            owner_in(root, url, red, check, failed)
+                .inspect_err(|unowned| println!("merge-net: {}", unowned.said(check)))
+                .ok()
+        };
+        tell(root, red, &judged, &owner);
         super::excused::keep(root, red, &judged);
         for check in flakes.count(&judged) {
             println!(
@@ -628,8 +602,14 @@ pub(super) fn excuses(
 }
 
 /// Write a finding for each check of `judged` that isn't the riders', for
-/// its owner, of the repository at `url`, under the net's state `root`.
-fn tell(root: &Path, url: &str, red: &Red<'_>, judged: &[(String, Blame)]) {
+/// the PR `owner` names of it, failed beside the rest, under the net's
+/// state `root`.
+fn tell(
+    root: &Path,
+    red: &Red<'_>,
+    judged: &[(String, Blame)],
+    owner: &dyn Fn(&str, &[String]) -> Option<u64>,
+) {
     let failed: Vec<String> = judged.iter().map(|(check, _)| check.clone()).collect();
     let state = State::at(root.to_path_buf());
     for (check, blamed) in judged {
@@ -660,9 +640,7 @@ fn tell(root: &Path, url: &str, red: &Red<'_>, judged: &[(String, Blame)]) {
         if state.found(kind, check, red.base) {
             continue;
         }
-        let owner = owner_in(root, url, red, check, &failed)
-            .inspect_err(|unowned| println!("merge-net: {}", unowned.said(check)))
-            .ok();
+        let owner = owner(check, &failed);
         // The red's own words are the gate's: a flake's rebuild passed.
         let finding = json!({
             "kind": kind,
@@ -760,6 +738,8 @@ mod checks_said;
 mod lent;
 #[path = "flaky/owner.rs"]
 mod owner;
+#[path = "flaky/placed.rs"]
+mod placed;
 
 #[cfg(test)]
 #[path = "flaky/owner_tests.rs"]

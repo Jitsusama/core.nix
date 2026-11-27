@@ -146,7 +146,7 @@ fn a_failed_derivation_is_placed_by_its_name_its_vm_run_or_what_nix_names_it() {
         BTreeMap::from([("treefmt-check".to_owned(), "formatting".to_owned())])
     };
     assert_eq!(
-        checks_of(&failed, &built, &named),
+        checks_of(&failed, &built, &BTreeSet::new(), &named),
         Some(
             ["a-theme-changes-everything", "vm-pi", "formatting"]
                 .map(str::to_owned)
@@ -160,7 +160,7 @@ fn a_failed_derivation_is_placed_by_its_name_its_vm_run_or_what_nix_names_it() {
     );
     let unnamed = |_: &[String]| BTreeMap::new();
     assert_eq!(
-        checks_of(&failed, &built, &unnamed),
+        checks_of(&failed, &built, &BTreeSet::new(), &unnamed),
         None,
         "a failed derivation no check names was passed over, so the riders were excused for it"
     );
@@ -215,11 +215,13 @@ fn a_check_excused_as_a_flake_twice_in_a_ride_is_the_riders_on_its_third_red() {
     );
     built_again.set(false);
     built_at_base.set(false);
+    let spent = judged(&said, &at_base, &again, MOST_EXCUSED).unwrap();
     assert_eq!(
-        judged(&said, &at_base, &again, MOST_EXCUSED).unwrap(),
+        spent,
         [("vm-pi".to_owned(), Blame::Spent)],
         "a check's third red in a ride was excused as a flake"
     );
+    assert!(!excused(&spent), "a check out of excuses landed its red");
     assert!(!built_again.get(), "a check out of excuses was built again");
     assert!(
         !built_at_base.get(),
@@ -237,11 +239,13 @@ fn a_rule_out_of_excuses_can_still_be_mains() {
         [(RULE.to_owned(), Blame::Main)],
         "main's own red in a rule out of flake excuses wasn't main's"
     );
+    let spent = judged(&said, &passes_at_base, &passes, MOST_EXCUSED).unwrap();
     assert_eq!(
-        judged(&said, &passes_at_base, &passes, MOST_EXCUSED).unwrap(),
+        spent,
         [(RULE.to_owned(), Blame::Spent)],
         "a rule out of excuses, passing at the base, was excused as a flake"
     );
+    assert!(!excused(&spent), "a rule out of excuses landed its red");
 }
 
 #[test]
@@ -289,10 +293,15 @@ fn mains_red_in_a_rule_the_riders_moved_is_theirs() {
         rules_moved: true,
         held: &BTreeSet::new(),
     };
+    let ruled = judge(&said, &mut judging).unwrap();
     assert_eq!(
-        judge(&said, &mut judging).unwrap(),
+        ruled,
         [(RULE.to_owned(), Blame::RuleMoved)],
         "main's red in a rule the riders moved was excused as main's"
+    );
+    assert!(
+        !excused(&ruled),
+        "main's red in a rule the riders moved landed"
     );
     let moved = |files: &[&str]| {
         let files: Vec<String> = files.iter().map(|file| (*file).to_owned()).collect();
@@ -385,11 +394,13 @@ fn mains_formatting_red_is_never_mains() {
         rules_moved: false,
         held: &BTreeSet::new(),
     };
+    let masked = judge(&said, &mut judging).unwrap();
     assert_eq!(
-        judge(&said, &mut judging).unwrap(),
+        masked,
         [("formatting".to_owned(), Blame::Masked)],
         "main's formatting red was excused, though treefmt may stop before a rider's"
     );
+    assert!(!excused(&masked), "main's formatting red landed");
 }
 
 /// A nix killed mid-run says nothing of the checks it never reached, and a
@@ -500,10 +511,15 @@ fn a_red_without_changed_checks_verdict_on_its_builds_is_never_judged() {
 fn a_check_that_may_stop_at_its_first_error_is_never_mains() {
     let said = words(&["vm-pi"], &["vm-test-run-vm-pi"]);
     let at_base = |_: &str| as_before("vm-test-run-vm-pi");
+    let masked = judged(&said, &at_base, &passes, 0).unwrap();
     assert_eq!(
-        judged(&said, &at_base, &passes, 0).unwrap(),
+        masked,
         [("vm-pi".to_owned(), Blame::Masked)],
         "a check not known to report every failure was excused as main's"
+    );
+    assert!(
+        !excused(&masked),
+        "a check not known to report every failure landed main's red"
     );
 }
 

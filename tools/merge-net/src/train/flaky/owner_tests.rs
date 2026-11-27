@@ -101,16 +101,7 @@ fn a_reds_owner_is_read_where_the_train_fetched_its_base() {
 #[test]
 fn an_owner_is_looked_for_among_the_newest_merges_alone() {
     let (root, checkout, _, _) = net_past_twelve("merge-net-owner-far");
-    let mut base = String::new();
-    for later in 0..MOST_OWNER_MERGES {
-        let side = format!("later-{later}");
-        base = merged(
-            &checkout,
-            &side,
-            &format!("Merge pull request #{} from x/{side}", 20 + later),
-        );
-        keep_drv(&root, &base, "now");
-    }
+    let base = later(&root, &checkout, &["now"].repeat(MOST_OWNER_MERGES));
     assert_eq!(
         owner_at(&root, &checkout, &base),
         Err(Unowned::NoMerge {
@@ -118,6 +109,53 @@ fn an_owner_is_looked_for_among_the_newest_merges_alone() {
             since: MOST_OWNER_MERGES + 1,
         }),
         "an owner was looked for past the newest merges"
+    );
+    fs::remove_dir_all(&root).unwrap();
+}
+
+/// Merges onto main after #12 in `checkout`, one for each of `drvs`, #20
+/// on, each keeping `a`'s derivation as its `drvs` names it; the last.
+fn later(root: &Path, checkout: &Path, drvs: &[&str]) -> String {
+    let mut base = String::new();
+    for (later, which) in drvs.iter().enumerate() {
+        let side = format!("later-{later}");
+        base = merged(
+            checkout,
+            &side,
+            &format!("Merge pull request #{} from x/{side}", 20 + later),
+        );
+        keep_drv(root, &base, which);
+    }
+    base
+}
+
+/// The newest four merges are read whole, however many more came since
+/// the net last passed: an owner the oldest of them is still found. Four,
+/// not `MOST_OWNER_MERGES`, so a bound that shrank fails it.
+#[test]
+fn an_owner_among_the_newest_merges_is_found_past_older_ones() {
+    let (root, checkout, _, _) = net_past_twelve("merge-net-owner-newest");
+    let drvs = ["newer"].repeat(4);
+    let base = later(&root, &checkout, &drvs);
+    assert_eq!(
+        owner_at(&root, &checkout, &base),
+        Ok(20),
+        "the oldest of the newest merges wasn't read for an owner"
+    );
+    fs::remove_dir_all(&root).unwrap();
+}
+
+/// A net that passed four merges back reads every one of them, the
+/// oldest included.
+#[test]
+fn an_owner_as_far_back_as_is_read_is_found() {
+    let (root, checkout, _, _) = net_past_twelve("merge-net-owner-edge");
+    let drvs = ["now"].repeat(3);
+    let base = later(&root, &checkout, &drvs);
+    assert_eq!(
+        owner_at(&root, &checkout, &base),
+        Ok(12),
+        "the oldest merge since the net last passed wasn't read for an owner"
     );
     fs::remove_dir_all(&root).unwrap();
 }

@@ -100,8 +100,13 @@ pub(super) fn owner_in(
         dropped: std::sync::Mutex::default(),
         follow: None,
     };
-    crate::watch::owner_of(&world, &from, red.base, check, failed).ok_or(Unowned::NoMerge {
-        looked: since.min(MOST_OWNER_MERGES),
-        since,
-    })
+    let looked = since.min(MOST_OWNER_MERGES);
+    // Each merge read evaluates its check twice or more, so a slow ride
+    // shows where it is.
+    println!(
+        "merge-net: the train looks for the owner of {check} among the newest {looked} \
+         of the {since} merges since main last passed"
+    );
+    crate::watch::owner_of(&world, &from, red.base, check, failed)
+        .ok_or(Unowned::NoMerge { looked, since })
 }
