@@ -4739,6 +4739,9 @@
     stretched by the machine's ready tasks per processor up to the most pace on a busy one, and a
     step begun busy keeps that pace; a failure says the time taken against both bounds
   '';
+  test-pace-compiles-for-macos = ''
+    test-pace, its Mac reading of the load included, compiles for macOS, clean
+  '';
   test-pace-passes-clippy = ''
     clippy finds nothing in test-pace, the library a test's timed steps are judged by
   '';
