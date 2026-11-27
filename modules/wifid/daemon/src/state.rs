@@ -36,9 +36,9 @@ pub struct State {
     /// how one attempt went after the next has been asked for.
     attempts: BTreeMap<String, u64>,
     troubled_in: BTreeMap<String, u64>,
-    /// The cards, by name, that have begun joining and not yet landed. A
-    /// card associates before its handshake, so it's at a new point while
-    /// a move there may still fail.
+    /// The cards, by name, short of a completed join since they were last
+    /// joined. A card associates before its handshake, so it's at a new
+    /// point while a move there may still fail.
     joining: BTreeSet<String>,
     /// The cards, by name, that have looked for networks since wifid was
     /// given them.
@@ -358,6 +358,13 @@ impl State {
     /// Takes in that the card of that name has begun joining a network.
     pub fn attempting(&mut self, card: &str) {
         *self.attempts.entry(card.to_string()).or_default() += 1;
+        self.joining(card);
+    }
+
+    /// Takes in that the card of that name is short of a completed join,
+    /// begun or not as wifid saw it: one first seen partway, or found
+    /// partway as wifid starts, hasn't left its point until it lands.
+    pub fn joining(&mut self, card: &str) {
         self.joining.insert(card.to_owned());
     }
 
@@ -1598,6 +1605,29 @@ mod tests {
     }
 
     #[test]
+    fn a_join_found_partway_as_wifid_starts_keeps_the_kept_warning_should_it_fail() {
+        let mut state = at_the_inn();
+        let warned = state.point_of("wlan2").expect("on a point");
+        let now = Instant::now();
+        state.kept_off("wlan2", &warned, now + Duration::from_secs(600));
+
+        // Handed over mid-move: associated with the hall, its handshake to
+        // come, which fails and puts it back where it was warned.
+        state.joining("wlan2");
+        state.at("wlan2", Some("/Interfaces/0/BSSs/2".into()));
+        state.at("wlan2", Some("/Interfaces/0/BSSs/1".into()));
+        state.landed("wlan2");
+        state.attempting("wlan2");
+        state.at("wlan2", Some("/Interfaces/0/BSSs/2".into()));
+
+        assert_eq!(
+            state.warned_from("wlan2", now),
+            Some(&*warned),
+            "a join found partway that failed back to the warned point forgot the warning"
+        );
+    }
+
+    #[test]
     fn a_warning_is_forgotten_once_its_card_has_left_its_point_and_come_back() {
         let mut state = at_the_inn();
         let warned = state.point_of("wlan2").expect("on a point");
@@ -1657,7 +1687,7 @@ mod tests {
         assert_eq!(
             failed.as_deref(),
             Some(&*warned),
-            "a move that associated with the hall but never joined it forgot the warning"
+            "a move associated with the hall, not yet joined, forgot the warning"
         );
         assert_eq!(
             state.warned_from("wlan2", now),

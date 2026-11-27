@@ -105,7 +105,7 @@ use service::{Ask, Refused, Stage, Wifi};
 use stall::Stalls;
 use state::{Progress, Reach, State, Trouble};
 use store::{Saved, Store};
-use supplicant::{InterfaceProxy, JoinableProxy, Step, SupplicantProxy};
+use supplicant::{InterfaceProxy, Join, JoinableProxy, Step, SupplicantProxy};
 use transition::{Heed, Request};
 use warned::Warned;
 
@@ -1169,8 +1169,6 @@ impl<'a> Air<'a> {
         // reached. Anything wifid was busy with as the signal came still
         // counts in it.
         let now = Instant::now();
-        // An attempt at a network begins as the card starts authenticating
-        // with it, or associating where it skips that.
         let step = changed.get("State").map(|step| &**step);
         // Whether this signal's step ended a join, so a point it names in
         // the same signal doesn't end the move again.
@@ -1180,14 +1178,17 @@ impl<'a> Air<'a> {
             if let Some(card) = self.named(bus, path).await {
                 let before = self.cards.get(path.as_str());
                 let before = before.map_or("", |(_, step)| step.as_str());
-                let begins = step == "authenticating"
-                    || (step == "associating" && before != "authenticating");
+                let join = supplicant::join_at(before, &step);
                 let left = supplicant::left_its_network(before, &step);
-                if begins {
-                    change(&self.state, |state| state.attempting(&card));
-                    self.tried.push(card.clone());
+                match join {
+                    Join::Begins => {
+                        change(&self.state, |state| state.attempting(&card));
+                        self.tried.push(card.clone());
+                    }
+                    Join::Short => change(&self.state, |state| state.joining(&card)),
+                    Join::Lands | Join::Stays => {}
                 }
-                if step == "completed" && before != "completed" {
+                if join == Join::Lands {
                     landed = true;
                     change(&self.state, |state| state.landed(&card));
                     let said = credited(point, self.at.get(path.as_str()).map(String::as_str));
@@ -1991,7 +1992,16 @@ impl Wifid<'_> {
         let point = interface.current_access_point().await.ok();
         let point = point.filter(|point| joined_to(point).is_some());
         let joined = point.as_ref().map(ToString::to_string);
-        change(self.state, |state| state.at(&card.name, joined));
+        // A card found partway through a join, as wifid starts mid-move,
+        // hasn't left a point that warned it until that join lands, so the
+        // warning taken in from before stays if the join fails.
+        let landed = interface.state().await? == "completed";
+        change(self.state, |state| {
+            if !landed {
+                state.joining(&card.name);
+            }
+            state.at(&card.name, joined);
+        });
         // A card in a move, or on its way back, keeps the hold the move
         // gave it, as networks saved meanwhile hand every card over again:
         // held where it is mid-way, it could join any point of its network.
