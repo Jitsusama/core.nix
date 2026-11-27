@@ -492,13 +492,15 @@ fn a_search_read_only_to_a_later_page_is_never_heard_whole() {
 
 #[test]
 fn a_round_read_in_part_takes_away_a_row_its_answers_show_wrong() {
+    // What starts a reader of each kind.
+    type Starts = fn() -> Deaf;
     let round = |n: u32| AT + u64::from(n) * 30_000;
-    let readers: [(&str, fn() -> Deaf); 2] = [
+    let readers: [(&str, Starts); 2] = [
         ("the keyring reader", Deaf::new),
         ("the gateway reader", Deaf::through_gateway),
     ];
     let tag = Search::Tag;
-    let told = |new: fn() -> Deaf, why: Deafness| {
+    let told = |new: Starts, why: Deafness| {
         let mut deaf = new();
         let _ = deaf.heard(Round::Heard, round(0));
         let _ = deaf.heard(Round::Deaf(why), round(1));
