@@ -14,6 +14,7 @@ use jiff::civil::DateTime;
 use jiff::tz::TimeZone;
 use terminal_kit::{Exit, Failure};
 
+use crate::findings::shown::{How, Said, Shown, Word};
 use crate::findings::{self, Entry};
 use crate::{failed, folders, hour, wrongly};
 
@@ -138,6 +139,7 @@ pub fn owe(ledger: &mut Vec<Entry>, owed: Owed, date: &str, now: i64) {
         entry.back = None;
         entry.fixed = None;
         entry.closed = None;
+        entry.shown = Shown::default();
         return;
     }
     ledger.push(Entry {
@@ -165,12 +167,15 @@ pub fn owe(ledger: &mut Vec<Entry>, owed: Owed, date: &str, now: i64) {
         names: std::collections::BTreeMap::new(),
         red: false,
         closed: None,
+        shown: Shown::default(),
     });
 }
 
 /// Closes the open must filed as `key`, saying whether there was one. A
 /// finding of cadence's own isn't closed this way: its owner says what
 /// fixed it (`findings::fixed`), and it closes once its figure is back.
+/// The hour closes its lines in place, so only the tests close one so.
+#[cfg(test)]
 pub fn settle(ledger: &mut [Entry], key: &str) -> bool {
     ledger
         .iter_mut()
@@ -192,14 +197,27 @@ fn drags(kind: &str) -> bool {
 /// way keeps when, and the fix its owner named; so does a class of cause
 /// the hour already closed, when its fix is named, since a root fix often
 /// lands after its class dips under the bar, and its old cases still
-/// count. Another drag the hour closed holds nothing, so it is unfiled.
+/// count. A line the hour holds to a fix shown keeps the fix named and
+/// stays open until an hour finds it back in, since the fix is shown only
+/// by its figure then; one the hour closed back unexplained takes a fix
+/// named after. Another drag the hour closed holds nothing, so it is
+/// unfiled.
 fn done(ledger: &mut [Entry], key: &str, fix: Option<&str>, now: i64) -> Result<String, Failure> {
     if let Some(entry) = ledger
         .iter_mut()
         .find(|e| e.open && e.kind.is_some() && e.key == key)
     {
-        entry.open = false;
         let drag = entry.kind.as_deref().is_some_and(drags);
+        if let Some(fix) = fix.filter(|_| drag && hour::held_to_a_fix(key, &entry.axis)) {
+            entry.shown.word = Some(Word {
+                said: Said::Fix(fix.to_owned()),
+                at: now,
+            });
+            return Ok(format!(
+                "cadence: {key} is fixed by {fix}, closing at the next hour that finds it back in"
+            ));
+        }
+        entry.open = false;
         if drag {
             entry.closed = Some(now);
             entry.fixed = fix.map(str::to_owned);
@@ -222,10 +240,32 @@ fn done(ledger: &mut [Entry], key: &str, fix: Option<&str>, now: i64) -> Result<
             format!("no open must or finding is filed as {key}"),
         )
     };
+    let unexplained = |e: &Entry| {
+        e.shown
+            .ended
+            .is_some_and(|ended| ended.how == How::Unexplained)
+    };
     let settled = ledger.iter_mut().rev().find(|e| e.key == key).filter(|e| {
-        !e.open && e.kind.as_deref().is_some_and(drags) && hour::held_when_fixed(&e.key)
+        !e.open
+            && e.kind.as_deref().is_some_and(drags)
+            && (hour::held_when_fixed(&e.key) || unexplained(e))
     });
     if let (Some(entry), Some(fix)) = (settled, fix) {
+        if let Some(ended) = entry
+            .shown
+            .ended
+            .as_mut()
+            .filter(|e| e.how == How::Unexplained)
+        {
+            ended.how = How::Fixed;
+            entry.shown.word = Some(Word {
+                said: Said::Fix(fix.to_owned()),
+                at: now,
+            });
+            return Ok(format!(
+                "cadence: {key} was closed back unexplained, and is now counted fixed by {fix}"
+            ));
+        }
         entry.closed = Some(now);
         entry.fixed = Some(fix.to_owned());
         return Ok(format!(
@@ -493,7 +533,7 @@ mod tests {
         for key in [
             "hour:miss:the host crashed",
             "hour:queue:core",
-            "hour:slips",
+            "hour:causes-recurring:racy test",
         ] {
             let drag = || Owed {
                 kind: "drag".to_owned(),
@@ -588,6 +628,62 @@ mod tests {
             "a fix named after the hour closed the drag wasn't kept"
         );
         assert!(!ledger[0].open, "naming the fix opened the drag again");
+    }
+
+    /// A line the hour holds to a fix shown keeps the fix its owner names
+    /// and stays open, closing once an hour finds it back in; one the hour
+    /// closed back unexplained takes a fix named after, counted fixed.
+    #[test]
+    fn a_fix_named_for_a_line_held_to_a_fix_waits_for_the_hour() {
+        let key = "hour:slips";
+        let mut ledger = Vec::new();
+        owe(
+            &mut ledger,
+            Owed {
+                kind: "drag".to_owned(),
+                ..owed(key, DUE)
+            },
+            "d1",
+            DAY,
+        );
+        let said = done(&mut ledger, key, Some("core #6000"), 2 * DAY).map_err(|f| f.exit);
+        assert_eq!(
+            (said, ledger[0].open, ledger[0].shown.word.clone()),
+            (
+                Ok(format!(
+                    "cadence: {key} is fixed by core #6000, closing at the next hour that \
+                     finds it back in"
+                )),
+                true,
+                Some(Word {
+                    said: Said::Fix("core #6000".to_owned()),
+                    at: 2 * DAY
+                })
+            ),
+            "a fix named for a line held to a fix closed it, or wasn't kept"
+        );
+        ledger[0].open = false;
+        ledger[0].shown.ended = Some(crate::findings::shown::Ended {
+            how: How::Unexplained,
+            at: 3 * DAY,
+        });
+        let said = done(&mut ledger, key, Some("core #6001"), 4 * DAY).map_err(|f| f.exit);
+        assert_eq!(
+            (
+                said,
+                ledger[0].open,
+                ledger[0].shown.ended.map(|ended| ended.how)
+            ),
+            (
+                Ok(format!(
+                    "cadence: {key} was closed back unexplained, and is now counted fixed by \
+                     core #6001"
+                )),
+                false,
+                Some(How::Fixed)
+            ),
+            "a fix named for a line closed back unexplained wasn't counted"
+        );
     }
 
     /// Only a class of cause is held by its fix, so a fix named for another

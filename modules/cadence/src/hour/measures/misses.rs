@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use super::{Class, DAY, Measure, count, first_owner, lines, seconds};
+use crate::findings::shown::Live;
 use crate::{axes, command, write_whole};
 
 mod held;
@@ -227,6 +228,50 @@ pub fn checked_beside(
             open_misses(text, repos, judged),
             findings.map(|found| found.measured(repos, judged, now)),
         )
+    })
+}
+
+/// How each of `said`, an owner's reply naming the change that fixed a
+/// line, with when it was said in seconds, stands here: it runs once a
+/// change it names in a repository cadence reads runs here, and is merged
+/// once one has merged but none runs yet. Each is judged as a miss's check
+/// is, from the merges and runs the misses keep in `folder`, so a change
+/// seen running for either is known to both.
+///
+/// # Errors
+///
+/// Where the changes found merged can't be kept.
+pub fn live(
+    said: &[(String, i64)],
+    folder: &Path,
+    checkouts: &[String],
+    switches: &str,
+) -> io::Result<BTreeMap<String, Live>> {
+    let text = said
+        .iter()
+        .filter_map(|(text, at)| {
+            let at = Timestamp::from_second(*at).ok()?.to_string();
+            Some(serde_json::json!({ "at": at, "check": text }).to_string())
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    judged(&text, folder, checkouts, switches, |repos, judged| {
+        said.iter()
+            .map(|(text, _)| {
+                let changes = named(text, repos);
+                let merged = |c: &&Named| judged.merged.contains(*c);
+                let runs =
+                    |c: &&Named| !judged.unrun.contains_key(*c) && !judged.unread.contains(&c.repo);
+                let live = if changes.iter().filter(merged).any(|c| runs(&c)) {
+                    Live::Runs
+                } else if changes.iter().any(|c| merged(&c)) {
+                    Live::Merged
+                } else {
+                    Live::No
+                };
+                (text.clone(), live)
+            })
+            .collect()
     })
 }
 

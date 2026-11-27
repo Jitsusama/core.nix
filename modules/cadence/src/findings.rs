@@ -11,6 +11,9 @@
 //! nothing a day found is lost and nobody is asked twice. A must a
 //! quest owes, filed with `cadence owe` (owe.rs), is kept here too, and
 //! stays open until its owner says it's done.
+//!
+//! Long because its cases replay each way a line opens, closes and comes
+//! back, and read best beside the rules they pin.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -25,6 +28,7 @@ use crate::{DAY, holders, write_whole};
 
 pub mod gone;
 pub mod hubs;
+pub mod shown;
 
 /// One finding as the ledger keeps it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -74,7 +78,9 @@ pub struct Entry {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub put_to: Vec<String>,
     /// The date a finding of cadence's own was first back two days
-    /// running, waiting on its owner's word of what fixed it.
+    /// running, or a line the hour holds to a fix shown first back in,
+    /// waiting on its owner's word of what fixed it, so it goes late to
+    /// nobody.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub back: Option<String>,
     /// What its owner said fixed it, or why it's expected, with
@@ -83,8 +89,8 @@ pub struct Entry {
     pub fixed: Option<String>,
     /// The ids of the questions its owner was asked it in, the latest
     /// last, each kept for `ASKED_FOR`, so each question of the two days
-    /// the mesh is read over is known as the hour's. Nothing reads a
-    /// reply against them yet: a line closes when its measure is back in.
+    /// the mesh is read over is known as the hour's, and a reply to one
+    /// read as its owner's word of the fix (`shown`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub asked: Vec<String>,
     /// What the hour's line named as its owner's, each cell, file, miss
@@ -104,6 +110,10 @@ pub struct Entry {
     /// the next hour from the cases the fix came after.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub closed: Option<i64>,
+    /// What a line the hour holds to a fix shown has heard of its fix,
+    /// and how the hour closed it.
+    #[serde(default, skip_serializing_if = "shown::Shown::is_empty")]
+    pub shown: shown::Shown,
 }
 
 /// Whether a count is nought, so a line never reopened stays as it was.
@@ -271,6 +281,7 @@ pub fn update(
                 names: BTreeMap::new(),
                 red: false,
                 closed: None,
+                shown: shown::Shown::default(),
             });
         }
     }

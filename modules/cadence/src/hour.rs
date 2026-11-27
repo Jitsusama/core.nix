@@ -36,7 +36,7 @@ mod records;
 mod reviews;
 mod stuck;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -47,14 +47,14 @@ use jiff::tz::TimeZone;
 use terminal_kit::Failure;
 
 use crate::findings;
-use crate::mesh::{Mesh, Presence, Rosters, running};
+use crate::mesh::{Mesh, Message, Presence, Rosters, running};
 use crate::tracking::Tracking;
 use crate::{DAY, axes, clock, command, failed, folders, message, now_ms, write_whole, wrongly};
 use card::{Kept, compose};
 use measures::{Class, Measure};
 use moved::{HARNESS, moved};
 use owing::file;
-pub use owing::held_when_fixed;
+pub use owing::{held_to_a_fix, held_when_fixed};
 use records::{RECORD_READ, aboard, tail};
 
 /// Who moves the measures no file names an owner for: the merge net's
@@ -198,10 +198,15 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
     let mut ledger = findings::read(&ledger_at);
     let before = ledger.clone();
     let date = today(now);
-    let told = file(&mut ledger, &measures, &date, now);
     let mesh = Mesh {
         root: state_home.join("pi/agentic-harness.pi"),
     };
+    hear_fixes(&mesh, &mut ledger, &folder, &state_home, checkouts, now)?;
+    let told = file(&mut ledger, &measures, &date, now);
+    if let Some(line) = owing::shown::tally(&ledger, now) {
+        print!("{line}");
+        card.push_str(&line);
+    }
     // A question, so the line wakes its owner and wants an answer. Its
     // lines carry its id only once it's gone. The asked owners' lines are
     // kept before the card or any failure is said, so their ids stand
@@ -228,6 +233,45 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
     // findings and "fixed" lines again next hour rather than never.
     findings::keep(&ledger_at, &ledger)?;
     write_whole(&kept_at, &serde_json::to_string(&next)?)?;
+    Ok(())
+}
+
+/// Hears the replies to the hour's questions naming the fixes of the lines
+/// it holds to a fix shown, from the mesh's last `ASKED_FOR`, opening only
+/// the files of cadence and of those who may answer, and judges whether
+/// each change a reply names runs here, as a miss's check is judged.
+fn hear_fixes(
+    mesh: &Mesh,
+    ledger: &mut [findings::Entry],
+    folder: &Path,
+    state_home: &Path,
+    checkouts: &[String],
+    now: i64,
+) -> io::Result<()> {
+    let asked = owing::shown::asked(ledger);
+    if asked.is_empty() {
+        return Ok(());
+    }
+    let from = (now - findings::ASKED_FOR) * 1000;
+    let questions: Vec<Message> = mesh
+        .sent_since_by(from, &BTreeSet::from([crate::FROM.to_owned()]))
+        .into_iter()
+        .filter(|question| asked.contains(&question.id))
+        .collect();
+    let senders = owing::shown::senders(ledger, &questions);
+    let replies: Vec<Message> = mesh
+        .sent_since_by(from, &senders)
+        .into_iter()
+        .filter(|reply| reply.re.as_ref().is_some_and(|re| asked.contains(re)))
+        .collect();
+    owing::shown::hear(ledger, &questions, &replies);
+    let said = owing::shown::changes(ledger);
+    if !said.is_empty() {
+        let switches =
+            fs::read_to_string(state_home.join("integration/switches.jsonl")).unwrap_or_default();
+        let live = measures::live(&said, folder, checkouts, &switches)?;
+        owing::shown::judge(ledger, &live);
+    }
     Ok(())
 }
 

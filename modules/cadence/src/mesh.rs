@@ -408,6 +408,23 @@ impl Mesh {
             .collect())
     }
 
+    /// Every message sent at `from_ms` or later by one of `senders`, by the
+    /// sender its file's name says, `<ms>-<from>-<pid>-<short id>`, so only
+    /// theirs are opened. One whose body names another id or sender than
+    /// its name says is no one's, and left out.
+    #[must_use]
+    pub fn sent_since_by(&self, from_ms: i64, senders: &BTreeSet<String>) -> Vec<Message> {
+        self.files_since(from_ms)
+            .iter()
+            .filter_map(|path| {
+                let stem = path.file_stem()?.to_str()?;
+                let named = stem.split('-').nth(1)?;
+                senders.contains(named).then_some(())?;
+                read_json::<Message>(path).filter(|m| m.id == stem && m.from == named)
+            })
+            .collect()
+    }
+
     /// Every message's file whose id is stamped at `from_ms` or later, as
     /// [`Mesh::sent_since`] reads them.
     fn files_since(&self, from_ms: i64) -> Vec<PathBuf> {
