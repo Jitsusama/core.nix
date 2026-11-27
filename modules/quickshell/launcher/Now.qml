@@ -626,13 +626,23 @@ Provider {
     // gone to. Only from his own Return: a walk from outside runs it once the launcher's gone
     // (Launcher.qml's runOnceGone), and is refused there, nothing filled or gone to (round
     // 000056 on #6796, F29).
-    function dealWith(address, asked, session) {
-        if (!Sprouting.fromJoel(provider.launcher)) {
-            console.info("launcher: For You's Deal With It wasn't done from a walk");
+    function dealWithWant(address, asked, session) {
+        if (!joelsOwn("Deal With It"))
             return;
-        }
         Sessions.steer(address, { act: "fill", text: readyToDeal(asked) });
         Sessions.goTo(session);
+    }
+
+    // Whether an act the agents daemon does as Joel (its AS_JOEL, main.rs) may go now: only
+    // from his own Return, as Agents.qml's joelsOwn says, since the daemon takes the shell's
+    // asks as his. A walk is told why, and only the journal says it.
+    function joelsOwn(act) {
+        if (Sprouting.fromJoel(provider.launcher))
+            return true;
+        const outside = String((Words.of("agents").said ?? {}).actWalked ?? "");
+        console.info(`launcher: For You's ${act} wasn't done from a walk: ${outside}`);
+        provider.launcher?.walkRefused?.(outside);
+        return false;
     }
 
     // Each placeholder given by a function, so a `$` in what fills it, as a
@@ -752,8 +762,10 @@ Provider {
     // gets filled into it stating i'm reayd to deal with it if it is still
     // valid"). The harness fills a prompt only while it's empty. Going
     // comes first, so a parked session's wake reaches its inbox before
-    // the fill it then reads.
+    // the fill it then reads. Only from his own Return, as dealWithWant.
     function dealWith(each) {
+        if (!joelsOwn("Deal With It"))
+            return;
         const session = WaitingOnYou.session(each);
         WaitingOnYou.go(each);
         if (session)
@@ -2167,7 +2179,7 @@ Provider {
         const inside = () => [
             thing(Object.assign(named("deal"), {
                 key: `verb:on:waiting:deal:${key}`,
-                run: () => dealWith(address, asked, session())
+                run: () => dealWithWant(address, asked, session())
             })),
             talkTo(session()),
             thing(Object.assign(named("go"), {
@@ -2208,7 +2220,10 @@ Provider {
             side: (Words.of("on:waiting").said ?? {}).anHour ?? "",
             gap: true,
             stays: true,
-            run: () => Sessions.putOffWant(address, known)
+            run: () => {
+                if (joelsOwn("Not Now"))
+                    Sessions.putOffWant(address, known);
+            }
         });
     }
 
@@ -2291,7 +2306,7 @@ Provider {
                 key: `verb:on:waiting:deal:${key}`,
                 gap: true,
                 later: true,
-                run: () => dealWith(address, asked, session())
+                run: () => dealWithWant(address, asked, session())
             }))
         ], answers.own ? [thing(Object.assign(named("own"), {
             key: `verb:on:waiting:own:${key}`,

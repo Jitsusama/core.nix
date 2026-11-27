@@ -61,13 +61,17 @@ rec {
       buildPhase =
         let
           features = old.cargoBuildFeatures or [ ];
-          given = lib.optionals (features != [ ]) [
-            "--features"
-            (lib.concatStringsSep "," features)
-          ];
+          # Said only where a crate builds with features, so every other crate's check stays
+          # the derivation it was.
+          given =
+            lib.optionalString (features != [ ])
+              " ${lib.escapeShellArgs [
+                 "--features"
+                 (lib.concatStringsSep "," features)
+               ]}";
         in
         ''
-          cargo clippy --all-targets --offline ${lib.escapeShellArgs given} -- ${lib.escapeShellArgs lints}
+          cargo clippy --all-targets --offline${given} -- ${lib.escapeShellArgs lints}
         '';
       doCheck = false;
       installPhase = ''

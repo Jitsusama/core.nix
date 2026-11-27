@@ -2549,9 +2549,15 @@ Provider {
         const reopen = one => Sessions.reopen(one, cwd => provider.launcher?.tellOnOpen([
             [homely(cwd), String(oneSaid.isGone ?? ""), Theme.alert]]));
         // Forgetting one whose folder has gone costs nothing, since it can't
-        // be reopened anyway, so d does it at once, though :forget is costly.
-        const forget = one => act("forget", { run: () => Sessions.forgetReopen(one),
-            costly: false });
+        // be reopened anyway, so d does it at once, though :forget is costly. The daemon takes
+        // it as Joel's, so only his own Return forgets one (joelsOwn).
+        const forget = one => act("forget", {
+            run: () => {
+                if (joelsOwn("forget"))
+                    Sessions.forgetReopen(one);
+            },
+            costly: false
+        });
         const worded = (one, fields) => Object.assign({
             key: `agents:to-reopen:${one.id}`,
             name: String(rowOf(one).name ?? one.id),
@@ -2604,7 +2610,10 @@ Provider {
             forYou: { kind: "do", source: "sessions" }
         }, () => (reopenable.length === 0 ? [] : [themAll()]).concat(lost.map(closed),
             Sessions.lastBoot.length === 0 ? [] : [act("notNow", {
-            run: () => Sessions.putOffLastBoot()
+            run: () => {
+                if (joelsOwn("not now"))
+                    Sessions.putOffLastBoot();
+            }
         })]));
     }
 

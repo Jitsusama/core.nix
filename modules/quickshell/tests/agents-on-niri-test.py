@@ -1156,9 +1156,19 @@ def test_a_want_walked_from_outside_is_dealt_with_only_once_joel_returns(shell: 
         in_for_you(shell)
         shell.launcher_until(lambda shown: "Dealing Quest" in shown["rows"])
         shell.close_launcher()
+        # Nor does a walk put the want off, which would take it off For You for an hour as
+        # Joel's (round 000022 on #6796, F48 and F57): it's refused, and the want stays.
+        walked = {"steps": ["now", "For You", "Dealing Quest", "Put It Off"], "sure": True}
+        did = json.loads(shell.as_account(shell.ipc("doing", shlex.quote(json.dumps(walked)))))
+        assert did.get("refused") == ACT_WALKED, did
+        shell.close_launcher()
+        in_for_you(shell)
+        shell.launcher_until(lambda shown: "Dealing Quest" in shown["rows"])
+        shell.close_launcher()
         walked = {"steps": ["now", "For You", "Dealing Quest", "Deal With It"], "sure": True}
         did = json.loads(shell.as_account(shell.ipc("doing", shlex.quote(json.dumps(walked)))))
-        assert "error" not in did, did
+        # The walk reached Deal With It, which runs once it's gone, so nothing's refused yet.
+        assert did.get("done") is True, did
         # Past the closed frame's wait, a second at most, and the moment after it.
         time.sleep(2 + LINK_QUIET)
         filled = [json.loads(one.read_text()) for one in inbox.glob("*.json")]
@@ -1704,6 +1714,16 @@ def test_a_session_whose_folder_is_gone_says_so_before_return_and_is_forgotten(
     Reopen Them All counts what it will reopen, the other alone, rather than a notice saying
     after that one wasn't (VKCF3Z, 2026-11-07).
     """
+    # A walk from outside forgets none, nor puts off the last boot's, which the daemon would
+    # take as Joel's (round 000022 on #6796, F40 and F57): refused, both are still offered.
+    for steps in (
+        ["agents", "Sessions to Reopen", "Given Back", "Forget It"],
+        ["agents", "Sessions to Reopen", "Not Now"],
+    ):
+        walked = {"steps": steps, "sure": True}
+        did = json.loads(shell.as_account(shell.ipc("doing", shlex.quote(json.dumps(walked)))))
+        assert did.get("refused") == ACT_WALKED, (steps, did)
+        shell.close_launcher()
     opened(shell)
     shell.down_to("Sessions to Reopen")
     shell.step_in()
