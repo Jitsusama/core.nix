@@ -269,16 +269,22 @@ in
   # takes the driver off the chip for it any more, so its thaw must be the
   # plain wake the kernel has made it since 7.3.6, and every reset in the
   # wake it shares must sit under a test a thaw can't meet. The driver's C
-  # is read as tests and blocks, not as words, so an else, a second reset
-  # or a braceless if is judged too (tests/thaw-is-a-plain-wake.py).
+  # is read as tests and blocks, not as words, so an else, a second reset,
+  # a braceless if or an early return is judged too
+  # (tests/thaw-is-a-plain-wake.py). Its cases edit this driver as a later
+  # kernel might, so a reader that stops seeing one fails here
+  # (tests/thaw-is-a-plain-wake-cases.py).
   bluetooth-lets-a-hibernation-power-off =
     let
       driver = "drivers/bluetooth/btintel_pcie.c";
+      check = ./tests/thaw-is-a-plain-wake.py;
+      source = "${kernelSource [ driver ]}/${driver}";
     in
     pkgs.runCommandLocal "bluetooth-lets-a-hibernation-power-off"
       { nativeBuildInputs = [ pkgs.python3 ]; }
       ''
-        python3 ${./tests/thaw-is-a-plain-wake.py} ${kernelSource [ driver ]}/${driver}
+        python3 ${check} ${source}
+        python3 ${./tests/thaw-is-a-plain-wake-cases.py} ${check} ${source}
         touch $out
       '';
 
@@ -341,13 +347,20 @@ in
         "rx.c"
         "sta.c"
       ];
+      bash = lib.getExe pkgs.bash;
+      check = ./tests/every-reorder-buffer-may-be-vmalloc.sh;
+      read = lib.escapeShellArgs files;
     in
-    pkgs.runCommandLocal "wifi-sessions-survive-fragmented-memory" { } ''
-      cd ${kernelSource files}
-      ${lib.getExe pkgs.bash} ${./tests/every-reorder-buffer-may-be-vmalloc.sh} \
-        ${lib.escapeShellArgs files}
-      touch $out
-    '';
+    # Its cases edit these files as a later kernel might, so a check that
+    # stops seeing a free fails here (tests/every-reorder-buffer-may-be-vmalloc-cases.py).
+    pkgs.runCommandLocal "wifi-sessions-survive-fragmented-memory"
+      { nativeBuildInputs = [ pkgs.python3 ]; }
+      ''
+        cd ${kernelSource files}
+        ${bash} ${check} ${read}
+        python3 ${./tests/every-reorder-buffer-may-be-vmalloc-cases.py} ${bash} ${check} ${read}
+        touch $out
+      '';
 
   # Intel's microcode 0x11d fixes functional issues in this processor
   # (06-cc-02; platform bit 0x80, as cpu0's microcode/processor_flags read
