@@ -317,12 +317,13 @@ fn told_late_asked(m: &Measure, says: &str) -> Vec<Filed> {
 /// The ask to its sender about each message claiming a rule or wish of
 /// Joel's with no word of his behind it, filed message by message, each
 /// line opening with the message's short id in brackets and naming its
-/// sender last. A message can't be taken back, so it closes once its line
-/// is gone: when its sender answers, or a day after it was sent. Each
-/// sender is asked about its oldest ones, as [`ruled::asked_of_each`]
-/// gives them, and the next once one closes, so a day's backlog never
-/// wakes a cell for every message in it; the card names the same ones and
-/// counts the rest. Only [`back_in`] closes these, by this measure's key, so a
+/// sender last. It closes once its line is gone: when its sender answers,
+/// which settles every claim it sent before, replaces the message, or a
+/// day after it was sent. Each sender is asked about its oldest ones, as
+/// [`ruled::asked_of_each`] gives them, and at most once a day, as
+/// [`asked_lately`] holds it, so a day's backlog wakes a cell once rather
+/// than for every message in it; the card names the same ones and counts
+/// the rest. Only [`back_in`] closes these, by this measure's key, so a
 /// revert of the measure must first settle every open
 /// `hour:rulings-unsourced:` entry, or each goes late and stays open.
 fn ruled_asked(m: &Measure) -> Vec<Filed> {
@@ -606,6 +607,18 @@ fn fixed_lately(ledger: &[Entry], key: &str, now: i64) -> bool {
         })
 }
 
+/// Whether `owner` was asked about a claim of his rule within the day
+/// before `now`, open or closed: each ask wakes it if it's parked, and
+/// one answer settles every claim it sent before, so it's asked at most
+/// once a day however many it made. An ask is filed [`RULED_DUE`] before
+/// its due, as the age close in [`file`] reads it too.
+fn asked_lately(ledger: &[Entry], owner: &str, now: i64) -> bool {
+    let keyed = format!("hour:{}:{owner}:", ruled::KEY);
+    ledger
+        .iter()
+        .any(|e| e.key.starts_with(&keyed) && e.due - RULED_DUE > now - DAY)
+}
+
 /// Files the hour's drag in the loop's ledger as a must of kind `drag`,
 /// due a day on, unless it's open there already, and closes each drag
 /// filed before that is back in. Says what to tell the owner of each one
@@ -676,7 +689,9 @@ pub fn file(
         .into_iter()
         .flat_map(|m| filed(m).into_iter().map(move |f| (m, f)))
     {
-        if ledger.iter().any(|e| e.open && e.key == one.key) || fixed_lately(ledger, &one.key, now)
+        if ledger.iter().any(|e| e.open && e.key == one.key)
+            || fixed_lately(ledger, &one.key, now)
+            || (m.key == ruled::KEY && asked_lately(ledger, &one.owner, now))
         {
             continue;
         }
@@ -1635,10 +1650,10 @@ mod tests {
     }
 
     /// A day's backlog of one sender's claims asks about its oldest one,
-    /// and the next only once that one closes, so a cell isn't woken for
-    /// every message of a day.
+    /// and the next only a day after that ask, however soon it closes, so
+    /// a cell isn't woken for every message of a day.
     #[test]
-    fn a_sender_is_asked_about_one_claim_at_a_time() {
+    fn a_sender_is_asked_about_one_claim_at_a_time_and_once_a_day() {
         let mut claims = measure(ruled::KEY, Class::Cells, 5.0, Some(0.0));
         claims.behind = ["0000000a", "0000000b", "0000000c", "0000000d"]
             .iter()
@@ -1667,11 +1682,30 @@ mod tests {
             "a sender was asked about more than its oldest, or another sender not at all"
         );
         claims.behind.remove(0);
-        let told = file(&mut ledger, &[claims], "2026-11-26", 4600);
+        let told = file(
+            &mut ledger,
+            std::slice::from_ref(&claims),
+            "2026-11-26",
+            4600,
+        );
+        assert_eq!(
+            asked(&told),
+            Vec::<String>::new(),
+            "a sender answering was asked about its next claim within the day of its last ask"
+        );
+        assert!(
+            ledger
+                .iter()
+                .all(|e| !e.key.ends_with("0000000a") || !e.open),
+            "the answered claim's ask stayed open"
+        );
+        // A day on, the other sender's claim has left the count by its age.
+        claims.behind.retain(|line| !line.ends_with("5UTLKM"));
+        let told = file(&mut ledger, &[claims], "2026-11-27", 1000 + DAY);
         assert_eq!(
             asked(&told),
             ["0000000b"],
-            "the next claim wasn't asked once one closed, or one was asked again"
+            "the next claim wasn't asked a day after the last ask, or one was asked again"
         );
     }
 

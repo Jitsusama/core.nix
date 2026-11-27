@@ -32,13 +32,16 @@
 //!
 //! Cadence's own messages are left out, and so is every reply to its ask
 //! from the cell asked, and its first reply re the claim after the ask,
-//! within the two days the claims are read: the ask tells it to say the
-//! claim is dropped, and the words it drops it in name the claim. Either
-//! answers, and takes its claim off the count, whatever it says: cadence
-//! can't judge whether the words given are his, so the ask has the answer
-//! sent where the claim went, to be read by those it bound. The ask asks
-//! for a reply re itself, so a later reply re the claim is judged as any
-//! message, and a thread of its own hides no fresh claim. Its asks are
+//! before any re the ask, to an ask within the two days the claims are
+//! read: the ask tells it to say the claim is dropped, and the words it
+//! drops it in name the claim. Either answers, and takes off the count
+//! every claim its sender sent before, whatever it says, so a cell is
+//! asked once about its day's backlog: cadence can't judge whether the
+//! words given are his, so the ask has the answer sent where the claim
+//! went, to be read by those it bound. The ask asks for a reply re
+//! itself, so a later reply re the claim is judged as any message, and a
+//! thread of its own hides no fresh claim. A claim its sender replaces,
+//! as the mesh lets it, is off the count too. Its asks are
 //! read back over [`ASKS_READ`] days, so an answer sent long after is
 //! still one. A message whose id isn't well formed, or names another
 //! sender, is read as no one's, since its asks would go astray.
@@ -178,8 +181,8 @@ const TO_HIM: [&str; 12] = [
 
 /// How far back, in seconds, the messages that may claim or answer are
 /// read: the day judged, and the day before it, for a reply re a claim
-/// asked late in its day. A reply re the claim answers only within this
-/// of its ask, so the first such reply is always among those read.
+/// asked late in its day. A reply re the claim answers only an ask sent
+/// within this, so the first such reply is always among those read.
 const CLAIMS_READ: i64 = 2 * DAY;
 
 /// How many claims of his rule each sender is asked about at once, and
@@ -249,7 +252,9 @@ pub fn read(state_home: &Path, now: i64) -> Measure {
         return unread("no mesh messages folder here");
     }
     let ask = |m: &Message| m.from == CADENCE && about(&m.text).is_some();
-    let used = |m: &Message| ask(m) || m.re.is_some() || m.text.to_lowercase().contains("joel");
+    let used = |m: &Message| {
+        ask(m) || m.re.is_some() || m.supersedes.is_some() || m.text.to_lowercase().contains("joel")
+    };
     let two_days = (now - CLAIMS_READ) * 1000;
     let read = mesh
         .sent_as_named(two_days, (now + AHEAD) * 1000, used)
@@ -295,25 +300,36 @@ pub fn unread(why: &str) -> Measure {
 /// seem to name another sender, or carry words no reader of the card
 /// sees, as the Unicode tags and the variation selectors do.
 fn clean(text: &str) -> String {
-    let unseen = |c: char| {
-        c.is_control()
-            || FILLERS.contains(&c)
-            || matches!(
-                c,
-                '\u{00ad}'
-                    | '\u{061c}'
-                    | '\u{180b}'..='\u{180f}'
-                    | '\u{200b}'..='\u{200f}'
-                    | '\u{2028}'..='\u{202e}'
-                    | '\u{2060}'..='\u{206f}'
-                    | '\u{fe00}'..='\u{fe0f}'
-                    | '\u{feff}'
-                    | '\u{fff9}'..='\u{fffb}'
-                    | '\u{e0000}'..='\u{e007f}'
-                    | '\u{e0100}'..='\u{e01ef}'
-            )
-    };
-    text.replace(unseen, " ")
+    text.replace(
+        |c: char| {
+            c.is_control()
+                || FILLERS.contains(&c)
+                || unseen(c)
+                || matches!(c, '\u{2028}' | '\u{2029}')
+        },
+        " ",
+    )
+}
+
+/// Whether `c` is a mark that draws as nothing or turns text round, as a
+/// soft hyphen, a zero-width space, a variation selector or a tag. The
+/// card is kept clean of them, and a claim is read with them taken out,
+/// so one set inside "Joel" or between its words hides nothing.
+const fn unseen(c: char) -> bool {
+    matches!(
+        c,
+        '\u{00ad}'
+            | '\u{061c}'
+            | '\u{180b}'..='\u{180f}'
+            | '\u{200b}'..='\u{200f}'
+            | '\u{202a}'..='\u{202e}'
+            | '\u{2060}'..='\u{206f}'
+            | '\u{fe00}'..='\u{fe0f}'
+            | '\u{feff}'
+            | '\u{fff9}'..='\u{fffb}'
+            | '\u{e0000}'..='\u{e007f}'
+            | '\u{e0100}'..='\u{e01ef}'
+    )
 }
 
 /// A claim as cadence repeats it, in double quotes, with every quote mark
@@ -341,8 +357,8 @@ pub fn ask(id: &str, said: &str) -> String {
          Only his own words bind a cell. Please answer on the mesh re this ask, with his \
          words and when he said them, or say the claim is dropped and whose caution it was. \
          Send it where the claim went, so whoever read the claim reads the answer; cadence \
-         reads it from what you send. Your answer closes this ask; unanswered, it closes a \
-         day after the message.",
+         reads it from what you send. Your answer closes this ask, and any claim like it you \
+         sent before; unanswered, it closes a day after the message.",
         quoted(said)
     )
 }
@@ -354,20 +370,38 @@ const ASKS: &str = "cadence hour: your message ";
 const ASKED: &str = "claims a rule or wish of Joel's";
 
 /// The messages in `sent` from the day before `now` that claim a rule or
-/// wish of Joel's with nothing behind it and no answer from their sender,
-/// oldest first, each once, named by its short id, the sentence claiming
-/// it and its sender, who is asked for his words. The oldest one's sender
-/// answers for the measure.
+/// wish of Joel's with nothing behind it, sent after their sender last
+/// answered an ask and not since replaced by it, oldest first, each
+/// once, named by its short id, the sentence claiming it and its sender,
+/// who is asked for his words. The oldest one's sender answers for the
+/// measure. A sender's answer settles each claim it sent before, not the
+/// one asked about alone, so a cell is asked once about its day's
+/// backlog rather than claim by claim.
 #[must_use]
 pub fn unsourced(sent: &[Message], now: i64) -> Measure {
     let sent: Vec<&Message> = sent.iter().filter(|m| well_named(m)).collect();
-    let (answers, answered) = answers(&sent);
+    let Answers { replies, through } = answers(&sent, now);
+    let settled = |m: &Message| {
+        through
+            .get(m.from.as_str())
+            .is_some_and(|&last| stamped_at(&m.id).is_none_or(|at| at < last))
+    };
+    // Only its sender replaces a message, as its id names whoever sent
+    // it, so a claim another cell names as replaced still counts.
+    let replaced: BTreeSet<(&str, &str)> = sent
+        .iter()
+        .filter_map(|m| {
+            let old = m.supersedes.as_deref()?;
+            (old.split('-').nth(1) == Some(m.from.as_str()))
+                .then(|| (m.from.as_str(), short_id(old)))
+        })
+        .collect();
     let mut seen = BTreeSet::new();
     let mut found: Vec<(i64, &Message, String)> = sent
         .iter()
         .copied()
-        .filter(|m| m.from != CADENCE && !answers.contains(m.id.as_str()))
-        .filter(|m| !answered.contains(&(m.from.as_str(), short_id(&m.id))))
+        .filter(|m| m.from != CADENCE && !replies.contains(m.id.as_str()) && !settled(m))
+        .filter(|m| !replaced.contains(&(m.from.as_str(), short_id(&m.id))))
         .filter(|m| seen.insert(m.id.as_str()))
         .filter_map(|m| Some((stamp(m)?, m)))
         .filter(|&(at, _)| at > now - DAY && at <= now)
@@ -420,19 +454,27 @@ fn stamp(m: &Message) -> Option<i64> {
     stamped_at(&m.id).map(|ms| ms / 1000)
 }
 
-/// The ids of the replies in `sent` to an ask about a claim of his rule,
-/// and the claims answered, by sender and short id. Only a claim this
-/// measure asked about has an answer: a reply, after the ask, from the
-/// cell it asked, re its ask or re the claim the ask names. Every reply
-/// re the ask is left unjudged, since it answers cadence and a cell
-/// dropping the claim names it; of those re the claim, only the first
-/// after the ask, within [`CLAIMS_READ`] of it, is, so a cell's thread on
-/// its own report hides no fresh claim, and the first is always among
-/// the messages read. The ask, not the claim, says who
-/// may answer, so an answer counts after its claim has left the day. A
-/// reply before the ask, one re a message never asked about, or one re
-/// any other of cadence's, is judged as any other.
-fn answers<'a>(sent: &[&'a Message]) -> (BTreeSet<&'a str>, BTreeSet<(&'a str, &'a str)>) {
+/// What the answers to this measure's asks settle: the replies left
+/// unjudged, by id, and when each sender that answered last did, in
+/// milliseconds, before which its claims are settled.
+struct Answers<'a> {
+    replies: BTreeSet<&'a str>,
+    through: BTreeMap<&'a str, i64>,
+}
+
+/// The answers in `sent` to an ask about a claim of his rule, by `now`.
+/// Only a claim this measure asked about has an answer: a reply, after
+/// the ask, from the cell it asked, re its ask or re the claim the ask
+/// names. Every reply re the ask is left unjudged, since it answers
+/// cadence and a cell dropping the claim names it; of those re the
+/// claim, only the first after the ask, and before any re the ask, is,
+/// and only for an ask sent within the [`CLAIMS_READ`] read, so a cell's
+/// thread on its own report hides no fresh claim, and the first is always
+/// among the messages read. The ask, not the claim, says who may answer,
+/// so an answer counts after its claim has left the day. A reply before
+/// the ask, one re a message never asked about, or one re any other of
+/// cadence's, is judged as any other.
+fn answers<'a>(sent: &[&'a Message], now: i64) -> Answers<'a> {
     let asks: Vec<(&str, &str, &Message)> = sent
         .iter()
         .copied()
@@ -440,20 +482,23 @@ fn answers<'a>(sent: &[&'a Message]) -> (BTreeSet<&'a str>, BTreeSet<(&'a str, &
         .filter_map(|m| Some((short_id(&m.id), about(&m.text)?, m)))
         .collect();
     let claim_of: BTreeMap<&str, &str> = asks.iter().map(|&(ask, claim, _)| (ask, claim)).collect();
-    // A reply re the ask answers it however late; one re the claim only
-    // within the span read after its ask, since an earlier first reply
-    // past that span would go unseen and leave a later one taken first.
-    let asked_before = |claim: &str, of: &str, at: Option<i64>, within: Option<i64>| {
+    // A reply re the ask answers it however late; one re the claim only an
+    // ask sent within the messages read, since an earlier first reply
+    // before them would go unseen and leave a later one taken first.
+    let read_from = (now - CLAIMS_READ) * 1000;
+    let asked_before = |claim: &str, of: &str, at: Option<i64>, via_ask: bool| {
         asks.iter().any(|&(_, about, ask)| {
             let sent = stamped_at(&ask.id);
             about == claim
                 && ask.to.iter().any(|to| to == &format!("@{of}"))
                 && sent < at
-                && within.is_none_or(|within| sent.zip(at).is_some_and(|(s, a)| a - s <= within))
+                && (via_ask || sent.is_some_and(|sent| sent >= read_from))
         })
     };
-    let (mut answers, mut answered) = (BTreeSet::new(), BTreeSet::new());
+    let mut replies = BTreeSet::new();
     let mut first: BTreeMap<(&str, &str), (Option<i64>, &str)> = BTreeMap::new();
+    let mut by_ask: BTreeMap<(&str, &str), Option<i64>> = BTreeMap::new();
+    let mut stamps: BTreeMap<&str, (&str, Option<i64>)> = BTreeMap::new();
     for &m in sent {
         let Some(re) = m.re.as_deref().map(short_id) else {
             continue;
@@ -461,22 +506,38 @@ fn answers<'a>(sent: &[&'a Message]) -> (BTreeSet<&'a str>, BTreeSet<(&'a str, &
         let via_ask = claim_of.get(re).copied();
         let claim = via_ask.unwrap_or(re);
         let at = stamped_at(&m.id);
-        let within = via_ask.is_none().then_some(CLAIMS_READ * 1000);
-        if !asked_before(claim, &m.from, at, within) {
+        if !asked_before(claim, &m.from, at, via_ask.is_some()) {
             continue;
         }
-        answered.insert((m.from.as_str(), claim));
+        stamps.insert(m.id.as_str(), (m.from.as_str(), at));
+        let key = (m.from.as_str(), claim);
         if via_ask.is_some() {
-            answers.insert(m.id.as_str());
+            replies.insert(m.id.as_str());
+            let earliest = by_ask.entry(key).or_insert(at);
+            *earliest = (*earliest).min(at);
         } else {
-            let earliest = first
-                .entry((m.from.as_str(), claim))
-                .or_insert((at, m.id.as_str()));
+            let earliest = first.entry(key).or_insert((at, m.id.as_str()));
             *earliest = (*earliest).min((at, m.id.as_str()));
         }
     }
-    answers.extend(first.into_values().map(|(_, id)| id));
-    (answers, answered)
+    // A reply re the claim after one re the ask is the cell's own thread
+    // going on, not its answer, so it's judged.
+    replies.extend(
+        first
+            .into_iter()
+            .filter(|(key, (at, _))| by_ask.get(key).is_none_or(|asked| at < asked))
+            .map(|(_, (_, id))| id),
+    );
+    // Only an answer settles what its sender sent before: a reply judged
+    // as any other leaves its sender's claims as they stood.
+    let mut through: BTreeMap<&str, i64> = BTreeMap::new();
+    for (from, at) in replies.iter().filter_map(|id| stamps.get(id)) {
+        if let Some(at) = *at {
+            let last = through.entry(*from).or_insert(at);
+            *last = (*last).max(at);
+        }
+    }
+    Answers { replies, through }
 }
 
 /// The short id of the message one of this measure's asks is about, as
@@ -520,6 +581,7 @@ pub fn unbacked(text: &str) -> Option<String> {
 /// by stand-ins, as [`unquoted`] does.
 fn plain(text: &str) -> String {
     let text = text
+        .replace(unseen, "")
         .replace(['\u{2018}', '\u{2019}'], "'")
         .replace(FILLERS, " ");
     unquoted(&uncarded(&text))

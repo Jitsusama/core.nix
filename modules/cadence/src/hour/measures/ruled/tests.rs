@@ -419,7 +419,7 @@ fn a_senders_answer_re_the_ask_or_the_claim_clears_it_and_isnt_counted() {
         "Dropped: Joel's rule was IKQ63G's.",
     );
     by_claim.re = Some(second.id.clone());
-    let mut not_its_own = sent("00000010", 400, "T6E7X6", "Joel's rule binds you too.");
+    let mut not_its_own = sent("00000010", 50, "T6E7X6", "Joel's rule binds you too.");
     not_its_own.re = Some(third.id.clone());
     let mut not_its_ask = sent("00000012", 300, "5UTLKM", "Joel wants T6E7X6 to stop.");
     not_its_ask.re = Some("0000000d".to_owned());
@@ -431,14 +431,21 @@ fn a_senders_answer_re_the_ask_or_the_claim_clears_it_and_isnt_counted() {
     );
     let mut by_card = sent("00000014", 200, "IKQ63G", "Held: Joel wants it held.");
     by_card.re = Some("00000013".to_owned());
-    let mut before_ask = sent("00000018", 1500, "T6E7X6", "Correction: Joel wants it.");
-    before_ask.re = Some("0000000a".to_owned());
+    let unanswered = sent("0000001b", 2600, "QGB4ON", "Joel wants it shut.");
+    let ask_unanswered = asked("0000001d", 1000, "0000001b", "QGB4ON");
+    let mut before_ask = sent("00000018", 1500, "QGB4ON", "Correction: Joel wants it.");
+    before_ask.re = Some("0000001b".to_owned());
+    let mut after_answer = sent("0000001c", 40, "T6E7X6", "Joel wants it open.");
+    after_answer.re = Some(first.id.clone());
     let mut again = sent("00000019", 100, "T6E7X6", "I stand by it: Joel wants it.");
     again.re = Some("0000000d".to_owned());
     let mut later = sent("0000001a", 90, "5UTLKM", "Also, Joel wants the lab open.");
     later.re = Some("0000000b".to_owned());
     let m = unsourced(
         &[
+            after_answer,
+            unanswered,
+            ask_unanswered,
             later,
             again,
             before_ask,
@@ -462,18 +469,26 @@ fn a_senders_answer_re_the_ask_or_the_claim_clears_it_and_isnt_counted() {
         m.behind,
         [
             "[0000000c] Joel wants the lab shut. · IKQ63G",
-            "[00000018] Correction: Joel wants it. · T6E7X6",
-            "[00000010] Joel's rule binds you too. · T6E7X6",
+            "[0000001b] Joel wants it shut. · QGB4ON",
+            "[00000018] Correction: Joel wants it. · QGB4ON",
             "[00000012] Joel wants T6E7X6 to stop. · 5UTLKM",
             "[00000014] Held: Joel wants it held. · IKQ63G",
             "[00000016] So Joel wants it shut. · IKQ63G",
             "[0000001a] Also, Joel wants the lab open. · 5UTLKM",
+            "[00000010] Joel's rule binds you too. · T6E7X6",
+            "[0000001c] Joel wants it open. · T6E7X6",
         ],
         "an answered claim, an answer or a later reply re the ask was counted, or a reply \
-         clearing nothing, a later one re the claim, one re a claim never asked about, \
-         another's claim, its ask or another cadence message, or sent before the ask, went \
-         uncounted"
+         clearing nothing, a later one re the claim or one after an answer re the ask, one \
+         re a claim never asked about, another's claim, its ask or another cadence message, \
+         or sent before the ask, went uncounted"
     );
+}
+
+/// Cadence's own words are never a claim, and with none counted the
+/// measure's keeper answers for it.
+#[test]
+fn cadences_own_message_is_no_claim_and_the_keeper_answers_for_none() {
     let m = unsourced(&[sent("00000011", 60, CADENCE, "Joel wants it.")], NOW);
     assert_eq!(
         m.behind,
@@ -536,9 +551,9 @@ fn an_answer_after_its_claim_left_the_day_is_still_an_answer() {
 }
 
 /// The ask asks for a reply re itself; a cell replying re its claim
-/// instead has only its first reply taken as its answer, and only within
-/// the two days read after the ask, so a later reply re the claim, or one
-/// whose first may have gone unread, is judged as any message.
+/// instead has only its first reply taken as its answer, and only to an
+/// ask sent within the two days read, so a later reply re the claim, or
+/// one whose first may have gone unread, is judged as any message.
 #[test]
 fn only_a_first_reply_re_the_claim_within_the_days_read_answers() {
     let claim = sent("0000000a", 3600, "T6E7X6", "I broke Joel's rule.");
@@ -576,12 +591,73 @@ fn put(folder: &Path, m: &Message) {
     fs::write(folder.join(format!("{}.json", m.id)), body).expect("the message wasn't written");
 }
 
-/// The measure reads two days of messages, so an answer to an ask sent
-/// late in its claim's day is still read as one; and a cell dropping its
-/// claim after a first answer of "looking into it" isn't asked about its
-/// own retraction.
+/// One answer settles each claim its sender sent before it, so a cell is
+/// asked once about a day's backlog, not claim by claim; what it sends
+/// after is judged.
 #[test]
-fn the_measure_reads_two_days_so_late_answers_and_later_retractions_are_left_alone() {
+fn an_answer_settles_each_claim_its_sender_sent_before() {
+    let a = sent("0000000a", 3000, "T6E7X6", "Joel wants it shut.");
+    let b = sent("0000000b", 2900, "T6E7X6", "Joel's rule holds.");
+    let ask = asked("0000000d", 2000, "0000000a", "T6E7X6");
+    let mut answer = sent("0000000e", 1000, "T6E7X6", "Dropped, my own caution.");
+    answer.re = Some(ask.id.clone());
+    let c = sent("0000000f", 500, "T6E7X6", "Joel wants it open.");
+    let other = sent("00000010", 2950, "5UTLKM", "Joel wants it too.");
+    assert_eq!(
+        unsourced(&[a, b, ask, answer, c, other], NOW).behind,
+        [
+            "[00000010] Joel wants it too. · 5UTLKM",
+            "[0000000f] Joel wants it open. · T6E7X6",
+        ],
+        "a claim sent before its sender's answer was still counted, or one after it, or \
+         another sender's, went uncounted"
+    );
+}
+
+/// A sender replacing its own claim takes it off the count, as the mesh
+/// lets it; another cell naming it replaced doesn't.
+#[test]
+fn a_claim_its_own_sender_replaces_isnt_counted() {
+    let claim = sent("0000000a", 600, "T6E7X6", "Joel wants the lab shut.");
+    let held = sent("0000000b", 500, "T6E7X6", "Joel's rule holds.");
+    let mut withdrawn = sent("0000000c", 60, "T6E7X6", "Withdrawn, my own caution.");
+    withdrawn.supersedes = Some(claim.id.clone());
+    let mut not_its_own = sent("0000000d", 50, "5UTLKM", "Withdrawn for them.");
+    not_its_own.supersedes = Some(held.id.clone());
+    assert_eq!(
+        unsourced(&[claim, held, withdrawn, not_its_own], NOW).behind,
+        ["[0000000b] Joel's rule holds. · T6E7X6"],
+        "a claim its sender replaced was counted, or one another cell named replaced wasn't"
+    );
+}
+
+/// The hour sends its asks through the crate's own message, so an ask made
+/// that way, addressed and stamped as it goes out, is the one answered.
+#[test]
+fn an_ask_as_the_hour_sends_it_is_answered() {
+    let claim = sent("0000000a", 2000, "T6E7X6", "Joel wants it.");
+    let mut out = crate::message("T6E7X6", "finding", ask("0000000a", "Joel wants it."));
+    let rest = out
+        .id
+        .split_once('-')
+        .map(|(_, rest)| rest.to_owned())
+        .expect("the hour's message id had no stamp");
+    out.id = format!("{}-{rest}", (NOW - 1000) * 1000);
+    let mut answer = sent("0000000e", 500, "T6E7X6", "Dropped, Joel's rule was mine.");
+    answer.re = Some(short_id(&out.id).to_owned());
+    assert_eq!(
+        unsourced(&[claim, out, answer], NOW).behind,
+        Vec::<String>::new(),
+        "an answer re an ask as the hour sends it didn't clear its claim"
+    );
+}
+
+/// The measure reads two days of messages, so an answer to an ask sent
+/// late in its claim's day is still read as one; and a reply re the claim
+/// after a first of "looking into it" is judged, so the first, naming no
+/// one, must be read for it to be.
+#[test]
+fn the_measure_reads_two_days_so_late_answers_are_left_alone_and_later_replies_judged() {
     let dir = tempfile::tempdir().expect("the test's folder couldn't be made");
     let messages = dir
         .path()
@@ -602,24 +678,55 @@ fn the_measure_reads_two_days_so_late_answers_and_later_retractions_are_left_alo
         ([].as_slice(), SAYS),
         "an answer to an ask over a day old was counted"
     );
+    let claim = sent("0000000b", DAY + 900, "5UTLKM", "Joel wants it.");
     let later = asked("00000011", DAY + 600, "0000000b", "5UTLKM");
     let mut first = sent("00000012", DAY + 300, "5UTLKM", "Looking into it.");
-    first.re = Some(later.id.clone());
+    first.re = Some(claim.id.clone());
     let mut dropped = sent(
         "00000013",
         60,
         "5UTLKM",
         "Dropped: Joel's rule was my own caution.",
     );
-    dropped.re = Some(later.id.clone());
-    for m in [&later, &first, &dropped] {
+    dropped.re = Some(claim.id.clone());
+    for m in [&claim, &later, &first, &dropped] {
         put(&messages, m);
     }
     let m = read(dir.path(), NOW);
     assert_eq!(
         m.behind,
-        Vec::<String>::new(),
-        "a cell dropping its claim after a first answer was asked about its retraction"
+        ["[00000013] Dropped: Joel's rule was my own caution. · 5UTLKM"],
+        "a reply re the claim after its first went unjudged, as when the first went unread"
+    );
+}
+
+/// A reply re a claim whose ask came before the two days read may follow
+/// a first reply that's gone unread, so it's judged rather than taken as
+/// the first answer.
+#[test]
+fn a_reply_re_a_claim_asked_before_the_days_read_is_judged() {
+    let dir = tempfile::tempdir().expect("the test's folder couldn't be made");
+    let messages = dir
+        .path()
+        .join("pi/agentic-harness.pi/mesh-workflow/messages");
+    let claim = sent("0000000a", DAY * 29 / 10, "T6E7X6", "I broke Joel's rule.");
+    let ask = asked("0000000d", DAY * 285 / 100, "0000000a", "T6E7X6");
+    let mut first = sent("0000000e", DAY * 5 / 2, "T6E7X6", "Looking into it.");
+    first.re = Some(claim.id.clone());
+    let mut reply = sent(
+        "0000000f",
+        DAY * 9 / 10,
+        "T6E7X6",
+        "Joel wants the lab shut.",
+    );
+    reply.re = Some(claim.id.clone());
+    for m in [&claim, &ask, &first, &reply] {
+        put(&messages, m);
+    }
+    assert_eq!(
+        read(dir.path(), NOW).behind,
+        ["[0000000f] Joel wants the lab shut. · T6E7X6"],
+        "a reply re a claim asked before the days read was taken as its first answer"
     );
 }
 
@@ -677,6 +784,25 @@ fn a_claim_is_given_short_however_it_is_spaced() {
             "a claim spaced by U+{:04X} went uncounted",
             u32::from(filler)
         );
+    }
+    for mark in [
+        '\u{00ad}',
+        '\u{200b}',
+        '\u{2060}',
+        '\u{feff}',
+        '\u{fe0f}',
+        '\u{e0001}',
+    ] {
+        for text in [
+            format!("Jo{mark}el wants it shut."),
+            format!("Joel {mark}wants it shut."),
+        ] {
+            assert!(
+                unbacked(&text).is_some(),
+                "a claim with U+{:04X}, which draws as nothing, set in it went uncounted",
+                u32::from(mark)
+            );
+        }
     }
 }
 

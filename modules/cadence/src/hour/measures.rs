@@ -147,7 +147,7 @@ pub fn unread(mut measure: Measure, why: &str) -> Measure {
 /// to steer it each hour moves nothing; nor do the queues, whose worst is asked apart once a day,
 /// nor a cause found again and again, each class of which is filed with its own owner apart.
 /// A claim of Joel's rule with nothing behind it is asked of its sender apart, and never leads:
-/// a message sent can't be taken back, so only its sender's answer, or its day passing, moves it.
+/// only its sender's answer, its sender replacing it, or its day passing, moves it.
 /// Nor does a count of the way the calls go out (the relay, pi's calls and
 /// the path), filed to its keeper apart each hour it is past, so it never
 /// takes the place of what else drags.
