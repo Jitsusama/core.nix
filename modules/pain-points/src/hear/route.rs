@@ -223,14 +223,14 @@ pub fn holder<'a>(
     late_at: Option<&str>,
 ) -> Option<(&'a subject_hubs::Hub, &'a str, Vec<String>)> {
     let stands = |a: &str| live.contains(a) && !routes.refuses(a);
-    let takes = |a: &str| takers.contains(a) && !routes.refuses(a);
+    let may_hold = |a: &str| takers.contains(a) && !routes.refuses(a);
     // Each hub that takes it, narrowest first, with its live holders
     // least-held first.
     let taking: Vec<(&subject_hubs::Hub, Vec<String>, Vec<&String>)> =
         subject_hubs::taking(said, hubs, &stands)
             .into_iter()
             .map(|(hub, subject)| {
-                let mut fits: Vec<&String> = hub.fits.iter().filter(|f| takes(f)).collect();
+                let mut fits: Vec<&String> = hub.fits.iter().filter(|f| may_hold(f)).collect();
                 // Stable, so holders holding as many keep the node's order.
                 fits.sort_by_key(|f| held.get(f.as_str()).copied().unwrap_or_default());
                 (hub, subject, fits)
