@@ -1,0 +1,538 @@
+A windowed pi reads its whole log as it opens a conversation and holds every
+entry whole for as long as it runs, though the model reads only what the last
+compaction keeps: a 38 MB log held 50.8 MB of heap. Read the log light
+instead. Entries the kept view leaves out keep only what tells their parts
+apart (types, roles, tool call ids and names, usage) and values of 1024
+characters or fewer; each longer value is read again from its line when
+asked for, as a new object each read, since an appended line never changes.
+On that log the heap after opening falls from 50.8 MB to 19.9 MB and the peak
+from 159 MB to 109 MB; on a 78 MB log from 103.7 MB to 42.9 MB and from 229 MB
+to about 140 MB, with every entry, context and branch read as a whole read
+reads it.
+
+Every way pi writes or copies the log reads what it was read light from whole
+first: a rewrite, since every line moves, and a move to an entry, which holds
+the model's new context whole. A later compaction lets go of what it leaves
+out, entries appended since included, but only where pi knows the entry's
+place: an append records one only when the file grew by exactly that line,
+and noting a place never fails a write. A log pi would migrate, an empty one,
+or one whose last line is unfinished is read whole, as unpatched pi reads it.
+
+Apply only to the pi a windowed session runs; a host opens light through its
+own runtime.
+
+--- a/packages/coding-agent/src/core/session-manager.ts
++++ b/packages/coding-agent/src/core/session-manager.ts
+@@ -17,6 +17,7 @@
+ 	closeSync,
+ 	createReadStream,
+ 	existsSync,
++	fstatSync,
+ 	mkdirSync,
+ 	openSync,
+ 	readdirSync,
+@@ -621,6 +622,321 @@
+ 	} catch {
+ 		// Skip malformed lines
+ 		return null;
++	}
++}
++
++/**
++ * A value shorter than this, in characters of JSON, stays held: reading it again would cost more
++ * than it saves, and the scans a person starts (/tree's filter reads every answer's text) would
++ * read a line again for each. On a 78 MB log it holds 43 MB of heap against 104 MB whole, where
++ * 256 holds 38 MB but slows /tree's open from 9 ms to 123 ms, and 1024 to 35 ms.
++ */
++const LIGHT_ABOVE = 1024;
++
++/** A log entries were read light from, kept open so each is read again from the very file it came from. */
++interface LightLog {
++	file: string;
++	dev: number;
++	ino: number;
++	opened: { fd: number | undefined };
++}
++
++/** A step from an entry to an object inside it: a key, or an index of an array. */
++type Step = string | number;
++
++/** Where an object read light finds its values again: the line of entry `id`, then `path` from that entry. */
++interface LightLine {
++	log: LightLog;
++	start: number;
++	length: number;
++	id: string;
++	path: Step[];
++}
++
++/** Where an entry's line lies in a log, so a compaction that later leaves it out can let go of it. */
++interface PlacedLine {
++	entry: SessionEntry;
++	log: LightLog;
++	start: number;
++	length: number;
++}
++
++/** An object of an entry whose `keys` can be read light, and the way to it from the entry. */
++interface HeavyHolder {
++	holder: object;
++	path: Step[];
++	keys: string[];
++}
++
++function isRecord(value: unknown): value is Record<string, unknown> {
++	return typeof value === "object" && value !== null;
++}
++
++/** Whether `value` comes to more than `limit` characters of JSON, counted only as far as needed. */
++function largerThan(value: unknown, limit: number): boolean {
++	let left = limit;
++	const stack: unknown[] = [value];
++	while (stack.length > 0) {
++		const at = stack.pop();
++		if (typeof at === "string") left -= at.length + 2;
++		else if (isRecord(at)) {
++			for (const key in at) {
++				left -= key.length + 4;
++				stack.push(Reflect.get(at, key));
++			}
++		} else left -= 5;
++		if (left < 0) return true;
++	}
++	return false;
++}
++
++/** An own data value of `holder`, never one read again from its line. */
++function heldValue(holder: object, key: string): unknown {
++	return Object.getOwnPropertyDescriptor(holder, key)?.value;
++}
++
++/**
++ * Where an entry keeps the values the kept view never reads of an entry it leaves out. What tells
++ * parts apart stays held (each part's type, a tool call's id and name), and so does each message's
++ * role and usage, so /tree, /session and the counts read no line again.
++ */
++function heavyHolders(entry: FileEntry): HeavyHolder[] {
++	if (entry.type === "compaction" || entry.type === "branch_summary") {
++		return [{ holder: entry, path: [], keys: ["summary", "systemMessage"] }];
++	}
++	if (entry.type === "custom_message") return [{ holder: entry, path: [], keys: ["content", "details"] }];
++	if (entry.type === "custom") return [{ holder: entry, path: [], keys: ["data"] }];
++	if (entry.type !== "message") return [];
++	const message = heldValue(entry, "message");
++	if (!isRecord(message)) return [];
++	const parts = (keysOf: (type: unknown) => string[] | undefined): HeavyHolder[] => {
++		const content = heldValue(message, "content");
++		if (!Array.isArray(content)) return [{ holder: message, path: ["message"], keys: ["content"] }];
++		const holders: HeavyHolder[] = [];
++		content.forEach((part: unknown, i) => {
++			const keys = isRecord(part) ? keysOf(part.type) : undefined;
++			if (isRecord(part) && keys) holders.push({ holder: part, path: ["message", "content", i], keys });
++		});
++		return holders;
++	};
++	switch (message.role) {
++		case "assistant":
++			return parts((type) =>
++				type === "text"
++					? ["text"]
++					: type === "thinking"
++						? ["thinking", "thinkingSignature"]
++						: type === "toolCall"
++							? ["arguments", "thoughtSignature"]
++							: undefined,
++			);
++		case "user":
++			return parts((type) => (type === "text" ? ["text"] : type === "image" ? ["data"] : undefined));
++		case "toolResult":
++			return [{ holder: message, path: ["message"], keys: ["content", "details"] }];
++		case "bashExecution":
++			return [{ holder: message, path: ["message"], keys: ["output"] }];
++		case "system":
++			return [{ holder: message, path: ["message"], keys: ["sections"] }];
++		default:
++			return [];
++	}
++}
++
++/**
++ * Closes a log's descriptor once nothing read light from it is left. Opening the log again for
++ * each value read costs nine tenths of the read on a Mac.
++ */
++const lightLogsClosed = new FinalizationRegistry<{ fd: number | undefined }>((opened) => {
++	if (opened.fd !== undefined) closeSync(opened.fd);
++});
++
++/** The log open on `fd`, to read light from, closed once nothing read from it is left. */
++function lightLog(file: string, fd: number): LightLog {
++	const { dev, ino } = fstatSync(fd);
++	const opened = { fd };
++	const log = { file, dev, ino, opened };
++	lightLogsClosed.register(log, opened);
++	return log;
++}
++
++/** The entry on `line` of its log, which must still be the one with its id. */
++function readLineAgain(line: LightLine): FileEntry {
++	const { log, start, length, id } = line;
++	const fd = log.opened.fd;
++	const bytes = Buffer.alloc(length);
++	const read = fd === undefined ? 0 : readSync(fd, bytes, 0, length, start);
++	const again = parseSessionEntryLine(bytes.subarray(0, read).toString("utf8"));
++	if (!again || again.id !== id) {
++		throw new Error(`${log.file} changed under ${APP_NAME}: the line of entry ${id} no longer holds it`);
++	}
++	return again;
++}
++
++/** The value `path` leads to from `entry`. */
++function follow(entry: unknown, path: Step[]): unknown {
++	let at = entry;
++	for (const step of path) at = isRecord(at) ? Reflect.get(at, step) : undefined;
++	return at;
++}
++
++/** Where each object read light finds its line again. */
++const lightLines = new WeakMap<object, LightLine>();
++
++/** For entries read light, the log and the places of the entries its kept view holds. */
++const lightTails = new WeakMap<FileEntry[], { log: LightLog; kept: PlacedLine[] }>();
++
++/** One accessor for each heavy value's name, shared by every object read light. */
++const heavyAccessors = new Map<string, PropertyDescriptor>();
++
++/** The accessor that reads `key` again from the line of whichever object holds it. */
++function heavyAccessor(key: string): PropertyDescriptor {
++	let accessor = heavyAccessors.get(key);
++	if (!accessor) {
++		accessor = {
++			configurable: true,
++			enumerable: true,
++			get(this: object): unknown {
++				const line = lightLines.get(this);
++				if (!line) throw new Error(`${APP_NAME} lost where ${key} is read again from`);
++				const holder = follow(readLineAgain(line), line.path);
++				return isRecord(holder) ? holder[key] : undefined;
++			},
++			set(this: object, value: unknown): void {
++				Object.defineProperty(this, key, { value, writable: true, enumerable: true, configurable: true });
++			},
++		};
++		heavyAccessors.set(key, accessor);
++	}
++	return accessor;
++}
++
++/**
++ * Let go of `entry`'s heavy values, each becoming a value read again from its line whenever it is
++ * asked for, so every reader still sees it whole.
++ */
++function lightenEntry(entry: FileEntry, place: Omit<PlacedLine, "entry">): void {
++	for (const { holder, path, keys } of heavyHolders(entry)) {
++		let light = false;
++		for (const key of keys) {
++			// A value another holder froze, fixed in place or already reads again stays as it is.
++			const own = Object.getOwnPropertyDescriptor(holder, key);
++			if (!own?.configurable || !own.writable || !largerThan(own.value, LIGHT_ABOVE)) continue;
++			Object.defineProperty(holder, key, heavyAccessor(key));
++			light = true;
++		}
++		if (light) lightLines.set(holder, { log: place.log, start: place.start, length: place.length, id: entry.id, path });
++	}
++}
++
++/**
++ * Hold `entry`'s heavy values again, read once from its line, if it was read light, and only from
++ * the file `only` names by its device and inode, if given. Answers the line it was read from.
++ */
++function wholeEntry(entry: FileEntry, only?: { dev: number; ino: number }): LightLine | undefined {
++	const light = heavyHolders(entry).filter(({ holder }) => lightLines.has(holder));
++	const first = light[0];
++	const line = first ? lightLines.get(first.holder) : undefined;
++	if (!line || (only && (line.log.dev !== only.dev || line.log.ino !== only.ino))) return undefined;
++	const again = readLineAgain(line);
++	for (const { holder, path, keys } of light) {
++		const source = follow(again, path);
++		for (const key of keys) {
++			if (Object.getOwnPropertyDescriptor(holder, key)?.get) {
++				const value = isRecord(source) ? source[key] : undefined;
++				Object.defineProperty(holder, key, { value, writable: true, enumerable: true, configurable: true });
++			}
++		}
++		lightLines.delete(holder);
++	}
++	return line;
++}
++
++/**
++ * The entries of the kept view of `entries`, whole, each with its line's place where it was read
++ * light; and every entry `since` placed that the view leaves out, let go of.
++ */
++function holdKeptView(entries: FileEntry[], since: PlacedLine[]): PlacedLine[] {
++	const sessionEntries = entries.filter((entry): entry is SessionEntry => entry.type !== "session");
++	const kept = new Set(buildContextEntries(sessionEntries));
++	const places: PlacedLine[] = [];
++	for (const place of since) {
++		if (kept.has(place.entry)) places.push(place);
++		else lightenEntry(place.entry, place);
++	}
++	for (const entry of kept) {
++		const line = wholeEntry(entry);
++		if (line) places.push({ entry, log: line.log, start: line.start, length: line.length });
++	}
++	return places;
++}
++
++/**
++ * A log's entries with the heavy values of every entry its kept view leaves out read again only
++ * when asked for, or undefined where the whole read must stand: a file that isn't a log, a log pi
++ * would migrate and write back, or one whose last line is unfinished, which the whole read ends.
++ */
++function loadEntriesLight(filePath: string): FileEntry[] | undefined {
++	const entries: FileEntry[] = [];
++	// The entries read since the last compaction, each with its line's place.
++	let since: PlacedLine[] = [];
++	let refused = false;
++	const fd = openSync(filePath, "r");
++	const log = lightLog(filePath, fd);
++	const take = (bytes: Buffer, start: number): void => {
++		const entry = parseSessionEntryLine(bytes.toString("utf8"));
++		if (!entry) return;
++		if (entries.length === 0) {
++			if (entry.type !== "session" || typeof entry.id !== "string" || entry.version !== CURRENT_SESSION_VERSION) {
++				refused = true;
++				return;
++			}
++			entries.push(entry);
++			return;
++		}
++		entries.push(entry);
++		// A line that parses to no object is kept as the whole read keeps it, and never read light.
++		if (typeof entry !== "object" || entry.type === "session") return;
++		// The entries a compaction follows are let go of as it is read, so the read never holds the
++		// whole log at once; those its kept view holds are held whole again at the end.
++		if (entry.type === "compaction") {
++			for (const place of since) lightenEntry(place.entry, place);
++			since = [];
++		}
++		since.push({ entry, log, start, length: bytes.length });
++	};
++	let kept = false;
++	try {
++		const buffer = Buffer.allocUnsafe(SESSION_READ_BUFFER_SIZE);
++		// The bytes of a line begun in an earlier read, copied out of it.
++		let begun: Buffer[] = [];
++		let lineStart = 0;
++		while (!refused) {
++			const bytesRead = readSync(fd, buffer, 0, buffer.length, null);
++			if (bytesRead === 0) break;
++			const chunk = buffer.subarray(0, bytesRead);
++			let from = 0;
++			for (let end = chunk.indexOf(0x0a, from); end !== -1 && !refused; end = chunk.indexOf(0x0a, from)) {
++				const rest = chunk.subarray(from, end);
++				const bytes = begun.length > 0 ? Buffer.concat([...begun, rest]) : rest;
++				begun = [];
++				take(bytes, lineStart);
++				lineStart += bytes.length + 1;
++				from = end + 1;
++			}
++			if (from < bytesRead) begun.push(Buffer.from(chunk.subarray(from)));
++		}
++		if (begun.length > 0 || refused || entries.length === 0) return undefined;
++		// What the kept view holds is read whole now, so the model never waits on a line, and the
++		// log stays open: what was read light reads it again.
++		lightTails.set(entries, { log, kept: holdKeptView(entries, since) });
++		kept = true;
++		return entries;
++	} finally {
++		if (!kept) {
++			log.opened.fd = undefined;
++			closeSync(fd);
++		}
+ 	}
+ }
+ 
+@@ -628,6 +944,8 @@
+ export function loadEntriesFromFile(filePath: string): FileEntry[] {
+ 	const resolvedFilePath = normalizePath(filePath);
+ 	if (!existsSync(resolvedFilePath)) return [];
++	const light = loadEntriesLight(resolvedFilePath);
++	if (light) return light;
+ 
+ 	const entries: FileEntry[] = [];
+ 	let pending = "";
+@@ -997,6 +1315,10 @@
+ 	private labelsById: Map<string, string> = new Map();
+ 	private labelTimestampsById: Map<string, string> = new Map();
+ 	private leafId: string | null = null;
++	/** The log this session writes, open to read light from once an entry of it is. */
++	private lightLog: LightLog | undefined;
++	/** Where the entries lie that a compaction made later could leave out, so it can let go of them. */
++	private lightSince: PlacedLine[] = [];
+ 
+ 	private constructor(
+ 		cwd: string,
+@@ -1046,8 +1368,15 @@
+ 				return;
+ 			}
+ 
++			this.lightLog = undefined;
++			this.lightSince = [];
+ 			this._loadEntries(entries);
+ 			this.flushed = true;
++			const tail = lightTails.get(entries);
++			if (tail) {
++				this.lightLog = tail.log;
++				this.lightSince = tail.kept;
++			}
+ 		} else {
+ 			const explicitPath = this.sessionFile;
+ 			this.newSession();
+@@ -1075,6 +1404,8 @@
+ 		this.labelTimestampsById.clear();
+ 		this.leafId = null;
+ 		this.flushed = false;
++		this.lightLog = undefined;
++		this.lightSince = [];
+ 
+ 		if (this.persist) {
+ 			const fileTimestamp = timestamp.replace(/[:.]/g, "-");
+@@ -1124,16 +1455,100 @@
+ 
+ 	private _rewriteFile(): void {
+ 		if (!this.persist || !this.sessionFile) return;
++		// An entry read light from this same file is held whole before the file is emptied, since its
++		// line moves or goes as the file is written again.
++		if (existsSync(this.sessionFile)) {
++			const target = statSync(this.sessionFile);
++			for (const entry of this.fileEntries) wholeEntry(entry, target);
++		}
+ 		const fd = openSync(this.sessionFile, "w");
+ 		try {
+-			for (const entry of this.fileEntries) {
+-				writeFileSync(fd, `${JSON.stringify(entry)}\n`);
+-			}
++			// Every line has moved, so each is noted again where it now lies.
++			this.lightSince = this._writeEntries(fd);
+ 		} finally {
+ 			closeSync(fd);
++		}
++	}
++
++	/** Write every entry as a line through `fd`, which starts the file, answering where each lies. */
++	private _writeEntries(fd: number): PlacedLine[] {
++		const log = this._lightLogOf(fstatSync(fd));
++		const places: PlacedLine[] = [];
++		let start = 0;
++		for (const entry of this.fileEntries) {
++			const line = `${JSON.stringify(entry)}\n`;
++			writeFileSync(fd, line);
++			const length = Buffer.byteLength(line) - 1;
++			if (log && entry.type !== "session") places.push({ entry, log, start, length });
++			start += length + 1;
++		}
++		return places;
++	}
++
++	/** The log this session writes, as `stat` finds it, open to read light from. */
++	private _lightLogOf(stat: { dev: number; ino: number }): LightLog | undefined {
++		if (!this.sessionFile) return undefined;
++		const log = this.lightLog;
++		if (log && log.opened.fd !== undefined && log.dev === stat.dev && log.ino === stat.ino) return log;
++		let opened: LightLog;
++		try {
++			opened = lightLog(this.sessionFile, openSync(this.sessionFile, "r"));
++		} catch {
++			// A log that can't be opened to read from is only never read light; what was written stands.
++			return undefined;
++		}
++		this.lightLog = opened;
++		return opened.dev === stat.dev && opened.ino === stat.ino ? opened : undefined;
++	}
++
++	/** The log's state as it stands, or undefined where it can't be read, as when it was removed. */
++	private _statLog(): Stats | undefined {
++		if (!this.sessionFile) return undefined;
++		try {
++			return statSync(this.sessionFile);
++		} catch {
++			// A log that can't be read stays unplaced, so nothing appended to it is read light.
++			return undefined;
+ 		}
+ 	}
+ 
++	/**
++	 * Note where an appended entry's line lies, so a later compaction that leaves it out can let go
++	 * of it, unless something else wrote the log meanwhile and its place can't be known; at a
++	 * compaction, let go of what it leaves out.
++	 */
++	private _placeAppended(entry: SessionEntry, before: Stats | undefined, bytes: number): void {
++		const after = this._statLog();
++		const log = before && after ? this._lightLogOf(after) : undefined;
++		if (
++			log &&
++			before &&
++			after &&
++			after.dev === before.dev &&
++			after.ino === before.ino &&
++			after.size === before.size + bytes
++		) {
++			this.lightSince.push({ entry, log, start: before.size, length: bytes - 1 });
++		}
++		if (entry.type === "compaction") this._lightenLeftOut();
++	}
++
++	/**
++	 * Let go of every noted entry this session still holds that its kept view now leaves out, keeping
++	 * the places of those it holds, which the next compaction may leave out in turn.
++	 */
++	private _lightenLeftOut(): void {
++		const kept = new Set(this.buildContextEntries());
++		const since = this.lightSince;
++		this.lightSince = [];
++		for (const place of since) {
++			// An entry this session no longer holds, as after a switch, is left be.
++			if (this.byId.get(place.entry.id) !== place.entry) continue;
++			if (kept.has(place.entry)) this.lightSince.push(place);
++			else lightenEntry(place.entry, place);
++		}
++	}
++
+ 	isPersisted(): boolean {
+ 		return this.persist;
+ 	}
+@@ -1177,15 +1592,16 @@
+ 			if (!this._hasConversation()) return;
+ 			const fd = openSync(this.sessionFile, "wx");
+ 			try {
+-				for (const e of this.fileEntries) {
+-					writeFileSync(fd, `${JSON.stringify(e)}\n`);
+-				}
++				this.lightSince = this._writeEntries(fd);
+ 			} finally {
+ 				closeSync(fd);
+ 			}
+ 			this.flushed = true;
+ 		} else {
+-			appendFileSync(this.sessionFile, `${JSON.stringify(entry)}\n`);
++			const line = `${JSON.stringify(entry)}\n`;
++			const before = this._statLog();
++			appendFileSync(this.sessionFile, line);
++			this._placeAppended(entry, before, Buffer.byteLength(line));
+ 		}
+ 	}
+ 
+@@ -1502,6 +1918,12 @@
+ 	 * Uses tree traversal from current leaf.
+ 	 */
+ 	buildSessionProjection(): SessionProjection {
++		// What the model reads is held whole, read once, as after a move to another branch; a later
++		// compaction may let it go again.
++		for (const entry of this.buildContextEntries()) {
++			const line = wholeEntry(entry);
++			if (line) this.lightSince.push({ entry, log: line.log, start: line.start, length: line.length });
++		}
+ 		return buildSessionProjection(this.getEntries(), this.leafId, this.byId);
+ 	}
+ 

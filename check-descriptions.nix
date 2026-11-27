@@ -3868,6 +3868,12 @@
     pi's text, strings and deepest thinking are the account's text, string and alert colours, and
     every colour it names is hex
   '';
+  pi-windowed-reads-left-out-entries-light = ''
+    a windowed pi reads light the large values of what its log's kept view leaves out, while its
+    entries, context and branches read as a whole read gives them, a move to a left-out entry and
+    a rewrite of the log hold what they need whole, a later compaction lets go only of entries
+    whose place pi knows, and a log pi migrates or with an unfinished last line is read whole
+  '';
   pixels-probe-holds-every-pixel = ''
     the web-design skill's pixels probe, and its words and names probes beside it, in headless
     Chromium at a phone's width, names a page wider than its window and what reaches past it
