@@ -101,7 +101,7 @@ CELLS = 8
 # 688.1 KB in all as the gate measured it; and about 0.6 KB more for a
 # machine's receptors named apart from its cells, about 688.7 KB, so 689
 # until the gate measures it.
-BUDGET = Budget(files=35, kilobytes=689, elements=623)
+BUDGET = Budget(files=35, kilobytes=1, elements=623)
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000
 TWIN_NETWORKS = 200
