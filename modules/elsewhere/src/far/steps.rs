@@ -259,9 +259,10 @@ pub(super) const CACHE: &str = "cache=${XDG_CACHE_HOME:-}; case $cache in /*) ;;
 /// one found from wherever the line runs or from the root.
 pub(super) fn cache(xdg: Option<&OsStr>, home: Option<&OsStr>) -> Option<PathBuf> {
     let absolute = |it: &&OsStr| Path::new(it).is_absolute();
-    xdg.filter(absolute)
-        .map(PathBuf::from)
-        .or_else(|| home.filter(absolute).map(|home| Path::new(home).join(".cache")))
+    xdg.filter(absolute).map(PathBuf::from).or_else(|| {
+        home.filter(absolute)
+            .map(|home| Path::new(home).join(".cache"))
+    })
 }
 
 /// The far line's step defining `cleared`, which takes each path it is
