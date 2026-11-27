@@ -54,10 +54,13 @@ while IFS= read -r line; do
 done <<<"${stats}"
 # At most 18 digits, as bash's integers hold, since a number past them
 # fails its test inside an if as surely as one that isn't, and either
-# falls through to room; read from the record, it starts again.
-number='^[0-9]{1,18}$'
+# falls through to room. Nor a leading zero, which bash's arithmetic
+# reads as octal, failing on an 8 or a 9 without ending the script, so a
+# swap-out count of 0099 in the record would fall through to room too.
+# Read from the record, either starts again.
+number='^(0|[1-9][0-9]{0,17})$'
 [[ ${floor} =~ ${number} ]] ||
-  answer 69 "its floor, ${floor}, isn't a whole number of at most 18 digits"
+  answer 69 "its floor, ${floor}, isn't a whole number of at most 18 digits with no leading zero"
 # What couldn't be read is named, never what it printed instead.
 unread=""
 [[ ${free} =~ ${number} ]] || unread="its share of memory free"

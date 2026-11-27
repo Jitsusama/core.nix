@@ -99,15 +99,10 @@ pub fn plain_quest(quest: &str) -> bool {
 const WORKSPACE: &str = "pi/agentic-harness.pi/quest-workspace";
 
 /// The folder holding each quest's scratch, as the harness and mycelium
-/// both find it: a relative cache, as the XDG spec says, is no cache.
-pub fn scratches() -> PathBuf {
-    let cache = std::env::var_os("XDG_CACHE_HOME")
-        .filter(|it| Path::new(it).is_absolute())
-        .map_or_else(
-            || PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".cache"),
-            PathBuf::from,
-        );
-    cache.join(WORKSPACE)
+/// both find it, or none where no cache is found ([`steps::cache`]).
+pub fn scratches() -> Option<PathBuf> {
+    let (xdg, home) = (std::env::var_os("XDG_CACHE_HOME"), std::env::var_os("HOME"));
+    steps::cache(xdg.as_deref(), home.as_deref()).map(|cache| cache.join(WORKSPACE))
 }
 
 /// The tree a kind copies for a job in `folder`: the folder, or the
@@ -301,12 +296,16 @@ pub fn script(
         r#"{CACHE}
 job={job}
 work={work}
-mine= tab=$(printf '\t')
+mine= place= tab=$(printf '\t')
 {CLEARING}
 {crossing}
 {copying}
 # Each word for the near side on a line of its own, whatever came before.
 say() {{ printf '\n%s\n' "$1"; }}
+# With no cache found, no quest's scratch is either. That is this
+# machine's fault, not the tree's, so the job is left untaken for another.
+[ -n "$cache" ] || {{ printf 'elsewhere: no cache is found here\n' >&2
+  say {untaken}; exit {UNTAKEN}; }}
 {stopping}
 {sweeping}
 {waiting}
@@ -325,7 +324,7 @@ say() {{ printf '\n%s\n' "$1"; }}
 if {{ [ ! -L "$runs" ] || rm -f "$runs"; }} && mkdir -p "$runs" &&
   {{ [ ! -L "$work{RUN}" ] || rm -f "$work{RUN}"; }} &&
   (set -C && printf '%s %s\n' "$$" "$here" > "$work{RUN}") && mine=1 &&
-  copies && cleared "$work" && mkdir "$work"; then copied; why=$?; else why=2; fi
+  copies && cleared "$work" && mkdir "$work" && pinned; then copied; why=$?; else why=2; fi
 # What was taken as an archive may be a folder the job named as one. A
 # link standing at the copies' folder or at the copy as it's checked, or
 # a copy gone with one cleared, leaves it untaken, as this machine's, as

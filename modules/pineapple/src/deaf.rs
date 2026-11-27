@@ -31,6 +31,9 @@
 //! as parts of it where a read stretch lies between them. A
 //! reader in shadow keeps both rows in its own folder, which For You never
 //! reads, so they're its record until it writes where For You reads.
+//!
+//! Long because the rows of spans missed live here beside the row of not
+//! hearing, each a file For You reads, until they move beside GitHub's.
 
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
@@ -158,6 +161,12 @@ pub struct Deaf {
     /// The search left unasked beside one answered, and how many rounds
     /// in a row it was.
     alone: Option<(Search, u32)>,
+    /// The search the round just before narrowed an unreached row to;
+    /// any other round forgets it.
+    turn: Option<Search>,
+    /// The search the round just before left unasked beside one answered;
+    /// any other round forgets it.
+    before: Option<Search>,
 }
 
 impl Default for Deaf {
@@ -182,6 +191,8 @@ impl Deaf {
             gateway: false,
             unasked: 0,
             alone: None,
+            turn: None,
+            before: None,
         }
     }
 
@@ -237,6 +248,8 @@ impl Deaf {
     /// flickers. A change of why starts a time of its own, so it isn't
     /// hidden under a row Joel marked done.
     pub fn heard(&mut self, round: Round, at: u64) -> Change {
+        let turn = self.turn.take();
+        let before = self.before.take();
         match round {
             Round::Heard => {
                 self.rounds = 0;
@@ -304,7 +317,11 @@ impl Deaf {
                     waits(why, since, at)
                 })
             }
-            Round::Partly(alone) => self.answered(alone, at),
+            Round::Partly(alone) => {
+                let change = self.answered(alone, turn, before, at);
+                self.before = alone;
+                change
+            }
             Round::Unasked if self.gateway => self.none_answered(at),
             Round::Unasked => Change::Keep,
         }
@@ -316,10 +333,21 @@ impl Deaf {
     /// answered can't be read; a deafness after is a time of its own,
     /// told anew even where Joel marked that row done. A row saying it's
     /// unreached, though, is narrowed to the search still left unasked
-    /// rather than taken away, since that search is still unheard.
-    fn answered(&mut self, alone: Option<Search>, at: u64) -> Change {
+    /// rather than taken away, since that search is still unheard, unless
+    /// the round just before narrowed it to the other: each was answered.
+    /// A row left from before, by a reader since restarted or an untelling
+    /// that wasn't written, goes once the round just before left the other
+    /// search unasked, as Slack was read whole across the two.
+    fn answered(
+        &mut self,
+        alone: Option<Search>,
+        turn: Option<Search>,
+        before: Option<Search>,
+        at: u64,
+    ) -> Change {
         if let Some(search) =
             alone.filter(|_| self.gateway && self.told == Some(Deafness::Unreached))
+            && turn.is_none_or(|last| last == search)
         {
             let run = match self.alone {
                 Some((last, run)) if last == search => run.saturating_add(1),
@@ -327,14 +355,17 @@ impl Deaf {
             };
             let change = self.heard(Round::Deaf(Deafness::Unread(search)), at);
             self.alone = Some((search, run));
+            self.turn = Some(search);
             return change;
         }
         let reached = match self.told {
             Some(Deafness::Unreached) => true,
             Some(Deafness::Unread(told)) => alone.is_some_and(|left| left != told),
+            None => self.left && alone.zip(before).is_some_and(|(now, then)| now != then),
             _ => false,
         };
         if reached {
+            self.left = false;
             self.told = None;
             self.since = None;
             self.rounds = 0;

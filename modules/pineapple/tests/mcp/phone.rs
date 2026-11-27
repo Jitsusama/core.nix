@@ -3,6 +3,7 @@
 //! anyone in Slack wrote never holds it back.
 
 use std::fs;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use pineapple::mcp::Gateway;
 use pineapple::phone::{Alert, Missed, tell_self};
@@ -48,6 +49,31 @@ fn forgotten_then_page(one: &Seen, calls: usize) -> Reply {
         "tools/call" => status(404),
         _ => status(202),
     }
+}
+
+/// What Joel's phone is told when the tool's first ask is answered
+/// `first`, the session opened again for it meets a proxy's sign-in page,
+/// and every opening and ask after that goes through, so a resend without
+/// the words would be sent.
+fn told_after(name: &str, first: u16) -> Result<String, Missed> {
+    let dir = scratch(name);
+    let openings = AtomicUsize::new(0);
+    let (url, _) = gateway(move |one: &Seen, calls| match one.method.as_str() {
+        "initialize" if openings.fetch_add(1, Ordering::SeqCst) == 1 => page_at_opening(one, calls),
+        "initialize" => opened("s1"),
+        "tools/call" if calls == 0 => status(first),
+        "tools/call" => tool("sent", false),
+        _ => status(202),
+    });
+    let mut gateway = Gateway::new(&url, sign_in(&dir).as_os_str());
+    let alert = Alert {
+        title: "Someone stopped your agents",
+        words: "stop",
+        link: "https://example.slack.com/archives/C1/p1",
+    };
+    let told = tell_self(&mut gateway, alert);
+    let _ = fs::remove_dir_all(&dir);
+    told
 }
 
 /// A send the gateway answers with JSON-RPC's error `CODE`.
@@ -99,6 +125,8 @@ fn answered_by_the_gateway() -> [Case; 11] {
         ),
         ("refused-opening", refused_opening, "unsent", 0),
         ("page-opening", page_at_opening, "unsent", 0),
+        // Unsent with or without its words, since no opening after the
+        // first goes through; told_after's case pins that none is tried.
         ("forgotten-then-page", forgotten_then_page, "unsent", 1),
         // Refused before it ran, each is sent again without the words,
         // then left unsent.
@@ -202,6 +230,43 @@ fn answered_by_the_tool() -> [Case; 8] {
             2,
         ),
     ]
+}
+
+#[test]
+fn a_send_whose_pass_asked_nothing_is_never_sent_again_without_its_words() {
+    for (name, first) in [("forgotten", 404), ("refused", 401)] {
+        let told = told_after(&format!("tell-self-{name}-then-page"), first);
+        assert!(
+            matches!(told, Err(Missed::NotSent(_))),
+            "{name}: a pass that asked nothing refused no words, so the alert isn't sent \
+             without them once a session opens again: {told:?}"
+        );
+    }
+}
+
+#[test]
+fn a_name_from_slack_quoted_back_in_a_failing_holds_no_alert_back() {
+    let dir = scratch("tell-self-quoted-name");
+    let (url, _) = gateway(|one: &Seen, _| match one.method.as_str() {
+        "initialize" => opened("s1"),
+        "tools/call" => tool(
+            &format!("could not post {}", one.params["arguments"]["message"]),
+            true,
+        ),
+        _ => status(202),
+    });
+    let mut gateway = Gateway::new(&url, sign_in(&dir).as_os_str());
+    let alert = Alert {
+        title: "Someone stopped agents in owner/rate_limited",
+        words: "stop",
+        link: "https://example.slack.com/archives/C1/p1",
+    };
+    let told = tell_self(&mut gateway, alert);
+    assert!(
+        matches!(told, Err(Missed::Unsure(_))),
+        "a failing quoting the title is the tool's failing, never a rate spent: {told:?}"
+    );
+    let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]
