@@ -393,7 +393,7 @@ mod tests {
         assert_eq!((t.missed, t.late), (2, 0));
         assert!(
             (t.longest_ms - 25.0).abs() < 0.001,
-            "the longest frame wasn't the three refreshes missed: {} ms",
+            "the longest frame wasn't the three refreshes from 11 to 14, two of them missed: {} ms",
             t.longest_ms
         );
     }
