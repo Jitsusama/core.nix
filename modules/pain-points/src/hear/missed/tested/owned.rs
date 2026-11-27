@@ -6,13 +6,14 @@
 //! As no landing names it, its owner names the change that fixed it, as
 //! its `check`, which the hour reads as it does any miss's: closed once
 //! that change has merged and runs here. Said again with a test or a fix
-//! it lacked, the same miss takes them; a time another miss holds is
+//! it lacked, the same miss takes them, and a test in place of the one it
+//! names only with `--replace`; a time another miss holds is
 //! refused, as an owner names its miss by its time. pain-points can't
 //! tell which cell runs it, so the card names the owner given, and one
 //! given a miss wrongly says it was none, as of any miss, or moves it to
 //! the cell whose fix it waits on with `--owner` alone.
 
-use super::{Saying, changed_in};
+use super::{Saying, before_it, changed_in};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -168,12 +169,17 @@ pub(super) fn own_in(
                 }
             }
             (Some((index, mut line)), true) if same(&line) => {
+                let replaced = saying.replacing(&line, at)?;
                 if saying.on(&mut line) {
                     let said = format!("pain-points: {owner}'s miss at {at} is written already");
                     return Ok((None, said));
                 }
                 lines[index] = line.to_string();
-                format!("pain-points: {owner}'s miss at {at} now {}", saying.says())
+                let before = before_it(replaced.as_deref());
+                format!(
+                    "pain-points: {owner}'s miss at {at} now {}{before}",
+                    saying.says()
+                )
             }
             _ => {
                 let refused = format!("a miss in {name} is at {at} already");
@@ -202,6 +208,7 @@ mod tests {
         said: None,
         fix: None,
         owner: None,
+        replace: false,
     };
 
     /// What it says of a miss: `test` as its test, and `fix` as its fix.
@@ -210,6 +217,7 @@ mod tests {
             said: test.map(Said::Test),
             fix,
             owner: None,
+            replace: false,
         }
     }
 
@@ -272,6 +280,33 @@ mod tests {
             (lines.len(), &lines[0]["test"], &lines[0]["check"]),
             (1, &json!("core a b"), &json!("core #6470")),
             "the miss didn't take its test and fix on its one line"
+        );
+    }
+
+    #[test]
+    fn the_same_miss_written_again_with_another_test_takes_it_only_to_replace() {
+        let path = ledger("owned-replaced", "");
+        own_in(&path, AT, DU, saying(Some("core a b"), None)).expect("written");
+        let other = saying(Some("core c d"), None);
+        let failed = own_in(&path, AT, DU, other).expect_err("replaced");
+        assert!(
+            matches!(failed.exit, Exit::Usage) && failed.what.contains("core a b"),
+            "another test wasn't refused as usage naming the first: {}",
+            failed.what
+        );
+        let replacing = Saying {
+            replace: true,
+            ..other
+        };
+        let said = own_in(&path, AT, DU, replacing).expect("replaced");
+        assert!(
+            said.contains("core c d") && said.contains("core a b"),
+            "replacing it didn't say both tests: {said}"
+        );
+        assert_eq!(
+            read(&path)[0]["test"],
+            json!("core c d"),
+            "the test wasn't replaced"
         );
     }
 

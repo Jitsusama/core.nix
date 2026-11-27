@@ -27,8 +27,8 @@ use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use terminal_kit::{Exit, Failure, Help};
 
-/// The flags `test` takes, each with a value.
-pub const FLAGS: [&str; 7] = [
+/// The flags `test` takes, each with a value but those of `SWITCHES`.
+pub const FLAGS: [&str; 8] = [
     "--miss",
     "--test",
     "--none",
@@ -36,7 +36,11 @@ pub const FLAGS: [&str; 7] = [
     "--what",
     "--fix",
     "--ledgers",
+    "--replace",
 ];
+
+/// The flags of `FLAGS` that take no value.
+pub const SWITCHES: [&str; 1] = ["--replace"];
 
 /// What `pain-points test --help` says.
 #[must_use]
@@ -45,6 +49,10 @@ pub fn help() -> Help {
         .example(
             "pain-points test --miss AT --test \"core modules/x/src/y.rs a_test\"",
             "as a miss's owner runs it",
+        )
+        .example(
+            "pain-points test --miss AT --test \"core modules/x/src/y.rs b_test\" --replace",
+            "as its owner puts another test in place of the one it named",
         )
         .example(
             "pain-points test --miss AT --none \"he was reassuring, not hurt\"",
@@ -60,6 +68,10 @@ pub fn help() -> Help {
         )
         .option("--miss AT", "the miss's time, as its line has it")
         .option("--test TEST", "its test, as REPO PATH NAME")
+        .option(
+            "--replace",
+            "with --test, in place of a test the miss names",
+        )
         .option("--none WHY", "why it was no miss, in place of a test")
         .option(
             "--owner CELL",
@@ -75,6 +87,7 @@ pub fn help() -> Help {
         .exit(
             Exit::Usage,
             "no miss, a test and why it's none both or neither, a test not REPO PATH NAME, \
+             a test in place of another without --replace, or --replace with no test, \
              a fix not REPO #N or on a heard miss, or a miss its owner writes half said, \
              said none or at a time taken",
         )
@@ -128,15 +141,35 @@ impl Said<'_> {
 }
 
 /// All an owner says of a miss at once: a test or why it was none, the
-/// change that fixed one it wrote, and the cell it moves to.
+/// change that fixed one it wrote, the cell it moves to, and whether its
+/// test may take the place of another the miss names.
 #[derive(Debug, Clone, Copy)]
 struct Saying<'a> {
     said: Option<Said<'a>>,
     fix: Option<&'a str>,
     owner: Option<&'a str>,
+    replace: bool,
 }
 
 impl Saying<'_> {
+    /// The other test the miss at `at` on `line` names, which this would
+    /// take the place of, or a refusal naming it unless this replaces it:
+    /// a test named over another's is no longer lost without a word.
+    fn replacing(self, line: &Value, at: &str) -> Result<Option<String>, Failure> {
+        let Some(Said::Test(test)) = self.said else {
+            return Ok(None);
+        };
+        let Some(other) = line["test"].as_str().filter(|other| *other != test) else {
+            return Ok(None);
+        };
+        if self.replace {
+            return Ok(Some(other.to_owned()));
+        }
+        let what = format!("the miss at {at} names its test already, {other}");
+        let failed = Failure::new(Exit::Usage, what);
+        Err(failed.try_this("--replace, to put this test in its place"))
+    }
+
     /// Puts this on a miss's `line`, and says whether it said it all
     /// already.
     fn on(self, line: &mut Value) -> bool {
@@ -186,6 +219,7 @@ impl<'a> From<Said<'a>> for Saying<'a> {
             said: Some(said),
             fix: None,
             owner: None,
+            replace: false,
         }
     }
 }
@@ -198,7 +232,8 @@ type Changed = Result<(Option<String>, String), Failure>;
 /// ledger in `--ledgers`, or the mission's, and says so. With `--owner`
 /// and `--what`, it writes the miss at `--miss` first, which nothing
 /// heard, with its test and fix if they're given; with `--owner` alone,
-/// it moves the miss there to that cell.
+/// it moves the miss there to that cell. A test in place of another the
+/// miss names is refused unless `--replace` is given.
 ///
 /// # Errors
 ///
@@ -221,6 +256,10 @@ pub fn named(given: &BTreeMap<&str, String>) -> Result<String, Failure> {
         (None, None) => None,
         (Some(_), Some(_)) => return Err(wrongly(neither)),
     };
+    let replace = given.contains_key("--replace");
+    if replace && !matches!(said, Some(Said::Test(_))) {
+        return Err(wrongly("--replace puts a --test in place of the one named"));
+    }
     match said {
         Some(Said::Test(test)) if !shaped(test) => {
             return Err(wrongly(&format!(
@@ -236,7 +275,12 @@ pub fn named(given: &BTreeMap<&str, String>) -> Result<String, Failure> {
         .get("--ledgers")
         .map_or_else(|| crate::state_home().join("mission"), PathBuf::from);
     let ledger = folder.join("misses.jsonl");
-    let saying = Saying { said, fix, owner };
+    let saying = Saying {
+        said,
+        fix,
+        owner,
+        replace,
+    };
     match (written, said) {
         (Some(_), Some(Said::NoMiss { .. })) => Err(wrongly(
             "a miss its owner writes is one; say it was none once it's written",
@@ -268,6 +312,7 @@ fn name_in<'a>(ledger: &Path, at: &str, said: impl Into<Saying<'a>>) -> Result<S
         let mut found = 0;
         let mut heard = false;
         let mut already = false;
+        let mut replacing = Ok(None);
         let mut lines: Vec<String> = before
             .lines()
             .map(|line| {
@@ -279,6 +324,7 @@ fn name_in<'a>(ledger: &Path, at: &str, said: impl Into<Saying<'a>>) -> Result<S
                 }
                 found += 1;
                 heard = read["heard_by"] != owned::OWNER;
+                replacing = said.replacing(&read, at);
                 already = said.on(&mut read);
                 read.to_string()
             })
@@ -293,14 +339,22 @@ fn name_in<'a>(ledger: &Path, at: &str, said: impl Into<Saying<'a>>) -> Result<S
             let failed = Failure::new(Exit::Usage, what);
             return Err(failed.try_this("its test, as a heard miss closes on its landing"));
         }
+        let replaced = replacing?;
         if already {
             let said = format!("pain-points: the miss at {at} already {}", said.says());
             return Ok((None, said));
         }
         lines.push(String::new());
-        let said = format!("pain-points: the miss at {at} now {}", said.says());
+        let before = before_it(replaced.as_deref());
+        let said = format!("pain-points: the miss at {at} now {}{before}", said.says());
         Ok((Some(lines.join("\n")), said))
     })
+}
+
+/// What a miss is said to have named before, when its test took the place
+/// of `replaced`, or nothing.
+fn before_it(replaced: Option<&str>) -> String {
+    replaced.map_or_else(String::new, |other| format!("; it named {other} before"))
 }
 
 /// Changes `ledger` as `change` says, given what it holds and its name,
@@ -519,6 +573,37 @@ mod tests {
             (&json!("KP0L6A"), &Value::Null),
             "a miss owned by no one gained an owner before: {line}"
         );
+    }
+
+    #[test]
+    fn a_test_in_place_of_another_is_refused_unless_it_replaces_it() {
+        let text = format!("{}\n", json!({"at": AT, "test": "core a b"}));
+        let path = ledger("replaced", &text);
+        let alone = named(&flags(&path, &[("--replace", ""), ("--none", "no pain")]));
+        assert!(
+            alone.is_err_and(|failed| matches!(failed.exit, Exit::Usage)),
+            "--replace with no test wasn't refused as usage"
+        );
+        let failed = named(&flags(&path, &[("--test", "core c d")])).expect_err("replaced");
+        assert!(
+            matches!(failed.exit, Exit::Usage) && failed.what.contains("core a b"),
+            "a test over another wasn't refused as usage naming it: {}",
+            failed.what
+        );
+        assert_eq!(
+            fs::read_to_string(&path).expect("the ledger"),
+            text,
+            "a refusal changed the ledger"
+        );
+        let given = [("--test", "core c d"), ("--replace", "")];
+        let said = named(&flags(&path, &given)).expect("replaced");
+        assert!(
+            said.contains("core c d") && said.contains("core a b"),
+            "replacing it didn't say both tests: {said}"
+        );
+        let kept = fs::read_to_string(&path).expect("the ledger");
+        let line: Value = serde_json::from_str(kept.trim()).expect("the miss's line");
+        assert_eq!(line["test"], "core c d", "the test wasn't replaced: {line}");
     }
 
     #[test]

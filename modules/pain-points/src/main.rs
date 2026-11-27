@@ -126,8 +126,9 @@ fn help() -> Help {
 ///
 /// # Errors
 ///
-/// Asked wrongly, 64, for a flag it doesn't know, a flag with no value, a
-/// word that isn't a flag's, or a time that isn't a number.
+/// Asked wrongly, 64, for a flag it doesn't know, a flag with no value
+/// that isn't a switch, a word that isn't a flag's, or a time that isn't
+/// a number.
 fn asked(args: &[String]) -> Result<Option<Asked>, Failure> {
     let Some((verb, rest)) = args.split_first() else {
         return Ok(None);
@@ -136,6 +137,11 @@ fn asked(args: &[String]) -> Result<Option<Asked>, Failure> {
         "hear" => &HEAR_FLAGS,
         "test" => &hear::missed::tested::FLAGS,
         _ => &FLAGS,
+    };
+    let switches: &[&str] = if verb == "test" {
+        &hear::missed::tested::SWITCHES
+    } else {
+        &[]
     };
     let try_this = format!("pain-points {verb} --help");
     let wrongly = |what: String| Failure::new(Exit::Usage, what).try_this(&try_this);
@@ -153,6 +159,11 @@ fn asked(args: &[String]) -> Result<Option<Asked>, Failure> {
                 )));
             }
         };
+        // A switch is given by its name alone, as an empty value.
+        if switches.contains(&flag) {
+            given.insert(flag, String::new());
+            continue;
+        }
         let value = rest
             .next()
             .ok_or_else(|| wrongly(format!("{flag} needs a value")))?;

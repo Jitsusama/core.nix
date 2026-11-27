@@ -258,6 +258,51 @@ fn test_names_a_misses_test_in_the_missions_ledger_or_says_why_not() {
 }
 
 #[test]
+fn test_puts_a_test_in_place_of_another_only_given_replace() {
+    let mission = std::env::temp_dir().join(format!("pain-points-replaced-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&mission);
+    std::fs::create_dir_all(&mission).expect("a folder");
+    let at = "2026-11-14T17:24:00-05:00";
+    let kept = mission.join("misses.jsonl");
+    let first = "core modules/cat/src/air.rs the_cat_never_waits";
+    let line = format!("{{\"at\":\"{at}\",\"test\":\"{first}\"}}\n");
+    std::fs::write(&kept, line).expect("a ledger");
+    let folder = mission.to_str().expect("a folder named in UTF-8");
+    let test = "core modules/cat/src/air.rs the_cat_opens_at_once";
+    let named = ["test", "--miss", at, "--test", test, "--ledgers", folder];
+    let refused = ran(&named);
+    let replaced = ran(&[&named[..], &["--replace"]].concat());
+    let ledger = std::fs::read_to_string(&kept).unwrap_or_default();
+    let _ = std::fs::remove_dir_all(&mission);
+    let why = said(&refused.stderr);
+    assert_eq!(
+        refused.status.code(),
+        Some(64),
+        "a test over another wasn't refused as asked wrongly: {why}"
+    );
+    assert!(
+        why.contains("--replace"),
+        "the refusal never said how: {why}"
+    );
+    assert_eq!(
+        replaced.status.code(),
+        Some(0),
+        "replacing it ended {:?}: {}",
+        replaced.status,
+        said(&replaced.stderr)
+    );
+    let told = said(&replaced.stdout);
+    assert!(
+        told.contains(first) && told.contains(test),
+        "replacing it didn't say both tests: {told}"
+    );
+    assert!(
+        ledger.contains(test) && !ledger.contains(first),
+        "the ledger doesn't hold the new test alone: {ledger}"
+    );
+}
+
+#[test]
 fn test_writes_a_miss_its_owner_says_nothing_heard_then_names_its_fix() {
     let mission = std::env::temp_dir().join(format!("pain-points-owned-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&mission);
