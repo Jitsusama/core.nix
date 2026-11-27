@@ -18,14 +18,14 @@
 //! its search is whole, longer while a failing one holds it back), or a
 //! pull request more than 30 pages of reviews in its life, is read
 //! without its newest, so a stop there is missed, the journal saying only
-//! that the read was cut. How far it reached is kept across a restart
-//! (src/progress.rs).
+//! that the read was cut. How far it reached, and the spans it holds to
+//! tell Joel of, are kept across a restart (src/progress.rs).
 
 use std::collections::{HashMap, HashSet};
 
 use pineapple::github::{self, Said, Thread, found_when};
-use pineapple::progress::Own;
-use pineapple::{Joel, Platform, Saying, Verdict, judge};
+use pineapple::progress::{Own, Untold};
+use pineapple::{Joel, Platform, Saying, Verdict, judge, missed};
 
 use super::{GitHub, Left, Unread, searched};
 
@@ -50,39 +50,30 @@ const SEARCHES: usize = 2;
 /// The words that stop, as the journal names them.
 const SAFE_WORD: &str = "pineapple override";
 
-/// How many rounds that move on hold a span the search left out while
-/// Joel's row saying so can't be written, each trying it again, before
-/// the journal alone says so: 360, about three hours at a round each half
-/// minute, about as long as a thread whose row can't be written is owed
-/// (owed.rs). A site searched by author never searches for his words, so
-/// never holds one. A round whose search fails doesn't move on, so holds
-/// it longer.
+/// How many rounds hold a span the search left out while Joel's row
+/// saying so can't be written, each trying it again whether or not its
+/// search answered, before the journal alone says so: 360, about three
+/// hours at a round each half minute, about as long as a thread whose row
+/// can't be written is owed (owed.rs). A site searched by author never
+/// searches for his words, so never holds one. A round that stops before
+/// it searches, as one that can't ask what changed does, tries none, so
+/// holds them longer.
 const UNTOLD_ROUNDS: u32 = 360;
 
 /// Where Joel's own words were last searched from whole, which a failed
 /// search leaves where it was; when each pull request or issue that
 /// search found had last changed, so one is read again only once it has;
 /// how far back a first start may judge; which of his words too old to
-/// judge the journal has already named; and each span its searches
-/// left out whose row in For You couldn't yet be written, held only in
-/// memory, so a restart lets them go to the journal alone, as nothing of
-/// theirs is kept across one (src/progress.rs).
+/// judge the journal has already named; and each stretch its searches
+/// left out whose row in For You couldn't yet be written, kept across a
+/// restart with how far it searched (src/progress.rs), as a restart after
+/// mending the rows file is when it's likeliest to be written.
 pub(super) struct Searched {
     from: u64,
     floor: u64,
     read: HashMap<String, String>,
     told: HashSet<String>,
     untold: Vec<Untold>,
-}
-
-/// What `login`'s search left out, changed from `from` to `to`, in
-/// seconds, whose row couldn't be written in the `rounds` that tried it.
-#[derive(Debug, PartialEq, Eq)]
-struct Untold {
-    login: String,
-    from: u64,
-    to: u64,
-    rounds: u32,
 }
 
 /// What one search found: each pull request or issue to read, when each
@@ -108,21 +99,31 @@ impl Searched {
     /// stop said before it is heard.
     pub(super) fn new(since: u64, kept: Option<Own>, first: bool, lag: u64) -> Self {
         let floor = if first { since.saturating_sub(lag) } else { 0 };
-        let Own { from, floor } = kept.unwrap_or(Own { from: since, floor });
+        let Own {
+            from,
+            floor,
+            untold,
+        } = kept.unwrap_or_else(|| Own {
+            from: since,
+            floor,
+            untold: Vec::new(),
+        });
         Self {
             from,
             floor,
             read: HashMap::new(),
             told: HashSet::new(),
-            untold: Vec::new(),
+            untold,
         }
     }
 
-    /// How far it has searched, to keep across a restart.
+    /// How far it has searched, and the spans it holds, to keep across a
+    /// restart.
     pub(super) fn kept(&self) -> Own {
         Own {
             from: self.from,
             floor: self.floor,
+            untold: self.untold.clone(),
         }
     }
 
@@ -232,24 +233,25 @@ impl Searched {
         found
     }
 
-    /// Moves on to a round begun at `began` once what it `found` was
-    /// answered, knowing what that read as read, what the round couldn't
-    /// read owed (owed.rs), and says in the journal what its searches left
-    /// out, from where the next round reaches, which only moving on
-    /// settles, and tells Joel in a row of its own (left.rs), as nothing
-    /// searches it again. A span whose row can't be written is held and
-    /// tried again first in each round that moves on, for up to
-    /// [`UNTOLD_ROUNDS`].
+    /// Tries again each span held as its row couldn't be written, for up
+    /// to [`UNTOLD_ROUNDS`], whether or not what the round `found` was
+    /// answered, so a mended rows file doesn't wait on a search that may
+    /// fail for hours. Then, once it was answered, moves on to the round
+    /// begun at `began`, knowing what that read as read, what the round
+    /// couldn't read owed (owed.rs), and says in the journal what its
+    /// searches left out, from where the next round reaches, which only
+    /// moving on settles, and tells Joel in a row of its own (left.rs), as
+    /// nothing searches it again.
     pub(super) fn moved_on(&mut self, began: u64, found: Found, tell: &Left) {
+        for untold in std::mem::take(&mut self.untold) {
+            self.tell_of(untold, tell);
+        }
         if !found.answered {
             return;
         }
         let reach = self.reach();
         self.from = began;
         self.read = found.seen;
-        for untold in std::mem::take(&mut self.untold) {
-            self.tell_of(untold, tell);
-        }
         let next = github::stamp(self.reach());
         for (left, to) in found.left {
             eprintln!("{left} searched again only from {next}, where the next round reaches");
@@ -271,15 +273,35 @@ impl Searched {
     }
 
     /// Tells Joel of what `untold` names in its row, held to try again
-    /// the next round that moves on while it can't be written, until
-    /// [`UNTOLD_ROUNDS`] have tried it, when the journal alone says so.
+    /// the next round while it can't be written, until [`UNTOLD_ROUNDS`]
+    /// have tried it, when the journal alone says so. One that comes
+    /// within [`missed::MEET`] of a span held for the same login is held
+    /// as one stretch with it, from the lower start to the higher end, at
+    /// the fewer rounds, as that stretch is still being left out: in a
+    /// lasting flood every round's search is cut short, and held apart
+    /// they'd be a span a round, each tried and its file read every round.
+    /// Why it couldn't be written is said only on a stretch's first try.
     fn tell_of(&mut self, untold: Untold, tell: &Left) {
-        if tell.own(&untold.login, untold.from, untold.to) {
+        let meets = |held: &Untold| {
+            let near = missed::MEET / 1000;
+            held.login == untold.login
+                && held.from <= untold.to.saturating_add(near)
+                && untold.from <= held.to.saturating_add(near)
+        };
+        let aloud = untold.rounds == 0 && !self.untold.iter().any(meets);
+        if tell.own(&untold.login, untold.from, untold.to, aloud) {
             return;
         }
         let rounds = untold.rounds + 1;
         if rounds < UNTOLD_ROUNDS {
-            self.untold.push(Untold { rounds, ..untold });
+            match self.untold.iter_mut().find(|held| meets(held)) {
+                Some(held) => {
+                    held.from = held.from.min(untold.from);
+                    held.to = held.to.max(untold.to);
+                    held.rounds = held.rounds.min(rounds);
+                }
+                None => self.untold.push(Untold { rounds, ..untold }),
+            }
             return;
         }
         eprintln!(
@@ -341,12 +363,16 @@ mod tests {
     use std::collections::HashMap;
 
     use pineapple::github::{self, Thread};
-    use pineapple::progress::Own;
+    use pineapple::progress::{Own, Untold};
 
-    use super::{Found, OWN_LAG, Searched, UNTOLD_ROUNDS, Untold, oldest};
+    use super::{Found, OWN_LAG, Searched, UNTOLD_ROUNDS, oldest};
     use crate::left::Rows;
 
-    /// When the reader's rounds begin in these cases, in seconds.
+    /// When the reader's rounds begin in these cases, in seconds. Their
+    /// spans end in 1970 while `Left` stamps its rows by the real clock,
+    /// so a row they write lives only as the newest written: the next
+    /// write finds it a week past its end and drops it. Each case reads
+    /// only the row it wrote last.
     const SINCE: u64 = 100_000;
 
     /// A search's lag, as a first start is given it.
@@ -375,13 +401,19 @@ mod tests {
     }
 
     #[test]
-    fn a_restart_keeps_the_reach_a_failed_search_held_back() {
+    fn a_restart_keeps_the_reach_a_failed_search_held_back_and_the_spans_it_held() {
         let kept = Own {
             from: SINCE - 2 * OWN_LAG,
             floor: 0,
+            untold: vec![Untold {
+                login: "joel.example".to_owned(),
+                from: SINCE - 4 * OWN_LAG,
+                to: SINCE - 3 * OWN_LAG,
+                rounds: 7,
+            }],
         };
-        let searched = Searched::new(SINCE, Some(kept), false, LAG);
-        assert_eq!(searched.kept(), kept, "kept as it was");
+        let searched = Searched::new(SINCE, Some(kept.clone()), false, LAG);
+        assert_eq!(searched.kept(), kept, "kept as it was, held spans and all");
         assert_eq!(
             searched.reach(),
             SINCE - 3 * OWN_LAG,
@@ -432,9 +464,8 @@ mod tests {
 
     #[test]
     fn a_span_whose_row_cant_be_written_is_held_until_it_is() {
-        // Its rows' home is a file, so nothing can be written under it.
         let rows = Rows::new("own-unwritten");
-        std::fs::write(&rows.home, "").expect("a file where the rows' home would be");
+        rows.break_home();
         let mut searched = Searched::new(SINCE, None, false, LAG);
         searched.moved_on(SINCE + 30, moving_on(Some(SINCE - 60)), &rows.left);
         let held = Untold {
@@ -449,7 +480,7 @@ mod tests {
             "held while its row can't be written"
         );
 
-        std::fs::remove_file(&rows.home).expect("the rows' home freed");
+        rows.free_home();
         searched.moved_on(SINCE + 60, moving_on(None), &rows.left);
         let written = std::fs::read_to_string(rows.home.join("pineapple/missed-github.json"))
             .unwrap_or_default();
@@ -465,9 +496,64 @@ mod tests {
     }
 
     #[test]
+    fn a_held_span_is_written_in_a_round_whose_search_failed() {
+        let rows = Rows::new("own-unanswered");
+        rows.break_home();
+        let mut searched = Searched::new(SINCE, None, false, LAG);
+        searched.moved_on(SINCE + 30, moving_on(Some(SINCE - 60)), &rows.left);
+        assert_eq!(
+            searched.untold.len(),
+            1,
+            "held while its row can't be written"
+        );
+
+        rows.free_home();
+        let unanswered = Found {
+            answered: false,
+            ..moving_on(None)
+        };
+        searched.moved_on(SINCE + 60, unanswered, &rows.left);
+        let written = std::fs::read_to_string(rows.home.join("pineapple/missed-github.json"))
+            .unwrap_or_default();
+        assert!(
+            searched.untold.is_empty() && written.contains("pineapple-github-missed-own-"),
+            "a mended rows file waited on a search that failed: {written}"
+        );
+        assert_eq!(
+            searched.kept().from,
+            SINCE + 30,
+            "a round whose search failed moved on"
+        );
+    }
+
+    #[test]
+    fn spans_left_out_within_a_meet_of_each_other_are_held_as_one_stretch() {
+        let rows = Rows::new("own-stretch");
+        rows.break_home();
+        let mut searched = Searched::new(SINCE, None, false, LAG);
+        searched.moved_on(SINCE + 30, moving_on(Some(SINCE - 60)), &rows.left);
+        searched.moved_on(SINCE + 60, moving_on(Some(SINCE)), &rows.left);
+        let held = Untold {
+            login: "joel.example".to_owned(),
+            from: SINCE - OWN_LAG,
+            to: SINCE,
+            rounds: 1,
+        };
+        assert_eq!(
+            searched.untold,
+            [held],
+            "from the first's start to the second's end, at the fewer rounds"
+        );
+    }
+
+    #[test]
     fn a_span_whose_row_stays_unwritten_is_let_go_after_its_rounds() {
+        assert_eq!(
+            UNTOLD_ROUNDS, 360,
+            "a rows file that stays broken holds a span about three hours"
+        );
         let rows = Rows::new("own-untold");
-        std::fs::write(&rows.home, "").expect("a file where the rows' home would be");
+        rows.break_home();
         let mut searched = Searched::new(SINCE, None, false, LAG);
         searched.moved_on(SINCE + 30, moving_on(Some(SINCE - 60)), &rows.left);
         for round in 2..UNTOLD_ROUNDS {
@@ -498,6 +584,7 @@ mod tests {
         let kept = Own {
             from: SINCE,
             floor: SINCE - LAG,
+            untold: Vec::new(),
         };
         let searched = Searched::new(SINCE, Some(kept), false, LAG);
         assert_eq!(

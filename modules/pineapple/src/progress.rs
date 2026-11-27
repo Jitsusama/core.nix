@@ -3,7 +3,9 @@
 //! of what it judged, so a restart neither judges anything twice nor
 //! misses what was said while it was down; how far back Joel's own words
 //! were searched, so a restart neither judges past where a first start
-//! chose not to nor forgets a search held back; what it owes, the pull
+//! chose not to nor forgets a search held back, and the spans that search
+//! left out whose row in For You couldn't yet be written, so a restart
+//! tries them still, as it does what's owed; what it owes, the pull
 //! requests and issues a round couldn't read, so a restart reads them too;
 //! and when it last read the site whole, owing nothing, which
 //! `pineapple-github` says (src/bin/pineapple-github/).
@@ -13,7 +15,10 @@
 //! JSON it can read: one it can't is read as nothing kept, a first start
 //! that judges only its look back and nothing said before it. A reader from before
 //! owing writes the file back without what's owed, so going back to one
-//! lets that go unnamed, its `since` already past it. One owed that GitHub
+//! lets that go unnamed, its `since` already past it. A reader from before
+//! held spans were kept ignores `untold` under `own` and writes the file
+//! back without it, so going back to one lets them go unnamed too, the
+//! search already past them. One owed that GitHub
 //! won't read again holds when it was last read whole back for the hours
 //! until it's let go, three more while its row in For You can't be
 //! written (six on a site searched by author, a round a minute), and on
@@ -63,15 +68,34 @@ pub struct Owed {
 }
 
 /// How far a search for Joel's own words reached, in seconds since the
-/// epoch: where it was last whole from, and the farthest back it may
-/// judge, which a first start sets and zero leaves open.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// epoch: where it was last whole from, the farthest back it may judge,
+/// which a first start sets and zero leaves open, and the spans it left
+/// out that are held to tell him of.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Own {
     /// Where the search was last whole from.
     pub from: u64,
     /// The farthest back it judges, whatever `from` says; what it finds
     /// is read an hour further back, for the journal to name.
     pub floor: u64,
+    /// The spans it left out whose row in For You couldn't yet be
+    /// written, each tried again; none where a file kept none.
+    pub untold: Vec<Untold>,
+}
+
+/// What `login`'s search for Joel's words left out, changed from `from` to
+/// `to`, in seconds since the epoch, whose row in For You couldn't be
+/// written in the `rounds` that tried it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Untold {
+    /// Whose words the search was for.
+    pub login: String,
+    /// When what it left out had changed from.
+    pub from: u64,
+    /// When what it left out had changed to.
+    pub to: u64,
+    /// How many rounds tried its row and couldn't write it.
+    pub rounds: u32,
 }
 
 /// The name of the file keeping how far a site has been read.
@@ -99,6 +123,7 @@ pub fn read(state: &Path, site: &str) -> Option<Judged> {
         Some(Own {
             from: own.get("from")?.as_u64()?,
             floor: own.get("floor")?.as_u64()?,
+            untold: untold(own),
         })
     });
     let owed = kept
@@ -128,6 +153,24 @@ pub fn read(state: &Path, site: &str) -> Option<Judged> {
         own,
         owed,
     })
+}
+
+/// The spans `own` holds under `untold`, none where an older file kept
+/// none; one it can't read is left out.
+fn untold(own: &Value) -> Vec<Untold> {
+    own.get("untold")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|held| {
+            Some(Untold {
+                login: held.get("login")?.as_str()?.to_owned(),
+                from: held.get("from")?.as_u64()?,
+                to: held.get("to")?.as_u64()?,
+                rounds: u32::try_from(held.get("rounds")?.as_u64()?).ok()?,
+            })
+        })
+        .collect()
 }
 
 /// The count `owed` keeps under `name`, none where an older file kept none.
@@ -175,8 +218,19 @@ pub fn write(state: &Path, site: &str, judged: &Judged, read_at: u64) {
     if let Some(whole) = whole {
         kept["read_at"] = json!(whole);
     }
-    if let Some(Own { from, floor }) = judged.own {
-        kept["own"] = json!({ "from": from, "floor": floor });
+    if let Some(own) = &judged.own {
+        kept["own"] = json!({ "from": own.from, "floor": own.floor });
+        if !own.untold.is_empty() {
+            let spans: Vec<Value> = own
+                .untold
+                .iter()
+                .map(|held| {
+                    json!({ "login": held.login, "from": held.from, "to": held.to,
+                        "rounds": held.rounds })
+                })
+                .collect();
+            kept["own"]["untold"] = Value::Array(spans);
+        }
     }
     if !judged.owed.is_empty() {
         let owed: Vec<Value> = judged
@@ -264,6 +318,7 @@ mod tests {
             own: Some(Own {
                 from: 1_699_999_000,
                 floor: 1_699_998_000,
+                untold: Vec::new(),
             }),
             owed: Vec::new(),
         };
@@ -304,6 +359,47 @@ mod tests {
                 ("github".to_owned(), 1_700_000_000_000)
             ],
             "while it owes anything, it was last read whole when it last owed nothing"
+        );
+        std::fs::remove_dir_all(&state).expect("the case's state goes");
+    }
+
+    #[test]
+    fn the_spans_a_search_holds_are_kept_with_it_and_an_older_file_holds_none() {
+        let state = fresh("untold");
+        let holding = Judged {
+            since: 1_700_000_000,
+            keys: Vec::new(),
+            own: Some(Own {
+                from: 1_699_999_000,
+                floor: 0,
+                untold: vec![Untold {
+                    login: "joel.example".to_owned(),
+                    from: 1_699_995_400,
+                    to: 1_699_998_940,
+                    rounds: 3,
+                }],
+            }),
+            owed: Vec::new(),
+        };
+        write(&state, "github", &holding, 1_700_000_000_000);
+        assert_eq!(
+            read(&state, "github"),
+            Some(holding),
+            "the spans held to tell Joel of are kept beside how far it searched"
+        );
+
+        let own = json!({"from": 1_699_999_000, "floor": 0});
+        let kept = json!({"since": 1_700_000_000, "keys": [], "own": own});
+        std::fs::write(state.join(file("github")), kept.to_string()).expect("the file");
+        let own = read(&state, "github").and_then(|judged| judged.own);
+        assert_eq!(
+            own,
+            Some(Own {
+                from: 1_699_999_000,
+                floor: 0,
+                untold: Vec::new(),
+            }),
+            "an older file's search holds no span"
         );
         std::fs::remove_dir_all(&state).expect("the case's state goes");
     }

@@ -185,7 +185,7 @@ pub(super) fn kept(
         // is owed still, its row tried again each round that lists it and
         // doesn't read it, until its tries reach [`UNTOLD`].
         if tries >= TRIES {
-            let told = tell.thread(thread, *from);
+            let told = tell.thread(thread, *from, chosen);
             if told || tries >= UNTOLD {
                 // So the journal tells one Joel was told of from one he wasn't.
                 let untold = if told {
@@ -295,9 +295,8 @@ mod tests {
 
     #[test]
     fn one_failing_its_last_try_whose_row_cant_be_written_is_owed_still() {
-        // Its rows' home is a file, so nothing can be written under it.
         let rows = Rows::new("unwritten");
-        std::fs::write(&rows.home, "").expect("a file where the rows' home would be");
+        rows.break_home();
         let before = [owed(14, 100, TRIES - 1, 0)];
         let threads = list(Vec::new(), vec![(thread(14), 100, 100)], &before);
         let owing = kept(&rows.left, &threads, (&[0], &[], 1), &before, 900);
@@ -308,7 +307,7 @@ mod tests {
             "not let go untold, its row tried again when it's next listed"
         );
 
-        std::fs::remove_file(&rows.home).expect("the rows' home freed");
+        rows.free_home();
         let threads = list(Vec::new(), vec![(thread(14), 100, 100)], &owing);
         let owing = kept(&rows.left, &threads, (&[0], &[], 1), &owing, 950);
         let written = std::fs::read_to_string(rows.home.join("pineapple/missed-github.json"))
@@ -326,7 +325,7 @@ mod tests {
             "a rows file that stays broken holds a thread twelve tries past its last"
         );
         let rows = Rows::new("untold");
-        std::fs::write(&rows.home, "").expect("a file where the rows' home would be");
+        rows.break_home();
         let before = [owed(14, 100, UNTOLD - 2, 0)];
         let threads = list(Vec::new(), vec![(thread(14), 100, 100)], &before);
         let mut owing = kept(&rows.left, &threads, (&[0], &[], 1), &before, 900);

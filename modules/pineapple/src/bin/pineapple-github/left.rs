@@ -53,24 +53,31 @@ impl Left {
     /// `from` to `to`, in seconds, went unsearched, as a search cut short
     /// or failing left them, so a stop of his there wasn't heard, and
     /// whether it's written: the search holds one that isn't (own.rs), as
-    /// nothing searches that span again.
-    pub(super) fn own(&self, login: &str, from: u64, to: u64) -> bool {
+    /// nothing searches that span again. The journal says it couldn't be
+    /// written only when `aloud`.
+    pub(super) fn own(&self, login: &str, from: u64, to: u64, aloud: bool) -> bool {
         let at = now();
         let (from, to) = (from.saturating_mul(1000), to.saturating_mul(1000));
         let say =
             |from: Option<u64>, to: u64, whole: bool| self.own_row(login, from, to, at, whole);
-        self.keep(say(Some(from), to, true), at, say)
+        self.keep(say(Some(from), to, true), at, say, aloud)
     }
 
     /// Tells Joel what was said on `thread` from `from`, in seconds, until
     /// it was let go, went unread, with its link, so he reads it himself,
     /// and whether it's written: one that isn't is owed still, so nothing
-    /// is let go that he wasn't told of.
-    pub(super) fn thread(&self, thread: &Thread, from: u64) -> bool {
+    /// is let go that he wasn't told of. The journal says it couldn't be
+    /// written only when `aloud`.
+    pub(super) fn thread(&self, thread: &Thread, from: u64, aloud: bool) -> bool {
         let at = now();
         let say =
             |from: Option<u64>, to: u64, whole: bool| self.thread_row(thread, from, to, at, whole);
-        self.keep(say(Some(from.saturating_mul(1000)), at, true), at, say)
+        self.keep(
+            say(Some(from.saturating_mul(1000)), at, true),
+            at,
+            say,
+            aloud,
+        )
     }
 
     /// The row saying what `login`'s search never read, from `from` to
@@ -138,15 +145,26 @@ impl Left {
     }
 
     /// Keeps `row`, raised `at`, said with the rows it meets as `say` makes
-    /// them, says in the journal what Joel reads, or why he can't, and
-    /// whether it's written.
-    fn keep(&self, row: Value, at: u64, say: impl FnOnce(Option<u64>, u64, bool) -> Value) -> bool {
+    /// them, says in the journal what Joel reads, and whether it's written.
+    /// Why it couldn't be is said only when `aloud`, as a row is tried
+    /// again each round while it can't be: a thread's is said on the tries
+    /// its wait chose (owed.rs), and a span's on the first try of the
+    /// stretch it's held in (own.rs), so a broken rows file says so once a
+    /// stretch, not once a round.
+    fn keep(
+        &self,
+        row: Value,
+        at: u64,
+        say: impl FnOnce(Option<u64>, u64, bool) -> Value,
+        aloud: bool,
+    ) -> bool {
         let why = row["why"].as_str().unwrap_or_default().to_owned();
         match missed::keep(&self.file, &self.prefix, row, at, say) {
             Ok(written) => {
                 eprintln!("<5>wrote Joel's row in {}: {written}", self.file.display());
                 true
             }
+            Err(_) if !aloud => false,
             Err(error) => {
                 eprintln!(
                     "<3>couldn't write Joel's row in {}: {why}: {error}",
@@ -179,7 +197,7 @@ fn fnv(key: &str) -> u64 {
 
 /// GitHub's rows in shadow, in a folder of `case`'s own in this test run,
 /// removed once they're dropped, as cases run at once. A file written
-/// where the folder would be keeps any row from being written.
+/// where the rows' folder would be keeps any row from being written.
 #[cfg(test)]
 pub(super) struct Rows {
     pub(super) home: PathBuf,
@@ -188,18 +206,35 @@ pub(super) struct Rows {
 
 #[cfg(test)]
 impl Rows {
+    /// Its folder is made here, and one already there fails the case, as
+    /// its name can be guessed: a link someone left there would have the
+    /// case write through it.
     pub(super) fn new(case: &str) -> Self {
         let home =
             std::env::temp_dir().join(format!("pineapple-left-{}-{case}", std::process::id()));
+        std::fs::create_dir(&home).unwrap_or_else(|error| {
+            panic!("couldn't make {} the case's own: {error}", home.display())
+        });
         let left = Left::new("github", "GitHub", "https://api.github.com", true, &home);
         Self { home, left }
+    }
+
+    /// Keeps any row from being written, by a file where its folder would be.
+    pub(super) fn break_home(&self) {
+        let folder = self.home.join("pineapple");
+        std::fs::write(folder, "").expect("a file where the rows' folder would be");
+    }
+
+    /// Lets rows be written again.
+    pub(super) fn free_home(&self) {
+        std::fs::remove_file(self.home.join("pineapple")).expect("the rows' folder freed");
     }
 }
 
 #[cfg(test)]
 impl Drop for Rows {
     fn drop(&mut self) {
-        drop(std::fs::remove_dir_all(&self.home).or_else(|_| std::fs::remove_file(&self.home)));
+        drop(std::fs::remove_dir_all(&self.home));
     }
 }
 
