@@ -91,28 +91,40 @@ WIDE_DESK = (1920, 1080)
 # Each of the head's parts, by its id, laid out with the words index.html opens with, with the
 # words drawn live, and with each of `forms`: their heights in pixels and the part's line
 # height. Each is put in for a moment and the live words put back, so all are laid out in the
-# same box, and only once the webfonts are in, so no fallback face is measured. It asks for the
-# page once more and makes each part's nodes again from its live markup, losing any focus or
-# listener they held, so a test measures after it counts requests or acts on the head.
+# same box, and only once the webfonts each of them uses are in, so no fallback face is
+# measured. It asks for the page once more, saying so if that fails, and makes each part's
+# nodes again from its live markup, losing any focus or listener they held, so a test measures
+# after it counts requests or acts on the head.
 HEAD_HEIGHTS = """async ([ids, forms]) => {
-  await document.fonts.ready;
-  const opening = new DOMParser().parseFromString(
-    await (await fetch(location.href)).text(), "text/html");
-  return Object.fromEntries(ids.map((id) => {
+  const asked = await fetch(location.href);
+  if (!asked.ok) {
+    throw new Error(`asking for the page again to read its opening got ${asked.status}`);
+  }
+  const opening = new DOMParser().parseFromString(await asked.text(), "text/html");
+  const said = {};
+  for (const id of ids) {
     const part = document.getElementById(id);
     const live = part.innerHTML;
-    const tall = (words) => {
+    const tall = async (words) => {
       part.innerHTML = words;
+      // Laid out first, since a face is only asked for once layout needs it.
+      part.getBoundingClientRect();
+      await document.fonts.ready;
       return Math.round(part.getBoundingClientRect().height);
     };
-    const said = {
-      opening: tall(opening.getElementById(id).innerHTML),
-      forms: (forms[id] ?? []).map(tall),
-      live: tall(live),
+    const opened = await tall(opening.getElementById(id).innerHTML);
+    const drawn = [];
+    for (const words of forms[id] ?? []) {
+      drawn.push(await tall(words));
+    }
+    said[id] = {
+      opening: opened,
+      forms: drawn,
+      live: await tall(live),
       line: parseFloat(getComputedStyle(part).lineHeight),
     };
-    return [id, said];
-  }));
+  }
+  return said;
 }"""
 
 type Served = tuple[str, subprocess.Popen[bytes]]
