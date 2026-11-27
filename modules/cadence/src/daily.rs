@@ -53,7 +53,7 @@ pub fn run(folder: &Path, state_home: &Path, told: &Told, now: i64) -> io::Resul
     let judged = judge::judge(&today, &before);
     let kept_at = folder.join("findings.jsonl");
     let _held = findings::lock(&kept_at)?;
-    let mut ledger = findings::read(&kept_at);
+    let mut ledger = findings::read(&kept_at)?;
     // An owner with no session to answer leaves its findings with the
     // watcher, and the orchestrator hears which flags to change.
     let boot = fs::read_to_string("/proc/sys/kernel/random/boot_id")
