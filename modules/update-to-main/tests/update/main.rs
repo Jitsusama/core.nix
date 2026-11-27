@@ -4344,6 +4344,100 @@ fn a_held_commit_planted_in_main_s_copy_still_fetches_the_stale_input() {
     );
 }
 
+/// Makes a branch, side, off mycelium's main with two signed commits, and
+/// gives them oldest first, with main checked out again, so a copy that
+/// fetches mycelium's main never has them.
+fn mycelium_aside(world: &World) -> (String, String) {
+    let mycelium = world.root.join("mycelium");
+    git(&mycelium, &["checkout", "--quiet", "-b", "side"]);
+    let first = world.commit_in("mycelium", "aside", true);
+    let second = world.commit_in("mycelium", "pinned aside", true);
+    git(&mycelium, &["checkout", "--quiet", "main"]);
+    (first, second)
+}
+
+/// Commits a signed main whose lock pins core's mycelium at `pin`.
+fn main_pinning_mycelium(world: &World, pin: &str) -> String {
+    let lock = pinning_nested(&"c".repeat(40), pin);
+    fs::write(world.origin.join("flake.lock"), lock).unwrap();
+    git(&world.origin, &["add", "flake.lock"]);
+    world.signed("one")
+}
+
+/// A lock may pin an input at a commit off its main, as one taken from a
+/// branch is, which fetching main never brings. The copy fetches that
+/// commit by its id, so a hold the input doesn't build stops no update,
+/// where it would otherwise stop every one while the hold stood.
+#[test]
+fn a_lock_pinning_a_commit_off_its_main_is_fetched_by_sha_to_judge_a_hold() {
+    let world = asking_nested(World::new());
+    world.commit_in("mycelium", "on main", true);
+    let (_, aside) = mycelium_aside(&world);
+    let one = main_pinning_mycelium(&world, &aside);
+    world.system(&one);
+    let elsewhere = "e".repeat(40);
+    held::ask(&world.config, &format!("hold {elsewhere}"), Some(1000));
+    assert_eq!(
+        world.update().1,
+        done(&one),
+        "a hold of a commit nothing builds stopped main, its input pinned off its main"
+    );
+}
+
+/// A commit a lock pins off its input's main is fetched with its history,
+/// so a hold of a commit before it, on that branch alone, stops main as
+/// held rather than as one that couldn't be told.
+#[test]
+fn a_hold_on_what_a_pin_off_its_main_builds_stops_main_as_held() {
+    let world = asking_nested(World::new());
+    world.commit_in("mycelium", "on main", true);
+    let (before, aside) = mycelium_aside(&world);
+    let one = main_pinning_mycelium(&world, &aside);
+    world.system(&one);
+    held::ask(&world.config, &format!("hold {before}"), Some(1000));
+    let Line::Refused { why, .. } = world.update().1 else {
+        panic!("a hold of a commit a pin off mycelium's main builds let main through")
+    };
+    let said = format!(
+        "{} is held, and main at {} holds it",
+        &before[..12],
+        &one[..12]
+    );
+    assert!(
+        why.starts_with(&said),
+        "a hold of a commit a pin off mycelium's main builds wasn't said held: {why}"
+    );
+}
+
+/// A pin no fetch can bring, as one whose commit has left its repository,
+/// leaves a hold untold, saying why the fetch failed: a hold is never let
+/// through on a fetch that failed.
+#[test]
+fn a_pin_its_repository_no_longer_has_leaves_a_hold_untold() {
+    let world = asking_nested(World::new());
+    world.commit_in("mycelium", "on main", true);
+    let (_, gone) = mycelium_aside(&world);
+    let mycelium = world.root.join("mycelium");
+    git(&mycelium, &["branch", "--quiet", "-D", "side"]);
+    git(&mycelium, &["reflog", "expire", "--expire=now", "--all"]);
+    git(&mycelium, &["gc", "--quiet", "--prune=now"]);
+    let one = main_pinning_mycelium(&world, &gone);
+    world.system(&one);
+    let elsewhere = "e".repeat(40);
+    held::ask(&world.config, &format!("hold {elsewhere}"), Some(1000));
+    let Line::Refused { why, .. } = world.update().1 else {
+        panic!("a hold was let through beside a pin no fetch could bring")
+    };
+    assert!(
+        why.contains("couldn't be told"),
+        "a hold beside a pin no fetch could bring was refused for another reason: {why}"
+    );
+    assert!(
+        why.contains(&format!("fetching {} for", &gone[..12])),
+        "a hold left untold didn't say why the fetch of its pin failed: {why}"
+    );
+}
+
 #[test]
 fn an_input_asked_for_is_held_to_the_lock_of_the_core_built_with_it() {
     let world = asking_nested(following());
