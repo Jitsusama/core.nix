@@ -367,7 +367,7 @@ impl Guard {
         if snapshot_spent {
             self.snapshot_spends = None;
             self.upkeep_due();
-            self.spent_due = true;
+            self.memory.spent_due = true;
         }
         // A builds disk passing its budget changes no holder, and on a
         // healthy root nothing else would bring upkeep for six hours.
@@ -390,7 +390,7 @@ impl Guard {
         });
         if ended {
             self.upkeep_due();
-            self.spent_due |= spent;
+            self.memory.spent_due |= spent;
         }
         self.memory.owners = Some(seen);
     }

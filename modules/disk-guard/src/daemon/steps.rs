@@ -115,7 +115,6 @@ impl Guard {
             owners_at: None,
             produced: Vec::new(),
             snapshot_spends: None,
-            spent_due: false,
             snapshots_known: None,
             budget_looked: None,
             root_left: false,

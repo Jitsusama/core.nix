@@ -1872,6 +1872,38 @@ fn garbage_goes_once_the_process_holding_it_ends() {
     step_later_until(&store, &mut guard, 10.0, &BUSY, |_, _| !built.exists());
 }
 
+#[test]
+fn garbage_alone_leaves_the_next_upkeep_due_when_it_was() {
+    // Garbage alone judges no build, so it isn't upkeep: one counted as
+    // upkeep put off a survey's spaced upkeep by six hours more.
+    let store = Store::new();
+    let built = store.dead("aaa-built", 2.0 * 3600.0, 4096);
+    let holding = store.root.join("temproots/4242");
+    fs::write(&holding, format!("{}\0", built.display())).unwrap();
+    let mut guard = store.guard(store.config_as_given("0%", "0%"));
+    listed_later(&store, &mut guard, 0.0, &CALM);
+    step_later(&mut guard, 1.0, &CALM);
+    let upkept = || {
+        let path = store.root.join("state/memory.json");
+        let memory: disk_guard::state::Memory = disk_guard::state::load(&path).unwrap().unwrap();
+        memory.upkept
+    };
+    let before = upkept();
+    assert!(before.is_some(), "the first start did no upkeep");
+    fs::remove_file(&holding).unwrap();
+    step_later_until(&store, &mut guard, 10.0, &BUSY, |_, _| !built.exists());
+    assert!(
+        store.passes().iter().any(|pass| pass["why"] == "garbage"),
+        "no pass collected the garbage alone: {:?}",
+        store.passes()
+    );
+    assert_eq!(
+        upkept(),
+        before,
+        "a pass of garbage alone counted as the disk's upkeep"
+    );
+}
+
 // From 21:59 to 22:07 on 16 November a machine's guard ran 16 passes on a
 // filling disk, one each time a process holding the store ended, each
 // deleting the same 14,448 bytes and freeing nothing, for 9 to 49 s of

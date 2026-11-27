@@ -277,10 +277,6 @@ pub struct Guard {
     /// The pinned snapshots the last look at the owners found, so one cut
     /// since, which no survey has offered yet, times its own hour.
     snapshots_known: Option<Vec<PathBuf>>,
-    /// Whether the upkeep due now was made due by builds whose owner ended
-    /// or went an hour unused, which go within a minute, past a survey's
-    /// spacing, since nothing an agent leaves should outlive it for long.
-    spent_due: bool,
     /// When, in wall seconds, a cargo source's disk past its budget last
     /// made upkeep due, so one still past it after the pass, its builds
     /// all recent, asks again only an hour on.
@@ -411,8 +407,9 @@ enum Why {
     /// Nix's garbage, once something let some go: alone, with no survey,
     /// unless another disk was due in the same step, when the survey's
     /// offers on the store's disk come too, and the line says how long
-    /// that survey took. It runs as the routine, so it puts off every
-    /// disk's next six-hourly upkeep.
+    /// that survey took. With a survey it runs as the routine, putting off
+    /// every disk's next six-hourly upkeep; alone it judges no build, so
+    /// the upkeep stays due when it was.
     Garbage,
     /// Producers whose watched files said something new.
     Producers,
@@ -500,6 +497,7 @@ mod tests {
     use super::nix_garbage::min_free_again;
     use super::passes::{pressed, survey_spacing};
     use super::surveying::upkept_after;
+    use super::{Band, Decision, Goal, Walked, Why, aim};
 
     #[test]
     fn a_survey_shorter_than_five_seconds_spaces_nothing() {
@@ -514,7 +512,6 @@ mod tests {
              times its walk up to three hours"
         );
     }
-    use super::{Band, Decision, Goal, Walked, Why, aim};
 
     #[test]
     fn any_upkeep_of_a_step_that_kept_unvouched_brings_the_retry_once() {

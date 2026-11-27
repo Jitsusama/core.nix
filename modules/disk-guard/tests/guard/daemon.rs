@@ -2704,6 +2704,57 @@ fn a_build_whose_holder_ended_goes_within_a_minute_however_lately_a_survey_walke
 }
 
 #[test]
+fn a_guard_restarted_before_an_ended_owner_s_builds_were_judged_still_takes_them() {
+    // A stop cuts a survey short and saves the guard's memory, and the
+    // guard after it, finding no owner newly ended, would otherwise wait
+    // out the spacing with the builds still there.
+    for spent_due in [true, false] {
+        let home = Home::new();
+        let built = held_tree(&home, 400);
+        fs::remove_dir_all(home.root.join("proc/400")).unwrap();
+        let memory = disk_guard::state::Memory {
+            surveyed: Some((wall(), 3600.0)),
+            spent_due,
+            ..Default::default()
+        };
+        disk_guard::state::save(&home.root.join("state/memory.json"), &memory).unwrap();
+        let mut guard = home.guard(owned_trees(&home));
+        guard.step(&tick(), &CALM).unwrap();
+        assert_eq!(
+            built.exists(),
+            !spent_due,
+            "with an ended owner's builds kept as due: {spent_due}"
+        );
+    }
+}
+
+#[test]
+fn a_filling_disk_spaces_its_surveys_again_once_one_judged_what_an_owner_left() {
+    // A disk past healthy never gets upkeep, so builds an owner left must
+    // stop going past the spacing once a pass has judged them, or every
+    // step would walk every source.
+    let home = Home::new();
+    fs::create_dir_all(home.root.join("scratch")).unwrap();
+    let memory = disk_guard::state::Memory {
+        surveyed: Some((wall(), 3600.0)),
+        spent_due: true,
+        ..Default::default()
+    };
+    disk_guard::state::save(&home.root.join("state/memory.json"), &memory).unwrap();
+    let mut guard = home.guard(home.config("100%", "100%"));
+    guard.step(&tick(), &CALM).unwrap();
+    assert!(
+        home.journal().iter().any(|line| line["event"] == "pass"),
+        "builds an owner left waited out the spacing"
+    );
+    assert_eq!(
+        home.memory()["spent_due"],
+        false,
+        "a filling disk's pass after a whole survey left what owners left due"
+    );
+}
+
+#[test]
 fn a_new_boot_makes_upkeep_due_and_a_restart_does_not() {
     // A boot ends every program, so what they left in temp is spent; a
     // guard merely restarting in the same boot ends nothing.

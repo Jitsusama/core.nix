@@ -235,7 +235,7 @@ impl Guard {
         }
         // Builds an owner left go within a minute, however soon after the
         // last survey; only upkeep that's merely due again waits.
-        if self.spent_due {
+        if self.memory.spent_due {
             return;
         }
         let pressing = due.iter().any(|&(device, decision, _)| {
@@ -559,7 +559,8 @@ impl Guard {
         self.refused.extend(reclaim.inner.take_refused());
         let deletes = reclaim.inner.deletes();
         self.rest_deletes(tick, deletes);
-        self.learn_from_pass(tick, (goal, why), &report, scan, started);
+        let whole = surveyed.is_some();
+        self.learn_from_pass(tick, (goal, why, whole), &report, scan, started);
         self.note_actions(here, &report.actions, tick.wall);
         let end = ending(&report.end);
         let seconds = started.elapsed().as_secs_f64();

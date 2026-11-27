@@ -420,25 +420,42 @@ impl Guard {
     }
 
     /// Learns what a pass that `started` teaches: how long a pass takes,
-    /// from a reach that reclaimed, or when upkeep was last done, from an
-    /// upkeep pass that got through what was due.
+    /// from a reach that reclaimed; when upkeep was last done, from an
+    /// upkeep pass after a survey that got through what was due; and that
+    /// what owners left has been judged, from any pass after a survey.
     pub(super) fn learn_from_pass(
         &mut self,
         tick: &Tick,
-        (goal, why): (Goal, Why),
+        (goal, why, surveyed): (Goal, Why, bool),
         report: &Report,
         scan: &Scan,
         started: Instant,
     ) {
+        // What owners left leads every plan, so a pass after a whole
+        // survey has judged it unless a stop cut it short, or it reached
+        // its band first, when the upkeep it brings judges the rest. Only
+        // then does the next survey wait out the spacing: a disk past
+        // healthy never gets upkeep, and would otherwise walk every step.
+        let judged_spent = surveyed
+            && !matches!(report.end, End::Stopped)
+            && !(goal == Goal::Reach && matches!(report.end, End::Reached));
+        if judged_spent {
+            self.memory.spent_due = false;
+        }
         if teaches_pass_length(goal, why, report) {
             let seconds = started.elapsed().as_secs_f64();
             self.memory.pass_seconds = Some(match self.memory.pass_seconds {
                 Some(before) => before + PASS_WEIGHT * (seconds - before),
                 None => seconds,
             });
-        } else if goal == Goal::Upkeep && !matches!(report.end, End::Unfinished | End::Stopped) {
+        } else if goal == Goal::Upkeep
+            && surveyed
+            && !matches!(report.end, End::Unfinished | End::Stopped)
+        {
             // Only a pass that got through what was due counts as upkeep:
             // one cut short by its length or a stop leaves the rest due.
+            // Garbage alone judges no build, so the upkeep a survey's
+            // spacing put off stays due rather than waiting six hours.
             let retry = tick.wall - crate::decide::UPKEEP_EVERY + UNHEARD_AGAIN;
             // Every disk's upkeep in a step comes again if any of them kept
             // what only the unheard system daemon could vouch for, each
@@ -450,7 +467,6 @@ impl Guard {
                 _ => self.memory.upkeep_unheard,
             };
             self.upkeep_judged = Some((tick.wall, before));
-            self.spent_due = false;
             let kept = self.kept_unvouched(scan, report);
             if let Some((upkept, unheard)) =
                 upkept_after(self.memory.upkept, (tick.wall, retry), before, kept)

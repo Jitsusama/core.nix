@@ -313,8 +313,9 @@ or launchd, and [`home.nix`][2] the account's.
   on a healthy disk reads `filling`. A survey's seconds take in the system
   daemon's answer, up to ten seconds a try, and the git and
   finished-predicate commands as well as the walk, so a jump of about ten
-  seconds is likelier a wait than a slow walk. A garbage pass counts as
-  the routine, so it puts off every disk's next six-hourly `upkeep`. The
+  seconds is likelier a wait than a slow walk. A garbage pass after a
+  survey counts as the routine, so it puts off every disk's next
+  six-hourly `upkeep`; one alone judges no build and puts off none. The
   table shows what set a pass going; `--json` gives the counts and its
   survey's seconds. `upkeep` covers every trigger of the routine, among
   them its own retries: ten minutes after one that kept what only an

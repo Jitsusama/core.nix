@@ -68,6 +68,12 @@ pub struct Memory {
     /// find the nothing its last pass had found.
     #[serde(default)]
     pub emptied: std::collections::BTreeMap<PathBuf, f64>,
+    /// Whether builds whose owner ended, or that went an hour unused, wait
+    /// to be judged, which goes past a survey's spacing. Kept, so a guard
+    /// restarted before a pass judged them still takes them within a
+    /// minute rather than after the spacing's hours.
+    #[serde(default)]
+    pub spent_due: bool,
     /// What a newer guard wrote that this one doesn't know.
     #[serde(flatten)]
     pub rest: serde_json::Map<String, serde_json::Value>,
@@ -90,6 +96,7 @@ impl Default for Memory {
             spared: Vec::new(),
             owners: None,
             emptied: std::collections::BTreeMap::new(),
+            spent_due: false,
             rest: serde_json::Map::new(),
         }
     }
