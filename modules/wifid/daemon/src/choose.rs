@@ -264,6 +264,20 @@ pub enum Choice {
     LookQuieter,
 }
 
+/// What a chooser made of a move it asked for that was refused before it
+/// began (`Chooser::refused`), for the journal to say as what happened.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Refusal {
+    /// The give-way or trial asked then is forgotten, as though never
+    /// asked.
+    Undone,
+    /// It was the way back from a trial, which the card was sent on.
+    WayBack,
+    /// It was of a move since replaced, or one found where it went, so
+    /// nothing changes.
+    Stale,
+}
+
 /// What's been chosen lately, to keep the card from hunting.
 #[derive(Default)]
 pub struct Chooser {
@@ -1150,9 +1164,10 @@ impl Chooser {
     /// keeps the call off `to` a `fading::BETWEEN`, so the next goes to
     /// the next best. A trial still holds the card from choosing for a
     /// `SPAN`, as one judged back where it began does. A later move, to
-    /// `to` or not, is left alone, as is one found there; says whether
-    /// anything was undone.
-    pub fn refused(&mut self, now: Instant, to: &str, asked: Instant) -> bool {
+    /// `to` or not, is left alone, as is one found there. Says what it
+    /// made of the refusal, a trial's way back apart from the rest, as
+    /// it was asked too.
+    pub fn refused(&mut self, now: Instant, to: &str, asked: Instant) -> Refusal {
         if self
             .gave
             .as_ref()
@@ -1163,7 +1178,7 @@ impl Chooser {
             self.left.remove(&gave.from);
             self.refusal_holds = Some(now + fading::WINDOW);
             self.refused_to = Some((gave.to, now));
-            return true;
+            return Refusal::Undone;
         }
         if self
             .trial
@@ -1173,9 +1188,17 @@ impl Chooser {
         {
             let spanned = now.checked_sub(SETTLE.saturating_sub(SPAN));
             self.moved = unmade(now, trial.moved_before, spanned);
-            return true;
+            return Refusal::Undone;
         }
-        false
+        let back = self
+            .back_to
+            .as_ref()
+            .is_some_and(|(back, at)| *at == asked && back == to);
+        if back {
+            Refusal::WayBack
+        } else {
+            Refusal::Stale
+        }
     }
 
     /// Takes in that the card gave way during a call from one access point
@@ -3433,14 +3456,45 @@ pub(crate) mod tests {
         let later = gave + fading::BETWEEN;
         chooser.followed(later, DESK);
 
-        assert!(
-            !undone,
+        assert_eq!(
+            undone,
+            Refusal::Stale,
             "the trial's refusal undid the give-way asked after it"
         );
         assert_eq!(
             chooser.unreached(),
             Some((HALL.into(), SPURNED)),
             "the give-way wasn't followed as its own move once the trial's refusal came"
+        );
+    }
+
+    #[test]
+    fn a_refused_way_back_is_told_from_a_refusal_of_nothing_still_open() {
+        let mut chooser = after_a_bad_minute(DESK);
+        let start = Instant::now();
+        let near = [hall(-53, Some(20), None)];
+        let badly = carried(119, 0.5);
+        let tried = chooser.choose(start, (DESK, &badly, -50, CH52), &near, false);
+        assert_eq!(tried, Choice::Try(HALL.into()), "the hall is tried");
+        let worse = carried(200, 1.0);
+        let minute = start + Duration::from_secs(60);
+        chooser.choose(minute, (HALL, &worse, -53, CH52), &[], false);
+        let back = start + TRIAL;
+        let judged = chooser.choose(back, (HALL, &worse, -53, CH52), &[], false);
+        assert_eq!(judged, Choice::Back(DESK.into()), "worse once tried");
+
+        let earlier = chooser.refused(back, DESK, start);
+        let way_back = chooser.refused(back + Duration::from_secs(1), DESK, back);
+
+        assert_eq!(
+            earlier,
+            Refusal::Stale,
+            "a refusal of a move asked before the way back was said to be the way back"
+        );
+        assert_eq!(
+            way_back,
+            Refusal::WayBack,
+            "a refused way back was said as a refusal of nothing still open"
         );
     }
 
@@ -3462,8 +3516,9 @@ pub(crate) mod tests {
         let early = late.unreached();
         late.followed(answered + fading::BETWEEN, DESK);
 
-        assert!(
+        assert_eq!(
             undone,
+            Refusal::Undone,
             "a refusal past BETWEEN found its give-way judged already"
         );
         assert!(
