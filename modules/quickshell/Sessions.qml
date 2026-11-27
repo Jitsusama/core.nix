@@ -687,7 +687,7 @@ Singleton {
                 + "answer for it may yet draw it");
             goingTo = { app: named, at: Date.now(), from: Niri.focused };
             stillSaid = Object.assign({}, stillSaid,
-                { [named]: Object.assign({}, stillSaid[named], { said }) });
+                { [named]: Object.assign({}, stillSaid[named], { said, at: Date.now() }) });
             unhosted(said, said?.startedInHost ? "startedStillComing" : "stillComing");
             return true;
         }
