@@ -54,6 +54,10 @@ pub struct Presence {
     /// What it waits to be answered on, when it asked; null otherwise.
     #[serde(default)]
     pub wanting: serde_json::Value,
+    /// The machine it runs on, when the mesh mirrored it from another: its
+    /// pid and boot are that machine's, so only its state says it's there.
+    #[serde(default)]
+    pub machine: Option<String>,
 }
 
 /// The pi hosts' rosters, by host: the sessions each holds, or none when
@@ -647,6 +651,7 @@ mod tests {
             hosted: None,
             doing: serde_json::Value::Null,
             wanting: serde_json::Value::Null,
+            machine: None,
         };
         assert!(alive(Some(&parked), |_| false));
         let gone = Presence {

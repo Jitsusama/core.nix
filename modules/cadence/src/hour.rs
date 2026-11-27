@@ -206,9 +206,14 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
     // asks each again, and the ledger is kept as the owners asked left it
     // before the failure is said, so theirs aren't asked again as
     // questions of nobody's.
+    // Each goes to a session the mesh reaches, a gone owner's passed on.
+    let presences = mesh.all();
+    let reached = reaching(&mesh, &presences, now);
     let asks = put::asks(told);
     for (n, (owner, text)) in asks.iter().enumerate() {
-        let ask = message(owner, "question", text.clone());
+        let over = orchestrator_of(&presences, owner);
+        let (whom, text) = put::reach(owner, text, &reached, over.as_deref(), to);
+        let ask = message(&whom, "question", text);
         if let Err(err) = mesh.send(&ask) {
             let unsent: Vec<&str> = asks[n..].iter().map(|(o, _)| o.as_str()).collect();
             put::unfile(&mut ledger, &before, &unsent);
@@ -218,7 +223,9 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
         put::mark_asked(&mut ledger, owner, now, &ask.id);
     }
     let routes = fs::read_to_string(state_home.join("pain-points/routes.json")).ok();
-    let keeper = measures::keeper(routes.as_deref());
+    // A keeper gone leaves the card to the orchestrator alone, rather than
+    // a question waiting on no one.
+    let keeper = measures::keeper(routes.as_deref()).filter(|k| reached(k.as_str()));
     for (whom, intent) in card_to(to, keeper.as_deref()) {
         mesh.send(&message(whom, intent, card.clone()))?;
     }
@@ -677,6 +684,34 @@ fn measure(key: &str, class: Class, now: f64, target: Option<f64>) -> Measure {
         owner: "OWNER".to_owned(),
         behind: Vec::new(),
     }
+}
+
+/// Whether the mesh reaches the session going by an address, as
+/// `put::reaches` reads it from `presences`, one of this machine's by
+/// `reachable` in this boot.
+fn reaching<'a>(mesh: &Mesh, presences: &'a [Presence], now: i64) -> impl Fn(&str) -> bool + 'a {
+    let boot = fs::read_to_string("/proc/sys/kernel/random/boot_id")
+        .map(|b| b.trim().to_owned())
+        .unwrap_or_default();
+    let rosters = mesh.rostered(now);
+    let here = terminal_kit::environment::machine();
+    move |address: &str| {
+        put::reaches(address, presences, &here, |p| {
+            reachable(p, &boot, &rosters, |pid| {
+                Path::new(&format!("/proc/{pid}")).exists()
+            })
+        })
+    }
+}
+
+/// The cell orchestrating the session going by `address`, by its newest
+/// presence, when it names one.
+fn orchestrator_of(presences: &[Presence], address: &str) -> Option<String> {
+    presences
+        .iter()
+        .filter(|p| p.addresses.iter().any(|a| a == address))
+        .max_by_key(|p| p.at.to_string())
+        .and_then(|p| p.orchestrated_by.clone())
 }
 
 /// Whether the session `presence` describes can still be told of a merge's

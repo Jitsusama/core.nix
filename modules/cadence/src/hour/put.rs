@@ -9,6 +9,7 @@ use std::collections::BTreeMap;
 
 use crate::ANSWERS_GO;
 use crate::findings::{ASKED_KEPT, Entry};
+use crate::mesh::Presence;
 
 /// How each of cadence's asks opens, said once at the top of a question
 /// holding several.
@@ -56,6 +57,57 @@ pub fn asks(told: Vec<(String, String)>) -> Vec<(String, String)> {
             (owner, question)
         })
         .collect()
+}
+
+/// The states a session mirrored from another machine says it's there in.
+const THERE: [&str; 3] = ["busy", "listening", "parked"];
+
+/// Whether the mesh can reach the session going by `address`, by its
+/// newest presence: one mirrored from another machine than `here` by
+/// the state it says, since its pid and boot are that machine's, and one
+/// of this machine's as `local` says. An address with no presence is one
+/// no session goes by now.
+pub fn reaches(
+    address: &str,
+    presences: &[Presence],
+    here: &str,
+    local: impl Fn(&Presence) -> bool,
+) -> bool {
+    let newest = presences
+        .iter()
+        .filter(|p| p.addresses.iter().any(|a| a == address))
+        .max_by_key(|p| p.at.to_string());
+    newest.is_some_and(|p| match p.machine.as_deref() {
+        Some(machine) if machine != here => THERE.contains(&p.state.as_str()),
+        _ => local(p),
+    })
+}
+
+/// Whom the question for `owner` goes to, and what it says: the owner
+/// while the mesh reaches it; else the cell orchestrating it, while that
+/// is reached; else `fallback`, the hour's orchestrator. A question to a
+/// session that has ended sits unanswered, counted stuck each hour, so it
+/// goes on to one that can answer it or pass it on, saying whose it is;
+/// the lines it asks stay the owner's. FZ9MFJ found the hour's questions
+/// to a keeper gone waiting on it on 26 November.
+pub fn reach(
+    owner: &str,
+    text: &str,
+    reached: impl Fn(&str) -> bool,
+    orchestrator: Option<&str>,
+    fallback: &str,
+) -> (String, String) {
+    if reached(owner) {
+        return (owner.to_owned(), text.to_owned());
+    }
+    let to = orchestrator
+        .filter(|&o| o != owner && reached(o))
+        .unwrap_or(fallback);
+    let passed = format!(
+        "For {owner}, whose session the mesh can't reach, so yours to answer or pass on: \
+         {text}"
+    );
+    (to.to_owned(), passed)
 }
 
 /// Marks each drag filed for `owner` by the hour run at `now`, in seconds,
@@ -189,6 +241,62 @@ mod tests {
             "a line not filed for that owner this hour or not a drag took the id, a red \
              line or one come back didn't, or one kept more than its latest four"
         );
+    }
+
+    fn presence(address: &str, state: &str, machine: Option<&str>) -> Presence {
+        serde_json::from_value(serde_json::json!({
+            "addresses": [address], "state": state, "machine": machine,
+            "at": "2026-11-27T05:00:00Z"
+        }))
+        .expect("a presence parses")
+    }
+
+    #[test]
+    fn a_session_elsewhere_is_reached_by_its_state_and_one_here_by_its_process() {
+        let presences = [
+            presence("AWAY01", "busy", Some("laptop")),
+            presence("AWAY02", "parked", Some("laptop")),
+            presence("AWAY03", "ended", Some("laptop")),
+            presence("HERE01", "busy", Some("desktop")),
+            presence("HERE02", "busy", None),
+        ];
+        let reached: Vec<bool> = ["AWAY01", "AWAY02", "AWAY03", "HERE01", "HERE02", "NOBODY"]
+            .iter()
+            .map(|a| reaches(a, &presences, "desktop", |p| p.addresses == ["HERE02"]))
+            .collect();
+        assert_eq!(
+            reached,
+            [true, true, false, false, true, false],
+            "a mirrored session was judged by this machine's processes, one here by its \
+             state alone, or an address no session goes by was reached"
+        );
+    }
+
+    #[test]
+    fn a_question_for_a_cell_gone_goes_to_its_orchestrator_or_else_the_hour_s() {
+        let live = |a: &str| ["OWNER1", "ORCH01"].contains(&a);
+        assert_eq!(
+            reach("OWNER1", "line", live, Some("ORCH01"), "WCJQSG"),
+            ("OWNER1".to_owned(), "line".to_owned()),
+            "a question for a live owner went elsewhere or was reworded"
+        );
+        let (to, text) = reach("GONE01", "line", live, Some("ORCH01"), "WCJQSG");
+        assert_eq!(
+            to, "ORCH01",
+            "a gone owner's question didn't go to its orchestrator"
+        );
+        assert!(
+            text.starts_with("For GONE01,") && text.ends_with("line"),
+            "a question passed on didn't say whose it is: {text}"
+        );
+        for orchestrator in [Some("GONE02"), Some("GONE01"), None] {
+            assert_eq!(
+                reach("GONE01", "line", live, orchestrator, "WCJQSG").0,
+                "WCJQSG",
+                "with its orchestrator {orchestrator:?} unreached, a gone owner's question \
+                 didn't go to the hour's orchestrator"
+            );
+        }
     }
 
     #[test]
