@@ -529,10 +529,28 @@ def test_the_day_turning_makes_todays_growth_yesterdays(
         context.close()
 
 
+def core_drawn_whole(page: Page) -> None:
+    """Wait for core's row to say what every kind tells of it, so a late record can't grow it.
+
+    Code paces its drawing, and a feed may stand live before every kind's records are drawn, so
+    a row may still gain a line after the page says it's live: once, under load, core's grew
+    from 44 to 67 pixels between the two measures.
+    """
+    core = row(page, "github:owl/core")
+    for words in ["change", "upkeep due", "of memory"]:
+        expect(core.locator(".meta"), f"core's row never said {words}").to_contain_text(
+            words, timeout=PACE_MS
+        )
+    expect(core.locator(".cells"), "core's row never counted its cell").to_contain_text(
+        "cell", timeout=PACE_MS
+    )
+
+
 def test_stepping_the_cursor_moves_no_row(code_page: Page) -> None:
     says_it_stands(code_page, "live")
     rows = code_page.locator("#list .row")
     expect(rows, "Code drew no rows to step through").to_have_count(2)
+    core_drawn_whole(code_page)
     rows.first.click()
     # Where each row stands and how tall it is: the cursor moving must change neither.
     boxes = (
