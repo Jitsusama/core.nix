@@ -37,6 +37,11 @@ pub struct Hour {
     /// How many were unjudged, as one whose figure couldn't be read is,
     /// so a line gone unread isn't taken for a line fixed.
     pub unjudged: usize,
+    /// How many measures there were at all, so a source that made none
+    /// this hour, as code health's file unread, isn't taken for its red
+    /// lines fixed. An hour kept before this was counted reads nought.
+    #[serde(default)]
+    pub seen: usize,
 }
 
 /// This hour's count at `now`, in seconds, of `measures`, this one left
@@ -48,6 +53,7 @@ pub fn hour(measures: &[Measure], now: i64) -> Hour {
         at: now,
         red: others().filter(|m| m.past().is_some()).count(),
         unjudged: others().filter(|m| m.target.is_none()).count(),
+        seen: others().count(),
     }
 }
 
@@ -55,8 +61,9 @@ pub fn hour(measures: &[Measure], now: i64) -> Hour {
 /// fewer red lines than the hour nearest a week back, or none where none
 /// were. With no hour kept near enough a week back it's shown unjudged
 /// until one is, and so it is while more measures go unjudged than then,
-/// since a line that couldn't be read leaves the red ones and would read
-/// as falling while nothing was looked at.
+/// or fewer are made at all, since a line that couldn't be read, or whose
+/// source made none, leaves the red ones and would read as falling while
+/// nothing was looked at.
 #[must_use]
 pub fn falling(kept: &[Hour], this: Hour) -> Measure {
     let now = this.at;
@@ -65,15 +72,16 @@ pub fn falling(kept: &[Hour], this: Hour) -> Measure {
         .filter(|h| (h.at - (now - WEEK)).abs() <= NEAR)
         .min_by_key(|h| (h.at - (now - WEEK)).abs());
     let since = kept.iter().map(|h| h.at).min();
+    let unread = |then: &Hour| this.unjudged + then.seen.saturating_sub(this.seen);
     let (target, behind) = match (then, since) {
-        (Some(then), _) if this.unjudged > then.unjudged => (
+        (Some(then), _) if unread(then) > then.unjudged => (
             None,
             vec![format!(
-                "unjudged while more measures go unjudged than a week back, at {}: {} then, \
-                 {} this hour",
+                "unjudged while more measures go unjudged or unmade than a week back, at {}: \
+                 {} then, {} this hour",
                 when(then.at),
                 then.unjudged,
-                this.unjudged
+                unread(then)
             )],
         ),
         (Some(then), _) => (
@@ -153,6 +161,7 @@ mod tests {
             at,
             red,
             unjudged: 0,
+            seen: 20,
         }
     }
 
@@ -219,11 +228,13 @@ mod tests {
             at: NOW - WEEK,
             red: 9,
             unjudged: 2,
+            seen: 20,
         };
         let unread = Hour {
             at: NOW,
             red: 3,
             unjudged: 8,
+            seen: 20,
         };
         let judged = falling(&[then], unread);
         assert!(
@@ -239,6 +250,22 @@ mod tests {
             Some(8.0),
             "as many unjudged as a week back left it unjudged"
         );
+        let unmade = Hour {
+            unjudged: 2,
+            seen: 14,
+            ..unread
+        };
+        let judged = falling(&[then], unmade);
+        assert!(
+            judged.target.is_none() && judged.behind[0].contains("2 then, 8 this hour"),
+            "red lines whose source made no measures read as falling: {judged:?}"
+        );
+        let before = Hour { seen: 0, ..then };
+        assert_eq!(
+            falling(&[before], unmade).target,
+            Some(8.0),
+            "an hour kept before measures were counted left it unjudged"
+        );
     }
 
     #[test]
@@ -248,9 +275,9 @@ mod tests {
         let measures = [past("a"), past("b"), past(KEY), unjudged];
         let this = hour(&measures, NOW);
         assert_eq!(
-            (this.red, this.unjudged),
-            (2, 1),
-            "the measure counted itself, or missed one past or unjudged"
+            (this.red, this.unjudged, this.seen),
+            (2, 1, 3),
+            "the measure counted itself, or missed one past, unjudged or made"
         );
         let old = [at(NOW - KEPT_FOR - 1, 1), at(NOW - DAY, 2), at(NOW + 60, 3)];
         assert_eq!(

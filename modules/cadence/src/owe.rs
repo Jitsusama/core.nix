@@ -158,8 +158,9 @@ pub fn owe(ledger: &mut Vec<Entry>, owed: Owed, date: &str, now: i64) {
         put_to: Vec::new(),
         back: None,
         fixed: None,
-        asked: None,
-        names: Vec::new(),
+        asked: Vec::new(),
+        names: std::collections::BTreeMap::new(),
+        red: false,
         closed: None,
     });
 }
@@ -176,9 +177,10 @@ pub fn settle(ledger: &mut [Entry], key: &str) -> bool {
 }
 
 /// Whether a line of `kind` is one of the hour's: a drag, or a red line,
-/// which is a drag that didn't lead, and either may come back as the other.
+/// which is filed as a drag marked red, so either may come back as the
+/// other.
 fn drags(kind: &str) -> bool {
-    ["drag", crate::findings::RED].contains(&kind)
+    kind == "drag"
 }
 
 /// Closes the must filed as `key` at `now`, or says the finding filed as

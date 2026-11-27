@@ -814,10 +814,10 @@ The net tests 6f8501688 (9 merges behind main), merged 28 min ago.
             |ago: i64, from: &str, tag: &str| format!("{}-{from}-1-{tag}", (NOW - ago) * 1000);
         // Cadence's hourly 25 h old counts; its hourly an hour old doesn't
         // yet; another's 25 h old is past the day the others are counted
-        // over; one saying it's cadence's that the ledger never asked gets
-        // no day, nor does an alarm of cadence's own; and one whose body
-        // claims an hourly id under another file's name isn't read, so it
-        // can't stand in for that question as an fyi.
+        // over; an alarm of cadence's own the ledger never asked gets no
+        // day; and one whose body claims cadence sent it under another's
+        // file, or claims an hourly id under another file's name, isn't
+        // read, so it can't stand in for a question of cadence's.
         let (old, new) = (
             stamp(DAY + 3600, crate::FROM, "aa"),
             stamp(3600, crate::FROM, "bb"),
@@ -836,14 +836,14 @@ The net tests 6f8501688 (9 merges behind main), merged 28 min ago.
         let read = messages::read(root.path(), NOW - MESSAGES_FOR, None);
         assert_eq!(
             read.len(),
-            5,
+            4,
             "the reader didn't keep two days, its own: {read:?}"
         );
         let asked: BTreeSet<String> = crate::findings::asked_in(&ledger_asking(&[&old, &new]));
         assert_eq!(
             unanswered(&read, NOW, &asked),
-            3,
-            "cadence's day-old question, the forged one and its alarm weren't the three unanswered"
+            2,
+            "cadence's day-old question and its alarm weren't the two unanswered"
         );
     }
 
@@ -853,7 +853,7 @@ The net tests 6f8501688 (9 merges behind main), merged 28 min ago.
             .map(|id| {
                 serde_json::json!({"key": "hour:x", "owner": "A", "first": "", "last": "",
                     "last_to": 0, "due": 0, "words": "", "axis": "", "evidence": "",
-                    "fell_when": "", "open": true, "told": null, "late": false, "asked": id})
+                    "fell_when": "", "open": true, "told": null, "late": false, "asked": [id]})
                 .to_string()
                     + "\n"
             })

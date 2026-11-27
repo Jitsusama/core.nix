@@ -26,11 +26,6 @@ use crate::{DAY, holders, write_whole};
 pub mod gone;
 pub mod hubs;
 
-/// The kind the hour files a measure past its target as when nothing but
-/// its being red asks it. Those go late as one count; which keep a late
-/// line of their own is listed once, at the hour's `owing::kind`.
-pub const RED: &str = "red";
-
 /// One finding as the ledger keeps it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Entry {
@@ -82,16 +77,24 @@ pub struct Entry {
     /// `cadence owe --done`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fixed: Option<String>,
-    /// The id of the question its owner was asked it in, kept beside the
-    /// line so its question can be found from it. Nothing reads a reply
-    /// against it yet: a line closes when its measure is back in.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub asked: Option<String>,
-    /// What the hour's line named as its owner's when last asked, each
-    /// cell, file, miss or date by the name that stays while it's red, so
-    /// fewer of the same aren't asked again within the day.
+    /// The ids of the questions its owner was asked it in, the latest
+    /// last and the last `ASKED_KEPT` kept, so each question of the two
+    /// days the mesh is read over is known as the hour's. Nothing reads a
+    /// reply against them yet: a line closes when its measure is back in.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub names: Vec<String>,
+    pub asked: Vec<String>,
+    /// What the hour's line named as its owner's, each cell, file, miss
+    /// or date by the name that stays while it's red, with when each was
+    /// last asked, so none is asked again within a day of its own ask.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub names: BTreeMap<String, i64>,
+    /// Whether the hour filed it as a red line, which nothing but its
+    /// being past its target asks: those go late as one count, and which
+    /// keep a late line of their own is listed once, at `owing::kind`. Its
+    /// kind on disk stays `drag`, so a cadence from before red lines
+    /// closes, holds and reopens it as a drag rather than keeping it open.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub red: bool,
     /// When its owner closed a drag with `cadence owe --done`, in
     /// seconds, so one its measure counts over a week isn't filed again
     /// the next hour from the cases the fix came after.
@@ -108,6 +111,11 @@ fn is_zero(count: &u32) -> bool {
     *count == 0
 }
 
+/// How many of the questions a line was asked in it keeps: a line asked
+/// at most once a day, back and gone again, is asked in at most three
+/// over the two days the mesh is read over.
+pub const ASKED_KEPT: usize = 4;
+
 /// The ids of the questions the hour asked its lines in, from the ledger
 /// as `text`, a line an entry; a line that isn't one names none. Only
 /// cadence writes them, so they tell its hourly questions from its others
@@ -116,7 +124,7 @@ fn is_zero(count: &u32) -> bool {
 pub fn asked_in(text: &str) -> BTreeSet<String> {
     text.lines()
         .filter_map(|line| serde_json::from_str::<Entry>(line).ok())
-        .filter_map(|e| e.asked)
+        .flat_map(|e| e.asked)
         .collect()
 }
 
@@ -250,8 +258,9 @@ pub fn update(
                 put_to: Vec::new(),
                 back: None,
                 fixed: None,
-                asked: None,
-                names: Vec::new(),
+                asked: Vec::new(),
+                names: BTreeMap::new(),
+                red: false,
                 closed: None,
             });
         }

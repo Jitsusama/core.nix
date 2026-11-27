@@ -19,7 +19,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-use super::{Entry, RED};
+use super::Entry;
 use crate::DAY;
 
 /// A subject's hub, as the node names it: the cells it names as holding
@@ -283,7 +283,7 @@ pub fn put_late(
         // go late together; each is said as one count, which would
         // otherwise crowd the day's worse and better off its note. Which
         // keep a line each is listed once, at the hour's `owing::kind`.
-        if entry.kind.as_deref() == Some(RED) {
+        if entry.red {
             dragged += 1;
             drags.insert(entry.owner.clone().unwrap_or_else(|| "no owner".to_owned()));
             continue;
@@ -542,14 +542,15 @@ mod tests {
     fn the_hours_red_lines_gone_late_are_said_as_one_count() {
         let mut ledger = ledger("crashes:chrome");
         ledger[0].kind = Some("hole".into());
-        for (key, owner, kind) in [
-            ("hour:a", "B", RED),
-            ("hour:b", "C", RED),
-            ("hour:c", "B", RED),
-            ("hour:miss:the host crashed", "D", "drag"),
+        for (key, owner, red) in [
+            ("hour:a", "B", true),
+            ("hour:b", "C", true),
+            ("hour:c", "B", true),
+            ("hour:miss:the host crashed", "D", false),
         ] {
             let mut drag = self::ledger(key).remove(0);
-            drag.kind = Some(kind.into());
+            drag.kind = Some("drag".into());
+            drag.red = red;
             drag.owner = Some(owner.into());
             drag.words = key.to_owned();
             ledger.push(drag);

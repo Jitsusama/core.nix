@@ -8,7 +8,7 @@
 use std::collections::BTreeMap;
 
 use crate::ANSWERS_GO;
-use crate::findings::Entry;
+use crate::findings::{ASKED_KEPT, Entry};
 
 /// How each of cadence's asks opens, said once at the top of a question
 /// holding several.
@@ -16,8 +16,10 @@ const OPENS: &str = "cadence hour: ";
 
 /// Said with every question, as its lines quote words cadence didn't
 /// write: a finding's, a miss's, a file's or a cell's line. A reader
-/// takes them as reported, never as what cadence asks.
-const QUOTES: &str = "Words in double quotes are others', reported, not asks of cadence's.";
+/// takes them as reported, never as what cadence asks; cadence's own
+/// commands and the shapes it wants are in backticks.
+const QUOTES: &str = "Words in double quotes outside backticks are others', reported, not \
+                      asks of cadence's.";
 
 /// The questions to put, one per owner, from the `(owner, text)` pairs
 /// the hour filed; a line with no owner is put to nobody.
@@ -57,17 +59,19 @@ pub fn asks(told: Vec<(String, String)>) -> Vec<(String, String)> {
 }
 
 /// Marks each drag filed for `owner` by the hour run at `now`, in seconds,
-/// as asked in the question `id`: those its question holds, and none
-/// filed an hour before whose question never went.
+/// as asked in the question `id`: those its question holds, a line come
+/// back among them, and none filed an hour before whose question never
+/// went. Each keeps the questions it was asked in before, the latest
+/// `ASKED_KEPT`.
 pub fn mark_asked(ledger: &mut [Entry], owner: &str, now: i64, id: &str) {
     for entry in ledger.iter_mut().filter(|e| {
-        e.open
-            && e.asked.is_none()
-            && super::owing::is_asked(e)
-            && e.owner.as_deref() == Some(owner)
-            && e.last_to == now
+        e.open && super::owing::is_asked(e) && e.owner.as_deref() == Some(owner) && e.last_to == now
     }) {
-        entry.asked = Some(id.to_owned());
+        if !entry.asked.iter().any(|asked| asked == id) {
+            entry.asked.push(id.to_owned());
+        }
+        let over = entry.asked.len().saturating_sub(ASKED_KEPT);
+        entry.asked.drain(..over);
     }
 }
 
@@ -130,31 +134,39 @@ mod tests {
     #[test]
     fn only_the_lines_filed_for_that_owner_this_hour_carry_the_question_s_id() {
         // hour:b was filed the same day an hour before, and its question
-        // never went, so this one doesn't hold it.
+        // never went, so this one doesn't hold it. hour:e came back, asked
+        // in questions before, and keeps the latest of them beside this.
         let mut ledger = vec![
             entry("hour:a", "ABC123", NOW, "drag"),
             entry("hour:b", "ABC123", NOW - 3600, "drag"),
             entry("hour:c", "DEF456", NOW, "drag"),
             entry("security:d", "ABC123", NOW, "must"),
-            entry("hour:f", "ABC123", NOW, crate::findings::RED),
         ];
-        let mut earlier = entry("hour:e", "ABC123", NOW, "drag");
-        earlier.asked = Some("first-question".to_owned());
-        ledger.push(earlier);
+        let mut red = entry("hour:f", "ABC123", NOW, "drag");
+        red.red = true;
+        ledger.push(red);
+        let mut back = entry("hour:e", "ABC123", NOW, "drag");
+        back.asked = ["q1", "q2", "q3", "q4"].map(str::to_owned).to_vec();
+        ledger.push(back);
         mark_asked(&mut ledger, "ABC123", NOW, "the-question");
-        let asked: Vec<Option<&str>> = ledger.iter().map(|e| e.asked.as_deref()).collect();
+        mark_asked(&mut ledger, "ABC123", NOW, "the-question");
+        let asked: Vec<Vec<&str>> = ledger
+            .iter()
+            .map(|e| e.asked.iter().map(String::as_str).collect())
+            .collect();
+        let none: Vec<&str> = Vec::new();
         assert_eq!(
             asked,
             [
-                Some("the-question"),
-                None,
-                None,
-                None,
-                Some("the-question"),
-                Some("first-question")
+                vec!["the-question"],
+                none.clone(),
+                none.clone(),
+                none,
+                vec!["the-question"],
+                vec!["q2", "q3", "q4", "the-question"]
             ],
-            "a line not filed for that owner this hour, not a drag or red line, or asked \
-             before took the id, or a red line didn't"
+            "a line not filed for that owner this hour or not a drag took the id, a red \
+             line or one come back didn't, or one kept more than its latest four"
         );
     }
 }

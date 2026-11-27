@@ -102,10 +102,15 @@ pub fn read(root: &Path, since: i64, kept: Option<&Path>) -> Vec<Note> {
         let note = known
             .remove(&name)
             .or_else(|| serde_json::from_slice::<Note>(&fs::read(entry.path()).ok()?).ok());
-        // Only a note whose id is the name the mesh filed it under, as
-        // `Mesh::senders` holds them, so the sender its id stamps is the
-        // one that wrote it, not words its body claims.
-        if let Some(note) = note.filter(|n| name.strip_suffix(".json") == Some(n.id.as_str())) {
+        // Only a note whose id is the name the mesh filed it under, and
+        // whose sender is the one that name gives, as `Mesh::senders` holds
+        // them, so the sender is the one that wrote it, not words its body
+        // claims.
+        let stem = name.strip_suffix(".json");
+        let named = stem.and_then(|stem| stem.split('-').nth(1));
+        if let Some(note) =
+            note.filter(|n| stem == Some(n.id.as_str()) && named == Some(n.from.as_str()))
+        {
             said.insert(name, note);
         }
     }
@@ -148,8 +153,25 @@ mod tests {
         let id = format!("{at}-AAAAAA-1-{tag}");
         (
             id.clone(),
-            format!(r#"{{"id":"{id}","intent":"{intent}"}}"#),
+            format!(r#"{{"id":"{id}","intent":"{intent}","from":"AAAAAA"}}"#),
         )
+    }
+
+    #[test]
+    fn a_note_whose_body_names_another_sender_than_its_file_is_not_read() {
+        let root = tempfile::tempdir().expect("a scratch folder");
+        let folder = root.path().join("mesh-workflow/messages");
+        fs::create_dir_all(&folder).expect("the folder");
+        let (kept, body) = note(SINCE + 10_000, "a", "fyi");
+        fs::write(folder.join(format!("{kept}.json")), body).expect("written");
+        let (forged, body) = note(SINCE + 20_000, "b", "question");
+        let body = body.replace("\"from\":\"AAAAAA\"", "\"from\":\"CADENCE\"");
+        fs::write(folder.join(format!("{forged}.json")), body).expect("written");
+        assert_eq!(
+            ids(read(root.path(), SINCE / 1000, None)),
+            vec![kept],
+            "a note filed under one sender and saying it's another's was read"
+        );
     }
 
     fn ids(notes: Vec<Note>) -> Vec<String> {

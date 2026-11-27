@@ -172,6 +172,9 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
     // Every measure read, each is held to its line on the definition of
     // good, and one with none, or another target, is counted.
     measures.push(good::undefined(&measures));
+    // Held again, so a miss whose check names one of those two is held by
+    // it as by any other; a miss already held isn't held twice.
+    measures::held(&misses, &mut measures, &kept.open);
     let said = measures::said(&misses, &TimeZone::system());
     let (mut card, mut next) = compose(
         &clock(now),
@@ -198,10 +201,15 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
     };
     // A question, so the line wakes its owner and wants an answer. Its
     // lines carry its id only once it's gone, so a send that fails leaves
-    // none naming a question nobody had.
+    // none naming a question nobody had; the ledger is kept as those that
+    // went left it before the failure is said, so they aren't asked again
+    // next hour as questions of nobody's.
     for (owner, text) in put::asks(told) {
         let ask = message(&owner, "question", text);
-        mesh.send(&ask)?;
+        if let Err(err) = mesh.send(&ask) {
+            findings::keep(&ledger_at, &ledger)?;
+            return Err(err.into());
+        }
         put::mark_asked(&mut ledger, &owner, now, &ask.id);
     }
     let routes = fs::read_to_string(state_home.join("pain-points/routes.json")).ok();

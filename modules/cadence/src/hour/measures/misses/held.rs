@@ -181,6 +181,30 @@ mod tests {
         );
     }
 
+    /// The loop's own measures are made after the misses are first held,
+    /// so the hour holds them again once they are.
+    #[test]
+    fn a_measure_made_after_the_first_hold_holds_its_miss_when_held_again_and_only_once() {
+        let text = miss("core #5252 red-lines-falling: the red lines fall each week");
+        let merged = BTreeSet::from([change("core", 5252)]);
+        let mut hour = vec![misses(&text, &repos(), &merged, &BTreeSet::new())];
+        held(&text, &mut hour, &was_open());
+        hour.push(judged("red-lines-falling", 2.0, Some(0.0)));
+        held(&text, &mut hour, &was_open());
+        held(&text, &mut hour, &was_open());
+        assert_eq!(
+            (hour[0].behind.clone(), hour[0].now),
+            (
+                vec![
+                    "the cat waits · XY9H5C, though its check red-lines-falling still finds it"
+                        .to_owned()
+                ],
+                1.0
+            ),
+            "a miss on a measure made late went unheld, or was held twice"
+        );
+    }
+
     #[test]
     fn a_measure_it_names_that_the_hour_never_read_keeps_its_miss_open() {
         // Row 38's check, as the orchestrator wrote it.
