@@ -407,10 +407,9 @@ fn tell_units(
     now: i64,
 ) -> io::Result<()> {
     let path = folder.join("units.json");
-    let mut told: units::Told = fs::read(&path)
-        .ok()
-        .and_then(|b| serde_json::from_slice(&b).ok())
-        .unwrap_or_default();
+    // A record torn or barred is refused and kept as it is, rather than
+    // read as none told and every spell under way told again.
+    let mut told: units::Told = whole::read_kept(&path)?;
     let runtime = env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from);
     let mut read = units::read(now, true, runtime.as_deref());
     let mut failed = None;
