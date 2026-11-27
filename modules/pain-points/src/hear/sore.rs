@@ -442,7 +442,9 @@ fn asking(said: &[Sentence]) -> bool {
 
 /// Each swear a message says at what it's about, as whether it's said in
 /// a sentence that asks: a swear not before a word of praise, the next
-/// sentence's first word for one ending its own, nor one closing a list
+/// sentence's first word for one exclaimed ending its own, as in "holy
+/// shit! amazing work" but not "what the fuck? good luck fixing it", nor
+/// one closing a list
 /// in a message that asks for something unless it's exclaimed in its own
 /// clause, since "it broke and shit!" is said in anger and "add the costs
 /// and shit, thanks!" isn't.
@@ -452,9 +454,11 @@ fn swearing(said: &[Sentence]) -> Vec<bool> {
     for (n, sentence) in said.iter().enumerate() {
         let words = &sentence.words;
         for (at, w) in words.iter().enumerate() {
-            let next = words
-                .get(at + 1)
-                .or_else(|| said[n + 1..].iter().find_map(|later| later.words.first()));
+            let next = words.get(at + 1).or_else(|| {
+                sentence.exclaimed[at]
+                    .then(|| said[n + 1..].iter().find_map(|later| later.words.first()))
+                    .flatten()
+            });
             if (SWEARS.iter().any(|s| w.starts_with(s)) || *w == "ass")
                 && !next.is_some_and(|next| PRAISE.contains(next))
                 && (sentence.exclaimed[at] || !asks || !filler(sentence, at))
@@ -663,6 +667,21 @@ mod tests {
             kinds("yes", AT, &short).is_empty(),
             "a yes twice is no pain"
         );
+    }
+
+    #[test]
+    fn praise_across_a_stop_spares_only_an_exclaimed_swear() {
+        // Across a stop, only an exclaimed swear is delight.
+        for hurt in [
+            "what the fuck? good luck fixing it",
+            "holy shit. amazing work",
+        ] {
+            assert_eq!(
+                kinds(hurt, AT, &[]),
+                vec!["swore"],
+                "praise after a swear not exclaimed spared it: {hurt}"
+            );
+        }
     }
 
     #[test]
@@ -1110,7 +1129,7 @@ mod tests {
             "shit, no worries, i'll take whatever",
             "shit, it's fine, you choose whatever",
             // An asked swear before praise is read with it, as any is.
-            "damn, it's fine. what the fuck? amazing work",
+            "damn, it's fine. what the fuck?! amazing work",
         ] {
             assert_eq!(
                 kinds(eased, AT, &[]),
