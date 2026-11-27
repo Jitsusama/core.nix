@@ -6136,6 +6136,27 @@ mod tests {
     use std::sync::mpsc;
     use std::time::Duration;
 
+    /// The turns these tests take on a machine nearby: two, rather than
+    /// the one [`super::NEARBY_AT_ONCE`] gives a run, so they can show a
+    /// run passing over one turn for another, and waiting on all of them.
+    const NEARBY_AT_ONCE: u32 = 2;
+
+    /// [`super::in_turn_nearby`], in one of this module's
+    /// [`NEARBY_AT_ONCE`] turns.
+    fn in_turn_nearby(command: &str) -> String {
+        in_one_of_turns(command, NEARBY_AT_ONCE)
+    }
+
+    #[test]
+    fn a_run_sent_nearby_takes_the_only_turn() {
+        // One lent build at a time, by velocity's ruling of 26 November.
+        assert_eq!(
+            super::in_turn_nearby("true"),
+            in_one_of_turns("true", 1),
+            "a run sent nearby may take more than one turn"
+        );
+    }
+
     #[test]
     fn a_macs_load_is_read_from_its_first_two_averages_or_not_at_all() {
         assert_eq!(
@@ -6263,7 +6284,7 @@ mod tests {
                 ));
             }
             let _ = fs::remove_file(turns.join("1"));
-            let past = turns.join((NEARBY_AT_ONCE + 1).to_string());
+            let past = turns.join((TURNS_COUNTED + 1).to_string());
             std::os::unix::fs::symlink(format!("{pid} {boot}"), &past).unwrap();
             read.push((
                 counted(&turns),
