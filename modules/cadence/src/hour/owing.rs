@@ -832,6 +832,7 @@ pub fn file(
             e.late = false;
         }
     }
+    mark_red(ledger, measures, lead.as_deref());
     let mut dragging: Vec<&Measure> = drag(measures).into_iter().collect();
     // A measure filed twice is owed once, as the ledger holds it open. A
     // cause found again and again, a miss with no test that runs, the
@@ -889,21 +890,8 @@ pub fn file(
         } else {
             one.names.iter().all(|n| heard.contains_key(n))
         };
-        let open = under.iter().any(|e| e.open);
-        let held = open || held_by_day || fixed_lately(ledger, &one.key, now);
-        // An open line is red as its measure is each hour, not only when
-        // filed: a cadence from before red lines rewrites the ledger
-        // without the mark, and every line it left open would go late by
-        // name, one each, once rolled forward again.
-        if open {
-            let is_red = red(m, lead.as_deref() == Some(m.key.as_str()));
-            for e in ledger
-                .iter_mut()
-                .filter(|e| e.open && e.key == one.key && is_asked(e))
-            {
-                e.red = is_red;
-            }
-        }
+        let held =
+            under.iter().any(|e| e.open) || held_by_day || fixed_lately(ledger, &one.key, now);
         if held {
             continue;
         }
@@ -939,6 +927,33 @@ pub fn file(
         told.push((one.owner, one.text));
     }
     told
+}
+
+/// Marks each open line red as the measure carrying it is this hour, not
+/// only when it was filed: an open line is never filed again, and a
+/// cadence from before red lines rewrites the ledger without the mark, so
+/// every line it left open would go late by name, one each, once rolled
+/// forward again. A line no measure carries this hour keeps its mark.
+fn mark_red(ledger: &mut [Entry], measures: &[Measure], lead: Option<&str>) {
+    for e in ledger.iter_mut().filter(|e| e.open && is_asked(e)) {
+        let Some(key) = e.key.strip_prefix("hour:") else {
+            continue;
+        };
+        // The longest key carrying it, so cells-idle's line isn't read as
+        // a line of a measure keyed cells.
+        let carrying = measures
+            .iter()
+            .filter(|m| {
+                key == m.key
+                    || key
+                        .strip_prefix(m.key.as_str())
+                        .is_some_and(|rest| rest.starts_with(':'))
+            })
+            .max_by_key(|m| m.key.len());
+        if let Some(m) = carrying {
+            e.red = red(m, lead == Some(m.key.as_str()));
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1475,14 +1490,24 @@ mod tests {
             "a cell's line wasn't quoted and flattened: {}",
             told[0]
         );
+        let routed = |ledger: &[Entry]| {
+            ledger
+                .iter()
+                .filter(|e| e.open && e.key == "hour:cells-idle:PN2VZC")
+                .map(|e| (e.kind.clone(), e.red))
+                .collect::<Vec<_>>()
+        };
         assert_eq!(
-            ledger.last().map(|e| (e.kind.as_deref(), e.red)),
-            Some((Some(DRAG), true)),
+            routed(&ledger),
+            [(Some(DRAG.to_owned()), true)],
             "a line filed only for being red wasn't kept as a drag marked red, to go late \
              as a count and be closed as a drag by a cadence from before red lines"
         );
         // A cadence from before red lines rewrote the ledger without the
-        // mark; the next hour marks the line still open red again.
+        // mark; the next hour marks each line still open red again, the
+        // one its cells' owner was asked and the one filed under the key
+        // alone while the measure named no cell, though neither is filed
+        // again.
         for e in &mut ledger {
             e.red = false;
         }
@@ -1492,10 +1517,23 @@ mod tests {
             "2026-11-26",
             8500,
         );
+        let mut open: Vec<(&str, bool)> = ledger
+            .iter()
+            .filter(|e| e.open && e.key.starts_with("hour:cells-idle"))
+            .map(|e| (e.key.as_str(), e.red))
+            .collect();
+        open.sort_unstable();
         assert_eq!(
-            ledger.last().map(|e| (e.open, e.red)),
-            Some((true, true)),
+            open,
+            [("hour:cells-idle", true), ("hour:cells-idle:PN2VZC", true)],
             "a red line left open without its mark by a rollback wasn't marked red again"
+        );
+        assert!(
+            ledger
+                .iter()
+                .filter(|e| e.open && e.key == "hour:slips")
+                .all(|e| !e.red),
+            "the lead's line was marked red, so it would go late as a count, not by name"
         );
     }
 
