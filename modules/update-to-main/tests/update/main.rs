@@ -3461,6 +3461,100 @@ fn a_hold_on_an_input_left_at_its_pin_is_judged_in_its_own_repository() {
     );
 }
 
+/// An ask that only waited for a hold never ran, so a later ask may step
+/// behind it: only what the machine followed is a floor.
+#[test]
+fn an_ask_may_step_behind_one_that_only_waited_for_a_hold() {
+    let mut world = asking_nested(World::new());
+    hold_the_daemon(&mut world, "old");
+    let pinned = world.commit_in("mycelium", "pinned", true);
+    let earlier = world.commit_in("mycelium", "earlier", true);
+    let wanted = world.commit_in("mycelium", "wanted", true);
+    let core = "c".repeat(40);
+    fs::write(
+        world.origin.join("flake.lock"),
+        pinning_nested(&core, &pinned),
+    )
+    .unwrap();
+    git(&world.origin, &["add", "flake.lock"]);
+    let one = world.signed("one");
+    daemon_unit(&world.system(&format!("{one}+{wanted}")), "new");
+    let Line::Refused { why, .. } = world.update_at(NESTED, &wanted) else {
+        panic!("an ask restarting a held daemon didn't wait for a hold")
+    };
+    assert!(why.starts_with(update::NEEDS_HOLD), "{why}");
+    daemon_unit(&world.system(&format!("{one}+{earlier}")), "new");
+    let Line::Refused { why, .. } = world.update_at(NESTED, &earlier) else {
+        panic!("an ask behind one that waited wasn't built to wait in its place")
+    };
+    assert!(
+        why.starts_with(update::NEEDS_HOLD),
+        "an ask behind one that only waited for a hold was refused: {why}"
+    );
+}
+
+/// A kept ask's lock dropping the input, and its repository going with it,
+/// fails no update: the lock is read before anything is fetched.
+#[test]
+fn a_kept_ask_whose_lock_and_repository_drop_it_fails_no_update() {
+    let world = asking_nested(World::new());
+    let pinned = world.commit_in("mycelium", "pinned", true);
+    let wanted = world.commit_in("mycelium", "wanted", true);
+    let core = "c".repeat(40);
+    fs::write(
+        world.origin.join("flake.lock"),
+        pinning_nested(&core, &pinned),
+    )
+    .unwrap();
+    git(&world.origin, &["add", "flake.lock"]);
+    let one = world.signed("one");
+    world.system(&format!("{one}+{wanted}"));
+    assert_eq!(
+        world.update_at(NESTED, &wanted),
+        done_following(&one, &[(NESTED, &wanted)]),
+        "the ask at mycelium wasn't built"
+    );
+    fs::write(world.origin.join("flake.lock"), pinning(&core)).unwrap();
+    git(&world.origin, &["add", "flake.lock"]);
+    fs::remove_dir_all(world.root.join("mycelium")).unwrap();
+    let two = world.signed("two");
+    world.system(&two);
+    assert_eq!(
+        world.update().1,
+        done(&two),
+        "a kept ask whose lock and repository dropped it failed the update"
+    );
+}
+
+/// A hold of a commit an input's copy hasn't fetched yet is still its
+/// repository's: the copy is fetched before the hold is judged elsewhere.
+#[test]
+fn a_hold_on_a_commit_a_stale_copy_lacks_is_judged_in_its_own_repository() {
+    let world = asking_nested(World::new());
+    let pinned = world.commit_in("mycelium", "pinned", true);
+    let core = "c".repeat(40);
+    fs::write(
+        world.origin.join("flake.lock"),
+        pinning_nested(&core, &pinned),
+    )
+    .unwrap();
+    git(&world.origin, &["add", "flake.lock"]);
+    let one = world.signed("one");
+    world.system(&one);
+    assert_eq!(world.update().1, done(&one), "main wasn't built");
+    let later = world.commit_in("mycelium", "later", true);
+    held::ask(&world.config, &format!("hold {later}"), Some(1000));
+    let two = world.signed("two");
+    world.system(&two);
+    let Line::Refused { why, .. } = world.update().1 else {
+        panic!("a hold of a commit mycelium's copy hadn't fetched let main through")
+    };
+    assert!(
+        why.contains("lock's pin"),
+        "a hold of a commit the copy lacked was judged by something other than its pin: {why}"
+    );
+}
+
 #[test]
 fn an_input_asked_for_is_held_to_the_lock_of_the_core_built_with_it() {
     let world = asking_nested(following());
