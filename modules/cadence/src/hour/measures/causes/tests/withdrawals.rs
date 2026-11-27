@@ -101,6 +101,44 @@ fn a_withdrawal_stamped_ahead_still_withdraws_its_line() {
     );
 }
 
+/// Each bound on what is kept, met at its edge and a step past it, so a
+/// bound moved by a millisecond or a letter is caught: up to a day ahead
+/// is kept, up to `WITHDRAWAL_AT_MOST` letters is kept, and one as old as
+/// a case is kept for is let go, though one a millisecond newer stays.
+#[test]
+fn a_withdrawal_is_kept_to_each_bound_and_let_go_past_it() {
+    let of = |ms: i64, letters: usize| {
+        let stamp = format!("{ms}-SENDER-1-");
+        let hex = "0".repeat(letters - stamp.len());
+        format!("{stamp}{hex}")
+    };
+    let now_ms = NOW * 1000;
+    let ahead = (NOW + DAY) * 1000;
+    let oldest = (NOW - KEPT_FOR) * 1000;
+    let most = WITHDRAWAL_AT_MOST;
+    for (ms, letters, kept, wrong) in [
+        (ahead, 32, true, "a day ahead wasn't kept"),
+        (ahead + 1, 32, false, "a ms past a day ahead was kept"),
+        (now_ms, most, true, "of the most letters wasn't kept"),
+        (now_ms, most + 1, false, "a letter over the most was kept"),
+        (oldest, 32, false, "as old as kept cases was kept"),
+        (oldest + 1, 32, true, "a ms newer than that wasn't kept"),
+    ] {
+        let id = of(ms, letters);
+        assert_eq!(
+            id.len(),
+            letters,
+            "the test built an id of the wrong length: {id}"
+        );
+        let withdrawn = BTreeSet::from([id.clone()]);
+        assert_eq!(
+            kept_withdrawals(&withdrawn, NOW).contains(&id),
+            kept,
+            "a withdrawal {wrong}: {id}"
+        );
+    }
+}
+
 /// A withdrawal is kept only while the line it withdraws could still
 /// count, and one stamped over a day ahead or running long isn't kept at
 /// all, so the kept file can't grow without end.
