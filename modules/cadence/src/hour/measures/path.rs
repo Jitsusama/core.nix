@@ -99,7 +99,7 @@ fn measured(origin: &str, samples: &[Sample]) -> Measure {
     // An even count, the usual six an hour, takes the middle two's mean, so
     // three slow samples of six read half way rather than as the slow one.
     let half = times.len() / 2;
-    let median = if times.len() % 2 == 0 {
+    let median = if times.len().is_multiple_of(2) {
         f64::midpoint(times[half - 1], times[half])
     } else {
         times[half]
