@@ -132,7 +132,9 @@ Caught mid-walk by the scroll standing on its window's top, it stops where
 it's drawn and rides the same way, then walks on to its seat as the keys come
 back; caught mid-leap or anywhere else, or carried by a drag or a column
 moved beside it rather than a scroll, it walks on to that window where it
-moved. Back on its column grown or shrunk across, it walks to its seat. A
+moved. Back on its column grown or shrunk across, it walks to its seat; back
+on it as niri slides it aside for a column opening, closing or resizing
+beside it, it rides there on niri's spring, as with a scroll. A
 ride isn't a rest: no play sets off and no pet starts till it ends. A scroll
 runs for niri's spring from when niri says it began, so a scroll's word left
 on a window long after reads as ended. niri can say its window scrolled
@@ -144,6 +146,9 @@ windows; with its workspace emptied, it comes in at that edge along the floor.
 
 - Held by `margin-cat-one-screen.qml`: "its window scrolled, it's carried as far"
 - Held by `margin-cat-one-screen.qml`: "its window said off the screen first"
+- Held by `margin-cat-tiles.qml`: "a column's move is told of the window asked of alone"
+- Owed since 2026-11-27: a case on niri that the cat rides back to its seat as a column
+  opening beside its window slides it aside; the Qt cases hold only which word is heard.
 - Held by `margin-cat-one-screen.qml`: "drawn where it was as niri sets off, nearer as it
   slides, there as it stops"
 - Held by `margin-cat-one-screen.qml`: "it comes in at the edge on the top there, head first"
@@ -453,8 +458,9 @@ got to, or, with the keys on another column, goes back over the window it
 sat on until they rest there. Dozing off ends none by itself. A scroll that
 carries the window it sat on away ends one too, dozing or not: the puppy
 fades and the cat goes to its seat on that window, riding niri's scroll or
-there at once as a drag carries it, never left on the air where the window
-was. Under the launcher's card the puppy goes at once rather than fading.
+its column's slide aside, or there at once as a drag carries it, never left
+on the air where the window was. Under the launcher's card the puppy goes at
+once rather than fading.
 
 - Held by `margin-cat-puppy.qml`: "from just behind its column's edge, drawn only within it,
   facing the cat"

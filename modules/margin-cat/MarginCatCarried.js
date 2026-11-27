@@ -56,14 +56,14 @@ function scrolledOff(before, after) {
 // visit (MarginCatScreen.qml's follow), and how: to its seat `home` on that
 // window, or, with none, the window scrolled wholly off the screen, from
 // its `place` as far as niri carried it, `by`; none from nowhere. It
-// "rides" there on niri's spring while niri scrolls the strip
-// (`at.scrolling`), or to wholly off the screen, where only a scroll
-// leaves it; and "sits" there at once as a floating window dragged or a
-// column moved beside it carries it, which niri doesn't animate, as
-// backOn has it. Its place cut mid-hop is a leap's frame above its seat, so
-// it goes to that seat rather than keeping the leap. Nowhere before, it
-// sits on its seat at once, as backOn has it, since a ride sets off from
-// where it's drawn (rides).
+// "rides" there on niri's spring while that spring slides its window
+// (`at.scrolling`: the strip scrolled, or its column moved beside another
+// opening, closing or resizing), or to wholly off the screen, where only a
+// scroll leaves it; and "sits" there at once as a floating window dragged
+// carries it, which niri doesn't animate, as backOn has it. Its place cut
+// mid-hop is a leap's frame above its seat, so it goes to that seat rather
+// than keeping the leap. Nowhere before, it sits on its seat at once, as
+// backOn has it, since a ride sets off from where it's drawn (rides).
 function visitCut(home, place, by, at) {
     const to = home ?? (place === null ? null : { x: place.x + by.x, y: place.y + by.y });
     if (to === null) {
@@ -81,8 +81,9 @@ function visitCut(home, place, by, at) {
 // a ride under way running on as its window's spring does, never set off
 // again from a lag gone by, as the keys come back to a column still in
 // view; "rides" with its window from where it's drawn while niri's spring
-// slides the strip, a ride under way (`at.riding`) or a scroll niri told
-// of within its spring (`at.scrolling`), or from wholly off the screen,
+// slides its window, a ride under way (`at.riding`) or a scroll or its
+// column moved beside another, either told of by niri within its spring
+// (`at.scrolling`), or from wholly off the screen,
 // where only a scroll leaves it; and "sits" there at once otherwise,
 // nowhere before or as a floating window dragged carries it, which niri
 // doesn't animate.

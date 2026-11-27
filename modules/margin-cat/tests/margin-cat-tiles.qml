@@ -110,6 +110,15 @@ QtObject {
                 Tiles.told(growing, 7, "ViewMove")]
                 .map(each => each.map(one => ({ id: one.id, ago: one.ago }))),
             [[{ id: 1, ago: 30 }, { id: 2, ago: 30 }], [], []]);
+        // niri puts a column's move on each tile of the columns it moves,
+        // so the cat hears it only of the window it's carried by.
+        const besides = Object.assign({}, windows, { 1: moving(windows[1], "ColumnMove", 20),
+            2: moving(windows[2], "ColumnMove", 40) });
+        expect("a column's move is told of the window asked of alone, and of none unmoved",
+            [Tiles.told(besides, 7, "ColumnMove", 2), Tiles.told(besides, 7, "ColumnMove", 3),
+                Tiles.told(viewing, 7, "ColumnMove", 1)]
+                .map(each => each.map(one => ({ id: one.id, ago: one.ago }))),
+            [[{ id: 2, ago: 40 }], [], []]);
         const first = Tiles.hears(null, Tiles.told(viewing, 7, "ViewMove"), 1000);
         expect("a scroll first heard is dated by niri's begin, not when it was heard",
             first.at, 970);

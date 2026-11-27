@@ -59,11 +59,14 @@ function animating(windows, workspaceId, kind) {
 
 // What niri last said of a motion of `kind` on a workspace's windows: each
 // window whose layout tells of one, how long before that layout went out
-// it began, in ms, and the layout that said it.
-function told(windows, workspaceId, kind) {
+// it began, in ms, and the layout that said it; of window `on` alone where
+// it's given, as a column's move is heard only of the window the cat is
+// carried by, never of another column niri moves.
+function told(windows, workspaceId, kind, on) {
     return Object.values(windows)
         .filter(one => one.workspace_id === workspaceId && one.layout?.tile_animation === kind
-            && typeof one.layout?.tile_animation_began_ms_ago === "number")
+            && typeof one.layout?.tile_animation_began_ms_ago === "number"
+            && (on === undefined || one.id === on))
         .map(one => ({ id: one.id, ago: one.layout.tile_animation_began_ms_ago,
             layout: one.layout }));
 }
