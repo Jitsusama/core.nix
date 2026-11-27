@@ -138,7 +138,10 @@ mod tests {
         let root = tree("none", &[("system.slice", "0\n")]);
         let kept = root.join("kept");
         assert_eq!(lift(&root, &kept).unwrap(), 0);
-        assert!(!kept.exists());
+        assert!(
+            !kept.exists(),
+            "a kept file was written with no floors to keep"
+        );
         assert_eq!(
             restore(&root, &kept).unwrap(),
             0,
@@ -158,6 +161,9 @@ mod tests {
         .unwrap();
         assert_eq!(restore(&root, &kept).unwrap(), 1);
         assert_eq!(floor(&root, "user.slice"), "7");
-        assert!(!root.join("user.slice/deeper/memory.min").exists());
+        assert!(
+            !root.join("user.slice/deeper/memory.min").exists(),
+            "a kept line reached a nested cgroup"
+        );
     }
 }

@@ -59,14 +59,14 @@ def test_a_command_runs_as_joel_in_his_home_with_his_runtime_folder(recorder: Re
     said = vm_helpers.as_account(recorder.machine, "systemctl --user status")
     assert said == "printed"
     (line,) = recorder.succeeded
-    assert line.startswith("su - joel -c ")
+    assert line.startswith("su - joel -c "), f"the line did not run as joel: {line!r}"
     assert inner(line) == "export XDG_RUNTIME_DIR=/run/user/1000; cd ~; systemctl --user status"
 
 
 def test_another_account_and_runtime_folder_are_used_when_given(recorder: Recorder) -> None:
     vm_helpers.as_account(recorder.machine, "id", account="alice", runtime="/run/user/1001")
     (line,) = recorder.succeeded
-    assert line.startswith("su - alice -c ")
+    assert line.startswith("su - alice -c "), f"the line did not run as alice: {line!r}"
     assert "XDG_RUNTIME_DIR=/run/user/1001" in inner(line)
 
 
@@ -86,7 +86,9 @@ def test_a_command_that_must_fail_is_given_as_one(recorder: Recorder) -> None:
 def test_a_command_with_quotes_reaches_the_shell_whole(recorder: Recorder) -> None:
     vm_helpers.as_account(recorder.machine, "echo 'it''s' \"$HOME\"")
     (line,) = recorder.succeeded
-    assert inner(line).endswith("echo 'it''s' \"$HOME\"")
+    assert inner(line).endswith("echo 'it''s' \"$HOME\""), (
+        f"the quotes were changed: {inner(line)!r}"
+    )
 
 
 def test_the_last_journal_cursor_printed_is_given() -> None:

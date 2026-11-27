@@ -146,9 +146,7 @@
   "modules/guide/tests/writer/phrase.rs" = 1;
   "modules/guide/tests/writer/which_stick.rs" = 4;
   "modules/hibernate/unlock/src/fits.rs" = 1;
-  "modules/hibernate/unlock/src/floors.rs" = 2;
   "modules/hibernate/unlock/src/main.rs" = 7;
-  "modules/hibernate/unlock/src/restored.rs" = 1;
   "modules/hibernate/unlock/src/zswap.rs" = 8;
   "modules/lag-watch/src/kernel_tests.rs" = 2;
   "modules/lid/docked/src/main.rs" = 11;
@@ -265,9 +263,6 @@
   "tests/desktop/launcher/desktop-launcher-waits-on-joel-vm-test.py" = 1;
   "tests/desktop/looks/desktop-looks-vm-test.py" = 2;
   "modules/quickshell/tests/launcher-on-niri-test.py" = 5;
-  "tests/lib/qemu-after-its-sockets-test.py" = 3;
-  "tests/lib/vm-helpers-test.py" = 3;
-  "tests/lib/vm-pytest-test.py" = 1;
   "tests/vm/admin/niri-off-cpu-vm-test.py" = 1;
   "tests/vm/network/shaper-vm-test.py" = 3;
   "tests/vm/admin/update-to-main-vm-test.py" = 1;
