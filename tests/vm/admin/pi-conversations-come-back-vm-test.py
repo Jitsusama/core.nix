@@ -24,6 +24,8 @@ import pytest
 from vm_helpers import as_account
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from test_driver.machine import BaseMachine, QemuMachine
 
 UNIT = "pi-host-work-attended.service"
@@ -58,6 +60,10 @@ COMING_BACK = dt.timedelta(minutes=2)
 PARKING = dt.timedelta(minutes=6)
 # A reboot: the host parking what it holds as it stops, a boot, and the host's start.
 REBOOTING = dt.timedelta(minutes=6)
+# How long a failure's read of how the unit stands may take, so it can't hang the failure it says.
+READING_SECONDS = 30
+# How much of a process's journal a failure quotes.
+JOURNAL_LINES = 20
 # How long a viewer stays attached, long enough to wake a parked conversation and draw it.
 VIEWING_SECONDS = 20
 ROWS = 40
@@ -97,8 +103,8 @@ class Host:
 
     def asked(self, request: dict[str, Any]) -> str:
         """Give the command that sends the host one request through its socket."""
-        # A host answers a start asked again under its id with the first answer, and refuses
-        # an id used for another start, so each command has an id of its own. Only starts are
+        # A host answers an open asked again under its id with the first answer, and refuses
+        # an id used for another open, so each command has an id of its own. Only opens are
         # remembered by id, so a poll that runs one list command again and again is answered
         # afresh each time.
         self.sent += 1
@@ -116,42 +122,80 @@ class Host:
         sessions = self.ask({"op": "list"})["sessions"]
         return {one["sessionId"]: one["state"] for one in sessions}
 
+    def reading(self, command: str) -> str:
+        """Give what a command run as root printed, for a failure, or why it couldn't be read."""
+        try:
+            status, out = self.machine.execute(command, timeout=READING_SECONDS)
+        except Exception as error:  # noqa: BLE001 # A failure's read mustn't hide what failed.
+            return f"nothing, as reading it failed: {error!r}"
+        said = " | ".join(line for line in out.strip().splitlines() if line)
+        return said if status == 0 else f"nothing, as it exited {status}: {said!r}"
+
+    def standing(self) -> str:
+        """Say how the unit stands, for a failure: its states, its result and its status line."""
+        # StatusText alone is empty in the commonest states a host fails in: starting,
+        # failed, or being started again.
+        fields = "ActiveState,SubState,Result,MainPID,StatusText"
+        command = f"export XDG_RUNTIME_DIR=/run/user/1000; systemctl --user show -p {fields} {UNIT}"
+        return self.reading(f"su - alice -c {shlex.quote(command)}")
+
+    def waited(self, what: str, wait: Callable[[], None], journal: str = "") -> None:
+        """Wait, and should it fail, say what the host never did and how it stands."""
+        try:
+            wait()
+        except Exception as error:
+            # The driver's wait fails as a bare timeout, so whatever failed is chained below
+            # and this says what the host showed meanwhile.
+            message = f"the host never {what}; the unit says {self.standing()}"
+            if journal:
+                message += f"; its journal ends {self.reading(journal)}"
+            raise AssertionError(message) from error
+
     def until_serving_both(self, timeout: dt.timedelta = COMING_BACK) -> None:
         """Wait until the host is ready again, saying it holds both."""
-        try:
-            self.until(
+        self.waited(
+            "said it holds both",
+            lambda: self.until(
                 f"systemctl --user show -p StatusText --value {UNIT}"
                 f" | grep -qxE {shlex.quote(HOLDING_BOTH)}",
                 timeout,
-            )
-        except Exception as error:
-            # A ready line in another wording would otherwise fail as a bare timeout, without
-            # saying what the host did say.
-            message = f"the host never said it holds both; it says {self.show('StatusText')!r}"
-            raise AssertionError(message) from error
+            ),
+        )
 
     def until_started_again(self, killed: str) -> None:
         """Wait until a process other than the killed one runs the host and says it holds both."""
         # The unit keeps the killed process's status line until another replaces it, so the
         # new process's own ready line is what says it holds both.
-        self.until(
-            f"pid=$(systemctl --user show -p MainPID --value {UNIT});"
-            f' test "$pid" -ne 0 && test "$pid" -ne {killed}',
+        self.waited(
+            "started again",
+            lambda: self.until(
+                f"pid=$(systemctl --user show -p MainPID --value {UNIT});"
+                f' test "$pid" -ne 0 && test "$pid" -ne {killed}',
+            ),
         )
         started = self.show("MainPID")
-        self.machine.wait_until_succeeds(
-            f"journalctl --no-pager _PID={started} | grep -qE {shlex.quote(HOLDING_BOTH)}",
-            timeout=COMING_BACK,
+        self.waited(
+            f"said, as process {started}, that it holds both",
+            lambda: self.machine.wait_until_succeeds(
+                f"journalctl --no-pager _PID={started} | grep -qE {shlex.quote(HOLDING_BOTH)}",
+                timeout=COMING_BACK,
+            ),
+            f"journalctl --no-pager -o cat -n {JOURNAL_LINES} _PID={started}",
         )
 
     def until_said_holding_both(self) -> None:
         """Wait until the host has told the journal, this boot, that it holds both."""
         # The host writes its ready line just after telling systemd it is ready, so the unit
         # can be active a moment before the journal holds the line.
-        self.machine.wait_until_succeeds(
-            f"journalctl --no-pager -b _UID=1000 _SYSTEMD_USER_UNIT={UNIT}"
-            f" | grep -qE {shlex.quote(HOLDING_BOTH)}",
-            timeout=COMING_BACK,
+        self.waited(
+            "told the journal this boot that it holds both",
+            lambda: self.machine.wait_until_succeeds(
+                f"journalctl --no-pager -b _UID=1000 _SYSTEMD_USER_UNIT={UNIT}"
+                f" | grep -qE {shlex.quote(HOLDING_BOTH)}",
+                timeout=COMING_BACK,
+            ),
+            f"journalctl --no-pager -o cat -n {JOURNAL_LINES} -b _UID=1000"
+            f" _SYSTEMD_USER_UNIT={UNIT}",
         )
 
     def record(self, name: str) -> bytes:
