@@ -16,9 +16,10 @@
 // screen is shared, or before niri has said its casts, an ask's row says
 // only that it's hidden, with no acts and no frame timed, and shown again it
 // counts nothing until his next move (Niri and Recorder stood in by the
-// check); two hidden at once differ only by when each was asked. It exits 0 once every case holds, and otherwise 1, saying which
-// didn't. Long because every case runs on one stand-in connection, launcher
-// and frame clock, which a split would have to copy into each half.
+// check); two hidden at once differ only by when each was asked. It exits
+// 0 once every case holds, and otherwise 1, saying which didn't. Long
+// because every case runs on one stand-in connection, launcher and frame
+// clock, which a split would have to copy into each half.
 import qs
 import Quickshell
 import QtQuick
@@ -1038,7 +1039,9 @@ ShellRoot {
         same("each its own ask, by the keys its row is kept by",
             waits.map(one => [one.row.key, one.row.shownKey]),
             [[`ask:${root.otherId}`, root.otherKey], [`ask:${root.id}`, root.key]]);
-        same("with when each was asked, which orders For You",
+        // For You orders by since (ForYou.js, held by its own cases); this
+        // sorts them itself, so it holds only what each carries.
+        same("each carrying when it was asked, as For You's since",
             waits.map(one => one.thing.since), [500, 1000]);
         // Every other field each carries, each that's a function as it
         // reads, so a field drawn later that tells them apart fails here.
@@ -1048,9 +1051,9 @@ ShellRoot {
                 typeof one[field] === "function" ? called(one[field]) : one[field]]));
         same("and nothing else either carries tells one from the other",
             rest(waits[0].row), rest(waits[1].row));
-        same("nor names what either asks for or where from",
-            ["Kiln", "Glaze", "S1", "S2"].filter(word =>
-                waits.some(one => rest(one.row).includes(word))), []);
+        same("nor names what either asks for or where from, in any case",
+            ["kiln", "glaze", "s1", "s2"].filter(word =>
+                waits.some(one => rest(one.row).toLowerCase().includes(word))), []);
         link.forgetOther();
         Niri.casts = {};
     }

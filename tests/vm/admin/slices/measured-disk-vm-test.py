@@ -58,7 +58,7 @@ def test_a_measured_disk_is_shared_by_its_model(measured: BaseMachine) -> None:
         assert setting in model, f"io.cost's model lacks {setting}: {model}"
     qos = cost(measured, "qos")
     # The kernel gives a percentage back with two decimals.
-    advised = ["rlat=10000", "wlat=10000", "min=50.00", "max=150.00"]
+    advised = ["rpct=95.00", "rlat=10000", "wpct=95.00", "wlat=10000", "min=50.00", "max=150.00"]
     for setting in ["enable=1", "ctrl=user", *advised]:
         assert setting in qos, f"io.cost's qos lacks {setting}: {qos}"
 
