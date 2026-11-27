@@ -35,6 +35,7 @@
 //! apart, in `hear_tests.rs`.
 
 use std::collections::{HashMap, HashSet};
+use std::ops::Range;
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::time::Duration;
 
@@ -252,12 +253,13 @@ pub fn hear(
                 let writing = calls
                     .entry(key.clone())
                     .or_insert_with(|| taken_up(&mut ended, book, &key, me));
+                let take = start..start + samples.len();
                 let parakeet = match loaded(settings, &mut speech) {
                     Ok(parakeet) => parakeet,
                     Err(why) => {
                         let heard = !writing.lines.is_empty();
                         let notice = || not_loaded(&title_of(book, &key), &why, heard);
-                        shown(not_heard(book, &key, writing, me, start, &mut told, notice));
+                        shown(not_heard(book, &key, writing, me, take, &mut told, notice));
                         continue;
                     }
                 };
@@ -265,7 +267,7 @@ pub fn hear(
                 let ((text, words), failed) = heard_or_left_out(heard);
                 if let Some(why) = failed {
                     let notice = || notices::not_all_heard(&title_of(book, &key), &why);
-                    shown(not_heard(book, &key, writing, me, start, &mut told, notice));
+                    shown(not_heard(book, &key, writing, me, take, &mut told, notice));
                 }
                 // Embedded once Parakeet has heard it, so a call's first
                 // line never waits on the speaker model's loading.
@@ -368,22 +370,22 @@ fn heard_or_left_out(
     }
 }
 
-/// A take `start` samples into `key`'s call that wasn't heard, its model
-/// not loading or failing on it: counted in what the call's file says
-/// wasn't heard, the file written at once so a restart before another
-/// line is heard reads it back, and `notice` for it, unless the call
-/// was told already.
+/// A take of `key`'s call that wasn't heard, spanning the samples of the
+/// call in `take`, its model not loading or failing on it: counted in
+/// what the call's file says wasn't heard, the file written at once so a
+/// restart before another line is heard reads it back, and `notice` for
+/// it, unless the call was told already.
 #[must_use]
 fn not_heard(
     book: &Shared,
     key: &str,
     writing: &mut Writing,
     me: &str,
-    start: usize,
+    take: Range<usize>,
     told: &mut HashSet<String>,
     notice: impl FnOnce() -> Notice,
 ) -> Option<Notice> {
-    writing.unheard = Some(unheard::and(writing.unheard, start));
+    writing.unheard = Some(unheard::and(writing.unheard, take.start));
     write(book, key, writing, me, true);
     told_once(told, key, notice)
 }

@@ -664,7 +664,18 @@ fn a_take_not_heard_is_written_down_at_once_and_read_back_after_a_restart() {
     };
     let mut told = HashSet::new();
     let part = || notices::not_all_heard("Planning", "the encoder failed");
-    let mut lose = |at| not_heard(&book, "call:e1", &mut writing, "Joel", at, &mut told, part);
+    let mut lose = |at: usize| {
+        let take = at..at + SECOND;
+        not_heard(
+            &book,
+            "call:e1",
+            &mut writing,
+            "Joel",
+            take,
+            &mut told,
+            part,
+        )
+    };
     let first = lose(80 * SECOND).map(|notice| notice.heading);
     let read_back = || resumed(&book, "call:e1", "Joel").unheard;
     let unheard = |stretches| {
@@ -695,6 +706,54 @@ fn a_take_not_heard_is_written_down_at_once_and_read_back_after_a_restart() {
 }
 
 #[test]
+fn takes_of_both_sides_not_heard_over_one_stretch_count_once() {
+    // Both sides are recorded at once, so when the model fails on a take
+    // of Joel's and one of theirs said over it, one stretch of the call
+    // wasn't heard, not two; a take past them is another.
+    let folder = tempfile::tempdir().unwrap();
+    let book = Shared::new(Book::default());
+    book.lock().put(Record {
+        folder: folder.path().to_path_buf(),
+        ..record(&[], None)
+    });
+    let mut writing = Writing::default();
+    let mut told = HashSet::new();
+    let part = || notices::not_all_heard("Planning", "the encoder failed");
+    // What's counted not heard of the call once `take` isn't heard too.
+    let mut lose = |take: Range<usize>| {
+        let _ = not_heard(
+            &book,
+            "call:e1",
+            &mut writing,
+            "Joel",
+            take,
+            &mut told,
+            part,
+        );
+        writing.unheard
+    };
+    let one = Some(Unheard {
+        stretches: 1,
+        first: 40 * SECOND,
+    });
+    assert_eq!(
+        lose(40 * SECOND..50 * SECOND),
+        one,
+        "a take not heard wasn't counted"
+    );
+    assert_eq!(
+        lose(45 * SECOND..52 * SECOND),
+        one,
+        "a take of each side over one stretch was counted as two stretches"
+    );
+    assert_eq!(
+        lose(52 * SECOND..60 * SECOND).map(|unheard| unheard.stretches),
+        Some(2),
+        "a take past the stretch counted wasn't counted"
+    );
+}
+
+#[test]
 fn a_call_none_of_which_was_heard_has_a_file_saying_so() {
     // A call whose every take failed from its start, or whose model
     // never loaded, had no file, so a restart before a line was heard
@@ -708,7 +767,15 @@ fn a_call_none_of_which_was_heard_has_a_file_saying_so() {
     let mut writing = Writing::default();
     let mut told = HashSet::new();
     let load = || notices::not_transcribed("Planning", "The speech model didn't load: x");
-    let told_of = not_heard(&book, "call:e1", &mut writing, "Joel", 0, &mut told, load);
+    let told_of = not_heard(
+        &book,
+        "call:e1",
+        &mut writing,
+        "Joel",
+        0..SECOND,
+        &mut told,
+        load,
+    );
     assert!(
         told_of.is_some(),
         "a call none of which was heard wasn't told"
@@ -742,7 +809,7 @@ fn a_call_taken_up_again_is_told_anew_after_a_restart_or_a_rejoin() {
     });
     let part = || notices::not_all_heard("Planning", "the encoder failed");
     let lose = |key: &str, at: usize, writing: &mut Writing, told: &mut HashSet<String>| {
-        not_heard(&book, key, writing, "Joel", at, told, part)
+        not_heard(&book, key, writing, "Joel", at..at + SECOND, told, part)
     };
     let before = lose("call:e1", 0, &mut Writing::default(), &mut HashSet::new());
     assert!(before.is_some(), "the call's first failure wasn't told");
@@ -790,7 +857,15 @@ fn a_call_put_away_is_told_anew_through_the_same_told_calls() {
     });
     let part = || notices::not_all_heard("Planning", "the encoder failed");
     let lose = |writing: &mut Writing, at: usize, told: &mut HashSet<String>| {
-        not_heard(&book, "call:e1", writing, "Joel", at, told, part)
+        not_heard(
+            &book,
+            "call:e1",
+            writing,
+            "Joel",
+            at..at + SECOND,
+            told,
+            part,
+        )
     };
     let mut calls: HashMap<String, Writing> = HashMap::new();
     let (mut ended, mut told, mut unsummed) = (Vec::new(), HashSet::new(), Vec::new());
