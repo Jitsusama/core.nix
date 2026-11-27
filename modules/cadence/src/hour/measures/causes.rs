@@ -238,23 +238,7 @@ pub fn read(state_home: &Path, folder: &Path, now: i64, keeps: bool) -> Measure 
             genuine(&message, &name).then_some((message, written))
         })
         .collect();
-    // Only a message from its line's own sender withdraws it, so another's
-    // word leaves it counted. That a message is from whom it says rests on
-    // the mesh, which signs nothing yet. A withdrawal is kept as long as
-    // the line it withdraws could be, since that may be written here later.
-    let mut withdrawn = kept.withdrawn;
-    withdrawn.extend(heard.iter().filter_map(|(m, _)| {
-        m.supersedes
-            .clone()
-            .filter(|id| sender_of(id) == Some(m.from.as_str()))
-    }));
-    // No real withdrawal is stamped past now or runs long, so one that is
-    // would only grow the kept file every hour; it is let go.
-    withdrawn.retain(|id| {
-        id.len() <= WITHDRAWAL_AT_MOST
-            && stamped_at(id)
-                .is_some_and(|ms| ms > (now - KEPT_FOR) * 1000 && ms <= now_ms + SLACK_MS)
-    });
+    let withdrawn = withdrawals(kept.withdrawn, &heard, now);
     let mut cases: Vec<Case> = kept
         .cases
         .into_iter()
@@ -439,6 +423,27 @@ fn owner_of(class: &str, repo: &str) -> &'static str {
 fn genuine(message: &Message, name: &str) -> bool {
     name.strip_suffix(".json") == Some(message.id.as_str())
         && sender_of(&message.id) == Some(message.from.as_str())
+}
+
+/// The lines withdrawn, as of `now` in seconds: those `kept` and those
+/// `heard` withdraw. Only a message from its line's own sender withdraws
+/// it, so another's word leaves it counted. That a message is from whom
+/// it says rests on the mesh, which signs nothing yet. A withdrawal is
+/// kept as long as the line it withdraws could be, since that may be
+/// written here later; no real one is stamped past now or runs long, so
+/// one that is would only grow the kept file every hour, and is let go.
+fn withdrawals(mut kept: BTreeSet<String>, heard: &[(Message, i64)], now: i64) -> BTreeSet<String> {
+    kept.extend(heard.iter().filter_map(|(m, _)| {
+        m.supersedes
+            .clone()
+            .filter(|id| sender_of(id) == Some(m.from.as_str()))
+    }));
+    kept.retain(|id| {
+        id.len() <= WITHDRAWAL_AT_MOST
+            && stamped_at(id)
+                .is_some_and(|ms| ms > (now - KEPT_FOR) * 1000 && ms <= now * 1000 + SLACK_MS)
+    });
+    kept
 }
 
 /// Who sent the message `id` names, as `<ms>-<from>-<pid>-<short id>`.
