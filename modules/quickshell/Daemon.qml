@@ -673,7 +673,13 @@ Scope {
                 console.warn(`${socket}: ${asked.ask} still not taken, so asked no more: ${why}`);
                 return;
             }
-            refusedAgain = refusedAgain.concat([{ said: said, tries: tries - 1 }]);
+            // One given as a function says its latest when asked, so one try of each such ask
+            // waits, the latest, rather than ten kept places each paying the daemon's wait
+            // (round 000011, F111); one given as words names what it acts on, so each waits.
+            const alike = one => typeof said === "function" && typeof one.said === "function"
+                && one.ask === asked.ask;
+            refusedAgain = refusedAgain.filter(one => !alike(one))
+                .concat([{ said: said, ask: asked.ask, tries: tries - 1 }]);
             if (!askAgain.running)
                 askAgain.start();
         });
