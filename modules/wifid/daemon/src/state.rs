@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::net::Ipv4Addr;
 
 use serde::{Deserialize, Serialize};
-use tokio::time::{Duration, Instant};
+use tokio::time::Instant;
 use zlink::introspect::{CustomType, Type};
 
 use crate::air::Heard;
@@ -831,6 +831,8 @@ fn card_of(path: &str) -> Option<&str> {
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
+
+    use tokio::time::Duration;
 
     use super::*;
     use crate::network::{Address, Network};
