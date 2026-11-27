@@ -267,6 +267,14 @@ code,
   color: var(--text);
 }
 
+/* More contrast draws a placeholder in the text's ink and slants it, which on
+   this italic find reads as typed words, so here it stands upright instead. */
+@media (prefers-contrast: more) {
+  .find input {
+    --placeholder-slant: normal;
+  }
+}
+
 /* The list holds focus and the row chosen in it shows it, below. */
 .list:focus-visible {
   outline: none;

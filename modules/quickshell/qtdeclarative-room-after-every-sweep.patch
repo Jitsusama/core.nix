@@ -32,7 +32,7 @@ index 65b729e..0e4caa1 100644
  
      return GCState::Invalid;
  }
-@@ -1454,6 +1456,60 @@ void MemoryManager::updateUnmanagedHeapSizeGCLimit()
+@@ -1454,6 +1456,61 @@ void MemoryManager::updateUnmanagedHeapSizeGCLimit()
      }
  }
  
@@ -65,9 +65,10 @@ index 65b729e..0e4caa1 100644
 +    // beyond what it held when the room was left, and twice what its sweeps keep beyond what
 +    // the last sweep kept then, as Qt itself lets what's used grow: a ceiling that didn't
 +    // move with what's kept let a burst kept past it, in items too large for the runs its
-+    // sweeps left, start a cycle at every miss, one for each chunk it took. It's reckoned
-+    // from what the allocators' own last sweep left, so calling it again before the next
-+    // sweep changes nothing.
++    // sweeps left, start a cycle at every miss, one for each chunk it took. So between asks
++    // the ceiling stays a fixed allowance above Qt's own limit, set at each ask. It's
++    // reckoned from what the allocators' own last sweep left, so calling it again before the
++    // next sweep changes nothing.
 +    if (roomAfterSweep == 0)
 +        return;
 +    const std::size_t held = blockAllocator.totalSlots() + icAllocator.totalSlots();
