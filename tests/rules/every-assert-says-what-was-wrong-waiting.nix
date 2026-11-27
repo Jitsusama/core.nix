@@ -152,8 +152,6 @@
   "modules/hibernate/unlock/src/main.rs" = 7;
   "modules/hibernate/unlock/src/restored.rs" = 1;
   "modules/hibernate/unlock/src/zswap.rs" = 8;
-  "modules/ir-camera/src/v4l2.rs" = 6;
-  "modules/key-counts/src/tally.rs" = 5;
   "modules/lag-watch/src/kernel_tests.rs" = 2;
   "modules/lid/docked/src/main.rs" = 11;
   "modules/machine/tests/daemon.rs" = 1;
@@ -182,7 +180,6 @@
   "modules/people/tests/daemon.rs" = 3;
   "modules/pi-packages/src/inuse/macos.rs" = 4;
   "modules/pi-packages/tests/inuse.rs" = 3;
-  "modules/plymouth/waits/src/main.rs" = 7;
   "modules/processor-telemetry/src/layout.rs" = 3;
   "modules/processor-telemetry/src/reading.rs" = 8;
   "modules/processor-telemetry/src/resting.rs" = 10;
@@ -210,7 +207,6 @@
   "modules/slack/src/messages.rs" = 4;
   "modules/slack/src/search.rs" = 1;
   "modules/slack/src/unreads.rs" = 1;
-  "modules/slack/tests/stand_in.rs" = 8;
   "modules/slices/jobs-sorter/src/low.rs" = 10;
   "modules/slices/jobs-sorter/src/main.rs" = 21;
   "modules/slices/jobs-sorter/src/quests.rs" = 3;
@@ -268,9 +264,6 @@
   "modules/wifid/daemon/src/state.rs" = 18;
   "modules/wifid/daemon/src/store.rs" = 17;
   "modules/wifid/daemon/src/supplicant.rs" = 7;
-  "modules/wifid/sign-in/src/main.rs" = 6;
-  "modules/wifid/sign-in/src/socks.rs" = 4;
-  "modules/zathura/next-document/src/main.rs" = 4;
   "tests/vm/sound/call-transcripts-vm-test.py" = 8;
   "tests/vm/devices/desk-facts-vm-test.py" = 4;
   "tests/desktop/launcher/desktop-launcher-answers-vm-test.py" = 4;

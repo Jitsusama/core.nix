@@ -3304,9 +3304,10 @@
     it, pastes it whole on Joel's display, offered marked secret, makes nothing under TMPDIR,
     runs nothing from PATH, typed or not, can't be read through /proc and holds as much of it
     in locked memory as the secret is long, says it's ready only once it can't be read and held
-    once it holds the copy, pastes whole and keeps locked a secret that outgrows its first page,
-    pastes whole a secret of exactly its cap of a MiB, and refuses a standard input it can't
-    read or one a byte past that cap, never saying it held either
+    once Joel's display has the copy, one paste then pasting it whole, pastes whole and keeps
+    locked a secret that outgrows its first page, pastes whole a secret of exactly its cap of a
+    MiB, refuses a standard input it can't read or one a byte past that cap, never saying it
+    held either, and refuses to say ready or held for a copy that isn't sensitive
   '';
   passwords-holds-no-secret = ''
     the passwords daemon holds every entry each password manager lists without a secret, even one
@@ -3314,12 +3315,13 @@
     held list or get without asking a manager, gives a secret only to the ask for it, never to a
     watch, or to the clipboard marked sensitive and cleared when its time is up, writes it to the
     copier only once the copier says it's ready and answers it copied only once the copier says it
-    holds it, answering a refused copy with the copier's reason, ends the copy it holds as it
-    ends itself, killed or not, refuses a copy
-    before reading any secret while no copier is named, types a password only into the niri
-    window it was asked for once the launcher has let go of the keys and while that window still
-    has them, refusing a second while one is under way, never into one an agent's process is
-    behind, above or below (pi, pi-spawner,
+    holds it, answering a copy the copier refuses, before it's ready, partway through or once
+    it has it all, with the copier's first line of reason, read no further than 4 KiB, or its
+    own where the copier says none, ends the copy it holds as it ends itself, killed or not,
+    refuses a copy before reading any secret while no copier is named, types a password only
+    into the niri window it was asked for once the launcher has let go of the keys and while
+    that window still has them, refusing a second while one is under way, never into one an
+    agent's process is behind, above or below (pi, pi-spawner,
     mycelium, the hosted runtime, or the agents' or jobs' slices), nor a kitty whose foreground
     runs one or a multiplexer or that can't say, and writes one journal line for each type
     naming no secret, can't be read through /proc by the
@@ -4746,7 +4748,8 @@
     made before the share is never sent and is told as hidden, the share withholding it or, before
     niri has said, not knowing, a row held as it becomes from just before the share is held
     again hidden and as itself once the share ends, another source's hold left be, what's told
-    and unread forgotten as the share begins, and the shell's own recording of one window hides
+    and unread forgotten as the share begins, two asks hidden at once told apart by nothing but
+    their keys and when each was asked, and the shell's own recording of one window hides
     nothing
   '';
   the-asks-place-releases-through-its-daemon = ''
@@ -5883,8 +5886,8 @@
     refused saying why the next time the launcher opens, types an entry's password on Return
     into the window the launcher opened over, landing on the row from the find first, copies it
     by Copy the Password through the daemon and Passwords' own wl-copy to the clipboard as the
-    launcher goes, the
-    margin wearing the clipboard's mark and the foot, opened again, counting to its clearing,
+    launcher goes, the margin wearing the clipboard's mark and the foot, opened again, counting
+    to its clearing,
     nothing on screen saying it, reads an entry in full as the selection rests on it, never as
     Joel's own ask, its drawer never saying its password, and holds its acts in the design's order
     once it's stepped into, Open the Website handing a stand-in Chrome its website as the
@@ -6429,9 +6432,9 @@
     The real tuple takes a name that starts with a dash after "--" as a name, never a flag, for each
     command the launcher runs on a contact: call start, call join, and contacts favorite and
     unfavorite; and its script, which stops Tuple's daemon, refuses before reaching tuple from a
-    person's shell in their home or a checkout, the repository's dev shell, a bare environment,
-    the root, a home holding its own runtime folder, and shells holding only some of the build's
-    folders
+    person's shell in their home or a checkout, the repository's dev shell, a bare environment and
+    a home holding its own runtime and data folders, and from the build with any one of its four
+    signs moved, while run as the build is it reaches tuple
   '';
   tuple-keeps-its-logs = ''
     Tuple's service keeps the daemon's last three logs, newest first, before it starts, and an empty

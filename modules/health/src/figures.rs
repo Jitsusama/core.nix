@@ -189,7 +189,10 @@ fn felt(feel: &[Pain], figures: &mut BTreeMap<String, f64>) {
 
 /// What each watched program held, in MiB: the most its copies held
 /// together, and a typical and a heavy copy, each the mean over the day's
-/// looks, when it was seen running.
+/// looks, when it was seen running, beside the share of those looks that
+/// counted every copy by its Pss. The share marks the scale the same keys
+/// are on: under 100 on a day partly by Rss, and absent from a day before
+/// shares were read, so a fall back to Rss reads as that, not a regression.
 #[expect(
     clippy::cast_precision_loss,
     reason = "a figure only needs to be near: mebibytes and counts"
@@ -209,6 +212,10 @@ fn held(memory: &BTreeMap<String, Memory>, figures: &mut BTreeMap<String, f64>) 
             figures.insert(
                 format!("memory.{name}.copy-p95-mib"),
                 mean(memory.p95_sum_kib),
+            );
+            figures.insert(
+                format!("memory.{name}.looks-by-pss-percent"),
+                memory.looks_by_pss.min(memory.looks) as f64 * 100.0 / memory.looks as f64,
             );
         }
     }
@@ -345,6 +352,7 @@ mod tests {
                 looks: 4,
                 median_sum_kib: (4 * 300) << 10,
                 p95_sum_kib: (2 * (500 + 700)) << 10,
+                looks_by_pss: 3,
                 ..Memory::default()
             },
         );
@@ -358,6 +366,16 @@ mod tests {
             ),
             (Some(300.0), Some(600.0)),
             "each the mean of the day's looks, in MiB"
+        );
+        assert_eq!(
+            figure("memory.pi-conversation.looks-by-pss-percent"),
+            Some(75.0),
+            "three of the four looks counted every copy by its share"
+        );
+        assert_eq!(
+            figure("memory.quickshell.looks-by-pss-percent"),
+            None,
+            "no looks, so no share of them"
         );
         assert_eq!(
             (

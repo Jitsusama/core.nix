@@ -368,7 +368,11 @@ mod tests {
         let mut tally = Tally::default();
         tally.key(LAPTOP, Board::Laptop, LEFT_SHIFT, 1);
         tap(&mut tally, BOARD, Board::Ergodox, A);
-        assert!(lines(&tally).contains(&"ergodox\tcoal\t-\ta\t1\t0".to_owned()));
+        let lines = lines(&tally);
+        assert!(
+            lines.contains(&"ergodox\tcoal\t-\ta\t1\t0".to_owned()),
+            "the ergodox's a should count unshifted, in {lines:?}"
+        );
     }
 
     #[test]
@@ -377,7 +381,11 @@ mod tests {
         tally.key(BOARD, Board::Ergodox, LEFT_SHIFT, 1);
         tally.gone(BOARD);
         tap(&mut tally, BOARD, Board::Ergodox, A);
-        assert!(lines(&tally).contains(&"ergodox\tcoal\t-\ta\t1\t0".to_owned()));
+        let lines = lines(&tally);
+        assert!(
+            lines.contains(&"ergodox\tcoal\t-\ta\t1\t0".to_owned()),
+            "a shift held as the keyboard went should be let go, in {lines:?}"
+        );
     }
 
     #[test]
@@ -394,9 +402,12 @@ mod tests {
     #[test]
     fn only_a_change_needs_writing() {
         let mut tally = Tally::default();
-        assert!(!tally.take_changed());
+        assert!(!tally.take_changed(), "a new tally should need no writing");
         tap(&mut tally, BOARD, Board::Ergodox, A);
-        assert!(tally.take_changed());
-        assert!(!tally.take_changed());
+        assert!(tally.take_changed(), "a key pressed should need writing");
+        assert!(
+            !tally.take_changed(),
+            "once taken, the change shouldn't need writing again"
+        );
     }
 }
