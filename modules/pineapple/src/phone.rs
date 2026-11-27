@@ -442,6 +442,8 @@ pub fn told_as(line: &Value) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::fmt::Write as _;
+
     use serde_json::json;
 
     use super::*;
@@ -595,7 +597,7 @@ mod tests {
                 escaped.push(each);
             } else {
                 for unit in each.encode_utf16(&mut [0; 2]) {
-                    escaped.push_str(&format!("\\u{unit:04x}"));
+                    write!(escaped, "\\u{unit:04x}").expect("a String takes any text");
                 }
             }
         }
