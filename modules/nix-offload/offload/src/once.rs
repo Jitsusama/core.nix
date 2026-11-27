@@ -245,13 +245,13 @@ mod tests {
         let mut said = Vec::new();
         let within = Duration::from_secs(5);
         let first = sending_once(folder.path(), "more", &[SOURCE], within, &mut |line| {
-            said.push(line)
+            said.push(line);
         });
         let other = sending_once(folder.path(), "more", &[OTHER], within, &mut |line| {
-            said.push(line)
+            said.push(line);
         });
         let elsewhere = sending_once(folder.path(), "lend", &[SOURCE], within, &mut |line| {
-            said.push(line)
+            said.push(line);
         });
         assert!(
             first.holds() + other.holds() + elsewhere.holds() == 3 && said.is_empty(),
