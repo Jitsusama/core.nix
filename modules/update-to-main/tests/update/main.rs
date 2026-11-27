@@ -3347,6 +3347,119 @@ fn an_input_asked_for_is_let_go_once_the_lock_no_longer_has_it() {
     );
 }
 
+/// A lock that no longer has a followed input builds without it, so the
+/// follow is left out rather than failing every update, the one that would
+/// switch to a config without it included; an ask at it is refused.
+#[test]
+fn a_follow_its_lock_no_longer_has_is_left_out_and_no_ask_may_name_it() {
+    let mut world = asking_nested(World::new());
+    if let Some(follow) = world.config.follows.get_mut(NESTED) {
+        follow.asked = false;
+    }
+    let mycelium = world.commit_in("mycelium", "one", true);
+    let core = "c".repeat(40);
+    fs::write(world.origin.join("flake.lock"), pinning(&core)).unwrap();
+    git(&world.origin, &["add", "flake.lock"]);
+    let head = world.signed("one");
+    world.system(&head);
+    assert_eq!(
+        world.update().1,
+        done(&head),
+        "a follow its lock doesn't have failed the update"
+    );
+    let Line::Refused { why, .. } = world.update_at(NESTED, &mycelium) else {
+        panic!("an ask at an input the lock doesn't have wasn't refused")
+    };
+    assert!(
+        why.contains("isn't in the lock"),
+        "an ask at an input the lock doesn't have was refused for another reason: {why}"
+    );
+}
+
+/// An ask at an input that moves only when asked, whose switch waits for a
+/// hold, is built again by the next update rather than undone by it: its
+/// commit is remembered only once it switches.
+#[test]
+fn an_ask_waiting_for_a_hold_is_kept_by_the_next_update_and_switched_when_granted() {
+    let mut world = asking_nested(World::new());
+    hold_the_daemon(&mut world, "old");
+    let pinned = world.commit_in("mycelium", "pinned", true);
+    let wanted = world.commit_in("mycelium", "wanted", true);
+    let core = "c".repeat(40);
+    fs::write(
+        world.origin.join("flake.lock"),
+        pinning_nested(&core, &pinned),
+    )
+    .unwrap();
+    git(&world.origin, &["add", "flake.lock"]);
+    let one = world.signed("one");
+    daemon_unit(&world.system(&format!("{one}+{wanted}")), "new");
+    let Line::Refused { why, .. } = world.update_at(NESTED, &wanted) else {
+        panic!("an ask restarting a held daemon didn't wait for a hold")
+    };
+    assert!(why.starts_with(update::NEEDS_HOLD), "{why}");
+    let two = world.signed("two");
+    daemon_unit(&world.system(&two), "old");
+    let waits = world.system(&format!("{two}+{wanted}"));
+    daemon_unit(&waits, "new");
+    let Line::Refused { why, .. } = world.update().1 else {
+        panic!("the next update undid the ask that waited for a hold")
+    };
+    assert!(why.starts_with(update::NEEDS_HOLD), "{why}");
+    fs::write(world.root.join("given"), "").unwrap();
+    assert_eq!(
+        world.update().1,
+        done_following(&two, &[(NESTED, &wanted)]),
+        "the grant didn't switch to mycelium at the commit asked for"
+    );
+    assert_eq!(
+        world.running(),
+        waits,
+        "the grant switched to another build"
+    );
+}
+
+/// A hold of a commit of an input left at its lock's pin can't be told
+/// from main, whose host knows no other repository's commits, nor from
+/// the pin, which isn't read for holds, so it stops the update and says so.
+#[test]
+fn a_hold_on_an_input_left_at_its_pin_is_judged_in_its_own_repository() {
+    let world = asking_nested(World::new());
+    let pinned = world.commit_in("mycelium", "pinned", true);
+    let wanted = world.commit_in("mycelium", "wanted", true);
+    let later = world.commit_in("mycelium", "later", true);
+    let core = "c".repeat(40);
+    fs::write(
+        world.origin.join("flake.lock"),
+        pinning_nested(&core, &pinned),
+    )
+    .unwrap();
+    git(&world.origin, &["add", "flake.lock"]);
+    let one = world.signed("one");
+    world.system(&format!("{one}+{wanted}"));
+    assert_eq!(
+        world.update_at(NESTED, &wanted),
+        done_following(&one, &[(NESTED, &wanted)]),
+        "the ask at mycelium wasn't built"
+    );
+    fs::write(
+        world.origin.join("flake.lock"),
+        pinning_nested(&core, &later),
+    )
+    .unwrap();
+    git(&world.origin, &["add", "flake.lock"]);
+    let two = world.signed("two");
+    world.system(&two);
+    held::ask(&world.config, &format!("hold {wanted}"), Some(1000));
+    let Line::Refused { why, .. } = world.update().1 else {
+        panic!("a hold of mycelium's commit, under a pin that holds it, let main through")
+    };
+    assert!(
+        why.contains("lock's pin"),
+        "a hold of mycelium's commit was judged by something other than its pin: {why}"
+    );
+}
+
 #[test]
 fn an_input_asked_for_is_held_to_the_lock_of_the_core_built_with_it() {
     let world = asking_nested(following());
