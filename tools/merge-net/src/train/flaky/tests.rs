@@ -63,6 +63,7 @@ pub(super) fn judged_whole(
         whole: &mut built_whole,
         excused_before: &|_| excused,
         rules_moved: false,
+        held: &BTreeSet::new(),
     };
     judge(words, &mut judging)
 }
@@ -288,6 +289,7 @@ fn mains_red_in_a_rule_the_riders_moved_is_theirs() {
         whole: &mut built_whole,
         excused_before: &|_| 0,
         rules_moved: true,
+        held: &BTreeSet::new(),
     };
     assert_eq!(
         judge(&said, &mut judging).unwrap(),
@@ -379,6 +381,7 @@ fn mains_formatting_red_is_never_mains() {
         whole: &mut built_whole,
         excused_before: &|_| 0,
         rules_moved: false,
+        held: &BTreeSet::new(),
     };
     assert_eq!(
         judge(&said, &mut judging).unwrap(),
@@ -668,11 +671,11 @@ fn words_naming_no_failed_derivation_say_nothing_of_whose_the_red_is() {
         Err(Declined::Unexplained)
     );
     let flaky = words(&["vm-pi"], &["vm-test-run-vm-pi"]);
-    let broken = flaky.clone() + "\u{2715} a check the change touched no longer evaluates\n";
+    let unbuilt = words(&[], &[]) + "\u{2715} a check the change touched no longer evaluates\n";
     assert_eq!(
-        judged(&broken, &passes_at_base, &passes, 0),
-        Err(Declined::Unexplained),
-        "a check that no longer evaluates was passed over beside a flake"
+        judged(&unbuilt, &passes_at_base, &passes, 0),
+        Err(Declined::NoLongerEvaluates),
+        "changed-checks' own words that a check no longer evaluates were read as unexplained"
     );
     let unmarked = flaky + "a check the change touched no longer evaluates\n";
     assert_eq!(

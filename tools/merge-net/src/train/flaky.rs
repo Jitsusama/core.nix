@@ -55,6 +55,8 @@ use std::process::Command;
 use serde_json::json;
 
 pub(super) use self::lent::{Lenders, Lent};
+use checks_said::{added, built, held_at, quarantined};
+
 use super::gated::{Gated, RUNS_AGAIN, gated};
 use crate::state::{State, now, short};
 
@@ -144,6 +146,8 @@ pub(super) struct Judging<'a> {
     pub excused_before: &'a dyn Fn(&str) -> usize,
     /// Whether the riders moved what a rule runs, as `moves_a_rule` says.
     pub rules_moved: bool,
+    /// The checks main's quarantine excuses whole at the base.
+    pub held: &'a BTreeSet<String>,
 }
 
 /// The names of the derivations whose builders failed, as the gate's
@@ -240,39 +244,6 @@ pub(super) fn moves_a_rule(files: Option<&[String]>) -> bool {
 /// Whether `file` is one of those `moves_a_rule` names.
 fn runs_a_rule(file: &str) -> bool {
     file.starts_with("tests/rules/") || ["flake.nix", "flake.lock", "checks.nix"].contains(&file)
-}
-
-/// The checks the gate's `words` name as added or changed, which it built,
-/// a row each of changed-checks' table: its kind, then its name.
-pub(super) fn built(words: &str) -> Vec<String> {
-    words
-        .lines()
-        .filter_map(|line| {
-            let mut words = line.split_whitespace();
-            let kind = words.next()?;
-            let name = words.next()?;
-            matches!(kind, "added" | "changed").then(|| name.to_owned())
-        })
-        .collect()
-}
-
-/// The checks whose failure the gate's `words` say main's quarantine
-/// excused: changed-checks built each alone, and its red blocked nothing,
-/// so the failure its build left in the words isn't the red's. Judging it
-/// again would build a check broken at every base and blame the riders.
-/// A builder can't say it, since nix's `-L` puts the builder's name before
-/// each line it prints.
-pub(super) fn quarantined(words: &str) -> BTreeSet<String> {
-    words
-        .lines()
-        .filter_map(|line| {
-            let said = line
-                .strip_prefix("changed-checks: ")?
-                .strip_suffix(", so it blocks nothing")?;
-            let (name, _) = said.split_once(" failed, but ")?;
-            plainly_named(name).then(|| name.to_owned())
-        })
-        .collect()
 }
 
 /// What changed-checks says when the builds it ran ended and one failed:
@@ -420,7 +391,13 @@ fn blame(words: &str, check: &str, derivation: &str, judging: &mut Judging<'_>) 
     if spent && !rule {
         return Blame::Spent;
     }
-    let (at_base, base_words) = (judging.at_base)(check);
+    // A check the riders added isn't at the base, so only its build again
+    // at the candidate tells a flake of theirs from their break.
+    let (at_base, base_words) = if added(words).contains(check) {
+        (Gated::Passed, String::new())
+    } else {
+        (judging.at_base)(check)
+    };
     match at_base {
         Gated::Red if !rule => Blame::Masked,
         Gated::Red if judging.rules_moved => Blame::RuleMoved,
@@ -445,7 +422,11 @@ pub(super) fn judge(
     words: &str,
     judging: &mut Judging<'_>,
 ) -> Result<Vec<(String, Blame)>, Declined> {
-    let quarantined = quarantined(words);
+    // It builds nothing then, so no failed build would say why.
+    if words.contains(NO_LONGER_EVALUATES) {
+        return Err(Declined::NoLongerEvaluates);
+    }
+    let quarantined = quarantined(words, judging.held);
     let failed: Vec<String> = failed_derivations(words)
         .map(|failed| {
             failed
@@ -457,9 +438,6 @@ pub(super) fn judge(
         .ok_or(Declined::Unexplained)?;
     if failed.len() > MOST_REBUILT {
         return Err(Declined::TooMany);
-    }
-    if words.contains(NO_LONGER_EVALUATES) {
-        return Err(Declined::NoLongerEvaluates);
     }
     // A gate that ran again on its own base said twice what it built,
     // and a rider's build may print the words that say so to cut its
@@ -595,6 +573,7 @@ pub(super) fn excuses(
     // Named at the candidate, whose build named the failed derivations,
     // so a check the riders added doesn't sink the evaluation.
     let named = |checks: &[String]| lent.borrow().named(red.checkout, ".", checks);
+    let held = held_at(red.checkout, red.base);
     let mut judging = Judging {
         named: &named,
         at_base: &mut base_build,
@@ -602,6 +581,7 @@ pub(super) fn excuses(
         whole: &mut whole,
         excused_before: &counted,
         rules_moved: moves_a_rule(moved_between(red.checkout, red.base, red.candidate).as_deref()),
+        held: &held,
     };
     let judged = judge(&words, &mut judging);
     let shown = short(red.candidate);
@@ -783,6 +763,8 @@ fn plainly_named(check: &str) -> bool {
             .all(|character| character.is_ascii_alphanumeric() || "-_'".contains(character))
 }
 
+#[path = "flaky/checks_said.rs"]
+mod checks_said;
 #[path = "flaky/lent.rs"]
 mod lent;
 
@@ -791,8 +773,8 @@ mod lent;
 mod owner_tests;
 
 #[cfg(test)]
-#[path = "flaky/quarantined_tests.rs"]
-mod quarantined_tests;
+#[path = "flaky/checks_said_tests.rs"]
+mod checks_said_tests;
 #[cfg(test)]
 #[path = "flaky/tests.rs"]
 mod tests;
