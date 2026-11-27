@@ -403,6 +403,7 @@ impl Working {
         }
         let found = held.newest.take();
         drop(held);
+        let landed = found.is_some();
         if let Some(found) = found {
             self.used = found.used;
             self.measured = found.measured;
@@ -439,10 +440,16 @@ impl Working {
             return None;
         }
         // A restart reads the same process again, and waits on it again,
-        // so the line names it rather than offering one.
-        let held = using::reading().map_or(String::new(), |pid| {
-            format!(", held up reading the memory of process {pid}")
-        });
+        // so the line names it rather than offering one. A reading that
+        // just landed was held up by nothing, and the process the next
+        // walk reads is only passing through, so none is named then.
+        let held = if landed {
+            String::new()
+        } else {
+            using::reading().map_or(String::new(), |pid| {
+                format!(", held up reading the memory of process {pid}")
+            })
+        };
         // A first reading that lands already old never answered either,
         // so it's said as none, as its answer will be said at last.
         let late = if answered {

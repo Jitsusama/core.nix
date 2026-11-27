@@ -419,7 +419,8 @@ fn a_first_reading_that_never_answers_is_said_late_once_and_its_answer_once() {
         working.take(folders.clone());
     }
     heard.extend(told.try_iter());
-    let answered: Vec<&String> = heard.iter().filter(|said| answers(said)).collect();
+    // Every age line after the freeing, so landing old says nothing again.
+    let answered: Vec<&String> = heard.iter().filter(|said| of_the_reading(said)).collect();
     assert_eq!(
         answered,
         ["the reading of /proc answers at last"],
@@ -430,7 +431,13 @@ fn a_first_reading_that_never_answers_is_said_late_once_and_its_answer_once() {
 /// Whether `said` is a line of the reading's age, as `take` says it,
 /// rather than the share's, as the thread says it of each walk.
 fn of_the_reading(said: &str) -> bool {
-    said.contains("reading of /proc")
+    [
+        "no reading of /proc has answered in ",
+        "the reading of /proc is ",
+        "the reading of /proc answers ",
+    ]
+    .iter()
+    .any(|age| said.starts_with(age))
 }
 
 /// How old a reading may grow in a case whose first take must wait out
@@ -446,8 +453,11 @@ fn a_first_reading_that_lands_old_is_said_as_none_answering_and_then_at_last() {
     // until the case has taken the first, telling `landed` that the
     // first was put in the slot. Each walk reads nothing, so the thread
     // says the share unmeasured from the second on, which the case
-    // doesn't judge.
+    // doesn't judge. The first walk's age counts from its own start, so
+    // the case times `old` from when the walk says it began, however late
+    // its thread started.
     let old = YOUNG_PAST_A_WAIT;
+    let (walking, walked) = mpsc::channel::<Instant>();
     let (free, freed) = mpsc::channel::<()>();
     let (again, freed_again) = mpsc::channel::<()>();
     let (landed, heard_landed) = mpsc::channel::<()>();
@@ -461,6 +471,7 @@ fn a_first_reading_that_lands_old_is_said_as_none_answering_and_then_at_last() {
         move |_: &[PathBuf]| {
             calls += 1;
             if calls == 1 {
+                let _ = walking.send(Instant::now());
                 let _ = freed.recv_timeout(SAMPLED * 8);
             } else if calls == 2 {
                 let _ = landed.send(());
@@ -472,9 +483,11 @@ fn a_first_reading_that_lands_old_is_said_as_none_answering_and_then_at_last() {
             let _ = tell.send(said);
         },
     );
-    let began = Instant::now();
     working.take(folders.clone());
     assert_eq!(told.try_iter().count(), 0, "a young first wait was said");
+    let began = walked
+        .recv_timeout(LATE)
+        .expect("the first walk never began");
     std::thread::sleep(old.saturating_sub(began.elapsed()) + BRISK);
     drop(free);
     heard_landed
@@ -509,7 +522,8 @@ fn a_first_reading_that_lands_old_is_said_as_none_answering_and_then_at_last() {
 fn a_first_reading_slower_than_a_wait_that_answers_young_says_nothing() {
     // The daemon's commonest slow start: its first walk outlasts the
     // wait, then answers long before it's old, so nothing was late and
-    // nothing answers at last.
+    // nothing answers at last. The walk outlasts the wait by a whole late
+    // wake, so the first take is sure to find nothing.
     let (tell, told) = mpsc::channel();
     let folders = vec![PathBuf::from("/home/someone/trees/fix")];
     let mut working = Working::start_saying(
@@ -517,15 +531,19 @@ fn a_first_reading_slower_than_a_wait_that_answers_young_says_nothing() {
         ROOMY,
         folders.clone(),
         |_: &[PathBuf]| {
-            std::thread::sleep(SAMPLED + SAMPLED / 2);
+            std::thread::sleep(SAMPLED + LATE);
             Sample::default()
         },
         move |said| {
             let _ = tell.send(said);
         },
     );
-    let until = Instant::now() + SAMPLED * 2 + LATE;
+    let until = Instant::now() + SAMPLED * 2 + LATE * 2;
     working.take(folders.clone());
+    assert!(
+        working.unread(),
+        "the first take found a walk slower than its wait"
+    );
     while working.unread() && Instant::now() < until {
         std::thread::sleep(BRISK);
         working.take(folders.clone());
