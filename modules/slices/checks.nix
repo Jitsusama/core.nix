@@ -161,8 +161,7 @@
       claims = {
         "the apps don't outweigh it ten times on the processor" =
           weight slices.app >= 10 * weight slices.agents;
-        "the apps don't outweigh it ten times on the disk" =
-          disk slices.app >= 10 * disk slices.agents;
+        "the apps don't outweigh it ten times on the disk" = disk slices.app >= 10 * disk slices.agents;
         "the sorter doesn't watch app.slice" = watches "app.slice";
         "the sorter doesn't watch agents.slice" = watches "agents.slice";
       };
