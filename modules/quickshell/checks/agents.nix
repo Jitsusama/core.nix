@@ -222,7 +222,9 @@
   # go to the cell, or show the network or machine it names, by its name alone;
   # to offer a sprout's plain words as new work, the cell they say they're from
   # kept only as an address; and nothing for a link naming none of them, or a
-  # second within a few seconds
+  # second within a few seconds. Each function it calls must be one the
+  # launcher's IpcHandler has, taking as many arguments as it passes, since qs
+  # refuses any other
   # (modules/quickshell/tests/mycelium-links-open-in-the-launcher.sh). Its tests
   # run as it builds.
   mycelium-links-open-in-the-launcher =
@@ -263,6 +265,8 @@
             entry
             (pkgs.writeText "niri-mimeapps.list" defaults)
             (lib.getExe askingStandIn)
+            "${../Launcher.qml}"
+            "${../mycelium-link/src/main.rs}"
           ]
         }
         touch $out
