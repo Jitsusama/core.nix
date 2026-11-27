@@ -143,6 +143,8 @@ def test_a_burst_of_power_events_leaves_it_following_the_charger(laptop: Laptop)
 
 def test_a_session_in_use_keeps_it_awake_on_battery(laptop: Laptop) -> None:
     """A session still in use, as a call in Chrome keeps it, keeps the machine awake on battery."""
+    # Said here rather than left to the test before's settle, which a failure there skips.
+    laptop.idle(idle=False)
     laptop.charger(plugged=False)
     assert not laptop.machine_idle(), "logind's IdleHint is true with a session in use"
     laptop.machine.sleep(LOOKING)

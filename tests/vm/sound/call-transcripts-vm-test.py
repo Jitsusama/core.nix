@@ -301,10 +301,11 @@ def test_a_call_ended_is_no_longer_served_as_recorded(call: dict[str, Any]) -> N
 def test_both_sides_are_written_in_the_order_they_spoke(joel: Joel, call: dict[str, Any]) -> None:
     """Joel asks, the others answer, Joel thanks them: three turns, each its speaker's."""
     turns = [line for line in transcript(joel, call).splitlines() if line.startswith("**")]
-    try:
-        asked, answered, thanked = turns
-    except ValueError:
-        pytest.fail(f"the transcript holds {len(turns)} turns, not three: {turns}")
+    match turns:
+        case [asked, answered, thanked]:
+            pass
+        case _:
+            pytest.fail(f"the transcript holds {len(turns)} turns, not three: {turns}")
     assert not asked.startswith("**Others**"), f"Joel's question is written as the others': {asked}"
     # A speech model on the VM's processor can hear a word wrong (Whisper heard "review" as
     # "renew"), so each turn is known by a word it hears every time; dictation's checks hold

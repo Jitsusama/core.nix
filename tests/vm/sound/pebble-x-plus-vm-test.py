@@ -122,6 +122,10 @@ def played(session: Session) -> dict[int, float]:
     heard = session.levels("pebble")
     session.run("systemctl --user start pebble-x-plus-tuning")
     session.tuning_ready()
+    # Every test's change in dB divides by these, so one unheard fails here, saying so.
+    assert all(value > HEARD for value in heard.values()), (
+        f"a tone played with the tuning stopped went unheard: {heard}"
+    )
     return heard
 
 
@@ -173,9 +177,8 @@ def test_the_headphones_hear_what_was_played(session: Session, played: dict[int,
     session.run("pactl set-default-sink headphones")
     heard = session.levels("headphones")
     assert all(value > HEARD for value in heard.values()), f"a tone went unheard: {heard}"
-    changed = {
-        frequency: round(decibels(heard[frequency], played[frequency]), 1) for frequency in TONES
-    }
+    changed = {frequency: decibels(heard[frequency], played[frequency]) for frequency in TONES}
     assert all(abs(change) < UNCHANGED for change in changed.values()), (
-        f"the headphones changed tones by these dB: {changed}"
+        "the headphones changed tones by these dB: "
+        f"{ {frequency: round(change, 2) for frequency, change in changed.items()} }"
     )
