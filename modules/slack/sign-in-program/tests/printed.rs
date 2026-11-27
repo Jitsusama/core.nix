@@ -29,7 +29,9 @@ const AT_ONCE: Duration = Duration::from_secs(2);
 
 /// Taken by each case for its whole run. A program written while another
 /// case's thread forks can be held open for writing in that child, and
-/// running it then fails with ETXTBSY; one case at a time can't race so.
+/// running it then fails with ETXTBSY. The library tries such a program
+/// again, but the wait would cost a case its timing, so one case at a
+/// time can't race so.
 static TURN: Mutex<()> = Mutex::new(());
 
 /// This case's turn, kept however an earlier case ended.
@@ -152,17 +154,30 @@ fn sign_in_still_held_for_writing_is_run_once_let_go() {
         .write(true)
         .open(&path)
         .expect("the program held for writing");
+    let first = std::process::Command::new(&path).output();
+    assert!(
+        first
+            .as_ref()
+            .is_err_and(|error| error.raw_os_error() == Some(libc::ETXTBSY)),
+        "the hold makes running it fail as busy: {first:?}"
+    );
+    let began = Instant::now();
     let letting_go = thread::spawn(move || {
         thread::sleep(SHORT);
         drop(held);
     });
     let (answer, _) = asked(path, AMPLE);
+    let took = began.elapsed();
     letting_go.join().expect("the hold is let go");
     std::fs::remove_dir_all(&at).expect("the case's folder goes");
     assert_eq!(
         answer,
         SignIn::Token("stand-in-token".into()),
         "a program busy being written is run once it can be"
+    );
+    assert!(
+        took >= SHORT,
+        "and only once the hold was let go, so it was tried again: {took:?}"
     );
 }
 
