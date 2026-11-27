@@ -66,6 +66,32 @@ pub(super) fn list(hits: Vec<Listed>, notified: Vec<Listed>, owed: &[Owed]) -> V
     threads
 }
 
+/// What the search `found`, then where Joel `spoke` lately that it didn't
+/// find, read from its `reach`: his words are listed there long before
+/// they're searched, and only what's fresh is read, so they're read first
+/// with the search's, and owed like them. One already `owed` isn't listed
+/// but owed from no later than the `reach`, so it waits its turn yet is
+/// read from as far back as his words: the watch lists it each round until
+/// they're judged, where the search lists one again only once it changes,
+/// so listed it would be asked every round, and three failing would spend
+/// each round's failures before what notified him is read.
+pub(super) fn with_spoken(
+    mut found: Vec<Listed>,
+    spoke: Option<Vec<Thread>>,
+    reach: u64,
+    owed: &mut [Owed],
+) -> Vec<Listed> {
+    for thread in spoke.into_iter().flatten() {
+        if let Some(owed) = owed.iter_mut().find(|owed| owed.thread == thread) {
+            owed.from = owed.from.min(reach);
+            owed.read_from = owed.read_from.min(reach);
+        } else if !found.iter().any(|(known, _, _)| *known == thread) {
+            found.push((thread, reach, reach));
+        }
+    }
+    found
+}
+
 /// Whether `thread` is in `threads` already, then read from the farther
 /// back of where it was and `from` and `read_from`.
 fn merged(threads: &mut [Listed], thread: &Thread, from: u64, read_from: u64) -> bool {
@@ -197,6 +223,34 @@ mod tests {
             tries,
             skip,
         }
+    }
+
+    #[test]
+    fn one_owed_where_joel_spoke_waits_owed_from_as_far_back_as_the_watch_reaches() {
+        // Owed from a notification a minute back, where the watch reaches
+        // an hour back to Joel's words.
+        let mut owing = [Owed {
+            read_from: 3540,
+            ..owed(12, 3600, 2, 1)
+        }];
+        let spoke = |numbers: &[u64]| Some(numbers.iter().copied().map(thread).collect::<Vec<_>>());
+        let found = with_spoken(Vec::new(), spoke(&[12, 13]), 60, &mut owing);
+        assert_eq!(
+            found,
+            [(thread(13), 60, 60)],
+            "only the one not owed is listed"
+        );
+        assert_eq!(
+            owing,
+            [Owed {
+                read_from: 60,
+                ..owed(12, 60, 2, 1)
+            }],
+            "the owed one is read from his words, waiting as it did"
+        );
+        let found = with_spoken(Vec::new(), spoke(&[12]), 120, &mut owing);
+        assert!(found.is_empty(), "the owed one is listed no later round");
+        assert_eq!(owing[0].from, 60, "a later reach never moves it on");
     }
 
     /// The rounds of the first `rounds` in which one failing every ask is
