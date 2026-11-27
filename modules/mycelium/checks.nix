@@ -532,12 +532,10 @@ in
         && !(lib.hasInfix "--eases-carry" linuxNode)
         && !(lib.hasInfix "--eases-carry" sleepingNode)
         && !(lib.hasInfix "--eases-onto" linuxNode)
-        && lib.hasInfix "--eases --eases-onto tern --eases-onto osprey" (
-          ontoNode [
-            "tern"
-            "osprey"
-          ]
-        )
+        && lib.hasInfix "--eases --eases-onto tern --eases-onto osprey" (ontoNode [
+          "tern"
+          "osprey"
+        ])
         && !(lib.hasInfix "--eases-onto" (
           toString
             (linux (
