@@ -141,9 +141,12 @@ REACHING = timedelta(seconds=30)
 FREEZING = timedelta(minutes=3)
 # Each place a program gives, stepped into as Joel does, in rounds with the load frozen and
 # running by turns, after a first round that's only read, since a place's first step makes what
-# it keeps for the rest. A step is timed by the launcher from the key it heard to its frame, and
+# it keeps for the rest. A step is timed by the launcher from the key's press to its frame, and
 # said in its journal as `"\u2192 Name" took N ms to its frame` (Trials.js), which is what the
-# machine's own load proof reads of Joel's. Under load a place's middle step may take twice its
+# machine's own load proof reads of Joel's, with how long after its press the key was heard
+# said last. The VM stamps its keys, so that part, the compositors handing the key on, is taken
+# back out and a step judged from the key the launcher heard, as a key's VM-only parts are
+# (round 2 on #7087, 19, 25 and 36). Under load a place's middle step may take twice its
 # middle with the load frozen and STEPPED_MORE ms more, as a key may. Each place is moved in
 # once after its step, and the drawer made for the row moved onto, off the key's path as the
 # selection rests, is timed by the launcher from the work begun for it to its frame
@@ -157,6 +160,7 @@ FREEZING = timedelta(minutes=3)
 ROUNDS = 6
 STEPPED_MORE = 50
 STEP_SAID = re.compile(r'"\u2192 ([^"]+)" took (\d+) ms to its frame, (\d+) ms searching')
+STEP_HEARD = re.compile(r", heard (\d+) ms after its press$")
 # The programs whose pages are stepped into: what's typed to find each, and its row's key.
 PAGES = [
     ("chrome", "program:google-chrome"),
@@ -663,16 +667,25 @@ def stepped_round(desktop: Desktop) -> dict[str, Drawn]:
 
 
 def steps_said(desktop: Desktop, since: str) -> list[tuple[str, int, int, str]]:
-    """Give each step timed since the mark: its place, its frame, its search and its line."""
+    """Give each step timed since the mark: its place, its frame, its search and its line.
+
+    Its frame is from the key the launcher heard, its line's heard part taken out (STEP_HEARD).
+    """
     said = desktop.as_account(
         "journalctl --user --unit=quickshell --no-pager --output=cat"
         f" --after-cursor={shlex.quote(since)} | grep -a -F ' ms to its frame'; true"
     )
     return [
-        (found[1], int(found[2]), int(found[3]), found.string.strip())
+        (found[1], int(found[2]) - heard_late(found.string), int(found[3]), found.string.strip())
         for found in map(STEP_SAID.search, said.splitlines())
         if found
     ]
+
+
+def heard_late(line: str) -> int:
+    """Give how long after its press a step's key was heard, as its line says, else 0."""
+    heard = STEP_HEARD.search(line.strip())
+    return int(heard[1]) if heard else 0
 
 
 def makings_said(desktop: Desktop, since: str) -> list[str]:
