@@ -44,7 +44,9 @@ pub(crate) fn script_in(path: &Path, shell: &Path, body: &str) {
 
 /// The bash on PATH, for a script that pauses for less than a second
 /// without a fork: a Nix build's /bin/sh is busybox, whose `read` takes
-/// only whole seconds, and every build's PATH has bash.
+/// only whole seconds, and every build's PATH has bash. Only Linux's
+/// collecting cases pause so.
+#[cfg(target_os = "linux")]
 pub(crate) fn bash() -> std::path::PathBuf {
     std::env::var_os("PATH")
         .iter()

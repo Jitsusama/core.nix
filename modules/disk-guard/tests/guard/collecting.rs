@@ -789,9 +789,14 @@ fn step_later_until(
         // What the guard kept and said, since this has given up seven
         // times on a loaded builder with no word of why no listing began.
         let read = |path: &str| fs::read_to_string(store.root.join(path)).unwrap_or_default();
+        let journal = read("state/journal.jsonl");
+        let garbage: Vec<&str> = journal
+            .lines()
+            .filter(|line| line.contains("garbage"))
+            .collect();
         assert!(
             started.elapsed() < AT_IDLE,
-            "{seconds} s on: {:?}\nkept: {}\nstatus: {}",
+            "{seconds} s on: {:?}\nkept: {}\nstatus: {}\njournal: {garbage:#?}",
             store.log(),
             read("state/garbage.json"),
             read("status.json")
