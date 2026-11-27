@@ -792,9 +792,12 @@ ShellRoot {
                 const madeRow = making(row, key);
                 if (key !== throwing)
                     return madeRow;
+                // Its message is never said: the check fails on a line of
+                // the run that carries it (checks/quests.nix), as makeAhead's
+                // warning would were it to say the throw itself.
                 return Object.defineProperty({}, "key", { get: () => {
                     threw += 1;
-                    throw new Error("a row broke");
+                    throw new Error("joel's secret");
                 } });
             };
             theLauncher.felt = [];

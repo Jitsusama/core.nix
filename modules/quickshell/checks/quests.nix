@@ -82,7 +82,12 @@
         --node $XDG_RUNTIME_DIR/mycelium/harbour.sock \
         --socket $XDG_RUNTIME_DIR/daemons/quests.sock \
         --asks $ASKS --looked $TMPDIR/looked &
-      timeout 60 ${qs} -p shell.qml
+      set -o pipefail
+      timeout 60 ${qs} -p shell.qml 2>&1 | tee said
+      # A row that throws as it's made ahead is said by its kind, never its
+      # message, which could carry what a source served, though nothing in
+      # the cases reads what was said; its message said fails the check.
+      if grep -aF "joel's secret" said; then exit 1; fi
       touch $out
     '';
 }
