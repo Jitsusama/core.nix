@@ -29,8 +29,7 @@ if TYPE_CHECKING:
 # How many times a kind of key is pressed for one of them to be slow enough to be said: the
 # nested niri's software frames take longer than FELT_MS for nearly every key.
 TRIES = 6
-# How many arrows are pressed, one a try, for down and up to be said: six of each, as the six
-# pairs pressed before each try's arrow was its own.
+# How many openings an arrow is pressed in for down and up to be said: six that end on each.
 ARROW_TRIES = 2 * TRIES
 # How long a key's line has to reach the shell's log after its frame, in seconds.
 WRITTEN_WITHIN = 2.0
@@ -58,8 +57,6 @@ A_PROGRAMS_DRAWER = re.compile(r'drawer for "program[:"]')
 # How many of the launcher's newest lines a case that fails gives, since the check prints only
 # the shell log's tail, which a later case's lines fill (#6855's merge run, 2026-11-26).
 LINES_GIVEN = 30
-# How many rows the launcher lists for an arrow to have somewhere to move the selection.
-ROWS_TO_MOVE = 2
 
 # The shell, started once for the file's cases.
 shell = launcher_on_niri.shell
@@ -117,32 +114,31 @@ def where(shell: Shell) -> tuple[object, object, object]:
 def test_an_arrow_is_said_whole(shell: Shell) -> None:
     """Down and up are each said as themselves, since the launcher names them and nobody typed.
 
-    A try presses one arrow, given WRITTEN_WITHIN to be said before the next, until both have
-    been. An arrow that moves nothing is never timed (Launcher.qml's arrowed), so the case waits
-    for a second row, and a try presses down from the first place and up from any other, which
-    moves the selection unless rows arriving put it back. Pressed two a try, back to back, no try
-    in six said an arrow on a loaded lender (#6855's merge run, 2026-11-26), where alone the
-    case passed five times in five, and why isn't known. So a failure gives where the selection
-    stood before each press and after the last, and the launcher's own lines.
+    Only a key slower to its frame than FELT_MS is said, and a launcher done opening drew
+    every arrow sooner: pressed in one opening once its rows were in, twelve arrows each moved
+    the selection and none was said (2026-11-26). So each try opens the launcher, presses as
+    soon as it's ready, while its opening still draws, and closes it, as the step cases do. A
+    frame says only its newest key, so a try ends on the arrow it's for: down alone, then down
+    and up, from the first row the opening selects. A failure gives where the selection stood
+    after each try's arrows, and the launcher's own lines.
     """
-    shell.as_account(shell.ipc("toggle"))
-    shell.launcher_ready()
-    shell.launcher_until(lambda shown: shown["count"] >= ROWS_TO_MOVE)
     seen: list[tuple[object, object, object]] = []
     mark = shell.mark()
 
-    def an_arrow() -> None:
+    def an_opening() -> None:
+        shell.as_account(shell.ipc("toggle"))
+        shell.launcher_ready()
+        for key in ["down"] if len(seen) % 2 == 0 else ["down", "up"]:
+            shell.send_key(key)
         seen.append(where(shell))
-        shell.send_key("down" if seen[-1][0] == 0 else "up")
+        shell.close_launcher()
 
-    said = said_by(shell, an_arrow, lambda keys: set(keys) >= ARROWS, ARROW_TRIES)
-    seen.append(where(shell))
+    said = said_by(shell, an_opening, lambda keys: set(keys) >= ARROWS, ARROW_TRIES)
     logged = launcher_on_niri.logged_since(shell, mark).splitlines()
     lines = "\n".join([line for line in logged if "launcher: " in line][-LINES_GIVEN:])
-    stood = f"place, row and count before each arrow and after the last: {seen}"
+    stood = f"place, row and count after each try's arrows: {seen}"
     assert set(said) >= ARROWS, f"an arrow went unsaid as itself: {said}\n{stood}\n{lines}"
     assert "1 letter" not in said, f"an arrow was counted as typed: {said}"
-    shell.close_launcher()
 
 
 def test_a_step_in_and_out_says_its_arrow_and_the_places_key(shell: Shell) -> None:
