@@ -190,6 +190,8 @@ QtObject {
             false);
         expect("nor one whose row says a kept from but a never-kept shownBy",
             Arming.keepsSteps(null, [{ row: { key: "ask", from: {}, shownBy: never } }]), false);
+        expect("nor one holding an ask made hidden, which says no source but holds still",
+            Arming.keepsSteps(null, [stepOf({}), { row: { key: "ask", still: true } }]), false);
         expect("one whose steps and name keep is, a step with no source among them",
             Arming.keepsSteps(null, [stepOf({}), { row: {} }]), true);
 

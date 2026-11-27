@@ -159,10 +159,13 @@ function keepsPlace(source) {
 // source, and a name no source has, keep, as home's led places do. A
 // row made showing says its source by shownBy wherever it's held, as
 // For You holds an ask under Now with no from, so that counts as one,
-// and a row saying both keeps only where neither says never.
+// and a row saying both keeps only where neither says never. A row held
+// still keeps nothing either, as an ask made hidden under a share says
+// neither (secret-asks' Asks.qml), so its step can't be kept by saying
+// no source.
 function keepsSteps(source, steps) {
-    return keepsPlace(source)
-        && steps.every(step => keepsPlace(step.row?.from) && keepsPlace(step.row?.shownBy));
+    return keepsPlace(source) && steps.every(step => step.row?.still !== true
+        && keepsPlace(step.row?.from) && keepsPlace(step.row?.shownBy));
 }
 
 // Nothing armed.
