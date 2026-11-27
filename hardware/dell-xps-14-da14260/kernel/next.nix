@@ -41,6 +41,13 @@ in
       # a PWM signal this OLED ignores. The driver wakes the panel before
       # reading it.
       "edp-wakes-the-panel"
+      # A hibernate's thaw reset Bluetooth's controller and probed it again,
+      # and the probe waited on its firmware while user space was frozen, so
+      # the power-off asked a controller still in its bootloader for D3. It
+      # refused, and the hibernate rolled back with the laptop left on. Thaw
+      # is now a plain wake, and a missed interrupt is checked against the
+      # controller's own register.
+      "btintel-pcie-pm"
       # Bluetooth's firmware sends its debug traces to the Wi-Fi side rather
       # than to buffers on the host. Intel pointed at it for a controller
       # that stopped the way this one does, after its exception dump came
