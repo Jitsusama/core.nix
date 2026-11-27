@@ -272,15 +272,10 @@ fn score_meeting(speech: &mut Parakeet, meeting: &Meeting) -> Result<(Scored, Ti
     };
     let (cut, cuts) = echo::cut_echoes(&lines, &word_times, said::spoken);
     for taken in &cuts {
-        let by = if let Some(below) = taken.below {
-            format!("{below:.0} dB below theirs")
-        } else {
-            let ms = taken.after * 1000 / isize::try_from(RATE).unwrap_or(isize::MAX);
-            format!("{ms} ms after theirs")
-        };
         println!(
-            "{name}: Joel's words at {} taken for an echo, {by}: {}",
+            "{name}: Joel's words at {} taken for an echo, {}: {}",
             transcript::clock(taken.at),
+            taken.by(),
             taken.text
         );
     }

@@ -276,6 +276,20 @@ pub struct Cut {
     pub below: Option<f32>,
 }
 
+impl Cut {
+    /// What it was cut by, as the journal and the meetings check say it:
+    /// how far below theirs, if for its level, else how late after theirs.
+    #[must_use]
+    pub fn by(&self) -> String {
+        if let Some(below) = self.below {
+            format!("{below:.0} dB below theirs")
+        } else {
+            let rate = isize::try_from(RATE).unwrap_or(isize::MAX);
+            format!("{} ms after theirs", self.after * 1000 / rate)
+        }
+    }
+}
+
 /// `lines` with the others' echo cut from each of Joel's whose words
 /// `words` holds, by the line's index, what's left tidied by `tidy`, and
 /// what was cut. A line whose opening words are cut starts at the first
@@ -962,6 +976,22 @@ mod tests {
                 "the cut of {heard:?} didn't say how far below theirs it was by level alone"
             );
         }
+    }
+
+    #[test]
+    fn a_cut_says_what_it_was_cut_by() {
+        let cut = |after_ms: isize, below| Cut {
+            line: 1,
+            at: 5_000 * RATE / 1000,
+            after: after_ms * isize::try_from(RATE).expect("a rate fits") / 1000,
+            text: "Lunch at noon".to_owned(),
+            below,
+        };
+        assert_eq!(
+            [cut(-200, None).by(), cut(50, Some(21.6)).by()],
+            ["-200 ms after theirs", "22 dB below theirs"],
+            "a cut didn't say the rule it was cut by"
+        );
     }
 
     #[test]

@@ -116,19 +116,15 @@ impl Writing {
     /// all that says where to listen for it.
     fn untold_cuts(&mut self) -> Vec<String> {
         let (cut, cuts) = echo::cut_echoes(&self.lines, &self.words, said::spoken);
-        let rate = isize::try_from(RATE).unwrap_or(isize::MAX);
         let mut untold: Vec<String> = cuts
             .into_iter()
             .filter(|cut| self.told.insert(cut.at))
             .map(|cut| {
-                let by = match cut.below {
-                    Some(below) => format!("{below:.0} dB below theirs"),
-                    None => format!("{} ms after theirs", cut.after * 1000 / rate),
-                };
                 format!(
-                    "call-transcripts: {} of Joel's words at {} cut as their echo, {by}",
+                    "call-transcripts: {} of Joel's words at {} cut as their echo, {}",
                     cut.text.split_whitespace().count(),
                     transcript::clock(cut.at),
+                    cut.by(),
                 )
             })
             .collect();
