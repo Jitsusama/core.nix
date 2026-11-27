@@ -184,3 +184,31 @@ fn a_kept_withdrawal_is_let_go_after_its_line_and_a_false_one_isnt_kept() {
         "a withdrawal was kept past the line it withdraws: {kept}"
     );
 }
+
+/// A reading kept as main kept it, before withdrawals were, has no
+/// withdrawn key; it reads as no withdrawals rather than as unread, and
+/// the hour keeps it again with the key.
+#[test]
+fn a_reading_kept_before_withdrawals_reads_and_is_kept_with_them() {
+    let home = tempfile::tempdir().expect("a temporary home");
+    let folder = tempfile::tempdir().expect("a temporary folder");
+    let messages = home
+        .path()
+        .join("pi/agentic-harness.pi/mesh-workflow/messages");
+    fs::create_dir_all(&messages).expect("the messages folder");
+    let kept_at = folder.path().join("causes.json");
+    fs::write(&kept_at, r#"{"v":2,"through_ms":1,"cases":[]}"#)
+        .expect("a reading as main kept it");
+    let m = read(home.path(), folder.path(), NOW, true);
+    assert!(
+        m.past().is_none() && m.behind.is_empty(),
+        "a reading kept with no withdrawn key was unread or past its target: {:?}",
+        m.behind
+    );
+    let text = fs::read_to_string(&kept_at).expect("a kept reading");
+    let kept: Value = serde_json::from_str(&text).expect("a kept reading that parses");
+    assert!(
+        kept["withdrawn"].is_array(),
+        "a reading kept with no withdrawn key wasn't kept again with one: {text}"
+    );
+}
