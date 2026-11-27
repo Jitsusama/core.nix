@@ -427,14 +427,19 @@ mod tests {
     }
 
     #[test]
-    fn why_a_call_failed_is_shown_as_words_not_markup() {
-        let why = "infer failed (-1): <b>Exception</b> from src/ov.cpp & co";
+    fn every_notice_body_is_shown_as_words_not_markup() {
+        // The notices daemon reads a body as markup, so an error's or a
+        // summary's `<` or `&` is escaped, once, whichever notice says it.
+        let said = "infer failed (-1): <b>Exception</b> from src/ov.cpp & co";
         let shown = "infer failed (-1): &lt;b&gt;Exception&lt;/b&gt; from src/ov.cpp &amp; co";
-        assert_eq!(not_transcribed("", why).body, shown);
+        let body = |notice: Notice| arguments(&notice).pop().unwrap_or_default();
+        assert_eq!(body(not_transcribed("", said)), shown);
         assert_eq!(
-            not_all_heard("", why).body,
+            body(not_all_heard("", said)),
             format!("The speech model failed on part of it: {shown}")
         );
+        assert_eq!(body(not_summed_up("", said, false)), shown);
+        assert_eq!(body(summed_up("", said)), shown);
     }
 
     #[test]

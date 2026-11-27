@@ -121,12 +121,14 @@ fn readable(book: &Shared, key: &str, again: &Sender<Job>) -> Option<(Record, St
         return None;
     }
     match read.map(|text| filed::transcript(&text).to_owned()) {
-        Ok(text) if said::too_little(&text) => {
-            eprintln!("call-transcripts: too little was said on {key} to sum up");
-            keep(book, &record, said::TOO_LITTLE, &text, again);
-            None
-        }
-        Ok(text) => Some((record, text)),
+        Ok(text) => match said::in_place_of_a_summary(&text) {
+            Some(written) => {
+                eprintln!("call-transcripts: too little was heard on {key} to sum up");
+                keep(book, &record, written, &text, again);
+                None
+            }
+            None => Some((record, text)),
+        },
         Err(why) => {
             let why = format!("Its transcript can't be read: {why}");
             not_summed_up(&record, &why, false, again);

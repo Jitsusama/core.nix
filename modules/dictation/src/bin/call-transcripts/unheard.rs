@@ -99,4 +99,14 @@ mod tests {
             "a line saying so was read as the note"
         );
     }
+
+    #[test]
+    fn a_note_too_far_in_to_be_a_call_is_left_unread() {
+        // A file is anyone's to edit, so a clock past what a sample
+        // count holds reads as no note rather than overflowing.
+        for at in ["307445734561825861:00", "5124095576030431:00:00"] {
+            let said = format!("{OPENS}a stretch of it, at {at}.");
+            assert_eq!(Unheard::read(&said), None, "{said}");
+        }
+    }
 }

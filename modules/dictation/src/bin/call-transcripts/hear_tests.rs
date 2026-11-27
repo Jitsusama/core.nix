@@ -575,9 +575,9 @@ fn a_call_is_told_once_whichever_failure_comes_first() {
         "another call wasn't told, since this one was"
     );
     assert_eq!(
-        heading(told_once(&mut told, "another", part)),
+        heading(told_once(&mut told, "another", load)),
         None,
-        "a call was told twice of part not heard"
+        "a call told part wasn't heard was told again its model didn't load"
     );
 }
 

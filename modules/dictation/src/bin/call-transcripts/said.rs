@@ -11,6 +11,12 @@ use dictation::{transcript, wer};
 /// What a call with too little said gets in place of a summary.
 pub const TOO_LITTLE: &str = "Too little was said to sum up.";
 
+/// What a call gets in place of a summary when too little of it was
+/// heard, the speech model having failed on the rest, so it isn't taken
+/// for a call where little was said.
+pub const TOO_LITTLE_HEARD: &str =
+    "Too little was heard to sum up: the speech model failed on part of the call.";
+
 /// Fewer words than this, each counted once and greetings and thanks
 /// left out, is too little to sum up. A question and its answer, the
 /// shortest exchange worth a summary, say more.
@@ -59,6 +65,12 @@ pub fn too_little(transcript: &str) -> bool {
         .filter(|word| !FILLER.contains(&word.as_str()))
         .collect();
     said.len() < LEAST_WORDS
+}
+
+/// What `transcript` gets in place of a summary, or none when enough of
+/// it was said to sum it up.
+pub fn in_place_of_a_summary(transcript: &str) -> Option<&'static str> {
+    too_little(transcript).then_some(TOO_LITTLE)
 }
 
 /// `text`'s words, lowercase, without what's around them or a
@@ -138,5 +150,18 @@ mod tests {
     #[test]
     fn nothing_written_down_is_too_little_to_sum_up() {
         assert!(too_little("# Transcript\n"));
+    }
+
+    #[test]
+    fn a_call_mostly_not_heard_says_so_in_place_of_a_summary() {
+        assert_eq!(in_place_of_a_summary(SHORT), None);
+        assert_eq!(in_place_of_a_summary(HELLOS), Some(TOO_LITTLE));
+        let note = crate::unheard::and(None, 0).note();
+        let unheard = format!("{note}\n\n{HELLOS}");
+        assert_eq!(
+            in_place_of_a_summary(&unheard),
+            Some(TOO_LITTLE_HEARD),
+            "a call the speech model failed on read as one where little was said"
+        );
     }
 }
