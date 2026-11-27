@@ -68,14 +68,14 @@ fn saving_power_is_read_from_the_power_profile() {
 fn a_desktop_that_never_answers_is_given_up_on() {
     // Serving nothing, this peer never replies, as a wedged service wouldn't.
     let silent = peer(|builder| builder);
-    let started = std::time::Instant::now();
+    let started = test_pace::Timed::start();
     assert!(!saver(&silent), "no answer saves nothing");
     let mut notifier = Notifier::new(silent);
     assert!(notifier.tell(&show("filling", Urgency::Normal)).is_err());
     assert!(
-        started.elapsed() < std::time::Duration::from_secs(10),
-        "{:?}",
-        started.elapsed()
+        started.within(std::time::Duration::from_secs(10)),
+        "{}",
+        started.said(std::time::Duration::from_secs(10))
     );
 }
 

@@ -6,15 +6,6 @@
 {
   "modules/calls/tests/a-call-is-on.rs" = 1;
   "modules/daemon-serve/src/serve/tests/hang_ups.rs" = 1;
-  "modules/disk-guard/tests/guard/collecting.rs" = 5;
-  "modules/disk-guard/tests/guard/commands.rs" = 4;
-  "modules/disk-guard/tests/guard/dedupe.rs" = 1;
-  "modules/disk-guard/tests/guard/desktop.rs" = 1;
-  "modules/disk-guard/tests/guard/linux.rs" = 4;
-  "modules/disk-guard/tests/guard/nix_database.rs" = 1;
-  "modules/disk-guard/tests/guard/serve.rs" = 1;
-  "modules/disk-guard/tests/guard/socket.rs" = 1;
-  "modules/disk-guard/tests/held-stop.rs" = 1;
   "modules/elsewhere/src/far/tests/crossing.rs" = 2;
   "modules/last-seconds/tests/each_sleep_is_heard.rs" = 1;
   "modules/local-sites/tests/serve.rs" = 1;

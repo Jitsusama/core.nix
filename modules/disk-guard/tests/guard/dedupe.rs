@@ -7,7 +7,7 @@ use disk_guard::dedupe::{Deduped, due, freed, optimise};
 use disk_guard::hours::Hours;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 const DAY: f64 = 86400.0;
 const GIB: u64 = 1 << 30;
@@ -156,7 +156,9 @@ fn a_stopped_run_frees_nothing_it_knows_of() {
     // bound failed on a Mac building at a load average of 66.
     let (run, nix) = fakes(dir.path(), "sleep 900 & wait\n");
     let stop = AtomicBool::new(false);
-    let started = Instant::now();
+    // Held short of the fifteen minutes the run takes, which one the stop
+    // didn't end runs out.
+    let started = test_pace::Timed::start().short_of(Duration::from_mins(15));
     let stopped = std::thread::scope(|scope| {
         scope.spawn(|| {
             std::thread::sleep(Duration::from_millis(200));
@@ -166,9 +168,9 @@ fn a_stopped_run_frees_nothing_it_knows_of() {
     });
     assert_eq!(stopped, Ok(None));
     assert!(
-        started.elapsed() < Duration::from_mins(5),
-        "a stopped run went on for {:?}",
-        started.elapsed()
+        started.within(Duration::from_mins(5)),
+        "a stopped run went on: it {}",
+        started.said(Duration::from_mins(5))
     );
 }
 

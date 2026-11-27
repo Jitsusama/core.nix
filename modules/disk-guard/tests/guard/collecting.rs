@@ -379,9 +379,14 @@ impl Store {
     /// Steps `guard` until `done` holds, as the listing runs apart: for
     /// as long as a loaded machine takes to run its few shell stand-ins.
     fn step_until(&self, guard: &mut Guard, done: impl Fn(&Store) -> bool) {
-        let started = Instant::now();
+        let started = test_pace::Timed::start();
         while !done(self) {
-            assert!(started.elapsed() < AT_IDLE, "{:?}", self.log());
+            assert!(
+                started.within(AT_IDLE),
+                "{}: {:?}",
+                started.said(AT_IDLE),
+                self.log()
+            );
             guard.step(&tick(), &CALM).unwrap();
             std::thread::sleep(Duration::from_millis(20));
         }
@@ -764,14 +769,15 @@ fn step_later_until(
         wall: now() + seconds,
         ..tick()
     };
-    let started = Instant::now();
+    let started = test_pace::Timed::start();
     while !done(store, at.wall) {
         // What the guard kept and said, since this has given up seven
         // times on a loaded builder with no word of why no listing began.
         let read = |path: &str| fs::read_to_string(store.root.join(path)).unwrap_or_default();
         assert!(
-            started.elapsed() < AT_IDLE,
-            "{seconds} s on: {:?}\nkept: {}\nstatus: {}",
+            started.within(AT_IDLE),
+            "{seconds} s on, {}: {:?}\nkept: {}\nstatus: {}",
+            started.said(AT_IDLE),
             store.log(),
             read("state/garbage.json"),
             read("status.json")
@@ -1702,15 +1708,25 @@ fn a_run_stops_when_the_moment_ends_and_isnt_counted_done() {
     fs::write(store.root.join("slow"), "").unwrap();
     let mut guard = store.guard(store.config("0%", "0%"));
     store.step_until(&mut guard, |store| !store.linked().is_empty());
-    let started = Instant::now();
+    let started = test_pace::Timed::start();
     while !store.linked().contains(&"stopped".to_owned()) {
-        assert!(started.elapsed() < AT_IDLE, "{:?}", store.linked());
+        assert!(
+            started.within(AT_IDLE),
+            "{}: {:?}",
+            started.said(AT_IDLE),
+            store.linked()
+        );
         steps(&mut guard, &SAVING);
     }
     // The run is at idle priority, so on a busy machine it can be a while
     // between saying it stopped and exiting, which is when it's journaled.
     while store.deduped().is_empty() {
-        assert!(started.elapsed() < AT_IDLE, "{:?}", store.linked());
+        assert!(
+            started.within(AT_IDLE),
+            "{}: {:?}",
+            started.said(AT_IDLE),
+            store.linked()
+        );
         steps(&mut guard, &SAVING);
     }
     let stopped = store.deduped();
@@ -1757,9 +1773,14 @@ fn a_run_stops_when_its_hours_end_and_isnt_counted_done() {
         wall: now() + 3.0 * 3600.0,
         ..tick()
     };
-    let started = Instant::now();
+    let started = test_pace::Timed::start();
     while store.deduped().is_empty() {
-        assert!(started.elapsed() < AT_IDLE, "{:?}", store.linked());
+        assert!(
+            started.within(AT_IDLE),
+            "{}: {:?}",
+            started.said(AT_IDLE),
+            store.linked()
+        );
         guard.step(&past, &CALM).unwrap();
         std::thread::sleep(Duration::from_millis(20));
     }

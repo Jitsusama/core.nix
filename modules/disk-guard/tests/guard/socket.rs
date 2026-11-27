@@ -141,12 +141,16 @@ fn a_request_that_wont_read_is_refused_and_the_server_goes_on() {
 fn an_asker_that_says_nothing_cant_hold_the_server() {
     let (_dir, path, _asked, _) = serving(Duration::ZERO, 2);
     let _silent = UnixStream::connect(&path).unwrap();
-    let started = std::time::Instant::now();
+    let started = test_pace::Timed::start();
     assert_eq!(
         ask(&path, &roots(), Duration::from_secs(5)).unwrap(),
         Reply::Answer(told())
     );
-    assert!(started.elapsed() < Duration::from_secs(3));
+    assert!(
+        started.within(Duration::from_secs(3)),
+        "{}",
+        started.said(Duration::from_secs(3))
+    );
 }
 
 /// A guard told to stop while it waits on a reply leaves at once, rather

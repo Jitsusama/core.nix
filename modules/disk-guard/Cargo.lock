@@ -202,6 +202,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "terminal-kit",
+ "test-pace",
  "zbus",
 ]
 
@@ -623,6 +624,10 @@ dependencies = [
  "serde_json",
  "unicode-width",
 ]
+
+[[package]]
+name = "test-pace"
+version = "0.1.0"
 
 [[package]]
 name = "toml_datetime"
