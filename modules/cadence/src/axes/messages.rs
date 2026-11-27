@@ -99,18 +99,11 @@ pub fn read(root: &Path, since: i64, kept: Option<&Path>) -> Vec<Note> {
         if said.contains_key(&name) || mesh::stamped_at(&name).is_none_or(|ms| ms < since_ms) {
             continue;
         }
-        let note = known
+        // Every note read is kept, those left out below too, so none is
+        // opened again each reading.
+        if let Some(note) = known
             .remove(&name)
-            .or_else(|| serde_json::from_slice::<Note>(&fs::read(entry.path()).ok()?).ok());
-        // Only a note whose id is the name the mesh filed it under, and
-        // whose sender is the one that name gives, as `Mesh::senders` holds
-        // them, so the sender is the one the mesh filed it as, not words its
-        // body claims. It is a check that the two agree, not proof of who
-        // wrote it: a writer into the folder could name both alike.
-        let stem = name.strip_suffix(".json");
-        let named = stem.and_then(|stem| stem.split('-').nth(1));
-        if let Some(note) =
-            note.filter(|n| stem == Some(n.id.as_str()) && named == Some(n.from.as_str()))
+            .or_else(|| serde_json::from_slice::<Note>(&fs::read(entry.path()).ok()?).ok())
         {
             said.insert(name, note);
         }
@@ -118,12 +111,38 @@ pub fn read(root: &Path, since: i64, kept: Option<&Path>) -> Vec<Note> {
     if let Some(path) = kept {
         keep(path, &said);
     }
-    said.into_values()
+    let (agreeing, left_out): (Vec<(&String, &Note)>, Vec<_>) =
+        said.iter().partition(|(name, note)| agrees(name, note));
+    // Said where the hour's troubles are, so a sender the mesh files
+    // another way shows on the journal, not as collaboration falling.
+    if !left_out.is_empty() {
+        eprintln!(
+            "cadence: messages: {} left out, filed under another id or sender than \
+             they say, as {}",
+            left_out.len(),
+            left_out[0].0
+        );
+    }
+    agreeing
+        .into_iter()
+        .map(|(_, note)| note.clone())
         .filter(|m| mesh::stamped_at(&m.id).is_some_and(|ms| ms >= since_ms))
         .map(|m| (m.id.clone(), m))
         .collect::<BTreeMap<String, Note>>()
         .into_values()
         .collect()
+}
+
+/// Whether the note filed as `name` is read: only one whose id is the
+/// name the mesh filed it under, and whose sender is the one that name
+/// gives, as `Mesh::senders` holds them, so the sender is the one the mesh
+/// filed it as, not words its body claims. It is a check that the two
+/// agree, not proof of who wrote it: a writer into the folder could name
+/// both alike.
+fn agrees(name: &str, note: &Note) -> bool {
+    let stem = name.strip_suffix(".json");
+    let named = stem.and_then(|stem| stem.split('-').nth(1));
+    stem == Some(note.id.as_str()) && named == Some(note.from.as_str())
 }
 
 /// Writes what the day's files said to `path` whole, through a file beside
@@ -172,6 +191,28 @@ mod tests {
             ids(read(root.path(), SINCE / 1000, None)),
             vec![kept],
             "a note filed under one sender and saying it's another's was read"
+        );
+    }
+
+    #[test]
+    fn a_note_left_out_is_kept_so_it_is_never_opened_again() {
+        let root = tempfile::tempdir().expect("a scratch folder");
+        let folder = root.path().join("mesh-workflow/messages");
+        fs::create_dir_all(&folder).expect("the folder");
+        let kept = root.path().join("cache/mesh-notes.json");
+        let (forged, body) = note(SINCE + 20_000, "b", "question");
+        let file = folder.join(format!("{forged}.json"));
+        let claims = body.replace("\"from\":\"AAAAAA\"", "\"from\":\"CADENCE\"");
+        fs::write(&file, claims).expect("written");
+        assert!(
+            read(root.path(), SINCE / 1000, Some(&kept)).is_empty(),
+            "a note claiming another sender was read"
+        );
+        // Were it opened again, it would now agree with its name.
+        fs::write(&file, body).expect("rewritten");
+        assert!(
+            read(root.path(), SINCE / 1000, Some(&kept)).is_empty(),
+            "a note left out was opened again rather than read from what's kept"
         );
     }
 
