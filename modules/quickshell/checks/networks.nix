@@ -18,8 +18,12 @@
 let
   # A Wi-Fi case run through the real Wireless.qml, ReadyRows.qml and
   # Daemon.qml, with the launcher stood in by the case itself and Wifi's card
-  # and the sign-in stood in here. Where `heard` names a script, it reads
-  # what the shell said once the case has passed.
+  # and the sign-in stood in here. A binding that threw, named nothing or came
+  # out undefined ran on something a stand-in lacks, so it fails the case,
+  # which could otherwise pass on code that never ran as in the shell: any
+  # error Qt says a file's line threw, or that it couldn't assign. Where
+  # `heard` names a script, it reads what the shell said even after a throw,
+  # so one failing doesn't hide the other.
   wifiCase =
     name: case: heard:
     let
@@ -40,6 +44,18 @@ let
       signIn = singleton "SignIn.qml" ''
         readonly property string network: ""
         function open() {}
+      '';
+      # What Qt says of a binding that threw or couldn't assign: any error a
+      # file's line threw, as Quickshell says one, and the words Qt's own use.
+      threw = pkgs.lib.concatStringsSep "|" [
+        ''\.(qml|js)\[[0-9-]+:[0-9-]+\]: [A-Za-z]*Error:''
+        "TypeError"
+        "ReferenceError"
+        "Unable to assign"
+      ];
+      # What the shell said, read even after a throw, failing the case on a miss.
+      reading = pkgs.lib.optionalString (heard != null) ''
+        ${pkgs.lib.getExe pkgs.bash} ${heard} said || failed=1
       '';
     in
     # Kept in Nix because each line copies a file Nix gives it beside the
@@ -64,16 +80,17 @@ let
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
-      ${
-        if heard == null then
-          "timeout 60 ${qs} -p shell.qml"
-        else
-          ''
-            set -o pipefail
-            timeout 60 ${qs} -p shell.qml 2>&1 | tee said
-            ${pkgs.lib.getExe pkgs.bash} ${heard} said
-          ''
-      }
+      set -o pipefail
+      timeout 60 ${qs} -p shell.qml 2>&1 | tee said
+      failed=0
+      if grep -aE '${threw}' said; then
+        echo "a binding threw or came out undefined while the cases ran"
+        failed=1
+      fi
+      ${reading}
+      if [ "$failed" -ne 0 ]; then
+        exit 1
+      fi
       touch $out
     '';
 in

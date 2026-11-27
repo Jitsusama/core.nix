@@ -269,9 +269,13 @@ or launchd, and [`home.nix`][2] the account's.
   (`read`) and what its survey did (`survey_read`), from Linux's count for
   the thread each ran on, or null on a Mac; what a pass hands a thread of
   its own, a command, a Nix delete or an ask of the system daemon, isn't
-  counted. The two walks no pass takes, measuring what holds the disks
-  and marking the builds, each journal a `walk` line saying which, its
-  seconds and what it read. On 25 November the account's guard read
+  counted, nor are the git commands a survey runs. A read is what a walk
+  pulled from the disk past the cache, so walks running at once split
+  one cost by which came first. The two walks no pass takes, measuring
+  what holds the disks and marking the builds, each journal a `walk`
+  line saying which, its seconds and what it read; the machine guard's
+  listing of the store's garbage and its dedupe of the store read too,
+  and journal no read yet. On 25 November the account's guard read
   15.4 GB of the disk in 24 minutes, and no line said which walk it was.
   Judged reads beside the line's end: a pass
   that ended `exhausted` having judged none had nothing due, and one that
@@ -560,6 +564,9 @@ or launchd, and [`home.nix`][2] the account's.
   begins and ends. While it stands, a filling disk's status says its
   clearing waits, never that it is clearing, unless it has cleared all it
   may or Joel asked for a clear there; the launcher's row says so too.
+  A clear is told as at work on the disk its first asked folder lies on
+  from before its survey, which walks for minutes, and no longer once it
+  ends, whether it found anything or failed.
   The system's guard and the account's each read their own config, so a
   machine names its marks in both: core knows no program that leaves one.
   A mark's path must be plain and absolute, since one the guard can't

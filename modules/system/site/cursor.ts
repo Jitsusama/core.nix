@@ -7,8 +7,9 @@
 // moves what Joel is reading. A region left with no row takes focus
 // itself, so what it says now is read, rather than a row far below. A
 // link under a row in its list item, such as a look's act, is the row's:
-// the keys step on from it as from the row, and a redraw puts focus back
-// on it.
+// the keys step on from it as from the row, a step back landing on the row
+// itself since the link stands after it, and a redraw puts focus back on
+// it.
 
 /** The cursor over the rows `selector` finds. */
 interface Cursor {

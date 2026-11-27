@@ -10,7 +10,9 @@
 // [092d52ca]; WCJQSG [cf8639ab]). Put away first, the answers wait here for its next opening. Where the void can undo what it did,
 // :take in normal takes it back, the foot naming it while it's offered. It opens in insert;
 // Escape gives normal and never puts it away; the chord again does, or :q, the words kept, as
-// a switch keeps them (Drafts.qml). TalkLine.js says what it says and sends.
+// a switch keeps them (Drafts.qml). TalkLine.js says what it says and sends. Long because the
+// typing, its modes, the foot and the lines that wait on answers share one frame's keys and
+// focus, so splitting them would pass the same few states between files on every key.
 pragma ComponentBehavior: Bound
 import qs
 import Quickshell
@@ -758,12 +760,13 @@ Scope {
         }
     }
 
-    // How a talk reads under his words, for the launcher's showing: its answers, or else
-    // whom it waits on, or how it stands.
+    // How a talk reads under his words, for the launcher's showing: its answers and what a
+    // question takes, or else whom it waits on, or how it stands.
     function standingOf(shown) {
         if (shown === null)
             return "";
-        return shown.answers.length > 0 ? shown.answers.join("\n")
+        const said = shown.answers.concat((shown.takes ?? "") === "" ? [] : [shown.takes]);
+        return said.length > 0 ? said.join("\n")
             : shown.waiting !== "" ? shown.waiting : shown.stands;
     }
 

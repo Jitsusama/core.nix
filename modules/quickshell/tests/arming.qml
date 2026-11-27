@@ -161,6 +161,12 @@ QtObject {
             ended.quiet, true);
         expect("but a share's end keeps another word said since",
             Arming.shareTurns([["q", "quit"]], heldWord).quiet, false);
+        // Whether an arm a share's turn lets go of still stood, so the
+        // launcher's journal says it went (Launcher.qml's unheld, untold).
+        const standing = { key: "reboot", keys: 4, at: 100 };
+        expect("an arm with no key taken since stood", Arming.stood(standing, 4), true);
+        expect("one with a key taken since didn't", Arming.stood(standing, 5), false);
+        expect("nor did none", Arming.stood(Arming.rest(), -1), false);
 
         // Which places may be kept to draw at once at the next opening
         // (Launcher.qml's keepPlace): never one that says it's never kept,
@@ -170,6 +176,20 @@ QtObject {
             Arming.keepsPlace({ keptNever: true }), false);
         expect("any other place is", Arming.keepsPlace({}), true);
         expect("and so is one no source has", Arming.keepsPlace(null), true);
+        // Judged by the sources its steps come from too, so a place a
+        // chord names otherwise than its source, its lookup unfound, still
+        // isn't kept through a step of one that says it's never kept.
+        const never = { keptNever: true };
+        const stepOf = from => ({ row: { from } });
+        expect("a place whose step is a never-kept source's isn't, its name unfound",
+            Arming.keepsSteps(null, [stepOf({}), stepOf(never)]), false);
+        expect("nor one whose named source says so",
+            Arming.keepsSteps(never, [stepOf({})]), false);
+        expect("nor one holding a never-kept source's row by shownBy, as For You an ask",
+            Arming.keepsSteps(null, [stepOf({}), { row: { key: "ask", shownBy: never } }]),
+            false);
+        expect("one whose steps and name keep is, a step with no source among them",
+            Arming.keepsSteps(null, [stepOf({}), { row: {} }]), true);
 
         // What Return does on the selected row, as onAccepted asks: a held
         // row is held before anything else it might be stepped into,

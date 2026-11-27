@@ -236,6 +236,8 @@ def test_every_account_has_it_and_machines_none(account: Account, drive: str) ->
 def test_apps_keep_a_hard_share_of_memory(account: Account) -> None:
     """Apps keep a hard share of memory, agents' sessions and system services a soft one.
 
+    Apps and the desktop keep what they swap out compressed in memory, never on the disk.
+
     Agents' sessions keep a hard floor as large as the sessions' kitty's own and jobs-sorter's
     three 512M hard floors on the windows Joel is at.
     Every slice above both claims them too. system.slice claims what its
@@ -260,6 +262,9 @@ def test_apps_keep_a_hard_share_of_memory(account: Account) -> None:
     assert account.floor(f"{ACCOUNT}/agents.slice") == AGENTS_FLOOR
     assert account.floor(f"{ACCOUNT}/session.slice") == SESSION_FLOOR
     assert account.soft_floor(f"{ACCOUNT}/session.slice") == SESSION_FLOOR
+    for kept in ("app", "session"):
+        writeback = account.read(f"{ACCOUNT}/{kept}.slice/memory.zswap.writeback")
+        assert writeback == "0", f"{kept}.slice writes what it swaps to the disk: {writeback}"
     assert account.floor(JOBS) == 0
     system = "/sys/fs/cgroup/system.slice"
     assert account.soft_floor(f"{system}/systemd-journald.service") == JOURNAL_FLOOR
@@ -731,7 +736,7 @@ def test_on_the_disk_slices_weigh_as_on_the_cpu(jobs: Account) -> None:
     """On the disk, slices weigh as they do on the CPU."""
     for path, weight in [
         (f"{ACCOUNT}/session.slice", 1000),
-        (f"{ACCOUNT}/app.slice", 100),
+        (f"{ACCOUNT}/app.slice", 1000),
         (JOBS, 1),
         (TIMED, 10000),
         (f"{JOBS}/jobs-awaited.slice", 1000),

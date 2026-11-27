@@ -889,6 +889,78 @@ def code_whole(repos_daemon: StandIn, mycelium_node: StandIn) -> None:
     spanning(mycelium_node)
 
 
+# The least a word may be drawn at, as the kit holds its own type steps.
+LEAST_PX = 12
+
+# Every shown word under the least size, with the size it was drawn at, and
+# the find's placeholder colour beside muted's.
+READ_AT = """(least) => {
+  const small = [];
+  const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  for (let node = walk.nextNode(); node; node = walk.nextNode()) {
+    const words = node.textContent.trim();
+    const at = node.parentElement;
+    if (words && at.checkVisibility() && Number.parseFloat(getComputedStyle(at).fontSize) < least) {
+      small.push(`${words} at ${getComputedStyle(at).fontSize}`);
+    }
+  }
+  const probe = document.createElement("span");
+  probe.style.color = "var(--muted)";
+  document.body.append(probe);
+  const muted = getComputedStyle(probe).color;
+  probe.remove();
+  const placeholder = getComputedStyle(document.querySelector("#find"), "::placeholder");
+  return { small, muted, placeholder: placeholder.color, opacity: placeholder.opacity };
+}"""
+
+
+@pytest.mark.usefixtures("code_whole")
+@pytest.mark.parametrize("look", LOOKS)
+def test_a_phone_reads_every_word_code_draws(
+    browser: Browser, code_served: Served, look: str
+) -> None:
+    """At a phone's width no word is under 12 px, and the find's words are drawn in muted."""
+    root, _ = code_served
+    opened = Opened(browser, f"{root}code/", SIZES[0], look)
+    try:
+        says_it_stands(opened.page, "live")
+        linked = opened.page.locator(f'#open a[href="../{CELL_HOME}"]')
+        expect(linked, "Code drew no cell to read").to_have_count(1, timeout=PACE_MS)
+        said = opened.page.evaluate(READ_AT, LEAST_PX)
+        assert said["small"] == [], f"Code drew words under {LEAST_PX} px at a phone: {said}"
+        assert said["placeholder"] == said["muted"], f"the find's words weren't muted: {said}"
+        assert said["opacity"] == "1", f"the find's words were faded below muted: {said}"
+        named = opened.page.evaluate(SPILT, LONG_NAME)
+        assert named["stands"] > 0, "Code drew no stand in its grove at a phone"
+        assert named["spilt"] == [], f"a long name spilt past its stand at a phone: {named}"
+    finally:
+        opened.close()
+
+
+# The longest repository name on Joel's machine with no dot or dash to wrap
+# at, which at 12 px drew wider than a phone's stand of four to a row.
+LONG_NAME = "infrastructure"
+
+# Each stand's name, given `name`, drawn past the stand it names.
+SPILT = """(name) => {
+  const spilt = [];
+  const stands = document.querySelectorAll(".grove .stand");
+  for (const stand of stands) {
+    const named = stand.querySelector(".nm");
+    if (!named) continue;
+    named.textContent = name;
+    const words = document.createRange();
+    words.selectNodeContents(named);
+    const drawn = words.getBoundingClientRect();
+    const room = stand.getBoundingClientRect();
+    if (drawn.left < room.left - 0.5 || drawn.right > room.right + 0.5) {
+      spilt.push(`${Math.round(drawn.width)} px in ${Math.round(room.width)}`);
+    }
+  }
+  return { stands: stands.length, spilt };
+}"""
+
+
 @pytest.mark.usefixtures("code_whole")
 @pytest.mark.parametrize("look", LOOKS)
 @pytest.mark.parametrize("size", SIZES)

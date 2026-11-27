@@ -75,6 +75,13 @@ function shareTurns(saying, heldSaying) {
     return { quiet: letsHeldGo(saying, heldSaying), armed: rest() };
 }
 
+// Whether `armed` still stood with the line at `keysTaken`, so a share's
+// turn letting it go (shareTurns, Launcher.qml's untold) is one the
+// journal says went: an arm a key since already let go of isn't.
+function stood(armed, keysTaken) {
+    return holds(armed, armed.key, keysTaken);
+}
+
 // What Return does on the selected row, from what `how` says of it: an
 // answer being given is given, a Return doubling a landing does nothing
 // more, a gone row is only run, and a held row is held before anything else, as every other
@@ -118,6 +125,18 @@ function returnAct(how) {
 // name an ask from before one.
 function keepsPlace(source) {
     return source?.keptNever !== true;
+}
+
+// Whether a place may be kept, judged by the source its name finds,
+// `source`, and by the source each of its `steps` comes from (a step's
+// row.from), so a chord naming a place otherwise than its source, its
+// lookup unfound, can't keep a never-kept one's steps. A step from no
+// source, and a name no source has, keep, as home's led places do. A
+// row made showing says its source by shownBy wherever it's held, as
+// For You holds an ask under Now with no from, so that counts as one.
+function keepsSteps(source, steps) {
+    return keepsPlace(source)
+        && steps.every(step => keepsPlace(step.row?.from ?? step.row?.shownBy));
 }
 
 // Nothing armed.
