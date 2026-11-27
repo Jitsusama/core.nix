@@ -2855,11 +2855,15 @@ impl Wifid<'_> {
             Err(refused) => {
                 println!("<5>{card} couldn't join {name}: {refused:?}");
                 self.picked.borrow_mut().remove(card);
-                let _ = joining.progress.send(Err(refused)).await;
+                // Forgotten before the join is answered, so whoever asked
+                // never reads the network as saved once it's told it failed.
                 if *new {
                     if let Err(error) = self.store.forget(name) {
                         eprintln!("<4>can't forget {name} again: {error:?}");
                     }
+                }
+                let _ = joining.progress.send(Err(refused)).await;
+                if *new {
                     let _ = self.given_everything().await;
                 } else {
                     self.add_card_named(card).await;
