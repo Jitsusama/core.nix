@@ -10,13 +10,14 @@
 //! 5,000 requests an hour his sign-in is allowed, 840 an hour at most.
 //! That limit is shared with everything else asking as him, and reading a
 //! pull request or issue the search names takes from it too, so once
-//! GitHub says fewer than [`SPARED`] are left, the watch rests until the
-//! limit's hour starts again, and his words wait on the search (own.rs).
-//! Where GitHub can't be asked, the round lists no more, so a slow GitHub
-//! costs one wait, and the repository it failed on is listed last the
-//! next round, so one failing every round can't keep the others
-//! unlisted. A repository gone, or not his sign-in's to read, is passed
-//! by.
+//! GitHub says less than a fifth of the limit is left, the watch rests
+//! until the limit's hour starts again, or as long as a refusal asks, an
+//! hour at most, and his words wait on the search (own.rs). Where GitHub
+//! can't be asked, the round lists no more, so a slow GitHub costs one
+//! wait, and each repository a list failed on is listed last, in the
+//! order they failed, until it's listed again, so those failing every
+//! round can't keep the others unlisted. A repository gone, or not his
+//! sign-in's to read, is passed by.
 
 use std::collections::HashMap;
 
@@ -27,6 +28,9 @@ use super::{GitHub, Unread};
 
 /// What a list that can't be read costs Joel, as the journal says it.
 const WAITS: &str = "so Joel's newest words there wait on its search";
+
+/// What a rest costs Joel, as the journal says it.
+const RESTED: &str = "and Joel's newest words wait on the search";
 
 /// The most repositories watched: those his account was last active in.
 /// Each is one request a round, answered 304 while nothing changed.
@@ -39,20 +43,27 @@ const WATCHED: usize = 6;
 const NEWEST: &str = "sort=created&direction=desc&per_page=100";
 
 /// The requests of Joel's hour the watch leaves to reading what it and the
-/// search find: a fifth of the 5,000, so a busy hour of his agents' can't
-/// leave a stop named by the search unread.
+/// search find where GitHub doesn't say his limit: a fifth of the 5,000,
+/// so a busy hour of his agents' can't leave a stop named by the search
+/// unread. Where it says the limit, a fifth of that is left.
 const SPARED: u64 = 1_000;
+
+/// The longest the watch rests, in seconds: the hour GitHub's limit is
+/// counted over, so a reset said further ahead, from a bad header or a
+/// clock that isn't GitHub's, can't rest it for good.
+const LONGEST_REST: u64 = 60 * 60;
 
 /// Where Joel's account was last active, and the answers GitHub gave each
 /// list asked, by what was asked, with the tag it gave each; the
-/// repository whose list last failed, listed last; and when, in seconds
-/// since the epoch, the watch may ask again, once its rate limit's left
-/// fell below [`SPARED`].
+/// repositories whose lists failed, in the order they last failed, each
+/// listed last until it's listed again; and when, in seconds since the
+/// epoch, the watch may ask again, once little of its rate limit was left
+/// or GitHub asked it to wait.
 #[derive(Default)]
 pub(super) struct Watched {
     repos: Vec<String>,
     kept: HashMap<String, (String, Value)>,
-    failed: Option<String>,
+    failed: Vec<String>,
     rests_until: u64,
 }
 
@@ -80,12 +91,12 @@ impl Watched {
             }
         };
         self.repos = active_in(&events);
-        if let Some(failed) = self.failed.take()
-            && let Some(at) = self.repos.iter().position(|repo| *repo == failed)
-        {
-            let last = self.repos.remove(at);
-            self.repos.push(last);
-        }
+        // Only what's still watched is remembered as failed; those not
+        // failed keep the feed's order, since the sort is stable, and
+        // those failed follow in the order they failed.
+        self.failed.retain(|failed| self.repos.contains(failed));
+        self.repos
+            .sort_by_key(|repo| self.failed.iter().position(|failed| failed == repo));
         // Only what's still watched is kept, so the lists kept stay few.
         let watched: Vec<String> = self.repos.iter().map(String::as_str).map(&newest).collect();
         self.kept
@@ -95,7 +106,9 @@ impl Watched {
             if self.resting() {
                 break;
             }
-            let comments = match self.ask(github, &newest(&repo)) {
+            let asked = self.ask(github, &newest(&repo));
+            self.failed.retain(|failed| *failed != repo);
+            let comments = match asked {
                 Ok(comments) => comments,
                 Err(Unread::Gone(why)) => {
                     eprintln!("<4>{why}; it's passed by, {WAITS}");
@@ -103,7 +116,7 @@ impl Watched {
                 }
                 Err(Unread::Failed(why) | Unread::Limited(why)) => {
                     eprintln!("<4>{why}, {WAITS}");
-                    self.failed = Some(repo);
+                    self.failed.push(repo);
                     break;
                 }
             };
@@ -120,37 +133,54 @@ impl Watched {
         threads
     }
 
-    /// Whether the watch rests now, its rate limit's left under [`SPARED`]
-    /// when GitHub last said.
+    /// Whether the watch rests now, as GitHub last asked or its rate
+    /// limit's left last said.
     fn resting(&self) -> bool {
         super::seconds() < self.rests_until
     }
 
     /// Rests the watch until `reset`, the second GitHub says the limit's
-    /// hour starts again, once it says only `left` are left, fewer than
-    /// [`SPARED`], and says so as it begins.
-    fn spare(&mut self, name: &str, left: Option<u64>, reset: Option<u64>) {
+    /// hour starts again, once it says only `left` are left, fewer than a
+    /// fifth of its `limit`, or [`SPARED`] where it doesn't say one.
+    fn spare(&mut self, name: &str, limit: Option<u64>, left: Option<u64>, reset: Option<u64>) {
         let (Some(left), Some(reset)) = (left, reset) else {
             return;
         };
-        if left >= SPARED || reset <= self.rests_until {
+        let spared = limit.map_or(SPARED, |limit| limit / 5);
+        if left < spared {
+            let why = format!(
+                "{name} has {left} requests left this hour, fewer than the {spared} kept for \
+                 reading"
+            );
+            self.rest(reset, &why);
+        }
+    }
+
+    /// Rests the watch until `until`, in seconds since the epoch, or an
+    /// hour from now where that's sooner ([`LONGEST_REST`]), and says
+    /// `why` as it begins. A time already past rests nothing, and one
+    /// before the rest already taken doesn't shorten it.
+    fn rest(&mut self, until: u64, why: &str) {
+        let now = super::seconds();
+        let until = until.min(now.saturating_add(LONGEST_REST));
+        if until <= now || until <= self.rests_until {
             return;
         }
         if !self.resting() {
             eprintln!(
-                "<4>{name} has {left} requests left this hour, fewer than the {SPARED} kept for \
-                 reading, so the newest comments aren't listed until {}, {WAITS}",
-                github::stamp(reset)
+                "<4>{why}, so the newest comments aren't listed until {}, {RESTED}",
+                github::stamp(until)
             );
         }
-        self.rests_until = reset;
+        self.rests_until = until;
     }
 
     /// One list, asked with the tag GitHub last gave it: the list it
     /// keeps when GitHub answers that nothing changed. One gone or not
     /// Joel's to read is told from GitHub failing, and both from his rate
     /// limit spent, as a round tells them. What GitHub says is left of
-    /// the limit, 304 or not, may rest the watch ([`Self::spare`]).
+    /// the limit, 304 or not, may rest the watch ([`Self::spare`]), as
+    /// does a 403 or 429 saying how many seconds to wait.
     fn ask(&mut self, github: &GitHub<'_>, path: &str) -> Result<Value, Unread> {
         let url = format!("{}{path}", github.origin);
         let mut request = github
@@ -174,10 +204,15 @@ impl Watched {
         };
         let tag = header("etag");
         let remaining = header("x-ratelimit-remaining");
-        let retry_after = header("retry-after").is_some();
+        let retry_after = header("retry-after");
         let number = |said: Option<String>| said?.trim().parse().ok();
+        let limit = number(header("x-ratelimit-limit"));
         let reset = number(header("x-ratelimit-reset"));
-        self.spare(name, number(remaining.clone()), reset);
+        self.spare(name, limit, number(remaining.clone()), reset);
+        if let (403 | 429, Some(wait)) = (status, number(retry_after.clone())) {
+            let why = format!("{name} answered {status} for {path}, asking to wait {wait} seconds");
+            self.rest(super::seconds().saturating_add(wait), &why);
+        }
         if status == 304 {
             let kept = self.kept.get(path).map(|(_, kept)| kept.clone());
             return kept.ok_or_else(|| {
@@ -188,7 +223,8 @@ impl Watched {
             let said: Value = answer.body_mut().read_json().unwrap_or_default();
             let message = said["message"].as_str().unwrap_or("no reason");
             let why = format!("{name} answered {status} for {path}: {message}");
-            let limited = github::rate_limited(status, remaining.as_deref(), retry_after, message);
+            let limited =
+                github::rate_limited(status, remaining.as_deref(), retry_after.is_some(), message);
             return Err(match status {
                 403 | 404 | 410 if !limited => Unread::Gone(why),
                 _ if limited => Unread::Limited(why),
