@@ -281,6 +281,18 @@ impl Mesh {
             .collect()
     }
 
+    /// How many sessions on the mesh are there now, one each however many
+    /// addresses it goes by, as `alive` judges them by `process_exists`:
+    /// the cells a need's realm holds, as pain-points and the harness
+    /// count them (#6774's round, F6).
+    #[must_use]
+    pub fn living(&self, process_exists: impl Fn(u32) -> bool) -> usize {
+        self.all()
+            .iter()
+            .filter(|p| alive(Some(p), &process_exists))
+            .count()
+    }
+
     /// Every address a session on the mesh goes by, living or left
     /// behind, upper case, as a unit named for one carries it.
     #[must_use]
@@ -629,6 +641,30 @@ mod tests {
         fs::write(folder.join("b.json"), two).unwrap();
         assert_eq!(mesh.presence("WATCHER").unwrap().session, "new");
         assert!(mesh.presence("NOBODY").is_none());
+    }
+
+    #[test]
+    fn the_living_are_counted_once_each_and_the_gone_not_at_all() {
+        let dir = tempfile::tempdir().unwrap();
+        let mesh = Mesh {
+            root: dir.path().to_owned(),
+        };
+        fs::create_dir_all(mesh.presences()).unwrap();
+        for (name, pid) in [("two", 7), ("gone", 8), ("one", 9)] {
+            let presence = serde_json::json!({
+                "session": name, "addresses": [format!("{name}-A"), format!("{name}-B")],
+                "state": "listening", "owner": {"pid": pid}});
+            fs::write(
+                mesh.presences().join(format!("{name}.json")),
+                presence.to_string(),
+            )
+            .unwrap();
+        }
+        assert_eq!(
+            mesh.living(|pid| pid != 8),
+            2,
+            "a session of two addresses counted twice, or a gone one counted"
+        );
     }
 
     #[test]
