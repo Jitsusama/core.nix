@@ -91,7 +91,9 @@ WIDE_DESK = (1920, 1080)
 # Each of the head's parts, by its id, laid out with the words index.html opens with, with the
 # words drawn live, and with each of `forms`: their heights in pixels and the part's line
 # height. Each is put in for a moment and the live words put back, so all are laid out in the
-# same box, and only once the webfonts are in, so no fallback face is measured.
+# same box, and only once the webfonts are in, so no fallback face is measured. It asks for the
+# page once more and makes each part's nodes again from its live markup, losing any focus or
+# listener they held, so a test measures after it counts requests or acts on the head.
 HEAD_HEIGHTS = """async ([ids, forms]) => {
   await document.fonts.ready;
   const opening = new DOMParser().parseFromString(

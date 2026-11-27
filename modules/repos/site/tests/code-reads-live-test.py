@@ -13,9 +13,9 @@ drawn, when it's back, say stale when the server goes, move its ages on while
 nothing is written, make today's growth yesterday's once the day turns, move no
 row or tree as the cursor steps, keep focus where it was through a redraw, let
 Tab reach the head's keys once, open on a headline and lede taking the lines
-the live ones take when nothing waits or one change fails, not shift as its
-feeds arrive on a reload, nor
-hold room for what a reload forgets or at another width, draw a
+the live ones take, and those head.ts writes for any count up to 999 and for
+nothing waiting or one change failing, not shift as its feeds arrive on a
+reload, nor hold room for what a reload forgets or at another width, draw a
 second's burst of records a few times rather than each, draw a thread for
 each cell joining two repositories on the map under the work and walk it by
 keys, and pass the web-design skill's page checks, its homes check and its
@@ -698,37 +698,57 @@ def test_tab_reaches_the_keys_at_the_head_once(code_page: Page) -> None:
     expect(keys.nth(1), "Tab back didn't come to the key last left").to_be_focused()
 
 
-# The room index.html holds from the last visit, which a first visit has none of.
-ROOM_KEPT = """() => Array.from(document.documentElement.style).filter(
-  (property) => property.startsWith("--room-"))"""
-# The lede's first sentence when nothing waits, the one form whose lines the opening words are
-# matched to: a phone's lede runs two to five lines with what's worth a look, and this one two.
-STILL_AIR = "Still air: nothing waits on you."
-# What the stand-in's grove holds worth a look, its one change failing, which the lede says first.
+# What the stand-in's grove holds worth a look, its one change failing, as the live lede says it.
 FAILING = "has 1 change whose checks fail."
+# The headlines and ledes head.ts writes for groves the stand-in's doesn't hold, by the page's
+# own modules: counts from one repository to 999, and the lede with nothing worth a look or
+# `failing`, after what grew most or a grove resting. Each grove is built of only the fields
+# headOf reads, with a repository named as short as the stand-in's core.
+HEAD_FORMS = """async (failing) => {
+  const { headOf } = await import("./head.js");
+  const named = (name, today) => ({
+    name, address: `#repo=${name}`, seasons: { today, week: 0, resting: 0, gone: 0 } });
+  const grove = (repositories, worth = []) =>
+    ({ machine: "", roots: [], unread: [], repositories, worth });
+  const many = (count, today) =>
+    Array.from({ length: count }, (_, at) => named(`r${at}`, today));
+  const grew = named("core", 3);
+  const resting = named("core", 0);
+  const worth = (repository) => [{ weight: 1, repository, says: failing }];
+  const counts = [
+    grove([resting]), grove([grew, named("notes", 0)]),
+    grove([...many(87, 0), ...many(12, 1)]), grove(many(999, 1))];
+  const ledes = [
+    grove([grew]), grove([resting]), grove([grew], worth(grew)),
+    grove([resting], worth(resting))];
+  return {
+    title: counts.map((each) => headOf(each).title),
+    lede: ledes.map((each) => headOf(each).lede),
+  };
+}"""
 
 
 @pytest.mark.parametrize("size", [*SIZES, WIDE_DESK])
 def test_the_opening_words_take_the_lines_the_head_will(
     browser: Browser, code_served: Served, size: tuple[int, int]
 ) -> None:
-    # A first visit, or one at a width not seen before, has no room kept from the last, so the
-    # words the page opens with must take the lines its headline and lede will, or everything
-    # under them moves as the feeds arrive.
+    # A first visit, or one at a width not seen before, keeps no room from the last (each tab
+    # here is a fresh context, holding nothing), so the words the page opens with must take the
+    # lines its headline and lede will, or everything under them moves as the feeds arrive.
     root, _ = code_served
     opened = Opened(browser, f"{root}code/", size, "light")
     try:
+
+        def read_live(page: Page) -> None:
+            says_it_stands(page, "live")
+            expect(row(page, "github:owl/core"), "Code drew no row for core").to_be_visible()
+            lede = page.locator("#lede")
+            expect(lede, "the lede never said the failing change").to_contain_text(FAILING)
+
+        opened.first(read_live)
         page = opened.page
-        says_it_stands(page, "live")
-        expect(row(page, "github:owl/core"), "Code drew no row for core").to_be_visible()
-        lede = page.locator("#lede")
-        expect(lede, "the lede never said the failing change").to_contain_text(FAILING)
-        held = page.evaluate(ROOM_KEPT)
-        assert held == [], f"a first visit held {held}, so its head wasn't laid out by its words"
-        # The same lede with nothing worth a look: still air, then what grew most.
-        still, swapped = re.subn(rf"^.*?{re.escape(FAILING)}", STILL_AIR, lede.inner_html())
-        assert swapped == 1, "the lede didn't open on the failing change"
-        heights = page.evaluate(HEAD_HEIGHTS, [["title", "lede"], {"lede": [still]}])
+        forms = page.evaluate(HEAD_FORMS, FAILING)
+        heights = page.evaluate(HEAD_HEIGHTS, [["title", "lede"], forms])
         moved = {
             part: said
             for part, said in heights.items()

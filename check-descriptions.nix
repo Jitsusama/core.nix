@@ -955,13 +955,13 @@
     repository's weight and due upkeep said in its row and drawer, its ages told again each minute
     in place with the focused tree kept, today's growth yesterday's once the day turns, no row
     moving as the cursor steps, a reload not shifting as the feeds arrive, the headline and lede
-    it opens with taking their live lines when nothing waits and when one change fails, at 390,
-    1440 and 1920 wide, a second's
-    burst of records drawing the list a few times, a first visit within its budget of files, bytes
-    and elements, both visits reaching only the sites' server and the second answered unchanged,
-    the map at the page's foot drawing a thread for each cell joining two repositories, walked by
-    its keys, opening one as the list does, and handing the keys to the list once its last tie
-    goes, and nothing logged
+    it opens with taking the lines of its live ones and of those it writes for any count up to 999
+    and for nothing waiting or one change failing, at 390, 1440 and 1920 wide, a second's burst
+    of records drawing the list a few times, a first visit within its budget of files, bytes and
+    elements, both visits reaching only the sites' server and the second answered unchanged, the
+    map at the page's foot drawing a thread for each cell joining two repositories, walked by its
+    keys, opening one as the list does, and handing the keys to the list once its last tie goes,
+    and nothing logged
   '';
   collector-keeps-what-it-is-sent = ''
     the collector reads a span it was sent back at its moment and in its trace, and keeps what a
