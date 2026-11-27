@@ -15,7 +15,7 @@ use std::process::Command;
 
 use crate_reach::Crates;
 
-use crate::{candidates, git, gone, lines, patch_id, ready, stands};
+use crate::{candidates, git, gone, lines, patch_id, ready, rules, stands};
 
 /// The record of the run that passed at an earlier commit of `commit`'s
 /// change and speaks for it on `main` as `ready` takes one, since main
@@ -69,6 +69,9 @@ pub fn judged(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Resul
     // What main moved in a crate the change's crates are in, read or are
     // read by, no run of an earlier base speaks for.
     let crates = Crates::at(Path::new("."), commit);
+    // What main moved in a folder one check measures with the change's
+    // (`fates.txt`), which the change's own files never show.
+    let fates = rules::fates::fates();
     let branch = ready::Side {
         changed: &files,
         gone: &renamed,
@@ -104,7 +107,12 @@ pub fn judged(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Resul
         let mut shared = ready::shared(&branch, &main_side);
         let (at_base, checked) = (|f: &str| at(&base, f), |f: &str| at(candidate, f));
         shared.retain(|file| !ready::stands_apart(file, &rebased, &main_side, &at_base, &checked));
-        let beside = crates.beside(&files, &since);
+        let mut beside = crates.beside(&files, &since);
+        for fated in rules::fates::beside(&fates, &files, &since) {
+            if !beside.contains(&fated) {
+                beside.push(fated);
+            }
+        }
         shared.retain(|file| !beside.contains(file));
         shared.extend(beside);
         Some(shared)
