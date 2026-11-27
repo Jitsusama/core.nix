@@ -15,7 +15,7 @@ use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
 
@@ -241,9 +241,13 @@ fn a_stop_heard_through_a_gateway_is_judged_once_in_shadow_and_only_read() {
     until_decided_in(&own, 1);
     // Rounds go on finding the same stop, which none judges again.
     let rounds = tools(&called).len();
-    let began = Instant::now();
+    let began = test_pace::Timed::start();
     while tools(&called).len() < rounds + 6 {
-        assert!(began.elapsed() < PATIENCE, "the reader stopped asking");
+        assert!(
+            began.within(PATIENCE),
+            "the reader stopped asking: it {}",
+            began.said(PATIENCE)
+        );
         // It reads every tenth of a second, so this sees each round.
         thread::sleep(Duration::from_millis(50));
     }
@@ -321,8 +325,8 @@ fn a_gateway_with_no_sign_in_to_give_writes_its_row_in_its_own_folder() {
         &["--gateway", &url, "--gateway-sign-in", program],
         Some(&named),
     );
-    let began = Instant::now();
-    while !waiting.exists() && began.elapsed() < PATIENCE {
+    let began = test_pace::Timed::start();
+    while !waiting.exists() && began.within(PATIENCE) {
         thread::sleep(Duration::from_millis(20));
     }
     reader.kill().expect("the reader stops");
@@ -373,8 +377,8 @@ fn a_gateway_reader_given_a_relative_state_home_keeps_to_its_own_row() {
         &["--gateway", &url, "--gateway-sign-in", program],
         None,
     );
-    let began = Instant::now();
-    while !waiting.exists() && began.elapsed() < PATIENCE {
+    let began = test_pace::Timed::start();
+    while !waiting.exists() && began.within(PATIENCE) {
         thread::sleep(Duration::from_millis(20));
     }
     reader.kill().expect("the reader stops");
@@ -496,12 +500,12 @@ fn hearing_in(answer: fn(&str, &Value, u64) -> String, until: &Until, before: fn
         &["--gateway", &url, "--gateway-sign-in", program],
         Some(&named),
     );
-    let began = Instant::now();
+    let began = test_pace::Timed::start();
     // A row told may be taken away again once Slack is heard, so it's
     // waited on as having been told.
     let mut told = false;
     while !(told && decisions_in(&own).len() >= until.judging && searches().len() >= until.asks)
-        && began.elapsed() < PATIENCE
+        && began.within(PATIENCE)
     {
         told |= waiting.exists();
         // The reader goes round every tenth of a second in a case.

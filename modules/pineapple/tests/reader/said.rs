@@ -7,7 +7,7 @@
 
 use std::process::Command;
 use std::thread;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
 
@@ -27,9 +27,13 @@ fn joels_own_resume_in_shadow_ends_only_the_shadow_stop_it_names() {
     a_stop(&home, "later", "pr:example/shop#12", true, 30);
     let mut reading = reader(&home, &origin);
     until_decided(&home, 1);
-    let began = Instant::now();
+    let began = test_pace::Timed::start();
     while resumed(&home, "named").is_null() {
-        assert!(began.elapsed() < PATIENCE, "Joel's resume ended nothing");
+        assert!(
+            began.within(PATIENCE),
+            "Joel's resume ended nothing: it {}",
+            began.said(PATIENCE)
+        );
         // The decision is written just before the resume; a short wait
         // sees it land without spinning.
         thread::sleep(Duration::from_millis(50));
@@ -68,10 +72,14 @@ fn the_readers_own_alert_in_joels_im_is_never_judged_as_his_saying() {
     let home = home();
     a_stop(&home, "standing", "everything", true, 120);
     let mut reading = reader(&home, &origin);
-    let began = Instant::now();
+    let began = test_pace::Timed::start();
     // Each round asks twice; three rounds give the echo every chance.
     while asked.lock().expect("what was asked").len() < 6 {
-        assert!(began.elapsed() < PATIENCE, "the reader asked nothing");
+        assert!(
+            began.within(PATIENCE),
+            "the reader asked nothing: it {}",
+            began.said(PATIENCE)
+        );
         // As above, a short wait sees each round without spinning.
         thread::sleep(Duration::from_millis(50));
     }
@@ -171,11 +179,12 @@ fn an_alert_for_joels_phone_finds_his_own_im_and_in_shadow_sends_nothing() {
     let phoned = home.join("state/pineapple/phoned.jsonl");
     let mut reading = reader(&home, &origin);
     until_decided(&home, 4);
-    let began = Instant::now();
+    let began = test_pace::Timed::start();
     while !phoned.exists() {
         assert!(
-            began.elapsed() < PATIENCE,
-            "Joel's phone was never written down"
+            began.within(PATIENCE),
+            "Joel's phone was never written down: it {}",
+            began.said(PATIENCE)
         );
         // The reader goes round every tenth of a second.
         thread::sleep(Duration::from_millis(50));

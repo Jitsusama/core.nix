@@ -110,8 +110,8 @@ fn a_keyring_locked_after_answering_is_asked_once_a_rest_while_slack_is_read() {
             .count()
     };
     let said = || journal(&home);
-    let began = Instant::now();
-    while !said().contains("is locked") && began.elapsed() < PATIENCE {
+    let began = test_pace::Timed::start();
+    while !said().contains("is locked") && began.within(PATIENCE) {
         thread::sleep(Duration::from_millis(20));
     }
     let at_locked = searches();
@@ -164,8 +164,8 @@ fn a_keyring_that_hangs_after_answering_leaves_slack_read_with_the_last_sign_in(
             .count()
     };
     let said = || journal(&home);
-    let began = Instant::now();
-    while !said().contains("so the one last read is used") && began.elapsed() < PATIENCE {
+    let began = test_pace::Timed::start();
+    while !said().contains("so the one last read is used") && began.within(PATIENCE) {
         thread::sleep(Duration::from_millis(20));
     }
     let at_run_over = searches();

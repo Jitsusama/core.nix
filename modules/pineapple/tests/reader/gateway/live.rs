@@ -12,7 +12,7 @@
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
 
@@ -53,11 +53,12 @@ fn a_reader_over_a_gateway_live_stops_agents_and_tells_joel_alone() {
     let mut reader = live(&home, &origin, &url);
     let kept = home.join("state/pineapple");
     until_decided_in(&kept, 1);
-    let began = Instant::now();
+    let began = test_pace::Timed::start();
     while !kept.join("phoned.jsonl").exists() {
         assert!(
-            began.elapsed() < PATIENCE,
-            "Joel's phone was never told: {}",
+            began.within(PATIENCE),
+            "Joel's phone was never told: it {}; the journal: {}",
+            began.said(PATIENCE),
             journal(&home)
         );
         thread::sleep(Duration::from_millis(50));
@@ -65,7 +66,11 @@ fn a_reader_over_a_gateway_live_stops_agents_and_tells_joel_alone() {
     // Rounds go on, none telling his phone again.
     let rounds = tools(&called).len();
     while tools(&called).len() < rounds + 6 {
-        assert!(began.elapsed() < PATIENCE, "the reader stopped asking");
+        assert!(
+            began.within(PATIENCE),
+            "the reader stopped asking: it {}",
+            began.said(PATIENCE)
+        );
         thread::sleep(Duration::from_millis(50));
     }
     reader.kill().expect("the reader stops");
@@ -173,10 +178,14 @@ fn the_alert_joels_phone_was_sent_found_by_the_search_stops_nothing_more() {
     let mut reader = live(&home, &origin, &url);
     let kept = home.join("state/pineapple");
     until_decided_in(&kept, 1);
-    let began = Instant::now();
+    let began = test_pace::Timed::start();
     let rounds = tools(&called).len();
     while tools(&called).len() < rounds + 12 {
-        assert!(began.elapsed() < PATIENCE, "the reader stopped asking");
+        assert!(
+            began.within(PATIENCE),
+            "the reader stopped asking: it {}",
+            began.said(PATIENCE)
+        );
         thread::sleep(Duration::from_millis(50));
     }
     reader.kill().expect("the reader stops");
@@ -230,10 +239,14 @@ fn live_for_rounds(home: &Path, url: &str, called: &super::Called, more: usize) 
     let (origin, _) = stand_in();
     let mut reader = live(home, &origin, url);
     until_decided_in(&home.join("state/pineapple"), 1);
-    let began = Instant::now();
+    let began = test_pace::Timed::start();
     let rounds = tools(called).len();
     while tools(called).len() < rounds + more {
-        assert!(began.elapsed() < PATIENCE, "the reader stopped asking");
+        assert!(
+            began.within(PATIENCE),
+            "the reader stopped asking: it {}",
+            began.said(PATIENCE)
+        );
         thread::sleep(Duration::from_millis(50));
     }
     reader.kill().expect("the reader stops");
@@ -340,14 +353,15 @@ fn a_second_reader_on_a_folder_held_ends_at_once_saying_why() {
     let mut first = live(&home, &origin, &url);
     until_decided_in(&home.join("state/pineapple"), 1);
     let mut second = live(&home, &origin, &url);
-    let began = Instant::now();
+    let began = test_pace::Timed::start();
     let ended = loop {
         if let Some(status) = second.try_wait().expect("the second reader is asked after") {
             break status;
         }
         assert!(
-            began.elapsed() < PATIENCE,
-            "a second reader on the folder held goes on: {}",
+            began.within(PATIENCE),
+            "a second reader on the folder held goes on: it {}; the journal: {}",
+            began.said(PATIENCE),
             journal(&home)
         );
         thread::sleep(Duration::from_millis(20));
@@ -377,7 +391,7 @@ fn a_reader_over_a_gateway_beside_the_keyrings_ends_at_once_saying_why() {
     let mut first = crate::reader(&home, &origin);
     crate::until_decided(&home, 1);
     let mut second = live(&home, &origin, &url);
-    let began = Instant::now();
+    let began = test_pace::Timed::start();
     let ended = loop {
         if let Some(status) = second
             .try_wait()
@@ -386,8 +400,9 @@ fn a_reader_over_a_gateway_beside_the_keyrings_ends_at_once_saying_why() {
             break status;
         }
         assert!(
-            began.elapsed() < PATIENCE,
-            "a reader over the gateway beside the keyring's goes on: {}",
+            began.within(PATIENCE),
+            "a reader over the gateway beside the keyring's goes on: it {}; the journal: {}",
+            began.said(PATIENCE),
             journal(&home)
         );
         thread::sleep(Duration::from_millis(20));
@@ -563,8 +578,8 @@ fn a_live_keyring_reader_says_an_alert_let_go_too_while_signed_out() {
     an_alert_waits(&home);
     aged(&home, &[("untold", 15)]);
     let mut reader = crate::reader_with(&home, &origin, &["--live"]);
-    let began = Instant::now();
-    while let_go(&home).is_empty() && began.elapsed() < PATIENCE {
+    let began = test_pace::Timed::start();
+    while let_go(&home).is_empty() && began.within(PATIENCE) {
         thread::sleep(Duration::from_millis(50));
     }
     reader.kill().expect("the reader stops");
@@ -608,8 +623,8 @@ fn a_reader_over_a_gateway_live_with_no_sign_in_writes_joels_row() {
         &["--live", "--gateway", &url, "--gateway-sign-in", program],
         Some(&home.join(WAITING)),
     );
-    let began = Instant::now();
-    while !home.join(WAITING).exists() && began.elapsed() < PATIENCE {
+    let began = test_pace::Timed::start();
+    while !home.join(WAITING).exists() && began.within(PATIENCE) {
         thread::sleep(Duration::from_millis(20));
     }
     reader.kill().expect("the reader stops");
@@ -656,8 +671,8 @@ fn a_reader_over_a_gateway_whose_searches_always_fail_writes_joels_row() {
     });
     let home = home();
     let mut reader = live(&home, &origin, &url);
-    let began = Instant::now();
-    while !home.join(WAITING).exists() && began.elapsed() < PATIENCE {
+    let began = test_pace::Timed::start();
+    while !home.join(WAITING).exists() && began.within(PATIENCE) {
         thread::sleep(Duration::from_millis(20));
     }
     reader.kill().expect("the reader stops");
@@ -695,11 +710,12 @@ fn an_alert_the_gateway_refuses_goes_again_with_its_words_left_at_the_link() {
     an_alert_waits(&home);
     let mut reader = live(&home, &origin, &url);
     let phoned = home.join("state/pineapple/phoned.jsonl");
-    let began = Instant::now();
+    let began = test_pace::Timed::start();
     while !phoned.exists() {
         assert!(
-            began.elapsed() < PATIENCE,
-            "Joel's phone was never told: {}",
+            began.within(PATIENCE),
+            "Joel's phone was never told: it {}; the journal: {}",
+            began.said(PATIENCE),
             journal(&home)
         );
         thread::sleep(Duration::from_millis(50));
@@ -744,11 +760,12 @@ fn a_reader_over_a_gateway_live_says_what_it_never_read_beside_joels_row() {
     let home = home();
     let mut reader = live(&home, &origin, &url);
     let missed = home.join(WAITING).with_file_name("pineapple-missed.json");
-    let began = Instant::now();
+    let began = test_pace::Timed::start();
     while !missed.exists() {
         assert!(
-            began.elapsed() < PATIENCE,
-            "no row said what was never read: {}",
+            began.within(PATIENCE),
+            "no row said what was never read: it {}; the journal: {}",
+            began.said(PATIENCE),
             journal(&home)
         );
         thread::sleep(Duration::from_millis(50));

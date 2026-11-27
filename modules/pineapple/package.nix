@@ -4,8 +4,9 @@
 # sayings.json beside it. It reads Slack
 # through Slack's own module (../slack), which reads through the pieces
 # every daemon shares, and takes its shape from the terminal kit
-# (../terminal-kit), so the source is cut from the modules folder holding
-# them all, and built from this one.
+# (../terminal-kit), and its tests time their steps by the test pace
+# (../test-pace), so the source is cut from the modules folder holding them
+# all, and built from this one.
 { lib, rustPlatform }:
 rustPlatform.buildRustPackage rec {
   pname = "pineapple";
@@ -31,6 +32,8 @@ rustPlatform.buildRustPackage rec {
       ../ready-rows/src
       ../terminal-kit/Cargo.toml
       ../terminal-kit/src
+      ../test-pace/Cargo.toml
+      ../test-pace/src
     ];
   };
   sourceRoot = "${src.name}/pineapple";

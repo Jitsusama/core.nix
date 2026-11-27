@@ -13,7 +13,7 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use pineapple::github::stamp;
 use serde_json::{Value, json};
@@ -127,11 +127,12 @@ fn until_searched(
     reading: &mut std::process::Child,
     count: usize,
 ) -> Vec<String> {
-    let began = Instant::now();
+    let began = test_pace::Timed::start();
     while searches(asked).len() < count {
         assert!(
-            began.elapsed() < PATIENCE,
-            "it never searched {count} times"
+            began.within(PATIENCE),
+            "it never searched {count} times: it {}",
+            began.said(PATIENCE)
         );
         thread::sleep(Duration::from_millis(50));
     }

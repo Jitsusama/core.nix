@@ -8,7 +8,7 @@ use std::process::Command;
 use std::sync::Mutex;
 use std::sync::mpsc;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use super::{PATIENCE, home, journal, reader, stand_in};
 
@@ -140,11 +140,12 @@ fn failing_while_held() {
     let home = home();
     let mut held = reader(&home, &origin);
     asked_once(&asked);
-    let began = Instant::now();
+    let began = test_pace::Timed::start();
     while !journal(&home).contains(SAID) {
         assert!(
-            began.elapsed() < PATIENCE,
-            "the reader never said what it kept in shadow"
+            began.within(PATIENCE),
+            "the reader never said what it kept in shadow: it {}",
+            began.said(PATIENCE)
         );
         thread::sleep(Duration::from_millis(50));
     }
@@ -157,9 +158,13 @@ fn failing_while_held() {
 /// Until the reader has asked the stand-in once, so it has started
 /// rather than died on the way up.
 fn asked_once(asked: &Mutex<Vec<String>>) {
-    let began = Instant::now();
+    let began = test_pace::Timed::start();
     while asked.lock().expect("what was asked").is_empty() {
-        assert!(began.elapsed() < PATIENCE, "the reader never asked Slack");
+        assert!(
+            began.within(PATIENCE),
+            "the reader never asked Slack: it {}",
+            began.said(PATIENCE)
+        );
         thread::sleep(Duration::from_millis(50));
     }
 }

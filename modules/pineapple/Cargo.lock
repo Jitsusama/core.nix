@@ -368,6 +368,7 @@ dependencies = [
  "sign-in-program",
  "slack-people",
  "terminal-kit",
+ "test-pace",
  "ureq",
 ]
 
@@ -582,6 +583,10 @@ dependencies = [
  "serde_json",
  "unicode-width",
 ]
+
+[[package]]
+name = "test-pace"
+version = "0.1.0"
 
 [[package]]
 name = "time"

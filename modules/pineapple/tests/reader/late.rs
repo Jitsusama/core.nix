@@ -6,7 +6,7 @@
 
 use std::path::Path;
 use std::thread;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
 
@@ -15,7 +15,7 @@ use super::{JOEL, PATIENCE, answer, answering, home, journal, reader, stop_in};
 /// The stop records under `state`, once there are `count` of them, by
 /// when each was said.
 pub(super) fn kept(state: &Path, count: usize) -> Vec<Value> {
-    let began = Instant::now();
+    let began = test_pace::Timed::start();
     loop {
         let mut records: Vec<Value> = std::fs::read_dir(state.join("stops"))
             .into_iter()
@@ -28,9 +28,10 @@ pub(super) fn kept(state: &Path, count: usize) -> Vec<Value> {
             return records;
         }
         assert!(
-            began.elapsed() < PATIENCE,
-            "the reader kept {} stops, not {count}",
-            records.len()
+            began.within(PATIENCE),
+            "the reader kept {} stops, not {count}: it {}",
+            records.len(),
+            began.said(PATIENCE)
         );
         thread::sleep(Duration::from_millis(50));
     }
