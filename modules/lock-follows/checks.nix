@@ -51,6 +51,6 @@ onLinux {
         timer.OnCalendar == "*:0/15"
         && timer.Persistent
         && service.Slice == "background.slice"
-        && lib.hasSuffix " -- mycelium" service.ExecStart
+        && lib.all (lib.hasSuffix " -- mycelium") (lib.toList service.ExecStart)
       );
 }
