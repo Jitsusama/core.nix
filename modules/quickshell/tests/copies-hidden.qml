@@ -129,8 +129,8 @@ QtObject {
         Expect.same("and its acts stay, so it can still be copied",
             JSON.stringify(Shared.shown(link).acts), JSON.stringify(link.acts));
         Expect.same("what the history served is left as it was", link.glyph, "link");
-        Expect.same("a hidden copy keeps its thing, which keys its row", Shared.shown(link).thing,
-            link.thing);
+        // How Copies keys the row it makes of this is no case's: none runs Copies.qml.
+        Expect.same("a hidden copy keeps its thing", Shared.shown(link).thing, link.thing);
         const lines = { kind: "text", glyph: "lines", side: [{ said: "2 lines" }, came] };
         Expect.same("a hidden text's side keeps when it came, not its lines",
             JSON.stringify(Shared.shown(lines).side), JSON.stringify([came]));

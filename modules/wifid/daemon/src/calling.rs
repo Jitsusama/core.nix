@@ -138,16 +138,21 @@ impl Peer {
     /// on 26 Nov 2026, so there the path is read as before and said as
     /// unproven, rather than said of no asker at all.
     pub fn on(socket: BorrowedFd<'_>, pid: Option<i32>, uid: Option<u32>) -> Peer {
-        Peer::read_by(socket, pid, uid, |number| {
+        let pidfd = || pidfd_of(socket);
+        Peer::read_by(pidfd, pid, uid, |number| {
             std::fs::read(format!("/proc/{number}/cgroup"))
         })
     }
 
-    /// The peer on a connection as `on` says it, its cgroup file read by
-    /// `read` from its pid, so a test can have the asker exit as it's
-    /// read.
+    /// The peer on a connection as `on` says it, its pidfd had from
+    /// `pidfd` and its cgroup file read by `read` from its pid, so a test
+    /// can give a pidfd any kernel makes and have the asker exit as it's
+    /// read. The pidfd is had before the read and asked after it, each a
+    /// statement of its own: the read as an argument beside `held` would
+    /// come after the poll, and an asker exiting between them would have
+    /// another's path said as its own, proven.
     fn read_by(
-        socket: BorrowedFd<'_>,
+        pidfd: impl FnOnce() -> io::Result<OwnedFd>,
         pid: Option<i32>,
         uid: Option<u32>,
         read: impl FnOnce(i32) -> io::Result<Vec<u8>>,
@@ -157,25 +162,13 @@ impl Peer {
             let cgroup = Cgroup::Unasked;
             return Peer { pid, uid, cgroup };
         };
-        let cgroup = read_then_held(number, pidfd_of(socket), read);
+        let pidfd = pidfd();
+        let read = read(number);
+        let cgroup = judged(held(pidfd), read, |path| {
+            named(Path::new("/sys/fs/cgroup"), path)
+        });
         Peer { pid, uid, cgroup }
     }
-}
-
-/// The cgroup of the asker numbered `number`, its file read by `read`
-/// before `pidfd`, taken as it connected, is asked whether it's still
-/// there. The read is a statement of its own: as an argument beside
-/// `held(pidfd)` it would be read after the poll, and an asker exiting
-/// between them would have another's path said as its own, proven.
-fn read_then_held(
-    number: i32,
-    pidfd: io::Result<OwnedFd>,
-    read: impl FnOnce(i32) -> io::Result<Vec<u8>>,
-) -> Cgroup {
-    let read = read(number);
-    judged(held(pidfd), read, |path| {
-        named(Path::new("/sys/fs/cgroup"), path)
-    })
 }
 
 /// What the kernel's pidfd for an asker says of it once its path is read.
@@ -285,13 +278,14 @@ fn answered(revents: libc::c_short) -> bool {
 /// show it, as `ProtectProc=invisible` would, and is said as unread, not
 /// gone. Its path's ` (deleted)` ending is taken as its cgroup's name,
 /// with no lookup that a wrong root or a long path could spoil. The
-/// kernel refuses to remove a cgroup a process is in, and a process whose
-/// every thread has exited polls exited, so only a threaded cgroup's
-/// leader, exited while its other threads run in another, reads so of a
-/// cgroup since removed, and that path is still one the asker ran in.
-/// That's the kernel's own: `cgroup_exit` takes an exited task off its
-/// `css_set`'s count, so its cgroup may go, while `pidfd_poll` answers
-/// only once `thread_group_exited`.
+/// kernel refuses to remove a cgroup it still lists a task in
+/// (`cgroup_destroy_locked`), and `pidfd_poll` answers only once a
+/// process's every thread has exited, holding back a leader whose other
+/// threads run (`delay_group_leader`, `fs/pidfs.c` from 6.9). So an
+/// asker still there reads so only as a threaded group's leader, exited
+/// in one cgroup while its threads run in another, on a kernel that
+/// stops listing such a leader there, and that path is still one the
+/// asker ran in.
 /// With no pidfd, the file not found says the asker was reaped, and the
 /// ending is looked up by `named`.
 fn judged(held: Held, read: io::Result<Vec<u8>>, named: impl Fn(&[u8]) -> bool) -> Cgroup {
@@ -722,15 +716,31 @@ mod tests {
         );
     }
 
+    /// A `sleep` child, killed and reaped when dropped, so a case that
+    /// fails before it does leaves none running. A child already reaped
+    /// isn't signalled again, as the standard library keeps its status.
+    struct Sleeper(std::process::Child);
+
+    impl Drop for Sleeper {
+        fn drop(&mut self) {
+            // Killed, then reaped whether or not the kill failed, as a
+            // tuple's parts are evaluated in order; one line, so it isn't
+            // the copy of other tests' guards that every-test-function-
+            // lives-once refuses.
+            let _ = (self.0.kill(), self.0.wait());
+        }
+    }
+
     /// A `sleep` child, with its pidfd from `pidfd_open`, which every
     /// kernel since 5.3 gives, so a case built on it runs the same where
     /// a socket gives no pidfd, as the builders' kernels did.
-    fn a_sleeper() -> (std::process::Child, libc::pid_t, OwnedFd) {
+    fn a_sleeper() -> (Sleeper, libc::pid_t, OwnedFd) {
         let child = std::process::Command::new("sleep")
             .arg("60")
             .spawn()
             .expect("sleep starts");
-        let pid = libc::pid_t::try_from(child.id()).expect("a pid fits");
+        let child = Sleeper(child);
+        let pid = libc::pid_t::try_from(child.0.id()).expect("a pid fits");
         // SAFETY: it takes only numbers, and the descriptor it gives is
         // taken straight into an OwnedFd.
         let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid, 0) };
@@ -747,7 +757,7 @@ mod tests {
         let asked = || held(Ok(pidfd.try_clone().expect("a pidfd copies")));
 
         let running = asked();
-        child.kill().expect("sleep is killed");
+        child.0.kill().expect("sleep is killed");
         let mut polled = libc::pollfd {
             fd: pidfd.as_raw_fd(),
             events: libc::POLLIN,
@@ -760,7 +770,7 @@ mod tests {
         // A zombie's file still reads, so only the poll keeps its path
         // from being said as a proven asker's.
         let zombie_read = std::fs::read(format!("/proc/{pid}/cgroup"));
-        child.wait().expect("sleep is reaped");
+        child.0.wait().expect("sleep is reaped");
         let reaped = asked();
 
         assert_eq!(running, Held::Still, "a running process was said exited");
@@ -800,7 +810,10 @@ mod tests {
     }
 
     /// A child forked by `a_child_connected`, killed and reaped by `gone`,
-    /// or when dropped, so a test that fails leaves no child paused.
+    /// or when dropped, so a test that fails leaves no child paused. Its
+    /// pid is killed on drop only while nothing but `gone` or `left` can
+    /// reap it, which holds while no test waits on any child or ignores
+    /// `SIGCHLD`: one that did could let its pid go to another.
     struct Forked {
         pid: libc::pid_t,
         reaped: std::cell::Cell<bool>,
@@ -825,6 +838,25 @@ mod tests {
                 (0, self.pid),
                 "the child wasn't killed and reaped"
             );
+        }
+
+        /// Fails the test if the child has exited, with how it did, as a
+        /// child that can't connect exits 1 for no socket and 2 for a
+        /// connect refused.
+        fn left(&self) {
+            let mut status = 0;
+            // SAFETY: it takes only numbers and the one int written, and
+            // waits for nothing.
+            let reaped = unsafe { libc::waitpid(self.pid, &raw mut status, libc::WNOHANG) };
+            if reaped == self.pid {
+                self.reaped.set(true);
+                panic!(
+                    "the child exited before it connected, exit {} (1: no socket, 2: refused), \
+                     signal {}",
+                    libc::WEXITSTATUS(status),
+                    libc::WTERMSIG(status)
+                );
+            }
         }
     }
 
@@ -871,8 +903,11 @@ mod tests {
             // SAFETY: as above; the address was made before the fork.
             unsafe {
                 let fd = libc::socket(libc::AF_UNIX, libc::SOCK_STREAM, 0);
-                if fd < 0 || libc::connect(fd, (&raw const address).cast(), length) < 0 {
+                if fd < 0 {
                     libc::_exit(1);
+                }
+                if libc::connect(fd, (&raw const address).cast(), length) < 0 {
+                    libc::_exit(2);
                 }
                 loop {
                     libc::pause();
@@ -889,14 +924,25 @@ mod tests {
             events: libc::POLLIN,
             revents: 0,
         };
-        // SAFETY: one pollfd, for a descriptor held for the call. A child
-        // that can't connect exits, so the wait is bounded rather than
-        // left to hang the run in accept; ten seconds is far past a
-        // connect on the busiest builder.
-        let ready = unsafe { libc::poll(&raw mut waiting, 1, 10_000) };
-        assert_eq!(ready, 1, "the child never connected");
-        let (connected, _) = listener.accept().expect("the child connects");
-        (connected, child)
+        // A child that can't connect exits, so the wait is bounded rather
+        // than left to hang the run in accept, and looks for that exit
+        // every 0.1 s rather than wait the bound out: ten seconds in all
+        // is far past a connect on the busiest builder.
+        for _ in 0..100 {
+            // SAFETY: one pollfd, for a descriptor held for the call.
+            let ready = unsafe { libc::poll(&raw mut waiting, 1, 100) };
+            assert!(
+                ready >= 0,
+                "the wait for the child's connection failed: {}",
+                io::Error::last_os_error()
+            );
+            if ready == 1 {
+                let (connected, _) = listener.accept().expect("the child connects");
+                return (connected, child);
+            }
+            child.left();
+        }
+        panic!("the child neither connected nor exited in 10 s");
     }
 
     #[test]
@@ -921,16 +967,21 @@ mod tests {
 
         // The asker goes as its file is read, so a poll before the read
         // would find it still there and prove the path read after.
-        let cgroup = read_then_held(pid, Ok(pidfd), |_| {
-            child.kill().expect("sleep is killed");
-            child.wait().expect("sleep is reaped");
-            Ok(b"0::/system.slice/x.service\n".to_vec())
-        });
+        let peer = Peer::read_by(
+            || Ok(pidfd),
+            Some(pid),
+            Some(1000),
+            |_| {
+                child.0.kill().expect("sleep is killed");
+                child.0.wait().expect("sleep is reaped");
+                Ok(b"0::/system.slice/x.service\n".to_vec())
+            },
+        );
 
         assert_eq!(
-            cgroup,
+            peer.cgroup,
             Cgroup::Gone,
-            "a path read as its asker went was proven, so the poll came first"
+            "a path read as its asker went was proven, so the poll came first: {peer}"
         );
     }
 
@@ -941,21 +992,30 @@ mod tests {
 
         // Where the kernel gives a socket's pidfd, it's that one which
         // proves the path; the order alone is pinned on every kernel by
-        // the case above.
-        let peer = Peer::read_by(connected.as_fd(), Some(child.pid), Some(1000), |_| {
-            child.gone();
-            Ok(b"0::/system.slice/x.service\n".to_vec())
-        });
+        // the case above, through `read_by` too.
+        let socket = connected.as_fd();
+        let peer = Peer::read_by(
+            || pidfd_of(socket),
+            Some(child.pid),
+            Some(1000),
+            |_| {
+                child.gone();
+                Ok(b"0::/system.slice/x.service\n".to_vec())
+            },
+        );
 
-        let want = match pidfd.as_ref().map_err(io::Error::raw_os_error) {
-            Ok(_) => Cgroup::Gone,
-            Err(Some(libc::ENOPROTOOPT)) => Cgroup::Unproven("system.slice/x.service".into()),
+        let (want, wrong) = match pidfd.as_ref().map_err(io::Error::raw_os_error) {
+            Ok(_) => (
+                Cgroup::Gone,
+                "a path read as its asker went was proven, so the socket's pidfd wasn't asked",
+            ),
+            Err(Some(libc::ENOPROTOOPT)) => (
+                Cgroup::Unproven("system.slice/x.service".into()),
+                "a kernel with no pidfd for a socket didn't say the path read unproven",
+            ),
             Err(errno) => panic!("the child's pidfd went unread, errno {errno:?}"),
         };
-        assert_eq!(
-            peer.cgroup, want,
-            "a path read as its asker went was proven, so the socket's pidfd wasn't asked"
-        );
+        assert_eq!(peer.cgroup, want, "{wrong}: {peer}");
     }
 
     #[test]

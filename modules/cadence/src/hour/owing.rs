@@ -451,10 +451,22 @@ fn back_in(key: &str, measures: &[Measure]) -> bool {
             .map(|(owner, date)| format!("{date} · {owner}"));
         return m.target.is_some() && line.is_none_or(|line| !m.behind.contains(&line));
     }
-    // A path is measured for a day after its origin was last sampled, so a
-    // path gone from the hour is an origin no longer named, and its ask is
-    // settled as the queues' are, rather than held open for good.
+    // A path is measured for each origin the deployer names, sampled or
+    // not, so a path gone from the hour is an origin no longer named, and
+    // its ask is settled as the queues' are, rather than held open for good;
+    // a sampler that stopped leaves its paths unjudged, so their asks stay.
     if key.starts_with(path::PREFIX) && !measures.iter().any(|m| m.key == key) {
+        return true;
+    }
+    // A relay that logged nothing carried nothing, as when it is stopped and
+    // pi goes to the origin itself, whose own calls judge that hour; its
+    // asks are settled rather than going late on a count no one can make.
+    // A journal unread says nothing, so its asks stay.
+    if key.starts_with(relay::PREFIX)
+        && measures
+            .iter()
+            .any(|m| m.key == key && m.says.ends_with(relay::QUIET))
+    {
         return true;
     }
     // An unread file leaves only its one line, never a figure, so a drag
@@ -1129,7 +1141,31 @@ mod tests {
     }
 
     #[test]
-    fn a_path_ask_closes_once_its_origin_is_no_longer_sampled() {
+    fn a_relay_ask_closes_once_the_relay_carries_nothing() {
+        let mut past = measure(relay::ANSWERED_502, Class::Functional, 704.0, Some(50.0));
+        past.owner = "OXUW1Y".to_owned();
+        let mut ledger = Vec::new();
+        file(&mut ledger, &[past], "2026-11-26", 1000);
+        let open = |ledger: &Vec<Entry>| {
+            ledger
+                .iter()
+                .any(|e| e.open && e.key == "hour:relay:answered-502")
+        };
+        assert!(open(&ledger), "a count past its ceiling wasn't asked");
+        file(&mut ledger, &relay::relay(None), "2026-11-26", 4600);
+        assert!(
+            open(&ledger),
+            "an hour its journal went unread closed the ask"
+        );
+        file(&mut ledger, &relay::relay(Some("")), "2026-11-26", 8200);
+        assert!(
+            !open(&ledger),
+            "an hour the relay carried nothing held its ask open"
+        );
+    }
+
+    #[test]
+    fn a_path_ask_stays_open_unsampled_and_closes_once_its_origin_is_no_longer_named() {
         let mut slow = measure("path:tls:forge.example", Class::Functional, 7.2, Some(1.0));
         slow.owner = "OXUW1Y".to_owned();
         let mut ledger = Vec::new();
@@ -1139,6 +1175,15 @@ mod tests {
                 .iter()
                 .any(|e| e.open && e.key == "hour:path:tls:forge.example"),
             "a slow path wasn't asked: {ledger:?}"
+        );
+        let mut unsampled = measure("path:tls:forge.example", Class::Functional, 0.0, None);
+        unsampled.owner = "OXUW1Y".to_owned();
+        file(&mut ledger, &[unsampled], "2026-11-26", 4600);
+        assert!(
+            ledger
+                .iter()
+                .any(|e| e.open && e.key == "hour:path:tls:forge.example"),
+            "a named origin with too few samples closed its ask: {ledger:?}"
         );
         let mut other = measure("path:tls:model.example", Class::Functional, 0.2, Some(1.0));
         other.owner = "OXUW1Y".to_owned();

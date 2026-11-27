@@ -1276,7 +1276,9 @@
     with nothing at the clipboard history's socket, Emoji's rows are drawn only while the launcher
     is open: shut, a search and one typed inside a group that went unanswered are let go; open,
     each is kept, and asked again at the history's hello, the answer to what was typed in the
-    group not taken as its key's own a while after the key, so Emoji's rows stay where they are
+    group not taken as its key's own a while after the key, so Emoji's rows stay where they are;
+    and an emoji's row is keyed by its thing, kept under row: where that claims the launcher's own
+    kind, and by its key where it has none
   '';
   ergodox-on-every-workstation = ''
     every workstation can flash the ErgoDox, a Mac as much as Linux
@@ -4661,7 +4663,9 @@
   carry-back-asks-the-node-only-a-carry = ''
     Carry Back asks the realm's node only a carry of a quest's id to a machine's name, rebuilt from
     the act's parts so nothing else it holds is sent, and says it done once the carry ended
-    carried, else the node's own why, that its why couldn't be read, or that no answer came
+    carried, else the node's own why, that its why couldn't be read, or that no answer came; a
+    carried row reads as carrying back under the key ReadyRows made it with, its thing or else its
+    record's key, kept under row: where its thing claims a kind of the launcher's own
   '';
   talk-to-opens-only-on-whom-it-names = ''
     the launcher's talkTo opens a talk on the first word it's given alone: a session's address in
@@ -6352,6 +6356,11 @@
     theme as its light one, a first view's three faces come in under 350 KB, and every type step,
     and code set in small text, starts at 12 px or more
   '';
+  the-wifi-cases-fail-on-a-throw = ''
+    the guard every Wi-Fi case runs over what the shell said fails a run holding a file's line that
+    threw a TypeError, a ReferenceError or a RangeError, or a value Qt couldn't assign, and passes
+    one holding only the launcher's own lines, an Error: in no file's line among them
+  '';
   the-window-buffers-stay-under-load = ''
     the XPS 14's udev sets xe's `shrinker_non_purgeable_seeks` to 64, so reclaim under a build
     leaves window buffers alone
@@ -6524,12 +6533,13 @@
   usb-camera-holders-follow-the-stream = ''
     a USB camera's watch names its holders only while a streaming interface has a nonzero alternate
     setting, names its file for the camera, made a plain file name, and removes it when the node
-    goes or the watch is stopped; a holder's name is one printable line, and only a unit in its
-    cgroup is left out; and while it streams, the running watch says every ten seconds the frames a
-    second uvcvideo counted it giving to a holder it sees; its line adds them up across a stream
-    started afresh between wakes, says a stream's end, as it stops, the camera goes or the watch
-    is stopped, up to the last wake that saw it, even with no count, and counts the next from its
-    own start, survives a log that takes no write, quotes each holder, gives the packets in
+    goes or the watch is stopped; a holder's name is one printable line, and only a system unit its
+    cgroup is in is left out, never a person's own unit of the same name; and while it streams,
+    the running watch says every ten seconds the frames a second uvcvideo counted it giving to a
+    holder it sees; its line adds them up across a stream started afresh between wakes, says a
+    stream's end, as it stops, the camera goes or the watch is stopped, up to the last wake that
+    saw it, even with no count, and counts the next from its own start, survives a log that takes
+    no write, quotes each holder, gives the packets in
     error, each interface by number when there are several, why a count, format or rate is
     unknown, and the controls under the names v4l2-ctl gives them, a control it can't read said
     so, and one that timed out, or a list that stalled there, kept unasked, one asked again each
@@ -7481,13 +7491,14 @@
     the launcher's Wi-Fi holds the network joined ahead while the launcher's open and Wi-Fi's on,
     so its drawer is served before Joel steps onto it; a change to that drawer alone tells the
     launcher nothing while nobody looks at it, the row it holds drawing the drawer as served
-    now, and one looked at, a drawer coming or going, or a change past it, is told
+    now, and one looked at, a drawer coming or going, or a change past it, is told; and no line
+    throws, names nothing or goes unassigned while it does
   '';
   wifi-looks-only-while-its-rows-are-shown = ''
     the launcher's Wi-Fi asks wifid to look for networks only while its rows are shown: Wi-Fi or
     something in it held, or a find from the root showing a row of its, the launcher open, or a
     terminal's show walked into it; never open on another place, at home or on another's find,
-    and at once on stepping in
+    and at once on stepping in; and no line throws, names nothing or goes unassigned while it does
   '';
   wifi-names-a-network-without-a-country = ''
     core's kernel, with its own patches, records the name of the network a card joined even
