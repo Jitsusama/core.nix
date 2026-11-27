@@ -123,7 +123,7 @@ fn readable(book: &Shared, key: &str, again: &Sender<Job>) -> Option<(Record, St
     match read.map(|text| filed::transcript(&text).to_owned()) {
         Ok(text) => match said::in_place_of_a_summary(&text) {
             Some(written) => {
-                eprintln!("call-transcripts: too little was heard on {key} to sum up");
+                eprintln!("call-transcripts: {key} isn't summed up: {written}");
                 keep(book, &record, written, &text, again);
                 None
             }

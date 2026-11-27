@@ -28,7 +28,7 @@ pub fn and(unheard: Option<Unheard>, start: usize) -> Unheard {
             first: start,
         },
         Some(unheard) => Unheard {
-            stretches: unheard.stretches + 1,
+            stretches: unheard.stretches.saturating_add(1),
             first: unheard.first.min(start),
         },
     }
@@ -66,7 +66,10 @@ impl Unheard {
                 (1, at)
             } else {
                 let (stretches, at) = rest.split_once(" stretches of it, the first at ")?;
-                (stretches.parse().ok()?, at)
+                // A file is anyone's to edit; no note is written with
+                // fewer than two.
+                let stretches = stretches.parse().ok().filter(|&stretches| stretches > 1)?;
+                (stretches, at)
             };
             let seconds = at
                 .strip_suffix('.')?

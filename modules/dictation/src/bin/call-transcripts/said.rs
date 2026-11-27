@@ -19,9 +19,11 @@ pub const TOO_LITTLE: &str = "Too little was said to sum up.";
 pub const TOO_LITTLE_HEARD: &str =
     "Too little was heard to sum up: the speech model failed on part of the call.";
 
-/// What a call none of which was heard gets in place of a summary.
-pub const NOTHING_HEARD: &str =
-    "Nothing was heard to sum up: the speech model failed on all of the call.";
+/// What a call none of which was heard gets in place of a summary. Its
+/// takes heard may hold no word as well, so it says only that some were
+/// failed on.
+pub const NOTHING_HEARD: &str = "Nothing was heard to sum up: no words of the call were heard, \
+     and the speech model failed on some of it.";
 
 /// Fewer words than this, each counted once and greetings and thanks
 /// left out, is too little to sum up. A question and its answer, the

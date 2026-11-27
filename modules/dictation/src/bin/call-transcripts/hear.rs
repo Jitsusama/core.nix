@@ -253,7 +253,7 @@ pub fn hear(
             } => {
                 let writing = calls
                     .entry(key.clone())
-                    .or_insert_with(|| taken_up(&mut ended, book, &key, me, &mut told));
+                    .or_insert_with(|| taken_up(&mut ended, book, &key, me));
                 let parakeet = match loaded(settings, &mut speech) {
                     Ok(parakeet) => parakeet,
                     Err(why) => {
@@ -295,7 +295,7 @@ pub fn hear(
             Job::Done { key, side } => {
                 let writing = calls
                     .entry(key.clone())
-                    .or_insert_with(|| taken_up(&mut ended, book, &key, me, &mut told));
+                    .or_insert_with(|| taken_up(&mut ended, book, &key, me));
                 writing.done.insert(side);
                 if writing.done.len() == 2 {
                     tell_apart(book, &key, writing, me);
@@ -723,24 +723,14 @@ fn title_of(book: &Shared, key: &str) -> String {
 
 /// A call taken up again: as this run held it when it ended, embeddings
 /// and all, so a rejoin is told apart whole; else as its file has it.
-/// One read from a file already saying what wasn't heard counts in
-/// `told` as told, since the notice raised before a restart outlasts it;
-/// one this run held was told until it ended, so a rejoin is told anew.
-fn taken_up(
-    ended: &mut Vec<(String, Writing)>,
-    book: &Shared,
-    key: &str,
-    me: &str,
-    told: &mut HashSet<String>,
-) -> Writing {
-    if let Some(at) = ended.iter().position(|(kept, _)| kept == key) {
-        return ended.remove(at).1;
+/// Either is told anew of a failure, even one its file says was told: a
+/// notice raised before may have been put away, or gone with the daemon
+/// before it showed, and a second quiet one costs less than none.
+fn taken_up(ended: &mut Vec<(String, Writing)>, book: &Shared, key: &str, me: &str) -> Writing {
+    match ended.iter().position(|(kept, _)| kept == key) {
+        Some(at) => ended.remove(at).1,
+        None => resumed(book, key, me),
     }
-    let writing = resumed(book, key, me);
-    if writing.unheard.is_some() {
-        told.insert(key.to_owned());
-    }
-    writing
 }
 
 /// What a call already says, taken up again: what the transcript of a

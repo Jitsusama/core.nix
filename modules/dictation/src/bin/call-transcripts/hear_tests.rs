@@ -720,7 +720,7 @@ fn a_call_taken_up_again_is_told_anew_after_a_restart_or_a_rejoin() {
     let before = lose("call:e1", 0, &mut Writing::default(), &mut HashSet::new());
     assert!(before.is_some(), "the call's first failure wasn't told");
     let mut told = HashSet::new();
-    let mut writing = taken_up(&mut Vec::new(), &book, "call:e1", "Joel", &mut told);
+    let mut writing = taken_up(&mut Vec::new(), &book, "call:e1", "Joel");
     assert!(
         lose("call:e1", SECOND, &mut writing, &mut told).is_some(),
         "a call its file said wasn't heard in part wasn't told anew after a restart"
@@ -735,7 +735,7 @@ fn a_call_taken_up_again_is_told_anew_after_a_restart_or_a_rejoin() {
     };
     let mut ended = vec![("call:e1".to_owned(), held)];
     let mut told = HashSet::new();
-    let mut writing = taken_up(&mut ended, &book, "call:e1", "Joel", &mut told);
+    let mut writing = taken_up(&mut ended, &book, "call:e1", "Joel");
     assert!(
         lose("call:e1", 2 * SECOND, &mut writing, &mut told).is_some(),
         "a call rejoined after it ended wasn't told anew"
