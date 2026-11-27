@@ -51,9 +51,8 @@ pub fn run(folder: &Path, state_home: &Path, told: &Told, now: i64) -> io::Resul
     let today = read(state_home, now - DAY, now, &held);
     let before = kept(&days, now);
     let mut judged = judge::judge(&today, &before);
-    // A name that can't be read leaves the findings saying only the hours.
-    let machine = fs::read_to_string("/proc/sys/kernel/hostname").unwrap_or_default();
-    on_machine(&mut judged.worse, machine.trim(), today.to);
+    let host = terminal_kit::environment::machine();
+    on_machine(&mut judged.worse, &host, today.to);
     let kept_at = folder.join("findings.jsonl");
     let _held = findings::lock(&kept_at)?;
     let mut ledger = findings::read(&kept_at);
@@ -385,23 +384,36 @@ fn utc_date(at: i64) -> String {
 /// Says in each of `worse` that names a unit or a program which machine
 /// read it and when its day ended, so its owner reads the same journal over
 /// the same hours: a unit's failure is in no other machine's records, and
-/// a day run by hand ends at any hour. A machine with no name says none.
+/// a day run by hand ends at any hour, in the zone it ended in. A machine
+/// with no name says none. Only a unit's failure, a program's crash or an
+/// unstamped run is named so: a flaky test or a queue isn't the
+/// machine's.
 fn on_machine(worse: &mut [judge::Finding], machine: &str, to: i64) {
-    let ended = Timestamp::from_second(to)
-        .map(|t| {
-            t.to_zoned(TimeZone::system())
-                .strftime("%Y-%m-%d %H:%M")
-                .to_string()
-        })
-        .unwrap_or_default();
+    let ended = ended(to);
     let read = if machine.is_empty() {
         format!("read over the day to {ended}")
     } else {
         format!("read on {machine} over the day to {ended}")
     };
-    for finding in worse.iter_mut().filter(|f| f.key.contains(':')) {
+    let of_machine = |f: &judge::Finding| {
+        ["failed:", "crashes:", "unstamped:"]
+            .iter()
+            .any(|kind| f.key.starts_with(kind))
+    };
+    for finding in worse.iter_mut().filter(|f| of_machine(f)) {
         finding.words = format!("{}, {read}", finding.words);
     }
+}
+
+/// When a day that ended at `to` ended, to the minute, with its zone.
+fn ended(to: i64) -> String {
+    Timestamp::from_second(to)
+        .map(|t| {
+            t.to_zoned(TimeZone::system())
+                .strftime("%Y-%m-%d %H:%M %:z")
+                .to_string()
+        })
+        .unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -417,28 +429,45 @@ mod tests {
             now: 1.0,
             words: "a failure of serve-a-*.service, new, once".to_owned(),
         }];
-        worse.push(judge::Finding {
-            key: "oom.machine".to_owned(),
-            words: "kills went from 0 to 2".to_owned(),
+        let other = |key: &str, words: &str| judge::Finding {
+            key: key.to_owned(),
+            words: words.to_owned(),
             ..worse[0].clone()
-        });
+        };
+        worse.push(other("oom.machine", "kills went from 0 to 2"));
+        worse.push(other("flaky:vm-a", "a flaky test"));
+        worse.push(other("code.queued-on:a", "a queue"));
+        worse.push(other("crashes:tec", "a crash of tec"));
         on_machine(&mut worse, "host-a", 10 * DAY);
-        let ended = Timestamp::from_second(10 * DAY)
-            .expect("a time")
-            .to_zoned(TimeZone::system())
-            .strftime("%Y-%m-%d %H:%M")
-            .to_string();
+        let ended = ended(10 * DAY);
+        let zone = ended.rsplit(' ').next().unwrap_or_default().as_bytes();
+        assert!(
+            zone.len() == 6 && (zone[0] == b'+' || zone[0] == b'-') && zone[3] == b':',
+            "the day's end didn't say its zone: {ended}"
+        );
+        let said: Vec<&str> = worse.iter().map(|f| f.words.as_str()).collect();
         assert_eq!(
-            (worse[0].words.as_str(), worse[1].words.as_str()),
-            (
+            said,
+            [
                 format!(
                     "a failure of serve-a-*.service, new, once, read on host-a over the day \
                      to {ended}"
                 )
                 .as_str(),
-                "kills went from 0 to 2"
-            ),
-            "a unit's finding didn't name where and when it was read, or a figure did"
+                "kills went from 0 to 2",
+                "a flaky test",
+                "a queue",
+                format!("a crash of tec, read on host-a over the day to {ended}").as_str(),
+            ],
+            "a unit's or a program's finding didn't name where and when it was read, \
+             or another's did"
+        );
+        let mut unnamed = vec![other("failed:a.service", "a failure of a.service")];
+        on_machine(&mut unnamed, "", 10 * DAY);
+        assert_eq!(
+            unnamed[0].words,
+            format!("a failure of a.service, read over the day to {ended}"),
+            "a machine with no name was named"
         );
     }
 
