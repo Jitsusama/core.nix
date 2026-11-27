@@ -52,7 +52,7 @@ use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, Instant, UNIX_EPOCH};
-use troubles::{CELLLESS_AT_MOST_MS, Unkept, cellless_since, troubles};
+use troubles::{CELLLESS_AT_MOST_MS, Unkept, cellless_since, hubless_since, troubles};
 
 /// How far back a first run hears, and how long a pain whose thread was
 /// never seen waits before it counts as lost.
@@ -152,6 +152,9 @@ pub struct Hour {
     /// Since when the node has named no sessions while pains waited.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cellless_since: Option<i64>,
+    /// Since when the node couldn't be asked for its hubs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hubless_since: Option<i64>,
     /// Why no pain can close, when the core the machine runs or the git
     /// to ask of it can't be read: said, though it fails no run.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -310,7 +313,7 @@ fn waits(node: &Node) -> String {
 fn said(hour: &Hour) -> String {
     format!(
         "pain-points: {} pains heard and {} routed in the hour, {} turns stalled him, {} open\
-         {}{}{}{}{}",
+         {}{}{}{}{}{}",
         hour.heard,
         hour.routed,
         hour.stalled,
@@ -333,6 +336,12 @@ fn said(hour: &Hour) -> String {
             .filter(|since| hour.at - since < CELLLESS_AT_MOST_MS)
             .map_or(String::new(), |since| format!(
                 "; the mycelium has named no sessions for {} minutes, so pains wait",
+                (hour.at - since) / 60_000
+            )),
+        hour.hubless_since
+            .filter(|since| hour.at - since < CELLLESS_AT_MOST_MS)
+            .map_or(String::new(), |since| format!(
+                "; the mycelium has named no hubs for {} minutes, so pains go to the fallback",
                 (hour.at - since) / 60_000
             )),
         hour.unclosed.as_ref().map_or(String::new(), |why| format!(
@@ -475,8 +484,17 @@ pub fn hear_putting(
             .is_some_and(|since| ears.at - since >= CELLLESS_AT_MOST_MS),
     );
     // A node that couldn't be asked for its hubs sends pains back to the
-    // fallback the hubs would have spared, so it's said on the card too.
-    if let Some(why) = ears.hubless.as_ref().filter(|_| routes.sends()) {
+    // fallback the hubs would have spared, so once it has gone on past a
+    // blink it's said on the card too.
+    hour.hubless_since = hubless_since(
+        &ears.state,
+        ears.at,
+        ears.hubless.is_some() && routes.sends(),
+    );
+    let hubless_on = hour
+        .hubless_since
+        .is_some_and(|since| ears.at - since >= CELLLESS_AT_MOST_MS);
+    if let Some(why) = ears.hubless.as_ref().filter(|_| hubless_on) {
         hour.troubles.push(format!(
             "the mycelium named no hubs, so pains no cell of their own takes go to the \
              fallback: {why}"
@@ -557,6 +575,7 @@ fn hear_logs(
                 to: None,
                 routed_at: None,
                 tries: 0,
+                sends_failed_at: Vec::new(),
                 unnoted_since: None,
                 taken_by: None,
                 answered_at: None,
@@ -725,9 +744,14 @@ fn route_waiting(
             let mut takers = live.clone();
             takers.remove(&cell.address);
             let said = route::said(pain, cells, routes);
-            let Some((hub, fit, words)) =
-                route::holder(&said, &ears.hubs, &takers, &held, routes, pain.tries)
-            else {
+            let Some((hub, fit, words)) = route::holder(
+                &said,
+                &ears.hubs,
+                &takers,
+                &held,
+                routes,
+                &pain.sends_failed_at,
+            ) else {
                 return routes.fallback.clone();
             };
             through.insert(
@@ -789,6 +813,9 @@ fn route_waiting(
             Sent::Failed => {
                 for n in pains {
                     kept[n].tries += 1;
+                    if !kept[n].sends_failed_at.contains(&owner) {
+                        kept[n].sends_failed_at.push(owner.clone());
+                    }
                 }
             }
             // Not tried, so its tries stand for the next run.

@@ -128,25 +128,44 @@ fn a_mycelium_that_names_no_sessions_for_a_quarter_hour_is_a_trouble() {
 }
 
 #[test]
-fn a_node_that_named_no_hubs_is_a_trouble_by_its_error() {
+fn a_node_that_named_no_hubs_past_a_blink_is_a_trouble_by_its_error() {
     let place = Place::new("hubless-node");
     place.routes();
-    let ears = Ears {
-        hubless: Some("connection refused".into()),
-        ..place.ears()
-    };
-    let hour = hear(&ears, "", &mut |_, _| false).expect("a run");
-    assert!(
-        hour.troubles
+    let minute = 60_000;
+    let run = |at: i64, hubless: Option<&str>| {
+        let ears = Ears {
+            at,
+            hubless: hubless.map(String::from),
+            ..place.ears()
+        };
+        let hour = hear(&ears, "", &mut |_, _| false).expect("a run");
+        let said = hour
+            .troubles
             .iter()
-            .any(|t| t.contains("named no hubs") && t.contains("connection refused")),
-        "pains going back to the fallback weren't said on the card: {hour:?}"
+            .any(|t| t.contains("named no hubs") && t.contains("connection refused"));
+        (said, hour)
+    };
+    let refused = Some("connection refused");
+    let (said, hour) = run(AT, refused);
+    assert!(!said, "a node that blinked for one run failed it: {hour:?}");
+    assert_eq!(hour.hubless_since, Some(AT), "the outage wasn't counted");
+    assert!(!run(AT + 10 * minute, refused).0, "failed within the grace");
+    let (said, hour) = run(AT + 15 * minute, refused);
+    assert!(
+        said,
+        "pains going back to the fallback past a blink weren't said on the card: {hour:?}"
+    );
+    let (said, hour) = run(AT + 20 * minute, None);
+    assert!(
+        !said && hour.hubless_since.is_none(),
+        "a node naming hubs again still counted out: {hour:?}"
     );
     fs::remove_file(place.root.join("state/routes.json")).expect("routes gone");
-    let hour = hear(&ears, "", &mut |_, _| false).expect("a run");
+    run(AT + 25 * minute, refused);
+    let (said, hour) = run(AT + 40 * minute, refused);
     assert!(
-        hour.troubles.iter().all(|t| !t.contains("named no hubs")),
-        "a listener nobody set up has no such trouble: {hour:?}"
+        !said && hour.hubless_since.is_none(),
+        "a listener nobody set up counted or said the node out: {hour:?}"
     );
 }
 

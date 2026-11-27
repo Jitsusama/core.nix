@@ -12,11 +12,16 @@
 # session he typed in, keeps each pain in its own state, and sends it as a
 # finding to the cell that was working on it through the machine's
 # mycelium socket alone (src/hear.rs says how), though a send's words sit
-# in mycelium's command line while it runs. It reads the asks and
-# misses ledgers, and writes into the misses ledger alone a line for each
-# pain it sent, with his words, kept until its fix runs; it never sends
-# to the void, and sends and writes nothing until routes.json, beside its
-# state, names who it sends as. It reads the mesh's messages for who took each pain up, and asks
+# in mycelium's command line while it runs. A pain no live cell of its own
+# takes, said to the void or in a session that has ended, goes with his
+# words to a live holder of its subject that the subject's hub names, and
+# only with no hub to take it to the fallback routes.json names. It reads
+# the asks and misses ledgers, and writes into the misses ledger a line for
+# each pain it sent, with his words, kept until its fix runs, and into the
+# harness's needs folder a need for each pain put to a hub, holding the
+# subject's words and never his; it never sends to the void, and sends
+# and writes nothing until routes.json, beside its state, names who it
+# sends as. It reads the mesh's messages for who took each pain up, and asks
 # git, of the core cadence keeps fetched, whether the landing that
 # answered one is in the core integration last switched to.
 {
@@ -36,8 +41,8 @@ in
   home.packages = [ package ];
 
   # Made at login, so hear's first run can write there before any pi
-  # session has made it. Its lines hold Joel's words, so only his account
-  # reads it.
+  # session has made it. Its lines say what each session needed of
+  # another, so only his account reads it.
   systemd.user.tmpfiles.rules = [ "d ${config.xdg.stateHome}/${needs} 0700 - - -" ];
 
   systemd.user.services.pain-points = {

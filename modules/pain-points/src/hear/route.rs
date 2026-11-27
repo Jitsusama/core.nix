@@ -202,17 +202,18 @@ pub fn said(pain: &Heard, cells: &BTreeMap<String, Cell>, routes: &Routes) -> Ve
 
 /// The hub that takes what `said` names, and the holder it goes to: of
 /// the narrowest subject whose hub is live, the live holder holding the
-/// fewest of `held`, never one the routes say never to send to. A pain
-/// whose sends failed `tries` times goes that many holders further down,
-/// fewest held first, so a holder its send failed at isn't given it again
-/// while another fits.
+/// fewest of `held`, never one the routes say never to send to. A holder
+/// in `failed_at`, where a send of the pain failed, isn't given it again
+/// while another fits. Counting failures into the list instead would land
+/// back on one of them once the counts reordered it (#6774's round, F1
+/// and F7).
 pub fn holder<'a>(
     said: &[String],
     hubs: &'a [subject_hubs::Hub],
     live: &BTreeSet<String>,
     held: &BTreeMap<String, usize>,
     routes: &Routes,
-    tries: u32,
+    failed_at: &[String],
 ) -> Option<(&'a subject_hubs::Hub, &'a str, Vec<String>)> {
     let takes = |a: &str| live.contains(a) && !routes.refuses(a);
     subject_hubs::taking(said, hubs, &takes)
@@ -221,8 +222,10 @@ pub fn holder<'a>(
             let mut fits: Vec<&String> = hub.fits.iter().filter(|f| takes(f)).collect();
             // Stable, so holders holding as many keep the node's order.
             fits.sort_by_key(|f| held.get(f.as_str()).copied().unwrap_or_default());
-            let at = usize::try_from(tries).unwrap_or_default() % fits.len().max(1);
-            let fit = fits.get(at)?;
+            let fit = fits
+                .iter()
+                .find(|f| !failed_at.contains(f))
+                .or_else(|| fits.first())?;
             Some((hub, fit.as_str(), subject))
         })
 }
@@ -460,6 +463,7 @@ mod tests {
             to: None,
             routed_at: None,
             tries: 0,
+            sends_failed_at: Vec::new(),
             unnoted_since: None,
             taken_by: None,
             answered_at: None,
@@ -609,7 +613,7 @@ mod tests {
         ];
         let held: BTreeMap<String, usize> =
             [("A00001".to_owned(), 2), ("B00002".to_owned(), 1)].into();
-        let took = holder(&said, &hubs, &live, &held, &routes, 0)
+        let took = holder(&said, &hubs, &live, &held, &routes, &[])
             .map(|(hub, fit, words)| (hub.cell.as_str(), fit, words));
         assert_eq!(
             took,
@@ -621,16 +625,29 @@ mod tests {
             "not the refused VOID01, nor GONE01 not live, nor A00001 holding more, nor the \
              broader hub or one of a word not said"
         );
-        let retried = |tries| {
-            holder(&said, &hubs, &live, &held, &routes, tries).map(|(_, fit, _)| fit.to_owned())
+        let retried = |held: &BTreeMap<String, usize>, failed_at: &[&str]| {
+            let failed_at: Vec<String> = failed_at.iter().map(|f| (*f).to_owned()).collect();
+            holder(&said, &hubs, &live, held, &routes, &failed_at).map(|(_, fit, _)| fit.to_owned())
         };
+        // A00001 now holds fewer than B00002, which reorders the holders:
+        // the one failed at still isn't given it.
+        let moved: BTreeMap<String, usize> = [("B00002".to_owned(), 1)].into();
         assert_eq!(
-            [retried(1), retried(2)],
-            [Some("A00001".to_owned()), Some("B00002".to_owned())],
-            "a pain whose send failed went to the holder it failed at while another fit"
+            [
+                retried(&held, &["B00002"]),
+                retried(&moved, &["A00001"]),
+                retried(&held, &["B00002", "A00001"]),
+            ],
+            [
+                Some("A00001".to_owned()),
+                Some("B00002".to_owned()),
+                Some("B00002".to_owned())
+            ],
+            "a pain whose send failed went to the holder it failed at while another fit, or \
+             with every holder failed at, not to the one holding fewest"
         );
         let none = BTreeSet::from(["HUB001".to_owned(), "VOID01".to_owned()]);
-        let took = holder(&said, &hubs, &none, &held, &routes, 0)
+        let took = holder(&said, &hubs, &none, &held, &routes, &[])
             .map(|(hub, fit, _)| (hub.cell.as_str(), fit));
         assert_eq!(
             took, None,
@@ -643,7 +660,7 @@ mod tests {
                 &live,
                 &held,
                 &routes,
-                0
+                &[]
             )
             .is_none(),
             "a hub took a pain missing a word of its subject"

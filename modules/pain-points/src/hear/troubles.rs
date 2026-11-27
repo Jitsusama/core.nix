@@ -1,7 +1,7 @@
 //! What kept a run from routing as it should, each said as a trouble so a
 //! broken listener never reads as a quiet hour, how long the node has
-//! named no sessions, which is a trouble only once it has gone on, and
-//! needs that couldn't be kept, which stay a trouble for the hour.
+//! named no sessions or no hubs, each a trouble only once it has gone on,
+//! and needs that couldn't be kept, which stay a trouble for the hour.
 
 use super::route::Routes;
 use super::{HOUR_MS, Hour, SEND_TRIES};
@@ -25,15 +25,32 @@ const CELLLESS_GAP_MS: i64 = 12 * 60_000;
 /// from the run before when it was recent, or from now when this run is
 /// the first without cells; none when this run has cells or nothing waits.
 pub fn cellless_since(state: &Path, at: i64, cellless: bool) -> Option<i64> {
+    outage_since(state, at, cellless, |before| before.cellless_since)
+}
+
+/// Since when the node couldn't be asked for its hubs, carried as the
+/// count of runs without cells is, so a node that blinks for a run as it
+/// restarts fails nothing (#6774's round, F15 and F8): that run's pains go
+/// to the fallback as they did before hubs, and one that stays out of
+/// reach still fails the unit past [`CELLLESS_AT_MOST_MS`].
+pub fn hubless_since(state: &Path, at: i64, hubless: bool) -> Option<i64> {
+    outage_since(state, at, hubless, |before| before.hubless_since)
+}
+
+/// Since when an outage `of` the run before counts has gone on, carried
+/// from that run when it was recent, or from now when this run is the
+/// first out; none when this run isn't `out`.
+fn outage_since(state: &Path, at: i64, out: bool, of: fn(&Hour) -> Option<i64>) -> Option<i64> {
     let before: Option<Hour> = fs::read(state.join("hour.json"))
         .ok()
         .and_then(|text| serde_json::from_slice(&text).ok())
         // A run dated ahead of this one, its clock wrong or its state
         // copied in, carries nothing on, so it can't hold an outage back.
         .filter(|before: &Hour| (at - CELLLESS_GAP_MS..=at).contains(&before.at));
-    cellless.then(|| {
+    out.then(|| {
         before
-            .and_then(|b| b.cellless_since)
+            .as_ref()
+            .and_then(of)
             .filter(|since| *since <= at)
             .unwrap_or(at)
     })

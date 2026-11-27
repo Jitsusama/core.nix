@@ -193,6 +193,53 @@ fn only_a_send_to_a_holder_that_failed_spends_a_try() {
 }
 
 #[test]
+fn a_retry_goes_to_another_holder_than_the_one_it_failed_at_however_they_reorder() {
+    // Named the other way round, a retry that counted its failures into
+    // the list would land on FIT002 again; named the same way, one that
+    // forgot where it failed would.
+    for (n, order) in [["FIT003", "FIT002"], ["FIT002", "FIT003"]]
+        .into_iter()
+        .enumerate()
+    {
+        retried_away_from_its_failure(&format!("hub-retry-{n}"), &order);
+    }
+}
+
+/// A run whose send to FIT002 fails, then one whose hub names its holders
+/// in `order`, which must give the pain to FIT003.
+fn retried_away_from_its_failure(name: &str, order: &[&str]) {
+    let place = Place::new(name);
+    place.routes();
+    a_day(&place);
+    let cells = r#"{"Ok":{"Sessions":[
+        {"id":"s-live","address":"ABC123","state":"busy"},
+        {"id":"s-void","address":"VOID01","state":"idle"},
+        {"id":"s-never","address":"NEVER1","state":"idle"},
+        {"id":"s-fit","address":"FIT002","state":"idle"},
+        {"id":"s-fit3","address":"FIT003","state":"idle"},
+        {"id":"s-hub","address":"HUB001","state":"idle"}]}}"#;
+    let first = ears_with(
+        &place,
+        vec![Hub::new("launcher", "HUB001", &["FIT002", "FIT003"])],
+    );
+    let failed = asked_in(&first, cells, |to| {
+        if to == "FIT002" {
+            Sent::Failed
+        } else {
+            Sent::Went
+        }
+    });
+    assert_eq!(owners_of(&failed, VOIDS), ["FIT002"], "{failed:?}");
+    let then = ears_with(&place, vec![Hub::new("launcher", "HUB001", order)]);
+    let retried = asked_in(&then, cells, |_| Sent::Went);
+    assert_eq!(
+        owners_of(&retried, VOIDS),
+        ["FIT003"],
+        "named {order:?}, the retry went back to the holder it failed at: {retried:?}"
+    );
+}
+
+#[test]
 fn a_need_that_couldnt_be_kept_is_a_trouble_and_the_pain_still_sent() {
     let place = Place::new("hub-unkept");
     place.routes();
