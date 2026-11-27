@@ -4,7 +4,11 @@
 //! past it, where Joel's packets inside the VPN wait alike with agents'.
 //! Held under that pace, the queue stays in the CAKE, which sends his
 //! first. The link's own rate is left alone, so agents' direct lane
-//! borrows what the VPN no longer takes.
+//! borrows what the VPN no longer takes. It is never held under what
+//! goes ahead of bulk inside it, with Joel's headroom past that
+//! (src/lanes.rs's `vpn_held`), Joel's own and agents' model calls, so
+//! only bulk is taken back. A hold that misread the air's round trip as
+//! the tunnel's would otherwise starve model calls, as on 27 November.
 //!
 //! The same hold, a second one, holds agents' direct lane instead while
 //! they send beside the VPN's wait (src/oneway.rs): there what they send

@@ -19,6 +19,7 @@ set bulk4 { typeof socket cgroupv2 level 4; }
 set app4 { typeof socket cgroupv2 level 4; }
 set video5 { typeof socket cgroupv2 level 5; }
 set awaited5 { typeof socket cgroupv2 level 5; }
+set models5 { typeof socket cgroupv2 level 5; }
 set bulk5 { typeof socket cgroupv2 level 5; }
 set typed5 { typeof socket cgroupv2 level 5; }
 set first5 { typeof socket cgroupv2 level 5; }
@@ -129,6 +130,15 @@ chain classify {
   # What Joel waits on at a terminal sits inside jobs, but he's waiting,
   # so it goes as an app's would; the rest of jobs he isn't waiting on.
   socket cgroupv2 level 5 @awaited5 goto best
+
+  # Agents' model calls leave from one relay in background, but an agent
+  # waits on each, so they go as best effort, ahead of the uploads beside
+  # them, inside the VPN too. As bulk there, on 27 November from 14:10, a
+  # held VPN left them behind the agents' uploads, and about one in five
+  # failed for four minutes. Inside best effort CAKE shares by host, so
+  # the relay's many connections to one origin count as one beside the
+  # hosts Joel's apps reach.
+  socket cgroupv2 level 5 @models5 goto best
 
   # The work Joel started rather than the programs he's using, and a pi
   # window running a turn nobody typed, which sends its whole conversation

@@ -24,7 +24,9 @@
 //! V, and when that runs ahead of a cut for a moment, its class borrows
 //! rather than dropping what's inside the tunnel alike. But while any
 //! agent has something waiting, a quarter of the rate is theirs whatever
-//! Joel wants: agents are always usable.
+//! Joel wants: agents are always usable. Agents' model calls go inside
+//! the VPN as best effort (shaper.nft says why), so here they count as
+//! Joel's: what's agents' is what they send as bulk.
 //!
 //! What Joel carries now on both lanes comes first, and the VPN's share
 //! is set from it. What his straight lane was given is held past that, as
@@ -125,7 +127,7 @@ const LEAST_KBIT: u64 = 8;
 /// queue forms inside the VPN, where its connections can be told apart:
 /// the class counts each outer packet's link framing, which the CAKE
 /// doesn't.
-pub const VPN_HELD: f64 = 0.95;
+const VPN_HELD: f64 = 0.95;
 /// What a class sends in its turn before its peers have theirs: one
 /// full-sized packet, so a class at a small rate takes turns evenly.
 const QUANTUM: u32 = 1514;
@@ -540,6 +542,20 @@ fn need(carried: f64) -> f64 {
     carried * HEADROOM + JOEL_LEAST
 }
 
+/// What the VPN's own CAKE is held to, in kbit/s: under its lane's rate,
+/// at the share the VPN's own hold leaves it, but never under what its
+/// tins ahead of bulk carried, `carried`, with Joel's headroom past it.
+/// Those carry Joel's own and agents' model calls (shaper.nft says why),
+/// so the hold takes back only what bulk sends inside the VPN. On 27
+/// November from 14:08 a hold read the air's round trip as a queue in
+/// the tunnel and held the VPN at 1 to 2.6 Mbit/s for five minutes,
+/// under the 3 Mbit/s the model relay carried; about one model call in
+/// five failed from 14:10.
+pub fn vpn_held(lane: f64, share: f64, carried: f64) -> f64 {
+    let whole = lane * VPN_HELD;
+    (whole * share).max(need(carried).min(whole))
+}
+
 /// Agents' lane's class, under which their CAKE stands.
 pub const AGENTS_CLASS: &str = "1:5";
 
@@ -720,6 +736,42 @@ mod tests {
     use super::*;
 
     const RATE: f64 = 10_000.0;
+
+    #[test]
+    fn the_vpn_s_hold_never_takes_what_is_ahead_of_bulk() {
+        let held = vpn_held(10_000.0, 0.25, 3_000.0);
+        assert!(
+            (held - 4_600.0).abs() < 1e-9,
+            "a hold to a quarter left {held} kbit/s for 3,000 ahead of bulk"
+        );
+    }
+
+    #[test]
+    fn the_vpn_s_hold_takes_bulk_back_as_before() {
+        let held = vpn_held(10_000.0, 0.25, 0.0);
+        assert!(
+            (held - 10_000.0 * VPN_HELD * 0.25).abs() < 1e-9,
+            "with nothing ahead of bulk the hold left {held} kbit/s"
+        );
+    }
+
+    #[test]
+    fn what_is_ahead_of_bulk_never_lifts_the_vpn_past_its_lane() {
+        let held = vpn_held(4_000.0, 0.25, 3_500.0);
+        assert!(
+            (held - 4_000.0 * VPN_HELD).abs() < 1e-9,
+            "the VPN was held at {held} kbit/s, past its lane of 4,000"
+        );
+    }
+
+    #[test]
+    fn an_unheld_vpn_keeps_its_whole_lane() {
+        let held = vpn_held(10_000.0, 1.0, 3_000.0);
+        assert!(
+            (held - 10_000.0 * VPN_HELD).abs() < 1e-9,
+            "an unheld VPN was held at {held} kbit/s"
+        );
+    }
 
     fn waiting(flows: u32) -> Agents {
         Agents {

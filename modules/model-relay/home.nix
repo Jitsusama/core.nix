@@ -33,8 +33,10 @@
 # never sends every agent past it at once.
 #
 # The relay runs in background.slice, which the shaper sends in the agents'
-# lane, and its connections are the account's own, so they ride the work VPN
-# as pi's did. It holds no credential: each request's own goes as it came.
+# lane, though it names the relay's own unit apart and sends what it carries
+# as best effort, ahead of agents' uploads (modules/shaper/shaper.nft says
+# why). Its connections are the account's own, so they ride the work VPN as
+# pi's did. It holds no credential: each request's own goes as it came.
 # A fence keeps the runtime folder from what it runs, so a fenced command
 # can't reach the socket, and the folder mustn't be bound into one: it is a
 # way to the origin with whatever key the asker holds. A unit of the account

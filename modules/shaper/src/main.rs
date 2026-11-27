@@ -1645,12 +1645,13 @@ fn follow_vpns(
             },
         },
     );
+    // What the tins ahead of bulk carried: Joel's, and agents' model calls.
     let joel = inside.map_or(0.0, |k| float(k.best + k.video + k.voice));
     let base = primary.map(|s| {
         let vpn = s.share_lanes((joel, agents), t);
         // Held under its tunnel's pace while it waits inside it, so the
         // queue stands in this CAKE; agents' direct lane borrows the rest.
-        let held = vpn * lanes::VPN_HELD * s.vpn_share;
+        let held = lanes::vpn_held(vpn, s.vpn_share, joel);
         (rate::whole(held), s.applied.1, s.download.straight())
     });
     let carried = sh(&words(&format!(

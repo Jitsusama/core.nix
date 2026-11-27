@@ -42,6 +42,11 @@ pub struct Sets {
     /// jobs and ahead of the rest of it: it goes at an app's pace, not
     /// bulk's.
     pub awaited5: Vec<String>,
+    /// The relay that carries agents' model calls, inside background but
+    /// ahead of the rest of it: a model call is a turn some agent waits
+    /// on, and as bulk inside a held VPN it waited behind uploads until
+    /// the origin gave up on it.
+    pub models5: Vec<String>,
     /// The windows in an account's apps whose pi sessions run turns nobody
     /// typed, which `untyped` finds.
     pub bulk5: Vec<String>,
@@ -84,6 +89,8 @@ const ACCOUNT_BULK: [&str; 5] = [
 ];
 const CALLS: [&str; 1] = ["app.slice/tuple.service"];
 const AWAITED: [&str; 1] = ["jobs.slice/jobs-awaited.slice"];
+/// The model relay's unit, as modules/model-relay/home.nix names it.
+const MODELS: [&str; 1] = ["background.slice/model-relay-agents.service"];
 
 /// Reads the classes' cgroups from a cgroup tree mounted at `root`. Only
 /// cgroups that exist are named, since nft refuses a path it can't find.
@@ -119,7 +126,11 @@ pub fn read(root: &Path) -> Sets {
         if exists(&apps) {
             sets.app4.push(apps);
         }
-        for (cgroups, set) in [(&CALLS, &mut sets.video5), (&AWAITED, &mut sets.awaited5)] {
+        for (cgroups, set) in [
+            (&CALLS, &mut sets.video5),
+            (&AWAITED, &mut sets.awaited5),
+            (&MODELS, &mut sets.models5),
+        ] {
             for cgroup in cgroups {
                 let path = format!("{manager}/{cgroup}");
                 if exists(&path) {
@@ -324,6 +335,7 @@ pub fn transaction(table: &str, sets: &Sets, local: &Local) -> String {
         fill(&format!("first{}", n + first::DEPTH), set, true);
     }
     fill("awaited5", &sets.awaited5, true);
+    fill("models5", &sets.models5, true);
     fill("bulk5", &sets.bulk5, true);
     fill("typed5", &sets.typed5, true);
     fill("calling", &sets.calling, false);
@@ -442,6 +454,36 @@ mod tests {
             [format!("{ACCOUNT}/jobs.slice/jobs-awaited.slice")]
         );
         assert_eq!(sets.bulk4, [format!("{ACCOUNT}/jobs.slice")]);
+    }
+
+    #[test]
+    fn the_model_relay_is_named_apart_from_the_rest_of_background() {
+        let root = tree(&[
+            &format!("{ACCOUNT}/background.slice/model-relay-agents.service"),
+            &format!("{ACCOUNT}/background.slice/other.service"),
+        ]);
+        let sets = read(&root);
+        assert_eq!(
+            sets.models5,
+            [format!(
+                "{ACCOUNT}/background.slice/model-relay-agents.service"
+            )],
+            "the relay wasn't named for its own set"
+        );
+        assert_eq!(
+            sets.bulk4,
+            [format!("{ACCOUNT}/background.slice")],
+            "the rest of background wasn't left as bulk"
+        );
+    }
+
+    #[test]
+    fn an_account_with_no_relay_names_none() {
+        let root = tree(&[&format!("{ACCOUNT}/background.slice")]);
+        assert!(
+            read(&root).models5.is_empty(),
+            "a relay that isn't running was named, which nft would refuse"
+        );
     }
 
     #[test]
@@ -615,7 +657,8 @@ mod tests {
             "flush set inet shaper bulk1\nadd element inet shaper bulk1 { \"build.slice\" }\n"
         ));
         assert!(text.contains(
-            "flush set inet shaper awaited5\nflush set inet shaper bulk5\n\
+            "flush set inet shaper awaited5\nflush set inet shaper models5\n\
+             flush set inet shaper bulk5\n\
              flush set inet shaper typed5\nflush set inet shaper calling\nflush set inet shaper vpns\n\
              add element inet shaper vpns { 0xca6c, 0x80000 }\n\
              flush set inet shaper local4\n"
