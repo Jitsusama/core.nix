@@ -15,9 +15,10 @@ use crate::owe::{self, Owed};
 
 use super::lines::figure;
 use super::measures::queues::{self, QUEUE};
+use super::measures::way_out::{calls, path, relay};
 use super::measures::{
-    BLIND, Class, FINDINGS, HELD, Measure, UNRUN, UNSEEN, UNTESTED, apps, drag, held_for_good,
-    held_unseen, rounds, told_late,
+    BLIND, Class, FINDINGS, HELD, Measure, UNRUN, UNSEEN, UNTESTED, apps, causes, drag,
+    held_for_good, held_unseen, rounds, told_late,
 };
 
 /// How long a queue's ask has before it goes late: long enough for the
@@ -165,6 +166,9 @@ fn filed(m: &Measure) -> Vec<Filed> {
     if m.key.starts_with(told_late::KEY) {
         return told_late_asked(m, &says);
     }
+    if m.key == causes::KEY {
+        return causes_asked(m);
+    }
     if m.key == FINDINGS {
         return findings_filed(m);
     }
@@ -173,6 +177,9 @@ fn filed(m: &Measure) -> Vec<Filed> {
     }
     if m.key == UNTESTED {
         return untested_asked(m, &says);
+    }
+    if let Some(what) = on_the_way(&m.key) {
+        return vec![on_the_way_asked(m, &what, says)];
     }
     let owners = by_owner(m);
     if !owners.is_empty() {
@@ -209,6 +216,49 @@ fn filed(m: &Measure) -> Vec<Filed> {
         ),
         says,
     }]
+}
+
+/// What a measure of the way the sessions' calls go out names, by its
+/// key: the model relay, pi's calls themselves, or the path to an origin;
+/// none for any other.
+fn on_the_way(key: &str) -> Option<String> {
+    if key.starts_with(relay::PREFIX) {
+        return Some("the model relay".to_owned());
+    }
+    if key.starts_with(calls::PREFIX) {
+        return Some("the sessions' model calls".to_owned());
+    }
+    key.strip_prefix(path::PREFIX)
+        .map(|origin| format!("the path to {origin}"))
+}
+
+/// The ask to the keeper of the way out about one of its counts past its
+/// ceiling, with what is behind it (its commonest causes, and the path
+/// beside the calls), so the cause comes back tested.
+fn on_the_way_asked(m: &Measure, what: &str, says: String) -> Filed {
+    let causes = if m.behind.is_empty() {
+        String::new()
+    } else {
+        // Each is quoted, kept to one line and rid of its own quotes, since
+        // a cause is the relay's, the origin's or pi's error text, so it
+        // never reads as cadence's words to the agent it reaches.
+        let quoted: Vec<String> = m
+            .behind
+            .iter()
+            .map(|cause| format!("\"{}\"", cause.replace(['"', '\n', '\r'], " ")))
+            .collect();
+        format!(" Most of them: {}.", quoted.join("; "))
+    };
+    Filed {
+        key: format!("hour:{}", m.key),
+        owner: m.owner.clone(),
+        text: format!(
+            "cadence hour: {what} is past its ceiling, {says}.{causes} Please reply \
+             with its tested cause, its fix and when it lands. It closes by itself once its \
+             figure is back in."
+        ),
+        says,
+    }
 }
 
 /// The ask about a merge's rounds past five that caught nothing. Its
@@ -248,6 +298,43 @@ fn told_late_asked(m: &Measure, says: &str) -> Vec<Filed> {
                  closes by itself a day after the move."
             ),
             owner: owner.to_owned(),
+        })
+        .collect()
+}
+
+/// The ask to each class's owner about a cause found on three or more
+/// changes in a week, filed class by class, so each owner fixes the cause
+/// once rather than each change's reviewer fixing it again. It closes once
+/// its owner names the fix, and stays closed for the week its cases count
+/// over, or once the class is found on fewer; a case after that brings the
+/// same line back, counted as reopened. The class is quoted, since an
+/// unfolded one is in a sender's own words, so it never reads as
+/// cadence's. A line saying the mesh couldn't be read, or what was read
+/// couldn't be kept, asks nobody: it names no class.
+fn causes_asked(m: &Measure) -> Vec<Filed> {
+    m.behind
+        .iter()
+        .filter_map(|line| line.rsplit_once(" · "))
+        .filter(|(line, _)| !causes::names_no_class(line))
+        .map(|(line, owner)| {
+            let class = causes::class_of(line);
+            let found = line.get(class.len() + 1..).unwrap_or_default().trim();
+            let key = format!("hour:{}:{class}", m.key);
+            let done = causes::shell_quoted(&key);
+            Filed {
+                says: format!("a cause found again and again, yours: \"{class}\", {found}"),
+                text: format!(
+                    "cadence hour: a cause is found again and again, and it is yours: \
+                     \"{class}\", {found}. Please reply within a day with the one fix that \
+                     stops it at its root, such as a check that refuses it or a shared piece \
+                     every change uses, or why it can't have one. Once it lands, name it with \
+                     `cadence owe --done {done} 'FIX'`, and it stays closed for the week its \
+                     cases count over; until then it also closes once the class falls under \
+                     three changes in a week."
+                ),
+                key,
+                owner: owner.to_owned(),
+            }
         })
         .collect()
 }
@@ -333,6 +420,24 @@ fn back_in(key: &str, measures: &[Measure]) -> bool {
     if key.starts_with(rounds::FRUITLESS) {
         return !measures.iter().any(|m| m.key == key) && measures.iter().any(rounds::read_whole);
     }
+    // A class of cause is its owner's until the measure, read, no longer
+    // names it; a measure that couldn't read the mesh names only that.
+    // Nor does one naming only the first few of more classes over the bar
+    // say the rest are back in, so it closes none it leaves unnamed.
+    if let Some(class) = key
+        .strip_prefix(causes::KEY)
+        .and_then(|rest| rest.strip_prefix(':'))
+    {
+        return measures
+            .iter()
+            .find(|m| m.key == causes::KEY)
+            .is_some_and(|m| {
+                !m.behind
+                    .iter()
+                    .any(|line| [causes::UNREAD, causes::MORE].contains(&causes::class_of(line)))
+                    && !m.behind.iter().any(|line| causes::class_of(line) == class)
+            });
+    }
     // A date told late is its owner's until its line is gone from the
     // measure, read; with the asks list unread it says nothing, so stays
     // open.
@@ -345,6 +450,24 @@ fn back_in(key: &str, measures: &[Measure]) -> bool {
             .split_once(':')
             .map(|(owner, date)| format!("{date} · {owner}"));
         return m.target.is_some() && line.is_none_or(|line| !m.behind.contains(&line));
+    }
+    // A path is measured for each origin the deployer names, sampled or
+    // not, so a path gone from the hour is an origin no longer named, and
+    // its ask is settled as the queues' are, rather than held open for good;
+    // a sampler that stopped leaves its paths unjudged, so their asks stay.
+    if key.starts_with(path::PREFIX) && !measures.iter().any(|m| m.key == key) {
+        return true;
+    }
+    // A relay that logged nothing carried nothing, as when it is stopped and
+    // pi goes to the origin itself, whose own calls judge that hour; its
+    // asks are settled rather than going late on a count no one can make.
+    // A journal unread says nothing, so its asks stay.
+    if key.starts_with(relay::PREFIX)
+        && measures
+            .iter()
+            .any(|m| m.key == key && m.says.ends_with(relay::QUIET))
+    {
+        return true;
     }
     // An unread file leaves only its one line, never a figure, so a drag
     // isn't closed while its figure can't be seen; a figure written with no
@@ -413,6 +536,30 @@ fn back_in(key: &str, measures: &[Measure]) -> bool {
         })
 }
 
+/// Whether a drag filed as `key` is held for the week once its fix is
+/// named: only a class of cause is, since only its cases go on counting
+/// from before the fix. Any other drag is back in or not by its figure.
+pub fn held_when_fixed(key: &str) -> bool {
+    key.strip_prefix("hour:")
+        .is_some_and(|key| key.starts_with(causes::KEY))
+}
+
+/// Whether `key` is a class of cause its owner closed by naming its fix
+/// within the week before `now`: its cases still count from before the
+/// fix, so filing it again would ask for the fix just named. A bare
+/// `--done`, which names none, holds nothing. The measure can't tell a
+/// case from before the fix from one after it, so a fix that didn't hold
+/// is asked of again only once its week is out: the cost of not asking
+/// for a fix just named.
+fn fixed_lately(ledger: &[Entry], key: &str, now: i64) -> bool {
+    held_when_fixed(key)
+        && ledger.iter().any(|e| {
+            e.key == key
+                && e.fixed.is_some()
+                && e.closed.is_some_and(|at| at > now - causes::WITHIN)
+        })
+}
+
 /// Files the hour's drag in the loop's ledger as a must of kind `drag`,
 /// due a day on, unless it's open there already, and closes each drag
 /// filed before that is back in. Says what to tell the owner of each one
@@ -459,10 +606,15 @@ pub fn file(
     }
     // Never the lead, which passes them over, so filed whatever leads; a
     // measure filed twice is owed once, as the ledger holds it open. A
-    // miss with no test that runs is asked of its owner the same way.
+    // miss with no test that runs is asked of its owner the same way, and
+    // so is each count past its ceiling of the way the calls go out (the
+    // relay, pi's calls and the path), since every session's turns wait on
+    // it whatever else drags.
     dragging.extend(measures.iter().filter(|m| {
-        let beside = [FINDINGS, UNTESTED].contains(&m.key.as_str());
-        let apart = m.key.starts_with(rounds::FRUITLESS) || m.key.starts_with(told_late::KEY);
+        let beside = [FINDINGS, UNTESTED].contains(&m.key.as_str()) || on_the_way(&m.key).is_some();
+        let apart = m.key.starts_with(rounds::FRUITLESS)
+            || m.key.starts_with(told_late::KEY)
+            || m.key == causes::KEY;
         (apart || beside) && m.past().is_some()
     }));
     // Nor do the queues; the worst is asked for its next change once a
@@ -476,7 +628,8 @@ pub fn file(
         .into_iter()
         .flat_map(|m| filed(m).into_iter().map(move |f| (m, f)))
     {
-        if ledger.iter().any(|e| e.open && e.key == one.key) {
+        if ledger.iter().any(|e| e.open && e.key == one.key) || fixed_lately(ledger, &one.key, now)
+        {
             continue;
         }
         owe::owe(
@@ -662,6 +815,192 @@ mod tests {
         assert!(!ledger[0].open, "back in closes it");
     }
 
+    fn recurring(lines: &[&str]) -> Measure {
+        let mut m = measure(causes::KEY, Class::Functional, 0.0, Some(0.0));
+        m.behind = lines.iter().map(|&line| line.to_owned()).collect();
+        m.now = if lines.is_empty() { 0.0 } else { 1.0 };
+        m
+    }
+
+    /// The keeper's most common class holds an apostrophe, and an unfolded
+    /// one holds whatever its sender wrote, so the command each ask gives
+    /// must reach `cadence owe` as the very key its line is filed under.
+    #[test]
+    fn the_command_an_ask_gives_reaches_owe_as_its_own_key() {
+        let undone = "a test passes with the fix undone, or can't fail in core.nix: on 3 changes \
+                      in a week, core.nix#1, #2, #3 · 80ECO2";
+        let odd = "(unfolded) x'; touch gone; ' $(touch gone) \\ end: on 3 changes in a week, \
+                   core.nix#4, #5, #6 · 1JQPPC";
+        let mut ledger = Vec::new();
+        let told = file(
+            &mut ledger,
+            &[recurring(&[undone, odd])],
+            "2026-11-26",
+            1000,
+        );
+        assert_eq!(told.len(), 2, "each class wasn't asked: {told:?}");
+        let zone = jiff::tz::TimeZone::UTC;
+        let here = tempfile::tempdir().expect("a folder for the shell");
+        for (_, text) in &told {
+            // Its owner names the fix as a change, whose `#` an unquoted
+            // shell would read as a comment's start.
+            let command = text
+                .split_once("`cadence owe ")
+                .and_then(|(_, rest)| rest.split_once('`'))
+                .map(|(command, _)| command.replace("FIX", "core #6000"))
+                .expect("an ask that names its command");
+            let out = std::process::Command::new("sh")
+                .arg("-c")
+                .arg(format!("printf '%s\\n' {command}"))
+                .current_dir(here.path())
+                .output()
+                .expect("a shell to split the command");
+            let words: Vec<String> = String::from_utf8_lossy(&out.stdout)
+                .lines()
+                .map(str::to_owned)
+                .collect();
+            let asked = owe::parse(words.clone().into_iter(), &zone);
+            assert!(
+                matches!(&asked, Ok(owe::Asked::Done { key, fix })
+                    if fix.as_deref() == Some("core #6000")
+                        && ledger.iter().any(|e| &e.key == key)),
+                "the ask's command, `{command}`, split by a shell as {words:?}, isn't a key a \
+                 line is filed under: {asked:?}"
+            );
+        }
+        assert!(
+            std::fs::read_dir(here.path())
+                .expect("its folder")
+                .next()
+                .is_none(),
+            "pasting an ask's command ran what its sender wrote"
+        );
+    }
+
+    /// An hour naming only the first few of more classes over the bar
+    /// can't say an unnamed one is back, so an ask open for one pushed
+    /// out of those few stays open rather than closing unsaid and coming
+    /// back as a fresh ask.
+    #[test]
+    fn a_class_pushed_out_of_those_an_hour_names_stays_asked() {
+        let racy = "racy test: on 3 changes in a week, core.nix#1, #2, #3 · BBBBBB";
+        let mut ledger = Vec::new();
+        file(&mut ledger, &[recurring(&[racy])], "2026-11-26", 1000);
+        let key = "hour:causes-recurring:racy test";
+        let more = "more: 1 more classes are on 3 or more changes, unnamed and unasked until \
+                    fewer are over the bar · 1JQPPC";
+        let others: Vec<String> = (0..10)
+            .map(|n| format!("class {n}: on 4 changes in a week, r#1, #2, #3, #4 · 1JQPPC"))
+            .collect();
+        let mut lines = vec![more];
+        lines.extend(others.iter().map(String::as_str));
+        file(&mut ledger, &[recurring(&lines)], "2026-11-26", 4600);
+        let at = ledger.iter().position(|e| e.key == key).expect("its line");
+        assert!(
+            ledger[at].open && ledger[at].reopened == 0,
+            "a class still over the bar but unnamed closed: {:?}",
+            ledger[at]
+        );
+        file(&mut ledger, &[recurring(&[])], "2026-11-26", 8200);
+        assert!(
+            !ledger[at].open,
+            "a class found on fewer once the hour named them all didn't close"
+        );
+    }
+
+    #[test]
+    fn each_class_of_cause_is_asked_of_its_owner_apart_and_reopens_when_it_comes_back() {
+        let docs = "stale docs: on 3 changes in a week, core.nix#1, #2, #3 · AAAAAA";
+        let racy = "racy test: on 4 changes in a week, core.nix#4, #5 · BBBBBB";
+        let worse = [
+            measure("slips", Class::Slip, 3.0, Some(0.0)),
+            recurring(&[racy, docs]),
+        ];
+        let mut ledger = Vec::new();
+        let told = file(&mut ledger, &worse, "2026-11-26", 1000);
+        let owners: Vec<&str> = told.iter().map(|(to, _)| to.as_str()).collect();
+        assert_eq!(
+            owners,
+            ["OWNER", "BBBBBB", "AAAAAA"],
+            "a class of cause wasn't asked of its own owner beside what leads"
+        );
+        assert!(
+            told[1].1.contains("\"racy test\", on 4 changes") && !told[1].1.contains("stale"),
+            "an owner heard of a class not theirs, or not quoted as a sender's words: {}",
+            told[1].1
+        );
+        let key = "hour:causes-recurring:racy test";
+        assert!(
+            ledger.iter().any(|e| e.key == key),
+            "a class wasn't filed under its own key: {ledger:?}"
+        );
+        let unread = recurring(&["unread: no mesh messages folder here · 1JQPPC"]);
+        let blind = file(&mut ledger, &[unread], "2026-11-26", 4600);
+        assert!(
+            blind.is_empty() && !ledger.iter().any(|e| e.key.ends_with(":unread")),
+            "a mesh that couldn't be read was asked of the keeper as a cause: {blind:?}"
+        );
+        assert!(
+            ledger
+                .iter()
+                .filter(|e| e.key.contains("causes"))
+                .all(|e| e.open),
+            "a class closed while the mesh couldn't be read"
+        );
+        file(&mut ledger, &[recurring(&[docs])], "2026-11-26", 8200);
+        let open = |ledger: &[Entry], key: &str| ledger.iter().any(|e| e.open && e.key == key);
+        assert!(
+            !open(&ledger, key) && open(&ledger, "hour:causes-recurring:stale docs"),
+            "a class found on fewer changes didn't close, or one still over did"
+        );
+        let again = file(&mut ledger, &[recurring(&[racy])], "2026-11-27", 90_000);
+        assert_eq!(again.len(), 1, "a class come back wasn't asked again");
+        let lines: Vec<&Entry> = ledger.iter().filter(|e| e.key == key).collect();
+        assert_eq!(
+            (
+                lines.len(),
+                lines[0].open,
+                lines[0].reopened,
+                lines[0].first.as_str()
+            ),
+            (1, true, 1, "2026-11-27"),
+            "a class come back opened a second line rather than reopening its own"
+        );
+        // Its owner names the fix, as `cadence owe --done` does; the cases
+        // from before it still count the class over for the week.
+        // A bare `--done` names no fix, so it holds nothing.
+        let at = ledger.iter().position(|e| e.key == key).expect("its line");
+        ledger[at].open = false;
+        ledger[at].closed = Some(90_000);
+        let bare = file(&mut ledger, &[recurring(&[racy])], "2026-11-27", 91_800);
+        assert!(
+            bare.len() == 1 && ledger[at].open && ledger[at].reopened == 2,
+            "a class closed with no fix named was held: {bare:?}"
+        );
+        ledger[at].open = false;
+        ledger[at].closed = Some(90_000);
+        ledger[at].fixed = Some("core #6000".to_owned());
+        let fixed = file(&mut ledger, &[recurring(&[racy])], "2026-11-27", 93_600);
+        assert!(
+            fixed.is_empty() && !ledger[at].open && ledger[at].reopened == 2,
+            "a class its owner closed by naming the fix was asked again: {fixed:?}"
+        );
+        // The hold ends as the fix's cases leave the count, the same edge
+        // `recurring` counts by: still held a second before, gone at it.
+        let week = 90_000 + causes::WITHIN;
+        let last = file(&mut ledger, &[recurring(&[racy])], "2026-12-04", week - 1);
+        assert!(
+            last.is_empty() && !ledger[at].open,
+            "a class its owner fixed was asked again before its week was out: {last:?}"
+        );
+        let past = file(&mut ledger, &[recurring(&[racy])], "2026-12-04", week);
+        assert_eq!(
+            (past.len(), ledger[at].open, ledger[at].reopened),
+            (1, true, 3),
+            "a class still over a week after its fix wasn't asked again"
+        );
+    }
+
     #[test]
     fn a_clean_drag_goes_to_each_files_owner_and_closes_once_back_in() {
         let mut suppressions = measure(
@@ -716,6 +1055,144 @@ mod tests {
         assert!(
             ledger.iter().all(|e| !e.open),
             "back in closes every owner's"
+        );
+    }
+
+    #[test]
+    fn failing_calls_and_a_slow_path_are_each_asked_naming_the_path() {
+        let lead = measure("misses", Class::Miss, 1.0, Some(0.0));
+        let mut failing = measure(calls::SHARE, Class::Functional, 33.0, Some(2.0));
+        failing.owner = "OXUW1Y".to_owned();
+        failing.behind = vec![
+            "176 on Request timed out.".to_owned(),
+            "TLS to model.example via tunnel0: median 7.20 s".to_owned(),
+        ];
+        let mut slow = measure("path:tls:model.example", Class::Functional, 7.2, Some(1.0));
+        slow.owner = "OXUW1Y".to_owned();
+        let told = file(&mut Vec::new(), &[lead, failing, slow], "2026-11-26", 1000);
+        let asked: Vec<&str> = told
+            .iter()
+            .filter(|(to, _)| to == "OXUW1Y")
+            .map(|(_, text)| text.as_str())
+            .collect();
+        assert_eq!(asked.len(), 2, "each is asked apart: {told:?}");
+        assert!(
+            asked
+                .iter()
+                .any(|text| text.contains("Most of them: \"176 on Request timed out.\"; ")),
+            "a cause isn't quoted: {asked:?}"
+        );
+        assert!(
+            asked
+                .iter()
+                .any(|text| text.contains("the sessions' model calls is past")
+                    && text.contains("via tunnel0")),
+            "the calls' ask doesn't name the path: {asked:?}"
+        );
+        assert!(
+            asked
+                .iter()
+                .any(|text| text.contains("the path to model.example is past")),
+            "the path isn't asked: {asked:?}"
+        );
+    }
+
+    #[test]
+    fn each_relay_count_past_its_ceiling_is_asked_of_its_keeper_whatever_leads() {
+        let lead = measure("misses", Class::Miss, 1.0, Some(0.0));
+        let mut past = measure(relay::ANSWERED_502, Class::Functional, 704.0, Some(50.0));
+        past.owner = "OXUW1Y".to_owned();
+        past.behind = vec!["700 on http2 error: keep-alive timed out".to_owned()];
+        let mut within = measure(relay::RESETS, Class::Functional, 12.0, Some(400.0));
+        within.owner = "OXUW1Y".to_owned();
+        let mut ledger = Vec::new();
+        let hour = [lead, past.clone(), within];
+        let told = file(&mut ledger, &hour, "2026-11-26", 1000);
+        let asked: Vec<&(String, String)> = told.iter().filter(|(to, _)| to == "OXUW1Y").collect();
+        assert_eq!(asked.len(), 1, "only the count past its ceiling: {told:?}");
+        assert!(
+            asked[0].1.contains("tested cause") && asked[0].1.contains("keep-alive timed out"),
+            "the ask names neither its causes nor what it wants: {}",
+            asked[0].1
+        );
+        assert!(
+            file(&mut ledger, &hour, "2026-11-26", 4600)
+                .iter()
+                .all(|(to, _)| to != "OXUW1Y"),
+            "an open ask was told again"
+        );
+        let mut unread = past.clone();
+        unread.target = None;
+        file(&mut ledger, &[unread], "2026-11-26", 6400);
+        assert!(
+            ledger
+                .iter()
+                .any(|e| e.open && e.key.starts_with("hour:relay:")),
+            "an hour its journal went unread closed the ask"
+        );
+        past.now = 10.0;
+        file(&mut ledger, &[past], "2026-11-26", 8200);
+        assert!(
+            !ledger
+                .iter()
+                .any(|e| e.open && e.key.starts_with("hour:relay:")),
+            "a count back in left its ask open"
+        );
+    }
+
+    #[test]
+    fn a_relay_ask_closes_once_the_relay_carries_nothing() {
+        let mut past = measure(relay::ANSWERED_502, Class::Functional, 704.0, Some(50.0));
+        past.owner = "OXUW1Y".to_owned();
+        let mut ledger = Vec::new();
+        file(&mut ledger, &[past], "2026-11-26", 1000);
+        let open = |ledger: &Vec<Entry>| {
+            ledger
+                .iter()
+                .any(|e| e.open && e.key == "hour:relay:answered-502")
+        };
+        assert!(open(&ledger), "a count past its ceiling wasn't asked");
+        file(&mut ledger, &relay::relay(None), "2026-11-26", 4600);
+        assert!(
+            open(&ledger),
+            "an hour its journal went unread closed the ask"
+        );
+        file(&mut ledger, &relay::relay(Some("")), "2026-11-26", 8200);
+        assert!(
+            !open(&ledger),
+            "an hour the relay carried nothing held its ask open"
+        );
+    }
+
+    #[test]
+    fn a_path_ask_stays_open_unsampled_and_closes_once_its_origin_is_no_longer_named() {
+        let mut slow = measure("path:tls:forge.example", Class::Functional, 7.2, Some(1.0));
+        slow.owner = "OXUW1Y".to_owned();
+        let mut ledger = Vec::new();
+        file(&mut ledger, &[slow], "2026-11-26", 1000);
+        assert!(
+            ledger
+                .iter()
+                .any(|e| e.open && e.key == "hour:path:tls:forge.example"),
+            "a slow path wasn't asked: {ledger:?}"
+        );
+        let mut unsampled = measure("path:tls:forge.example", Class::Functional, 0.0, None);
+        unsampled.owner = "OXUW1Y".to_owned();
+        file(&mut ledger, &[unsampled], "2026-11-26", 4600);
+        assert!(
+            ledger
+                .iter()
+                .any(|e| e.open && e.key == "hour:path:tls:forge.example"),
+            "a named origin with too few samples closed its ask: {ledger:?}"
+        );
+        let mut other = measure("path:tls:model.example", Class::Functional, 0.2, Some(1.0));
+        other.owner = "OXUW1Y".to_owned();
+        file(&mut ledger, &[other], "2026-11-27", 1000 + DAY);
+        assert!(
+            !ledger
+                .iter()
+                .any(|e| e.open && e.key == "hour:path:tls:forge.example"),
+            "an origin gone from the hour held its ask open: {ledger:?}"
         );
     }
 

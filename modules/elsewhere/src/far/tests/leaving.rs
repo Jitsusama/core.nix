@@ -1,8 +1,8 @@
 //! The near side leaving a job's files in the handover: which tracked
 //! names it takes, its archives, the list of them, and the bytes it says
-//! they take.
+//! they take; and the cache the far line finds that handover in.
 
-use super::{kind, scratch};
+use super::{Left, far_run, kind, scratch, work};
 use crate::far::{
     Folders, LARGEST_FILE, LEFT, MOST_BYTES, TREE, archive, gathered, leave, left, tracked,
 };
@@ -246,4 +246,130 @@ fn what_is_left_over_several_archives_is_said_to_take_them_all() {
         "the archives weren't each listed at the size it was written at"
     );
     let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn both_sides_take_a_cache_or_home_that_isn_t_absolute_as_none() {
+    use crate::far::steps::{CACHE, cache};
+    use std::ffi::OsStr;
+    use std::path::PathBuf;
+    let line = format!("{CACHE}\nprintf %s \"$cache\"");
+    // The gate names dash, the strictest sh a far machine may have.
+    let sh = std::env::var("ELSEWHERE_FAR_SH").unwrap_or_else(|_| "sh".to_owned());
+    for (xdg, home, found) in [
+        (Some("rel/cache"), Some("/h"), "/h/.cache"),
+        (Some(""), Some("/h"), "/h/.cache"),
+        (None, Some("/h"), "/h/.cache"),
+        (Some("/c"), Some("/h"), "/c"),
+        (Some("/c"), None, "/c"),
+        (None, Some(""), ""),
+        (None, Some("rel"), ""),
+        (Some("rel/cache"), None, ""),
+    ] {
+        let mut far = std::process::Command::new(&sh);
+        far.args(["-c", &line]);
+        for (name, value) in [("XDG_CACHE_HOME", xdg), ("HOME", home)] {
+            match value {
+                Some(value) => far.env(name, value),
+                None => far.env_remove(name),
+            };
+        }
+        let said = far.output().unwrap().stdout;
+        let here = cache(xdg.map(OsStr::new), home.map(OsStr::new));
+        assert_eq!(
+            (String::from_utf8_lossy(&said).into_owned(), here),
+            (
+                found.to_owned(),
+                Some(found).filter(|it| !it.is_empty()).map(PathBuf::from)
+            ),
+            "a cache of {xdg:?} and a home of {home:?} weren't found where the line finds them"
+        );
+    }
+}
+
+#[test]
+fn a_far_machine_with_no_cache_leaves_the_job_untaken_as_its_own_fault() {
+    use crate::far::{Heard, UNTAKEN, script};
+    let command = ["true"].map(str::to_owned);
+    let line = script(
+        "QEST-20261115-ABC123",
+        "1",
+        0,
+        ".s",
+        Path::new(""),
+        &kind(""),
+        &command,
+    );
+    // The gate names dash, the strictest sh a far machine may have.
+    let sh = std::env::var("ELSEWHERE_FAR_SH").unwrap_or_else(|_| "sh".to_owned());
+    // Run where a relative home would put its cache, so one made there
+    // shows.
+    let at = scratch("no-cache");
+    let far = std::process::Command::new(sh)
+        .args(["-c", &line])
+        .current_dir(&at)
+        .env("HOME", "rel")
+        .env_remove("XDG_CACHE_HOME")
+        .output()
+        .unwrap();
+    let said = String::from_utf8_lossy(&far.stdout);
+    let why = String::from_utf8_lossy(&far.stderr);
+    let machine = std::process::Command::new("uname")
+        .arg("-n")
+        .output()
+        .unwrap();
+    let machine = String::from_utf8_lossy(&machine.stdout);
+    // The wait for files that never come also ends untaken, so only the
+    // guard's own word shows the guard ended it, before any wait.
+    assert_eq!(
+        (
+            far.status.code(),
+            said.lines().any(|it| it == Heard::Untaken.line("1")),
+            why.lines().map(str::to_owned).collect::<Vec<_>>(),
+        ),
+        (
+            Some(i32::from(UNTAKEN)),
+            true,
+            vec![format!(
+                "elsewhere: no cache is found on {}",
+                machine.trim_end()
+            )]
+        ),
+        "a far machine with no cache didn't leave the job untaken by its guard: {said}"
+    );
+    assert_eq!(
+        std::fs::read_dir(&at).unwrap().count(),
+        0,
+        "a far machine with no cache made something where its line ran"
+    );
+    let _ = std::fs::remove_dir_all(&at);
+}
+
+thread_local! {
+    /// Whether `far_line_in` runs the line with a `HOME` that names no
+    /// folder, its cache named by `XDG_CACHE_HOME`, as `home_gone` sets it.
+    pub(super) static HOME_GONE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// What `run` answers, with each far line it runs given a `HOME` that
+/// names no folder.
+fn home_gone<T>(run: impl FnOnce() -> T) -> T {
+    HOME_GONE.set(true);
+    let ran = run();
+    HOME_GONE.set(false);
+    ran
+}
+
+// A cache named by XDG_CACHE_HOME is a cache though the home it names is
+// gone, as a service account's may be, so the job runs from it, and its
+// copy and run's file are freed from it too: stepping into that home
+// would fail and keep them, so nothing the line clears steps there.
+#[test]
+fn a_far_machine_whose_home_is_gone_still_frees_its_copy() {
+    let (code, err, home) = home_gone(|| far_run(Left::Whole, &[("x", "x")], "true"));
+    assert!(
+        code == Some(0) && !work(&home).join("1").exists() && !work(&home).join("1.run").exists(),
+        "a far machine whose home is gone didn't run the job or kept its copy ({code:?}): {err}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
 }

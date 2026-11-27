@@ -29,7 +29,8 @@
 # with neither by then, a kitty that turns the launch down or can't be
 # reached, or an old kitty that opens nothing, the journal says why, and
 # the shell is told, so it stops counting a viewer (pi-hosted) as coming
-# and asks again at the next press (Sessions' untaken); it counts no other
+# and asks again at the next press (Sessions' untakenFor, its entry not
+# found by an old shell's qs, src/io/ipccomm.cpp); it counts no other
 # as coming, so ignores the rest.
 # It's told when this was started, so a press made since, whose window
 # may yet come, is left coming. The kitty's answer is waited for, so a
@@ -41,8 +42,10 @@
 # taking no window, since the window may yet come (kitten says so in
 # words its at/main.go gives an async command's, such as a launch, whose
 # cancel kitty takes as nothing, in its rc/launch.py). The shell is told
-# all the same, as its own wait for the window ended long before, and a
-# window that comes later is still its viewer.
+# which it was (untakenFor's cause): none, with no kitty there to ask;
+# refused, as the one asked opened nothing; or unanswered, as its own
+# wait for the window ended long before, and one that comes later is
+# still its viewer.
 #
 # niri gives what it starts no output (its utils/spawning.rs sets stdin,
 # stdout and stderr to null), so a run given none runs again once with
@@ -113,6 +116,7 @@ old() {
 }
 
 reached=
+cause=none
 until [ -S "$sock" ]; do
   if old; then
     reached=old
@@ -135,22 +139,45 @@ if [ -S "$sock" ]; then
   # Its own last words, never words of the launch's it may repeat.
   case $(printf '%s\n' "$said" | tail -n 1) in
     *"Timed out waiting for a response from kitty"*)
+      cause=unanswered
       echo "sessions: the sessions kitty didn't answer for $class in a minute;" \
         "its window may yet come" >&2
       ;;
-    *) echo "sessions: the sessions kitty opened no $class" >&2 ;;
+    # Nothing listened on the socket, as a kitty crashed leaves until
+    # systemd clears its folder, so no kitty heard the ask (kitten's
+    # tools/cmd/at/socket_io.go).
+    *"Failed to connect to "*)
+      cause=none
+      echo "sessions: the sessions kitty wasn't listening for $class" >&2
+      ;;
+    *)
+      cause=refused
+      echo "sessions: the sessions kitty opened no $class" >&2
+      ;;
   esac
 elif [ "$reached" = old ]; then
   systemd-run --user --scope --collect --quiet --slice=agents.slice -- \
     env "MYCELIUM_APP_ID=$class" kitty -1 --instance-group pi-sessions --class "$class" \
     --directory "$dir" "$@" && exit 0
+  cause=refused
   echo "sessions: the sessions kitty opened no $class" >&2
 else
   [ -z "$cut" ] ||
     echo "sessions: systemd didn't name the sessions kitty's process within 2 s" >&2
   echo "sessions: no sessions kitty to open $class in" >&2
 fi
-# Within 5 s, so a shell stalled or starting again leaves no script behind.
-timeout 5 qs ipc call sessions untaken "$class" "$asked" > /dev/null 2>&1 ||
-  echo "sessions: the shell didn't hear that no kitty took $class" >&2
+told="no kitty took $class"
+[ "$cause" != unanswered ] || told="the sessions kitty didn't answer for $class"
+# Within 5 s, so a shell stalled or starting again leaves no script behind,
+# and the shell's answerPatience holds. A shell from before the cause was
+# told has no untakenFor, and qs refuses a call of it before running
+# anything (src/io/ipccomm.cpp's EntryNotFound), so it's told the old way
+# then, within the same 5 s; never after a stall, which the cut ends, as
+# the first may yet be heard. qs fails too where the shell ran the first
+# and its answer was lost (ipc-replies-whole.patch), whose repeat without
+# a cause the shell takes once (Sessions' untaken).
+# shellcheck disable=SC2016 # The words are the inner shell's, as given.
+timeout 5 sh -c 'qs ipc call sessions untakenFor "$1" "$2" "$3" ||
+  qs ipc call sessions untaken "$1" "$2"' sh "$class" "$asked" "$cause" > /dev/null 2>&1 ||
+  echo "sessions: the shell didn't hear that $told" >&2
 exit 1
