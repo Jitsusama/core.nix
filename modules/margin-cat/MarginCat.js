@@ -484,16 +484,17 @@ function swatsOut(way) {
     return way < 0 ? 3 : 0;
 }
 
-// How the yarn at `yarn` (MarginCatGames.js's frame) looks, as a word that
-// changes only as its pose or its facing does, so the screen builds its
-// drawing again only then rather than each frame it rolls; "" with none.
-function yarnLooks(yarn) {
-    return yarn ? `${yarn.pose} ${yarn.facing}` : "";
+// How a companion at `at` looks, the yarn (MarginCatGames.js's frame) or
+// the puppy (MarginCatPuppy.js's), as a word that changes only as its pose
+// or its facing does, so the screen builds its drawing again only then
+// rather than each frame it moves; "" with none.
+function companionLooks(at) {
+    return at ? `${at.pose} ${at.facing}` : "";
 }
 
-// The yarn's drawing as it `looks` (yarnLooks): its pose's in `pixels`, the
-// theme's, turned the way it faces.
-function yarnDrawn(looks, pixels) {
+// A companion's drawing as it `looks` (companionLooks): its pose's in
+// `pixels`, the theme's, turned the way it faces.
+function companionDrawn(looks, pixels) {
     const [pose, facing] = looks.split(" ");
     return pose ? turned(pixels[pose] ?? [], Number(facing)) : [];
 }

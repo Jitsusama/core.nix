@@ -566,9 +566,12 @@ def test_a_column_off_the_screen_is_walked_to_along_the_strip(shell: Shell) -> N
     except AssertionError:
         said, _ = shell.said_since(since)
         sat = [report for report in said if report.startswith(SITS)]
+        # The first reports after the keys went say what it was doing as niri scrolled, a
+        # walk under way or nothing, which the last, a walk to the keys, never do.
         pytest.fail(
             f"niri scrolled its window to {left}, {top}, {width} wide, on a screen {across}"
-            f" wide, and the cat never stood with it before the keys rested: {sat[-2:]}"
+            f" wide, and the cat never stood with it before the keys rested: first"
+            f" {sat[:3]}, last {sat[-2:]}"
         )
     sits_over(shell, first, since)
     said, _ = shell.said_since(since)
@@ -614,7 +617,8 @@ def test_keys_back_on_its_column_ride_it_back_with_its_window(shell: Shell) -> N
     niri's spring settles in about a quarter of a second and the keys rest only after two,
     so the cat can be still, carried off with its window, when the keys come back to its own
     column and niri scrolls the strip back. It comes back drawn with its window, never put
-    down on its seat at once ahead of it (#6483's council, 2026-11-25).
+    down on its seat at once ahead of it (#6483's council, 2026-11-25), unless the shell heard
+    of the scroll back only once niri's spring was done, its window already at rest.
 
     Its own column is wide and the other's left of it, so niri scrolls its window along but
     keeps its middle, where the cat sits, on the screen: carried off the screen, the cat comes
@@ -675,15 +679,25 @@ def test_keys_back_on_its_column_ride_it_back_with_its_window(shell: Shell) -> N
     shell.as_account(f"niri msg action focus-window --id {third['id']}")
     sits_over(shell, third, back)
     said, _ = shell.said_since(back)
-    rode = [
+    back_on = [
         at
         for at in (placed(report[len(SITS) :]) for report in said if report.startswith(SITS))
-        if at is not None
-        and not at.get("walk")
-        and at.get("window") == third["id"]
-        and abs(at["drawn"]["x"] - at["x"]) >= 1
+        if at is not None and not at.get("walk") and at.get("window") == third["id"]
     ]
-    assert rode, "niri scrolled its window back and the cat was put on its seat at once"
+    rode = [at for at in back_on if abs(at["drawn"]["x"] - at["x"]) >= 1]
+    if not rode:
+        # A shell that hears of niri's scroll back only once niri's spring is done, as a
+        # loaded builder's can, finds its window at rest and sits on it at once, as it should.
+        # Its first report off where it was held says how long before the scroll began, so
+        # one that missed a scroll still under way fails (C1BD3E07, 2026-11-26).
+        seated = next((at for at in back_on if abs(at["x"] - held) >= 1), None)
+        assert seated is not None, f"the cat never left {held} for its seat: {back_on[-2:]}"
+        heard_late = seated["scrolled"] is not None and seated["scrolled"] >= seated["slides"]
+        assert heard_late, (
+            "niri scrolled its window back and the cat was put on its seat at once, "
+            f"{seated['scrolled']} ms into a scroll of {seated['slides']}"
+        )
+        return
     # Drawn short of its seat by what's left of the scroll back, as its window is, from where
     # it was held: never set off from elsewhere, nor ahead of its window.
     scroll = rode[0]["x"] - held

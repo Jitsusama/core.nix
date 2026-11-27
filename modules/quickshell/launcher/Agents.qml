@@ -52,6 +52,7 @@ import "Moment.js" as Moment
 import "Numbers.js" as Numbers
 import "Openings.js" as Openings
 import "Order.js" as Order
+import "Presented.js" as Presented
 import "ReopenTally.js" as ReopenTally
 import "SessionDrawer.js" as SessionDrawer
 import "SessionRow.js" as SessionRow
@@ -120,7 +121,7 @@ Provider {
                 provider.topNetwork(row))), row)
         actMade: (key, one, row) => provider.topTalk(key, one, row)
             ?? provider.topGoTo(one)
-            ?? provider.topCarryBack(one, row)
+            ?? provider.topCarryBack(key, one, row)
             ?? provider.topLetStart(key, one)
         maker: provider
         drawn: provider.launcher?.open ?? false
@@ -268,8 +269,9 @@ Provider {
     // Carry Back on a carry under Carried is the shell's, asked of the
     // realm's node, never the daemon (CarryBack.js): its row reads as
     // carrying back until the node says the carry has ended, and a refusal
-    // is said in place in the node's own words. Null for any other act.
-    function topCarryBack(one, row) {
+    // is said in place in the node's own words, both on the row keyed as
+    // ReadyRows keyed it from its record's key. Null for any other act.
+    function topCarryBack(key, one, row) {
         const ask = one.key === "verb:carry:back" ? CarryBack.asked(one.ask) : null;
         if (ask === null)
             return null;
@@ -280,13 +282,15 @@ Provider {
             glyph: Words.glyph(one.key),
             hue: "action",
             stays: true,
-            run: () => provider.carryBack(row, ask)
+            run: () => provider.carryBack(key, row, ask)
         });
     }
 
-    function carryBack(row, ask) {
+    function carryBack(key, row, ask) {
         const said = Words.of("verb:carry:back").said ?? {};
-        const shown = row.thing ?? row.key;
+        // Keyed as ReadyRows keyed the row, from its record's key (Presented.js's keyMade), so
+        // what it becomes is that row.
+        const shown = Presented.keyMade(row, key);
         let answered = false;
         provider.becomes(shown, {
             side: said.carrying ?? "",
@@ -844,6 +848,45 @@ Provider {
             .replace("{machine}", session.machine).replace("{why}", why ?? "");
     }
 
+    // Says why a Go To, a reopen or a start Joel pressed opened nothing, by
+    // the session's name and `why` in the alert colour: in the foot at once
+    // while the launcher's open, else by opening it on Agents to say so
+    // (Launcher.qml's toldHere), since every act shuts the launcher before
+    // it runs, and a why held for its next opening was told to nobody
+    // (KP0L6A, 2026-11-24 [00902e94]): a press that did nothing, unsaid.
+    // Only a Go To asked for this session moments ago opens it; any other
+    // waits in the foot, and one a wake reopens is unsaid
+    // (SessionRow.refusalTold). Not Provider's refused, which takes back a
+    // row by its key.
+    function refusedGoing(session, why) {
+        const told = provider.refusalTold(session);
+        if (told === "unsaid")
+            return;
+        const name = provider.footName(session);
+        const said = provider.elsewhere(why, session);
+        provider.refusedWhy = `${name}: ${said}`;
+        provider.launcher?.tellOnOpen([[name, said, Theme.alert]]);
+        provider.openedForPress(told);
+    }
+    // How a refusal of `session` is told (SessionRow.refusalTold).
+    function refusalTold(session) {
+        return SessionRow.refusalTold(session.address, { waking: Sessions.waking,
+            goneTo: Sessions.goneTo, opened: provider.refusalOpened }, Date.now());
+    }
+    // Opens the launcher on what the foot was just told, where `told` says a
+    // Go To Joel pressed moments ago asked for it, once for that press.
+    function openedForPress(told) {
+        if (told === "opens" && provider.launcher?.toldHere?.())
+            provider.refusalOpened = Sessions.goneTo.at;
+    }
+    // The Go To press a refusal last opened the launcher for, by when it
+    // was pressed, so that press opens it once (SessionRow.refusalTold).
+    property real refusalOpened: 0
+    // The last refusal said, as refusedGoing says it, so a Go To asked from
+    // outside answers with the why it was given (goToFor), never one read
+    // back from the launcher's foot, which its opening has taken.
+    property string refusedWhy: ""
+
     // What the foot names a session by (SessionRow.footNameOf): its row's
     // name, else its quest's title, its address only when neither is known.
     function footName(session) {
@@ -866,23 +909,27 @@ Provider {
         }
 
         function onUnjoined(session) {
-            provider.launcher?.tellOnOpen([[provider.footName(session),
-                provider.elsewhere(session.reachable ? "unheld" : "unreached", session),
-                Theme.alert]]);
+            provider.refusedGoing(session, session.reachable ? "unheld" : "unreached");
         }
 
         // Said by why it held, in words of its own (Sessions' unhosted),
         // plainly where it tells of a viewer opening or viewed, the alert
-        // kept for a press that didn't view (SessionRow.viewedWhy).
+        // kept for a press that didn't view (SessionRow.viewedWhy). A
+        // viewer opening or viewed, or opened beside a stray window holding
+        // its name ("unowned"), went, so it's told without opening the
+        // launcher over the window Joel went to.
         function onUnhosted(session, why) {
-            provider.launcher?.tellOnOpen([[provider.footName(session),
-                provider.elsewhere(why, session),
-                SessionRow.viewedWhy(why) ? Theme.text : Theme.alert]]);
+            const viewed = SessionRow.viewedWhy(why);
+            if (viewed || why === "unowned")
+                provider.launcher?.tellOnOpen([[provider.footName(session),
+                    provider.elsewhere(why, session),
+                    viewed ? Theme.text : Theme.alert]]);
+            else
+                provider.refusedGoing(session, why);
         }
 
         function onUnopened(session) {
-            provider.launcher?.tellOnOpen([[provider.footName(session),
-                provider.elsewhere("unopened", session), Theme.alert]]);
+            provider.refusedGoing(session, "unopened");
         }
 
         // A Wake refused or never answered whose row was becoming woken is
@@ -893,11 +940,29 @@ Provider {
         // SessionRow.unsteered).
         function onUnsteered(session, why, act) {
             const called = provider.footName(session);
-            SessionRow.unsteered(provider.launcher, Words.of("agents:machine").said ?? {}, {
+            const told = SessionRow.unsteered(provider.launcher,
+                Words.of("agents:machine").said ?? {}, {
                 act, actName: SessionRow.actName(act, Words.name), why,
                 address: session.address, name: called === session.address ? "" : called,
                 called, held: Boolean(provider.launcher?.becoming?.[`agent:${session.address}`])
             }, Theme.alert);
+            // A Wake a Go To asked for is refused only once goTo has gone
+            // back, so Sessions' waking no longer holds it: the press that
+            // woke it is answered as any Go To's refusal is, rather than
+            // reading done with the launcher shut (#6519's third review).
+            // Its words are kept as refusedWhy too, so a link's Go To whose
+            // wake was refused at once answers why, not "" (#6519's F147).
+            if (act === "wake") {
+                if (told !== null)
+                    provider.refusedWhy = `${told[0]}: ${told[1]}`;
+                provider.openedForPress(provider.refusalTold(session));
+            }
+        }
+
+        // A Go To's wake refused while its press decided, held then, is
+        // answered once that press didn't go (Sessions' wakeRefusedAtOnce).
+        function onWakeRefusedAtOnce(session) {
+            provider.openedForPress(provider.refusalTold(session));
         }
 
         // A parked session Wake would reopen with no fence it can say,
@@ -914,6 +979,7 @@ Provider {
             }
             provider.launcher?.tellOnOpen([[provider.footName(session),
                 provider.elsewhere("unfenced", session), Theme.alert]]);
+            provider.openedForPress(provider.refusalTold(session));
         }
     }
 
@@ -1375,7 +1441,8 @@ Provider {
     // (Launcher.qml's goToCell), as its row's Switch does: raises its window, or opens one on it
     // where it has none, held here, hosted or on another machine (Sessions.goTo), waking it
     // first where it's parked, as a look's Go To does. Only the first word said names one
-    // (TalkTo.goesTo), and nothing is typed or sent. Gives the session gone to, or null for
+    // (TalkTo.goesTo), and nothing is typed or sent. Gives the session and whether it went
+    // (Sessions.wakeToGo), with the why it was told where it didn't (refusedGoing), or null for
     // nobody here: the void and a network have no window to go to.
     function goToFor(said) {
         const address = TalkTo.goesTo(said, {
@@ -1387,9 +1454,10 @@ Provider {
             return null;
         const session = heldAt(address);
         heard(session.address);
-        Sessions.wakeToGo(Sessions.parkedAs(session.address),
+        provider.refusedWhy = "";
+        const went = Sessions.wakeToGo(Sessions.parkedAs(session.address),
             sessionAt(session.address) ?? session);
-        return session;
+        return { session, went, why: went ? "" : provider.refusedWhy };
     }
 
     // The key the daemon serves a network's row by, among the rows the Networks row holds

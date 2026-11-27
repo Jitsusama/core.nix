@@ -33,6 +33,7 @@ import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "ActsSaid.js" as ActsSaid
 import "Order.js" as Order
+import "Presented.js" as Presented
 import "ReadyRows.js" as Ready
 import "ActForms.js" as Forms
 import "WirelessPlate.js" as Plate
@@ -203,7 +204,9 @@ Provider {
         const acts = row.acts ?? [];
         const copied = acts.find(one => typeof one.copy === "string");
         const fields = {
-            key: row.thing ?? key,
+            // As ready.thing keys a served row, so one claiming the
+            // launcher's own kind is kept under `row:`.
+            key: Presented.keyMade(row, key),
             name: row.name ?? "",
             side: ready.sideOf(row),
             copy: copied ? copied.copy : "",

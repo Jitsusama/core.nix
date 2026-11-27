@@ -299,13 +299,18 @@ pub(super) fn far_line_in(
     );
     // The gate names dash, the strictest sh a far machine may have.
     let sh = std::env::var("ELSEWHERE_FAR_SH").unwrap_or_else(|_| "sh".to_owned());
-    let far = std::process::Command::new(sh)
+    let mut far = std::process::Command::new(sh);
+    if leaving::HOME_GONE.get() {
+        far.env("HOME", home.join("gone"))
+            .env("XDG_CACHE_HOME", home.join(".cache"));
+    } else {
+        far.env("HOME", &home).env_remove("XDG_CACHE_HOME");
+    }
+    let far = far
         .args(["-c", &line])
-        .env("HOME", &home)
         .env("PATH", path)
         // As though inherited, so a line keeping it clears another's copy.
         .env("mine", "1")
-        .env_remove("XDG_CACHE_HOME")
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()

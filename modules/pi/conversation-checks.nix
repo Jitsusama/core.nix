@@ -331,11 +331,12 @@ in
   # build, naming the realm, the percent and the node, rather than ending
   # each conversation as it starts, as node 22 and this tree's own node
   # refuse an option they don't know; one whose node fails another way,
-  # never ends, or can't be run, a package's folder among them, fails saying
-  # so and what to do; node 22, which pi is built with, takes it, and the
-  # unit file home-manager renders names that proof; and a machine
-  # cross-built for another platform has the proof stand unproven and warns
-  # of it, where a machine built on its own doesn't.
+  # never ends, ignores being told to end, is killed before its limit, or
+  # can't be run, a package's folder among them, fails saying so and what to
+  # do; node 22, which pi is built with, takes it, and the unit file
+  # home-manager renders names that proof; and a machine cross-built for
+  # another platform has the proof stand unproven and warns of it unless its
+  # realm accepts that, where a machine built on its own doesn't.
   pi-conversations-refuse-a-node-without-growth =
     let
       given = "jitsusama.pi.hosts.one.conversationHeapGrowingPercent is 70, ";
@@ -382,11 +383,43 @@ in
           seconds = 1;
         } "one" "${hanging}" 70
       );
-      slowSaid = lib.concatStrings [
+      slowSaid =
+        node:
+        lib.concatStrings [
+          given
+          "but ${node} didn't end within its 1-second limit once run with "
+          "--heap-growing-percent=70, so the build can't prove it takes the word: give the realm "
+          "a node that starts and ends, or unset the percent."
+        ];
+      oneSecond = import ./heap-growth-taken {
+        inherit lib pkgs;
+        seconds = 1;
+      } "one";
+      # Ignores being told to end once given the word, so timeout kills it
+      # five seconds past its limit and exits 137.
+      deaf = pkgs.writeShellScript "node" ''
+        if [ "$1" = --heap-growing-percent=70 ]; then
+          echo "$0: not listening" >&2
+          trap "" TERM
+          exec sleep 600
+        fi
+      '';
+      outlasted = pkgs.testers.testBuildFailure (oneSecond "${deaf}" 70);
+      # Killed at once once given the word, as the kernel kills a process
+      # for memory, which exits 137 as timeout's own kill does, but before
+      # the limit.
+      dying = pkgs.writeShellScript "node" ''
+        if [ "$1" = --heap-growing-percent=70 ]; then
+          echo "$0: out of memory" >&2
+          kill -KILL $$
+        fi
+      '';
+      killed = pkgs.testers.testBuildFailure (oneSecond "${dying}" 70);
+      killedSaid = lib.concatStrings [
         given
-        "but ${hanging} didn't end within its 1-second limit once run with --heap-growing-percent=70, "
-        "so the build can't prove it takes the word: give the realm a node that starts and ends, "
-        "or unset the percent."
+        "but ${dying} was killed before its 1-second limit once run with "
+        "--heap-growing-percent=70, as the kernel kills a process for memory or another process "
+        "can, so the build can't prove it takes the word: build again once memory is free."
       ];
       # Each a node the build can't run: one named outside the store, as no
       # build's sandbox holds, and a package's folder, named with its
@@ -408,20 +441,28 @@ in
       renderedOf =
         kind: grown.xdg.configFile."systemd/user/pi-conversation-traced-${kind}@.service".source;
       # A workstation built here for an aarch64 machine, whose node its
-      # builder can't run: only evaluated, never built.
-      crossMachine = bareNixos [
-        self.nixosModules.workstation
-        (
-          { pkgs, ... }:
-          {
-            nixpkgs.buildPlatform = "x86_64-linux";
-            nixpkgs.hostPlatform = "aarch64-linux";
-            home-manager.users.someone.jitsusama.pi.hosts = growingHostsOf (_: lib.getExe pkgs.nodejs_22) {
-              one = 70;
-            };
-          }
-        )
-      ];
+      # builder can't run, and whose realm may or may not go unproven: only
+      # evaluated, never built.
+      crossMachineOf =
+        accepted:
+        bareNixos [
+          self.nixosModules.workstation
+          (
+            { pkgs, ... }:
+            {
+              nixpkgs.buildPlatform = "x86_64-linux";
+              nixpkgs.hostPlatform = "aarch64-linux";
+              home-manager.users.someone.jitsusama.pi.hosts =
+                lib.recursiveUpdate (growingHostsOf (_: lib.getExe pkgs.nodejs_22) { one = 70; })
+                  (
+                    lib.optionalAttrs accepted {
+                      one.conversationHeapGrowthMayGoUnproven = true;
+                    }
+                  );
+            }
+          )
+        ];
+      crossMachine = crossMachineOf false;
       crossNode = lib.getExe crossMachine.pkgs.nodejs_22;
       unprovenSaid = lib.concatStrings [
         given
@@ -442,6 +483,7 @@ in
         && lib.hasPrefix unprovenSaid elsewhere.unproven
         && !lib.hasInfix "taken.sh" elsewhere.buildCommand
         && lib.any (lib.hasPrefix unprovenSaid) (account crossMachine).warnings
+        && !warnsOf (account (crossMachineOf true))
         && !warnsOf grown;
     in
     # Kept in Nix because each line reads a build Nix gives it for words
@@ -460,8 +502,12 @@ in
         "refusing the percent"
       says ${failed} ${lib.escapeShellArg failedSaid} "failing another way"
       says ${failed} ${lib.escapeShellArg "${failing}: can't start"} "failing another way"
-      says ${slow} ${lib.escapeShellArg slowSaid} "that never ends"
+      says ${slow} ${lib.escapeShellArg (slowSaid "${hanging}")} "that never ends"
       says ${slow} ${lib.escapeShellArg "${hanging}: still starting"} "that never ends"
+      says ${outlasted} ${lib.escapeShellArg (slowSaid "${deaf}")} "ignoring being told to end"
+      says ${outlasted} ${lib.escapeShellArg "${deaf}: not listening"} "ignoring being told to end"
+      says ${killed} ${lib.escapeShellArg killedSaid} "killed before its limit"
+      says ${killed} ${lib.escapeShellArg "${dying}: out of memory"} "killed before its limit"
       says ${unrun} ${lib.escapeShellArg (unrunSaid "/nowhere/node")} "the build can't run"
       says ${folder} ${lib.escapeShellArg (unrunSaid "${pkgs.nodejs_22}")} "named by its folder"
       # taken.sh reads exit 9 as a refusal, which a real node gives an
@@ -474,7 +520,8 @@ in
           code=$?
         fi
         if [ "$code" != 9 ] || ! grep -qF 'bad option: --heap-growing-percents=70' said; then
-          echo "$node refused an option it doesn't know with exit $code, not as taken.sh reads a refusal:"
+          echo "$node refused an option it doesn't know with exit $code," \
+            "not as taken.sh reads a refusal:"
           cat said
           exit 1
         fi
@@ -489,7 +536,8 @@ in
       done
       test -e ${tracedProof}
       ${lib.optionalString (!unproven) ''
-        echo "a machine cross-built for another platform didn't have its proof stand unproven and warn of it, or one built on its own warned"
+        echo "a machine cross-built for another platform didn't have its proof stand" \
+          "unproven and warn of it unless its realm accepts that, or one built on its own warned"
         exit 1
       ''}
       touch $out
