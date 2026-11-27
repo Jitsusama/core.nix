@@ -256,6 +256,53 @@ fn side(done: &Done, words: &Words) -> Value {
     }
 }
 
+/// What a look's drawer leads with, to act on hours on (Joel, 2026-11-11),
+/// as For You's drawer says it (LookForm.js's `wordsOf`): in its second
+/// form what happened then why it matters, each ending as a sentence ends;
+/// else its why, then its ask. Each is trimmed, so words only of spaces
+/// leave no blank. A second-form look carries a why and an ask its harness
+/// made from it too, which For You leaves unsaid, so History does as well.
+fn words_of(look: &Value) -> String {
+    let text = |field: &str| trimmed(look[field].as_str().unwrap_or_default());
+    if text("happened").is_empty() {
+        [text("why"), text("ask")]
+            .into_iter()
+            .filter(|part| !part.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n\n")
+    } else {
+        [text("happened"), text("matters")]
+            .into_iter()
+            .filter(|part| !part.is_empty())
+            .map(ended)
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+}
+
+/// The byte-order mark, which JavaScript's `trim` takes as a space.
+const BYTE_ORDER_MARK: char = '\u{feff}';
+
+/// `part` trimmed as For You trims it, with `trim` in Qt's JavaScript
+/// engine: of what `QChar::isSpace` takes, Unicode's spaces and line ends
+/// with the next-line control among them, and the byte-order mark, which
+/// Rust's own `trim` keeps, so a look's words read the same in both.
+fn trimmed(part: &str) -> &str {
+    part.trim_matches(|c: char| c.is_whitespace() || c == BYTE_ORDER_MARK)
+}
+
+/// `part` ending as a sentence ends, as LookForm.js's `ENDED` reads one: a
+/// stop, a bang, a question mark or an ellipsis, past any closing quotes
+/// or brackets; else with a stop added.
+fn ended(part: &str) -> String {
+    let unclosed = part.trim_end_matches(['"', '\'', '\u{2019}', '\u{201d}', ')', ']']);
+    if unclosed.ends_with(['.', '!', '?', '\u{2026}']) {
+        part.to_owned()
+    } else {
+        format!("{part}.")
+    }
+}
+
 /// A look's History row, not yet given its `order`.
 fn row(done: &Done, words: &Words) -> Value {
     let look = done.look;
@@ -282,15 +329,7 @@ fn row(done: &Done, words: &Words) -> Value {
         .filter(|(_, value)| !value.is_empty())
         .map(|(fact, value)| json!({ "label": words.fact(fact), "value": value }))
         .collect();
-    // Why, then the ask, to act on hours on (Joel, 2026-11-11), each
-    // trimmed as For You's drawer reads them (LookForm.js's wordsOf), so
-    // words only of spaces leave no blank.
-    let body = [text("why"), text("ask")]
-        .into_iter()
-        .map(str::trim)
-        .filter(|part| !part.is_empty())
-        .collect::<Vec<_>>()
-        .join("\n\n");
+    let body = words_of(look);
     // A terminal's Go is to its session, which only the shell knows.
     let acts = if kind == "terminal" {
         json!([])
@@ -308,7 +347,7 @@ fn row(done: &Done, words: &Words) -> Value {
     });
     json!({
         "key": format!("row:{PLACE}:{id}"), "thing": format!("look:{id}"), "place": PLACE,
-        "kind": "look", "name": text("title"), "note": text("why").trim(), "glyph": glyph(kind),
+        "kind": "look", "name": text("title"), "note": trimmed(text("why")), "glyph": glyph(kind),
         "hue": "muted", "side": [side],
         "drawer": {
             "title": text("title"), "facts": facts, "nerd": nerd, "body": body, "prose": true,
@@ -379,6 +418,39 @@ mod tests {
     }
 
     #[test]
+    fn a_second_form_look_s_drawer_leads_with_what_happened_as_for_you_s_does() {
+        let drawn = |happened: &str, matters: &str| {
+            let look = json!({"v": 1, "id": "b2", "kind": "pr", "title": "Fix the build",
+                "state": "opened", "target": "https://github.com/Jitsusama/core.nix/pull/4369",
+                "happened": happened, "matters": matters,
+                "why": "Made by its harness.", "ask": "Also made.",
+                "at": NOW - 3 * HOUR, "resolvedAt": NOW - 2 * HOUR});
+            let (rows, _) = made(&[look], &words(), NOW);
+            rows[0]["drawer"]["body"].clone()
+        };
+        let cases = [
+            (
+                ("The build broke", " Nothing merges until it's fixed. "),
+                "The build broke. Nothing merges until it's fixed.",
+            ),
+            ((" It flickers! ", "   "), "It flickers!"),
+            (
+                ("He said \"go.\"", "(It's late.)"),
+                "He said \"go.\" (It's late.)",
+            ),
+            (("Waiting\u{2026}", "Soon"), "Waiting\u{2026} Soon."),
+            (("   ", "It matters."), "Made by its harness.\n\nAlso made."),
+        ];
+        for ((happened, matters), body) in cases {
+            assert_eq!(
+                drawn(happened, matters),
+                json!(body),
+                "a look that happened {happened:?} and matters {matters:?} wasn't said as For You's"
+            );
+        }
+    }
+
+    #[test]
     fn a_look_s_words_are_trimmed_as_for_you_s_drawer_trims_them() {
         let drawn = |why: &str, ask: &str| {
             let look = json!({"v": 1, "id": "b1", "kind": "pr", "title": "Fix the drawer",
@@ -392,7 +464,13 @@ mod tests {
                 ("It flickers.", " Merge it? "),
                 ("It flickers.\n\nMerge it?", "It flickers."),
             ),
+            (
+                (" It flickers. ", "Merge it?"),
+                ("It flickers.\n\nMerge it?", "It flickers."),
+            ),
             (("It flickers.", "   "), ("It flickers.", "It flickers.")),
+            (("\u{feff}", "Merge it?"), ("Merge it?", "")),
+            (("It flickers.", "\u{85}"), ("It flickers.", "It flickers.")),
             (("   ", "Merge it?"), ("Merge it?", "")),
             ((" ", " "), ("", "")),
         ];

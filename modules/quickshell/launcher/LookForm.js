@@ -1,7 +1,7 @@
 // A look's second form, as 85PKB2's harness #2008 writes it beside the
 // first: what happened, why it matters, what Joel presses and what it wants
-// back. Looks.js reads a look's words through it, and Now.qml its side, its
-// act and whether it asks him back; tests/for-you.qml holds it in Qt's own
+// back. Looks.js reads a look's words through it, and Now.qml its note, its
+// side, its act and whether it asks him back; tests/for-you.qml holds it in Qt's own
 // engine.
 .pragma library
 
@@ -45,6 +45,16 @@ function drawnOf(text) {
         at += width;
     }
     return kept;
+}
+
+// What a look's row notes beside it: who asks while it waits, as `asker`
+// says (asked only then), else its why, trimmed as its drawer trims it, so
+// words only of spaces note nothing, as History's rows say it
+// (modules/to-do/src/history.rs). Read here, not into the look, which is
+// written back as read.
+function noteOf(one, asker) {
+    const asking = one.state === "waiting" ? written(asker()).trim() : "";
+    return asking === "" ? written(one.why).trim() : asking;
 }
 
 // `value` where it's a string, else "".

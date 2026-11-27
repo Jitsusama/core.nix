@@ -1648,7 +1648,7 @@ Provider {
             glyph: Theme.glyph[ForYou.glyphOf(one.kind)],
             hue: waits ? "strong" : "muted",
             side: lookSide(one, now, say),
-            note: waits ? lookAsker(one) || one.why : one.why,
+            note: LookForm.noteOf(one, () => lookAsker(one)),
             drawer: () => provider.lookDrawer(one),
             verbs: inside,
             targets: inside
