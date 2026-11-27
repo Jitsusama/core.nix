@@ -107,6 +107,19 @@ function takes(said) {
     return said === "yes" || said === "no";
 }
 
+// What the ask standing (`ask`, or null with none) makes of `key` come
+// `now`: its answer, or "" with none standing. The launcher answers by it.
+function said(ask, key, now, guard) {
+    return ask === null ? "" : answer(ask, key, now, guard);
+}
+
+// Whether the ask standing takes `key` come `now`, by what it says of it:
+// the launcher's field times a key as acting by it, and the field's test
+// stands in for the launcher with it, so the two can't time a key apart.
+function taken(ask, key, now, guard) {
+    return takes(said(ask, key, now, guard));
+}
+
 // What d asks over the rows it would end, each { ends, name, kind }: the
 // one row by its name, as "Close Notes?", and more by their count and
 // kind, each verb with its own in the order they come, as "Close 2

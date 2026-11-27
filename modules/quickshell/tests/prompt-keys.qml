@@ -392,15 +392,15 @@ Item {
             compare(stepped.signalArguments[0][0], "next");
         }
 
-        // The ask as the launcher asks it (Launcher.qml's answerTaken and
-        // askSaid): any named key past its guard answers, x as no, and a key
-        // inside the guard is early and taken as nothing.
+        // The ask as the launcher asks it (Launcher.qml's answerTaken, by
+        // Confirm.taken): any named key past its guard answers, x as no, and
+        // a key inside the guard is early and taken as nothing.
         function test_anAskActsWhereItTakesTheKey() {
             toNormal();
             line.confirming = true;
             const ask = { at: Date.now() };
             let guard = 0;
-            line.answerTaken = (key, at) => Confirm.takes(Confirm.answer(ask, key, at, guard));
+            line.answerTaken = (key, at) => Confirm.taken(ask, key, at, guard);
             keyClick("x");
             compare(answered.count, 1);
             verify(line.keyActed, "x past the guard, answering no");
