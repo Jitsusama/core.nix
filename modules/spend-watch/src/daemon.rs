@@ -2059,7 +2059,7 @@ mod tests {
         );
         for locked in [
             "couldn't make the sessions index: database table is locked",
-            "couldn't read the history's shape: database schema is locked: main",
+            "couldn't read the shape of the history at /h: database schema is locked: main",
         ] {
             assert!(
                 !busy(locked),
@@ -2067,7 +2067,9 @@ mod tests {
             );
         }
         assert!(
-            busy(&format!("couldn't read the history's shape: {why}")),
+            busy(&format!(
+                "couldn't read the shape of the history at /h: {why}"
+            )),
             "a busy shape read, named, wasn't tried again"
         );
     }
@@ -2176,7 +2178,8 @@ mod tests {
 
     // A pass that worked ends a step that lets go of the status the pass
     // before it said, so freeing that one is charged to the step and the
-    // line ends there, with no time said as a step that didn't end.
+    // line ends there. The new status is said and worked once the step
+    // has ended, so its heartbeat doesn't count the clearing as idle.
     #[test]
     fn a_cleared_pass_lets_go_of_the_last_status_inside_its_step() {
         struct Freed(Rc<Cell<Option<Instant>>>);
@@ -2197,17 +2200,17 @@ mod tests {
             "the last status was let go of after the cleared step ended"
         );
         assert!(new.get().is_none(), "the pass's own status was let go of");
-        assert!(kept.is_some(), "the pass's status wasn't kept");
+        let (_, said_at, worked_at) = kept.as_ref().expect("the pass's status wasn't kept");
+        assert!(
+            steps.last.at <= *said_at && steps.last.at <= *worked_at,
+            "the pass's status was said or worked before the cleared step ended"
+        );
         let said = steps.said(steps.last.at);
         assert!(
             said.rsplit("; ")
                 .next()
                 .is_some_and(|last| last.starts_with("cleared ")),
             "a cleared pass's line didn't end with its clearing: {said}"
-        );
-        assert!(
-            !said.contains("didn't end"),
-            "a cleared pass's line said a step that didn't end: {said}"
         );
     }
 

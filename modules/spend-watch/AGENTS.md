@@ -219,8 +219,11 @@ feed speaks.
   the socket is told at once to try again. A history busy as it opens is
   an error a reader is told to try again on, exit 75, never one that
   doesn't read. Only SQLite's own word that the file isn't a database
-  or is damaged sets a history aside; any other failure to read its
-  shape, locked or a failing disk among them, fails the open. A
+  or is damaged sets a history aside, and as the connection opens only
+  the first, since an older SQLite reads a newer schema as damaged. Any
+  other failure, locked or a failing disk among them, fails the open
+  naming the history, with the step out unless another connection holds
+  it. A
   missing sessions index is made without waiting on a writer, and left
   to the next open while one holds the history; any other failure to
   make it, locked included, fails the open. One that doesn't read is
