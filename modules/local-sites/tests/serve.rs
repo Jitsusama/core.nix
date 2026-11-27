@@ -178,7 +178,7 @@ fn started(folder: &Path, socket: &Path) -> (Child, u16) {
         "documents": documents,
         "mounts": {"kit": kit},
         "feeds": {
-            "node": {"socket": socket, "kinds": {"session": {"fields": ["title"]}}},
+            "node": {"socket": socket, "kinds": {"session": {"fields": ["title"], "latest": 20}}},
             "away": {"socket": folder.join("nobody.sock"), "kinds": {"machine": {}}}
         }
     });
@@ -464,6 +464,11 @@ fn pages_share_one_watch_and_each_hears_every_change_trimmed() {
         watch["fields"],
         json!(["title"]),
         "the daemon is asked only what's shown"
+    );
+    assert_eq!(
+        watch["latest"],
+        json!(20),
+        "the daemon is asked for only as many of the latest as the feed names"
     );
 }
 
