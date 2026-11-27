@@ -39,8 +39,9 @@ EOF
 zmodload zsh/zpty
 integer failed=0
 # What typing the words and Tab offers, one match to a line. Each editor
-# gets the build's runtime and data folders, so a daemon its tuple starts
-# keeps everything where tuple-completes-in-zsh.sh's stop finds it.
+# gets the home, runtime and data folders of tuple-completes-in-zsh.sh's
+# folder of its own, so a daemon its tuple starts keeps everything where
+# that script's stop finds it.
 offered() {
   local line said
   zpty z env -i HOME=$here TERM=xterm ZDOTDIR=$here/dot PATH=$PATH \

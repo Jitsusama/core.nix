@@ -446,22 +446,22 @@ PanelWindow {
             const by = going?.kind === "puppy"
                 ? MarginCat.carries(saw, tilesOf(space?.id), sat) : null;
             if (by !== null) {
-                // The keys gone to a column niri scrolls its window away
+                // The keys gone to a column niri carries its window away
                 // for end the puppy's visit there, the puppy fading where
-                // it was, so the cat rides off with its window as a seated
-                // cat does, never left standing on the air where that
-                // window was. Cut mid-hop, its place is a leap's frame
-                // above its seat, so it rides to its seat on that window
-                // rather than keeping the leap. A window scrolled wholly
+                // it was, so the cat goes with its window as a seated cat
+                // does, never left standing on the air where that window
+                // was: riding niri's scroll, or there at once as a drag
+                // carries it (Carried.visitCut). A window scrolled wholly
                 // off the screen gives no seat (MarginCat.sits), so the
                 // cat goes as far as niri carries it, as carried() does.
                 tell("puppy");
                 halt();
-                const home = seat(tile(sat));
-                if (home !== null)
-                    rideTo(home);
-                else if (place !== null)
-                    rideTo({ x: place.x + by.x, y: place.y + by.y });
+                const cut = Carried.visitCut(seat(tile(sat)), place, by,
+                    { wide: size, across: modelData.width, scrolling: scrolling() });
+                if (cut?.how === "rides")
+                    rideTo(cut.to);
+                else if (cut !== null)
+                    place = cut.to;
             } else {
                 if (going !== null && !going.kind && !byHand
                     && MarginCat.carries(saw, tilesOf(space?.id), goingTo) !== null) {
@@ -1760,9 +1760,12 @@ PanelWindow {
             // How long before this niri's newest scroll began, as the cat
             // dated it, null for none, and how long niri's spring takes,
             // so a check can tell a cat put on its seat at once since it
-            // heard of a scroll already done from one that missed it.
+            // heard of a scroll already done from one that missed it;
+            // and when on the wall clock that scroll began, so it can
+            // tell which scroll it was.
             scrolled: (window.scrollHeard?.at ?? null) === null ? null
                 : Math.round(Date.now() - window.scrollHeard.at),
+            scrollBegan: window.scrollHeard?.at ?? null,
             slides: window.slideMs,
             // Whether it's held still under the launcher's card, which
             // what Joel's hand set off never is.
