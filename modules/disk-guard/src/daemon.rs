@@ -1412,7 +1412,15 @@ impl Guard {
         for dir in gone.iter().chain(&forgot) {
             uses.heard.remove(dir);
         }
+        // One marked in this walk and forgotten after, by the tidy or as
+        // another id needed a group, has no mark to hear by, so it isn't
+        // dated as heard: the next walk marks it again, and until then its
+        // builds keep the hour. One made anew at a forgotten folder's path
+        // keeps its own mark and is dated.
         for (dir, at, handle) in marked {
+            if !watch.holds(&handle) {
+                continue;
+            }
             uses.watching(&dir, at);
             uses.marked(&dir, at, handle);
         }

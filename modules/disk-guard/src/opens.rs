@@ -227,6 +227,16 @@ impl Watch {
         std::mem::take(&mut *self.forgot.lock().unwrap_or_else(PoisonError::into_inner))
     }
 
+    /// Whether the folder marked under `key` is still watched, rather than
+    /// forgotten as gone since: a folder made anew at its path has a key
+    /// of its own, so this tells the two apart where a path can't.
+    pub fn holds(&self, key: &[u8]) -> bool {
+        self.dirs
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .contains_key(key)
+    }
+
     /// How many fanotify groups the watch holds.
     pub fn groups(&self) -> usize {
         self.groups
@@ -523,6 +533,29 @@ mod tests {
             "a group outlived every folder under its id"
         );
         assert!(watch.tidy().is_empty(), "a forgotten folder was said twice");
+    }
+
+    #[test]
+    fn a_folder_forgotten_is_no_longer_held_though_one_made_anew_at_its_path_is() {
+        // The daemon dates only the marks still held, so a folder made anew
+        // at a forgotten one's path is heard by its own mark from then.
+        let watch = watch();
+        let old = watch.dirs.lock().unwrap().keys().next().unwrap().clone();
+        let mut new = old.clone();
+        *new.last_mut().unwrap() ^= 1;
+        watch
+            .dirs
+            .lock()
+            .unwrap()
+            .insert(new.clone(), PathBuf::from("/w"));
+        assert!(watch.holds(&old), "a folder still watched wasn't held");
+        let mut groups = watch.groups.lock().unwrap().clone();
+        watch.give_back(&mut groups, &[(old.clone(), PathBuf::from("/w"))]);
+        assert!(!watch.holds(&old), "a forgotten folder was still held");
+        assert!(
+            watch.holds(&new),
+            "the folder made anew at a forgotten one's path lost its own mark"
+        );
     }
 
     #[test]
