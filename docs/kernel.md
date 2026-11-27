@@ -96,9 +96,9 @@ the name was never recorded, and networkd couldn't match a saved network's
 file on it, or tell it had moved to another network and needed a new
 address. The patch recorded the name first. Most access points name their
 country, but hostapd doesn't unless it's told to. Upstream took it as
-[577f690ce5dc][3], which reached the stable series in 7.3.6. The XPS
-14's `wifi-names-a-network-without-a-country` reads the kernel's source
-to hold it there.
+[577f690ce5dc][3], which reached the stable series in 7.3.6.
+`wifi-names-a-network-without-a-country` reads core's kernel's source,
+with its patches, to hold it there for every machine.
 
 The Wi-Fi fix still carried is for a card that couldn't join an access point
 while memory was fragmented. Intel's driver adds a send queue as it joins,
@@ -471,4 +471,4 @@ if less; record a new one after moving to a new series.
 [crashes]: hardware.md#the-two-crashes
 [1]: https://github.com/firelzrd/bore-scheduler
 [2]: https://git.kernel.org/torvalds/c/a6036a41bffb
-[3]: https://git.kernel.org/pub/scm/linux/kernel/git/next/linux-next.git/commit/?id=577f690ce5dc
+[3]: https://git.kernel.org/torvalds/c/577f690ce5dc
