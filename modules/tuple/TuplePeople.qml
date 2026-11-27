@@ -34,14 +34,21 @@ Singleton {
         return contact.email || String(contact.id);
     }
 
+    // Runs one of tuple's commands on someone, after "--", since tuple
+    // reads an argument that begins with a dash as a flag, and an email
+    // may begin with one.
+    function act(command, contact) {
+        Niri.spawn(["tuple"].concat(command, "--", who(contact)));
+    }
+
     // Calls one who isn't in a call and joins one who is.
     function pair(contact) {
-        Niri.spawn(["tuple", "call", contact.status === "busy" ? "join" : "start", who(contact)]);
+        act(["call", contact.status === "busy" ? "join" : "start"], contact);
     }
 
     // Tells Tuple they're a favourite or not; the daemon hears it from
     // Tuple, and the source shows it at once meanwhile.
     function favour(contact, wanted) {
-        Niri.spawn(["tuple", "contacts", wanted ? "favorite" : "unfavorite", who(contact)]);
+        act(["contacts", wanted ? "favorite" : "unfavorite"], contact);
     }
 }

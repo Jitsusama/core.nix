@@ -6,12 +6,15 @@
 //! killed run left above it going before anything is read, and links at
 //! the copies' folder or the copy, put while it's made, leaving it
 //! untaken, or put as the list of what's brought back is sorted, cutting
-//! the list.
+//! the list, and a link put at the job's folder in the copy before it's
+//! entered leaving it untaken.
+
+use std::path::Path;
 
 use super::crossing::refusing;
 use super::handing::pinning;
 use super::unpacking::{FIRST, archive_of, reading};
-use super::{Left, far_line, handover, kind, work};
+use super::{Left, far_line, far_line_in, handover, kind, work};
 use crate::far::{HANDOVER, Missed, TREE, bring_back};
 
 #[test]
@@ -519,4 +522,58 @@ fn a_link_at_the_copies_folder_after_the_finds_cuts_the_list_and_sorts_nothing_t
         );
         let _ = std::fs::remove_dir_all(&home);
     }
+}
+
+#[test]
+fn a_link_put_above_the_job_s_folder_in_its_copy_before_it_s_entered_leaves_it_untaken() {
+    // A find of what isn't a file or a folder that, once it has looked,
+    // moves the folder above the job's in the copy aside and puts a link
+    // to it at its name, as a job of the quest may meanwhile: the copy
+    // stays in its place and the job's folder is no link, so only where
+    // the cd landed tells.
+    let finding = refusing(
+        "find",
+        "*\" -type l -o -type p \"*",
+        "find \"$@\"; found=$?; [ -e \"$HOME/aside\" ] ||
+         { mv \"$1/sub\" \"$HOME/aside\" && ln -s \"$HOME/aside\" \"$1/sub\"; }; exit $found",
+    );
+    let (code, err, home) = far_line_in(
+        Path::new("sub/deep"),
+        Left::Whole,
+        &[("sub/deep/x", "x")],
+        "touch ran",
+        &kind(""),
+        None,
+        &[(finding.0, finding.1.as_str())],
+    );
+    assert!(
+        home.join("aside/deep/x").exists() && !home.join("aside/deep/ran").exists(),
+        "the job ran through a link put at its folder in the copy ({code:?}): {err}"
+    );
+    assert!(
+        code == Some(75) && err.contains("the job's copy was moved or linked from its place"),
+        "the far line didn't leave the job untaken and say its copy moved ({code:?}): {err}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
+fn a_job_in_a_folder_below_its_tree_s_top_runs_there_in_its_copy() {
+    // Where nothing is moved, a job started below the top, in a folder
+    // whose name needs quoting, is entered and runs in the copy's own.
+    let (code, err, home) = far_line_in(
+        Path::new("a b/c"),
+        Left::Whole,
+        &[("a b/c/x", "x")],
+        "pwd -P > \"$HOME/where\"",
+        &kind(""),
+        None,
+        &[],
+    );
+    let at = std::fs::read_to_string(home.join("where")).unwrap_or_default();
+    assert!(
+        code == Some(0) && at.trim_end().ends_with("/1/a b/c"),
+        "the job wasn't entered in its folder in the copy ({code:?}): {at:?} {err}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
 }
