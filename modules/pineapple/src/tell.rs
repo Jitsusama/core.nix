@@ -123,12 +123,28 @@ fn shown(said: &str) -> String {
 /// What was said, as a row, its notice and Joel's phone show it: on one
 /// line as [`shown`] makes it, and cut after [`GIST`] characters, so a
 /// long comment heard costs the launcher and his notices no more than a
-/// short one.
+/// short one. A row's title is cut the same way, since anyone saying a
+/// stop may name as many reaches as they like.
 fn gist(said: &str) -> String {
     let line = shown(said);
     match line.char_indices().nth(GIST) {
         Some((cut, _)) => format!("{} ...", line[..cut].trim_end()),
         None => line,
+    }
+}
+
+/// What was said, as its sayer wrote it. Slack's API sends a message
+/// with its `&`, `<` and `>` as entities, kept as given in a record, so
+/// a saying from Slack has them read back before a row shows it; each
+/// surface that marks text up escapes it again for itself. A saying from
+/// anywhere else is kept as it came.
+fn as_written(key: &str, said: &str) -> String {
+    if key.starts_with("slack:") {
+        said.replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&amp;", "&")
+    } else {
+        said.to_owned()
     }
 }
 
@@ -216,12 +232,12 @@ fn stop_row(stop: &Standing, kept: &Kept, words: &Words) -> Value {
         "key": key,
         "kind": KIND,
         "what": "stop",
-        "title": shown(&title),
+        "title": gist(&title),
         "since": heard_at,
         "stop": stop.id,
         "saying": stop.id,
         "link": text(record, "where"),
-        "words": gist(text(record, "words")),
+        "words": gist(&as_written(&stop.id, text(record, "words"))),
         "said_by": text(record, "said_by"),
         "by_joel": by_joel,
         "reaches": reaches,
@@ -317,11 +333,11 @@ fn alert_row(key: &str, latest: &Value, count: usize, words: &Words) -> Value {
         "key": key,
         "kind": KIND,
         "what": what,
-        "title": shown(&title),
+        "title": gist(&title),
         "since": latest["heard_at"].as_u64().unwrap_or(0),
         "saying": text(latest, "key"),
         "link": text(latest, "link"),
-        "words": gist(text(latest, "text")),
+        "words": gist(&as_written(text(latest, "key"), text(latest, "text"))),
         "said_by": text(latest, "author"),
         "said_at": text(latest, "said_at"),
         "by_joel": false,
@@ -513,6 +529,76 @@ mod tests {
             shown,
             [&cut, &cut],
             "the stop's row and the alert's each show its gist, not the whole"
+        );
+    }
+
+    #[test]
+    fn a_reach_holding_a_control_character_is_titled_without_it() {
+        let mut joke = line("slack:C1:2.0", "slack:C2:0.5", "waved:joke", 20);
+        joke["would_reach"] = json!(["pr:exa\u{0}mple/shop#12"]);
+        let kept = Kept {
+            stops: vec![standing(
+                "slack:C1:1.0",
+                &["pr:exa\u{1b}mple/shop#12"],
+                false,
+            )],
+            decisions: vec![joke],
+            ..Kept::default()
+        };
+        let titles: Vec<Value> = rows(&kept, 30, &words())
+            .iter()
+            .map(|row| row["title"].clone())
+            .collect();
+        assert_eq!(
+            titles,
+            [
+                "Someone stopped agents on pull request exa mple/shop#12",
+                "Someone joked, on pull request exa mple/shop#12",
+            ],
+            "the stop's title and the alert's part words where the character was"
+        );
+    }
+
+    #[test]
+    fn a_saying_from_slack_is_shown_as_written_and_one_from_elsewhere_as_it_came() {
+        let mut stop = standing("slack:C1:1.0", &["pr:example/shop#12"], false);
+        stop.record["words"] = json!("pineapple override &lt;b&gt; &amp;lt; &amp; a &gt; b");
+        let mut joke = line("github:example/shop#12:comment:1", "t", "waved:joke", 20);
+        joke["text"] = json!("pineapple override jk &gt; &amp;");
+        let kept = Kept {
+            stops: vec![stop],
+            decisions: vec![joke],
+            ..Kept::default()
+        };
+        let said: Vec<Value> = rows(&kept, 30, &words())
+            .iter()
+            .map(|row| row["words"].clone())
+            .collect();
+        assert_eq!(
+            said,
+            [
+                "pineapple override <b> &lt; & a > b",
+                "pineapple override jk &gt; &amp;",
+            ],
+            "Slack's entities are read back once; GitHub's words are kept as written"
+        );
+    }
+
+    #[test]
+    fn a_title_naming_many_reaches_is_cut() {
+        let reaches: Vec<String> = (0..200).map(|n| format!("pr:example/shop#{n}")).collect();
+        let named: Vec<&str> = reaches.iter().map(String::as_str).collect();
+        let kept = Kept {
+            stops: vec![standing("slack:C1:1.0", &named, false)],
+            ..Kept::default()
+        };
+        let title = rows(&kept, 30, &words())[0]["title"].clone();
+        let title = title.as_str().unwrap_or_default();
+        assert!(
+            title.starts_with("Someone stopped agents on pull request example/shop#0, ")
+                && title.ends_with(" ...")
+                && title.chars().count() <= GIST + " ...".len(),
+            "cut after its first {GIST} letters, saying it was: {title}"
         );
     }
 

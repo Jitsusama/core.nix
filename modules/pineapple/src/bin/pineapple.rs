@@ -36,6 +36,7 @@ use pineapple::resume::{self, Standing};
 use pineapple::serve::{self as serving, Serving};
 use pineapple::vocabulary::Words;
 use serde_json::{Value, json};
+use terminal_kit::layout::spaced;
 use terminal_kit::{Exit, Failure, Format, Help, flags};
 
 /// How many parents up a process looks for pi, far past any real tree.
@@ -396,23 +397,23 @@ fn stops(context: &terminal_kit::Context) -> Result<(), Failure> {
     written.map_err(|error| couldnt_write(&error))
 }
 
+/// The stops standing, for Joel's terminal. What a stop names came from
+/// whoever said it, so each is laid out as the kit draws words from
+/// outside, and none holding the terminal's own escapes can write to his
+/// clipboard or draw over another stop.
 fn listed(standing: &[Standing]) -> String {
     let field = |record: &Value, key: &str| {
-        record
-            .get(key)
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_owned()
+        spaced(record.get(key).and_then(Value::as_str).unwrap_or_default())
     };
     let mut out = String::new();
     for stop in standing {
         let shadow = stop.record.get("shadow").and_then(Value::as_bool) != Some(false);
-        out.push_str(&stop.id);
+        out.push_str(&spaced(&stop.id));
         if shadow {
             out.push_str("  (noted only: nothing was stopped)");
         }
         out.push_str("\n  stops ");
-        out.push_str(&resume::reaches(&stop.record).join(", "));
+        out.push_str(&spaced(&resume::reaches(&stop.record).join(", ")));
         out.push_str("\n  said by ");
         out.push_str(&field(&stop.record, "said_by"));
         out.push_str(", ");

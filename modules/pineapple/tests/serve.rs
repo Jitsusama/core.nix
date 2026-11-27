@@ -219,7 +219,10 @@ fn a_live_stops_notice_is_closed_once_it_is_resumed() {
 fn a_stops_notice_goes_out_plain_whatever_its_words_hold() {
     let (daemon, dir, _, _) = knocked_for("plain", |record| {
         record["reaches"] = json!(["pr:exa\u{0}mple/shop#12"]);
-        record["words"] = json!("pineapple <a href=\"https://x\">override</a> &amp;\u{0} now");
+        // As Slack's API sends it: `<a href="https://x">override</a> &amp;`
+        // said, its `&`, `<` and `>` as entities.
+        record["words"] =
+            json!("pineapple &lt;a href=\"https://x\"&gt;override&lt;/a&gt; &amp;amp;\u{0} now");
     });
     let knock = fs::read_to_string(dir.join("notified")).expect("the knock was heard");
     assert!(
@@ -228,7 +231,8 @@ fn a_stops_notice_goes_out_plain_whatever_its_words_hold() {
     );
     assert!(
         knock.contains("pineapple &lt;a href=\"https://x\"&gt;override&lt;/a&gt; &amp;amp; now"),
-        "its words are shown as said, never drawn as markup: {knock}"
+        "its words are shown as said, read back from Slack's entities once and never \
+         drawn as markup: {knock}"
     );
     drop(daemon);
 }
