@@ -634,8 +634,8 @@ def test_the_map_draws_how_cells_connect_and_answers_a_click_in_one_window(
     )
     assert window[1] <= window[0], f"the map's page scrolls: {window[1]} px in {window[0]}"
     assert window[2] <= window[0], f"the map runs {window[2]} px down a {window[0]} px window"
-    left, top, right, bottom = drawn_boxes(page, ["TERN03"], "the map drew no TERN03 to click")[2]
-    page.mouse.click((left + right) / 2, (top + bottom) / 2)
+    x, y = aimed(page, '#world circle.cell[data-key="c:TERN03"]', "c:TERN03", "TERN03's click")
+    page.mouse.click(x, y)
     expect(page, "a click on a cell didn't open it").to_have_url(re.compile("#cell=TERN03$"))
     expect(
         page.locator('#panel-body a[href^="mycelium:cell/TERN03"][href$="/go"]'),
@@ -669,50 +669,65 @@ BOXES = """(keys) => [document.getElementById('map-view'), document.getElementBy
 DRAWN = f"(keys) => ({BOXES})(keys).every((box) => box !== null && box[2] > box[0])"
 # A health said for one thing: its verdict, then why.
 HEALTH_SAID = re.compile(r"^(Well|Watch|Tend): \S")
-# A mark on the map, found and measured in one go: a reading's redraw
-# between finding a mark and measuring it measures one no longer drawn, at 0.
-MARK_BOX = """(selector) => {
-  const r = document.querySelector(selector)?.getBoundingClientRect();
-  return r ? [r.left, r.top, r.right, r.bottom] : null;
-}"""
+# The middle of a mark and what a pointer let go there opens, read in one
+# task as the map's own release reads it (the nearest data-key, else
+# data-mark, under elementFromPoint). A mark taken out, drawn with no width
+# or covered by another mark is aimed at nowhere, so the click that follows
+# goes where the read said it opens.
+AIM = """([selector, key]) => { const e = document.querySelector(selector);
+  const r = e && e.isConnected ? e.getBoundingClientRect() : null;
+  if (!r || !(r.right > r.left && r.bottom > r.top)) return { at: null, under: null };
+  const x = (r.left + r.right) / 2; const y = (r.top + r.bottom) / 2;
+  const hit = document.elementFromPoint(x, y);
+  const under = hit?.closest('[data-key]')?.dataset.key
+    || hit?.closest('[data-mark]')?.dataset.mark;
+  return { at: [x, y], under: under || null }; }"""
+AIMED = f"(aim) => {{ const seen = ({AIM})(aim); return seen.under === aim[1] ? seen.at : null; }}"
+
+
+def is_drawn(box: list[float] | None) -> bool:
+    """Say whether a box read from the page holds a mark as drawn, with width."""
+    return box is not None and box[2] > box[0]
 
 
 def drawn_boxes(page: Page, cells: list[str], why: str) -> list[list[float]]:
     """Give the view's box, the drawer's and each cell's, once every cell is drawn.
 
-    A cell that never draws, or one redrawn away between the wait and the read,
-    fails by name.
+    A cell that never draws, or one redrawn away or to no width between the
+    wait and the read, fails by name.
     """
     try:
         page.wait_for_function(DRAWN, arg=cells, timeout=PACE_MS)
     except PlaywrightTimeoutError as undrawn:
         boxes = page.evaluate(BOXES, cells)[2:]
-        missing = [cell for cell, box in zip(cells, boxes, strict=True) if not box]
+        missing = [cell for cell, box in zip(cells, boxes, strict=True) if not is_drawn(box)]
         message = f"{why}: {missing or cells} undrawn"
         raise AssertionError(message) from undrawn
     view, drawer, *boxes = page.evaluate(BOXES, cells)
     assert view, f"{why}: the map's view went from the page"
     assert drawer, f"{why}: the drawer went from the page"
-    gone = [cell for cell, box in zip(cells, boxes, strict=True) if not box]
+    gone = [cell for cell, box in zip(cells, boxes, strict=True) if not is_drawn(box)]
     assert not gone, f"{why}: {gone} redrawn away once drawn"
     return [view, drawer, *boxes]
+
+
+def aimed(page: Page, selector: str, key: str, why: str) -> tuple[float, float]:
+    """Give the point a pointer opens the mark keyed key at, once the map opens it there.
+
+    A mark never drawn there fails saying what its middle opens instead.
+    """
+    try:
+        at = page.wait_for_function(AIMED, arg=[selector, key], timeout=PACE_MS).json_value()
+    except PlaywrightTimeoutError as missed:
+        seen = page.evaluate(AIM, [selector, key])
+        message = f"{why}: the middle of {selector}, at {seen['at']}, opens {seen['under']}"
+        raise AssertionError(message) from missed
+    return at[0], at[1]
 
 
 def strongest(page: Page, cell: str) -> float:
     """Say the alpha of the strongest mark a cell is drawn with."""
     return max(float(mark["alpha"] or 0) for mark in marks_of(page, f"c:{cell}"))
-
-
-def drawn_at(page: Page, selector: str, what: str) -> list[float]:
-    """Where a mark on the map is drawn on the page, failing when it isn't."""
-    box: list[float] | None = page.evaluate(MARK_BOX, selector)
-    assert box, f"the map drew no {what}"
-    return box
-
-
-def middle(box: list[float]) -> tuple[float, float]:
-    """Find the middle of a box measured as left, top, right and bottom."""
-    return (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
 
 
 def inside(view: list[float], box: list[float]) -> bool:
@@ -790,7 +805,8 @@ def test_a_network_pointed_at_says_what_it_is_for_and_how_it_stands_unopened(
     )
     before = page.url
     ring = f'#world .hub[data-key="h:{HERONS}"] .m-hub'
-    page.mouse.move(*middle(drawn_at(page, ring, "ring for the heron's network")))
+    x, y = aimed(page, ring, f"h:{HERONS}", "the heron's network to point at")
+    page.mouse.move(x, y)
     expect(said.first, "pointing at the heron's network never peeked at it").to_have_text(
         HERONS_TITLE
     )
