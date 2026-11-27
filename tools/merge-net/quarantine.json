@@ -196,5 +196,17 @@
     "owner_session": "orchestrator",
     "reason": "has been broken since #6204, whose revert won't apply; its owner fixes it forward and takes it off this list",
     "test": "a-macs-checks-since-6b3efce3479449e4385a7c608c587a64b45eee82"
+  },
+  {
+    "at": 1795765361,
+    "commit": "b15e429906da19af7e95cc6a170d8247541b5396",
+    "due": "2026-11-29",
+    "owner_pr": 6828,
+    "owner_session": "orchestrator",
+    "reason": "failed, then passed, at b15e429906da",
+    "subtests": [
+      "test_a_detail_inside_a_thing_is_found_from_the_root_and_return_goes_there"
+    ],
+    "test": "vm-desktop-launcher-goes-places"
   }
 ]
