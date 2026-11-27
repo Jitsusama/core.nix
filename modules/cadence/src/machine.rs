@@ -139,7 +139,9 @@ pub const MEASURES: &[Measure] = &[
     // how many of the day's looks counted every copy by its share. It isn't
     // a measure, since a day reads a higher figure as worse and a move to
     // shares would read so; a day whose measure moved reads here as a move,
-    // and that figure in health's file says whether it was the measure.
+    // and that figure in health's file says whether the typical and heavy
+    // copy's measure moved. The most held is one look's, so on a day partly
+    // by Rss the figure doesn't say which measure that look took.
     measure(
         "health.memory.pi.most-mib",
         "resources",
