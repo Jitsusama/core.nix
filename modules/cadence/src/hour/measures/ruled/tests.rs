@@ -961,7 +961,8 @@ fn a_claim_is_given_short_however_it_is_spaced() {
 /// A claim is read as its reader sees it, so neither a line break inside
 /// its sentence, as a hard-wrapped message has, nor spacing of another
 /// width hides it; a date the break parts from it still backs it, and a
-/// denial the break parts from it still denies it.
+/// denial the break parts from it, within its sentence or ending the line
+/// before, still denies it.
 #[test]
 fn a_claim_split_by_a_line_break_or_odd_spacing_is_read_whole() {
     for (text, claim) in [
@@ -986,6 +987,16 @@ fn a_claim_split_by_a_line_break_or_odd_spacing_is_read_whole() {
         unbacked("That isn't Joel's\nrule."),
         None,
         "a denial a line break parted from its claim was read as a claim"
+    );
+    assert_eq!(
+        unbacked("That is not\nJoel's rule."),
+        None,
+        "a denial ending the line before a claim was read past"
+    );
+    assert_eq!(
+        unbacked("That is\nJoel's rule.").as_deref(),
+        Some("Joel's rule."),
+        "a claim was taken as denied by a line before it that denies nothing"
     );
 }
 

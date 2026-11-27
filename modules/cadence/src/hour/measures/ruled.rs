@@ -624,7 +624,13 @@ pub fn unbacked(text: &str) -> Option<String> {
     };
     (0..said.len()).find_map(|at| {
         if claims(said[at]) {
-            return (!backed(at)).then(|| said[at].to_owned());
+            // A denial ending the line before, as "That is not" over
+            // "Joel's rule.", denies the claim the break parted from it.
+            // The two joined still hold this claim's words, so they claim
+            // nothing only where that denial reaches it.
+            let over = at.checked_sub(1).and_then(joined);
+            let denied = over.is_some_and(|whole| !claims(&whole));
+            return (!denied && !backed(at)).then(|| said[at].to_owned());
         }
         let whole = joined(at)?;
         let split = claims(&whole) && !claims(said[at + 1]);
