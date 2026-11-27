@@ -89,13 +89,13 @@ CELLS = 8
 # than the map's header was, and its elements rose by three, the rest within
 # their room; five kilobytes in all, and one more for the labels kept apart,
 # 0.4 KB of it; and more once a machine's drawer starts new work on it,
-# 688.1 KB in all as the gate measured it. One file and 0.7 KB more are the
+# 688.1 KB and 626 elements in all as the gate measured it. One file and 0.7 KB more are the
 # kit's early.js, the script the page once wrote into itself, which the
 # sites' policy now runs only from a file: 701 bytes stripped, and 32 more in
 # the markup, whose tag for it and the note on why it runs first are longer
 # than the script they replace; about 688.8 KB, so 690 until the gate
 # measures it.
-BUDGET = Budget(files=36, kilobytes=690, elements=623)
+BUDGET = Budget(files=36, kilobytes=690, elements=626)
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000
 TWIN_NETWORKS = 200
