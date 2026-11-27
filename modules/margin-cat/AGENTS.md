@@ -441,8 +441,11 @@ come, and rests 20 to 40 minutes between visits so it stays a treat rather
 than a second animal always about. The cat answers it where it sits. A key
 ends a visit: the puppy fades where it is and the cat sits from where it's
 got to, or, with the keys on another column, goes back over the window it
-sat on until they rest there. Dozing off ends none. Under the launcher's
-card the puppy goes at once rather than fading.
+sat on until they rest there. Dozing off ends none by itself. A scroll that
+carries the window it sat on away ends one too, dozing or not: the puppy
+fades and the cat rides to its seat on that window, never left on the air
+where the window was. Under the launcher's card the puppy goes at once
+rather than fading.
 
 - Held by `margin-cat-puppy.qml`: "from just behind its column's edge, drawn only within it,
   facing the cat"

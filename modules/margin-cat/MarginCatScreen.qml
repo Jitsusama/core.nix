@@ -443,31 +443,37 @@ PanelWindow {
             // play plays on, as before: a key ends one (stroll), but for
             // a puppy's visit, which the first branch ends where niri
             // carries its window away.
-            if (going?.kind === "puppy"
+            const home = seat(tile(sat));
+            if (going?.kind === "puppy" && home !== null
                 && MarginCat.carries(saw, tilesOf(space?.id), sat) !== null) {
                 // The keys gone to a column niri scrolls its window away
                 // for end the puppy's visit there, the puppy fading where
                 // it was, so the cat rides off with its window as a seated
                 // cat does, never left standing on the air where that
-                // window was.
+                // window was. Cut mid-hop, its place is a leap's frame
+                // above its seat, so it rides to its seat on that window
+                // rather than keeping the leap.
                 tell("puppy");
                 halt();
-            } else if (going !== null && !going.kind && !byHand
-                && MarginCat.carries(saw, tilesOf(space?.id), goingTo) !== null) {
-                const was = goingTo;
-                const top = (saw ?? []).find(one => one.id === was);
-                const caught = Carried.caught(drawnAt(), top,
-                    { wide: size, tall: size, air: cell, scrolling: scrolling() });
-                if (caught === "holds") {
-                    halt();
-                    sat = was;
-                    heldShortOn = was;
-                } else {
-                    walkOnTo(was, saw);
+                rideTo(home);
+            } else {
+                if (going !== null && !going.kind && !byHand
+                    && MarginCat.carries(saw, tilesOf(space?.id), goingTo) !== null) {
+                    const was = goingTo;
+                    const top = (saw ?? []).find(one => one.id === was);
+                    const caught = Carried.caught(drawnAt(), top,
+                        { wide: size, tall: size, air: cell, scrolling: scrolling() });
+                    if (caught === "holds") {
+                        halt();
+                        sat = was;
+                        heldShortOn = was;
+                    } else {
+                        walkOnTo(was, saw);
+                    }
                 }
+                if (going === null)
+                    carried(saw);
             }
-            if (going === null)
-                carried(saw);
             if (going !== null || !resting.running || wanted !== waitingOn) {
                 // Its wander forgotten a moment later, outside this
                 // change of `there`, which forgetting it changes again.
