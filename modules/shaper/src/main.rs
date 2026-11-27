@@ -1312,7 +1312,9 @@ fn started_live(options: &Options) -> live::Live {
     live
 }
 
-fn run(options: &Options) -> Result<(), Failure> {
+/// Makes the shaper's folders, and takes from them what an earlier shaper
+/// kept there that nothing reads now.
+fn clear_state(options: &Options) {
     let _ = fs::create_dir_all(&options.state);
     let _ = fs::create_dir_all(&options.runtime);
     // Where each network's rates were kept from one stay to the next, by
@@ -1321,6 +1323,10 @@ fn run(options: &Options) -> Result<(), Failure> {
     for kept in ["connections.json", "learned.json", "learned.json.new"] {
         let _ = fs::remove_file(options.state.join(kept));
     }
+}
+
+fn run(options: &Options) -> Result<(), Failure> {
+    clear_state(options);
     let (send, echoes): (_, Receiver<Echo>) = channel();
     let mut shaped: BTreeMap<String, Shaped> = BTreeMap::new();
     let began = Instant::now();
@@ -1427,15 +1433,22 @@ fn run(options: &Options) -> Result<(), Failure> {
             (link, h)
         });
         write_status(&options.runtime, &shaped, heard.as_ref());
-        if let Some(second) = live.traced() {
-            traces.write(&traced(
-                second,
-                &shaped,
-                &house,
-                (up_counted.kbit(), &vpns.0),
-            ));
-        }
+        let offered = (up_counted.kbit(), &vpns.0);
+        trace_second(&mut traces, &live, (&shaped, &house), offered);
         thread::sleep(STEP);
+    }
+}
+
+/// Writes the second `live` last traced, if one is ready, as its link held
+/// it, with what reached the VPNs' queues, `offered`, beside their holds.
+fn trace_second(
+    traces: &mut trace::Writer,
+    live: &live::Live,
+    (shaped, house): (&BTreeMap<String, Shaped>, &HouseHolds),
+    offered: (Option<qdisc::Tins>, &BTreeMap<String, Vpn>),
+) {
+    if let Some(second) = live.traced() {
+        traces.write(&traced(second, shaped, house, offered));
     }
 }
 
