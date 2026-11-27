@@ -48,6 +48,7 @@ use card::{Kept, compose};
 use measures::{Class, Measure};
 use moved::{HARNESS, moved};
 use owing::file;
+pub use owing::held_when_fixed;
 use records::{RECORD_READ, aboard, tail};
 
 /// Who moves the measures no file names an owner for: the merge net's

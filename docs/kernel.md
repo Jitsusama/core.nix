@@ -42,7 +42,7 @@ x86-64 machine as `packages.x86_64-linux.kernel`.
 
 BORE is fetched from its author at a fixed commit with its hash, so it can be
 traced to where it came from and can't change underneath the build. The others
-are fixes written here, kept until the kernel has its own:
+are fixes written here or sent upstream, kept until the kernel has its own:
 
 | Patch                     | What it does                   | From               |
 | ------------------------- | ------------------------------ | ------------------ |
@@ -53,6 +53,7 @@ are fixes written here, kept until the kernel has its own:
 | `vb2-dma-sg-orders.patch` | a camera that opens in fragmented memory | written here |
 | `hibernate-progress.patch` | a hibernation's image read, on screen | written here |
 | `virtio-gpu-panic-outside-panic.patch` | that bar drawn safely in a VM | written here |
+| `sched-delayed-run-delay.patch` | no sleep counted as a wait | [sent upstream][4] |
 
 BORE is a small change to the kernel's own EEVDF scheduler: it favours tasks
 that run in short bursts, such as the compositor, terminal and editor, over
@@ -98,7 +99,10 @@ address. The patch recorded the name first. Most access points name their
 country, but hostapd doesn't unless it's told to. Upstream took it as
 [577f690ce5dc][3], which reached the stable series in 7.3.6.
 `wifi-names-a-network-without-a-country` reads core's kernel's source,
-with its patches, to hold it there for every machine.
+with its patches, to hold it there for each machine that builds core's
+kernel. The two Apple laptops build kernels of their own, which it doesn't
+read, and a machine whose own patches change `net/wireless/sme.c` would
+need it read against its kernel too.
 
 The Wi-Fi fix still carried is for a card that couldn't join an access point
 while memory was fragmented. Intel's driver adds a send queue as it joins,
@@ -153,6 +157,28 @@ command queue without the queue's lock. The second patch gives that object
 room and takes the lock when no panic is in progress. The laptops' own
 drivers write the pixels straight into the screen's memory, with nothing
 allocated or queued.
+
+The scheduler fix is for waits that never happened. Since 6.12 a task that
+sleeps can stay on its processor's queue for a while, marked as delayed,
+rather than leave it at once. When the kernel moves such a task to another
+processor, it marks it as queued from that moment, and the wakeup that
+follows doesn't mark it again, so the whole sleep since the move is added to
+the task's wait for a processor, the second field of its `schedstat`. On 26
+November a thread sleeping a second at a time booked 982 ms of wait on one
+sleep that took 1000 ms, after moving from processor 8 to 12. Slack's main
+threads, read every 20 ms, booked waits of 217 to 758 ms while every read
+saw them asleep. lag-watch and call-under-load both read that field, and
+cadence reads them, so their worst waits showed spikes that weren't there.
+The patch stops a delayed task being marked as queued; its wakeup still
+marks it. Neither 7.3.6 nor mainline has it yet. It closes only the move:
+of 23 such sleeps counted as waits over 20 minutes, 9 came with no move
+between reads, which some other path marks. The fair scheduler's own
+count, `wait_sum` in the thread's `sched` file, grew by at most 2 ms on
+every one of them. It counts sleeps of its own, though: the time a sleeper
+stays queued before it leaves, which over 30 s put Chrome's drawing thread
+at 310 ms against run_delay's 125. Each counts every real wait, so
+lag-watch takes the lesser of what the two grew by. call-under-load still
+reads the schedstat's alone, so the 9 the patch leaves stay in its waits.
 
 7.3.2 to 7.3.3 gave a false W^X warning at boot, with a stack trace, on a
 processor that needs the mitigation for Indirect Target Selection, while the
@@ -475,3 +501,4 @@ if less; record a new one after moving to a new series.
 [1]: https://github.com/firelzrd/bore-scheduler
 [2]: https://git.kernel.org/torvalds/c/a6036a41bffb
 [3]: https://git.kernel.org/torvalds/c/577f690ce5dc
+[4]: https://lore.kernel.org/all/20261024042753.2276779-1-albin_yang@163.com/
