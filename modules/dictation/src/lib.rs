@@ -20,6 +20,7 @@ pub mod echo;
 pub mod genai;
 pub mod graph;
 pub mod language;
+pub mod loudness;
 pub mod mel;
 pub mod microphone;
 pub mod openvino;
