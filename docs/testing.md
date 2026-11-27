@@ -242,9 +242,10 @@ shares (`tools/merge-net/fates.txt`), as does a path either side renamed
 or deleted out of one. Two changes in different files of the map, each
 within its budget's room alone, would otherwise merge as they stand and
 meet only on main. A head is judged by main's fates and its merge base's
-beside its own, so an edit of the list sends no head to rebase. A change in a fate waits its turn behind an
-earlier gate for another change in it, as one sharing a file or crate does,
-since merging first would leave that pass stale.
+beside its own, so an edit of the list sends no head to rebase. A change
+in a fate waits its turn behind an earlier gate for another change in it,
+as one sharing a file or crate does, since merging first would leave that
+pass stale.
 When main moved some, `changed-checks` runs again at
 the rebased head, never a single check chosen by hand, since which checks
 read a file shows only in their derivations; Nix builds only what the
