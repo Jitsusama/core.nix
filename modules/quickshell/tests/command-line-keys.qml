@@ -136,6 +136,9 @@ Item {
             line.pressed(held(Qt.Key_Escape, Qt.NoModifier));
             line.pressed(held(Qt.Key_C, Qt.ControlModifier));
             line.pressed(held(Qt.Key_Return, Qt.NoModifier));
+            // Read before typing() clears both, so these three are proven too.
+            compare(letGo.count, 0, "a held Escape, Ctrl+C or Return lets nothing go");
+            compare(ran.count, 0, "nor runs what's typed");
             typing("");
             line.pressed(held(Qt.Key_Backspace, Qt.NoModifier));
             line.pressed(held(Qt.Key_H, Qt.ControlModifier));

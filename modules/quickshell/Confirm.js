@@ -86,12 +86,15 @@ function untimed(ask, guard) {
 // as long as it lasts, while the foot says the ask is ready, so each is
 // said whether or not reports are on. A key early in the guard as it
 // should be, a modifier alone, or a key that answers says nothing here.
+// Only a yes key is named: with no time, every key is early, and naming
+// each would put what Joel typed in the journal.
 function letBy(ask, key, now, guard) {
     if (key === "" || answer(ask, key, now, guard) !== "early") {
         return null;
     }
     if (!Number.isFinite(now)) {
-        return `${key} came to the ask with no time, so it was let by`;
+        return `${YES.includes(key) ? key : "a key"} came to the ask with no time, so it `
+            + "was let by";
     }
     const cannot = untimed(ask, guard);
     if (cannot !== null) {

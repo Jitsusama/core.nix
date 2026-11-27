@@ -241,8 +241,9 @@ Item {
     // launcher gives KeyTimes' monotonic clock, which its ask is put on too,
     // so a wall clock stepped back can't make every key early. A link's
     // quiet (linked) is timed on it too, so such a step can't drop every
-    // key, Escape among them, for as long as it went back. A prompt given
-    // none keeps the wall clock, as it puts no ask.
+    // key, Escape among them, for as long as it went back. Super+S's line
+    // is given it too, as a link opens it. A prompt given none keeps the
+    // wall clock, so one a link may open must be given it.
     property var keyNow: () => Date.now()
     // How soon after visual's operator the same key again is taken with
     // it (Operators.takenWith), as his Neovim's timeoutlen
@@ -270,7 +271,7 @@ Item {
     // no Return until he's typed a key in it. It's trusted no more than a line he opened
     // himself, and nothing downstream may treat it differently: these only hold keys back.
     readonly property int linkQuiet: 700
-    // Until when, on the wall clock in ms, every key is dropped.
+    // Until when, on keyNow's clock in ms, every key is dropped.
     property real quietUntil: 0
     // Whether Return waits for a key typed first.
     property bool returnWaits: false
