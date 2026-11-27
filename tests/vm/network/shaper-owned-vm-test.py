@@ -139,17 +139,18 @@ class Rig:
         return float(now), int(htb["bytes"]), shed
 
     def client_read(self) -> tuple[float, int, int]:
-        """Give the client's clock, and the bytes eth1's queues have sent and hold waiting.
+        """Give the client's clock, the bytes eth1 has sent, and what its queues hold waiting.
 
-        The root qdisc, which tc names without a parent, counts every lane's. Read in one
-        command, so what it sent between two readings is timed by the client.
+        The link's own count says what left the machine, every lane's; the root qdisc, which
+        tc names without a parent, holds every lane's waiting. Read in one command, so what
+        it sent between two readings is timed by the client.
         """
-        now, _, text = self.client.succeed("date +%s.%N; tc -s -j qdisc show dev eth1").partition(
-            "\n"
-        )
+        now, sent, text = self.client.succeed(
+            "date +%s.%N; cat /sys/class/net/eth1/statistics/tx_bytes; tc -s -j qdisc show dev eth1"
+        ).split("\n", 2)
         queues: list[Json] = json.loads(text)
         root = next(q for q in queues if "parent" not in q)
-        return float(now), int(root["bytes"]), int(root["backlog"])
+        return float(now), int(sent), int(root["backlog"])
 
     def htb_behind(self) -> str:
         """Give what either machine's kernel said of HTB falling behind its events.
