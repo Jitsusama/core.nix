@@ -89,7 +89,9 @@
   # swap before work is ended, but for the hard part the sessions' kitty
   # keeps, which the next check holds; every slice above claims both kinds.
   # Whether the parents' floors cover them is the VM test's to say, since
-  # one is a share of memory and another a size.
+  # one is a share of memory and another a size. What session.slice and
+  # app.slice swap out stays compressed in memory, never on the disk, so
+  # what Joel comes back to faults back without waiting on it.
   session-memory-is-protected =
     let
       inherit (graphical.config) systemd;
@@ -102,13 +104,15 @@
       agents = systemd.user.slices.agents.sliceConfig;
     in
     holds "session-memory-is-protected"
-      "A slice above session.slice, app.slice or agents.slice lacks its memory floor, so they have none."
+      "A slice above session.slice, app.slice or agents.slice lacks its memory floor, so they have none, or session.slice or app.slice writes what it swaps out to the disk."
       (
         same (above "MemoryMin")
         && same (above "MemoryLow")
         && systemd.user.slices.session.sliceConfig ? MemoryMin
         && systemd.user.slices.app.sliceConfig ? MemoryMin
         && agents ? MemoryLow
+        && (systemd.user.slices.session.sliceConfig.MemoryZSwapWriteback or true) == false
+        && (systemd.user.slices.app.sliceConfig.MemoryZSwapWriteback or true) == false
       );
 
   # The compositor and the shell are how Joel drives the machine, so inside
@@ -141,12 +145,14 @@
 
   # Agents' sessions sit beside Joel's programs, not among them, where each
   # of their wakeups preempted his, and at a tenth of their weight, where
-  # his programs waited on the processor less than a third as long. The
-  # sorter watches both, so a session's busy work still goes to jobs.
+  # his programs waited on the processor less than a third as long. On the
+  # disk too, which io.cost on a named disk shares by weight. The sorter
+  # watches both, so a session's busy work still goes to jobs.
   sessions-sit-beside-the-programs =
     let
       inherit (graphical.config.systemd.user) slices services;
       weight = slice: slice.sliceConfig.CPUWeight or 100;
+      disk = slice: slice.sliceConfig.IOWeight or 100;
       # A slice is watched when it's named alone or with where its terminals'
       # busy work goes, after an `=` the shell quotes.
       watches =
@@ -155,10 +161,19 @@
           given = "${services.jobs-sorter.serviceConfig.ExecStart} ";
         in
         lib.hasInfix " --under ${slice} " given || lib.hasInfix " --under '${slice}=" given;
+      # Each claim by what it means, so a failure names the one that broke.
+      claims = {
+        "the apps don't outweigh it ten times on the processor" =
+          weight slices.app >= 10 * weight slices.agents;
+        "the apps don't outweigh it ten times on the disk" = disk slices.app >= 10 * disk slices.agents;
+        "the sorter doesn't watch app.slice" = watches "app.slice";
+        "the sorter doesn't watch agents.slice" = watches "agents.slice";
+      };
+      broken = lib.attrNames (lib.filterAttrs (_: held: !held) claims);
     in
     holds "sessions-sit-beside-the-programs"
-      "Agents' sessions have no slice beside the apps, the apps don't outweigh it ten times over, or the sorter doesn't watch it."
-      (weight slices.app >= 10 * weight slices.agents && watches "app.slice" && watches "agents.slice");
+      "Agents' sessions don't sit beside the apps: ${lib.concatStringsSep "; " broken}."
+      (broken == [ ]);
 
   # Under every core's load, the processor's one power budget holds each
   # near the same clock, so one of Joel's threads ran no faster on a
@@ -674,7 +689,8 @@
 
   # writeback-goal and disk-order, on a stand-in sysfs, take each exit they
   # say they take, give back what a disk's throttle had before its first
-  # goal, and stand the throttle down beside io.cost and up after it.
+  # goal, keep or drop that record as each refusal needs, and stand the
+  # throttle down beside io.cost and up after it.
   disk-throttles-come-back-as-they-were =
     pkgs.runCommandLocal "disk-throttles-come-back-as-they-were" { }
       ''
@@ -745,36 +761,78 @@
   # and a hold over a systemd-run that can't list its options fails its
   # build, saying so. Cross-built for aarch64 it holds the table to the
   # builder's own systemd, built as the machine's is; with the machine's
-  # systemd patched, or of no version, it's built unheld and says so for
-  # the machine's warnings, never throwing, and such a machine warns of it.
+  # systemd patched, from another source, built with a flag or an override
+  # argument of its own, or of no version, it's built unheld and says so
+  # for the machine's warnings, never throwing, and such a machine warns of
+  # it. Every unheld one is evaluated whole, not only read beside.
   # Cross-built from a Mac, whose nixpkgs has no systemd, it's unheld too.
   # Those are read as evaluated, here on Linux, since nixpkgs for a Mac
   # alone has no systemd to wrap.
   an-agents-run-stays-in-its-slice =
     let
-      cross = pkgs.pkgsCross.aarch64-multiplatform;
-      crossRun = cross.callPackage ./systemd-run.nix {
-        real = "/x";
-        cgroup = "cgroup";
-      };
+      # An aarch64 machine built here, with its systemd patched, whose
+      # nixpkgs every cross-built case shares. A whole machine cross-built
+      # from a Mac stops in nixpkgs, on tools its initrd asks for, before
+      # any warning is read, so this is the machine that warns.
+      crossMachine = bareNixos [
+        self.nixosModules.nix-daemon
+        self.nixosModules.slices
+        (
+          { pkgs, ... }:
+          {
+            nixpkgs.buildPlatform = "x86_64-linux";
+            nixpkgs.hostPlatform = "aarch64-linux";
+            systemd.package = pkgs.systemd.overrideAttrs (old: {
+              patches = (old.patches or [ ]) ++ [ ./systemd-run-options.txt ];
+            });
+          }
+        )
+      ];
+      cross = crossMachine.pkgs;
+      crossWith =
+        systemd:
+        cross.callPackage ./systemd-run.nix {
+          inherit systemd;
+          real = "/x";
+          cgroup = "cgroup";
+        };
+      crossRun = crossWith cross.systemd;
       builders = builtins.unsafeDiscardStringContext (
         lib.getExe' cross.buildPackages.systemd "systemd-run"
       );
       # The hold the wrapper's own build asks for, not the one it offers.
       askedOf = crossRun.drvAttrs.holds.drvAttrs.buildCommand or "";
-      heldToBuilders = crossRun.held && lib.hasInfix builders askedOf;
-      patchedCross = cross.callPackage ./systemd-run.nix {
-        systemd = cross.systemd.overrideAttrs (old: {
-          patches = (old.patches or [ ]) ++ [ ./systemd-run-options.txt ];
-        });
-        real = "/x";
-        cgroup = "cgroup";
-      };
-      versionless = cross.callPackage ./systemd-run.nix {
-        systemd = pkgs.runCommandLocal "a-systemd" { } "mkdir $out";
-        real = "/x";
-        cgroup = "cgroup";
-      };
+      heldToBuilders = crossRun.held && !(crossRun ? unheld) && lib.hasInfix builders askedOf;
+      patchedCross = crossWith crossMachine.config.systemd.package;
+      # Each built as the builder's is but for the one thing it names.
+      another = pkgs.runCommandLocal "another-source" { } "mkdir $out";
+      sourced = crossWith (cross.systemd.overrideAttrs { src = another; });
+      flagged = crossWith (
+        cross.systemd.overrideAttrs (old: {
+          mesonFlags = old.mesonFlags ++ [ (lib.mesonOption "mode" "developer") ];
+        })
+      );
+      argued = crossWith (cross.systemd.override { withTimedated = false; });
+      # Four flags of its own, so the warning names three and counts the last.
+      crowded = crossWith (
+        cross.systemd.overrideAttrs (old: {
+          mesonFlags =
+            old.mesonFlags
+            ++ map (name: lib.mesonOption name "x") [
+              "a1"
+              "a2"
+              "a3"
+              "a4"
+            ];
+        })
+      );
+      # The builder's own flags in another order: none differs, yet they do.
+      reordered = crossWith (
+        cross.systemd.overrideAttrs (old: {
+          mesonFlags = lib.reverseList old.mesonFlags;
+        })
+      );
+      versionless = crossWith (pkgs.runCommandLocal "a-systemd" { } "mkdir $out");
       # nixpkgs as a Mac cross-builds an aarch64 machine with, only evaluated.
       fromAMac = import pkgs.path {
         localSystem = "aarch64-darwin";
@@ -784,25 +842,44 @@
         real = "/x";
         cgroup = "cgroup";
       };
-      # A whole machine cross-built from a Mac stops in nixpkgs, on tools its
-      # initrd asks for, before any warning is read, so the machine that
-      # warns is an aarch64 one built here with its systemd patched.
-      patchedWarnings =
-        (bareNixos [
-          self.nixosModules.nix-daemon
-          self.nixosModules.slices
-          (
-            { pkgs, ... }:
-            {
-              nixpkgs.buildPlatform = "x86_64-linux";
-              nixpkgs.hostPlatform = "aarch64-linux";
-              systemd.package = pkgs.systemd.overrideAttrs (old: {
-                patches = (old.patches or [ ]) ++ [ ./systemd-run-options.txt ];
-              });
-            }
-          )
-        ]).config.warnings;
-      unheld = run: !run.held && noHold run && lib.hasInfix "isn't held" run.unheld;
+      patchedWarnings = crossMachine.config.warnings;
+      # Unheld and saying so, and evaluated whole: its derivation is forced,
+      # so one that throws past its warning fails here.
+      unheld = run: builtins.seq run.drvPath (!run.held && noHold run && saysSo run);
+      saysSo = run: lib.hasInfix "isn't held" run.unheld;
+      # The warning's advice is the one that holds it: a Mac is told only to
+      # build on the machine's platform, and one built otherwise what to match,
+      # the override argument named only when its flags differ.
+      advises = run: words: lib.all (word: lib.hasInfix word run.unheld) words;
+      macAdvice =
+        advises macRun [
+          "aarch64-darwin, which builds it, can't run aarch64-linux's systemd"
+          "can't build systemd at all; build it on aarch64-linux to hold it"
+        ]
+        && !advises macRun [ "match" ];
+      sourceAdvice =
+        advises sourced [
+          "differs in its source;"
+          "match the builder's systemd in its source, to hold it"
+        ]
+        && !advises sourced [ "withTimedated" ];
+      patchAdvice =
+        advises patchedCross [
+          "x86_64-linux, which builds it, can't run aarch64-linux's systemd"
+          "differs in its patches;"
+          "match the builder's systemd in its patches, to hold it"
+        ]
+        && !advises patchedCross [ "withTimedated" ];
+      flagAdvice = advises flagged [
+        "in its flags (-Dmode=developer);"
+        "match the builder's systemd in its flags, an override argument"
+      ];
+      argAdvice = advises argued [
+        "in its flags (-Dtimedated=false, no -Dtimedated=true);"
+        "withTimedated"
+      ];
+      crowdedAdvice = advises crowded [ "(-Da1=x, -Da2=x, -Da3=x, and 1 more)" ];
+      reorderAdvice = advises reordered [ "(the same flags in another order or count)" ];
       # Neither asked for by the wrapper's build nor offered beside it.
       noHold = run: !(run.drvAttrs ? holds) && !(run ? holds);
       # A systemd-run that can't list its options, for the hold to refuse.
@@ -839,17 +916,33 @@
     assert lib.assertMsg heldToPatched "systemd-run's hold isn't to the systemd it wraps";
     assert lib.assertMsg heldToBuilders "a cross-built systemd-run isn't held to the builder's";
     assert lib.assertMsg (unheld patchedCross) "a cross-built, patched systemd-run is held";
+    assert lib.assertMsg (unheld sourced) "a systemd-run cross-built from another source is held";
+    assert lib.assertMsg (unheld flagged) "a systemd-run cross-built with its own flag is held";
+    assert lib.assertMsg (unheld argued) "a systemd-run cross-built with timedated off is held";
     assert lib.assertMsg (
       unheld versionless && lib.hasInfix "unknown version" versionless.unheld
     ) "a cross-built systemd-run of no version isn't said unheld";
     assert lib.assertMsg (unheld macRun) "a systemd-run cross-built from a Mac is held";
+    assert lib.assertMsg macAdvice
+      "a Mac's unheld systemd-run isn't told both why and to build on the machine's platform";
+    assert lib.assertMsg sourceAdvice "a systemd-run of another source isn't told so";
+    assert lib.assertMsg flagAdvice "a systemd-run with its own flag isn't told which to match";
+    assert lib.assertMsg argAdvice "a systemd-run with timedated off isn't told which flag differs";
+    assert lib.assertMsg patchAdvice "a patched systemd-run isn't told its patches differ";
+    assert lib.assertMsg (
+      unheld crowded && crowdedAdvice
+    ) "a systemd-run with four flags of its own doesn't name three and count the last";
+    assert lib.assertMsg (
+      unheld reordered && reorderAdvice
+    ) "a systemd-run with its flags reordered isn't told so";
+    assert lib.assertMsg (lib.any (lib.hasInfix "differs in its patches") patchedWarnings)
+      "a machine whose systemd is patched isn't warned that its patches differ";
     assert lib.assertMsg (lib.any (lib.hasInfix "isn't held") patchedWarnings)
       "a machine whose systemd-run isn't held doesn't warn of it";
     pkgs.runCommandLocal "an-agents-run-stays-in-its-slice" { nativeBuildInputs = [ pkgs.jq ]; } ''
-      grep -q "can't list its options" ${refused}/testBuildFailure.log
       ${pkgs.bash}/bin/bash ${./systemd-run-test.sh} ${lib.getExe run} \
         ${./systemd-run-options.txt} ${./systemd-run-options-hold.sh} \
-        ${pkgs.systemd}/bin/systemd-run
+        ${pkgs.systemd}/bin/systemd-run ${refused}/testBuildFailure.log
       touch $out
     '';
 

@@ -7,15 +7,29 @@ let
   # Only the fences a machine says run here, in mycelium's shape. An
   # agent's `mycelium run` in a fenced or strict one starts through the
   # fence's launcher, Landlock's on Linux and sandbox-exec's on a Mac; one
-  # unfenced takes none, as no agent asks as unfenced. Doors accepted for
-  # other machines are said only once some machine is named, as an empty
-  # allowance means what none does.
+  # unfenced takes none, as no agent asks as unfenced. A held start an agent
+  # asks for as fenced or strict goes through it too, except, on Linux and
+  # on a Mac declaring `piFencesItself`, the realm's agent program, as
+  # `agents` names it or else pi, which the node starts told the fence to
+  # keep instead, so only what that program fences itself is fenced.
+  # Doors accepted for other machines are said only once some machine is
+  # named, as an empty allowance means what none does.
   fenced = lib.mapAttrs (
     kind: doors:
     removeAttrs doors [ "accepts" ]
     // lib.optionalAttrs (doors.accepts != { }) { inherit (doors) accepts; }
     // runsIn kind
   ) (lib.filterAttrs (_: doors: doors != null) cfg.declares.fence);
+  # Each need as mycelium reads it, from the words `--need` takes: cloud
+  # alone, and every other as its kind keyed to its value.
+  need =
+    said:
+    let
+      kind = lib.head (lib.splitString "=" said);
+    in
+    if said == "cloud" then said else { ${kind} = lib.removePrefix "${kind}=" said; };
+  needsIn = map (rule: rule // { needs = map need rule.needs; }) cfg.declares.needsIn;
+  lively = cfg.declares.keptLively;
   runsIn =
     kind:
     lib.optionalAttrs (cfg.fenceRuns != null && kind != "none") {
@@ -49,6 +63,18 @@ builtins.toJSON (
   // lib.optionalAttrs (cfg.agents != { }) { inherit (cfg) agents; }
   // lib.optionalAttrs (cfg.declares.within != null) { inherit (cfg.declares) within; }
   // lib.optionalAttrs (cfg.declares.hosts != [ ]) { inherit (cfg.declares) hosts; }
+  // lib.optionalAttrs (needsIn != [ ]) { needs_in = needsIn; }
   // lib.optionalAttrs (fenced != { }) { fence = fenced; }
   // lib.optionalAttrs cfg.declares.piFencesItself { pi_fences_itself = true; }
+  // lib.optionalAttrs (lively != null) {
+    kept_lively = {
+      inherit (lively) cpu;
+    }
+    // lib.optionalAttrs (lively.memoryAvailable != null) {
+      memory_available = lively.memoryAvailable;
+    }
+    // lib.optionalAttrs (lively.memoryFull != null) {
+      memory_full = lively.memoryFull;
+    };
+  }
 )

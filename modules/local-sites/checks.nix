@@ -472,6 +472,7 @@ import ./ask-checks.nix args
         env = {
           LOCAL_SITES = lib.getExe' (pkgs.callPackage ./package.nix { }) "local-sites";
           SYSTEM_SITE = "${page}";
+          SYSTEM_KINDS = builtins.toJSON inRealm.jitsusama.local-sites.feeds.system.kinds;
           LOCAL_SITES_SHARED = "${shared}";
           STRIP = "${./home/strip.css}";
           WEB_SKILL = "${../theme/web/skill}";
@@ -518,7 +519,8 @@ import ./ask-checks.nix args
   # The map, built on the theme's own web kit as a machine builds it, read in
   # headless Chromium through the server beside a stand-in node
   # (modules/mycelium/site/tests/map-reads-live-test.py): live with the realm
-  # drawn, a cell moving and another going, broken while the node is away
+  # drawn, a cell moving, two sharing a title moving and another going,
+  # broken while the node is away
   # with the realm kept and live once it's back, stale once the server goes
   # with the realm kept, a cell's title drawn as words and never as markup,
   # what each spent today, what waits on a cell and what holds stand as the
@@ -694,6 +696,7 @@ import ./ask-checks.nix args
   # the Wi-Fi drawn as words, one going with its link, a machine mycelium
   # runs on following the node and linked to its place on the map, broken
   # while net is away and live once it's back, stale once the server goes,
+  # every device within a phone's width as each floor stacks there,
   # within its budget, the web-design skill's page checks passing at two
   # widths in both looks, and nothing logged. Both feeds are the ones
   # home.nix declares for a machine in a realm, so the server under test

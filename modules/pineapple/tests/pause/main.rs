@@ -3,8 +3,10 @@
 //! The machine is a fake one here, answering systemctl and mycelium as
 //! the real ones would, and writing down everything asked of it. What it
 //! says of a machine that refuses it or is never reached is in reach.rs,
-//! and the script another machine runs for it in script.rs.
+//! the script another machine runs for it in script.rs, and how a stop
+//! a reader keeps here is given to the other machines in carry.rs.
 
+mod carry;
 mod reach;
 mod script;
 

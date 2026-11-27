@@ -76,7 +76,9 @@ fn said(link: &LinkStatus, room: Room) -> Vec<String> {
         layout::one_line(&link.name),
         layout::one_line(&link.network)
     )];
-    let mut say = |line: String| lines.extend(set(&line, INSET.len(), room));
+    // Each line of status hangs, so where one ends and the next begins
+    // reads at a glance, as disk-guard's holders do.
+    let mut say = |line: String| lines.extend(layout::hanging(&line, INSET.len(), room));
     say(format!("up {}, down {}", mbit(link.up), mbit(link.down)));
     for line in link.lanes.as_ref().map(lanes_said).unwrap_or_default() {
         say(line);
@@ -126,28 +128,6 @@ fn said(link: &LinkStatus, room: Room) -> Vec<String> {
     // trips and never leaves a host on one line and its time on the next.
     say(format!("quiet round trips: {}", pings.join(layout::ITEMS)));
     lines
-}
-
-/// A line of status set `inset` cells in, wrapped at whole words to the
-/// room and hung two cells further under its first words, so where one
-/// line ends and the next begins reads at a glance, as disk-guard's
-/// holders do. A line that fits, and any line into a pipe, stays whole.
-fn set(line: &str, inset: usize, room: Room) -> Vec<String> {
-    let whole = layout::one_line(line);
-    if room
-        .cells()
-        .is_none_or(|cells| inset + layout::width(&whole) <= cells)
-    {
-        return vec![format!("{}{whole}", " ".repeat(inset))];
-    }
-    layout::hung(line, inset + layout::GAP, room)
-        .split('\n')
-        .enumerate()
-        .map(|(at, part)| {
-            let lead = if at == 0 { inset } else { 0 };
-            format!("{}{part}", " ".repeat(lead))
-        })
-        .collect()
 }
 
 /// How the upload is shared between its lanes, Joel's first, and the
@@ -296,7 +276,7 @@ impl Spent {
         }
         lines
             .iter()
-            .flat_map(|line| set(line, 0, room.for_prose()))
+            .flat_map(|line| layout::hanging(line, 0, room.for_prose()))
             .collect()
     }
 }
@@ -548,6 +528,20 @@ mod tests {
             "{next:?} doesn't hang two cells in from {:?}",
             lines[at]
         );
+        // The first line keeps the cells only the lines under it hang by.
+        // This why sets no item apart and leaves no widow, so with the
+        // first line's whole room the next line's first word wouldn't
+        // have fit on it; given the hung measure, as `hung` gave it, it
+        // would have.
+        let word = next
+            .split_whitespace()
+            .next()
+            .expect("the next line has words");
+        assert!(
+            layout::width(&lines[at]) + 1 + layout::width(word) > 80,
+            "{:?} left room for {word:?}, as it does when wrapped to the hung measure",
+            lines[at]
+        );
         let why = held().heard.and_then(|heard| heard.why).expect("a why");
         let hung: Vec<&str> = lines[at..]
             .iter()
@@ -688,15 +682,16 @@ mod tests {
 
     #[test]
     fn names_and_a_why_from_outside_draw_no_escape() {
-        // The leader's name sits on a line that fits, so it reads the
-        // path a line set whole takes, as every line into a pipe does.
+        // The leader's name fits its line and the why below wraps, so in
+        // a terminal both of a hang's outcomes see the controls; piped, one.
         let mut link = LinkStatus {
             name: "wlp0\u{1b}]0;owned\u{7}s20f3".to_owned(),
             network: "6c:ae\u{1b}]0;owned\u{7}:f6".to_owned(),
             follows: Some("enp0\u{1b}[2J\u{7}s13f0".to_owned()),
             ..held()
         };
-        // A why long enough to wrap at 60, so the hang's path is read.
+        // A why that wraps at 60 and at the 80 that 200 is held to, so it
+        // hangs under its first line in both, and is one line piped.
         if let Some(heard) = link.heard.as_mut() {
             heard.why = heard
                 .why
@@ -716,6 +711,20 @@ mod tests {
                     .iter()
                     .all(|line| !line.contains('\u{1b}') && !line.contains('\u{7}')),
                 "into {room:?} a control was drawn: {lines:#?}"
+            );
+            // The why's own lines, so the round trips' hang can't stand in,
+            // and its last word, past the control, on a line it hangs.
+            let at = lines
+                .iter()
+                .position(|line| line.starts_with("  Upload"))
+                .expect("the why is said");
+            let hung = lines[at + 1..]
+                .iter()
+                .take_while(|line| line.starts_with("    "))
+                .any(|line| line.contains("cleared"));
+            assert!(
+                room == Room::Unbounded || hung,
+                "into {room:?} the why didn't hang under its first line: {lines:#?}"
             );
         }
     }

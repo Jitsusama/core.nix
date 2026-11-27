@@ -27,7 +27,7 @@ use landing::Fault;
 use std::collections::HashSet;
 use std::fmt::Write as _;
 use std::fs;
-use std::io::{self, Read};
+use std::io;
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 use std::time::Instant;
@@ -75,8 +75,7 @@ const CROSSES_AT: u64 = 256 << 10;
 /// says it is waiting: past a few looks, so a share keeping pace is quiet.
 const SAYS_IT_WAITS: u64 = 10;
 
-/// What marks a name in the far list that isn't UTF-8, in place of its
-/// size.
+/// What marks a name in the far list that isn't UTF-8, for its size.
 const UNREADABLE: &str = "?";
 
 /// How many of a kind of miss are named, before the rest are counted.
@@ -100,15 +99,10 @@ pub fn plain_quest(quest: &str) -> bool {
 const WORKSPACE: &str = "pi/agentic-harness.pi/quest-workspace";
 
 /// The folder holding each quest's scratch, as the harness and mycelium
-/// both find it.
-pub fn scratches() -> PathBuf {
-    let cache = std::env::var_os("XDG_CACHE_HOME")
-        .filter(|it| !it.is_empty())
-        .map_or_else(
-            || PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".cache"),
-            PathBuf::from,
-        );
-    cache.join(WORKSPACE)
+/// both find it, or none where no cache is found ([`steps::cache`]).
+pub fn scratches() -> Option<PathBuf> {
+    let (xdg, home) = (std::env::var_os("XDG_CACHE_HOME"), std::env::var_os("HOME"));
+    steps::cache(xdg.as_deref(), home.as_deref()).map(|cache| cache.join(WORKSPACE))
 }
 
 /// The tree a kind copies for a job in `folder`: the folder, or the
@@ -260,8 +254,7 @@ fn leave<'a>(
 /// strict fence lets it write, runs the kind's setup and then the job,
 /// its program found on the far path by its name, in the job's folder
 /// `within` the tree, then leaves what the kind brings back in the
-/// handover and takes its copy away. First it clears the copies of runs
-/// here that are gone.
+/// handover and takes its copy away, first clearing gone runs' copies here.
 pub fn script(
     quest: &str,
     id: &str,
@@ -271,12 +264,14 @@ pub fn script(
     kind: &Kind,
     command: &[String],
 ) -> String {
-    let scratches = format!("\"${{XDG_CACHE_HOME:-$HOME/.cache}}\"/{WORKSPACE}/{quest}");
+    let scratches = format!("\"$cache\"/{WORKSPACE}/{quest}");
     let job = format!("{scratches}/{HANDOVER}/{id}");
     let work = format!("{scratches}/{}", quoted(&format!("{scratch}/{id}")));
-    let folder = match within.to_string_lossy() {
-        within if within.is_empty() => "\"$work\"".to_owned(),
-        within => format!("\"$work\"/{}", quoted(&within)),
+    let inside = quoted(&within.to_string_lossy());
+    let folder = if within.as_os_str().is_empty() {
+        "\"$work\"".to_owned()
+    } else {
+        format!("\"$work\"/{inside}")
     };
     let program = Path::new(&command[0]).file_name().map_or_else(
         || command[0].clone(),
@@ -295,16 +290,23 @@ pub fn script(
     let sweeping = sweeping();
     let handing = handing();
     let bringing = bringing(kind);
+    let freed = freed();
     let setup = kind.setup.trim();
     format!(
-        r#"job={job}
+        r#"{CACHE}
+job={job}
 work={work}
-mine=
-tab=$(printf '\t')
+mine= place= tab=$(printf '\t')
+{CLEARING}
 {crossing}
 {copying}
 # Each word for the near side on a line of its own, whatever came before.
 say() {{ printf '\n%s\n' "$1"; }}
+# With no cache found, no quest's scratch is either. That is this
+# machine's fault, not the tree's, so the job is left untaken for another.
+# Its word reaches the near terminal, so it names this machine.
+[ -n "$cache" ] || {{ printf 'elsewhere: no cache is found on %s\n' "$(uname -n)" >&2
+  say {untaken}; exit {UNTAKEN}; }}
 {stopping}
 {sweeping}
 {waiting}
@@ -323,22 +325,31 @@ say() {{ printf '\n%s\n' "$1"; }}
 if {{ [ ! -L "$runs" ] || rm -f "$runs"; }} && mkdir -p "$runs" &&
   {{ [ ! -L "$work{RUN}" ] || rm -f "$work{RUN}"; }} &&
   (set -C && printf '%s %s\n' "$$" "$here" > "$work{RUN}") && mine=1 &&
-  rm -rf "$work" && mkdir -p "$work"; then copied; why=$?; else why=2; fi
-[ -z "$mine" ] || rm -f "$work.names"
+  copies && cleared "$work" && mkdir "$work" && pinned; then copied; why=$?; else why=2; fi
+# What was taken as an archive may be a folder the job named as one. A
+# link standing at the copies' folder or at the copy as it's checked, or
+# a copy gone with one cleared, leaves it untaken, as this machine's, as
+# does a refusal that may have read through one; one put after, the cd
+# asks of once it's in.
+[ -z "$mine" ] || if copies; then rm -f "$work.names"; cleared "$work.tar"
+  [ "$why" -eq 2 ] || placed || {{ moved; why=2; }}
+else why=2; fi
+# The tree and the copy go as `freed` says.
 if [ "$why" -ne 0 ]; then
   [ -z "$mine" ] || {{
-    cd "$HOME" && rm -rf "$job/{TREE}" "$work" && rm -f "$work{RUN}"
-  }}
+    {freed}  }}
   [ "$why" -eq 1 ] && {{ say {refused}; exit {REFUSES}; }}
   say {untaken}
   exit {UNTAKEN}
 fi
 cd {folder} || {{
-  printf "elsewhere: the job's folder holds nothing that travels\n" >&2
-  cd "$HOME" && rm -rf "$job/{TREE}" "$work" && rm -f "$work{RUN}"
-  say {refused}
-  exit {REFUSES}
+  placed && printf "elsewhere: the job's folder holds nothing that travels\n" >&2; why=$?
+  [ "$why" -eq 0 ] || moved
+  {freed}  [ "$why" -ne 0 ] || {{ say {refused}; exit {REFUSES}; }}
+  say {untaken}
+  exit {UNTAKEN}
 }}
+entered {inside} || {{ moved; {freed}  say {untaken}; exit {UNTAKEN}; }}
 say {started}
 (
   {{ {setup}
@@ -486,14 +497,13 @@ pub fn bring_back(
     // long itself.
     let (mut since, mut most, mut seen, mut said) = (Instant::now(), 0, None, false);
     loop {
-        let bytes = list(job);
         // A share carries a list whole, so one past the bound is one every
         // try writes again.
-        if u64::try_from(bytes.len()).map_or(true, |read| read > LARGEST_FILE) {
+        let Some(bytes) = list(job) else {
             return Err(Missed::Refused(format!(
                 "its list of what it brings back is past the {LARGEST_FILE} bytes a share holds in one file, as a job making far more files than a share carries writes"
             )));
-        }
+        };
         let text = readable(&bytes);
         if lines(&text).last() == Some(CUT) {
             return Err(Missed::Lost(
@@ -541,18 +551,17 @@ pub fn bring_back(
 }
 
 /// The far side's list in the handover folder `job`, read only as the
-/// plain file it was opened as, as every file landed is, and no further
-/// than a byte past what a share holds in one file: anything else at its
-/// name, which no share carries, reads as nothing yet.
-fn list(job: &Path) -> Vec<u8> {
-    let mut bytes = Vec::new();
-    if let Ok(file) = landing::opened_plain(&job.join(BROUGHT)) {
-        // Read part way, it is a list still crossing, which the wait answers.
-        if file.take(LARGEST_FILE + 1).read_to_end(&mut bytes).is_err() {
-            bytes.clear();
-        }
-    }
-    bytes
+/// plain file it was opened as, as every file landed is, or nothing when
+/// it is past what a share holds in one file, found by reading no further
+/// than the byte past it: anything else at its name, which no share
+/// carries, reads as nothing yet.
+fn list(job: &Path) -> Option<Vec<u8>> {
+    let Ok(file) = landing::opened_plain(&job.join(BROUGHT)) else {
+        return Some(Vec::new());
+    };
+    // A read failing part way is of a list still crossing, which the wait
+    // answers.
+    archive::at_most(file, LARGEST_FILE).unwrap_or_else(|_| Some(Vec::new()))
 }
 
 /// The far side's list in `bytes`, a line each, with a name that isn't
@@ -781,7 +790,9 @@ mod steps;
 #[cfg(test)]
 use names::within_tree;
 use names::{Folders, tracked};
-use steps::{RUN, bringing, copying, crossing, handing, stopping, sweeping, waiting};
+use steps::{
+    CACHE, CLEARING, RUN, bringing, copying, crossing, freed, handing, stopping, sweeping, waiting,
+};
 
 pub use heard::{Heard, REFUSES, UNTAKEN, relay};
 

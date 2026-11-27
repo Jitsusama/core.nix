@@ -3,6 +3,7 @@
 {
   account,
   bareNixos,
+  compilesForMacos,
   holds,
   onLinux,
   passesClippy,
@@ -10,8 +11,24 @@
   self,
   ...
 }:
-onLinux {
-  # elsewhere's tests run as it builds, against a stand-in realm: a job
+{
+  # clippy finds nothing in elsewhere, its tests included. It's held on
+  # every system, since elsewhere runs on Macs too, and a Mac's cargo
+  # clippy, run without core's lints, passed what Linux's check refused.
+  elsewhere-passes-clippy = passesClippy "elsewhere-passes-clippy" (
+    pkgs.callPackage ./package.nix { }
+  );
+}
+// onLinux {
+  # clippy reads elsewhere, its tests included, as macOS would compile it,
+  # from Linux, where every merge's checks build: a lint that only a Mac's
+  # code trips fails the gate with no Mac to ask.
+  elsewhere-compiles-for-macos = compilesForMacos "elsewhere-compiles-for-macos" (
+    pkgs.callPackage ./package.nix { }
+  );
+
+  # elsewhere's tests run as it builds, against a stand-in realm: a job's
+  # placement prefers the machines already holding its quest, a job
   # mycelium places far goes by the quest's handover and mycelium's run,
   # never ssh or rsync, starts in the quest's scratch and runs in a copy
   # of its tracked files alone, those under a folder a share keeps home
@@ -24,10 +41,6 @@ onLinux {
   # doesn't allow is refused before anything runs. The far line runs under
   # dash, the strictest sh a far machine may have.
   elsewhere-goes-where-mycelium-places-it = pkgs.callPackage ./package.nix { };
-  # clippy finds nothing in elsewhere, its tests included.
-  elsewhere-passes-clippy = passesClippy "elsewhere-passes-clippy" (
-    pkgs.callPackage ./package.nix { }
-  );
 
   # The machines and kinds a machine repository declares reach elsewhere's
   # settings in the words the program reads, an account that declares
@@ -66,13 +79,21 @@ onLinux {
             };
           }
         ]);
+      apart = account (bareNixos [
+        {
+          home-manager.users.someone = {
+            imports = [ self.homeModules.elsewhere ];
+            jitsusama.elsewhere.realm = "apart";
+          };
+        }
+      ]);
       taken = scratch: (builtins.tryEval (read (scratched scratch)).scratch).success;
       read = machine: builtins.fromJSON machine.xdg.configFile."elsewhere/settings.json".text;
       settings = read declared;
       check = settings.kinds.model-check;
     in
     holds "elsewhere-reads-what-a-machine-declares"
-      "A machine's declared machines or kinds don't reach elsewhere's settings as it reads them, an account declaring none sends somewhere or lacks the program, or a scratch elsewhere refuses builds."
+      "A machine's declared machines or kinds don't reach elsewhere's settings as it reads them, an account declaring none sends somewhere or lacks the program, the ledgers it reads aren't where mycelium keeps the realm's, or a scratch elsewhere refuses builds."
       (
         settings.machines == [ "far" ]
         && settings.scratch == ".elsewhere-runs"
@@ -86,6 +107,8 @@ onLinux {
         && pkgs.lib.hasPrefix "PATH=/far/bin" check.setup
         && (read none).machines == [ ]
         && (read none).kinds == { }
+        && pkgs.lib.hasSuffix "/.local/state/mycelium/shared" (read none).ledgers
+        && pkgs.lib.hasSuffix "/.local/state/mycelium/apart/shared" (read apart).ledgers
         && pkgs.lib.any (package: package.pname or "" == "elsewhere") none.home.packages
         && pkgs.lib.all taken [
           ".runs"

@@ -4,15 +4,13 @@
   account,
   bareDarwin,
   bareNixos,
-  clippyConfig,
-  clippyLints,
+  compilesForMacos,
   holds,
   lib,
   macWorkstation,
   onLinux,
   passesClippy,
   pkgs,
-  rust-overlay,
   self,
   workstation,
   ...
@@ -182,24 +180,7 @@
 
   # The macOS guard builds from the same crate and no check runs on a Mac,
   # so clippy reads the crate, its scenarios included, as macOS would compile it.
-  disk-guard-compiles-for-macos =
-    let
-      toolchain = (pkgs.extend rust-overlay.overlays.default).rust-bin.stable.latest.minimal.override {
-        targets = [ "aarch64-apple-darwin" ];
-        extensions = [ "clippy" ];
-      };
-    in
-    (pkgs.callPackage ./package.nix { }).overrideAttrs {
-      pname = "disk-guard-compiles-for-macos";
-      CLIPPY_CONF_DIR = clippyConfig;
-      buildPhase = ''
-        export PATH=${toolchain}/bin:$PATH
-        cargo clippy --target aarch64-apple-darwin --all-targets --offline -- \
-          ${lib.escapeShellArgs clippyLints}
-      '';
-      doCheck = false;
-      installPhase = ''
-        touch $out
-      '';
-    };
+  disk-guard-compiles-for-macos = compilesForMacos "disk-guard-compiles-for-macos" (
+    pkgs.callPackage ./package.nix { }
+  );
 }

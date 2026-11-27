@@ -200,14 +200,15 @@ ShellRoot {
                 tabs.served.link.asked === asked + 1, tabs.served.link.asked - asked);
             tabs.served.answered("o", { id: 1, words: "o", marks: {}, keys: [
                 "row:tabs:https://docs.example.org/", "row:tabs:https://github.com/jitsusama/core.nix"
-            ] });
+            ] }, tabs.served.searchesEnded);
             const ranked = searched("o");
             Expect.expect("what's typed is ranked as the daemon answers it",
                 ranked === "Notes, core.nix", ranked);
             Expect.expect("its answer has what's typed searched again",
                 root.foundMore.length === 1, JSON.stringify(root.foundMore));
             tabs.served.answered("x", { id: 2, words: "x",
-                error: { code: "unknown-place", message: "no place here" } });
+                error: { code: "unknown-place", message: "no place here" } },
+                tabs.served.searchesEnded);
             const matched = searched("inb");
             Expect.expect("a daemon that can't search leaves them matched here",
                 matched === "Inbox", matched);

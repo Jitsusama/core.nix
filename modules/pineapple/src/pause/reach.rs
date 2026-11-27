@@ -47,7 +47,7 @@ const DIDNT_RUN: &str = "(exit status: 255)";
 /// What the script says on its error output before anything else, so a
 /// run that failed after it began, as one whose link dropped, isn't taken
 /// for one that never ran.
-const BEGUN: &str = "pineapple: begun there";
+pub(super) const BEGUN: &str = "pineapple: begun there";
 
 /// What the script ends with when the mycelium it asks there fails, so a
 /// 255 of that mycelium's own can't read as the script never running.
@@ -62,7 +62,7 @@ fn didnt_run(why: &str) -> bool {
 }
 
 /// `why` a run failed, without the script's word that it began.
-fn without_begun(why: &str) -> String {
+pub(super) fn without_begun(why: &str) -> String {
     why.lines()
         .map(|line| {
             line.trim_start()
@@ -84,7 +84,7 @@ pub fn realms(plan: &Plan) -> Vec<Option<String>> {
 }
 
 /// mycelium's words for `act` in `realm`.
-fn asked(act: &[&str], realm: Option<&str>) -> Vec<String> {
+pub(super) fn asked(act: &[&str], realm: Option<&str>) -> Vec<String> {
     let mut args: Vec<String> = act.iter().map(|word| (*word).to_owned()).collect();
     if let Some(realm) = realm {
         args.extend(["--realm".to_owned(), realm.to_owned()]);

@@ -19,7 +19,7 @@ x86-64 machine as `packages.x86_64-linux.kernel`.
 
 ## What It Is
 
-- **The series:** 7.3, at 7.3.4, the release `package.nix` names in
+- **The series:** 7.3, at 7.3.6, the release `package.nix` names in
   `stable`. nixpkgs's 7.3 package builds it, and `stable` applies only
   while nixpkgs's release is older, so a newer point release reaches the
   machines before nixpkgs takes it. 7.3 holds every fix the XPS 14 took
@@ -42,17 +42,18 @@ x86-64 machine as `packages.x86_64-linux.kernel`.
 
 BORE is fetched from its author at a fixed commit with its hash, so it can be
 traced to where it came from and can't change underneath the build. The others
-are fixes written here, kept until the kernel has its own:
+are fixes written here or sent upstream, kept until the kernel has its own:
 
 | Patch                     | What it does                   | From               |
 | ------------------------- | ------------------------------ | ------------------ |
 | `bore.patch`              | the BORE scheduler             | [BORE's author][1] |
 | `irq-resend-nested.patch` | no bad IRQ trap on resume      | written here       |
 | `edp-sdp-caps.patch`      | a single eDP modeset at boot   | written here       |
-| `cfg80211-ssid-without-country.patch` | the joined network's name | written here; [linux-next][3] since |
 | `iwlwifi-txq-entries-kvzalloc.patch` | a join that survives fragmented memory | written here |
+| `vb2-dma-sg-orders.patch` | a camera that opens in fragmented memory | written here |
 | `hibernate-progress.patch` | a hibernation's image read, on screen | written here |
 | `virtio-gpu-panic-outside-panic.patch` | that bar drawn safely in a VM | written here |
+| `sched-delayed-run-delay.patch` | no sleep counted as a wait | [sent upstream][4] |
 
 BORE is a small change to the kernel's own EEVDF scheduler: it favours tasks
 that run in short bursts, such as the compositor, terminal and editor, over
@@ -85,7 +86,8 @@ with Display Stream Compression, and the driver forces a modeset over any
 firmware state that uses it, a FIXME it keeps until it can read that state
 back.
 
-The Wi-Fi fix is for networkd not knowing which network a card joined.
+A Wi-Fi fix written here is the kernel's own since 7.3.6, so it's no
+longer carried. It was for networkd not knowing which network a card joined.
 wpa_supplicant joins through its own authentication and association steps
 rather than the kernel's connect command, and for that kind of join the
 kernel only records the network's name at the end of the function that
@@ -93,10 +95,16 @@ finishes it, after passing the access point's country to the regulatory
 code. That part returns early when the access point names no country, so
 the name was never recorded, and networkd couldn't match a saved network's
 file on it, or tell it had moved to another network and needed a new
-address. The patch records the name first. Most access points name their
-country, but hostapd doesn't unless it's told to.
+address. The patch recorded the name first. Most access points name their
+country, but hostapd doesn't unless it's told to. Upstream took it as
+[577f690ce5dc][3], which reached the stable series in 7.3.6.
+`wifi-names-a-network-without-a-country` reads core's kernel's source,
+with its patches, to hold it there for each machine that builds core's
+kernel. The two Apple laptops build kernels of their own, which it doesn't
+read, and a machine whose own patches change `net/wireless/sme.c` would
+need it read against its kernel too.
 
-The second Wi-Fi fix is for a card that couldn't join an access point
+The Wi-Fi fix still carried is for a card that couldn't join an access point
 while memory was fragmented. Intel's driver adds a send queue as it joins,
 and it allocated that queue's bookkeeping, one entry for each of its
 slots, as a single block of 64 to 128 KiB. The kernel doesn't try hard
@@ -107,7 +115,28 @@ third of its 64 GB free lost half a second and fell back to another radio. Only
 the processor reads those entries, so the patch lets them come from
 scattered pages when no single block is free. The rings the card itself
 reads are left as they were; the IOMMU already lets them be scattered.
-Neither 7.3.4 nor mainline changes it.
+Neither 7.3.6 nor mainline changes it.
+
+The camera fix is for a built-in camera that took 40 seconds to open
+while memory was fragmented. Its capture buffers come from videobuf2's
+scattered allocator, which fills each buffer from the largest blocks it
+can get. For every piece it started again from the largest block size
+that fit and stepped down one size at a time. Every size from 4 MiB down
+to 64 KiB that failed paid for compaction and reclaim first; larger ones
+fail at once, since the allocator keeps no block that large, and smaller
+ones were retried until they came. So with no large blocks free, each
+piece paid for every size again: on 23 November, under a load of 99, four
+16.9 MB buffers took 40 seconds in one call. Of 15 seconds sampled, 12
+were system time, with compaction in the stacks. The buffer needn't be
+contiguous, so the patch never asks again for a size that has failed,
+starts no larger than the allocator's largest block, and asks for any
+block larger than a page without retrying, as the IOMMU's own allocator
+does: such a block still pays one round of reclaim and compaction, but
+no more. A buffer still gets single pages when
+nothing larger is free. The XPS 14's checks read the patched source for
+each of the patch's lines, each once and where it sits, since no test can
+fragment memory on cue to run them.
+Neither 7.3.6 nor mainline changes it.
 
 The hibernation fix is for a hibernated machine that showed nothing while it
 read its image back. The kernel freezes every process before it reads the
@@ -128,6 +157,28 @@ command queue without the queue's lock. The second patch gives that object
 room and takes the lock when no panic is in progress. The laptops' own
 drivers write the pixels straight into the screen's memory, with nothing
 allocated or queued.
+
+The scheduler fix is for waits that never happened. Since 6.12 a task that
+sleeps can stay on its processor's queue for a while, marked as delayed,
+rather than leave it at once. When the kernel moves such a task to another
+processor, it marks it as queued from that moment, and the wakeup that
+follows doesn't mark it again, so the whole sleep since the move is added to
+the task's wait for a processor, the second field of its `schedstat`. On 26
+November a thread sleeping a second at a time booked 982 ms of wait on one
+sleep that took 1000 ms, after moving from processor 8 to 12. Slack's main
+threads, read every 20 ms, booked waits of 217 to 758 ms while every read
+saw them asleep. lag-watch and call-under-load both read that field, and
+cadence reads them, so their worst waits showed spikes that weren't there.
+The patch stops a delayed task being marked as queued; its wakeup still
+marks it. Neither 7.3.6 nor mainline has it yet. It closes only the move:
+of 23 such sleeps counted as waits over 20 minutes, 9 came with no move
+between reads, which some other path marks. The fair scheduler's own
+count, `wait_sum` in the thread's `sched` file, grew by at most 2 ms on
+every one of them. It counts sleeps of its own, though: the time a sleeper
+stays queued before it leaves, which over 30 s put Chrome's drawing thread
+at 310 ms against run_delay's 125. Each counts every real wait, so
+lag-watch takes the lesser of what the two grew by. call-under-load still
+reads the schedstat's alone, so the 9 the patch leaves stay in its waits.
 
 7.3.2 to 7.3.3 gave a false W^X warning at boot, with a stack trace, on a
 processor that needs the mitigation for Indirect Target Selection, while the
@@ -410,9 +461,12 @@ if less; record a new one after moving to a new series.
   user.slice, which holds a build back while a synced write waits out the
   drive's cache. Inside the account none is set: on 10 November targets on
   Joel's slices beside the agents' held his own reads back.
-  On the XPS 14's disk, which has no DRAM of its own, the target won: an
-  app's worst synced save beside heavy writes took 55 to 170 ms under it, and
-  76 to 492 ms under every `io.cost` setting tried, so that disk keeps it.
+  On the XPS 14's disk, which has no DRAM of its own, targets on Joel's
+  slices won on 24 October: an app's worst synced save beside heavy writes
+  took 55 to 170 ms under them, and 76 to 492 ms under every `io.cost`
+  setting tried. Those targets are gone since, so the choice there is now
+  `io.cost` against no order inside the account, on a measured model with
+  a qos of 10 ms at the 95th percentile both ways, from 50 to 150% of it.
 - **Building in every module a boot loads.** See
   [Built In or a Module](#built-in-or-a-module): only the ones the boot waits
   for earn it.
@@ -446,4 +500,5 @@ if less; record a new one after moving to a new series.
 [crashes]: hardware.md#the-two-crashes
 [1]: https://github.com/firelzrd/bore-scheduler
 [2]: https://git.kernel.org/torvalds/c/a6036a41bffb
-[3]: https://git.kernel.org/pub/scm/linux/kernel/git/next/linux-next.git/commit/?id=577f690ce5dc
+[3]: https://git.kernel.org/torvalds/c/577f690ce5dc
+[4]: https://lore.kernel.org/all/20261024042753.2276779-1-albin_yang@163.com/

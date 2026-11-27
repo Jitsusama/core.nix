@@ -861,9 +861,11 @@ impl Pinning {
         // wherever it was asked, a line no router named included, and
         // leaving that link after undoes nothing: the cost is a round's
         // measuring again, where not counting it would keep a pin gone
-        // slow on a link no router ever names. Clearing the mark says a
-        // pin is good, which only a pin taking hold may say (voids round
-        // 2's F3 and F11).
+        // slow on a link no router ever names. Clearing the mark on
+        // leaving would say the pin is good, which only a round that
+        // judges it may say, and for a round asked unnamed only its pin
+        // taking hold (voids round 2's F3 and F11; pin words round 1's
+        // F1, F5 and F8).
         if !self.judges(end, delays) {
             if !std::mem::replace(&mut self.kept, true) {
                 return None;

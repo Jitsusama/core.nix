@@ -47,8 +47,10 @@
       ${copied [
         "launcher/Beneath.js"
         "launcher/EmojiDrawer.js"
+        "launcher/EmojiSearch.js"
         "launcher/Found.js"
         "launcher/Moved.js"
+        "launcher/Presented.js"
         "launcher/ReadyRows.js"
       ]}
       cp ${../../../tests/lib/Expect.js} Expect.js

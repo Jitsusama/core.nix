@@ -2,4 +2,5 @@
 # list; README.md says which list a file goes in.
 [
   "launcher/Characters.js"
+  "launcher/EmojiSearch.js"
 ]

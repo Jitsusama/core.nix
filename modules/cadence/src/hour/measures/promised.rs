@@ -15,10 +15,12 @@ use serde_json::Value;
 use super::seconds;
 
 /// One date an ask was given: when it was `expected`, when the date after
-/// it was given, if one was, and when its owner said it was `met`.
+/// it was given, if one was, the date it moved `to`, and when its owner
+/// said it was `met`.
 pub struct Promise {
     pub expected: i64,
     pub moved: Option<i64>,
+    pub to: Option<i64>,
     pub met: Option<i64>,
 }
 
@@ -55,6 +57,7 @@ pub fn promised(ask: &Value) -> Vec<Promise> {
             Some(Promise {
                 expected: date?,
                 moved,
+                to: given.get(i + 1).and_then(|(to, _, _)| *to),
                 met: met.filter(|&met| moved.is_some() && set.is_none_or(|set| met >= set)),
             })
         })

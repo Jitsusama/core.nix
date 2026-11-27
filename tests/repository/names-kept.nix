@@ -18,6 +18,8 @@
     "jitsusama.keys.google-drive" = "Google Drive's keys, as Google names its file store, not a disk";
     "jitsusama.nix-offload.lines" =
       "a line is a builder's entry in Nix's machines files, not a connection";
+    "jitsusama.pi.agentProxy.osLoginKnownHosts" =
+      "the known-hosts file is OpenSSH's, named as it names it, here the one gcloud keeps";
     "jitsusama.pi.hostRestartWaitsWhile" =
       "a pi host's process restarts as systemd restarts it; the machine isn't rebooted";
     "jitsusama.pi.hosts" =

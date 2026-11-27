@@ -21,9 +21,15 @@
 # tests, so nothing in a unit's environment can steer what root replays.
 
 root=${1:-}
-# How long udev may take to settle each replay, twice over within the
-# unit's TimeoutStartSec.
+# How long udev may take to settle each wait, the adds the boot queued and
+# each replay, all three within the unit's TimeoutStartSec.
 settling=25
+
+# Whether udev holds a record of a node, which it writes as an add is
+# handled, and deletes as a removal is, leaving only the kernel's own keys.
+recorded() {
+  grep -q '^USEC_INITIALIZED=' <<<"$1"
+}
 
 # Whether a node's facts are the Brio's: the same match as ../mx-brio's rule
 # and its take-hold.sh; change all three together.
@@ -33,32 +39,88 @@ the_brio() {
     grep -qx 'ID_MODEL_ID=091d' <<<"$1"
 }
 
+# Waits for udev to finish what it has queued, for at most $settling s.
+settled() {
+  udevadm settle --timeout="$settling"
+}
+
 nodes=()
 paths=()
 unread=()
-for node in "$root"/dev/video*; do
-  # A node can go as it's read, the Brio unplugged mid-loop, and is skipped;
-  # one still there that udev can't say of may be the Brio, held.
-  if ! facts=$(udevadm info --query=property "$node" 2>/dev/null); then
+unrecorded=()
+# Sorts a camera by what udev holds of it: a Brio held for a relay is to be
+# replayed, one udev can't say of may be the Brio held, and so may one it
+# holds no record of, which is either an add still queued, as at boot, or a
+# removal it never added again. udevadm says why it couldn't read a node,
+# into the unit's journal. A node can go as it's read, the Brio unplugged
+# mid-scan, and is skipped, since plugged in again it's the seat's.
+consider() {
+  local node=$1 facts path
+  if ! facts=$(udevadm info --query=property "$node"); then
     if [ -e "$node" ]; then
       unread+=("$node")
     fi
-    continue
+    return 0
   fi
-  the_brio "$facts" || continue
-  grep -qx 'CAMERA_RELAYED=1' <<<"$facts" || continue
-  path=$(udevadm info --query=path "$node" 2>/dev/null) || continue
+  if ! recorded "$facts"; then
+    unrecorded+=("$node")
+    return
+  fi
+  the_brio "$facts" || return 0
+  grep -qx 'CAMERA_RELAYED=1' <<<"$facts" || return 0
+  # A node udev holds for a relay but can't give the path of can't be
+  # replayed, so it stays kept.
+  if ! path=$(udevadm info --query=path "$node"); then
+    if [ -e "$node" ]; then
+      unread+=("$node")
+    fi
+    return 0
+  fi
   nodes+=("$node")
   paths+=("$root/sys$path")
+}
+
+for node in "$root"/dev/video*; do
+  # With no camera at all, the pattern itself comes back, and isn't there,
+  # so udevadm is never asked of it.
+  if [ -e "$node" ]; then
+    consider "$node"
+  fi
 done
 
 # <4> has the journal keep it as a warning.
+pending=()
+if [ "${#unrecorded[@]}" -gt 0 ]; then
+  # Only an add udev has finished with tells a queued add from a lost one,
+  # so each is looked at again once udev has nothing queued.
+  if settled; then
+    again=("${unrecorded[@]}")
+    unrecorded=()
+    for node in "${again[@]}"; do
+      if [ -e "$node" ]; then
+        consider "$node"
+      fi
+    done
+  else
+    pending=("${unrecorded[@]}")
+    unrecorded=()
+    echo "<4>udev hasn't finished adding the cameras at ${pending[*]} in ${settling} s," \
+      "so whether an MX Brio among them is kept from the seat isn't known yet;" \
+      "once udev has, systemctl restart mx-brio-seat looks again." >&2
+  fi
+fi
 if [ "${#unread[@]}" -gt 0 ]; then
   echo "<4>udev couldn't say how the cameras at ${unread[*]} stand, so an MX Brio" \
-    "among them may still be kept from the seat; journalctl -u systemd-udevd says why." >&2
+    "among them may still be kept from the seat; udevadm's words above say why, and" \
+    "once udev can say, systemctl restart mx-brio-seat looks again." >&2
+fi
+if [ "${#unrecorded[@]}" -gt 0 ]; then
+  echo "<4>udev holds no record of the cameras at ${unrecorded[*]}, as after a removal" \
+    "it never added again, so an MX Brio among them is kept from the seat until it's" \
+    "replugged or udevadm trigger --action=add ${unrecorded[*]} adds it." >&2
 fi
 if [ "${#paths[@]}" = 0 ]; then
-  if [ "${#unread[@]}" = 0 ]; then
+  if [ "${#unread[@]}" = 0 ] && [ "${#unrecorded[@]}" = 0 ] && [ "${#pending[@]}" = 0 ]; then
     echo "No MX Brio is held for a relay, so the seat has it already."
   fi
   exit 0
@@ -79,41 +141,65 @@ replay() {
   fi
 }
 
-# Waits for udev to finish what a replay queued, for at most $settling s.
-settled() {
-  udevadm settle --timeout="$settling"
-}
-
 echo "Giving the seat back the MX Brio's ${#paths[@]} nodes held for a relay."
 trap 'replay add || true' EXIT
 if ! replay remove || ! settled; then
   echo "<4>udev didn't settle the MX Brio's removal; adding it again." >&2
 fi
-if ! replay add || ! settled; then
-  echo "<4>udev didn't settle the MX Brio's arrival." >&2
+# A refused add may have had some of its nodes' adds queued all the same,
+# so udev is waited on either way, and what it holds read only once it's
+# done; what refused it is udevadm's to say, never udevd's, which never
+# heard of it.
+arrived=yes
+why="journalctl -u systemd-udevd says why"
+if ! replay add; then
+  echo "<4>udev refused the MX Brio's arrival." >&2
+  arrived=refused
+  why="udevadm's words above say why"
+fi
+if ! settled; then
+  arrived=no
 fi
 trap - EXIT
 
+# udev handles a node's events in order, so an arrival it hasn't finished
+# may still give the seat the Brio, and its record now says nothing yet;
+# nothing runs the give-back again by itself, so the way to is named.
+if [ "$arrived" = no ]; then
+  echo "<4>udev didn't finish the MX Brio's arrival in ${settling} s, so whether the" \
+    "seat has it isn't known yet; udevadm info ${nodes[*]} says once udev has," \
+    "and systemctl restart mx-brio-seat looks again." >&2
+  exit 0
+fi
+
 # udev's record of each node as the add left it, so a replay read under the
 # old rules says so rather than passing for one that worked.
+# A node udev couldn't say of, holds no record of or hasn't finished adding
+# may be the Brio still kept, so the run never says it gave the Brio back
+# while one is left so, beside the warning that says which.
 given=yes
+if [ "${#unread[@]}" -gt 0 ] || [ "${#unrecorded[@]}" -gt 0 ] ||
+  [ "${#pending[@]}" -gt 0 ]; then
+  given=no
+fi
 for node in "${nodes[@]}"; do
-  if ! facts=$(udevadm info --query=property "$node" 2>/dev/null); then
+  if [ ! -e "$node" ]; then
     given=no
-    if [ -e "$node" ]; then
-      echo "<4>udev couldn't say how the MX Brio at $node stands after its arrival." >&2
-    else
-      echo "The MX Brio was unplugged as it was given back; plugged in, it's the seat's."
-    fi
+    echo "The MX Brio was unplugged as it was given back; plugged in, it's the seat's."
     continue
   fi
-  # udev deletes a node's record as it's removed, keeping only the kernel's
-  # keys until an add, so a node no longer known as the Brio was removed and
-  # never added. A rerun can't find it again, and only a replug brings it back.
-  if ! the_brio "$facts"; then
+  if ! facts=$(udevadm info --query=property "$node"); then
     given=no
-    echo "<4>udev lost its record of the MX Brio at $node in its removal, so only" \
-      "replugging it gives it to the seat; journalctl -u systemd-udevd says why." >&2
+    echo "<4>udev couldn't say how the MX Brio at $node stands after its arrival;" \
+      "udevadm's words above say why." >&2
+    continue
+  fi
+  # An arrival udev finished with no record left means the add never came.
+  if ! recorded "$facts"; then
+    given=no
+    echo "<4>udev holds no record of the MX Brio at $node since its removal, so it's" \
+      "kept from the seat until it's replugged or udevadm trigger --action=add $node" \
+      "adds it; $why the add didn't come." >&2
     continue
   fi
   if grep -qx 'CAMERA_RELAYED=1' <<<"$facts" ||
@@ -121,7 +207,7 @@ for node in "${nodes[@]}"; do
     given=no
     echo "<4>The MX Brio at $node is still kept from the seat." \
       "systemctl restart mx-brio-seat, or replugging it, replays its arrival;" \
-      "journalctl -u systemd-udevd says why it wasn't." >&2
+      "$why it wasn't." >&2
   fi
 done
 if [ "$given" = yes ]; then

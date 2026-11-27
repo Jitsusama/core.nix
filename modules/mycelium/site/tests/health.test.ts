@@ -92,7 +92,7 @@ it("says why a set of cells stands as it does, worst first, with what it spent",
     {
       v: 2,
       words:
-        "2 need you, 1 stuck, 2 questions waiting, 1 nearly out of context, " +
+        "2 need you, 1 stuck, 2 answers owed, 1 nearly out of context, " +
         "1 with context filling, 1 moving, 1 quiet, 1 dormant; $1.50 today",
     },
     "the words should name each way the cells stand, in order",
@@ -244,8 +244,28 @@ it("tells a basin's box, a lent machine and bare metal apart by what each declar
   );
   assert.equal(
     sandboxWords(machine({ leaves_at: "2026-11-19T11:00:00" }), AT),
-    "a cloud sandbox, 1 h left, until 11:00",
+    "a cloud machine, 1 h left, until 11:00",
     "a lent machine should say how long it has left",
+  );
+  // A machine made for the person to keep declares its end in the year
+  // 9999, and one a century out is as good as kept.
+  for (const end of ["9999-01-01T00:00:00Z", "2126-11-19T10:00:00"]) {
+    assert.equal(
+      sandboxWords(machine({ leaves_at: end }), AT),
+      "a cloud machine, kept until you let it go",
+      `a lease ending ${end} should read as kept, not as hours left`,
+    );
+    assert.deepEqual(
+      machineHealth(machine({ leaves_at: end }), AT),
+      { v: 0, words: "kept until you let it go" },
+      `a machine kept till ${end} should be well and say it's kept`,
+    );
+  }
+  // A real lease, however long, counts down: in days, with its year.
+  assert.equal(
+    sandboxWords(machine({ leaves_at: "2027-11-19T10:00:00" }), AT),
+    "a cloud machine, 365 days left, until 19 Nov 2027 at 10:00",
+    "a lease a year out should count down in days, not read as kept",
   );
   assert.equal(sandboxWords(machine(), AT), "", "bare metal should be no sandbox");
 });

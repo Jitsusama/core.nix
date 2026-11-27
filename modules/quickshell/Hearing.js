@@ -125,6 +125,20 @@ function nameOf(socket, command, runtime) {
     return below.replace(SHARED_FOLDER, "").replace(SOCKET_FILE, "").replace(SOCKET_NAMED, "");
 }
 
+// What a daemon's going says of the asks it left unanswered, each given
+// none (Daemon.qml's gone): how many, and the first eight's ids; nothing
+// where none was. `chosen` where the shell let the connection go itself
+// (Daemon.qml's connects), said apart, since then nothing went wrong.
+function goneSaid(by, unanswered, chosen) {
+    const count = unanswered.length;
+    if (count === 0) {
+        return "";
+    }
+    const going = chosen ? "let its connection go" : "the connection went";
+    return `${by}: ${going} with ${count} ask${count === 1 ? "" : "s"} unanswered: `
+        + unanswered.slice(0, 8).join(", ");
+}
+
 // The `most` daemons whose lines held the most characters since this was
 // last asked, the most first, as "agents 1204 lines, 3400123 characters",
 // how many minutes that was over, and the lines and characters of every

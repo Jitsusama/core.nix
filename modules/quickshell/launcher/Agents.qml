@@ -44,18 +44,24 @@ import "../Fuzzy.js" as Fuzzy
 import "../Places.js" as Places
 import "../SessionTalks.js" as Said
 import "../When.js" as When
+import "ActsSaid.js" as ActsSaid
 import "CarryBack.js" as CarryBack
+import "Cloud.js" as Cloud
 import "Landed.js" as Landed
 import "Moment.js" as Moment
 import "Numbers.js" as Numbers
+import "Openings.js" as Openings
 import "Order.js" as Order
-import "Presented.js" as Presented
+import "ReopenTally.js" as ReopenTally
 import "SessionDrawer.js" as SessionDrawer
 import "SessionRow.js" as SessionRow
 import "SpendDrawer.js" as SpendDrawer
 import "Sprouting.js" as Sprouting
+import "StartSaid.js" as StartSaid
 import "StartsStopped.js" as StartsStopped
+import "TalkAnswers.js" as TalkAnswers
 import "TalkTo.js" as TalkTo
+import "Wheres.js" as Wheres
 import "Wanted.js" as Wanted
 
 Provider {
@@ -114,7 +120,7 @@ Provider {
                 provider.topNetwork(row))), row)
         actMade: (key, one, row) => provider.topTalk(key, one, row)
             ?? provider.topGoTo(one)
-            ?? provider.topCarryBack(one, row)
+            ?? provider.topCarryBack(key, one, row)
             ?? provider.topLetStart(key, one)
         maker: provider
         drawn: provider.launcher?.open ?? false
@@ -262,8 +268,9 @@ Provider {
     // Carry Back on a carry under Carried is the shell's, asked of the
     // realm's node, never the daemon (CarryBack.js): its row reads as
     // carrying back until the node says the carry has ended, and a refusal
-    // is said in place in the node's own words. Null for any other act.
-    function topCarryBack(one, row) {
+    // is said in place in the node's own words, both on the row keyed as
+    // ReadyRows keyed it from its record's key. Null for any other act.
+    function topCarryBack(key, one, row) {
         const ask = one.key === "verb:carry:back" ? CarryBack.asked(one.ask) : null;
         if (ask === null)
             return null;
@@ -274,13 +281,13 @@ Provider {
             glyph: Words.glyph(one.key),
             hue: "action",
             stays: true,
-            run: () => provider.carryBack(row, ask)
+            run: () => provider.carryBack(key, row, ask)
         });
     }
 
-    function carryBack(row, ask) {
+    function carryBack(key, row, ask) {
         const said = Words.of("verb:carry:back").said ?? {};
-        const shown = row.thing ?? row.key;
+        const shown = CarryBack.keyed(row, key);
         let answered = false;
         provider.becomes(shown, {
             side: said.carrying ?? "",
@@ -838,12 +845,50 @@ Provider {
             .replace("{machine}", session.machine).replace("{why}", why ?? "");
     }
 
-    // What the foot names a session by (SessionRow.footName): its row's
+    // Says why a Go To, a reopen or a start Joel pressed opened nothing, by
+    // the session's name and `why` in the alert colour: in the foot at once
+    // while the launcher's open, else by opening it on Agents to say so
+    // (Launcher.qml's toldHere), since every act shuts the launcher before
+    // it runs, and a why held for its next opening was told to nobody
+    // (KP0L6A, 2026-11-24 [00902e94]): a press that did nothing, unsaid.
+    // Only a Go To asked for this session moments ago opens it; any other
+    // waits in the foot, and one a wake reopens is unsaid
+    // (SessionRow.refusalTold). Not Provider's refused, which takes back a
+    // row by its key.
+    function refusedGoing(session, why) {
+        const told = provider.refusalTold(session);
+        if (told === "unsaid")
+            return;
+        const name = provider.footName(session);
+        const said = provider.elsewhere(why, session);
+        provider.refusedWhy = `${name}: ${said}`;
+        provider.launcher?.tellOnOpen([[name, said, Theme.alert]]);
+        provider.openedForPress(told);
+    }
+    // How a refusal of `session` is told (SessionRow.refusalTold).
+    function refusalTold(session) {
+        return SessionRow.refusalTold(session.address, { waking: Sessions.waking,
+            goneTo: Sessions.goneTo, opened: provider.refusalOpened }, Date.now());
+    }
+    // Opens the launcher on what the foot was just told, where `told` says a
+    // Go To Joel pressed moments ago asked for it, once for that press.
+    function openedForPress(told) {
+        if (told === "opens" && provider.launcher?.toldHere?.())
+            provider.refusalOpened = Sessions.goneTo.at;
+    }
+    // The Go To press a refusal last opened the launcher for, by when it
+    // was pressed, so that press opens it once (SessionRow.refusalTold).
+    property real refusalOpened: 0
+    // The last refusal said, as refusedGoing says it, so a Go To asked from
+    // outside answers with the why it was given (goToFor), never one read
+    // back from the launcher's foot, which its opening has taken.
+    property string refusedWhy: ""
+
+    // What the foot names a session by (SessionRow.footNameOf): its row's
     // name, else its quest's title, its address only when neither is known.
     function footName(session) {
-        return SessionRow.footName(provider.standingOf(session.address)?.name,
-            session.presence ? Sessions.named(session.presence).title : "",
-            session.address);
+        return SessionRow.footNameOf(provider.standingOf(session.address)?.name, session,
+            presence => Sessions.named(presence).title);
     }
 
     // A session elsewhere that couldn't be joined, a hosted one with no
@@ -861,20 +906,27 @@ Provider {
         }
 
         function onUnjoined(session) {
-            provider.launcher?.tellOnOpen([[provider.footName(session),
-                provider.elsewhere(session.reachable ? "unheld" : "unreached", session),
-                Theme.alert]]);
+            provider.refusedGoing(session, session.reachable ? "unheld" : "unreached");
         }
 
-        // Said by why it held, in words of its own (Sessions' unhosted).
+        // Said by why it held, in words of its own (Sessions' unhosted),
+        // plainly where it tells of a viewer opening or viewed, the alert
+        // kept for a press that didn't view (SessionRow.viewedWhy). A
+        // viewer opening or viewed, or opened beside a stray window holding
+        // its name ("unowned"), went, so it's told without opening the
+        // launcher over the window Joel went to.
         function onUnhosted(session, why) {
-            provider.launcher?.tellOnOpen([[provider.footName(session),
-                provider.elsewhere(why, session), why === "opening" ? Theme.text : Theme.alert]]);
+            const viewed = SessionRow.viewedWhy(why);
+            if (viewed || why === "unowned")
+                provider.launcher?.tellOnOpen([[provider.footName(session),
+                    provider.elsewhere(why, session),
+                    viewed ? Theme.text : Theme.alert]]);
+            else
+                provider.refusedGoing(session, why);
         }
 
         function onUnopened(session) {
-            provider.launcher?.tellOnOpen([[provider.footName(session),
-                provider.elsewhere("unopened", session), Theme.alert]]);
+            provider.refusedGoing(session, "unopened");
         }
 
         // A Wake refused or never answered whose row was becoming woken is
@@ -885,11 +937,29 @@ Provider {
         // SessionRow.unsteered).
         function onUnsteered(session, why, act) {
             const called = provider.footName(session);
-            SessionRow.unsteered(provider.launcher, Words.of("agents:machine").said ?? {}, {
+            const told = SessionRow.unsteered(provider.launcher,
+                Words.of("agents:machine").said ?? {}, {
                 act, actName: SessionRow.actName(act, Words.name), why,
                 address: session.address, name: called === session.address ? "" : called,
                 called, held: Boolean(provider.launcher?.becoming?.[`agent:${session.address}`])
             }, Theme.alert);
+            // A Wake a Go To asked for is refused only once goTo has gone
+            // back, so Sessions' waking no longer holds it: the press that
+            // woke it is answered as any Go To's refusal is, rather than
+            // reading done with the launcher shut (#6519's third review).
+            // Its words are kept as refusedWhy too, so a link's Go To whose
+            // wake was refused at once answers why, not "" (#6519's F147).
+            if (act === "wake") {
+                if (told !== null)
+                    provider.refusedWhy = `${told[0]}: ${told[1]}`;
+                provider.openedForPress(provider.refusalTold(session));
+            }
+        }
+
+        // A Go To's wake refused while its press decided, held then, is
+        // answered once that press didn't go (Sessions' wakeRefusedAtOnce).
+        function onWakeRefusedAtOnce(session) {
+            provider.openedForPress(provider.refusalTold(session));
         }
 
         // A parked session Wake would reopen with no fence it can say,
@@ -906,6 +976,7 @@ Provider {
             }
             provider.launcher?.tellOnOpen([[provider.footName(session),
                 provider.elsewhere("unfenced", session), Theme.alert]]);
+            provider.openedForPress(provider.refusalTold(session));
         }
     }
 
@@ -1172,6 +1243,93 @@ Provider {
         };
     }
 
+    // Joel's answers to what each session asks, given in its Talk, by its address in capitals,
+    // newest first (TalkAnswers.js's said), so the Talk shows each as sent, then answered.
+    property var answeredTo: ({})
+    // What each session's Talk last drew it asking that his words answer, by its address in
+    // capitals, null where it asked nothing he can answer: his Return answers what he was
+    // shown, not what's held by the time he presses it. Changed in place, so drawing it
+    // notifies nothing.
+    readonly property var answersShown: ({})
+
+    // What the session `session` asks Joel that its Talk answers (TalkAnswers.js's asked): its
+    // want's answers while it asks and isn't parked, as Now's rows read it (Now.qml's asking).
+    function answersOf(session) {
+        const asking = SessionRow.asks(session.presence) && !Sessions.parkedAs(session.address);
+        return { want: wantOf(session.address), asking };
+    }
+
+    // What a Talk to `session` shows before its talks: what it asks in full while it asks, first
+    // so it has the first exchange's eight lines (TalkSpoken.qml), then Joel's answers to it,
+    // newest first (Joel at 13:15 on 2026-11-24, of a cell asking him from the realm's map: "no
+    // feedback at all"), each in TalkLine.js's exchange shape.
+    function answerTalks(session) {
+        // A want that comes while the Talk is open draws it again (wantOf reads the held rows).
+        void rowsKind?.revision;
+        const to = String(session.address).toUpperCase();
+        const said = Words.of("verb:agent:talk").said ?? {};
+        const stages = Words.of("orchestrators:talk").said ?? {};
+        const words = Object.assign({}, said, { sent: stages.sent ?? "",
+            unsent: stages.failed ?? "" });
+        const days = { yesterday: String((Words.of("agents:line").said ?? {}).yesterday ?? ""),
+            date: (date, format) => Qt.formatDate(date, format) };
+        const dayOf = since => When.day(since, Date.now(), days);
+        const working = stateOf(session) === "working";
+        const now = answersOf(session);
+        const asked = TalkAnswers.question(now, session.title, words, dayOf);
+        const answers = TalkAnswers.asked(now.want, now.asking);
+        answersShown[to] = answers;
+        // While it asks, only answers to what it asks show; asking what he can't answer here,
+        // none do.
+        const want = now.asking ? answers?.want ?? null : "";
+        return (asked === null ? [] : [asked]).concat(TalkAnswers
+            .standing(answeredTo[to] ?? [], want, Date.now())
+            .map(one => TalkAnswers.shown(one, working, words, dayOf)));
+    }
+
+    // Joel's `text` to `session`, which asks `answers`, answering it: shown sent at once, then
+    // answered once the node has put it in the session's inbox, or why not (answerWant), naming
+    // the want he was shown so a newer ask is never answered by it. His words stay kept under
+    // its address, as a talk's do until delivered (Drafts.qml), so the field gives them back
+    // where they never went while their ask stands, the foot saying why. Words naming none of
+    // the choices it takes only are let go, the foot saying what it takes, so they're never
+    // given back to answer a later ask.
+    function answerIn(session, text, answers) {
+        const to = String(session.address).toUpperCase();
+        const said = Words.of("verb:agent:talk").said ?? {};
+        const answer = TalkAnswers.answerOf(text, answers);
+        if (answer === null) {
+            told = TalkAnswers.filled(said.takesOnly ?? "", {
+                choices: answers.choices.map(one => String(one.label ?? one.value))
+                    .join(" \u00b7 ") });
+            launcher?.drafts?.settle({ [to]: [{ words: text.trim(), stage: "answered" }] });
+            // A walk from a terminal is told so, as nothing went (Launcher.qml's walkedRun).
+            launcher?.walkRefused?.(told);
+            return;
+        }
+        const one = TalkAnswers.said(answer.label, Date.now(), answers.want);
+        const keep = changed => {
+            answeredTo = Object.assign({}, answeredTo,
+                { [to]: TalkAnswers.kept(answeredTo[to], changed) });
+        };
+        keep(one);
+        told = TalkAnswers.filled((Words.of("orchestrators").said ?? {}).sent ?? "",
+            { name: session.title });
+        const fields = Object.assign({ want: answers.want }, answer.value !== undefined
+            ? { value: answer.value } : { other: answer.other });
+        answerWant(session.address, fields, (put, why) => {
+            keep(TalkAnswers.put(one, put, why));
+            // His words stay only for the ask they were meant for: once it asks something else,
+            // given back they'd answer the new ask with words for the old one, so they show
+            // only as not delivered, and the foot says why.
+            const now = answersOf(sessionAt(session.address) ?? session);
+            if (put || TalkAnswers.asked(now.want, now.asking)?.want !== answers.want)
+                launcher?.drafts?.settle({ [to]: [{ words: text.trim(), stage: "answered" }] });
+            if (!put && (why ?? "") !== "")
+                told = why;
+        });
+    }
+
     // Who hears a line said from anywhere (TalkLine.qml), `{ to, name }`: the one standing at
     // Agents' top, the void, which passes it to whoever owns it (QCXZEB, 2026-11-13
     // [ae5dfdb6]); null while none stands there.
@@ -1280,7 +1438,8 @@ Provider {
     // (Launcher.qml's goToCell), as its row's Switch does: raises its window, or opens one on it
     // where it has none, held here, hosted or on another machine (Sessions.goTo), waking it
     // first where it's parked, as a look's Go To does. Only the first word said names one
-    // (TalkTo.goesTo), and nothing is typed or sent. Gives the session gone to, or null for
+    // (TalkTo.goesTo), and nothing is typed or sent. Gives the session and whether it went
+    // (Sessions.wakeToGo), with the why it was told where it didn't (refusedGoing), or null for
     // nobody here: the void and a network have no window to go to.
     function goToFor(said) {
         const address = TalkTo.goesTo(said, {
@@ -1292,9 +1451,10 @@ Provider {
             return null;
         const session = heldAt(address);
         heard(session.address);
-        Sessions.wakeToGo(Sessions.parkedAs(session.address),
+        provider.refusedWhy = "";
+        const went = Sessions.wakeToGo(Sessions.parkedAs(session.address),
             sessionAt(session.address) ?? session);
-        return session;
+        return { session, went, why: went ? "" : provider.refusedWhy };
     }
 
     // The key the daemon serves a network's row by, among the rows the Networks row holds
@@ -1479,18 +1639,44 @@ Provider {
         const steered = what => () => provider.actOn(current(), what);
         const talked = () => {
             const talk = provider.talking(session.address, session.title);
+            const talkWords = Words.of("verb:agent:talk");
+            // While it asks Joel something, Return answers it, as its inbox goes unread until
+            // its ask ends, and the Talk shows what it asks first (answerTalks).
+            const asks = () => {
+                const now = provider.answersOf(current());
+                return TalkAnswers.asked(now.want, now.asking);
+            };
+            const draft = String(session.address).toUpperCase();
             return act("talk", {
-                ask: Words.of("verb:agent:talk").ask ?? "",
+                ask: asks() !== null ? talkWords.said?.answerAsk ?? "" : talkWords.ask ?? "",
                 chip: session.title,
                 // Kept by whom it goes to until its talk is delivered.
-                draft: String(session.address).toUpperCase(),
+                draft,
                 state: () => provider.told,
-                talks: talk.talks,
+                talks: () => provider.answerTalks(current()).concat(talk.talks()),
                 heard: talk.heard,
                 given: words => {
                     const text = words.trim();
                     if (text === "")
                         return;
+                    // What the Talk showed it asking when he pressed Return, while that Talk is
+                    // the one held; a walk from a terminal, which draws none, answers what it
+                    // asks now.
+                    const held = provider.launcher?.asking?.draft === draft
+                        && draft in provider.answersShown;
+                    const answers = held ? provider.answersShown[draft] : asks();
+                    // An answer goes as Joel's, so only his own Return gives one: a walk from
+                    // outside, which any program of his may ask, is refused (Sprouting.fromJoel).
+                    if (answers !== null && !Sprouting.fromJoel(provider.launcher)) {
+                        provider.told = TalkAnswers.filled(talkWords.said?.answerWalked ?? "",
+                            { name: session.title });
+                        provider.launcher?.walkRefused?.(provider.told);
+                        return;
+                    }
+                    if (answers !== null) {
+                        provider.answerIn(current(), text, answers);
+                        return;
+                    }
                     provider.actOn(session, "talk", { text });
                     talk.said(text);
                     provider.told = (Words.of("orchestrators").said ?? {}).sent
@@ -1656,10 +1842,14 @@ Provider {
         [Words.all, provider.weight], startNewWorkMade) : madeBefore("startNewWork")
     function startNewWorkMade() {
         const words = Words.of("agents:start-new-work");
-        const inside = () => [newWorkAct("link", "",
-            Words.name("verb:agents:start-new-work:link"))]
-            .concat((source("quests")?.folders() ?? []).map(one => newWorkAct("in", one.folder,
-                Words.name("verb:agents:start-new-work:in").replace("{folder}", one.name))));
+        const inside = () => {
+            provider.askPlaces();
+            return [newWorkAct("link", "", Words.name("verb:agents:start-new-work:link"))]
+                .concat(provider.cloudOffers.length > 0 ? [inTheCloud()] : [])
+                .concat(startWheres().map(one => newWorkAct("in", one.folder,
+                    Words.name("verb:agents:start-new-work:in")
+                        .replace("{folder}", () => one.name), one.start)));
+        };
         return Object.assign(thingRow({
             key: "agents:start-new-work",
             name: Words.name("agents:start-new-work"),
@@ -1676,11 +1866,49 @@ Provider {
         });
     }
 
-    // One of Start New Work's acts: `id` link or in, sprouting in `folder`
-    // where one is given, as `name`.
-    function newWorkAct(id, folder, name) {
+    // In the Cloud, Start New Work's row for work on a machine that costs
+    // money, which the node picks (Cloud.js), listed only while the node's
+    // providers say they could make one (askOffers): a step in to the same
+    // places as the In rows, those another machine knows by name, each
+    // started by that name. Its drawer says the cheapest machine's price
+    // by the hour, where a provider gives one.
+    function inTheCloud() {
+        const words = Words.of("agents:start-new-work:cloud");
+        const cheapest = Cloud.cheapest(provider.cloudOffers);
+        const tells = words.tells ?? {};
+        const body = cheapest === null ? tells.holding ?? ""
+            : String(tells.costs ?? "").replace("{hourly}", () => cheapest.hourly)
+                .replace("{currency}", () => cheapest.currency);
+        return thingRow({
+            key: "agents:start-new-work:cloud",
+            name: Words.name("agents:start-new-work:cloud"),
+            thing: true,
+            drawer: () => ({
+                eyebrow: (Words.field.drawer ?? {}).place ?? "",
+                title: Words.name("agents:start-new-work:cloud"),
+                body: body
+            }),
+            glyph: Theme.glyph.elsewhere,
+            hue: "action"
+        }, () => Cloud.wheres(startWheres(), startPlaces).map(one => newWorkAct("cloud",
+            one.folder, Words.name("verb:agents:start-new-work:cloud")
+                .replace("{folder}", () => one.name), one.start)));
+    }
+
+    // One of Start New Work's acts: `id` link, in or cloud, at `folder` where
+    // one is given, as `name`, sprouting in `start`, the folder unless said,
+    // and `on` where it starts elsewhere: "cloud", or a machine by its name
+    // (Cloud.ask). In the Cloud's acts start in the cloud, each at a place's
+    // name, read again at Return as an In act's start is.
+    // Keyed by its folder, never its start, so a list of places landing
+    // while Joel is on a row that changes how it starts (a quest's folder
+    // found to be a zone) leaves him on the same row, not a dimmed one. Its
+    // start is read again at Return, so a field entered before the list
+    // landed starts as the row now says.
+    function newWorkAct(id, folder, name, start, on) {
         const key = folder === "" ? `verb:agents:start-new-work:${id}`
             : `verb:agents:start-new-work:${id}:${folder}`;
+        const elsewhere = id === "cloud" ? "cloud" : String(on ?? "");
         return thing({
             key: key,
             verb: Words.verb(`verb:agents:start-new-work:${id}`),
@@ -1690,9 +1918,23 @@ Provider {
             ask: Words.of(`verb:agents:start-new-work:${id}`).ask ?? "",
             // A folder's field opens on words a start refused for want of
             // one carried here (askWhere).
-            offered: () => id === "in" ? provider.sproutCarried : "",
+            offered: () => id === "in" || id === "cloud" ? provider.sproutCarried : "",
             state: () => provider.sproutSaid[key] ?? "",
-            given: said => provider.sprout(key, said, folder)
+            // The mark its state wears under the words: a glyph's name, running
+            // while it's under way, done once started, failed when refused.
+            mark: () => provider.sproutMarked[key] ?? "",
+            // Words to start work are a sentence or two, so they take lines
+            // of their own under the path (Prompt's composes), and stay in
+            // muted ink once given while the start is under way, with the
+            // moment it began, so the launcher says it took and counts
+            // the seconds since (Joel, 2026-11-25 14:33: "no confirmation
+            // that it took my enter").
+            composes: true,
+            taken: () => provider.underWay(key),
+            since: () => provider.underWay(key) ? provider.sproutSince : 0,
+            given: said => provider.sprout(key, said, start === undefined ? folder
+                : Wheres.startAt(id === "cloud" ? Cloud.wheres(startWheres(), startPlaces)
+                    : startWheres(), folder, start), elsewhere)
         });
     }
 
@@ -1702,18 +1944,47 @@ Provider {
     // session it came from by its quest's name where one here has that
     // address (Sprouting.offered); or null where it offers no plain words.
     // Its act starts nothing until Joel's own Return (sprout's fromJoel).
-    function newWorkFor(words, from) {
+    // `on` says where the link's page would start it: "" where it's left to
+    // the node, "cloud", or a machine by its name, which its act's name says.
+    function newWorkFor(words, from, on) {
         const offer = Sprouting.offered(words, from, address => {
             const session = heldAt(address);
             return session === null ? null : Sessions.named(session).title;
         });
         if (offer === null)
             return null;
-        const act = newWorkAct("link", "", Words.name("verb:agents:start-new-work:link"));
+        // A link's act opens over Agents' rows, never through Start New
+        // Work's, so it asks for the places itself: refused for want of a
+        // repository, it steps back onto them (askWhere).
+        provider.askPlaces();
+        const said = sproutWords();
+        // A link that names nowhere starts where Start New Work's From a Link does.
+        const where = String(on ?? "") === "" ? {} : Cloud.onOf(Cloud.linked(on));
+        const elsewhere = where === null ? "" : where.needs !== undefined ? "cloud"
+            : where.on ?? "";
+        // Its Return asks the cloud, so the offers are asked now too rather
+        // than only by the opening after it, which may be up to half a
+        // minute behind (Cloud.refused says so until they come).
+        if (elsewhere === "cloud")
+            provider.askOffers();
+        const suffix = elsewhere === "" ? "" : elsewhere === "cloud" ? said.inTheCloud ?? ""
+            : String(said.onMachine ?? "").replace("{machine}", () => elsewhere);
+        const link = Words.name("verb:agents:start-new-work:link");
+        // A misshaped `on` still fills the field, so Joel sees what the page
+        // offered, but its Return is refused (Cloud.ask refuses "-"), as is the cloud's
+        // while it offers nothing this node can take.
+        const act = newWorkAct("link", "", suffix === "" ? link : `${link}, ${suffix}`,
+            undefined, where === null ? "-" : elsewhere);
         // Fresh words, so how the last start ended is no longer theirs to show,
-        // unless one is still starting.
-        if (sprouting !== act.key)
+        // unless one is still starting, or the page offers again the words of a
+        // start still coming up: its Return keeps that start's receipt and its
+        // window's keys (sproutHeardAgain), which a stamp here would take.
+        const offered = { key: act.key, words: String(offer.words ?? ""), on: elsewhere };
+        if (sprouting !== act.key
+            && StartSaid.underWayAgain(sproutsUnderWay(), offered) === null) {
+            sproutPressed = Openings.pressedAt(sproutPressed, act.key, Date.now());
             sproutSays(act.key, "");
+        }
         return {
             act: act,
             words: offer.words,
@@ -1728,12 +1999,62 @@ Provider {
     // key of the act it's for, "" while none runs, and `sprouts` counts
     // them, so an answer heard after its patience ran out says nothing.
     property var sproutSaid: ({})
+    property var sproutMarked: ({})
     property string sprouting: ""
     property int sprouts: 0
-    function sproutSays(key, text) {
-        sproutSaid = Object.assign({}, sproutSaid, { [key]: String(text ?? "") });
+    // When each act was last pressed, by its key, so a start still coming
+    // up never says over what a later Return on its act says (said, below).
+    property var sproutPressed: ({})
+    // When the start running began, as Date.now() said it.
+    property real sproutSince: 0
+    // Whether the start `key` asked is under way: asked of the node, or started and
+    // waiting for its session to come up before its window opens, which took three
+    // minutes on 25 November. A window opened sooner was blank all that while.
+    function underWay(key) {
+        return sprouting === key || openings.some(one => one.key === key);
     }
-    function sprout(key, said, folder) {
+    // The starts made this hour, started or unanswered (StartSaid.made), so
+    // the same words given again to the same act say when they started
+    // rather than starting the work twice (Joel, 2026-11-25: "no clue if i
+    // did it once, twice, thrice or not at all"). Kept for the shell's life
+    // alone, since the daemon keeps none of Joel's words (starts.rs).
+    property var sproutsMade: []
+    function sproutSays(key, text, mark) {
+        sproutSaid = Object.assign({}, sproutSaid, { [key]: String(text ?? "") });
+        sproutMarked = Object.assign({}, sproutMarked,
+            { [key]: text ? mark ?? "failed" : "" });
+    }
+    // The start `one` under way (the one asked, which holds no `held`, or
+    // an opening) given again by Joel's Return: what's pressed and typed
+    // counts from this Return, so its window still opens and takes the keys
+    // once it's up (Openings.takesKeys) rather than being left for Go To.
+    function sproutHeardAgain(one) {
+        const launcher = provider.launcher ?? null;
+        const asked = one.held === undefined;
+        const mark = given => Object.assign({}, given, { keys: launcher?.keysTaken ?? -1,
+            letters: launcher?.lettersAt ?? 0 });
+        const marking = () => {
+            if (asked)
+                sproutGiven = mark(sproutGiven);
+            else
+                openings = openings.map(each => each.held === one.held
+                    && each.machine === one.machine ? mark(each) : each);
+        };
+        marking();
+        // Marked again once the Return is through (Launcher.qml's give), as a
+        // start's first Return is.
+        Qt.callLater(marking);
+    }
+    // The starts under way, each { key, words, on }: the one asked of the
+    // node, then every opening whose session is still coming up.
+    function sproutsUnderWay() {
+        return (sprouting === "" ? []
+            : [Object.assign({ key: sprouting }, sproutGiven)]).concat(openings);
+    }
+    // `on` is "" for work started here, or where it starts elsewhere:
+    // "cloud", or a machine by its name (Cloud.ask).
+    function sprout(key, said, folder, on) {
+        const elsewhere = String(on ?? "");
         const words = Words.of("agents:start-new-work").said ?? {};
         // Asked from outside, or with no launcher to say whose Return it
         // was, it starts nothing (Sprouting.fromJoel).
@@ -1746,30 +2067,89 @@ Provider {
             console.info(`launcher: new work wasn't started: ${words.outside}`);
             return;
         }
+        const pressed = Date.now();
+        // The same row's Return again while its own start is under way,
+        // asked or its session still coming up, keeps the receipt it
+        // already says rather than saying it's busy or started over it: a
+        // start in the cloud can take minutes, and Joel must still see it
+        // took (2026-11-25 14:33: "no clue if i did it once, twice,
+        // thrice"). Other words on the same row, as another page's link,
+        // or the same for another place, are new work (StartSaid.underWayAgain).
+        const asked = { key, words: said, on: elsewhere };
+        const same = StartSaid.underWayAgain(sproutsUnderWay(), asked);
+        if (same !== null) {
+            sproutHeardAgain(same);
+            console.info("launcher: new work's Return was heard again while it starts");
+            return;
+        }
         if (sprouting !== "") {
-            sproutSays(key, words.busy);
+            // The start still asked says on as it comes up, over the busy words its
+            // answer takes the place of, so its own act is left unstamped; any other
+            // is stamped, so an older start's late words don't write over them.
+            if (key !== sprouting)
+                sproutPressed = Openings.pressedAt(sproutPressed, key, pressed);
+            sproutSays(key, words.busy, "pending");
             sproutReaches({ started: false, why: words.busy });
             return;
         }
-        const ask = Sprouting.ask(said, folder);
+        // A walk's Return, refused above, stamps nothing, so no walk from
+        // outside quiets a start still coming up. A link offer, which any
+        // program may make while the launcher is free, stamps its own act's
+        // row, which it gives fresh words (newWorkFor); the start is still
+        // told in the foot or as a notice.
+        sproutPressed = Openings.pressedAt(sproutPressed, key, pressed);
+        const again = StartSaid.again(sproutsMade, asked, Date.now());
+        if (again !== null) {
+            sproutsMade = StartSaid.told(sproutsMade, again, Date.now());
+            const told = again.answered ? words.again : words.againUnanswered;
+            sproutSays(key, String(told ?? "").replace("{at}", StartSaid.clock(again)),
+                again.answered ? "done" : "pending");
+            console.info("launcher: new work wasn't started again: the same words were "
+                + `asked at ${StartSaid.clock(again)}`);
+            return;
+        }
+        // A Return to the cloud with none offered asks again first
+        // (Cloud.asksNow), in case what held them passed, and is then
+        // said as what is known: the why the last ask came back with, or,
+        // with nothing heard yet, that they haven't come (Cloud.offeredNow).
+        // A daemon missing answers at once, so its why is said this Return
+        // (Cloud.returning).
+        const offersKept = () => ({ asking: provider.cloudAsking, at: provider.cloudOffersAt,
+            offers: provider.cloudOffers, unoffered: provider.cloudUnoffered });
+        const offered = Cloud.onOf(elsewhere)?.needs === undefined
+            ? Cloud.offeredNow(provider.cloudOffersAt, provider.cloudOffers,
+                provider.cloudUnoffered)
+            : Cloud.returning(offersKept, () => provider.askOffers(true), Date.now());
+        const ask = elsewhere === "" ? Sprouting.ask(said, folder)
+            : Cloud.ask(said, folder, elsewhere, offered);
         if (ask === null) {
-            const why = Sprouting.refused(said, folder, words);
+            const why = elsewhere === "" || Sprouting.ask(said, "") === null
+                ? Sprouting.refused(said, elsewhere === "" ? folder : "", words)
+                : Cloud.refused(folder, elsewhere, offered, words);
             sproutSays(key, why);
             sproutReaches({ started: false, why: why });
             return;
         }
         sprouting = key;
+        sproutSince = Date.now();
         sprouts += 1;
-        sproutGiven = { words: String(said), letters: launcher.lettersAt };
+        // Its Return already counted in keysTaken (Prompt.qml), so only a key after counts.
+        sproutGiven = { words: String(said), on: elsewhere, letters: launcher.lettersAt,
+            keys: launcher.keysTaken, at: pressed };
         sproutCarried = "";
+        sproutOn = elsewhere;
         const sprout = sprouts;
-        // Marked again once the Return that gave the words has emptied the field, which moves
-        // lettersAt as a letter would (Launcher.qml's give), so only a key after it counts.
+        // Marked again once the Return that gave the words is through (Launcher.qml's
+        // give), so only a key after it counts.
         Qt.callLater(() => {
             if (sprouts === sprout)
-                sproutGiven = { words: sproutGiven.words, letters: launcher.lettersAt };
+                sproutGiven = Object.assign({}, sproutGiven, { letters: launcher.lettersAt });
         });
-        sproutSays(key, words.starting);
+        sproutSays(key, elsewhere === "" ? words.starting : elsewhere === "cloud"
+            ? words.startingCloud : String(words.startingOn ?? "")
+                .replace("{machine}", () => elsewhere), "running");
+        // Work elsewhere may wait on a machine being made (Cloud.PATIENCE_MS).
+        sproutPatience.interval = elsewhere === "" ? Sprouting.PATIENCE_MS : Cloud.PATIENCE_MS;
         sproutPatience.restart();
         const token = Sprouting.token(Date.now(), Math.random());
         sproutTokens[token] = "asking";
@@ -1778,18 +2158,27 @@ Provider {
             // Dropped with the daemon as it asked: the daemon kept the start before it
             // asked the node, so the record it serves again is the answer (sproutsKept),
             // or the patience's, never one of each. Told here at once, this shell's
-            // "unanswered" and the record's end would both reach Joel.
-            if (answer === null && sproutTokens[token] === "asking") {
+            // "unanswered" and the record's end would both reach Joel. So too one the
+            // patience ended unanswered, whose record answers it late (sproutsKept):
+            // said told here, the daemon would drop that record unserved.
+            if (answer === null && (sproutTokens[token] === "asking"
+                || Object.keys(sproutUnanswered).includes(token))) {
                 console.info("launcher: the agents daemon went as a start asked; "
                     + "awaiting its record");
                 return;
             }
             const how = Sprouting.ended(answer, sproutWords());
             sproutTokens[token] = "ended";
+            const late = sproutUnanswered[token];
+            delete sproutUnanswered[token];
             if (sprout === sprouts && sprouting !== "")
                 sprouted(how);
+            else if (late !== undefined)
+                lateEnded(how, late);
             else
-                console.info(`launcher: late, ${Sprouting.reach(how, sproutWords()).journal}`);
+                // Its record ended it first (sproutsKept), and was told then.
+                sproutJournal(`heard after its record, ${Sprouting.reach(how,
+                    sproutWords()).journal}`);
             sproutTold([token]);
         };
         // With no daemon to send it to, nothing is kept, so none is to come.
@@ -1803,8 +2192,12 @@ Provider {
         id: sproutPatience
         interval: Sprouting.PATIENCE_MS
         onTriggered: {
-            if (provider.sprouting !== "")
-                provider.sprouted(Sprouting.ended(null, provider.sproutWords()));
+            if (provider.sprouting === "")
+                return;
+            // Ended here unanswered, so it may yet end, late (lateEnded).
+            provider.sproutUnanswered[provider.sproutToken] = { key: provider.sprouting,
+                asked: provider.sproutGiven.at };
+            provider.sprouted(Sprouting.ended(null, provider.sproutWords()));
         }
     }
     function sproutWords() {
@@ -1825,6 +2218,11 @@ Provider {
     // daemon is answered by its record. A told the daemon didn't take is
     // said again (sproutAgain).
     property var sproutTokens: ({})
+    // Those the patience ended unanswered (sproutPatience), by token, each the
+    // act it was asked from (`{ key, asked }`): each is ended late, once, by
+    // whichever of its answer and its record comes first (lateEnded). One the
+    // daemon said unanswered, or its record ended, was told as it ended.
+    property var sproutUnanswered: ({})
     property var sproutSeen: ({})
     // The tokens of those to tell being asked for again (sproutsChecked).
     property var sproutChecking: ({})
@@ -1835,6 +2233,13 @@ Provider {
             .map(one => one.start ?? {});
         const now = Date.now();
         const stood = Sprouting.untold(kept, sproutTokens, sproutSeen, now);
+        const answeredLate = kept.filter(one => Object.keys(sproutUnanswered)
+            .includes(one.token));
+        answeredLate.forEach(one => {
+            const act = sproutUnanswered[one.token];
+            delete sproutUnanswered[one.token];
+            lateEnded(Sprouting.ended(one.ended, sproutWords()), act);
+        });
         stood.waiting.forEach(token => {
             if (!Object.keys(sproutSeen).includes(token))
                 sproutSeen[token] = now;
@@ -1876,17 +2281,39 @@ Provider {
         still.forEach(one => {
             const how = Sprouting.ended(one.ended, sproutWords());
             sproutReaches(how);
-            if (how.started && how.held !== "") {
-                openings = openings.concat([{ key: `start:${one.token}`, held: how.held,
-                    machine: how.machine, since: Date.now(),
-                    // No lettersAt is -1, so Sprouting.waitsOn never has it
-                    // take the keys: the foot says it's up for Go To.
-                    letters: -1 }]);
-            }
+            watchFor(how, { key: `start:${one.token}` });
         });
         if (still.length > 0)
             openSprouted();
         sproutTold(still.map(one => one.token));
+    }
+    // Watches for the session of `how`, a start no act waits on, from `act`
+    // (Openings.watching), so Joel is told when it's up or lost. Whether it does.
+    function watchFor(how, act) {
+        const one = Openings.watching(openings, how, act, Date.now());
+        if (one === null)
+            return false;
+        openings = openings.concat([one]);
+        return true;
+    }
+    // How a start the patience ended ended after all, asked from `act`
+    // (`{ key, asked }`): no act waits on it, so it's said on its act unless
+    // that was pressed since, refused or unheld it's told as a notice, and
+    // held it's watched as a kept one is, so Joel hears when it's up; its
+    // keys long given back, it's said as one that shows in Agents. Ended
+    // unanswered again, it's journalled only: the patience said so.
+    function lateEnded(how, act) {
+        const reach = Sprouting.reach(how, sproutWords());
+        sproutJournal(`late, ${reach.journal}`);
+        if (how.unanswered === true)
+            return;
+        if (Openings.saysOnAct(sproutPressed, act.key, act.asked))
+            sproutSays(act.key, Sprouting.told(Openings.promised(how, { keys: -1 }),
+                sproutWords()), how.started ? "done" : "failed");
+        if (reach.told !== null)
+            sproutNoticed([reach.told]);
+        if (watchFor(how, act))
+            openSprouted();
     }
     function sproutTold(tokens) {
         if (tokens.length === 0 || !rowsKind)
@@ -1900,7 +2327,7 @@ Provider {
             // The daemon's words can name a session, so they're said as errorShown
             // says a daemon's error.
             const why = answer?.error === undefined ? "no daemon answered"
-                : Presented.errorShown(answer.error, Options.reports);
+                : ActsSaid.errorShown(answer.error, Options.reports);
             console.info(`launcher: a start's told wasn't taken: ${why}`);
             tokens.filter(token => sproutTokens[token] === "told").forEach(token => {
                 sproutTokens[token] = "ended";
@@ -1928,21 +2355,23 @@ Provider {
         sproutPatience.stop();
         // Ended here, by its answer or by the patience running out, so the
         // daemon's record of it, heard already or to come, is said told.
-        if (sproutTokens[sproutToken] === "asking")
+        if (sproutTokens[sproutToken] === "asking") {
             sproutTokens[sproutToken] = "ended";
+        }
         sproutToken = "";
         const where = Sprouting.asksWhere(how) && askWhere(key);
         const text = where ? Sprouting.toldWhere(how, sproutWords())
-            : Sprouting.told(how, sproutWords());
-        sproutSays(key, text);
+            : Sprouting.told(Openings.promised(how, sproutGiven), sproutWords());
+        sproutSays(key, text, how.started ? how.held !== "" ? "running" : "done" : "failed");
         // Told Joel before the daemon is told it's told, so it's kept until he is.
         sproutReaches(how, where ? text : null);
         sproutsKept(rowsKind?.held ?? {});
         Report.say(how.started ? `sprouted new work on ${how.machine}`
             : `couldn't sprout new work: ${how.why}`);
+        sproutsMade = StartSaid.made(sproutsMade,
+            { key: key, words: sproutGiven.words, on: sproutGiven.on }, how, Date.now());
         if (how.started && how.held !== "") {
-            openings = openings.concat([{ key: key, held: how.held, machine: how.machine,
-                since: Date.now(), letters: provider.launcher?.lettersAt ?? 0 }]);
+            openings = openings.concat([Openings.opening(how, key, sproutGiven, Date.now())]);
             openSprouted();
         }
     }
@@ -1958,29 +2387,139 @@ Provider {
             sproutTell([told]);
     }
 
-    // The words of the start running and the launcher's lettersAt at its
-    // Return, and the words a start refused for want of a repository
-    // carries to the folder Joel picks next, "" when none does.
-    property var sproutGiven: ({ words: "", letters: 0 })
+    // The words of the start running, and the launcher's lettersAt and
+    // keysTaken and the time at its Return; and the words a start refused
+    // for want of a repository carries to the folder Joel picks next, ""
+    // when none does.
+    property var sproutGiven: ({ words: "", letters: 0, keys: -1, at: 0 })
     property string sproutCarried: ""
+    // Where the start running was asked to run: "" where the node picks,
+    // "cloud", or a machine by its name (sprout's `on`).
+    property string sproutOn: ""
     // Steps Joel out of the act `key`, whose start wanted a repository, back
     // onto Start New Work's folders, its words carried to whichever he picks
     // (Sprouting.asksWhere), only while he's still in its field to be
     // stepped back (Sprouting.stepsBack). Whether it did.
     function askWhere(key) {
         const launcher = provider.launcher ?? null;
-        const folders = (source("quests")?.folders() ?? []).length;
-        if (!Sprouting.stepsBack(launcher, key, sproutGiven.letters, folders))
+        if (!Sprouting.stepsBack(launcher, key, sproutGiven.letters, startWheres().length))
             return false;
-        sproutCarried = sproutGiven.words;
         // A link's From a Link (newWorkFor) opens over Agents' rows, not Start New Work's, so
         // stepping out of it steps into Start New Work too.
+        // In the Cloud's acts step back to its own rows, so the words then
+        // start in the cloud as he meant, not here. A link's act asked to
+        // run elsewhere has no rows of its own there, so it stays where it
+        // is, its refusal told, and carries no words to a local row.
         const under = launcher.held[launcher.held.length - 2]?.row?.key ?? "";
+        if (provider.sproutOn !== "" && under !== "agents:start-new-work:cloud")
+            return false;
+        sproutCarried = sproutGiven.words;
         launcher.back();
-        if (under !== "agents:start-new-work")
+        if (under !== "agents:start-new-work" && under !== "agents:start-new-work:cloud")
             launcher.enter(startNewWorkMade());
         console.info("launcher: new work wanted a repository; asking where it starts");
         return true;
+    }
+    // Where Start New Work can begin, as the realm's node last listed them
+    // (the agents daemon's places.rs), asked again the first time Start New
+    // Work is stepped into at an opening, so a zone or checkout made since is
+    // there by the next, and read once as each list comes (Wheres.listable).
+    // Never as it opens: a node's 2000 places are some 200 KB for the
+    // shell's thread to read, which every opening paid, For You's among them,
+    // though only Start New Work lists them (25 November). None until it first
+    // answers, which leaves the quests' folders; where it can't, the last
+    // list stays, why journalled once as each new why comes rather than at
+    // every opening (Wheres.heard). One ask is out at a time, so a node
+    // that's stuck isn't asked again at each opening; the daemon answers
+    // every ask, with none when it goes (Daemon.qml's gone). A new list
+    // says the rows changed, so one landing while Joel is inside Start New
+    // Work is drawn there and then, not at the next opening.
+    property var startPlaces: []
+    property string startPlacesUnlisted: ""
+    property bool startPlacesAsking: false
+    // Whether they were asked since the launcher opened, so its rows made
+    // again as the list lands don't ask again.
+    property bool startPlacesAsked: false
+    function askPlaces() {
+        const daemon = rowsKind ?? null;
+        if (daemon === null || provider.startPlacesAsking || provider.startPlacesAsked)
+            return;
+        provider.startPlacesAsking = true;
+        provider.startPlacesAsked = true;
+        daemon.ask({ ask: "places" }, answer => {
+            provider.startPlacesAsking = false;
+            const begun = Date.now();
+            const heard = Wheres.heard(provider.startPlacesUnlisted, answer);
+            const differs = heard.places !== null
+                && Wheres.differs(provider.startPlaces, heard.places);
+            // Read outside every opening's own measure, so a list that
+            // holds the thread past a frame or three says so itself.
+            const took = Date.now() - begun;
+            if (took > 50)
+                console.info(`launcher: places read in ${took} ms`);
+            if (differs) {
+                provider.startPlaces = heard.places;
+                provider.changed();
+            }
+            provider.startPlacesUnlisted = heard.unlisted;
+            if (heard.journal !== null)
+                console.info(`launcher: no places to start in: ${heard.journal}`);
+        });
+    }
+    // What the node's providers say they could make, as the agents daemon's
+    // offers.rs last heard it (Cloud.heard), so In the Cloud is listed only
+    // where a machine can be had. A provider's program runs for each ask,
+    // for up to half a minute, so it's asked at an opening only once the
+    // last answer is ten minutes old (Cloud.stale), one ask out at a time;
+    // where it can't say, the last offers stay, why journalled once as each
+    // new why comes. New offers, or none where there were some, draw
+    // Start New Work's rows again.
+    property var cloudOffers: []
+    property real cloudOffersAt: 0
+    property string cloudUnoffered: ""
+    property bool cloudAsking: false
+    // `pressed` where a start's Return asks (Cloud.asksNow).
+    function askOffers(pressed) {
+        const kept = {
+            asking: provider.cloudAsking,
+            at: provider.cloudOffersAt,
+            offers: provider.cloudOffers
+        };
+        if (!Cloud.asksNow(kept, Date.now(), pressed === true))
+            return;
+        // With no daemon to ask, no answer comes, so it is heard as none
+        // (Cloud.heard's NO_ANSWER), never left as not heard yet for good.
+        const daemon = rowsKind ?? null;
+        if (daemon === null) {
+            provider.offersCame(null);
+            return;
+        }
+        provider.cloudAsking = true;
+        daemon.ask({ ask: "offers" }, answer => {
+            provider.cloudAsking = false;
+            provider.offersCame(answer);
+        });
+    }
+    // What an offers `answer` changes (Cloud.answered), kept and journalled.
+    function offersCame(answer) {
+        const kept = Cloud.answered({
+            offers: provider.cloudOffers,
+            at: provider.cloudOffersAt,
+            unoffered: provider.cloudUnoffered
+        }, answer, Date.now());
+        provider.cloudOffersAt = kept.at;
+        provider.cloudUnoffered = kept.unoffered;
+        if (kept.changed) {
+            provider.cloudOffers = kept.offers;
+            provider.changed();
+        }
+        if (kept.journal !== null)
+            console.info(`launcher: the cloud offers nothing known: ${kept.journal}`);
+    }
+    // Start New Work's In rows (Wheres.wheres): his quests' folders, then the
+    // node's places, a big repository's zones among them.
+    function startWheres() {
+        return Wheres.wheres(source("quests")?.folders() ?? [], startPlaces);
     }
     // Tells Joel how starts ended: in the foot while the card is up, and
     // as a notice while it's shut or if it shuts soon after the foot said
@@ -2017,69 +2556,140 @@ Provider {
         const launcher = provider.launcher ?? null;
         sproutFooted = null;
         sproutCarried = "";
+        // No opening takes the keys once he's shut it, one still asked included, so
+        // an act that promised a window says instead it shows in Agents once it's up.
+        Openings.unpromised(openings).forEach(each => {
+            if (Openings.saysOnAct(sproutPressed, each.one.key, Openings.askedOf(each.one)))
+                sproutSays(each.one.key, Sprouting.told(each.how, sproutWords()), "pending");
+        });
+        openings = Openings.shutOn(openings);
+        sproutGiven = Openings.spent(sproutGiven);
         if (launcher === null
             || !Sprouting.noticedAtShut(footed, launcher.keysTaken, Date.now()))
             return;
         sproutNoticed(footed.told);
-        if (launcher.toldOnOpen === footed.shown)
-            launcher.toldOnOpen = [];
-        if (launcher.saying === footed.shown)
-            launcher.say([]);
+        footCleared(launcher, footed.shown);
     }
 
     // The sprouts waiting for their sessions, each `{ key, held, machine,
-    // since, letters }`, `letters` the launcher's lettersAt at the answer:
+    // since, asked, keys, letters, late, told }` (Openings.opening), `since`
+    // the time of its answer, `asked`, `keys` and `letters` the time,
+    // keysTaken and lettersAt at its Return (keys -1 once the launcher shut,
+    // or with none, so it never takes the keys), `late` true once it's said to
+    // be still coming up and `told` the words that said it (Openings.toldOf):
     // Joel asked for each, so each opens for him, on the workspace a session
     // goes to and focused (Sessions.goTo), rather than in no window (Joel,
     // 18 November: "start new work does not seem to work from the
     // launcher"). A list, so a second sprout never loses the first.
     property var openings: []
-    readonly property int openingPatience: 60000
+    // A minute before one still coming up is said to be, and a quarter hour,
+    // near three times the slowest start seen (five and a half minutes, on
+    // a loaded machine), before it's watched no more.
+    readonly property var openingPatience: ({ patience: 60000, watch: 15 * 60000 })
     // Each that's up opens and goes, but takes the keys only while Joel
     // still waits on its act in the launcher (Sprouting.waitsOn): once he's
     // at something else, what he types could land in an agent's prompt, so
-    // the foot says it's up and Go To in Agents opens it. A session comes up
-    // in seconds; one not up within the minute is said unopened and opens no
-    // window later, when Joel may be at something else (Sprouting.settled).
-    // What a pass says is one tell, in the foot or as a notice as
-    // sproutTell says.
+    // he's told it's up, by its name, and Go To in Agents opens it. One not
+    // up within the minute is said to be still coming up, and told again as
+    // it comes up, however late, or once it's watched no more
+    // (Sprouting.settled): Joel's at 14:30 on 25 November came up five and a
+    // half minutes after his Return on a loaded machine, and was said
+    // unopened at the minute and never again. What a pass says goes to the
+    // foot for the starts Joel still waits on, and as a notice for the rest
+    // (Openings.toldWhere).
     function openSprouted() {
         const stood = Sprouting.settled(openings, one => sessionOf(one), Date.now(),
             openingPatience);
-        if (stood.late.length === 0 && stood.up.length === 0)
+        if (stood.late.length + stood.up.length + stood.gone.length === 0)
             return;
-        openings = stood.waiting;
-        const told = stood.late.map(one => said(one, "unopened"));
+        const launcher = provider.launcher ?? null;
+        const late = stood.late.map(one => ({ one, text: said(one, "unopened") }));
+        openings = Openings.toldOf(stood.waiting, stood.late, late.map(each => each.text));
+        stood.late.forEach(one => sproutJournal(
+            `new work held ${one.held} on ${one.machine} is still coming up`));
+        stood.gone.forEach(one => {
+            sproutJournal(`new work held ${one.held} on ${one.machine} wasn't up in time`);
+            // "Lost" answers its "still coming up", as an up word does.
+            takeBack(one);
+            // Lost, it no longer counts as made, so the same words again start
+            // it rather than say it started and Go To opens it.
+            sproutsMade = StartSaid.forgot(sproutsMade, one);
+        });
+        const told = late.concat(stood.gone.map(one => ({ one, text: said(one, "lost") })));
         stood.up.forEach(one => {
             const text = openOne(one);
             if (text !== "")
-                told.push(text);
+                told.push({ one, text });
         });
-        if (told.length > 0)
-            sproutTell(told);
+        const where = Openings.toldWhere(told,
+            one => Sprouting.waitsOn(launcher, one.key, one.keys, one.letters));
+        if (where.foot.length > 0)
+            sproutTell(where.foot);
+        if (where.notice.length > 0)
+            sproutNoticed(where.notice);
     }
     function sessionOf(one) {
         return Sprouting.sproutedOf(Sessions.running, one.held, one.machine);
     }
-    // Says `word` of `one` on its act, and gives the words for the foot.
+    // Says `word` of `one` on its act, unless the act was pressed again
+    // since (Openings.saysOnAct), and gives the words for the foot, its
+    // session named where it's up (footName).
     function said(one, word) {
-        const text = String(sproutWords()[word] ?? "").replace("{machine}", one.machine);
-        sproutSays(one.key, text);
+        const text = Openings.filled(sproutWords(), word, { machine: one.machine,
+            title: one.session ? footName(one.session) : "",
+            minutes: String(openingPatience.watch / 60000) });
+        // Still coming up, or opening, it's still pending; up, it's done;
+        // lost, it failed.
+        const mark = word === "lost" ? "failed"
+            : word === "unopened" || word === "opening" ? "pending" : "done";
+        if (Openings.saysOnAct(sproutPressed, one.key, Openings.askedOf(one)))
+            sproutSays(one.key, text, mark);
         return text;
     }
     // Opens `one`'s session if Joel still waits on its act, giving "", or
     // gives what the foot says of it left for Go To.
     function openOne(one) {
         const launcher = provider.launcher ?? null;
-        if (!Sprouting.waitsOn(launcher, one.key, one.letters)) {
-            Report.say(`new work's session ${one.session.address} is up; left for Go To`);
-            return said(one, "up");
+        const late = one.late === true ? " late" : "";
+        // Its window, or its up word, answers the foot's "still coming up"
+        // of it, so neither says it beside them nor notices it at the shut.
+        takeBack(one);
+        // Its session's address only with reports on, as main said it.
+        Report.say(`new work held ${one.held} is session ${one.session.address}`);
+        const waits = Sprouting.waitsOn(launcher, one.key, one.keys, one.letters);
+        if (!Openings.takesKeys(waits, sproutPressed, one)) {
+            sproutJournal(`new work held ${one.held} is up${late}; left for Go To`);
+            return said(one, Openings.upWord(one));
         }
         said(one, "opening");
         launcher.open = false;
         Sessions.goTo(one.session);
-        Report.say(`opening new work's session ${one.session.address}`);
+        sproutJournal(`opening new work held ${one.held}${late}`);
         return "";
+    }
+    // Takes back what the foot said of `one` late (Openings.takenBack),
+    // clearing the foot where nothing is left of it.
+    function takeBack(one) {
+        const launcher = provider.launcher ?? null;
+        const taken = Openings.takenBack(sproutFooted, one);
+        sproutFooted = taken.footed;
+        if (launcher !== null && taken.cleared !== null)
+            footCleared(launcher, taken.cleared);
+    }
+    // The launcher forgets the foot `shown` (sproutTell's), where it still
+    // holds it to say.
+    function footCleared(launcher, shown) {
+        if (launcher.toldOnOpen === shown)
+            launcher.toldOnOpen = [];
+        if (launcher.saying === shown)
+            launcher.say([]);
+    }
+    // What becomes of a start, to the journal on any machine, so a slow or
+    // lost one can be matched to the node's record by its hold: as one line,
+    // the node's words escaped as JSON escapes them, so no hold or machine
+    // it names can break the line or forge another.
+    function sproutJournal(what) {
+        console.info(`launcher: ${JSON.stringify(String(what)).slice(1, -1)}`);
     }
     Timer {
         interval: 5000
@@ -2172,13 +2782,13 @@ Provider {
         const reopenable = lost.filter(one => !goneHere(one));
         // Reopen Them All reopens those that can be, its side counting them
         // when any can't: "58 of 60 \u00b7 2 folders gone". Each found gone
-        // after is counted with how many reopened, and said once the
-        // launcher opens next.
-        const outcome = { asked: reopenable.length, gone: 0 };
-        const tellAll = () => provider.launcher?.tellOnOpen([
-            [String(outcome.gone), String(said[outcome.gone === 1 ? "folderGone"
-                : "foldersGone"] ?? ""), Theme.alert],
-            [String(outcome.asked - outcome.gone), String(said.reopened ?? "")]]);
+        // after is counted with how many reopened, by the walk Sessions
+        // joins the press to (Reopening.js's tallyOf), and said once the
+        // launcher opens next (ReopenTally.js).
+        const tellAll = now => {
+            const [gone, reopened] = ReopenTally.told(now, said);
+            provider.launcher?.tellOnOpen([[...gone, Theme.alert], reopened]);
+        };
         // Its count of what failed is drawn in the alert's colour, as the
         // row that failed is, the rest as a side reads (VKCF3Z, 2026-11-07).
         const themAll = () => act("all", {
@@ -2189,17 +2799,10 @@ Provider {
             // carried one beside where Joel is, since it never sat here,
             // and then the windows that reopen themselves. Each is told to
             // carry on as it opens, so none waits to be poked; one reopened
-            // alone from its own row isn't, since Joel is there. Counted
-            // afresh each time, since the row is kept while what's to
-            // reopen stands (ownKept), and a second run would add to the
-            // first's.
-            run: () => {
-                outcome.gone = 0;
-                Sessions.reopenThemAll(reopenable, () => {
-                    outcome.gone += 1;
-                    tellAll();
-                });
-            }
+            // alone from its own row isn't, since Joel is there. Each walk
+            // counts on its own, though the row is kept, and a press
+            // mid-walk joins its count.
+            run: () => Sessions.reopenThemAll(reopenable, tellAll)
         });
         return thingRow({
             key: "agents:to-reopen",
@@ -2222,6 +2825,13 @@ Provider {
         function onOpenChanged() {
             provider.wrapAhead();
             provider.wrapForTyping();
+            // Offers are a provider or two, asked at most every ten minutes
+            // (Cloud.stale), so unlike the places they're asked at an opening:
+            // In the Cloud is then listed the first time Start New Work opens.
+            if (provider.launcher.open) {
+                provider.startPlacesAsked = false;
+                provider.askOffers();
+            }
             // Shut, no drawer shows, so none is watched.
             if (!provider.launcher.open) {
                 provider.drawerWanted = "";
@@ -2408,7 +3018,8 @@ Provider {
             then(Sessions.steered(address, null));
             return;
         }
-        rowsKind.ask(said, reply => then(Sessions.steered(address, reply)));
+        rowsKind.ask(said, reply => then(Sessions.steered(address, reply),
+            String(reply?.error?.message ?? "")));
     }
 
     property string fedBack: ""

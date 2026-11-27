@@ -21,6 +21,8 @@
 //! - `sources`: each source followed on its own thread, heard in one loop.
 //! - `acts`: a session's acts, done by asking the node as the shell asks.
 //! - `sprout`: Start New Work, asked of the node as the shell asks.
+//! - `places`: where Start New Work can begin, as the node lists them.
+//! - `offers`: whether it can begin in the cloud, as the node's providers say.
 //! - `asker`: whether the shell asked, for what only it may ask.
 //! - `reopen`: the sessions there are to reopen, and what Joel said of them.
 //! - `recent`: the sessions closed this boot that Recent lists.
@@ -64,6 +66,8 @@ pub mod kept_places;
 pub mod landed;
 pub mod network_drawer;
 pub mod networks;
+pub mod offers;
+pub mod places;
 pub mod recent;
 pub mod reopen;
 pub mod row;

@@ -45,7 +45,7 @@ fn what_nix_never_registered_is_garbage_as_large_as_its_blocks() {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_secs_f64();
-    let dead = list(&nix, false).unwrap();
+    let dead = list(&nix, &store, false).unwrap();
     let paths: Vec<&str> = dead.iter().map(|dead| dead.path.as_str()).collect();
     assert_eq!(
         paths,
