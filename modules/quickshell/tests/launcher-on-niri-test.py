@@ -4732,13 +4732,15 @@ def test_the_home_network_rests_whole_where_the_wheel_leaves_it(shell: Shell) ->
         turn(35)
     # The small turns reached past the top row, so the places between were each rested at.
     assert max(places) > 0, places
+    # Twice the turns up by 70 that always moved the view, so it passes any row drawn today.
+    passes_any_row = -140
     up = 0
     at = places[-1]
     by = -35
     while at > 0:
         rest = turn(by)
         up += 1
-        assert by > -140 or rest < at, f"a turn up by {by} from {at} rested where it set off"
+        assert by > passes_any_row or rest < at, f"a turn up by {by} from {at} stayed put"
         assert up <= 3 * down, f"{up} small turns up never reached the top: {places}"
         by = by * 2 if rest == at else -35
         at = rest
