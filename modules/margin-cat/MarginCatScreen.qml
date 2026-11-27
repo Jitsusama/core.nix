@@ -419,10 +419,11 @@ PanelWindow {
             // or held short of its seat as a scroll caught its walk
             // (heldShortOn), rides with its window from where it's drawn,
             // sits there at once, or lets a ride under way run on
-            // (Carried.backOn).
+            // (Carried.backOn). The screen is read through `present`, as
+            // the cut visit's is, since an event woke this.
             const back = Carried.backOn(place, there, {
                 wide: size,
-                across: modelData.width,
+                across: present.width,
                 riding: carry !== null,
                 scrolling: slides(wanted),
                 reshaped,
