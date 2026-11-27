@@ -413,10 +413,10 @@ export const toldApart = (networks: readonly Named[]): ReadonlyMap<string, strin
     return carries === asDrawn(n.name) ? "" : carries;
   });
   tell(networks, names, " ", idHint);
-  // Keys are unique, so each pass leaves fewer alike; one per network
-  // bounds it whatever the titles say.
+  // Keys are unique, and stay so with their spaces and % written as a link has them, which a
+  // page can't run together; each pass leaves fewer alike, and one per network bounds it.
   for (let pass = 0; pass < networks.length; pass++) {
-    if (!tell(networks, names, " ", (n) => `[${n.key}]`)) {
+    if (!tell(networks, names, " ", (n) => `[${n.key.replace(/[\s%]/gu, encodeURIComponent)}]`)) {
       break;
     }
   }
