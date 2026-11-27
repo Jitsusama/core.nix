@@ -4679,9 +4679,6 @@ def test_the_home_network_rests_whole_where_the_wheel_leaves_it(shell: Shell) ->
     stood whole at the view's foot judged cut by its glyph's box, which is taller than its
     ink (Mark.qml's inkFrom), so one rest alone passed by chance (2026-11-27).
     """
-    # A turn may leave the view where it was, at an end, or bring it back there, so one that
-    # hasn't moved it in this long has come to rest.
-    moves_within = 2
     home_network_in_normal(shell)
     card = shell.showing()["card"]
     wlrctl = os.environ["WLRCTL"]
@@ -4692,24 +4689,35 @@ def test_the_home_network_rests_whole_where_the_wheel_leaves_it(shell: Shell) ->
     # past the list's end and back to its top, then larger ones down and up. A turn may come to
     # rest where it set off (one from 156 did, 2026-11-27): it stopped inside the row above,
     # taller than the turn, and rested back on the top it left. So a turn up that didn't move
-    # is followed by one twice as far, which passes that row, and the way back up gets to the
-    # top in under three times the turns it took down whatever the wheel's travel.
+    # is followed by one twice as far, until one passes that row. The case's turns up by 70
+    # always moved the view before, so one by 140 passes any row it draws today: no row takes
+    # more than three turns up, and the way back up at most three times the turns down.
     places: list[int] = []
 
     def turn(by: int) -> int:
-        was = shell.showing()["scrolled"]
+        shown = shell.showing()
+        was, heard = shown["scrolled"], shown["movements"]
+        # At the bound it turns toward, the wheel can't move the view, so it isn't sent: a
+        # turn heard late there would come to rest during the next turn and be counted as it.
+        at_its_bound = shown["atFoot"] if by > 0 else shown["atTop"]
+        if at_its_bound:
+            print(f"the wheel by {by} from {was} isn't sent: the view is at its bound")
+            places.append(was)
+            return int(was)
         # Said, so a wait that runs out names which way the wheel went and from where.
         print(f"the wheel by {by} from {was}")
         shell.as_account(f"{wlrctl} pointer scroll {by} 0")
-        deadline = time.monotonic() + moves_within
-        while shell.showing()["scrolled"] == was and time.monotonic() < deadline:
-            time.sleep(launcher_on_niri.POLL)
-        if shell.showing()["scrolled"] == was:
-            print(f"the wheel by {by} didn't move the view from {was} in {moves_within} s")
 
-        # Once the view has stopped, so one the wheel only passed through doesn't count.
+        # Once the view has come to rest from this turn, as the list counts its rests, so one
+        # the wheel only passed through doesn't count, one heard late is waited for, and one
+        # that rested where it set off isn't taken for one not yet heard.
         def rested(shown: Json) -> bool:
-            return bool(not shown["moving"] and shown["restsOnARow"] and shown["cut"] == [])
+            return bool(
+                shown["movements"] > heard
+                and not shown["moving"]
+                and shown["restsOnARow"]
+                and shown["cut"] == []
+            )
 
         shell.launcher_until(rested)
         shown = shell.showing()
@@ -4730,11 +4738,19 @@ def test_the_home_network_rests_whole_where_the_wheel_leaves_it(shell: Shell) ->
     while at > 0:
         rest = turn(by)
         up += 1
-        assert up < 3 * down, f"{up} small turns up never reached the top: {places}"
+        assert by > -140 or rest < at, f"a turn up by {by} from {at} rested where it set off"
+        assert up <= 3 * down, f"{up} small turns up never reached the top: {places}"
         by = by * 2 if rest == at else -35
         at = rest
-    for by in [70] * 3 + [-70] * 3:
+    # The larger turns move the view too: down from the top always, since a view rests on
+    # the row at or below where it stopped, and back up from wherever that left it.
+    for by in [70] * 3:
+        was = places[-1]
+        assert turn(by) > was or shell.showing()["atFoot"], f"a turn by {by} from {was}"
+    lowest = places[-1]
+    for by in [-70] * 3:
         turn(by)
+    assert places[-1] < lowest or lowest == 0, f"turns up by 70 from {lowest}: {places}"
     shell.close_launcher()
 
 

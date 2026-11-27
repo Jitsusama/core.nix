@@ -10500,6 +10500,11 @@ Scope {
             // whether the wheel or a flick still moves the view.
             groundCut: list.groundCut(),
             moving: list.moving,
+            // How many times it has come to rest, and whether it stands at
+            // its top or its foot, where the wheel can't move it that way.
+            movements: list.movementsEnded,
+            atTop: list.atYBeginning,
+            atFoot: list.atYEnd,
             // How wide its caret is drawn, and whether it's drawn: not in
             // normal. How lit it is as it blinks isn't said, since this is
             // said on every change.
@@ -15393,12 +15398,17 @@ Scope {
                             // And the widest any row has said there.
                             readonly property int sides: root.sidesWidest
                             boundsBehavior: Flickable.StopAtBounds
+                            // How many times the wheel or a flick has come to
+                            // rest, so a check can tell a turn that rested
+                            // where it set off from one not yet heard.
+                            property int movementsEnded: 0
                             // Where the wheel or a flick leaves a list that
                             // rests whole, it rests on a row's top, as a
                             // step does (Headings.rested).
                             onMovementEnded: {
                                 if (root.restsWhole)
                                     list.contentY = Headings.rested(list.contentY, list.headed());
+                                list.movementsEnded += 1;
                             }
                             // A row built past the view each way, so the
                             // next an arrow reaches is drawn before it's
