@@ -381,7 +381,7 @@ fn a_clear_asked_under_a_writers_hold_says_it_clears_from_before_its_survey() {
     let (mut guard, seen) = clear_under_a_hold(&home);
     assert!(
         seen.iter()
-            .all(|(waiting, why)| *waiting != true && why == "clear"),
+            .all(|(waiting, why)| waiting.is_null() && why == "clear"),
         "a disk whose clear was surveying wasn't told at work clearing: {seen:?}"
     );
     // A clear of a folder with nothing in it to clear runs no pass, and
@@ -419,7 +419,7 @@ fn a_clear_in_a_subvolume_under_a_writers_hold_says_it_clears() {
     let (_, seen) = clear_under_a_hold(&home);
     assert!(
         seen.iter()
-            .all(|(waiting, why)| *waiting != true && why == "clear"),
+            .all(|(waiting, why)| waiting.is_null() && why == "clear"),
         "a disk whose clear in a subvolume was surveying wasn't told at work clearing: {seen:?}"
     );
 }

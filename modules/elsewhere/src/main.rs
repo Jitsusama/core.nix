@@ -434,7 +434,13 @@ fn there(settings: &Settings, kind: &Kind, asked: &Asked, machine: &str) -> Resu
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |since| since.as_nanos())
     );
-    let scratches = far::scratches();
+    let Some(scratches) = far::scratches() else {
+        return Ok(Sent::Stayed(
+            Exit::Config,
+            "neither XDG_CACHE_HOME nor HOME is absolute, so no quest's handover is here"
+                .to_owned(),
+        ));
+    };
     let handover = scratches.join(&quest).join(far::HANDOVER);
     let cleared = far::spent::clear(&scratches, &handover, &here(), std::time::SystemTime::now());
     let gone = cleared.gone;
@@ -451,6 +457,7 @@ fn there(settings: &Settings, kind: &Kind, asked: &Asked, machine: &str) -> Resu
     }
     let job = Job {
         handover: handover.join(&id),
+        scratch: scratches.join(&quest),
         quest,
         id,
         root,
@@ -466,10 +473,11 @@ fn there(settings: &Settings, kind: &Kind, asked: &Asked, machine: &str) -> Resu
 }
 
 /// A job on its way: the quest carrying it, its id there, the tree its
-/// files are from and its folder within it, and where in the quest's
-/// handover it's left.
+/// files are from and its folder within it, the quest's scratch, and
+/// where in its handover it's left.
 struct Job {
     quest: String,
+    scratch: PathBuf,
     id: String,
     root: PathBuf,
     files: Vec<String>,
@@ -532,7 +540,7 @@ fn send(
     // Started in the quest's scratch, which mycelium finds at the same
     // place under the far home: a strict fence there writes only the
     // folder a command starts in, and refuses to start one in the home.
-    run.arg("--folder").arg(far::scratches().join(quest));
+    run.arg("--folder").arg(&job.scratch);
     let child = run
         .args(["--", "sh", "-c", &script])
         .stdout(std::process::Stdio::piped())
