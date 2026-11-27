@@ -424,15 +424,23 @@ QtObject {
         holds("a key let by says why where its Return can't answer, and only there",
             [Confirm.letBy(ask, "Return", undefined, 300), Confirm.letBy(timeless, "Return",
                 1400, 300), Confirm.letBy(ask, "Return", 1400, undefined),
-                Confirm.letBy(ask, "Return", 999, 300)],
+                Confirm.letBy(ask, "Return", 999, 300), Confirm.letBy(ask, "y", undefined, 300),
+                Confirm.letBy(timeless, "Return", undefined, 300)],
             ["Return came to the ask with no time, so it was let by",
                 "the ask can't be timed, as it was put at no time, so Return was let by",
                 "the ask can't be timed, as it has no guard, so Return was let by",
-                "Return was timed before its ask, so it was let by"]);
+                "Return was timed before its ask, so it was let by",
+                "a key came to the ask with no time, so it was let by",
+                "Return came to the ask with no time, so it was let by"]);
+        // Of an ask that can't be timed as of one that can, so neither reason
+        // is said of a key that answered or of a modifier alone.
         holds("never of a key early in its guard, a modifier alone, or one that answers",
             [Confirm.letBy(ask, "Return", 1100, 300), Confirm.letBy(ask, "", 999, 300),
                 Confirm.letBy(ask, "Escape", 999, 300), Confirm.letBy(ask, "Return", 1400,
-                    300)], [null, null, null, null]);
+                    300), Confirm.letBy(timeless, "Escape", 1400, 300),
+                Confirm.letBy(ask, "y", 1400, undefined), Confirm.letBy(timeless, "", 1400,
+                    300), Confirm.letBy(ask, "", undefined, 300)],
+            [null, null, null, null, null, null, null, null]);
         holds("and such an ask says why it can't be timed, where a timed one says nothing",
             [Confirm.untimed(timeless, 300), Confirm.untimed(ask, undefined),
                 Confirm.untimed(ask, 300)],

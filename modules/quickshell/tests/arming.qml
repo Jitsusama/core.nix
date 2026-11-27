@@ -230,7 +230,9 @@ QtObject {
         // Return's act, and a Return's act before a category's step-in.
         expect("a row held still changes none though it starts, a start acts though Return asks",
             none([[{ start: "x" }, true, true], [{ start: "x", returns: { given: true } }, true,
-                false], [{ category: true, returns: { run } }, true, false]]), "true false false");
+                false]]), "true false");
+        expect("and a category whose Return acts may act",
+            none([[{ category: true, returns: { run } }, true, false]]), "false");
 
         // What Return does on the selected row, as onAccepted asks: a held
         // row is held before anything else it might be stepped into,

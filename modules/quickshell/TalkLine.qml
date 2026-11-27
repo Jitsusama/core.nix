@@ -595,6 +595,9 @@ Scope {
                         fade: Options.caret.fade
                         stopsAfter: Options.caret.stopsAfter
                         wait: Options.keyTiming.wait
+                        // A mycelium: link's quiet and visual's operator, timed on the
+                        // clock that never steps, as the launcher's line is.
+                        keyNow: () => KeyTimes.now()
                         glyph: ""
                         lead: Theme.glyph[root.words.glyph ?? ""] ?? ""
                         leadHue: Theme.voice

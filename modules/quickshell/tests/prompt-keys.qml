@@ -463,10 +463,6 @@ Item {
             compare(answered.signalArguments[0][1], 5400, "and answered at that time");
         }
 
-        // The operator again is timed on that clock too: d 100 ms after
-        // visual's, on a clock far from the wall's, is still taken with it,
-        // where the wall's would read it as long after and let it begin an
-        // operator, which j would then end as dj.
         // A link's quiet is timed on that clock too, so a wall clock
         // stepped back inside it can't drop every key for as long as the
         // step: a key in its 700 ms is dropped, and one after is taken.
@@ -482,6 +478,12 @@ Item {
             line.unlinked();
         }
 
+        // The operator again is timed on that clock too, both its own time
+        // and the one it's taken against. d 100 ms after visual's, on that
+        // clock, is still taken with it, where the wall's would read it as
+        // long after. d 400 ms after, past the wait on that clock though
+        // the wall's barely moved, begins an operator, which j then ends
+        // as dj, so neither read can go back to the wall unseen.
         function test_theOperatorAgainIsTimedOnTheClockThePromptIsGiven() {
             line.keyNow = () => 5000;
             toNormal();
@@ -494,6 +496,14 @@ Item {
             keyClick("j");
             compare(operated.count, 1, "j after it only moves");
             compare(stepped.count, 1);
+            line.keyNow = () => 6000;
+            keyClick("V");
+            keyClick("d");
+            compare(operated.count, 2);
+            line.keyNow = () => 6400;
+            keyClick("d");
+            keyClick("j");
+            compare(operated.count, 3, "d past the wait on the given clock, an operator");
         }
 
         // Unhurried, the ask hears d again only if it's asked before the
