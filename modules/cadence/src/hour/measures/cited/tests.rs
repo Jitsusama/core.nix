@@ -179,7 +179,8 @@ fn a_time_with_no_live_word_or_a_live_word_with_no_time_is_no_timed_line() {
 #[test]
 fn a_clock_time_is_its_hour_and_minute_and_whether_either_half_of_the_day() {
     let said = "at 10:06:44 pm, then 9:05, 22:45, 09:05 a.m., 12:30 and 0:30, 12:10am, \
-                not 123:45, 12:345, 1:5, 24:00 or 1:75, nor 9:05 amid";
+                not 123:45, 12:345, 1:5, 24:00 or 1:75, nor 9:05 amid, \
+                then 09:05, 12:30 pm, 9:05 P.M., 10:45\u{202f}PM and 7:15 AM";
     let read: Vec<(u32, u32, bool)> = clock_times(said)
         .iter()
         .map(|c| (c.hour, c.minute, c.dial))
@@ -195,6 +196,11 @@ fn a_clock_time_is_its_hour_and_minute_and_whether_either_half_of_the_day() {
             (0, 30, false),
             (0, 10, false),
             (9, 5, true),
+            (9, 5, false),
+            (12, 30, false),
+            (21, 5, false),
+            (22, 45, false),
+            (7, 15, false),
         ],
         "a clock time read wrong"
     );
@@ -202,7 +208,12 @@ fn a_clock_time_is_its_hour_and_minute_and_whether_either_half_of_the_day() {
 
 #[test]
 fn two_times_twelve_hours_apart_are_one_only_when_one_is_on_the_dial() {
-    let one = |a: &str, b: &str| clock_times(a)[0].is(&clock_times(b)[0]);
+    let first = |text: &str| {
+        *clock_times(text)
+            .first()
+            .unwrap_or_else(|| panic!("{text} read as no clock time"))
+    };
+    let one = |a: &str, b: &str| first(a).is(&first(b));
     for (a, b) in [
         ("10:45", "22:45"),
         ("22:45", "10:45"),
@@ -217,6 +228,8 @@ fn two_times_twelve_hours_apart_are_one_only_when_one_is_on_the_dial() {
         ("10:45 pm", "10:45 am"),
         ("00:30", "12:30 pm"),
         ("10:45", "10:15"),
+        ("09:05", "21:05"),
+        ("21:05", "09:05"),
     ] {
         assert!(!one(a, b), "{a} was taken as {b}");
     }
