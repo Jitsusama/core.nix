@@ -41,6 +41,10 @@ const READ_FOR: Duration = Duration::from_secs(120);
 /// The longest one answer may take, in seconds.
 const ONE_ANSWER: u64 = 60;
 
+/// What asking the host's API is called when it fails, so a failure can be
+/// told to be the host's answer and not a step before it, such as the token.
+pub const ASKING_THE_HOST: &str = "reading main's folder from the host";
+
 /// What a read of main's head found: the folder's tree, and whether the
 /// head descends from `from`, the commit the machine last switched to.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -360,7 +364,7 @@ impl<'a> Host<'a> {
         let Some((each, retrying)) = allowed(self.until.saturating_duration_since(Instant::now()))
         else {
             return Err(Failure::new(format!(
-                "reading main's folder from the host took over {} s",
+                "{ASKING_THE_HOST} took over {} s",
                 READ_FOR.as_secs()
             )));
         };
@@ -408,7 +412,7 @@ impl<'a> Host<'a> {
             OsString::from("--retry-max-time"),
             OsString::from(retrying.to_string()),
         ]);
-        let asked = run::output(curl, "reading main's folder from the host", args);
+        let asked = run::output(curl, ASKING_THE_HOST, args);
         let _ = fs::remove_file(&asks);
         asked?;
         answers

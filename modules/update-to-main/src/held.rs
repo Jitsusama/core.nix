@@ -15,6 +15,7 @@ use crate::config::Config;
 use crate::follows::{self, Followed};
 use crate::git::{self, Repo};
 use crate::hosted;
+use crate::read;
 use crate::run::Failure;
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -319,9 +320,18 @@ const NO_ANSWER_FILE: &str = "(exit status: 37)";
 
 /// Whether an ask of main's host failed by its saying it knows no such
 /// commit: curl's own line for each failed answer names its HTTP code, and
-/// an API served from files has no answer file for it.
+/// an API served from files has no answer file for it. Only the ask itself
+/// can say so; a step before it, such as the account's token command, may
+/// fail with any exit and print anything.
 fn unknown_to_host(failure: &Failure) -> bool {
-    failure.why.ends_with(NO_ANSWER_FILE)
+    let Some(how) = failure
+        .why
+        .strip_prefix(read::ASKING_THE_HOST)
+        .and_then(|rest| rest.strip_prefix(" failed "))
+    else {
+        return false;
+    };
+    how == NO_ANSWER_FILE
         || failure
             .lines
             .iter()
