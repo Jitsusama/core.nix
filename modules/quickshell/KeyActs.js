@@ -52,8 +52,15 @@ function completing(field) {
     if (field.selected || !field.answer) {
         return "rest";
     }
-    return !field.answer.run && (field.answer.copy ?? field.answer.headline) !== ""
-        ? "answer" : "";
+    return !field.answer.run && answerPut(field.answer) !== "" ? "answer" : "";
+}
+
+// What an answer puts in the question's place, where Ctrl+Y's completion
+// puts it ("answer" above): its copy where it has one, else its headline.
+// An empty copy is still its copy, so it puts nothing. Launcher.qml's
+// onCompleted puts this, so what's put and whether it's put are one rule.
+function answerPut(answer) {
+    return answer.copy ?? answer.headline;
 }
 
 // Whether gv has something to take back: on the rows a selection

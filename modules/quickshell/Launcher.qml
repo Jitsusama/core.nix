@@ -14731,7 +14731,11 @@ Scope {
                             // At home there's none, since nothing is typed.
                             // A command puts its start in the field, and a
                             // question only started is finished first.
-                            switch (root.completingNow()) {
+                            // Nothing to put returns at once: the search
+                            // above left nothing due, so another finds
+                            // nothing.
+                            const does = root.completingNow();
+                            switch (does) {
                             case "":
                                 return;
                             case "start":
@@ -14744,8 +14748,15 @@ Scope {
                                 text = text + root.completion;
                                 break;
                             case "answer":
-                                text = root.answer.copy ?? root.answer.headline;
+                                text = KeyActs.answerPut(root.answer);
                                 break;
+                            default:
+                                // KeyActs.completing said what no case
+                                // here does, so Ctrl+Y would quietly do
+                                // nothing; said, so it's seen.
+                                console.warn(`launcher: Ctrl+Y's completion said "${does}", `
+                                    + "which the field doesn't do");
+                                return;
                             }
                             root.searchNow();
                         }
