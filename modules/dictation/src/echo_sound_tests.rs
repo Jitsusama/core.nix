@@ -7,9 +7,15 @@ use super::*;
 /// A track of their sound at 0 dB of full scale, by its power, from
 /// `from_ms` to `to_ms` milliseconds into the call, as a take of theirs.
 fn their_sound(from_ms: usize, to_ms: usize) -> Track {
+    their_sound_at(from_ms, to_ms, 0.0)
+}
+
+/// A track of their sound at `level` dB of full scale, by its power,
+/// from `from_ms` to `to_ms` milliseconds into the call.
+fn their_sound_at(from_ms: usize, to_ms: usize, level: f32) -> Track {
     let (from, to) = (from_ms * RATE / 1000, to_ms * RATE / 1000);
     let mut track = Track::default();
-    track.hear(from, &vec![1.0; to - from]);
+    track.hear(from, &vec![10f32.powf(level / 20.0); to - from]);
     track
 }
 
@@ -62,6 +68,29 @@ fn joels_word_under_their_sound_inside_their_line_is_his_own() {
         written,
         ["Fine by me. Right."],
         "Joel's word inside their line was cut for their sound"
+    );
+}
+
+#[test]
+fn joels_answer_at_his_own_voice_after_their_take_is_his_own() {
+    // Seven words of his alone at -40 dB, a quiet laptop microphone, make
+    // his voice -40 dB. Their take at -15 dB is 25 dB over his answer
+    // just after it, but his answer is at his voice, not 12 dB under it.
+    let theirs = at_level(timed("Lunch at noon on Thursday then.", 5_000), -15.0);
+    let mut mine = at_level(timed("Fine by me, I can do that.", 1_000), -40.0);
+    mine.extend(at_level(timed("Right.", 7_500), -40.0));
+    let (mut lines, words) = lines_heard(&[theirs], &[mine]);
+    // Their line spans their whole take, as the daemon's does.
+    lines[0].end = 7_000 * RATE / 1000;
+    let sound = their_sound_at(5_000, 7_000, -15.0);
+    let (cut, cuts) = cut_echoes(&lines, &words, &sound, |left| Some(left.to_owned()));
+    assert_eq!(
+        (kept(&cut), cuts.iter().map(Cut::by).collect::<Vec<_>>()),
+        (
+            vec!["Fine by me, I can do that. Right.".to_owned()],
+            Vec::new()
+        ),
+        "Joel's answer at his own voice was cut for their sound just before it"
     );
 }
 
