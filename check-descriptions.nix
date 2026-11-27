@@ -607,7 +607,9 @@
     and of each test the net quarantined for a merge it couldn't revert, naming the owner's PR,
     and tells a merge's owner once when no Mac compared its Mac checks, saying how to run them,
     and says how far the machines' loads spread over the hour, each machine's share busiest first
-    and the minutes each of balance's flags was held, from the newer definition alone
+    and the minutes each of balance's flags was held, from the newer definition alone, and a
+    file it keeps is named in one of its files outside its tests, or listed with the files that
+    name it until it is
   '';
   cadence-hour-finds-nix-store = ''
     the hour's unit has the Nix of the user's config on its PATH, so it can list the closure of
