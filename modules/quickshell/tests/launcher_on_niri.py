@@ -513,7 +513,7 @@ class Shell:
         self.send_chars("A")
         self.launcher_until(lambda shown: shown["mode"] in TYPING)
 
-    def close_launcher(self) -> None:
+    def close_launcher(self) -> int:
         """Press Escape until normal is at rest, then close the launcher by :q, as Joel does.
 
         Escape gives normal from the find, lets the key list go if it's shown, and cancels a
@@ -523,7 +523,11 @@ class Shell:
         A launcher opened to say something Joel didn't ask for, as a Go To's why it couldn't
         go (Launcher.qml's toldHere), drops every key for its first LINK_QUIET, so a key it
         dropped is counted as an answer and sent again once that's over, never left to wait on
-        a move it can't make, nor a :q's Return let through alone to act on the row.
+        a move it can't make. Such a launcher opens on the find, so the first key is always
+        Escape, and :q follows only an Escape it took, past the quiet: a :q never lands inside
+        one while links open on the find or in insert (#7157's first round, 3 and 17). It says
+        how many it sent again, since closing lets the quiet's count go and nothing after the
+        close can read it.
         """
 
         def where(shown: Json) -> tuple[object, ...]:
@@ -540,10 +544,11 @@ class Shell:
         def moved(was: tuple[object, ...], shown: Json) -> bool:
             return where(shown) != was
 
+        again = 0
         for _ in range(12):
             was = where(self.showing())
             if not was[0]:
-                return
+                return again
             _, mode, _, listing, commanding, pending, dropped = was
             if mode == "normal" and not (listing or commanding or pending):
                 self.send_chars(":q")
@@ -551,7 +556,10 @@ class Shell:
             else:
                 self.send_key("esc")
             self.launcher_until(functools.partial(moved, was))
-            if self.showing()["quietDropped"] != dropped:
+            # Closing lets the count go to 0, so only a launcher still open says a drop.
+            now = self.showing()
+            if now["open"] and now["quietDropped"] != dropped:
+                again += 1
                 time.sleep(LINK_QUIET)
         still = self.showing()
         message = f"the launcher was still open after 12 Escapes: {still}"
