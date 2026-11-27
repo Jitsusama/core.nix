@@ -2477,10 +2477,13 @@ def test_a_machines_drawer_opens_its_row_in_the_launcher(mycelium_opened: Opened
     )
 
 
-# The skiff's network as two machines feed it in node.json: kestrel runs
-# three of its own cells and both of its branch's, osprey one of its own.
+# The skiff's network as two machines feed it in node.json, each cell
+# counted where it is drawn: TERN01 is listed in the skiff and in its
+# branch but drawn in the branch, so the skiff draws SKIFF1, TERN02 and
+# GULL01 as its own. kestrel runs two of those and both of the branch's,
+# osprey runs GULL01.
 FED_NETWORK = "orchestration.skiff1"
-FED_BY = ["kestrel", "feeds it 5 cells", "osprey", "feeds it 1 cell"]
+FED_BY = ["kestrel", "feeds it 4 cells", "osprey", "feeds it 1 cell"]
 
 
 def test_a_network_fed_by_two_machines_lists_each_with_its_cells(
@@ -2490,8 +2493,8 @@ def test_a_network_fed_by_two_machines_lists_each_with_its_cells(
     the_map_stands(page, "live")
     page.evaluate(f"location.hash = '#net={FED_NETWORK}'")
     body = page.locator("#panel-body")
-    expect(body, "the skiff's drawer never said its machines").to_contain_text(
-        "A network of 4 cells, with 2 more in 1 branch, fed by 2 machines.", timeout=PACE_MS
+    expect(body, "the skiff's drawer miscounted its cells or machines").to_contain_text(
+        "A network of 3 cells, with 2 more in 1 branch, fed by 2 machines.", timeout=PACE_MS
     )
     # A network belongs to no machine, so its drawer lists every one that
     # feeds it, most cells first, its branch's cells counted in.

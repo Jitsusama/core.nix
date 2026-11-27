@@ -176,10 +176,13 @@ it("a cell's start counts before its split from one network, whichever is handed
 
 it("a split from a cell drawn in no network grows nothing, leaving its start", () => {
   const networks = [network("skiff", ["SKIFF1"]), network("heron", ["HERON1", "HERON2"])];
-  const origins = originsOf(startedBy("SKIFF1", "HERON1"), [
-    { cell: "HERON1", from: "GONE01" },
-    { cell: "HERON2", from: "GONE01" },
-  ]);
+  // The split is handed first, so the start still growing is what the
+  // undrawn split leaves, not the order it came in.
+  const origins: Origin[] = [
+    { cell: "HERON1", by: "GONE01", split: true },
+    { cell: "HERON2", by: "GONE01", split: true },
+    { cell: "HERON1", by: "SKIFF1" },
+  ];
   assert.deepEqual(grown(networks, origins), {
     heron: { from: "skiff", by: ["SKIFF1"], cells: 1, started: 1 },
   });

@@ -2611,8 +2611,7 @@
     a forage here, growing a branch where no start is said or the start grows none or would
     loop, counting toward the trunk as a start does and counted apart from the starts, a cell
     started and split from two networks counting toward each, the drawer saying a branch's
-    starts and splits each out of its cells, a network two machines feed listing each with its
-    cells, most first and its branches' counted in, what each key asks of
+    starts and splits each out of its cells, what each key asks of
     the map, its tree, its find line, the
     page and the theme switch, chords, typing and a key named after an object's own asking
     nothing, the tree's networks and branches by name under a machine or a network and the
@@ -2639,7 +2638,9 @@
     while the node is away with the realm
     kept drawn and live once it's back, stale once the server goes with the realm kept, a record's
     words drawn as words and never as markup, what each spent today listed most first in Now, a
-    machine's drawer and a network's, what waits on a cell and what holds stand said as the node
+    machine's drawer and a network's, a network two machines feed listing each with the cells it
+    draws there, most first and its branch's counted in, what waits on a cell and what holds stand
+    said as the node
     judges them, every cell drawn a step out from the whole map and folded only once too small to
     read, every line thinned as the map steps out past its own size, the talk between two networks
     drawn as one line as warm as its warmest pair until it or a cell it touches opens, a receptor's

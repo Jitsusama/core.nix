@@ -169,11 +169,10 @@ function splitsOf(forages: Held | undefined): Split[] {
 
 /**
  * Where each cell came from, for growing branches: who started it, then
- * what its purpose split from, the starts first, so where a start and a
- * split come from one network the cell counts there once, as started. Each
- * counts toward its own network in grownOf, so a split still grows a
- * branch where the start grows none, as one from a receptor or from inside
- * its own network. A split naming the cell its start names is said once. A
+ * what its purpose split from. Each counts toward its own network in
+ * grownOf, which counts a start ahead of a split from the same network, so
+ * a split still grows a branch where the start grows none, as one from a
+ * receptor or from inside its own network. A split naming the cell its start names is said once. A
  * sprout's start often names the cell it split from, but not always: the
  * node's book lets a start go after a day and finds none where no
  * session, or two, claim the asker, while a split stays said for as long
@@ -244,12 +243,14 @@ function grownOf(
   origins: readonly Origin[],
 ): Map<string, Grown> {
   const named = new Map(networks.map((network) => [network.key, network]));
-  // A cell's start goes before its split however they were handed, so
-  // where both come from one network the cell counts there as started.
+  // A cell's starts go before its splits however they were handed, each
+  // kept in the order handed, so where a start and a split come from one
+  // network the cell counts there as started.
   const originsOfCell = new Map<string, Origin[]>();
-  for (const origin of origins) {
-    const had = originsOfCell.get(origin.cell) ?? [];
-    originsOfCell.set(origin.cell, origin.split ? [...had, origin] : [origin, ...had]);
+  const startsFirst = (one: Origin, other: Origin): number =>
+    Number(one.split === true) - Number(other.split === true);
+  for (const origin of [...origins].sort(startsFirst)) {
+    originsOfCell.set(origin.cell, [...(originsOfCell.get(origin.cell) ?? []), origin]);
   }
   const grown = new Map<string, Grown>();
   const within = (key: string): string | null =>
