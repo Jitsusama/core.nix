@@ -463,9 +463,14 @@ fn embed(
 }
 
 /// Writes a call down whole once both its sides are done: its voices told
-/// apart, and its file written as no longer being written.
+/// apart, what's newly cut or written back told, as a take of theirs
+/// heard last with no words, so no line, may cut what none told, and its
+/// file written as no longer being written.
 fn write_down_whole(book: &Shared, key: &str, writing: &mut Writing, me: &str) {
     tell_apart(book, key, writing, me);
+    for cut in writing.untold_cuts() {
+        eprintln!("{cut}");
+    }
     write(book, key, writing, me, false);
 }
 
