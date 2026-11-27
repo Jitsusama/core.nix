@@ -379,6 +379,15 @@ struct Waiting {
     system: std::path::PathBuf,
 }
 
+/// The commit of the build waiting for a hold, read as written: its
+/// system may be gone, but the read of it is still let go of only once
+/// the wait is.
+pub fn waiting_commit(config: &Config) -> Option<String> {
+    let text = fs::read_to_string(waiting_file(config)).ok()?;
+    let waiting: Waiting = serde_json::from_str(&text).ok()?;
+    Some(waiting.commit)
+}
+
 fn waiting_file(config: &Config) -> std::path::PathBuf {
     config.state.join("waiting.json")
 }

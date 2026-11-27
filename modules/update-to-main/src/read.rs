@@ -63,7 +63,8 @@ pub fn found(config: &Config, commit: &str) -> Option<Found> {
 /// Reads the folder at `head` from the host's API at `api`, asked with
 /// `token`, into root's copy, and keeps what it found, with whether `head`
 /// descends from `from`. Earlier reads are let go, but for `from`'s, which
-/// the next update compares its folder with. A folder where it was at
+/// the next update compares its folder with, and that of a build waiting
+/// for a hold, whose grant judges what it builds by it. A folder where it was at
 /// `from` is given back unkept and unasked how main moved, as not
 /// descending: the machine stays at `from` then, so nothing reads it.
 pub fn read(
@@ -132,10 +133,14 @@ pub fn holds(
 fn keep(config: &Config, head: &str, found: &Found, from: Option<&str>) -> Result<(), Failure> {
     let reads = config.reads();
     fs::create_dir_all(&reads).map_err(|e| Failure::new(format!("{}: {e}", reads.display())))?;
+    // A grant switches the build that waited, though main has moved since,
+    // and on a hosted machine only this read tells what that build holds.
+    let waiting = crate::update::waiting_commit(config);
     if let Ok(entries) = fs::read_dir(&reads) {
         for entry in entries.filter_map(Result::ok) {
             let name = entry.file_name();
-            if Some(name.to_string_lossy().as_ref()) != from {
+            let name = name.to_string_lossy();
+            if Some(name.as_ref()) != from && Some(name.as_ref()) != waiting.as_deref() {
                 let _ = fs::remove_file(entry.path());
             }
         }
