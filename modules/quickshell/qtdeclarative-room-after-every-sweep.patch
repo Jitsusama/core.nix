@@ -10,9 +10,13 @@ key at 115 ms of its 175 and 193. A room left on the memory manager is
 now left again at the end of every cycle, in the heap and outside it,
 so the heap grows by it before the next cycle starts. A heap whose
 sweeps keep what it grew into is never let past twice the room beyond
-what it held at the first ask since a cycle ended, so asking again as
-it grows, or for another room, doesn't move that. It is none by
-default, as Qt has it.
+what it held at the first ask since a cycle ended, and twice what its
+sweeps keep beyond what the last sweep kept then, so asking again as it
+grows, or for another room, doesn't move that. Without the second part, a
+burst kept past the two rooms in items too large for the runs the
+sweeps left started a cycle at every miss, one per chunk it took: two
+of Joel's openings spent 1955 and 1949 ms of their 3269 and 3320 in
+the collector. It is none by default, as Qt has it.
 
 ---
 diff --git a/src/qml/memory/qv4mm.cpp b/src/qml/memory/qv4mm.cpp
@@ -28,7 +32,7 @@ index 65b729e..0e4caa1 100644
  
      return GCState::Invalid;
  }
-@@ -1454,6 +1456,45 @@ void MemoryManager::updateUnmanagedHeapSizeGCLimit()
+@@ -1454,6 +1456,60 @@ void MemoryManager::updateUnmanagedHeapSizeGCLimit()
      }
  }
  
@@ -36,9 +40,16 @@ index 65b729e..0e4caa1 100644
 +{
 +    // Only an ask after a cycle ends moves where the ceiling is counted from, so asking again
 +    // while what's held grows, as an opening asks after the closing, or for another room,
-+    // doesn't let it grow by another two rooms: a new room counts from the same place.
-+    if (sweptSinceRoomLeft)
++    // doesn't let it grow by another two rooms: a new room counts from the same place. What's
++    // kept is counted from the last sweep, not from the chunks now: what was made since may
++    // be garbage no mark has found, and counting it as in use would hold the ceiling where a
++    // burst kept past it stalls. What was made since and survives counts as kept, as Qt's
++    // own limit counts it.
++    if (sweptSinceRoomLeft) {
 +        slotsHeldWhenRoomLeft = blockAllocator.totalSlots() + icAllocator.totalSlots();
++        slotsSweptWhenRoomLeft =
++                blockAllocator.usedSlotsAfterLastSweep + icAllocator.usedSlotsAfterLastSweep;
++    }
 +    sweptSinceRoomLeft = false;
 +    roomAfterSweep = bytes;
 +    keepRoom();
@@ -51,15 +62,23 @@ index 65b729e..0e4caa1 100644
 +    // next miss start another. Counting what's used as half of what's held and the room lets
 +    // the heap grow by the room first. A heap whose sweeps keep a few items in each chunk it
 +    // grew into would grow by the room at every cycle, so it's never let past twice the room
-+    // beyond what it held when the room was left. It's reckoned from what the allocators' own
-+    // last sweep left, so calling it again before the next sweep changes nothing.
++    // beyond what it held when the room was left, and twice what its sweeps keep beyond what
++    // the last sweep kept then, as Qt itself lets what's used grow: a ceiling that didn't
++    // move with what's kept let a burst kept past it, in items too large for the runs its
++    // sweeps left, start a cycle at every miss, one for each chunk it took. It's reckoned
++    // from what the allocators' own last sweep left, so calling it again before the next
++    // sweep changes nothing.
 +    if (roomAfterSweep == 0)
 +        return;
 +    const std::size_t held = blockAllocator.totalSlots() + icAllocator.totalSlots();
 +    const std::size_t room = roomAfterSweep / Chunk::SlotSize;
 +    const std::size_t swept =
 +            blockAllocator.usedSlotsAfterLastSweep + icAllocator.usedSlotsAfterLastSweep;
-+    const std::size_t grown = std::min(held + room, slotsHeldWhenRoomLeft + 2 * room);
++    const std::size_t keptSince =
++            swept > slotsSweptWhenRoomLeft ? swept - slotsSweptWhenRoomLeft : 0;
++    const std::size_t ceiling =
++            slotsHeldWhenRoomLeft + 2 * room + keptSince * GCOverallocation / 100;
++    const std::size_t grown = std::min(held + room, ceiling);
 +    usedSlotsAfterLastFullSweep = std::max(swept, grown * 100 / GCOverallocation);
 +    unmanagedHeapSizeGCLimit = std::max(unmanagedHeapSizeGCLimit,
 +                                        unmanagedHeapSize + roomAfterSweep);
@@ -78,14 +97,15 @@ diff --git a/src/qml/memory/qv4mm_p.h b/src/qml/memory/qv4mm_p.h
 index 8dfce5f..a2cd32a 100644
 --- a/src/qml/memory/qv4mm_p.h
 +++ b/src/qml/memory/qv4mm_p.h
-@@ -433,6 +433,15 @@ public:
+@@ -433,6 +433,16 @@ public:
  
      // called at the end of a gc cycle
      void updateUnmanagedHeapSizeGCLimit();
 +    // Lets the heap grow by this many bytes, and its unmanaged part as much, before a miss or a
 +    // string starts a cycle, and again at the end of each gc cycle, though never past twice the
-+    // room beyond what it held at the first ask since a cycle ended. None for 0, from the end
-+    // of the next cycle on.
++    // room beyond what it held at the first ask since a cycle ended, and twice what its sweeps
++    // keep beyond what the last sweep kept then. None for 0, from the end of the next cycle
++    // on.
 +    void leaveRoom(std::size_t bytes);
 +    // Leaves the room again: at the end of each gc cycle, after the limits are set.
 +    void keepRoom();
@@ -94,7 +114,7 @@ index 8dfce5f..a2cd32a 100644
  
      template<typename ManagedType>
      typename ManagedType::Data *allocIC()
-@@ -536,6 +545,14 @@ public:
+@@ -536,6 +546,16 @@ public:
      std::size_t unmanagedHeapSize = 0; // the amount of bytes of heap that is not managed by the memory manager, but which is held onto by managed items.
      std::size_t unmanagedHeapSizeGCLimit;
      std::size_t usedSlotsAfterLastFullSweep = 0;
@@ -103,8 +123,10 @@ index 8dfce5f..a2cd32a 100644
 +    // used in a fragmented heap, so every miss after it starts another cycle.
 +    std::size_t roomAfterSweep = 0;
 +    // The slots the heap's chunks held when the room was left, which it's never let grow past
-+    // by more than twice the room before a cycle starts, and whether a cycle has ended since.
++    // by more than twice the room, and twice what its sweeps keep beyond the slots the last
++    // sweep kept then, before a cycle starts, and whether a cycle has ended since.
 +    std::size_t slotsHeldWhenRoomLeft = 0;
++    std::size_t slotsSweptWhenRoomLeft = 0;
 +    bool sweptSinceRoomLeft = true;
  
      enum Blockness : quint8 {Unblocked, NormalBlocked, InCriticalSection };

@@ -4,7 +4,8 @@
 that the builders are read from their own records and never as cells, `basins.test.ts`
 that a basin's machines are drawn as one stand, `fed.test.ts` what the map keeps of
 a receptor feeding a cell something, and for how long, `lineage.test.ts` who started
-each cell, `reach.test.ts` how the map judges whether it reaches every cell, and
+each cell and what it split from, `branches.test.ts` which network grows out of
+which, `reach.test.ts` how the map judges whether it reaches every cell, and
 `keys.test.ts` what each key asks, `outline.test.ts` what hangs from what in the
 tree beside the map and where its keys go, `words.test.ts` what each cell,
 network and machine is in words, `labels.test.ts` that no two networks'

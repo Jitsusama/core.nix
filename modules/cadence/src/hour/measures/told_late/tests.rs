@@ -463,3 +463,23 @@ fn an_ask_is_read_from_its_latest_line() {
         "the ask was read from its first line, not its latest"
     );
 }
+
+#[test]
+fn a_twin_folded_into_an_ask_doesnt_close_its_late_move() {
+    let ask = ask_moved(
+        "fold",
+        "F",
+        (NOW - 1000, NOW - 1360),
+        &json!({"id": "0a1b2c3d"}),
+    );
+    // A folded copy carries no dates of its own; read as the ask's latest
+    // line, it would take the moves with it.
+    let mut twin = super::super::slipped::twin(&ask, NOW - 60);
+    twin["promised"] = Value::Null;
+    let m = told_late(&list(&[ask, twin]), NOW, Tracking::His);
+    assert_eq!(
+        m.behind,
+        ["fold, moved 6 min before its date · F"],
+        "a twin written after its ask closed the ask's late move"
+    );
+}
