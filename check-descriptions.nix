@@ -6479,9 +6479,13 @@
   '';
   twin-screens-each-take-their-own-windows-back = ''
     Reopen Them All, with two screens of one model back on new connectors, puts a window kept on
-    one twin on the connector its session kept on the other didn't take, and the window of a twin
-    put back after the walk on the connector a window put back before it didn't take; and notes a
-    window away from a screen named constructor or __proto__ as any other, without a throw
+    one twin on the connector its session kept on the other didn't take, and one kept on the
+    session's own twin with it; the window of a twin put back after the walk on the connector a
+    window put back before it didn't take, unless a session took that connector, when the
+    session's twin goes with it; gives windows no connector from sessions handed over outside a
+    walk; keeps, for a walk joined after Joel's focus moved, the screen in use as it began; notes a
+    window away from a screen named constructor or __proto__ as any other, without a throw; and
+    ends each walk before the next case begins, starting nothing for a session in a gone folder
   '';
   type-is-set-by-level = ''
     no QML file of the shell's sets a font's size, weight, axes, letter spacing or case other than
