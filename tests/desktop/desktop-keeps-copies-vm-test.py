@@ -621,6 +621,10 @@ def test_a_password_copied_is_never_kept(desktop: Desktop) -> None:
 # didn't keep goes with its program (wl-clipboard's wl-paste.c), and the code it exits with.
 NOTHING_COPIED = "Nothing is copied\n|1"
 
+# What a paste reads that lands as the copier ends: the copy's pipe closes with nothing in it,
+# so wl-paste gives nothing and exits 0.
+CUT_OFF = "|0"
+
 
 def test_a_password_copied_clears_once_its_time_is_up(desktop: Desktop) -> None:
     """A password copied is held, then gone from the clipboard once its 30 s are up."""
@@ -629,12 +633,12 @@ def test_a_password_copied_clears_once_its_time_is_up(desktop: Desktop) -> None:
     def cleared(_: bool) -> bool:
         """Say whether the clipboard is empty, as the copier's end leaves it.
 
-        Only the password still held is a wait and only nothing offered is the clear, so a read
-        that fails another way, or another copy, ends the wait by what it said rather than
-        passing for the clear.
+        Only the password still held, or a read cut off as the copier ends, is a wait, and only
+        nothing offered is the clear, so a read that fails another way, or another copy, ends
+        the wait by what it said rather than passing for the clear.
         """
         said = desktop.as_account("wl-paste --no-newline 2>&1; printf '|%s' $?")
-        if said == f"{STAND_IN}|0":
+        if said in {f"{STAND_IN}|0", CUT_OFF}:
             return False
         assert said == NOTHING_COPIED, f"the clipboard held neither the password nor none: {said!r}"
         return True
