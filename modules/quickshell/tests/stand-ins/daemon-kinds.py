@@ -46,6 +46,16 @@ LAPSING = {
 }
 
 
+# What each kind answered the same every time holds: verdicts none, and what's inherited the
+# records keyed by names every object inherits.
+FIXED: dict[str, list[dict[str, object]]] = {
+    "verdict": [],
+    "inherited": [
+        {"key": key, "kind": "inherited", "heard": 1} for key in ("__proto__", "constructor")
+    ],
+}
+
+
 def kinds_of(asked: dict[str, object]) -> list[str]:
     """Read the kinds a watch names, one or a list, as Google's daemon reads them."""
     kind = asked.get("kind")
@@ -115,13 +125,8 @@ def answer(asked: dict[str, object], unwatched: int) -> list[dict[str, object]]:
         return [
             {"id": asked.get("id"), "stage": stage, "done": stage == "online"} for stage in stages
         ]
-    if asked.get("kind") == "verdict":
-        return [{"id": asked.get("id"), "records": []}]
-    if asked.get("kind") == "inherited":
-        inherited = [
-            {"key": key, "kind": "inherited", "heard": 1} for key in ("__proto__", "constructor")
-        ]
-        return [{"id": asked.get("id"), "records": inherited}]
+    if isinstance(kind, str) and kind in FIXED:
+        return [{"id": asked.get("id"), "records": FIXED[kind]}]
     kinds = kinds_of(asked)
     keys = asked.get("keys")
     named = (
