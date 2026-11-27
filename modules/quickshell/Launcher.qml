@@ -13281,8 +13281,9 @@ Scope {
         const drawn = openFirstDrawn < 0 ? sized : openFirstDrawn;
         const took = Math.round(sized - asked);
         // Joel's wait runs from his chord to the frame niri shows at the
-        // card's size, so it's felt from here, not from the first frame.
-        const felt = chordAt < 0 ? -1 : Math.round(Date.now() - chordAt);
+        // card's size, so it's felt from here, not from the first frame,
+        // and from as that frame was heard, however late this runs.
+        const felt = Pacing.chordBefore(chordAt, sized, Date.now(), KeyTimes.now());
         feltBegin(felt < 0 ? asked : sized - felt, felt >= 0);
         const heard = Math.round(chordHeardAfter);
         chordAt = -1;
@@ -14317,10 +14318,12 @@ Scope {
             // shell heard its frame swapped, as the drawer made in 28,
             // 2026-11-13). Their own handlers then find nothing to time.
             // What waited on it is told when the swap was heard, read once
-            // first, so an opening's time to its frame never counts the
-            // keys', the acts' or another's work before it as heard late.
-            // Each is run as what waits on the frame is, so a throw timing
-            // one holds none of it back.
+            // first, so an opening's time to its frame doesn't count the
+            // keys' or the acts' work here as heard late. Another
+            // frameSwapped handler Qt calls before this one, as this one
+            // enabled again after them is, still counts in it. Each is run
+            // as what waits on the frame is, so a throw timing one holds
+            // none of it back.
             function onFrameSwapped() {
                 const heard = KeyTimes.now();
                 Thrown.runEach([() => root.keysFrameSwapped(), () => root.actsFrameSwapped()],
