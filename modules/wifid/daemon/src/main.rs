@@ -35,6 +35,7 @@ mod cli;
 mod detail;
 mod echo;
 mod face;
+mod fading;
 mod frequencies;
 mod learn;
 mod link;
@@ -1199,6 +1200,12 @@ impl<'a> Air<'a> {
                 self.cards.insert(path.to_string(), (card, step));
             }
         }
+        let scanning = changed.get("Scanning").map(|scanning| &**scanning);
+        if let Some(&zvariant::Value::Bool(scanning)) = scanning
+            && let Some(card) = self.named(bus, path).await
+        {
+            change(&self.state, |state| state.scanning(&card, scanning));
+        }
         if let Some(zvariant::Value::ObjectPath(said)) = point {
             // wpa_supplicant says only where a card's steps have got to when
             // it sends, so a move can come as a new point alone, the card
@@ -1331,6 +1338,9 @@ impl<'a> Air<'a> {
             if under(card, path) {
                 self.stalls.gone(name);
                 self.arrivals.borrow_mut().forget(name);
+                // A look it was in when wpa_supplicant let it go never says
+                // it ended, and would hide the next one begun.
+                change(&self.state, |state| state.scanning(name, false));
                 self.gone.push(name.clone());
             }
         }
@@ -3657,9 +3667,12 @@ impl Wifid<'_> {
         if let Some(lasts) = request.keeps_off(&followed)
             && let Some(from) = from.as_deref()
         {
-            let until = Instant::now() + lasts;
+            let at = Instant::now();
+            let until = at + lasts;
             self.arrivals.borrow_mut().warned(card, from, until);
-            change(self.state, |state| state.warned_off(card, from, until));
+            change(self.state, |state| {
+                state.warned_off(card, from, (at, until));
+            });
             let minutes = lasts.as_secs() / 60;
             println!("<7>{card}'s chooser keeps off {from} for {minutes} minutes, as it warned");
         }

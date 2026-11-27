@@ -10,11 +10,10 @@ fixes and why.
 | `next.nix`, `next/`   | fixes no release has yet, each header saying where from |
 | `local.nix`, `local/` | fixes written here and in no tree yet                   |
 
-Three patches came from elsewhere and wait to move at the stack's
-next regeneration, since moving them reorders the stack: the camera's,
-which `../camera/camera.nix` applies (ipu7-isys-releases-firmware from
-linux-next, and hm1092-ir-sensor and ipu7-mono-formats from the media
-list).
+Two patches came from elsewhere and wait to move at the stack's next
+regeneration, since moving them reorders the stack: the camera's
+hm1092-ir-sensor and ipu7-mono-formats, from the media list, which
+`../camera/camera.nix` applies.
 
 ## How a Patch Moves
 
@@ -25,6 +24,11 @@ laptop runs has it. Each file's assertion fails when the kernel
 reaches the release that holds its patches, which is the sign to
 move or drop them. None is carried now: 7.3 holds every fix that
 was taken onto 7.2.
+
+A point release that takes a fix also moves the patches around it, so
+they're regenerated onto it with the fix dropped. Holding the kernel
+back a release after that is no longer one revert: the patches made
+since have to be regenerated onto the older one too.
 
 Nothing else goes here: a patch to a program rather than the kernel
 lives beside the module that builds that program.

@@ -69,6 +69,21 @@ QtObject {
         expect("no cell, his own", Cells.leading([{ cell: null, items: [ownItem] }]),
             { item: ownItem, gathered: false });
         expect("nothing, nothing leads", Cells.leading([]), null);
+        // A cell is weighed by its heaviest item, not the one it leads with:
+        // byCell puts its ask first whatever it weighs, so an ask at nothing
+        // beside a look it left at 5 outweighs his own at 4, as laidOut lays
+        // Agents first (#6777's sixth review, F54).
+        const askAtNothing = { name: "ask", weight: 0 };
+        const leftLook = { name: "left", weight: 5 };
+        const ownAtFour = { name: "own", weight: 4 };
+        const heaviestBehind = [{ cell: null, items: [ownAtFour] },
+            { cell: cellA, items: [askAtNothing, leftLook] }];
+        expect("a cell weighs its heaviest, not the item it leads with",
+            Cells.leading(heaviestBehind), { item: askAtNothing, gathered: true });
+        expect("and laidOut lays Agents first there too",
+            Cells.laidOut(heaviestBehind, items => items.map(item => item.name),
+                cell => `cell ${cell.address}`, (inside, weight) => `agents ${weight}`)[0],
+            "agents 5");
         // What a cell asks leads it, whatever a look it left weighs, since
         // the ask is what holds the session up; the cells stay where their
         // heaviest put them.

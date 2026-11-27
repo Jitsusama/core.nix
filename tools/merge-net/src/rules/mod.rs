@@ -264,29 +264,45 @@ mod tests {
     #[test]
     fn the_areas_built_in_all_read() {
         let areas = areas();
-        assert!(areas.iter().any(|area| area.name == "flake.lock"));
-        assert!(areas.iter().all(|area| !area.tests.is_empty()));
+        assert!(
+            areas.iter().any(|area| area.name == "flake.lock"),
+            "must-run.txt names no area for the lock"
+        );
+        assert_eq!(
+            areas.iter().find(|area| area.tests.is_empty()),
+            None,
+            "an area in must-run.txt runs no tests"
+        );
     }
 
     #[test]
     fn a_star_stands_for_any_run_a_slash_among_them() {
-        assert!(matches("modules/kernel/*", "modules/kernel/nixos.nix"));
-        assert!(matches("hardware/*", "hardware/a/kernel/local.nix"));
-        assert!(matches("flake.lock", "flake.lock"));
-        assert!(!matches("flake.lock", "flake.nix"));
-        assert!(matches("vm-boot-*", "vm-boot-asks-in-the-theme"));
-        assert!(!matches("vm-boot-*", "vm-reboot-cannot-hang"));
-        assert!(matches("tests/plymouth*", "tests/plymouth-vm-test.py"));
-        assert!(matches("a*b*c", "a-b-c"));
-        assert!(!matches("a*b*c", "a-c-b"));
-        assert!(!matches("ab*ba", "aba"));
+        for (pattern, text, matched) in [
+            ("modules/kernel/*", "modules/kernel/nixos.nix", true),
+            ("hardware/*", "hardware/a/kernel/local.nix", true),
+            ("flake.lock", "flake.lock", true),
+            ("flake.lock", "flake.nix", false),
+            ("vm-boot-*", "vm-boot-asks-in-the-theme", true),
+            ("vm-boot-*", "vm-reboot-cannot-hang", false),
+            ("tests/plymouth*", "tests/plymouth-vm-test.py", true),
+            ("a*b*c", "a-b-c", true),
+            ("a*b*c", "a-c-b", false),
+            ("ab*ba", "aba", false),
+        ] {
+            assert_eq!(
+                matches(pattern, text),
+                matched,
+                "whether {pattern} matches {text}"
+            );
+        }
     }
 
     #[test]
     fn a_line_without_its_tests_is_refused() {
-        assert!(parse("boot: modules/plymouth/*").is_err());
-        assert!(parse("boot: => vm-boot-*").is_err());
-        assert!(parse("# a comment\n\nboot: a/* => vm-a\n").is_ok());
+        parse("boot: modules/plymouth/*").expect_err("a line with no `=>` was read");
+        parse("boot: => vm-boot-*").expect_err("a line with no paths was read");
+        parse("# a comment\n\nboot: a/* => vm-a\n")
+            .expect("a comment or a blank line was taken for an area");
     }
 
     #[test]
@@ -371,7 +387,10 @@ mod tests {
             .into_iter()
             .find(|area| area.name == "nix-offload")
             .unwrap();
-        assert!(offload.there);
+        assert!(
+            offload.there,
+            "a change to nix-offload isn't sent through a VM test"
+        );
         assert_eq!(offload.tests, words("vm-*"));
         let needs = needs(
             &[offload],
@@ -380,7 +399,7 @@ mod tests {
         );
         assert_eq!(needs.tests, [] as [std::string::String; 0]);
         assert_eq!(needs.there, words("nix-offload"));
-        assert!(parse("a: a/* => there").is_ok());
+        parse("a: a/* => there").expect("an area whose only test is there was refused");
     }
 
     #[test]

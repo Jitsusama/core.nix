@@ -385,6 +385,26 @@ QtObject {
                 1400, 300)), ["no", "no", "no", "no", "no", "no", "no"]);
         holds("and no key at all, as a modifier alone, is let by",
             Confirm.answer(ask, "", 1400, 300), "early");
+        holds("and a Return given no time, or not a number, is let by, never a yes",
+            [undefined, NaN, null, "1400", Infinity].map(now => Confirm.answer(ask, "Return",
+                now, 300)), ["early", "early", "early", "early", "early"]);
+        // Infinity is there to rule out a looser check, typeof "number",
+        // under which Infinity - 1000 is never under the guard: a yes.
+        const timeless = Confirm.asked("Close Notes?", run, run, undefined);
+        holds("and so is a Return to an ask put at no time, or with no guard",
+            [Confirm.answer(timeless, "Return", 1400, 300), Confirm.answer(ask, "Return", 1400,
+                undefined)], ["early", "early"]);
+        holds("while any other key still lets such an ask go, so it never stands for good",
+            [Confirm.answer(timeless, "Escape", 1400, 300), Confirm.answer(ask, "y", 1400,
+                undefined)], ["no", "no"]);
+        holds("but a key of no time to such an ask is let by too",
+            Confirm.answer(timeless, "Escape", undefined, 300), "early");
+        holds("and such an ask says why it can't be timed, where a timed one says nothing",
+            [Confirm.untimed(timeless, 300), Confirm.untimed(ask, undefined),
+                Confirm.untimed(ask, 300)],
+            ["it was put at no time", "it has no guard", null]);
+        holds("the ask takes a yes or a no, never an early key, nor one with no ask",
+            ["yes", "no", "early", ""].map(Confirm.takes), [true, true, false, false]);
         pending(holds);
         visual(holds);
         changes(holds);
