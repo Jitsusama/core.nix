@@ -3143,14 +3143,22 @@ Scope {
     }
 
     // When Return last wrote an ending row's line, so a Return doubled
-    // with it, a key bounced, doesn't run the line it opened.
+    // with it, a key bounced, doesn't run the line it opened. It's in
+    // milliseconds of the monotonic clock, as landedAt is, so a wall clock
+    // stepped back can't hold every Return after it as doubled.
     property real linedAt: 0
 
     // Return on a row that ends something: its command written on the :
     // line, the menu naming what it acts on, for a fresh Return to run.
     function lineFor(choice) {
         commandLine({ typed: endsLine(choice) });
-        linedAt = Date.now();
+        linedAt = KeyTimes.now();
+    }
+
+    // Whether a Return now comes so soon after the one that wrote an
+    // ending row's line that it's that one doubled, which runs nothing.
+    function linedJustNow() {
+        return KeyTimes.now() - linedAt < Options.keyTiming.wait;
     }
 
     // What the last Return did ("ran", "armed", "landed", "entered", "gave", "lined", "held"
@@ -3161,7 +3169,8 @@ Scope {
     property var returned: ({})
 
     // The row Return last landed on, by its steady id, and the keys the
-    // line had taken then, so what it says lasts only until the next key.
+    // line had taken then, so what it says lasts only until the next key,
+    // and when, on the monotonic clock, for landedJustNow.
     property string landedKey: ""
     property int landedKeys: -1
     property real landedAt: 0
@@ -3187,7 +3196,7 @@ Scope {
         prompt.toNormal();
         landedKey = steadyId(choice);
         landedKeys = prompt.keysTaken;
-        landedAt = Date.now();
+        landedAt = KeyTimes.now();
     }
 
     // Whether a row is the one landed on, until the next key.
@@ -3200,7 +3209,7 @@ Scope {
     // Return doubled, a key bounced or pressed twice for one, which does
     // nothing, as a confirm's second Return waits the same while.
     function landedJustNow() {
-        return landedKey !== "" && Date.now() - landedAt < Options.keyTiming.wait;
+        return landedKey !== "" && KeyTimes.now() - landedAt < Options.keyTiming.wait;
     }
 
     // The row that ends the session a first press armed (Arming.js), by
@@ -5184,7 +5193,7 @@ Scope {
     function commandRan(read, from) {
         // A Return doubled with the one that wrote an ending row's line is
         // that one press, so it runs nothing; only a fresh Return does.
-        if (commanding?.typed && Date.now() - linedAt < Options.keyTiming.wait)
+        if (commanding?.typed && linedJustNow())
             return;
         // The command line's own Return, which the prompt never reads, runs
         // what's typed, or says why not, as E492, closing the line either
@@ -10377,7 +10386,7 @@ Scope {
             landedFresh: root.landedJustNow(),
             // Whether a Return now would still be the one that wrote an
             // ending row's line, so a test waits it out before running it.
-            linedFresh: Date.now() - root.linedAt < Options.keyTiming.wait,
+            linedFresh: root.linedJustNow(),
             returned: root.returned,
             // The landing a step that left by itself guessed, so a test can
             // tell a Return held under it ("waited") from one lost.
