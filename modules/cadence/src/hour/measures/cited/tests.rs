@@ -177,13 +177,49 @@ fn a_time_with_no_live_word_or_a_live_word_with_no_time_is_no_timed_line() {
 }
 
 #[test]
-fn a_clock_time_is_its_hour_and_minute_alone_on_a_12_hour_dial() {
-    let said = "at 10:06:44, then 9:05, 22:45, 09:05, 12:30 and 0:30, not 123:45, 12:345 or 1:5";
+fn a_clock_time_is_its_hour_and_minute_and_whether_either_half_of_the_day() {
+    let said = "at 10:06:44 pm, then 9:05, 22:45, 09:05 a.m., 12:30 and 0:30, 12:10am, \
+                not 123:45, 12:345, 1:5, 24:00 or 1:75, nor 9:05 amid";
+    let read: Vec<(u32, u32, bool)> = clock_times(said)
+        .iter()
+        .map(|c| (c.hour, c.minute, c.dial))
+        .collect();
     assert_eq!(
-        clock_times(said),
-        [606, 545, 645, 545, 30, 30],
+        read,
+        [
+            (22, 6, false),
+            (9, 5, true),
+            (22, 45, false),
+            (9, 5, false),
+            (12, 30, true),
+            (0, 30, false),
+            (0, 10, false),
+            (9, 5, true),
+        ],
         "a clock time read wrong"
     );
+}
+
+#[test]
+fn two_times_twelve_hours_apart_are_one_only_when_one_is_on_the_dial() {
+    let one = |a: &str, b: &str| clock_times(a)[0].is(&clock_times(b)[0]);
+    for (a, b) in [
+        ("10:45", "22:45"),
+        ("22:45", "10:45"),
+        ("12:30", "0:30"),
+        ("9:05", "9:05"),
+    ] {
+        assert!(one(a, b), "{a} wasn't taken as {b}");
+    }
+    for (a, b) in [
+        ("22:45", "10:45 am"),
+        ("10:45 am", "22:45"),
+        ("10:45 pm", "10:45 am"),
+        ("00:30", "12:30 pm"),
+        ("10:45", "10:15"),
+    ] {
+        assert!(!one(a, b), "{a} was taken as {b}");
+    }
 }
 
 #[test]
@@ -203,6 +239,17 @@ fn a_time_said_on_a_12_hour_clock_is_backed_by_its_owner_s_24_hour_one() {
     assert!(
         (judged(&line, "", &other, &by).now - 1.0).abs() < f64::EPSILON,
         "10:45 was taken as backed by a citation of 22:15"
+    );
+}
+
+#[test]
+fn a_24_hour_time_is_not_backed_by_its_owner_s_time_twelve_hours_off() {
+    let line = said("Its owner now says it goes live about 22:45.");
+    let by = sent(&[("aa11bb22", "16V6F4", "goes live about 10:45 am")]);
+    let stale = cited(&[(NOW - 300, "16V6F4", "aa11bb22", "live about 10:45 am")]);
+    assert!(
+        (judged(&line, "", &stale, &by).now - 1.0).abs() < f64::EPSILON,
+        "22:45 was taken as backed by the morning's 10:45"
     );
 }
 
