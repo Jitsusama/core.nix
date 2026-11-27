@@ -154,8 +154,10 @@
    page's markup so the line is there at first paint, and by steps.ts's
    pressable; a ? that only opens the list of keys is never marked, so a
    help-only line waits too, though once it shows its ? is a whole target
-   like any keycap that acts when tapped. A browser without :has drops the hiding rule
-   whole, and the line shows, as it did before this sheet. */
+   like any keycap that acts when tapped. A button in the line that only
+   opens that list is help too, and waits with it, since the list names keys
+   a phone can't press. A browser without :has drops the hiding rule whole,
+   and the line shows, as it did before this sheet. */
 @media (hover: none) and (pointer: coarse) {
   :root:not([data-keyed]) .page-head .keys:not(:has(kbd[data-tap])) {
     display: none;
