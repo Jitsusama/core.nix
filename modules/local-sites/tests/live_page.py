@@ -97,9 +97,10 @@ WIDE_DESK = (1920, 1080)
 # can't land between, and a draw that came while the faces did is taken as its live words. It
 # asks for the page once more, and makes each part's nodes again from its live markup, losing
 # any focus or listener they held, so a test measures after it counts requests or acts on the
-# head. It fails saying why when the page can't be had again in WAITED_MS, a face doesn't load
-# or loads too slowly, a part isn't on the page or the one it opens on, `forms` names a part
-# not in `ids` or none for one that is, or the page keeps drawing a part anew.
+# head. It fails saying why when the page can't be had again in WAITED_MS, a face a part's
+# words are set in doesn't load or loads too slowly, a part isn't on the page or the one it
+# opens on, `forms` names a part not in `ids` or none for one that is, or the page keeps
+# drawing a part anew.
 WAITED_MS = 10_000
 HEAD_HEIGHTS = f"""async ([ids, forms]) => {{
   const waited = (promise, what) => Promise.race([promise, new Promise((_, failed) =>
@@ -133,7 +134,14 @@ HEAD_HEIGHTS = f"""async ([ids, forms]) => {{
       // Laid out first, since a face is only asked for once layout needs it.
       part.getBoundingClientRect();
       await waited(document.fonts.ready, `the faces of ${{id}}'s words`);
-      const failed = [...document.fonts].filter((face) => face.status === "error");
+      // Only the faces the part's words are set in: a stand-in, there for the moment before
+      // a face arrives, fails where the machine has none of its own, and the rest of the page
+      // asks for faces of its own.
+      const named = (family) => family.split(",")[0].trim().replace(/^["']|["']$/g, "");
+      const setIn = new Set([part, ...part.querySelectorAll("*")].map((node) =>
+        named(getComputedStyle(node).fontFamily)));
+      const failed = [...document.fonts].filter((face) =>
+        face.status === "error" && setIn.has(named(face.family)));
       if (failed.length > 0) {{
         throw new Error(`the faces ${{failed.map((face) => face.family).join(", ")}} didn't load`);
       }}
