@@ -4690,8 +4690,10 @@ def test_the_home_network_rests_whole_where_the_wheel_leaves_it(shell: Shell) ->
     shell.as_account(f"{wlrctl} pointer move {middle[0]} {middle[1]}")
     # Turns that aren't a whole number of rows, so the view can stop inside one: small ones
     # past the list's end and back to its top, then larger ones down and up. A turn may come to
-    # rest where it set off (one from 156 did, 2026-11-27), so the way back up
-    # turns until it's at the top, in under three times the turns it took down.
+    # rest where it set off (one from 156 did, 2026-11-27): it stopped inside the row above,
+    # taller than the turn, and rested back on the top it left. So a turn up that didn't move
+    # is followed by one twice as far, which passes that row, and the way back up gets to the
+    # top in under three times the turns it took down whatever the wheel's travel.
     places: list[int] = []
 
     def turn(by: int) -> int:
@@ -4702,6 +4704,8 @@ def test_the_home_network_rests_whole_where_the_wheel_leaves_it(shell: Shell) ->
         deadline = time.monotonic() + moves_within
         while shell.showing()["scrolled"] == was and time.monotonic() < deadline:
             time.sleep(launcher_on_niri.POLL)
+        if shell.showing()["scrolled"] == was:
+            print(f"the wheel by {by} didn't move the view from {was} in {moves_within} s")
 
         # Once the view has stopped, so one the wheel only passed through doesn't count.
         def rested(shown: Json) -> bool:
@@ -4721,9 +4725,14 @@ def test_the_home_network_rests_whole_where_the_wheel_leaves_it(shell: Shell) ->
     # The small turns reached past the top row, so the places between were each rested at.
     assert max(places) > 0, places
     up = 0
-    while turn(-35) > 0:
+    at = places[-1]
+    by = -35
+    while at > 0:
+        rest = turn(by)
         up += 1
         assert up < 3 * down, f"{up} small turns up never reached the top: {places}"
+        by = by * 2 if rest == at else -35
+        at = rest
     for by in [70] * 3 + [-70] * 3:
         turn(by)
     shell.close_launcher()
