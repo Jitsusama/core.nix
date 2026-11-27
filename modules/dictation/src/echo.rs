@@ -218,9 +218,10 @@ fn alone<'a>(mine: impl IntoIterator<Item = &'a Word>, theirs: &[Word]) -> Vec<(
 }
 
 /// The level of Joel's voice in his microphone at `at`: the middle level
-/// of the `NEAR` of his words heard `alone` nearest it, if `ALONE` are,
-/// the quieter of two middles, as a voice judged quieter cuts fewer of
-/// his words.
+/// of the `NEAR` of his words heard `alone` nearest it, if `ALONE` are.
+/// Where there are two middles, as only with 6, 8 or 10 of his words
+/// alone in the call, it's the quieter, as a voice judged quieter cuts
+/// fewer of his words.
 fn voice(alone: &[(usize, f32)], at: usize) -> Option<f32> {
     if alone.len() < ALONE {
         return None;
