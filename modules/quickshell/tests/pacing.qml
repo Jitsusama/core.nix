@@ -805,15 +805,43 @@ QtObject {
         check(failures, "and is said once, in one line, by its kind and where it was thrown",
             [said.length, /^TypeError: thrown at \S*pacing\.qml:\d+(:\d+)?$/.test(said[0] ?? ""),
                 said[0]?.includes("secret")].join(), "1,true,false");
-        // A value thrown with no prototype to say it by is said by its type
-        // alone.
+        // An Error that throws again as its stack is read is said bare, the
+        // rest run still: shown's own catch says it, as one throwing out of
+        // shown would stop the run.
         const unsaid = [];
+        // Made from Error's prototype, since the engine's own Errors hold a
+        // stack that can't be redefined.
+        const unreadable = Object.create(Error.prototype, { stack: { get: () => {
+            throw new Error("joel's secret");
+        } } });
         Thrown.runEach([() => {
-            throw Object.create(null);
+            throw unreadable;
         }, () => ran.push("after")], line => unsaid.push(line));
-        check(failures, "one thrown with no prototype is said by its type, the rest run still",
-            [unsaid.join(), ran[ran.length - 1]].join(" / "),
-            "Error: object thrown / after");
+        check(failures, "one whose stack throws as it's read is said bare, the rest run still",
+            [unsaid.join(), ran[ran.length - 1]].join(" / "), "Error: thrown / after");
+        // Drained, each list is taken and set empty before any runs, then
+        // run in turn, so a throw in the first list still runs the second,
+        // and one queued as they run waits for the next drain, as Launcher.qml's
+        // frame drains and the quests case's stand-in drain theirs.
+        const lists = { first: [], second: [] };
+        const drainedRan = [];
+        const drainedSaid = [];
+        lists.first = [() => {
+            throw new TypeError("joel's secret");
+        }, () => drainedRan.push("first")];
+        lists.second = [() => {
+            drainedRan.push("second");
+            lists.first = lists.first.concat([() => drainedRan.push("next")]);
+        }];
+        Thrown.drained(lists, ["first", "second"], line => drainedSaid.push(line));
+        check(failures, "a throw in the first list drained runs the rest and the second",
+            [drainedRan.join(" "), drainedSaid.length].join(), "first second,1");
+        check(failures, "and leaves both empty but for one queued as they ran",
+            JSON.stringify([lists.first.length, lists.second.length]), "[1,0]");
+        Thrown.drained(lists, ["first", "second"], line => drainedSaid.push(line));
+        check(failures, "which the next drain runs, leaving both empty",
+            [drainedRan.join(" "), lists.first.length, lists.second.length].join(),
+            "first second next,0,0");
     }
 
     // A daemon's changes are timed from the first line the draw shows,

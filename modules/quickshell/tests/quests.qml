@@ -103,9 +103,8 @@ ShellRoot {
                 frameDrawn.restart();
         }
         function drawFrame() {
-            const due = framed;
-            framed = [];
-            Thrown.runEach(due, said => console.warn(`what waited on a frame threw: ${said}`));
+            Thrown.drained(theLauncher, ["framed"],
+                said => console.warn(`what waited on a frame threw: ${said}`));
         }
         // Shut, or an opening ended unopened, what waits on a frame runs
         // in that turn, as Launcher.qml's afterFramesDue does from its close
@@ -793,9 +792,12 @@ ShellRoot {
                 const madeRow = making(row, key);
                 if (key !== throwing)
                     return madeRow;
+                // Its message is never said: the check fails on a line of
+                // the run that carries it (checks/quests.nix), as makeAhead's
+                // warning would were it to say the throw itself.
                 return Object.defineProperty({}, "key", { get: () => {
                     threw += 1;
-                    throw new Error("a row broke");
+                    throw new Error("joel's secret");
                 } });
             };
             theLauncher.felt = [];
@@ -838,20 +840,34 @@ ShellRoot {
     // launcher opens there again.
     function batchWaiting() {
         const prompt = "row:quests:QEST-20261003-PROMPT";
+        const laptop = "row:quests:QEST-20261001-LAPTOP";
         try {
-            expect("a batch waits on the frame, the prompt's row made and not owed",
+            // Each of what the close's case leans on, so it proves the
+            // guard on the launcher's open only while the rows are still
+            // made ahead, their batch still waits, and the laptop's row is
+            // still to make: any gone, a close that made none would pass
+            // without the guard.
+            const served = theQuests.served;
+            expect("a batch waits on the frame, the prompt's row made and not owed, "
+                + "the laptop's owed and not made, still made ahead",
                 theLauncher.framed.length > 0
-                && JSON.stringify(Object.keys(theQuests.served.owedAhead))
-                    === JSON.stringify(["row:quests:QEST-20261001-LAPTOP"])
-                && prompt in theQuests.served.made,
-                `${theLauncher.framed.length} waiting, `
-                + `${Object.keys(theQuests.served.owedAhead).join(", ")} owed`);
+                && JSON.stringify(Object.keys(served.owedAhead)) === JSON.stringify([laptop])
+                && prompt in served.made && !(laptop in served.made)
+                && served.makingAhead && served.aheadWaiting,
+                JSON.stringify({ waiting: theLauncher.framed.length,
+                    owed: Object.keys(served.owedAhead), promptMade: prompt in served.made,
+                    laptopMade: laptop in served.made, makingAhead: served.makingAhead,
+                    aheadWaiting: served.aheadWaiting }));
             theQuests.served.drawn = true;
             theLauncher.open = false;
             theQuests.served.drawn = Qt.binding(() => theLauncher.open);
-            // The stand-in's close runs what waits on a frame, as Launcher.qml's does, so the
-            // batch has run by now: one still waiting would run in a later case, and this
-            // would prove nothing of makeAhead's guard on the launcher's open.
+            // The stand-in's close runs what waits on a frame, so the batch has run by now: one
+            // still waiting would run in a later case, and this would prove nothing of
+            // makeAhead's guard on the launcher's open. The stand-in runs it first, as open
+            // turns false, where Launcher.qml's close runs it late in its handler, once its
+            // opening has ended, its open is marked, Return's hold let go, its sources woken
+            // and its refreshes asked again, so this proves the guard against the stand-in's
+            // order. Launcher.qml's own is out of this check's reach.
             expect("a close with a batch waiting runs it and makes none",
                 theLauncher.framed.length === 0 && !theQuests.served.aheadWaiting
                 && theQuests.tally.rows === root.counted,
