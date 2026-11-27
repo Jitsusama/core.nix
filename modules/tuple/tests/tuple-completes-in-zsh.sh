@@ -8,7 +8,9 @@
 # that hung.
 set -euo pipefail
 
-completion=$2 tuples=$3
+# Whole paths, since the folder of its own becomes the current one.
+completion=$(realpath -- "$2")
+tuples=$(realpath -- "$3")
 # The library is handed in by its store path; shellcheck reads it from here.
 # shellcheck source=SCRIPTDIR/tuple-in-a-folder-of-its-own.sh
 source "$1"

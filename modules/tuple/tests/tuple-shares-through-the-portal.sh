@@ -8,7 +8,9 @@
 # writes one, so only its own reading shows the switch wrote it rightly.
 set -euo pipefail
 
-activate=$2
+# A whole path, since the folder of its own becomes the current one; the
+# data folder is only text to find in its steps.
+activate=$(realpath -- "$2")
 data=$3
 # The library is handed in by its store path; shellcheck reads it from here.
 # shellcheck source=SCRIPTDIR/tuple-in-a-folder-of-its-own.sh
