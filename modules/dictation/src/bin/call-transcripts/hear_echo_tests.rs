@@ -156,6 +156,48 @@ fn an_echo_cut_for_its_level_is_told_by_how_far_below_theirs_it_was() {
 }
 
 #[test]
+fn a_cut_his_voice_heard_later_brings_back_is_told_written_back() {
+    // His words 20 dB below Bo's "Not yet.", spelling none of it, are cut
+    // against Bo's level while none of his is heard alone. Five of his
+    // heard alone later, at that level too, make it his voice's, so the
+    // call written again brings them back, and the journal must say so,
+    // as it said the cut: what it told left out is no longer.
+    let mut writing = ada_then_bo();
+    let quiet = |text: &str, at: usize| Word {
+        level: -20.0,
+        ..word(text, at)
+    };
+    let over = vec![
+        quiet("Knot", 46 * SECOND + SECOND / 20),
+        quiet("yep.", 47 * SECOND),
+    ];
+    writing.words.insert(writing.lines.len(), over);
+    writing.lines.push(joels(46, 48, "Knot yep."));
+    assert_eq!(
+        writing.untold_cuts(),
+        ["call-transcripts: 2 of Joel's words at 0:46 cut as their echo, 20 dB below theirs"],
+        "the cut wasn't told, so its bringing back shows nothing"
+    );
+    let alone: Vec<Word> = ["Fine", "by", "me,", "thanks", "all."]
+        .into_iter()
+        .zip(60..)
+        .map(|(text, at)| quiet(text, at * SECOND))
+        .collect();
+    writing.words.insert(writing.lines.len(), alone);
+    writing.lines.push(joels(60, 65, "Fine by me, thanks all."));
+    assert_eq!(
+        writing.untold_cuts(),
+        ["call-transcripts: 2 of Joel's words at 0:46 written back"],
+        "words told as cut and then written back weren't told, or were told with the call's words"
+    );
+    hear_take(&mut writing, 80, &[ADA], &[("Right.", 0)]);
+    assert!(
+        writing.untold_cuts().is_empty(),
+        "words written back were told again with the next take"
+    );
+}
+
+#[test]
 fn each_line_of_joels_left_out_whole_as_their_echo_is_told_once_and_without_it() {
     let mut writing = ada_then_bo();
     hear_take(&mut writing, 49, &[BO], &[("Sounds", 0), ("good.", 1)]);
