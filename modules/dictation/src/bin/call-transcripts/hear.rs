@@ -723,17 +723,23 @@ fn title_of(book: &Shared, key: &str) -> String {
 
 /// A call taken up again: as this run held it when it ended, embeddings
 /// and all, so a rejoin is told apart whole; else as its file has it.
+/// One whose file already says what wasn't heard counts in `told` as
+/// told, since the notice raised then outlasts a restart.
 fn taken_up(
     ended: &mut Vec<(String, Writing)>,
     book: &Shared,
     key: &str,
     me: &str,
-    _told: &mut HashSet<String>,
+    told: &mut HashSet<String>,
 ) -> Writing {
-    match ended.iter().position(|(kept, _)| kept == key) {
+    let writing = match ended.iter().position(|(kept, _)| kept == key) {
         Some(at) => ended.remove(at).1,
         None => resumed(book, key, me),
+    };
+    if writing.unheard.is_some() {
+        told.insert(key.to_owned());
     }
+    writing
 }
 
 /// What a call already says, taken up again: what the transcript of a
@@ -822,7 +828,13 @@ fn transcript_of(writing: &Writing, me: &str, them: Option<&str>, note: Option<&
     let (cut, _) = echo::cut_echoes(&writing.lines, &writing.words, said::spoken);
     let heard = split::unechoed(&cut, &writing.pieces, writing.read);
     let guesses = writing.guesses.as_deref();
-    let unheard = writing.unheard.map(Unheard::note);
+    let unheard = writing.unheard.map(|unheard| {
+        if writing.lines.is_empty() {
+            unheard.note_with_none_heard()
+        } else {
+            unheard.note()
+        }
+    });
     let notes: Vec<&str> = [unheard.as_deref(), note].into_iter().flatten().collect();
     let notes = (!notes.is_empty()).then(|| notes.join("\n\n"));
     markdown_unechoed(&heard, me, them, notes.as_deref(), guesses)

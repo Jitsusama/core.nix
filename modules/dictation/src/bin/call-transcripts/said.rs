@@ -74,11 +74,18 @@ pub fn too_little(transcript: &str) -> bool {
 }
 
 /// What `transcript` gets in place of a summary, or none when enough of
-/// it was said to sum it up: too little heard when its note says the
-/// speech model failed on part of it, else too little said.
+/// it was said to sum it up: when its note says the speech model failed
+/// on some of it, too little heard, or nothing heard when it has no line;
+/// else too little said.
 pub fn in_place_of_a_summary(transcript: &str) -> Option<&'static str> {
-    let heard = Unheard::read(transcript).is_none();
-    too_little(transcript).then_some(if heard { TOO_LITTLE } else { TOO_LITTLE_HEARD })
+    if !too_little(transcript) {
+        return None;
+    }
+    Some(match Unheard::read(transcript) {
+        None => TOO_LITTLE,
+        Some(_) if transcript::read(transcript, "").is_empty() => NOTHING_HEARD,
+        Some(_) => TOO_LITTLE_HEARD,
+    })
 }
 
 /// `text`'s words, lowercase, without what's around them or a
