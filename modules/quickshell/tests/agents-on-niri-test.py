@@ -776,6 +776,64 @@ def test_a_talk_shows_under_its_field_sent_then_waiting_then_answered(
             one.unlink()
 
 
+def test_a_talk_a_link_opened_reads_its_answer_only_once_joel_types(shell: Shell) -> None:
+    """A Talk a link opened tells its answer read only once Joel has typed in it.
+
+    Any process of the account's can open a Talk by a link (`qs ipc call launcher talkTo`),
+    with Joel away, and two seconds of an answer shown under a field nobody's at would tell
+    the session he'd read it, hiding it from him (round 000022 on #6796, F58). He sends his
+    words from his own Return and closes the launcher; the answer comes, a link opens the
+    Talk, and the answer stays unread until his first key.
+    """
+    words, answer = "is the tide out yet", "Ebbing, and low by noon."
+    inbox = STEER / "LISTEN"
+    (inbox / "replies").mkdir(parents=True, exist_ok=True)
+    steered = set(inbox.glob("*.json"))
+    talk: Path | None = None
+
+    def now() -> str:
+        return datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+    try:
+        found(shell, "listening quest", "Listening Quest")
+        shell.send_key("ret")
+        shell.launcher_until(lambda shown: shown["asking"])
+        shell.send_chars(words)
+        shell.launcher_until(lambda shown: shown["typed"] == words)
+        shell.send_key("ret")
+        talk = inbox / "replies" / f"{said_to(inbox, steered, words)}.jsonl"
+        shell.close_launcher()
+        delivered = {"stage": "delivered", "at": now(), "session": "s-listen", "from": "joel",
+            "text": words}  # fmt: skip
+        replied = {"stage": "replied", "at": now(), "text": answer}
+        talk.write_text(json.dumps(delivered) + "\n" + json.dumps(replied) + "\n")
+        did = followed(shell, "talkTo", "LISTEN")
+        assert did["done"], did
+        shell.launcher_until(
+            lambda shown: any(
+                answer in (one.get("answers") or [])
+                for one in cast("list[Json]", shown["talks"] or [])
+            )
+        )
+        # Past the two seconds a shown answer takes to read as heard, nothing says it was.
+        time.sleep(3)
+        assert '"stage":"read"' not in talk.read_text(), talk.read_text()
+        # His first key is his reading: the answer is heard, and the key is cleared again.
+        shell.send_chars("x")
+        shell.launcher_until(lambda shown: shown["typed"] == "x")
+        shell.send_key("ctrl-u")
+        deadline = time.monotonic() + 10
+        while '"stage":"read"' not in talk.read_text():
+            assert time.monotonic() < deadline, talk.read_text()
+            time.sleep(0.1)
+    finally:
+        shell.close_launcher()
+        if talk is not None:
+            talk.unlink(missing_ok=True)
+        for one in set(inbox.glob("*.json")) - steered:
+            one.unlink()
+
+
 def said_to(inbox: Path, steered: set[Path], words: str) -> str:
     """Give the id of the talk these words went in as, once their steer is in the inbox."""
     deadline = time.monotonic() + 10

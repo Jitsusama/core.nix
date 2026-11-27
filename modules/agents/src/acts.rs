@@ -172,6 +172,14 @@ mod tests {
         for act in STEERED {
             assert!(ACTS.contains(&act), "{act} is named among the acts");
         }
+        // And the other way: the daemon's other asks, and a fill, steer nothing, so no ask
+        // outside ACTS steers as Joel (round 000022 on #6796, F54).
+        for other in [
+            "tell", "feedback", "sharing", "answer", "sprout", "heard", "fill",
+        ] {
+            let said = json!({"ask": other, "address": "P", "text": "hi"});
+            assert!(steer_of(&said, 7).is_none(), "{other} steers nothing");
+        }
     }
 
     #[test]

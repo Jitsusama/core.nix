@@ -1123,7 +1123,8 @@ Provider {
     // answered him, which the daemon says in the talk's own file. The
     // drawer follows the cursor, so one only passed over on the way down
     // isn't read: it must stay two seconds, as a window must before the
-    // sorter holds it (VKCF3Z, 2026-11-12, on #3547).
+    // sorter holds it (VKCF3Z, 2026-11-12, on #3547). Nor is one a link left selected read
+    // until Joel types (the launcher's readWaits).
     Timer {
         id: staying
 
@@ -1132,6 +1133,10 @@ Provider {
         interval: 2000
         onTriggered: {
             const launcher = provider.launcher;
+            if (launcher?.open && launcher.readWaits) {
+                restart();
+                return;
+            }
             if (launcher?.open && provider.drawerWanted === `drawer:agents:${address}`
                 && String(launcher.selected?.key ?? "") === `agent:${address}`)
                 provider.heard(address);

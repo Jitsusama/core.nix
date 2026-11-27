@@ -249,6 +249,10 @@ Item {
     property real quietUntil: 0
     // Whether Return waits for a key typed first.
     property bool returnWaits: false
+    // Whether what the line shows counts as read by Joel only once he's typed a key in it,
+    // as Return waits: any process of the account's can open one by a link, and an answer
+    // under a field nobody's at is nobody's reading (round 000022 on #6796, F58).
+    readonly property bool readWaits: returnWaits
     // How many keys the quiet dropped since the line opened, which Super+S's line and the
     // launcher's field each say in the launcher's showing, so a check knows which of its keys
     // came inside it however late they landed. A press repeated because its release came late

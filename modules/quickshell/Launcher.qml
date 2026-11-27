@@ -1269,6 +1269,9 @@ Scope {
     readonly property bool keyMoved: prompt.keyMoved
     readonly property bool keysOverRows: prompt.overRows
     property int toldFromOutside: 0
+    // Whether a link opened this line and Joel hasn't yet typed in it, so nothing it shows
+    // counts as his reading (Prompt.qml's readWaits).
+    readonly property bool readWaits: prompt.readWaits
 
     // The rows a terminal's `launcher show` last walked through (`walked`)
     // and listed (`listed`), held a few seconds after it asks, so a
@@ -5771,11 +5774,12 @@ Scope {
     // An answer shown under the field two seconds is one Joel has read, as a session's drawer
     // kept that long is (Agents.qml's staying), which its place tells whoever keeps it, so it's
     // open no more after a restart. It's told again each two seconds while one is shown
-    // unread, since the daemon may not yet have heard of the answer the shell shows.
+    // unread, since the daemon may not yet have heard of the answer the shell shows. A Talk a
+    // link opened (talkTo) counts only once Joel has typed in it (readWaits).
     Timer {
         interval: 2000
         repeat: true
-        running: root.open && root.talkAsked && root.talks.length > 0
+        running: root.open && root.talkAsked && root.talks.length > 0 && !root.readWaits
             && typeof root.asking.heard === "function"
         onTriggered: root.asking.heard()
     }
