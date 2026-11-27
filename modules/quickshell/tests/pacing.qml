@@ -776,20 +776,21 @@ QtObject {
             names(Pacing.frameSwapped(Pacing.frameBegun(swapped.acts)).shown), "wifi");
     }
 
-    // Keys refreshed into one frame are all shown by it, the newest last,
-    // since Launcher.qml's keyDrawn says a frame by its newest key: two of
-    // the launcher's own arrows held in one frame still say the arrow
-    // pressed last, whole, as nobody wrote it (#6934's round).
+    // Keys refreshed one call each, as Launcher.qml's keyTimed queues them,
+    // wait the older first, and the frame begun after shows them all in
+    // that order, so the newest is last for keyDrawn, which says a frame by
+    // its last key. It doesn't check which key keyDrawn takes; arrows said
+    // whole with reports off are lagging-keys-on-niri-test's (#7170's round).
     function framingKeys(failures) {
-        const down = { text: "\u2193", own: true };
-        const up = { text: "\u2191", own: true };
-        const refreshed = Pacing.refreshedActs(Pacing.unframed(), [down, up]);
-        const shown = Pacing.frameSwapped(Pacing.frameBegun(refreshed)).shown;
-        check(failures, "one frame shows both keys refreshed into it",
-            shown.map(key => key.text).join(" "), "\u2193 \u2191");
-        const newest = shown[shown.length - 1];
-        check(failures, "and the newest, said by its frame, says its arrow whole",
-            Presented.timedShown(newest.text, "", newest.own), '"\u2191"');
+        const down = { text: "\u2193" };
+        const up = { text: "\u2191" };
+        const texts = keys => keys.map(key => key.text).join(" ");
+        const first = Pacing.refreshedActs(Pacing.unframed(), [down]);
+        const queued = Pacing.refreshedActs(first, [up]);
+        check(failures, "keys refreshed one call each wait the older first",
+            texts(queued.waiting), "\u2193 \u2191");
+        check(failures, "and the frame begun after shows both, the newest last",
+            texts(Pacing.frameSwapped(Pacing.frameBegun(queued)).shown), "\u2193 \u2191");
     }
 
     // A daemon's changes are timed from the first line the draw shows,
