@@ -443,7 +443,11 @@ mod tests {
             to: SINCE - 60,
             rounds: 1,
         };
-        assert_eq!(searched.untold, [held], "held while its row can't be written");
+        assert_eq!(
+            searched.untold,
+            [held],
+            "held while its row can't be written"
+        );
 
         std::fs::remove_file(&rows.home).expect("the rows' home freed");
         searched.moved_on(SINCE + 60, moving_on(None), &rows.left);
@@ -470,11 +474,19 @@ mod tests {
             searched.moved_on(SINCE + 30 * u64::from(round), moving_on(None), &rows.left);
         }
         assert_eq!(
-            searched.untold.iter().map(|held| held.rounds).collect::<Vec<_>>(),
+            searched
+                .untold
+                .iter()
+                .map(|held| held.rounds)
+                .collect::<Vec<_>>(),
             [UNTOLD_ROUNDS - 1],
             "held a round short of its last"
         );
-        searched.moved_on(SINCE + 30 * u64::from(UNTOLD_ROUNDS), moving_on(None), &rows.left);
+        searched.moved_on(
+            SINCE + 30 * u64::from(UNTOLD_ROUNDS),
+            moving_on(None),
+            &rows.left,
+        );
         assert!(
             searched.untold.is_empty(),
             "a rows file that stays broken holds it no longer, the journal alone saying so"
