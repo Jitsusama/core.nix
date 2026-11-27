@@ -49,8 +49,9 @@ pub(super) const RULED_HOURLY: usize = 6;
 /// accuracy, never early, and a run reads the hour before it sends, so a
 /// spell of an hour to the second could find the last hour's asks in the
 /// next timer's run and send none. Ten minutes short leaves room for that
-/// lateness, and for a run by hand just after the timer's, whose asks the
-/// next hour's run then leaves out of the count as well.
+/// lateness. The cost: the asks of a run by hand in the ten minutes after
+/// the timer's fall out of the next timer's count too, so that hour may
+/// send up to its cap again.
 const RULED_SPELL: i64 = 50 * 60;
 
 /// One drag as the ledger files it: its key, owner, words, and what its

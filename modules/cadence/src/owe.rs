@@ -7,7 +7,10 @@
 //! figure is back two days, never on its figure alone. Past its
 //! date the orchestrator hears of it once, as of any finding, and its
 //! owner, who filed it, is told nothing. On 12 November the security
-//! owner asked for a way to file its plan's musts this way.
+//! owner asked for a way to file its plan's musts this way. Long because
+//! its cases are over half of it: each way a must is filed, closed alone
+//! or under a prefix, refused or held by its fix is pinned beside the code
+//! that reads it.
 
 use jiff::Timestamp;
 use jiff::civil::DateTime;
