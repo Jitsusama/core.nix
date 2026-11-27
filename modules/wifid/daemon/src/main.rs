@@ -3741,8 +3741,9 @@ impl Wifid<'_> {
                 .borrow_mut()
                 .heeded(card, from, &followed, until);
             if let (Some(lasts), Some(until)) = (lasts, until) {
+                let heeding = followed.moves().then_some(now.0);
                 change(self.state, |state| {
-                    state.warned_off(card, from, (now.0, until));
+                    state.warned_off(card, from, (heeding, until));
                 });
                 if let Err(error) = self.warned.borrow_mut().warned(card, from, until, now) {
                     eprintln!("<4>can't keep {from}'s warning to {card} past a restart: {error}");

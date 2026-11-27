@@ -166,6 +166,14 @@ impl Heed {
             Heed::Move(_) | Heed::Look(_) | Heed::LetGo | Heed::NetworkDrops
         )
     }
+
+    /// Whether wifid itself moves the card off the point that warned it
+    /// this way, or looks first to: one let go or dropped with its whole
+    /// network is left to wpa_supplicant, so nothing of wifid's is under
+    /// way that a call's give-way should wait on (`State::warned_on`).
+    pub fn moves(&self) -> bool {
+        matches!(self, Heed::Move(_) | Heed::Look(_))
+    }
 }
 
 /// Each channel these candidates are on, once, in order.
@@ -619,6 +627,24 @@ mod tests {
             !Heed::Unproven.leaves(),
             "a warning anyone could have sent would keep the card off its own point"
         );
+    }
+
+    #[test]
+    fn only_a_heed_that_moves_or_looks_is_under_way_in_wifid() {
+        for heed in [Heed::Move(NEAR.to_owned()), Heed::Look(vec![2437])] {
+            assert!(heed.moves(), "{heed:?} wasn't said to move the card");
+        }
+        let left = [
+            Heed::LetGo,
+            Heed::NetworkDrops,
+            Heed::Stay,
+            Heed::Unheld,
+            Heed::Leaving,
+            Heed::Unproven,
+        ];
+        for heed in left {
+            assert!(!heed.moves(), "{heed:?}, which wifid doesn't move, was said to");
+        }
     }
 
     #[test]

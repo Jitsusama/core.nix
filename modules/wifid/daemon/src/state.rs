@@ -76,7 +76,8 @@ pub struct State {
 struct Warning {
     point: String,
     /// When it warned this wifid, so that its heed is under way; none
-    /// for one kept from before a restart, whose heed ended with it.
+    /// for one left to wpa_supplicant, which wifid doesn't move, or kept
+    /// from before a restart, whose heed ended with it.
     at: Option<Instant>,
     until: Instant,
     /// Whether the card has since been on another point, so that being on
@@ -642,12 +643,18 @@ impl State {
     }
 
     /// Keeps the access point that warned a card it drops it from the
-    /// card's chooser from when it warned until then, in place of any it
-    /// was warned by before.
-    pub fn warned_off(&mut self, card: &str, point: &str, (at, until): (Instant, Instant)) {
+    /// card's chooser until then, in place of any it was warned by
+    /// before. `at` is when it warned, where its heed moves the card
+    /// (`Heed::moves`); none where it's left to wpa_supplicant.
+    pub fn warned_off(
+        &mut self,
+        card: &str,
+        point: &str,
+        (at, until): (Option<Instant>, Instant),
+    ) {
         let warning = Warning {
             point: point.to_owned(),
-            at: Some(at),
+            at,
             until,
             left: false,
         };
@@ -659,20 +666,14 @@ impl State {
     /// the card's chooser until then, as `warned_off` does for one heard
     /// now, but with no heed under way: the wifid that heeded it is gone.
     pub fn kept_off(&mut self, card: &str, point: &str, until: Instant) {
-        let warning = Warning {
-            point: point.to_owned(),
-            at: None,
-            until,
-            left: false,
-        };
-        self.warned_off.insert(card.to_owned(), warning);
-        self.settle_warnings();
+        self.warned_off(card, point, (None, until));
     }
 
     /// When the access point a card is on warned it drops the card, if it
-    /// did since wifid began and that's still kept to at `now`: the
-    /// warning's own heed is then moving the card off it, looking first or
-    /// letting it go. One kept from before a restart has no heed left.
+    /// did since wifid began, its heed moves the card, and that's still
+    /// kept to at `now`: the warning's own heed is then moving the card
+    /// off it, or looking first. One let go to wpa_supplicant, or kept
+    /// from before a restart, has no heed of wifid's under way.
     pub fn warned_on(&self, card: &str, now: Instant) -> Option<Instant> {
         let Warning {
             point, at, until, ..
@@ -1597,7 +1598,7 @@ mod tests {
         state.warned_off(
             "wlan2",
             &other.bssid.to_uppercase(),
-            (now, now + Duration::from_secs(600)),
+            (Some(now), now + Duration::from_secs(600)),
         );
         assert_eq!(
             state.warned_on("wlan2", now),
@@ -1625,7 +1626,13 @@ mod tests {
             [-52, -60],
             "and heard again once the warning's time is up"
         );
-        state.warned_off("wlan2", &on, (now, now + Duration::from_secs(600)));
+        state.warned_off("wlan2", &on, (None, now + Duration::from_secs(600)));
+        assert_eq!(
+            state.warned_on("wlan2", now),
+            None,
+            "a card let go from the point that warned it was said to be moving off it"
+        );
+        state.warned_off("wlan2", &on, (Some(now), now + Duration::from_secs(600)));
         assert_eq!(
             state.warned_on("wlan2", now),
             Some(now),
@@ -1722,7 +1729,7 @@ mod tests {
         let warned = state.point_of("wlan2").expect("on a point");
         let now = Instant::now();
         let lasts = now + Duration::from_secs(3600);
-        state.warned_off("wlan2", &warned, (now, lasts));
+        state.warned_off("wlan2", &warned, (Some(now), lasts));
         state.at("wlan2", None);
         state.at("wlan2", Some("/Interfaces/0/BSSs/1".into()));
         state.at("wlan2", Some("/Interfaces/0/BSSs/2".into()));
@@ -1752,7 +1759,7 @@ mod tests {
         let mut state = at_the_inn();
         let warned = state.point_of("wlan2").expect("on a point");
         let now = Instant::now();
-        state.warned_off("wlan2", &warned, (now, now + Duration::from_secs(3600)));
+        state.warned_off("wlan2", &warned, (Some(now), now + Duration::from_secs(3600)));
         let moves = |state: &mut State, to: &str, lands: bool| {
             state.attempting("wlan2");
             state.at("wlan2", Some(to.into()));
@@ -1790,7 +1797,7 @@ mod tests {
         let mut state = at_the_inn();
         let warned = state.point_of("wlan2").expect("on a point");
         let now = Instant::now();
-        state.warned_off("wlan2", &warned, (now, now + Duration::from_secs(3600)));
+        state.warned_off("wlan2", &warned, (Some(now), now + Duration::from_secs(3600)));
         let mut far = heard("Roadside Inn", -70);
         far.bssid = "02:00:00:00:03:00".into();
 

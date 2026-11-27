@@ -1278,7 +1278,7 @@ mod tests {
         let on = joined(HALL);
 
         let unwarned = given_hearing(&mut Chooser::default(), start, &on, &air, LOSING);
-        air.warned_off("wlan2", DESK, (start, start + Duration::from_secs(600)));
+        air.warned_off("wlan2", DESK, (Some(start), start + Duration::from_secs(600)));
         let warned = given_hearing(&mut Chooser::default(), start, &on, &air, LOSING);
 
         assert_eq!(
@@ -1301,7 +1301,7 @@ mod tests {
         air.at("wlan2", Some("/Interfaces/0/BSSs/2".into()));
         let start = Instant::now();
         let on = joined(HALL);
-        air.warned_off("wlan2", HALL, (start, start + Duration::from_secs(600)));
+        air.warned_off("wlan2", HALL, (Some(start), start + Duration::from_secs(600)));
 
         // The kernel's own reading, as a look's is stale by the end.
         let losing = (2, Some(-60));
@@ -1334,6 +1334,26 @@ mod tests {
             stuck,
             Some(Next::Move(DESK.into())),
             "a call still on its warned point once a move had its time didn't give way"
+        );
+    }
+
+    #[test]
+    fn a_losing_call_let_go_from_its_warned_point_gives_way_at_once() {
+        let mut air = State::default();
+        air.heard("/Interfaces/0/BSSs/1", Some(heard(DESK, -40)));
+        air.heard("/Interfaces/0/BSSs/2", Some(heard(HALL, -60)));
+        air.at("wlan2", Some("/Interfaces/0/BSSs/2".into()));
+        let start = Instant::now();
+        // Let go, as one whose look found nowhere to move it: no heed of
+        // wifid's is under way to wait on.
+        air.warned_off("wlan2", HALL, (None, start + Duration::from_secs(600)));
+
+        let given = given_hearing(&mut Chooser::default(), start, &joined(HALL), &air, LOSING);
+
+        assert_eq!(
+            given,
+            Some(Next::Move(DESK.into())),
+            "a call let go from its warned point waited on a move nothing made"
         );
     }
 
