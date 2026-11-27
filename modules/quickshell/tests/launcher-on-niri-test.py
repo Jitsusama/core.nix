@@ -2844,22 +2844,31 @@ def test_emoji_says_how_many_it_found_past_those_it_answers(shell: Shell) -> Non
     # The head and the history's answer are judged as they stood together: the answer read
     # between two heads saying the same, so one let go as a row moves (ReadyRows' letFoundGo),
     # and asked again, is read again rather than judged against a head drawn from another.
+    # An answer past what it holds is judged only once the head says so too: the launcher
+    # searches again a turn after an answer lands (Gathering.qml's callLater), so two heads
+    # read in that turn agree on the list from before it.
     deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
     while True:
-        said = cast("str", shell.showing()["found"])
+        head = shell.showing()
         answer = json.loads(shell.searching("emoji"))
-        again = cast("str", shell.showing()["found"])
+        again = shell.showing()
+        said = cast("str", head["found"])
         standing = answer is not None and answer["foundWords"] == "f"
-        if said != "" and standing and again == said:
+        caught_up = standing and (
+            FOUND_OF.fullmatch(said) is not None or answer["foundAll"] <= answer["keysHeld"]
+        )
+        held = (again["found"], again["went"]) == (said, head["went"])
+        if said != "" and caught_up and held:
             break
         assert time.monotonic() < deadline, (
             f"Emoji's head and the history's answer to f never stood together: the head said"
-            f" {said!r} then {again!r}, Emoji's search {answer}"
+            f" {said!r} then {again['found']!r}, Emoji's search {answer}"
         )
         time.sleep(launcher_on_niri.POLL)
     shell.close_launcher()
     # An f finds past a hundred, so the answer holds the history's first hundred; one holding
-    # fewer, none among them, is the history's to answer for, said before the head is read.
+    # fewer is the history's to answer for, said before the head is read. One holding none
+    # lists no row, so it fails at the wait for a count above instead.
     assert answer["keysHeld"] == EMOJI_ANSWERED_MOST, (
         f"the history should give its first {EMOJI_ANSWERED_MOST} for f: {answer}"
     )
@@ -2868,12 +2877,16 @@ def test_emoji_says_how_many_it_found_past_those_it_answers(shell: Shell) -> Non
     shown, found = (int(part) for part in counted.groups())
     # N and M are both counted from the launcher's own list, so each is held to the history's
     # answer instead: M past N is what it found past the keys it gave, every one made a row.
-    # M past what it found is what the launcher listed beside the answer: Emoji's words name no
-    # parts and the history finds no group (clipboard/src/search.rs keeps only emoji), so only a
-    # row acted on and still offered (Launcher.qml's stillActed), at most one.
-    past, beside = answer["foundAll"] - answer["keysHeld"], found - answer["foundAll"]
+    # M past what it found is what the launcher listed beside the answer, less the rows kept
+    # dimmed from an answer let go (Steady.kept), which M counts too. Emoji's words name no parts,
+    # the history finds no group (clipboard/src/search.rs keeps only emoji), and nothing was
+    # acted on to be still offered (Launcher.qml's stillActed), so there are none.
+    went = cast("int", head["went"])
+    past, beside = answer["foundAll"] - answer["keysHeld"], found - answer["foundAll"] - went
     assert found - shown == past, f"the head said {said}, the history {answer}"
-    assert 0 <= beside <= 1, f"the head listed {beside} beside the answer: {said}, {answer}"
+    assert beside == 0, (
+        f"the head listed {beside} beside the answer and {went} kept gone: {said}, {answer}"
+    )
 
 
 def test_a_cheap_drawer_comes_in_its_keys_own_frame(shell: Shell) -> None:
