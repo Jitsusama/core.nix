@@ -158,8 +158,8 @@ COLLECTED_AFTER = timedelta(seconds=1)
 
 # How long after a start every source here has first answered: what warming once waited out by
 # beginning at 6 s. The restart case passed waiting 5 s past home kept (2026-11-12), but on a
-# gate's loaded builder Networks, Traffic and Displays answered later still, so past it the
-# case waits until no source has said a change for QUIET, for at most SETTLED.
+# gate's loaded builder some sources answered later still, so past it the case waits until no
+# source outside CAUGHT_UP has said a change for QUIET, for at most SETTLED.
 ANSWERED = timedelta(seconds=6)
 QUIET = timedelta(seconds=2)
 SETTLED = timedelta(seconds=30)
@@ -773,9 +773,12 @@ def test_a_chord_first_after_a_restart_makes_only_its_places_rows(shell: Shell) 
     shell.close_launcher()
     shell.launcher_closed()
     _, later = opened_into(shell, "windows")
+    assert later >= 1, (
+        f"a later chord into Windows searched {later} times, so searches can't show home found"
+    )
     assert first <= later, (
-        f"first into Windows after a restart searched {first} times, a later chord {later}:"
-        " home was found again"
+        f"first into Windows after a restart searched {first} times, a later chord {later},"
+        f" as home found again would; other sources made rows: {made}"
     )
     others = {name: rows for name, rows in made.items() if name not in CAUGHT_UP}
     assert not others, (
@@ -1503,16 +1506,19 @@ def made_by_others(shell: Shell, place: str) -> dict[str, int]:
 def opened_into(shell: Shell, place: str) -> tuple[dict[str, int], int]:
     """Open into the place by its chord, and give the rows each other source made, and searches.
 
-    A try a closing's spots landed in counts nothing of the opening's, so it's closed, its own
-    spots waited for, and made again; the searches are the counted try's alone.
+    A try a closing's spots landed in counts nothing of the opening's rows, so it's closed, its
+    own spots waited for, and made again. The searches are the first try's whatever follows,
+    since a closing's spots search nothing and only the first chord may find home again.
     """
+    searches: int | None = None
     for _ in range(REOPENINGS_TRIED):
         began = shell.mark()
         before = json.loads(shell.as_account(shell.ipc("made")))["rows"]
         searched = launcher_on_niri.searched(shell)
         shell.as_account(shell.ipc("collection", place))
         shell.launcher_ready()
-        searches = launcher_on_niri.searched(shell) - searched
+        if searches is None:
+            searches = launcher_on_niri.searched(shell) - searched
         after = json.loads(shell.as_account(shell.ipc("made")))["rows"]
         said, _ = shell.said_since(began)
         if not any(line.startswith(SPOTS_MADE_SHUT) for line in said):
@@ -1527,6 +1533,7 @@ def opened_into(shell: Shell, place: str) -> tuple[dict[str, int], int]:
         for name, rows in after.items()
         if name != place and rows > before.get(name, 0)
     }
+    assert searches is not None, f"no try was made, with REOPENINGS_TRIED {REOPENINGS_TRIED}"
     return made, searches
 
 
