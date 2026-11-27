@@ -807,6 +807,13 @@ def test_a_talk_a_link_opened_reads_its_answer_only_once_joel_types(shell: Shell
             "text": words}  # fmt: skip
         replied = {"stage": "replied", "at": now(), "text": answer}
         talk.write_text(json.dumps(delivered) + "\n" + json.dumps(replied) + "\n")
+        # Sent words are kept until their talk says they were delivered (Drafts.qml), so a Talk
+        # opened before the shell hears it opens on them; the link waits until they're let go.
+        shells = STATE / "quickshell/by-shell"
+        deadline = time.monotonic() + 10
+        while any(words in kept.read_text() for kept in shells.glob("*/launcher-drafts.json")):
+            assert time.monotonic() < deadline, "his delivered words were never let go"
+            time.sleep(0.05)
         did = followed(shell, "talkTo", "LISTEN")
         assert did["done"], did
         shell.launcher_until(
