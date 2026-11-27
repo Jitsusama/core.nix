@@ -1303,8 +1303,10 @@ constexpr int SORTED_STORES = 200;
 // stores make the objects' allocator keep a few dozen chunks, more than a
 // fresh engine's own objects fill, so its list's room can only have grown
 // in this sweep, and a list left holding them shows plainly. The shapes'
-// allocator keeps at least the chunk of the engine's own shapes, so its
-// list has room for one once its sweep sorted.
+// allocator keeps at least the chunk of the engine's own shapes, and its
+// list, as the objects' is, must have room for every chunk its sweep kept.
+// Why it went untried is said apart: the stores' script failing, too few
+// chunks kept to try, or a list without room for what its sweep kept.
 bool emptiesTheSortList() {
     QJSEngine engine;
     Heap heap(&engine);
@@ -1318,25 +1320,37 @@ bool emptiesTheSortList() {
     const QV4::BlockAllocator &objects = manager->blockAllocator;
     const QV4::BlockAllocator &shapes = manager->icAllocator;
     // Seven stores to a chunk keep about 29 of them.
-    const bool objectsSorted =
-        objects.chunks.size() >= static_cast<std::size_t>(SORTED_STORES / 10) &&
-        objects.byUse.capacity() >= objects.chunks.size();
-    const bool shapesSorted = !shapes.chunks.empty() && shapes.byUse.capacity() >= 1;
-    const bool tried = !kept.isError() && objectsSorted && shapesSorted;
+    constexpr auto objectsFloor = static_cast<std::size_t>(SORTED_STORES / 10);
+    const bool enoughKept = objects.chunks.size() >= objectsFloor && !shapes.chunks.empty();
+    // Each list must have room for every chunk its sweep kept, the shapes' as the objects'.
+    const bool objectsRoom = objects.byUse.capacity() >= objects.chunks.size();
+    const bool shapesRoom = shapes.byUse.capacity() >= shapes.chunks.size();
+    const bool tried = !kept.isError() && enoughKept && objectsRoom && shapesRoom;
     const bool emptied = objects.byUse.empty() && shapes.byUse.empty();
-    const char *unsorted = "both were";
-    if (!objectsSorted)
-        unsorted = shapesSorted ? "the objects' weren't" : "neither was";
-    else if (!shapesSorted)
-        unsorted = "the shapes' weren't";
-    if (!tried)
+    const char *roomless = "both lists had";
+    if (objectsRoom)
+        roomless = "the shapes' list had";
+    else if (shapesRoom)
+        roomless = "the objects' list had";
+    if (!tried && kept.isError())
         std::fprintf(stderr,
                      "FAIL a sweep sorted the chunks it kept, the objects' few dozen and the "
-                     "shapes' one or more: %s, the objects' list with room for %zu beside "
-                     "%zu chunks and the shapes' for %zu beside %zu%s\n",
-                     unsorted, objects.byUse.capacity(), objects.chunks.size(),
-                     shapes.byUse.capacity(), shapes.chunks.size(),
-                     kept.isError() ? qPrintable(QStringLiteral(", ") + kept.toString()) : "");
+                     "shapes' one or more: the script making the stores failed, %s\n",
+                     qPrintable(kept.toString()));
+    else if (!tried && !enoughKept)
+        std::fprintf(stderr,
+                     "FAIL a sweep sorted the chunks it kept, the objects' few dozen and the "
+                     "shapes' one or more: too few were kept to try, the objects' %zu against "
+                     "a floor of %zu and the shapes' %zu against 1\n",
+                     objects.chunks.size(), objectsFloor, shapes.chunks.size());
+    else if (!tried)
+        std::fprintf(stderr,
+                     "FAIL a sweep sorted the chunks it kept, the objects' few dozen and the "
+                     "shapes' one or more: %s too little room for the chunks kept, the objects' "
+                     "list with room for %zu beside %zu chunks kept and the shapes' with room "
+                     "for %zu beside %zu\n",
+                     roomless, objects.byUse.capacity(), objects.chunks.size(),
+                     shapes.byUse.capacity(), shapes.chunks.size());
     else if (!emptied)
         std::fprintf(stderr,
                      "FAIL a sweep leaves the list it sorts kept chunks by empty: the objects' "
