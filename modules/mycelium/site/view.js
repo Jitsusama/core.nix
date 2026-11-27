@@ -72,7 +72,7 @@ import {
   sow as sowSeeds,
 } from "./layout.js";
 import { askedOf, cellActs } from "./acts.js";
-import { grownOf, oneCopyEach } from "./lineage.js";
+import { grewWords, grownOf, oneCopyEach, originsOf, splitSaid } from "./lineage.js";
 import { drawnWidth } from "./lines.js";
 import { durationOf, easedInOut, goneAndBack } from "./motion.js";
 import { shapeOf as shapeOfReading } from "./shape.js";
@@ -600,18 +600,20 @@ import {
     // A network the node sets within none grows out of the network whose
     // cells started more of its cells than any other, as a hypha branches
     // from another: who started each cell comes from its own record, else
-    // its forage, and which grows out of which is lineage.ts's to say. A
-    // starter is known only while it is drawn, since its network is where
-    // it is drawn.
+    // its forage, else what its forage says it split from, and which grows
+    // out of which is lineage.ts's to say. A starter is known only while it
+    // is drawn, since its network is where it is drawn.
     const startedBy = new Map(now.started.map((x) => [x.cell, x.by]));
+    const splitFrom = new Map((now.split || []).map((x) => [x.cell, x.from]));
     const cellNamed = new Map(cells.map((s) => [s.address, s]));
     const hubOf = new Map(cells.filter((s) => s.hub).map((s) => [s.address, s.hub.key]));
     const networks = [...hubs.values()].map((h) => ({ key: h.key, name: h.name, within: h.within, cells: h.cells.map((s) => s.address) }));
-    for (const [key, grown] of grownOf(networks, hubOf, now.started)) {
+    for (const [key, grown] of grownOf(networks, hubOf, originsOf(now.started, now.split || []))) {
       const h = hubs.get(key);
       const parent = hubs.get(grown.from);
       h.within = parent.key;
-      h.grown = { by: grown.by.map((a) => cellNamed.get(a)).sort((a, b) => collate(a.short, b.short)), cells: grown.cells };
+      const named = (addresses) => addresses.map((a) => cellNamed.get(a)).sort((a, b) => collate(a.short, b.short));
+      h.grown = { by: named(grown.by), cells: grown.cells, started: grown.started, split: grown.split ? { from: named(grown.split.from), cells: grown.split.cells } : null };
       parent.children.push(h);
     }
     for (const h of loose.values()) hubs.set(h.key, h);
@@ -655,7 +657,7 @@ import {
     // A feeding is drawn only where both its ends are, as a tie is.
     const fed = Array.isArray(now.fed) ? now.fed.filter((f) => byAddress.has(f.receptor) && byAddress.has(f.cell)) : null;
     const foraged = new Set(now.foraged || []);
-    return { at: now.at, hubs, cells, byAddress, byId, startedBy, foraged, shared, machines, builders: now.builders || [], standOf, messages: now.messages || [], judged: Array.isArray(now.waits), balance: now.balance || null, ties: Array.isArray(now.ties) ? now.ties : null, fed, repositories };
+    return { at: now.at, hubs, cells, byAddress, byId, startedBy, splitFrom, foraged, shared, machines, builders: now.builders || [], standOf, messages: now.messages || [], judged: Array.isArray(now.waits), balance: now.balance || null, ties: Array.isArray(now.ties) ? now.ties : null, fed, repositories };
   };
 
   // ---- Places that never move. ----
@@ -3365,10 +3367,15 @@ import {
   const cellPanel = (s) => {
     const m = current;
     const u = s.usage || {};
+    const from = splitSaid(m.splitFrom.get(s.address), m.startedBy.get(s.address));
     const facts = [
       ["Repository", s.repo],
       // Who started it, as its record or forage says, by name where it is drawn.
       ["Started", [s.since ? atWords(s.since) : "", m.startedBy.has(s.address) ? `by ${m.byAddress.get(m.startedBy.get(s.address))?.short || m.startedBy.get(s.address)}` : ""].filter(Boolean).join(", ")],
+      // What its purpose split from, as its forage says, where it names a
+      // cell its start doesn't or says it once the start is let go: a split
+      // from the cell that started it is said once, as the network's drawer does.
+      ["Split from", from ? m.byAddress.get(from)?.short || from : ""],
       ["Last turn", u.last_turn ? agoWords(u.last_turn) : ""],
     ].filter(([, v]) => v);
     // Its machine as drawn, a basin for a basin's machine; and the machine
@@ -3542,15 +3549,18 @@ import {
     return `A network of ${plural(h.cells.length, "cell")}${branches}${fed}.`;
   };
   // A branch grown out of another network says which, and whose start in
-  // it grew it: the cells there that started its own, each one a button.
+  // it grew it: the cells there that started its own, each one a button,
+  // and apart from them the cells its own split from where nobody is said
+  // to have started them, since a split is not a start.
   // Each is a line of its own, as who leads is, since a name in a led line
   // is a whole target and a sentence wrapping round two reads as two.
   const grownWords = (h, up) => {
-    const named = h.grown.by.map((s) => `<button type="button" class="inline" data-go="cell=${esc(s.address)}">${esc(s.short)}</button>`);
-    const who = named.length > 1 ? `${named.slice(0, -1).join(", ")} and ${named.at(-1)}` : named[0];
-    const n = h.grown.cells;
-    const of = n === h.cells.length ? (n === 1 ? "its cell" : `all ${NUMBER.format(n)} of its cells`) : `${NUMBER.format(n)} of its ${plural(h.cells.length, "cell")}`;
-    return [`Grown out of <button type="button" class="inline" data-go="net=${esc(up.key)}">${esc(up.name)}</button>`, `Started by ${who}: ${of}`];
+    const whoOf = (cells) => {
+      const named = cells.map((s) => `<button type="button" class="inline" data-go="cell=${esc(s.address)}">${esc(s.short)}</button>`);
+      return named.length > 1 ? `${named.slice(0, -1).join(", ")} and ${named.at(-1)}` : named[0];
+    };
+    const outOf = `<button type="button" class="inline" data-go="net=${esc(up.key)}">${esc(up.name)}</button>`;
+    return [`Grown out of ${outOf}`, ...grewWords(h.grown, h.cells.length, whoOf)];
   };
   const networkPurpose = (h) => {
     if (h.alone) return "Each its own: these cells work alone, and each one's drawer says what it is for.";
