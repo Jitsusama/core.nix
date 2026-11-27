@@ -159,15 +159,24 @@ def leaves_then_asks(shell: Shell, play: str) -> int:
     paused, the cat draws plays the key would cut short, and typing it draws none. Asked before
     the key was heard, the scene the ask draws could come up first, spending the ask on a play
     the key then cut short, and the yarn and the puppy rest for minutes once begun: on a lender
-    running 12 builds, no yarn came in 20 s (2026-11-26). A level held still fails here, since
-    the ask would be refused.
+    running 12 builds, no yarn came in 20 s (2026-11-26).
+
+    The key is pressed again before each read, since typing lasts only the 3 s pause, which a
+    slow read on a busy lender could pass between one key and the read after it; a key more
+    only keeps the level typing. A level left typing by an earlier key passes at once, which is
+    as safe, since typing draws no play for the key to cut. A level held still fails at once,
+    since the ask would be refused.
     """
-    shell.send_key("F24")
     level = f"qs -p {shell.folder} ipc call cat level"
     deadline = time.monotonic() + HEARS.total_seconds()
-    while (now := shell.as_account(level).strip()) != "typing":
+    while True:
+        shell.send_key("F24")
+        now = shell.as_account(level).strip()
+        if now == "typing":
+            break
+        assert now != "still", f"the cat is held still, so it would refuse:\n{shell.tail()}"
         assert time.monotonic() < deadline, (
-            f"the shell never heard the key in {HEARS}, its cat left {now}:\n{shell.tail()}"
+            f"the shell never heard a key in {HEARS}, its cat left {now}:\n{shell.tail()}"
         )
         # niri says he's no longer idle on its own time, with no word the test could wait on.
         time.sleep(POLL)
