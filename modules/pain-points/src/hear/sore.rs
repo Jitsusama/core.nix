@@ -155,14 +155,19 @@ const FILLER_JOINS: [&str; 2] = ["and", "or"];
 const FILLER_BETWEEN: [&str; 4] = ["some", "other", "all", "that"];
 
 /// The words that may close a filler's clause after it, as in "and shit
-/// like that"; each ends the clause, so "and shit like this keeps
+/// like that", or a courtesy closing the ask, as in "add the costs and
+/// shit please"; each ends the clause, so "and shit like this keeps
 /// breaking" still swears.
-const FILLER_TAILS: [&[&str]; 5] = [
+const FILLER_TAILS: [&[&str]; 9] = [
     &["like", "that"],
     &["like", "this"],
     &["too"],
     &["as", "well"],
     &["etc"],
+    &["please"],
+    &["pls"],
+    &["thanks"],
+    &["thank", "you"],
 ];
 
 /// The marks that close a clause without ending its sentence: a list runs
@@ -813,7 +818,17 @@ mod tests {
             );
         }
         // Each tail as he'd say it, so one dropped from its list is caught.
-        for tail in ["like that", "like this", "too", "as well", "etc"] {
+        for tail in [
+            "like that",
+            "like this",
+            "too",
+            "as well",
+            "etc",
+            "please",
+            "pls",
+            "thanks",
+            "thank you",
+        ] {
             let filler = format!("add the costs and shit {tail}");
             assert_eq!(
                 kinds(&filler, AT, &[]),
