@@ -4,6 +4,7 @@
 
 import type { Standing } from "../../local-sites/kit/feed.ts";
 import { type Child, facts, glyph, h } from "./elements.ts";
+import type { Heard } from "./hearing.ts";
 import type { Concern, Device, Network, Source } from "./model.ts";
 import type { Mycelium } from "./mycelium.ts";
 import type { Shape } from "./shape.ts";
@@ -201,8 +202,11 @@ function users(context: Context): number {
   return network.devices.length - shape.points.length - (shape.modem === undefined ? 0 : 1);
 }
 
+/** Every feed's records heard since it went live, and every answer read. */
+const ALL_HEARD: Heard = { fresh: true, unheard: 0 };
+
 /** What net last told of the house, and what of it is worth a look, unless it's gone. */
-function asksOf(network: Network, told: boolean): string {
+function asksOf(network: Network, told: boolean, unheard: number): string {
   if (!told) {
     // A feed that stopped keeps its last records, each source still answering
     // as it last said, so what they ask would read as an all-clear.
@@ -214,7 +218,9 @@ function asksOf(network: Network, told: boolean): string {
   const unread = network.unread.filter(
     (record) => record.startsWith("concern ") || record.startsWith("source "),
   );
-  const looks = worth.length + quiet.length + unread.length;
+  // So may one the watch couldn't read at all, as a line that isn't JSON or
+  // a record with no key, which never reaches the network.
+  const looks = worth.length + quiet.length + unread.length + unheard;
   return looks === 0 ? "and nothing needs a look" : `and ${plural(looks, "thing")} worth a look`;
 }
 
@@ -223,9 +229,9 @@ function asksOf(network: Network, told: boolean): string {
  * live, it says what is worth a look; otherwise it says the counts are as net
  * last told them.
  */
-function standsNow(context: Context, told = true): string {
+function standsNow(context: Context, told = true, unheard = 0): string {
   const { network, shape } = context;
-  return `${plural(users(context), "device")} on ${plural(shape.points.length, "eero")} across ${plural(shape.floors.length, "floor")}, ${asksOf(network, told)}.`;
+  return `${plural(users(context), "device")} on ${plural(shape.points.length, "eero")} across ${plural(shape.floors.length, "floor")}, ${asksOf(network, told, unheard)}.`;
 }
 
 /**
@@ -268,9 +274,10 @@ class Standings {
  * What the lede says, from the worst of net's feeds and the network read so
  * far, so words said of an earlier standing never outlast it. While the map
  * draws a device it counts them, saying what's worth a look only while the
- * feeds are live. A page reconnecting to a server that restarted is told
- * connecting and no records, so it still holds those from before, which
- * only a live feed makes current again. A page opened while net is down is given the records the
+ * feeds are live and each has told its records since: a page reconnecting
+ * to a server that restarted is told connecting and no records, then live,
+ * and only then the records that make what it holds current again. A page
+ * opened while net is down is given the records the
  * server still holds, and draws them, so the lede counts them too rather
  * than saying none is drawn. With none drawn, the counts are never said: a
  * page joining a watch the server holds as broken is told every kind empty,
@@ -279,13 +286,17 @@ class Standings {
  * every kind is read, there is no network yet, so even live feeds are still
  * being reached.
  */
-function ledeOf(worst: string | undefined, context: Context | undefined): string {
+function ledeOf(
+  worst: string | undefined,
+  context: Context | undefined,
+  heard: Heard = ALL_HEARD,
+): string {
   // A feed is stale while the sites' server can't be reached, broken while
   // the server is reached and says net isn't (the kit's feed.ts), and
   // connecting while net's records may be from before.
-  const told = worst === "live";
+  const told = worst === "live" && heard.fresh;
   if (context !== undefined && context.network.devices.length > 0) {
-    return standsNow(context, told);
+    return standsNow(context, told, heard.unheard);
   }
   const stands: Record<string, string> = {
     broken: UNANSWERED,
@@ -300,8 +311,9 @@ function sayStandsNow(
   lede: HTMLElement,
   worst: string | undefined,
   context: Context | undefined,
+  heard: Heard = ALL_HEARD,
 ): void {
-  const words = ledeOf(worst, context);
+  const words = ledeOf(worst, context, heard);
   if (lede.textContent !== words) {
     lede.textContent = words;
   }

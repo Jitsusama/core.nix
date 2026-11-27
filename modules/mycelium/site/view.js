@@ -4680,6 +4680,12 @@ import {
   // Between two readings: who is new and who has gone. `was` is where
   // everything stood before this reading drew, for the ghosts.
   const noteLives = (was) => {
+    // A first reading that failed before its cells were heard leaves none
+    // to compare with, so this one is heard as a first.
+    if (heardCells === null) {
+      firstLives();
+      return;
+    }
     const now = Date.now();
     const fresh = [];
     const gone = [];

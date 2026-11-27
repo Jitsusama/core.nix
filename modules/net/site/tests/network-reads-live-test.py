@@ -66,6 +66,8 @@ BUDGET = Budget(files=36, kilobytes=505, elements=335)
 # no floor would be an empty net read as an all-clear, so a count of either starts at one.
 COUNTED = re.compile(r"^\d+ devices? on [1-9]\d* eeros? across [1-9]\d* floors?, and .+\.$")
 UNANSWERED = "Net isn't answering, so no device is drawn."
+# A counted lede, split into how many devices use the network and what follows.
+USERS = re.compile(r"^(?P<users>\d+) devices? (?P<rest>on .+)$")
 # The lede over records kept from before, which counts what stands but says nothing of what's
 # worth a look, since what they ask would read as an all-clear.
 HELD = re.compile(
@@ -211,9 +213,12 @@ def test_a_machine_mycelium_runs_on_links_to_its_place_on_the_map(
 def test_a_net_that_stops_is_said_broken_then_live(network_page: Page, net_daemon: StandIn) -> None:
     says_it_stands(network_page, "live")
     every_device_drawn(network_page)
+    lede = network_page.locator("#lede")
+    expect(lede, "the lede didn't count what stands").to_have_text(COUNTED)
+    counted = USERS.match(lede.inner_text())
+    assert counted, "the lede's count didn't read"
     net_daemon.leave()
     says_it_stands(network_page, "broken")
-    lede = network_page.locator("#lede")
     expect(lede, "the lede asked from records net no longer tells").to_have_text(HELD)
     # What net holds moves while it's away, so only reading it again shows it.
     net_daemon.tell("device", gone=[f"device:{PRINTER}"])
@@ -223,9 +228,12 @@ def test_a_net_that_stops_is_said_broken_then_live(network_page: Page, net_daemo
         0, timeout=PACE_MS
     )
     expect(device(network_page, "modem"), "the modem went with the printer").to_have_count(1)
-    expect(lede, "the lede didn't count what's worth a look once net was back").to_have_text(
-        COUNTED
-    )
+    # The printer was a device using the network, and nothing worth a look
+    # was about it, so only the count of devices moves, read from what net
+    # told once back rather than what the page held.
+    users = int(counted["users"]) - 1
+    back = f"{users} device{'' if users == 1 else 's'} {counted['rest']}"
+    expect(lede, "the lede didn't count what net told once back").to_have_text(back)
 
 
 def test_a_net_that_never_answers_says_so_in_the_lede(

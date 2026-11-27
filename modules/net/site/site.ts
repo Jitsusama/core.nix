@@ -15,7 +15,8 @@ import { details } from "./device.ts";
 import { type Child, element, h } from "./elements.ts";
 import { ACROSS_LEAST } from "./grid.ts";
 import { type Drawn, drawMap } from "./map.ts";
-import { type KINDS, type Network, networkOf, type Watched } from "./model.ts";
+import { Hearing } from "./hearing.ts";
+import { KINDS, type Network, networkOf, type Watched } from "./model.ts";
 import { type Mycelium, myceliumOf } from "./mycelium.ts";
 import { type Context, found, overview, sayStandsNow, Standings } from "./panel.ts";
 import { type Shape, study } from "./shape.ts";
@@ -48,8 +49,7 @@ view.tabIndex = 0;
 const map = new MapView(view, draw);
 const told = new Set<string>();
 const standings = new Standings();
-// The last thing each watch couldn't read, said until it reads another.
-const heard = new Map<string, string>();
+const hearing = new Hearing(KINDS);
 
 let network: Network | undefined;
 let shape: Shape | undefined;
@@ -65,7 +65,7 @@ const now = (): number => Date.now() / 1000;
 /** Says whether the map is live, and what couldn't be read. */
 function sayWhen(): void {
   const stands = standings.worst();
-  const problems = [...(network?.unread ?? []), ...heard.values()];
+  const problems = [...(network?.unread ?? []), ...hearing.problems()];
   const trouble = problems.length > 0 ? ` Couldn't read: ${problems.join("; ")}.` : "";
   tell(
     asof,
@@ -155,11 +155,11 @@ function render(): void {
   network = networkOf(watched, told);
   sayWhen();
   if (network === undefined) {
-    sayStandsNow(lede, standings.worst()?.state, undefined);
+    sayStandsNow(lede, standings.worst()?.state, undefined, hearing.now());
     return;
   }
   shape = study(network);
-  sayStandsNow(lede, standings.worst()?.state, context());
+  sayStandsNow(lede, standings.worst()?.state, context(), hearing.now());
   const stacked = map.narrowerThan(ACROSS_LEAST);
   const flipped = drawn !== undefined && drawn.stacked !== stacked;
   drawn = drawMap(draw, network, shape, { now: now(), stacked });
@@ -461,19 +461,21 @@ function watch(kind: (typeof KINDS)[number]): Held {
     {
       moved: () => {
         told.add(kind);
-        heard.delete(kind);
+        hearing.moved(kind);
         drawSoon();
       },
       // A feed that never answers moves nothing, so the lede follows its
       // standing here as well as from each drawing.
       stands: (stands) => {
         standings.set(kind, stands);
+        hearing.stands(kind, stands.state);
         sayWhen();
-        sayStandsNow(lede, standings.worst()?.state, context());
+        sayStandsNow(lede, standings.worst()?.state, context(), hearing.now());
       },
       problem: (what) => {
-        heard.set(kind, `${kind}: ${what}`);
+        hearing.problem(kind, what);
         sayWhen();
+        sayStandsNow(lede, standings.worst()?.state, context(), hearing.now());
       },
     },
   ).held;

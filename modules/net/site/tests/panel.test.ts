@@ -110,6 +110,21 @@ it("the lede counts what stands, and what is worth a look, while net's feeds are
   assert.equal(ledeOf("live", contextOf()), standsNow(contextOf()));
 });
 
+// The server says live before the records that bring it, so a page that
+// held records from before has none current until they come.
+it("the lede counts held records as net last told them until each live feed's records come", () => {
+  assert.equal(
+    ledeOf("live", contextOf(calm), { fresh: false, unheard: 0 }),
+    "1 device on 2 eeros across 2 floors, as net last told them.",
+  );
+});
+
+// A line that isn't JSON, or a record with no key, never reaches the
+// network, but may have been a concern worth a look.
+it("the lede counts what a concern or source watch couldn't read as worth a look", () => {
+  assert.match(ledeOf("live", contextOf(calm), { fresh: true, unheard: 1 }), ONE_WORTH);
+});
+
 // A page opened or reloaded while net is down is given the records the
 // server still holds, and the map draws them, each source still answering
 // as it last said: their counts stand, but what they ask would read as an
