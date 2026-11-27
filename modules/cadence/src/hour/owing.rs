@@ -273,6 +273,7 @@ fn causes_asked(m: &Measure) -> Vec<Filed> {
             let class = causes::class_of(line);
             let found = line.get(class.len() + 1..).unwrap_or_default().trim();
             let key = format!("hour:{}:{class}", m.key);
+            let done = causes::shell_quoted(&key);
             Filed {
                 says: format!("a cause found again and again, yours: \"{class}\", {found}"),
                 text: format!(
@@ -280,7 +281,7 @@ fn causes_asked(m: &Measure) -> Vec<Filed> {
                      \"{class}\", {found}. Please reply within a day with the one fix that \
                      stops it at its root, such as a check that refuses it or a shared piece \
                      every change uses, or why it can't have one. Once it lands, name it with \
-                     `cadence owe --done '{key}' FIX`, and it stays closed for the week its \
+                     `cadence owe --done {done} FIX`, and it stays closed for the week its \
                      cases count over; until then it also closes once the class falls under \
                      three changes in a week."
                 ),
@@ -739,6 +740,58 @@ mod tests {
         m.behind = lines.iter().map(|&line| line.to_owned()).collect();
         m.now = if lines.is_empty() { 0.0 } else { 1.0 };
         m
+    }
+
+    /// The keeper's most common class holds an apostrophe, and an unfolded
+    /// one holds whatever its sender wrote, so the command each ask gives
+    /// must reach `cadence owe` as the very key its line is filed under.
+    #[test]
+    fn the_command_an_ask_gives_reaches_owe_as_its_own_key() {
+        let undone = "a test passes with the fix undone, or can't fail in core.nix: on 3 changes \
+                      in a week, core.nix#1, #2, #3 · 80ECO2";
+        let odd = "(unfolded) x'; touch gone; ' $(touch gone) \\ end: on 3 changes in a week, \
+                   core.nix#4, #5, #6 · 1JQPPC";
+        let mut ledger = Vec::new();
+        let told = file(
+            &mut ledger,
+            &[recurring(&[undone, odd])],
+            "2026-11-26",
+            1000,
+        );
+        assert_eq!(told.len(), 2, "each class wasn't asked: {told:?}");
+        let zone = jiff::tz::TimeZone::UTC;
+        let here = tempfile::tempdir().expect("a folder for the shell");
+        for (_, text) in &told {
+            let command = text
+                .split_once("`cadence owe ")
+                .and_then(|(_, rest)| rest.split_once('`'))
+                .map(|(command, _)| command)
+                .expect("an ask that names its command");
+            let out = std::process::Command::new("sh")
+                .arg("-c")
+                .arg(format!("printf '%s\\n' {command}"))
+                .current_dir(here.path())
+                .output()
+                .expect("a shell to split the command");
+            let words: Vec<String> = String::from_utf8_lossy(&out.stdout)
+                .lines()
+                .map(str::to_owned)
+                .collect();
+            let asked = owe::parse(words.clone().into_iter(), &zone);
+            assert!(
+                matches!(&asked, Ok(owe::Asked::Done { key, fix })
+                    if fix.as_deref() == Some("FIX") && ledger.iter().any(|e| &e.key == key)),
+                "the ask's command, `{command}`, split by a shell as {words:?}, isn't a key a \
+                 line is filed under: {asked:?}"
+            );
+        }
+        assert!(
+            std::fs::read_dir(here.path())
+                .expect("its folder")
+                .next()
+                .is_none(),
+            "pasting an ask's command ran what its sender wrote"
+        );
     }
 
     #[test]

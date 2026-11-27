@@ -32,13 +32,18 @@ fn heard(m: Message) -> (Message, i64) {
 /// Writes `m` into `messages` as the harness does, under its id, dated as
 /// this machine wrote it `ago` seconds before `NOW`.
 fn write(messages: &Path, m: &Message, ago: i64) {
-    let path = messages.join(format!("{}.json", m.id));
-    fs::write(&path, serde_json::to_vec(m).expect("a message serialised")).expect("written");
+    write_as(&messages.join(format!("{}.json", m.id)), m, ago);
+}
+
+/// Writes `m` at `path`, dated written `ago` seconds before `NOW`, so
+/// what reads by write time lists it whatever the clock says.
+fn write_as(path: &Path, m: &Message, ago: i64) {
+    fs::write(path, serde_json::to_vec(m).expect("a message serialised")).expect("written");
     let at = std::time::UNIX_EPOCH
         + std::time::Duration::from_secs(u64::try_from(NOW - ago).expect("a time after 1970"));
     fs::File::options()
         .write(true)
-        .open(&path)
+        .open(path)
         .and_then(|file| file.set_modified(at))
         .expect("its time written set");
 }
@@ -297,7 +302,7 @@ fn what_the_mesh_said_is_kept_for_the_next_hour_and_a_look_keeps_nothing() {
     forged.id = format!("{}-SENDER-1-0000000c", (NOW + 3650) * 1000);
     forged.supersedes = Some(third.clone());
     let named = messages.join(format!("{}-STRANGER-1-0000000c.json", (NOW + 3650) * 1000));
-    fs::write(named, serde_json::to_vec(&forged).expect("serialised")).expect("written");
+    write_as(&named, &forged, -3650);
     let by_stranger = read(home.path(), folder.path(), NOW + 3660, false);
     assert_eq!(
         by_stranger.now, 1.0,

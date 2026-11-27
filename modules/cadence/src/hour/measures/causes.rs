@@ -446,7 +446,9 @@ fn class_named(said: &str) -> String {
 
 /// A class written plain: lower case, quotes, a closing stop and extra
 /// spaces gone, a curled apostrophe straight and a colon a comma, since a
-/// colon ends the class on the measure's line.
+/// colon ends the class on the measure's line. A double quote or backtick
+/// within is an apostrophe, so a sender's words can't close the quotes
+/// the ask puts them in.
 fn plain(class: &str) -> String {
     class
         .trim()
@@ -456,8 +458,16 @@ fn plain(class: &str) -> String {
         .collect::<Vec<_>>()
         .join(" ")
         .to_lowercase()
-        .replace('\u{2019}', "'")
+        .replace(['\u{2019}', '"', '`'], "'")
         .replace(':', ",")
+}
+
+/// `word` quoted for a POSIX shell: in single quotes, each of its own
+/// closing them, written escaped and opening them again, so whatever a
+/// sender wrote stays one word, and nothing in it runs, when pasted.
+#[must_use]
+pub fn shell_quoted(word: &str) -> String {
+    format!("'{}'", word.replace('\'', r"'\''"))
 }
 
 /// The cases the harness's `causes.jsonl` holds, each dated when its round
