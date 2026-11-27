@@ -21,6 +21,7 @@ use std::fmt::Write as _;
 use std::path::Path;
 
 use dictation::echo;
+use dictation::loudness::Track;
 use dictation::parakeet::{Parakeet, RATE, WINDOW, Word};
 use dictation::takes::Take;
 use dictation::transcript::{self, Line, Side, markdown};
@@ -270,7 +271,7 @@ fn score_meeting(speech: &mut Parakeet, meeting: &Meeting) -> Result<(Scored, Ti
             .flat_map(|line| said(&line.text))
             .collect()
     };
-    let (cut, cuts) = echo::cut_echoes(&lines, &word_times, said::spoken);
+    let (cut, cuts) = echo::cut_echoes(&lines, &word_times, &Track::default(), said::spoken);
     for taken in &cuts {
         println!(
             "{name}: Joel's words at {} taken for an echo, {}: {}",

@@ -15,7 +15,9 @@
 
 use std::collections::{HashMap, HashSet};
 use std::hash::BuildHasher;
+use std::mem::discriminant;
 
+use crate::loudness::Track;
 use crate::mel::RATE;
 use crate::parakeet::Word;
 use crate::transcript::{Line, Side};
@@ -265,35 +267,49 @@ fn drowned(mine: &[Word], theirs: &[Word], alone: &[(usize, f32)]) -> Vec<Option
     drowned
 }
 
+/// Which rule cut some of Joel's words as the others' echo.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Rule {
+    /// Spelled as their words, heard just after they said them.
+    Spelling,
+    /// Far below the loudest of their words around the first, by this
+    /// many dB.
+    Level(f32),
+    /// Far under the loudest of their sound just before the first,
+    /// outside their lines, by this many dB.
+    Sound(f32),
+}
+
 /// Some of Joel's words cut from a line of his as the others' echo: the
 /// line's index, when the first was heard, how long after its word of
-/// theirs, in samples, what they say, and, if they were cut for their
-/// level rather than their spelling, how far below the loudest of theirs
-/// around it the first was, in dB.
+/// theirs, in samples, what they say, and the rule that cut them.
 #[derive(Debug, PartialEq)]
 pub struct Cut {
     pub line: usize,
     pub at: usize,
     pub after: isize,
     pub text: String,
-    pub below: Option<f32>,
+    pub rule: Rule,
 }
 
 impl Cut {
     /// What it was cut by, as the journal and the meetings check say it:
-    /// how far below theirs, if for its level, else how late after theirs,
-    /// or how early before them.
+    /// how far below theirs, if for its level, or under their sound, if
+    /// for that, else how late after theirs, or how early before them.
     #[must_use]
     pub fn by(&self) -> String {
-        if let Some(below) = self.below {
-            return format!("{below:.0} dB below theirs");
-        }
-        let rate = isize::try_from(RATE).unwrap_or(isize::MAX);
-        let ms = self.after * 1000 / rate;
-        if ms < 0 {
-            format!("{} ms before theirs", -ms)
-        } else {
-            format!("{ms} ms after theirs")
+        match self.rule {
+            Rule::Level(below) => format!("{below:.0} dB below theirs"),
+            Rule::Sound(under) => format!("{under:.0} dB under their sound"),
+            Rule::Spelling => {
+                let rate = isize::try_from(RATE).unwrap_or(isize::MAX);
+                let ms = self.after * 1000 / rate;
+                if ms < 0 {
+                    format!("{} ms before theirs", -ms)
+                } else {
+                    format!("{ms} ms after theirs")
+                }
+            }
         }
     }
 }
@@ -307,8 +323,11 @@ impl Cut {
 pub fn cut_echoes<S: BuildHasher>(
     lines: &[Line],
     words: &HashMap<usize, Vec<Word>, S>,
+    sound: &Track,
     tidy: impl Fn(&str) -> Option<String>,
 ) -> (Vec<Line>, Vec<Cut>) {
+    // Red: their sound cuts nothing yet.
+    let _ = sound;
     let mut theirs: Vec<Word> = lines
         .iter()
         .enumerate()
@@ -333,13 +352,15 @@ pub fn cut_echoes<S: BuildHasher>(
         let Some(mine) = words.get(&index).filter(|_| line.side == Side::Mine) else {
             continue;
         };
-        let echoes: Vec<Option<(usize, Option<f32>)>> = echoes_of(mine, &theirs)
+        let echoes: Vec<Option<(usize, Rule)>> = echoes_of(mine, &theirs)
             .into_iter()
             .zip(drowned(mine, &theirs, &his))
             .zip(mine)
             .map(|((by_spelling, by_level), word)| {
-                let below = |j: usize| (j, Some(theirs[j].level - word.level));
-                by_spelling.map(|j| (j, None)).or(by_level.map(below))
+                let below = |j: usize| (j, Rule::Level(theirs[j].level - word.level));
+                by_spelling
+                    .map(|j| (j, Rule::Spelling))
+                    .or(by_level.map(below))
             })
             .collect();
         if echoes.iter().all(Option::is_none) {
@@ -349,7 +370,7 @@ pub fn cut_echoes<S: BuildHasher>(
         let mut first = None;
         let mut run: Option<Cut> = None;
         for (word, echo) in mine.iter().zip(&echoes) {
-            let Some((j, below)) = *echo else {
+            let Some((j, rule)) = *echo else {
                 kept.push(word.text.as_str());
                 first = first.or(Some(word.at));
                 cuts.extend(run.take());
@@ -357,7 +378,7 @@ pub fn cut_echoes<S: BuildHasher>(
             };
             if run
                 .as_ref()
-                .is_some_and(|cutting| cutting.below.is_some() != below.is_some())
+                .is_some_and(|cutting| discriminant(&cutting.rule) != discriminant(&rule))
             {
                 cuts.extend(run.take());
             }
@@ -370,7 +391,7 @@ pub fn cut_echoes<S: BuildHasher>(
                     at: word.at,
                     after: later(word.at, theirs[j].at),
                     text: word.text.clone(),
-                    below,
+                    rule,
                 });
             }
         }

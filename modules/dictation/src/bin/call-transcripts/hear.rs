@@ -34,6 +34,7 @@ use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::time::Duration;
 
 use dictation::echo;
+use dictation::loudness::Track;
 use dictation::mel::RATE;
 use dictation::parakeet::{Parakeet, Timings, Word};
 use dictation::pieces;
@@ -119,7 +120,8 @@ impl Writing {
     /// gone from the file, so this is all that says where to listen for
     /// it.
     fn untold_cuts(&mut self) -> Vec<String> {
-        let (cut, cuts) = echo::cut_echoes(&self.lines, &self.words, said::spoken);
+        let sound = Track::default();
+        let (cut, cuts) = echo::cut_echoes(&self.lines, &self.words, &sound, said::spoken);
         let cutting: HashSet<usize> = cuts.iter().map(|cut| cut.at).collect();
         let mut back: Vec<(usize, usize)> = Vec::new();
         self.told.retain(|at, words| {
@@ -765,7 +767,8 @@ fn write(book: &Shared, key: &str, writing: &Writing, me: &str, transcribing: bo
 /// Lines read back from the file were told when first written, and are
 /// kept, since a split take's parts read back can't be joined again.
 fn transcript_of(writing: &Writing, me: &str, them: Option<&str>, note: Option<&str>) -> String {
-    let (cut, _) = echo::cut_echoes(&writing.lines, &writing.words, said::spoken);
+    let sound = Track::default();
+    let (cut, _) = echo::cut_echoes(&writing.lines, &writing.words, &sound, said::spoken);
     let heard = split::unechoed(&cut, &writing.pieces, writing.read);
     let guesses = writing.guesses.as_deref();
     markdown_unechoed(&heard, me, them, note, guesses)

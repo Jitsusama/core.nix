@@ -99,9 +99,12 @@ fn worded(side: Side, words: &[Word]) -> Line {
     }
 }
 
-/// Joel's lines as written once their echo is cut from them, each
-/// side's words given as they were heard.
-fn cut_from(theirs: &[Vec<Word>], mine: &[Vec<Word>]) -> Vec<String> {
+/// A line of each side's for each of its words as they were heard,
+/// theirs first, and the words by line.
+fn lines_heard(
+    theirs: &[Vec<Word>],
+    mine: &[Vec<Word>],
+) -> (Vec<Line>, HashMap<usize, Vec<Word>>) {
     let mut lines = Vec::new();
     let mut words = HashMap::new();
     for (side, said) in [(Side::Theirs, theirs), (Side::Mine, mine)] {
@@ -110,7 +113,20 @@ fn cut_from(theirs: &[Vec<Word>], mine: &[Vec<Word>]) -> Vec<String> {
             lines.push(worded(side, heard));
         }
     }
-    let (cut, _) = cut_echoes(&lines, &words, |left| Some(left.to_owned()));
+    (lines, words)
+}
+
+/// `lines` with their echo cut by `words`, none of their sound known,
+/// and what's left of each untidied.
+fn cut_untidied(lines: &[Line], words: &HashMap<usize, Vec<Word>>) -> (Vec<Line>, Vec<Cut>) {
+    cut_echoes(lines, words, &Track::default(), |left| Some(left.to_owned()))
+}
+
+/// Joel's lines as written once their echo is cut from them, each
+/// side's words given as they were heard.
+fn cut_from(theirs: &[Vec<Word>], mine: &[Vec<Word>]) -> Vec<String> {
+    let (lines, words) = lines_heard(theirs, mine);
+    let (cut, _) = cut_untidied(&lines, &words);
     kept(&cut)
 }
 
@@ -500,7 +516,7 @@ fn what_was_cut_says_where_it_was_and_how_late() {
     let mine = timed("Fine. Lunch at noon", 4_700);
     let lines = [worded(Side::Theirs, &theirs), worded(Side::Mine, &mine)];
     let words = HashMap::from([(0, theirs), (1, mine)]);
-    let (cut, cuts) = cut_echoes(&lines, &words, |left| Some(left.to_owned()));
+    let (cut, cuts) = cut_untidied(&lines, &words);
     assert_eq!(cut[1].text, "Fine.");
     assert_eq!(
         cuts,
@@ -509,7 +525,7 @@ fn what_was_cut_says_where_it_was_and_how_late() {
             at: 5_000 * RATE / 1000,
             after: 0,
             text: "Lunch at noon".to_owned(),
-            below: None,
+            rule: Rule::Spelling,
         }]
     );
 }
@@ -528,9 +544,9 @@ fn what_was_cut_for_its_level_says_how_far_below_theirs_it_was() {
         timed("Fine by me, I'll book the room for us.", 1_000),
         -20.0,
     );
-    for (heard, below) in [
-        ("Bunch had moon in Tuesday", Some(22.0)),
-        ("Lunch at noon on Thursday then.", None),
+    for (heard, rule) in [
+        ("Bunch had moon in Tuesday", Rule::Level(22.0)),
+        ("Lunch at noon on Thursday then.", Rule::Spelling),
     ] {
         let mut mine = own.clone();
         let mut run = at_level(timed(heard, 5_050), -45.0);
@@ -538,14 +554,14 @@ fn what_was_cut_for_its_level_says_how_far_below_theirs_it_was() {
         mine.extend(run);
         let lines = [worded(Side::Theirs, &theirs), worded(Side::Mine, &mine)];
         let words = HashMap::from([(0, theirs.clone()), (1, mine)]);
-        let (_, cuts) = cut_echoes(&lines, &words, |left| Some(left.to_owned()));
-        let told: Vec<(&str, Option<f32>)> = cuts
+        let (_, cuts) = cut_untidied(&lines, &words);
+        let told: Vec<(&str, Rule)> = cuts
             .iter()
-            .map(|cut| (cut.text.as_str(), cut.below))
+            .map(|cut| (cut.text.as_str(), cut.rule))
             .collect();
         assert_eq!(
             told,
-            [(heard, below)],
+            [(heard, rule)],
             "the cut of {heard:?} didn't say how far below theirs it was by level alone"
         );
     }
@@ -553,23 +569,25 @@ fn what_was_cut_for_its_level_says_how_far_below_theirs_it_was() {
 
 #[test]
 fn a_cut_says_what_it_was_cut_by() {
-    let cut = |after_ms: isize, below| Cut {
+    let cut = |after_ms: isize, rule| Cut {
         line: 1,
         at: 5_000 * RATE / 1000,
         after: after_ms * isize::try_from(RATE).expect("a rate fits") / 1000,
         text: "Lunch at noon".to_owned(),
-        below,
+        rule,
     };
     assert_eq!(
         [
-            cut(-200, None).by(),
-            cut(50, None).by(),
-            cut(50, Some(21.6)).by(),
+            cut(-200, Rule::Spelling).by(),
+            cut(50, Rule::Spelling).by(),
+            cut(50, Rule::Level(21.6)).by(),
+            cut(50, Rule::Sound(20.4)).by(),
         ],
         [
             "200 ms before theirs",
             "50 ms after theirs",
             "22 dB below theirs",
+            "20 dB under their sound",
         ],
         "a cut didn't say the rule it was cut by"
     );
@@ -587,10 +605,10 @@ fn a_run_of_cuts_splits_where_the_rule_cutting_it_changes() {
     mine.extend(at_level(timed("Lunch at noon in Tuesday", 5_050), -42.0));
     let lines = [worded(Side::Theirs, &theirs), worded(Side::Mine, &mine)];
     let words = HashMap::from([(0, theirs), (1, mine)]);
-    let (_, cuts) = cut_echoes(&lines, &words, |left| Some(left.to_owned()));
-    let told: Vec<(&str, Option<f32>)> = cuts
+    let (_, cuts) = cut_untidied(&lines, &words);
+    let told: Vec<(&str, Rule)> = cuts
         .iter()
-        .map(|cut| (cut.text.as_str(), cut.below))
+        .map(|cut| (cut.text.as_str(), cut.rule))
         .collect();
     assert_eq!(
         told,
@@ -683,7 +701,7 @@ fn their_echo_timed_just_before_their_word_is_cut_and_says_how_early() {
     mine.extend(timed("Lunch at noon on Thursday then.", 4_800));
     let lines = [worded(Side::Theirs, &theirs), worded(Side::Mine, &mine)];
     let words = HashMap::from([(0, theirs), (1, mine)]);
-    let (cut, cuts) = cut_echoes(&lines, &words, |left| Some(left.to_owned()));
+    let (cut, cuts) = cut_untidied(&lines, &words);
     assert_eq!(
         cut[1].text, "Fine by me.",
         "their echo timed 200 ms before their words wasn't cut"
@@ -705,7 +723,7 @@ fn a_line_whose_opening_echo_is_cut_starts_at_joels_first_word() {
     mine.extend(timed("Fine by me.", 6_500));
     let lines = [worded(Side::Theirs, &theirs), worded(Side::Mine, &mine)];
     let words = HashMap::from([(0, theirs), (1, mine)]);
-    let (cut, _) = cut_echoes(&lines, &words, |left| Some(left.to_owned()));
+    let (cut, _) = cut_untidied(&lines, &words);
     assert_eq!(cut[1].text, "Fine by me.", "their echo wasn't cut");
     assert_eq!(
         cut[1].start,
@@ -722,7 +740,7 @@ fn a_line_whose_words_are_unknown_is_cut_from_by_its_text_alone() {
         line(Side::Theirs, 4, "Sounds good."),
         line(Side::Mine, 4, "Sounds good"),
     ];
-    let (cut, cuts) = cut_echoes(&lines, &HashMap::new(), |left| Some(left.to_owned()));
+    let (cut, cuts) = cut_untidied(&lines, &HashMap::new());
     assert_eq!(cut, lines);
     assert_eq!(
         cuts,
@@ -734,3 +752,8 @@ fn a_line_whose_words_are_unknown_is_cut_from_by_its_text_alone() {
         "the whole-line rule didn't leave the echo out"
     );
 }
+
+/// The cuts of Joel's words far under their sound, built on the calls
+/// above.
+#[path = "echo_sound_tests.rs"]
+mod sound;
