@@ -223,8 +223,10 @@ fn a_stop_goes_to_every_machine_lacking_it_at_once_so_one_out_of_reach_holds_non
         machines: vec!["mac".to_owned(), "builder".to_owned(), "far".to_owned()],
         ..plan()
     };
+    // The last is out of reach, so an answer paired with the wrong machine
+    // fails another.
     let mut here = Machine {
-        unreached: Some("machine=builder"),
+        unreached: Some("machine=far"),
         ..machine()
     };
 
@@ -236,7 +238,7 @@ fn a_stop_goes_to_every_machine_lacking_it_at_once_so_one_out_of_reach_holds_non
         .collect();
     assert_eq!(
         failed,
-        vec![("mac", false), ("builder", true), ("far", false)],
+        vec![("mac", false), ("builder", false), ("far", true)],
         "each is given it, and only the one out of reach fails: {gives:?}"
     );
     assert_eq!(
@@ -303,6 +305,63 @@ fn a_stop_kept_here_no_longer_is_taken_away_from_each_machine_given_it() {
     let again = carry(&mut carrier, &state, 20, &mut here);
     assert!(again.is_empty(), "nothing more is given: {again:?}");
     assert_eq!(here.asked.len(), asked, "nor asked: {:?}", here.asked);
+}
+
+#[test]
+fn a_stop_is_taken_away_from_every_machine_at_once_and_kept_noted_where_it_failed() {
+    let state = scratch("carry-gone-at-once");
+    let name = "slack-C1-1.000000";
+    keep(&state, name, &heard("slack:C1:1.000000"));
+    let named = Plan {
+        machines: vec!["mac".to_owned(), "builder".to_owned(), "far".to_owned()],
+        ..plan()
+    };
+    let mut here = machine();
+    let mut carrier = Carrier::default();
+    carrier.carry(&named, &state, "here", 0, &mut here);
+    fs::remove_file(state.join(format!("stops/{name}.json"))).expect("forgotten here");
+    here.unreached = Some("machine=builder");
+
+    let (gives, _) = carrier.carry(&named, &state, "here", 10, &mut here);
+
+    let failed: Vec<(&str, bool)> = gives
+        .iter()
+        .map(|one| (one.machine.as_str(), one.failed.is_some()))
+        .collect();
+    assert_eq!(
+        failed,
+        vec![("mac", false), ("builder", true), ("far", false)],
+        "each is given its end, and only the one out of reach fails: {gives:?}"
+    );
+    assert_eq!(
+        here.batches.last(),
+        Some(&3),
+        "in one batch: {:?}",
+        here.batches
+    );
+    let noted = fs::read_to_string(state.join(format!("carried/{name}.json"))).unwrap_or_default();
+    assert!(
+        noted.contains("\"builder\"") && !noted.contains("\"mac\"") && !noted.contains("\"far\""),
+        "only the one still holding it is noted: {noted}"
+    );
+    let asked = here.asked.len();
+    let (early, _) = carrier.carry(&named, &state, "here", 20, &mut here);
+    assert!(
+        early.is_empty(),
+        "none is tried within the minute: {early:?}"
+    );
+    assert_eq!(here.asked.len(), asked, "nor asked: {:?}", here.asked);
+    here.unreached = None;
+    let (later, _) = carrier.carry(&named, &state, "here", 10 + AGAIN_MS, &mut here);
+    assert_eq!(
+        later,
+        vec![gave(name, "builder", Gift::Removal)],
+        "after a minute only the one still holding it is asked again"
+    );
+    assert!(
+        !state.join(format!("carried/{name}.json")).exists(),
+        "and nothing is noted as held of it"
+    );
 }
 
 #[test]

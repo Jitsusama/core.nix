@@ -36,6 +36,10 @@ pub struct System {
 /// How often a program running is looked at, to end it at its limit.
 const LOOKED: Duration = Duration::from_millis(10);
 
+/// The most programs run at once, each holding two pipes and two threads
+/// reading them, so a long list can't spend the daemon's own.
+pub const AT_ONCE: usize = 16;
+
 impl Runs for System {
     fn run(&mut self, program: &Path, args: &[String]) -> Result<String, String> {
         self.run_all(&[(program, args)])
@@ -43,10 +47,22 @@ impl Runs for System {
             .unwrap_or_else(|| Err("nothing ran".to_owned()))
     }
 
-    /// Starts every program at once and waits for them together, each
-    /// given the same `limit` from the start, so one that doesn't answer
-    /// holds none of the others up past it.
+    /// Starts the programs [`AT_ONCE`] at a time and waits for each lot
+    /// together, each given the same `limit` from its lot's start, so one
+    /// that doesn't answer holds none of the others up past it.
     fn run_all(&mut self, runs: &[(&Path, &[String])]) -> Vec<Result<String, String>> {
+        runs.chunks(AT_ONCE)
+            .flat_map(|lot| self.run_together(lot))
+            .collect()
+    }
+}
+
+impl System {
+    /// Starts every program at once and waits for them together, each
+    /// given `limit` from the start. One that ended is answered once what
+    /// it printed is read, or at the limit with its exit alone, as a
+    /// program it started may still hold its output open.
+    fn run_together(&self, runs: &[(&Path, &[String])]) -> Vec<Result<String, String>> {
         let began = Instant::now();
         let (mut running, mut answers): (Vec<_>, Vec<_>) = runs
             .iter()
@@ -59,21 +75,31 @@ impl Runs for System {
             let late = began.elapsed() >= self.limit;
             for (slot, answer) in running.iter_mut().zip(&mut answers) {
                 let Some(one) = slot else { continue };
-                let status = match one.child.try_wait() {
-                    Ok(Some(status)) => Ok(status),
+                // Ended and read, or answered without its readers, which
+                // are left to end with the pipes, as one of its own
+                // children may hold them.
+                let ended = match one.child.try_wait() {
+                    Ok(Some(status)) if one.read() => Ok(status),
+                    Ok(Some(status)) if late => Err(unread(status)),
                     Ok(None) if late => {
                         // Killed at its limit; it may have ended meanwhile,
-                        // which is as good. Its readers are left to end with
-                        // the pipes, which one of its own children may hold.
+                        // which is as good.
                         let _ = one.child.kill();
                         let _ = one.child.wait();
-                        Err(format!("no answer in {} s", self.limit.as_secs()))
+                        Err(Err(format!("no answer in {} s", self.limit.as_secs())))
                     }
-                    Ok(None) => continue,
-                    Err(error) => Err(error.to_string()),
+                    Ok(_) => continue,
+                    Err(error) => {
+                        let _ = one.child.kill();
+                        let _ = one.child.wait();
+                        Err(Err(error.to_string()))
+                    }
                 };
                 if let Some(one) = slot.take() {
-                    *answer = Some(status.and_then(|status| one.answer(status)));
+                    *answer = Some(match ended {
+                        Ok(status) => one.answer(status),
+                        Err(said) => said,
+                    });
                 }
             }
             if answers.iter().any(Option::is_none) {
@@ -102,12 +128,36 @@ fn start(program: &Path, args: &[String]) -> Result<Running, String> {
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|error| format!("{} can't run: {error}", program.to_string_lossy()))?;
-    let out = drain(child.stdout.take());
-    let err = drain(child.stderr.take());
-    Ok(Running { child, out, err })
+    match (drain(child.stdout.take()), drain(child.stderr.take())) {
+        (Ok(out), Ok(err)) => Ok(Running { child, out, err }),
+        (out, err) => {
+            // Ended, so a reader that did start ends with the pipe.
+            let _ = child.kill();
+            let _ = child.wait();
+            let why = out.err().or_else(|| err.err()).unwrap_or_default();
+            Err(format!(
+                "{} couldn't be read as it ran: {why}",
+                program.to_string_lossy()
+            ))
+        }
+    }
+}
+
+/// What a program that ended as `status` says answers, its output unread.
+fn unread(status: ExitStatus) -> Result<String, String> {
+    if status.success() {
+        Ok(String::new())
+    } else {
+        Err(format!("what it printed still held open ({status})"))
+    }
 }
 
 impl Running {
+    /// Whether all it printed is read, so answering it waits on nothing.
+    fn read(&self) -> bool {
+        self.out.is_finished() && self.err.is_finished()
+    }
+
     /// What it printed, once it exited 0 as `status` says, or what it said
     /// when it didn't.
     fn answer(self, status: ExitStatus) -> Result<String, String> {
@@ -121,17 +171,20 @@ impl Running {
     }
 }
 
-/// Reads all a pipe gives, on a thread of its own.
-fn drain(pipe: Option<impl Read + Send + 'static>) -> JoinHandle<Vec<u8>> {
-    std::thread::spawn(move || {
-        let mut read = Vec::new();
-        if let Some(mut pipe) = pipe {
-            // What couldn't be read is said as nothing; the exit says
-            // whether it ran.
-            let _ = pipe.read_to_end(&mut read);
-        }
-        read
-    })
+/// Reads all a pipe gives, on a thread of its own, or why no thread could
+/// be started.
+fn drain(pipe: Option<impl Read + Send + 'static>) -> Result<JoinHandle<Vec<u8>>, String> {
+    std::thread::Builder::new()
+        .spawn(move || {
+            let mut read = Vec::new();
+            if let Some(mut pipe) = pipe {
+                // What couldn't be read is said as nothing; the exit says
+                // whether it ran.
+                let _ = pipe.read_to_end(&mut read);
+            }
+            read
+        })
+        .map_err(|error| error.to_string())
 }
 
 #[cfg(test)]
@@ -139,7 +192,7 @@ mod tests {
     use std::path::Path;
     use std::time::{Duration, Instant};
 
-    use super::{Runs, System};
+    use super::{AT_ONCE, Runs, System};
 
     /// `sh -c` running `line`.
     fn sh(line: &str) -> Vec<String> {
@@ -189,6 +242,47 @@ mod tests {
         assert!(
             took < Duration::from_secs(6),
             "all waited on together, within the one limit: {took:?}"
+        );
+    }
+
+    #[test]
+    fn more_programs_than_run_at_once_go_in_lots() {
+        let mut system = System {
+            limit: Duration::from_secs(4),
+        };
+        let one = sh("sleep 1");
+        let runs = vec![(Path::new("sh"), one.as_slice()); AT_ONCE + 1];
+        let began = Instant::now();
+        let answers = system.run_all(&runs);
+        let took = began.elapsed();
+        assert!(
+            answers.len() == AT_ONCE + 1 && answers.iter().all(Result::is_ok),
+            "each answered: {answers:?}"
+        );
+        assert!(
+            took >= Duration::from_secs(2),
+            "the one past {AT_ONCE} waited for the lot before it: {took:?}"
+        );
+    }
+
+    #[test]
+    fn one_ended_whose_child_holds_its_output_is_answered_at_the_limit() {
+        let mut system = System {
+            limit: Duration::from_secs(1),
+        };
+        let leaving = sh("sleep 5 & echo done");
+        let hung = sh("sleep 5");
+        let began = Instant::now();
+        let answers = system.run_all(&[(Path::new("sh"), &leaving), (Path::new("sh"), &hung)]);
+        let took = began.elapsed();
+        assert_eq!(
+            answers,
+            [Ok(String::new()), Err("no answer in 1 s".to_owned())],
+            "it ended well, its output unread, and the hung one was killed"
+        );
+        assert!(
+            took < Duration::from_secs(3),
+            "neither waited on the output its child holds: {took:?}"
         );
     }
 }
