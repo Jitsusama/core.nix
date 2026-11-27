@@ -583,8 +583,11 @@ in
               warnings refuses. Name the node once it is known to take the
               percent, as one built the same way on the machine's own platform
               shows. Given another node, the realm warns again, so a node
-              changed later doesn't go unproven unsaid. A machine built on its
-              own platform is proven either way.
+              changed later doesn't go unproven unsaid. That holds only for a
+              node written out, as its store path: given by the same
+              expression as `node`, it follows every change to the node, as
+              a bare yes would. A machine built on its own platform is proven
+              either way.
             '';
           };
           # The bare yes conversationHeapGrowthVouchedNode replaced, kept
