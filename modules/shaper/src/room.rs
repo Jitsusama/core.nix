@@ -402,7 +402,7 @@ mod tests {
         );
         // A follower that roams mid-call to another router declaring the
         // same line takes its hold there anew, as a leader does (a link's
-        // own line round 9's F7).
+        // own line round 7's F9, round 9's F7).
         let (held, said) = room.follow(wifi, "office", true, Some(20_000));
         let said = said.expect("the journal says the hold was taken on the new network");
         assert_eq!(held, Some(18_000), "held under the same line there: {said}");
