@@ -292,13 +292,6 @@ fn candidates_at(
 /// changed-checks named there built.
 fn ready(commit: &str) -> Result<ExitCode, String> {
     let commit = git(&["rev-parse", "--verify", &format!("{commit}^{{commit}}")])?;
-    if let Some(said) = train::riding(&commit) {
-        eprintln!(
-            "merge-net: {} rides the merge train: {said}",
-            short(&commit)
-        );
-        return Ok(ExitCode::FAILURE);
-    }
     git(&["fetch", "--quiet", "origin", "main"])?;
     let main = git(&["rev-parse", "refs/remotes/origin/main"])?;
     let holds = |older: &str, newer: &str| {
@@ -308,6 +301,26 @@ fn ready(commit: &str) -> Result<ExitCode, String> {
             .is_ok_and(|status| status.success())
     };
     let on_main = |base: &str| holds(base, &main);
+    if let Some(said) = train::riding(&commit) {
+        // A rider whose merge over main passed needn't wait on a train
+        // main's red keeps sinking: on 26 November owners merged 14 such
+        // changes alone by hand in four hours, so it steps off and merges.
+        let base = git(&["merge-base", &main, &commit]).unwrap_or_default();
+        let files = lines(&git(&["diff", "--name-only", &base, &commit]).unwrap_or_default());
+        let Some(merge) = ready::merged::pass(&commit, &main, &files, &on_main) else {
+            eprintln!(
+                "merge-net: {} rides the merge train: {said}",
+                short(&commit)
+            );
+            return Ok(ExitCode::FAILURE);
+        };
+        eprintln!(
+            "merge-net: {} steps off the train, as its merge over main, {}, passed",
+            short(&commit),
+            short(&merge)
+        );
+        train::step_off(&commit);
+    }
     if !holds(&main, &commit) {
         // On 15 November #4791 rebased four times in 20 minutes as main
         // moved eight times, none of them in its files, and no rebase ran
@@ -492,6 +505,18 @@ fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result
         files,
         before,
     } = earlier::judged(commit, main, on_main)?;
+    // Where main moved the change's files since its own run, a run at its
+    // merge over main speaks for what GitHub lands (`ready/merged.rs`).
+    if !matches!(before, ready::Before::Clean(_))
+        && let Some(merge) = ready::merged::pass(commit, main, &files, on_main)
+    {
+        let said = format!(
+            "ready: {stands}, and changed-checks built what it named at {}, its merge over \
+             main, whose files main hasn't moved since",
+            short(&merge)
+        );
+        return Ok(may_merge(commit, main, &[&merge], &files, &said));
+    }
     match before {
         ready::Before::Clean(checked) => {
             let said = format!(
@@ -647,7 +672,7 @@ fn patch_of(repo: &Path, base: &str, head: &str, options: &[&str], kind: &str) -
 /// them all, in the repo at `repo`: its subject, or what it changed in its
 /// own commit, for `candidates::could_be`. A commit this clone lacks is
 /// left out.
-fn logged(repo: &Path, commits: &[String], format: &[&str]) -> Option<String> {
+pub(crate) fn logged(repo: &Path, commits: &[String], format: &[&str]) -> Option<String> {
     let mut log = Command::new("git")
         .current_dir(repo)
         .args(["log", "--no-walk=unsorted", "--ignore-missing", "--stdin"])
