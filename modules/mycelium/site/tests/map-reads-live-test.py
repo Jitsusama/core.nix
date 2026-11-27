@@ -78,11 +78,11 @@ CELLS = 8
 # included, a little more with the drawer's acts and its whole question, and
 # 677.4 KB once a network's label keeps what tells it apart, and 678.2 KB
 # once a cloud machine says it's kept, a little more once a long lease counts
-# days, about 0.4 KB more once every label is kept apart and in its room, and
-# about 2.4 KB more once a machine's drawer starts new work on it, under the
-# 683 KB allowed; new work's line and its hidden controls draw about 20
-# elements of the 611.
-BUDGET = Budget(files=33, kilobytes=683, elements=620)
+# days, about 0.4 KB more once every label is kept apart and in its room,
+# about 2.4 KB more once a machine's drawer starts new work on it, and 686.0
+# KB once what each cell split from is read, under the 687 KB allowed; new
+# work's line and its hidden controls draw about 20 elements of the 611.
+BUDGET = Budget(files=33, kilobytes=687, elements=620)
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000
 TWIN_NETWORKS = 200
@@ -1884,6 +1884,32 @@ def test_a_network_whose_cell_another_started_grows_out_of_it(
             "data-branch-of", re.compile("."), timeout=PACE_MS
         )
         expect(foraged, "the cell's drawer kept a forage that went").to_have_count(0)
+        # A forage saying only what the cell split from grows the same branch,
+        # since a sprout's start can go unsaid while its split stays, and both
+        # drawers say it split, never that anybody started it.
+        split = {"started_by": None, "split_from": GROWN_BY, "parent": None}
+        forage_node.tell("forage", changed=[{**forage, "lineage": split}])
+        expect(hub, "the network never grew out of the one it split from").to_have_attribute(
+            "data-branch-of", GROWN_FROM, timeout=PACE_MS
+        )
+        page.evaluate(f"location.hash = '#net={GROWN}'")
+        expect(body, "the branch's drawer never said what its cell split from").to_contain_text(
+            f"Split from {GROWN_BY_TITLE}: 1 of its 2 cells", timeout=PACE_MS
+        )
+        expect(body, "the branch's drawer said a split was a start").not_to_contain_text(
+            "Started by"
+        )
+        page.evaluate(f"location.hash = '#cell={GROWN_CELL}'")
+        said = body.locator("dl.facts > div", has=page.locator("dt", has_text="Split from"))
+        expect(said, "the cell's drawer never said what it split from").to_contain_text(
+            GROWN_BY_TITLE, timeout=PACE_MS
+        )
+        expect(body, "a split was said to be a start").not_to_contain_text(f"by {GROWN_BY_TITLE}")
+        forage_node.tell("forage", gone=[key])
+        expect(hub, "the branch outlived the split that grew it").not_to_have_attribute(
+            "data-branch-of", re.compile("."), timeout=PACE_MS
+        )
+        expect(said, "the cell's drawer kept a split that went").to_have_count(0)
     finally:
         opened.close()
 
@@ -2104,6 +2130,12 @@ def test_a_reading_that_moves_no_shape_is_painted_over_the_map_as_drawn(
     page.evaluate(MARK_DRAWN)
     *_, focused = page.evaluate(STILL_DRAWN)
     assert focused, "the legend's summary took no focus"
+    # The ring is said as an answer the cell owes, and never as one waiting on him,
+    # which is what a question waiting once made him read it as.
+    expect(
+        page.locator('#panel-body details[data-keep="legend"] dd', has_text="An answer owed:"),
+        "the legend never said a ring is an answer owed, or let it read as his",
+    ).to_contain_text(re.compile("a cell another cell asked something.*, never one waiting on you"))
     # A turn's worth of context, which moves no cell and no network.
     used = {"limit": 1000000, "used": 12000}
     last = "2026-11-16T10:00:00Z"

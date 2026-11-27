@@ -2602,9 +2602,16 @@
     reach judging it by both copies' networks in either order, a cell with no name the map
     can't draw found unreachable and said as words, with its machine, rather than lost,
     a network the node sets within none growing out of the one whose cells started more of its
-    cells than any other, a tie going by name, where the node sets a network standing, no start
-    from inside it counting, of two that started each other's cells the stronger the trunk and
-    no branch looping back round, what each key asks of the map, its tree, its find line, the
+    cells than any other, a tie going to starts and then by name, where the node sets a network
+    standing, no start from inside it counting, of two that started each other's cells the
+    stronger the trunk and no branch looping back round, every network's choices settled
+    strongest first so a choice left over from a loop waits behind stronger ones, a cell's
+    forage saying what it split from, else the first
+    forage listing a cell with a forage here, growing a branch where no start is said or the
+    start grows none or would loop, counting toward the trunk as a start does and counted
+    apart from the starts, a cell started and split from two networks counting toward each,
+    the drawer saying a branch's starts and splits each out of its cells, what each key asks of
+    the map, its tree, its find line, the
     page and the theme switch, chords, typing and a key named after an object's own asking
     nothing, the tree's networks and branches by name under a machine or a network and the
     reading's order at the top, their cells worst first, the rows only open branches show and
@@ -2617,15 +2624,17 @@
     set of cells, receptor and cell is doing and how much of the talk asked or found something,
     what each spent today, most first, ten to a list and the rest counted and summed, what
     waits on each cell and what holds stand, oldest first, said as the page names each, a
-    question to a cell said as an answer it owes, and a cell drawer's acts in order, Go to It
-    first, and its question whole, paragraphs and lines kept
+    question to a cell said as an answer it owes, a network counting the answers owed rather
+    than the cells owing them, and a cell drawer's acts in order, Go to It first, and its
+    question whole, paragraphs and lines kept
   '';
   mycelium-site-reads-live = ''
     the mycelium map, served by the local sites' server beside a stand-in node through the node feed
     as home.nix declares it for a machine in a realm, reads live in headless Chromium: the realm
     drawn and counted, its networks, a branch and lines across them in one window that opens a cell
     clicked, a cell moving and one going, two cells sharing a title moving each owing an
-    answer, broken while the node is away with the realm
+    answer, the legend saying a ring is an answer owed and never one waiting on him, broken
+    while the node is away with the realm
     kept drawn and live once it's back, stale once the server goes with the realm kept, a record's
     words drawn as words and never as markup, what each spent today listed most first in Now, a
     machine's drawer and a network's, what waits on a cell and what holds stand said as the node
@@ -2635,7 +2644,9 @@
     feeding of a cell drawn with both drawers saying it and leaving once its ten minutes end or the
     node drops it, a network grown out of another as its branch once a forage says a cell of the
     other started one of its own, its hub laid out again as a branch, both drawers saying so and
-    the branch going with the forage, and grown across machines once a cell's own record names
+    the branch going with the forage, grown alike from a forage saying only what the cell split
+    from, both drawers saying it split and neither that it was started, and grown across
+    machines once a cell's own record names
     its starter on another, going once it stops, the copy drawn and the branch changing together
     while two machines list the cell, the builders standing under the machines in
     rounded boxes,
