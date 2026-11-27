@@ -5088,3 +5088,34 @@ def test_words_given_back_for_an_ask_that_went_never_answer_the_next(shell: Shel
             one.unlink()
         shell.close_launcher()
         left_the_node("s-givebk")
+
+
+def test_a_for_you_choice_walked_from_outside_is_told_to_the_walk_alone(shell: Shell) -> None:
+    """A walk choosing a For You answer is refused, told why, and says nothing in Joel's foot.
+
+    An answer goes as Joel's, so a walk is refused it; the refusal was also said in the foot,
+    where a terminal's walk would write over what Joel reads (round 000035 on #6796, F2).
+    """
+    _, inbox, steered = asking_left_or_right(shell, "WALKAN", "Walked Quest")
+    walked_words = "what Walked Quest asks is answered only from your own Return in the launcher"
+    try:
+        in_for_you(shell)
+        shell.launcher_until(lambda shown: "Walked Quest" in shown["rows"])
+        shell.close_launcher()
+        walked = {"steps": ["now", "For You", "Walked Quest", "Left"], "sure": True}
+        did = json.loads(shell.as_account(shell.ipc("doing", shlex.quote(json.dumps(walked)))))
+        assert did.get("refused") == walked_words, did
+        shell.close_launcher()
+        # The next opening's foot says nothing of it, and nothing reached the session.
+        in_for_you(shell)
+        shell.launcher_until(lambda shown: "Walked Quest" in shown["rows"])
+        footer = shell.showing()["footer"].replace("\xa0", " ")
+        assert "only from your own Return" not in footer, footer
+        time.sleep(LINK_QUIET)
+        assert set(inbox.glob("*.json")) == steered, sorted(inbox.glob("*.json"))
+    finally:
+        (PRESENCE / "walkan.json").unlink(missing_ok=True)
+        for one in set(inbox.glob("*.json")) - steered:
+            one.unlink()
+        shell.close_launcher()
+        left_the_node("s-walkan")

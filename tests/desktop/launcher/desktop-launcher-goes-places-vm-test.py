@@ -15,6 +15,7 @@ import datetime as dt
 import json
 import re
 import shlex
+import time
 from typing import TYPE_CHECKING, cast
 
 import pytest
@@ -34,6 +35,10 @@ if TYPE_CHECKING:
 
 # Each test closes the launcher after it, so one failing with it open fails alone.
 pytestmark = pytest.mark.usefixtures("launcher_closed_after")
+
+# How long what a link or an offer opens drops every key (Prompt.qml's linkQuiet), and a
+# little more.
+LINK_QUIET = 0.8
 
 
 def test_the_screen_never_locks_by_itself_however_long_the_test_waits(desktop: Desktop) -> None:
@@ -783,6 +788,30 @@ def test_lag_stands_in_its_place_until_its_first_ten_seconds_then_says_them(
         desktop.as_account("systemctl --user start lag-watch.service")
 
 
+def closed_after_an_offer(desktop: Desktop) -> None:
+    """Close what an offer opened, once its quiet is over, since an Escape inside it is dropped."""
+    time.sleep(LINK_QUIET)
+    desktop.close_launcher()
+
+
+def landed_after_an_offer(desktop: Desktop, held: str, words: str) -> None:
+    """Land on what an offer opened, as Joel does, once he's typed a key; `held` still holds.
+
+    Offered from outside, it holds Joel's keys as a link does: a Return before he types a key
+    lands on nothing, since one meant for a window he was typing in would end it (round 000036
+    on #6796, F135; round 000035, F1). So the Return is pressed first, then `words` typed.
+    """
+    time.sleep(LINK_QUIET)
+    desktop.machine.send_key("ret")
+    time.sleep(LINK_QUIET)
+    shown = desktop.showing()
+    assert shown["landed"] == "", shown
+    assert shown["mode"] != "normal", shown
+    desktop.machine.succeed(held)
+    desktop.type_in(words, selecting=words)
+    desktop.land()
+
+
 def test_the_launchers_catalogue_opens_places_does_actions_and_offers_what_ends_something(
     desktop: Desktop,
 ) -> None:
@@ -854,7 +883,7 @@ def test_the_launchers_catalogue_opens_places_does_actions_and_offers_what_ends_
             and (shown["selected"] or {}).get("name") == "Reboot"
         )
     )
-    desktop.close_launcher()
+    closed_after_an_offer(desktop)
     # A harmless one is done at once, and once it ends something, offered.
     awake = one(entries, "Keep Awake", "Machine")
     assert not awake["disruptive"]
@@ -869,7 +898,7 @@ def test_the_launchers_catalogue_opens_places_does_actions_and_offers_what_ends_
     assert sleep["id"] == awake["id"], "its id changed with its state"
     assert ran(sleep)["offered"]
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Keep Awake")
-    desktop.land()
+    landed_after_an_offer(desktop, held, "keep awake")
     # The last act here, so it settles before the close, where a word it's told is spent.
     with settled(desktop, "session:awake", dt.timedelta(seconds=30)):
         machine.send_key("ret")
