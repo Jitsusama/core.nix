@@ -502,6 +502,10 @@ fn a_mac_has_room_with_35_percent_free_and_memory_its_kernel_calls_normal() {
         !roomy(mac(60, MemoryLevel::Warning)),
         "a warning however much is free"
     );
+    assert!(
+        !roomy(mac(60, MemoryLevel::Critical)),
+        "critical however much is free"
+    );
 }
 
 #[test]

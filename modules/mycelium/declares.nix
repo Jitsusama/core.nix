@@ -81,6 +81,40 @@ rec {
         default = false;
         description = "Whether work on this machine costs money.";
       };
+      # The realm's other machines take new work first, so the person's own
+      # use of this one stays quick: placement ranks it after every other
+      # machine heard with room, and past its ceiling after every machine
+      # heard, never refusing a start nothing else takes.
+      keptLively = lib.mkOption {
+        type = lib.types.nullOr (
+          lib.types.submodule {
+            options = {
+              cpu = lib.mkOption {
+                type = lib.types.ints.between 0 100;
+                description = ''
+                  The processor pressure it stays at or under, in percent of
+                  the last ten seconds some work waited on a processor.
+                '';
+              };
+              memoryAvailable = lib.mkOption {
+                type = lib.types.nullOr lib.types.ints.unsigned;
+                default = null;
+                description = "The memory it keeps available at least, in bytes.";
+              };
+            };
+          }
+        );
+        default = null;
+        example = {
+          cpu = 28;
+          memoryAvailable = 24 * 1024 * 1024 * 1024;
+        };
+        description = ''
+          The ceiling this machine is kept lively under, where the person
+          works at it and the realm's other machines are to take new work
+          first; null where it is ranked as any machine is.
+        '';
+      };
       # A Mac's pi in pi-fence's launcher can't reach its own state, so the
       # realm's agent program, pi unless `agents` names another, held there
       # for a fenced kind starts alone where the machine declares pi fences

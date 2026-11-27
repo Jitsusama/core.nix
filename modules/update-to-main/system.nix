@@ -298,6 +298,18 @@ in
                 stretches, each counted from its own start.
               '';
             };
+            saysWhy = mkOption {
+              type = types.bool;
+              default = false;
+              description = ''
+                Whether the last line it says on standard error while busy
+                says why, such as the readings a Mac's memory was judged
+                by, so a refusal ends with it. Another's is left out, since
+                a caution said beside, as a call check's that a peer went
+                unheard, is no reason it's busy. What a check that can't
+                tell says is kept either way.
+              '';
+            };
           };
         }
       );
@@ -680,6 +692,7 @@ in
               every_ask_waits = busy.everyAskWaits;
               refuses_the_ask_alone = busy.refusesTheAskAlone;
               refuses_at_most = busy.refusesAtMost;
+              says = if busy.saysWhy then "why" else "beside";
             }) cfg.refuseWhile;
             follower_tells = cfg.followerTells;
             holds =

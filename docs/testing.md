@@ -409,6 +409,26 @@ The kernel checks build only its configuration: the patched source, run
 through Kconfig, which drops a setting whose dependencies aren't met. [The
 kernel guide][2] says what that catches.
 
+### macOS's Own Tools
+
+A darwin build puts stdenv's GNU coreutils, findutils, sed and grep first on
+its PATH, so a check of a script a Mac runs tests GNU's tools in place of
+macOS's, and a flag or a locale only GNU's take passes there and fails on
+the Mac. A check of what a Mac runs uses `macosTools`, under `onMacos`: it
+runs the script with macOS's folders alone on its PATH, so a tool macOS
+lacks isn't found, under the UTF-8 locale a Mac's terminal runs, with
+nixpkgs' bash rather than macOS's bash 3.2.
+
+It builds outside the build sandbox, since the sandbox hides those folders.
+A Mac whose sandbox is false or relaxed builds it; on one whose sandbox is
+true the build fails, rather than run with GNU's tools. Outside the sandbox
+the script sees the Mac's files and network, so a check writes only to
+`$TMPDIR` and `$out`. Nothing of macOS is in its hash, so a pass stands for
+the macOS that built it until the check changes or is built with
+`--rebuild`. `a-mac-check-runs-macos-own-tools` holds the helper to it:
+there, a tool only GNU has isn't found, and macOS's tr refuses a byte that
+isn't UTF-8 unless `LC_ALL=C` is set.
+
 ### The Desktop on niri
 
 The account's desktop files and its real niri configuration, run on a real

@@ -294,14 +294,14 @@ function kindsLed(parts, kinds) {
 // A row's key as a line in the journal may say it: whole where `whole`, as while reports are on;
 // otherwise its kind, after a record's `row:`, as wifid's `row:wifi:network:<name>` is `wifi`,
 // since most keys carry what someone else wrote, a network's name or a window's title. The
-// launcher's own ids are whole, and an own kind's key holding more than an id is said by that
-// kind alone. `window:<app>:<title>` is `window:<app>`, and the launcher's own
-// `program:<desktop entry's id>` whole, so each program's drawer is timed apart (RTOIMQ,
-// 2026-11-24), each only where its id is shaped as an app's and else by its kind. A `verb:` key,
-// its daemon's own words, goes to its kind, and its act where that's one of KeysSaid's actWords:
-// `verb:agent:close` whole, `verb:disk:nvme0:/home` as `verb:disk`, `verb:notice:offer:<id>` as
-// `verb:notice:offer`. A new kind says nothing more until it's named here, and a first part that
-// isn't a kind's word, as a name with a colon in it, nothing at all. A number is read as text.
+// launcher's own ids are whole, and an own kind's key holding more than an id is said by that kind
+// alone. `window:<app>:<title>` is `window:<app>`, and the programs daemon's `program:<id>` whole,
+// so each program's drawer is timed apart (RTOIMQ, 2026-11-24), only where its id is shaped as an
+// app's and else by its kind, as another daemon's so keyed. A `verb:` key, its daemon's own words,
+// goes to its kind, and its act where that's one of KeysSaid's actWords: `verb:agent:close` whole,
+// `verb:disk:nvme0:/home` as `verb:disk`, `verb:notice:offer:<id>` as `verb:notice:offer`. A new
+// kind says nothing more until it's named here, and a first part that isn't a kind's word, as a
+// name with a colon in it, nothing at all. A number is read as text.
 function keyShown(key, whole) {
     const text = String(key);
     if (whole) {

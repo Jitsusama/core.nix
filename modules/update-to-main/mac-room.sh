@@ -31,6 +31,8 @@ answer() {
   exit "$1"
 }
 
+# Counted first, so one left out is named in its own words, not bash's.
+[ "$#" -eq 4 ] || answer 69 "it takes 4 arguments, given $#: <sysctl> <vm_stat> <record> <floor %>"
 sysctl=$1
 vm_stat=$2
 record=$3
@@ -50,10 +52,15 @@ swapped='^Swapouts: *([0-9]+)\.$'
 while IFS= read -r line; do
   [[ ! ${line} =~ ${swapped} ]] || swapouts=${BASH_REMATCH[1]}
 done <<<"${stats}"
-number='^[0-9]+$'
-# A floor that isn't a number would fail its test inside an if, which
-# falls through to room.
-[[ ${floor} =~ ${number} ]] || answer 69 "its floor, ${floor}, isn't a whole number"
+# At most 18 digits, as bash's integers hold, since a number past them
+# fails its test inside an if as surely as one that isn't, and either
+# falls through to room. Nor a leading zero, which bash's arithmetic
+# reads as octal, failing on an 8 or a 9 without ending the script, so a
+# swap-out count of 0099 in the record would fall through to room too.
+# Read from the record, either starts again.
+number='^(0|[1-9][0-9]{0,17})$'
+[[ ${floor} =~ ${number} ]] ||
+  answer 69 "its floor, ${floor}, isn't a whole number of at most 18 digits"
 # What couldn't be read is named, never what it printed instead.
 unread=""
 [[ ${free} =~ ${number} ]] || unread="its share of memory free"

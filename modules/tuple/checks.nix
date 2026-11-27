@@ -182,8 +182,9 @@ onLinux {
   # The launcher calls, joins and stars a contact after "--", so a handle
   # that starts with a dash is a name, and a Tuple update that stopped
   # ending its flags there would leave every such row doing nothing. Each is
-  # asked with one name too many, which the real tuple refuses by counting
-  # before it acts (tests/tuple-ends-its-flags.sh).
+  # asked with one name too many, which the real tuple refuses by counting,
+  # in a sandbox with no network or account, so it reaches nobody
+  # (tests/tuple-ends-its-flags.sh).
   tuple-ends-its-flags =
     let
       home = account graphical;
