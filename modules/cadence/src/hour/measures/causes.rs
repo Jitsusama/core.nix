@@ -71,9 +71,14 @@ const UNFOLDED_AT_MOST: usize = 100;
 const UNFOLDED_PER_MESSAGE: usize = 5;
 
 /// The most classes an hour names, and so asks of their owners; the rest
-/// are counted and said in one line to the keeper, and asked once these
-/// close.
+/// are counted and said in one line to the keeper, and asked once fewer
+/// are over the bar.
 const NAMED_AT_MOST: usize = 10;
+
+/// The most letters a kept withdrawal's id may have, well past a real
+/// one's stamp, sender, process and hex, so none makes the kept file grow
+/// without end.
+const WITHDRAWAL_AT_MOST: usize = 128;
 
 /// The most letters a repository's name may have and be counted, well
 /// past any real one, so a change named can't make a key of any length.
@@ -243,7 +248,13 @@ pub fn read(state_home: &Path, folder: &Path, now: i64, keeps: bool) -> Measure 
             .clone()
             .filter(|id| sender_of(id) == Some(m.from.as_str()))
     }));
-    withdrawn.retain(|id| stamped_at(id).is_some_and(|ms| ms > (now - KEPT_FOR) * 1000));
+    // No real withdrawal is stamped past now or runs long, so one that is
+    // would only grow the kept file every hour; it is let go.
+    withdrawn.retain(|id| {
+        id.len() <= WITHDRAWAL_AT_MOST
+            && stamped_at(id)
+                .is_some_and(|ms| ms > (now - KEPT_FOR) * 1000 && ms <= now_ms + SLACK_MS)
+    });
     let mut cases: Vec<Case> = kept
         .cases
         .into_iter()
@@ -286,11 +297,17 @@ pub fn read(state_home: &Path, folder: &Path, now: i64, keeps: bool) -> Measure 
     }
     cases.extend(reviewed(&review));
     let mut m = recurring(&cases, now);
+    // Past its target, as an unread hour is, and first, so the card shows
+    // it whatever classes are over the bar.
     if let Some(why) = unkept {
-        m.behind.push(format!(
-            "{UNKEPT}: what this hour read couldn't be kept ({why}), so the next reads the \
-             week again · {KEEPER}"
-        ));
+        m.now = m.now.max(1.0);
+        m.behind.insert(
+            0,
+            format!(
+                "{UNKEPT}: what this hour read couldn't be kept ({why}), so the next reads the \
+                 week again · {KEEPER}"
+            ),
+        );
     }
     m
 }
@@ -329,21 +346,26 @@ pub fn recurring(cases: &[Case], now: i64) -> Measure {
         .filter(|(_, on)| on.len() >= AT_LEAST)
         .collect();
     over.sort_by(|(a, on_a), (b, on_b)| on_b.len().cmp(&on_a.len()).then(a.cmp(b)));
+    // The count of those left unnamed goes first, so the card shows it
+    // above the classes it names. While it stands, no ask open for a class
+    // it leaves unnamed closes, since this hour can't say that one is back.
     let mut behind: Vec<String> = over
-        .iter()
-        .take(NAMED_AT_MOST)
-        .flat_map(|(class, on)| lines_of(class, on))
-        .collect();
-    if let Some(more) = over
         .len()
         .checked_sub(NAMED_AT_MOST)
         .filter(|&more| more > 0)
-    {
-        behind.push(format!(
-            "{MORE}: {more} more classes are on {AT_LEAST} or more changes, asked once those \
-             above close · {KEEPER}"
-        ));
-    }
+        .map(|more| {
+            format!(
+                "{MORE}: {more} more classes are on {AT_LEAST} or more changes, unnamed and \
+                 unasked until fewer are over the bar · {KEEPER}"
+            )
+        })
+        .into_iter()
+        .collect();
+    behind.extend(
+        over.iter()
+            .take(NAMED_AT_MOST)
+            .flat_map(|(class, on)| lines_of(class, on)),
+    );
     Measure {
         key: KEY.to_owned(),
         class: Class::Functional,

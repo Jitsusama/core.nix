@@ -375,6 +375,8 @@ fn back_in(key: &str, measures: &[Measure]) -> bool {
     }
     // A class of cause is its owner's until the measure, read, no longer
     // names it; a measure that couldn't read the mesh names only that.
+    // Nor does one naming only the first few of more classes over the bar
+    // say the rest are back in, so it closes none it leaves unnamed.
     if let Some(class) = key
         .strip_prefix(causes::KEY)
         .and_then(|rest| rest.strip_prefix(':'))
@@ -385,7 +387,7 @@ fn back_in(key: &str, measures: &[Measure]) -> bool {
             .is_some_and(|m| {
                 !m.behind
                     .iter()
-                    .any(|line| causes::class_of(line) == causes::UNREAD)
+                    .any(|line| [causes::UNREAD, causes::MORE].contains(&causes::class_of(line)))
                     && !m.behind.iter().any(|line| causes::class_of(line) == class)
             });
     }
@@ -772,10 +774,12 @@ mod tests {
         let zone = jiff::tz::TimeZone::UTC;
         let here = tempfile::tempdir().expect("a folder for the shell");
         for (_, text) in &told {
+            // Its owner names the fix as a change, whose `#` an unquoted
+            // shell would read as a comment's start.
             let command = text
                 .split_once("`cadence owe ")
                 .and_then(|(_, rest)| rest.split_once('`'))
-                .map(|(command, _)| command)
+                .map(|(command, _)| command.replace("FIX", "core #6000"))
                 .expect("an ask that names its command");
             let out = std::process::Command::new("sh")
                 .arg("-c")
@@ -790,7 +794,8 @@ mod tests {
             let asked = owe::parse(words.clone().into_iter(), &zone);
             assert!(
                 matches!(&asked, Ok(owe::Asked::Done { key, fix })
-                    if fix.as_deref() == Some("FIX") && ledger.iter().any(|e| &e.key == key)),
+                    if fix.as_deref() == Some("core #6000")
+                        && ledger.iter().any(|e| &e.key == key)),
                 "the ask's command, `{command}`, split by a shell as {words:?}, isn't a key a \
                  line is filed under: {asked:?}"
             );
@@ -801,6 +806,37 @@ mod tests {
                 .next()
                 .is_none(),
             "pasting an ask's command ran what its sender wrote"
+        );
+    }
+
+    /// An hour naming only the first few of more classes over the bar
+    /// can't say an unnamed one is back, so an ask open for one pushed
+    /// out of those few stays open rather than closing unsaid and coming
+    /// back as a fresh ask.
+    #[test]
+    fn a_class_pushed_out_of_those_an_hour_names_stays_asked() {
+        let racy = "racy test: on 3 changes in a week, core.nix#1, #2, #3 · BBBBBB";
+        let mut ledger = Vec::new();
+        file(&mut ledger, &[recurring(&[racy])], "2026-11-26", 1000);
+        let key = "hour:causes-recurring:racy test";
+        let more = "more: 1 more classes are on 3 or more changes, unnamed and unasked until \
+                    fewer are over the bar · 1JQPPC";
+        let others: Vec<String> = (0..10)
+            .map(|n| format!("class {n}: on 4 changes in a week, r#1, #2, #3, #4 · 1JQPPC"))
+            .collect();
+        let mut lines = vec![more];
+        lines.extend(others.iter().map(String::as_str));
+        file(&mut ledger, &[recurring(&lines)], "2026-11-26", 4600);
+        let at = ledger.iter().position(|e| e.key == key).expect("its line");
+        assert!(
+            ledger[at].open && ledger[at].reopened == 0,
+            "a class still over the bar but unnamed closed: {:?}",
+            ledger[at]
+        );
+        file(&mut ledger, &[recurring(&[])], "2026-11-26", 8200);
+        assert!(
+            !ledger[at].open,
+            "a class found on fewer once the hour named them all didn't close"
         );
     }
 
