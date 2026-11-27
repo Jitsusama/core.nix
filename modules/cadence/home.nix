@@ -536,7 +536,8 @@ in
     systemd.user.timers.cadence-path = lib.mkIf (cfg.origins != [ ]) {
       Unit.Description = "Samples the path to each origin every ten minutes";
       Timer = {
-        OnCalendar = "*:0/10";
+        # Off the hour's minute, as the tick is.
+        OnCalendar = "*:04/10";
         AccuracySec = "30s";
       };
       Install.WantedBy = [ "timers.target" ];
@@ -569,7 +570,11 @@ in
     systemd.user.timers.cadence = {
       Unit.Description = "Watches the delivery cycle every five minutes";
       Timer = {
-        OnCalendar = "*:0/5";
+        # Two minutes past each fifth, so it never starts with the hour at
+        # ten past: on 27 November about 25 units started at 16:10:00, the
+        # hour and the tick the two largest, and Joel's apps were held up
+        # most in the five minutes after.
+        OnCalendar = "*:02/5";
         AccuracySec = "30s";
       };
       Install.WantedBy = [ "timers.target" ];

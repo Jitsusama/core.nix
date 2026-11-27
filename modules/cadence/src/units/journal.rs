@@ -83,14 +83,13 @@ pub const FOLLOWS: Want = Want {
     journal: Journal::User,
     keep: DAY,
     fill: &["-u", "update-to-main-follows"],
-    takes: |fields| {
-        is(
-            fields,
-            "_SYSTEMD_USER_UNIT",
-            "update-to-main-follows.service",
-        ) || is(fields, "USER_UNIT", "update-to-main-follows.service")
-    },
+    takes: the_followers,
 };
+
+fn the_followers(fields: &Map<String, Value>) -> bool {
+    let unit = "update-to-main-follows.service";
+    is(fields, "_SYSTEMD_USER_UNIT", unit) || is(fields, "USER_UNIT", unit)
+}
 
 /// The update service's lines, which the card reads every update's look
 /// from, whoever asked for it: its own, or systemd's about it.
@@ -99,11 +98,13 @@ pub const UPDATES: Want = Want {
     journal: Journal::System,
     keep: DAY,
     fill: &["-u", "update-to-main.service"],
-    takes: |fields| {
-        is(fields, "_SYSTEMD_UNIT", "update-to-main.service")
-            || is(fields, "UNIT", "update-to-main.service")
-    },
+    takes: the_updates,
 };
+
+fn the_updates(fields: &Map<String, Value>) -> bool {
+    let unit = "update-to-main.service";
+    is(fields, "_SYSTEMD_UNIT", unit) || is(fields, "UNIT", unit)
+}
 
 /// The kernel's out-of-memory kills over a week, which the card reads the
 /// last machine-wide one from; [`short_unix`] given this boot leaves out
@@ -113,11 +114,13 @@ pub const KERNEL: Want = Want {
     journal: Journal::System,
     keep: 7 * DAY,
     fill: &["-k", "--grep=oom-kill:"],
-    takes: |fields| {
-        is(fields, "_TRANSPORT", "kernel")
-            && text(fields, "MESSAGE").is_some_and(|m| m.contains("oom-kill:"))
-    },
+    takes: a_kill,
 };
+
+fn a_kill(fields: &Map<String, Value>) -> bool {
+    is(fields, "_TRANSPORT", "kernel")
+        && text(fields, "MESSAGE").is_some_and(|m| m.contains("oom-kill:"))
+}
 
 /// One line kept: its cursor, when it was written in microseconds, and
 /// the fields of it a reader reads.
@@ -277,7 +280,7 @@ fn asked(journal: Journal, since: i64, until: i64) -> Vec<String> {
 fn taken(said: &str, takes: fn(&Map<String, Value>) -> bool) -> Vec<Line> {
     said.lines()
         .filter_map(|line| serde_json::from_str::<Map<String, Value>>(line).ok())
-        .filter(|entry| takes(entry))
+        .filter(takes)
         .filter_map(|entry| {
             let cursor = entry.get("__CURSOR")?.as_str()?.to_owned();
             let micros = entry.get("__REALTIME_TIMESTAMP")?.as_str()?.parse().ok()?;
