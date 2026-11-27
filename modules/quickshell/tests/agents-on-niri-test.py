@@ -4450,6 +4450,25 @@ def test_carried_lists_each_carry_newest_first_and_carries_an_arrived_one_back_i
     shell.reported(f"not become {arrived['is']}: ", bool, since)
 
 
+@pytest.mark.usefixtures("carried")
+def test_a_carry_back_walked_from_outside_asks_the_node_nothing(shell: Shell) -> None:
+    """A walk's sure Carry Back moves no session: the node weighs a carry by who asks.
+
+    The node takes the shell's carry back as Joel's (PROTOCOL.md's Carrying a Quest), so the
+    shell refuses one a walk chose and tells the walk why (round 000036 on #6796, F137); the
+    row never becomes "carrying back".
+    """
+    since = shell.mark()
+    steps = ["agents", "Carried", "Listening Quest", "Carry Back"]
+    walked = {"steps": steps, "words": "", "sure": True}
+    did = json.loads(shell.as_account(shell.ipc("doing", shlex.quote(json.dumps(walked)))))
+    assert did.get("refused") == ACT_WALKED, did
+    shell.close_launcher()
+    opens_saying_nothing_of_the_walk(shell)
+    reports, _ = shell.said_since(since)
+    assert not [said for said in reports if said.startswith("becoming ")], reports
+
+
 # How long For You's rows must stand unchanged before they count as made, and how long they
 # may take to: For You is made again as Agents' rows are, which had drawn a carry within a
 # poll of Carried serving it, but a loaded builder can be slower than any one watch.
