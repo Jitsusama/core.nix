@@ -499,7 +499,7 @@ ShellRoot {
                 const open = people.all;
                 open[0].run();
                 expect("Return steps in, never calling", launcher.entered === open[0]
-                    && Niri.spawned.length === 0, Niri.spawned.join(" "));
+                    && Niri.spawned.length === 0, ran());
                 expect("calling one who's available",
                     reach(open[0]) === argv("tuple", "call", "start", "--", "ada@example.com"),
                     ran());
