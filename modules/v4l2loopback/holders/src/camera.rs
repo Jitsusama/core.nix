@@ -128,7 +128,12 @@ pub fn camera_file(sysfs: &Path, node: &Path, folder: &Path) -> io::Result<Camer
     if claimed(folder, &apart) {
         return Err(io::Error::new(
             io::ErrorKind::AlreadyExists,
-            format!("a loopback claims both {called:?} and {apart:?}"),
+            // Quoted, since a USB camera names itself.
+            format!(
+                "a loopback claims both {:?} and {:?}",
+                called.to_string_lossy(),
+                apart.to_string_lossy()
+            ),
         ));
     }
     Ok(CameraFile {
