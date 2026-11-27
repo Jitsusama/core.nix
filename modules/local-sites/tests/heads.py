@@ -19,26 +19,31 @@ twice, and each walk settles a doubt its own way.
 The strict walk finds the head and its parts, and settles a doubt toward
 undrawn, so a head that may not show fails. To it, what `<template>`,
 `<noscript>`, an element read as words, a list of options, a ruby's fallback
-or what draws itself (media, a canvas, an object) holds, what SVG or MathML
-holds, even where they hold HTML, what a shut `<dialog>` or `<details>` holds
-past its first summary, and an HTML element `hidden` or a `popover` no script
-has shown, unless its own `style` displays it, or styled out by its own
-`style`'s display, visibility, content-visibility or opacity, each
-declaration's last value read, is never drawn; nor is it heard, and neither is
-what's `inert` or under `aria-hidden`. What's in one undrawn is too, though its
-own style shows it again.
+or what draws itself (media, a canvas, an object, a meter or a progress bar)
+holds, what SVG or MathML holds, even where they hold HTML, what a shut
+`<dialog>` or `<details>` holds past its first summary, and an HTML element
+`hidden` or a `popover` no script has shown, unless its own `style` displays
+it, or styled out by its own `style`'s display, visibility, content-visibility
+or opacity, each declaration's last value read, is never drawn; nor is it
+heard, and neither is what's `inert` or under `aria-hidden`. What's in one
+undrawn is too, though its own style shows it again.
 
 The generous walk seeks what may not be there beside the head, a rival
 banner, heading or live region, and settles a doubt toward drawn, so a rival
 that may show fails. To it, HTML in SVG or MathML, a canvas's or an object's
-fallback, an opacity of nothing, one shown again under visibility: hidden, a
-style this can't read, and what a person can show with no script all count:
-what's hidden until found or held past a shut `<details>`'s summary, which
-find-in-page opens, and a `popover`, which a `popovertarget` shows. It leaves
-out only what's surely undrawn and unheard: display: none and what keeps it, as
-`hidden`, a tag HTML's own sheet hides or audio with no controls do, what media
-or a template holds, a shut `<dialog>`, an element SVG doesn't know, and what
-content-visibility: hidden skips on a box it applies to.
+fallback, what a meter or a progress bar holds, an opacity of nothing, one
+shown again under visibility: hidden, a style this can't read, and what a
+person can show with no script all count: what's hidden until found or held
+past a shut `<details>`'s summary, which find-in-page opens, a `popover`,
+which a `popovertarget` shows, and a shut `<dialog>` a button's `commandfor`
+shows as a modal. It leaves out only what's surely undrawn and unheard:
+display: none and what keeps it, as `hidden`, a tag HTML's own sheet hides or
+audio with no controls do, what media or a template holds, a shut `<dialog>`
+no button opens, an element SVG doesn't know, and what content-visibility:
+hidden skips on a box it applies to. A style is doubted only where the value
+that wins is one this can't read: one a browser drops, or one a later
+readable value or an important one beats, settles nothing. A rival only this
+walk finds is named as one the page may draw, with why it counts.
 
 A `<base>` anywhere moving where links read from fails, since the sheet can't
 be known to be the kit's. So does a page writing a shadow root template,
@@ -111,11 +116,13 @@ UNDRAWN = {
     "canvas",
     "datalist",
     "iframe",
+    "meter",
     "noembed",
     "noframes",
     "noscript",
     "object",
     "plaintext",
+    "progress",
     "rp",
     "script",
     "style",
@@ -128,6 +135,19 @@ UNDRAWN = {
 
 # What draws only its summary, or nothing, until it's open.
 SHUT = {"details", "dialog"}
+
+# What a button's command may say to open a shut dialog, with no script.
+OPENING_COMMANDS = {"show-modal"}
+
+# What draws itself, but whose fallback a browser may draw or a screen reader hear.
+FALLBACKS = {"canvas", "object"}
+
+# What draws itself as a bar and none of what it holds, which the strict walk
+# leaves out; the generous one still reads it, as a reader may hear it.
+GAUGES = {"meter", "progress"}
+
+# What an element's own style may say that this can't read, of what draws it.
+DOUBTED = ("display", "visibility", "content-visibility", "opacity")
 
 # What HTML's own sheet draws none of, beside what's hidden; audio without
 # controls is one too.
@@ -429,17 +449,30 @@ VISIBILITIES["content-visibility"] = {"visible", "hidden", "auto"}
 AMOUNT = re.compile(r"[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?%?")
 
 
-def valid(name: str, value: str) -> bool:
-    """Say whether a browser keeps `value` for `name`, rather than dropping it unread."""
+# How a browser takes a declaration: keeping a value this reads, dropping one
+# it can't parse, so what was declared before stands, or keeping one this
+# can't read, which settles nothing here.
+KEPT, DROPPED, UNREAD = "kept", "dropped", "unread"
+
+# What a value reads only once the page is drawn, which a browser keeps unread.
+SUBSTITUTED = re.compile(r"(?<![\w-])(?:var|env|attr|if)\(")
+
+
+def judged(name: str, value: str) -> str:
+    """Say how a browser takes `value` for `name`: kept as read, dropped, or kept unread here."""
     if value == "":
-        return False
+        return DROPPED
+    if name != "display" and name not in VISIBILITIES:
+        return KEPT
+    if SUBSTITUTED.search(value):
+        return UNREAD
     if value in GLOBAL:
-        return True
-    if name == "display":
-        return displays(value.split())
-    if name in VISIBILITIES:
-        return value in VISIBILITIES[name]
-    return True
+        return KEPT
+    known = displays(value.split()) if name == "display" else value in VISIBILITIES[name]
+    if known:
+        return KEPT
+    # A vendor's own value, as -webkit-box is, Chromium may keep; it drops any other.
+    return UNREAD if value.startswith("-") else DROPPED
 
 
 def displays(words: list[str]) -> bool:
@@ -499,30 +532,37 @@ class Element:
         """Say whether it's drawn as the part with this tag and class."""
         return self.tag == tag and (name is None or name in self.classes())
 
-    def styled(self) -> dict[str, str]:
-        """Give what its own style declares, each property's value as a browser takes it."""
-        # The last declaration of a property wins, but not over an important one.
-        # One a browser can't read, empty or of no value its property takes,
-        # is dropped, and what was declared before it stands.
-        declared: dict[str, tuple[str, bool]] = {}
+    def cascaded(self, kinds: set[str]) -> dict[str, tuple[str, str]]:
+        """Give each property's winning value in its own style, of those `kinds`, with its kind."""
+        # The last declaration of a property wins, but not over an important one;
+        # a dropped one never does, so what was declared before it stands.
+        won: dict[str, tuple[str, str, bool]] = {}
         style = COMMENT.sub(" ", self.attributes.get("style", ""))
         for name, colon, value in (each.partition(":") for each in style.split(";")):
             said = value.strip(SPACE).lower()
             weighty = IMPORTANT.search(said) is not None
             key = name.strip(SPACE).lower()
             kept = IMPORTANT.sub("", said).strip(SPACE)
-            if colon and valid(key, kept) and (weighty or not declared.get(key, ("", False))[1]):
-                declared[key] = (kept, weighty)
-        return {key: value for key, (value, _) in declared.items()}
+            kind = judged(key, kept)
+            if colon and kind in kinds and (weighty or not won.get(key, ("", "", False))[2]):
+                won[key] = (kept, kind, weighty)
+        return {key: (value, kind) for key, (value, kind, _) in won.items()}
+
+    def styled(self) -> dict[str, str]:
+        """Give what its own style declares, each property's value as a browser takes it.
+
+        A value this can't read is left out, and what was declared before it
+        stands, which fails closed for the head: hidden stays hidden.
+        """
+        return {key: value for key, (value, _) in self.cascaded({KEPT}).items()}
 
     def doubts(self, name: str) -> bool:
-        """Say whether its style gives `name` a value this can't read, which a browser may keep."""
-        style = COMMENT.sub(" ", self.attributes.get("style", ""))
-        for key, colon, value in (each.partition(":") for each in style.split(";")):
-            kept = IMPORTANT.sub("", value.strip(SPACE).lower()).strip(SPACE)
-            if colon and key.strip(SPACE).lower() == name and kept and not valid(name, kept):
-                return True
-        return False
+        """Say whether `name`'s winning value in its style is one this can't read.
+
+        One a browser drops settles nothing, and one before a later value
+        this reads, or under an important one, is beaten.
+        """
+        return self.cascaded({KEPT, UNREAD}).get(name, ("", KEPT))[1] == UNREAD
 
     def until_found(self) -> bool:
         """Say whether it's hidden until found, which find-in-page or a fragment link shows."""
@@ -651,12 +691,66 @@ class Element:
             )
             if child.html and (
                 child.tag in {"template", *MEDIA}
-                or (child.tag == "dialog" and "open" not in child.attributes)
+                or (child.tag == "dialog" and "open" not in child.attributes and not child.opens())
                 or skipped
             ):
                 continue
             found.extend(child.rivals(above=unseen))
         return found
+
+    def opens(self) -> bool:
+        """Say whether a person may open it with no script: a popover, or a dialog a button shows.
+
+        A button's commandfor naming its id, with show-modal for its command,
+        opens a dialog when pressed, wherever the button sits on the page.
+        """
+        if "popover" in self.attributes:
+            return True
+        name = self.attributes.get("id", "")
+        page = self
+        while page.parent is not None:
+            page = page.parent
+        return name != "" and any(
+            each.html
+            and each.tag == "button"
+            and each.attributes.get("commandfor") == name
+            and each.attributes.get("command", "").lower() in OPENING_COMMANDS
+            for each in page.written()
+        )
+
+    def why(self) -> str:
+        """Say why the generous walk counts it though the strict one doesn't, nearest first."""
+        element: Element | None = self
+        while element is not None:
+            doubt = element.doubt()
+            if doubt is not None:
+                return doubt
+            element = element.parent
+        return "where a browser may draw it"
+
+    def doubt(self) -> str | None:
+        """Say what about it alone leaves what it holds to doubt, or nothing."""
+        if self.tag in FOREIGN:
+            return f"held in {'SVG' if self.tag == 'svg' else 'MathML'}"
+        if not self.html:
+            return None
+        styled = self.styled()
+        shut = "open" not in self.attributes
+        invisible = styled.get("visibility") in {"hidden", "collapse"}
+        skips = styled.get("content-visibility") == "hidden"
+        doubts = {
+            f"a <{self.tag}>'s fallback": self.tag in FALLBACKS,
+            f"held in a <{self.tag}>": self.tag in GAUGES,
+            "hidden until found": self.until_found(),
+            "a popover": "popover" in self.attributes and self.held(),
+            "past a shut <details>'s summary": self.tag == "details" and shut,
+            "in a <dialog> a button opens": self.tag == "dialog" and shut,
+            "a style this can't read": any(self.doubts(name) for name in DOUBTED),
+            "drawn at no opacity": not opaque(styled.get("opacity", "1")),
+            "shown again under visibility: hidden": invisible,
+            "in a box content-visibility: hidden skips nothing of": skips,
+        }
+        return next((doubt for doubt, holds in doubts.items() if holds), None)
 
     def shown(self) -> list[Element]:
         """Give the children drawn in it, leaving out those hidden."""
@@ -895,15 +989,28 @@ def head_faults(markup: str) -> list[str]:
     # What may not be there beside the head is sought among all a browser
     # may draw or hear, which holds all drawn, the head included.
     rivals = document.rivals()
-    faults.extend(banner_faults(head, rivals, document.every()))
-    faults.extend(title_faults(head, rivals))
+    drawn = set(everything)
+    faults.extend(banner_faults(head, rivals, document.every(), drawn))
+    faults.extend(title_faults(head, rivals, drawn))
     if any(isinstance(each, str) and each.strip(SPACE) for each in head.content):
         faults.append("its head writes words outside its parts: keep every word in a part")
     return faults + parts_faults(head) + speaking_faults(head)
 
 
-def banner_faults(head: Element, everything: list[Element], written: list[Element]) -> list[str]:
-    """Say what the page must change for the head to be its one banner, its skip link before."""
+def doubted(element: Element, drawn: set[Element]) -> tuple[str, str]:
+    """Give the verb and the doubt a fault names a rival with: drawn, or why it may be."""
+    if element in drawn:
+        return "draws", ""
+    return "may draw", f" ({element.why()})"
+
+
+def banner_faults(
+    head: Element, everything: list[Element], written: list[Element], drawn: set[Element]
+) -> list[str]:
+    """Say what the page must change for the head to be its one banner, its skip link before.
+
+    A rival only the generous walk finds is named as one a browser may draw, and why.
+    """
     faults = []
     banners = [element for element in everything if element.is_banner()]
     if banners and banners[0] is not head:
@@ -913,15 +1020,18 @@ def banner_faults(head: Element, everything: list[Element], written: list[Elemen
             where = "above"
         else:
             where = "below"
+        verb, why = doubted(banners[0], drawn)
         faults.append(
-            f"it draws a {named(banners[0])} {where} its head: let the kit's head be its one banner"
+            f"it {verb} a {named(banners[0])} {where} its head{why}:"
+            " let the kit's head be its one banner"
         )
     # A banner inside the head is a second, as a header in a header is heard.
     later = banners[1:]
     if banners and banners[0] is head and later:
         where = "inside" if later[0].inside(head) else "below"
+        verb, why = doubted(later[0], drawn)
         faults.append(
-            f"it draws a {named(later[0])} {where} its head as well:"
+            f"it {verb} a {named(later[0])} {where} its head as well{why}:"
             " let the kit's head be its one banner"
         )
     # site.sh puts the strip after a skip link's line whether it's drawn or not.
@@ -934,8 +1044,11 @@ def banner_faults(head: Element, everything: list[Element], written: list[Elemen
     return faults
 
 
-def title_faults(head: Element, everything: list[Element]) -> list[str]:
-    """Say what the page must change for the head's title to be its first heading."""
+def title_faults(head: Element, everything: list[Element], drawn: set[Element]) -> list[str]:
+    """Say what the page must change for the head's title to be its first heading.
+
+    A heading only the generous walk finds is named as one it may be, and why.
+    """
     titles = [element for element in everything if element.is_heading()]
     title = next((child for child in head.shown() if child.tag == "h1"), None)
     if not titles:
@@ -943,6 +1056,11 @@ def title_faults(head: Element, everything: list[Element]) -> list[str]:
     if titles[0] is title:
         return []
     first = named(titles[0])
+    if titles[0] not in drawn:
+        where, mend = "outside", "make the head's title first"
+        if titles[0].inside(head):
+            where, mend = "in", "make the head's title its first"
+        return [f"its first heading may be a {first} {where} its head ({titles[0].why()}): {mend}"]
     if titles[0].inside(head):
         return [f"its first heading is a {first} in its head: make the head's title its first"]
     return [f"its first heading, {first}, sits outside its head: make the head's title first"]

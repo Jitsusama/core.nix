@@ -378,41 +378,102 @@ def test_a_head_after_svg_holding_html_is_drawn() -> None:
 FIRST_OUTSIDE = "its first heading, <h2>, sits outside its head: make the head's title first"
 
 
+def may_be_first(why: str) -> str:
+    """Say what the gate says of a heading above the head's title it may draw, and why."""
+    return f"its first heading may be a <h2> outside its head ({why}): make the head's title first"
+
+
+# Why the gate counts what it can't be sure is drawn, as its faults say.
+IN_SVG = "held in SVG"
+UNREAD = "a style this can't read"
+SHOWN_AGAIN = "shown again under visibility: hidden"
+SKIPS_NOTHING = "in a box content-visibility: hidden skips nothing of"
+
+
 @pytest.mark.parametrize(
-    "above",
+    ("above", "why"),
     [
-        "<svg><foreignObject><h2>Mine</h2></foreignObject></svg>",
-        "<math><mi><h2>Mine</h2></mi></math>",
-        "<canvas><h2>Mine</h2></canvas>",
-        "<object><h2>Mine</h2></object>",
-        '<div style="visibility: hidden"><h2 style="visibility: visible">Mine</h2></div>',
-        '<h2 style="opacity: 0">Mine</h2>',
-        '<h2 style="opacity: var(--one)">Mine</h2>',
-        '<h2 hidden style="display: -webkit-box">Mine</h2>',
-        '<h2 style="display: none; display: -webkit-box">Mine</h2>',
-        '<div style="visibility: hidden"><h2 style="visibility: initial">Mine</h2></div>',
-        '<div style="visibility: hidden"><h2 style="visibility: var(--shown)">Mine</h2></div>',
-        '<div style="content-visibility: var(--shown)"><h2>Mine</h2></div>',
-        '<span style="content-visibility: hidden"><h2>Mine</h2></span>',
-        '<div style="display: contents; content-visibility: hidden"><h2>Mine</h2></div>',
-        '<div hidden="until-found"><h2>Mine</h2></div>',
-        '<button popovertarget="p">x</button><div popover id="p"><h2>Mine</h2></div>',
-        "<details><summary>more</summary><h2>Mine</h2></details>",
-        "<details><summary><h2>Mine</h2></summary></details>",
-        "<details><summary>more</summary><summary><h2>Mine</h2></summary></details>",
-        "<svg><g hidden><foreignObject><h2>Mine</h2></foreignObject></g></svg>",
+        ("<svg><foreignObject><h2>Mine</h2></foreignObject></svg>", IN_SVG),
+        ("<math><mi><h2>Mine</h2></mi></math>", "held in MathML"),
+        ("<canvas><h2>Mine</h2></canvas>", "a <canvas>'s fallback"),
+        ("<object><h2>Mine</h2></object>", "a <object>'s fallback"),
+        (
+            '<div style="visibility: hidden"><h2 style="visibility: visible">Mine</h2></div>',
+            SHOWN_AGAIN,
+        ),
+        ('<h2 style="opacity: 0">Mine</h2>', "drawn at no opacity"),
+        ('<h2 style="opacity: var(--one)">Mine</h2>', "drawn at no opacity"),
+        ('<h2 hidden style="display: -webkit-box">Mine</h2>', UNREAD),
+        ('<h2 style="display: none; display: -webkit-box">Mine</h2>', UNREAD),
+        ('<h2 style="display: none; display: var(--shown)">Mine</h2>', UNREAD),
+        (
+            '<div style="visibility: hidden"><h2 style="visibility: initial">Mine</h2></div>',
+            SHOWN_AGAIN,
+        ),
+        (
+            '<div style="visibility: hidden"><h2 style="visibility: var(--shown)">Mine</h2></div>',
+            UNREAD,
+        ),
+        ('<div style="content-visibility: var(--shown)"><h2>Mine</h2></div>', None),
+        ('<span style="content-visibility: hidden"><h2>Mine</h2></span>', SKIPS_NOTHING),
+        (
+            '<div style="display: contents; content-visibility: hidden"><h2>Mine</h2></div>',
+            SKIPS_NOTHING,
+        ),
+        ('<div hidden="until-found"><h2>Mine</h2></div>', "hidden until found"),
+        (
+            '<button popovertarget="p">x</button><div popover id="p"><h2>Mine</h2></div>',
+            "a popover",
+        ),
+        (
+            "<details><summary>more</summary><h2>Mine</h2></details>",
+            "past a shut <details>'s summary",
+        ),
+        ("<details><summary><h2>Mine</h2></summary></details>", None),
+        (
+            "<details><summary>more</summary><summary><h2>Mine</h2></summary></details>",
+            "past a shut <details>'s summary",
+        ),
+        ("<svg><g hidden><foreignObject><h2>Mine</h2></foreignObject></g></svg>", IN_SVG),
+        ("<progress><h2>Mine</h2></progress>", "held in a <progress>"),
+        ("<meter><h2>Mine</h2></meter>", "held in a <meter>"),
     ],
 )
-def test_a_heading_a_browser_may_draw_or_hear_above_the_head_is_named(above: str) -> None:
+def test_a_heading_a_browser_may_draw_or_hear_above_the_head_is_named(
+    above: str, why: str | None
+) -> None:
     """What may not be there is sought wherever a browser may draw it or a reader hear it.
 
     HTML in SVG or MathML, a canvas's or an object's fallback, one shown
     again under visibility, one heard though drawn clear, a style this can't
     read, which a browser may keep, content-visibility on a box it skips
-    nothing of, and what a person shows with no script, by find-in-page, a
-    popover's button or a summary, all count. HTML's hidden hides no SVG.
+    nothing of, what a person shows with no script, by find-in-page, a
+    popover's button or a summary, and what a gauge holds all count. HTML's
+    hidden hides no SVG. Each but what's surely drawn is named with why it counts.
     """
-    assert heads.head_faults(above + written()) == [FIRST_OUTSIDE]
+    assert heads.head_faults(above + written()) == [
+        FIRST_OUTSIDE if why is None else may_be_first(why)
+    ]
+
+
+@pytest.mark.parametrize(
+    "command",
+    ['command="show-modal"', 'command="Show-Modal"'],
+)
+def test_a_heading_in_a_dialog_a_button_opens_above_the_head_is_named(command: str) -> None:
+    """A button's command opens a dialog with no script, wherever the button sits."""
+    dialog = '<dialog id="d"><h2>Mine</h2></dialog>'
+    button = f'<button commandfor="d" {command}>x</button>'
+    for above in (button + dialog, dialog + button):
+        assert heads.head_faults(above + written()) == [
+            may_be_first("in a <dialog> a button opens")
+        ], above
+
+
+def test_a_heading_in_a_dialog_a_popover_button_opens_above_the_head_is_named() -> None:
+    """A dialog that's a popover opens from its button as any popover does."""
+    above = '<button popovertarget="d">x</button><dialog popover id="d"><h2>Mine</h2></dialog>'
+    assert heads.head_faults(above + written()) == [may_be_first("a popover")]
 
 
 @pytest.mark.parametrize(
@@ -424,6 +485,20 @@ def test_a_heading_a_browser_may_draw_or_hear_above_the_head_is_named(above: str
         '<div style="content-visibility: hidden"><h2>Mine</h2></div>',
         '<span style="display: inline-block; content-visibility: hidden"><h2>Mine</h2></span>',
         "<dialog><h2>Mine</h2></dialog>",
+        '<button commandfor="d" command="close">x</button><dialog id="d"><h2>Mine</h2></dialog>',
+        '<button commandfor="d" command="--open">x</button><dialog id="d"><h2>Mine</h2></dialog>',
+        '<button commandfor="e" command="show-modal">x</button><dialog id="d"><h2>M</h2></dialog>',
+        '<button command="show-modal">x</button><dialog id=""><h2>Mine</h2></dialog>',
+        (
+            '<template><button commandfor="d" command="show-modal">x</button></template>'
+            '<dialog id="d"><h2>Mine</h2></dialog>'
+        ),
+        '<h2 style="display: -webkit-box; display: none">Mine</h2>',
+        '<h2 style="display: none !important; display: -webkit-box">Mine</h2>',
+        '<h2 hidden style="display: run-in">Mine</h2>',
+        '<h2 style="display: none; display: banana">Mine</h2>',
+        '<div style="visibility: var(--shown); visibility: hidden"><h2>Mine</h2></div>',
+        '<div style="visibility: hidden"><h2 style="visibility: shown">Mine</h2></div>',
         "<template><h2>Mine</h2></template>",
         "<datalist><h2>Mine</h2></datalist>",
         "<rp><h2>Mine</h2></rp>",
@@ -439,6 +514,8 @@ def test_a_heading_a_browser_may_draw_or_hear_above_the_head_is_named(above: str
 def test_a_heading_surely_undrawn_and_unheard_above_the_head_passes(above: str) -> None:
     """Invisible all through, not displayed, skipped, shut, a template's or media's says nothing.
 
+    A dialog no button's command opens stays shut, and a style a browser drops,
+    or one a later or important value beats, leaves what it says no doubt.
     HTML's own sheet hides a datalist, a ruby's fallback and audio with no
     controls, media draws none of what it holds, and SVG draws no element it
     doesn't know, a header or a section say, nor anything in one.
@@ -469,7 +546,25 @@ def test_a_banner_in_svg_above_the_head_is_named() -> None:
     """A header SVG holds again as HTML is drawn, and heard as a banner above the head."""
     above = '<svg><foreignObject><header class="hero"><p>Mine</p></header></foreignObject></svg>'
     assert heads.head_faults(above + written()) == [
-        'it draws a <header class="hero"> above its head: let the kit\'s head be its one banner'
+        (
+            'it may draw a <header class="hero"> above its head (held in SVG):'
+            " let the kit's head be its one banner"
+        )
+    ]
+
+
+def test_a_rival_in_the_head_only_the_generous_walk_finds_says_why() -> None:
+    """A heading or a banner SVG holds in the eyebrow may be drawn, and the gate says so."""
+    heading = changed("your sites", 'your sites<svg><g role="heading" aria-level="1"></g></svg>')
+    assert heads.head_faults(heading) == [
+        "its first heading may be a <g> in its head (held in SVG): make the head's title its first"
+    ]
+    banner = changed("your sites", 'your sites<svg><g role="banner"></g></svg>')
+    assert heads.head_faults(banner) == [
+        (
+            "it may draw a <g> inside its head as well (held in SVG):"
+            " let the kit's head be its one banner"
+        )
     ]
 
 
@@ -481,11 +576,11 @@ def test_a_banner_in_svg_above_the_head_is_named() -> None:
         ("<button>", "</button>"),
         ('<button role="none">', "</button>"),
         ('<button role="generic">', "</button>"),
-        ("<progress>", "</progress>"),
+        ('<div role="progressbar">', "</div>"),
     ],
 )
 def test_a_head_held_by_what_flattens_its_children_is_unheard(holder: str, closing: str) -> None:
-    """An image's, a button's or a progress bar's children are heard only as its words.
+    """An image's, a button's or one marked a progress bar's children are heard only as its words.
 
     A browser ignores none on what takes focus, as a button does, and takes its own role.
     """
@@ -619,10 +714,24 @@ def test_a_banner_wrapped_around_the_head_is_named() -> None:
 
 @pytest.mark.parametrize(
     "holder",
-    ["template", "noscript", "datalist", "video", "audio", "canvas", "object", "rp"],
+    [
+        "template",
+        "noscript",
+        "datalist",
+        "video",
+        "audio",
+        "canvas",
+        "object",
+        "rp",
+        "progress",
+        "meter",
+    ],
 )
 def test_a_head_never_drawn_is_no_head(holder: str) -> None:
-    """A head held where no browser draws it, or only where media won't, leaves none drawn."""
+    """A head held where no browser draws it, or only where media won't, leaves none drawn.
+
+    A meter or a progress bar draws itself as a bar, and none of what it holds.
+    """
     faults = heads.head_faults(f"<{holder}>{written()}</{holder}>")
     assert faults == ['it draws 0 heads: open it with one <header class="page-head">']
 
@@ -634,12 +743,14 @@ def test_a_head_never_drawn_is_no_head(holder: str) -> None:
         ("<details><summary>more</summary>", "</details>"),
         ("<details><summary>more</summary><summary>", "</summary></details>"),
         ("<details><summary hidden>more</summary><summary>", "</summary></details>"),
+        ('<button commandfor="d" command="show-modal">x</button><dialog id="d">', "</dialog>"),
     ],
 )
 def test_a_head_shut_away_is_no_head(holder: str, closing: str) -> None:
     """A dialog not open, or details not open past their first summary, draw none of the head.
 
-    A second summary is the details' content, drawn no more when the first is hidden.
+    A second summary is the details' content, drawn no more when the first is
+    hidden, and a dialog a button opens is shut until it's pressed.
     """
     markup = f'<div class="hero"><p class="big">Mine</p></div>{holder}{written()}{closing}'
     assert heads.head_faults(markup) == [
@@ -959,6 +1070,8 @@ def test_an_eyebrow_dotted_as_text_beside_the_kits_is_named() -> None:
             '<span aria-hidden="true">your sites<span class="sep">·</span></span>',
         ),
         ("</span>on this machine", "</span><template>on this machine</template>"),
+        ("your sites<span", "<meter>your sites</meter><span"),
+        ("</span>on this machine", "</span><progress>on this machine</progress>"),
     ],
 )
 def test_an_eyebrow_with_an_empty_phrase_is_named(old: str, new: str) -> None:
