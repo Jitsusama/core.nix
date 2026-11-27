@@ -259,9 +259,18 @@ mod tests {
 
     #[test]
     fn without_paths_a_star_crosses_slashes() {
-        assert!(plain("foo*bar", "foo/baz/bar"));
-        assert!(plain("*/foo", "bar/baz/foo"));
-        assert!(!path("*/foo", "bar/baz/foo"));
+        assert!(
+            plain("foo*bar", "foo/baz/bar"),
+            "without paths, foo*bar didn't cross two slashes to match foo/baz/bar"
+        );
+        assert!(
+            plain("*/foo", "bar/baz/foo"),
+            "without paths, */foo didn't cross a slash to match bar/baz/foo"
+        );
+        assert!(
+            !path("*/foo", "bar/baz/foo"),
+            "as a path, */foo crossed a slash to match bar/baz/foo"
+        );
     }
 
     // Cases from git's t/t3070-wildmatch.sh, as (pattern, text, whether
@@ -387,7 +396,13 @@ mod tests {
 
     #[test]
     fn folds_case_when_asked() {
-        assert!(matches(b"*.TXT", b"a.txt", true, true));
-        assert!(!matches(b"*.TXT", b"a.txt", true, false));
+        assert!(
+            matches(b"*.TXT", b"a.txt", true, true),
+            "*.TXT didn't match a.txt with case folded"
+        );
+        assert!(
+            !matches(b"*.TXT", b"a.txt", true, false),
+            "*.TXT matched a.txt with case kept"
+        );
     }
 }

@@ -100,9 +100,6 @@
   "modules/eero/src/watch.rs" = 2;
   "modules/ergodox/ergodox-watch.rs" = 1;
   "modules/firmware-notice/src/main.rs" = 6;
-  "modules/git-engine/src/fsmonitor.rs" = 19;
-  "modules/git-engine/src/pattern.rs" = 16;
-  "modules/git-engine/src/wildmatch.rs" = 5;
   "modules/guide/src/install/memory.rs" = 4;
   "modules/guide/src/install/system.rs" = 1;
   "modules/guide/src/journal.rs" = 6;
