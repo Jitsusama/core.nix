@@ -4229,6 +4229,22 @@ pub fn to_second(first: Option<f64>, second: &Second) -> bool {
     })
 }
 
+/// Whether both lent builders are full, so what isn't a VM test may go
+/// to an idle VM builder: the first full and the second standing at least
+/// as full as [`FULL`]. One unlent is asked for instead, and one that
+/// can't be read is no full one.
+pub fn both_full(first: Option<f64>, second: &Second) -> bool {
+    first.is_some_and(|first| first >= FULL)
+        && matches!(second, Second::Stands(Some(second)) if *second >= FULL)
+}
+
+/// Whether a VM builder with no VM tests sent or waiting is idle enough to
+/// take what overflows full lent builders, by its CPU pressure: under half
+/// of [`FULL`], so the VM tests that come after still find it quick.
+pub fn takes_spill(pressure: Option<f64>) -> bool {
+    pressure.is_some_and(|pressure| pressure < FULL / 2.0)
+}
+
 /// Whether a pid runs, as signal 0 says.
 fn runs(pid: i32) -> bool {
     // SAFETY: signal 0 only asks whether the process exists.
@@ -4730,6 +4746,70 @@ impl Drop for Claim {
 /// Says `count` VM tests go to the builder `dir`'s lender lends, for as
 /// long as what's given lives; none when the folder can't be written.
 pub fn claim(dir: &Path, count: usize) -> Option<Claim> {
+    claim_marked(dir, count, "")
+}
+
+/// What ends the name of a claim that what overflows full lent builders
+/// holds on a VM builder, so a run can tell a lane already takes one.
+const SPILL: &str = ".spill";
+
+/// Claims the whole of `room` on the VM builder `dir`'s lender lends for
+/// what overflows full lent builders, under its lock, and only while no
+/// run has VM tests sent there or waiting: checked unlocked and claimed
+/// later, VM tests admitted between the two ran beside a big build.
+/// None when it isn't idle, or its folder can't be locked or written.
+pub fn claim_spill(dir: &Path, room: usize) -> Option<Claim> {
+    use std::os::fd::AsRawFd;
+    let lock = fs::File::create(dir.join("sending.lock")).ok()?;
+    // SAFETY: flock only locks the file it's given, open until dropped.
+    if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX) } != 0 {
+        return None;
+    }
+    if claimed(dir) + waiting(dir) > 0 {
+        return None;
+    }
+    claim_marked(dir, room.max(1), SPILL)
+}
+
+/// [`claim_spill`] on `lanes[index]`, only while no lane among `lanes`
+/// holds a spill, with that checked and the claim made under one lock in
+/// the first lane's folder, which takes no spill itself. Checked unlocked,
+/// runs starting together each found no spill and claimed a lane apiece.
+pub fn claim_only_spill(lanes: &[PathBuf], index: usize, room: usize) -> Option<Claim> {
+    use std::os::fd::AsRawFd;
+    let lock = fs::File::create(lanes.first()?.join("spilling.lock")).ok()?;
+    // SAFETY: flock only locks the file it's given, open until dropped.
+    if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX) } != 0 {
+        return None;
+    }
+    if lanes.iter().any(|dir| spilled(dir)) {
+        return None;
+    }
+    claim_spill(lanes.get(index)?, room)
+}
+
+/// Whether a run still going holds a spill's claim on the VM builder
+/// `dir`'s lender lends. One spill at a time takes a VM builder, so VM
+/// runs never find every idle lane taken by builds that aren't theirs.
+pub fn spilled(dir: &Path) -> bool {
+    claimed(dir) > 0
+        && fs::read_dir(dir.join("sending")).is_ok_and(|entries| {
+            entries
+                .filter_map(Result::ok)
+                .any(|entry| entry.file_name().to_string_lossy().ends_with(SPILL))
+        })
+}
+
+/// The VM builders, by their place among `lanes`, that may take a spill,
+/// in the order they're asked: never the first, which every VM run tries
+/// first and keeps warmest, and the last first, so VM runs keep the lanes
+/// they reach soonest.
+pub fn spill_order(lanes: usize) -> impl Iterator<Item = usize> {
+    (1..lanes).rev()
+}
+
+/// [`claim`], its file's name ending in `mark`.
+fn claim_marked(dir: &Path, count: usize, mark: &str) -> Option<Claim> {
     use std::sync::atomic::{AtomicUsize, Ordering};
     // One run may send two parts to one folder, when a second builder
     // doesn't come.
@@ -4737,7 +4817,7 @@ pub fn claim(dir: &Path, count: usize) -> Option<Claim> {
     let sending = dir.join("sending");
     fs::create_dir_all(&sending).ok()?;
     let path = sending.join(format!(
-        "{}.{}",
+        "{}.{}{mark}",
         std::process::id(),
         NEXT.fetch_add(1, Ordering::Relaxed)
     ));
@@ -5398,13 +5478,61 @@ pub fn fetches(machine: &Nearby, asked: &Asked, scratch: &Path, ssh: &str) -> bo
 /// November the net's comparison went to a Mac at 35 over five, under its
 /// room, while a session's darwin build already ran there, and the two
 /// took it to 60. So it counts the runs sent to it that build there now
-/// too, by the turns they hold ([`in_turn_nearby`]).
+/// too, by the turns they hold ([`in_turn_nearby`]), and its memory
+/// ([`Memory`]), which a Mac asked by `nix-offload busy` doesn't say.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Load {
     pub minute: f64,
     pub five: f64,
     pub cores: u32,
     pub building: u32,
+    pub memory: Option<Memory>,
+}
+
+/// How much memory a Mac has to spare: the share its kernel says is
+/// free (`kern.memorystatus_level`), and the swap-outs `vm_stat` counted
+/// over the last `window` seconds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Memory {
+    pub free: u32,
+    pub swapped: u64,
+    pub window: u32,
+}
+
+/// The share of a Mac's memory free below which it has no room, by
+/// velocity's line for a start there.
+const FREE_AT_LEAST: u32 = 35;
+
+impl Memory {
+    /// Whether the Mac is short of memory: under [`FREE_AT_LEAST`] free,
+    /// or swapping out within its window.
+    pub fn short(self) -> bool {
+        self.free < FREE_AT_LEAST || self.swapped > 0
+    }
+
+    /// The memory as a person reads it, as `41% free and 0 swap-outs over
+    /// 72 s`.
+    pub fn said(self) -> String {
+        format!(
+            "{}% free and {} swap-out{} over {} s",
+            self.free,
+            self.swapped,
+            if self.swapped == 1 { "" } else { "s" },
+            self.window
+        )
+    }
+
+    /// Read from [`MEMORY_READ`]'s line, as `41 0 72`, or none when it
+    /// says anything else.
+    fn parse(line: &str) -> Option<Memory> {
+        let mut words = line.split_whitespace();
+        let memory = Memory {
+            free: words.next()?.parse().ok().filter(|free| *free <= 100)?,
+            swapped: words.next()?.parse().ok()?,
+            window: words.next()?.parse().ok().filter(|window| *window > 0)?,
+        };
+        words.next().is_none().then_some(memory)
+    }
 }
 
 /// Runnable work for each processor past which a Mac has no room. On 16
@@ -5424,7 +5552,10 @@ impl Load {
     /// or one too many, or one that isn't a load, so it's never read from
     /// the wrong place. A line after the processors, as [`building_read`]
     /// says, is how many runs sent to it build there now, and none is read
-    /// as none, as a Mac's own `sysctl` says it to `nix-offload busy`.
+    /// as none, as a Mac's own `sysctl` says it to `nix-offload busy`. A
+    /// line after that is its memory ([`MEMORY_READ`]), read as none when
+    /// it says anything else, so a Mac whose `vm_stat` failed has a load
+    /// still, and no room.
     pub fn parse(said: &str) -> Option<Load> {
         let mut lines = said.lines();
         let averages = lines.next()?.trim();
@@ -5448,6 +5579,7 @@ impl Load {
             Some(line) => line.trim().parse::<u32>().ok()?,
             None => 0,
         };
+        let memory = lines.next().and_then(Memory::parse);
         if lines.next().is_some() {
             return None;
         }
@@ -5456,6 +5588,7 @@ impl Load {
             five,
             cores,
             building,
+            memory,
         })
     }
 
@@ -5493,11 +5626,53 @@ pub fn building_read() -> String {
     )
 }
 
+/// What a Mac runs to say its memory ([`Memory::parse`]): the share free,
+/// then the swap-outs since the newest reading it kept at least a minute
+/// and at most ten minutes ago, and how long ago that was. It keeps a
+/// reading at each ask, in `~/.cache/nix-offload/swapouts`, whoever asks.
+/// With none kept in that span it reads again ten seconds on, so a Mac
+/// asked rarely is judged on a shorter window rather than none. A reading
+/// past the newest count is an older boot's, which a restart reset. It
+/// says nothing when either figure can't be read. Each figure is matched
+/// as digits rather than tested with `-ge`, which zsh, a Mac's login
+/// shell, answers true for an empty string.
+const MEMORY_READ: &str = r#"free=$(sysctl -n kern.memorystatus_level 2>/dev/null)
+swaps() { vm_stat 2>/dev/null | awk '/^Swapouts:/ { gsub(/\./, "", $2); print $2 }'; }
+number() { case "$1" in ''|*[!0-9]*) return 1;; esac; }
+out=$(swaps)
+now=$(date +%s)
+kept="${HOME:-/tmp}/.cache/nix-offload/swapouts"
+if number "$free" && number "$out"; then
+  base=$(awk -v now="$now" -v out="$out" '
+    $1 <= now - 60 && $1 >= now - 600 && $2 <= out + 0 { at = $1; was = $2 }
+    END { if (at != "") print now - at, was }' "$kept" 2>/dev/null)
+  mkdir -p "${kept%/*}" && echo "$now $out" >> "$kept"
+  if [ -n "$base" ]; then
+    window=${base%% *}; was=${base#* }
+  else
+    was=$out; sleep 10; out=$(swaps); now=$((now + 10)); window=10
+    number "$out" && echo "$now $out" >> "$kept"
+  fi
+  tail -n 200 "$kept" > "$kept.$$" 2>/dev/null && mv "$kept.$$" "$kept"
+  number "$out" && number "$was" && [ "$out" -ge "$was" ] &&
+    echo "$free $((out - was)) $window"
+fi"#;
+
+/// [`MEMORY_READ`], for a test to run.
+#[cfg(test)]
+pub fn memory_read() -> &'static str {
+    MEMORY_READ
+}
+
 /// What a Mac runs to say its load ([`Load::parse`]): its load and
 /// processors, then the runs it builds ([`building_read`]), counted only
-/// once the load was said, so a Mac whose `sysctl` fails says nothing.
+/// once the load was said, so a Mac whose `sysctl` fails says nothing,
+/// then its memory ([`MEMORY_READ`]).
 pub fn load_read() -> String {
-    format!("sysctl -n vm.loadavg hw.ncpu && {{ {}; }}", building_read())
+    format!(
+        "sysctl -n vm.loadavg hw.ncpu && {{ {}; }} && {{ {MEMORY_READ}\n}}",
+        building_read()
+    )
 }
 
 /// A Mac nearby's load, `Err` saying why when it couldn't be asked here or
@@ -5952,9 +6127,34 @@ mod tests {
                 five: 88.31,
                 cores: 12,
                 building: 0,
+                memory: None,
             }),
             "a Mac's sysctl wasn't read as its minute's and five minutes' loads"
         );
+        assert_eq!(
+            Load::parse("{ 20.00 35.00 40.00 }\n12\n0\n41 3 72\n").and_then(|load| load.memory),
+            Some(Memory {
+                free: 41,
+                swapped: 3,
+                window: 72,
+            }),
+            "a Mac's memory wasn't read from the line after its builds"
+        );
+        for unread in [
+            "41 3",
+            "41 -3 72",
+            "141 0 72",
+            "41 0 0",
+            "41 0 72 9",
+            "free",
+        ] {
+            assert_eq!(
+                Load::parse(&format!("{{ 20.00 35.00 40.00 }}\n12\n0\n{unread}\n"))
+                    .map(|load| load.memory),
+                Some(None),
+                "{unread:?} was read as a Mac's memory, or lost its load"
+            );
+        }
         assert_eq!(
             Load::parse("{ 20.00 35.00 40.00 }\n12\n1\n").map(|load| load.building),
             Some(1),
@@ -5981,7 +6181,7 @@ mod tests {
             "{ 20.00 60.00 }\n12\n",
             "{ 20.00 60.00 80.00 90.00 }\n12\n",
             "{ 20.00 60.00 80.00 }\n12\nmany\n",
-            "{ 20.00 60.00 80.00 }\n12\n1\n2\n",
+            "{ 20.00 60.00 80.00 }\n12\n1\n41 0 60\n2\n",
         ] {
             assert_eq!(
                 Load::parse(unread),
@@ -6103,6 +6303,174 @@ mod tests {
         }
     }
 
+    /// A Mac's own `sysctl`, `vm_stat` and `sleep`, stood in for in a folder
+    /// of their own: its `sysctl` says the share free kept in `free`, its `vm_stat`
+    /// the swap-outs kept in `out`, failing with none, and its sleep takes
+    /// the count to `after`'s, as swapping in those ten seconds.
+    struct MacStandIn {
+        folder: tempfile::TempDir,
+        bin: PathBuf,
+        fake: PathBuf,
+        kept: PathBuf,
+    }
+
+    impl MacStandIn {
+        fn new() -> Self {
+            use std::os::unix::fs::PermissionsExt;
+            let folder = tempfile::tempdir().unwrap();
+            let (bin, fake) = (folder.path().join("bin"), folder.path().join("fake"));
+            fs::create_dir_all(&bin).unwrap();
+            fs::create_dir_all(&fake).unwrap();
+            for (name, script) in [
+                (
+                    "sysctl",
+                    "case \"$*\" in *memorystatus*) cat \"$FAKE/free\";; \
+                     *) printf '{ 20.00 35.00 30.00 }\\n12\\n';; esac",
+                ),
+                (
+                    "vm_stat",
+                    "[ -s \"$FAKE/out\" ] || exit 1; \
+                     printf 'Pages free: 9.\\nSwapouts: %s.\\n' \"$(cat \"$FAKE/out\")\"",
+                ),
+                (
+                    "sleep",
+                    "[ -f \"$FAKE/after\" ] && cp \"$FAKE/after\" \"$FAKE/out\"; :",
+                ),
+            ] {
+                let path = bin.join(name);
+                fs::write(&path, format!("#!/bin/sh\n{script}\n")).unwrap();
+                fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+            }
+            let kept = folder.path().join(".cache/nix-offload/swapouts");
+            Self {
+                folder,
+                bin,
+                fake,
+                kept,
+            }
+        }
+
+        /// What `script` says under `shell`, with these figures and these
+        /// readings kept.
+        fn read(&self, shell: &str, script: &str, figures: [&str; 3], history: &str) -> String {
+            let [free, out, after] = figures;
+            fs::create_dir_all(self.kept.parent().unwrap()).unwrap();
+            fs::write(&self.kept, history).unwrap();
+            fs::write(self.fake.join("free"), free).unwrap();
+            fs::write(self.fake.join("out"), out).unwrap();
+            fs::write(self.fake.join("after"), after).unwrap();
+            let said = Command::new(shell)
+                .args(["-c", &first_on_path(&self.bin, script)])
+                .env("FAKE", &self.fake)
+                .env("HOME", self.folder.path())
+                .env("NIX_OFFLOAD_TURNS", self.folder.path().join("none"))
+                .output()
+                .unwrap();
+            String::from_utf8(said.stdout).unwrap()
+        }
+    }
+
+    #[test]
+    fn a_macs_memory_is_read_over_a_minute_it_kept_or_ten_seconds_it_waits() {
+        let mac = MacStandIn::new();
+        let memory = |said: &str| Memory::parse(said.trim());
+        for shell in ["dash", "zsh"] {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs();
+
+            let said = mac.read(shell, memory_read(), ["41", "100", "100"], "");
+            assert_eq!(
+                memory(&said),
+                Some(Memory {
+                    free: 41,
+                    swapped: 0,
+                    window: 10
+                }),
+                "{shell}: a Mac with no reading kept wasn't read over ten seconds: {said:?}"
+            );
+            let kept_lines = fs::read_to_string(&mac.kept).unwrap();
+            assert_eq!(
+                kept_lines.lines().count(),
+                2,
+                "{shell}: a Mac didn't keep its two readings: {kept_lines:?}"
+            );
+
+            // Kept as each ask appends them: past ten minutes, two in the
+            // span, the newer last, and one too new.
+            let minutes_ago = format!(
+                "{} 40\n{} 80\n{} 90\n{} 95\n",
+                now - 900,
+                now - 300,
+                now - 120,
+                now - 10
+            );
+            let said = mac.read(shell, memory_read(), ["41", "100", "200"], &minutes_ago);
+            let read_over = memory(&said);
+            assert!(
+                read_over.is_some_and(
+                    |memory| memory.swapped == 10 && (119..=125).contains(&memory.window)
+                ),
+                "{shell}: a Mac wasn't read from its newest reading a minute old: {said:?}"
+            );
+            assert!(
+                read_over.is_some_and(Memory::short),
+                "{shell}: a Mac swapping within its window had memory to spare"
+            );
+
+            let rebooted = format!("{} 5000\n", now - 120);
+            let said = mac.read(shell, memory_read(), ["41", "100", "103"], &rebooted);
+            assert_eq!(
+                memory(&said).map(|memory| (memory.swapped, memory.window)),
+                Some((3, 10)),
+                "{shell}: a reading from before a restart was read as a baseline: {said:?}"
+            );
+
+            let said = mac.read(shell, memory_read(), ["30", "100", "100"], "");
+            assert!(
+                memory(&said).is_some_and(|memory| memory.free == 30 && memory.short()),
+                "{shell}: a Mac 30% free had memory to spare: {said:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_mac_that_cant_say_its_memory_says_none_and_its_load_ends_with_it() {
+        // zsh, a Mac's login shell, takes an empty figure for 0 in `-ge`,
+        // which once read a failed vm_stat as no swapping.
+        let mac = MacStandIn::new();
+        for shell in ["dash", "zsh"] {
+            assert_eq!(
+                mac.read(shell, memory_read(), ["41", "", ""], ""),
+                "",
+                "{shell}: a Mac whose vm_stat failed said its memory"
+            );
+            // From 0, so zsh's empty-as-0 in `-ge` would pass it.
+            assert_eq!(
+                mac.read(shell, memory_read(), ["41", "0", ""], ""),
+                "",
+                "{shell}: a Mac whose vm_stat failed after its wait said its memory"
+            );
+            assert_eq!(
+                mac.read(shell, memory_read(), ["no", "100", "100"], ""),
+                "",
+                "{shell}: a Mac whose sysctl failed said its memory"
+            );
+
+            let said = mac.read(shell, &load_read(), ["41", "100", "100"], "");
+            assert_eq!(
+                Load::parse(&said).and_then(|load| load.memory),
+                Some(Memory {
+                    free: 41,
+                    swapped: 0,
+                    window: 10
+                }),
+                "{shell}: a Mac's whole answer didn't end with its memory: {said:?}"
+            );
+        }
+    }
+
     #[test]
     fn a_mac_has_no_room_once_either_load_is_past_three_a_processor() {
         let at = |minute: f64, five: f64| Load {
@@ -6110,6 +6478,7 @@ mod tests {
             five,
             cores: 12,
             building: 0,
+            memory: None,
         };
         assert!(
             at(20.0, 60.0).over(),
@@ -6493,9 +6862,17 @@ mod tests {
             folder.path().join("uplink-2"),
         )
         .expect("a link");
+        // A run another test spawns as these turns are held forks with their
+        // files open, and holds their locks until it execs, so a turn this
+        // test let go may still read as held for a moment on a busy builder.
+        let began = std::time::Instant::now();
+        let mut named = holders(folder.path(), "uplink");
+        while named != "none of them named" && began.elapsed() < Duration::from_secs(5) {
+            std::thread::sleep(Duration::from_millis(50));
+            named = holders(folder.path(), "uplink");
+        }
         assert_eq!(
-            holders(folder.path(), "uplink"),
-            "none of them named",
+            named, "none of them named",
             "a turn only looked at, or a link to one held elsewhere, was named"
         );
         drop((looking, other));
@@ -9630,6 +10007,121 @@ mod tests {
         assert_eq!(pressure_of(read), Some(48.10));
         assert_eq!(pressure_of("full avg60=3.00\n"), None);
         assert_eq!(pressure_of(""), None);
+    }
+
+    #[test]
+    fn builds_spill_only_while_both_lent_builders_stand_full() {
+        assert!(
+            both_full(Some(FULL), &Second::Stands(Some(FULL))),
+            "two full builders must let builds spill"
+        );
+        assert!(
+            !both_full(Some(FULL - 1.0), &Second::Stands(Some(90.0))),
+            "a first with room must keep its builds"
+        );
+        assert!(
+            !both_full(Some(90.0), &Second::Stands(Some(FULL - 1.0))),
+            "a second with room must take them"
+        );
+        assert!(
+            !both_full(Some(90.0), &Second::Unlent),
+            "an unlent second must be asked for, not spilled past"
+        );
+        assert!(
+            !both_full(Some(90.0), &Second::Stands(None)),
+            "a second that can't be read must not count as full"
+        );
+        assert!(
+            !both_full(None, &Second::Stands(Some(90.0))),
+            "a first that can't be read must not count as full"
+        );
+    }
+
+    #[test]
+    fn only_a_quiet_vm_builder_takes_a_spill() {
+        assert!(
+            takes_spill(Some(0.0)),
+            "an idle VM builder must take a spill"
+        );
+        assert!(
+            !takes_spill(Some(FULL / 2.0)),
+            "one half as busy as full must not"
+        );
+        assert!(!takes_spill(None), "one that can't be read must not");
+        assert!(
+            takes_spill(Some(FULL / 2.0 - 1.0)),
+            "one just under half as busy as full must take it"
+        );
+    }
+
+    #[test]
+    fn a_spill_claims_a_whole_idle_lane_and_marks_it_taken() {
+        let lane = tempfile::tempdir().expect("a folder");
+        assert!(!spilled(lane.path()), "an empty lane holds no spill");
+        let held = claim_spill(lane.path(), VM_ROOM).expect("an idle lane takes a spill");
+        assert_eq!(
+            claimed(lane.path()),
+            VM_ROOM,
+            "the spill must claim the whole room"
+        );
+        assert!(spilled(lane.path()), "the lane must say it holds a spill");
+        assert!(
+            claim_spill(lane.path(), VM_ROOM).is_none(),
+            "a lane holding a spill must take no second"
+        );
+        drop(held);
+        assert_eq!(claimed(lane.path()), 0, "the claim must go with the spill");
+        assert!(
+            !spilled(lane.path()),
+            "nor may the lane still say it holds one"
+        );
+    }
+
+    #[test]
+    fn a_second_lane_takes_no_spill_while_another_holds_one() {
+        let folders: Vec<_> = (0..3)
+            .map(|_| tempfile::tempdir().expect("a folder"))
+            .collect();
+        let lanes: Vec<PathBuf> = folders.iter().map(|dir| dir.path().to_owned()).collect();
+        let held = claim_only_spill(&lanes, 2, VM_ROOM).expect("an idle lane takes a spill");
+        assert!(
+            claim_only_spill(&lanes, 1, VM_ROOM).is_none(),
+            "another lane must take no spill while one holds a spill"
+        );
+        assert_eq!(claimed(&lanes[1]), 0, "nor may it be left claimed");
+        drop(held);
+        assert!(
+            claim_only_spill(&lanes, 1, VM_ROOM).is_some(),
+            "once the spill ends, another lane must take the next"
+        );
+    }
+
+    #[test]
+    fn a_lane_with_vm_tests_sent_or_waiting_takes_no_spill() {
+        let sent = tempfile::tempdir().expect("a folder");
+        let _vm = claim(sent.path(), 1).expect("a VM test's claim");
+        assert!(
+            claim_spill(sent.path(), VM_ROOM).is_none(),
+            "VM tests are sent there"
+        );
+        assert!(!spilled(sent.path()), "a VM test's claim is no spill");
+        let waits = tempfile::tempdir().expect("a folder");
+        let _place = queued(waits.path(), 1, Rank::Plain).expect("a place in line");
+        assert!(
+            claim_spill(waits.path(), VM_ROOM).is_none(),
+            "a VM run waits there"
+        );
+    }
+
+    #[test]
+    fn a_spill_never_takes_the_first_vm_lane_and_asks_the_last_first() {
+        assert_eq!(
+            spill_order(4).collect::<Vec<_>>(),
+            [3, 2, 1],
+            "last first, never 0"
+        );
+        assert_eq!(spill_order(1).count(), 0, "a lone lane is kept for VM runs");
+        assert_eq!(spill_order(0).count(), 0, "no lanes, no spill");
     }
 
     #[test]

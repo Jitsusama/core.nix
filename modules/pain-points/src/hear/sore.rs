@@ -89,9 +89,25 @@ const REASSURING: [&str; 10] = [
 
 /// Phrases that give up on the agent, which no ease beside them softens:
 /// "it's fine, i'll do it myself" is no reassurance. Each is whole words,
-/// so "i blame myself" gives up on nothing; a bare "whatever" gives up
-/// only as a sentence of its own.
+/// so "i blame myself" gives up on nothing; "whatever" gives up only as
+/// a sentence's last word, so "fine, whatever" gives up and "whatever
+/// works for you" doesn't.
 const GIVING_UP: [&str; 4] = ["do it myself", "do this myself", "forget it", "never mind"];
+
+/// Words that hand the agent a choice before a closing "whatever": "use
+/// whatever" leaves it to the agent rather than giving up on it. "do
+/// whatever" and "try whatever" are as often resigned, so they still give
+/// up, as a pain sent is cheaper than one lost.
+const LEAVING_IT: [&str; 4] = ["use", "pick", "take", "choose"];
+
+/// Whether a sentence's words give up with a closing "whatever".
+fn whatever_then(words: &[&str]) -> bool {
+    match words {
+        [.., before, "whatever"] => !LEAVING_IT.contains(before),
+        ["whatever"] => true,
+        _ => false,
+    }
+}
 
 /// The marks that end a sentence, a full-width question mark among them.
 const ENDS: [char; 5] = ['.', '!', '?', '\u{ff1f}', ';'];
@@ -133,7 +149,7 @@ fn swears(low: &str) -> bool {
         .iter()
         .any(|(asked, words)| *asked && swore(words));
     let gave_up = GIVING_UP.iter().any(|up| said(&each, up))
-        || sentences.iter().any(|(_, words)| words[..] == ["whatever"]);
+        || sentences.iter().any(|(_, words)| whatever_then(words));
     !eased || asked_swearing || gave_up
 }
 
@@ -399,6 +415,11 @@ mod tests {
             "that's fine. why the fuck is it slow?",
             "it's fine, i'll do it myself, fuck this",
             "shit, it's fine. whatever.",
+            "shit, it's fine, whatever",
+            "shit, it's fine whatever",
+            "shit, it's fine\nwhatever",
+            "shit, no worries, do whatever",
+            "shit, it's fine, try whatever",
         ] {
             assert!(
                 kinds(hurt, AT, &[]).contains(&"swore"),
@@ -413,15 +434,23 @@ mod tests {
                 "ease beside giving up spared a swear: {hurt}"
             );
         }
+        // Each word that leaves the choice, so one dropped from the list is caught.
+        for word in ["use", "pick", "take", "choose"] {
+            let eased = format!("shit, it's fine, {word} whatever");
+            assert_eq!(kinds(&eased, AT, &[]), none, "leaving it undid: {eased}");
+        }
         for eased in [
             "shit, it's fine. can you check the logs?",
             "shit, it's fine, i blame myself",
             "shit, that's fine, whatever works for you",
+            "shit, no worries, i'll take whatever",
+            "shit, it's fine, you choose whatever",
         ] {
             assert_eq!(
                 kinds(eased, AT, &[]),
                 none,
-                "a plain ask, self-blame or a passing whatever undid ease: {eased}"
+                "a plain ask, self-blame, or a whatever passing or leaving it to the agent \
+                 undid ease: {eased}"
             );
         }
     }

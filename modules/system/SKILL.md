@@ -99,7 +99,11 @@ system --json | jq -c '{health, parts: [.parts[] | {part, health, says}]}'
   calls a disk filling under a quarter free and takes back what
   regenerates by itself, so only a nearly full one is the person's.
   Each machine's record carries its own `side`, worded for a row ("nearly
-  full disk, 40 GB free"), its worst first. Another
+  full disk, 40 GB free"), its worst first, and `looks`, every look in
+  it in the same order, each an object with its own `health` (the
+  machine's is the worst of them), its `side` words and `matters`, a
+  sentence saying why it matters to the person; the side is cut to
+  three for a line, and the looks keep them all. Another
   machine whose own health says its code is failing is bad, and one
   whose code wants a look is worth a look; its node carries that word
   in its machine record. Only code is taken from it, since the network,

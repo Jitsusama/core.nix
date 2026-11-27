@@ -229,6 +229,7 @@
         "standing": "needs-you",
         "doing": "Ask which thread to use",
         "asks": "Which thread: the waxed or the plain?",
+        "asked": "The waxed thread holds in salt but stiffens in the cold.\nThe plain runs smoother and wears sooner.\n\nWhich thread: the waxed or the plain?",
         "plan": null,
         "leads": [],
         "networks": ["orchestration.skiff1", "repo.harbour", "quest.skiff1.tern02"],

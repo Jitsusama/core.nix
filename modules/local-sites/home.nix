@@ -269,7 +269,7 @@ let
   build = lib.escapeShellArgs [
     (lib.getExe pkgs.python3)
     "${./home/home.py}"
-    "${./home}"
+    "${import ./home-source.nix}"
     "${config.xdg.dataHome}/jitsusama/sites"
     "${webKit}/theme.css"
     "${declared}"

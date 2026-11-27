@@ -1,21 +1,41 @@
 //! How far a reader of a site speaking GitHub's API has read it, kept in
 //! judged-<site>.json beside the Slack reader's: from when, and the keys
 //! of what it judged, so a restart neither judges anything twice nor
-//! misses what was said while it was down; and when it last read the
-//! site whole, which `pineapple-github` says (src/bin/pineapple-github.rs).
+//! misses what was said while it was down; how far back Joel's own words
+//! were searched, so a restart neither judges past where a first start
+//! chose not to nor forgets a search held back; and when it last read the
+//! site whole, which `pineapple-github` says (src/bin/pineapple-github/).
+//! A search held back by days of failing is let go by taking `own` out of
+//! the file with its reader stopped, as a running one writes it back each
+//! round; that lets go of a first start's floor too.
 
 use std::path::Path;
 
 use serde_json::{Value, json};
 
 /// How far it has read: from `since`, in seconds, the keys of what it
-/// judged, newest last.
+/// judged, newest last, and how far Joel's own words were searched.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Judged {
     /// From when the next round asks, in seconds since the epoch.
     pub since: u64,
     /// The keys of what it judged, newest last.
     pub keys: Vec<String>,
+    /// How far Joel's own words were searched; none where nothing kept
+    /// says, as before a reader searched for them.
+    pub own: Option<Own>,
+}
+
+/// How far a search for Joel's own words reached, in seconds since the
+/// epoch: where it was last whole from, and the farthest back it may
+/// judge, which a first start sets and zero leaves open.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Own {
+    /// Where the search was last whole from.
+    pub from: u64,
+    /// The farthest back it judges, whatever `from` says; what it finds
+    /// is read an hour further back, for the journal to name.
+    pub floor: u64,
 }
 
 /// The name of the file keeping how far a site has been read.
@@ -39,7 +59,13 @@ pub fn read(state: &Path, site: &str) -> Option<Judged> {
         .filter_map(Value::as_str)
         .map(str::to_owned)
         .collect();
-    Some(Judged { since, keys })
+    let own = kept.get("own").and_then(|own| {
+        Some(Own {
+            from: own.get("from")?.as_u64()?,
+            floor: own.get("floor")?.as_u64()?,
+        })
+    });
+    Some(Judged { since, keys, own })
 }
 
 /// Each site kept in `state`, by name, and when it was last read whole, in
@@ -66,7 +92,10 @@ pub fn sites(state: &Path) -> Vec<(String, u64)> {
 /// `read_at`, in milliseconds, through a file renamed into place, so a
 /// reader stopped mid-write leaves the last whole one.
 pub fn write(state: &Path, site: &str, judged: &Judged, read_at: u64) {
-    let kept = json!({ "since": judged.since, "keys": judged.keys, "read_at": read_at });
+    let mut kept = json!({ "since": judged.since, "keys": judged.keys, "read_at": read_at });
+    if let Some(Own { from, floor }) = judged.own {
+        kept["own"] = json!({ "from": from, "floor": floor });
+    }
     let path = state.join(file(site));
     let written = path.with_extension("new");
     let wrote = std::fs::create_dir_all(state)
@@ -98,6 +127,7 @@ mod tests {
         let judged = Judged {
             since: 1_700_000_000,
             keys: Vec::new(),
+            own: None,
         };
         write(&state, "github", &judged, 2_000);
         write(&state, "code", &judged, 1_000);
@@ -126,10 +156,25 @@ mod tests {
         let judged = Judged {
             since: 1_700_000_000,
             keys: vec!["code:example/shop#12:comment:1".to_owned()],
+            own: None,
         };
         write(&state, "code", &judged, 1_700_000_000_000);
         assert_eq!(read(&state, "code"), Some(judged), "what was kept");
         assert_eq!(read(&state, "github"), None, "another site's is its own");
+        let searched = Judged {
+            since: 1_700_000_000,
+            keys: Vec::new(),
+            own: Some(Own {
+                from: 1_699_999_000,
+                floor: 1_699_998_000,
+            }),
+        };
+        write(&state, "github", &searched, 1_700_000_000_000);
+        assert_eq!(
+            read(&state, "github"),
+            Some(searched),
+            "how far Joel's own words were searched is kept with it"
+        );
         std::fs::remove_dir_all(&state).expect("the case's state goes");
     }
 }

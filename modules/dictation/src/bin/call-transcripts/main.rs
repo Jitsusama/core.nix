@@ -35,7 +35,9 @@
 //! call-transcripts score MODEL_DIR SET [CEILING]
 //!     write down each meeting in SET as a call and print the share of
 //!     its words each side got wrong, written down and heard alone
-//!     (score.rs); fail when the set's, written down, is above CEILING
+//!     (score.rs); fail when the set's, written down, is above CEILING,
+//!     or when the far end's word times stray from their takes or their
+//!     speech (times.rs)
 //! call-transcripts mark TRANSCRIPT.md REFERENCE [MINE]
 //!     print the share of its words each side of a call's file got wrong
 //!     against REFERENCE, a reference as a meeting's is, whose speaker
@@ -98,16 +100,19 @@ mod score;
 mod split;
 mod summarizer;
 mod summary;
+mod times;
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, mpsc};
 
+use dictation::echo;
 use dictation::openvino::Priority;
 use dictation::parakeet::Parakeet;
 use dictation::takes::{Cutter, Take};
-use dictation::transcript::{Line, Side, markdown};
+use dictation::transcript::{Side, markdown};
 use dictation::wav;
 use terminal_kit::{Exit, Failure, Help};
 
@@ -430,25 +435,17 @@ fn summarize(
 fn transcribe(model: &Path, mine: &Path, theirs: &Path) -> Result<(), String> {
     let mut speech = Settings::read(model.to_owned()).load()?;
     let mut lines = Vec::new();
+    let mut words = HashMap::new();
     for (side, file) in [(Side::Mine, mine), (Side::Theirs, theirs)] {
         let bytes = std::fs::read(file).map_err(|e| format!("reading {}: {e}", file.display()))?;
-        for take in takes(&wav::samples(&bytes)?) {
-            // Heard as the daemon hears a take, their side by its words, so
-            // the checks that run this read what it writes.
-            let (text, _) = hear::transcribe_take(&mut speech, side, take.start, &take.samples);
-            if let Some(text) = text {
-                lines.push(Line {
-                    side,
-                    start: take.start,
-                    end: take.start + take.samples.len(),
-                    text,
-                    voice: None,
-                    name: None,
-                });
-            }
-        }
+        // Heard as the daemon hears a take, each side by its words, so the
+        // checks that run this read what it writes.
+        let named = file.display().to_string();
+        let cut = takes(&wav::samples(&bytes)?);
+        score::hear_side(&mut speech, side, &named, &cut, &mut lines, &mut words)?;
     }
-    print!("{}", markdown(&lines, &own_name(), None, None));
+    let (cut, _) = echo::cut_echoes(&lines, &words, said::spoken);
+    print!("{}", markdown(&cut, &own_name(), None, None));
     Ok(())
 }
 

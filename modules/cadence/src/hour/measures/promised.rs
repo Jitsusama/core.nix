@@ -15,10 +15,12 @@ use serde_json::Value;
 use super::seconds;
 
 /// One date an ask was given: when it was `expected`, when the date after
-/// it was given, if one was, and when its owner said it was `met`.
+/// it was given, if one was, the date it moved `to`, and when its owner
+/// said it was `met`.
 pub struct Promise {
     pub expected: i64,
     pub moved: Option<i64>,
+    pub to: Option<i64>,
     pub met: Option<i64>,
 }
 
@@ -27,11 +29,14 @@ pub struct Promise {
 /// A `met` holds only on a date the ask has since moved on from, so its
 /// last date is kept by landing alone, and only when it came after its
 /// date was given, since a step can't be kept before it was promised.
+/// An entry that isn't an object says no date, so it's passed over rather
+/// than read as one that hides the move after the date before it.
 pub fn promised(ask: &Value) -> Vec<Promise> {
     let mut given: Vec<(Option<i64>, Option<i64>, Option<i64>)> = ask["promised"]
         .as_array()
         .into_iter()
         .flatten()
+        .filter(|p| p.is_object())
         .map(|p| {
             (
                 seconds(&p["expected"]),
@@ -52,6 +57,7 @@ pub fn promised(ask: &Value) -> Vec<Promise> {
             Some(Promise {
                 expected: date?,
                 moved,
+                to: given.get(i + 1).and_then(|(to, _, _)| *to),
                 met: met.filter(|&met| moved.is_some() && set.is_none_or(|set| met >= set)),
             })
         })

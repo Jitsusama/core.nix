@@ -56,6 +56,13 @@ use crate::state::{Joined, State};
 /// another room.
 pub const SPAN: Duration = Duration::from_secs(120);
 
+/// How far back the minute a trial is judged by reaches: a minute, less
+/// half a second, so a minute read on time shares no echo with the one
+/// before. A minute's tick waits behind a measure, up to about 2 s where
+/// echoes go unanswered, so one echo of a minute's sixty may be read in
+/// both, or in neither, which can tip only a minute already at the bar.
+const MINUTE: Duration = Duration::from_millis(59_500);
+
 /// What the gateway said to one echo.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Echo {
@@ -200,7 +207,7 @@ impl Measures {
     /// What the access point's video echoes carried over the span up to
     /// now, if any were sent in it.
     pub fn video_of(&self, point: &str, now: Instant) -> Option<Video> {
-        let echoes: Vec<Echo> = within(&self.points.get(point)?.video, now).collect();
+        let echoes: Vec<Echo> = within(&self.points.get(point)?.video, now, SPAN).collect();
         video(&echoes)
     }
 
@@ -214,26 +221,39 @@ impl Measures {
     /// The access point's figures over the span up to now, each the worse
     /// class's, if anything was measured of it in it.
     pub fn of(&self, point: &str, now: Instant) -> Option<Measured> {
-        self.figures(point, now, true)
+        self.figures(point, now, true, SPAN)
+    }
+
+    /// The access point's figures over the minute up to now alone, each
+    /// the worse class's, as a trial is judged early by single minutes
+    /// rather than spans of two.
+    pub fn minute_of(&self, point: &str, now: Instant) -> Option<Measured> {
+        self.figures(point, now, true, MINUTE)
     }
 
     /// The access point's figures over the span up to now in best effort
     /// alone, as logged, if anything was measured of it in it.
     pub fn best_effort_of(&self, point: &str, now: Instant) -> Option<Measured> {
-        self.figures(point, now, false)
+        self.figures(point, now, false, SPAN)
     }
 
-    fn figures(&self, point: &str, now: Instant, weighing_video: bool) -> Option<Measured> {
+    fn figures(
+        &self,
+        point: &str,
+        now: Instant,
+        weighing_video: bool,
+        over: Duration,
+    ) -> Option<Measured> {
         let kept = self.points.get(point)?;
-        let echoes: Vec<Echo> = within(&kept.echoes, now).collect();
-        let counts: Vec<Counts> = within(&kept.counts, now).collect();
+        let echoes: Vec<Echo> = within(&kept.echoes, now, over).collect();
+        let counts: Vec<Counts> = within(&kept.counts, now, over).collect();
         if echoes.is_empty() && counts.is_empty() {
             return None;
         }
         let (times, lost) = timed(&echoes);
         let (mut p50, mut p95) = (percentile(&times, 50), percentile(&times, 95));
         let mut lost = per_hundred(lost, echoes.len());
-        let video_echoes: Vec<Echo> = within(&kept.video, now).collect();
+        let video_echoes: Vec<Echo> = within(&kept.video, now, over).collect();
         if let Some(video) = video(&video_echoes).filter(|_| weighing_video) {
             lost = lost.max(video.held);
             if video.timed() {
@@ -314,11 +334,13 @@ pub async fn follow(
                     let around = state.borrow().around(&on.card);
                     learn_from(&mut learned, &on, &carried, &around, hour);
                     let chooser = choosers.entry(on.card.clone()).or_default();
+                    if let Some(minute) = measures.minute_of(&on.point, now) {
+                        chooser.took_minute(now, &on.point, &minute);
+                    }
                     moves::choose(
                         chooser,
                         (now, hour),
                         (&on, &carried),
-                        &around,
                         (&measures, &learned),
                         (&asks, &state, &looked),
                         call,
@@ -335,14 +357,12 @@ pub async fn follow(
                 let Some(carried) = measures.of(&on.point, now) else {
                     continue;
                 };
-                let around = state.borrow().around(&on.card);
                 let chooser = choosers.entry(on.card.clone()).or_default();
                 chooser.looked_over(now);
                 moves::choose(
                     chooser,
                     (now, hour),
                     (&on, &carried),
-                    &around,
                     (&measures, &learned),
                     (&asks, &state, &looked),
                     call,
@@ -653,10 +673,14 @@ fn forget_before<T>(kept: &mut VecDeque<(Instant, T)>, now: Instant) {
     }
 }
 
-/// What was measured in the span ending at `now`.
-fn within<T: Copy>(kept: &VecDeque<(Instant, T)>, now: Instant) -> impl Iterator<Item = T> {
+/// What was measured in the stretch this long ending at `now`.
+fn within<T: Copy>(
+    kept: &VecDeque<(Instant, T)>,
+    now: Instant,
+    over: Duration,
+) -> impl Iterator<Item = T> {
     kept.iter()
-        .filter(move |(at, _)| now.duration_since(*at) <= SPAN)
+        .filter(move |(at, _)| now.duration_since(*at) <= over)
         .map(|(_, measured)| *measured)
 }
 
@@ -1042,6 +1066,35 @@ pub(crate) mod tests {
         let measured = measured.expect("an access point echoed through is measured");
         assert_eq!(measured.echoes, 1, "the echo before the span is let go");
         assert_eq!(measured.p95, Some(ms(5)), "and says nothing of now");
+    }
+
+    #[test]
+    fn a_minute_alone_holds_none_of_the_minute_before() {
+        let start = Instant::now();
+        let mut kept = Measures::default();
+        echoed(&mut kept, DESK, start, &[Some(5)]);
+        echoed_in_video(&mut kept, DESK, start, &[Some(500)]);
+        let minute = start + Duration::from_secs(60);
+        echoed(&mut kept, DESK, minute, &[Some(5)]);
+        echoed_in_video(&mut kept, DESK, minute, &[Some(5)]);
+        let alone = kept
+            .minute_of(DESK, minute)
+            .expect("the minute was measured");
+        let span = kept.of(DESK, minute).expect("the span was measured");
+        assert_eq!(
+            alone.echoes, 1,
+            "the echo a minute back is the minute before's"
+        );
+        assert_eq!(
+            alone.p95,
+            Some(ms(5)),
+            "and its held video says nothing of this one"
+        );
+        assert_eq!(
+            (span.echoes, span.p95),
+            (2, Some(ms(500))),
+            "the span holds both, video's too"
+        );
     }
 
     #[test]

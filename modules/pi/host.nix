@@ -28,6 +28,10 @@ let
   launch = import ./host-launch.nix { inherit lib; };
   inherit (launch) kinds loadsCode stopSeconds;
   entry = launch.entry config;
+  growthTakenBy = import ./heap-growth-taken { inherit lib pkgs; };
+  # The build proving a realm's node takes its conversations' growing
+  # percent, which each of its conversations' units names.
+  growthTakenOf = realm: host: growthTakenBy realm host.node host.conversationHeapGrowingPercent;
 
   # Whether pi's SSH agent proxy runs here, as home.nix decides it, so a
   # host is pointed at its socket only where there is one. Hosts are Linux
@@ -76,9 +80,10 @@ let
 
   # The command line a host and a conversation's own process share, up to
   # the harness's program: the realm's folders, the host's node with the
-  # inspector shut, and its heap. `rest` comes after the program.
+  # inspector shut, and its heap, then node's own `flags`. `rest` comes
+  # after the program.
   startOf =
-    host: heapMb: rest:
+    host: heapMb: flags: rest:
     lib.escapeShellArgs (
       # Environment= can only replace PATH, so env puts the realm's folders
       # before the user manager's; systemd expands ${PATH}, and env execs
@@ -93,7 +98,7 @@ let
         }:\${PATH}"
       ]
       ++ [ host.node ]
-      ++ launch.words config host heapMb rest
+      ++ launch.words config host heapMb flags rest
     );
 
   # A conversation's allocator tuning, for one in a unit of its own (so on
@@ -118,11 +123,11 @@ let
   #   trim replaces each, and loginAllocator drops whichever neither sets.
   #   glibc's other MALLOC_ variables, such as MALLOC_ARENA_MAX,
   #   still come from the realm or the login.
-  # - Its commands and subagents inherit that environment without
-  #   GLIBC_TUNABLES, as a fixed trim would pin their mmap threshold too.
-  #   The harness keeps it from them from its pull request 2015 on, by
-  #   listing it in HOST_ONLY (host/service/program.ts), which no check
-  #   here reads; an older harness passes it on. So a trim threshold meant
+  # - Its commands and subagents inherit that environment. From the
+  #   harness's pull request 2015 on, they get it without GLIBC_TUNABLES,
+  #   as a fixed trim would pin their mmap threshold too: the harness
+  #   lists it in HOST_ONLY (host/service/program.ts), which no check here
+  #   reads, and an older harness passes it on. So a trim threshold meant
   #   for them goes in the realm as MALLOC_TRIM_THRESHOLD_, which also
   #   replaces the trim added above, or in the command, and any other
   #   tunable in the command.
@@ -160,9 +165,10 @@ let
   # The cost: replacing or dropping the login's GLIBC_TUNABLES loses every
   # tunable it names, not only the allocator's, so a conversation loses any
   # hardening tunable the login sets. To keep one, name it in the realm's
-  # GLIBC_TUNABLES. That reaches the conversation's own process but not its
-  # commands, and replaces the login's whole GLIBC_TUNABLES in both of the
-  # realm's hosts, so a login tunable the hosts need is named there too.
+  # GLIBC_TUNABLES. That reaches the conversation's own process, and from the
+  # harness's pull request 2015 on not its commands, which an older harness
+  # passes it on to. It also replaces the login's whole GLIBC_TUNABLES in both
+  # of the realm's hosts, so a login tunable the hosts need is named there too.
   loginAllocator =
     host:
     let
@@ -173,17 +179,18 @@ let
       "MALLOC_TRIM_THRESHOLD_"
     ];
 
-  # A realm's environment with each % doubled, as systemd reads a % in an
-  # Environment= entry as a specifier: a proxy's URL may hold %40, which
-  # systemd would otherwise refuse or expand rather than pass on. What this
-  # module adds itself, such as SSH_AUTH_SOCK's %t, is a specifier on
-  # purpose and is left as it is.
+  # A value with each % doubled, as systemd reads a % in an Environment=
+  # entry as a specifier.
+  doubledPercent = lib.replaceStrings [ "%" ] [ "%%" ];
+
+  # A realm's environment taken as written: a proxy's URL may hold %40,
+  # which systemd would otherwise refuse or expand rather than pass on.
+  # What this module adds itself, such as SSH_AUTH_SOCK's %t, is a
+  # specifier on purpose and is left as it is. The account's CHROME_PATH,
+  # a path set for its shell rather than for systemd, is doubled where it
+  # is added.
   realmTakenAsWritten =
-    host:
-    let
-      doubled = lib.replaceStrings [ "%" ] [ "%%" ];
-    in
-    host // { environment = lib.mapAttrs (_: doubled) host.environment; };
+    host: host // { environment = lib.mapAttrs (_: doubledPercent) host.environment; };
 
   # The environment a host and a conversation's own process share, quoted,
   # as systemd splits an unquoted entry at its spaces; host-launch.nix says
@@ -212,7 +219,9 @@ let
           # in the account's CHROME_PATH (home.nix sets Chromium as its
           # default), and its hosts follow it; a realm's environment still
           # wins over both.
-          CHROME_PATH = config.home.sessionVariables.CHROME_PATH or (lib.getExe pkgs.chromium);
+          CHROME_PATH = doubledPercent (
+            config.home.sessionVariables.CHROME_PATH or (lib.getExe pkgs.chromium)
+          );
         }
       ) own
     );
@@ -267,6 +276,7 @@ let
     realm: host: kind:
     let
       key = "${realm}-${kind}";
+      growthTaken = growthTakenOf realm host;
     in
     {
       name = "pi-conversation-${key}@";
@@ -286,11 +296,19 @@ let
           # instance that failed is forgotten rather than listed for good.
           # A [Unit] setting: systemd ignores it under [Service].
           CollectMode = "inactive-or-failed";
+        }
+        // lib.optionalAttrs (host.conversationHeapGrowingPercent != null) {
+          # Unread by systemd: it ties the generation to a build that runs the
+          # realm's node with the percent, so a node that refuses it fails the
+          # switch by name rather than ending each conversation as it starts.
+          X-HeapGrowthTakenBy = "${growthTaken}";
         };
         Service = {
           # It says nothing to systemd: its host follows it on its socket.
           Type = "exec";
-          ExecStart = startOf host host.conversationHeapMb [ "--child" ];
+          ExecStart = startOf host host.conversationHeapMb (lib.optional (
+            host.conversationHeapGrowingPercent != null
+          ) "--heap-growing-percent=${toString host.conversationHeapGrowingPercent}") [ "--child" ];
           Environment = environmentOf realm host false (
             {
               PI_HOST_CHILD_KEY = key;
@@ -361,7 +379,7 @@ let
         # conversation can be sent to it; it says so from a child process.
         Type = "notify";
         NotifyAccess = "all";
-        ExecStart = startOf host host.heapMb [ kind ];
+        ExecStart = startOf host host.heapMb [ ] [ kind ];
         # The stop limit below, which the host parks within, and what its
         # restart waits on (host-launch.nix's hostOwn).
         Environment = environmentOf realm host true (launch.hostOwn restartWaitsOn);
@@ -519,6 +537,39 @@ in
               together once they pass it.
             '';
           };
+          conversationHeapGrowingPercent = lib.mkOption {
+            type = lib.types.nullOr (lib.types.ints.between 10 100);
+            default = null;
+            description = ''
+              How far each conversation's own process lets its heap grow past
+              what it held live after a full collection before it collects in
+              full again, in percent, as node's --heap-growing-percent: V8 then
+              grows each limit by one plus the percent over a hundred, in place
+              of the factor it would pick. It still grows a limit by at least a
+              few megabytes past what is live, adds room for the young
+              generation and stops halfway from what is live to the heap
+              limit, so a small heap grows by more than the percent. Unset,
+              with a heap limit of 2048 MB or more, as conversationHeapMb's
+              default is, V8 lets the heap reach up to four times what is live
+              while collections keep up, and carries that growth as resident
+              memory between collections, but grows by a tenth after a
+              collection that gives memory back. Set, the percent stands in for
+              both. A lower percent collects more often, keeping less resident
+              for more collection time; it starts at 10, the tenth V8 itself
+              grows by at its lowest, and stops at 100, since more would grow
+              past V8's own choice more often. It reaches only conversations in
+              a unit of their own, on Linux: hosts, and a Mac's pi, keep V8's
+              own growth. A node that doesn't know the flag refuses it as a bad
+              option, which would end each conversation as it starts, so the
+              generation builds the realm's node running with it first, and a
+              node that refuses it, fails another way or doesn't end within a
+              minute fails the switch by name. So the realm's node must be a
+              program its build can run, from the store and with its context,
+              as lib.getExe gives one. A machine built on another platform,
+              whose builder can't run its programs, goes without that proof,
+              and warns of it.
+            '';
+          };
           asyncContextFrame = lib.mkOption {
             type = lib.types.bool;
             default = false;
@@ -552,7 +603,8 @@ in
               host's unit clears since each could make its node run code:
               evaluation refuses a realm giving one, and a command that needs
               one sets it itself. Each value is taken as written: a % in it
-              stays a %, never read as one of systemd's specifiers.
+              stays a %, never read as one of systemd's specifiers, so a
+              value meaning a folder such as %h or %t spells out its path.
 
               On Linux, each conversation in a unit of its own is given
               GLIBC_TUNABLES with glibc.malloc.trim_threshold=131072 added
@@ -567,10 +619,14 @@ in
               Such a conversation never reads the login's GLIBC_TUNABLES or
               MALLOC_TRIM_THRESHOLD_, where the login is the systemd user
               manager's environment: each is replaced by the realm's value or
-              the trim, or dropped, even when set on its unit elsewhere. This
-              loses every tunable the login's GLIBC_TUNABLES names, a
-              hardening one included. To keep one, name it in the realm's
-              GLIBC_TUNABLES, which also replaces the login's whole
+              the trim, or dropped. A dropped one stays dropped even when
+              another module sets it on the unit; a replaced one holds
+              only where no other module sets it there too. This loses every
+              tunable the login's GLIBC_TUNABLES names, a hardening one
+              included. To keep one, name it in the realm's GLIBC_TUNABLES.
+              That reaches the conversation's own process, and from the
+              harness's pull request 2015 on not its commands, which an older
+              harness passes it on to. It also replaces the login's whole
               GLIBC_TUNABLES in both of the realm's hosts, so a login tunable
               the hosts need is named there too. glibc's other MALLOC_
               variables, such as MALLOC_ARENA_MAX, still come from the realm
@@ -670,9 +726,25 @@ in
         assertion = given == [ ];
         message = "jitsusama.pi.hosts.${realm}.environment gives ${named}, which a pi host's unit clears: ${if one then "it" else "each"} could make the host's node run code nobody gave it. NODE_OPTIONS does so through --require or --import, or by opening the host's inspector with --inspect; NODE_PATH through a module a require finds there; NODE_COMPILE_CACHE through compiled code node reads back from its folder; LD_PRELOAD, LD_AUDIT and LD_LIBRARY_PATH through a library the loader loads; and OPENSSL_CONF and OPENSSL_MODULES through a module OpenSSL loads. ${
           if one then "Drop it." else "Drop each one."
-        } A host's node takes no option from a realm but its heap, set with heapMb, and V8's async context frame, set with asyncContextFrame. The conversations' commands share the host's environment, so they get none of these from it: a command that needs one sets it itself.";
+        } A host's node takes no option from a realm but its heap, set with heapMb, and V8's async context frame, set with asyncContextFrame; a conversation's own node takes its heap and its growth too, set with conversationHeapMb and conversationHeapGrowingPercent. The conversations' commands share the host's environment, so they get none of these from it: a command that needs one sets it itself.";
       }
     ) cfg;
+
+  # A realm whose proof stands unproven, as on a machine built on another
+  # platform, says so here, since its switch can't.
+  config.warnings = lib.mkIf pkgs.stdenv.hostPlatform.isLinux (
+    lib.concatLists (
+      lib.mapAttrsToList (
+        realm: host:
+        let
+          growthTaken = growthTakenOf realm host;
+        in
+        lib.optional (
+          host.conversationHeapGrowingPercent != null && growthTaken ? unproven
+        ) growthTaken.unproven
+      ) cfg
+    )
+  );
 
   config.systemd.user.services = lib.mkIf pkgs.stdenv.hostPlatform.isLinux (
     lib.listToAttrs (

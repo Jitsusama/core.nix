@@ -11,16 +11,23 @@
 //! apart, and the worst is asked for its next change once a day.
 //!
 //! This file reads the measures and runs the hour; `card` composes what it
-//! says and keeps, `owing` files its drag with each owner, `records`
-//! reads the queues' records, and `reviews` the harness's review records.
+//! says and keeps, `good` holds each measure to the definition of good,
+//! `owing` files its drag with each owner, `net` reads the merge net's two
+//! files, `records` reads the queues' records, and `reviews` the
+//! harness's review records.
 
 mod card;
+mod good;
+mod ledger;
 mod lines;
 mod measures;
 mod moved;
+mod net;
 mod owing;
+mod parted;
 mod records;
 mod reviews;
+mod stuck;
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -80,10 +87,7 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
     let (_, state_home, folder) = folders()?;
     let now = now_ms() / 1000;
     let kept_at = folder.join("hour.json");
-    let mut kept: Kept = fs::read_to_string(&kept_at)
-        .ok()
-        .and_then(|text| serde_json::from_str(&text).ok())
-        .unwrap_or_default();
+    let mut kept = Kept::last(&kept_at);
     // Read once, so the misses measured and the words told for them come
     // from the same ledger; one not read whole leaves the misses unjudged.
     // A miss gone from it isn't carried, so the hour after judges the
@@ -92,24 +96,13 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
     let whole = gone.as_ref().is_some_and(Vec::is_empty);
     kept.open
         .retain(|open| !gone.as_ref().is_some_and(|gone| gone.contains(open)));
-    let mut measures = gather(
-        &folder,
-        &state_home,
-        &misses,
-        now,
-        checkouts,
-        &mut kept.fetched,
-        to,
-    )?;
-    for m in measures
-        .iter_mut()
-        .filter(|m| !whole && m.class == Class::Miss)
-    {
-        m.target = None;
-        // A torn line has already said so.
-        if !m.says.ends_with(measures::UNREAD) {
-            m.says.push_str(measures::UNREAD);
-        }
+    // A miss its owner said was none isn't fixed, nor one carried into the
+    // asks, so each leaves without Joel being told it is; the card shows a
+    // none's why for a day, and the asks track a carried one's fix.
+    measures::forget_unfixed(&misses, &mut kept.open);
+    let mut measures = gather(&folder, &state_home, &misses, now, checkouts, &mut kept, to)?;
+    if !whole {
+        unread_misses(&mut measures);
     }
     // A realm whose node doesn't answer says nothing of its machines.
     if !realms.is_empty() {
@@ -160,18 +153,22 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
         measures.push(spent_beside_landed(&state_home, now));
         measures.extend(spend_watch_measures(now));
     }
+    // Every measure read, each is held to its line on the definition of
+    // good, and one with none, or another target, is counted.
+    measures.push(good::undefined(&measures));
     // Once every measure is read, a miss whose check names one stays open
     // until it judges, so Joel isn't told it's fixed before it is; one
     // closed before last hour stays so.
     measures::held(&misses, &mut measures, &kept.open);
     let said = measures::said(&misses, &TimeZone::system());
-    let (card, next) = compose(
+    let (mut card, mut next) = compose(
         &clock(now),
         &measures,
         &kept,
         &said,
         &format!("{} tomorrow", clock(now + DAY)),
     );
+    stuck::daily(&mut card, &mut next, &measures, now, &TimeZone::system());
     print!("{card}");
     // A look by hand lacks the timer's checkouts, so it can read a closed
     // miss as open: only the run sending the card keeps the hour and owes.
@@ -201,6 +198,22 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
     Ok(())
 }
 
+/// The misses measured from a ledger not read whole, left unjudged, and
+/// nor whether they name tests: an emptied ledger names none, so judging
+/// it would close every owner's ask, to be filed again after.
+fn unread_misses(measures: &mut [Measure]) {
+    for m in measures
+        .iter_mut()
+        .filter(|m| m.class == Class::Miss || m.key == measures::UNTESTED)
+    {
+        m.target = None;
+        // A torn line has already said so.
+        if !m.says.ends_with(measures::UNREAD) {
+            m.says.push_str(measures::UNREAD);
+        }
+    }
+}
+
 /// Whom the card goes to, and as what: the orchestrator for context, and
 /// the keeper of Joel's wish list, which re-ranks it each hour by what
 /// the card says (WCJQSG, 19 November), as a question, so its turn starts
@@ -213,6 +226,20 @@ fn card_to<'a>(to: &'a str, keeper: Option<&'a str>) -> Vec<(&'a str, &'static s
     whom
 }
 
+/// The net's quarantine on core's main, or nothing when it can't be read.
+fn quarantine(core: &Path) -> String {
+    command(
+        "git",
+        &[
+            "-C",
+            &core.to_string_lossy(),
+            "show",
+            "main:tools/merge-net/quarantine.json",
+        ],
+    )
+    .unwrap_or_default()
+}
+
 /// Reads every measure from the machine: the orchestrator's misses and
 /// asks, the work system's findings on the mesh, the net's quarantine,
 /// reverts and results, the tick's card, the three mains, code health's
@@ -223,25 +250,19 @@ fn gather(
     misses: &str,
     now: i64,
     checkouts: &[String],
-    fetched: &mut Vec<i64>,
+    kept: &mut Kept,
     orchestrator: Option<&str>,
 ) -> io::Result<Vec<Measure>> {
     let text = |path: &Path| fs::read_to_string(path).unwrap_or_default();
     let mission = state_home.join("mission");
     let core = folder.join("core.git");
-    let quarantine = command(
-        "git",
-        &[
-            "-C",
-            &core.to_string_lossy(),
-            "show",
-            "main:tools/merge-net/quarantine.json",
-        ],
-    )
-    .unwrap_or_default();
+    let quarantine = quarantine(&core);
     let card_text = fresh_card(folder, now);
     let [core_log, harness_log, machine_log] = axes::repository::mains(folder, now);
-    let asks = text(&mission.join("asks.jsonl"));
+    // Read even when what the last hour kept of it is lost, so the next
+    // hour has this one's count to read against.
+    let (asks, asks_unread) = ledger::whole(&mission.join("asks.jsonl"), &mut kept.asks, now);
+    let asks_unread = kept.unread.clone().or(asks_unread);
     let switches = text(&state_home.join("integration/switches.jsonl"));
     // The work system's findings count against their owners, and one
     // naming none is the orchestrator's to assign.
@@ -251,46 +272,43 @@ fn gather(
         now,
         orchestrator,
     );
-    let (misses, found) =
+    let (checked, found) =
         measures::checked_beside(misses, folder, checkouts, &switches, findings.as_ref(), now)?;
     let mut all = vec![
-        misses,
+        checked,
+        measures::untested(misses, folder, checkouts, &switches),
         measures::slips(&asks, now, Tracking::His),
+        measures::parked(&asks, Tracking::His),
+        measures::told_late(&asks, now, Tracking::His),
         measures::to_first_slice(&asks, now, Tracking::His),
         measures::slips(&asks, now, Tracking::Derived),
+        measures::parked(&asks, Tracking::Derived),
+        measures::told_late(&asks, now, Tracking::Derived),
         measures::to_first_slice(&asks, now, Tracking::Derived),
         measures::undated(&quarantine, &today(now), NET_RULES),
-        measures::reverts(&text(&folder.join("reverted.json")), now, NET_RULES),
-        measures::broken(
-            &text(&state_home.join("net/results.jsonl")),
-            now,
-            NET,
-            &measures::Main::read(&core, &quarantine),
-            &measures::failed_in,
-        ),
         landed(&core_log, &harness_log, &machine_log, now),
     ];
-    all.extend(found);
-    all.extend(rounds_per_merge(
+    all.extend(net::read_both(folder, state_home, &core, &quarantine, now));
+    all.extend(measures::said_none(misses, now));
+    all.push(measures::cited::read(
         state_home,
-        &core,
-        &core_log,
-        &harness_log,
         now,
+        &today(now),
+        orchestrator,
     ));
+    all.push(measures::holds::read(state_home, &asks, now));
+    // Only the hour that files keeps what it read of the mesh; a look by
+    // hand names no orchestrator, and keeps nothing.
+    let keeps = orchestrator.is_some();
+    all.push(measures::causes::read(state_home, folder, now, keeps));
+    all.extend(parted::dates_at_risk(state_home, &core, &asks, now));
+    all.extend(found);
+    let per_merge = rounds_per_merge(state_home, &core, &core_log, &harness_log, now);
+    all.extend(per_merge);
     all.extend(measures::merge_to_on(&card_text, NET_RULES));
+    let fetched = &mut kept.fetched;
     all.extend(measures::unlocked(&core, checkouts, now, BUMPS, fetched));
-    if let Some((median, target)) = measures::card_median(&card_text, "Last commit to merge") {
-        all.push(Measure {
-            key: "commit-to-merge".to_owned(),
-            class: Class::Ship,
-            says: "median minutes from last commit to merge".to_owned(),
-            now: median,
-            target: Some(target),
-            owner: NET_RULES.to_owned(),
-            behind: Vec::new(),
-        });
-    }
+    all.extend(measures::commit_to_merge(&card_text, NET_RULES));
     all.extend(measures::clean(&text(
         &state_home.join("code-health/hour.json"),
     )));
@@ -325,6 +343,7 @@ fn gather(
         },
         now,
     ));
+    ledger::unless_whole(&mut all, asks_unread.as_deref());
     Ok(all)
 }
 
@@ -613,8 +632,8 @@ fn landed_by_session<'a>(
     landed
 }
 
-/// A measure for the card's and the owing's tests, said as "`key` said"
-/// and owned by `OWNER`.
+/// A measure for the card's, the owing's and the stuck runs' tests, said
+/// as "`key` said" and owned by `OWNER`.
 #[cfg(test)]
 fn measure(key: &str, class: Class, now: f64, target: Option<f64>) -> Measure {
     Measure {

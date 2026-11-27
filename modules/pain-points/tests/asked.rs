@@ -207,6 +207,97 @@ fn hear_over_nothing_hears_nothing_and_says_the_hour() {
     );
 }
 
+#[test]
+fn test_names_a_misses_test_in_the_missions_ledger_or_says_why_not() {
+    let mission = std::env::temp_dir().join(format!("pain-points-test-{}", std::process::id()));
+    std::fs::create_dir_all(&mission).expect("a folder");
+    let at = "2026-11-14T17:24:00-05:00";
+    let kept = mission.join("misses.jsonl");
+    std::fs::write(&kept, format!("{{\"at\":\"{at}\"}}\n")).expect("a ledger");
+    let test = "core modules/cat/src/air.rs the_cat_never_waits";
+    let folder = mission.to_str().expect("a folder named in UTF-8");
+    let asked =
+        |at: &str, test: &str| ran(&["test", "--miss", at, "--test", test, "--ledgers", folder]);
+    let named = asked(at, test);
+    let wrong = asked(at, "core the_cat");
+    let missing = asked("2026-11-14T17:25:00-05:00", test);
+    let ledger = std::fs::read_to_string(&kept).unwrap_or_default();
+    let _ = std::fs::remove_dir_all(&mission);
+    assert_eq!(
+        named.status.code(),
+        Some(0),
+        "naming a test ended {:?}: {}",
+        named.status,
+        said(&named.stderr)
+    );
+    assert!(
+        ledger.contains(test),
+        "the ledger doesn't name the test: {ledger}"
+    );
+    assert_eq!(
+        wrong.status.code(),
+        Some(64),
+        "a test not REPO PATH NAME wasn't refused as asked wrongly"
+    );
+    assert_eq!(
+        missing.status.code(),
+        Some(66),
+        "a time with no miss wasn't refused as not found: {}",
+        said(&missing.stderr)
+    );
+}
+
+#[test]
+fn test_writes_a_miss_its_owner_says_nothing_heard_then_names_its_fix() {
+    let mission = std::env::temp_dir().join(format!("pain-points-owned-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&mission);
+    std::fs::create_dir_all(&mission).expect("a folder");
+    let kept = mission.join("misses.jsonl");
+    let at = "2026-11-24T20:38:19-05:00";
+    let folder = mission.to_str().expect("a folder named in UTF-8");
+    let what = "a du walked his guarded folders";
+    let test = "core modules/du/tests/du.sh du-leaves-guarded-folders-alone";
+    let owned = ran(&[
+        "test",
+        "--miss",
+        at,
+        "--owner",
+        "0FX11G",
+        "--what",
+        what,
+        "--test",
+        test,
+        "--ledgers",
+        folder,
+    ]);
+    let fix = "core #6470";
+    let named = ran(&["test", "--miss", at, "--fix", fix, "--ledgers", folder]);
+    let ledger = std::fs::read_to_string(&kept).unwrap_or_default();
+    let _ = std::fs::remove_dir_all(&mission);
+    for (output, act) in [(&owned, "writing the miss"), (&named, "naming its fix")] {
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "{act} ended {:?}: {}",
+            output.status,
+            said(&output.stderr)
+        );
+    }
+    let lines: Vec<serde_json::Value> = ledger
+        .lines()
+        .filter_map(|line| serde_json::from_str(line).ok())
+        .collect();
+    let written = serde_json::json!({
+        "at": at, "what": what, "owner": "0FX11G", "heard_by": "its owner", "test": test,
+        "check": fix,
+    });
+    assert_eq!(
+        lines,
+        [written],
+        "the ledger doesn't hold the owner's one miss, its test and fix: {ledger}"
+    );
+}
+
 /// pain-points hear over a home of its own, at 20:00 UTC on 16 November.
 fn heard_in(home: &std::path::Path) -> Output {
     Command::new(env!("CARGO_BIN_EXE_pain-points"))

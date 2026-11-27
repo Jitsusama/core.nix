@@ -19,7 +19,9 @@
     homeModules.btop
     homeModules.curl
     homeModules.dig
+    homeModules.du
     homeModules.fd
+    homeModules.find
     homeModules.gh
     homeModules.gnupg
     homeModules.jq

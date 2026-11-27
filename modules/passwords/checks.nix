@@ -22,6 +22,14 @@ onLinux {
   # get asks no manager anything; a secret goes only to the ask for it,
   # never to a watch, or to the clipboard marked sensitive, cleared when
   # its time is up, and copying is refused while no copier is named;
+  # a password is typed on the typist's standard input alone, never its
+  # arguments, into the window niri says has the keys once the launcher
+  # has let go of them, and nothing is typed, nor any secret read, while
+  # no typist is named, while the launcher keeps the keys, where another
+  # window has them, into a window an agent is beneath, above or below,
+  # or into a terminal running one or a multiplexer, or whose kitty can't
+  # say what runs in it, each
+  # type a journal line naming the entry and the window, never the secret;
   # a one-time code says its period, and its detail gives the code, never
   # its seed; a manager signed out is said so and
   # gives no secret; a watch hears entries arrive; an ask or kind it
@@ -95,6 +103,42 @@ onLinux {
           ${pkgs.callPackage ./completion.nix { }}/share/zsh/site-functions/_passwords
         touch $out
       '';
+  # Passwords' copier, run as the daemon runs it on the account's niri
+  # nested in the sandbox, keeps a secret it's given on its standard input
+  # in its own memory, locked and unreadable through /proc: it pastes on
+  # Joel's display, and nothing is made under TMPDIR, where any process of
+  # the account's could read it, nor run from PATH. One it can't read whole
+  # is refused (tests/copier-keeps-a-secret-in-memory.py).
+  passwords-copier-keeps-a-secret-in-memory-on-niri =
+    let
+      files = lib.filterAttrs (name: _: lib.hasPrefix "niri/" name) (account graphical).xdg.configFile;
+      copier = pkgs.callPackage ./copier.nix { };
+      inherit (pkgs) mesa;
+    in
+    pkgs.runCommandLocal "passwords-copier-keeps-a-secret-in-memory-on-niri"
+      {
+        nativeBuildInputs = [
+          graphical.config.programs.niri.package
+          pkgs.dbus
+          pkgs.python3
+          pkgs.sway-unwrapped
+          pkgs.wl-clipboard
+        ];
+        __EGL_VENDOR_LIBRARY_FILENAMES = "${mesa}/share/glvnd/egl_vendor.d/50_mesa.json";
+        LIBGL_DRIVERS_PATH = "${mesa}/lib/dri";
+        GBM_BACKENDS_PATH = "${mesa}/lib/gbm";
+        LIBGL_ALWAYS_SOFTWARE = 1;
+      }
+      ''
+        export HOME=$PWD XDG_CONFIG_HOME=$PWD
+        ${lib.concatLines (
+          lib.mapAttrsToList (name: file: "install -D -m 644 ${file.source} ${lib.escapeShellArg name}") files
+        )}
+        ${lib.getExe pkgs.bash} ${../../tests/lib/nested-niri.sh} niri/config.kdl logs \
+          python3 ${./tests/copier-keeps-a-secret-in-memory.py} \
+          ${lib.getExe' copier "wl-copy"} ${lib.getExe pkgs.bash}
+        touch $out
+      '';
   # clippy finds nothing in the passwords daemon, its tests included.
   passwords-passes-clippy = passesClippy "passwords-passes-clippy" (
     pkgs.callPackage ./package.nix { }
@@ -103,7 +147,9 @@ onLinux {
   # daemon itself, with 1Password's manager, and nothing else can: there's
   # no unit and no socket for it, and no copier is named, so nothing is
   # copied until agents are fenced off the clipboard. The place stays off
-  # meanwhile, and the provider knows 1Password's program.
+  # meanwhile, its Return set to type through wtype and ask kitty's kitten
+  # what a terminal runs once it's on, and the provider knows 1Password's
+  # program.
   passwords-runs-each-password-manager =
     let
       home = account graphical;
@@ -118,6 +164,8 @@ onLinux {
         && !(home.systemd.user.sockets ? passwords)
         && !(provider ? copier)
         && (provider.off or false)
+        && lib.hasSuffix "/bin/wtype" (provider.typist or "")
+        && lib.hasSuffix "/bin/kitten" (provider.kitty or "")
         && home.jitsusama.passwords.managers ? "1password"
         && lib.any (lib.hasSuffix "/op") home.jitsusama.passwords.managers."1password".command
         && map (manager: manager.program) (provider.managers or [ ]) == [ "com.onepassword.OnePassword" ]
@@ -176,7 +224,9 @@ onLinux {
   # Nothing of the Passwords place, nor the daemon interface it asks its
   # daemon through, answers the shell's IPC, so no `qs ipc call` another
   # process makes reaches a secret or lets a manager in, now or once
-  # something is added: only Joel's keys in the launcher do. Nor do Asks,
+  # something is added: only Joel's keys in the launcher do, typing a
+  # password included, which the place refuses while a walk from outside
+  # runs its act (Passwords.qml's typeSecret). Nor do Asks,
   # which draws this daemon's secret asks, how it says a line was shown,
   # or the ready rows it acts through, so no IPC says yes to an ask; the
   # launcher's own do and run, walked from outside, have the shell withhold
@@ -196,13 +246,43 @@ onLinux {
     holds "the-passwords-answer-no-ipc"
       "The Passwords place or its daemon's interface answers the shell's IPC."
       (!lib.any (text: lib.hasInfix "IpcHandler" text || lib.hasInfix "Ipc." text) read);
+  # The passwords daemon listens nowhere: none of its sources binds a
+  # socket of any kind, so only the shell that runs it, over the daemon's
+  # own standard input and output, can ask it to copy, type or release a
+  # secret, and no other process can reach it to.
+  the-passwords-daemon-binds-no-socket =
+    let
+      read = map builtins.readFile [
+        ./src/lib.rs
+        ./src/main.rs
+        ./src/asks.rs
+        ./src/asks/emptied.rs
+        ./src/asks/npmrc.rs
+        ./src/asks/sweep.rs
+        ./src/audit.rs
+        ./src/cli.rs
+        ./src/cli/keys.rs
+        ./src/rows.rs
+        ./src/typing.rs
+      ];
+      binding = [
+        "UnixListener"
+        "UnixDatagram"
+        "TcpListener"
+        "UdpSocket"
+        ".bind("
+      ];
+    in
+    holds "the-passwords-daemon-binds-no-socket" "The passwords daemon binds a socket." (
+      !lib.any (text: lib.any (bind: lib.hasInfix bind text) binding) read
+    );
   # Each kind's mark, who's listed with nothing typed and in what order,
   # what a row says, an entry's acts and their order, opening it where its
   # manager fills only on a web page, its link in its manager's program, its drawer's eyebrow, and its facts saying every
   # figure and never a secret, its health and a weak strength warning,
   # its password reused and breached once every password is checked and
-  # nothing before, those needing attention and the foot counting a copy
-  # down are Passwords.js's, a manager's entries by vault and what its
+  # nothing before, those needing attention, the foot counting a copy
+  # down and saying how a type stands are Passwords.js's, a manager's entries by vault and what its
   # drawer says it holds and what the place's one row opens while it's off
   # Managers.js's, and For You's one to-do for what
   # the last check found, whether it stands or is done, its side and its

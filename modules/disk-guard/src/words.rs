@@ -19,11 +19,20 @@ pub struct Room<'a> {
     pub band: Band,
     pub free: u64,
     pub size: u64,
-    /// Seconds until it's full at the present fill, if it's filling.
+    /// Seconds until it's full at the present fill, if it's filling, or
+    /// until it reaches `nix_floor` when that's given. A forecast's moment
+    /// passed with the disk still holding room is no forecast, so neither
+    /// row says one at or below zero.
     pub full_in: Option<f64>,
+    /// The free space Nix keeps here by collecting its own garbage, when
+    /// `full_in` counts to it.
+    pub nix_floor: Option<u64>,
     /// Whether the last pass in this band or a worse one found nothing
     /// more it may clear, so saying it's clearing would be untrue.
     pub cleared_all: bool,
+    /// Whether a writers' hold stands while the disk is still above nearly
+    /// full, so no pass runs here until it ends.
+    pub waiting: bool,
 }
 
 /// What one filesystem's room is, and what the guard does about it.
@@ -32,9 +41,15 @@ pub fn filesystem(room: &Room, home: Option<&Path>) -> String {
     let free = shown(room.free);
     let mut said = match (room.band, room.cleared_all) {
         (Band::Healthy, _) => format!("{name} has {free} free."),
+        // Clearing all it may stays true under a hold, and says no
+        // clearing is to come when the hold ends.
         (Band::Filling, true) => format!(
             "{name} is filling, with {free} free. \
              The guard has cleared all it may; what's left is in use or kept."
+        ),
+        (Band::Filling, false) if room.waiting => format!(
+            "{name} is filling, with {free} free. \
+             The guard waits to clear while heavy writing is held off."
         ),
         (Band::NearlyFull, true) => format!(
             "{name} is nearly full, with {free} free. \
@@ -57,17 +72,33 @@ pub fn filesystem(room: &Room, home: Option<&Path>) -> String {
              the guard is clearing everything it can and may freeze what is filling it."
         ),
     };
-    if let Some(full_in) = room.full_in.filter(|full_in| *full_in < TELL_WITHIN) {
+    if let Some(full_in) = room.full_in.filter(|full_in| telling(*full_in)) {
         // Writing to a String can't fail.
-        _ = write!(said, " At this rate it fills in {}.", span(full_in));
+        _ = match room.nix_floor {
+            Some(floor) => write!(
+                said,
+                " At this rate it reaches the {} Nix keeps free in {}, \
+                 where Nix collects its own garbage as it builds.",
+                shown(floor),
+                span(full_in)
+            ),
+            None => write!(said, " At this rate it fills in {}.", span(full_in)),
+        };
     }
     said
+}
+
+/// Whether a forecast this many seconds off is worth a sentence.
+fn telling(full_in: f64) -> bool {
+    full_in > 0.0 && full_in < TELL_WITHIN
 }
 
 /// The one sentence the machine's row shows: its worst disk's, or when
 /// every disk has room and none is filling fast, how much the system disk
 /// has, or without it the tightest watched: a small build disk with room
-/// leading would read as a machine nearly full.
+/// leading would read as a machine nearly full. A disk that fills is told
+/// before one that only reaches Nix's floor, where Nix collects, however
+/// soon that is.
 pub fn machine(rooms: &[Room], home: Option<&Path>) -> String {
     let Some(worst) = rooms.iter().max_by_key(|room| room.band) else {
         return "Not watching any disk yet.".to_owned();
@@ -78,8 +109,13 @@ pub fn machine(rooms: &[Room], home: Option<&Path>) -> String {
     let filling = rooms
         .iter()
         .filter_map(|room| room.full_in.map(|full_in| (room, full_in)))
-        .filter(|(_, full_in)| *full_in < TELL_WITHIN)
-        .min_by(|(_, one), (_, other)| one.total_cmp(other));
+        .filter(|(_, full_in)| telling(*full_in))
+        .min_by(|(one, one_in), (other, other_in)| {
+            one.nix_floor
+                .is_some()
+                .cmp(&other.nix_floor.is_some())
+                .then(one_in.total_cmp(other_in))
+        });
     if let Some((room, _)) = filling {
         return filesystem(room, home);
     }
@@ -168,12 +204,16 @@ pub fn tilde(path: &Path, home: Option<&Path>) -> String {
 
 /// A length of time as people read one, in its largest two units as
 /// every command says one (docs/commands.md, Figures and Words): `15 h
-/// 2 m` rather than `15.0 h`, to the nearest second.
+/// 2 m` rather than `15.0 h`, to the nearest second. One that never ends,
+/// as a producer whose folder changed is offered idle, says `forever`.
 pub fn span(seconds: f64) -> String {
+    if seconds.is_infinite() {
+        return "forever".to_owned();
+    }
     #[expect(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
-        reason = "a span is never negative, and the guard's are far short of a u64 of seconds"
+        reason = "a span is never negative, and a finite one is far short of a u64 of seconds"
     )]
     let whole = seconds.max(0.0).round() as u64;
     terminal_kit::time::span(whole)

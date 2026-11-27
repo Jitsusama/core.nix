@@ -8,8 +8,9 @@
 # upload is held under what the house's 8 Mbit/s leaves, and still once the
 # other machine's route moves to another of its addresses, as a Mac's does
 # to its cable's; once they stop, it climbs back to the connection. Both
-# machines hold one key, so only signed reports are taken: with the true
-# reporter stopped, reports forged from the house's own address under
+# machines hold one key, and the house names no address, so a signed report
+# is taken from any, the key alone saying it's the house's: with the true
+# reporter stopped, reports forged from the house's first address under
 # another key, in step and saying what it sends, hold nothing, and the
 # upload climbs as it does once the house goes quiet. A key swapped on
 # both, put in place by rename, restarts the reporter, whose reports hold
@@ -60,17 +61,13 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
     jitsusama.shaper.controller = "one-way";
     # The router's hardware address, as QEMU gives the third machine by
     # name its card on the first network, names the network; the house is
-    # the second's, at the address the test network gives it, or the one
-    # it moves to.
+    # the second machine, named by its key alone, so it's heard at the
+    # address the test network gives it and at the one it moves to.
     jitsusama.shaper.networks."52:54:00:12:01:03" = {
       up = 8000;
       house = {
         most = 8000;
         inherit keyFile;
-        from = [
-          "192.168.1.2"
-          "192.168.1.12"
-        ];
       };
     };
     users.users.alice = {
@@ -80,8 +77,9 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
     environment.systemPackages = [ pkgs.jq ];
   };
 
-  # The house's other machine and its reporter, and socat and openssl to
-  # forge reports with.
+  # The house's other machine and its reporter, and a forger of its
+  # reports (house-forger.sh), a script of its own so it's linted on its
+  # own (house signing round 4's F13).
   nodes.house = {
     imports = [
       self.nixosModules.house-report
@@ -89,8 +87,16 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
     ];
     jitsusama.house-report.keyFile = keyFile;
     environment.systemPackages = [
-      pkgs.openssl
-      pkgs.socat
+      (pkgs.writeShellScriptBin "house-forger" ''
+        export PATH=${
+          lib.makeBinPath [
+            pkgs.coreutils
+            pkgs.openssl
+            pkgs.socat
+          ]
+        }
+        exec ${lib.getExe pkgs.bash} ${./house-forger.sh} "$@"
+      '')
     ];
     virtualisation.vlans = [ 1 ];
     networking.useDHCP = false;

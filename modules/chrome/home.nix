@@ -366,8 +366,15 @@ let
   # Only the Default profile's caches move; a profile added later keeps its
   # own on the disk, as all of them were before. The caches are Chrome's
   # own size, tens of megabytes, against the runtime folder's gigabytes.
+  #
+  # With usage reports off, Chrome deletes BrowserMetrics about two minutes
+  # into each session, the link with it, and a folder on the disk takes its
+  # place, which the next start maps its histograms from; a restart leaves
+  # no gap between Chrome quitting and starting for the move. So that one,
+  # marked +, moves even while Chrome runs, once nothing of Chrome's maps
+  # or holds open a file in it, as is so once Chrome has deleted its own.
   mappedFolders = [
-    "BrowserMetrics"
+    "+BrowserMetrics"
     "Default/GPUCache"
     "Default/DawnWebGPUCache"
     "Default/DawnGraphiteCache"
@@ -386,6 +393,7 @@ in
     ../keys/home.nix
     ../quickshell/providers.nix
     ../quickshell/recents.nix
+    ../subvolumes/home.nix
   ];
 
   options.jitsusama.chrome.vimium = lib.mkOption {
@@ -439,6 +447,16 @@ in
         Unit = "chrome-maps-in-memory.service";
       };
       Install.WantedBy = [ "paths.target" ];
+    };
+
+    # Chrome's SQLite and LevelDB commits each wait on a write and fsync,
+    # which in the home's own tree wait their turn behind every agent's. The
+    # profile's links into memory are made after the move, so the session
+    # waits on it through them, once: its copy took 25 s under agents' load,
+    # and a minute and a half is all a login gives it.
+    jitsusama.subvolumes.folders.".config/google-chrome" = {
+      before = [ "chrome-maps-in-memory.service" ];
+      seconds = 90;
     };
 
     jitsusama.keys.chrome = keys;

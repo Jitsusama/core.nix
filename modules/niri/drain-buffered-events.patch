@@ -1,0 +1,70 @@
+Before it sleeps, handles the X11 events xcb read while a request waited.
+
+Backported from upstream's 779151fdfc ("fix: drain X11 events buffered
+during Wayland dispatch"), which no release carries yet, and made on
+flush-when-full.patch, which applies before it.
+
+xcb reads the events that come in while a synchronous request waits for
+its reply, and queues them. Satellite's main loop handles X11 events,
+then makes such requests while it dispatches Wayland and sets a new
+clipboard (interning a mime's atoms, for one), then polls the X11
+socket. An event read into xcb's queue meanwhile leaves the socket with
+nothing to read, so poll sleeps over it until another event comes. An
+X11 window can then go unseen, with no Wayland surface, until its
+program does something else or quits. In core.nix's
+vm-desktop-keeps-copies, 6 of 62 runs opened xlogo and saw no window
+for a minute, and in each the satellite's log met xlogo's window only
+as the test killed it, its pid already gone. The main loop now handles
+whatever xcb queued before it polls, and goes round again when there
+was any. Going round starves no Wayland work: the loop's top dispatches
+Xwayland's requests, then server_state.run() reads the compositor's
+socket, polling it with no wait, and handle_clientside_events() at its
+end flushes what is queued for the compositor, a flush left pending
+included. So a steady stream of X11 events delays Wayland only as long
+as each turn takes.
+
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -256,6 +256,11 @@
+             xstate.update_global_scale(scale);
+         }
+ 
++        // Synchronous X11 replies can buffer events without leaving the socket readable.
++        if xstate.handle_events(&mut server_state) {
++            continue;
++        }
++
+         fds[0] = PollFd::from_borrowed_fd(server_fd, compositor_flags(server_state.flush_pending()));
+         match poll(&mut fds, None) {
+             Ok(_) => {
+diff --git a/src/xstate/mod.rs b/src/xstate/mod.rs
+--- a/src/xstate/mod.rs
++++ b/src/xstate/mod.rs
+@@ -334,15 +334,17 @@
+             .unwrap();
+     }
+ 
+-    pub fn handle_events(&mut self, server_state: &mut super::RealServerState) {
++    pub fn handle_events(&mut self, server_state: &mut super::RealServerState) -> bool {
+         macro_rules! unwrap_or_skip_bad_window_cont {
+             ($err:expr) => {
+                 unwrap_or_skip_bad_window!($err, continue)
+             };
+         }
+ 
++        let mut handled = false;
+         let mut ignored_windows = Vec::new();
+         while let Some(event) = self.connection.poll_for_event().unwrap() {
++            handled = true;
+             trace!("x11 event: {event:?}");
+ 
+             if self.handle_selection_event(&event, server_state) {
+@@ -518,6 +520,7 @@
+ 
+             server_state.run();
+         }
++        handled
+     }
+ 
+     fn handle_client_message(

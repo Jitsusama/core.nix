@@ -7,10 +7,18 @@
 # It's written for a Mac whose Nix nix-darwin doesn't manage (`nix.enable =
 # false`), where nix-darwin's own `nix.linux-builder` can't run and nix-darwin
 # writes no nix.conf. So it runs the builder as nix-darwin would, and writes
-# its line to /etc/nix/linux-builder.conf, which the machine's own
+# its settings to /etc/nix/linux-builder.conf, which the machine's own
 # nix.custom.conf includes:
 #
 #   !include linux-builder.conf
+#
+# Those name a file of builders that holds the builder's line only while the
+# Mac has room, as a job every 15 seconds judges it (room.sh), so a Mac
+# short of memory isn't sent more builds for a VM that keeps what it takes.
+# It gates only the Mac's own Nix: a machine that jumps through the Mac to
+# the VM with a key in `authorizedKeys` reads its own builders, and is sent
+# on whatever the Mac's room, so a Mac that's short of memory is safe only
+# while no such machine builds there.
 #
 # It offers `big-parallel` and `benchmark`, never `kvm`: Rosetta runs no
 # x86_64 VM, so a VM test is never sent there to crawl. Nor `uid-range` and
@@ -230,9 +238,26 @@ let
         cfg.nixDaemon
       ];
 
+  # How long ssh waits on the guest, in seconds, before a build sent there
+  # fails: to greet it, and between asks, and how many asks may go
+  # unanswered. The greeting covers a boot from idle, which took about 90
+  # seconds from vzvm's start on 24 November, and Nix's hook fails the
+  # build the first time it can't connect, so it's well past that.
+  answers = {
+    greeting = 300;
+    every = 15;
+    unanswered = 4;
+  };
+
   # Not nix-darwin's /var/lib/linux-builder, which it empties at every switch
   # while its own builder is off.
   home = "/var/lib/linux-builder-vz";
+  # The builders Nix reads: the builder's line while the Mac has room, and
+  # nothing otherwise.
+  offered = "${home}/offered";
+  # What the room job says, named in the file it writes so a withheld
+  # builder says where to read when.
+  roomLog = "/var/log/linux-builder-room.log";
 
   line = lib.concatStringsSep " " [
     "ssh-ng://linux-builder"
@@ -350,14 +375,34 @@ in
         another machine. None by default, which writes no sudo rule.
       '';
     };
+    room = {
+      floor = lib.mkOption {
+        type = lib.types.ints.between 0 100;
+        default = 35;
+        description = ''
+          The share of the Mac's memory, in percent as macOS reckons it free,
+          under which the builder isn't offered to the Mac's Nix, so no build
+          starts in the VM; nor is it while the Mac swaps pages out
+          (room.sh).
+        '';
+      };
+      hold = lib.mkOption {
+        type = lib.types.ints.unsigned;
+        default = 600;
+        description = ''
+          The seconds the Mac must stay at the floor or above, swapping nothing out,
+          before the builder is offered again.
+        '';
+      };
+    };
     nixDaemon = lib.mkOption {
       type = lib.types.str;
       default = "systems.determinate.nix-daemon";
       description = ''
         The launchd label of the Nix daemon the machine's own installer runs.
         Nix reads its settings only as it starts, so it's restarted when the
-        builder's line changes, and only then, since a restart ends the builds
-        it's running.
+        builder's settings change, and only then, since a restart ends the
+        builds it's running.
       '';
     };
   };
@@ -380,13 +425,15 @@ in
       mkdir -p ${home}
     '';
 
-    # After /etc is written: restart Nix only when the line it reads differs
-    # from the one it was last restarted for.
+    # After /etc is written: restart Nix only when the settings it reads
+    # differ from the ones it was last restarted for. The builder's line
+    # itself is read from the room job's file at each build, so a change to
+    # it needs no restart.
     system.activationScripts.postActivation.text = lib.mkAfter ''
       read=$(/usr/bin/shasum -a 256 /etc/nix/linux-builder.conf | /usr/bin/cut -d' ' -f1)
       if [ "$read" != "$(/bin/cat ${home}/read-by-nix 2>/dev/null)" ] &&
         /bin/launchctl print system/${cfg.nixDaemon} >/dev/null 2>&1; then
-        echo "restarting ${cfg.nixDaemon}, so it reads the Linux builder's line" >&2
+        echo "restarting ${cfg.nixDaemon}, so it reads the Linux builder's settings" >&2
         /bin/launchctl kickstart -k system/${cfg.nixDaemon} && echo "$read" > ${home}/read-by-nix
       fi
     '';
@@ -435,6 +482,16 @@ in
       ) cfg.restartableBy
     );
 
+    # The VM is reached through vzvm's port on the Mac's loopback, which
+    # stays open whatever the guest does, so ssh to a guest that stops
+    # answering would wait without end, and the build with it, holding the
+    # store paths it locked. So ssh asks the guest every 15 seconds and
+    # gives up after four asks go unanswered, and gives a guest waking from
+    # idle five minutes to greet it: a build on a guest that stopped
+    # answering fails within about a minute, freeing what it held. A guest
+    # busy building still answers, since its sshd does. Neither reaches a
+    # machine that jumps through the Mac, whose own ssh settings apply, nor
+    # a guest whose sshd answers while its build hangs.
     environment.etc."ssh/ssh_config.d/100-linux-builder.conf".text = ''
       Host linux-builder
         User builder
@@ -442,11 +499,54 @@ in
         HostKeyAlias linux-builder
         Port ${toString guest.virtualisation.darwin-builder.hostPort}
         IdentityFile /etc/nix/builder_ed25519
+        ConnectTimeout ${toString answers.greeting}
+        ServerAliveInterval ${toString answers.every}
+        ServerAliveCountMax ${toString answers.unanswered}
     '';
 
+    # Nix reads the builder's line from a file the room job writes, which
+    # holds the line only while the Mac has room (room.sh), so the line
+    # itself sits beside it for the job to copy.
     environment.etc."nix/linux-builder.conf".text = ''
-      builders = ${line}
+      builders = @${offered}
       builders-use-substitutes = true
+    '';
+    environment.etc."nix/linux-builder.line".text = ''
+      ${line}
+    '';
+
+    # Every 15 seconds, so a Mac that starts swapping stops taking builds
+    # within that. It writes its log when the offer changes, when a look
+    # fails and when a failure clears (room.sh says which). A first
+    # look counts as short, so after the switch that brings it the builder
+    # waits out the hold before it's offered, and a Linux build meanwhile
+    # fails for want of it.
+    launchd.daemons.linux-builder-room.serviceConfig = {
+      ProgramArguments = [
+        (lib.getExe pkgs.bash)
+        "${./room.sh}"
+        "/usr/sbin/sysctl"
+        "/usr/bin/vm_stat"
+        "/etc/nix/linux-builder.line"
+        offered
+        home
+        (toString cfg.room.floor)
+        (toString cfg.room.hold)
+        roomLog
+      ];
+      # sed, grep, cp, mv, date and what bash needs, from macOS itself, where only
+      # root can write, since the job runs as root.
+      EnvironmentVariables.PATH = "/usr/sbin:/usr/bin:/bin";
+      StartInterval = 15;
+      RunAtLoad = true;
+      StandardErrorPath = roomLog;
+    };
+    # A few lines at each change of offer, which a Mac at its line could
+    # make every 15 seconds, so macOS's newsyslog moves it aside past
+    # 512 KB, keeping three before it. The job opens it anew at each run.
+    environment.etc."newsyslog.d/linux-builder-room.conf".text = ''
+      # logfilename                    mode count size(KB) when flags
+      ${roomLog}  644  3     512      *    N
     '';
   };
 }

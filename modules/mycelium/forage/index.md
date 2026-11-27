@@ -12,6 +12,11 @@ a terminal, `mycelium forage` gathers the realm's.
 
 ## How to Read It
 
+The page opens with the head every live page shares: what it shows and
+where, one sentence for the whole, whether it's live, and the keys. The
+floor is drawn under it, across the page, then the list with the cell
+open beside it.
+
 - **The floor, cut through:** the ground line, the hyphae under it and
   each cell a compartment along them. A cell with its purpose written is
   whole; one without is hollow, told by its shape. A cell started by

@@ -13,6 +13,7 @@ import { themeSwitch } from "../../local-sites/kit/theme.ts";
 import { followMycelium } from "./beside.ts";
 import { details } from "./device.ts";
 import { type Child, h } from "./elements.ts";
+import { ACROSS_LEAST } from "./grid.ts";
 import { type Drawn, drawMap } from "./map.ts";
 import { type KINDS, type Network, networkOf, type Watched } from "./model.ts";
 import { type Mycelium, myceliumOf } from "./mycelium.ts";
@@ -117,21 +118,34 @@ function drawSoon(): void {
  * The first drawing fits the room it has, and a house too big for the room
  * opens where something is worth a look rather than on its top corner;
  * after that the reader's zoom stays, so a new record never moves the map
- * under them.
+ * under them. A drawing the other way fits afresh, keeping the device the
+ * keys are on in view rather than jumping back to that first concern.
  */
-function fitFirst(at: Network): void {
-  if (fitted) {
+function fitFirst(at: Network, flipped: boolean): void {
+  if (fitted && !flipped) {
     return;
   }
   fitted = true;
+  // A fit sets the zoom, which brings the device the keys are on into view,
+  // so a drawing the other way keeps it in sight with no step of its own.
   map.fit();
-  const worth = at.concerns.find(
-    (concern) => concern.kind !== "ceiling" && drawn?.at.has(concern.device),
-  );
+  const worth = flipped
+    ? undefined
+    : at.concerns.find((concern) => concern.kind !== "ceiling" && drawn?.at.has(concern.device));
   if (map.overflows && worth !== undefined) {
     map.bringIntoView(worth.device);
   }
 }
+
+// Where the room is too narrow for an eero with devices beside it, as on a
+// phone, each floor stacks; a window narrowing past that, or widening back,
+// draws the other way. What was drawn is the measure, so a redraw between
+// resizes counts, and render fits afresh whichever drew it the other way.
+map.onResize(() => {
+  if (drawn !== undefined && map.narrowerThan(ACROSS_LEAST) !== drawn.stacked) {
+    drawSoon();
+  }
+});
 
 /** The page opens with the map holding the keys, so arrows walk it at once. */
 function landFirst(): void {
@@ -153,9 +167,11 @@ function render(): void {
     return;
   }
   shape = study(network);
-  drawn = drawMap(draw, network, shape, now());
+  const stacked = map.narrowerThan(ACROSS_LEAST);
+  const flipped = drawn !== undefined && drawn.stacked !== stacked;
+  drawn = drawMap(draw, network, shape, { now: now(), stacked });
   map.shows(drawn);
-  fitFirst(network);
+  fitFirst(network, flipped);
   if (opened !== null && !shape.byId.has(opened)) {
     opened = null;
   }
@@ -430,16 +446,7 @@ listen({
   answersAt: (target) => !hasOwnKeys(target),
 });
 
-/** What each zoom button does. */
-const ZOOM_BUTTONS: { readonly [asked: string]: () => void } = {
-  in: () => map.step(1),
-  out: () => map.step(-1),
-  fit: () => map.fit(),
-};
-
-for (const button of document.querySelectorAll<HTMLElement>("[data-zoom]")) {
-  button.addEventListener("click", () => ZOOM_BUTTONS[button.dataset["zoom"] ?? "fit"]?.());
-}
+map.heedButtons(document.querySelectorAll<HTMLElement>("[data-zoom]"));
 
 for (const key of document.querySelectorAll<HTMLElement>(".keys kbd[data-key]")) {
   key.addEventListener("click", () => {

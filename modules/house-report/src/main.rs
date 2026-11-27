@@ -21,7 +21,8 @@
 //! send to ADDRESS by that second, so a
 //! Mac given a cable beside its Wi-Fi is counted by the one it sends by.
 //! A report goes from that interface's address, so the shaped machine's
-//! house names each interface's reserved address, and the log says which
+//! house names each interface's reserved address, or, keyed, names none
+//! and hears it from any private IPv4 address, and the log says which
 //! interface and address reports go by, and again each time they move.
 //! It reads a counter any account may read, 64 bits wide on Linux and on a
 //! Mac, so a count that went back was made again, never wrapped.

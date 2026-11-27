@@ -953,7 +953,7 @@
       "id": "displays",
       "once": ["Displays", "Monitors"],
       "name": "Screens",
-      "term": "Desktop/screen",
+      "term": "Machine/screen",
       "noun": "screens",
       "glyph": "display",
       "ask": "which screen?",
@@ -1149,6 +1149,11 @@
         "lapsed": "copied {title}'s {detail} \u00b7 lapsed",
         "cleared": "{title}'s {detail} is cleared from the clipboard",
         "unfinished": "{title}'s {detail} not copied \u00b7 {why}",
+        "typing": "typing {title}'s {detail}\u2026",
+        "untyped": "{title}'s {detail} not typed \u00b7 {why}",
+        "nowhere": "no window to type into",
+        "moved": "another window has the keys than the launcher opened over",
+        "walked": "a password is typed only by your own keys in the launcher",
         "away": "not answering",
         "offNote": "use {manager}'s browser extension",
         "offNoBrowser": "no browser extension is set up",
@@ -1877,6 +1882,18 @@
       "command": "share",
       "name": "Share the Screen in the Call",
       "verb": "share",
+      "by": "tuple"
+    },
+    {
+      "id": "tuple:camera",
+      "name": "Show My Camera in the Call",
+      "verb": "show",
+      "states": {
+        "on": {
+          "name": "Stop My Camera in the Call",
+          "verb": "stop"
+        }
+      },
       "by": "tuple"
     },
     {

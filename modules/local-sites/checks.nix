@@ -108,6 +108,20 @@ import ./ask-checks.nix args
         touch $out
       '';
 
+  # Every live page off the waiting list opens with the kit's head as
+  # sites.md writes it: one header holding its first heading, its parts in
+  # their order and nothing else, an eyebrow of two phrases, only the
+  # standing line's status live, a key line in the quiet row, and the kit's
+  # head.css linked; a page still waiting passes until it keeps to the head,
+  # then fails until it's taken off, and no page joins the list; every page
+  # a machine in a realm mounts is judged; and the gate passes sites.md's own
+  # head and names each way a page strays from it (tests/heads.py,
+  # tests/heads-test.py). Its pages and waiting list are in heads.nix.
+  heads-are-the-kits = import ./heads.nix {
+    inherit lib pkgs;
+    inherit (inRealm.jitsusama.local-sites) mounts;
+  };
+
   # The forage page typechecks on the kit and builds, its tests passing
   # (modules/mycelium/forage/tests), on the same plain looks.
   forage-site-holds = sites.localSite {
@@ -490,7 +504,7 @@ import ./ask-checks.nix args
           STRIP = "${./home/strip.css}";
           WEB_SKILL = "${../theme/web/skill}";
           WEB_KIT = "${webKit}";
-          HOME_SOURCES = "${./home}";
+          HOME_SOURCES = "${import ./home-source.nix}";
           PLAYWRIGHT_BROWSERS_PATH = "${pkgs.playwright-driver.browsers}";
           PYTHONPATH = "${./tests}";
           PYTHONDONTWRITEBYTECODE = "1";
@@ -504,7 +518,8 @@ import ./ask-checks.nix args
   # The map, built on the theme's own web kit as a machine builds it, read in
   # headless Chromium through the server beside a stand-in node
   # (modules/mycelium/site/tests/map-reads-live-test.py): live with the realm
-  # drawn, a cell moving and another going, broken while the node is away
+  # drawn, a cell moving, two sharing a title moving and another going,
+  # broken while the node is away
   # with the realm kept and live once it's back, stale once the server goes
   # with the realm kept, a cell's title drawn as words and never as markup,
   # what each spent today, what waits on a cell and what holds stand as the
@@ -680,6 +695,7 @@ import ./ask-checks.nix args
   # the Wi-Fi drawn as words, one going with its link, a machine mycelium
   # runs on following the node and linked to its place on the map, broken
   # while net is away and live once it's back, stale once the server goes,
+  # every device within a phone's width as each floor stacks there,
   # within its budget, the web-design skill's page checks passing at two
   # widths in both looks, and nothing logged. Both feeds are the ones
   # home.nix declares for a machine in a realm, so the server under test

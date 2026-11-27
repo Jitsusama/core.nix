@@ -58,29 +58,54 @@ in
       );
 
   # The sessions' kitty writes its pid beside its socket, which names none,
-  # so the shell finds a session's window among those that kitty draws.
+  # so the shell finds a session's window among those that kitty draws,
+  # and then tells the shell it started, as a watch on the file misses one
+  # written in a folder made anew, and a kitty started again draws nothing
+  # till asked, so a viewer kept for one would wait on what never comes.
+  # The write first, failing the start where it fails, as a kitty with no
+  # pid beside it would have every window refused; then the call, bounded
+  # and only journalled where it fails, as at login the shell may not
+  # listen yet and a failed call would stop the kitty; and by the name the
+  # shell's "sessions" IpcHandler answers.
   the-sessions-kitty-says-its-pid =
     let
       service = (account graphical).systemd.user.services.sessions-kitty.Service;
       written = lib.concatStringsSep " " (lib.toList (service.ExecStartPost or [ ]));
+      inOrder =
+        ".*%t/pi-sessions/kitty\\.pid \\|\\| exit 1;"
+        + " [^;|]*/timeout [0-9]+ [^;|]* ipc call sessions kittyStarted [^;|]*"
+        + "\\|\\| echo [^;|]*>&2'";
+      # The "sessions" IpcHandler, from its target to its closing brace.
+      handler = lib.splitString "target: \"sessions\"" (builtins.readFile ../Sessions.qml);
+      answered =
+        builtins.length handler == 2
+        && lib.hasInfix "function kittyStarted(): void {\n            root.kittyStarted();" (
+          lib.head (lib.splitString "\n    }\n" (lib.last handler))
+        );
     in
     holds "the-sessions-kitty-says-its-pid"
-      "The sessions' kitty writes no pid beside its socket, so the shell can't tell which windows it draws."
-      (lib.hasInfix "$$MAINPID" written && lib.hasInfix "%t/pi-sessions/kitty.pid" written);
+      "The sessions' kitty writes no pid beside its socket, or never tells the shell it started, so the shell can't tell which windows it draws, or waits on a kitty come back."
+      (lib.hasInfix "$$MAINPID" written && builtins.match inOrder written != null && answered);
 
   # A session's window is asked of the sessions kitty over its socket, or of
   # the unit's own kitty from before it listened, waiting for one starting
   # again and opening nothing with neither, as the script the shell links
   # and runs does, through each door (modules/quickshell/tests/
-  # opens-in-sessions-doors.sh), in about a second.
+  # opens-in-sessions-doors.sh), and the packaged kitten says an unanswered
+  # launch, and a socket nothing listens on, in the words the script reads.
+  # Each door's run is cut at 20 s, and the whole at twenty minutes, past
+  # every run's cut together (36 runs and the packaged kitten's half
+  # minute, under twelve minutes), so a wait that runs on fails by name,
+  # even in each run at once.
   the-sessions-kitty-is-asked-only-its-own-way =
     let
       linked = (account graphical).xdg.configFile."quickshell/opens-in-sessions.sh".source;
     in
     pkgs.runCommandLocal "the-sessions-kitty-is-asked-only-its-own-way" { } ''
-      ${lib.getExe' pkgs.coreutils "timeout"} 60 ${lib.getExe pkgs.bash} \
+      ${lib.getExe' pkgs.coreutils "timeout"} 1200 ${lib.getExe pkgs.bash} \
         ${../tests/opens-in-sessions-doors.sh} ${pkgs.bash}/bin/sh ${linked} \
-        ${lib.getExe pkgs.python3}
+        ${lib.getExe pkgs.python3} ${../Sessions.qml} \
+        ${lib.getExe' pkgs.kitty "kitten"}
       touch $out
     '';
 
@@ -144,6 +169,8 @@ in
         // isn't answering, as Niri.qml says it; a case sets it.
         property bool standIn: false
         property var current: null
+        // The window Joel is in, none, which a press's goingTo keeps.
+        property var focused: null
         // Workspace 5, where a sleeper's window was, and 8, named for the
         // orchestrator of a session elsewhere, Joel on another.
         property var workspaces: ({
@@ -199,7 +226,8 @@ in
       cp ${away} Away.qml
       cp ${notices} Notices.qml
       export XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
-      mkdir -m 700 $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR/mycelium $XDG_RUNTIME_DIR/daemons
+      mkdir -m 700 $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR/mycelium $XDG_RUNTIME_DIR/daemons \
+        $XDG_RUNTIME_DIR/pi-sessions
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml
@@ -319,7 +347,10 @@ in
       cp ${away} Away.qml
       cp ${notices} Notices.qml
       export XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
-      mkdir -m 700 $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR/mycelium
+      mkdir -m 700 $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR/mycelium $XDG_RUNTIME_DIR/pi-sessions
+      # The sessions' kitty's pid, as its unit writes it, so each viewer is
+      # judged by the pid that drew it, as on Joel's desktop.
+      echo 4242 > $XDG_RUNTIME_DIR/pi-sessions/kitty.pid
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       # Its walks go at the walk's pace, its named stages follow its led
@@ -426,7 +457,10 @@ in
         > $HOME/.config/pi/agentic-harness.pi/config.json
       export PATH=${lib.makeBinPath [ pkgs.bash ]}:$PATH
       export XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
-      mkdir -m 700 $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR/mycelium
+      mkdir -m 700 $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR/mycelium $XDG_RUNTIME_DIR/pi-sessions
+      # The sessions' kitty's pid, as its unit writes it, so each viewer is
+      # judged by the pid that drew it, as on Joel's desktop.
+      echo 4242 > $XDG_RUNTIME_DIR/pi-sessions/kitty.pid
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml

@@ -94,7 +94,7 @@ before adding a test.
 ```sh
 nix fmt                                # format, and lint every language strictly
 nix-offload there --here-when-idle . checks.x86_64-linux.<name>  # a check, as you go
-run-subtests vm-desktop-<area> <words> # a VM test's subtests named, in seconds
+run-subtests vm-desktop-<area> <words> # a VM test's tests named, in seconds
 shell-preview --type <words>           # the shell from the working copy, in a niri window
 changed-checks                         # names and builds what the change touched, VM tests aside
 merge-net needs                        # whether the change runs VM tests before merging

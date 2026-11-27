@@ -14,12 +14,17 @@ use std::path::Path;
 use std::time::Duration;
 
 /// Bumped whenever a table's shape or meaning changes.
-pub const SCHEMA: i64 = 11;
+pub const SCHEMA: i64 = 12;
 
 /// The most the write-ahead log keeps on disk once checkpointed. SQLite
 /// otherwise keeps it at the largest it ever grew: on 7 November 321 MB,
 /// beside a 400 MB history, every frame of it already checkpointed.
 const WAL_LIMIT: i64 = 32 * 1024 * 1024;
+/// Whether another log holds a session, asked as a log is forgotten. It
+/// reads only the session index, and a test asks SQLite's plan for this
+/// very text so the two can't drift apart.
+const OTHERS_HOLD_SESSION: &str =
+    "SELECT EXISTS (SELECT 1 FROM files WHERE session = ?1 AND path != ?2)";
 
 /// Each hour's turns summed by what the picture splits them by, kept as
 /// they're added and forgotten. Every pass reads every hour, and summing
@@ -141,6 +146,32 @@ END;
     };
 }
 
+/// Which hours' turns moved last, by a count every turn added or forgotten
+/// raises, so a daemon keeping the hours gone in memory rereads only those
+/// that moved since it read them. Reading every hour of `turn_hours` again
+/// each pass read it back off the disk once the machine had dropped it
+/// from memory, as it did within 30 seconds on 24 November: about 60 MB a
+/// pass, 1.3 to 3.6 MB a second. A move's own count is the most yet plus
+/// one, found through its index, so a turn costs two small writes more.
+macro_rules! moves {
+    () => {
+        "
+CREATE TABLE hour_moves (hour INTEGER PRIMARY KEY, move INTEGER NOT NULL);
+CREATE INDEX hour_moves_move ON hour_moves (move);
+CREATE TRIGGER hour_moves_add AFTER INSERT ON turns BEGIN
+    INSERT INTO hour_moves
+        VALUES (NEW.hour, (SELECT COALESCE(MAX(move), 0) + 1 FROM hour_moves))
+        ON CONFLICT (hour) DO UPDATE SET move = excluded.move;
+END;
+CREATE TRIGGER hour_moves_take AFTER DELETE ON turns BEGIN
+    INSERT INTO hour_moves
+        VALUES (OLD.hour, (SELECT COALESCE(MAX(move), 0) + 1 FROM hour_moves))
+        ON CONFLICT (hour) DO UPDATE SET move = excluded.move;
+END;
+"
+    };
+}
+
 /// Each budget a session asked for and couldn't draw on, and why, from
 /// the harness's budget entries.
 macro_rules! unresolved {
@@ -234,7 +265,7 @@ macro_rules! cap_events {
 
 /// What brings each older shape up to the next, where only something was
 /// added: `UPGRADES[n - 1]` takes shape n to n + 1.
-const UPGRADES: [&str; 10] = [
+const UPGRADES: [&str; 11] = [
     "ALTER TABLE caps ADD COLUMN resets REAL;",
     "ALTER TABLE health ADD COLUMN since REAL;",
     concat!(
@@ -290,6 +321,17 @@ const UPGRADES: [&str; 10] = [
          SUM(input + cache_read + cache_write) FROM turns
          GROUP BY hour, session, quest, model, kind, cause;"
     ),
+    // Every hour already summed moved once, which a daemon reading them
+    // for the first time reads whole anyway. A history taken back to the
+    // eleventh shape by its schema alone still holds the table and its
+    // triggers, which would refuse this step and so the history, so they
+    // go first.
+    concat!(
+        "DROP TRIGGER IF EXISTS hour_moves_add; DROP TRIGGER IF EXISTS hour_moves_take;
+         DROP TABLE IF EXISTS hour_moves;",
+        moves!(),
+        "INSERT INTO hour_moves SELECT hour, 1 FROM turn_hours GROUP BY hour;"
+    ),
 ];
 
 const TABLES: &str = concat!(
@@ -298,6 +340,7 @@ CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE files (
     path TEXT PRIMARY KEY, identity TEXT NOT NULL, offset INTEGER NOT NULL,
     carry TEXT NOT NULL, session TEXT);
+CREATE INDEX files_session ON files (session);
 CREATE TABLE sessions (
     id TEXT PRIMARY KEY, cwd TEXT NOT NULL, repo TEXT NOT NULL, started REAL NOT NULL,
     kind TEXT, name TEXT,
@@ -357,7 +400,8 @@ CREATE TABLE notices (key TEXT NOT NULL, at REAL NOT NULL, cap INTEGER NOT NULL,
     crossings!(),
     hours!(),
     once!(),
-    waste_hours!()
+    waste_hours!(),
+    moves!()
 );
 
 pub struct History {
@@ -373,6 +417,15 @@ pub fn sql(error: rusqlite::Error) -> String {
     error.to_string()
 }
 
+/// Whether `error` is another connection holding the history, by SQLite's
+/// own code rather than its words: busy while another writes, or locked.
+fn held(error: &rusqlite::Error) -> bool {
+    matches!(
+        error.sqlite_error_code(),
+        Some(rusqlite::ErrorCode::DatabaseBusy | rusqlite::ErrorCode::DatabaseLocked)
+    )
+}
+
 /// Runs `step` with SQLite's sorts going through files, then puts them back
 /// in memory whether it worked or not. A step sorts every turn at once,
 /// unlike a pass, and once rather than every few minutes: on a history of
@@ -386,6 +439,19 @@ fn on_disk<T>(db: &Connection, step: impl FnOnce() -> Result<T, String>) -> Resu
     stepped.and_then(|done| restored.map(|()| done))
 }
 
+/// How long a connection waits on another's write before it's told the
+/// history is busy.
+const WAIT: Duration = Duration::from_secs(10);
+
+/// Why a history a newer spend-watch keeps, at `shape`, isn't opened.
+fn kept_by_newer(path: &Path, shape: i64) -> String {
+    format!(
+        "{} is kept by a newer spend-watch, at shape {shape} where this one reads up to \
+         {SCHEMA}, so it's left as it is",
+        path.display()
+    )
+}
+
 impl History {
     /// Opens the history, setting aside one that doesn't read so it's
     /// built again from the sources. One a newer spend-watch keeps is left
@@ -396,28 +462,37 @@ impl History {
             std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
         }
         if let Some(shape) = History::newer(path) {
-            return Err(format!(
-                "{} is kept by a newer spend-watch, at shape {shape} where this one \
-                 reads up to {SCHEMA}, so it's left as it is",
-                path.display()
-            ));
+            return Err(kept_by_newer(path, shape));
         }
         let existing = path.exists();
         let history = History::connect(path)?;
-        let schema: Option<i64> = history
+        let read = history
             .db
             .query_row("SELECT value FROM meta WHERE key = 'schema'", [], |row| {
                 row.get::<_, String>(0)
             })
-            .optional()
-            .ok()
-            .flatten()
-            .and_then(|value| value.parse().ok());
+            .optional();
+        // Another connection holding the history is no sign it doesn't
+        // read, and setting it aside then would lose every kept bill.
+        if let Err(error) = &read
+            && held(error)
+        {
+            return Err(error.to_string());
+        }
+        let schema: Option<i64> = read.ok().flatten().and_then(|value| value.parse().ok());
+        // The look before the connection takes any error for no answer, so
+        // a history busy then passes it unread; a newer shape read here is
+        // as much the newer spend-watch's, and is left as it is all the same.
+        if let Some(shape) = schema.filter(|shape| *shape > SCHEMA) {
+            return Err(kept_by_newer(path, shape));
+        }
         if schema == Some(SCHEMA) {
+            history.index_sessions()?;
             return Ok(history);
         }
         if let Some(from) = schema.filter(|from| (1..SCHEMA).contains(from)) {
             history.upgrade(from)?;
+            history.index_sessions()?;
             return Ok(history);
         }
         drop(history);
@@ -441,6 +516,38 @@ impl History {
         Ok(history)
     }
 
+    /// Indexes which session each log holds, in a history kept before the
+    /// index was. Forgetting a log asks whether another holds its session,
+    /// and without the index that read every row: 43.6 MB a log on a
+    /// history of 39,486 logs on 25 November. It's no change of shape,
+    /// since an older spend-watch reads the history the same with it, so
+    /// it's made where it's missing rather than as a step.
+    ///
+    /// A history that has it opens without a write: SQLite makes nothing
+    /// for an index that's there, which was measured beside a writer
+    /// holding the history. One that's missing it needs a write, and
+    /// that's tried without waiting: every pi session's reader opens the
+    /// history, and one waiting the database's ten seconds on a writer
+    /// would hold up its answer, or the watch's start, for an index the
+    /// next open makes. One a writer holds is gone on from unsaid, since
+    /// without it the history still reads the same, only slower to forget
+    /// a log, and a reader asked for JSON keeps its stderr for the error
+    /// alone. Any other failure is the open's, as it was before the try
+    /// went without waiting, so one that would recur at every open, never
+    /// making the index, is said rather than gone on from each time.
+    fn index_sessions(&self) -> Result<(), String> {
+        self.db.busy_timeout(Duration::ZERO).map_err(sql)?;
+        let made = self
+            .db
+            .execute_batch("CREATE INDEX IF NOT EXISTS files_session ON files (session);");
+        self.db.busy_timeout(WAIT).map_err(sql)?;
+        match made {
+            // Left for the next open, which makes it once no writer holds it.
+            Err(error) if held(&error) => Ok(()),
+            made => made.map_err(sql),
+        }
+    }
+
     /// The shape of the history at `path`, when a newer spend-watch keeps
     /// it, read without writing anything.
     pub fn newer(path: &Path) -> Option<i64> {
@@ -457,7 +564,7 @@ impl History {
     fn shape(path: &Path) -> Option<i64> {
         let flags = rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY;
         let db = Connection::open_with_flags(path, flags).ok()?;
-        db.busy_timeout(Duration::from_secs(10)).ok()?;
+        db.busy_timeout(WAIT).ok()?;
         db.query_row("SELECT value FROM meta WHERE key = 'schema'", [], |row| {
             row.get::<_, String>(0)
         })
@@ -511,7 +618,7 @@ impl History {
 
     fn connect(path: &Path) -> Result<History, String> {
         let db = Connection::open(path).map_err(sql)?;
-        db.busy_timeout(Duration::from_secs(10)).map_err(sql)?;
+        db.busy_timeout(WAIT).map_err(sql)?;
         db.pragma_update(None, "journal_mode", "WAL").map_err(sql)?;
         db.pragma_update(None, "journal_size_limit", WAL_LIMIT)
             .map_err(sql)?;
@@ -584,9 +691,13 @@ impl History {
     /// Where reading a log stopped, and what it carried, if it's the same
     /// file as before: a log replaced under the same name starts over.
     pub fn file(&self, path: &str, identity: &str) -> Option<(u64, String)> {
+        // A row kept before 25 November says `device:inode`; only its inode
+        // is held against the log's, so a history that moved to the inode
+        // alone reads none of its logs again for it.
         self.db
             .query_row(
-                "SELECT offset, carry FROM files WHERE path = ?1 AND identity = ?2",
+                "SELECT offset, carry FROM files
+                 WHERE path = ?1 AND substr(identity, instr(identity, ':') + 1) = ?2",
                 params![path, identity],
                 |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
             )
@@ -616,11 +727,9 @@ impl History {
             .flatten();
         if let Some(session) = session {
             let others: bool = forget
-                .query_row(
-                    "SELECT EXISTS (SELECT 1 FROM files WHERE session = ?1 AND path != ?2)",
-                    params![session, path],
-                    |row| row.get(0),
-                )
+                .query_row(OTHERS_HOLD_SESSION, params![session, path], |row| {
+                    row.get(0)
+                })
                 .map_err(sql)?;
             if !others {
                 for table in ["turns", "refusals", "unresolved"] {
@@ -914,6 +1023,110 @@ mod tests {
     }
 
     #[test]
+    fn a_history_kept_before_its_logs_sessions_were_indexed_gains_the_index() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("history.db");
+        History::open(&path)
+            .unwrap()
+            .db
+            .execute_batch("DROP INDEX files_session;")
+            .unwrap();
+        let history = History::open(&path).unwrap();
+        let plan: Vec<String> = history
+            .db
+            .prepare(&format!("EXPLAIN QUERY PLAN {OTHERS_HOLD_SESSION}"))
+            .unwrap()
+            .query_map(params!["teal", "ochre"], |row| row.get(3))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert!(
+            plan.iter().any(|step| step.contains("files_session")),
+            "forgetting a log still reads every log's row to learn whether another holds its \
+             session: {plan:?}"
+        );
+    }
+
+    // A history missing its index opens beside a writer at once, without
+    // it, rather than waiting the database's ten seconds to make it and
+    // failing, as a reader did at a switch; the next open makes it.
+    #[test]
+    fn a_history_without_its_index_opens_beside_a_writer_at_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("history.db");
+        History::open(&path)
+            .unwrap()
+            .db
+            .execute_batch("DROP INDEX files_session;")
+            .unwrap();
+        let writer = Connection::open(&path).unwrap();
+        writer.execute_batch("BEGIN IMMEDIATE;").unwrap();
+        let began = std::time::Instant::now();
+        let opened = History::open(&path);
+        assert!(
+            opened.is_ok(),
+            "a reader couldn't open the history beside a writer: {:?}",
+            opened.err()
+        );
+        assert!(
+            began.elapsed() < Duration::from_secs(5),
+            "a reader waited on the writer to make the index"
+        );
+        let opened = opened.unwrap();
+        let waits: u64 = opened
+            .db
+            .query_row("PRAGMA busy_timeout", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(
+            Duration::from_millis(waits),
+            WAIT,
+            "the open didn't put back its wait on a writer after trying the index"
+        );
+        assert!(
+            !indexed(&opened),
+            "the index was made beside the writer, so the open didn't go without it"
+        );
+        writer.execute_batch("COMMIT;").unwrap();
+        assert!(
+            indexed(&History::open(&path).unwrap()),
+            "the open after the writer let go didn't make the index"
+        );
+    }
+
+    // Only a writer holding the history leaves the index for the next
+    // open: a failure that would recur at every open is the open's, so it's
+    // said rather than gone on from with the index never made.
+    #[test]
+    fn an_index_that_cant_be_made_fails_the_open() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("history.db");
+        History::open(&path)
+            .unwrap()
+            .db
+            .execute_batch("DROP INDEX files_session; DROP TABLE files;")
+            .unwrap();
+        let opened = History::open(&path);
+        assert!(
+            opened
+                .as_ref()
+                .is_err_and(|why| why.contains("no such table")),
+            "an index that can't be made was gone on from: {:?}",
+            opened.err()
+        );
+    }
+
+    fn indexed(history: &History) -> bool {
+        history
+            .db
+            .query_row(
+                "SELECT EXISTS (SELECT 1 FROM sqlite_master WHERE name = 'files_session')",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap()
+    }
+
+    #[test]
     fn a_shape_this_one_reads_is_not_newer() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("history.db");
@@ -1153,6 +1366,7 @@ mod tests {
             .replace(SESSIONS_10, "")
             .replace(once!(), "")
             .replace(waste_hours!(), "")
+            .replace(moves!(), "")
             .replace(billed!("billed"), BILLED)
             .replace(caps!("caps"), CAPS)
             .replace(cap_events!("cap_events"), CAP_EVENTS)
@@ -1314,7 +1528,8 @@ mod tests {
                     .replace(unresolved!(), "")
                     .replace(SESSIONS_10, "")
                     .replace(once!(), "")
-                    .replace(waste_hours!(), ""),
+                    .replace(waste_hours!(), "")
+                    .replace(moves!(), ""),
             )
             .unwrap();
             db.execute_batch(
@@ -1357,7 +1572,8 @@ mod tests {
                 &TABLES
                     .replace(SESSIONS_10, "")
                     .replace(once!(), "")
-                    .replace(waste_hours!(), ""),
+                    .replace(waste_hours!(), "")
+                    .replace(moves!(), ""),
             )
             .unwrap();
             db.execute_batch(
@@ -1547,7 +1763,7 @@ mod tests {
             };
             history
                 .db
-                .execute_batch(&TABLES.replace(waste_hours!(), ""))
+                .execute_batch(&TABLES.replace(waste_hours!(), "").replace(moves!(), ""))
                 .unwrap();
             history
                 .db
@@ -1631,6 +1847,110 @@ mod tests {
             rows(&history),
             4,
             "an hour whose turns were all forgotten was kept"
+        );
+    }
+
+    // The eleventh shape kept no count of which hours moved; the twelfth
+    // counts every hour it holds as moved once, and each turn added or
+    // forgotten after moves its hour past every other.
+    #[test]
+    fn the_eleventh_shape_gains_its_hours_moves() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("history.db");
+        {
+            let history = History {
+                db: Connection::open(&path).unwrap(),
+            };
+            history
+                .db
+                .execute_batch(&TABLES.replace(moves!(), ""))
+                .unwrap();
+            history
+                .db
+                .execute_batch("INSERT INTO meta VALUES ('schema', '11');")
+                .unwrap();
+            wasted(&history, "a", 10.0, MOST, None, 0.1);
+            wasted(&history, "a", 20.0, MOST, None, 0.2);
+            wasted(&history, "b", 4000.0, MOST, None, 0.3);
+        }
+        let history = History::open(&path).unwrap();
+        assert_eq!(history.meta("schema"), Some(SCHEMA.to_string()));
+        let moves = |history: &History| -> Vec<(i64, i64)> {
+            let mut statement = history
+                .db
+                .prepare("SELECT hour, move FROM hour_moves ORDER BY hour")
+                .unwrap();
+            let rows = statement
+                .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+                .unwrap();
+            rows.map(Result::unwrap).collect()
+        };
+        assert_eq!(
+            moves(&history),
+            vec![(0, 1), (1, 1)],
+            "the step didn't count each hour it holds as moved once"
+        );
+        wasted(&history, "c", 8000.0, MOST, None, 0.4);
+        assert_eq!(
+            moves(&history),
+            vec![(0, 1), (1, 1), (2, 2)],
+            "a turn in a new hour didn't move it past the rest"
+        );
+        wasted(&history, "a", 30.0, MOST, None, 0.5);
+        assert_eq!(
+            moves(&history),
+            vec![(0, 3), (1, 1), (2, 2)],
+            "a turn in an hour gone didn't move it past the rest"
+        );
+        history
+            .db
+            .execute("DELETE FROM turns WHERE session = 'b'", [])
+            .unwrap();
+        assert_eq!(
+            moves(&history),
+            vec![(0, 3), (1, 4), (2, 2)],
+            "a turn forgotten didn't move its hour"
+        );
+        history
+            .db
+            .execute(
+                "INSERT OR IGNORE INTO turns SELECT * FROM turns WHERE session = 'a' AND at = 30.0",
+                [],
+            )
+            .unwrap();
+        assert_eq!(
+            moves(&history),
+            vec![(0, 3), (1, 4), (2, 2)],
+            "a turn read again and ignored moved its hour"
+        );
+        history
+            .db
+            .execute("DELETE FROM turns WHERE at < 9000.0", [])
+            .unwrap();
+        assert!(
+            moves(&history)
+                .iter()
+                .all(|(hour, moved)| *hour == 1 || *moved > 4),
+            "a forgetting across hours left one where it was: {:?}",
+            moves(&history)
+        );
+        drop(history);
+        // Taken back by its schema alone, the history is brought up again.
+        History::open(&path)
+            .unwrap()
+            .set_meta("schema", "11")
+            .unwrap();
+        let history = History::open(&path).unwrap();
+        assert_eq!(
+            history.meta("schema"),
+            Some(SCHEMA.to_string()),
+            "a history taken back by its schema alone wasn't brought up again"
+        );
+        wasted(&history, "d", 12000.0, MOST, None, 0.6);
+        assert_eq!(
+            moves(&history),
+            vec![(3, 1)],
+            "the hours' moves brought up again didn't count a new turn"
         );
     }
 

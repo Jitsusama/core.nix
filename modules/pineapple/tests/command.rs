@@ -174,7 +174,7 @@ fn stop_all(state: &Path, args: &[&str], pi_says: bool) -> Output {
 }
 
 /// Whether this process runs where the command refuses, by the rule the
-/// command reads, which its own cases in tests/pause.rs pin; said when it
+/// command reads, which its own cases in tests/pause/main.rs pin; said when it
 /// does, so a case it cuts short isn't read as proof of the rest.
 fn in_agents_cgroup(case: &str) -> bool {
     let cgroup = fs::read_to_string("/proc/self/cgroup").unwrap_or_default();

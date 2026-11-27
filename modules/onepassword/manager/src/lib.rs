@@ -443,6 +443,18 @@ pub fn settings_file(config_home: Option<&str>, home: Option<&str>) -> Option<St
     Some(format!("{config}/1Password/settings/settings.json"))
 }
 
+/// Whether a variable would have op reach 1Password around its app: a
+/// service account's token, a Connect server and its token, or a session
+/// signed in by `op signin`, each of which reads a secret with nothing
+/// asked of Joel, where the app's desktop integration asks him first.
+#[must_use]
+pub fn around_the_app(variable: &str) -> bool {
+    matches!(
+        variable,
+        "OP_SERVICE_ACCOUNT_TOKEN" | "OP_CONNECT_HOST" | "OP_CONNECT_TOKEN"
+    ) || variable.starts_with("OP_SESSION_")
+}
+
 /// The reason op gives for not answering, said for Joel: what op printed
 /// last, less its "[ERROR] date time" prefix.
 pub fn reason(said: &str) -> String {
@@ -465,6 +477,24 @@ pub fn reason(said: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_what_goes_around_the_app_is_kept_from_op() {
+        for around in [
+            "OP_SERVICE_ACCOUNT_TOKEN",
+            "OP_CONNECT_HOST",
+            "OP_CONNECT_TOKEN",
+            "OP_SESSION_my",
+        ] {
+            assert!(
+                around_the_app(around),
+                "{around} reaches 1Password around its app"
+            );
+        }
+        for kept in ["OP_BIOMETRIC_UNLOCK_ENABLED", "OP_ACCOUNT", "HOME", "PATH"] {
+            assert!(!around_the_app(kept), "{kept} is no way round the app");
+        }
+    }
 
     #[test]
     fn the_setting_stands_before_the_app_and_the_app_before_the_leave() {

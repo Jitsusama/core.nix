@@ -4,15 +4,23 @@
 //! a call that ended kept in Recent's file, as the caller's when a ring
 //! answered began it, and read back after a restart; a ring and a missed
 //! call are read from the log as it's written, a new log from its start;
-//! each act runs Tuple's command, and opening the room keeps its link and
-//! makes the call in it Joel's; and an ask or kind it doesn't know is
-//! refused.
+//! each act runs Tuple's command, a camera stopped is off before Tuple's
+//! stream says so, a stop Tuple is slow to answer is answered as such,
+//! not run again while it runs within its hold, run again past it or once
+//! it's done, and still counts once done, though a stop or mute done after
+//! the stream said Joel's camera or mute turned, or once another call
+//! began, connected or not, leaves the record as the stream says; a
+//! stream followed afresh journals the camera it says on; opening the
+//! room keeps its link and makes the call in it Joel's; and an ask or
+//! kind it doesn't know is refused. Long because every case drives the
+//! whole daemon over its socket through one stand-in Tuple, and the
+//! harness that builds it, `Running` and `Following`, is theirs to share.
 
 use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::UnixListener;
 use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Command};
 use std::time::{Duration, Instant, SystemTime};
 
 use daemon_client::{Client, until};
@@ -20,9 +28,12 @@ use serde_json::{Value, json};
 
 /// Tuple's command, in the shell the tests run in: `state follow` says
 /// each line of `stream` in its folder as it's written there, until the
-/// file `ends` appears or the folder goes; any other command is written to `asked`, a line
-/// each, `new` printing the room's link, and `call accept` failing as
-/// Tuple does with nothing ringing.
+/// file `ends` appears or the folder goes; any other command is written
+/// to `asked`, a line each, `new` printing the room's link, `call accept`
+/// failing as Tuple does with nothing ringing, and any command stalling
+/// while the file `stalls-<its first two words>` is there, as
+/// `stalls-webcam-stop` stalls a stop.
+/// The daemon's journal is kept in `journal`.
 const TUPLE: &str = r#"
 here=$(dirname "$0")
 if [ "$3 $4" = "state follow" ]; then
@@ -41,6 +52,9 @@ if [ "$3 $4" = "state follow" ]; then
   exit 3
 fi
 echo "$*" >> "$here/asked"
+# A command Tuple is slow on waits while the test holds
+# stalls-<its first two words>.
+while [ -e "$here/stalls-$1-$2" ]; do sleep 0.05; done
 case "$*" in
   new) echo "Joining https://tuple.app/c/joels-room"; sleep 5 ;;
   "call accept") echo "no call is ringing" >&2; exit 1 ;;
@@ -54,6 +68,8 @@ struct Running {
     folder: PathBuf,
     socket: PathBuf,
     tuples: Option<UnixListener>,
+    /// Its acts' waits, as it was started with them, kept for a restart.
+    waits: Vec<String>,
 }
 
 fn now() -> i64 {
@@ -90,12 +106,20 @@ const CALL: &str = "{\"type\":\"current_call\",\"data\":{\"id\":\"c-1\",\"starte
 
 impl Running {
     fn start(test: &str, answering: bool) -> Running {
-        Running::through(test, answering, &[])
+        Running::through(test, answering, &[], &[])
+    }
+
+    /// Started with Tuple answering and its acts' waits given by `waits`,
+    /// as `--answers-within` and `--held-for` give them, so a test waits
+    /// on its deadline no longer than it must, and one with steps to take
+    /// before Tuple answers races only the ten seconds its client waits.
+    fn waiting(test: &str, waits: &[&str]) -> Running {
+        Running::through(test, true, &[], waits)
     }
 
     /// Started by `launcher` and its arguments, each given the socket's
     /// path where it says `{socket}`, rather than on its own.
-    fn through(test: &str, answering: bool, launcher: &[&str]) -> Running {
+    fn through(test: &str, answering: bool, launcher: &[&str], waits: &[&str]) -> Running {
         let folder = std::env::temp_dir().join(format!("tuple-call-{test}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&folder);
         for inner in ["run/daemons", "data/tuple/0", "state", "bin"] {
@@ -109,7 +133,7 @@ impl Running {
         let socket = folder.join("run/daemons/tuple-call.sock");
         let tuples = answering.then(|| answering_at(&folder));
         let program = env!("CARGO_BIN_EXE_tuple-call");
-        let command = match launcher.split_first() {
+        let mut command = match launcher.split_first() {
             Some((first, arguments)) => {
                 let mut command = Command::new(first);
                 for argument in arguments {
@@ -120,23 +144,28 @@ impl Running {
             }
             None => Command::new(program),
         };
-        let daemon = spawned(command, &folder);
+        let daemon = spawned(command.args(waits), &folder);
         until("the socket never came", || socket.exists());
         Running {
             daemon,
             folder,
             socket,
             tuples,
+            waits: waits.iter().map(|&wait| wait.to_owned()).collect(),
         }
     }
 
-    /// The daemon stopped and started again over the same folders, its
-    /// socket gone with it, as a restart leaves them.
+    /// The daemon stopped and started again over the same folders, with
+    /// the waits it was started with, its socket gone with it, as a
+    /// restart leaves them.
     fn restart(&mut self) {
         let _ = self.daemon.kill();
         let _ = self.daemon.wait();
         let _ = std::fs::remove_file(&self.socket);
-        self.daemon = spawned(Command::new(env!("CARGO_BIN_EXE_tuple-call")), &self.folder);
+        self.daemon = spawned(
+            Command::new(env!("CARGO_BIN_EXE_tuple-call")).args(&self.waits),
+            &self.folder,
+        );
         until("the socket never came back", || self.socket.exists());
     }
 
@@ -236,14 +265,20 @@ impl Following for Client {
 }
 
 /// The daemon, run by `command`, over the test's folders.
-fn spawned(mut command: Command, folder: &std::path::Path) -> Child {
+fn spawned(command: &mut Command, folder: &std::path::Path) -> Child {
     command
         .arg(folder.join("run/daemons/tuple-call.sock"))
         .arg(folder.join("bin/tuple"))
         .env("XDG_RUNTIME_DIR", folder.join("run"))
         .env("XDG_DATA_HOME", folder.join("data"))
         .env("XDG_STATE_HOME", folder.join("state"))
-        .stderr(Stdio::null())
+        .stderr(
+            std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(folder.join("journal"))
+                .unwrap(),
+        )
         .spawn()
         .unwrap()
 }
@@ -479,6 +514,8 @@ fn each_act_runs_tuples_command_and_answers_once_done() {
         (json!({"ask": "mute", "muted": true}), "call mute"),
         (json!({"ask": "mute", "muted": false}), "call unmute"),
         (json!({"ask": "share"}), "share"),
+        (json!({"ask": "camera", "on": true}), "webcam start"),
+        (json!({"ask": "camera", "on": false}), "webcam stop"),
         (json!({"ask": "leave"}), "call leave"),
     ] {
         let mut asked = asked;
@@ -495,6 +532,399 @@ fn each_act_runs_tuples_command_and_answers_once_done() {
     assert_eq!(said["error"]["message"], "no call is ringing");
     let said = client.ask(&json!({"id": "j", "ask": "join", "link": "https://example.com"}));
     assert_eq!(said["error"]["code"], "refused");
+}
+
+#[test]
+fn a_camera_stopped_is_off_ahead_of_tuples_stream() {
+    let running = Running::start("camera", true);
+    running.streams(STATE);
+    let mut watching = running.client();
+    watching.watch();
+    let filming = CALL.replace(
+        "\"share_state\":\"audio\",\"webcam_enabled\":false",
+        "\"share_state\":\"audio\",\"webcam_enabled\":true",
+    );
+    running.streams(&filming);
+    watching.until("Joel's camera wasn't said on", |record| {
+        record["camera"] == true
+    });
+    // Asked apart from the watch, so a change said ahead of the answer
+    // isn't read as it.
+    let said = running
+        .client()
+        .ask(&json!({"id": "off", "ask": "camera", "on": false}));
+    assert_eq!(said["done"], true, "the camera's stop: {said}");
+    watching.until("Joel's camera stayed on once its stop was done", |record| {
+        record["camera"] == false
+    });
+}
+
+/// Joel's camera on in the call, as Tuple's stream says it.
+fn filming() -> String {
+    CALL.replace(
+        "\"share_state\":\"audio\",\"webcam_enabled\":false",
+        "\"share_state\":\"audio\",\"webcam_enabled\":true",
+    )
+}
+
+/// Joel muted in the call, as Tuple's stream says it.
+fn muted() -> String {
+    CALL.replace(
+        "\"local\":{\"audio_enabled\":true",
+        "\"local\":{\"audio_enabled\":false",
+    )
+}
+
+#[test]
+fn a_camera_stop_tuple_is_slow_to_answer_is_told_and_still_counts() {
+    let running = Running::waiting("stalled", &["--answers-within", "1"]);
+    running.streams(STATE);
+    let mut watching = running.client();
+    watching.watch();
+    running.streams(&filming());
+    watching.until("Joel's camera wasn't said on", |record| {
+        record["camera"] == true
+    });
+    let stall = running.path("bin/stalls-webcam-stop");
+    std::fs::write(&stall, "").unwrap();
+    let mut asking = running.client();
+    let said = asking.ask(&json!({"id": "off", "ask": "camera", "on": false}));
+    assert_eq!(
+        said["error"]["code"], "unanswered",
+        "a stop Tuple hadn't answered wasn't told so: {said}"
+    );
+    let again = asking.ask(&json!({"id": "again", "ask": "camera", "on": false}));
+    assert_eq!(
+        again["error"]["message"], "Tuple hasn't answered the last time it was asked",
+        "a stop asked again while Tuple ran the last wasn't answered at once: {again}"
+    );
+    // Ada unmuting turns nothing of Joel's, so the stop still counts once
+    // Tuple has done it.
+    running.streams(&filming().replace(
+        "\"id\":7,\"audio_enabled\":false",
+        "\"id\":7,\"audio_enabled\":true",
+    ));
+    watching.until("Ada wasn't said unmuted", |record| {
+        record["people"][0]["muted"] == false
+    });
+    std::fs::remove_file(&stall).unwrap();
+    watching.until("a stop Tuple did late didn't count", |record| {
+        record["camera"] == false
+    });
+    until("the late stop wasn't journaled", || {
+        let journal = running.read("journal");
+        journal
+            .iter()
+            .any(|line| line.contains("webcam stop hasn't answered in 1 second"))
+            && journal
+                .iter()
+                .any(|line| line.contains("webcam stop answered late"))
+    });
+    let after = asking.ask(&json!({"id": "after", "ask": "camera", "on": false}));
+    assert_eq!(
+        after["done"], true,
+        "a stop asked once Tuple answered the last wasn't run: {after}"
+    );
+    let stops = running.read("bin/asked");
+    assert_eq!(
+        stops.iter().filter(|line| *line == "webcam stop").count(),
+        2,
+        "a stop asked again while Tuple ran the last ran Tuple again: {stops:?}"
+    );
+}
+
+#[test]
+fn a_stop_done_after_the_camera_turned_again_leaves_it_on() {
+    let running = Running::waiting("turned", &["--answers-within", "60"]);
+    running.streams(STATE);
+    let mut watching = running.client();
+    watching.watch();
+    running.streams(&filming());
+    watching.until("Joel's camera wasn't said on", |record| {
+        record["camera"] == true
+    });
+    let stall = running.path("bin/stalls-webcam-stop");
+    std::fs::write(&stall, "").unwrap();
+    let mut asking = running.client();
+    let stopping =
+        std::thread::spawn(move || asking.ask(&json!({"id": "off", "ask": "camera", "on": false})));
+    until("the stop wasn't asked of Tuple", || {
+        running
+            .read("bin/asked")
+            .iter()
+            .any(|line| line == "webcam stop")
+    });
+    // Joel stops his camera in Tuple's window and starts it again, as the
+    // notice of a stop unanswered sends him to.
+    running.streams(CALL);
+    watching.until("Joel's camera wasn't said off", |record| {
+        record["camera"] == false
+    });
+    running.streams(&filming());
+    watching.until("Joel's camera wasn't said on again", |record| {
+        record["camera"] == true
+    });
+    std::fs::remove_file(&stall).unwrap();
+    let said = stopping.join().unwrap();
+    assert_eq!(
+        said["done"], true,
+        "the stop Tuple did wasn't answered done: {said}"
+    );
+    let record = running.client().watch();
+    assert_eq!(
+        record["camera"], true,
+        "a stop done after the camera turned again marked it off: {record}"
+    );
+}
+
+#[test]
+fn a_mute_done_after_joel_unmuted_by_hand_leaves_him_unmuted() {
+    let running = Running::waiting("unmuted", &["--answers-within", "60"]);
+    running.streams(STATE);
+    let mut watching = running.client();
+    watching.watch();
+    running.streams(CALL);
+    watching.until("the call wasn't said", |record| {
+        record["state"] == "connected"
+    });
+    let stall = running.path("bin/stalls-call-mute");
+    std::fs::write(&stall, "").unwrap();
+    let mut asking = running.client();
+    let muting = std::thread::spawn(move || {
+        asking.ask(&json!({"id": "mute", "ask": "mute", "muted": true}))
+    });
+    until("the mute wasn't asked of Tuple", || {
+        running
+            .read("bin/asked")
+            .iter()
+            .any(|line| line == "call mute")
+    });
+    // Tuple mutes him before its command ends, and he unmutes in Tuple's
+    // window.
+    running.streams(&muted());
+    watching.until("Joel wasn't said muted", |record| record["muted"] == true);
+    running.streams(CALL);
+    watching.until("Joel wasn't said unmuted", |record| {
+        record["muted"] == false
+    });
+    std::fs::remove_file(&stall).unwrap();
+    let said = muting.join().unwrap();
+    assert_eq!(
+        said["done"], true,
+        "the mute Tuple did wasn't answered done: {said}"
+    );
+    let record = running.client().watch();
+    assert_eq!(
+        record["muted"], false,
+        "a mute done after Joel unmuted by hand marked him muted: {record}"
+    );
+}
+
+#[test]
+fn a_mute_done_once_another_call_began_leaves_it_alone() {
+    let running = Running::waiting("another", &["--answers-within", "60"]);
+    running.streams(STATE);
+    let mut watching = running.client();
+    watching.watch();
+    running.streams(CALL);
+    watching.until("the call wasn't said", |record| {
+        record["state"] == "connected"
+    });
+    let stall = running.path("bin/stalls-call-mute");
+    std::fs::write(&stall, "").unwrap();
+    let mut asking = running.client();
+    let muting = std::thread::spawn(move || {
+        asking.ask(&json!({"id": "mute", "ask": "mute", "muted": true}))
+    });
+    until("the mute wasn't asked of Tuple", || {
+        running
+            .read("bin/asked")
+            .iter()
+            .any(|line| line == "call mute")
+    });
+    running.streams("{\"type\":\"current_call\",\"data\":null}");
+    watching.until("the call's end wasn't said", |record| {
+        record["state"] == "none"
+    });
+    running.streams(&CALL.replace("\"started_at\":1000", "\"started_at\":2000"));
+    watching.until("the next call wasn't said", |record| {
+        record["since"] == 2000
+    });
+    std::fs::remove_file(&stall).unwrap();
+    let said = muting.join().unwrap();
+    assert_eq!(
+        said["done"], true,
+        "the mute Tuple did wasn't answered done: {said}"
+    );
+    let record = running.client().watch();
+    assert_eq!(
+        record["muted"], false,
+        "a mute asked in the last call marked Joel muted in the next: {record}"
+    );
+}
+
+#[test]
+fn a_mute_done_once_another_connecting_call_began_leaves_it_alone() {
+    let running = Running::waiting("connecting", &["--answers-within", "60"]);
+    running.streams(STATE);
+    let mut watching = running.client();
+    watching.watch();
+    // A call said connected before it says when it began, so two such
+    // calls are told apart by nothing they say. Tuple says a call's start
+    // once it connects, and the record hides a mute until then, so this is
+    // the one shape where a mute done late would show on the wrong call;
+    // the call's turn guards it whatever Tuple sends.
+    let connecting = CALL.replace("\"started_at\":1000,", "");
+    running.streams(&connecting);
+    watching.until("the call wasn't said", |record| {
+        record["state"] == "connected"
+    });
+    let stall = running.path("bin/stalls-call-mute");
+    std::fs::write(&stall, "").unwrap();
+    let mut asking = running.client();
+    let muting = std::thread::spawn(move || {
+        asking.ask(&json!({"id": "mute", "ask": "mute", "muted": true}))
+    });
+    until("the mute wasn't asked of Tuple", || {
+        running
+            .read("bin/asked")
+            .iter()
+            .any(|line| line == "call mute")
+    });
+    running.streams("{\"type\":\"current_call\",\"data\":null}");
+    watching.until("the call's end wasn't said", |record| {
+        record["state"] == "none"
+    });
+    running.streams(&connecting);
+    watching.until("the next call wasn't said", |record| {
+        record["state"] == "connected"
+    });
+    std::fs::remove_file(&stall).unwrap();
+    let said = muting.join().unwrap();
+    assert_eq!(
+        said["done"], true,
+        "the mute Tuple did wasn't answered done: {said}"
+    );
+    let record = running.client().watch();
+    assert_eq!(
+        record["muted"], false,
+        "a mute asked in one connecting call marked Joel muted in the next: {record}"
+    );
+}
+
+#[test]
+fn a_command_held_past_its_hold_lets_its_act_be_asked_afresh() {
+    let running = Running::waiting("held", &["--answers-within", "1", "--held-for", "4"]);
+    running.streams(STATE);
+    let mut watching = running.client();
+    watching.watch();
+    running.streams(&filming());
+    watching.until("Joel's camera wasn't said on", |record| {
+        record["camera"] == true
+    });
+    let stall = running.path("bin/stalls-webcam-stop");
+    std::fs::write(&stall, "").unwrap();
+    let mut asking = running.client();
+    let first = Instant::now();
+    let said = asking.ask(&json!({"id": "first", "ask": "camera", "on": false}));
+    assert_eq!(
+        said["error"]["code"], "unanswered",
+        "a stop Tuple hadn't answered wasn't told so: {said}"
+    );
+    // When the last stop the hold refused was sent, which the hold had
+    // lasted to: the one run afresh took its own second to answer.
+    let mut refused = first.elapsed();
+    let again = asking.ask(&json!({"id": "again", "ask": "camera", "on": false}));
+    assert_eq!(
+        again["error"]["message"], "Tuple hasn't answered the last time it was asked",
+        "a stop asked again within its hold wasn't answered at once: {again}"
+    );
+    // Asked until one is run afresh, as the first stop's hold ends by the
+    // daemon's clock, which began a moment after this test's.
+    let (afresh, ran) = loop {
+        let sent = first.elapsed();
+        let said = asking.ask(&json!({"id": "afresh", "ask": "camera", "on": false}));
+        if said["error"]["message"] != "Tuple hasn't answered the last time it was asked" {
+            break (said, sent);
+        }
+        refused = sent;
+        assert!(
+            first.elapsed() < Duration::from_secs(10),
+            "the first stop's hold never ended: {said}"
+        );
+        // A tenth of a second between asks, which the daemon answers at
+        // once within the hold, so the loop doesn't spin.
+        std::thread::sleep(Duration::from_millis(100));
+    };
+    // Asks a tenth of a second apart, so a four-second hold refuses one
+    // sent past three and runs one sent before five, nearly a second to
+    // spare on each side for a builder that stalls the test, while a hold
+    // of three seconds or five fails.
+    assert!(
+        refused >= Duration::from_secs(3),
+        "the first stop's hold ended early, the last stop it refused sent after {refused:?}"
+    );
+    assert!(
+        ran < Duration::from_secs(5),
+        "the first stop's hold ended late, the first stop run afresh sent after {ran:?}"
+    );
+    assert_eq!(
+        afresh["error"]["message"], "Tuple hasn't answered in 1 second",
+        "a stop asked past the last one's hold wasn't run afresh: {afresh}"
+    );
+    // The second stand-in says it was asked as it starts, a moment after
+    // the daemon runs it.
+    until(
+        "a stop asked past the last one's hold didn't run Tuple again",
+        || {
+            running
+                .read("bin/asked")
+                .iter()
+                .filter(|line| *line == "webcam stop")
+                .count()
+                == 2
+        },
+    );
+    std::fs::remove_file(&stall).unwrap();
+    until("both stops weren't journaled once done", || {
+        running
+            .read("journal")
+            .iter()
+            .filter(|line| line.contains("webcam stop answered late"))
+            .count()
+            == 2
+    });
+}
+
+#[test]
+fn a_stream_followed_afresh_journals_the_camera_it_says_on() {
+    let running = Running::start("afresh", true);
+    running.streams(STATE);
+    running.streams(&filming());
+    let mut watching = running.client();
+    watching.watch();
+    let journaled = || {
+        running
+            .read("journal")
+            .iter()
+            .filter(|line| line.contains("Tuple says Joel's camera is on in the call"))
+            .count()
+    };
+    until("the camera on wasn't journaled", || journaled() == 1);
+    std::fs::write(running.path("bin/ends"), "").unwrap();
+    watching.stands("refused");
+    // Tuple, started again, says the call and the camera on afresh, which
+    // its stream ending had left unsaid.
+    std::fs::remove_file(running.path("bin/ends")).unwrap();
+    std::fs::write(
+        running.path("bin/stream"),
+        format!("{STATE}\n{}\n", filming()),
+    )
+    .unwrap();
+    running.logs(&logged(now(), "daemon loop started, waiting for events..."));
+    until("the camera on, said afresh, wasn't journaled", || {
+        journaled() == 2
+    });
 }
 
 #[test]
@@ -543,6 +973,7 @@ fn it_answers_on_the_socket_systemd_hands_it() {
         "handed",
         false,
         &["systemd-socket-activate", "--listen={socket}"],
+        &[],
     );
     let mut client = running.client();
     let said = client.ask(&json!({"id": 1, "ask": "hello"}));

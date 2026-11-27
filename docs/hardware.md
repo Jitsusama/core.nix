@@ -579,7 +579,9 @@ the image processor appears, so a machine without the camera never runs it.
 
 The relay starts and stops the camera on its one main loop, and starting
 blocks it for as long as the camera takes to set up: 75 ms idle, but 38 s
-during a switch on 9 November. A call that gave up and came back in that
+during a switch on 9 November. That setup was likely the buffers'
+compaction that [the kernel guide's camera fix][41] is for, though
+nothing measured it then. A call that gave up and came back in that
 time had its stop and start handled late, and the camera was left running
 with nothing asking it for frames until the relay was restarted by hand.
 A patch has the relay start the camera's pipeline again once a client has
@@ -588,7 +590,9 @@ for its service to start it afresh if that brings none in another 90 s,
 the wait a fresh setup gets, so a camera dead mid-call ends it in about
 100 s, and one that fails before its first frame in about 180 s; or if its
 loop stays blocked for 90 s. Each says so in the relay's
-log. A setup past 90 s would still never give a frame. The first wait is that long because
+log. A setup past 90 s would still never give a frame. The check
+vm-the-relay-waits-out-a-frameless-camera drives the 90 s and 10 s waits, and
+the end once a first frame never comes. The first wait is that long because
 the first frame can come 40 s after the start even once the loop is free:
 on 23 November, under load, the HAL waited that long for its capture
 buffers while the kernel compacted memory to give them out. A 10 s wait
@@ -1828,3 +1832,4 @@ sealed to.
 [38]: https://github.com/aurora-silicon
 [39]: ../hardware/microsoft-surface-laptop-4-1958/touch/package.nix
 [40]: https://github.com/intel/crashlog
+[41]: kernel.md#the-patches

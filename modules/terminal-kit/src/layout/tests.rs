@@ -166,7 +166,7 @@ fn a_fact_from_outside_stays_beside_its_label() {
 }
 
 #[test]
-fn a_paragraph_and_hung_words_hold_a_break_to_one_line() {
+fn a_paragraph_hung_or_hanging_words_hold_a_break_to_one_line() {
     let said = "Den\n  try  rm -rf ~\u{2028}c\n";
     let flat = "Den   try  rm -rf ~ c";
     for room in [Room::Unbounded, Room::Cells(80)] {
@@ -179,6 +179,12 @@ fn a_paragraph_and_hung_words_hold_a_break_to_one_line() {
             paragraph(said, 4, room),
             [format!("    {flat}")],
             "a break in a paragraph drew a line of its own, or a trailing one a blank, in {room:?}"
+        );
+        assert_eq!(
+            hanging(said, 2, room),
+            [format!("  {flat}")],
+            "a break in a hanging paragraph drew a line of its own, or a trailing one a blank, in \
+             {room:?}"
         );
     }
     assert_eq!(

@@ -716,7 +716,7 @@ impl Pinning {
     /// where it was measured, and so does the spacing: unlike a network
     /// change, the void leaves `asked`, so a link flapping in and out of
     /// its unnamed moments asks at most a round each `APART` (voids round
-    /// 1's F2, F6 and F13). With no pin in force, the round's flows are
+    /// 1's F2 and F6, shaper holds round 5's F13). With no pin in force, the round's flows are
     /// forgotten too, so the first round once the spacing passes may read
     /// the same socket again, rather than wait for the VPN to open
     /// another while it rides unpinned (F15). A round already done, which
@@ -857,6 +857,15 @@ impl Pinning {
         if std::mem::take(&mut self.stale) {
             return None;
         }
+        // A round that can't judge the pin spends the kept-once mark
+        // wherever it was asked, a line no router named included, and
+        // leaving that link after undoes nothing: the cost is a round's
+        // measuring again, where not counting it would keep a pin gone
+        // slow on a link no router ever names. Clearing the mark on
+        // leaving would say the pin is good, which only a round that
+        // judges it may say, and for a round asked unnamed only its pin
+        // taking hold (voids round 2's F3 and F11; pin words round 1's
+        // F1, F5 and F8).
         if !self.judges(end, delays) {
             if !std::mem::replace(&mut self.kept, true) {
                 return None;
@@ -1469,19 +1478,6 @@ mod tests {
             None,
             "a pair found again while unnamed was let go as elsewhere"
         );
-        // Found again unnamed, the pair keeps where it was first measured,
-        // so the same network by another link keeps it (round 5's F9).
-        let mut refound = asked_on(30_010, "eth1", "link eth1", start);
-        refound.found(end(36_284), &quick, settled);
-        assert!(
-            refound.take_hold(settled).is_none(),
-            "the same pair was said moved"
-        );
-        assert_eq!(
-            refound.primary(Some(("wlan0", "aa:aa"))),
-            None,
-            "a pair measured on aa:aa and found again unnamed let go on aa:aa"
-        );
         // A round asked while named, its pin taking hold in a silence
         // after, was measured on the line named before it (round 2's F1,
         // F6 and F15).
@@ -1498,9 +1494,7 @@ mod tests {
             "a pin measured on aa:aa's line was kept on bb:bb's through a silence"
         );
         // A pin measured on eth1's line isn't kept on wlan0's (round 2's
-        // F12), and a round the primary left mid-round for another unnamed
-        // link counts for nothing, so the pin before it is judged as ever
-        // (round 5's F1 and F13).
+        // F12).
         let mut docked = asked_on(30_006, "eth1", "link eth1", start);
         docked.found(end(36_284), &quick, settled);
         assert!(
@@ -1512,6 +1506,31 @@ mod tests {
             Some(30_010),
             "a pin measured on eth1's line was kept on wlan0's"
         );
+    }
+
+    #[test]
+    fn a_pin_found_again_or_left_unnamed_stays_judged_by_where_it_was_measured() {
+        // The cases of a round asked unnamed that adopts nothing, moved
+        // here from the test of one that does (voids round 2's F4).
+        let start = Instant::now();
+        let settled = start + Duration::from_secs(35);
+        let quick = read(&[30_010, 30_011], 66.0, &[]);
+        // Found again unnamed, the pair keeps where it was first measured,
+        // so the same network by another link keeps it (round 5's F9).
+        let mut refound = asked_on(30_010, "eth1", "link eth1", start);
+        refound.found(end(36_284), &quick, settled);
+        assert!(
+            refound.take_hold(settled).is_none(),
+            "the same pair was said moved"
+        );
+        assert_eq!(
+            refound.primary(Some(("wlan0", "aa:aa"))),
+            None,
+            "a pair measured on aa:aa and found again unnamed let go on aa:aa"
+        );
+        // A round the primary left mid-round for another unnamed link
+        // counts for nothing, so the pin before it is judged as ever, here
+        // let go on another network (round 5's F1 and F13).
         let mut roamed = asked_on(30_006, "eth1", "link eth1", start);
         roamed.network("wlan0", "link wlan0");
         roamed.found(end(36_284), &quick, settled);
@@ -1623,6 +1642,41 @@ mod tests {
     }
 
     #[test]
+    fn a_round_asked_unnamed_that_couldn_t_judge_is_done_and_spends_the_mark() {
+        // Done once found, with nothing settling, so leaving its link
+        // voids nothing and keeps the mark it set; a named round that
+        // can't judge either lets the pin go (voids round 2's F3, F8 and
+        // F11).
+        let start = Instant::now();
+        let slow = read(&[], 66.0, &[]);
+        let mut unjudged = asked_on(30_006, "eth1", "link eth1", start);
+        assert_eq!(
+            unjudged.found(end(36_284), &slow, start),
+            None,
+            "one round that couldn't judge let the pin go"
+        );
+        unjudged.primary(None);
+        assert_eq!(unjudged.voided(), None, "a round already done was voided");
+        assert!(unjudged.kept, "leaving the link took back the mark");
+        assert_eq!(
+            unjudged.primary(Some(("eth1", "aa:aa"))),
+            None,
+            "the pin let go where it was measured"
+        );
+        let later = start + APART;
+        assert_eq!(
+            unjudged.ask(&[end(41_000)], false, later),
+            Some(end(41_000)),
+            "no round went once the spacing passed"
+        );
+        assert_eq!(
+            unjudged.found(end(41_000), &slow, later),
+            Some(30_006),
+            "a second round that couldn't judge kept the pin"
+        );
+    }
+
+    #[test]
     fn a_round_voided_while_settling_leaves_the_kept_once_mark_as_it_was() {
         // A round asked unnamed judged the pin on a line no router named,
         // so only its pin taking hold clears the mark a round before left
@@ -1673,7 +1727,15 @@ mod tests {
         );
         let mut pinned = asked_on(30_006, "eth1", "link eth1", start);
         pinned.primary(None);
+        // Voided, its found settles nothing, so only `seen` refuses the
+        // next round (voids round 2's F9).
+        assert_eq!(
+            pinned.voided().as_deref(),
+            Some("eth1"),
+            "the round wasn't voided"
+        );
         pinned.found(end(36_284), &read(&[30_010, 30_011], 66.0, &[]), start);
+        assert!(pinned.take_hold(start).is_none(), "a voided round settled");
         assert_eq!(
             pinned.ask(&[end(36_284)], false, later),
             None,
@@ -1682,13 +1744,20 @@ mod tests {
     }
 
     #[test]
-    fn a_pin_kept_unnamed_through_a_restart_is_let_go_once_named_and_measured_again() {
+    fn a_pin_kept_unnamed_through_a_restart_is_let_go_once_named_and_a_round_may_go() {
         let start = Instant::now();
         // A pin standing on eth1's own name, saved and taken back: its
         // link's unnamed moment isn't kept, so the router naming the
-        // network, even the same link's, lets it go, saying where it was
-        // measured isn't known any more rather than blaming a move, and a round
-        // goes again at once (shaper holds round 5's F3, F7, F11 and F12).
+        // network, even the same link's, lets it go, and a round may go
+        // again at once (shaper holds round 5's F7 and F11). This pins
+        // what main already did; the journal's words are pinned below.
+        assert_eq!(
+            let_go(30_010, LEFT_UNNAMED),
+            "The VPN's next connection leaves from any port again, no longer 30010 or 30011: \
+             where it was measured, on a link no router named, isn't known any more",
+            "the let-go after a restart blames a move or a failed save (voids round 2's F1, F6, \
+             F12 and F15)"
+        );
         let kept = Restart {
             pin: Some(pin_at(30_010)),
             on: Some(("eth1".to_owned(), "link eth1".to_owned())),

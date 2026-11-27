@@ -3,7 +3,7 @@
 //! writes through one a job left among the copies.
 
 use super::{Left, far_line, far_line_in, kind, scratch, work};
-use crate::far::steps::{RUN, sweeping};
+use crate::far::steps::{CLEARING, RUN, sweeping};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
@@ -20,7 +20,7 @@ fn here() -> String {
 }
 
 /// The number of a process that has ended, as a killed run's has.
-fn gone() -> u32 {
+pub(super) fn gone() -> u32 {
     let mut ended = std::process::Command::new("true").spawn().unwrap();
     ended.wait().unwrap();
     ended.id()
@@ -75,7 +75,11 @@ fn sweep_in(sh: &str, work: &Path, programs: &[(&str, &str)], before: &str) -> S
         .env("LC_ALL", "C")
         .args([
             "-c",
-            &format!("{before}\nwork='{}'\n{}", work.display(), sweeping()),
+            &format!(
+                "{before}\nwork='{}'\n{CLEARING}\n{}",
+                work.display(),
+                sweeping()
+            ),
         ])
         .env("PATH", path)
         .output()
@@ -133,16 +137,18 @@ fn only_the_copies_of_runs_here_that_are_gone_are_cleared() {
     let job = "4242-1763912345678901234";
     copy(&runs, job, &format!("{gone} {here}"));
     std::fs::write(runs.join(format!("{job}.names")), "n").unwrap();
+    std::fs::write(runs.join(format!("{job}.tar")), "t").unwrap();
     std::fs::write(runs.join(format!("{job}.back")), "b").unwrap();
     std::fs::write(runs.join(format!("{job}.back.lost")), "l").unwrap();
     closed(&runs.join(job));
     let beyond = closed(&root.join("beyond"));
     std::os::unix::fs::symlink(root.join("beyond"), runs.join(job).join("inner")).unwrap();
-    // Gone, its job having made folders where its names, its
-    // brought-back list and a list's leftovers go, and closed one in each.
+    // Gone, its job having made folders where its names, its archive,
+    // its brought-back list and a list's leftovers go, and closed one in
+    // each.
     let made = "4243-1763912345678901235";
     copy(&runs, made, &format!("{gone} {here}"));
-    for beside in [".names", ".back", ".back.lost"] {
+    for beside in [".names", ".tar", ".back", ".back.lost"] {
         closed(&runs.join(format!("{made}{beside}")));
     }
     // Gone, but its copy is a link, which goes alone.
@@ -246,6 +252,48 @@ exec rm \"$@\""
         left_in(&runs),
         [job.to_owned(), format!("{job}{RUN}")],
         "a copy that wouldn't go lost its run's file, so no sweep could retry it"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn a_link_at_the_copies_folder_that_wont_clear_stops_the_sweep_and_says_so() {
+    let root = scratch("far-swept-linked");
+    let runs = root.join("s");
+    let aside = root.join("aside");
+    // Two gone runs, so a sweep that went on past the link would say so
+    // again for the second.
+    let (job, next) = ("4242-1763912345678901234", "4243-1763912345678901234");
+    for id in [job, next] {
+        copy(&runs, id, &format!("{} {}", gone(), here()));
+    }
+    // Another job of the quest moving the copies' folder aside, with a
+    // link to it at its name, as the sweep's first head reads a gone
+    // run's file (the head after tr in its pipeline leaves it be), and an
+    // rm that can't clear that link.
+    let (r, a) = (runs.display(), aside.display());
+    let head = format!(
+        "PATH=${{PATH#*:}}
+[ \"$1\" != -c ] || [ -L '{r}' ] || {{ mv '{r}' '{a}' && ln -s '{a}' '{r}'; }}
+exec head \"$@\""
+    );
+    let rm = format!("case \"$*\" in *' {r}') exit 1 ;; esac\nPATH=${{PATH#*:}}\nexec rm \"$@\"");
+    let said = sweep_with(&runs.join("9"), &[("head", &head), ("rm", &rm)]);
+    assert_eq!(
+        said,
+        "elsewhere: a link at its copies' folder couldn't be cleared, so the sweep stops, and \
+         this run is untaken if it still stands once its files cross\n",
+        "the sweep didn't say why it stopped, once and alone"
+    );
+    assert_eq!(
+        left_in(&aside),
+        [
+            job.to_owned(),
+            format!("{job}{RUN}"),
+            next.to_owned(),
+            format!("{next}{RUN}")
+        ],
+        "the sweep cleared through the link it couldn't clear"
     );
     let _ = std::fs::remove_dir_all(&root);
 }
@@ -461,18 +509,20 @@ fn only_a_run_s_file_s_first_512_bytes_are_read() {
     let root = scratch("far-swept-bound");
     let runs = root.join("s");
     let (here, gone) = (here(), gone());
-    // Spaces that bring what follows them to a run file's byte `at`.
+    // Spaces that make `before` and them `at` bytes long, so what follows
+    // starts at byte `at` + 1. Bytes here are counted from one.
     let to = |before: &str, at: usize| " ".repeat(at - before.len());
     // Gone runs here, each read only as far as its 512th byte: one with a
-    // word from its 513th, which is never heard, and one whose machine
-    // ends at its 512th, its last letter no space, which is heard whole.
-    // So both copies go, and a bound a byte either way keeps one.
+    // word from its 513th, which is never heard, and one whose naming of
+    // this machine (and, on Linux, its process space) ends at its 512th,
+    // no space, which is heard whole. So both copies go, and a bound a
+    // byte either way keeps one.
     let named = format!("{gone} {here}");
     copy(&runs, "1", &format!("{named}{}more", to(&named, 512)));
-    let machine = here.trim_end();
+    let named_here = here.trim_end();
     let number = gone.to_string();
-    let past = to(&number, 512 - machine.len());
-    copy(&runs, "2", &format!("{number}{past}{machine}"));
+    let past = to(&number, 512 - named_here.len());
+    copy(&runs, "2", &format!("{number}{past}{named_here}"));
     let said = sweep(&runs.join("9"));
     assert!(said.is_empty(), "the sweep said something: {said}");
     assert!(

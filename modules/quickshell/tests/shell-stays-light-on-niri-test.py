@@ -14,10 +14,25 @@ Each closing's line also says what jemalloc holds, found by name in Quickshell's
 Quickshell whose jemalloc stopped answering to that name is caught here, where it really runs.
 The shell's Qt makes the heap anonymous memory, so each of its pages is held once
 (qtdeclarative-heap-held-once.patch), and the shell's own maps must show no memfd of it. And
-some closing must lend resident free pages back, and the kernel must then say it holds some of the
-shell lent, so a launcher that stopped lending, or a heap the kernel won't take lent (memory not
-anonymous refuses it), is caught here; that lending keeps the pages until the kernel needs them,
-rather than giving them back, is the heap test's lendsBack to hold.
+some closing must lend resident free pages back, which catches a launcher that stopped lending and
+a heap the kernel won't take lent (memory not anonymous refuses it, and a refusal isn't counted).
+The kernel must then say it holds some of the shell lent, a figure for the whole process, so it
+holds that the line reads it, not that the heap alone lent it. That lending keeps the pages until
+the kernel needs them, rather than giving them back, is the heap test's lendsBack to hold.
+
+What the heap holds resident must not climb round on round either, as live mustn't: Joel's shell
+held 149 MB at 23:09 and 252 MB at 00:13 with live flat at 60 to 65 MB (2026-11-25), and each
+closing's line says how much of what's held is resident, which counts what a page the kernel took
+no longer costs. A lent page counts as resident until the kernel takes it, and a page swapped out,
+to zswap's pool or the disk, until it's touched again, so a builder short of memory may read a
+round low and the next one at its true height. The kernel's counts of those are the whole
+machine's, so they bound what it could have taken of the shell, and on a quiet builder are nothing.
+On a busy one they grow with every other build, so the shell bounds them too: a page taken of its
+heap stays held, so no more was taken than any of the round's closings held but hadn't resident,
+give or take its chunks' headers, which resident counts and held doesn't, and each figure's
+rounding to a MB. The headers can only tighten it, so a busy builder may fail a sound round by
+them, never pass a climb.
+The round before is let the lesser higher, which says why the bound was loose when it is.
 """
 
 from __future__ import annotations
@@ -93,21 +108,58 @@ def live_after_closings(shell: Shell) -> list[int]:
     return live
 
 
+def resident_after_closings(shell: Shell) -> list[tuple[int, int]]:
+    """Give the MB each closing said the heap held, and held resident, in order.
+
+    Resident is -1 where the closing said it was unknown.
+    """
+    said = shell.log.read_text(errors="replace")
+    return [
+        (int(held), int(resident.split()[0]) if resident[0].isdigit() else -1)
+        for held, resident in re.findall(
+            r"launcher: collected after closing in \d+ ms: \d+ MB live of (\d+) MB held, "
+            r"(\d+ MB|an unknown amount) of it resident,",
+            said,
+        )
+    ]
+
+
+def pages_taken() -> int:
+    """Give the pages the kernel has taken anywhere since it started, lent or swapped out.
+
+    Lent pages it took, pages written to swap and pages stored in zswap's pool; a count it doesn't
+    keep counts none.
+    """
+    vmstat = Path("/proc/vmstat").read_text()
+    counted = (
+        re.search(rf"^{event} (\d+)$", vmstat, re.MULTILINE)
+        for event in ("pglazyfreed", "pswpout", "zswpout")
+    )
+    return sum(int(found.group(1)) for found in counted if found)
+
+
 def test_a_round_of_every_place_keeps_no_more_live(capsys: pytest.CaptureFixture[str]) -> None:
     """Open every place and type at home, three rounds, each after the first landing level."""
+    # From before the shell starts, since a page taken in any round before the third lowers it.
+    started = pages_taken()
     with launcher_on_niri.running() as shell:
         shell.launcher_until(lambda shown: shown.get("kept"))
-        rounds = rounds_kept(shell)
+        rounds, residents, taken = rounds_kept(shell)
         said = shell.log.read_text(errors="replace")
         jemalloc = re.search(r"collected after closing.*; jemalloc \d+ MB in use", said)
         assert jemalloc, f"no closing said what jemalloc holds:\n{shell.tail()}"
         lendings = re.findall(
             r" (\d+) MB of free pages lent in \d+ ms,"
-            r" the kernel holding (-?\d+) MB of the shell lent",
+            r" the kernel holding (\d+ MB|an unknown amount) of the shell lent",
             said,
         )
+        closings = said.count("launcher: collected after closing in ")
+        assert len(lendings) == closings, (
+            f"{closings - len(lendings)} of {closings} closings didn't say what they lent"
+            f" as this check reads it:\n{shell.tail()}"
+        )
         lent = [int(each) for each, _ in lendings]
-        held = [int(each) for _, each in lendings]
+        held = [int(each.split()[0]) if each[0].isdigit() else -1 for _, each in lendings]
         assert any(lent), f"no closing lent its heap's free pages back: {lent}\n{shell.tail()}"
         assert any(each > 0 for each in held), (
             f"the kernel held nothing of the shell lent after any closing: {held}\n{shell.tail()}"
@@ -117,22 +169,61 @@ def test_a_round_of_every_place_keeps_no_more_live(capsys: pytest.CaptureFixture
         memfds = [line for line in maps if "/memfd:JSGCHeap" in line]
         assert not memfds, f"the shell maps its heap from a memfd {len(memfds)} times"
     medians = [round(statistics.median(each) / 1024) for each in rounds]
+    resident = [
+        float(statistics.median([said for _, said in each])) if each else 0.0 for each in residents
+    ]
+    # A take in the third round only lowers it, so only what was taken before it counts: no more
+    # than the machine took anywhere, nor than the shell held but hadn't resident at any of the
+    # second round's closings, since a page taken of its heap stays held, give or take the
+    # headers and rounding the docstring names. The machine's count alone would let a busy
+    # builder pass any climb.
+    machine = (taken[1] - started) * os.sysconf("SC_PAGE_SIZE") / 2**20
+    shell_took = max((max(held - said, 0) for held, said in residents[1] if said >= 0), default=0)
+    allowed = min(machine, float(shell_took))
     # Said whether it passes, so a change's cost is read from its run.
     with capsys.disabled():
         print(f"live after each round's closings, medians in kB: {medians}", flush=True)
+        print(
+            f"resident after each round's closings, medians in MB: {resident}, letting the"
+            f" second {allowed:.1f} MB higher for pages taken before the third, the least of"
+            f" {machine:.1f} MB the machine took and {shell_took} MB the shell held unresident",
+            flush=True,
+        )
     assert all(rounds), f"a round's closings weren't collected: {rounds}"
     second, third = medians[1], medians[2]
     assert third <= second * GROWTH, (
         f"a round of every place kept {third} kB live against {second} kB the round before"
         f" (medians by round, in kB: {medians}), so something each opening makes is never let go"
     )
+    closings = len(PLACES) + len(TYPED)
+    assert all(len(each) == closings for each in residents), (
+        f"a round's closings didn't each say what's held resident as this check reads it:"
+        f" {residents}"
+    )
+    assert all(said >= 0 for each in residents for _, said in each), (
+        f"the kernel wouldn't say which of the heap's pages are resident: {residents}"
+    )
+    assert resident[2] <= (resident[1] + allowed) * GROWTH, (
+        f"a round of every place held {resident[2]} MB resident against {resident[1]} MB the"
+        f" round before, which the kernel could have taken {allowed:.1f} MB of (medians by"
+        f" round, in MB: {resident}), so the heap keeps pages it no longer uses"
+    )
 
 
-def rounds_kept(shell: Shell) -> list[list[int]]:
-    """Give the bytes left live at each closing of three rounds of every place, by round."""
+def rounds_kept(
+    shell: Shell,
+) -> tuple[list[list[int]], list[list[tuple[int, int]]], list[int]]:
+    """Give the bytes left live, and the MB held and held resident, at each closing of three rounds.
+
+    And the pages the kernel had taken anywhere by the end of each round, as pages_taken counts.
+    """
     rounds: list[list[int]] = []
+    residents: list[list[tuple[int, int]]] = []
+    taken: list[int] = []
     seen = len(live_after_closings(shell))
     for _ in range(3):
+        # Said in the shell's own log as each closing's collection is waited for, so never behind.
+        before = len(resident_after_closings(shell))
         for place in PLACES:
             opened_and_closed(shell, place)
         for text in TYPED:
@@ -145,5 +236,7 @@ def rounds_kept(shell: Shell) -> list[list[int]]:
             time.sleep(0.5)
             live = live_after_closings(shell)
         rounds.append(live[seen:])
+        residents.append(resident_after_closings(shell)[before:])
+        taken.append(pages_taken())
         seen = len(live)
-    return rounds
+    return rounds, residents, taken

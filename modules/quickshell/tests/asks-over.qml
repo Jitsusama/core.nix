@@ -16,7 +16,7 @@
 // screen is shared, or before niri has said its casts, an ask's row says
 // only that it's hidden, with no acts and no frame timed, and shown again it
 // counts nothing until his next move (Niri and Recorder stood in by the
-// check). It exits 0 once every case holds, and otherwise 1, saying which
+// check); two hidden at once differ only by when each was asked. It exits 0 once every case holds, and otherwise 1, saying which
 // didn't. Long because every case runs on one stand-in connection, launcher
 // and frame clock, which a split would have to copy into each half.
 import qs
@@ -32,6 +32,9 @@ ShellRoot {
 
     readonly property string id: "0123456789abcdef0123456789abcdef"
     readonly property string key: `row:asks:${root.id}`
+    // A second ask's, asked before the first, for two hidden at once.
+    readonly property string otherId: "fedcba9876543210fedcba9876543210"
+    readonly property string otherKey: `row:asks:${root.otherId}`
     readonly property var same: Expect.same
     // The row as it was made before the screen was shared, as a step the
     // launcher holds keeps it.
@@ -94,6 +97,32 @@ ShellRoot {
             });
             held = next;
             heard([root.key], []);
+        }
+
+        // A second waiting ask, asked at 500, before the first, for
+        // another item from another session.
+        function tellOther() {
+            const thing = `ask:${root.otherId}`;
+            const first = root.record("d2").row;
+            const next = Object.assign({}, held);
+            next[root.otherKey] = { key: root.otherKey, kind: "row", row: Object.assign({}, first, {
+                key: root.otherKey, thing, name: "op://Private/Glaze/password", note: "S2",
+                side: [{ said: "from S2", keep: 2 }], attention: 500,
+                reads: "op://Private/Glaze/password", keywords: ["glazemix"],
+                acts: first.acts.map(one => Object.assign({}, one,
+                    { ask: Object.assign({}, one.ask, { key: thing }) })),
+                drawer: { eyebrow: "S2", title: "op://Private/Glaze/password",
+                    body: "To mix the glaze.", facts: [{ name: "Runs", said: "make glaze" }] }
+            }) };
+            held = next;
+            heard([root.otherKey], []);
+        }
+
+        function forgetOther() {
+            const next = Object.assign({}, held);
+            delete next[root.otherKey];
+            held = next;
+            heard([], [root.otherKey]);
         }
 
         // An entry, as a manager's list is read in batches over the same connection.
@@ -288,14 +317,18 @@ ShellRoot {
             entryTold, reopened, reopenedThenEscaped, reopenedThenMoved, reopenedAndShown, left,
             moved, changed, stepping, stepped, steppedBack, movedBack, drawn, outside, refused,
             returnedInto, returnedIntoShown, steeredOut, walkedInto, walkedIntoShown,
-            walkedThenEscaped, walkedThenMoved, walkedThenMovedShown, toldInPlace, typing,
-            typedAfter, movedAgain, typedBeforeItsFrame, typedThenShown, movedOnceMore,
-            typedWithReturn, typedWithReturnShown, movedThenOpened, movedThenOpenedShown,
+            walkedThenEscaped, walkedThenMoved, walkedThenMovedShown, toldInPlace,
+            escapedInPlace, movedInPlace, typing, typedAfter, typedThenEscaped, movedAgain,
+            typedBeforeItsFrame, typedThenShown, movedOnceMore, typedWithReturn,
+            typedWithReturnShown, movedAlone, movedAloneShown, movedThenReturned,
+            movedThenReturnedAlone, movedThenReturnedShown, movedWithReturn, movedWithReturnShown,
+            movedThenOpened, movedThenOpenedShown,
             overRowsThenTold, toldOverRows, toldOverRowsShown, landed, landedThenMoved,
             landedThenShown, commanded, commandedThenRun, commandedThenMoved,
             commandedThenShown, timedBeforeSharing, timedMove, sharing, sharedYes,
             sharingMoved, sharingMovedAsked, unshared, unsharedShown, unsharedMoved,
-            unsharedMovedShown, unheard, ownRecording, sharedNo, heldThenShared, sharedEnded]);
+            unsharedMovedShown, unheard, ownRecording, sharedNo, heldThenShared, sharedEnded,
+            twoShared]);
     }
 
     function arming() {
@@ -546,6 +579,15 @@ ShellRoot {
         stage.selected = row();
         stage.present(600);
         same("a line an ask from outside selects is no move of his", shownNow(), undefined);
+    }
+
+    // His Escape since that ask, so the move after it arms, and the letter after that is
+    // what keeps the line untimed, never a move that couldn't arm.
+    function escapedInPlace() {
+        stage.toRows();
+    }
+
+    function movedInPlace() {
         stage.press("k", true);
     }
 
@@ -557,6 +599,13 @@ ShellRoot {
     function typedAfter() {
         stage.present(600);
         same("typing after a move starts the line's time again", shownNow(), undefined);
+    }
+
+    // His Escape again, since the ask from outside above, so each move
+    // below would arm on its own: what keeps the line untimed is what
+    // follows it, never a move that couldn't arm.
+    function typedThenEscaped() {
+        stage.toRows();
     }
 
     // A move, then a letter before the frame the move asked for reaches the screen.
@@ -586,6 +635,48 @@ ShellRoot {
 
     function typedWithReturnShown() {
         same("a letter read with the Return after it starts the time again", shownNow(),
+            undefined);
+    }
+
+    // A move read alone arms the line, so the case after it can fail.
+    function movedAlone() {
+        stage.press("j", true);
+    }
+
+    function movedAloneShown() {
+        stage.present(600);
+        same("a move read alone after his Escape times the line", since(shownNow(), 600),
+            true);
+    }
+
+    // A move read alone, then a Return on a later turn, which leaves the time the move
+    // started: the other half of the case below, which differs only in the turn the
+    // Return is read in.
+    function movedThenReturned() {
+        stage.press("j", true);
+    }
+
+    function movedThenReturnedAlone() {
+        stage.present(600);
+        stage.press("Return", false);
+    }
+
+    function movedThenReturnedShown() {
+        same("a Return read after the move it follows keeps the line's time",
+            since(shownNow(), 600), true);
+    }
+
+    // A move and a Return taken in one turn, as a busy shell takes them,
+    // are read together, so they start the line's time again, where the
+    // Return alone would have left the time the move above started.
+    function movedWithReturn() {
+        stage.press("j", true);
+        stage.press("Return", false);
+    }
+
+    function movedWithReturnShown() {
+        stage.present(600);
+        same("a move read with the Return after it starts the line's time again", shownNow(),
             undefined);
     }
 
@@ -929,5 +1020,38 @@ ShellRoot {
             [true, "not while your screen is shared"]);
         Niri.casts = {};
         same("the share over, the ended ask isn't held still", Arming.holdsStill(row()), false);
+    }
+
+    // Two asks hidden at once wait in For You alike, each its own by the
+    // keys it's kept by, with only when each was asked between them,
+    // which orders For You (ForYou.js's older), so their order is all
+    // that tells one from the other (Asks.qml's hiddenKeeps).
+    function twoShared() {
+        Niri.castsHeard = true;
+        Niri.casts = { "1": { kind: "PipeWire", session_id: 1 } };
+        link.tell("d1");
+        link.tellOther();
+        const hidden = "Ask, Hidden While You Share";
+        const waits = asks.forYou.slice().sort((one, other) => one.thing.since - other.thing.since);
+        same("both wait in For You, each named only as hidden",
+            waits.map(one => one.row.name), [hidden, hidden]);
+        same("each its own ask, by the keys its row is kept by",
+            waits.map(one => [one.row.key, one.row.shownKey]),
+            [[`ask:${root.otherId}`, root.otherKey], [`ask:${root.id}`, root.key]]);
+        same("with when each was asked, which orders For You",
+            waits.map(one => one.thing.since), [500, 1000]);
+        // Every other field each carries, each that's a function as it
+        // reads, so a field drawn later that tells them apart fails here.
+        const rest = one => JSON.stringify(Object.keys(one ?? {}).sort()
+            .filter(field => !["key", "shownKey", "asked"].includes(field))
+            .map(field => [field,
+                typeof one[field] === "function" ? called(one[field]) : one[field]]));
+        same("and nothing else either carries tells one from the other",
+            rest(waits[0].row), rest(waits[1].row));
+        same("nor names what either asks for or where from",
+            ["Kiln", "Glaze", "S1", "S2"].filter(word =>
+                waits.some(one => rest(one.row).includes(word))), []);
+        link.forgetOther();
+        Niri.casts = {};
     }
 }

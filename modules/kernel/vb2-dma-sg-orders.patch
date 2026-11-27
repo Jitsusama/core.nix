@@ -1,0 +1,66 @@
+media: videobuf2-dma-sg: don't retry high orders a buffer needn't have
+
+vb2_dma_sg_alloc_compacted() fills a buffer from the largest blocks it
+can get. For each piece it starts again from the largest order that
+fits what is left of the buffer, and steps down one order at a time
+until an allocation succeeds. Each failed order above
+PAGE_ALLOC_COSTLY_ORDER pays for direct compaction, direct reclaim and
+compaction again before it fails. With memory fragmented, every piece
+climbs back to the top and pays for every order again. Here a camera's
+VIDIOC_REQBUFS, four 16.9 MB capture buffers on an IPU7 ISYS node,
+spent 40 seconds in one call, at 12 seconds of system time after 15:
+
+  __alloc_pages_slowpath
+  __alloc_pages_direct_compact
+  try_to_compact_pages
+  compact_zone
+  migrate_pages
+
+The buffer is a scatter list, so its pages needn't be contiguous, and
+iommu-dma's __iommu_dma_alloc_pages() already treats higher orders as
+a convenience in the same way. So remember the order that last failed
+and never ask for a higher one again, and ask for orders above 0 with
+__GFP_NORETRY, keeping the allocator's full effort for single pages.
+A buffer that fits in single pages still gets them, so this fails no
+allocation that succeeded before.
+
+--- a/drivers/media/common/videobuf2/videobuf2-dma-sg.c
++++ b/drivers/media/common/videobuf2/videobuf2-dma-sg.c
+@@ -62,6 +62,8 @@ static int vb2_dma_sg_alloc_compacted(st
+ {
+ 	unsigned int last_page = 0;
+ 	unsigned long size = buf->size;
++	gfp_t gfp = GFP_KERNEL | __GFP_ZERO | __GFP_NOWARN | gfp_flags;
++	int max_order = MAX_PAGE_ORDER;
+ 
+ 	while (size > 0) {
+ 		struct page *pages;
+@@ -72,11 +74,18 @@ static int vb2_dma_sg_alloc_compacted(st
+ 		/* Don't over allocate*/
+ 		if ((PAGE_SIZE << order) > size)
+ 			order--;
++		/* Don't ask again for an order that has already failed */
++		order = min(order, max_order);
+ 
+ 		pages = NULL;
+ 		while (!pages) {
+-			pages = alloc_pages(GFP_KERNEL | __GFP_ZERO |
+-					__GFP_NOWARN | gfp_flags, order);
++			/*
++			 * The buffer is scattered anyway, so higher orders are
++			 * a convenience: ask for them without retrying, and
++			 * keep the allocator's full effort for single pages.
++			 */
++			pages = alloc_pages(order ? gfp | __GFP_NORETRY : gfp,
++					    order);
+ 			if (pages)
+ 				break;
+ 
+@@ -86,6 +95,7 @@ static int vb2_dma_sg_alloc_compacted(st
+ 				return -ENOMEM;
+ 			}
+ 			order--;
++			max_order = order;
+ 		}
+ 
+ 		split_page(pages, order);

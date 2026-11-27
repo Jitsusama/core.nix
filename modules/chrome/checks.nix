@@ -126,8 +126,11 @@ onLinux {
   # are each handled, a Chrome still quitting is waited for, as is one
   # whose maps can't be read, one still quitting after half a minute is
   # given up on, the run starting over once it has quit,
-  # and with Chrome running, or started again as it quits, nothing in the
-  # profile is touched
+  # and with Chrome running, or started again as it quits, no cache is
+  # touched, while BrowserMetrics, which Chrome deletes itself as it runs,
+  # moves once nothing of Chrome's here maps or holds open a file in it,
+  # a folder whose name only begins with it not counting; a Chrome on
+  # another host keeps it on the disk, and a quitting one is waited for
   # (tests/chrome-maps-land-in-memory.sh). The unit runs as the account's
   # manager starts, before the session that starts Chrome, and again on
   # each change in the profile's folder, as when Chrome quits; it doesn't

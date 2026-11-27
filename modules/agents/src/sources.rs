@@ -9,13 +9,15 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
 use std::thread;
+use std::time::Instant;
 
 pub use daemon_serve::watch::{follow, follow_asking};
 use serde_json::Value;
 
 use crate::answered;
-use crate::arrangement::Arrangement;
+use crate::arrangement::{self, Arrangement, Still};
 use crate::carried::{Carried, Said};
+use crate::clock;
 use crate::file::{self, Files};
 use crate::inboxes::{self, Inboxes};
 use crate::inputs::Inputs;
@@ -213,6 +215,27 @@ pub fn follow_files(paths: &Paths, to: Sender<Heard>) -> std::io::Result<()> {
 }
 
 impl Inputs {
+    /// Keeps the arrangement once the windows have been `still` long
+    /// enough at `now`, and asks `still` to be woken for a place closed by
+    /// hand let go when due, though nothing moves. Kept places whose write
+    /// failed, at the shell's word or here, are tried again soon though
+    /// the shell says nothing more, whether or not the windows are still,
+    /// as they don't hang on where windows sit.
+    pub fn keep_when_still(&mut self, still: &mut Still, paths: &Paths, now: Instant) {
+        if still.due(now)
+            && let Some(let_go) = self.keep_places(&paths.arrangement)
+        {
+            let ms = u64::try_from(clock::now_ms()).unwrap_or(u64::MAX);
+            still.again(now + arrangement::again_in(let_go, ms));
+        }
+        if still.retried(now) {
+            self.keep_kept_places(&paths.kept_places);
+        }
+        if let Some(again) = self.kept_places_again_in() {
+            still.retry(now + again);
+        }
+    }
+
     /// Takes what a source said into the part of the inputs it changes.
     pub fn hear(&mut self, heard: Heard, paths: &Paths) {
         match heard {
@@ -287,12 +310,7 @@ impl Inputs {
                     eprintln!("agents: can't say {} was read: {why}", answer.talk);
                 }
             }
-            Heard::KeepPlaces(kept) => {
-                if let Err(why) = kept.write(&paths.kept_places) {
-                    eprintln!("agents: can't keep {}: {why}", paths.kept_places.display());
-                }
-                self.kept_places = kept;
-            }
+            Heard::KeepPlaces(kept) => self.write_kept_places(kept, &paths.kept_places),
             Heard::FedBack(line) => self.fed_back.push(line),
             Heard::Inboxes(waiting) => self.unsent = waiting,
             Heard::Starts(stood) => self.stood = Some(stood),
@@ -328,14 +346,28 @@ impl Inputs {
             // Read again whenever it's written, by the daemon or another
             // hand, as the shell read its own file of them. While a write
             // has failed, memory is ahead of the file and is written over
-            // it at the next try, so the file isn't read back over it.
+            // it at the next try, so the file isn't read back over it: a
+            // hand edit made meanwhile is ignored, then written over, as
+            // the journal says.
             if self.unwritten.is_some() {
+                self.behind_ignored(path);
                 return;
             }
+            self.left_unread = None;
             if let Some(kept) = Arrangement::read(path) {
                 self.arrangement = kept;
             }
         } else if path == paths.kept_places {
+            // As with the arrangement: while their write has failed,
+            // memory holds what the shell said last and the file doesn't,
+            // until a try soon after writes it over the file
+            // (keep_kept_places), so a hand edit made meanwhile is ignored,
+            // as the journal says, then written over.
+            if self.kept_places_unwritten.is_some() {
+                self.behind_ignored(path);
+                return;
+            }
+            self.left_unread = None;
             if let Some(kept) = KeptPlaces::read(path) {
                 self.kept_places = kept;
             }
@@ -349,12 +381,25 @@ impl Inputs {
             });
         }
     }
+
+    /// Journals a change to a places file at `path` left unread, as memory
+    /// is ahead of it while its write fails and is written over it at the
+    /// next try, so a hand edit lost that way is seen, and holds the line.
+    fn behind_ignored(&mut self, path: &Path) {
+        let line = format!(
+            "agents: ignored a change to {}, as its write is behind and memory goes over it",
+            path.display()
+        );
+        eprintln!("{line}");
+        self.left_unread = Some(line);
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use std::fs;
     use std::sync::mpsc;
+    use std::time::Duration;
 
     use serde_json::json;
 
@@ -537,7 +582,11 @@ mod tests {
         let ahead = Arrangement::of(&json!({"v": 1, "boots": {"this": {}}}));
         let mut inputs = Inputs {
             arrangement: ahead.clone(),
-            unwritten: Some("No space left on device".into()),
+            unwritten: Some(crate::inputs::Unwritten {
+                why: "No space left on device".into(),
+                since: 0,
+                said: 0,
+            }),
             ..Inputs::default()
         };
         inputs.hear(Heard::Files(vec![paths.arrangement.clone()]), &paths);
@@ -545,9 +594,133 @@ mod tests {
             inputs.arrangement, ahead,
             "memory ahead of the file isn't thrown back to it, let-gos and all"
         );
+        assert_eq!(
+            inputs.left_unread,
+            Some(format!(
+                "agents: ignored a change to {}, as its write is behind and memory goes over it",
+                paths.arrangement.display()
+            )),
+            "and the journal hears the change left unread"
+        );
         inputs.unwritten = None;
         inputs.hear(Heard::Files(vec![paths.arrangement.clone()]), &paths);
-        assert_eq!(inputs.arrangement, stale, "once caught up, it's read again");
+        assert_eq!(
+            (&inputs.arrangement, &inputs.left_unread),
+            (&stale, &None),
+            "with no write failed, a file written by another hand is read as it lands, \
+             and the journal hears nothing of it"
+        );
+        let _ = fs::remove_dir_all(&folder);
+    }
+
+    #[test]
+    fn kept_places_heard_written_while_their_write_has_failed_leave_memory_as_it_is() {
+        // A folder of its own, as cases run side by side.
+        let folder =
+            std::env::temp_dir().join(format!("agents-kept-unwritten-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&folder);
+        fs::create_dir_all(&folder).expect("a folder");
+        let paths = paths_in(&folder);
+        // A file where the places' folder would be, so their write fails.
+        fs::write(folder.join("agents"), "").expect("a file in the folder's way");
+        let said = KeptPlaces::said(&json!({"01-a": {"workspace": 3, "column": 2, "at": 7}}))
+            .expect("places");
+        let mut inputs = Inputs::default();
+        inputs.hear(Heard::KeepPlaces(said.clone()), &paths);
+        assert!(
+            inputs.kept_places_unwritten.is_some(),
+            "the failed write is held, so the file isn't read back over memory"
+        );
+        // The file as it stood before, landing as the folder comes back.
+        fs::remove_file(folder.join("agents")).expect("the way cleared");
+        KeptPlaces::default()
+            .write(&paths.kept_places)
+            .expect("written");
+        inputs.hear(Heard::Files(vec![paths.kept_places.clone()]), &paths);
+        assert_eq!(
+            inputs.kept_places, said,
+            "memory ahead of the file isn't thrown back to it"
+        );
+        assert_eq!(
+            inputs.left_unread,
+            Some(format!(
+                "agents: ignored a change to {}, as its write is behind and memory goes over it",
+                paths.kept_places.display()
+            )),
+            "and the journal hears the change left unread"
+        );
+        // Written by the next try, as the loop's case has it.
+        inputs.keep_kept_places(&paths.kept_places);
+        let by_hand = KeptPlaces::said(&json!({"01-b": {"workspace": 4, "column": 1, "at": 8}}))
+            .expect("places");
+        by_hand.write(&paths.kept_places).expect("written");
+        inputs.hear(Heard::Files(vec![paths.kept_places.clone()]), &paths);
+        assert_eq!(
+            (&inputs.kept_places, &inputs.left_unread),
+            (&by_hand, &None),
+            "and once they're written, a file another hand writes is read as it lands, \
+             and the journal hears nothing of it"
+        );
+        let _ = fs::remove_dir_all(&folder);
+    }
+
+    #[test]
+    fn kept_places_whose_write_failed_are_written_again_though_nothing_moves() {
+        let folder = std::env::temp_dir().join(format!("agents-kept-again-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&folder);
+        fs::create_dir_all(&folder).expect("a folder");
+        let paths = paths_in(&folder);
+        // A file where the places' folder would be, so their write fails.
+        fs::write(folder.join("agents"), "").expect("a file in the folder's way");
+        let said = KeptPlaces::said(&json!({"01-a": {"workspace": 3, "column": 2, "at": 7}}))
+            .expect("places");
+        let mut inputs = Inputs::default();
+        let mut still = Still::default();
+        let start = Instant::now();
+        let ten = Duration::from_secs(10);
+        inputs.hear(Heard::KeepPlaces(said.clone()), &paths);
+        inputs.keep_when_still(&mut still, &paths, start);
+        assert_eq!(
+            still.wait(start),
+            Some(ten),
+            "a failed write asks to be woken in 10 s, though no window moved"
+        );
+        let woken = start + ten;
+        inputs.keep_when_still(&mut still, &paths, woken);
+        assert_eq!(
+            (inputs.kept_places_unwritten.is_some(), still.wait(woken)),
+            (true, Some(ten)),
+            "failing again when woken, it asks to be woken 10 s on again"
+        );
+        // Windows moving all the while: kept places don't hang on where
+        // they are, so their try isn't put off until they're still.
+        still.moved(woken + Duration::from_secs(9));
+        assert_eq!(
+            still.wait(woken + Duration::from_secs(9)),
+            Some(Duration::from_secs(1)),
+            "windows moving put off no try of the kept places"
+        );
+        fs::remove_file(folder.join("agents")).expect("the way cleared");
+        inputs.keep_when_still(&mut still, &paths, woken + Duration::from_secs(9));
+        assert_eq!(
+            (
+                inputs.kept_places_unwritten.is_some(),
+                KeptPlaces::read(&paths.kept_places)
+            ),
+            (true, None),
+            "woken sooner, as by a source, it tries nothing until the 10 s are up"
+        );
+        let tried = woken + ten;
+        inputs.keep_when_still(&mut still, &paths, tried);
+        assert_eq!(
+            (
+                inputs.kept_places_unwritten.clone(),
+                KeptPlaces::read(&paths.kept_places)
+            ),
+            (None, Some(said)),
+            "woken then, it writes them though the windows still move and the shell said \
+             nothing more"
+        );
         let _ = fs::remove_dir_all(&folder);
     }
 

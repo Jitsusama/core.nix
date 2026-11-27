@@ -37,7 +37,9 @@ const CUTS: [&str; 9] = [
 /// Its own flags, beside the kit's.
 const OPTIONS: [&str; 2] = ["--config", "--session"];
 
+mod failures;
 mod help;
+use failures::{broke, held, running, stopped, unread, wrote};
 pub use help::help;
 
 /// The config the home module renders, found the way the module puts it.
@@ -144,8 +146,8 @@ pub fn act(context: &Context, help: &Help) -> Result<(), Failure> {
         ["import"] => import(context, &config(&path)?),
         ["run"] => {
             let config = config(&path)?;
-            drop(held(&config)?);
-            crate::daemon::run(&config).map_err(broke)
+            running(&config)?;
+            crate::daemon::run(&config).map_err(stopped)
         }
         ["serve"] => crate::daemon::serve(&config(&path)?).map_err(broke),
         [word, ..] if help.command_names().contains(word) => Err(Failure::new(
@@ -167,32 +169,6 @@ fn config(path: &Path) -> Result<Config, Failure> {
     }
     Config::read(path)
         .map_err(|why| Failure::new(Exit::Config, "the config can't be read").because(why))
-}
-
-/// The history couldn't be read.
-fn unread(why: String) -> Failure {
-    Failure::new(Exit::Failed, "the history couldn't be read").because(why)
-}
-
-/// Something the daemon does couldn't be done.
-fn broke(why: String) -> Failure {
-    Failure::new(Exit::Failed, "spend-watch couldn't carry on").because(why)
-}
-
-/// The answer couldn't be written: its reader went, or the disk is full.
-fn wrote(written: std::io::Result<()>) -> Result<(), Failure> {
-    written.map_err(|error| {
-        Failure::new(Exit::Failed, "the answer couldn't be written").because(error.to_string())
-    })
-}
-
-/// The history's lock, taken while no other spend-watch holds it.
-fn held(config: &Config) -> Result<std::fs::File, Failure> {
-    crate::daemon::lock(&config.state).map_err(|why| {
-        Failure::new(Exit::TryAgain, "another spend-watch holds the history")
-            .because(why)
-            .try_this("systemctl --user status spend-watch")
-    })
 }
 
 /// The history, to be read. One of an older shape is brought up to date
@@ -362,8 +338,11 @@ fn report_command(context: &Context, config: &Config, rest: &[&str]) -> Result<(
 }
 
 /// How old the daemon's last word on the budgets may be and still be how
-/// they stand: past its idle wait between passes, by a minute.
-const WRITTEN_LASTS: f64 = 360.0;
+/// they stand, while the daemon is still there: as long as it goes on
+/// beating without a pass that worked. The word is stamped as a pass
+/// starts, so it ages by two passes and the wait between, which a trust of
+/// the idle wait alone ran past.
+pub(crate) const WRITTEN_LASTS: f64 = crate::daemon::FAILING.as_secs_f64();
 
 /// The budgets as the daemon's last pass wrote them, while that's recent
 /// enough to be how they stand. Every pi session asks for them, all at once
@@ -374,7 +353,10 @@ fn written_budgets(config: &Config, now: f64) -> Option<Value> {
     let written: Value = serde_json::from_str(&text).ok()?;
     let at = crate::time::parse(written.get("at")?.as_str()?)?;
     let current = written.get("v")?.as_u64()? == u64::from(crate::standing::VERSION);
-    (current && (0.0..=WRITTEN_LASTS).contains(&(now - at))).then_some(written)
+    // A daemon that stopped leaves its file behind, so the word is taken
+    // only while one still listens, which a stopped one's socket refuses.
+    let listening = std::os::unix::net::UnixStream::connect(config.socket()).is_ok();
+    (current && listening && (0.0..=WRITTEN_LASTS).contains(&(now - at))).then_some(written)
 }
 
 /// `budgets`: how each budget stands, as JSON for the harness, or a line

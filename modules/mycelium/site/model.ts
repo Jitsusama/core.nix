@@ -20,7 +20,7 @@
 // messages each end sent and of what kinds, never what they said, with a
 // strength the map fades to now. A feeding (its `fed` kind) is who fed
 // whom, when and the kind in a word, never the change itself; who started
-// each cell is read off its forage (lineage.ts).
+// each cell is read off its record, else its forage (lineage.ts).
 
 import {
   type Fields,
@@ -32,7 +32,7 @@ import {
   texts,
 } from "../../local-sites/kit/records.ts";
 import { BALANCE_FRESH_MS, type Balance, balanceOf, latestReading, sharesOf } from "./balance.ts";
-import { foragedOf, type Started, startedOf } from "./lineage.ts";
+import { foragedOf, type Split, type Started, splitsOf, startedOf } from "./lineage.ts";
 import type { Builder } from "./words.ts";
 
 /** How many messages the map hears, the latest, as `mycelium messages` says. */
@@ -67,9 +67,8 @@ const TIE_SEPARATOR = "~";
  * the balance service's latest reading, which a node serves only where the
  * service runs, so a map without it draws as before; the builders are
  * watched the same way, so a node too old to serve them draws none. What waits on the
- * mesh, and who started each cell, is there only once its watch has
- * answered, since a node too old to serve it would otherwise read as one
- * with nothing waiting, or no cell started by another.
+ * mesh is there only once its watch has answered, since a node too old to
+ * serve it would otherwise read as one with nothing waiting.
  */
 interface Heard {
   readonly network: Held;
@@ -146,7 +145,9 @@ interface Now {
   readonly waits: readonly Wait[] | null;
   readonly ties: readonly Tie[] | null;
   readonly fed: readonly Fed[] | null;
-  readonly started: readonly Started[] | null;
+  readonly started: readonly Started[];
+  /** What each of this machine's cells split from, as its forage says. */
+  readonly split: readonly Split[];
   /** Every cell the forage page lists, by its address. */
   readonly foraged: readonly string[] | null;
 }
@@ -460,13 +461,12 @@ function buildersOf(records: readonly Fields[]): Builder[] {
 function nowOf(heard: Heard, at: number): Now {
   const reading = latestReading(heard.balance, at);
   const shares = sharesOf(reading);
+  // The cells it draws, and so the only ones that may name a starter.
+  const cells = heard.cell.all().filter(drawn);
   const now: Now = {
     at: new Date(at).toISOString(),
     networks: heard.network.all().map((record) => asPrinted(record, "network")),
-    cells: heard.cell
-      .all()
-      .filter(drawn)
-      .map((record) => asPrinted(record, "cell")),
+    cells: cells.map((record) => asPrinted(record, "cell")),
     machines: standsOf(
       heard.machine.all().map((record) => ({
         ...machineOf(record),
@@ -479,12 +479,13 @@ function nowOf(heard: Heard, at: number): Now {
     waits: waitsOf(heard.unanswered),
     ties: tiesOf(heard.tie, at),
     fed: fedOf(heard.fed, at),
-    started: startedOf(heard.forage),
+    started: startedOf(cells, heard.forage),
+    split: splitsOf(heard.forage),
     foraged: foragedOf(heard.forage),
   };
   // Every field is untyped JSON from the node, and plain keeps its shape.
   return plain(now) as Now;
 }
 
-export type { Balance, Fed, Heard, Message, Now, Started, Tie, Wait };
+export type { Balance, Fed, Heard, Message, Now, Split, Started, Tie, Wait };
 export { expiryOf, FED_AHEAD_MS, FED_SHOWN_MS, LATEST_MESSAGES, nowOf };

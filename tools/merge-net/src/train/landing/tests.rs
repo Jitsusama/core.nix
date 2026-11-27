@@ -1,6 +1,9 @@
 //! Landing a passed candidate through a stand-in for GitHub that merges
 //! and reverts in a clone of the test's own origin, each way GitHub can
 //! answer.
+//!
+//! Long because each way GitHub answers a merge or a revert, and each
+//! order of them, is a case of its own against the one stand-in.
 
 use std::cell::{Cell, RefCell};
 use std::fs;
@@ -27,6 +30,20 @@ struct Fake {
     /// The pull request GitHub merges, answering with an error, and then
     /// can't be asked about.
     cant_say: Option<u64>,
+    /// A pull request whose every merge GitHub answers with a server
+    /// error, and which it reads unmerged this many times more before it
+    /// finishes the merge after all.
+    merges_late: Cell<Option<(u64, usize)>>,
+    /// The merge GitHub finishes late, once it was asked for.
+    late: RefCell<Option<Merging>>,
+    /// Whether GitHub answers the late merge's asks after its first with
+    /// a stated refusal rather than a server error, as it may while it
+    /// finishes the merge.
+    refuses_after_error: bool,
+    /// How many times GitHub was asked whether pull request 2 merged.
+    reads: Cell<usize>,
+    /// From which of those reads on, and for how many, GitHub can't say.
+    read_fails: Cell<Option<(usize, usize)>>,
     /// The pull request before whose merge another change lands on main.
     moved_before: Option<u64>,
     /// The pull request after whose merge another change lands on main.
@@ -50,6 +67,11 @@ impl Fake {
             refuses_for: Cell::new(None),
             merges_then_errs: None,
             cant_say: None,
+            merges_late: Cell::new(None),
+            late: RefCell::default(),
+            refuses_after_error: false,
+            reads: Cell::new(0),
+            read_fails: Cell::new(None),
             moved_before: None,
             moved_after: None,
             revert_fails: None,
@@ -97,29 +119,10 @@ impl Fake {
         .ok()?;
         (!found.is_empty()).then_some(found)
     }
-}
 
-impl Hub for Fake {
-    fn merge(&self, merging: &Merging) -> Result<String, String> {
-        let number = merging.number;
-        self.asked.borrow_mut().push(format!("merge {number}"));
-        if self.refuses == Some(number) {
-            return Err("Pull Request is not mergeable".to_owned());
-        }
-        if self.refuses_once.get() == Some(number) {
-            self.refuses_once.set(None);
-            return Err("Base branch was modified. Review and try the merge again.".to_owned());
-        }
-        if let Some((refused, left)) = self.refuses_for.get()
-            && refused == number
-            && left > 0
-        {
-            self.refuses_for.set(Some((refused, left - 1)));
-            return Err("Pull Request is not mergeable".to_owned());
-        }
-        if self.moved_before == Some(number) {
-            self.elsewhere()?;
-        }
+    /// Merge `merging` on origin's main as GitHub does, answering its
+    /// merge.
+    fn merge_in(&self, merging: &Merging) -> Result<String, String> {
         self.on_main()?;
         git_in(
             &self.clone,
@@ -139,7 +142,46 @@ impl Hub for Fake {
             ],
         )?;
         self.push()?;
-        let made = git_in(&self.clone, &["rev-parse", "HEAD"])?;
+        git_in(&self.clone, &["rev-parse", "HEAD"])
+    }
+}
+
+impl Hub for Fake {
+    fn merge(&self, merging: &Merging) -> Result<String, String> {
+        let number = merging.number;
+        self.asked.borrow_mut().push(format!("merge {number}"));
+        if self.refuses == Some(number) {
+            return Err(NOT_MERGEABLE.to_owned());
+        }
+        if self.refuses_once.get() == Some(number) {
+            self.refuses_once.set(None);
+            return Err(
+                "gh api: gh: Base branch was modified. Review and try the merge again. \
+                 (HTTP 409)"
+                    .to_owned(),
+            );
+        }
+        if let Some((refused, left)) = self.refuses_for.get()
+            && refused == number
+            && left > 0
+        {
+            self.refuses_for.set(Some((refused, left - 1)));
+            return Err(NOT_MERGEABLE.to_owned());
+        }
+        if let Some((late, _)) = self.merges_late.get()
+            && late == number
+        {
+            let mut asked_late = self.late.borrow_mut();
+            if asked_late.is_some() && self.refuses_after_error {
+                return Err(NOT_MERGEABLE.to_owned());
+            }
+            asked_late.get_or_insert_with(|| merging.clone());
+            return Err("gh api: gh: Server Error (HTTP 502)".to_owned());
+        }
+        if self.moved_before == Some(number) {
+            self.elsewhere()?;
+        }
+        let made = self.merge_in(merging)?;
         if self.moved_after == Some(number) {
             self.elsewhere()?;
         }
@@ -152,6 +194,26 @@ impl Hub for Fake {
     fn merged(&self, number: u64) -> Result<Option<String>, String> {
         if self.cant_say == Some(number) {
             return Err("gh api: HTTP 502: Bad Gateway".to_owned());
+        }
+        if number == 2 {
+            let read = self.reads.get() + 1;
+            self.reads.set(read);
+            if let Some((from, count)) = self.read_fails.get()
+                && (from..from.saturating_add(count)).contains(&read)
+            {
+                return Err("gh api: timed out".to_owned());
+            }
+        }
+        if let Some((late, left)) = self.merges_late.get()
+            && late == number
+        {
+            if left > 0 {
+                self.merges_late.set(Some((late, left - 1)));
+                return Ok(None);
+            }
+            if let Some(merging) = self.late.borrow_mut().take() {
+                return self.merge_in(&merging).map(Some);
+            }
         }
         Ok(self.merge_of(number))
     }
@@ -180,6 +242,9 @@ impl Hub for Fake {
         Ok(100 + number)
     }
 }
+
+/// How GitHub, through `gh`, refuses a merge it can't make.
+const NOT_MERGEABLE: &str = "gh api: gh: Pull Request is not mergeable (HTTP 405)";
 
 /// A checkout and the bare origin it pushes to, under a folder named
 /// `name`, both on one commit of main, which it gives last.
@@ -233,6 +298,7 @@ fn landed_by(name: &str, hub: impl FnOnce(&Path, &Path) -> Fake) -> Landed {
     let landed = Landed {
         landing,
         asked: hub.asked.take(),
+        reads: hub.reads.get(),
         main_tree: tree(&origin, &main),
         tested_tree: tree(&checkout, &candidate),
         // A main GitHub never merged into holds one commit, with none under it.
@@ -273,6 +339,8 @@ fn landed_by(name: &str, hub: impl FnOnce(&Path, &Path) -> Fake) -> Landed {
 struct Landed {
     landing: Landing,
     asked: Vec<String>,
+    /// How many times GitHub was asked whether pull request 2 merged.
+    reads: usize,
     main: String,
     /// Main's first parent, under whatever landed last.
     under_main: String,
@@ -667,10 +735,199 @@ fn a_merge_github_cant_say_it_made_keeps_every_merge_and_says_so() {
         "a merge GitHub couldn't say it made wasn't kept and said, with those under it: {:?}",
         landed.landing
     );
+    // Each failed read asks for the merge again, which merges a pull
+    // request once at most, and nothing is reverted under it.
     assert_eq!(
         landed.asked,
-        ["merge 1", "merge 2"],
-        "the train reverted under a merge that may stand, leaving a tree nobody wrote"
+        [vec!["merge 1"], vec!["merge 2"; MERGE_TRIES]].concat(),
+        "the train didn't ask again for a merge GitHub couldn't say it made, or reverted under it"
+    );
+}
+
+#[test]
+fn a_merge_github_finishes_after_its_server_errors_counts_as_made() {
+    // Read unmerged three times past the asks a merge gets, as GitHub
+    // read #6398 merged minutes after the train turned it away.
+    let landed = landed_by("github-late", |place, origin| Fake {
+        merges_late: Cell::new(Some((2, MERGE_TRIES + 3))),
+        ..Fake::of(place, origin)
+    });
+    assert_eq!(
+        landed.landing,
+        Landing::Landed(landed.main.clone()),
+        "a merge GitHub finished after answering with server errors didn't land"
+    );
+    assert_eq!(
+        landed.asked,
+        [vec!["merge 1"], vec!["merge 2"; MERGE_TRIES]].concat(),
+        "the train asked again for a merge GitHub was still finishing"
+    );
+}
+
+#[test]
+fn a_merge_github_never_finishes_after_its_server_errors_is_refused() {
+    let landed = landed_by("github-never", |place, origin| Fake {
+        merges_late: Cell::new(Some((2, usize::MAX))),
+        ..Fake::of(place, origin)
+    });
+    assert!(
+        matches!(
+            &landed.landing,
+            Landing::Partly { kept, refused, why, .. }
+                if *kept == [landed.one.clone()]
+                    && *refused == landed.two
+                    && why.contains("HTTP 502")
+        ),
+        "a merge GitHub never made after its server errors didn't leave the train: {:?}",
+        landed.landing
+    );
+    assert_eq!(
+        landed.reads,
+        MERGE_TRIES + SETTLE_ASKS,
+        "the train didn't wait out a merge GitHub answered only with server errors"
+    );
+}
+
+#[test]
+fn a_merge_github_refuses_isnt_waited_out() {
+    let landed = landed_by("github-stated", |place, origin| Fake {
+        refuses: Some(2),
+        ..Fake::of(place, origin)
+    });
+    assert!(
+        matches!(&landed.landing, Landing::Partly { refused, .. } if *refused == landed.two),
+        "a merge GitHub refused didn't leave the train: {:?}",
+        landed.landing
+    );
+    assert_eq!(
+        landed.reads, MERGE_TRIES,
+        "the train waited five minutes on a merge GitHub said it refused"
+    );
+}
+
+// GitHub may refuse a merge it is still finishing, so a server error on
+// one try leaves it in doubt though every later try reads refused.
+#[test]
+fn a_merge_refused_after_a_server_error_is_waited_out() {
+    let landed = landed_by("github-error-then-refused", |place, origin| Fake {
+        merges_late: Cell::new(Some((2, MERGE_TRIES + 3))),
+        refuses_after_error: true,
+        ..Fake::of(place, origin)
+    });
+    assert_eq!(
+        landed.landing,
+        Landing::Landed(landed.main.clone()),
+        "a merge GitHub finished after a server error and refusals didn't land"
+    );
+}
+
+#[test]
+fn a_merge_refused_after_a_server_error_that_never_lands_says_both() {
+    // The 502 put the merge in doubt, and the refusals after it are what
+    // its owner can act on, so the rider falls saying both.
+    let landed = landed_by("github-error-then-refused-for-good", |place, origin| Fake {
+        merges_late: Cell::new(Some((2, usize::MAX))),
+        refuses_after_error: true,
+        ..Fake::of(place, origin)
+    });
+    assert!(
+        matches!(
+            &landed.landing,
+            Landing::Partly { refused, why, .. }
+                if *refused == landed.two
+                    && why.contains("(HTTP 405)")
+                    && why.contains("(HTTP 502)")
+        ),
+        "a rider refused after a server error didn't fall saying both answers: {:?}",
+        landed.landing
+    );
+}
+
+#[test]
+fn a_read_failing_after_a_stated_refusal_stops_the_train() {
+    // Nothing put the merge in doubt, but GitHub can't say after whether
+    // it merged, so main may hold it.
+    let landed = landed_by("github-refused-then-cant-say", |place, origin| Fake {
+        refuses: Some(2),
+        read_fails: Cell::new(Some((1, 3))),
+        ..Fake::of(place, origin)
+    });
+    assert!(
+        matches!(
+            &landed.landing,
+            Landing::Reverted { reverted, why, .. }
+                if reverted.is_empty() && why.contains("#2")
+        ),
+        "a refused merge GitHub couldn't read after didn't stop the train: {:?}",
+        landed.landing
+    );
+}
+
+#[test]
+fn a_read_failing_while_a_merge_is_waited_out_is_asked_past() {
+    let landed = landed_by("github-read-fails", |place, origin| Fake {
+        merges_late: Cell::new(Some((2, MERGE_TRIES + 3))),
+        read_fails: Cell::new(Some((MERGE_TRIES + 1, 3))),
+        ..Fake::of(place, origin)
+    });
+    assert_eq!(
+        landed.landing,
+        Landing::Landed(landed.main.clone()),
+        "one failed read while the train waited turned a late merge away"
+    );
+}
+
+#[test]
+fn a_merge_read_unmerged_last_after_failed_reads_is_refused() {
+    // The wait's last read decides: reads failing early in it don't make
+    // the merge unknown once a later one reads it unmerged.
+    let landed = landed_by("github-fails-then-unmerged", |place, origin| Fake {
+        merges_late: Cell::new(Some((2, usize::MAX))),
+        read_fails: Cell::new(Some((MERGE_TRIES + 1, 3))),
+        ..Fake::of(place, origin)
+    });
+    assert!(
+        matches!(
+            &landed.landing,
+            Landing::Partly { kept, refused, .. }
+                if *kept == [landed.one.clone()] && *refused == landed.two
+        ),
+        "a merge read unmerged after failed reads didn't leave the train: {:?}",
+        landed.landing
+    );
+}
+
+#[test]
+fn a_read_failing_on_a_merge_in_doubt_before_the_wait_is_waited_out() {
+    // The read after the first try fails all three times it is asked, so
+    // the train used to stop at once on a merge GitHub went on to finish.
+    let landed = landed_by("github-early-read-fails", |place, origin| Fake {
+        merges_late: Cell::new(Some((2, MERGE_TRIES + 3))),
+        read_fails: Cell::new(Some((1, 3))),
+        ..Fake::of(place, origin)
+    });
+    assert_eq!(
+        landed.landing,
+        Landing::Landed(landed.main.clone()),
+        "a failed read on a merge in doubt stopped the train before waiting it out"
+    );
+}
+
+#[test]
+fn a_merge_github_cant_say_after_waiting_stops_the_train() {
+    let landed = landed_by("github-never-says", |place, origin| Fake {
+        merges_late: Cell::new(Some((2, usize::MAX))),
+        read_fails: Cell::new(Some((MERGE_TRIES + 1, usize::MAX))),
+        ..Fake::of(place, origin)
+    });
+    assert!(
+        matches!(
+            &landed.landing,
+            Landing::Reverted { reverted, why, .. }
+                if reverted.is_empty() && why.contains("#2")
+        ),
+        "a merge GitHub couldn't say it made after the wait didn't stop the train: {:?}",
+        landed.landing
     );
 }
 
@@ -714,4 +971,24 @@ fn a_revert_github_wont_merge_keeps_it_and_those_under_it_on_main() {
         ["merge 1", "merge 2", "revert 2"],
         "the train reverted under a merge it couldn't revert, leaving a tree nobody wrote"
     );
+}
+
+#[test]
+fn gh_s_own_answers_split_refusals_from_doubt() {
+    // As train.log quoted gh on 25 November, through `gh` here.
+    for refused in [
+        "gh api: gh: Pull Request is still a draft (HTTP 405)",
+        "gh api: gh: Pull Request has merge conflicts (HTTP 405)",
+    ] {
+        assert!(states_refusal(refused), "{refused} read as no refusal");
+    }
+    for doubt in [
+        "gh api: gh: Server Error (HTTP 502)",
+        "gh api: ",
+        "running gh: No such file or directory (os error 2)",
+        "gh api: gh: You have exceeded a secondary rate limit (HTTP 403)",
+        "gh api: gh: Too Many Requests (HTTP 429)",
+    ] {
+        assert!(!states_refusal(doubt), "{doubt} read as a refusal");
+    }
 }

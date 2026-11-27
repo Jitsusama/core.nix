@@ -22,6 +22,7 @@
 //! stands, [`tend`] freezes agents' work started since, as `pineapple
 //! serve` asks it to each time it looks.
 
+pub mod carry;
 mod cgroup;
 mod reach;
 mod system;

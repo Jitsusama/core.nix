@@ -16,9 +16,9 @@ pragma ComponentBehavior: Bound
 import qs
 import Quickshell
 import QtQuick
-import "../Fuzzy.js" as Fuzzy
 import "ReadyRows.js" as Ready
 import "EmojiDrawer.js" as Drawer
+import "EmojiSearch.js" as Search
 
 Provider {
     id: provider
@@ -43,9 +43,12 @@ Provider {
         make: (row, key) => provider.made(row, key)
         drawerMaker: row => Drawer.made(row, provider.drawerWords)
         maker: provider
+        drawn: provider.launcher?.open ?? false
         onSearched: words => provider.foundMore(
             Date.now() - Math.max(provider.askedAt, ready.typedAt) < provider.freshFor)
     }
+    // What the history serves, for a reader told of each change it hears.
+    readonly property alias served: ready
     property real askedAt: 0
     readonly property int freshFor: 50
     // What an emoji's drawer names its lines, made from its row as it's drawn (EmojiDrawer.js).
@@ -109,37 +112,27 @@ Provider {
     // they hold every letter typed, as Emoji's own search keeps them.
     function typedInGroup(key, letters) {
         const rows = ready.typedIn(key, letters) ?? [];
-        return ready.typing.words === letters ? rows : holding(rows, letters);
+        return ready.typing.words === letters ? rows : Search.holding(rows, letters);
     }
 
-    // Those of `rows` whose name or meaning holds every letter typed.
-    function holding(rows, typed) {
-        const need = Fuzzy.letters(Fuzzy.words(typed));
-        const holds = item => !!item && (item.mask & need) === need;
-        return rows.filter(row => holds(row.prepared) || holds(row.keywords));
-    }
-
-    // The emoji the history finds for what's typed, best first. While its
-    // answer is asked, those of the last answer that hold every letter
-    // typed stand, when what's typed goes on from it, so a key takes rows
-    // away and puts none in a place of its own; else none, for the moment
-    // the answer takes, which the launcher holds a key's list for a moment
-    // (`awaits`).
+    // The emoji the history finds for what's typed, best first, and how
+    // many it found, so the head says those past the hundred it answers
+    // with. While its answer is asked, what stands is EmojiSearch.js's
+    // whileAsked, for the moment the answer takes, which the launcher
+    // holds a key's list for a moment (`awaits`); the last answer's rows
+    // are made only where what's typed goes on from it.
     function search(typed) {
         const answer = ready.search(typed);
         if (answer !== null)
             return {
                 rows: ready.foundRows(answer),
-                grade: answer.keys.length > 0 ? answer.grade : 3
+                grade: answer.keys.length > 0 ? answer.grade : 3,
+                found: answer.found
             };
         if (ready.asking === typed)
             provider.askedAt = Date.now();
-        const said = Fuzzy.words(typed).join(" ");
-        const last = ready.found.words !== null
-            && said.startsWith(Fuzzy.words(ready.found.words).join(" "))
-            ? ready.foundRows(ready.found) : [];
-        const rows = holding(last, typed);
-        return { rows: rows, grade: rows.length > 0 ? 0 : 3 };
+        const goesOn = Search.goesOn(ready.found.words, typed);
+        return Search.whileAsked(goesOn ? ready.foundRows(ready.found) : [], typed);
     }
 
     // Whether a search of these letters waits on the history's answer,
@@ -152,9 +145,28 @@ Provider {
         return ready.search(letters) === null && ready.asking === letters;
     }
 
+    function searchState() {
+        return ready.searchState();
+    }
+
     // Its groups, as the history serves them.
     function everything() {
         return ready.rows();
+    }
+
+    // Closing lets go of what was found and of the emoji made in the groups
+    // stepped into, so each is held only while a step or a search shows it
+    // and the launcher's last few lists hold it (ReadyRows.qml's
+    // letGoInside); the groups' own rows stand, for Super+E to open on.
+    Connections {
+        target: provider.launcher
+
+        function onOpenChanged() {
+            if (provider.launcher.open)
+                return;
+            ready.ended();
+            ready.letGoInside();
+        }
     }
 
     // Every emoji's name, and how many there are, as Desktop's row for

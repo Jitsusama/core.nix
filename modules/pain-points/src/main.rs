@@ -117,6 +117,7 @@ fn help() -> Help {
                 .option("--git PATH", "the git on PATH, or this")
                 .exit(Exit::Failed, "its state couldn't be written"),
         )
+        .subcommand(hear::missed::tested::help())
 }
 
 /// The flags a subcommand was given, each by its name. The kit has walked
@@ -131,7 +132,11 @@ fn asked(args: &[String]) -> Result<Option<Asked>, Failure> {
     let Some((verb, rest)) = args.split_first() else {
         return Ok(None);
     };
-    let known: &[&'static str] = if verb == "hear" { &HEAR_FLAGS } else { &FLAGS };
+    let known: &[&'static str] = match verb.as_str() {
+        "hear" => &HEAR_FLAGS,
+        "test" => &hear::missed::tested::FLAGS,
+        _ => &FLAGS,
+    };
     let try_this = format!("pain-points {verb} --help");
     let wrongly = |what: String| Failure::new(Exit::Usage, what).try_this(&try_this);
     let mut given = BTreeMap::new();
@@ -169,6 +174,10 @@ fn main() -> ExitCode {
                     Failure::new(Exit::Failed, "it couldn't say its help").because(why.to_string())
                 });
         };
+        if verb == "test" {
+            println!("{}", hear::missed::tested::named(&given)?);
+            return Ok(());
+        }
         let home = PathBuf::from(env::var_os("HOME").unwrap_or_default());
         if verb == "hear" {
             let (said, troubled) = hear::listen(&home, &mut given).map_err(|error| {

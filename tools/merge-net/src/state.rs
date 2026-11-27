@@ -39,6 +39,10 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
 
+use journal::{Lines, names, sought};
+
+mod journal;
+
 /// The net's state folder and what it holds.
 pub struct State {
     pub root: PathBuf,
@@ -318,26 +322,49 @@ impl State {
 
     /// Each run of `check` at `commit` so far, oldest first.
     pub fn runs(&self, commit: &str, check: &str) -> Vec<Ran> {
-        let Ok(text) = fs::read_to_string(self.root.join("results.jsonl")) else {
-            return Vec::new();
-        };
-        runs_in(&text, commit, check)
+        let mut lines = self.results_naming(commit);
+        let runs = runs_in(lines.by_ref(), commit, check);
+        if lines.failed() { Vec::new() } else { runs }
+    }
+
+    /// The results journal's lines, read one at a time rather than whole.
+    /// It held 119,000 lines in 31 MB by 24 November, and a search asks
+    /// for each commit's runs in turn. Read whole on each of the watch's
+    /// threads, a copy of it apiece, the watch held 2.2 GB that day across
+    /// some 35 of glibc's arenas, and its unit had peaked at 4.8 GB. A line
+    /// that isn't UTF-8 is read as near as it can be, hiding no line after
+    /// it.
+    fn results(&self) -> Lines<impl FnMut(&[u8]) -> bool> {
+        self.lines(|_| true)
+    }
+
+    /// The journal's lines that `keep` takes, as text.
+    fn lines<F: FnMut(&[u8]) -> bool>(&self, keep: F) -> Lines<F> {
+        Lines::open(&self.root, keep)
+    }
+
+    /// The journal's lines that could be of `commit`'s runs: any naming it
+    /// anywhere, so only those are decoded and parsed, the rest passed over
+    /// as the bytes they were read as.
+    fn results_naming(&self, commit: &str) -> Lines<impl FnMut(&[u8]) -> bool + use<>> {
+        let sought = sought(commit);
+        self.lines(move |line| names(line, sought.as_deref()))
     }
 
     /// The logs of `check`'s runs at `commit` that failed but counted as
     /// passed, since main's list as it was then excused what failed.
     pub fn excused_logs(&self, commit: &str, check: &str) -> Vec<PathBuf> {
-        let Ok(text) = fs::read_to_string(self.root.join("results.jsonl")) else {
-            return Vec::new();
-        };
-        text.lines()
-            .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        let mut lines = self.results_naming(commit);
+        let logs = lines
+            .by_ref()
+            .filter_map(|line| serde_json::from_str::<Value>(&line).ok())
             .filter(|line| line["commit"] == commit && line["check"] == check)
             .filter(|line| {
                 line["passed"] == true && line["code"].as_i64().is_some_and(|code| code != 0)
             })
             .filter_map(|line| line["log"].as_str().map(PathBuf::from))
-            .collect()
+            .collect();
+        if lines.failed() { Vec::new() } else { logs }
     }
 
     pub fn record(
@@ -367,13 +394,12 @@ impl State {
 
     /// How many seconds each check's newest pass took, by check.
     pub fn lasted(&self) -> HashMap<String, u64> {
-        let Ok(text) = fs::read_to_string(self.root.join("results.jsonl")) else {
-            return HashMap::new();
-        };
         // A failure may end early, an excused one too, and a stall at its
         // limit, so only a run that passed says how long a check takes.
-        text.lines()
-            .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        let mut lines = self.results();
+        let lasted = lines
+            .by_ref()
+            .filter_map(|line| serde_json::from_str::<Value>(&line).ok())
             .filter(|line| line["passed"] == true && line["code"] == 0)
             .filter_map(|line| {
                 Some((
@@ -381,7 +407,12 @@ impl State {
                     line["seconds"].as_u64()?,
                 ))
             })
-            .collect()
+            .collect();
+        if lines.failed() {
+            HashMap::new()
+        } else {
+            lasted
+        }
     }
 
     /// The hold a broken merge put on switching, if one stands.
@@ -534,12 +565,17 @@ impl State {
 
     /// Say something in the net's own log, and on its standard error.
     pub fn say(&self, what: &str) {
-        eprintln!("merge-net: {what}");
-        let _ = append_line(
-            &self.root.join("logs/net.log"),
-            &format!("{} {}", now(), one_line(what)),
-        );
+        say_in(&self.root, what);
     }
+}
+
+/// Say something in the net's log under `root`, and on standard error.
+fn say_in(root: &Path, what: &str) {
+    eprintln!("merge-net: {what}");
+    let _ = append_line(
+        &root.join("logs/net.log"),
+        &format!("{} {}", now(), one_line(what)),
+    );
 }
 
 /// What's said as one line of net.log, whose every line opens with its
@@ -553,10 +589,15 @@ fn one_line(what: &str) -> String {
         .join(" / ")
 }
 
-/// Each run of `check` at `commit` in a results journal's text.
-pub fn runs_in(text: &str, commit: &str, check: &str) -> Vec<Ran> {
-    text.lines()
-        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+/// Each run of `check` at `commit` in a results journal's lines.
+pub fn runs_in(
+    lines: impl IntoIterator<Item = impl AsRef<str>>,
+    commit: &str,
+    check: &str,
+) -> Vec<Ran> {
+    lines
+        .into_iter()
+        .filter_map(|line| serde_json::from_str::<Value>(line.as_ref()).ok())
         .filter(|line| line["commit"] == commit && line["check"] == check)
         .map(|line| {
             if line["passed"] == true {

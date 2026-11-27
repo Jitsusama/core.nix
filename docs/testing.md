@@ -246,17 +246,21 @@ each shared file is one, the run at the head is that list's own check
 a `tests/rules/<check>-waiting.nix` is named for) with
 `nix-offload there . checks.x86_64-linux.<check>`, and the quarantine list
 needs only to read as a list of tests, each held whole once or each of its
-subtests once. Nor is there ever a third
-run: once the same change passed whole at two commits, a clean rebase onto
-any newer main merges with none, whatever main moved, and the net tests it
-after, unless a file either side moved names a path the other renamed or
-deleted since the newest of the two. Main moves faster than a run, and one
-branch ran six times in a day, every run passing. Two changes sharing a
-file merge in the order their gates started, so the one nearly through
-isn't the one made to run again: `nix-offload there --changed` says each
-gate going in `nix-offload/running/<pid>.json` and keeps its start with its
-pass, and `ready` refuses a head while a gate that started before its own,
-in another tree, still runs and changes one of its files other than the
+subtests once. Passing at more commits of the same change speaks no
+louder: no run saw what main moved since, and on 2026-11-26 a change that
+passed at two commits merged as it stood after main moved a file it
+shared, and formatting went red on main. Where main moves faster than a
+run, the change boards the merge train, whose run checks the merged tree.
+Each pass `ready` reads there costs a diff of what main moved since its
+base, so it reads at most two of a change's passes that share files with
+main's moves; a clean pass past those goes unread, which costs a run at
+the head, or the train's run of the merged tree, and never lets a stale
+pass merge. Two changes sharing a file merge in the order their gates
+started, so the one nearly through isn't the one made to run again:
+`nix-offload there --changed` says each gate going in
+`nix-offload/running/<pid>.json` and keeps its start with its pass, and
+`ready` refuses a head while a gate that started before its own, in
+another tree, still runs and changes one of its files other than the
 lists. A gate whose process is gone, or that started three hours ago, holds
 nothing back. A change run again after a merge left its pass stale keeps
 its tree's place, the start of the first gate `ready` saw there in the last
@@ -404,6 +408,26 @@ can't use its configuration usually falls back to its own without a word.
 The kernel checks build only its configuration: the patched source, run
 through Kconfig, which drops a setting whose dependencies aren't met. [The
 kernel guide][2] says what that catches.
+
+### macOS's Own Tools
+
+A darwin build puts stdenv's GNU coreutils, findutils, sed and grep first on
+its PATH, so a check of a script a Mac runs tests GNU's tools in place of
+macOS's, and a flag or a locale only GNU's take passes there and fails on
+the Mac. A check of what a Mac runs uses `macosTools`, under `onMacos`: it
+runs the script with macOS's folders alone on its PATH, so a tool macOS
+lacks isn't found, under the UTF-8 locale a Mac's terminal runs, with
+nixpkgs' bash rather than macOS's bash 3.2.
+
+It builds outside the build sandbox, since the sandbox hides those folders.
+A Mac whose sandbox is false or relaxed builds it; on one whose sandbox is
+true the build fails, rather than run with GNU's tools. Outside the sandbox
+the script sees the Mac's files and network, so a check writes only to
+`$TMPDIR` and `$out`. Nothing of macOS is in its hash, so a pass stands for
+the macOS that built it until the check changes or is built with
+`--rebuild`. `a-mac-check-runs-macos-own-tools` holds the helper to it:
+there, a tool only GNU has isn't found, and macOS's tr refuses a byte that
+isn't UTF-8 unless `LC_ALL=C` is set.
 
 ### The Desktop on niri
 
@@ -644,15 +668,14 @@ that ran on one builder, one after the other, are compared.
 Each boots a machine under QEMU, which takes minutes, so each covers what only
 a running system shows.
 
-While changing what one covers, run only the subtests the change touches.
-A test's driver builds in seconds once its machines are built, and runs
-whatever script it's given; `run-subtests`, in the dev shell, builds it and
-runs everything outside a subtest (the boot, the helpers) and the subtests
-whose names hold the words given, in under half a minute for one desktop
-subtest, boot included:
+While changing what one covers, run only the tests the change touches.
+A test's driver builds in seconds once its machines are built; `run-subtests`,
+in the dev shell, builds it and runs the tests whose names hold the words
+given, with only the fixtures they ask for, in under half a minute for one
+desktop test, boot included:
 
 ```sh
-run-subtests vm-desktop-launcher-moves-windows                   # list its subtests
+run-subtests vm-desktop-launcher-moves-windows                   # list its tests
 run-subtests vm-desktop-launcher-moves-windows "opens kitty"     # run those named
 run-subtests -I vm-desktop-launcher-moves-windows "opens kitty"  # then a Python prompt
 run-subtests -K vm-desktop-launcher-moves-windows "opens kitty"  # keep the disks for next time
@@ -666,8 +689,8 @@ pictures back. That build runs `run-subtests --driver` on the check's own
 driver. With no builder to take it, nix-offload builds it here; one that
 can't take it at all leaves run-subtests to run the driver here.
 
-Each subtest makes what it needs, a window or a notice, when an earlier one
-hasn't, so it runs alone. Each run has its own short runtime folder, since the
+Each test asks for what it needs, a window or a notice, as a fixture, so it
+runs alone. Each run has its own short runtime folder, since the
 driver keeps its network switch's socket and the machines' state under
 `XDG_RUNTIME_DIR`, so two runs at once don't collide; the folder has to be
 short, as a socket's path can't pass 108 bytes. The pictures land in the
@@ -708,17 +731,15 @@ Nix string, so a linter reads it.
 `run-subtests` knows such a test by its `vm_pytest.run` and runs its script
 whole, telling pytest to pick the tests whose function names hold the words
 (a word's spaces read as underscores); with no words, pytest lists the tests
-and nothing boots. Any `PYTEST_ADDOPTS` of your own still holds:
+and nothing boots. A script without that call, which the driver would run top
+to bottom, has no tests to pick, so `run-subtests` refuses it; every VM test
+is written for pytest. Any `PYTEST_ADDOPTS` of your own still holds:
 
 ```sh
 run-subtests vm-network-revives-units           # list its tests
 run-subtests vm-network-revives-units reload    # run those named, and what they need
 PYTEST_ADDOPTS=-x run-subtests vm-commits-are-signed terminal
 ```
-
-One older test, usb-wake, is still a script the driver runs top to bottom:
-one check and no subtests, so `run-subtests` has nothing in it to pick. It
-moves to pytest in its turn, and nothing new is written that way.
 
 A selection that picks no test fails the run, so a mistyped name can't pass
 for a proof. A failed assert says what each side held, and the run ends by

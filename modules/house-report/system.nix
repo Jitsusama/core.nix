@@ -72,7 +72,21 @@ in
         A file holding the house's key, the same bytes as the shaped
         machine's house names in its `keyFile`, at least 16, which each
         report is signed with, so a device on the line can't forge one
-        from this machine's address. On Linux the service reads it
+        from this machine's address. Make it root's alone, as a root
+        shell does with `install -d -m 0755 /etc/house-report` and
+        `install -m 0400 /dev/null /etc/house-report/house.key`, then
+        writes the shaped machine's key into it, or makes the key with
+        `head -c 32 /dev/urandom > /etc/house-report/house.key` and
+        writes the same bytes into the shaped machine's, through a pipe
+        rather than a file another account could read: any account that
+        can read the key may sign a report. A key either machine ever let
+        another account read is replaced on both by new bytes, made once
+        that way, rather than given a new mode or copied back in, since a
+        copy taken of it stays good (house keys round 2's F5 and F7; made
+        anew round 1's F2, F9 and F11). Each machine's file is made anew
+        by that `install` before the bytes go in, since a write into a
+        file already there keeps its mode (made anew round 2's F1 and
+        F9). On Linux the service reads it
         through systemd's credentials, a copy made as it starts, so it
         may be root's alone: a key put there or swapped restarts the
         service, and while none is there the service fails to start,
@@ -82,13 +96,15 @@ in
         again on a fresh copy. On a Mac the service runs as nobody, so
         root copies the key for nobody's account, where the service reads
         it each second, at each switch and within seconds of the key or
-        its folder changing; a copy refused or failed is taken away, so
-        the service sends nothing until the key is right, and
-        /var/log/house-report.log says why. There the build takes it only
-        under /etc, /private/etc or /var/root, spelled plainly, and the
-        copy only once every folder above it, every link resolved, is
-        root's and written by no other account. Never a link, a Nix path
-        or a value in the store.
+        its folder changing, a minute at most; a copy refused or failed
+        is taken away, so the service sends nothing until the key is
+        right, and /var/log/house-report.log says why, once until the
+        reason changes. There the build takes it only under /etc,
+        /private/etc or /var/root, spelled plainly, and the copy only
+        once every folder above it, every link resolved, is root's and
+        written or taken by no other account, and the key itself is
+        root's and read by no other. Never a link, a Nix path or a value
+        in the store.
       '';
     };
     keyPath = lib.mkOption {

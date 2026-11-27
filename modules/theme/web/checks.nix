@@ -65,4 +65,13 @@ onLinux {
   pixels-probe-holds-every-pixel = probed "pixels-probe-holds-every-pixel" ./pixels-test.py {
     FONTCONFIG_FILE = noFonts;
   };
+  # The drawing words probe (svgtext-test.py): words inside an inline SVG
+  # measured against the shapes and page behind them, with the forage
+  # research page's diagram of 15 November 2026, light words on a block
+  # that fell back to paper in the dark look, as its first case.
+  svgtext-probe-measures-a-drawings-words =
+    probed "svgtext-probe-measures-a-drawings-words" ./svgtext-test.py
+      {
+        FONTCONFIG_FILE = noFonts;
+      };
 }

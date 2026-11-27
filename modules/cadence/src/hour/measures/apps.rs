@@ -24,12 +24,12 @@ const STALE: i64 = 2 * 3600;
 pub const FIGURE: &str = "apps:";
 
 /// The key the one line takes when there's no hour to read.
-const UNREAD: &str = "apps-under-load";
+pub const UNREAD: &str = "apps-under-load";
 
 /// How many hours unread before it's a fault of its own: apps-under-load
 /// leaves its hour unwritten while a call is on, and a working day of
 /// calls runs no longer, so six hours with none is one that stopped.
-const LOST: f64 = 6.0;
+pub const LOST: f64 = 6.0;
 
 /// Each figure in apps-under-load's `hour.json`, written as code-health
 /// writes its hour: `{"at": seconds, "measures": [{"measure", "now",
@@ -91,20 +91,34 @@ fn when(at: &Value) -> Option<i64> {
 
 /// One figure as a measure, or none without a name: one with no reading,
 /// or no word on which way is better, is unjudged, since leaving it out
-/// would read its drag as closed on a figure dropped.
+/// would read its drag as closed on a figure dropped. An unjudged line
+/// names nothing under it, so one says what its hour wrote beside it, such
+/// as why the kernel kept no time blocked, or else that it has no reading.
 fn figure(m: &Value) -> Option<Measure> {
     let measure = m["measure"].as_str()?;
     let now = m["now"].as_f64();
     let lower = m["lower_is_better"].as_bool();
+    let behind: Vec<String> = m["behind"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(str::to_owned)
+        .collect();
     let (Some(now), Some(lower)) = (now, lower) else {
+        let why = if behind.is_empty() {
+            "no reading, or which way is better unsaid".to_owned()
+        } else {
+            behind.join("; ")
+        };
         return Some(Measure {
             key: format!("{FIGURE}{measure}"),
             class: Class::Apps,
-            says: format!("{measure}, unread: no reading, or which way is better unsaid"),
+            says: format!("{measure}, unread: {why}"),
             now: 0.0,
             target: None,
             owner: m["owner"].as_str().unwrap_or(OWNER).to_owned(),
-            behind: Vec::new(),
+            behind,
         });
     };
     let target = m["target"].as_f64();
@@ -123,13 +137,7 @@ fn figure(m: &Value) -> Option<Measure> {
         now,
         target,
         owner: m["owner"].as_str().unwrap_or(OWNER).to_owned(),
-        behind: m["behind"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(Value::as_str)
-            .map(str::to_owned)
-            .collect(),
+        behind,
     })
 }
 
@@ -242,6 +250,26 @@ mod tests {
         assert_eq!(read[0].key, "apps:call fps p10");
         assert_eq!(read[0].target, None, "unjudged, so a drag on it stays open");
         assert!(read[0].says.contains("unread"), "{}", read[0].says);
+    }
+
+    /// On 24 November core #6313's round found the card said only that
+    /// Chrome's time blocked was unread, dropping why its hour gave.
+    #[test]
+    fn a_figure_unread_says_why_its_hour_gave() {
+        let why = "Joel's Chrome: unread, since the kernel keeps no time blocked without \
+                   kernel.sched_schedstats";
+        let text = serde_json::json!({"at": NOW, "measures": [
+            {"measure": "Chrome most blocked per 10 s p99 ms", "now": null, "target": 50.0,
+                "lower_is_better": true, "behind": [why]},
+        ]})
+        .to_string();
+        let read = apps(Some(&text), NOW);
+        assert_eq!(
+            read[0].says,
+            format!("Chrome most blocked per 10 s p99 ms, unread: {why}"),
+            "an unread figure dropped why its hour said it was unread"
+        );
+        assert_eq!(read[0].behind, [why], "its hour's lines weren't kept");
     }
 
     #[test]
