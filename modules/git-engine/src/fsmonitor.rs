@@ -196,25 +196,59 @@ mod tests {
     #[test]
     fn a_named_path_stands_for_what_is_under_it() {
         let changed = Changed::of([&b"a/b"[..], b"c/", b"d/.gitattributes"].into_iter());
-        assert!(changed.touches(b"a/b"));
-        assert!(changed.touches(b"a/b/c"));
-        assert!(changed.touches(b"c/x"));
-        assert!(!changed.touches(b"a/bc"));
-        assert!(!changed.touches(b"a"));
-        assert!(changed.touches_dir(b"a/"));
-        assert!(changed.touches_dir(b""));
-        assert!(changed.touches_dir(b"a/b/"));
-        assert!(changed.touches_dir(b"c/sub/"));
-        assert!(!changed.touches_dir(b"e/"));
+        let named = "with a/b, c/ and d/.gitattributes named";
+        for (path, touched) in [
+            ("a/b", true),
+            ("a/b/c", true),
+            ("c/x", true),
+            ("a/bc", false),
+            ("a", false),
+        ] {
+            assert_eq!(
+                changed.touches(path.as_bytes()),
+                touched,
+                "whether {path} counts as touched, {named}"
+            );
+        }
+        for (dir, touched) in [
+            ("a/", true),
+            ("", true),
+            ("a/b/", true),
+            ("c/sub/", true),
+            ("e/", false),
+        ] {
+            assert_eq!(
+                changed.touches_dir(dir.as_bytes()),
+                touched,
+                "whether the listing of {dir:?} may have changed, {named}"
+            );
+        }
         let deep = Changed::of([&b"x/y/z/file"[..]].into_iter());
-        assert!(deep.touches_under(b""));
-        assert!(deep.touches_under(b"x/"));
-        assert!(deep.touches_under(b"x/y/z/"));
-        assert!(deep.touches_under(b"x/y/z/file/"));
-        assert!(!deep.touches_under(b"x/q/"));
-        assert!(!deep.touches_under(b"x/y/zz/"));
-        assert!(!Changed::default().touches_under(b""));
-        assert!(changed.attributes);
-        assert!(!Changed::of([&b"x"[..]].into_iter()).attributes);
+        for (dir, touched) in [
+            ("", true),
+            ("x/", true),
+            ("x/y/z/", true),
+            ("x/y/z/file/", true),
+            ("x/q/", false),
+            ("x/y/zz/", false),
+        ] {
+            assert_eq!(
+                deep.touches_under(dir.as_bytes()),
+                touched,
+                "whether anything under {dir:?} may have changed, with x/y/z/file named"
+            );
+        }
+        assert!(
+            !Changed::default().touches_under(b""),
+            "with nothing named, something under the worktree counted as changed"
+        );
+        assert!(
+            changed.attributes,
+            "d/.gitattributes was named, yet no attributes file counted as changed"
+        );
+        assert!(
+            !Changed::of([&b"x"[..]].into_iter()).attributes,
+            "only x was named, yet an attributes file counted as changed"
+        );
     }
 }

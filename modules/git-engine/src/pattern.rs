@@ -136,41 +136,69 @@ mod tests {
         )
     }
 
+    /// Checks each case, as (pattern, path, whether the path is a folder,
+    /// the folder of the pattern's file, whether it should match).
+    fn agree(cases: &[(&str, &str, bool, &str, bool)]) {
+        for &(pattern, path, is_dir, base, matched) in cases {
+            let file = if base.is_empty() { "the top" } else { base };
+            let kind = if is_dir { "folder" } else { "file" };
+            assert_eq!(
+                ignored(pattern, path, is_dir, base),
+                matched,
+                "whether {pattern}, in a file in {file}, matches the {kind} {path}"
+            );
+        }
+    }
+
     #[test]
     fn a_name_matches_in_any_folder() {
-        assert!(ignored("target", "a/b/target", true, ""));
-        assert!(ignored("*.o", "a/b/x.o", false, ""));
-        assert!(!ignored("*.o", "a/b/x.oo", false, ""));
+        agree(&[
+            ("target", "a/b/target", true, "", true),
+            ("*.o", "a/b/x.o", false, "", true),
+            ("*.o", "a/b/x.oo", false, "", false),
+        ]);
     }
 
     #[test]
     fn a_slash_anchors_to_its_files_folder() {
-        assert!(ignored("/build", "build", true, ""));
-        assert!(!ignored("/build", "a/build", true, ""));
-        assert!(ignored("/build", "sub/build", true, "sub"));
-        assert!(ignored("doc/*.txt", "sub/doc/a.txt", false, "sub"));
-        assert!(!ignored("doc/*.txt", "sub/doc/x/a.txt", false, "sub"));
-        assert!(ignored("doc/**/a.txt", "doc/x/y/a.txt", false, ""));
+        agree(&[
+            ("/build", "build", true, "", true),
+            ("/build", "a/build", true, "", false),
+            ("/build", "sub/build", true, "sub", true),
+            ("doc/*.txt", "sub/doc/a.txt", false, "sub", true),
+            ("doc/*.txt", "sub/doc/x/a.txt", false, "sub", false),
+            ("doc/**/a.txt", "doc/x/y/a.txt", false, "", true),
+        ]);
     }
 
     #[test]
     fn a_trailing_slash_matches_only_folders() {
-        assert!(ignored("cache/", "x/cache", true, ""));
-        assert!(!ignored("cache/", "x/cache", false, ""));
+        agree(&[
+            ("cache/", "x/cache", true, "", true),
+            ("cache/", "x/cache", false, "", false),
+        ]);
     }
 
     #[test]
     fn lines_read_as_git_reads_them() {
-        assert!(Pattern::parse(b"# comment", true).is_none());
-        assert!(Pattern::parse(b"   ", true).is_none());
+        assert!(
+            Pattern::parse(b"# comment", true).is_none(),
+            "a comment line was read as a pattern"
+        );
+        assert!(
+            Pattern::parse(b"   ", true).is_none(),
+            "a line of spaces was read as a pattern"
+        );
         let negated = Pattern::parse(b"!keep", true).unwrap();
-        assert!(negated.negated);
+        assert!(negated.negated, "a leading ! didn't negate its pattern");
         assert_eq!(
             Pattern::parse(b"trailing   ", true).unwrap().text,
             b"trailing"
         );
         assert_eq!(Pattern::parse(b"space\\ ", true).unwrap().text, b"space\\ ");
-        assert!(ignored("\\#hash", "#hash", false, ""));
-        assert!(ignored("\\!bang", "!bang", false, ""));
+        agree(&[
+            ("\\#hash", "#hash", false, "", true),
+            ("\\!bang", "!bang", false, "", true),
+        ]);
     }
 }
