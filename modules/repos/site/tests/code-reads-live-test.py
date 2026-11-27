@@ -12,10 +12,10 @@ drawer, say broken when the daemon stops and live again, its repositories
 drawn, when it's back, say stale when the server goes, move its ages on while
 nothing is written, make today's growth yesterday's once the day turns, move no
 row or tree as the cursor steps, keep focus where it was through a redraw, let
-Tab reach the head's keys once, open on a headline and lede taking the lines
-the live ones take, and those head.ts writes for any count up to 999 and for
-nothing waiting or one change failing, not shift as its feeds arrive on a
-reload, nor hold room for what a reload forgets or at another width, draw a
+Tab reach the head's keys once, open on a headline and lede holding two lines,
+the lines the live ones take and those head.ts writes for any count up to 999
+and for nothing worth a look or cells waiting or changes failing, not shift as
+its feeds arrive on a reload, nor hold room for what a reload forgets or at another width, draw a
 second's burst of records a few times rather than each, draw a thread for
 each cell joining two repositories on the map under the work and walk it by
 keys, and pass the web-design skill's page checks, its homes check and its
@@ -701,31 +701,47 @@ def test_tab_reaches_the_keys_at_the_head_once(code_page: Page) -> None:
 # What the stand-in's grove holds worth a look, its one change failing, as the live lede says it.
 FAILING = "has 1 change whose checks fail."
 # The headlines and ledes head.ts writes for groves the stand-in's doesn't hold, by the page's
-# own modules: counts from one repository to 999, and the lede with nothing worth a look or
-# `failing`, after what grew most or a grove resting. Each grove is built of only the fields
-# headOf reads, with a repository named as short as the stand-in's core.
-HEAD_FORMS = """async (failing) => {
+# own modules: counts from one repository to 999, and the lede with nothing worth a look, or one
+# or three cells waiting or changes failing, as model.ts says them, after what grew most or a
+# grove resting. Each grove is built of only the fields headOf and worthOf read, with a
+# repository named as short as the stand-in's core. A tree whose folder is gone, or two things
+# worth a look, are said at a length a phone gives a third line.
+HEAD_FORMS = """async () => {
   const { headOf } = await import("./head.js");
-  const named = (name, today) => ({
-    name, address: `#repo=${name}`, seasons: { today, week: 0, resting: 0, gone: 0 } });
-  const grove = (repositories, worth = []) =>
-    ({ machine: "", roots: [], unread: [], repositories, worth });
+  const { worthOf } = await import("./model.js");
+  const named = (name, today, { waiting = 0, failing = 0 } = {}) => ({
+    name, address: `#repo=${name}`, seasons: { today, week: 0, resting: 0, gone: 0 },
+    cells: Array.from({ length: waiting }, () => ({ standing: "needs-you" })),
+    changes: Array.from({ length: failing }, () => ({ checks: "failing", review: null })) });
+  const grove = (repositories) => ({
+    machine: "", roots: [], unread: [], repositories, worth: worthOf(repositories) });
   const many = (count, today) =>
     Array.from({ length: count }, (_, at) => named(`r${at}`, today));
-  const grew = named("core", 3);
-  const resting = named("core", 0);
-  const worth = (repository) => [{ weight: 1, repository, says: failing }];
   const counts = [
-    grove([resting]), grove([grew, named("notes", 0)]),
-    grove([...many(87, 0), ...many(12, 1)]), grove(many(999, 1))];
-  const ledes = [
-    grove([grew]), grove([resting]), grove([grew], worth(grew)),
-    grove([resting], worth(resting))];
+    [named("core", 0)], [named("core", 3), named("notes", 0)],
+    [...many(87, 0), ...many(12, 1)], many(999, 1)];
+  const worth = [{}, { waiting: 1 }, { waiting: 3 }, { failing: 1 }, { failing: 3 }];
+  const ledes = [3, 0].flatMap((today) => worth.map((each) => [named("core", today, each)]));
   return {
-    title: counts.map((each) => headOf(each).title),
-    lede: ledes.map((each) => headOf(each).lede),
+    title: counts.map((each) => headOf(grove(each)).title),
+    lede: ledes.map((each) => headOf(grove(each)).lede),
   };
 }"""
+# The lines each part's least height holds as the page's styles give it with no room kept: its
+# room is set invalid on the part for the reading, so its fallback holds, then given back.
+HELD_LINES = """(ids) => Object.fromEntries(ids.map((id) => {
+  const part = document.getElementById(id);
+  const room = `--room-${id}`;
+  part.style.setProperty(room, "initial");
+  const style = getComputedStyle(part);
+  const lines = parseFloat(style.minBlockSize) / parseFloat(style.lineHeight);
+  part.style.removeProperty(room);
+  return [id, lines];
+}))"""
+# The lines the headline and lede hold, so a browser that breaks their words otherwise doesn't
+# move the page under them, within the rounding of a pixel's part.
+HEAD_LINES = 2
+HELD_WITHIN = 0.01
 
 
 @pytest.mark.parametrize("size", [*SIZES, WIDE_DESK])
@@ -747,7 +763,11 @@ def test_the_opening_words_take_the_lines_the_head_will(
 
         opened.first(read_live)
         page = opened.page
-        forms = page.evaluate(HEAD_FORMS, FAILING)
+        held = page.evaluate(HELD_LINES, ["title", "lede"])
+        assert all(abs(lines - HEAD_LINES) < HELD_WITHIN for lines in held.values()), (
+            f"at {size} the head holds {held} lines, not {HEAD_LINES}"
+        )
+        forms = page.evaluate(HEAD_FORMS)
         heights = page.evaluate(HEAD_HEIGHTS, [["title", "lede"], forms])
         moved = {
             part: said

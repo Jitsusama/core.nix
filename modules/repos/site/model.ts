@@ -509,4 +509,5 @@ export {
   treeAddress,
   USING,
   when,
+  worthOf,
 };
