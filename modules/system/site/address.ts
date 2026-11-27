@@ -36,7 +36,8 @@ const BEHIND = "the machines may not all be read.";
 /**
  * How the records that may name a machine stand in `read`: coming while
  * the machine `watch` hasn't told them or isn't live, while the machines
- * part is untold, or while it names a machine whose record hasn't come,
+ * part is untold, or while it names a machine whose record hasn't come
+ * (a builder's, on a watch of its own, keeps no machine waiting),
  * as a new machine's can be one push behind its part's; `overdue` once
  * the page has waited long enough for them.
  */
@@ -46,7 +47,7 @@ function recordsOf(read: System, watch: Watch, overdue: boolean): Records {
     !watch.told ||
     watch.state !== "live" ||
     read.untold.includes("machines") ||
-    (machines?.untold ?? 0) > 0;
+    (machines?.machinesUntold ?? 0) > 0;
   if (!coming) {
     return "in";
   }

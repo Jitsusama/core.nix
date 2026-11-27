@@ -53,7 +53,16 @@ const ties = {
 };
 
 function machine(name: string, health: Thing["health"], side: string[] = []): Thing {
-  return { name, health, says: "", side, looks: undefined, address: undefined, ties: tiesOf(ties) };
+  return {
+    kind: "machine",
+    name,
+    health,
+    says: "",
+    side,
+    looks: undefined,
+    address: undefined,
+    ties: tiesOf(ties),
+  };
 }
 
 function system(things: Thing[], others: Part[] = []): System {
@@ -66,6 +75,7 @@ function system(things: Thing[], others: Part[] = []): System {
     things,
     named: things.map((thing) => thing.name),
     untold: 0,
+    machinesUntold: 0,
     deeper,
   };
   return {
@@ -386,7 +396,7 @@ it("machines not told yet are said not read, never none known", () => {
   assert.deepEqual(machineHeadline(noPart), notRead);
   const awaited: System = {
     ...read,
-    parts: read.parts.map((each) => ({ ...each, untold: 2 })),
+    parts: read.parts.map((each) => ({ ...each, untold: 2, machinesUntold: 2 })),
   };
   assert.deepEqual(machineHeadline(awaited), notRead);
 });
@@ -395,7 +405,7 @@ it("counts machines whose records haven't come, and says them not read", () => {
   const read = system([machine("kestrel", "good")]);
   const partial: System = {
     ...read,
-    parts: read.parts.map((each) => ({ ...each, untold: 1 })),
+    parts: read.parts.map((each) => ({ ...each, untold: 1, machinesUntold: 1 })),
   };
   assert.deepEqual(machineHeadline(partial), {
     machines: "Two machines",
