@@ -140,17 +140,18 @@ fn matters(side: &str) -> &'static str {
             "nix-offload sends it no builds until its proofs pass again, so the builders \
              left share them."
         }
-        "left out, its store full" => {
-            "nix-offload sends it no builds until its store has room again, so the \
-             builders left share them."
+        "its store full" => {
+            "nix-offload sends it builds only while no builder with room can take them, \
+             so those with room share them until its store has room again."
         }
         _ => "It stands in a state this daemon doesn't know, so it may not be taking builds.",
     }
 }
 
 /// A builder its lender runs: it takes builds unless nix-offload's proofs
-/// left it out, or found its store full. One failed proof is said but no
-/// look, as the next may pass.
+/// left it out. One found full still takes them while no builder with room
+/// can stand in, as nix-offload's `for_anything` names it, so it's said as
+/// building last. One failed proof is said but no look, as the next may pass.
 fn running(lent: bool, takes: &str, proof: Option<&str>) -> (Health, String, Option<String>) {
     let runs = if lent {
         format!("is lent and {takes}")
@@ -165,8 +166,8 @@ fn running(lent: bool, takes: &str, proof: Option<&str>) -> (Health, String, Opt
         ),
         Some("full") => (
             Health::Watch,
-            "runs but is left out, its store full".to_owned(),
-            Some("left out, its store full".to_owned()),
+            "runs with its store full, so it builds only when no other can".to_owned(),
+            Some("its store full".to_owned()),
         ),
         Some("failing") => (
             Health::Good,
@@ -177,19 +178,12 @@ fn running(lent: bool, takes: &str, proof: Option<&str>) -> (Health, String, Opt
     }
 }
 
-/// A node's words as one plain clause of a line: the first line, with
-/// what a terminal would act on as a space, no closing stop, and cut at a
-/// word past `REASON_AT_MOST`; none when nothing is left. The system
-/// page's update why has a fuller filter, which drops escape sequences
-/// whole; this takes it once both are on main.
+/// A node's words as one plain clause of a line: the first line, made
+/// plain as every text the system shows is (`plain::words`), with no
+/// closing stop, and cut at a word past `REASON_AT_MOST`; none when
+/// nothing is left.
 fn plain(said: &str) -> Option<String> {
-    let line: String = said
-        .lines()
-        .next()
-        .unwrap_or("")
-        .chars()
-        .map(|each| if each.is_control() { ' ' } else { each })
-        .collect();
+    let line = crate::plain::words(said.lines().next().unwrap_or(""));
     let line = line.trim().trim_end_matches(['.', ';', ':', ',', ' ']);
     if line.is_empty() {
         return None;
