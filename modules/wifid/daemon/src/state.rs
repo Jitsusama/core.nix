@@ -1729,7 +1729,8 @@ mod tests {
         let mut state = at_the_inn();
         let warned = state.point_of("wlan2").expect("on a point");
         let now = Instant::now();
-        state.warned_off("wlan2", &warned, (now, now + Duration::from_secs(3600)));
+        let lasts = now + Duration::from_secs(3600);
+        state.warned_off("wlan2", &warned, (Some(now), lasts));
         // Left for the hall, then a join back to the point that warned,
         // which associates there and lands on the hall instead, the step
         // and the hall in one signal. The inn's own point is the first.
