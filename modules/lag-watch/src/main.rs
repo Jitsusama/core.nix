@@ -28,6 +28,9 @@
 //! `lag-watch report` sums up the history; each answers in the form
 //! `--format` asks for, as every command of ours does (docs/commands.md).
 //! `lag-watch run` is the watch itself, as its service runs it.
+//!
+//! Long because a quarter of it is tests, which forge the /proc tree a
+//! snapshot reads, thread by thread, beside the snapshot they prove.
 
 mod apps;
 mod kernel;
