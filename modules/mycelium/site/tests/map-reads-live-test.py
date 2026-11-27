@@ -66,25 +66,18 @@ REDRAWN_MS = 2500
 # What node.json's realm comes to on the map, every part of the count.
 COUNTED = "8 cells, 2 moving, 1 stuck"
 CELLS = 8
-# What a first visit to the map may cost, drawn from the stand-in's cells:
-# 33 files since the balance, who started each cell, the tree beside the map,
-# what each thing is in words, how a time is said, how each thing stands, what
-# each is doing, what each spent, what waits, how wide each line is drawn, how
-# a cell is named, how the map's motion is timed, where everything stands,
-# what the ground layer's canvas touches, a reading's shape, what new work
-# hands the Launcher and what a cell's drawer offers were read in modules of
-# their own; about 668 KB since the builders, the legend's moving samples and
-# new work's line, and since no comment is sent, view.js's and the styles'
-# included, a little more with the drawer's acts and its whole question, and
-# 677.4 KB once a network's label keeps what tells it apart, and 678.2 KB
-# once a cloud machine says it's kept, a little more once a long lease counts
-# days, about 0.4 KB more once every label is kept apart and in its room,
-# about 2.4 KB more once a machine's drawer starts new work on it, 686.0 KB
-# once what each cell split from is read, about 0.9 KB more once new work
-# keeps to the machine chosen, and a little more once the kit draws a field's
-# placeholder in muted, under the 689 KB allowed; new work's line and its
-# hidden controls draw about 20 elements of the 611.
-BUDGET = Budget(files=33, kilobytes=689, elements=620)
+# What a first visit to the map may cost, drawn from the stand-in's cells: its
+# measured cost when this line was last set, 33 files, 686.7 KB and 619
+# elements, plus room for four files, 8 KB and 16 elements, so most changes
+# never touch the line and parallel ones never clash on it. The room lets the
+# map grow that much unnoticed. Every run's summary says what the map cost, and
+# a change that grows it says in its commit what it cost and why that's worth
+# it. One that would pass the line sets it again to its measured cost plus the
+# room, writing that cost here. Two that each fit can pass it together, as
+# neither moves this file, so a change that grows the map runs this test again
+# at its head over main once main's moves have changed this check's derivation
+# since (local-sites/AGENTS.md).
+BUDGET = Budget(files=37, kilobytes=695, elements=635)
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000
 TWIN_NETWORKS = 200

@@ -85,6 +85,9 @@ MOST_DRAWN = """() => {
 }"""
 # The web-design skill's checks a published page passes, each answering [] when it does.
 PAGE_CHECKS = ["gate.js", "layout.js", "svgtext.js"]
+# What each first visit cost in this run, said in its summary whether it passed or
+# not (pytest_terminal_summary), since a passing assert says nothing.
+MEASURED: list[str] = []
 
 type Served = tuple[str, subprocess.Popen[bytes]]
 
@@ -95,13 +98,24 @@ class Budget:
 
     Each is set a little above what the page costs now, measured under its test's
     stand-in, so a page that grows past it says so and its owner decides whether
-    the cost is worth it, raising the budget in the same change if it is. Bytes
-    are the bodies the server sent, which a build fixes, so they don't vary.
+    the cost is worth it, raising the budget in the same change if it is. The
+    map, which many changes grow at once, holds a stated room instead, as its
+    test says. Every run's summary says what each first visit cost, so a budget
+    is set from a measure. Bytes are the bodies the server sent, which a build
+    fixes, so they don't vary.
     """
 
     files: int
     kilobytes: int
     elements: int
+
+
+def pytest_terminal_summary(terminalreporter: pytest.TerminalReporter) -> None:
+    """Say what each first visit in the run cost, passed or not, so its budget is set from that."""
+    if MEASURED:
+        terminalreporter.section("first visits", sep="-")
+    for cost in MEASURED:
+        terminalreporter.write_line(cost)
 
 
 def a_free_port() -> int:
@@ -328,23 +342,7 @@ class Opened:
         """
         self.page.wait_for_load_state("networkidle")
         self._stays_home("a first visit")
-        asked = [request.url for request in self.asked]
-        assert len(asked) <= budget.files, (
-            f"a first visit asked for {len(asked)} files, past its budget of {budget.files}: "
-            f"{asked}"
-        )
-        sent = sum(
-            request.sizes()["responseBodySize"] for request in self.asked if request.response()
-        )
-        assert sent <= budget.kilobytes * KILOBYTE, (
-            f"a first visit was sent {sent / KILOBYTE:.1f} KB, past its budget of "
-            f"{budget.kilobytes} KB"
-        )
-        elements = self.page.evaluate("document.getElementsByTagName('*').length")
-        assert elements <= budget.elements, (
-            f"the page drew {elements} elements, past its budget of {budget.elements}, "
-            f"most of them {self.page.evaluate(MOST_DRAWN)}"
-        )
+        self._first_visit_keeps_to(budget)
         self.asked.clear()
         self.sockets.clear()
         self.page.reload(wait_until="load")
@@ -355,6 +353,33 @@ class Opened:
         assert again == [], (
             f"a second visit had these files answered other than as unchanged: {again}"
         )
+
+    def _first_visit_keeps_to(self, budget: Budget) -> None:
+        """Measure a first visit's files, bytes and elements, all three, against `budget`.
+
+        Every measure is taken before any is judged, so a failure names each one
+        past its budget beside all three figures, and the run's summary keeps
+        them when it passes, so a budget is set again from a single run.
+        """
+        asked = [request.url for request in self.asked]
+        sent = sum(
+            request.sizes()["responseBodySize"] for request in self.asked if request.response()
+        )
+        elements = self.page.evaluate("document.getElementsByTagName('*').length")
+        cost = (
+            f"{urlsplit(self.page.url).path} cost a first visit {len(asked)} files, "
+            f"{sent / KILOBYTE:.1f} KB and {elements} elements, against a budget of "
+            f"{budget.files} files, {budget.kilobytes} KB and {budget.elements} elements"
+        )
+        MEASURED.append(cost)
+        past: list[str] = []
+        if len(asked) > budget.files:
+            past.append(f"files, asking for {asked}")
+        if sent > budget.kilobytes * KILOBYTE:
+            past.append("kilobytes")
+        if elements > budget.elements:
+            past.append(f"elements, most of them {self.page.evaluate(MOST_DRAWN)}")
+        assert past == [], f"{cost}: past its budget in {'; and in '.join(past)}"
 
     @staticmethod
     def _sent_again(request: Request) -> tuple[str, int | None, int] | None:
