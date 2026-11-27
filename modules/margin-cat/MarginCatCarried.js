@@ -82,3 +82,17 @@ function standsOnTop(at, tile, size) {
 function caught(drawn, tile, at) {
     return at.scrolling && standsOnTop(drawn, tile, at) ? "holds" : "walks on";
 }
+
+// Whether a `walk` to the keys' new column, planned before niri's scroll
+// of the window it set off from was heard, gives way to riding that
+// window (MarginCatScreen.qml's follow): a plain walk alone, never a play
+// or a drop by his hand (`at.byHand`), while the cat, `drawn`, still stands on that
+// window's top, `seat` as it was, as niri scrolls the strip. Each window
+// is told as it changes, so the keys' new column can be heard before the
+// scroll that brought it carries the cat's window off the screen; set off
+// at once, it walked from the air where its window had been (the strip
+// case on niri, 2026-11-27). Riding, it waits for the keys to rest, as it
+// does when the scroll is heard first.
+function seatCarries(walk, drawn, seat, at) {
+    return walk !== null && !walk.kind && !at.byHand && caught(drawn, seat, at) === "holds";
+}

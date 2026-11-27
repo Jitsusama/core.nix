@@ -425,7 +425,19 @@ PanelWindow {
             else if (back === "sits")
                 place = there;
         } else if (going !== null && wanted === goingTo) {
-            if (Math.round(there.x * ratio) !== Math.round(going.to.x * ratio)
+            // Its walk planned from the keys' new column alone, as the
+            // scroll that brought it is heard of its own window after, it
+            // rides that window while still on its top, and sets off once
+            // the keys rest (Carried.seatCarries).
+            const seatWas = (saw ?? []).find(one => one.id === sat);
+            if (MarginCat.carries(saw, tilesOf(space?.id), sat) !== null
+                && Carried.seatCarries(going, drawnAt(), seatWas,
+                    { wide: size, tall: size, air: cell, scrolling: scrolling(), byHand })) {
+                halt();
+                carried(saw);
+                waitingOn = wanted;
+                resting.restart();
+            } else if (Math.round(there.x * ratio) !== Math.round(going.to.x * ratio)
                 || Math.round(there.y * ratio) !== Math.round(going.to.y * ratio))
                 walkFrom(true, saw);
         } else {

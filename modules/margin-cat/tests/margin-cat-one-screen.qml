@@ -582,6 +582,24 @@ QtObject {
             expect(`caught mid-walk, ${name}`, Carried.caught(at, tile, given), want);
         expect("caught mid-walk, with no tile for it, it walks on",
             Carried.caught(standing, undefined, told({ scrolling: true })), "walks on");
+        // A walk planned from the keys' new column alone gives way to
+        // riding the window it set off from, scrolled after, only while
+        // it's a plain walk still on that window's top as niri scrolls.
+        const walking = { to: { x: 318, y: 3 } };
+        const scrolled = told({ scrolling: true });
+        const seatCases = [
+            ["a walk still on its seat as niri scrolls it", walking, standing, scrolled, true],
+            ["no walk", null, standing, scrolled, false],
+            ["a play", { kind: "yarn" }, standing, scrolled, false],
+            ["a drop by his hand", walking, standing, told({ scrolling: true, byHand: true }),
+                false],
+            ["a walk in a leap's air", walking, { x: 500, y: 20 }, scrolled, false],
+            ["a walk as a drag carries its seat", walking, standing, told({ scrolling: false }),
+                false]
+        ];
+        for (const [name, walk, at, given, want] of seatCases)
+            expect(`its seat scrolled after its walk was planned, ${name}`,
+                Carried.seatCarries(walk, at, tile, given), want);
     }
 
     // Its windows gone, it comes to the floor: from off the screen's side,
