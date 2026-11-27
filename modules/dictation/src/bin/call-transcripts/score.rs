@@ -270,9 +270,15 @@ fn score_meeting(speech: &mut Parakeet, meeting: &Meeting) -> Result<(Scored, Ti
             .flat_map(|line| said(&line.text))
             .collect()
     };
-    let their_sound = &sounds[index(Side::Theirs)];
+    // Only the sound of their takes, as the daemon is given it.
+    let mut their_takes = vec![0.0; sounds[index(Side::Theirs)].len()];
+    for take in takes(&sounds[index(Side::Theirs)]) {
+        for (into, &sample) in their_takes[take.start..].iter_mut().zip(&take.samples) {
+            *into = sample;
+        }
+    }
     let loud = |word: &Word| {
-        let gap = loudest_before(their_sound, word.at) - word.level;
+        let gap = loudest_before(&their_takes, word.at) - word.level;
         (gap >= SOUND).then_some(gap)
     };
     let (cut, cuts) = echo::cut_echoes_heard(&lines, &word_times, said::spoken, loud);
@@ -393,7 +399,7 @@ fn lab_kept(
 
 /// Lab only: how far their sound must stand above a word of his for it
 /// to be cut as their echo, in dB.
-const SOUND: f32 = 25.0;
+const SOUND: f32 = 20.0;
 
 /// Lab only: the loudest quarter second of `sound` starting from a
 /// second before `at` to three tenths after, in 50 ms steps, in dB of
