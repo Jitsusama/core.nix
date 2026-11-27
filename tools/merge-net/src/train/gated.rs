@@ -54,7 +54,7 @@ fn names_a_failure(words: &str) -> bool {
 /// What nix-offload says when it sets aside a replay of the change onto a
 /// newer main that failed, since the failure may be main's, and runs the
 /// change again on its own base.
-const RUNS_AGAIN: &str = "so the change runs again on its own base";
+pub(super) const RUNS_AGAIN: &str = "so the change runs again on its own base";
 
 /// The words of the gate whose log is at `log` that speak for its run:
 /// those after the last replay nix-offload set aside, any byte that isn't

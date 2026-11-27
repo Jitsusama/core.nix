@@ -31,7 +31,11 @@
 //! built but main's own reds is built once more together at the candidate,
 //! so each is known built: a nix killed mid-run says nothing of the checks
 //! it never reached, and a failed derivation named like a check may have
-//! been another's. A derivation that failed for another reason than its
+//! been another's; the VM tests changed-checks lists but never builds
+//! for the gate are left to the net, as ever. Nor is a red excused whose
+//! gate ran again on its own base, whose words name a check with a dot,
+//! which Nix would read as another's path, or whose rule crashed, which
+//! said nothing of what it never reached. A derivation that failed for another reason than its
 //! builder or a dependency, one no check names, a check that no longer evaluates, a
 //! build no builder took, more failed checks than `MOST_REBUILT`, and a
 //! check excused as a flake twice already in the ride count as the
@@ -46,7 +50,7 @@ use std::process::Command;
 
 use serde_json::{Value, json};
 
-use super::gated::{Gated, gated, words_of};
+use super::gated::{Gated, RUNS_AGAIN, gated, words_of};
 use crate::state::{State, now, short};
 
 /// Whose a failed check's red is.
@@ -177,6 +181,16 @@ const NO_LONGER_EVALUATES: &str = "a check the change touched no longer evaluate
 /// A VM test's derivation is named for its run: `vm-test-run-vm-pi`.
 const VM_RUN: &str = "vm-test-run-";
 
+/// How a VM test's check is named. changed-checks lists the VM tests a
+/// change moves but builds them only when asked, which the train's gate
+/// never asks, so the net runs them after the merge.
+const VM_TEST: &str = "vm-";
+
+/// What a Python rule says when it crashes. A rule that crashed stopped
+/// partway, so it said nothing of what it never reached, and its red
+/// can't be read as main's however alike it reads.
+const CRASHED: &str = "Traceback (most recent call last):";
+
 /// The check each of the `failed` derivations builds, of the checks
 /// `built`: the one of its name, the VM test it runs, or the one `named`
 /// says, asked only of names neither gives; none when one of them names
@@ -286,7 +300,9 @@ fn without_durations(line: &str) -> String {
 /// hidden behind main's.
 pub(super) fn fails_as_at_base(words: &str, base: &str, derivation: &str) -> bool {
     let said = said_by(words, derivation);
-    !said.is_empty() && said.is_subset(&said_by(base, derivation))
+    !said.is_empty()
+        && !said.iter().any(|line| line.contains(CRASHED))
+        && said.is_subset(&said_by(base, derivation))
 }
 
 /// Whose the red of `check`, which `derivation` builds, is, when the
@@ -312,20 +328,28 @@ fn blame(words: &str, check: &str, derivation: &str, judging: &mut Judging<'_>) 
     }
 }
 
-/// Each check the candidate failed, as its gate's `words` say, with whose
-/// red it is; none when the words name no failed check, or one no check
-/// builds, so the red is the riders' as before. Once one is the riders',
-/// the red is, so those after it are counted theirs unbuilt.
+/// Each check the candidate failed, as its gate's whole `words` say, with
+/// whose red it is; none when the words name no failed check, or one no
+/// check builds, so the red is the riders' as before. Once one is the
+/// riders', the red is, so those after it are counted theirs unbuilt.
 pub(super) fn judge(words: &str, judging: &mut Judging<'_>) -> Option<Vec<(String, Blame)>> {
     let failed = failed_derivations(words)?;
+    // A gate that ran again on its own base said twice what it built,
+    // and a rider's build may print the words that say so to cut its
+    // own break out of what is judged; the train's gates never replay.
     if failed.is_empty()
         || failed.len() > MOST_REBUILT
         || words.contains(NO_LONGER_EVALUATES)
+        || words.contains(RUNS_AGAIN)
         || !words.lines().any(|line| line == CHANGED_FAILED)
     {
         return None;
     }
     let gate_built = built(words);
+    // A check named with a dot would reach Nix as another check's path.
+    if !gate_built.iter().all(|check| plainly_named(check)) {
+        return None;
+    }
     let checks = checks_of(&failed, &gate_built, judging.named)?;
     let mut riders = false;
     let judged: Vec<(String, Blame)> = checks
@@ -348,7 +372,7 @@ pub(super) fn judge(words: &str, judging: &mut Judging<'_>) -> Option<Vec<(Strin
         };
         let rest: Vec<String> = gate_built
             .into_iter()
-            .filter(|check| !mains(check))
+            .filter(|check| !mains(check) && !check.starts_with(VM_TEST))
             .collect();
         if !rest.is_empty() && (judging.whole)(&rest) != Gated::Passed {
             return None;
@@ -417,7 +441,9 @@ pub(super) fn excuses(
         base,
         candidate,
     };
-    let words = words_of(log);
+    // All the gate said, not only what follows a replay, so a replay's
+    // words, real or printed by a rider's build, are seen and refused.
+    let words = String::from_utf8_lossy(&fs::read(log).unwrap_or_default()).into_owned();
     let flake = format!("github:{}/{}", super::slug_of(url), red.base);
     let mut base_build = |check: &str| {
         let log = built_log(root, red.candidate, check, "at-base");
@@ -480,9 +506,15 @@ fn tell(root: &Path, url: &str, red: &Red<'_>, judged: &[(String, Blame)]) {
     for (check, blamed) in judged {
         let (kind, log) = match blamed {
             Blame::Riders => continue,
-            Blame::Flaky => ("flaky", built_log(root, red.candidate, check, "again")),
+            // Kinds of the train's own, since the watch takes a `flaky`
+            // or `failed-before` finding at a commit as its own already
+            // made there, and would then list nothing.
+            Blame::Flaky => (
+                "train-flaky",
+                built_log(root, red.candidate, check, "again"),
+            ),
             Blame::Main => (
-                "failed-before",
+                "train-failed-before",
                 built_log(root, red.candidate, check, "at-base"),
             ),
         };

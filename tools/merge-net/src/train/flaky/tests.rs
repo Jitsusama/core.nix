@@ -255,10 +255,7 @@ fn mains_formatting_red_is_never_mains() {
 /// failed derivation named like a check may have been another's.
 #[test]
 fn a_red_lands_only_once_every_other_check_it_built_builds() {
-    let said = words(
-        &[RULE, "vm-pi", "never-reached"],
-        &[RULE, "vm-test-run-vm-pi"],
-    );
+    let said = words(&[RULE, "a", "vm-desktop", "never-reached"], &[RULE, "a"]);
     let at_base = |check: &str| {
         if check == RULE {
             as_before(RULE)
@@ -278,13 +275,58 @@ fn a_red_lands_only_once_every_other_check_it_built_builds() {
     );
     assert_eq!(
         *asked.borrow(),
-        ["vm-pi", "never-reached"],
-        "every check but main's own red wasn't built once more"
+        ["a", "never-reached"],
+        "every check the gate built but main's own red wasn't built once more, \
+         or a VM test it never built was"
     );
     assert!(
         judged_whole(&said, &at_base, &passes, &|_| Gated::Passed, 0)
             .is_some_and(|judged| excused(&judged)),
         "a red whose every other check built wasn't excused"
+    );
+}
+
+/// A check named with a dot reaches Nix as another check's path, so a
+/// rider's failing `formatting.out` would be rebuilt as `formatting`.
+#[test]
+fn a_check_named_with_a_dot_is_never_judged() {
+    let said = words(&["formatting.out"], &["formatting.out"]);
+    assert_eq!(
+        judged(&said, &passes_at_base, &passes, 0),
+        None,
+        "a check named with a dot was rebuilt as another and excused"
+    );
+}
+
+/// The words that say a gate ran again on its own base cut what came
+/// before them, so a rider's build printing them could hide its break.
+#[test]
+fn a_red_whose_gate_ran_again_is_never_judged() {
+    let said = format!(
+        "{}nix-offload: abc failed, so the change runs again on its own base\n{}",
+        broke(RULE),
+        words(&["a"], &["a"])
+    );
+    assert_eq!(
+        judged(&said, &passes_at_base, &passes, 0),
+        None,
+        "a red beside a replay's words was judged"
+    );
+}
+
+/// A rule that crashed said nothing of what it never reached.
+#[test]
+fn a_rule_that_crashed_at_the_base_too_is_never_mains() {
+    let crash = format!(
+        "{RULE}> Traceback (most recent call last):\n\
+         {RULE}> UnicodeDecodeError: 'utf-8' codec can't decode byte 0xff\n"
+    );
+    let said = crash.clone() + &words(&[RULE], &[RULE]);
+    let at_base = |_: &str| (Gated::Red, crash.clone() + &words(&[], &[RULE]));
+    assert_eq!(
+        judged(&said, &at_base, &passes, 0).unwrap(),
+        [(RULE.to_owned(), Blame::Riders)],
+        "a rule's crash, alike at the base, was read as main's"
     );
 }
 
