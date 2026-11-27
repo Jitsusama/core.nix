@@ -34,12 +34,14 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
       self.nixosModules.shaper
     ];
     # On one core each, a run on a loaded builder on 26 November (main at
-    # b6ec65a3) reads as a starved rig: the router let 7.1 Mbit/s of its
-    # 8 through, the trace's seconds swung from 2557 to 8675 kbit/s under
-    # a shaper holding 6782, and the router's queue kept shedding, so the
-    # queue never counted as taken back within its 90 s. The rate test's
-    # client was starved so until it had a second core (shaper-rate.nix),
-    # so here the client and the router each have two.
+    # b6ec65a3) reads as a starved rig, untested: the client's own counts
+    # swung from 2557 to 8675 kbit/s a second under a shaper holding 6782,
+    # and the router's queue kept shedding, so the queue never counted as
+    # taken back within its 90 s. The rate test's client was given a
+    # second core for the same reading (shaper-rate.nix), so here the
+    # client and the router each have two; the router's is a guess, as
+    # nothing then read its own sending. The test now prints what each
+    # sent against its rate, so a run says which, if either, fell behind.
     virtualisation.cores = 2;
     virtualisation.vlans = [ 1 ];
     networking.useDHCP = false;

@@ -12,7 +12,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -59,6 +59,12 @@ TAKING = dt.timedelta(seconds=90)
 # only starts the count again.
 HELD = dt.timedelta(seconds=5)
 SENDING = dt.timedelta(seconds=60)
+# The router's rate on eth2, in kbit/s, as shaper-owned.nix sets its HTB.
+CONNECTION_KBIT = 8_000
+# Under this share of the rate it should send at, a machine fell behind: the client
+# with data waiting in eth1's queues, or the router while its fq_codel shed, as the
+# rate test reads its client (shaper-rate-vm-test.py). A slow shaper never does.
+BEHIND = 0.9
 
 
 @dataclass
@@ -113,16 +119,50 @@ class Rig:
         status = self.client.succeed("cat /run/shaper/status.json")
         return "\n".join([*rows, said, status])
 
-    def router_shed(self) -> int:
-        """Give the packets the router's fq_codel dropped or marked, as only a queue there sheds.
+    def router_read(self) -> tuple[float, int, int]:
+        """Give the router's clock, the bytes its HTB passed and what its fq_codel shed.
 
-        Marks count beside drops, since a flow that asks for ECN is marked where another would
-        be dropped.
+        What fq_codel dropped or marked is shed, as only a queue there sheds: marks count
+        beside drops, since a flow that asks for ECN is marked where another would be
+        dropped. Read in one command, so what HTB passed between two readings is timed by
+        the router.
         """
-        qdiscs: list[Json] = json.loads(self.router.succeed("tc -s -j qdisc show dev eth2"))
+        now, _, text = self.router.succeed("date +%s.%N; tc -s -j qdisc show dev eth2").partition(
+            "\n"
+        )
+        qdiscs: list[Json] = json.loads(text)
         codels = [q for q in qdiscs if q.get("kind") == "fq_codel"]
         assert codels, f"no fq_codel on the router's eth2: {qdiscs}"
-        return sum(int(q.get("drops") or 0) + int(q.get("ecn_mark") or 0) for q in codels)
+        htb = next((q for q in qdiscs if q.get("kind") == "htb"), None)
+        assert htb is not None, f"no HTB on the router's eth2: {qdiscs}"
+        shed = sum(int(q.get("drops") or 0) + int(q.get("ecn_mark") or 0) for q in codels)
+        return float(now), int(htb["bytes"]), shed
+
+    def client_read(self) -> tuple[float, int, int]:
+        """Give the client's clock, and the bytes eth1's queues have sent and hold waiting.
+
+        The root qdisc, which tc names without a parent, counts every lane's. Read in one
+        command, so what it sent between two readings is timed by the client.
+        """
+        now, _, text = self.client.succeed("date +%s.%N; tc -s -j qdisc show dev eth1").partition(
+            "\n"
+        )
+        queues: list[Json] = json.loads(text)
+        root = next(q for q in queues if "parent" not in q)
+        return float(now), int(root["bytes"]), int(root["backlog"])
+
+    def htb_behind(self) -> str:
+        """Give what either machine's kernel said of HTB falling behind its events.
+
+        A starved machine's HTB says it had too many events, as the rate test's client's
+        did on one core (shaper-rate.nix).
+        """
+        said = [
+            f"{name}: {line}"
+            for name, machine in (("client", self.client), ("router", self.router))
+            for line in machine.succeed("dmesg | grep -F 'too many events' || true").splitlines()
+        ]
+        return "\n".join(said) or "neither kernel said HTB had too many events"
 
     def taken(self) -> dict[int, int]:
         """Give the bytes the server has taken on each port."""
@@ -208,6 +248,43 @@ class Rig:
         return moved.get(APP_PORT, 0) / sum(moved.values())
 
 
+@dataclass
+class Readings:
+    """What the wait for the queue read of both machines' sending, try by try, for its print.
+
+    A run that passes says it too, so the net's runs show whether a passing rig was starved
+    as well as a failing one: the count alone can't tell a rig that stopped starving from one
+    on a quiet builder.
+    """
+
+    client: list[int] = field(default_factory=list)
+    router: list[int] = field(default_factory=list)
+    client_behind: int = 0
+    router_behind: int = 0
+    tries: int = 0
+    restarts: int = 0
+
+    def read(self, sent: int, up: int, waiting: int, passed: int, *, shedding: bool) -> None:
+        """Keep one try's rates, in kbit/s, and whether either machine fell behind in it."""
+        self.client.append(sent)
+        self.router.append(passed)
+        self.client_behind += int(waiting > 0 and sent < up * BEHIND)
+        self.router_behind += int(shedding and passed < CONNECTION_KBIT * BEHIND)
+
+    def said(self, seconds: float) -> str:
+        """Say what the tries read, over the `seconds` the wait took."""
+        began = f"after {seconds:.0f} s and {self.tries} tries, the count starting over"
+        if not self.client:
+            return f"{began} on {self.restarts}, with no two tries to read sending between"
+        return (
+            f"{began} on {self.restarts}: eth1 sent {min(self.client)} to {max(self.client)}"
+            f" kbit/s a try, under {BEHIND} of the shaper's rate with data waiting on"
+            f" {self.client_behind} of {len(self.client)}; the router's HTB passed"
+            f" {min(self.router)} to {max(self.router)} kbit/s of its {CONNECTION_KBIT},"
+            f" under {BEHIND} of it while shedding on {self.router_behind}"
+        )
+
+
 @pytest.fixture(scope="module")
 def rig(machines: dict[str, BaseMachine]) -> Rig:
     """Give the machines once the shaper shapes the client's connection and the server counts."""
@@ -238,21 +315,42 @@ def loaded(rig: Rig) -> Rig:
     empty. The router's shedding is read, not the shaper's rate against 8 Mbit/s: HTB let
     about 8.5 through as the client counts, and on 19 November a shaper holding at
     8099 kbit/s, with the queue its own, failed that bar.
+
+    Each try also reads what the client's queues sent and the router's HTB passed since
+    the try before, so a wait that times out says whether a machine fell behind, a
+    starved rig, or neither did, a shaper slow to take the queue back.
     """
     rig.uploads("uploads", "jobs.slice", JOBS, JOBS_PORT)
     # Since when the router has shed nothing more while the shaper held the queue, what it
     # had shed by then, and why the count last started over.
-    since, shed_then, why = time.monotonic(), -1, ""
+    began = time.monotonic()
+    since, shed_then, why = began, -1, ""
+    readings = Readings()
+    # The last try's clocks and counts, the client's then the router's.
+    last: list[tuple[float, int, float, int]] = []
 
     def taken_back(last_try: bool) -> bool:
         nonlocal since, shed_then, why
-        shed = rig.router_shed()
+        router_at, passed, shed = rig.router_read()
+        client_at, sent, waiting = rig.client_read()
         link = rig.link()
         up = int(link.get("up") or 0)
         heard = link.get("heard")
         ours = bool(((heard or {}).get("ours") or {}).get("queued"))
         shed_more = shed != shed_then
+        if last:
+            was_client_at, was_sent, was_router_at, was_passed = last[0]
+            readings.read(
+                round((sent - was_sent) * 8 / 1000 / (client_at - was_client_at)),
+                up,
+                waiting,
+                round((passed - was_passed) * 8 / 1000 / (router_at - was_router_at)),
+                shedding=shed_more,
+            )
+        last[:] = [(client_at, sent, router_at, passed)]
+        readings.tries += 1
         if shed_more or not ours:
+            readings.restarts += int(shed_then >= 0)
             since, shed_then = time.monotonic(), shed
             if shed == 0:
                 why = (
@@ -266,10 +364,17 @@ def loaded(rig: Rig) -> Rig:
             else:
                 why = f"the shaper held no queue of its own, at {up} kbit/s"
         held = shed > 0 and time.monotonic() - since >= HELD.total_seconds()
+        read = readings.said(time.monotonic() - began)
         if last_try and not held:
-            print(f"{why}, the last time the count started over:\n{rig.trace()}")
+            print(
+                f"{why}, the last time the count started over; {read}\n{rig.htb_behind()}"
+                f"\n{rig.trace()}"
+            )
         if held:
-            print(f"the router let its queue go, at {shed} shed, with the shaper at {up} kbit/s")
+            print(
+                f"the router let its queue go, at {shed} shed, with the shaper at {up} kbit/s;"
+                f" {read}\n{rig.htb_behind()}"
+            )
         return held
 
     retry(taken_back, timeout=TAKING)
