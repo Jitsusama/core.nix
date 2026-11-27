@@ -550,15 +550,50 @@ Scope {
     // word of a row, so typing on only ever finds fewer, and while what's
     // typed goes on from the last search of the same rows, only the rows
     // that one matched are looked at again, as Emoji's are. Rows made
-    // anew, as a new notice makes them, are looked through whole. A search
-    // says what it matched, at any grade, with `matchedIn`.
+    // anew, as a new notice makes them, are looked at too: when a change
+    // makes the list anew but keeps some of its rows, as Runs keeps every
+    // finished run's while one at work is made again each update, a kept
+    // row the letters before didn't match still can't match, since what a
+    // search reads of it is never changed in place by the three that share
+    // this, Applications, Copies and Runs: Copies changes a kept row's side
+    // alone, and Runs' `also` is made once from its words. The launcher's
+    // withSynonyms is the one writer that adds to a row's words in place,
+    // on Applications' programs as it joins them: a letter searched before
+    // that join, after Programs were made anew, can miss a program found
+    // only by a synonym until what's typed stops going on. Without the kept
+    // rows' verdicts, every update the node sent while a run was at work had the next letter
+    // search the whole day again (2026-11-26). A search says what it
+    // matched, at any grade, with `matchedIn`.
     property var lastMatched: ({ from: null, words: "", rows: [] })
 
     function poolFor(rows, typed) {
         const words = Fuzzy.words(typed).join(" ");
         const last = lastMatched;
-        return last.from === rows && last.words !== "" && words.startsWith(last.words)
-            ? last.rows : rows;
+        if (last.from === null || last.words === "" || !words.startsWith(last.words))
+            return rows;
+        if (last.from === rows)
+            return last.rows;
+        const matched = byWhat(last.rows);
+        const before = byWhat(last.from);
+        return rows.filter(row => among(matched, row) || !among(before, row));
+    }
+
+    // Rows by what each is, so asking whether a row is among them looks at
+    // its namesakes alone: never a Set, which Qt's engine searches key by
+    // key for an object (RowsKept.js), every row against every other.
+    function byWhat(rows) {
+        const by = Object.create(null);
+        for (const row of rows) {
+            const what = row.key ?? "";
+            if (by[what] === undefined)
+                by[what] = [];
+            by[what].push(row);
+        }
+        return by;
+    }
+
+    function among(by, row) {
+        return (by[row.key ?? ""] ?? []).includes(row);
     }
 
     function matchedIn(rows, typed, matched) {

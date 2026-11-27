@@ -177,12 +177,60 @@ ShellRoot {
             runs.search("2026");
             const byIdOn = names(runs.search("202610").rows);
             expect("one found by its id, typed on", byIdOn === "council on core.nix#380", byIdOn);
-            // A run coming makes the rows anew, which are looked through whole.
-            runs.search("fle");
+            // A run coming makes the list anew, but keeps each finished run's
+            // row, which the letters before still judge: typed on, the search
+            // looks through what they matched, the new run's row and the one
+            // at work's, made again with each update, and not a kept row
+            // they didn't match.
+            runs.search("cou");
+            const wholeBefore = runs.all;
             runs.records = root.records.concat([{ key: "run:fleet.fleet-new", kind: "run",
                 id: "fleet.fleet-new", about: "fleet-new", parent: "s-gone", state: "done" }]);
-            const since = names(runs.search("flee").rows);
-            expect("a run come since is found", since.includes("fleet-new"), since);
+            expect("the list made anew", runs.all !== wholeBefore, "the same list");
+            const pool = names(runs.poolFor(runs.all, "coun"));
+            expect("typed on through an update, looked through only what may match",
+                pool === "fleet-live, council on core.nix#380, fleet-new", pool);
+            const since = names(runs.search("coun").rows);
+            expect("found through an update", since === "council on core.nix#380", since);
+            // A run come since that the letters match is found as typing goes on,
+            // as the row the list now holds, never an earlier list's.
+            runs.records = runs.records.concat([{ key: "run:fleet.council-late", kind: "run",
+                id: "fleet.council-late", about: "council-late", parent: "s-gone",
+                state: "done" }]);
+            const late = runs.search("counc").rows;
+            expect("a run come since, found as typing goes on",
+                names(late).includes("council-late")
+                    && late.every(row => runs.all.includes(row)), names(late));
+
+            // Typed on a letter at a time, with a session coming or going
+            // between letters to make the one at work's row again, each
+            // search matches what a search of every row matches, at every
+            // grade, not only the finest shown.
+            // Each finds the rows the list holds now, and, typed on, looks
+            // through fewer than all of them at least once.
+            const sessionsThen = Sessions.running;
+            let narrowedSteps = 0;
+            for (const word of ["council", "2026", "fleet", "core"]) {
+                for (let end = 1; end <= word.length; end++) {
+                    const soFar = word.slice(0, end);
+                    Sessions.running = end % 2 === 0 ? [] : sessionsThen;
+                    if (end > 1 && runs.poolFor(runs.all, soFar).length < runs.all.length)
+                        narrowedSteps += 1;
+                    runs.search(soFar);
+                    const chain = runs.lastMatched;
+                    expect(`"${soFar}" finds the rows the list holds now`,
+                        chain.rows.every(row => runs.all.includes(row)), names(chain.rows));
+                    const stepped = names(chain.rows);
+                    runs.matchedIn(null, "", []);
+                    runs.search(soFar);
+                    const whole = names(runs.lastMatched.rows);
+                    runs.lastMatched = chain;
+                    expect(`"${soFar}" typed on matches what a whole search does`,
+                        stepped === whole, `${stepped} against ${whole}`);
+                }
+            }
+            Sessions.running = sessionsThen;
+            expect("typed on through updates, it narrowed", narrowedSteps > 0, narrowedSteps);
 
             // A run's own kind, where the harness wrote it beside the node's.
             runs.records = [{ key: "run:review.r7-1", kind: "run", "run.kind": "judge",
