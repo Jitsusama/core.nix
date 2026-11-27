@@ -197,42 +197,200 @@ fn a_word_is_any_scripts_letters_measured_as_the_harness_measures_them() {
     );
 }
 
-#[test]
-fn the_narrowest_live_subject_said_takes_it_first() {
-    let hubs = [
-        Hub::new("crashes", "H1", &["B"]),
-        Hub::new("zzz:chrome", "H8", &["B"]),
-        Hub::new("crashes:chrome", "GONE", &["C"]),
-        Hub::new("x.y:chrome", "H9", &["B"]),
-        Hub::new("crashes:chrome", "H2", &["A"]),
-    ];
-    let said = words("crashes:chrome:gpu");
-    let taken: Vec<(&str, Vec<String>)> = taking(&said, &hubs, &|a| a != "GONE")
+/// The need key the tests rank hubs for, where the lot isn't what they test.
+const NEED: &str = "need-1";
+
+/// The cells of the hubs `said` takes for the need keyed `need`, by its
+/// words, in order.
+fn taken_for(need: &str, said: &str, hubs: &[Hub]) -> Vec<String> {
+    taking(need, &words(said), hubs, &|_| true)
         .into_iter()
-        .map(|(h, subject)| (h.cell.as_str(), subject))
-        .collect();
-    assert_eq!(
-        taken,
-        [
-            ("H2", vec!["crashes".to_owned(), "chrome".to_owned()]),
-            ("H1", vec!["crashes".to_owned()]),
-            ("H9", vec!["chrome".to_owned()]),
-        ],
-        "not the narrowest first, a hub gone or one with a word not said taken, or \
-         the node's order lost among subjects of as many words"
-    );
-    assert!(
-        taking(&[], &hubs, &|_| true).is_empty(),
-        "nothing said took a subject"
-    );
+        .map(|(hub, _)| hub.cell.clone())
+        .collect()
 }
 
 /// The cells of the hubs `said` takes, by its words, in order.
 fn taken_by(said: &str, hubs: &[Hub]) -> Vec<String> {
-    taking(&words(said), hubs, &|_| true)
+    taken_for(NEED, said, hubs)
+}
+
+/// The harness's own cases for `subjectWords`, subject then words, from
+/// its `tests/lib/mesh/need-route-subject-words.test.ts` and
+/// `need-route-service-units.test.ts`, at harness commit 75fbcd0.
+const SUBJECTS_AS_THE_HARNESS_READS: &[(&str, &[&str])] = &[
+    ("mycelium:easing", &["easing"]),
+    ("unit:pi-host-", &["host", "pi-host"]),
+    ("health.asks.", &["asks"]),
+    ("", &[]),
+    ("github:Jitsusama/mycelium", &["mycelium"]),
+    ("unstamped:agents.service", &["agents"]),
+    (
+        "failed:pulse-sampler.service",
+        &["pulse", "sampler", "pulse-sampler"],
+    ),
+    ("failed:com.example.monobus.service", &["monobus"]),
+    (
+        "failed:systemd-coredump@.service",
+        &["systemd", "coredump", "systemd-coredump"],
+    ),
+    ("unstamped:Agents.Service", &["agents"]),
+    ("unit:.service", &["service"]),
+    ("github:mycelium/.service", &["service"]),
+    ("health.service.", &["service"]),
+    ("agents.service-mesh", &["service", "mesh", "service-mesh"]),
+    ("agents.servicex", &["servicex"]),
+    ("oauth.scope", &["scope"]),
+    ("build.target", &["target"]),
+];
+
+#[test]
+fn a_subject_is_read_as_the_harness_reads_one() {
+    for (subject, read) in SUBJECTS_AS_THE_HARNESS_READS {
+        assert_eq!(
+            reading::subject_words(subject),
+            *read,
+            "{subject:?} wasn't read as the harness's subjectWords reads it"
+        );
+    }
+}
+
+#[test]
+fn only_a_subjects_narrowest_part_is_read() {
+    assert_eq!(
+        reading::subject_words("crashes:chrome"),
+        ["chrome"],
+        "a broader part was read as the subject's words"
+    );
+    let hubs = [
+        Hub::new("launcher:dock", "H1", &["A"]),
+        Hub::new("mycelium:easing", "H2", &["A"]),
+    ];
+    assert_eq!(
+        taken_by("the dock is slow", &hubs),
+        ["H1"],
+        "a hub needed its broader part said"
+    );
+    assert!(
+        taken_by("mycelium is slow", &hubs).is_empty(),
+        "a hub was taken by its broader part alone"
+    );
+}
+
+#[test]
+fn a_service_units_type_is_dropped_after_a_name_but_kept_after_a_break() {
+    let hubs = [Hub::new("unstamped:agents.service", "H1", &["A"])];
+    assert_eq!(
+        taken_by("the agents daemon stalls", &hubs),
+        ["H1"],
+        "a unit's hub needed its type said"
+    );
+    assert!(
+        taken_by("the service stalls", &hubs).is_empty(),
+        "a unit's type took a need for its hub"
+    );
+    assert_eq!(
+        reading::subject_parts("unstamped:agents.service"),
+        ["unstamped", "agents"],
+        "a unit's type was counted a part, so deepened its subject"
+    );
+    let hubs = [Hub::new("health.service.", "H2", &["A"])];
+    assert_eq!(
+        taken_by("the service stalls", &hubs),
+        ["H2"],
+        "a namespace's service, after a break, wasn't its subject"
+    );
+}
+
+#[test]
+fn a_live_hub_whose_narrowest_part_is_said_takes_it() {
+    let hubs = [
+        Hub::new("crashes", "H1", &["B"]),
+        Hub::new("zzz:chrome", "H8", &["B"]),
+        Hub::new("crashes:chrome", "GONE", &["C"]),
+        Hub::new("chrome:tabs", "H7", &["B"]),
+        Hub::new("x.y:chrome", "H9", &["B"]),
+        Hub::new("crashes:chrome", "H2", &["A"]),
+    ];
+    let said = words("crashes:chrome:gpu");
+    let taken: Vec<(&str, Vec<String>)> = taking(NEED, &said, &hubs, &|a| a != "GONE")
         .into_iter()
-        .map(|(h, _)| h.cell.clone())
-        .collect()
+        .map(|(hub, subject)| (hub.cell.as_str(), subject))
+        .collect();
+    assert_eq!(
+        taken,
+        [
+            ("H9", vec!["chrome".to_owned()]),
+            ("H2", vec!["chrome".to_owned()]),
+            ("H8", vec!["chrome".to_owned()]),
+            ("H1", vec!["crashes".to_owned()]),
+        ],
+        "not the deepest first, a hub gone or one whose narrowest word wasn't said \
+         taken, or two as deep not in the order of their lots"
+    );
+    assert!(
+        taking(NEED, &[], &hubs, &|_| true).is_empty(),
+        "nothing said took a subject"
+    );
+}
+
+#[test]
+fn what_a_subject_says_outranks_its_depth_and_its_depth_outranks_the_lot() {
+    // Listed, and drawn for need-20, in the reverse of how they rank, so
+    // neither the node's order nor the lot alone gives it.
+    let hubs = [
+        Hub::new("easing", "H1", &["A"]),
+        Hub::new("mycelium:easing", "H2", &["A"]),
+        Hub::new("a.b.c:easing", "H4", &["A"]),
+        Hub::new("x:easing-lines", "H3", &["A"]),
+    ];
+    assert_eq!(
+        taken_for("need-20", "the easing lines are slow", &hubs),
+        ["H3", "H4", "H2", "H1"],
+        "a subject saying more of the need didn't come first, or a deeper one \
+         didn't come next"
+    );
+    let hubs = [
+        Hub::new("pi-host", "H5", &["A"]),
+        Hub::new("a.b:host", "H6", &["A"]),
+    ];
+    assert_eq!(
+        taken_for("need-20", "the host is slow", &hubs),
+        ["H6", "H5"],
+        "a subject said only by an id's parts counted them as said, or its word \
+         count outranked depth"
+    );
+}
+
+#[test]
+fn hubs_that_rank_the_same_split_needs_by_key_and_keep_one_keys_order() {
+    let hubs = [
+        Hub::new("launcher", "HUB001", &["A"]),
+        Hub::new("launcher", "HUB002", &["B"]),
+    ];
+    let reversed = [hubs[1].clone(), hubs[0].clone()];
+    for (need, order) in [
+        ("need-1", ["HUB002", "HUB001"]),
+        ("need-3", ["HUB001", "HUB002"]),
+    ] {
+        for listed in [&hubs, &reversed] {
+            assert_eq!(
+                taken_for(need, "the launcher is slow", listed),
+                order,
+                "{need}: not drawn by its lot, or by the node's order"
+            );
+        }
+        assert_eq!(
+            taken_for(need, "the launcher is slow", &hubs),
+            taken_for(need, "the launcher is slow", &hubs),
+            "{need}: one key drew two orders"
+        );
+    }
+    // What the harness's createHash gave for it, so the two draw alike.
+    assert_eq!(
+        lot("need-1", &hubs[0]),
+        "b772784667db03260b213c1087eedf56c243728db317fe3fa387ef2bf5115de0",
+        "the lot isn't the SHA-256 of the need, subject and cell the harness draws"
+    );
 }
 
 #[test]
@@ -247,14 +405,14 @@ fn a_subject_holding_a_common_word_is_taken_by_its_words_of_work() {
         "a subject's common words were needed said, or a subject of common words \
          alone took a thing"
     );
-    let taken: Vec<Vec<String>> = taking(&words("the launcher's dock"), &hubs, &|_| true)
+    let taken: Vec<Vec<String>> = taking(NEED, &words("the launcher's dock"), &hubs, &|_| true)
         .into_iter()
         .map(|(_, subject)| subject)
         .collect();
     assert_eq!(
         taken,
-        [["launcher", "dock", "for-the-dock"]],
-        "the subject's words weren't its words of work and its joined id"
+        [["dock", "for-the-dock"]],
+        "the narrowest part's words weren't its words of work and its joined id"
     );
 }
 
@@ -286,16 +444,16 @@ fn a_subject_saying_a_word_past_the_longest_takes_nothing() {
     let said = |extra: &str| vec!["easing".to_owned(), extra.to_owned(), "lines".to_owned()];
     let hubs = [Hub::new(&format!("x:{long}-lines"), "H1", &["A"])];
     assert!(
-        taking(&said("other"), &hubs, &|_| true).is_empty(),
+        taking(NEED, &said("other"), &hubs, &|_| true).is_empty(),
         "a hub took a need saying only its subject's shorter words"
     );
     assert!(
-        taking(&said(&long), &hubs, &|_| true).is_empty(),
+        taking(NEED, &said(&long), &hubs, &|_| true).is_empty(),
         "a hub took a need saying a word longer than any a need keeps"
     );
     let hubs = [Hub::new(&format!("x:{longest}-lines"), "H1", &["A"])];
     assert_eq!(
-        taking(&said(&longest), &hubs, &|_| true).len(),
+        taking(NEED, &said(&longest), &hubs, &|_| true).len(),
         1,
         "a hub of a word as long as the cap wasn't taken by it said whole"
     );

@@ -672,6 +672,9 @@ The words core.nix is built from. Never a launcher place.
 | subject hubs | the library cadence and pain-points read the mycelium's hubs through, each a subject's cells, and keep each need they put to one | | `modules/subject-hubs/` |
 | common word | a word that says nothing about any work, such as for or the, which neither a need nor a subject is matched by, as in the harness's routing | | `COMMON` in `modules/subject-hubs/src/reading.rs` |
 | joined id | an id of words or digits joined by hyphens or underscores, such as leg-26, kept whole beside its words, as a word and the number after it in prose, leg 26, is kept as one | | `joined_ids` in `modules/subject-hubs/src/reading.rs` |
+| narrowest part | the part of a subject after its last colon, dot or slash, less a service unit's `.service`, whose words alone a need must say for the subject's hub to take it, as in the harness's routing | | `subject_words` in `modules/subject-hubs/src/reading.rs` |
+| depth | how many parts a subject has, which ranks its hub after what it says of a need, since each part narrows it | | `subject_parts` in `modules/subject-hubs/src/reading.rs` |
+| lot | a need's draw among hubs that rank the same, the SHA-256 of its key, the subject and the hub's cell, so needs spread across those hubs and one need always meets them in one order | | `lot` in `modules/subject-hubs/src/lib.rs` |
 | crate reach | which of core's Rust crates read which, by their manifests' paths, so merge-net and a gate's replay judge alike what main moved beside a change | | `modules/crate-reach/` |
 | colour | what a colour means in the theme, such as the accent, apart from a screen's colours | colour role | `jitsusama.theme.colours`, a theme file's `[colours]` |
 | face | one of the theme's typefaces, named by its kind: mono, sans, serif or script | typeface | `jitsusama.theme.font` |

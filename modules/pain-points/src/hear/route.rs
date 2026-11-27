@@ -200,9 +200,12 @@ pub fn said(pain: &Heard, cells: &BTreeMap<String, Cell>, routes: &Routes) -> Ve
     subject_hubs::words(&pain.words)
 }
 
-/// The hub that takes what `said` names, and the holder it goes to: of
-/// the narrowest subject whose hub is live, the live holder holding the
-/// fewest of `held`, never one the routes say never to send to. A holder
+/// The hub that takes the pain keyed `key`, by the words `said` it names,
+/// and the holder it goes to: of the best ranked live hub, as
+/// subject-hubs' `taking` ranks them, the live holder holding the fewest
+/// of `held`, never one the routes say never to send to. The pain's key
+/// draws the lot among hubs that rank the same, so one pain meets them in
+/// one order run after run, and pains spread over them. A holder
 /// in `failed_at`, where a send of the pain failed, isn't given it again
 /// while another fits, a broader hub's included. Counting failures into
 /// the list instead would land back on one of them once the counts
@@ -214,7 +217,7 @@ pub fn said(pain: &Heard, cells: &BTreeMap<String, Cell>, routes: &Routes) -> Ve
 /// session heard in the void holds none, though a hub it keeps still
 /// stands for its holders (#7022's round, F3).
 pub fn holder<'a>(
-    said: &[String],
+    (key, said): (&str, &[String]),
     hubs: &'a [subject_hubs::Hub],
     (live, takers): (&BTreeSet<String>, &BTreeSet<String>),
     held: &BTreeMap<String, usize>,
@@ -224,10 +227,10 @@ pub fn holder<'a>(
 ) -> Option<(&'a subject_hubs::Hub, &'a str, Vec<String>)> {
     let stands = |a: &str| live.contains(a) && !routes.refuses(a);
     let may_hold = |a: &str| takers.contains(a) && !routes.refuses(a);
-    // Each hub that takes it, narrowest first, with its live holders
+    // Each hub that takes it, best ranked first, with its live holders
     // least-held first.
     let taking: Vec<(&subject_hubs::Hub, Vec<String>, Vec<&String>)> =
-        subject_hubs::taking(said, hubs, &stands)
+        subject_hubs::taking(key, said, hubs, &stands)
             .into_iter()
             .map(|(hub, subject)| {
                 let mut fits: Vec<&String> = hub.fits.iter().filter(|f| may_hold(f)).collect();

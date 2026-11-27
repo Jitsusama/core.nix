@@ -172,9 +172,11 @@ fn a_pains_subject_is_its_sessions_purpose_else_his_words() {
 }
 
 #[test]
-fn a_hub_gives_the_narrowest_subjects_least_held_live_holder_never_one_refused() {
+fn a_hub_gives_the_deepest_subjects_least_held_live_holder_never_one_refused() {
     let routes = routes();
     let said = subject_hubs::words("why is the launcher's width so slow");
+    // The pain by its key, which draws its lot among hubs that rank the same.
+    let pain = ("s-void/e1", said.as_slice());
     let live: BTreeSet<String> = ["HUB001", "HUB002", "VOID01", "A00001", "B00002", "C00003"]
         .into_iter()
         .map(String::from)
@@ -186,33 +188,24 @@ fn a_hub_gives_the_narrowest_subjects_least_held_live_holder_never_one_refused()
             "HUB002",
             &["VOID01", "GONE01", "A00001", "B00002"],
         ),
-        subject_hubs::Hub::new("launcher:dock", "HUB001", &["C00003"]),
+        // Its narrowest part is read alone, so dock-icons is a word it
+        // needs said.
+        subject_hubs::Hub::new("launcher:dock-icons", "HUB001", &["C00003"]),
     ];
     let held: BTreeMap<String, usize> = [("A00001".to_owned(), 2), ("B00002".to_owned(), 1)].into();
-    let took = holder(&said, &hubs, (&live, &live), &held, &routes, &[], None)
+    let took = holder(pain, &hubs, (&live, &live), &held, &routes, &[], None)
         .map(|(hub, fit, words)| (hub.cell.as_str(), fit, words));
     assert_eq!(
         took,
-        Some((
-            "HUB002",
-            "B00002",
-            vec!["launcher".to_owned(), "width".to_owned()]
-        )),
+        Some(("HUB002", "B00002", vec!["width".to_owned()])),
         "not the refused VOID01, nor GONE01 not live, nor A00001 holding more, nor the \
-         broader hub or one of a word not said"
+         shallower hub or one of a word not said, or its subject read past its \
+         narrowest part"
     );
     let retried = |held: &BTreeMap<String, usize>, failed_at: &[&str]| {
         let failed_at: Vec<String> = failed_at.iter().map(|f| (*f).to_owned()).collect();
-        holder(
-            &said,
-            &hubs,
-            (&live, &live),
-            held,
-            &routes,
-            &failed_at,
-            None,
-        )
-        .map(|(_, fit, _)| fit.to_owned())
+        holder(pain, &hubs, (&live, &live), held, &routes, &failed_at, None)
+            .map(|(_, fit, _)| fit.to_owned())
     };
     // A00001 now holds fewer than B00002, which reorders the holders:
     // the one failed at still isn't given it.
@@ -235,7 +228,7 @@ fn a_hub_gives_the_narrowest_subjects_least_held_live_holder_never_one_refused()
          hub's holder holding fewest"
     );
     let late = |at: &str| {
-        holder(&said, &hubs, (&live, &live), &held, &routes, &[], Some(at)).map(|(_, fit, _)| fit)
+        holder(pain, &hubs, (&live, &live), &held, &routes, &[], Some(at)).map(|(_, fit, _)| fit)
     };
     // C00003 holds only the broader hub's subject, wherever it still fits
     // (#7022's round, F10).
@@ -248,7 +241,7 @@ fn a_hub_gives_the_narrowest_subjects_least_held_live_holder_never_one_refused()
     // HUB002's own cell may hold no pain, as one heard in the void, and
     // its hub still stands for its holders (#7022's round, F3).
     let takers: BTreeSet<String> = live.iter().filter(|a| *a != "HUB002").cloned().collect();
-    let took = holder(&said, &hubs, (&live, &takers), &held, &routes, &[], None)
+    let took = holder(pain, &hubs, (&live, &takers), &held, &routes, &[], None)
         .map(|(hub, fit, _)| (hub.cell.as_str(), fit));
     assert_eq!(
         took,
@@ -256,15 +249,16 @@ fn a_hub_gives_the_narrowest_subjects_least_held_live_holder_never_one_refused()
         "a hub whose cell holds no pain took nothing for its holders"
     );
     let none = BTreeSet::from(["HUB001".to_owned(), "VOID01".to_owned()]);
-    let took = holder(&said, &hubs, (&none, &none), &held, &routes, &[], None)
+    let took = holder(pain, &hubs, (&none, &none), &held, &routes, &[], None)
         .map(|(hub, fit, _)| (hub.cell.as_str(), fit));
     assert_eq!(
         took, None,
         "with its narrowest hub gone and the broader's holder gone, it was still given"
     );
+    let dock = subject_hubs::words("the dock");
     assert!(
         holder(
-            &subject_hubs::words("the dock"),
+            ("s-void/e2", dock.as_slice()),
             &hubs,
             (&live, &live),
             &held,

@@ -1,6 +1,6 @@
 //! How a need's words are read, and what a subject's word is said by, by
-//! one rule with the harness's routing: its `wordsOf`, `subjectWords` and
-//! `saysWord` in `lib/mesh/need-route.ts`. A hub core's senders read takes
+//! one rule with the harness's routing: its `wordsOf`, `subjectParts`,
+//! `subjectWords` and `saysWord` in `lib/mesh/need-route.ts`. A hub core's senders read takes
 //! what the harness's own routing would only while the two read words
 //! alike, so each piece here names its twin there, and the case table in
 //! `tests.rs` pins the harness's own cases for `wordsOf`.
@@ -264,24 +264,67 @@ pub fn words(said: &str) -> Vec<String> {
     read(said, LONGEST_WORD)
 }
 
-/// The words of a subject, read as a need's are but keeping every id
-/// however long, as the harness's `subjectWords` keeps them: a hub is
-/// matched by every word of its subject, so one left out would let it take
-/// a need saying only the subject's shorter words. Unlike `subjectWords`,
-/// they're read from every part of the subject, not its narrowest alone,
-/// since the subject of most words is the narrowest here. A subject whose
-/// narrowest part, after its last colon, dot or slash, gives no word gives
-/// none, as the harness's `hubTakesNone` says its hub takes nothing: read
-/// whole, `launcher:for` would take everything `launcher` does.
-pub(crate) fn subject_words(subject: &str) -> Vec<String> {
-    let narrowest = subject
-        .rsplit([':', '.', '/'])
-        .find(|part| !part.is_empty())
-        .unwrap_or_default();
-    if read(narrowest, usize::MAX).is_empty() {
-        return Vec::new();
+/// What a subject breaks into parts at: colons and dots, as keys do, and
+/// slashes, as a repository's scope does. The harness's `SUBJECT_BREAK`.
+const SUBJECT_BREAK: [char; 3] = [':', '.', '/'];
+
+/// The ending of a subject that names a service unit whole, as an owner
+/// prefix such as `unstamped:agents.service` does: the harness's
+/// `SERVICE_UNIT`. It says what kind of unit the subject names, never
+/// what the unit works on, so it's left out after a name, in any case,
+/// since the node lowercases a hub's subject and a cell's comes as
+/// declared. After a break, as in `health.service.` or `unit:.service`,
+/// it's a part of its own, and so the subject.
+const SERVICE_UNIT: &str = ".service";
+
+/// `subject` with the service unit's type left out where it ends a name
+/// (`SERVICE_UNIT`), as the harness's lookbehind `(?<=[^:./])` reads one:
+/// a character other than a break must stand before it.
+fn without_service_unit(subject: &str) -> &str {
+    let Some(at) = subject.len().checked_sub(SERVICE_UNIT.len()) else {
+        return subject;
+    };
+    let (name, ending) = (subject.get(..at), subject.get(at..));
+    match (name, ending) {
+        (Some(name), Some(ending))
+            if ending.eq_ignore_ascii_case(SERVICE_UNIT)
+                && name
+                    .chars()
+                    .next_back()
+                    .is_some_and(|c| !SUBJECT_BREAK.contains(&c)) =>
+        {
+            name
+        }
+        _ => subject,
     }
-    read(subject, usize::MAX)
+}
+
+/// A subject's parts, broadest first, with a service unit's type left
+/// out, as the harness's `subjectParts` gives them. How many there are is
+/// how deep the subject is, which ranks its hub: each part narrows it.
+pub(crate) fn subject_parts(subject: &str) -> Vec<&str> {
+    without_service_unit(subject)
+        .split(SUBJECT_BREAK)
+        .filter(|part| !part.is_empty())
+        .collect()
+}
+
+/// The words of a subject's narrowest part, the one after its last colon,
+/// dot or slash, as the harness's `subjectWords` reads them:
+/// `mycelium:easing` gives easing, `health.asks.` gives asks, and
+/// `unstamped:agents.service` gives agents. The broader parts only place
+/// the subject, and its depth ranks them: read as words too, a hub of
+/// `launcher:dock` would miss a need about the dock that never names the
+/// launcher, which the harness's routing gives it. A narrowest part with
+/// no word gives none rather than a broader part's, so its hub takes
+/// nothing, as the harness's `hubTakesNone` says: `launcher:for` would
+/// otherwise take everything `launcher` does. Read as a need's words are,
+/// but keeping every id however long, since a hub is matched by every
+/// word of its subject, and one left out would let it take a need saying
+/// only the subject's shorter words.
+pub(crate) fn subject_words(subject: &str) -> Vec<String> {
+    let narrowest = subject_parts(subject).last().copied().unwrap_or_default();
+    read(narrowest, usize::MAX)
 }
 
 /// Whether `id` has a hyphen or an underscore, so is a joined id.
@@ -304,6 +347,15 @@ fn said_inside(id: &str, said: &[String]) -> bool {
     let inside = bounded(id);
     said.iter()
         .any(|other| other != id && joined(other) && bounded(other.as_str()).contains(&inside))
+}
+
+/// Whether `said`, a need's words, says `word` as one: whole, or inside a
+/// longer joined id, as the harness's hub ranking counts a word said
+/// (`saying.has(one) || saidInside(one, saying)`). A joined id said part
+/// by part says no more than its parts, so a need saying host says
+/// pi-host no more than a hub of host alone.
+pub(crate) fn says_as_one(word: &str, said: &[String]) -> bool {
+    said.iter().any(|w| w == word) || (joined(word) && said_inside(word, said))
 }
 
 /// Whether `said`, a need's words, says `word` of a subject, as the

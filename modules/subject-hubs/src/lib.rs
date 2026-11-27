@@ -8,23 +8,27 @@
 //!
 //! The node names a hub for each subject a cell declares (`list hub`). What
 //! a sender has, a finding's key or his words, takes in a subject when it
-//! says every word of it, read and judged by one rule with the harness's
-//! routing (`reading.rs`), and the subject of most words is the narrowest,
-//! so `crashes:chrome` takes a chrome crash before `crashes` does. Which of
-//! a hub's holders gets it is each sender's to choose, as each counts what
-//! its holders hold its own way.
+//! says every word of the subject's narrowest part, read and judged by one
+//! rule with the harness's routing (`reading.rs`). Hubs are ranked as the
+//! harness's `hubsFor` ranks them: by how much of the need the subject
+//! says, then by how deep it is, so `crashes:chrome` takes a chrome crash
+//! before `crashes` does, then by the need's lot, so needs that rank alike
+//! spread over the hubs. Which of a hub's holders gets it is each sender's
+//! to choose, as each counts what its holders hold its own way.
 //!
 //! Each need put is kept as one line in the mesh's day file, in the shape
 //! the harness keeps its own needs in (`lib/mesh/need-route.ts`'s
 //! `NeedRecord`, which a line it wrote pins below), so one judge reads
 //! every sender's.
 
+use std::fmt::Write as _;
 use std::io::{self, BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 mod reading;
 
@@ -289,30 +293,81 @@ pub fn socket(runtime: &Path, state_home: &Path, realm: Option<String>) -> Optio
     plain.then(|| runtime.join("mycelium").join(format!("{realm}.sock")))
 }
 
-/// The hubs whose subject `said` takes in, saying every word of it as the
-/// harness judges a word said (`reading::says`), whose hub cell is `live`,
-/// each with its subject's words: the subject of most words first, then
-/// the order the node names them in.
+/// A hub that takes a need, with what ranks it, as the harness's
+/// `RankedHub` holds it.
+struct Ranked<'a> {
+    hub: &'a Hub,
+    /// The words of its subject's narrowest part.
+    subject: Vec<String>,
+    /// How many of those the need says as one (`reading::says_as_one`).
+    says: usize,
+    /// How many parts its subject has (`reading::subject_parts`).
+    depth: usize,
+    /// The need's draw among hubs that rank the same (`lot`).
+    lot: String,
+}
+
+/// The need `need`'s draw for `hub`, as the harness draws it: the SHA-256
+/// of the need, the hub's subject and its cell, a NUL between each, in
+/// lower-case hex. A hub of a subject the node names for every ten of its
+/// holders would otherwise take every need of that subject by being
+/// listed first, so its fits alone held them all; drawn, each need goes
+/// to the same hub every time, and needs spread across the hubs.
+fn lot(need: &str, hub: &Hub) -> String {
+    let drawn = Sha256::digest(format!("{need}\0{}\0{}", hub.subject, hub.cell));
+    drawn.iter().fold(String::new(), |mut hex, byte| {
+        // Writing to a String can't fail.
+        _ = write!(hex, "{byte:02x}");
+        hex
+    })
+}
+
+/// The hubs whose cell is `live` and whose subject's narrowest part `said`
+/// says every word of, as the harness judges a word said
+/// (`reading::says`), each with those words, ranked as the harness's
+/// `hubsFor` ranks them. Those whose subject says more of the need as
+/// one come first, since a need saying easing and lines is narrower than
+/// easing alone; then the deeper subject, by its parts, since each part
+/// narrows it; then by the lot `need`, the need's key, draws, in byte
+/// order, so hubs that rank the same share out needs, one key always to
+/// the same hub, and never by the order the node lists them in. How many
+/// words a subject has never ranks it, as the harness never ranks by it.
 #[must_use]
 pub fn taking<'a>(
+    need: &str,
     said: &[String],
     hubs: &'a [Hub],
     live: &impl Fn(&str) -> bool,
 ) -> Vec<(&'a Hub, Vec<String>)> {
     let said = reading::routed(said);
-    let mut matched: Vec<(&Hub, Vec<String>)> = hubs
+    let mut ranked: Vec<Ranked> = hubs
         .iter()
-        .filter(|h| live(&h.cell))
-        .filter_map(|h| {
-            let subject = reading::subject_words(&h.subject);
+        .filter(|hub| live(&hub.cell))
+        .filter_map(|hub| {
+            let subject = reading::subject_words(&hub.subject);
             let all = !subject.is_empty() && subject.iter().all(|w| reading::says(w, &said));
-            all.then_some((h, subject))
+            all.then(|| Ranked {
+                hub,
+                says: subject
+                    .iter()
+                    .filter(|w| reading::says_as_one(w, &said))
+                    .count(),
+                depth: reading::subject_parts(&hub.subject).len(),
+                lot: lot(need, hub),
+                subject,
+            })
         })
         .collect();
-    // A stable sort, so among subjects of as many words the node's order
-    // stands.
-    matched.sort_by_key(|(_, subject)| std::cmp::Reverse(subject.len()));
-    matched
+    ranked.sort_by(|a, b| {
+        b.says
+            .cmp(&a.says)
+            .then(b.depth.cmp(&a.depth))
+            .then_with(|| a.lot.cmp(&b.lot))
+    });
+    ranked
+        .into_iter()
+        .map(|ranked| (ranked.hub, ranked.subject))
+        .collect()
 }
 
 /// `n` in base 36, as the harness writes a need's moment.

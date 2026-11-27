@@ -820,7 +820,7 @@ fn owners_for(
                 return routes.fallback.clone();
             }
             let Some((hub, fit, words)) = route::holder(
-                &said,
+                (&pain.key, &said),
                 &ears.hubs,
                 (&live, &takers),
                 &held,

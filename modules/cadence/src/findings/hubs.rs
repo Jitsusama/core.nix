@@ -4,7 +4,7 @@
 //! every late finding's funnel. The node names a hub for each subject a
 //! cell declares, read through subject-hubs, which pain-points reads them
 //! through too; a finding whose key and axis take in every word of a
-//! subject is that subject's. Each holder is given it once; one no hub
+//! subject's narrowest part is that subject's. Each holder is given it once; one no hub
 //! stands for, or with no live holder left to give it to, is told to the
 //! orchestrator as before. Only cells this machine's mesh runs count as
 //! live, since those are the cells cadence's message reaches. Each need is
@@ -31,8 +31,11 @@ pub struct Put {
 
 /// The hub whose subject `entry` is of, and the live holder it names
 /// that hasn't had it, nor holds it now, holding the fewest of `held`:
-/// the subject of most words first, then the order the node names, so
-/// `crashes:chrome` takes a chrome crash before `crashes` does.
+/// of the hubs that take it, best ranked first as subject-hubs' `taking`
+/// ranks them, by what each subject says of it, then its depth, so
+/// `crashes:chrome` takes a chrome crash before `crashes` does, then the
+/// lot its key draws, so one finding meets hubs that rank the same in one
+/// order each time it's late.
 fn holder_for<'a>(
     entry: &Entry,
     hubs: &'a [Hub],
@@ -42,7 +45,7 @@ fn holder_for<'a>(
     let mut said = words(&entry.key);
     said.extend(words(&entry.axis));
     let had = |f: &str| entry.owner.as_deref() == Some(f) || entry.put_to.iter().any(|p| p == f);
-    taking(&said, hubs, live)
+    taking(&entry.key, &said, hubs, live)
         .into_iter()
         .find_map(|(hub, subject)| {
             let fit = hub
@@ -159,16 +162,19 @@ mod tests {
     }
 
     #[test]
-    fn a_late_finding_goes_to_its_narrowest_subjects_least_held_live_holder() {
+    fn a_late_finding_goes_to_its_deepest_subjects_least_held_live_holder() {
         let mut ledger = ledger("crashes:chrome");
         ledger.extend(self::ledger("crashes:tec"));
         ledger[1].owner = Some("C".into());
         ledger[1].due = 10 * DAY;
+        // Only a subject's narrowest part is read, so x.y:chrome takes a
+        // chrome crash, and its three parts outrank crashes:chrome's two,
+        // as the harness's hubsFor ranks by depth.
         let hubs = [
             Hub::new("crashes", "H1", &["B"]),
-            Hub::new("zzz:chrome", "H8", &["B"]),
-            Hub::new("x.y:chrome", "H9", &["B"]),
-            Hub::new("crashes:chrome", "H2", &["A", "E", "C", "D"]),
+            Hub::new("chrome:tabs", "H8", &["B"]),
+            Hub::new("crashes:chrome", "H2", &["B"]),
+            Hub::new("x.y:chrome", "H9", &["A", "E", "C", "D"]),
         ];
         let live = |a: &str| a != "E";
         let (put, lines) = put_late(&mut ledger, &hubs, live, 2 * DAY + 1);
@@ -181,25 +187,25 @@ mod tests {
             put,
             vec![Put {
                 key: "crashes:chrome".into(),
-                words: vec!["crashes".into(), "chrome".into()],
-                hub: "H2".into(),
+                words: vec!["chrome".into()],
+                hub: "H9".into(),
                 fit: "D".into(),
             }],
             "not its owner A, not E gone though it holds none, not C holding one \
-             already, nor a hub of fewer words or one with a word it lacks: D"
+             already, nor a hub of fewer parts or one with a word it lacks: D"
         );
         let moved = &ledger[0];
         assert_eq!(
             (moved.owner.as_deref(), moved.hub.as_deref(), moved.due),
-            (Some("D"), Some("crashes:chrome"), 3 * DAY + 1),
+            (Some("D"), Some("x.y:chrome"), 3 * DAY + 1),
             "its holder wasn't given it with a day to answer"
         );
         assert!(!moved.late && moved.told.is_none(), "{moved:?}");
         let told = tell(&mut ledger, "d3", None);
         assert!(
-            told.iter()
-                .any(|(to, text)| to == "D"
-                    && text.contains("put to you as a holder of crashes:chrome")),
+            told.iter().any(
+                |(to, text)| to == "D" && text.contains("put to you as a holder of x.y:chrome")
+            ),
             "its new holder wasn't told why it has it: {told:?}"
         );
         let mut given = Vec::new();
