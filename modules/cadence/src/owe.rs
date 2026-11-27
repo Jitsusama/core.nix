@@ -183,11 +183,9 @@ pub fn settle(ledger: &mut [Entry], key: &str) -> bool {
 /// lands after its class dips under the bar, and its old cases still
 /// count. Another drag the hour closed holds nothing, so it is unfiled. A
 /// key ending in `:` closes every open must under it, as [`done_under`]
-/// does.
+/// does, unless a must is filed as that key itself, which then closes
+/// alone.
 fn done(ledger: &mut [Entry], key: &str, fix: Option<&str>, now: i64) -> Result<String, Failure> {
-    if key.ends_with(':') {
-        return done_under(ledger, key, fix, now);
-    }
     if let Some(entry) = ledger
         .iter_mut()
         .find(|e| e.open && e.kind.is_some() && e.key == key)
@@ -204,6 +202,11 @@ fn done(ledger: &mut [Entry], key: &str, fix: Option<&str>, now: i64) -> Result<
             ),
             None => format!("cadence: {key} is done"),
         });
+    }
+    // The exact key is tried first, so a must filed as a key ending in `:`
+    // can still be closed by it, rather than only ever with all under it.
+    if key.ends_with(':') {
+        return done_under(ledger, key, fix, now);
     }
     let unfiled = || {
         Failure::new(
@@ -701,6 +704,25 @@ mod tests {
             (exact, ledger[2].open, ledger[3].open),
             (Ok("cadence: hour:slips is done".to_owned()), true, false),
             "an exact key didn't close itself alone"
+        );
+    }
+
+    /// A must filed as a key ending in `:` is closed by that key alone,
+    /// rather than the key only ever closing every must under it, so one
+    /// filed so can still be closed and none beside it is closed unasked.
+    #[test]
+    fn a_must_filed_as_a_key_ending_in_a_colon_closes_alone() {
+        let key = "hour:rulings-unsourced:T6E7X6:";
+        let mut ledger = Vec::new();
+        for filed in [key, "hour:rulings-unsourced:T6E7X6:0000000a"] {
+            owe(&mut ledger, owed(filed, DUE), "d1", DAY);
+        }
+        let said = done(&mut ledger, key, None, 2 * DAY).map_err(|f| f.exit);
+        assert_eq!(
+            (said, ledger[0].open, ledger[1].open),
+            (Ok(format!("cadence: {key} is done")), false, true),
+            "a must filed as a key ending in a colon wasn't closed by it alone, or one under it \
+             closed with it"
         );
     }
 
