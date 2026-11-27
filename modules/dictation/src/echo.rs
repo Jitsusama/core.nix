@@ -299,15 +299,27 @@ pub enum Rule {
 /// The index of `theirs` a word of Joel's far under their `sound` is cut
 /// against, and how far under it the word is, if it's their echo by
 /// that: said outside each of `lines` of theirs, `SOUND` under the
-/// loudest of their sound just before it. It's cut against the first of
-/// theirs said from when he said it, or their last, so with no words of
-/// theirs there's none to cut it against, and it's kept.
-fn under(word: &Word, theirs: &[Word], lines: &[&Line], sound: &Track) -> Option<(usize, Rule)> {
+/// loudest of their sound just before it, and, once his `voice` around
+/// it is known from his words heard `alone`, `QUIETER` under that too, as
+/// for `drowned`, so his answer through a quiet microphone is his. It's
+/// cut against the first of theirs said from when he said it, or their
+/// last, so with no words of theirs there's none to cut it against, and
+/// it's kept.
+fn under(
+    word: &Word,
+    theirs: &[Word],
+    lines: &[&Line],
+    sound: &Track,
+    alone: &[(usize, f32)],
+) -> Option<(usize, Rule)> {
     let last = theirs.len().checked_sub(1)?;
     if lines
         .iter()
         .any(|line| line.start <= word.at && word.at < line.end)
     {
+        return None;
+    }
+    if voice(alone, word.at).is_some_and(|his| word.level + QUIETER > his) {
         return None;
     }
     let gap = sound.loudest_before(word.at) - word.level;
@@ -399,7 +411,7 @@ pub fn cut_echoes<S: BuildHasher>(
                 by_spelling
                     .map(|j| (j, Rule::Spelling))
                     .or(by_level.map(below))
-                    .or_else(|| under(word, &theirs, &their_lines, sound))
+                    .or_else(|| under(word, &theirs, &their_lines, sound, &his))
             })
             .collect();
         if echoes.iter().all(Option::is_none) {
