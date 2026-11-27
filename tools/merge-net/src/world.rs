@@ -993,7 +993,7 @@ fn mac_ending(code: Option<i32>, ours: Option<&[u8]>) -> Option<i32> {
         None if !taken_in(ours) || waiting_in(ours) => Some(UNCOMPARED),
         Some(UNSENT | UNREACHED) => Some(UNSENT),
         Some(code) if code != 0 && unresolved(&String::from_utf8_lossy(ours)) => Some(UNCOMPARED),
-        Some(code) if code != 0 && macs::built_off_a_mac(&String::from_utf8_lossy(ours)) => {
+        Some(code) if code != 0 && crate::macs::built_off_a_mac(&String::from_utf8_lossy(ours)) => {
             Some(UNSENT)
         }
         code => code,
