@@ -1,4 +1,5 @@
-//! main.rs's tests, which forge the /proc tree a snapshot reads, thread by thread.
+//! main.rs's tests, of the day's name, the status, the account and the
+//! compositor, and of the snapshot over a forged /proc tree.
 
 use super::*;
 
