@@ -264,9 +264,8 @@ Scope {
     property int settled: 0
 
     // The windows daemon says where a tile is only while something wants
-    // it, and the cat follows the one Joel's in, so it hears that tile and,
-    // on each screen, the one it's carried by (MarginCatScreen.qml's
-    // carriedFrom), and none while it's away for a share or the overview.
+    // it, and the cat follows the one Joel's in, so it hears that tile
+    // alone, and none while it's away for a share or the overview.
     readonly property var over: shared || Niri.overview ? null : Niri.current
     onOverChanged: Niri.wantTile("cat", over)
     Component.onCompleted: {

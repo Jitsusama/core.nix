@@ -37,6 +37,7 @@ QtObject {
         movedOff(expect);
         backOnIt(expect);
         visitCutIt(expect);
+        scrolledOffIt(expect);
         standsIt(expect);
         floorsIt(expect);
         for (const failure of failures)
@@ -571,6 +572,36 @@ QtObject {
         ];
         for (const [name, seated, place, told, want] of cases)
             expect(`a visit cut, ${name}`, Carried.visitCut(seated, place, by, told), want);
+    }
+
+    // Its window said scrolled wholly off the screen before the keys' move
+    // (MarginCatCarried.js's scrolledOff): ridden as far across as niri
+    // scrolled it, as on the gates where niri said it at 1276 first, and
+    // never as it goes anywhere a scroll doesn't take it.
+    function scrolledOffIt(expect) {
+        const sat = { id: 14, left: 644, top: 12, width: 620, height: 776, column: 3, row: 1 };
+        const moved = change => Object.assign({}, sat, change);
+        const cases = [
+            ["scrolled off the right, it rides as far", moved({ left: 1276 }),
+                { x: 632, y: 0 }],
+            ["scrolled off the left, it rides as far", moved({ left: -632 }),
+                { x: -1276, y: 0 }],
+            ["unmoved, nothing carries it", moved({}), null],
+            ["gone fullscreen, it leaves", moved({ left: 0, top: 0, width: 1276, height: 800 }),
+                null],
+            ["grown across as it moved, it leaves", moved({ left: 1276, width: 900 }), null],
+            ["moved down as it moved, it leaves", moved({ left: 1276, top: 40 }), null],
+            ["put in another column, it leaves", moved({ left: 1276, column: 4 }), null],
+            ["floating, it leaves", Object.assign({}, moved({ left: 1276 }), { column: null }),
+                null],
+            ["gone from the workspace, it leaves", undefined, null]
+        ];
+        for (const [name, after, want] of cases)
+            expect(`its window said off the screen first, ${name}`,
+                Carried.scrolledOff(sat, after), want);
+        expect("its window said off the screen first, floating before, it leaves",
+            Carried.scrolledOff(Object.assign({}, sat, { column: null }),
+                Object.assign({}, sat, { left: 1276, column: null })), null);
     }
 
     // Caught mid-walk as the window it walks to moves, it rides that

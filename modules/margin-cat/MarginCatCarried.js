@@ -32,6 +32,26 @@ function carriedBy(landed, sat) {
     return landed === null ? sat : landed.id ?? null;
 }
 
+// How far niri's scroll of the strip carried the window the cat sits on,
+// `before` as the cat last heard it and `after` as it is now
+// (MarginCatTiles.js's of), as that window goes wholly off the screen with
+// the keys still in it (MarginCatScreen.qml's carriedOff). The answer is
+// across alone, the window keeping its column, size and top, since a
+// scroll moves nothing else. None comes for a floating window, for one
+// put in another column or on another workspace, or grown, shrunk or moved
+// up or down, as going fullscreen does, all of which the cat leaves rather
+// than rides; and none for a window that didn't move.
+function scrolledOff(before, after) {
+    if (!before || !after || before.column === null || after.column !== before.column) {
+        return null;
+    }
+    const kept = Math.abs(after.top - before.top) < 0.5
+        && Math.abs(after.width - before.width) < 0.5
+        && Math.abs(after.height - before.height) < 0.5;
+    const across = after.left - before.left;
+    return kept && Math.abs(across) >= 0.5 ? { x: across, y: 0 } : null;
+}
+
 // Where the cat goes as niri carries its window away and ends the puppy's
 // visit (MarginCatScreen.qml's follow), and how: to its seat `home` on that
 // window, or, with none, the window scrolled wholly off the screen, from
