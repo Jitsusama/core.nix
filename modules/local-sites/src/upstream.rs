@@ -1,6 +1,6 @@
 //! One watch on a daemon, however many pages read it. The first page to
 //! watch a feed's kind opens a watch on the daemon's socket, asking the
-//! fields and depth the feed declares; every later page, in any tab, is
+//! fields, depth and latest count the feed declares; every later page, in any tab, is
 //! told what that watch holds and then each change it hears, so a second
 //! tab costs the daemon nothing (the node's whole `session` watch at ten
 //! thousand cells is about 19 MB). The watch follows the daemon as
@@ -209,8 +209,8 @@ impl Upstreams {
     }
 }
 
-/// What the server asks the daemon for a kind: its declared fields and
-/// depth, so every page shares one watch.
+/// What the server asks the daemon for a kind: its declared fields, depth
+/// and how many of the latest, so every page shares one watch.
 fn asked(kind: &str, declared: &Kind) -> Value {
     let mut asked = json!({"kind": kind});
     if let Some(fields) = &declared.fields {
@@ -218,6 +218,11 @@ fn asked(kind: &str, declared: &Kind) -> Value {
     }
     if let Some(deep) = &declared.deep {
         asked["deep"] = json!(deep);
+    }
+    // A daemon that doesn't know `latest` passes over it and sends every
+    // record, as before, so asking it is safe of any daemon.
+    if let Some(latest) = declared.latest {
+        asked["latest"] = json!(latest);
     }
     asked
 }
