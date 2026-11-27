@@ -2680,6 +2680,12 @@ ShellRoot {
             "held");
         const askedStillSpawns = spawnsOf(unansweredNamed, askedFrom);
         const stillKept = unansweredNamed in Sessions.stillSaid;
+        // The walk and viewKept journal why, rather than that one is opening.
+        const heldSaid = `${Sessions.unaskedSaid(unansweredNamed)}|`
+            + `${Sessions.unaskedSaid("pi-hosted.s-never-asked")}`;
+        expect("a viewer held as its kitty didn't answer is journalled so where it isn't asked",
+            heldSaid === "the kitty that didn't answer for it may yet draw it|"
+                + "one asked for is opening", heldSaid);
         expect("a viewer whose kitty didn't answer moments ago is asked for by no other asker",
             !askedStill && askedStillSpawns === 0 && stillKept,
             `${askedStill} ${askedStillSpawns} ${stillKept}`);
