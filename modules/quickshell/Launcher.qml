@@ -7809,8 +7809,10 @@ Scope {
 
     // Asks once, `yes` done on Return and `no` on any other key, or as the
     // launcher closes, `covering` the places of the rows it covers, or none.
+    // It's put on KeyTimes' clock, the one the prompt times its keys on
+    // (its keyNow), so a wall clock stepped back can't hold every key early.
     function askOnce(question, yes, no, covering) {
-        asked = Confirm.asked(question, yes, no ?? (() => {}), Date.now());
+        asked = Confirm.asked(question, yes, no ?? (() => {}), KeyTimes.now());
         askedOver = covering ?? [];
         askTaking = false;
         askReady.restart();
@@ -14720,8 +14722,10 @@ Scope {
                                 && root.fillsStart();
                         }
                         upHere: root.canGoUp
-                        // The ask takes a key as answerAsk does.
+                        // The ask takes a key as answerAsk does, timed on
+                        // the clock askOnce puts it on.
                         answerTaken: (key, at) => Confirm.takes(root.askSaid(key, at))
+                        keyNow: () => KeyTimes.now()
                         // A search run in the drawer puts its cursor on
                         // the match.
                         onSought: (pattern, forward, count) => {
