@@ -359,6 +359,31 @@ ShellRoot {
         });
     }
 
+    // Asking what's kept through a dropped connection or refused twice, on a connection of its
+    // own, so the drop leaves the watches above as they were.
+    Daemon {
+        id: retrying
+
+        socket: `${root.runtime}/daemons/kinds.sock`
+        kind: "verdict"
+    }
+    property string holding: ""
+    // Each value the stand-in was asked of an ask, by ask, and whether one is being read.
+    property var tried: ({})
+    property bool triedReading: false
+    function triedRead(ask) {
+        if (root.triedReading)
+            return;
+        root.triedReading = true;
+        kinds.ask({ ask: `tried:${ask}` }, answer => {
+            root.tried = Object.assign({}, root.tried, { [ask]: answer?.asked ?? [] });
+            root.triedReading = false;
+        });
+    }
+    function triedOf(ask) {
+        return JSON.stringify(root.tried[ask] ?? []);
+    }
+
     // The kinds a record says its watch asked for, as one line.
     function askedOf(key) {
         return JSON.stringify(kinds.held[key]?.asked ?? null);
@@ -646,6 +671,55 @@ ShellRoot {
                 return Date.now() - root.keptSince >= 5000 && !root.keptAsking
                     && JSON.stringify(root.keptAsks) === '["first","latest"]'
                     && kinds.refusedAgain.length === 0;
+            }
+        },
+        {
+            // A daemon restarting at a switch drops the connection with the ask unanswered,
+            // which went undone, said nowhere (round 000011 on #6796, F95 and F100). The try
+            // due once the connection is back, 2 s on, comes 4 s after the drop.
+            what: "an ask its connection dropped unanswered is asked again once it's back",
+            polls: 300,
+            run: () => {
+                root.holding = "dropped";
+                retrying.askTillTaken(() => ({ ask: "keep-dropped", value: root.holding }));
+                root.holding = "back";
+            },
+            holds: () => {
+                root.triedRead("keep-dropped");
+                return root.triedOf("keep-dropped") === '["dropped","back"]'
+                    && retrying.refusedAgain.length === 0 && retrying.wire !== null;
+            }
+        },
+        {
+            // Ten places kept while the daemon refused were ten tries, each paying its wait
+            // (round 000011 on #6796, F111 and F113). Two of one ask given as its latest,
+            // both refused, are asked again once, as it is then.
+            what: "two refused asks of what's latest are asked again once, as it is then",
+            polls: 300,
+            run: () => {
+                const held = () => ({ ask: "hold", value: root.holding });
+                root.holding = "one";
+                retrying.askTillTaken(held);
+                root.holding = "two";
+                retrying.askTillTaken(held);
+                root.holding = "latest";
+            },
+            holds: () => {
+                root.triedRead("hold");
+                return root.triedOf("hold") === '["one","two","latest"]'
+                    && retrying.refusedAgain.length === 0;
+            }
+        },
+        {
+            // Past the 4 s a refused ask waits, so a second try of the latest would show.
+            what: "and the latest, once taken, is asked no more",
+            run: () => {
+                root.keptSince = Date.now();
+            },
+            holds: () => {
+                root.triedRead("hold");
+                return Date.now() - root.keptSince >= 5000 && !root.triedReading
+                    && root.triedOf("hold") === '["one","two","latest"]';
             }
         },
         {

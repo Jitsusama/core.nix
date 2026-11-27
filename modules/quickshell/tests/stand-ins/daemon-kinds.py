@@ -22,7 +22,10 @@ connection has unwatched, so the test can tell an emptied watch ahead was let go
 An ask to keep is refused for now the first time, as the agents daemon refuses an act it does as
 Joel while it can't yet tell the shell asked, and taken after; an ask of what was asked to keep
 is answered with each value in turn, so the test can tell a refused ask was asked again as it
-was then given, and a taken one no more.
+was then given, and a taken one no more. An ask to keep through a drop is answered the first
+time by the connection dropped, unanswered, as a daemon restarting at a switch drops it, and
+taken after. An ask to hold is refused for now twice, so two given at once are both refused,
+and taken after. Each of those is answered, as asked, with every value asked of it in turn.
 """
 
 import json
@@ -39,6 +42,11 @@ WAITED_LOCK = threading.Lock()
 # Each value asked to keep, in the order asked, the first refused.
 KEPT: list[object] = []
 KEPT_LOCK = threading.Lock()
+
+# Each value asked of the asks that drop or refuse more than once, by ask, in the order asked,
+# and how many of each first go unanswered or refused.
+TRIED: dict[str, list[object]] = {"keep-dropped": [], "hold": []}
+UNTAKEN = {"keep-dropped": 1, "hold": 2}
 
 # What each kind that loses records in a gap holds before it, and what it holds after.
 LAPSING = {
@@ -135,6 +143,19 @@ def answer(asked: dict[str, object], unwatched: int) -> list[dict[str, object]]:
     if asked.get("ask") == "kept":
         with KEPT_LOCK:
             return [{"id": asked.get("id"), "asked": list(KEPT)}]
+    ask = asked.get("ask")
+    if isinstance(ask, str) and ask in TRIED:
+        with KEPT_LOCK:
+            TRIED[ask].append(asked.get("value"))
+            untaken = len(TRIED[ask]) <= UNTAKEN[ask]
+        if untaken and ask == "keep-dropped":
+            return []
+        if untaken:
+            return [{"id": asked.get("id"), "error": {"code": "refused", "message": "not yet"}}]
+        return [{"id": asked.get("id"), "kept": asked.get("value")}]
+    if isinstance(ask, str) and ask.startswith("tried:"):
+        with KEPT_LOCK:
+            return [{"id": asked.get("id"), "asked": list(TRIED.get(ask[6:], []))}]
     kinds = kinds_of(asked)
     keys = asked.get("keys")
     named = (
@@ -178,6 +199,9 @@ def serve(client: socket.socket) -> None:
                 # The first watch of a kind that loses records is followed by a gap.
                 kind = asked.get("kind")
                 if isinstance(kind, str) and WAITED.get(kind) == 1:
+                    return
+                # So is the first ask to keep through a drop, left unanswered.
+                if asked.get("ask") == "keep-dropped" and len(TRIED["keep-dropped"]) == 1:
                     return
 
 
