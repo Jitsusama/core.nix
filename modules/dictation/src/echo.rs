@@ -278,14 +278,19 @@ pub struct Cut {
 
 impl Cut {
     /// What it was cut by, as the journal and the meetings check say it:
-    /// how far below theirs, if for its level, else how late after theirs.
+    /// how far below theirs, if for its level, else how late after theirs,
+    /// or how early before them.
     #[must_use]
     pub fn by(&self) -> String {
         if let Some(below) = self.below {
-            format!("{below:.0} dB below theirs")
+            return format!("{below:.0} dB below theirs");
+        }
+        let rate = isize::try_from(RATE).unwrap_or(isize::MAX);
+        let ms = self.after * 1000 / rate;
+        if ms < 0 {
+            format!("{} ms before theirs", -ms)
         } else {
-            let rate = isize::try_from(RATE).unwrap_or(isize::MAX);
-            format!("{} ms after theirs", self.after * 1000 / rate)
+            format!("{ms} ms after theirs")
         }
     }
 }
