@@ -1206,20 +1206,8 @@ fn set_in_memory(kept: &[PathBuf], ranks: &mut Ranks) {
                 // The call is made under a slice that keeps writeback off too, so
                 // the window is still let go if that slice's setting is lifted; the
                 // log says what the kernel does with it now.
-                let above = holds::kept_above(&scope, |file| fs::read_to_string(file).ok());
-                match (keep, above) {
-                    (true, _) => eprintln!(
-                        "Keeping in memory {unit}, a window Joel was at within two hours."
-                    ),
-                    (false, None) => {
-                        eprintln!("Let go to disk {unit}, a window Joel was at within two hours.");
-                    }
-                    (false, Some(slice)) => eprintln!(
-                        "Gave back {unit}, a window Joel was at within two hours, which {} \
-                         still keeps in memory.",
-                        slice.file_name().unwrap_or_default().to_string_lossy()
-                    ),
-                }
+                let above = || holds::kept_above(&scope, |file| fs::read_to_string(file).ok());
+                eprintln!("{}", holds::kept_said(&unit, keep, above));
             }
             Ok(output) => {
                 if !std::mem::replace(&mut ranks.in_memory.failed, true) {
