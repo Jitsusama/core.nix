@@ -2884,6 +2884,25 @@ ShellRoot {
                 now.waiting.side, now.laterRow?.side]));
         now.everything();
         expect("and once", now.tally.rows === made, now.tally.rows - made);
+        // His own to-do, its deadline passed, outweighs a session's ask, so
+        // home names it, as For You leads with it (#6777's sixth review,
+        // F55); a light one leaves the session leading, as above.
+        WaitingOnYou.now = [toDo("Pay It", new Date(Date.now() - 3600000).toISOString())];
+        expect("his own heavier than a session's ask, home names his own",
+            now.homeSays() === "Pay It \u00b7 1 more", now.homeSays());
+        // And time alone lifts a to-do past the ask, though nothing banded
+        // For You again: home reads the bands at its own minute, as its
+        // rows do, not those kept since its items changed (#6777's seventh
+        // review, F75). Sign In, raised two hours ago, weighs the ask's 50
+        // once it has waited fifteen more.
+        WaitingOnYou.now = [toDo("Sign In")];
+        const keptBands = now.forYouBands;
+        const later = Date.now() + 16 * 3600000;
+        expect("time alone lifting his own past the ask, home names it then",
+            now.homeSays() === "Session C needs you \u00b7 1 more"
+                && now.homeSays(later) === "Sign In \u00b7 1 more"
+                && now.forYouBands === keptBands,
+            JSON.stringify([now.homeSays(), now.homeSays(later)]));
         Location.here = here;
         Facts.all = [];
         WaitingOnYou.now = [];

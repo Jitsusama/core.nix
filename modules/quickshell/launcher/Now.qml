@@ -3349,8 +3349,8 @@ Provider {
     // at \u00b7 2 to try"; and with none of those, nothing, since a calm home
     // says nothing (VKCF3Z, bd5cb965, a31a0e1b, 3a92c450). For You is his
     // one place for attention, so home leads with it.
-    function homeSays() {
-        return homeItems().map(item => item.said).join(" \u00b7 ");
+    function homeSays(clock = Date.now()) {
+        return homeItems(clock).map(item => item.said).join(" \u00b7 ");
     }
 
     // Never how many rows it holds, which tells Joel nothing: calm, its
@@ -3364,8 +3364,9 @@ Provider {
     // never give way (Reading.js's keptItems).
     // It leads with what needs him now, never a later item as `first`
     // falls back to, so "N more" counts the rest of what needs him now,
-    // never what To Look At and To Try hold.
-    function homeItems() {
+    // never what To Look At and To Try hold. It's read at `clock`, now but
+    // for a case reading it later, as time alone moves what leads.
+    function homeItems(clock = Date.now()) {
         if (toDoCount === 0) {
             return ForYou.bandsRun({ look: toLookAtCount, try: toTryCount },
                 Words.of("on:waiting").said ?? {});
@@ -3374,7 +3375,7 @@ Provider {
         // too, by the same test over the same bands, never making its rows,
         // so home names what Return, Return reaches: its critical notice,
         // or the row's own name once that's read or has no summary.
-        const leading = latelyBands(Date.now()).bands.map(band => band.source)
+        const leading = latelyBands(clock).bands.map(band => band.source)
             .find(source => latelyComingIn({ forYou: { source: source } })) ?? null;
         const held = leading === null ? [] : latelyCriticalHeld[leading] ?? [];
         const critical = leading === null ? ""
@@ -3386,12 +3387,12 @@ Provider {
         // to-do of a session asking nothing among them (round 5, F43).
         // Banded at this minute, as waitingRows is, since time alone moves a
         // to-do's weight and forYouBands isn't banded again for it (round 6).
-        const led = critical === "" ? Cells.leading(cellsOf(bandsAt(Date.now()).all)) : null;
+        const led = critical === "" ? Cells.leading(cellsOf(bandsAt(clock).all)) : null;
         const asker = led?.item.kind === "agent" ? led.item.cell() : null;
         const lead = led?.item.toDo ?? null;
         const title = critical !== "" ? critical
             : asker ? `${asker.title} ${Sessions.wanted(asker.presence?.wants?.kind)}`
-            : lead ? lead.title : led?.item.make(Date.now())?.name ?? "";
+            : lead ? lead.title : led?.item.make(clock)?.name ?? "";
         if (title === "") {
             return [];
         }
