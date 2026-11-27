@@ -80,11 +80,15 @@ socket() {
 
 at=$(date +%s)
 hello=$(socket 1 <<<'{"id":1,"ask":"hello"}')
+# The watches the page waits on before it lays its map, as site.rs's
+# WAITED_ON names them: they come first, so the cap never cuts one.
+readonly WAITED='["network","cell","machine","message"]'
 # Only plain names, since each names a file here and a field of the line:
 # a feed answering anything else gets no watch of it. At most 16, as each
 # holds a connection and its buffer for the wait; the node declares 11.
-listed=$(jq --raw-output \
-  '[.kinds[]? | strings | select(test("^[a-z][a-z_-]{0,31}$"))] | .[:16][]' \
+listed=$(jq --raw-output --argjson waited "${WAITED}" \
+  '[.kinds[]? | strings | select(test("^[a-z][a-z_-]{0,31}$"))]
+    | map(select(IN($waited[]))) + map(select(IN($waited[]) | not)) | .[:16][]' \
   <<<"${hello}" 2>/dev/null) || listed=""
 kinds=()
 if [[ -n ${listed} ]]; then
@@ -110,8 +114,9 @@ for kind in "${kinds[@]}"; do
         # each line as JSON, whatever order its keys come in, and ends at
         # the first that says, so the clock stops as the records arrive
         # rather than after bash has read a large line a byte at a time.
+        # A line that isn't an object is passed over, not the read's end.
         said=$(jq --null-input --raw-input --raw-output 'first(inputs | fromjson? |
-          select(.id == 2) |
+          objects | select(.id == 2) |
           if has("records") then "records" elif has("error") then "error" else empty end)' \
           2>/dev/null) || said=""
         end=$(date +%s%N)

@@ -79,8 +79,13 @@ fn every_measure_the_hour_shows_has_a_line_that_holds_it_to_its_target() {
         &["forge.example".to_owned()],
         NOW,
     ));
-    // The site judged on three samples of one watch.
-    let live = |ago: i64| serde_json::json!({"at": NOW - ago, "kinds": {"cell": 0.4}}).to_string();
+    // The site judged on three samples of the four watches its page waits
+    // on, since one left out counts as the whole wait.
+    let live = |ago: i64| {
+        let kinds =
+            serde_json::json!({"network": 0.3, "cell": 0.4, "machine": 0.4, "message": 0.5});
+        serde_json::json!({"at": NOW - ago, "kinds": kinds}).to_string()
+    };
     let site_lines = [live(60), live(660), live(1260)].join("\n");
     shown.push(measures::site::site(&site_lines, NOW));
     let said = serde_json::json!({"none": "no pain", "none_at_ms": NOW * 1000});

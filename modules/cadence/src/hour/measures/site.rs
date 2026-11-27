@@ -34,7 +34,8 @@ pub const PROBE_WAIT: f64 = 20.0;
 
 /// The watches the site's page waits on before it lays its map
 /// (modules/mycelium/site/site.ts's `heard`); those it watches apart fill
-/// in once they come, so they're sampled but hold no page.
+/// in once they come, so they're sampled but hold no page. site.sh's
+/// `WAITED` names them too, to watch them first under its cap.
 const WAITED_ON: [&str; 4] = ["network", "cell", "machine", "message"];
 
 /// The fewest samples an hour judges by: the probe takes six.
