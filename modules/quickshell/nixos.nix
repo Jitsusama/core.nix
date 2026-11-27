@@ -183,7 +183,9 @@ let
   # (qtdeclarative-chunks-fullest-filled-first.patch). The heap module's
   # own tests hold it, fillsTheFullestFirst, sortsEachBinFullestFirst and
   # emptiesTheSortList, which run in its build, so dropping it means
-  # dropping those three cases.
+  # dropping those three cases. emptiesTheSortList reads the list the patch
+  # adds, so without the patch heap_test stops compiling rather than
+  # failing three cases.
   # An animation starting asks only the windows it changes for a frame
   # while Qt's system timer advances animations, as it does unless one
   # window alone is shown on a vsync Qt trusts, since every window drew a

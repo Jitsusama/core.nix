@@ -26,10 +26,11 @@
 // stores after them, reading back as they were made
 // (qtdeclarative-small-runs-split-first.patch); and what's made after a
 // sweep over chunks half and a quarter full fills the half-full ones, so the
-// others empty and are freed once what they kept is let go
-// (qtdeclarative-chunks-fullest-filled-first.patch). Its census counts all that's
-// live and names a shape kept by its property names, but no key taken from
-// data. Its holders count names the property that keeps the most first,
+// others empty and are freed once what they kept is let go, and a sweep
+// leaves each bin's runs fullest chunk first and the list it sorted them by
+// empty (qtdeclarative-chunks-fullest-filled-first.patch). Its census counts
+// all that's live and names a shape kept by its property names, but no key
+// taken from data. Its holders count names the property that keeps the most first,
 // each by the file declaring it and its folder, counts what the engine
 // keeps and what it had no time to name apart, and leaves no mark behind:
 // asked twice it says the same, and what was counted and then let go is
@@ -1284,18 +1285,23 @@ bool sortsEachBinFullestFirst() {
 }
 
 // How many stores of 1024 values, 260 slots each, about seven to a chunk,
-// the case of the sort list keeps, so its sweep keeps a few dozen chunks,
-// and how many slots a chunk uses at least once it holds one.
+// the case of the sort list keeps, so its sweep keeps a few dozen chunks.
 constexpr int SORTED_STORES = 200;
-constexpr uint STORE_SLOTS = 200;
 
 // Whether a sweep leaves empty the list it sorts the kept chunks by, in
 // both allocators, read straight after a collection that kept chunks
 // holding what's made. The list keeps its room from sweep to sweep, so one
 // left holding what it sorted holds chunks a later sweep may free, which
 // nothing reads now but the next change to the sweep could. It holds only
-// if the objects' allocator kept chunks for the sort to put in line, so a
-// heap that kept none fails it rather than passing with nothing sorted.
+// if each allocator's list has room for what its sweep kept, which only a
+// sort leaves, since it puts every chunk kept in the list and empties it
+// without giving back its room, so a Qt whose collection stopped sorting,
+// or sweeping, fails it rather than passing with nothing sorted. The
+// stores make the objects' allocator keep a few dozen chunks, more than a
+// fresh engine's own objects fill, so its list's room can only have grown
+// in this sweep, and a list left holding them shows plainly. The shapes'
+// allocator keeps at least the chunk of the engine's own shapes, so its
+// list has room for one once its sweep sorted.
 bool emptiesTheSortList() {
     QJSEngine engine;
     Heap heap(&engine);
@@ -1306,26 +1312,34 @@ bool emptiesTheSortList() {
             .arg(SORTED_STORES));
     engine.collectGarbage();
     const QV4::MemoryManager *manager = engine.handle()->memoryManager;
-    std::size_t keptChunks = 0;
-    for (const QV4::Chunk *chunk : manager->blockAllocator.chunks)
-        keptChunks += chunk->nUsedSlots() >= STORE_SLOTS ? 1 : 0;
-    const std::size_t left = manager->blockAllocator.byUse.size();
-    const std::size_t shapesLeft = manager->icAllocator.byUse.size();
+    const QV4::BlockAllocator &objects = manager->blockAllocator;
+    const QV4::BlockAllocator &shapes = manager->icAllocator;
     // Seven stores to a chunk keep about 29 of them.
-    const bool tried =
-        !kept.isError() && keptChunks >= static_cast<std::size_t>(SORTED_STORES / 10);
-    const bool emptied = left == 0 && shapesLeft == 0;
+    const bool objectsSorted =
+        objects.chunks.size() >= static_cast<std::size_t>(SORTED_STORES / 10) &&
+        objects.byUse.capacity() >= objects.chunks.size();
+    const bool shapesSorted = !shapes.chunks.empty() && shapes.byUse.capacity() >= 1;
+    const bool tried = !kept.isError() && objectsSorted && shapesSorted;
+    const bool emptied = objects.byUse.empty() && shapes.byUse.empty();
+    const char *unsorted = "both were";
+    if (!objectsSorted)
+        unsorted = shapesSorted ? "the objects' weren't" : "neither was";
+    else if (!shapesSorted)
+        unsorted = "the shapes' weren't";
     if (!tried)
         std::fprintf(stderr,
-                     "FAIL chunks holding what's made were kept by a sweep: %zu of %zu "
-                     "chunks used %u slots or more%s\n",
-                     keptChunks, manager->blockAllocator.chunks.size(), STORE_SLOTS,
+                     "FAIL a sweep sorted the chunks it kept, the objects' few dozen and the "
+                     "shapes' one or more: %s, the objects' list with room for %zu beside "
+                     "%zu chunks and the shapes' for %zu beside %zu%s\n",
+                     unsorted, objects.byUse.capacity(), objects.chunks.size(),
+                     shapes.byUse.capacity(), shapes.chunks.size(),
                      kept.isError() ? qPrintable(QStringLiteral(", ") + kept.toString()) : "");
     else if (!emptied)
         std::fprintf(stderr,
                      "FAIL a sweep leaves the list it sorts kept chunks by empty: the objects' "
-                     "list held %zu beside %zu chunks kept, and the shapes' %zu\n",
-                     left, keptChunks, shapesLeft);
+                     "list held %zu beside %zu chunks kept, and the shapes' %zu beside %zu\n",
+                     objects.byUse.size(), objects.chunks.size(), shapes.byUse.size(),
+                     shapes.chunks.size());
     return tried && emptied;
 }
 
