@@ -1199,9 +1199,26 @@ ShellRoot {
         quests.movedRows = [{ key: "moved:quests:QEST-B", name: "Tune the dock",
             note: "a date moved: the dock", movedAsks: { landed: 0, moved: 1 } }];
         quests.movedRevision += 1;
-        same("one ask is said as one", facts(), [
-            { label: "Asks Landed", value: "0", qualifier: "of 1 that moved" },
-            { label: "Busiest", value: "Tune the dock", qualifier: "1 ask" }]);
+        same("one workstream has no busiest, its name being the note", facts(), [
+            { label: "Asks Landed", value: "0", qualifier: "of 1 that moved" }]);
+        quests.movedRows = [quest, { key: "moved:quests:QEST-B", name: "Tune the dock",
+            note: "a date moved: the dock", movedAsks: { landed: 0, moved: 3 } }];
+        quests.movedRevision += 1;
+        same("a tie for the most has no busiest", facts(), [
+            { label: "Asks Landed", value: "1", qualifier: "of 6 that moved" }]);
+        quests.movedRows = [quest, { key: "moved:quests:QEST-B", name: "Tune the dock",
+            note: "a date moved: the dock", movedAsks: { landed: 0, moved: 1 } },
+            { key: "moved:quests:QEST-D", name: "Mend the mail",
+                note: "landed: the mail", movedAsks: { landed: 1, moved: 1 } }];
+        quests.movedRevision += 1;
+        same("the one that moved most of several is busiest", facts()[1],
+            { label: "Busiest", value: "Bootstrap the laptop", qualifier: "3 asks" });
+        quests.movedRows = [{ key: "moved:quests:QEST-B", name: "Tune the dock",
+            note: "a date moved: the dock", movedAsks: { landed: 0, moved: 1 } },
+            { key: "moved:quests:QEST-C", name: "Uncounted", note: "" }];
+        quests.movedRevision += 1;
+        same("one ask is said as one", facts()[1],
+            { label: "Busiest", value: "Tune the dock", qualifier: "1 ask" });
         quests.movedRows = [{ key: "moved:quests:QEST-C", name: "Uncounted", note: "" }];
         quests.movedRevision += 1;
         same("counts the daemon never gave are no facts, so no drawer", facts(), null);

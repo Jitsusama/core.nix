@@ -1053,7 +1053,10 @@ Provider {
     // (Joel, 2026-11-11 22:00: every row has a drawer giving a little more
     // than its line). Holding none, once he's stepped in and it was all
     // looked at elsewhere, it says nothing moved. A fact the daemon gave
-    // no count for is left out rather than said as nought.
+    // no count for is left out rather than said as nought. Busiest is said
+    // only where one workstream moved more than every other: with one,
+    // it would say the note again, and on a tie it would call one busiest
+    // that isn't.
     function movedDrawer(rows) {
         const title = Words.name("on:moved");
         if (rows.length === 0)
@@ -1061,14 +1064,15 @@ Provider {
         const said = Words.of("on:moved").said ?? {};
         const asks = rows.map(row => row.movedAsks ?? { landed: 0, moved: 0 });
         const total = which => asks.reduce((sum, one) => sum + one[which], 0);
-        const busiest = asks.reduce((most, one, at) => one.moved > asks[most].moved ? at : most,
-            0);
+        const most = Math.max(...asks.map(one => one.moved));
+        const busiest = asks.findIndex(one => one.moved === most);
+        const alone = asks.filter(one => one.moved === most).length === 1;
         const counted = count => ForYou.filled(count === 1 ? said.ask : said.asks, { count });
         const facts = [total("moved") === 0 ? null : {
             label: Words.name("on:moved:landed"),
             value: String(total("landed")),
             qualifier: ForYou.filled(said.ofMoved, { count: total("moved") })
-        }, asks[busiest].moved === 0 ? null : {
+        }, most === 0 || rows.length < 2 || !alone ? null : {
             label: Words.name("on:moved:busiest"),
             value: rows[busiest].name,
             qualifier: counted(asks[busiest].moved)
