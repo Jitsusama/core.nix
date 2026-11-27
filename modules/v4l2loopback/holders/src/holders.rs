@@ -222,9 +222,9 @@ fn holds(proc: &Path, device: u64) -> io::Result<bool> {
             continue;
         };
         let link = link.as_os_str().as_bytes();
-        if !link.starts_with(b"/dev/")
-            && !(link.starts_with(b"/") && on_devtmpfs(proc, &fd.file_name(), &mountinfo))
-        {
+        let maybe_a_node = link.starts_with(b"/dev/")
+            || (link.starts_with(b"/") && on_devtmpfs(proc, &fd.file_name(), &mountinfo));
+        if !maybe_a_node {
             continue;
         }
         if fs::metadata(&path).is_ok_and(|status| status.rdev() == device) {

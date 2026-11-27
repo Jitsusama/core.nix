@@ -104,9 +104,7 @@ in
                 # refuses them, so a machine that names one never builds.
                 type = lib.types.listOf (
                   lib.types.addCheck (lib.types.strMatching "[^/]+\\.(service|scope)") (
-                    unit:
-                    !(lib.hasPrefix "user@" unit || lib.hasPrefix "session-" unit)
-                    && unit != "init.scope"
+                    unit: builtins.match "(user@|session-).*|init\\.scope" unit == null
                   )
                 );
                 default = [ ];
