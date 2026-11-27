@@ -72,6 +72,11 @@ Provider {
             clock: at => Qt.formatDateTime(new Date(at), "ddd d MMM, HH:mm")
         });
         const told = Words.of("for-you:source:pineapple").said ?? {};
+        // A row Return opens nothing from, as Joel's own stop on every
+        // agent, whose where is words, is told without saying it does.
+        const tells = Words.of("for-you:source:pineapple").tells ?? {};
+        const body = (provider.opens(one) ? undefined : tells[`${one.what}:unlinked`])
+            ?? tells[one.what] ?? "";
         const fact = (id, value) => ({ label: Words.name(id), value: String(value ?? "") });
         const count = Number(one.count ?? 1);
         return {
@@ -85,7 +90,7 @@ Provider {
                 fact("on:waiting:since", one.since ? say.clock(one.since) : ""),
                 fact("pineapple:fact:count", count > 1 ? ForYou.filled(told.count, { count }) : "")
             ].filter(each => each.value !== ""),
-            body: String((Words.of("for-you:source:pineapple").tells ?? {})[one.what] ?? ""),
+            body: String(body),
             acts: actsOf(one)
         };
     }
@@ -93,13 +98,19 @@ Provider {
     // The drawer's acts, given rather than taken from the row's verbs
     // (Showing.acted), which would mark the first verb by Return: Return on
     // the row opens where it was said, its run, so that's what ↵ names, and
-    // only where there's a link to open. Resume and the rest are inside it.
+    // only where there's a web link to open. Resume and the rest are inside.
     function actsOf(one) {
-        const open = typeof one.link === "string" && one.link !== ""
+        const open = provider.opens(one)
             ? [{ name: Words.name("pineapple:act:open"), key: "\u21b5" }] : [];
         const verbs = (Array.isArray(one.acts) ? one.acts : [])
             .map(act => ({ name: Words.name(act.key), key: "" }));
         return open.concat(verbs);
+    }
+
+    // Whether Return on a stop's row opens where it was said: only a web
+    // link does. Joel's own stop on every agent says its where in words.
+    function opens(one) {
+        return typeof one.link === "string" && /^https?:\/\//.test(one.link);
     }
 
     function rowOf(one) {
@@ -120,7 +131,7 @@ Provider {
             verbs: () => verbs,
             targets: () => verbs,
             run: () => {
-                if (typeof one.link === "string" && one.link !== "")
+                if (provider.opens(one))
                     Niri.spawn(["xdg-open", one.link]);
             }
         });
