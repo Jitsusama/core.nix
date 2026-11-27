@@ -427,7 +427,11 @@ mod tests {
         writer
             .write(dir.path(), &held(now), &crate::collection::held(9), None)
             .unwrap();
-        assert!(!path.exists());
+        assert!(
+            !path.exists(),
+            "a held watch left {} in place",
+            path.display()
+        );
     }
 
     // The margin's header says how today stands beside a five-figure day,
@@ -436,7 +440,11 @@ mod tests {
     fn the_margin_s_header_holds_how_today_stands() {
         for word in crate::picture::WORDS {
             assert_eq!(value("$12,345", word), format!("$12,345 today · {word}"));
-            assert!(value("about $12,345", word).chars().count() <= HEADER);
+            let header = value("about $12,345", word);
+            assert!(
+                header.chars().count() <= HEADER,
+                "{header:?} runs past the header's {HEADER} characters"
+            );
         }
         assert_eq!(value("about $12,345", "usual"), "about $12,345 today");
         assert_eq!(value("about $32", "usual"), "about $32 today \u{b7} usual");
@@ -513,7 +521,11 @@ mod tests {
         crate::findings::sort(&mut found);
         let pressed = status(&picture, &found);
         let listed = crate::collection::collection(&picture, &found, &config);
-        assert!(pressed.open.row.starts_with("finding:"));
+        assert!(
+            pressed.open.row.starts_with("finding:"),
+            "a refused cap left the status speaking for {}",
+            pressed.open.row
+        );
         lists(&listed.findings, &pressed.open.row);
         lists(&listed.quiet, &pressed.quiet.row);
     }

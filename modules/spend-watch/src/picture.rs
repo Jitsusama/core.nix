@@ -1286,7 +1286,11 @@ mod tests {
             .map(|hour| (hour, if hour > now - 24 { 1.0 } else { 2.0 }))
             .collect();
         let from = share_from(Some(now - 23), 24, now);
-        assert!((budget_share(&default, &all, from, now) - 0.5).abs() < 1e-9);
+        let share = budget_share(&default, &all, from, now);
+        assert!(
+            (share - 0.5).abs() < 1e-9,
+            "the default's share came to {share}, not half"
+        );
     }
 
     // A team's token spending fast moves only its own cap: the proxy's

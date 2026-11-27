@@ -58,15 +58,24 @@ mod tests {
     fn the_same_seed_repeats() {
         let mut one = Random::seeded(7);
         let mut other = Random::seeded(7);
-        assert!((0..100).all(|_| one.next_u64() == other.next_u64()));
+        assert!(
+            (0..100).all(|_| one.next_u64() == other.next_u64()),
+            "two generators seeded alike parted within 100 draws"
+        );
     }
 
     #[test]
     fn units_stay_in_range_and_centre() {
         let mut random = Random::seeded(1);
         let draws: Vec<f64> = (0..10_000).map(|_| random.unit()).collect();
-        assert!(draws.iter().all(|u| (0.0..1.0).contains(u)));
+        assert!(
+            draws.iter().all(|u| (0.0..1.0).contains(u)),
+            "a unit fell outside 0 to 1"
+        );
         let mean = crate::stats::mean(&draws);
-        assert!((mean - 0.5).abs() < 0.02);
+        assert!(
+            (mean - 0.5).abs() < 0.02,
+            "10,000 units averaged {mean}, not about 0.5"
+        );
     }
 }

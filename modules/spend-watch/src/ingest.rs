@@ -1258,13 +1258,22 @@ mod tests {
 
     #[test]
     fn a_part_with_stars_fits_what_it_says() {
-        assert!(fits("*", "anything"));
-        assert!(fits("*.jsonl", "2026_s1.jsonl"));
-        assert!(!fits("*.jsonl", "agent.log"));
-        assert!(fits("council-*", "council-20261014"));
-        assert!(fits("a*b*c", "a-b-c"));
-        assert!(!fits("a*b*c", "a-c-b"));
-        assert!(!fits("a*a", "a"));
+        assert!(fits("*", "anything"), "* didn't fit anything");
+        assert!(
+            fits("*.jsonl", "2026_s1.jsonl"),
+            "*.jsonl didn't fit 2026_s1.jsonl"
+        );
+        assert!(!fits("*.jsonl", "agent.log"), "*.jsonl fit agent.log");
+        assert!(
+            fits("council-*", "council-20261014"),
+            "council-* didn't fit council-20261014"
+        );
+        assert!(fits("a*b*c", "a-b-c"), "a*b*c didn't fit a-b-c");
+        assert!(
+            !fits("a*b*c", "a-c-b"),
+            "a*b*c fit a-c-b, its pieces out of order"
+        );
+        assert!(!fits("a*a", "a"), "a*a fit a, one a taken for both");
     }
 
     // A pattern reads only the directories it passes through, and finds
