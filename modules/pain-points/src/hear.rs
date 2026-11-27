@@ -437,7 +437,10 @@ pub fn hear_putting(
         .flatten();
     let mut hour = hour_of(&kept, ears.at);
     hour.unclosed = stood.unclosed;
-    let (waiting, given_up) = unsent(&kept, ears.at);
+    let apart = |h: &Heard| {
+        route::owner(&h.session, h.void, &cells, &routes).is_some_and(|o| routes.keeps_apart(&o))
+    };
+    let (waiting, given_up) = unsent(&kept, ears.at, &apart);
     hour.cellless_since = cellless_since(&ears.state, ears.at, cells.is_empty() && waiting);
     hour.troubles = troubles(
         &ears.state,
@@ -556,14 +559,19 @@ fn answered(kept: &mut [Heard], session: &str, (from, at): (i64, i64), by: &str)
 /// Whether any pain of the day waits to be sent, since a node naming no
 /// sessions is a trouble only then, and how many were given up on: their
 /// owner's tries spent while they were fresh, or the keeper's after them.
-fn unsent(kept: &[Heard], at: i64) -> (bool, usize) {
+/// One whose cell is kept `apart` from the keeper is given up only once
+/// its owner's tries through the day are spent, as it's tried that long.
+fn unsent(kept: &[Heard], at: i64, apart: &dyn Fn(&Heard) -> bool) -> (bool, usize) {
     let unsent = || {
         kept.iter()
             .filter(move |h| h.routed_at.is_none() && h.at >= at - DAY_MS)
     };
     let waiting = unsent().any(|h| !h.carried);
     let given_up = unsent()
-        .filter(|h| h.tries >= 2 * SEND_TRIES || (h.tries >= SEND_TRIES && h.at >= at - FRESH_MS))
+        .filter(|h| {
+            h.tries >= 2 * SEND_TRIES
+                || (h.tries >= SEND_TRIES && h.at >= at - FRESH_MS && !apart(h))
+        })
         .count();
     (waiting, given_up)
 }
@@ -623,14 +631,21 @@ fn route_waiting(
     }
     let mut by_owner: BTreeMap<String, Vec<usize>> = BTreeMap::new();
     for (n, pain) in kept.iter().enumerate() {
-        if pain.carried
-            || pain.routed_at.is_some()
-            || pain.tries >= SEND_TRIES
-            || pain.at < ears.at - FRESH_MS
-        {
+        if pain.carried || pain.routed_at.is_some() {
             continue;
         }
-        if let Some(owner) = route::owner(&pain.session, pain.void, cells, routes) {
+        let Some(owner) = route::owner(&pain.session, pain.void, cells, routes) else {
+            continue;
+        };
+        // A cell kept apart from the keeper has no keeper to carry its
+        // pain once it's stale, so its owner is tried through the day and
+        // as often as the keeper would be, rather than it going to nobody.
+        let (tries, fresh) = if routes.keeps_apart(&owner) {
+            (2 * SEND_TRIES, DAY_MS)
+        } else {
+            (SEND_TRIES, FRESH_MS)
+        };
+        if pain.tries < tries && pain.at >= ears.at - fresh {
             by_owner.entry(owner).or_default().push(n);
         }
     }

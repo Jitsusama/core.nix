@@ -634,6 +634,40 @@ fn a_pain_hours_old_when_first_heard_goes_to_the_ledgers_keeper_alone() {
 }
 
 #[test]
+fn a_pain_hours_old_in_a_cell_kept_apart_still_goes_to_its_owner() {
+    let place = Place::new("stale-apart");
+    fs::write(
+        place.root.join("state/routes.json"),
+        r#"{"from":"EAR001","fallback":"ORCH01","ledgers":"ORCH01","never":["NEVER1"],
+            "apart":["abc123"]}"#,
+    )
+    .expect("routes written");
+    place.log(
+        "src",
+        "s-live",
+        Path::new("/home/j/src"),
+        &[user("old", "2026-11-16T15:00:00.000Z", "no, that's broken")],
+    );
+    let mut sent: Vec<(String, String)> = Vec::new();
+    hear(&place.ears(), CELLS, &mut |to, text| {
+        sent.push((to.into(), text.into()));
+        true
+    })
+    .expect("a run");
+    assert!(
+        sent.iter()
+            .any(|(to, text)| to == "ABC123" && text.contains("broken"))
+            && !sent.iter().any(|(to, _)| to == "ORCH01"),
+        "a stale pain of a cell kept apart went to nobody, or to the keeper: {sent:?}"
+    );
+    assert!(
+        place.heard().iter().all(|h| h.routed_at.is_some()),
+        "the stale pain wasn't marked sent: {:?}",
+        place.heard()
+    );
+}
+
+#[test]
 fn a_short_reply_said_twice_is_no_pain() {
     let place = Place::new("short");
     place.log(
