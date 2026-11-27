@@ -112,6 +112,8 @@ class Budget:
 
 def pytest_terminal_summary(terminalreporter: pytest.TerminalReporter) -> None:
     """Say what each first visit in the run cost, passed or not, so its budget is set from that."""
+    if MEASURED:
+        terminalreporter.section("first visits", sep="-")
     for cost in MEASURED:
         terminalreporter.write_line(cost)
 
