@@ -281,7 +281,7 @@ fn causes_asked(m: &Measure) -> Vec<Filed> {
                      \"{class}\", {found}. Please reply within a day with the one fix that \
                      stops it at its root, such as a check that refuses it or a shared piece \
                      every change uses, or why it can't have one. Once it lands, name it with \
-                     `cadence owe --done {done} FIX`, and it stays closed for the week its \
+                     `cadence owe --done {done} 'FIX'`, and it stays closed for the week its \
                      cases count over; until then it also closes once the class falls under \
                      three changes in a week."
                 ),
@@ -469,6 +469,14 @@ fn back_in(key: &str, measures: &[Measure]) -> bool {
         })
 }
 
+/// Whether a drag filed as `key` is held for the week once its fix is
+/// named: only a class of cause is, since only its cases go on counting
+/// from before the fix. Any other drag is back in or not by its figure.
+pub fn held_when_fixed(key: &str) -> bool {
+    key.strip_prefix("hour:")
+        .is_some_and(|key| key.starts_with(causes::KEY))
+}
+
 /// Whether `key` is a class of cause its owner closed by naming its fix
 /// within the week before `now`: its cases still count from before the
 /// fix, so filing it again would ask for the fix just named. A bare
@@ -477,8 +485,7 @@ fn back_in(key: &str, measures: &[Measure]) -> bool {
 /// is asked of again only once its week is out: the cost of not asking
 /// for a fix just named.
 fn fixed_lately(ledger: &[Entry], key: &str, now: i64) -> bool {
-    key.strip_prefix("hour:")
-        .is_some_and(|key| key.starts_with(causes::KEY))
+    held_when_fixed(key)
         && ledger.iter().any(|e| {
             e.key == key
                 && e.fixed.is_some()
@@ -874,7 +881,14 @@ mod tests {
             fixed.is_empty() && !ledger[at].open && ledger[at].reopened == 2,
             "a class its owner closed by naming the fix was asked again: {fixed:?}"
         );
-        let week = 90_000 + causes::WITHIN + 1;
+        // The hold ends as the fix's cases leave the count, the same edge
+        // `recurring` counts by: still held a second before, gone at it.
+        let week = 90_000 + causes::WITHIN;
+        let last = file(&mut ledger, &[recurring(&[racy])], "2026-12-04", week - 1);
+        assert!(
+            last.is_empty() && !ledger[at].open,
+            "a class its owner fixed was asked again before its week was out: {last:?}"
+        );
         let past = file(&mut ledger, &[recurring(&[racy])], "2026-12-04", week);
         assert_eq!(
             (past.len(), ledger[at].open, ledger[at].reopened),

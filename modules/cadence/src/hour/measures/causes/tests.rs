@@ -150,6 +150,26 @@ fn a_change_is_read_by_its_repository_however_it_is_written() {
         ["core.nix#1"],
         "a number after a repository unknown was counted in the one before it"
     );
+    let long = format!("{}#3", "r".repeat(REPO_AT_MOST + 1));
+    assert_eq!(
+        changes(&format!(
+            "x`y\"z#1, a/b:c#2, {long}, core.nix#4\tcore.nix#5"
+        )),
+        ["core.nix#4", "core.nix#5"],
+        "a change in a repository no host could name was counted, or a tab didn't part two"
+    );
+}
+
+/// A class is written plain: its quotes and backticks, which would close
+/// the quotes around it in an ask or end the span its command is in, are
+/// apostrophes, which the command quotes for the shell.
+#[test]
+fn a_class_is_written_plain_with_its_quotes_made_apostrophes() {
+    assert_eq!(
+        plain("x \"y\" `z` \u{2019}w"),
+        "x 'y' 'z' 'w",
+        "a quote or backtick in a sender's words was kept as written"
+    );
 }
 
 /// One message of many junk wordings, each on three changes, counts only

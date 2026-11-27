@@ -75,6 +75,10 @@ const UNFOLDED_PER_MESSAGE: usize = 5;
 /// close.
 const NAMED_AT_MOST: usize = 10;
 
+/// The most letters a repository's name may have and be counted, well
+/// past any real one, so a change named can't make a key of any length.
+const REPO_AT_MOST: usize = 64;
+
 /// The words that join one change's number to the next within a line,
 /// keeping the repository named before them.
 const JOINING: &[&str] = &["and", "or", "also", "plus", "then", "&"];
@@ -480,10 +484,11 @@ fn cause_line(line: &str, at: i64) -> Vec<Case> {
 /// its repository written apart from its number. A word before a bare
 /// number that is neither a repository known nor a joining word names a
 /// repository unknown, so the number is left out rather than counted in
-/// the repository before it.
+/// the repository before it, as is one in a repository no host could
+/// name.
 fn changes(named: &str) -> Vec<String> {
     let words: Vec<&str> = named
-        .split([',', ' ', ';'])
+        .split(|c: char| c == ',' || c == ';' || c.is_whitespace())
         .map(str::trim)
         .filter(|word| !word.is_empty())
         .collect();
@@ -493,7 +498,7 @@ fn changes(named: &str) -> Vec<String> {
         let Some((in_repo, number)) = word.split_once('#') else {
             let apart = words.get(at + 1).is_some_and(|next| next.starts_with('#'));
             if apart && is_repo(word) {
-                repo = repo_named(word);
+                repo = repo_named(word).unwrap_or_default();
             } else if apart && !JOINING.contains(&word.to_lowercase().as_str()) {
                 repo.clear();
             }
@@ -503,7 +508,7 @@ fn changes(named: &str) -> Vec<String> {
             continue;
         };
         if !in_repo.is_empty() {
-            repo = repo_named(in_repo);
+            repo = repo_named(in_repo).unwrap_or_default();
         }
         if !repo.is_empty() {
             found.push(format!("{repo}#{number}"));
@@ -523,13 +528,22 @@ fn is_repo(word: &str) -> bool {
 }
 
 /// A repository as it is counted: the last part of its path, lower case,
-/// and its full name for a short one.
-fn repo_named(said: &str) -> String {
+/// and its full name for a short one; none for a name no host would take,
+/// since a repository's name goes into the class split by it, and so into
+/// its key and the ask its owner pastes from.
+fn repo_named(said: &str) -> Option<String> {
     let last = said.rsplit('/').next().unwrap_or(said).to_lowercase();
-    REPOS
-        .iter()
-        .find(|(short, _)| *short == last)
-        .map_or(last, |(_, full)| (*full).to_owned())
+    let named = !last.is_empty()
+        && last.len() <= REPO_AT_MOST
+        && last
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'));
+    named.then(|| {
+        REPOS
+            .iter()
+            .find(|(short, _)| *short == last)
+            .map_or(last, |(_, full)| (*full).to_owned())
+    })
 }
 
 /// The class `said`, written plain, is counted under: the one its words
