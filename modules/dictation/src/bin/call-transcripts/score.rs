@@ -277,9 +277,19 @@ fn score_meeting(speech: &mut Parakeet, meeting: &Meeting) -> Result<(Scored, Ti
             *into = sample;
         }
     }
+    // Only outside every line of theirs: inside one, they and he may
+    // both be speaking.
+    let their_lines: Vec<(usize, usize)> = lines
+        .iter()
+        .filter(|line| line.side == Side::Theirs)
+        .map(|line| (line.start, line.end))
+        .collect();
     let loud = |word: &Word| {
+        let inside = their_lines
+            .iter()
+            .any(|&(start, end)| (start..end).contains(&word.at));
         let gap = loudest_before(&their_takes, word.at) - word.level;
-        (gap >= SOUND).then_some(gap)
+        (!inside && gap >= SOUND).then_some(gap)
     };
     let (cut, cuts) = echo::cut_echoes_heard(&lines, &word_times, said::spoken, loud);
     println!(
