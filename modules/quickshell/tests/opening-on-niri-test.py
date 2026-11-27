@@ -88,6 +88,14 @@ WAKE_WAITS_MS = 300
 WAKE_ROUNDED_MS = 2
 # What the shell says once a kept opening is filled in, before its sources wake.
 FILLED_SAID = b"launcher: filled the opening in "
+# How an opening's line says its first frame's drawing, apart by its render thread's times
+# (Thread.drawingApart), each part rounded apart, so the three may miss the whole by two: Joel's
+# opening at 10:28 spent 121 ms drawing, which nothing told apart (2026-11-26).
+DRAWING_SPLIT = re.compile(
+    r"(?P<drawing>\d+) drawing it \((?P<syncing>\d+) syncing, (?P<rendering>\d+) rendering,"
+    r" (?P<heard>\d+) before the shell heard it swapped\)"
+)
+DRAWING_ROUNDED_MS = 2
 
 # How long a window opening is given to reach the closed shell, which hears niri's events
 # within a few milliseconds of each.
@@ -1125,7 +1133,8 @@ def test_a_kept_place_opens_afresh_while_niri_hasnt_said_its_casts(shell: Shell)
     Its rows were kept before any share could begin, so a chord in a call drew them on its first
     frame: Super+V a copy, Super+O a waiting ask. Here a stand-in for the windows daemon holds
     the shell where niri is yet to say its casts, which counts as a share, and home opens afresh
-    there too.
+    there too. Each says its first frame's drawing apart as a kept opening does, since its frame
+    is told it as it's swapped.
     """
     with casts_stood_in(shell, said=False):
         since = shell.mark()
@@ -1141,6 +1150,11 @@ def test_a_kept_place_opens_afresh_while_niri_hasnt_said_its_casts(shell: Shell)
     assert f"launcher: on opened afresh, {unsaid_why}" in said, f"On's wasn't said:\n{said}"
     assert not home.get("kept"), f"home was drawn from its kept rows under a share: {home}"
     assert f"launcher: home opened afresh, {unsaid_why}" in said, f"home's wasn't said:\n{said}"
+    openings = ("on", "home")
+    took = [line for line in said.splitlines() if "opening took" in line]
+    assert len(took) >= len(openings), f"the two openings didn't say their time:\n{said}"
+    for line in took[-len(openings) :]:
+        assert DRAWING_SPLIT.search(line), f"a whole opening didn't say its drawing apart: {line}"
 
 
 def test_a_share_begun_before_a_kept_opening_is_filled_in_fills_it_at_once(
@@ -1584,6 +1598,13 @@ def test_a_place_its_chord_opened_is_drawn_as_it_stood(shell: Shell) -> None:
     assert took, "the opening said nothing of its time"
     assert "; its thread ran " in took[-1], f"the opening's line didn't say its thread: {took[-1]}"
     assert " of its working, waited " in took[-1], f"its thread's working went unsaid: {took[-1]}"
+    drew = DRAWING_SPLIT.search(took[-1])
+    assert drew, f"the opening's line didn't say its drawing apart: {took[-1]}"
+    drawing, syncing, rendering, heard = (int(part) for part in drew.groups())
+    assert abs(syncing + rendering + heard - drawing) <= DRAWING_ROUNDED_MS, (
+        f"{drawing} ms drawing, said as {syncing} syncing, {rendering} rendering"
+        f" and {heard} before the shell heard it"
+    )
     assert opening["shown"]["keys"] == left["keys"], f"kept, the rows moved: {left} to {opening}"
     assert opening["rows"] == 0, f"the kept opening made rows before its frame: {opening}"
     # A place's fill joins inside `open`, as its steps into the place read what's joined; only
