@@ -33,6 +33,16 @@ const SILENT_MS: u64 = 10_000;
 /// two to three seconds old, and one older says nothing of the line now.
 pub const CARRIED_MS: u64 = 5_000;
 
+/// How many bytes of the recorder's lines one poll reads at most, whole
+/// lines, so a start that comes on a day and a half of them reads them
+/// over many steps and hears a stop between. On 27 November a first step
+/// read 89 MB of them in about 13 s on the shaped machine, and a stop a
+/// second into a start waited behind it past the unit's 15 s and was
+/// killed. At that pace 4 MiB take about 600 ms, so a stop is heard within
+/// a second and the whole is read in about as long as before; until it
+/// is, the recorder reads as silent and the link isn't held.
+const READ_AT_MOST: u64 = 4 << 20;
+
 /// What the controller last heard of its link's second, and what it made
 /// of it: what a trace needs to say why a rate held where it did.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -422,6 +432,8 @@ pub struct Live {
     file: (PathBuf, u64),
     /// A line the recorder is still writing.
     partial: Vec<u8>,
+    /// How many bytes a poll reads at most (`READ_AT_MOST`).
+    at_most: u64,
     follow: Follow,
     /// A call's round trip through the VPN riding the link.
     vpn: Probe,
@@ -437,6 +449,7 @@ impl Live {
             folder: folder.to_path_buf(),
             file: (day_file(folder, yesterday), 0),
             partial: Vec::new(),
+            at_most: READ_AT_MOST,
             follow: Follow {
                 from_ms: ms(now),
                 ..Follow::new()
@@ -511,13 +524,12 @@ impl Live {
         self.follow.hear_vpn(self.vpn.heard(Instant::now()));
     }
 
-    /// Reads what the recorder wrote since, and answers the link it
-    /// follows and the rates to hold it to. A day's file is read to its end
-    /// before the next day's is begun.
+    /// Reads what the recorder wrote since, up to `at_most` bytes of it,
+    /// and answers the link it follows and the rates to hold it to. A
+    /// day's file is read to its end before the next day's is begun.
     pub fn poll(&mut self, now: SystemTime) -> Option<(&str, Rates)> {
         let today = day_file(&self.folder, now);
-        self.read_on();
-        if self.file.0 != today {
+        if self.read_on() && self.file.0 != today {
             self.file = (today, 0);
             self.partial.clear();
             self.read_on();
@@ -545,26 +557,34 @@ impl Live {
         self.follow.controller.agents_share()
     }
 
-    /// Takes each whole line the file gained, keeping one half written.
-    fn read_on(&mut self) {
+    /// Takes each whole line the file gained, keeping one half written,
+    /// until `at_most` bytes are read. Answers whether it read to the
+    /// file's end, or found none to read.
+    fn read_on(&mut self) -> bool {
         let Ok(mut file) = File::open(&self.file.0) else {
-            return;
+            return true;
         };
         if file.seek(SeekFrom::Start(self.file.1)).is_err() {
-            return;
+            return true;
         }
         let mut reader = BufReader::new(file);
-        while let Ok(read) = reader.read_until(b'\n', &mut self.partial) {
+        let mut taken = 0;
+        while taken < self.at_most {
+            let Ok(read) = reader.read_until(b'\n', &mut self.partial) else {
+                return true;
+            };
+            let read = u64::try_from(read).unwrap_or(0);
+            self.file.1 += read;
             if read == 0 || self.partial.last() != Some(&b'\n') {
-                self.file.1 += u64::try_from(read).unwrap_or(0);
-                break;
+                return true;
             }
-            self.file.1 += u64::try_from(read).unwrap_or(0);
+            taken += read;
             if let Some(sample) = parse(&String::from_utf8_lossy(&self.partial)) {
                 self.follow.take(&sample);
             }
             self.partial.clear();
         }
+        false
     }
 }
 
@@ -1333,6 +1353,60 @@ mod tests {
                 .now(NOV3 + 6_000)
                 .is_some_and(|(l, r)| l == "wlan0" && r.down.is_some())
         );
+    }
+
+    // A start that comes on more lines than a poll reads takes them over
+    // many polls, yesterday's to its end before today's, each poll
+    // reading at most a line past its bound, and comes to the stay as one
+    // read of them all does.
+    #[test]
+    fn a_poll_reads_its_bound_and_comes_to_the_same_stay_over_many() {
+        let folder =
+            std::env::temp_dir().join(format!("shaper-live-bounded-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&folder);
+        fs::create_dir_all(&folder).expect("a folder");
+        let lines = queued();
+        let today = SystemTime::UNIX_EPOCH + Duration::from_millis(NOV3 + 6_000);
+        let yesterday = crate::record::day_file(&folder, today - Duration::from_hours(24));
+        let (older, newer) = lines.split_at(31);
+        fs::write(&yesterday, format!("{}\n", older.join("\n"))).expect("yesterday's file");
+        let path = crate::record::day_file(&folder, today);
+        fs::write(&path, format!("{}\n", newer.join("\n"))).expect("today's file");
+        let longest = lines
+            .iter()
+            .map(|l| u64::try_from(l.len()).expect("a line's length") + 1)
+            .max()
+            .expect("lines");
+        let started = SystemTime::UNIX_EPOCH + Duration::from_millis(NOV3);
+        let mut live = Live::new(&folder, started);
+        live.at_most = 2 * longest;
+        let _ = live.poll(today);
+        assert_eq!(
+            live.file.0, yesterday,
+            "today's file was begun before yesterday's was read"
+        );
+        assert!(
+            live.file.1 < live.at_most + longest,
+            "one poll read {} bytes against a bound of {}",
+            live.file.1,
+            live.at_most
+        );
+        let mut polls = 1;
+        while live.follow.last_ms < NOV3 + 6_000 && polls < 1_000 {
+            let _ = live.poll(today);
+            polls += 1;
+        }
+        assert!(
+            polls > 2,
+            "{polls} polls read every line under a two-line bound"
+        );
+        assert_eq!(live.file.0, path, "the polls never came to today's file");
+        assert_eq!(
+            live.follow.now(NOV3 + 6_000).map(|(_, r)| r),
+            followed(&lines).now(NOV3 + 6_000).map(|(_, r)| r),
+            "read over {polls} polls, the stay differed from one read whole"
+        );
+        let _ = fs::remove_dir_all(&folder);
     }
 
     #[test]
