@@ -313,13 +313,19 @@ fn judged(seen: Result<bool, Failure>, unknown: &mut Option<String>) -> bool {
     })
 }
 
+/// Curl's exit for an answer file that isn't there, as an API served from
+/// files says it knows no such commit.
+const NO_ANSWER_FILE: &str = "(exit status: 37)";
+
 /// Whether an ask of main's host failed by its saying it knows no such
-/// commit: curl's own line for each failed answer names its HTTP code.
+/// commit: curl's own line for each failed answer names its HTTP code, and
+/// an API served from files has no answer file for it.
 fn unknown_to_host(failure: &Failure) -> bool {
-    failure
-        .lines
-        .iter()
-        .any(|line| line.trim_end().ends_with(" answered 404"))
+    failure.why.ends_with(NO_ANSWER_FILE)
+        || failure
+            .lines
+            .iter()
+            .any(|line| line.trim_end().ends_with(" answered 404"))
 }
 
 #[cfg(test)]
@@ -329,9 +335,14 @@ mod tests {
     #[test]
     fn only_a_host_s_404_says_it_knows_no_such_commit() {
         let failed = |line: &str| Failure {
-            why: "reading main's folder from the host failed".into(),
+            why: "reading main's folder from the host failed (exit status: 22)".into(),
             lines: vec![line.to_owned()],
         };
+        let unfiled = Failure::new("reading main's folder from the host failed (exit status: 37)");
+        assert!(
+            unknown_to_host(&unfiled),
+            "an API served from files with no answer for the commit wasn't read as not knowing it"
+        );
         let compare = "https://api.example/repos/kestrel/core/compare/a...b";
         assert!(
             unknown_to_host(&failed(&format!("{compare} answered 404"))),
