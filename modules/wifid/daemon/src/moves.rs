@@ -803,11 +803,13 @@ mod tests {
     use std::path::Path;
 
     use super::*;
+    use crate::arrive::Arrivals;
     use crate::learn::{self, Here};
     use crate::measure::tests::joined;
     use crate::measure::{Counts, Echo};
     use crate::radio::{Load, Radio};
     use crate::state::Security;
+    use crate::transition::Heed;
 
     const DESK: &str = "6c:ae:f6:c1:84:26";
     const HALL: &str = "6c:ae:f6:c1:84:28";
@@ -1718,6 +1720,47 @@ mod tests {
             given,
             Some(Next::Move(DESK.into())),
             "a call let go from its warned point waited on a move nothing made"
+        );
+    }
+
+    /// #7139's regression replayed as far as wifid runs it without
+    /// wpa_supplicant: a warned move heeded as `Wifid::asked` heeds it, its
+    /// refusal taken in as it takes one in, and the call's give-way asked
+    /// as each second's does. What `Wifid::asked` and `roam_card` do over
+    /// D-Bus between them, and whether `roam_card` leaves a move followed
+    /// as each refusal says, stays unchecked: main.rs has no way to run
+    /// them without a bus and a wpa_supplicant to answer.
+    #[test]
+    fn a_losing_call_gives_way_at_once_once_its_warned_move_is_refused() {
+        let (desk, hall) = ("02:00:00:00:01:00", "02:00:00:00:02:00");
+        let warned = || {
+            let mut air = State::default();
+            air.heard("/Interfaces/0/BSSs/1", Some(heard(desk, -40)));
+            air.heard("/Interfaces/0/BSSs/2", Some(heard(hall, -60)));
+            air.at("wlan2", Some("/Interfaces/0/BSSs/2".into()));
+            air
+        };
+        let start = Instant::now();
+        let heeded = (start, start + Duration::from_secs(600));
+        let refused = |arrivals: &Arrivals| {
+            let mut air = warned();
+            Heed::Move(desk.into()).keep_warned(&mut air, ("wlan2", hall), false, heeded);
+            Heed::move_refused(&mut air, arrivals, ("wlan2", hall));
+            let soon = start + Duration::from_secs(1);
+            given_hearing(&mut Chooser::default(), soon, &joined(hall), &air, LOSING)
+        };
+        let mut resumed = Arrivals::default();
+        resumed.asked("wlan2", Some(hall), desk, start);
+
+        assert_eq!(
+            refused(&Arrivals::default()),
+            Some(Next::Move(desk.into())),
+            "a call waited out fading::BETWEEN on a warned move that was refused"
+        );
+        assert_eq!(
+            refused(&resumed),
+            None,
+            "a call raced a move still under way after the warned one was refused"
         );
     }
 

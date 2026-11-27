@@ -55,6 +55,7 @@ use std::fmt::Write as _;
 use tokio::time::{Duration, Instant};
 use zbus::zvariant::{OwnedValue, Value};
 
+use crate::arrive::Arrivals;
 use crate::choose::SETTLE;
 use crate::state::{Security, State};
 
@@ -195,6 +196,19 @@ impl Heed {
             state.warned_again(card, from, until);
         } else {
             state.warned_off(card, from, (heeding, until));
+        }
+    }
+
+    /// Ends the wait a warned move's heed set (`keep_warned`) once wifid's
+    /// move off `from` was refused, so a call's give-way doesn't wait on a
+    /// move that isn't under way (`State::heed_ended`). A move of the
+    /// card's still followed after the refusal keeps it: one already under
+    /// way, put back as it stood, or a way back the warned move was
+    /// refused for, still moves the card off its point, so a call waits on
+    /// it as on this heed, for no longer than `fading::BETWEEN`.
+    pub fn move_refused(state: &mut State, arrivals: &Arrivals, (card, from): (&str, &str)) {
+        if !arrivals.moving(card) {
+            state.heed_ended(card, from);
         }
     }
 }

@@ -3820,13 +3820,11 @@ impl Wifid<'_> {
                 Ok(()) => println!("<6>{card} moves to {bssid} before it's dropped"),
                 Err(refused) => {
                     println!("<4>{card} couldn't move to {bssid} before it's dropped: {refused:?}");
-                    // A move already under way, put back as it stood, or
-                    // a way back this one was refused for, still moves the
-                    // card off its point, so a call waits on it as on this
-                    // heed, for no longer than `fading::BETWEEN`.
-                    let moving = self.arrivals.borrow().moving(card);
-                    if !moving {
-                        self.heed_ended(card, from.as_deref());
+                    if let Some(from) = from.as_deref() {
+                        let arrivals = self.arrivals.borrow();
+                        change(self.state, |state| {
+                            Heed::move_refused(state, &arrivals, (card, from));
+                        });
                     }
                 }
             },
@@ -3860,9 +3858,9 @@ impl Wifid<'_> {
     }
 
     /// Ends the heed of the warning from the point a card is on, as
-    /// wifid's move off it couldn't start, and no other moves the card,
-    /// or its look first lapsed, so a call's give-way doesn't wait on it
-    /// (`State::heed_ended`).
+    /// wifid's look first couldn't start or lapsed, so a call's give-way
+    /// doesn't wait on it (`State::heed_ended`). A refused move's heed
+    /// ends by `Heed::move_refused`.
     fn heed_ended(&self, card: &str, from: Option<&str>) {
         if let Some(from) = from {
             change(self.state, |state| state.heed_ended(card, from));
