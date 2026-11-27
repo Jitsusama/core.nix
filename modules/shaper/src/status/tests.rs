@@ -413,7 +413,9 @@ fn names_and_a_why_from_outside_draw_no_control_and_a_break_as_a_space() {
     // A why wrapping at 60 and at the 80 that 200 is held to, so it hangs
     // in both, holding a break from outside between two words, apart
     // from the controls: drawn as a space, it starts no line and joins
-    // neither word to the other.
+    // neither word to the other. A terminal's wrap closes up every run of
+    // blanks, so only the piped room sees a break drawn as two spaces or
+    // kept: that room is the one pinning the space itself.
     if let Some(heard) = link.heard.as_mut() {
         heard.why = heard
             .why
@@ -427,6 +429,15 @@ fn names_and_a_why_from_outside_draw_no_control_and_a_break_as_a_space() {
                 .iter()
                 .any(|line| line.starts_with("  at enp0") && line.contains("'s rate: both")),
             "the leader wasn't said into {room:?}: {lines:#?}"
+        );
+        // The heading's names are drawn whole on either side of their
+        // controls, so a filter running past an escape's end, or a heading
+        // left without them, fails here and not only where a control is.
+        assert!(
+            lines[0].starts_with("wlp0")
+                && lines[0].contains("s20f3  on 00:00")
+                && lines[0].ends_with(":5e"),
+            "into {room:?} the heading didn't draw both names: {lines:#?}"
         );
         assert!(
             lines.iter().all(|line| !line.chars().any(char::is_control)),
