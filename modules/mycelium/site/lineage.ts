@@ -223,9 +223,9 @@ function grownFrom(key: string, { starters, splitters, cells, split }: Came): Gr
  * drawn network's cells known by `hubOf` (a cell's address to the key of
  * the network it is drawn in, none for a receptor or a cell working
  * alone). A network the node sets within none grows out of the network
- * whose cells started more of its cells than any other, ties going to the
- * one that started more, then to the first by name. Where the node says a
- * network sits always stands, a start from inside the network or what sits
+ * whose cells started or split more of its cells than any other, ties
+ * going to the one that started more, then to the first by name. Where the
+ * node says a network sits always stands, a start from inside the network or what sits
  * in it counts for nothing, and every network's choices are settled
  * together, strongest first, so of two networks that started each other's
  * cells the one that started more is the trunk, and no branch is grown
@@ -244,9 +244,12 @@ function grownOf(
   origins: readonly Origin[],
 ): Map<string, Grown> {
   const named = new Map(networks.map((network) => [network.key, network]));
+  // A cell's start goes before its split however they were handed, so
+  // where both come from one network the cell counts there as started.
   const originsOfCell = new Map<string, Origin[]>();
   for (const origin of origins) {
-    originsOfCell.set(origin.cell, [...(originsOfCell.get(origin.cell) ?? []), origin]);
+    const had = originsOfCell.get(origin.cell) ?? [];
+    originsOfCell.set(origin.cell, origin.split ? [...had, origin] : [origin, ...had]);
   }
   const grown = new Map<string, Grown>();
   const within = (key: string): string | null =>
