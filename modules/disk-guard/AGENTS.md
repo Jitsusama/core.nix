@@ -619,8 +619,10 @@ or launchd, and [`home.nix`][2] the account's.
 | `src/footprint.rs`        | what files take on a compressed disk, read as root       |
 | `src/activity.rs`, `locks.rs` | whether something is in use                          |
 | `src/host.rs`, `linux.rs`, `macos.rs` | the machine the guard runs on, through `crate::sys` |
+| `src/linux/pool.rs`       | the Btrfs pool and subvolume a file lies in              |
 | `src/procargs.rs`, `pmset.rs`, `memorystatus.rs` | what macOS says, parsed for Linux's tests |
 | `src/daemon.rs`, `serve.rs` | a daemon's step and its loop                           |
+| `src/daemon/`             | the step's duties, one file each, from hearing to status |
 | `src/socket.rs`, `vouch.rs` | what the two daemons say to each other                 |
 | `src/garbage.rs`, `generations.rs`, `dedupe.rs` | Nix's garbage, generations and linking |
 | `src/garbage/`            | running Nix's commands, its refused nix.conf lines left out |
