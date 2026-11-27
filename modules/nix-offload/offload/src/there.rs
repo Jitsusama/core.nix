@@ -5641,9 +5641,15 @@ impl Load {
 /// found by its command line, which any account may read, where the
 /// build's pid, root's, isn't one `kill -0` may ask about. It's read with
 /// `ps` and `grep` rather than `pgrep`, which nixpkgs' procps for a Mac
-/// doesn't have, where every procps has `ps`. A test names
-/// another in `NIX_OFFLOAD_OWN_UPDATE`, since a Mac's own update runs
-/// these tests outside a sandbox, beside the very build they'd count.
+/// doesn't have, where every procps has `ps`. A Mac's own `/bin/ps` reads
+/// it, where there is one: it's setuid, so it reads root's arguments,
+/// which a `ps` from the store can't. `-ww` keeps a line whole, past any
+/// width. A `ps` that fails counts as an update, since the Mac lane asked
+/// that a lent build never go beside one, and a reading that can't tell
+/// must not let it. A test names another pattern in
+/// `NIX_OFFLOAD_OWN_UPDATE`, and another `ps` in `NIX_OFFLOAD_PS`, since a
+/// Mac's own update runs these tests outside a sandbox, beside the very
+/// build they'd count, and its setuid `ps` refuses a build user.
 pub fn building_read() -> String {
     format!(
         "{TURNS_READ} \
@@ -5654,7 +5660,9 @@ pub fn building_read() -> String {
          if [ -n \"$boot\" ] && [ \"${{holder#* }}\" = \"$boot\" ] && \
          kill -0 \"$pid\" 2>/dev/null; then building=$((building + 1)); fi; done; \
          own=\"${{NIX_OFFLOAD_OWN_UPDATE:-{OWN_UPDATE_SEEN}}}\"; \
-         if ps -A -o args= 2>/dev/null | grep -q -e \"$own\"; then \
+         ps=ps; if [ -x /bin/ps ]; then ps=/bin/ps; fi; ps=\"${{NIX_OFFLOAD_PS:-$ps}}\"; \
+         if ! all=$(\"$ps\" -A -ww -o args= 2>/dev/null); then building=$((building + 1)); \
+         elif printf '%s\\n' \"$all\" | grep -q -e \"$own\"; then \
          building=$((building + 1)); fi; \
          echo \"$building\""
     )
@@ -6338,6 +6346,7 @@ mod tests {
             ])
             .env("NIX_OFFLOAD_TURNS", turns)
             .env("NIX_OFFLOAD_OWN_UPDATE", update)
+            .env("NIX_OFFLOAD_PS", "ps")
             .output()
             .map_or_else(
                 |error| format!("{error}"),
@@ -6399,6 +6408,55 @@ mod tests {
     }
 
     #[test]
+    fn the_default_update_pattern_finds_the_out_link_but_not_its_reader() {
+        // The reading shell's own command line holds the pattern as
+        // written, which must not match, where the update's holds its link.
+        let lines = format!(
+            "{}\nnix build --out-link /var/lib/update-to-main/building .#x\n",
+            building_read()
+        );
+        let said = Command::new("grep")
+            .args(["-c", "-e", OWN_UPDATE_SEEN])
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .and_then(|mut grep| {
+                use std::io::Write as _;
+                grep.stdin.take().unwrap().write_all(lines.as_bytes())?;
+                grep.wait_with_output()
+            })
+            .unwrap();
+        assert_eq!(
+            String::from_utf8_lossy(&said.stdout),
+            "1\n",
+            "the default pattern matched the reader, or missed the update's link"
+        );
+    }
+
+    #[test]
+    fn a_ps_that_fails_counts_as_an_update() {
+        let folder = tempfile::tempdir().unwrap();
+        for shell in ["dash", "zsh"] {
+            let path = std::env::var("PATH").unwrap_or_default();
+            let said = Command::new(shell)
+                .args([
+                    "-c",
+                    &format!("PATH='{path}'; export PATH; {}", building_read()),
+                ])
+                .env("NIX_OFFLOAD_TURNS", folder.path().join("none"))
+                .env("NIX_OFFLOAD_OWN_UPDATE", NO_UPDATE)
+                .env("NIX_OFFLOAD_PS", "false")
+                .output()
+                .unwrap();
+            assert_eq!(
+                String::from_utf8_lossy(&said.stdout),
+                "1\n",
+                "{shell}: a ps that failed let a lent build go beside the update"
+            );
+        }
+    }
+
+    #[test]
     fn a_macs_load_is_read_whole_and_counted_only_once_said() {
         use std::os::unix::fs::PermissionsExt;
         let folder = tempfile::tempdir().unwrap();
@@ -6417,6 +6475,8 @@ mod tests {
                 let said = Command::new(shell)
                     .args(["-c", &reading])
                     .env("NIX_OFFLOAD_TURNS", folder.path().join("none"))
+                    .env("NIX_OFFLOAD_OWN_UPDATE", NO_UPDATE)
+                    .env("NIX_OFFLOAD_PS", "ps")
                     .output()
                     .unwrap();
                 String::from_utf8(said.stdout).unwrap()
