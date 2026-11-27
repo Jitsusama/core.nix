@@ -11,10 +11,6 @@
 //! nothing a day found is lost and nobody is asked twice. A must a
 //! quest owes, filed with `cadence owe` (owe.rs), is kept here too, and
 //! stays open until its owner says it's done.
-//!
-//! Long because a line's whole life, from found to told, fixed, back and
-//! closed, is ruled in `update` and pinned by the tests beside it, which
-//! owe.rs's and the hubs' tests share.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -90,11 +86,6 @@ pub struct Entry {
     /// the next hour from the cases the fix came after.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub closed: Option<i64>,
-    /// The figure the day's read last found for it, so a run again the
-    /// same evening that finds it higher is read as a failure since, not
-    /// the same one; none for a line kept before it was counted.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub found: Option<f64>,
 }
 
 /// Whether a count is nought, so a line never reopened stays as it was.
@@ -195,20 +186,6 @@ pub fn update(
         // closed stays closed, and the finding opens a line of its own.
         let newest = ledger.iter_mut().rev().find(|e| e.key == finding.key);
         if let Some(entry) = newest.filter(|e| e.open || e.kind.is_none()) {
-            // A run again within half a day of the one that last found it,
-            // typed or a timer that fired twice, reads mostly the same hours,
-            // so what it finds no higher is the same failure: it neither
-            // forgets a fix said since nor puts off the two days' close. One
-            // found higher failed again since, and a crash or a failed unit
-            // is found only on a day after days of none, so no later read
-            // would find it: it forgets the fix, as any finding again does.
-            let same = entry.found.is_some_and(|found| finding.now <= found);
-            if entry.open && day.to - entry.last_to < DAY / 2 && same {
-                // Its words keep the first read's hours, which its owner
-                // reads the journal over.
-                continue;
-            }
-            entry.found = Some(finding.now);
             if !entry.open {
                 entry.open = true;
                 entry.reopened += 1;
@@ -251,7 +228,6 @@ pub fn update(
                 back: None,
                 fixed: None,
                 closed: None,
-                found: Some(finding.now),
             });
         }
     }
@@ -592,88 +568,6 @@ pub(crate) mod tests {
             fixed(&mut ledger, "crashes:tec", "core #6001"),
             None,
             "a closed finding took a fix"
-        );
-    }
-
-    #[test]
-    fn a_run_again_the_same_evening_keeps_a_fix_said_since() {
-        let mut ledger = Vec::new();
-        let worse = [found("crashes:tec")];
-        update(&mut ledger, &day("d1", DAY), &worse, &owners());
-        tell(&mut ledger, "d1", None);
-        fixed(&mut ledger, "crashes:tec", "core #6000");
-        update(&mut ledger, &day("d1", DAY + 3 * 3600), &worse, &owners());
-        assert_eq!(
-            (ledger[0].fixed.as_deref(), ledger[0].last_to),
-            (Some("core #6000"), DAY),
-            "a run again that evening forgot the fix or put off its close: {ledger:?}"
-        );
-        update(&mut ledger, &day("d2", 2 * DAY), &[], &owners());
-        update(&mut ledger, &day("d3", 3 * DAY), &[], &owners());
-        assert_eq!(
-            (ledger[0].open, ledger[0].back.as_deref()),
-            (false, None),
-            "a fix said before a run again that evening didn't close it: {ledger:?}"
-        );
-        update(&mut ledger, &day("d4", 4 * DAY), &worse, &owners());
-        assert_eq!(
-            (ledger.len(), ledger[0].open, ledger[0].reopened),
-            (1, true, 1),
-            "a failure a day on wasn't found as one that came back: {ledger:?}"
-        );
-    }
-
-    #[test]
-    fn a_run_again_finding_more_or_past_half_a_day_forgets_the_fix() {
-        let once = [found("crashes:tec")];
-        let twice = [Finding {
-            now: 2.0,
-            ..found("crashes:tec")
-        }];
-        let fixed_then = |again: &[Finding], after: i64| {
-            let mut ledger = Vec::new();
-            update(&mut ledger, &day("d1", DAY), &once, &owners());
-            fixed(&mut ledger, "crashes:tec", "core #6000");
-            update(&mut ledger, &day("d1", DAY + after), again, &owners());
-            (ledger[0].fixed.clone(), ledger[0].last_to, ledger[0].found)
-        };
-        assert_eq!(
-            fixed_then(&once, 11 * 3600),
-            (Some("core #6000".to_owned()), DAY, Some(1.0)),
-            "a run again eleven hours on, finding the same, forgot the fix"
-        );
-        assert_eq!(
-            fixed_then(&twice, 3 * 3600),
-            (None, DAY + 3 * 3600, Some(2.0)),
-            "a run again that evening finding a second crash kept the fix"
-        );
-        assert_eq!(
-            fixed_then(&once, 13 * 3600),
-            (None, DAY + 13 * 3600, Some(1.0)),
-            "a run again thirteen hours on kept the fix"
-        );
-    }
-
-    #[test]
-    fn a_line_kept_before_its_figure_was_counted_forgets_a_fix_when_found_again() {
-        let mut ledger = Vec::new();
-        update(
-            &mut ledger,
-            &day("d1", DAY),
-            &[found("crashes:tec")],
-            &owners(),
-        );
-        fixed(&mut ledger, "crashes:tec", "core #6000");
-        ledger[0].found = None;
-        update(
-            &mut ledger,
-            &day("d1", DAY + 3600),
-            &[found("crashes:tec")],
-            &owners(),
-        );
-        assert_eq!(
-            ledger[0].fixed, None,
-            "a line with no figure kept a fix through a finding again"
         );
     }
 
