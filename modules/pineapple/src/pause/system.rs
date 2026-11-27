@@ -2,6 +2,7 @@
 //! machine that doesn't answer can't hold Joel's act up.
 
 use std::io::{ErrorKind, Read};
+use std::os::unix::process::CommandExt;
 use std::path::Path;
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::{Arc, Mutex, PoisonError};
@@ -82,25 +83,25 @@ impl System {
             let late = began.elapsed() >= self.limit;
             for (slot, answer) in running.iter_mut().zip(&mut answers) {
                 let Some(one) = slot else { continue };
-                // Ended and read, or answered without its readers, which
-                // are left to end with the pipes, as one of its own
-                // children may hold them.
+                // Ended and read, or answered without its readers once
+                // what it started that holds its pipes is ended too, so
+                // they end with the pipes.
                 let ended = match one.exited() {
                     Ok(Some(status)) if one.read(status) => Ok(status),
                     Ok(Some(status)) if late && one.ended_before(GRACE) => {
-                        Err(Err(unread(status, &one.said_so_far())))
+                        let said = one.said_so_far();
+                        end(&mut one.child);
+                        Err(Err(unread(status, &said)))
                     }
                     Ok(None) if late => {
                         // Killed at its limit; it may have ended meanwhile,
                         // which is as good.
-                        let _ = one.child.kill();
-                        let _ = one.child.wait();
+                        end(&mut one.child);
                         Err(Err(format!("no answer in {} s", self.limit.as_secs())))
                     }
                     Ok(_) => continue,
                     Err(error) => {
-                        let _ = one.child.kill();
-                        let _ = one.child.wait();
+                        end(&mut one.child);
                         Err(Err(error.to_string()))
                     }
                 };
@@ -130,10 +131,12 @@ struct Running {
 
 /// Starts `program` with `args`, reading what it prints as it runs, since
 /// a program printing more than a pipe holds waits for its reader and
-/// would otherwise never end.
+/// would otherwise never end. It leads a process group of its own, so
+/// what it starts can be ended with it.
 fn start(program: &Path, args: &[String]) -> Result<Running, String> {
     let mut child = Command::new(program)
         .args(args)
+        .process_group(0)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -148,8 +151,7 @@ fn start(program: &Path, args: &[String]) -> Result<Running, String> {
         }),
         (out, err) => {
             // Ended, so a reader that did start ends with the pipe.
-            let _ = child.kill();
-            let _ = child.wait();
+            end(&mut child);
             let why = out.err().or_else(|| err.err()).unwrap_or_default();
             Err(format!(
                 "{} couldn't be read as it ran: {why}",
@@ -157,6 +159,20 @@ fn start(program: &Path, args: &[String]) -> Result<Running, String> {
             ))
         }
     }
+}
+
+/// Ends `child`, and what it started that still runs in its process
+/// group, as what holds its pipes open, so their readers end too.
+fn end(child: &mut Child) {
+    if let Ok(group) = libc::pid_t::try_from(child.id()) {
+        // SAFETY: killpg only sends a signal, to the group the child made
+        // as it started. A child already waited for keeps its id as the
+        // group's while anything in the group runs; once none does, the
+        // id could name another group only after the kernel's ids wrap.
+        unsafe { libc::killpg(group, libc::SIGKILL) };
+    }
+    let _ = child.kill();
+    let _ = child.wait();
 }
 
 /// What a program that ended as `status` answers while what it printed is
@@ -486,6 +502,46 @@ mod tests {
                     && why.contains("still held open")
             }),
             "what it said is its answer's first line, its words unread after: {answers:?}"
+        );
+    }
+
+    #[test]
+    fn what_a_run_killed_or_unread_started_ends_with_it() {
+        let mut system = System {
+            limit: Duration::from_millis(500),
+        };
+        let here = std::env::temp_dir().join(format!("pineapple-ends-{}", std::process::id()));
+        std::fs::create_dir_all(&here).expect("a folder for what's left");
+        let left = |by: &str| here.join(by);
+        // Each starts a child that holds its output and leaves a file a
+        // second in, unless it's ended first.
+        let hung = sh(&format!(
+            "(sleep 1; touch '{}') & sleep 30",
+            left("hung").display()
+        ));
+        let unread = sh(&format!(
+            "(sleep 1; touch '{}') & echo done",
+            left("unread").display()
+        ));
+        let began = Instant::now();
+        let answers = system.run_all(&[(Path::new("sh"), &hung), (Path::new("sh"), &unread)]);
+        std::thread::sleep(Duration::from_millis(1600).saturating_sub(began.elapsed()));
+        let hung_left = left("hung").exists();
+        let unread_left = left("unread").exists();
+        let _ = std::fs::remove_dir_all(&here);
+        assert!(
+            answers[0]
+                .as_ref()
+                .is_err_and(|why| why.starts_with("no answer"))
+                && answers[1]
+                    .as_ref()
+                    .is_err_and(|why| why.contains("still held open")),
+            "one was killed at its limit, the other answered unread: {answers:?}"
+        );
+        assert!(
+            !hung_left && !unread_left,
+            "what each started ended with it, the hung one's ({hung_left} left) and the \
+             unread one's ({unread_left} left)"
         );
     }
 
