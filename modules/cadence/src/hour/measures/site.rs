@@ -1,7 +1,8 @@
 //! How long the node's site takes to come live, from the samples
 //! cadence-site (site.sh) writes every ten minutes: each watch the page
-//! opens, timed to its first records. The page shows nothing new until
-//! every watch has answered, so a sample's wait is its slowest watch's,
+//! opens, timed to its first records. The page lays its map once the four
+//! watches it waits on have answered, the rest filling in after, so a
+//! sample's wait is the slowest of those four's,
 //! and the hour's median of those is held to a ceiling, an unanswered
 //! watch or a failed sample counting as the probe's whole wait. On 26
 //! November at 22:40 the message watch took 3.5 s and the cell watch
@@ -31,6 +32,11 @@ pub const LIVE_AT_MOST: f64 = 2.0;
 /// which an unanswered watch and a failed sample count as.
 pub const PROBE_WAIT: f64 = 20.0;
 
+/// The watches the site's page waits on before it lays its map
+/// (modules/mycelium/site/site.ts's `heard`); those it watches apart fill
+/// in once they come, so they're sampled but hold no page.
+const WAITED_ON: [&str; 4] = ["network", "cell", "machine", "message"];
+
 /// The fewest samples an hour judges by: the probe takes six.
 const SAMPLES_AT_LEAST: usize = 3;
 
@@ -53,6 +59,7 @@ impl Sample {
     fn wait(&self) -> f64 {
         self.watches
             .iter()
+            .filter(|(kind, _)| WAITED_ON.contains(&kind.as_str()))
             .map(|(_, seconds)| *seconds)
             .reduce(f64::max)
             .unwrap_or(PROBE_WAIT)
@@ -134,6 +141,7 @@ fn measured(samples: &[Sample]) -> Measure {
     let mut kinds: Vec<&str> = samples
         .iter()
         .flat_map(|s| s.watches.iter().map(|(kind, _)| kind.as_str()))
+        .filter(|kind| WAITED_ON.contains(kind))
         .collect();
     kinds.sort_unstable();
     kinds.dedup();
@@ -176,7 +184,7 @@ fn measured(samples: &[Sample]) -> Measure {
         class: Class::Functional,
         says: format!(
             "median seconds the node's site took to come live this hour, every watch \
-             answered, of {} samples",
+             it waits on answered, of {} samples",
             samples.len()
         ),
         now: (median(waits) * 100.0).round() / 100.0,
@@ -249,6 +257,42 @@ mod tests {
             m.behind.contains(&"1 of 3 failed, as no hello".to_owned()),
             "the failure wasn't said: {:?}",
             m.behind
+        );
+    }
+
+    #[test]
+    fn an_even_hour_takes_the_middle_twos_mean_not_its_worst() {
+        let waited =
+            |ago, seconds| sampled(ago, &[("cell", Some(0.2)), ("message", Some(seconds))]);
+        let lines = [
+            waited(60, 0.5),
+            waited(660, 1.5),
+            waited(1260, 2.5),
+            waited(1860, 9.0),
+        ];
+        let m = site(&lines.join("\n"), NOW);
+        assert!(
+            (m.now - 2.0).abs() < 1e-9,
+            "four samples didn't take the mean of the middle two: {m:?}"
+        );
+        assert!(
+            m.behind.contains(&"worst 9.00 s".to_owned()),
+            "the worst wasn't said beside the median: {:?}",
+            m.behind
+        );
+    }
+
+    #[test]
+    fn a_watch_the_page_doesnt_wait_on_holds_no_sample() {
+        let apart = |ago| sampled(ago, &[("message", Some(0.4)), ("tie", Some(6.0))]);
+        let m = site(&[apart(60), apart(660), apart(1260)].join("\n"), NOW);
+        assert!(
+            (m.now - 0.4).abs() < 1e-9,
+            "a watch apart held the page: {m:?}"
+        );
+        assert_eq!(
+            m.behind[0], "slowest watch message, median 0.40 s",
+            "a watch apart was named as the slowest"
         );
     }
 

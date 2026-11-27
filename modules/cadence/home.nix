@@ -575,15 +575,17 @@ in
           cfg.site
         ];
         Slice = "background.slice";
-        # The hello and the watches, opened together, wait 20 s each at
-        # most, so a minute and a half bounds a run.
+        # The hello, then the watches together, wait 20 s each at most,
+        # so a minute and a half bounds a run.
         TimeoutStartSec = "90s";
       };
     };
     systemd.user.timers.cadence-site = lib.mkIf (cfg.site != null) {
       Unit.Description = "Samples the node's site every ten minutes";
       Timer = {
-        OnCalendar = "*:0/10";
+        # At five past each ten minutes, off the hour's run at ten past,
+        # so no sample is timed under the hour's own load.
+        OnCalendar = "*:05/10";
         AccuracySec = "30s";
       };
       Install.WantedBy = [ "timers.target" ];

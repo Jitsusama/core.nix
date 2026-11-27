@@ -4,9 +4,12 @@
 # hello, then watches each kind the hello lists, all at once as the page
 # does, and times each watch to its first records. A line of JSON in the
 # day's file of $XDG_STATE_HOME/cadence/site holds each kind's seconds, or
-# null for one that sent none within the wait, for `cadence hour` to hold
-# the hour's median wait for the slowest to its ceiling
-# (src/hour/measures/site.rs). On 26 November at 22:40 the message watch
+# null for one refused or that sent none within the wait, for `cadence hour`
+# to hold the hour's median wait for the slowest the page waits on to its
+# ceiling (src/hour/measures/site.rs). The sites' server shares one watch
+# of each kind among its pages, so while a page holds one the sample times
+# what a page opened then would wait, the server's held records, rather
+# than the node: the page's wait is what this measures. On 26 November at 22:40 the message watch
 # took 3.5 s and the cell watch 2.8 s, where seven minutes before both took
 # under 1 s, and the page showed nothing new while they waited.
 #
@@ -77,7 +80,10 @@ socket() {
 
 at=$(date +%s)
 hello=$(socket 1 <<<'{"id":1,"ask":"hello"}')
-listed=$(jq --raw-output '.kinds[]?' <<<"${hello}" 2>/dev/null) || listed=""
+# Only plain names, since each names a file here and a field of the line:
+# a feed answering anything else gets no watch of it.
+listed=$(jq --raw-output '.kinds[]? | strings | select(test("^[a-z][a-z_-]{0,31}$"))' \
+  <<<"${hello}" 2>/dev/null) || listed=""
 kinds=()
 if [[ -n ${listed} ]]; then
   mapfile -t kinds <<<"${listed}"
@@ -92,13 +98,23 @@ fi
 for kind in "${kinds[@]}"; do
   (
     start=$(date +%s%N)
+    # Room for the hello's answer and any state lines before the records;
+    # the first records end the read long before this many.
     printf '{"id":1,"ask":"hello"}\n{"id":2,"ask":"watch","kind":"%s"}\n' "${kind}" |
-      socket 4 |
+      socket 64 |
       while IFS= read -r line; do
-        # Its first records, or its refusal, end the watch's wait.
-        if [[ ${line} == '{"id":2,"records"'* || ${line} == *'"error"'* ]]; then
+        # The watch's first records end its wait, timed; its refusal ends
+        # it untimed, so the hour counts it as the whole wait. Read as
+        # JSON, whatever order its keys come in.
+        said=$(jq --raw-output 'select(.id == 2) |
+          if has("records") then "records" elif has("error") then "error" else empty end' \
+          <<<"${line}" 2>/dev/null) || said=""
+        if [[ ${said} == records ]]; then
           end=$(date +%s%N)
           echo $(((end - start) / 1000000)) >"${timed}/${kind}"
+          break
+        fi
+        if [[ ${said} == error ]]; then
           break
         fi
       done
