@@ -133,11 +133,10 @@ body {
   font: italic 400 var(--step-small) / 1.4 var(--serif);
 }
 
-/* A key is the glyph to press, upright in full ink among the italic, so
-   even a lone full stop reads as one. */
+/* A key is the glyph to press, in full ink among the italic, and upright as
+   the kit sets every key, so even a lone full stop reads as one. */
 .head .keys kbd {
   color: var(--strong);
-  font-style: normal;
   cursor: pointer;
 }
 

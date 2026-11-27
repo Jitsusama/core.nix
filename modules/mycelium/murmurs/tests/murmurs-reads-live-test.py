@@ -421,15 +421,38 @@ def said_quiet(page: Page, why: str) -> None:
     )
 
 
-# The kit's italic code face, 66 KB, which a quiet day's line once sent for the
-# two words of the command it names.
-ITALIC_CODE = "monaspace-italic"
+# The kit's code faces, by file. The italic one is what a quiet day's line once
+# sent for the two words of the command it names; the upright one is what it
+# draws them in.
+ITALIC_CODE = "fonts/monaspace-italic.woff2"
+UPRIGHT_CODE = "fonts/monaspace.woff2"
+
+# The face each piece of code on the quiet line is drawn in, read in one task.
+QUIET_CODE = """() => [...document.querySelectorAll('#quiet code')].map((code) => ({
+    words: code.textContent,
+    style: getComputedStyle(code).fontStyle,
+    line: getComputedStyle(code.parentElement).fontStyle,
+}))"""
+
+# How each upright face of the quiet code's own family stands. The head preloads the upright
+# file whatever the page draws, so a request for it proves nothing; a face is loaded only once
+# something is drawn in it.
+QUIET_FACES = """() => {
+    const code = document.querySelector('#quiet code');
+    const family = getComputedStyle(code).fontFamily.split(',')[0].trim().replace(/["']/gu, '');
+    return [...document.fonts]
+        .filter((face) => face.family.replace(/["']/gu, '') === family && face.style === 'normal')
+        .map((face) => ({ family, status: face.status }));
+}"""
 
 
 def test_a_quiet_day_sends_no_italic_code_face(
     browser: Browser, tmp_path: Path, quiet_node: StandIn
 ) -> None:
-    """A quiet day's line names a command, set upright, so no italic code face is sent."""
+    """A quiet day's italic line names a command upright, sending no italic code face.
+
+    The page still keeps to its budget, quiet as it is.
+    """
     feed = {"socket": str(quiet_node.path), "kinds": json.loads(os.environ["NODE_KINDS"])}
     with serving(tmp_path, {"web": os.environ["MURMURS_SITE"]}, {"node": feed}) as served:
         root, _ = served
@@ -437,8 +460,27 @@ def test_a_quiet_day_sends_no_italic_code_face(
         try:
             opened.first(heard_nothing)
             said_quiet(opened.page, "the quiet day wasn't said")
+            code = opened.page.evaluate(QUIET_CODE)
+            assert code, "the quiet line names no command in code, so nothing here is tested"
+            assert all(each["line"] == "italic" for each in code), (
+                f"the quiet line is no longer italic, so nothing here is tested: {code}"
+            )
+            assert all(each["style"] == "normal" for each in code), (
+                f"the quiet line's code leans with it: {code}"
+            )
+            # Every face the page draws is loaded before what it asked for is read.
+            opened.page.evaluate("document.fonts.ready.then(() => true)")
             opened.page.wait_for_load_state("networkidle")
-            faces = [request.url for request in opened.asked if ITALIC_CODE in request.url]
+            urls = [request.url for request in opened.asked]
+            assert any(url.endswith(UPRIGHT_CODE) for url in urls), (
+                f"the upright code face was never asked for, so its italic's absence says nothing: "
+                f"{urls}"
+            )
+            upright = opened.page.evaluate(QUIET_FACES)
+            assert any(face["status"] == "loaded" for face in upright), (
+                f"the quiet line's code drew in no upright code face of its own: {upright}"
+            )
+            faces = [url for url in urls if url.endswith(ITALIC_CODE)]
             assert faces == [], f"a quiet day's line sent the italic code face: {faces}"
             opened.keeps_to(BUDGET)
         finally:
