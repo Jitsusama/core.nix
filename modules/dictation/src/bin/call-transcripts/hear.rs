@@ -395,6 +395,13 @@ fn heard_or_left_out(
     }
 }
 
+/// Whether the speech model is kept for the next take once one is heard
+/// through it or `failed`, by whether it has heard a take since it was
+/// loaded (`heard_since_load`).
+fn kept(_heard_since_load: bool, _failed: bool) -> bool {
+    true
+}
+
 /// A take of `key`'s call that wasn't heard, spanning the samples of the
 /// call in `take`, its model not loading or failing on it: counted in
 /// what the call's file says wasn't heard, the file written at once so a

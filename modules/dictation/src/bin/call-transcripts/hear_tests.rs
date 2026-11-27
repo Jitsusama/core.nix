@@ -531,6 +531,56 @@ fn a_take_that_isnt_heard_says_why() {
     );
 }
 
+/// Hears `takes` takes as the daemon does, through a model `load`
+/// gives afresh whenever none is kept: which takes were heard, and how
+/// many times a model was loaded.
+fn heard_through(takes: usize, load: impl Fn() -> Scripted) -> (Vec<bool>, usize) {
+    let (mut speech, mut heard_since_load, mut loads) = (None, false, 0);
+    let heard = (0..takes)
+        .map(|_| {
+            let hears = speech.get_or_insert_with(|| {
+                loads += 1;
+                heard_since_load = false;
+                load()
+            });
+            let (_, failed) = heard_or_left_out(transcribe_take(hears, 0, &[]));
+            if !kept(heard_since_load, failed.is_some()) {
+                speech = None;
+            }
+            heard_since_load |= failed.is_none();
+            failed.is_none()
+        })
+        .collect();
+    (heard, loads)
+}
+
+#[test]
+fn a_model_that_heard_and_then_fails_is_loaded_afresh() {
+    // A lost device fails every take its model is given until it's let
+    // go, so a model that heard a take and then failed is loaded again
+    // for the next, which hears; it's loaded once more, not on every take.
+    let lost = || Scripted {
+        words: Some(vec![word("Yes.", 0)]),
+    };
+    assert_eq!(
+        heard_through(3, lost),
+        (vec![true, false, true], 2),
+        "a model that failed after hearing wasn't loaded afresh once"
+    );
+}
+
+#[test]
+fn a_model_that_never_heard_isnt_loaded_again() {
+    // One broken from its load would be loaded again for every take, to
+    // fail each, so it's kept.
+    let broken = || Scripted { words: None };
+    assert_eq!(
+        heard_through(2, broken),
+        (vec![false, false], 1),
+        "a model that never heard a take was loaded again"
+    );
+}
+
 #[test]
 fn the_daemon_leaves_out_a_take_that_isnt_heard() {
     // One take not heard mustn't end the call or stop its thread: the
