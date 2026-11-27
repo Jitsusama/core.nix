@@ -1026,7 +1026,10 @@ mod tests {
                 .unwrap();
         assert_eq!(read.card.as_deref(), Some("Stand-in"));
         assert_eq!(read.units, ["a.service", "b.service"]);
-        assert!(!read.usb, "a start without --usb was read as a USB camera's");
+        assert!(
+            !read.usb,
+            "a start without --usb was read as a USB camera's"
+        );
         assert_eq!(read.sysfs, Path::new("/sys"));
         assert_eq!(read.debugfs, Path::new("/sys/kernel/debug"));
         assert_eq!(
