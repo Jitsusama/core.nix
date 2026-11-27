@@ -8,8 +8,10 @@
 //! memory and go into the image anyway: a test machine with 300 MiB of
 //! random bytes rolled back 28,090 pages short in one run of three.
 //! Switched off, zswap stores nothing more, and what the kernel swaps out for
-//! the image goes to the disk. What the pool already holds stays in memory,
-//! which `fits` counts as in use.
+//! the image goes to the disk. What the pool already holds stays in memory
+//! until it's read back or the shrinker writes it out, which switching zswap
+//! off doesn't stop. `fits` counts all of it as in use, so what the shrinker
+//! writes out can only make the image smaller than it reckons.
 
 use std::fs;
 use std::io::{self, ErrorKind};

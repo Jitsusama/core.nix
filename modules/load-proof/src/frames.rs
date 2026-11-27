@@ -380,14 +380,22 @@ mod tests {
     fn a_frame_at_every_refresh_misses_none() {
         let t = Tally::of(&[shown(10, 1), shown(11, 1), shown(12, 1), shown(13, 1)]);
         assert_eq!((t.shown, t.missed, t.late, t.discarded), (4, 0, 0, 0));
-        assert!((t.longest_ms - 8.333_333).abs() < 0.001);
+        assert!(
+            (t.longest_ms - 8.333_333).abs() < 0.001,
+            "the longest frame wasn't one refresh long: {} ms",
+            t.longest_ms
+        );
     }
 
     #[test]
     fn a_refresh_skipped_with_a_frame_ready_is_niri_missing_it() {
         let t = Tally::of(&[shown(10, 1), shown(11, 1), ready(14, 11), shown(15, 1)]);
         assert_eq!((t.missed, t.late), (2, 0));
-        assert!((t.longest_ms - 25.0).abs() < 0.001);
+        assert!(
+            (t.longest_ms - 25.0).abs() < 0.001,
+            "the longest frame wasn't the three refreshes missed: {} ms",
+            t.longest_ms
+        );
     }
 
     #[test]

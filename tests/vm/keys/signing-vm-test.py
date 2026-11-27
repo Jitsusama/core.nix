@@ -100,6 +100,9 @@ def keys(joel: Joel, values: dict[str, Any]) -> Keys:
     """
     joel.run("mkdir -p ~/.ssh ~/.local/share/signing")
     joel.run(f"ssh-tpm-keygen -N {values['pin']} -C joel@test -f {JOEL_KEY}")
+    # With no agents' key at login, their socket doesn't listen, so the wait below
+    # proves the path unit started it.
+    joel.run("systemctl --user is-active agent-signing.socket", succeed=False)
     # No PIN: an empty answer to both of the keygen's prompts.
     joel.run(
         f"SSH_ASKPASS_REQUIRE=force SSH_ASKPASS={values['noPin']}"
@@ -111,10 +114,9 @@ def keys(joel: Joel, values: dict[str, Any]) -> Keys:
     )
     joel.run("systemctl --user restart ssh-tpm-agent")
     joel.machine.wait_for_unit("signing-key.service", "joel")
-    # The agents' own agent reads its key as it starts, so it starts again too.
-    joel.run("systemctl --user stop agent-signing.service")
-    # Its socket listens only once the agents' key is there, which it wasn't at login,
-    # and its path unit starts it when the key appears.
+    # The agents' socket listens only once their key is there, which it wasn't at
+    # login, and its path unit starts it when the key appears. Their agent never
+    # ran over an older key, so nothing needs stopping first.
     joel.machine.wait_for_unit("agent-signing.socket", "joel")
     joel.run("git init -q repo")
     return Keys(

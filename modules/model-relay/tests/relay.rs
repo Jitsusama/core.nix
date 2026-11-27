@@ -1086,6 +1086,43 @@ async fn many_requests_share_a_few_connections() {
     drop(relay.said());
 }
 
+// The most it takes is what a machine keeps, so it's proven to start
+// at that count and keep to it with more requests than slots at once.
+#[tokio::test(flavor = "current_thread")]
+async fn the_most_connections_it_takes_are_kept_to() {
+    const MOST: usize = 16;
+    const ASKED: usize = 3 * MOST;
+    let origin = origin().await;
+    let host = origin.address.to_string();
+    let relay = Relay::start(&format!("https://{host}"), &origin.roots, MOST);
+
+    let asks: Vec<_> = (0..ASKED)
+        .map(|_| {
+            let (socket, host) = (relay.socket.clone(), host.clone());
+            tokio::spawn(async move { ask(&socket, request(&host, "/held", b"")).await })
+        })
+        .collect();
+    for asked in asks {
+        assert_eq!(
+            asked.await.expect("an ask").status,
+            StatusCode::OK,
+            "a request over {MOST} connections wasn't answered"
+        );
+    }
+
+    assert_eq!(
+        origin.handed.lock().expect("the record").len(),
+        ASKED,
+        "the origin wasn't handed every request"
+    );
+    let connections = origin.connections.load(Ordering::SeqCst);
+    assert!(
+        (1..=MOST).contains(&connections),
+        "{ASKED} requests took {connections} connections to the origin, past {MOST}"
+    );
+    drop(relay.said());
+}
+
 #[tokio::test(flavor = "current_thread")]
 async fn a_connection_the_origin_lets_go_is_opened_again() {
     let origin = origin().await;
@@ -2942,7 +2979,7 @@ async fn leaving_idle_held_by_a_silent_pi(origin: &Origin) -> (Relay, Vec<UnixSt
 }
 
 #[test]
-fn flags_it_no_longer_takes_and_a_drain_of_none_are_refused_as_usage() {
+fn flags_it_no_longer_takes_and_counts_out_of_range_are_refused_as_usage() {
     let folder = tempfile::tempdir().expect("a folder for the socket");
     let socket = folder.path().join("agents.sock");
     for (flag, why) in [
@@ -2958,6 +2995,10 @@ fn flags_it_no_longer_takes_and_a_drain_of_none_are_refused_as_usage() {
             ["--drain-within", "0"],
             "--drain-within takes at least a second",
         ),
+        // Past the most it takes, a machine asking for more fails the
+        // relay at its start, which its module's check guards against.
+        (["--connections", "17"], "--connections takes 1 to 16"),
+        (["--connections", "0"], "--connections takes 1 to 16"),
     ] {
         // Taken, the relay would leave idle within a second, not as usage.
         let ran = Command::new(env!("CARGO_BIN_EXE_model-relay"))

@@ -208,7 +208,11 @@ R   73    256  48000   3.1us   1.0us  0.01  0.00    4    S32LE 2 48000 alsa_outp
 
     #[test]
     fn a_camera_is_not_sound() {
-        assert!(!errors(TOP).contains_key("v4l2_input.video33"));
+        let errors = errors(TOP);
+        assert!(
+            !errors.contains_key("v4l2_input.video33"),
+            "the camera's node was counted as sound: {errors:?}"
+        );
     }
 
     #[test]

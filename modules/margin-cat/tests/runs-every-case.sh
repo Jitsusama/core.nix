@@ -39,9 +39,17 @@ fi
 hard=$((limit + 10))
 # What the shell's `time` says of each case: its own seconds, then the clock's.
 TIMEFORMAT='%U %S %R'
-used=$(mktemp)
-why=$(mktemp)
-trap 'rm -f "$used" "$why"' EXIT
+# Without its two scratch files the runner can't say a case's time or the
+# builder's reason, so it stops here rather than blaming the builder below.
+# They're let go as it ends from before either is made, so the first is
+# let go too when only the second can't be made.
+used=""
+why=""
+trap 'rm -f -- ${used:+"$used"} ${why:+"$why"}' EXIT
+if ! used=$(mktemp) || ! why=$(mktemp); then
+  echo "the runner couldn't make its scratch files" >&2
+  exit 1
+fi
 # A builder that holds the run below the hard limit a case needs refuses it
 # for every case alike, since each inherits the runner's, so it's said once,
 # before any case, with the figure, what would fit and ulimit's own reason,

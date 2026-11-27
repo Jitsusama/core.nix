@@ -1,4 +1,5 @@
 .pragma library
+.import "Places.js" as Places
 // In what order and how fast Reopen Them All may go (Sessions.qml): leaders
 // first, each once, when it may begin the next session, which of those
 // begun to tell to carry on, from the machine queue's own verdict, and
@@ -241,6 +242,42 @@ function givenBy(kept, places, before, screens) {
     const now = new Set(placed.map(one => one.output));
     return given.concat((before ?? [])
         .filter(was => !said.has(keptOn(was)) && !now.has(was.output)));
+}
+
+// Reopen Them All's sessions placed (Places.js's placed, of the places `kept`, with the screen
+// `inUse` and each one's `moments`) and the connectors they were given (givenBy, after `before`),
+// both from the one `screens` answer, so its windows can't be given connectors by other screens
+// than its sessions were placed by.
+function placedGiven(kept, screens, inUse, { moments, before }) {
+    const places = Places.placed(kept, screens, inUse, moments);
+    return { places, given: givenBy(kept, places, before, screens) };
+}
+
+// Where a window kept at `at` (of `moment`, the windows its boot kept) goes back by its kept
+// place, `kept` (Places.js's whereKept, past the twin connectors `given` so far, by the screen
+// `inUse`), and the one entry it adds to `given`, `gives`: givenOn's connector, not the one found,
+// which is last boot's while no screen is said, so its twin's windows aren't kept off it.
+function keptBack(at, moment, screens, { given, inUse }) {
+    const kept = Places.whereKept(at, moment, screens, { given, inUse });
+    return { kept, gives: { at, output: givenOn(at.screen, kept, screens) } };
+}
+
+// The workspaces noted away (Sessions.qml's awayFrom, by screen) once workspace `id` is noted
+// away as `away` (a place's, of Places.js's awayOf) says, or null when there's nothing to note:
+// no note, no id, or that id noted from that screen already. In a map with no prototype
+// (Places.js's byName), so a place kept on a prototype's name, even __proto__, is noted as any.
+function notedAway(awayFrom, away, id) {
+    if (!away || id === null || id === undefined) {
+        return null;
+    }
+    const next = Places.byName(awayFrom);
+    const kept = next[away.screen] ?? [];
+    if (kept.some(one => one.id === id)) {
+        return null;
+    }
+    next[away.screen] = kept.concat([{ id, workspace: away.workspace, output: away.output,
+        others: away.others ?? {} }]);
+    return next;
 }
 
 // Reopen Them All's queue with `more` joined at its end, but for each one
