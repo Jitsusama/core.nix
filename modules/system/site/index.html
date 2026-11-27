@@ -13,6 +13,9 @@
 <meta name="theme-color" media="(prefers-color-scheme: light)" content="@light-ground@">
 <script>"use strict";
   document.documentElement.classList.add("js");
+  // The page waits unseen until it first draws (site.ts), so its first sight is the page whole
+  // rather than one that drops as its places and looks arrive.
+  document.documentElement.classList.add("waits");
   try {
     const t = localStorage.getItem("theme");
     if (t === "light" || t === "dark") {

@@ -12,8 +12,8 @@ drawer, say broken when the daemon stops and live again, its repositories
 drawn, when it's back, say stale when the server goes, move its ages on while
 nothing is written, make today's growth yesterday's once the day turns, move no
 row or tree as the cursor steps, keep focus where it was through a redraw, let
-Tab reach the head's keys once, not shift as its feeds arrive on a reload, nor
-hold room for what a reload forgets or at another width, draw a
+Tab reach the head's keys once, not shift as its feeds arrive on a first visit
+or a reload, nor hold room for what a reload forgets or at another width, draw a
 second's burst of records a few times rather than each, draw a thread for
 each cell joining two repositories on the map under the work and walk it by
 keys, and pass the web-design skill's page checks, its homes check and its
@@ -73,8 +73,8 @@ KINDS = ["reading", "repository", "checkout", "tree", "change", "using"]
 # element is each drawer's way to its row in the launcher, where its acts are. Three of the files
 # and four of the kilobytes are what keeps a draw light: its pace, the trees a drawer lists and
 # the foot's reasons. One kilobyte is the theme's 12 px floor on each step of its type, which
-# every page reads.
-BUDGET = Budget(files=37, kilobytes=536, elements=276)
+# every page reads. One is what holds a first visit unseen until it draws.
+BUDGET = Budget(files=37, kilobytes=537, elements=276)
 CELLS_SITE = "cells/"
 
 
@@ -695,17 +695,42 @@ def test_tab_reaches_the_keys_at_the_head_once(code_page: Page) -> None:
     expect(keys.nth(1), "Tab back didn't come to the key last left").to_be_focused()
 
 
+# Every shift of the page the reader didn't cause, from its first paint on.
+SHIFTS = """globalThis.shifted = 0;
+new PerformanceObserver((list) => {
+  for (const each of list.getEntries()) {
+    globalThis.shifted += each.hadRecentInput ? 0 : each.value;
+  }
+}).observe({ type: "layout-shift", buffered: true });"""
+
+
+@pytest.mark.parametrize("size", SIZES)
+def test_a_first_visit_holds_the_page_still(
+    browser: Browser, code_served: Served, size: tuple[int, int]
+) -> None:
+    root, _ = code_served
+    width, height = size
+    context = browser.new_context(viewport={"width": width, "height": height})
+    try:
+        page = context.new_page()
+        page.add_init_script(SHIFTS)
+        page.goto(f"{root}code/")
+        says_it_stands(page, "live")
+        expect(row(page, "github:owl/core"), "a first visit drew no row").to_be_visible()
+        expect(page.locator("body"), "a first visit stayed unseen").to_be_visible()
+        page.wait_for_timeout(1000)
+        shifted = page.evaluate("() => globalThis.shifted")
+        assert shifted < STILL, f"a first visit at {width} px shifted {shifted} as it drew"
+    finally:
+        context.close()
+
+
 def test_a_reload_holds_the_page_still(code_page: Page) -> None:
     says_it_stands(code_page, "live")
     expect(row(code_page, "github:owl/core"), "Code drew no row for core").to_be_visible()
-    # Every shift of the page the reader didn't cause, from the reload's first paint on.
     code_page.add_init_script(
-        """globalThis.shifted = 0;
-        new PerformanceObserver((list) => {
-          for (const each of list.getEntries()) {
-            globalThis.shifted += each.hadRecentInput ? 0 : each.value;
-          }
-        }).observe({ type: "layout-shift", buffered: true });
+        SHIFTS
+        + """
         document.addEventListener("DOMContentLoaded", () => {
           globalThis.held = document.documentElement.style.getPropertyValue("--room-list");
         });"""

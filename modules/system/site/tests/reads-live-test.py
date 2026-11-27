@@ -13,8 +13,8 @@ long name leaving its look's words room at both widths, a machine's look
 saying why it matters with its one act, the launcher's row, at both widths,
 and a good part read
 from a kept answer never among them, its note said where it belongs. Its keys and
-places must move the cursor from section to section, and a machine's address
-must put it on that machine. Anything the page
+places must move the cursor from section to section, a machine's address
+must put it on that machine, and nothing may shift as it draws. Anything the page
 logs fails it, since that is how it drew four empty parts unseen on 16 November.
 The server, the browser and the tab are modules/local-sites/tests/live_page.py's.
 Long because every case reads the one page against the one stand-in daemon and its
@@ -50,6 +50,16 @@ COUNTED = "Two machines, both worth a look."
 # 413 elements since the builders' card, which the fixture's one good builder always
 # draws, and its code, about 4.4 KB of source on main's.
 BUDGET = Budget(files=25, kilobytes=455, elements=416)
+# How far the page may shift unasked: a tenth of the web's "good" bound, which a font
+# swapping in stays under, and a machine's places or looks arriving don't.
+STILL = 0.01
+# Every shift of the page the reader didn't cause, from its first paint on.
+SHIFTS = """globalThis.shifted = 0;
+new PerformanceObserver((list) => {
+  for (const each of list.getEntries()) {
+    globalThis.shifted += each.hadRecentInput ? 0 : each.value;
+  }
+}).observe({ type: "layout-shift", buffered: true });"""
 
 
 @pytest.fixture
@@ -791,6 +801,27 @@ def test_the_system_page_keeps_to_its_budget(browser: Browser, system_served: Se
         says_it_stands(opened.page, "live")
     finally:
         opened.close()
+
+
+@pytest.mark.parametrize("size", SIZES)
+def test_the_system_page_holds_still_as_it_draws(
+    browser: Browser, system_served: Served, size: tuple[int, int]
+) -> None:
+    root, _ = system_served
+    width, height = size
+    context = browser.new_context(viewport={"width": width, "height": height})
+    try:
+        page = context.new_page()
+        page.add_init_script(SHIFTS)
+        page.goto(f"{root}system/")
+        says_it_stands(page, "live")
+        counted(page)
+        expect(page.locator("body"), "the page stayed unseen").to_be_visible()
+        page.wait_for_timeout(1000)
+        shifted = page.evaluate("() => globalThis.shifted")
+        assert shifted < STILL, f"the page at {width} px shifted {shifted} as it drew"
+    finally:
+        context.close()
 
 
 @pytest.mark.parametrize("look", LOOKS)

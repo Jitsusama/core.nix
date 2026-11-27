@@ -169,7 +169,7 @@ function draw(): void {
   if (wasIn) {
     keepIn(opened, inner);
   }
-  roomDrawn(repos() && cellsHeard);
+  roomDrawn({ repos: repos(), everyFeed: repos() && cellsHeard });
   land();
 }
 
