@@ -3522,17 +3522,21 @@
     them, only the agents' SSH proxy its hosts get and none of the variables a pi host's unit
     clears, nor bash's start-up variables, rather than on a host's thread; left running through
     a switch for up to two hours, started only once it has waited up to 15 minutes for the
-    machine to have room, reading when the last sweep ended, a wait whose failure still starts
-    it, made to give memory back past 6 GiB with no hard limit, its own, its
-    slices' or its account manager's, to kill it at, skipped where the harness isn't installed,
-    and never on a Mac
+    machine to have room, reading when the last sweep ended, as a condition whose skip leaves
+    the unit unfailed, at disk weight 1, made to give memory back past 6 GiB with no hard
+    limit, its own, its slices' or its account manager's, to kill it at, skipped where the
+    harness isn't installed, and never on a Mac
   '';
   pi-sweep-waits-for-room = ''
     the hourly sweep's room check lets it start at once when memory and I/O stalled little over
     five minutes and a quarter of memory is free, and when either stalled past its mark or memory
-    is short waits, saying why, then lets it start as soon as the stall clears or its wait runs
-    out, never skipping the hour; one whose last sweep ended too long ago for a wait to end
-    before the hosts take over, or left no stamp, lets it start at once; one that can't read the
+    is short waits, saying why, then lets it start as soon as the stall clears; a wait that runs
+    out skips the hour, ending 1, only when the next hour's run would find the stamp young
+    enough to start before the hosts, judged by the stamp as read after its last sleep; one
+    whose last sweep ended too long ago for a wait to end before the hosts take over, or that
+    left no stamp or one ahead of the clock, lets it start at once; one that fails itself, by a
+    command or by bash, lets it start, and one asked wrongly ends 64, or under a unit says so
+    and lets it start, rather than skip every hour unheard; one that can't read the
     machine, or reads a value that isn't a number, lets it start at once, naming what it
     couldn't read, and runs nothing it read
   '';
