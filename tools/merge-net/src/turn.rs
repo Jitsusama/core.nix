@@ -346,14 +346,7 @@ pub fn waits(commit: &str, passes: &[&str], ours: &[String]) -> Option<(String, 
         gone: &gone,
         text: &nothing,
     };
-    let held_for_a_fate: Vec<(String, String)> = held
-        .shared
-        .iter()
-        .filter_map(|file| {
-            let fate = fates::sharing(&fates, &gate, file)?;
-            Some((file.clone(), fate.to_owned()))
-        })
-        .collect();
+    let held_for_a_fate = fates::sharing(&fates, &gate, &held.shared);
     let said = format!(
         "merge-net: the gate in {} at {}, which counts as started {} minutes before this \
          one's, as its tree's first gate did, {state} and {}; merging first \

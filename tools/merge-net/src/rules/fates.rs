@@ -115,20 +115,23 @@ pub fn beside(fates: &[Fate], branch: &Side, main: &Side) -> Vec<String> {
     shared
 }
 
-/// The name of a fate `file` lies in that one of `side`'s paths, changed,
-/// renamed or deleted, lies in too, so a hold for it can say the fate
-/// rather than a crate or a file both change.
-pub fn sharing<'a>(fates: &'a [Fate], side: &Side, file: &str) -> Option<&'a str> {
-    fates
+/// Each of `files` that lies in a fate one of `side`'s paths, changed,
+/// renamed or deleted, lies in too, with that fate's name, so a hold for
+/// it can say the fate rather than a crate or a file both change.
+pub fn sharing(fates: &[Fate], side: &Side, files: &[String]) -> Vec<(String, String)> {
+    let touched = |fate: &&Fate| {
+        side.changed
+            .iter()
+            .chain(side.gone)
+            .any(|path| fate.holds(path))
+    };
+    files
         .iter()
-        .filter(|fate| fate.holds(file))
-        .find(|fate| {
-            side.changed
-                .iter()
-                .chain(side.gone)
-                .any(|path| fate.holds(path))
+        .filter_map(|file| {
+            let fate = fates.iter().filter(|fate| fate.holds(file)).find(touched)?;
+            Some((file.clone(), fate.name.clone()))
         })
-        .map(|fate| fate.name.as_str())
+        .collect()
 }
 
 #[cfg(test)]
@@ -218,15 +221,15 @@ mod tests {
             gone: &gone,
             text: &nothing,
         };
+        let files = owned(&[
+            "modules/local-sites/kit/head.css",
+            "modules/net/site/panel.ts",
+        ]);
         assert_eq!(
-            sharing(&fates, &side, "modules/local-sites/kit/head.css"),
-            Some("the map"),
-            "a file in the fate a side renamed out of wasn't named by it"
-        );
-        assert_eq!(
-            sharing(&fates, &side, "modules/net/site/panel.ts"),
-            None,
-            "a file in a fate the side never touched was named"
+            sharing(&fates, &side, &files),
+            vec![(files[0].clone(), "the map".to_owned())],
+            "a file in the fate a side renamed out of wasn't named by it, or one in a fate it \
+             never touched was"
         );
     }
 
