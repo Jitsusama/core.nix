@@ -557,8 +557,6 @@ pub fn told_as(line: &Value) -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::fmt::Write as _;
-
     use serde_json::json;
 
     use super::*;
