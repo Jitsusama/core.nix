@@ -4169,6 +4169,18 @@ mod tests {
             Some(DESK),
             "the chooser heard a point that warned before a restart"
         );
+        // A second past its end, as the end is carried over the boot clock
+        // to the millisecond, not the instant.
+        let past = until + Duration::from_secs(1);
+        assert!(
+            !arrivals.drops("wlan2", DESK, past),
+            "a warning taken in after a restart kept the way back off past its end"
+        );
+        assert_eq!(
+            state.warned_from("wlan2", past),
+            None,
+            "a warning taken in after a restart kept the chooser off past its end"
+        );
         assert_eq!(
             said,
             vec![format!(
