@@ -607,6 +607,21 @@ def test_the_map_says_it_still_waits_on_messages_that_never_answer(
     opened.close()
 
 
+def test_a_stale_map_says_nothing_of_reading_its_messages(
+    browser: Browser, slow_talk_served: Served
+) -> None:
+    root, server = slow_talk_served
+    opened = Opened(browser, f"{root}mycelium/", SIZES[-1], "dark")
+    page = opened.page
+    the_map_stands(page, "live")
+    asof = page.locator("#asof")
+    expect(asof, "the map didn't say it was reading what passed").to_contain_text(READING_TALK)
+    opened.loses(server)
+    the_map_stands(page, "stale")
+    expect(asof, "a stale map said it was reading what it can't").not_to_contain_text(READING_TALK)
+    opened.close()
+
+
 # The networks node.json's realm leads, each drawn as a hub, and the one
 # branching from another, as a mind map branches.
 NETWORKS = ("orchestration.skiff1", "orchestration.tern01", "orchestration.heron1")
