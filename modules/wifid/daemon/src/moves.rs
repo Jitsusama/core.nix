@@ -1537,6 +1537,55 @@ mod tests {
     }
 
     #[test]
+    fn a_faint_call_hearing_nowhere_holds_rather_than_look() {
+        let (start, around, on) = (Instant::now(), [heard(DESK, -50)], joined(DESK));
+        let given_as = |measured| given(&mut Chooser::default(), start, &on, &around, measured);
+
+        let faint = given_as((0, Some(-75)));
+        let lossy = given_as((2, Some(-75)));
+
+        assert_eq!(
+            faint, None,
+            "a faint call hearing nowhere looked, off a link still carrying it for 5 to 6 s"
+        );
+        assert_eq!(
+            lossy,
+            Some(Next::Look),
+            "a losing call hearing nowhere didn't look"
+        );
+    }
+
+    #[test]
+    fn a_call_gives_way_to_a_point_spurned_past_its_firm_only_once_its_link_is_gone() {
+        // Gone back from the hall to the desk twice on the desk's usual,
+        // so the hall is kept off an hour, yielding to a failing link at
+        // once.
+        let start = Instant::now();
+        let spurned = || choose::tests::back_twice_on_the_usual(start);
+        let around = [heard(DESK, -50), heard(HALL, -50)];
+        let on = joined(DESK);
+        let (mut gone, again) = spurned();
+        let (mut losing, _) = spurned();
+
+        // Five echoes lost of ten is `fading::GONE`, and two is only
+        // `fading::DROPPED`, each past the back's own `fading::BETWEEN`.
+        let past = again + fading::BETWEEN;
+        let to_gone = given(&mut gone, past, &on, &around, (5, Some(-50)));
+        let to_losing = given(&mut losing, past, &on, &around, (2, Some(-50)));
+
+        assert_eq!(
+            to_gone,
+            Some(Next::Move(HALL.into())),
+            "a call whose link was gone kept off a point spurned past its firm"
+        );
+        assert_eq!(
+            to_losing,
+            Some(Next::Look),
+            "a call losing two echoes took a point spurned, as though its link were gone"
+        );
+    }
+
+    #[test]
     fn a_give_way_never_reached_is_kept_off_and_the_card_looks() {
         let (mut chooser, start) = (Chooser::default(), Instant::now());
         let around = [heard(DESK, -50), heard(HALL, -50)];
