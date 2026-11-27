@@ -1839,10 +1839,18 @@ Scope {
     // lets go, and which landing on the row itself ends, so the link was
     // dropped unsaid (#6583's second review). A key pressed since lets it
     // go, the cursor being his (keyPressing), as the launcher shutting
-    // does; so nothing's done then.
+    // does; so nothing's done then. Told while an opening from a kept place
+    // still draws, `open` not yet set, it's judged once it is (onOpenChanged),
+    // rather than let go with the foot still promising the walk (#6583's
+    // stack round, 82).
     function lookLinkHeard(id) {
         if (lookLanding === null || lookLanding.id !== id)
             return;
+        if (!open && opening) {
+            lookUnheard.stop();
+            lookLanding = Object.assign({}, lookLanding, { heard: true });
+            return;
+        }
         if (landOn === lookLanding.wanted)
             landOn = null;
         lookLanding = null;
@@ -11161,7 +11169,8 @@ Scope {
     property var codeLanding: null
     // The look a link named while the looks aren't told, `{ id, wanted }`,
     // its landing among them, until they're told, a key or a shut lets it
-    // go, or lookUnheard gives up on it (showLook, lookLinkHeard).
+    // go, or lookUnheard gives up on it (showLook, lookLinkHeard); `heard`
+    // once they're told while its opening still draws.
     property var lookLanding: null
     // The looks never told while a link waits, as with no to-do daemon
     // answering, are said in the foot after a while rather than its "opens
@@ -11742,8 +11751,15 @@ Scope {
             lookLanding = null;
             toldInto = "";
         }
-        else
+        else {
             spotsBegin();
+            // A look link told its looks while this opening drew is judged
+            // now it's open, after the fill this handler sets going.
+            if (lookLanding?.heard === true) {
+                const id = lookLanding.id;
+                Qt.callLater(() => lookLinkHeard(id));
+            }
+        }
         keysHeld = filling && keysHeld;
         lettingGo = false;
         handing = null;
@@ -13079,6 +13095,9 @@ Scope {
     // does: nothing woke for it, so nothing has to settle.
     function unopened() {
         opening = false;
+        // Nor does a look link it was opened for wait into the next.
+        lookLanding = null;
+        lookUnheard.stop();
         openInto = "";
         landsOnFill = null;
         spotsLater.restart();

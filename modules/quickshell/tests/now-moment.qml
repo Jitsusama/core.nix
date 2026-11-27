@@ -2018,15 +2018,24 @@ ShellRoot {
         // A link followed before the stream told the looks, as just after the
         // shell starts, keeps its look until they're told and then hands it to
         // the launcher to judge, never saying it unheld before it's known; one
-        // after they're told keeps none, since lookPlace judged it then.
-        const answeredBefore = now.looksAnswered;
-        now.looksAnswered = false;
+        // after they're told keeps none, since lookPlace judged it then. It's
+        // driven through the stream's own answered, as the shell drives it,
+        // so Now's looksAnswered stays bound to it for every later case, and
+        // judged by looksHeard, as a revision of the looks judges it, never
+        // by a call the shell doesn't make (#6583's stack round, 64 and 75).
+        // The stand-in stream holds no looks, so the looks this file gave
+        // Now are kept and given back after.
+        const stream = now.lookStream;
+        const answeredBefore = stream.answered;
+        const textsBefore = now.lookTexts;
+        stream.answered = false;
         theLauncher.looksHeard = [];
         now.awaitLook("z");
-        now.lookJudged();
+        now.looksHeard();
         const keptUnheard = [now.lookWaiting, theLauncher.looksHeard.length];
-        now.looksAnswered = true;
-        now.lookJudged();
+        stream.answered = true;
+        now.looksHeard();
+        now.lookTexts = textsBefore;
         expect("a link before the looks are told waits on them, and is judged once they are",
             JSON.stringify([keptUnheard, now.lookWaiting, theLauncher.looksHeard])
                 === JSON.stringify([["z", 0], "", ["z"]]),
@@ -2034,7 +2043,7 @@ ShellRoot {
         now.awaitLook("y");
         expect("a link once the looks are told waits on nothing",
             now.lookWaiting === "", now.lookWaiting);
-        now.looksAnswered = answeredBefore;
+        stream.answered = answeredBefore;
         const linkedTexts = now.lookTexts;
         now.lookTexts = Object.assign({}, linkedTexts, { "h.json": JSON.stringify({ v: 1,
             id: "h", kind: "page", at: root.lookedAt, target: "https://example.com",
