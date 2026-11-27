@@ -10,6 +10,10 @@ draws them.
   legend's marks and words, each machine's section and its ties, the rows
   the keys step through, what a screen reader hears, and that the page's
   own files wear no weather words.
+- `sides.test.ts` tries what the page reads of a machine's looks list and
+  its side: each readable, absent, unreadable or torn from the other, the
+  side said from the looks where it can't be read, and what the page says
+  it couldn't read.
 - `looks.test.ts` tries what the page lists first as worth a look: worst
   first across the machines and the parts, whose each is and where it
   leads, a part not read, eight at most and the rest counted, nothing
