@@ -24,10 +24,6 @@
   "modules/calls/src/lib.rs" = 5;
   "modules/chrome/open-tabs/host/src/main.rs" = 1;
   "modules/chrome/pack-extension/src/main.rs" = 1;
-  "modules/collector/src/otlp.rs" = 2;
-  "modules/collector/src/pressure.rs" = 4;
-  "modules/collector/src/when.rs" = 3;
-  "modules/collector/tests/collector.rs" = 1;
   "modules/console/font/src/main.rs" = 10;
   "modules/desk-facts/facts.rs" = 17;
   "modules/device-check/src/main.rs" = 13;
@@ -160,10 +156,6 @@
   "modules/key-counts/src/tally.rs" = 5;
   "modules/lag-watch/src/kernel.rs" = 2;
   "modules/lid/docked/src/main.rs" = 11;
-  "modules/load-proof/src/frames.rs" = 2;
-  "modules/load-proof/src/run.rs" = 4;
-  "modules/load-proof/src/save.rs" = 1;
-  "modules/load-proof/src/sound.rs" = 1;
   "modules/machine/tests/daemon.rs" = 1;
   "modules/mic-mute-light/mic-mute-light.rs" = 13;
   "modules/network-revive/src/config.rs" = 1;
@@ -303,9 +295,7 @@
   "tests/vm/devices/usb-wake-vm-test.py" = 3;
   "tests/vm/guide/guide-install-vm-test.py" = 1;
   "tests/vm/network/wifi/wifi-joins-when-asked-vm-test.py" = 1;
-  "tools/merge-net/src/rules/mod.rs" = 17;
   "tools/merge-net/src/watch.rs" = 24;
-  "tools/merge-net/src/world.rs" = 11;
   "tools/shell-preview/src/desktop.rs" = 3;
   "tools/shell-preview/src/layout.rs" = 3;
   "tools/shell-preview/tests/shell_preview.rs" = 1;

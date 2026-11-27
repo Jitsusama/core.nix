@@ -130,12 +130,22 @@ pub fn waited(schedstat: &str) -> Option<u64> {
     schedstat.split_whitespace().nth(1)?.parse().ok()
 }
 
+/// The longest name a thread can give itself, in bytes: the kernel's
+/// `TASK_COMM_LEN` less its closing nul.
+const NAME: usize = 15;
+
 /// How long a thread has waited for a CPU in all, in ns, by the fair
 /// scheduler's own count in its `sched`: `wait_sum`, never the
 /// `iowait_sum` beside it. The kernel prints both in ms, and prints
 /// neither while `kernel.sched_schedstats` is off, when this is None.
+/// The file opens with the thread's name, which the thread sets itself
+/// and may break over lines, so only what follows the row of dashes
+/// under it is read: a row longer than any name, which no name can forge.
+/// A file without that row reads as None.
 pub fn fair_waited(sched: &str) -> Option<u64> {
-    let ms: f64 = sched.lines().find_map(|line| {
+    let mut lines = sched.lines();
+    lines.find(|line| line.len() > NAME && line.bytes().all(|b| b == b'-'))?;
+    let ms: f64 = lines.find_map(|line| {
         let (key, value) = line.split_once(':')?;
         let key = key.trim();
         (key == "wait_sum" || key.ends_with(".wait_sum")).then(|| value.trim().parse().ok())?
@@ -248,12 +258,15 @@ pub struct Thread {
 
 /// A thread's wait for a CPU in ns by both of the kernel's counts, the
 /// schedstat's and the fair scheduler's where it keeps one, and when they
-/// were read.
+/// were read. And what each count, the schedstat's and the fair one, grew
+/// by in the tick that ended at this read and the other didn't match
+/// (`credit_since`), kept for one tick in case the other books it late.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Read {
     pub counted: u64,
     pub fair: Option<u64>,
     pub at: Instant,
+    pub owed: (u64, u64),
 }
 
 impl Read {
@@ -264,12 +277,53 @@ impl Read {
     /// up to seconds; the fair count a sleeper's time still queued before
     /// it leaves, 310 ms against 125 ms over 30 s for Chrome's main thread
     /// on 26 November. None when the schedstat's count went back.
+    ///
+    /// The two credit a wait at different moments: the schedstat adds a
+    /// queued thread's wait so far when it moves between CPUs, the fair
+    /// count only when the wait ends. So a wait across a read could be
+    /// booked by one count in one tick and the other in the next, and the
+    /// lesser in each would drop it. What one grew by and the other didn't
+    /// in the tick before is owed (`owed`), and is counted when the other's
+    /// growth this tick, past what both matched, books it. What's owed is
+    /// let go after one tick, so a sleep one count booked is counted only
+    /// up to the other's own excess in the ticks either side, and a wait
+    /// across two reads loses what the schedstat booked of it before the
+    /// first. A fair count that went back leaves the schedstat's alone.
     pub fn waited_since(&self, old: &Read) -> Option<u64> {
         let counted = self.counted.checked_sub(old.counted)?;
-        Some(match (self.fair, old.fair) {
-            (Some(now), Some(then)) => now.checked_sub(then).map_or(counted, |f| counted.min(f)),
-            _ => counted,
-        })
+        Some(
+            self.matched(old, counted)
+                .map_or(counted, |(waited, _)| waited),
+        )
+    }
+
+    /// Takes what each count is owed for the tick after this read
+    /// (`owed`): what it grew by since `old` that nothing matched, never
+    /// what `old` was owed, which is let go.
+    pub fn credit_since(&mut self, old: &Read) {
+        self.owed = self
+            .counted
+            .checked_sub(old.counted)
+            .and_then(|counted| self.matched(old, counted))
+            .map_or((0, 0), |(_, owed)| owed);
+    }
+
+    /// What `waited_since` counts and `credit_since` owes, from what the
+    /// schedstat grew by (`counted`), where both counts were read and the
+    /// fair one didn't go back. What pays an owed count is taken off what
+    /// this tick owes, so no growth is counted twice and the whole stays
+    /// within the lesser count over the ticks.
+    fn matched(&self, old: &Read, counted: u64) -> Option<(u64, (u64, u64))> {
+        let fair = self.fair?.checked_sub(old.fair?)?;
+        let both = counted.min(fair);
+        let (counted_left, fair_left) = (counted - both, fair - both);
+        let (counted_owed, fair_owed) = old.owed;
+        let counted_paid = counted_owed.min(fair_left);
+        let fair_paid = fair_owed.min(counted_left);
+        Some((
+            both + counted_paid + fair_paid,
+            (counted_left - fair_paid, fair_left - counted_paid),
+        ))
     }
 }
 
@@ -415,10 +469,16 @@ impl Watching {
             .retain(|id, _| self.threads.iter().any(|t| t.id == *id));
     }
 
-    /// One tick's worst sending wait, the threads' reads kept for the next.
+    /// One tick's worst sending wait, the threads' reads kept for the next
+    /// with what each count is owed.
     fn tick(&mut self, proc: &Path) -> Option<(f64, String)> {
-        let now = reads(proc, &self.threads);
+        let mut now = reads(proc, &self.threads);
         let found = worst(&self.threads, &now, &self.before);
+        for (id, read) in &mut now {
+            if let Some(was) = self.before.get(id) {
+                read.credit_since(was);
+            }
+        }
         self.before.extend(now);
         found
     }
@@ -440,6 +500,7 @@ fn reads(proc: &Path, threads: &[Thread]) -> HashMap<(u32, u32), Read> {
                     counted,
                     fair,
                     at: Instant::now(),
+                    owed: (0, 0),
                 },
             ))
         })
@@ -837,23 +898,47 @@ mod tests {
 
     #[test]
     fn a_thread_s_fair_wait_is_its_sched_s_wait_sum_in_ns() {
-        let sched = "se.sum_exec_runtime   :   1.463270\n\
-                     iowait_sum            : 900.000000\n\
-                     wait_sum              :  12.250000\n";
+        let sched = format!(
+            "{HEADER}se.sum_exec_runtime   :   1.463270\n\
+             iowait_sum            : 900.000000\n\
+             wait_sum              :  12.250000\n"
+        );
         assert_eq!(
-            fair_waited(sched),
+            fair_waited(&sched),
             Some(12_250_000),
             "the wait_sum line, in ms, wasn't read as ns"
         );
         assert_eq!(
-            fair_waited("se.statistics.wait_sum : 2.000000\n"),
+            fair_waited(&format!("{HEADER}se.statistics.wait_sum : 2.000000\n")),
             Some(2_000_000),
             "an older kernel's keyed wait_sum wasn't read"
         );
         assert_eq!(
-            fair_waited("iowait_sum : 900.000000\n"),
+            fair_waited(&format!("{HEADER}iowait_sum : 900.000000\n")),
             None,
             "the io wait was read as a wait for a CPU"
+        );
+    }
+
+    /// How the kernel opens a thread's `sched`: its name, pid and
+    /// threads, over a row of dashes.
+    const HEADER: &str = "niri (2696, #threads: 22)\n\
+         -------------------------------------------------------------------\n";
+
+    #[test]
+    fn a_thread_s_own_name_never_reads_as_its_fair_wait() {
+        let forged = "\nwait_sum:9e9\n\n-----\n (7, #threads: 1)\n\
+             -------------------------------------------------------------------\n\
+             wait_sum : 3.000000\n";
+        assert_eq!(
+            fair_waited(forged),
+            Some(3_000_000),
+            "a wait_sum or dashes in the thread's own name were read"
+        );
+        assert_eq!(
+            fair_waited("wait_sum : 3.000000\n"),
+            None,
+            "a sched with no row of dashes was read"
         );
     }
 
@@ -864,6 +949,7 @@ mod tests {
             counted,
             fair,
             at: then,
+            owed: (0, 0),
         };
         assert_eq!(
             read(4_000_000_000, Some(2_000_000)).waited_since(&read(0, Some(0))),
@@ -893,6 +979,86 @@ mod tests {
     }
 
     #[test]
+    fn a_wait_one_count_books_a_tick_late_is_still_counted_once() {
+        let then = Instant::now();
+        let reads = [(0, 0), (200, 0), (200, 500), (700, 500)].map(|(counted, fair)| Read {
+            counted,
+            fair: Some(fair),
+            at: then,
+            owed: (0, 0),
+        });
+        let mut was = reads[0];
+        let mut waited = Vec::new();
+        for mut read in reads.into_iter().skip(1) {
+            waited.push(read.waited_since(&was).unwrap());
+            read.credit_since(&was);
+            was = read;
+        }
+        assert_eq!(
+            waited,
+            [0, 200, 300],
+            "a wait the two counts booked a tick apart was dropped or counted twice"
+        );
+        let sleep = |counted, fair, owed| Read {
+            counted,
+            fair: Some(fair),
+            at: then,
+            owed,
+        };
+        assert_eq!(
+            sleep(900, 2, (0, 0)).waited_since(&sleep(0, 0, (900, 0))),
+            Some(2),
+            "a sleep the schedstat booked was counted past the fair count's growth"
+        );
+        assert_eq!(
+            sleep(900, 900, (0, 0)).waited_since(&sleep(0, 0, (900, 0))),
+            Some(900),
+            "what both counts grew by this tick was cut by what was owed"
+        );
+    }
+
+    #[test]
+    fn a_tick_keeps_what_each_thread_s_counts_are_owed() {
+        let proc = std::env::temp_dir().join(format!("watch-owed-{}", std::process::id()));
+        let dir = proc.join("7/task/8");
+        fs::create_dir_all(&dir).unwrap();
+        let write = |counted_ns: u64, fair_ms: u64| {
+            fs::write(dir.join("schedstat"), format!("1 {counted_ns} 3\n")).unwrap();
+            fs::write(
+                dir.join("sched"),
+                format!("{HEADER}wait_sum : {fair_ms}.000000\n"),
+            )
+            .unwrap();
+        };
+        let mut watching = Watching {
+            threads: vec![Thread {
+                id: (7, 8),
+                name: "t8".to_owned(),
+            }],
+            ..Watching::default()
+        };
+        write(0, 0);
+        watching.before = reads(&proc, &watching.threads);
+        write(200_000_000, 0);
+        watching.tick(&proc);
+        let owed = watching.before[&(7, 8)].owed;
+        write(200_000_000, 500);
+        watching.tick(&proc);
+        let after = watching.before[&(7, 8)].owed;
+        fs::remove_dir_all(&proc).unwrap();
+        assert_eq!(
+            owed,
+            (200_000_000, 0),
+            "what the schedstat booked alone wasn't kept for the next tick"
+        );
+        assert_eq!(
+            after,
+            (0, 300_000_000),
+            "what was paid this tick was owed again"
+        );
+    }
+
+    #[test]
     fn a_tick_reads_both_counts_from_each_thread_s_task_folder() {
         let proc = std::env::temp_dir().join(format!("watch-reads-{}", std::process::id()));
         let task = |pid: u32, tid: u32| {
@@ -902,7 +1068,7 @@ mod tests {
         };
         let both = task(7, 8);
         fs::write(both.join("schedstat"), "1 4000000000 3\n").unwrap();
-        fs::write(both.join("sched"), "wait_sum : 2.000000\n").unwrap();
+        fs::write(both.join("sched"), format!("{HEADER}wait_sum : 2.000000\n")).unwrap();
         let alone = task(7, 9);
         fs::write(alone.join("schedstat"), "1 5000000 3\n").unwrap();
         task(7, 10);
@@ -1104,6 +1270,7 @@ mod tests {
             counted,
             fair: None,
             at: at(s),
+            owed: (0, 0),
         };
         let before = HashMap::from([((1, 1), read(0, 0)), ((1, 3), read(1_000_000_000, 4))]);
         let now = HashMap::from([

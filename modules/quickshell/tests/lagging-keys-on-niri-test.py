@@ -28,6 +28,8 @@ if TYPE_CHECKING:
 # How many times a kind of key is pressed for one of them to be slow enough to be said: the
 # nested niri's software frames take longer than FELT_MS for nearly every key.
 TRIES = 6
+# How many openings an arrow is pressed in for down and up to be said: six that end on each.
+ARROW_TRIES = 2 * TRIES
 # How long a key's line has to reach the shell's log after its frame, in seconds.
 WRITTEN_WITHIN = 2.0
 # A lagging key's line, holding what it said of the key.
@@ -45,12 +47,15 @@ LATE = re.compile(r"launcher: .+? answered (.+?) \d+ ms after its key")
 # Words typed with nothing else named by them, so no line says them but by the letters.
 UNNAMED = "zygodactyl"
 # What a program's drawer line says of its row, keyed `program:<its desktop entry's id>`: the id,
-# shaped as an app's (Presented.js's appWord), so RTOIMQ can time Chrome's drawer apart from
+# shaped as an app's (KeysSaid.js's appWord), so RTOIMQ can time Chrome's drawer apart from
 # kitty's (2026-11-24), and never more of the key.
 PROGRAMS_DRAWER = re.compile(r'drawer for "program:([A-Za-z0-9][A-Za-z0-9.-]*)"')
 # Any program's drawer line, shaped as PROGRAMS_DRAWER or said by its kind alone, but not one of
 # another kind that begins with program's word.
 A_PROGRAMS_DRAWER = re.compile(r'drawer for "program[:"]')
+# How many of the launcher's newest lines a case that fails gives, since the check prints only
+# the shell log's tail, which a later case's lines fill (#6855's merge run, 2026-11-26).
+LINES_GIVEN = 30
 
 # The shell, started once for the file's cases.
 shell = launcher_on_niri.shell
@@ -62,16 +67,19 @@ def keys_said(shell: Shell, mark: int) -> list[str]:
 
 
 def said_by(
-    shell: Shell, press: Callable[[], None], enough: Callable[[list[str]], bool]
+    shell: Shell,
+    press: Callable[[], None],
+    enough: Callable[[list[str]], bool],
+    tries: int = TRIES,
 ) -> list[str]:
-    """Press as `press` does, TRIES times at most, until the keys said are `enough`.
+    """Press as `press` does, `tries` times at most, until the keys said are `enough`.
 
     Give every key said since the first press, which a case reads whole, so a key said wrongly
     fails it whichever try said it.
     """
     mark = shell.mark()
     said: list[str] = []
-    for _ in range(TRIES):
+    for _ in range(tries):
         press()
         deadline = time.monotonic() + WRITTEN_WITHIN
         while time.monotonic() < deadline:
@@ -82,18 +90,46 @@ def said_by(
     return said
 
 
+def where(shell: Shell) -> tuple[object, object, object]:
+    """Give the place the launcher has selected, its row's name, and how many it lists in all.
+
+    The count takes in any headings, which nearly no list has. A launcher that can't be read
+    gives why in place of the name, so the case's failure still says what it saw.
+    """
+    try:
+        shown = shell.showing()
+    except (AssertionError, ValueError) as unread:
+        return None, f"unread: {unread}", None
+    return shown["current"], (shown["selected"] or {}).get("name"), shown["count"]
+
+
 def test_an_arrow_is_said_whole(shell: Shell) -> None:
-    """An arrow is said as itself, since the launcher names it and nobody typed it."""
-    shell.as_account(shell.ipc("toggle"))
-    shell.launcher_ready()
+    """Down and up are each said as themselves, since the launcher names them and nobody typed.
 
-    def down_and_up() -> None:
-        shell.send_key("down")
-        shell.send_key("up")
+    Only a key slower to its frame than FELT_MS is said, and a launcher done opening drew
+    every arrow sooner: pressed in one opening once its rows were in, twelve arrows each moved
+    the selection and none was said (2026-11-26). So each try opens the launcher, presses as
+    soon as it's ready, while its opening still draws, and closes it, as the step cases do. A
+    frame says only its newest key, so a try ends on the arrow it's for: down alone, then down
+    and up, from the first row the opening selects. A failure gives where the selection stood
+    after each try's arrows, and the launcher's own lines.
+    """
+    seen: list[tuple[object, object, object]] = []
+    mark = shell.mark()
 
-    said = said_by(shell, down_and_up, lambda keys: bool(ARROWS & set(keys)))
-    shell.close_launcher()
-    assert ARROWS & set(said), f"no arrow was said as itself: {said}"
+    def an_opening() -> None:
+        shell.as_account(shell.ipc("toggle"))
+        shell.launcher_ready()
+        for key in ["down"] if len(seen) % 2 == 0 else ["down", "up"]:
+            shell.send_key(key)
+        seen.append(where(shell))
+        shell.close_launcher()
+
+    said = said_by(shell, an_opening, lambda keys: set(keys) >= ARROWS, ARROW_TRIES)
+    logged = launcher_on_niri.logged_since(shell, mark).splitlines()
+    lines = "\n".join([line for line in logged if "launcher: " in line][-LINES_GIVEN:])
+    stood = f"place, row and count after each try's arrows: {seen}"
+    assert set(said) >= ARROWS, f"an arrow went unsaid as itself: {said}\n{stood}\n{lines}"
     assert "1 letter" not in said, f"an arrow was counted as typed: {said}"
 
 

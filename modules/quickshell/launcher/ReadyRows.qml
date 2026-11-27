@@ -20,6 +20,7 @@ import "ReadyRows.js" as Ready
 import "ActForms.js" as Forms
 import "Moved.js" as Moved
 import "Presented.js" as Presented
+import "ActsSaid.js" as ActsSaid
 import "Beneath.js" as Beneath
 import "../Confirm.js" as Confirm
 import "../Fuzzy.js" as Fuzzy
@@ -659,7 +660,7 @@ Scope {
         if (answer.error) {
             if (!searchless)
                 console.warn(`launcher: ${place}'s daemon can't search, asked again a `
-                    + `minute on: ${Presented.errorShown(answer.error, Options.reports)}`);
+                    + `minute on: ${ActsSaid.errorShown(answer.error, Options.reports)}`);
             searchless = true;
             searchlessAt = Date.now();
             searched(words);
@@ -751,7 +752,7 @@ Scope {
         const refused = answer === null || !!answer.error;
         if (refused && !typing.refused)
             console.warn(`launcher: ${place}'s daemon didn't answer ${typed}: `
-                + `${Presented.errorShown(answer?.error ?? null, Options.reports)}`);
+                + `${ActsSaid.errorShown(answer?.error ?? null, Options.reports)}`);
         const records = refused ? {} : answer.rows ?? {};
         for (const key of Object.keys(typedHeld)) {
             if (!(key in records) && !(key in held))
@@ -1233,22 +1234,22 @@ Scope {
     }
 
     // An act as its lines in the journal say it: by its key with reports on, and
-    // otherwise by its verb alone (Presented.actShown), since what follows may be
+    // otherwise by its verb alone (ActsSaid.actShown), since what follows may be
     // an agent's id or a calendar's words.
     function actSaid(one) {
-        return Presented.actShown(one.key, Options.reports);
+        return ActsSaid.actShown(one.key, Options.reports);
     }
 
     // Why an act was refused or withheld, as its line in the journal says it: quoted
     // with reports on, and otherwise by how many letters, as typed words are
     // (Presented.typedShown), since a daemon's words can name a row (Y2YBTS,
     // 2026-11-20, 41ca61c4). With them off, a refusal's `answer` gives its code, or
-    // that none came, beside the count (Presented.codeShown), so the line still
+    // that none came, beside the count (ActsSaid.codeShown), so the line still
     // tells a daemon refusing from one gone. A code, no one's words, is said whole,
-    // by the rule the : line's late refusals are said by (Presented.refusalShown).
+    // by the rule the : line's late refusals are said by (ActsSaid.refusalShown).
     function whySaid(why, answer) {
-        const code = answer === undefined ? "" : Presented.codeShown(answer);
-        return Presented.refusalShown(why, code, Options.reports);
+        const code = answer === undefined ? "" : ActsSaid.codeShown(answer);
+        return ActsSaid.refusalShown(why, code, Options.reports);
     }
 
     // An open whose program went between its rows being listed and Return opens nothing and says
@@ -1325,7 +1326,7 @@ Scope {
             copyWait.stop();
             copyWaiting = null;
             const why = Ready.refusal(answer, words);
-            console.info(`launcher: ${actSaid(one)} refused: ${Presented.codeShown(answer)}`);
+            console.info(`launcher: ${actSaid(one)} refused: ${ActsSaid.codeShown(answer)}`);
             launcher?.toldNot(name, "copy", why);
         });
         // Ended at once, as with no connection, it has no wait left to end.
@@ -1499,7 +1500,7 @@ Scope {
                 return;
             const why = Ready.refusal(answer, words);
             if (why !== "") {
-                console.info(`launcher: ${actSaid(one)} refused: ${Presented.codeShown(answer)}`);
+                console.info(`launcher: ${actSaid(one)} refused: ${ActsSaid.codeShown(answer)}`);
                 said(key, why);
                 return;
             }

@@ -122,7 +122,8 @@ pub struct Gateway {
     /// The tool the last call put to the gateway, once its `tools/call`
     /// went out, so a caller can tell a tool's failing from one before.
     put: Option<String>,
-    /// Each tool the last call put to the gateway, on any of its passes.
+    /// Each tool the last call put to the gateway, on any of its passes
+    /// but one refused or forgotten, which asked nothing.
     asked_of: Vec<String>,
 }
 
@@ -261,6 +262,10 @@ impl Gateway {
                     body: None,
                 }
             };
+            // A pass refused or forgotten did nothing, so it asked nothing.
+            if opened && (refuses(answer.status) || (answer.status == NOT_FOUND && !forgotten)) {
+                self.asked_of.pop();
+            }
             match answer.status {
                 status if refuses(status) && !refused => {
                     refused = true;

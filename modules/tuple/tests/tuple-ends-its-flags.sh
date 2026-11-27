@@ -6,27 +6,49 @@
 # act on; the build sandbox has no network and no account either, so even a
 # tuple that went further could reach nobody. A dash-led name counted among
 # the names shows "--" still ends tuple's flags. The same names without "--"
-# must be refused as a flag; with one name too many there too, a tuple that
-# stopped reading flags refuses them by count rather than going on.
+# must be refused as a flag. They come with names enough more that a tuple
+# that stopped reading flags, or read the name as a flag taking a value,
+# the next word with the long form, still has too many names and refuses
+# them by count rather than going on.
 set -euo pipefail
 
+# The check stops Tuple's daemon as it ends, and on a machine signed in to
+# Tuple that would be the person's own. Tuple finds its daemon by HOME and
+# XDG_RUNTIME_DIR, and keeps its account and log in XDG_DATA_HOME, so the
+# script runs only where each is set and in the folder it runs in, as its
+# check sets them, and the daemon it reaches is the one the probes started.
+# The data folder must be set too: unset, Tuple keeps it under HOME, which
+# a person running it from their home would pass with a runtime folder kept
+# there. A shell of the repository's, or any shell of the person's, has
+# none there (tuple-ends-its-flags-outside.sh runs it from each).
+if [[ ${HOME:-} != "$PWD" || ${XDG_RUNTIME_DIR:-} != "$PWD"/* ||
+  ${XDG_DATA_HOME:-} != "$PWD"/* ]]; then
+  echo "tuple-ends-its-flags.sh stops Tuple's daemon, so it runs only in its check's build:" \
+    "build checks.<system>.tuple-ends-its-flags instead" >&2
+  exit 1
+fi
+
 # Tuple's call helper says any tuple command may start Tuple's daemon, so
-# each probe is held to a time and its output goes to a file rather than a
-# pipe a daemon could keep open, and the daemon is stopped as the check ends.
-trap 'timeout 10 tuple stop > /dev/null 2>&1 || true' EXIT
+# each probe is held to a time, killed if it outlives it by five seconds,
+# and its output goes to a file rather than a pipe a daemon could keep open;
+# the daemon is stopped as the check ends.
+trap 'timeout -k 5 10 tuple stop > /dev/null 2>&1 || true' EXIT
 
 refuses() {
   local want=$1
   shift
   local said=$PWD/said
   # A refusal comes back at once; ten seconds is room for a loaded builder.
-  if timeout 10 tuple "$@" > "$said" 2>&1 < /dev/null; then
-    echo "tuple $* ran, where it should have refused its names by count" >&2
+  if timeout -k 5 10 tuple "$@" > "$said" 2>&1 < /dev/null; then
+    echo "tuple $* ran, where it should have refused its names; it said \"$(< "$said")\"" >&2
     exit 1
   else
     local status=$?
-    if [[ $status -eq 124 ]]; then
-      echo "tuple $* went on past ten seconds rather than refusing" >&2
+    # 124 is the limit's SIGTERM, and 137 a SIGKILL, the limit's five
+    # seconds on or anything else's, as an out-of-memory kill.
+    if [[ $status -eq 124 || $status -eq 137 ]]; then
+      echo "tuple $* was cut off (status $status) rather than refusing; it said" \
+        "\"$(< "$said")\"" >&2
       exit 1
     fi
   fi
@@ -37,12 +59,13 @@ refuses() {
 }
 
 # "received 2" is how cobra's counts say two names came, whichever count a
-# command keeps to.
+# command keeps to; a command that refuses two takes at most the one the
+# launcher passes.
 for name in -dashed@example.com --dashed@example.com; do
   refuses "received 2" call start -- "$name" another
   refuses "received 2" call join -- "$name" another
   refuses "received 2" contacts favorite -- "$name" another
   refuses "received 2" contacts unfavorite -- "$name" another
 done
-refuses "unknown shorthand flag" call start -dashed@example.com another
-refuses "unknown flag" call start --dashed@example.com another
+refuses "unknown shorthand flag" call start -dashed@example.com another more still
+refuses "unknown flag" call start --dashed@example.com another more still
