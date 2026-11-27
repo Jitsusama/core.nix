@@ -33,6 +33,8 @@ fn a_change_lays_its_added_and_edited_tests_over_the_base_and_no_other() {
     let said = "A\ttools/x/tests/new.rs\n\
                 M\tmodules/y/src/lib.rs\n\
                 M\tmodules/y/src/lib_tests.rs\n\
+                A\tmodules/y/src/new/tests.rs\n\
+                A\tmodules/y/tests/new/cases.rs\n\
                 D\tmodules/z/tests/gone.sh\n\
                 D\tmodules/z/old.rs\n\
                 R100\tmodules/q/tests/a.qml\tmodules/q/tests/b.qml\n\
@@ -45,12 +47,14 @@ fn a_change_lays_its_added_and_edited_tests_over_the_base_and_no_other() {
             tests: vec![
                 "tools/x/tests/new.rs".to_owned(),
                 "modules/y/src/lib_tests.rs".to_owned(),
+                "modules/y/tests/new/cases.rs".to_owned(),
                 "modules/y/tests/link.sh".to_owned(),
             ],
             moved: vec![(
                 "modules/q/tests/a.qml".to_owned(),
                 "modules/q/tests/b.qml".to_owned()
             )],
+            declared: vec!["modules/y/src/new/tests.rs".to_owned()],
             code: vec![
                 "modules/y/src/lib.rs".to_owned(),
                 "modules/z/old.rs".to_owned(),
@@ -58,8 +62,8 @@ fn a_change_lays_its_added_and_edited_tests_over_the_base_and_no_other() {
                 "modules/q/Two.qml".to_owned(),
             ],
         },
-        "a removed test was laid over the base, a moved one wasn't said apart, or code was \
-         taken for a test"
+        "a removed test was laid over the base, a moved one or one only new code declares \
+         wasn't said apart, or code was taken for a test"
     );
 }
 

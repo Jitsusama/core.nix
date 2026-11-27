@@ -249,6 +249,30 @@ fn a_check_reading_the_whole_tree_is_said_and_not_built_over_the_base() {
         text(&ran.stderr)
     );
     assert!(!stand_in.built().contains("?rev="), "{}", stand_in.built());
+    let indexed = fs::read_to_string(stand_in.path("indexed")).unwrap_or_default();
+    let probe = "100644 blob e69de29bb2d1d6434b8b29ae775ad8c2e48c5391\tchanged-checks-probe";
+    assert!(
+        indexed.lines().any(|line| line == probe),
+        "no probe was laid at the root beside the tests: {indexed}"
+    );
+}
+
+#[test]
+fn a_new_test_file_only_the_changes_code_declares_is_said_and_not_laid() {
+    let change = "A\tmodules/a/src/new.rs\nA\tmodules/a/src/new/tests.rs\n";
+    let stand_in = committed("red-declared", change, "a3.drv");
+
+    let ran = stand_in.run(&["--system", "x86_64-linux"]);
+
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert!(
+        text(&ran.stderr).contains(
+            "modules/a/src/new/tests.rs is a new test file only the change's code declares"
+        ),
+        "{}",
+        text(&ran.stderr)
+    );
+    assert!(!stand_in.built().contains("?rev="), "{}", stand_in.built());
 }
 
 #[test]

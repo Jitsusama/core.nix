@@ -42,15 +42,16 @@ base's code, and refuses the change if one still passes there, naming the
 check and the tests. On 26 November the most common cause behind review
 findings, across 42 changes, was a test that passed with its fix undone.
 Tests are told from code by path: a `tests`, `test` or `checks` folder, a
-`checks.nix`, or a name ending `_test`, `-test`, `.test` or `tests`. A change
-of tests alone, a moved test, a test file the change only takes lines
-from, a test added among code, a lint (`-passes-clippy`,
-`-passes-qmllint`), a check reading the whole tree and a build over the
-base that failed with no builder failing it are said rather than refused.
-A revert is excused, and so is the train's candidate, whose riders were
-each judged at their own heads. Nix's log of the builds over the base is
-kept out of the run's, since one failing there as it should says nix's
-words for a failed build. A test that pins
+`checks.nix`, or a name starting `test_` or ending `_test`, `-test`, `.test`
+or `tests`. A change of tests alone, a moved test, a test file the change
+only takes lines from, a new Rust test file among a crate's sources (which
+only the change's code declares), a test added among code, a lint
+(`-passes-clippy`, `-passes-qmllint`), a check reading the whole tree and
+a build over the base that failed with no builder failing it are said
+rather than refused. A revert is excused, and so is the train's
+candidate, whose riders were each judged at their own heads. Nix's log of
+the builds over the base is kept out of the run's, since one failing
+there as it should says nix's words for a failed build. A test that pins
 behaviour already right passes on the base by design: a commit saying
 `Red-first: none, <why>` excuses its change, and the run says so.
 

@@ -10,7 +10,8 @@
 //!
 //! Tests are told from code by their paths alone ([`is_test`]): a file in
 //! a `tests`, `test` or `checks` folder, a `checks.nix`, or one whose name
-//! ends `_test`, `-test`, `.test` or `tests` before its extension. The
+//! starts `test_` or ends `_test`, `-test`, `.test` or `tests` before its
+//! extension. The
 //! change's added and edited test files are laid over the base's tree as a
 //! commit of their own, never checked out, and each check the gate built
 //! is evaluated there. Which checks those tests reach follows from the
@@ -37,13 +38,15 @@
 //!
 //! A change of tests alone is said and not built, a moved test file is
 //! said and not laid over the base, a test file the change only takes
-//! lines from isn't laid there, and tests added inside a code file, which
-//! no path tells apart, are said. A candidate of merge-net's train, all
-//! merges of changes judged at their own heads, isn't judged again.
+//! lines from isn't laid there, nor is a new Rust test file among a
+//! crate's sources, which only the change's code declares, and tests
+//! added inside a code file, which no path tells apart, are said. A
+//! candidate of merge-net's train, all merges of changes judged at their
+//! own heads, isn't judged again.
 //!
 //! A test that pins behaviour that was already right passes on the base
-//! by design: a commit of the change
-//! saying `Red-first: none, <why>` excuses it, and the run says so. A
+//! by design: a commit of the change saying `Red-first: none, <why>`
+//! excuses it, and the run says so. A
 //! revert, as the net lands one, restores old tests over code that passed
 //! them, and is excused too.
 
@@ -94,6 +97,16 @@ pub fn is_test(path: &str) -> bool {
         || marked.iter().any(|end| stem.ends_with(end))
 }
 
+/// Whether a test file a change adds is one only the change's code can
+/// declare: a Rust file among a crate's sources is compiled only where a
+/// module names it, and a base naming a file it lacks wouldn't build, so
+/// laid over the base it's never compiled, and its check passes there.
+fn declared_by_code(path: &str) -> bool {
+    let folders = path.rsplit_once('/').map_or("", |(folders, _)| folders);
+    Path::new(path).extension().is_some_and(|extension| extension == "rs")
+        && folders.split('/').any(|folder| folder == "src")
+}
+
 /// The files a change touched, by what they are.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Change {
@@ -101,6 +114,9 @@ pub struct Change {
     pub tests: Vec<String>,
     /// Test files moved, from and to, which pass on the base as before.
     pub moved: Vec<(String, String)>,
+    /// Test files added that only the change's code declares, which
+    /// would never run over the base.
+    pub declared: Vec<String>,
     /// Every other file touched, a moved one by both its paths.
     pub code: Vec<String>,
 }
@@ -123,6 +139,9 @@ impl Change {
                 }
                 // A test removed takes nothing from the base's tests.
                 (Some('D'), _) if is_test(path) => {}
+                (Some('A'), _) if is_test(path) && declared_by_code(path) => {
+                    change.declared.push(path.to_owned());
+                }
                 _ if is_test(path) => change.tests.push(path.to_owned()),
                 _ => change.code.push(path.to_owned()),
             }
@@ -465,8 +484,9 @@ fn say_verdict(passing: &[&str], red: &[String], tests: &[String]) {
     }
 }
 
-/// Say each test file the change moved, which isn't laid over the base,
-/// and each code file it added a test among the code of.
+/// Say each test file the change moved, or added for its code alone to
+/// declare, which isn't laid over the base, and each code file it added a
+/// test among the code of.
 fn say_apart(at: &At, change: &Change) -> Result<(), String> {
     for (from, to) in &change.moved {
         eprintln!(
@@ -474,10 +494,27 @@ fn say_apart(at: &At, change: &Change) -> Result<(), String> {
              where it passed as it was"
         );
     }
+    for file in &change.declared {
+        eprintln!(
+            "changed-checks: {file} is a new test file only the change's code declares, so \
+             it wouldn't run on the base, and isn't asked to fail there"
+        );
+    }
     if change.code.is_empty() {
         return Ok(());
     }
-    let mut asked = vec!["diff", "-U0", "--no-color", at.base, "HEAD", "--"];
+    // The prefixes are named, since a person's git may be set to leave
+    // them out, and the files are read from after them.
+    let mut asked = vec![
+        "diff",
+        "-U0",
+        "--no-color",
+        "--src-prefix=a/",
+        "--dst-prefix=b/",
+        at.base,
+        "HEAD",
+        "--",
+    ];
     asked.extend(change.code.iter().map(String::as_str));
     for file in inline_tests(&git(at.root, &asked, None, &[])?) {
         eprintln!(
