@@ -8,17 +8,17 @@ import { test as it } from "node:test";
 import { Held } from "../../../local-sites/kit/records.ts";
 import { escaped, headlineOf, legend, partsOf, placesOf } from "../draw.ts";
 import { machineHeadline } from "../machine.ts";
-import { allTold, systemOf } from "../model.ts";
+import { allTold, systemOf, thingsHeld } from "../model.ts";
 
-/** The three watches, told `these` whole, each to its kind's. */
+/** The four watches told `these` whole, the machines' and builders' as one, as the page reads. */
 function told(these: readonly { readonly key: string; readonly kind: string }[]) {
-  const summary = new Held();
-  const part = new Held();
-  const machine = new Held();
-  summary.took({ records: these.filter((record) => record.kind === "summary") });
-  part.took({ records: these.filter((record) => record.kind === "part") });
-  machine.took({ records: these.filter((record) => record.kind === "machine") });
-  return { summary, part, machine };
+  const heldOf = (kind: string) => {
+    const held = new Held();
+    held.took({ records: these.filter((record) => record.kind === kind) });
+    return held;
+  };
+  const machine = thingsHeld(heldOf("machine"), heldOf("builder"));
+  return { summary: heldOf("summary"), part: heldOf("part"), machine };
 }
 
 const deeper = { command: "mycelium machines", site: "mycelium/", launcher: "Agents" };
@@ -143,14 +143,16 @@ it("a machine's looks are read with their whys, and none from a record listing n
   const looksOf = (record: Record<string, unknown>) =>
     ospreyAs(record)?.parts[0]?.things.map((thing) => thing.looks);
   const looks = [reach, { side: "code failing", matters: "" }];
-  for (const [record, listed, why] of [
-    [osprey, looks, "a list whose look without a why is kept with none"],
-    [{ ...osprey, looks: undefined }, undefined, "an old daemon's record, listing none"],
-    [{ ...osprey, health: "good", looks: [], side: [] }, [], "a fine machine's"],
-    [{ ...osprey, side: "out of reach" }, looks, "a side the page can't read beside a list"],
+  const noSide = ["machine:osprey's side, so the page goes by its looks alone"];
+  for (const [record, listed, why, unread] of [
+    [osprey, looks, "a list whose look without a why is kept with none", []],
+    [{ ...osprey, looks: undefined }, undefined, "an old daemon's record, listing none", []],
+    [{ ...osprey, health: "good", looks: [], side: [] }, [], "a fine machine's", []],
+    [{ ...osprey, side: "out of reach" }, looks, "an unreadable side beside a list", noSide],
+    [{ ...osprey, looks: [], side: [7] }, [], "an unreadable side beside none", noSide],
   ] as const) {
     assert.deepEqual(looksOf(record)?.[1], listed, `${why} is read from its list`);
-    assert.deepEqual(ospreyAs(record)?.unread, [], `${why} is said as read`);
+    assert.deepEqual(ospreyAs(record)?.unread, unread, `${why} says only what it can't read`);
   }
   const notRead = ["machine:osprey's looks, so the page goes by its side alone, with no whys"];
   for (const [record, why] of [

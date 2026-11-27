@@ -48,12 +48,21 @@ const YES = ["Return", "Enter"];
 // Return that asked, doubled or bounced, and a key typed on from it
 // neither answer nor reach the line, or for no key at all, as a modifier
 // alone; "yes" for Return; and "no" for any other, Escape, - and y among
-// them, as any other key lets an armed row go.
+// them, as any other key lets an armed row go. A time that isn't a
+// number, as a caller that leaves it out, is early too: the guard holds
+// back a costly act, so a slip costs one dropped key, never an unasked yes.
 function answer(ask, key, now, guard) {
-    if (key === "" || now - ask.at < guard) {
+    if (key === "" || !Number.isFinite(now) || now - ask.at < guard) {
         return "early";
     }
     return YES.includes(key) ? "yes" : "no";
+}
+
+// Whether an ask takes a key, by what `answer` said of it, or "" where no
+// ask stands: a yes or a no, never an early key. The launcher's field and
+// its test both ask this, so they can't read an answer otherwise.
+function takes(said) {
+    return said === "yes" || said === "no";
 }
 
 // What d asks over the rows it would end, each { ends, name, kind }: the

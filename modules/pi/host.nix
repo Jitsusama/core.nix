@@ -567,7 +567,22 @@ in
               program its build can run, from the store and with its context,
               as lib.getExe gives one. A machine built on another platform,
               whose builder can't run its programs, goes without that proof,
-              and warns of it.
+              and warns of it unless conversationHeapGrowthMayGoUnproven is
+              set.
+            '';
+          };
+          conversationHeapGrowthMayGoUnproven = lib.mkOption {
+            type = lib.types.bool;
+            default = false;
+            description = ''
+              Whether a machine built on another platform may go without the
+              proof that the realm's node takes conversationHeapGrowingPercent,
+              saying nothing. Its builder can't run the node, so the proof
+              stands unproven, and the machine warns of it, which a check that
+              a machine evaluates without warnings refuses. Set it once the
+              node is known to take the percent, as one built the same way on
+              the machine's own platform shows. A machine built on its own
+              platform is proven either way.
             '';
           };
           asyncContextFrame = lib.mkOption {
@@ -740,7 +755,9 @@ in
           growthTaken = growthTakenOf realm host;
         in
         lib.optional (
-          host.conversationHeapGrowingPercent != null && growthTaken ? unproven
+          host.conversationHeapGrowingPercent != null
+          && growthTaken ? unproven
+          && !host.conversationHeapGrowthMayGoUnproven
         ) growthTaken.unproven
       ) cfg
     )

@@ -12,7 +12,8 @@
 //! slabs and the anonymous pages, which `minimum_image_size` counts, as far
 //! as swap has room for those. The hook switches zswap off first, so what
 //! reclaim swaps out for the image goes to the disk and counts as freed;
-//! what zswap's pool already holds stays in memory and is in use.
+//! what zswap's pool already holds is counted in use, though its shrinker may
+//! still write some out (zswap.rs says when).
 //! Free pages waiting on each processor's own list count as in use there,
 //! since only the free lists mark a page free, but they're the first the
 //! image's own allocation takes, so here they're free: on a 1 GiB machine

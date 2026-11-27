@@ -23,6 +23,9 @@
 //! the daemon serves none of them and sends no notice: it writes each row
 //! it would have shown, once, to would-tell.jsonl, with the message it
 //! would send to Joel's own Slack, which nothing sends yet either.
+//!
+//! Long because the cases of a notice tried again drive its private look
+//! with a clock of their own, so they live beside it.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -490,16 +493,24 @@ fn tell_new(
             continue;
         }
         let live = row["shadow"] == false;
+        // Written before its knock, so Joel's phone isn't held up by a
+        // notices server slow to answer.
+        if tried.is_none() {
+            write_down(state, row, live);
+        }
         let knock = match knocking.notify {
             Some(program) if live => Some(notice(program, row)),
             _ => None,
         };
-        if tried.is_none() {
-            write_down(state, row, live, matches!(knock, Some(Ok(_))));
+        let said = row["key"].as_str().unwrap_or_default();
+        let first = tried.map_or(now, |tried| tried.first);
+        if let (Some(Ok(_)), Some(_)) = (&knock, tried) {
+            eprintln!(
+                "<6>a notice was sent on a try {} s after its first: {said}",
+                now.duration_since(first).as_secs()
+            );
         }
         if let Some(Err(why)) = &knock {
-            let said = row["key"].as_str().unwrap_or_default();
-            let first = tried.map_or(now, |tried| tried.first);
             if now.duration_since(first) < KNOCK_FOR {
                 if tried.is_none() {
                     eprintln!(
@@ -548,14 +559,13 @@ struct Tried {
 }
 
 /// Writes a row down in would-tell.jsonl as it first appears, with the
-/// message Joel's phone is told, and whether its first knock went.
-fn write_down(state: &Path, row: &Value, live: bool, knocked: bool) {
+/// message Joel's phone is told.
+fn write_down(state: &Path, row: &Value, live: bool) {
     let would = json!({
         "at": now_ms(),
         "key": row["key"],
         "saying": row["saying"],
         "shadow": !live,
-        "knocked": knocked,
         "title": row["title"],
         "words": row["words"],
         "link": row["link"],
@@ -574,8 +584,8 @@ fn notice(notify: &Path, row: &Value) -> Result<Option<u32>, String> {
     let title = row["title"].as_str().unwrap_or_default();
     let body = format!(
         "{}\n{}",
-        row["words"].as_str().unwrap_or_default(),
-        row["link"].as_str().unwrap_or_default()
+        unmarked(row["words"].as_str().unwrap_or_default()),
+        unmarked(row["link"].as_str().unwrap_or_default())
     );
     let args: Vec<String> = [
         "--urgency=critical",
@@ -594,6 +604,15 @@ fn notice(notify: &Path, row: &Value) -> Result<Option<u32>, String> {
     let mut runs = pause::System { limit: KNOCK_LIMIT };
     runs.run(notify, &args)
         .map(|printed| printed.trim().parse().ok())
+}
+
+/// Text a notice's body shows as it was said: the notices server reads a
+/// body as markup, so a comment's own tags or entities would otherwise be
+/// drawn as links and styles, or read as other characters.
+fn unmarked(said: &str) -> String {
+    said.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 /// The notices server's name on the bus now, which changes whenever it
@@ -726,8 +745,8 @@ mod tests {
             "written down at once, for Joel's phone: {first:?}"
         );
         assert!(
-            first[0].contains("\"knocked\":false"),
-            "as not knocked: {first:?}"
+            first[0].contains("\"shadow\":false"),
+            "as live, though its knock didn't go: {first:?}"
         );
         let soon = start + Duration::from_secs(5);
         tell_new(
@@ -759,6 +778,64 @@ mod tests {
         assert_eq!(written(), first, "and written down only the once");
         let kept = fs::read_to_string(state.join("told.json")).unwrap_or_default();
         assert!(kept.contains("slack:C1:1.0@"), "and kept as told: {kept}");
+        fs::remove_dir_all(&state).expect("the state folder goes");
+    }
+
+    #[test]
+    fn a_notice_sent_on_a_later_try_is_told_and_written_down_once() {
+        let state =
+            std::env::temp_dir().join(format!("pineapple-knocked-late-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&state);
+        fs::create_dir_all(&state).expect("a state folder");
+        // A program that answers any words it's given, standing in for
+        // notify-send once the notices server is back. It's run by its own
+        // path: a program built to be many reads the name it's run by, so
+        // a link naming it notify-send wouldn't answer.
+        let answers = std::env::var_os("PATH")
+            .and_then(|path| {
+                std::env::split_paths(&path)
+                    .map(|dir| dir.join("true"))
+                    .find(|program| program.is_file())
+            })
+            .expect("a true on PATH");
+        let missing = state.join("notify-send");
+        let knocking = Knocking {
+            notify: Some(&missing),
+            busctl: None,
+            again: Duration::from_secs(10),
+        };
+        let (mut told, mut unknocked) = (BTreeMap::new(), BTreeMap::new());
+        let live = [
+            json!({"key": "slack:C4:1.0", "saying": "pineapple override",
+            "shadow": false, "title": "Someone stopped agents", "words": "w", "link": "l"}),
+        ];
+        let start = Instant::now();
+        tell_new(
+            &state,
+            &live,
+            &[],
+            &knocking,
+            &mut told,
+            &mut unknocked,
+            start,
+        );
+        assert_eq!(unknocked.len(), 1, "kept to try again: {unknocked:?}");
+        let back = Knocking {
+            notify: Some(&answers),
+            ..knocking
+        };
+        let later = start + Duration::from_secs(10);
+        tell_new(&state, &live, &[], &back, &mut told, &mut unknocked, later);
+        assert!(
+            told.contains_key("slack:C4:1.0@pineapple override") && unknocked.is_empty(),
+            "told once a later try knocks: {told:?} {unknocked:?}"
+        );
+        let written = fs::read_to_string(state.join("would-tell.jsonl")).unwrap_or_default();
+        assert_eq!(
+            written.lines().count(),
+            1,
+            "written down only at its first look: {written}"
+        );
         fs::remove_dir_all(&state).expect("the state folder goes");
     }
 

@@ -93,13 +93,25 @@ rec {
                 type = lib.types.ints.between 0 100;
                 description = ''
                   The processor pressure it stays at or under, in percent of
-                  the last ten seconds some work waited on a processor.
+                  the last minute some work waited on a processor,
+                  machine-wide, or of the last ten seconds where its node
+                  says no minute.
                 '';
               };
               memoryAvailable = lib.mkOption {
                 type = lib.types.nullOr lib.types.ints.unsigned;
                 default = null;
                 description = "The memory it keeps available at least, in bytes.";
+              };
+              memoryFull = lib.mkOption {
+                type = lib.types.nullOr (lib.types.ints.between 0 100);
+                default = null;
+                description = ''
+                  The memory pressure it stays at or under, in percent of
+                  the last minute all work at once waited on memory,
+                  machine-wide; null where it holds to none. A mycelium that
+                  predates it ignores it.
+                '';
               };
             };
           }
