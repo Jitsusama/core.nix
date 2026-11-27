@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::net::Ipv4Addr;
 
 use serde::{Deserialize, Serialize};
-use tokio::time::Instant;
+use tokio::time::{Duration, Instant};
 use zlink::introspect::{CustomType, Type};
 
 use crate::air::Heard;
@@ -29,6 +29,9 @@ pub struct State {
     saved: Vec<Saved>,
     /// By the access point's path in wpa_supplicant, which names its card.
     heard: BTreeMap<String, Heard>,
+    /// When a look last heard each of those, by the same path: what each
+    /// says is as of then, and its age grows from it.
+    heard_when: BTreeMap<String, Instant>,
     radio_off: bool,
     wired: bool,
     /// How many times each card, by name, has begun joining a network,
@@ -414,12 +417,18 @@ impl State {
     }
 
     /// Takes in what wpa_supplicant says of an access point, or that it's
-    /// no longer heard.
+    /// no longer heard, and when a look last heard it, from its age now.
     pub fn heard(&mut self, path: &str, heard: Option<Heard>) {
-        match heard {
-            Some(heard) => self.heard.insert(path.into(), heard),
-            None => self.heard.remove(path),
-        };
+        if let Some(heard) = heard {
+            let now = Instant::now();
+            let ago = Duration::from_secs(heard.age.into());
+            let when = now.checked_sub(ago).unwrap_or(now);
+            self.heard_when.insert(path.into(), when);
+            self.heard.insert(path.into(), heard);
+        } else {
+            self.heard_when.remove(path);
+            self.heard.remove(path);
+        }
         self.settle_warnings();
     }
 
@@ -427,6 +436,7 @@ impl State {
     /// heard when it goes.
     pub fn unheard_under(&mut self, path: &str) {
         self.heard.retain(|heard, _| !heard.starts_with(path));
+        self.heard_when.retain(|heard, _| !heard.starts_with(path));
     }
 
     /// How many looks have ended since wifid started, heard or failed, so
@@ -574,17 +584,22 @@ impl State {
     /// The access points of the network a card is on that it hears, the
     /// one it's on among them, for choosing between them (choose.rs).
     pub fn around(&self, card: &str) -> Vec<Heard> {
-        let Some(path) = self.at.get(card) else {
-            return Vec::new();
-        };
-        let (Some(on), Some(under)) = (self.heard.get(path), card_of(path)) else {
-            return Vec::new();
-        };
-        self.heard
-            .iter()
-            .filter(|(other, heard)| card_of(other) == Some(under) && heard.name == on.name)
+        self.around_by_path(card)
             .map(|(_, heard)| heard.clone())
             .collect()
+    }
+
+    /// What `around` says, each by its path.
+    fn around_by_path<'a>(&'a self, card: &str) -> impl Iterator<Item = (&'a str, &'a Heard)> {
+        let on = self
+            .at
+            .get(card)
+            .and_then(|path| Some((self.heard.get(path)?, card_of(path)?)));
+        self.heard.iter().filter_map(move |(other, heard)| {
+            let (on, under) = on?;
+            (card_of(other) == Some(under) && heard.name == on.name)
+                .then_some((other.as_str(), heard))
+        })
     }
 
     /// What a card hears around it, as `around` says, for its chooser to
@@ -593,12 +608,26 @@ impl State {
     /// The chooser hears nothing of a warning itself, so the minute after
     /// a warned move it would otherwise send the card straight back to a
     /// point that carried better and drops it again.
+    ///
+    /// Each one's age is as of `now`, from when a look last heard it, as
+    /// wpa_supplicant says an age only when a look hears the point again:
+    /// a call fading minutes after a look would otherwise take that look's
+    /// level for one read just now (fading.rs).
     pub fn around_to_choose(&self, card: &str, now: Instant) -> Vec<Heard> {
-        let mut around = self.around(card);
-        if let Some(point) = self.warned_from(card, now) {
-            around.retain(|heard| !heard.bssid.eq_ignore_ascii_case(point));
-        }
-        around
+        let warned = self.warned_from(card, now);
+        self.around_by_path(card)
+            .filter(|(_, heard)| {
+                warned.is_none_or(|point| !heard.bssid.eq_ignore_ascii_case(point))
+            })
+            .map(|(path, heard)| {
+                let mut heard = heard.clone();
+                if let Some(when) = self.heard_when.get(path) {
+                    let ago = now.saturating_duration_since(*when).as_secs();
+                    heard.age = u32::try_from(ago).unwrap_or(u32::MAX);
+                }
+                heard
+            })
+            .collect()
     }
 
     /// The access point a card keeps off at `now` as it warned it drops
@@ -696,6 +725,11 @@ impl State {
         self.saved.iter().map(|saved| saved.name.clone()).collect()
     }
 
+    /// Whether a card of that name is there, joined or not.
+    pub fn has_card(&self, name: &str) -> bool {
+        self.cards.values().any(|card| card.name == name)
+    }
+
     /// The cards on a network, by name, which are those worth polling.
     pub fn on_networks(&self) -> Vec<String> {
         let on = self.cards.values().filter(|card| card.network.is_some());
@@ -774,8 +808,6 @@ fn card_of(path: &str) -> Option<&str> {
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
-
-    use tokio::time::Duration;
 
     use super::*;
     use crate::network::{Address, Network};
@@ -1527,6 +1559,28 @@ mod tests {
         );
     }
 
+    #[tokio::test(start_paused = true)]
+    async fn a_card_s_chooser_hears_each_point_s_age_as_of_when_it_chooses() {
+        let mut state = at_the_inn();
+        let mut aged = heard("Roadside Inn", -60);
+        aged.bssid = "02:00:00:00:02:00".into();
+        aged.age = 3;
+        state.heard("/Interfaces/0/BSSs/2", Some(aged));
+
+        let later = Instant::now() + Duration::from_secs(40);
+        let seconds_ago: Vec<u32> = state
+            .around_to_choose("wlan2", later)
+            .into_iter()
+            .map(|heard| heard.age)
+            .collect();
+
+        assert_eq!(
+            seconds_ago,
+            [40, 43],
+            "a point's age stood still from when it was taken in"
+        );
+    }
+
     #[test]
     fn a_card_s_chooser_hears_nothing_of_the_point_that_warned_it_while_that_holds() {
         let mut state = at_the_inn();
@@ -1749,6 +1803,24 @@ mod tests {
             None,
             "a card on a point heard only after it got there never counted as leaving"
         );
+    }
+
+    #[test]
+    fn a_card_is_there_off_its_network_until_it_goes() {
+        let mut state = at_the_inn();
+        state.follow(&Link {
+            ssid: None,
+            gateway: None,
+            ..inn(2)
+        });
+        state.at("wlan2", None);
+        let joined = state.joined();
+        let between = state.has_card("wlan2");
+        state.keep_only(&[]);
+
+        assert!(joined.is_empty(), "a card off its network was joined");
+        assert!(between, "a card between points, off its network, was gone");
+        assert!(!state.has_card("wlan2"), "a card gone was still there");
     }
 
     #[test]

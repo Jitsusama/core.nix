@@ -122,7 +122,9 @@ pub enum Way {
 /// settles where it lands. A point that says another security than the
 /// card's own is never given way to: the card's network can't be joined
 /// there, and a radio in range naming itself the network could otherwise
-/// pull a call off its point with a loud beacon alone.
+/// pull a call off its point with a loud beacon alone. Where the card's
+/// own point isn't heard, nothing says its security, so it gives way to
+/// none.
 pub fn giving_way(
     point: &str,
     (lost, signal): (usize, Option<i32>),
@@ -156,7 +158,7 @@ pub fn giving_way(
     let best = around
         .iter()
         .filter(|heard| heard.bssid != point && !kept_off(&heard.bssid))
-        .filter(|heard| own.is_none_or(|own| heard.security == own.security))
+        .filter(|heard| own.is_some_and(|own| heard.security == own.security))
         .filter_map(|heard| Some((why(heard)?, heard)))
         .max_by_key(|(_, heard)| (!choose::wider(frequency, heard.frequency), heard.signal));
     match (best, faint) {
@@ -330,17 +332,19 @@ mod tests {
         let around = [heard(DESK, -48), heard(HALL, -40)];
 
         let faded = to(giving_way(DESK, (0, Some(-78)), &around, none));
-        let unread = giving_way(DESK, (0, None), &around, none);
+        // And the other way: a look heard it faint, the kernel loud now.
+        let heard_faint = [heard(DESK, -78), heard(HALL, -40)];
+        let loud = giving_way(DESK, (0, Some(-50)), &heard_faint, none);
 
         assert_eq!(
             faded.map(|giving| giving.why),
             Some(Why::Faint(-78)),
-            "the kernel's reading counts"
+            "a look's loud desk outranked the kernel's faded one"
         );
         assert_eq!(
-            unread,
+            loud,
             Way::Holds,
-            "the look's, where the kernel hasn't said"
+            "a look's faint desk outranked the kernel's loud one"
         );
     }
 
@@ -422,6 +426,19 @@ mod tests {
             way,
             Way::Nowhere(Why::Lossy(5)),
             "an open point naming itself the network isn't it"
+        );
+    }
+
+    #[test]
+    fn a_call_whose_own_point_is_unheard_gives_way_to_none() {
+        let unsure = [heard(HALL, -40)];
+
+        let way = giving_way(DESK, (5, Some(-78)), &unsure, none);
+
+        assert_eq!(
+            way,
+            Way::Nowhere(Why::Lossy(5)),
+            "a call gave way though nothing said its own point's security"
         );
     }
 

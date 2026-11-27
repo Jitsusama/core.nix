@@ -49,6 +49,7 @@ use crate::echo::{Class, Echoer, LOST, Late};
 use crate::fading;
 use crate::learn::{self, Here, Learned};
 use crate::moves;
+use crate::moves::Back;
 use crate::nl80211::{Nl80211, Station};
 use crate::service::Ask;
 use crate::state::{Joined, State};
@@ -375,7 +376,7 @@ pub async fn follow(
     let mut choosers: HashMap<String, Chooser> = HashMap::new();
     let mut kernel: Option<Nl80211> = None;
     let mut measures = Measures::default();
-    let (looked, mut ended) = mpsc::channel(1);
+    let (back, mut came) = mpsc::channel(1);
     let mut each = interval(EACH);
     each.set_missed_tick_behavior(MissedTickBehavior::Skip);
     let mut told = interval(TOLD);
@@ -391,7 +392,7 @@ pub async fn follow(
                 if calling.borrow().on(now) {
                     for on in &joined {
                         let chooser = choosers.entry(on.card.clone()).or_default();
-                        let with = (&asks, &state, &looked);
+                        let with = (&asks, &state, &back);
                         moves::give_way(chooser, now, on, &measures, with);
                     }
                 }
@@ -400,7 +401,10 @@ pub async fn follow(
                 let (now, hour) = (Instant::now(), learn::hour_here());
                 let joined = state.borrow().joined();
                 let call = calling.borrow().on(now);
-                choosers.retain(|card, _| joined.iter().any(|on| on.card == *card));
+                // A chooser goes only with its card: one between points as
+                // it roams, or dropped a moment, is still the card that gave
+                // way, spurned and kept off, so it keeps all it knows.
+                choosers.retain(|card, _| state.borrow().has_card(card));
                 forget_the_forgotten(&mut learned, &state.borrow().saved_names());
                 for on in joined {
                     let carried = measures.of(&on.point, now);
@@ -421,12 +425,21 @@ pub async fn follow(
                         (now, hour),
                         (&on, &carried),
                         (&measures, &learned),
-                        (&asks, &state, &looked),
+                        (&asks, &state, &back),
                         call,
                     );
                 }
             }
-            Some(card) = ended.recv() => {
+            Some(answer) = came.recv() => {
+                let card = match answer {
+                    Back::Looked(card) => card,
+                    Back::Refused { card, to } => {
+                        if let Some(chooser) = choosers.get_mut(&card) {
+                            chooser.refused(Instant::now(), &to);
+                        }
+                        continue;
+                    }
+                };
                 let (now, hour) = (Instant::now(), learn::hour_here());
                 let call = calling.borrow().on(now);
                 let joined = state.borrow().joined();
@@ -443,7 +456,7 @@ pub async fn follow(
                     (now, hour),
                     (&on, &carried),
                     (&measures, &learned),
-                    (&asks, &state, &looked),
+                    (&asks, &state, &back),
                     call,
                 );
             }

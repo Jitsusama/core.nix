@@ -4,6 +4,7 @@
 
 use std::collections::HashMap;
 
+use tokio::time::Instant;
 use zbus::zvariant::{OwnedValue, Value};
 
 use crate::radio::Radio;
@@ -13,6 +14,10 @@ use crate::state::Security;
 #[derive(Debug, Default)]
 pub struct AccessPoint {
     properties: HashMap<String, OwnedValue>,
+    /// When wpa_supplicant last said its `Age`. It says one only when a
+    /// look hears the point again (`wpas_notify_bss_seen`), so the age it
+    /// said grows by the time since.
+    aged: Option<Instant>,
 }
 
 /// What the shell is told of an access point it could join.
@@ -26,18 +31,23 @@ pub struct Heard {
     pub bssid: String,
     /// Its channel, by frequency in MHz; 0 where wpa_supplicant doesn't say.
     pub frequency: u32,
-    /// How many seconds ago it was last heard.
+    /// How many seconds ago a look last heard it, as of when this was
+    /// read.
     pub age: u32,
     pub radio: Radio,
 }
 
 impl AccessPoint {
     pub fn new(properties: HashMap<String, OwnedValue>) -> AccessPoint {
-        AccessPoint { properties }
+        let aged = properties.contains_key("Age").then(Instant::now);
+        AccessPoint { properties, aged }
     }
 
     /// Takes in what wpa_supplicant says changed.
     pub fn changed(&mut self, changed: HashMap<String, OwnedValue>) {
+        if changed.contains_key("Age") {
+            self.aged = Some(Instant::now());
+        }
         self.properties.extend(changed);
     }
 
@@ -71,10 +81,12 @@ impl AccessPoint {
         let frequency = self.frequency().unwrap_or_default();
         let bssid = self.bytes("BSSID").unwrap_or_default();
         let bssid = bssid.iter().map(|byte| format!("{byte:02x}"));
-        let age = match self.value("Age") {
+        let said = match self.value("Age") {
             Some(Value::U32(age)) => *age,
             _ => 0,
         };
+        let since = self.aged.map_or(0, |aged| aged.elapsed().as_secs());
+        let age = said.saturating_add(u32::try_from(since).unwrap_or(u32::MAX));
         Some(Heard {
             name,
             security,
@@ -219,6 +231,30 @@ mod tests {
         assert_eq!((heard.frequency, heard.age), (2437, 4));
         let load = heard.radio.load.unwrap();
         assert_eq!((load.stations, load.busy), (3, 50));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn an_access_point_s_age_grows_until_a_look_hears_it_again() {
+        let mut lantern = access_point(b"Lantern", &["wpa-psk"], true, -58);
+        lantern.changed(HashMap::from([("Age".into(), owned(&Value::from(4u32)))]));
+
+        tokio::time::advance(std::time::Duration::from_secs(30)).await;
+        lantern.changed(HashMap::from([(
+            "Signal".into(),
+            owned(&Value::from(-60i16)),
+        )]));
+        assert_eq!(
+            lantern.heard().unwrap().age,
+            34,
+            "an age said 30 s ago was taken as now's, as a look just heard it"
+        );
+
+        lantern.changed(HashMap::from([("Age".into(), owned(&Value::from(1u32)))]));
+        assert_eq!(
+            lantern.heard().unwrap().age,
+            1,
+            "a newly said age was added to the time since the last"
+        );
     }
 
     #[test]
