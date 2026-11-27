@@ -36,6 +36,11 @@ pub struct System {
 /// How often a program running is looked at, to end it at its limit.
 const LOOKED: Duration = Duration::from_millis(10);
 
+/// How long a program that ended is given for its readers to take what
+/// it printed before it's answered as unread, so one that ended just
+/// before its limit isn't taken for one whose output is held open.
+const GRACE: Duration = Duration::from_millis(200);
+
 /// The most programs run at once, each holding two pipes and two threads
 /// reading them, so a long list can't spend the daemon's own.
 pub const AT_ONCE: usize = 16;
@@ -60,8 +65,9 @@ impl Runs for System {
 impl System {
     /// Starts every program at once and waits for them together, each
     /// given `limit` from the start. One that ended is answered once what
-    /// it printed is read, or at the limit as unknown, as a program it
-    /// started may still hold its output open.
+    /// it printed is read, or as unknown at the limit once its readers
+    /// had [`GRACE`] since it ended, as a program it started may still
+    /// hold its output open.
     fn run_together(&self, runs: &[(&Path, &[String])]) -> Vec<Result<String, String>> {
         let began = Instant::now();
         let (mut running, mut answers): (Vec<_>, Vec<_>) = runs
@@ -78,9 +84,9 @@ impl System {
                 // Ended and read, or answered without its readers, which
                 // are left to end with the pipes, as one of its own
                 // children may hold them.
-                let ended = match one.child.try_wait() {
-                    Ok(Some(status)) if one.read() => Ok(status),
-                    Ok(Some(status)) if late => Err(Err(unread(status))),
+                let ended = match one.exited() {
+                    Ok(Some(status)) if one.read(status) => Ok(status),
+                    Ok(Some(status)) if late && one.ended_before(GRACE) => Err(Err(unread(status))),
                     Ok(None) if late => {
                         // Killed at its limit; it may have ended meanwhile,
                         // which is as good.
@@ -115,6 +121,8 @@ struct Running {
     child: Child,
     out: JoinHandle<Vec<u8>>,
     err: JoinHandle<Vec<u8>>,
+    /// When it was first seen ended.
+    ended: Option<Instant>,
 }
 
 /// Starts `program` with `args`, reading what it prints as it runs, since
@@ -129,7 +137,12 @@ fn start(program: &Path, args: &[String]) -> Result<Running, String> {
         .spawn()
         .map_err(|error| format!("{} can't run: {error}", program.to_string_lossy()))?;
     match (drain(child.stdout.take()), drain(child.stderr.take())) {
-        (Ok(out), Ok(err)) => Ok(Running { child, out, err }),
+        (Ok(out), Ok(err)) => Ok(Running {
+            child,
+            out,
+            err,
+            ended: None,
+        }),
         (out, err) => {
             // Ended, so a reader that did start ends with the pipe.
             let _ = child.kill();
@@ -157,9 +170,25 @@ fn unread(status: ExitStatus) -> String {
 }
 
 impl Running {
-    /// Whether all it printed is read, so answering it waits on nothing.
-    fn read(&self) -> bool {
-        self.out.is_finished() && self.err.is_finished()
+    /// How it ended, once it has, noting when that was first seen.
+    fn exited(&mut self) -> std::io::Result<Option<ExitStatus>> {
+        let status = self.child.try_wait()?;
+        if status.is_some() {
+            self.ended.get_or_insert_with(Instant::now);
+        }
+        Ok(status)
+    }
+
+    /// Whether it was seen ended at least `grace` ago.
+    fn ended_before(&self, grace: Duration) -> bool {
+        self.ended.is_some_and(|ended| ended.elapsed() >= grace)
+    }
+
+    /// Whether all its answer as `status` takes is read, so answering it
+    /// waits on nothing: what it printed, and what it said unless it
+    /// exited 0, which answers its output alone.
+    fn read(&self, status: ExitStatus) -> bool {
+        self.out.is_finished() && (status.success() || self.err.is_finished())
     }
 
     /// What it printed, once it exited 0 as `status` says, or what it said
@@ -301,6 +330,42 @@ mod tests {
         assert!(
             took < Duration::from_secs(3),
             "neither waited on the output its child holds: {took:?}"
+        );
+    }
+
+    #[test]
+    fn one_ended_just_before_its_limit_is_read_past_it() {
+        let mut system = System {
+            limit: Duration::from_secs(1),
+        };
+        // It ends a tenth of a second before its limit, its child holding
+        // what it printed a twentieth past it.
+        let late = sh("sleep 0.9; sleep 0.15 & echo done");
+        let answers = system.run_all(&[(Path::new("sh"), &late)]);
+        assert_eq!(
+            answers[0],
+            Ok("done\n".to_owned()),
+            "its readers had their time once it ended: {answers:?}"
+        );
+    }
+
+    #[test]
+    fn one_exited_0_with_its_output_whole_succeeds_while_its_errors_are_held() {
+        let mut system = System {
+            limit: Duration::from_secs(2),
+        };
+        let leaving = sh("echo done; sleep 5 >&2 &");
+        let began = Instant::now();
+        let answers = system.run_all(&[(Path::new("sh"), &leaving)]);
+        let took = began.elapsed();
+        assert_eq!(
+            answers[0],
+            Ok("done\n".to_owned()),
+            "its output is whole, which is all a success answers: {answers:?}"
+        );
+        assert!(
+            took < Duration::from_secs(1),
+            "it was answered as it ended, not at its limit: {took:?}"
         );
     }
 
