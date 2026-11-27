@@ -19,6 +19,10 @@ answered with none. An ask of steps
 is answered in three, as wifid answers a join: two saying they aren't done, then the last.
 An unwatch is answered as wifid answers one, and each record says how many watches ahead its
 connection has unwatched, so the test can tell an emptied watch ahead was let go.
+An ask to keep is refused for now the first time, as the agents daemon refuses an act it does as
+Joel while it can't yet tell the shell asked, and taken after; an ask of what was asked to keep
+is answered with each value in turn, so the test can tell a refused ask was asked again as it
+was then given, and a taken one no more.
 """
 
 import json
@@ -31,6 +35,10 @@ from pathlib import Path
 # told them all and the rest only what stood through it.
 WAITED = {"waiting": 0, "lapsing": 0}
 WAITED_LOCK = threading.Lock()
+
+# Each value asked to keep, in the order asked, the first refused.
+KEPT: list[object] = []
+KEPT_LOCK = threading.Lock()
 
 # What each kind that loses records in a gap holds before it, and what it holds after.
 LAPSING = {
@@ -116,6 +124,17 @@ def answer(asked: dict[str, object], unwatched: int) -> list[dict[str, object]]:
         ]
     if asked.get("kind") == "verdict":
         return [{"id": asked.get("id"), "records": []}]
+    if asked.get("ask") == "keep":
+        with KEPT_LOCK:
+            KEPT.append(asked.get("value"))
+            first = len(KEPT) == 1
+        if first:
+            refused = {"code": "refused", "message": "not yet"}
+            return [{"id": asked.get("id"), "error": refused}]
+        return [{"id": asked.get("id"), "kept": asked.get("value")}]
+    if asked.get("ask") == "kept":
+        with KEPT_LOCK:
+            return [{"id": asked.get("id"), "asked": list(KEPT)}]
     kinds = kinds_of(asked)
     keys = asked.get("keys")
     named = (

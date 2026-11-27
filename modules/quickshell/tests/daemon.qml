@@ -23,7 +23,8 @@
 // only what differs, as mycelium's node does, lays a change over the
 // record it holds, letting go a field said as null, and one it asked deep,
 // as hello offers, mended with only what moved inside it, while one asked
-// nothing deep is replaced whole. A client of a kind
+// nothing deep is replaced whole. An ask refused for now is asked again
+// a little later, as it's given then, and once taken no more. A client of a kind
 // with no records knows it holds none once it's answered, and one whose
 // answer is the whole of its kind, as the node's is, lets go what went in
 // a gap, and one whose answer is whole only of some records lets go only
@@ -339,6 +340,25 @@ ShellRoot {
         kind: "verdict"
     }
 
+    // What an ask to keep is given as each try reads it: refused the first time, it's asked
+    // again as this is then, as a share's end or a place kept since goes rather than the one
+    // overtaken (Daemon.qml's askTillTaken).
+    property string keeping: ""
+    // Each value the stand-in was asked to keep, in turn, and whether it's being asked now.
+    property var keptAsks: []
+    property bool keptAsking: false
+    // When the ask taken was last seen asked, to tell it's asked no more.
+    property real keptSince: -1
+    function keptRead() {
+        if (root.keptAsking)
+            return;
+        root.keptAsking = true;
+        kinds.ask({ ask: "kept" }, answer => {
+            root.keptAsks = answer?.asked ?? [];
+            root.keptAsking = false;
+        });
+    }
+
     // The kinds a record says its watch asked for, as one line.
     function askedOf(key) {
         return JSON.stringify(kinds.held[key]?.asked ?? null);
@@ -597,6 +617,36 @@ ShellRoot {
             },
             holds: () => root.stepsHeard.join(" ") === "joining gettingAddress online"
                 && Object.keys(kinds.awaited).length === 0
+        },
+        {
+            // Refused while the agents daemon can't yet tell the shell asked, Joel's Forget
+            // It or a kept place went undone, said nowhere (round 000038 on #6796, F90). One
+            // try is due 4 s after the refusal, so the step waits 15.
+            what: "an ask refused for now is asked again later, as it's given then",
+            polls: 300,
+            run: () => {
+                root.keeping = "first";
+                kinds.askTillTaken(() => ({ ask: "keep", value: root.keeping }));
+                root.keeping = "latest";
+            },
+            holds: () => {
+                root.keptRead();
+                return JSON.stringify(root.keptAsks) === '["first","latest"]'
+                    && kinds.refusedAgain.length === 0;
+            }
+        },
+        {
+            // Past the 4 s a refused ask waits, so one asked again once taken would show.
+            what: "and once taken it's asked no more",
+            run: () => {
+                root.keptSince = Date.now();
+            },
+            holds: () => {
+                root.keptRead();
+                return Date.now() - root.keptSince >= 5000 && !root.keptAsking
+                    && JSON.stringify(root.keptAsks) === '["first","latest"]'
+                    && kinds.refusedAgain.length === 0;
+            }
         },
         {
             what: "a whole answer after a gap lets go what went in it, heard as gone",
