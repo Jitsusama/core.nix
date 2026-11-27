@@ -614,7 +614,7 @@ DRAWN = f"(keys) => ({BOXES})(keys).every((box) => box !== null && box[2] > box[
 HEALTH_SAID = re.compile(r"^(Well|Watch|Tend): \S")
 # A mark on the map, found and measured in one go: a reading's redraw
 # between finding a mark and measuring it measures one no longer drawn, at 0.
-DRAWN = """(selector) => {
+MARK_BOX = """(selector) => {
   const r = document.querySelector(selector)?.getBoundingClientRect();
   return r ? [r.left, r.top, r.right, r.bottom] : null;
 }"""
@@ -653,7 +653,7 @@ def disc_of(page: Page, cell: str) -> list[float]:
 
 def drawn_at(page: Page, selector: str, what: str) -> list[float]:
     """Where a mark on the map is drawn on the page, failing when it isn't."""
-    box: list[float] | None = page.evaluate(DRAWN, selector)
+    box: list[float] | None = page.evaluate(MARK_BOX, selector)
     assert box, f"the map drew no {what}"
     return box
 
@@ -665,7 +665,9 @@ def middle(box: list[float]) -> tuple[float, float]:
 
 def in_view(page: Page, cell: str) -> bool:
     """Say whether a cell's disc is wholly inside the map's view."""
-    view, _, disc = page.evaluate(BOXES, [cell])
+    boxes: list[list[float] | None] = page.evaluate(BOXES, [cell])
+    view, _, disc = boxes
+    assert view, "the map drew no view"
     assert disc, f"the map drew no {cell}"
     left, top, right, bottom = disc
     return view[0] <= left and right <= view[2] and view[1] <= top and bottom <= view[3]
