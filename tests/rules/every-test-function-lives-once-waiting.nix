@@ -99,14 +99,14 @@
   "modules/quickshell/tests/ex.qml" = 1;
   "modules/quickshell/tests/file-chooser.qml" = 2;
   "modules/quickshell/tests/file-facts.qml" = 1;
-  "modules/quickshell/tests/focus-on-niri-test.py" = 2;
+  "modules/quickshell/tests/focus-on-niri-test.py" = 1;
   "modules/quickshell/tests/for-you-filter.qml" = 1;
   "tests/vm/keys/gnome-keyring-vm-test.py" = 1;
   "modules/quickshell/tests/graphs.qml" = 1;
   "modules/quickshell/tests/keyboard.qml" = 1;
   "modules/quickshell/tests/key-map.qml" = 1;
   "modules/quickshell/tests/launcher_on_niri.py" = 2;
-  "modules/quickshell/tests/launcher-on-niri-test.py" = 3;
+  "modules/quickshell/tests/launcher-on-niri-test.py" = 2;
   "tests/vm/keys/linux-id-vm-test.py" = 1;
   "modules/quickshell/tests/machine.qml" = 1;
   "modules/quickshell/tests/machines.qml" = 1;
