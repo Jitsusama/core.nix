@@ -419,20 +419,21 @@ pub fn sql(error: rusqlite::Error) -> String {
 
 /// Whether `error` is another connection holding the history, by SQLite's
 /// own code rather than its words: busy while it writes. Locked isn't
-/// that: without a shared cache it's this connection's own statement in
-/// the way, which would meet every open alike, so it's said instead.
+/// that: without a shared cache it's a clash inside one connection, which
+/// no other connection's write ends, so it's said rather than waited on.
 fn held(error: &rusqlite::Error) -> bool {
     error.sqlite_error_code() == Some(rusqlite::ErrorCode::DatabaseBusy)
 }
 
-/// Whether `error` says nothing about whether the history reads: busy or
-/// locked, either way something in the way rather than a history gone
-/// wrong. Wider than `held`, since setting a history aside on a wrong
-/// guess loses every kept bill, where leaving an index costs one open.
-fn in_the_way(error: &rusqlite::Error) -> bool {
+/// Whether `error` says the history doesn't read, by SQLite's own codes
+/// for a file that isn't a database or is damaged. Nothing else sets a
+/// history aside: a writer holding it, a lock, a failing disk or a want
+/// of memory says nothing about the history, and setting it aside on a
+/// wrong guess loses every kept bill, where failing the open costs one.
+fn unreadable(error: &rusqlite::Error) -> bool {
     matches!(
         error.sqlite_error_code(),
-        Some(rusqlite::ErrorCode::DatabaseBusy | rusqlite::ErrorCode::DatabaseLocked)
+        Some(rusqlite::ErrorCode::DatabaseCorrupt | rusqlite::ErrorCode::NotADatabase)
     )
 }
 
@@ -482,12 +483,13 @@ impl History {
                 row.get::<_, String>(0)
             })
             .optional();
-        // Another connection holding the history is no sign it doesn't
-        // read, and setting it aside then would lose every kept bill.
+        // Only a history that doesn't read is set aside; any other failure
+        // fails the open, named, since SQLite's words alone don't say which
+        // read it was. A busy one keeps its words, so it's tried again.
         if let Err(error) = &read
-            && in_the_way(error)
+            && !unreadable(error)
         {
-            return Err(error.to_string());
+            return Err(format!("couldn't read the history's shape: {error}"));
         }
         let schema: Option<i64> = read.ok().flatten().and_then(|value| value.parse().ok());
         // The look before the connection takes any error for no answer, so
@@ -1130,38 +1132,79 @@ mod tests {
         );
     }
 
-    // Locked can't be made in a test without a shared cache, so its code is
-    // built: the schema read keeps a history that met it, and the index
-    // says it rather than waiting for an open that would meet it again.
+    // Most of these can't be made in a test, so their codes are built: only
+    // a file that isn't a database or is damaged reads as unreadable, and
+    // only a writer holding the history is left to the next open.
     #[test]
-    fn locked_keeps_the_history_but_not_the_index_unsaid() {
-        let locked = rusqlite::Error::SqliteFailure(
-            rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_LOCKED),
-            None,
+    fn only_a_history_that_doesnt_read_is_unreadable() {
+        let failed = |code| rusqlite::Error::SqliteFailure(rusqlite::ffi::Error::new(code), None);
+        for code in [rusqlite::ffi::SQLITE_CORRUPT, rusqlite::ffi::SQLITE_NOTADB] {
+            assert!(
+                unreadable(&failed(code)),
+                "a history that doesn't read, code {code}, would be kept"
+            );
+        }
+        for code in [
+            rusqlite::ffi::SQLITE_BUSY,
+            rusqlite::ffi::SQLITE_LOCKED,
+            rusqlite::ffi::SQLITE_IOERR,
+            rusqlite::ffi::SQLITE_NOMEM,
+            rusqlite::ffi::SQLITE_PROTOCOL,
+            rusqlite::ffi::SQLITE_CANTOPEN,
+        ] {
+            assert!(
+                !unreadable(&failed(code)),
+                "code {code}, which says nothing of the history, would set it aside"
+            );
+        }
+        assert!(
+            held(&failed(rusqlite::ffi::SQLITE_BUSY)),
+            "a writer holding the history wasn't taken as held"
         );
         assert!(
-            in_the_way(&locked),
-            "a locked schema read would set the history aside"
-        );
-        assert!(
-            !held(&locked),
+            !held(&failed(rusqlite::ffi::SQLITE_LOCKED)),
             "a locked index would be left unsaid for an open that meets it again"
         );
-        let busy = rusqlite::Error::SqliteFailure(
-            rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_BUSY),
-            None,
+    }
+
+    // The open's own guard, not just its classifier: a schema read failing
+    // with an error that isn't SQLite's word for damage, here a view over a
+    // table that's gone, fails the open and leaves the history where it is.
+    #[test]
+    fn a_shape_that_fails_to_read_keeps_the_history() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("history.db");
+        {
+            let history = History::open(&path).unwrap();
+            history
+                .db
+                .execute_batch(
+                    "DROP TABLE meta; CREATE TABLE gone (key TEXT, value TEXT); \
+                     CREATE VIEW meta AS SELECT key, value FROM gone; DROP TABLE gone;",
+                )
+                .unwrap();
+        }
+        let opened = History::open(&path);
+        let why = opened.as_ref().err().cloned().unwrap_or_default();
+        assert!(
+            why.contains("couldn't read the history's shape") && why.contains("gone"),
+            "a shape that failed to read didn't fail the open, named: {why:?}"
         );
         assert!(
-            in_the_way(&busy) && held(&busy),
-            "a writer holding the history wasn't taken as in the way and held"
+            !dir.path().join("history.db.schema-0").exists(),
+            "a history whose shape failed to read was set aside"
         );
-        let corrupt = rusqlite::Error::SqliteFailure(
-            rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_CORRUPT),
-            None,
-        );
-        assert!(
-            !in_the_way(&corrupt),
-            "a history that doesn't read was kept from being set aside"
+        let kept = Connection::open(&path).unwrap();
+        let tables: i64 = kept
+            .query_row(
+                "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'files'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            tables, 1,
+            "the history's tables didn't stay where they were"
         );
     }
 

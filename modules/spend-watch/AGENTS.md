@@ -218,7 +218,9 @@ feed speaks.
   unwatched for its length; one started beside a watch that answers on
   the socket is told at once to try again. A history busy as it opens is
   an error a reader is told to try again on, exit 75, never one that
-  doesn't read; a locked one fails the open, and is never set aside. A
+  doesn't read. Only SQLite's own word that the file isn't a database
+  or is damaged sets a history aside; any other failure to read its
+  shape, locked or a failing disk among them, fails the open. A
   missing sessions index is made without waiting on a writer, and left
   to the next open while one holds the history; any other failure to
   make it, locked included, fails the open. One that doesn't read is
