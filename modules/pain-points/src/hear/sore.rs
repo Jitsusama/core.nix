@@ -255,10 +255,20 @@ fn shortened(before: &str) -> bool {
     SHORTENED.contains(&word.as_str())
 }
 
+/// Whether the text before a stop is a numbered list's marker, a run of
+/// digits opening a line as "2." does, read back over only the digits
+/// and the spaces before them.
+fn numbered(before: &str) -> bool {
+    let rest = before.trim_end_matches(|c: char| c.is_ascii_digit());
+    let line = rest.trim_end_matches([' ', '\t']);
+    rest.len() < before.len() && (line.is_empty() || line.ends_with('\n'))
+}
+
 /// The pieces of lowered text, each ending after a run of the marks that
 /// end a sentence, spaces between them taken in, so "?!" and "? !" end
 /// one sentence, not two. A stop that runs on into a letter ("e.g",
-/// "core.nix"), or one after a word shortened ("etc."), ends none. When
+/// "core.nix"), or one after a word shortened ("etc.") or a numbered
+/// list's marker ("\n2."), ends none. When
 /// `runs`, nor does a run of stops ("..."), as a list runs across one;
 /// asks, ease and giving up are read with each run ending a piece, since
 /// "shit, it's fine... can you check the logs?" eases before it asks.
@@ -285,7 +295,8 @@ fn pieces(low: &str, runs: bool) -> Vec<&str> {
         let marks = low[from..end].replace(' ', "");
         let stops_only = marks.chars().all(|m| m == '.');
         let runs_on = rest.starts_with(char::is_alphanumeric);
-        let lone = marks.len() == 1 && (runs_on || shortened(&low[..from]));
+        let before = &low[..from];
+        let lone = marks.len() == 1 && (runs_on || shortened(before) || numbered(before));
         if stops_only && (lone || (runs && marks.len() > 1)) {
             run = None;
             continue;
@@ -752,6 +763,7 @@ mod tests {
             "add the costs or crap",
             "consider the brackets, deductions, and shit",
             "consider:\n- brackets\n- deductions\n- and shit",
+            "consider:\n1. brackets\n2. deductions\n3. and shit",
             "great! add the costs and shit",
             "great\u{ff01} add the costs and shit",
             // A line end, a colon or a bracket closes the filler's clause.
