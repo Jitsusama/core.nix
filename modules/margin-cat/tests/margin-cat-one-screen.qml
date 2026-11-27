@@ -529,7 +529,17 @@ QtObject {
             ["wholly off the left, it rides back in", { x: -8, y: 7 }, at, "rides"],
             ["a pixel on the screen, no scroll, it sits there at once", { x: -7, y: 7 }, at,
                 "sits"],
-            ["a floating window dragged, it sits there at once", { x: 312, y: 100 }, at, "sits"]
+            ["a floating window dragged, it sits there at once", { x: 312, y: 100 }, at, "sits"],
+            ["its column grown across, it walks there", { x: 300, y: 7 },
+                given({ reshaped: true }), "walks"],
+            ["held short of this seat by a scroll, it walks on to it", { x: 900, y: 7 },
+                given({ held: true, scrolling: true }), "walks"],
+            ["held short of it with a ride under way, it walks on still", { x: 900, y: 7 },
+                given({ held: true, riding: true }), "walks"],
+            ["held short, nowhere before, it sits there at once", null, given({ held: true }),
+                "sits"],
+            ["held short of another's seat, a scroll still rides it", { x: 900, y: 7 },
+                given({ held: false, scrolling: true }), "rides"]
         ];
         for (const [name, place, told, want] of cases)
             expect(`back on its column, ${name}`, Stacked.backOn(place, seat, told), want);
@@ -554,6 +564,22 @@ QtObject {
             expect(`caught mid-walk, ${name}`, Stacked.standsOnTop(at, tile, size), want);
         expect("caught mid-walk, with no tile for it, it doesn't stand",
             Stacked.standsOnTop(standing, undefined, size), false);
+        // It holds and rides that window only as niri scrolls the strip;
+        // a drag or a column moved beside it, which no scroll draws, walks
+        // it on, as does a leap's air, scrolled or not.
+        const told = more => Object.assign({}, size, more);
+        const caughtCases = [
+            ["standing on its top as niri scrolls", standing, told({ scrolling: true }),
+                "holds"],
+            ["standing on its top as a drag carries it", standing, told({ scrolling: false }),
+                "walks on"],
+            ["in a leap's air as niri scrolls", { x: 500, y: 20 }, told({ scrolling: true }),
+                "walks on"]
+        ];
+        for (const [name, at, given, want] of caughtCases)
+            expect(`caught mid-walk, ${name}`, Stacked.caught(at, tile, given), want);
+        expect("caught mid-walk, with no tile for it, it walks on",
+            Stacked.caught(standing, undefined, told({ scrolling: true })), "walks on");
     }
 
     // Its windows gone, it comes to the floor: from off the screen's side,

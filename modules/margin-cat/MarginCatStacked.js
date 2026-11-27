@@ -211,8 +211,10 @@ function carriedBy(landed, sat) {
 
 // How the cat goes back to its seat `there` on the column it sat on, as
 // niri's layout has it, from its `place` (MarginCatScreen.qml's follow):
-// "stays" where it's there already, a ride under way running on as its
-// window's spring does, never set off again from a lag gone by, as the
+// "walks" there as its column was grown or shrunk across (`at.reshaped`),
+// or as it was held short of that seat, its walk there caught by a scroll
+// (`at.held`), never put there at once; "stays" where it's there already,
+// a ride under way running on as its window's spring does, never set off again from a lag gone by, as the
 // keys come back to a column still in view; "rides" with its window from
 // where it's drawn while niri's spring slides the strip, a ride under way
 // (`at.riding`) or a scroll niri told of within its spring
@@ -222,6 +224,9 @@ function carriedBy(landed, sat) {
 function backOn(place, there, at) {
     if (place === null) {
         return "sits";
+    }
+    if (at.reshaped || at.held) {
+        return "walks";
     }
     if (Math.abs(place.x - there.x) < 0.5 && Math.abs(place.y - there.y) < 0.5) {
         return "stays";
@@ -241,6 +246,17 @@ function standsOnTop(at, tile, size) {
     const middle = at.x + size.wide / 2;
     return middle >= tile.left && middle <= tile.left + tile.width
         && Math.abs(at.y - Ledges.stands(tile.top, size)) < size.air / 2;
+}
+
+// What a walk does, caught as the window it walks to, `tile` as it was,
+// moves under it (MarginCatScreen.qml's follow): "holds" where it's drawn
+// and rides that window, short of its seat, only standing on its top as
+// niri scrolls the strip (`at.scrolling`), its spring the one the ride
+// runs on; and "walks on" to that window where it moved otherwise, from
+// the air of a leap or a side, or as a floating window dragged or a
+// column moved beside it carries it, which no scroll of niri's draws.
+function caught(drawn, tile, at) {
+    return at.scrolling && standsOnTop(drawn, tile, at) ? "holds" : "walks on";
 }
 
 // A move between workspaces, `at.way` 1 to the one below and -1 to the

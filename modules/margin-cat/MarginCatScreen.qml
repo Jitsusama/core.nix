@@ -404,25 +404,25 @@ PanelWindow {
                     || (!column.floats && Math.abs(column.top - under.top) > 0.5));
             sat = wanted;
             under = column;
-            // Held short of its seat as a scroll caught its walk, it walks
-            // on to it, never put there at once (heldShortOn).
-            if (reshaped || (heldShortOn !== null && heldShortOn === wanted && place !== null)) {
+            // Back on its own column, it walks there, as it was reshaped
+            // or held short of its seat as a scroll caught its walk
+            // (heldShortOn), rides with its window from where it's drawn,
+            // sits there at once, or lets a ride under way run on
+            // (Stacked.backOn).
+            const back = Stacked.backOn(place, there, {
+                wide: size,
+                across: modelData.width,
+                riding: carry !== null,
+                scrolling: scrolling(),
+                reshaped,
+                held: heldShortOn !== null && heldShortOn === wanted
+            });
+            if (back === "walks")
                 walkFrom(true, saw);
-            } else {
-                // Back on its own column, it rides with its window from
-                // where it's drawn, sits there at once, or lets a ride
-                // under way run on (Stacked.backOn).
-                const back = Stacked.backOn(place, there, {
-                    wide: size,
-                    across: modelData.width,
-                    riding: carry !== null,
-                    scrolling: scrolling()
-                });
-                if (back === "rides")
-                    rideTo(there);
-                else if (back === "sits")
-                    place = there;
-            }
+            else if (back === "rides")
+                rideTo(there);
+            else if (back === "sits")
+                place = there;
         } else if (going !== null && wanted === goingTo) {
             if (Math.round(there.x * ratio) !== Math.round(going.to.x * ratio)
                 || Math.round(there.y * ratio) !== Math.round(going.to.y * ratio))
@@ -434,16 +434,21 @@ PanelWindow {
             // on to where that window was, over the air. A drop by his
             // hand falls on as it was let go.
             // Caught mid-leap, on a side or on the top it set off from,
-            // it walks on to that window where niri moved it instead,
-            // riding what moved, never held in the air until the keys
-            // rest (Stacked.standsOnTop). A play plays on, as before: a
-            // key ends one (stroll), and a dozing puppy's visit is his
-            // being away, which a window taking the keys doesn't end.
+            // or carried by a drag or a column moved beside it rather than
+            // a scroll, it walks on to that window where niri moved it
+            // instead, riding what moved, never held in the air until the
+            // keys rest; with no seat left on the screen, it rides that
+            // window from where it's drawn (walkOnTo, Stacked.caught). A
+            // play plays on, as before: a key ends one (stroll), and a
+            // dozing puppy's visit is his being away, which a window
+            // taking the keys doesn't end.
             if (going !== null && !going.kind && !byHand
                 && MarginCat.carries(saw, tilesOf(space?.id), goingTo) !== null) {
                 const was = goingTo;
                 const top = (saw ?? []).find(one => one.id === was);
-                if (Stacked.standsOnTop(drawnAt(), top, { wide: size, tall: size, air: cell })) {
+                const caught = Stacked.caught(drawnAt(), top,
+                    { wide: size, tall: size, air: cell, scrolling: scrolling() });
+                if (caught === "holds") {
                     halt();
                     sat = was;
                     heldShortOn = was;
@@ -1293,6 +1298,9 @@ PanelWindow {
         closedOn = null;
         roams = null;
         landedOn = null;
+        // No longer held short of a seat once it plays, which only the
+        // keys back on that seat's window let it do today (heldShortOn).
+        heldShortOn = null;
         sayWalked();
         shown = [];
         costs = [];

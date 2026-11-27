@@ -128,8 +128,10 @@ with it the same way if the keys come back first; then it comes back in at
 that edge head first, as between workspaces, and walks the strip to its
 seat, leaping the gap at the edge only where its window is all past it.
 Caught mid-walk by the scroll standing on its window's top, it stops where
-it's drawn and rides the same way; caught mid-leap or anywhere else, it walks
-on to that window where niri moved it. A ride isn't a rest: no play sets off
+it's drawn and rides the same way, then walks on to its seat as the keys come
+back; caught mid-leap or anywhere else, or carried by a drag or a column
+moved beside it rather than a scroll, it walks on to that window where it
+moved. Back on its column grown or shrunk across, it walks to its seat. A ride isn't a rest: no play sets off
 and no pet starts till it ends. A scroll runs for niri's spring from when
 niri says it began, so a scroll's word left on a window long after reads as
 ended. Moved to another workspace while it's off the edge, it holds out of
@@ -158,15 +160,26 @@ edge along the floor.
 - Held by `margin-cat-tiles.qml`: "a layout sent again mid-scroll keeps the scroll's begin"
 - Held by `margin-cat-tiles.qml`: "a new scroll beside an old one's word left on another window
   is dated by the new"
+- Held by `margin-cat-one-screen.qml`: "standing on its top as niri scrolls"
+- Held by `margin-cat-one-screen.qml`: "standing on its top as a drag carries it"
+- Held by `margin-cat-one-screen.qml`: "held short of this seat by a scroll, it walks on to
+  it"
+- Held by `margin-cat-one-screen.qml`: "its column grown across, it walks there"
 - Held by `margin-cat-one-screen.qml`: "off the right under it"
 - Held by `margin-cat-one-screen.qml`: "a pixel on the left, it comes straight down"
 - Owed since 2026-11-25: on nested niri, a walk caught by a scroll off the edge rides its
   window, and a floor came to from off the edge.
 - Owed since 2026-11-26: a Qt case that no play, stroll or pet starts during a ride; the
   view's `still`, `play()` and `stroll()` each check `carry`, which nothing pins.
+- Owed since 2026-11-27: a case of the view's own wiring, that follow() gives backOn
+  `held` only for the seat a scroll held it short of, and `heldShortOn` is cleared once it
+  plays; the choices are pinned in MarginCatStacked.js, not what the view passes them.
+- Owed since 2026-11-27: a case that a column moved before its tile record keeps a
+  scroll's date; a layout object made afresh from the stale tile reads as a scroll begun.
 - Owed since 2026-11-25: a word cached before the tiles watch goes live is dated as begun
   its `ago` before the shell heard it, not before niri sent it, so an old scroll may read as
-  just begun and start a ride for one spring; unmeasured.
+  just begun and start a ride for one spring; unmeasured. niri's own stream, connecting as a
+  stand-in and taken again after, dates its old words the same way.
 
 ### Climb, Path and Leap About the Windows
 
