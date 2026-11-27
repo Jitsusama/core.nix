@@ -29,6 +29,7 @@
 <link rel="stylesheet" href="../local-sites/web/theme.css">
 <link rel="stylesheet" href="../local-sites/web/base.css">
 <link rel="stylesheet" href="../local-sites/kit/switch.css">
+<link rel="stylesheet" href="../local-sites/kit/head.css">
 <link rel="stylesheet" href="site.css">
 <link rel="stylesheet" href="map.css">
 <link rel="stylesheet" href="panel.css">
@@ -39,7 +40,7 @@
 
 <a class="skip" href="#map-view">Skip to the map</a>
 
-<header class="head">
+<div class="head">
   <svg class="mark" width="32" height="32" viewBox="0 0 32 32" aria-hidden="true">
     <g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
       <path d="M3.5 14.5L16 4l12.5 10.5"/>
@@ -49,7 +50,15 @@
       <circle cx="16" cy="23" r="1.6"/>
     </g>
   </svg>
+  <header class="page-head">
+  <p class="eyebrow">your home network<span class="sep">·</span>floor by floor</p>
   <h1>Your Home Network, <em>Now</em></h1>
+  <!-- Not a live region: the map moves with every record, and a screen reader would say the
+       sentence whole each time; the standing line's status speaks for the feeds. -->
+  <p id="lede" class="lede">Reaching net for every device on it.</p>
+  <p class="standing"><span class="glyph" aria-hidden="true"></span>
+    <span id="asof" class="asof" role="status" data-state="connecting">Reaching net.</span></p>
+  <div class="quiet">
   <p class="keys">Press <kbd data-key="?">?</kbd> for the keys.</p>
   <div class="switch" role="radiogroup" aria-label="Theme">
     <label title="Light"><input type="radio" name="theme" value="light"><span class="sr">Light</span>
@@ -62,7 +71,9 @@
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 14.5A7.5 7.5 0 0 1 9.5 4.5a7.5 7.5 0 1 0 10 10z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
     </label>
   </div>
-</header>
+  </div>
+  </header>
+</div>
 
 <main id="main" class="stage">
   <figure class="map" id="map" aria-labelledby="map-title">
@@ -74,7 +85,6 @@
     <figcaption class="map-foot">
       <div class="foot-words">
         <p id="where" class="where" role="status"></p>
-        <p id="asof" class="asof" data-state="connecting">Reaching net.</p>
       </div>
       <fieldset class="zoom">
         <legend class="sr">Zoom</legend>

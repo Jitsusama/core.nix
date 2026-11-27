@@ -1,15 +1,14 @@
-// The words over the grove and under the page: the headline, whose counts
-// are the places, the lede saying what's worth a look and what grew, and
-// the line at the foot saying how fresh it all is.
+// The words of the page's head: the lede, opening on the counts that are the
+// places and saying what's worth a look and what grew, and the standing line
+// saying how fresh it all is. The title names the page and never moves.
 
 import type { Standing } from "../../local-sites/kit/feed.ts";
 import { said } from "../../local-sites/kit/status.ts";
 import { escaped } from "./draw.ts";
 import { type Grove, growing, plural, type Repository } from "./model.ts";
 
-/** What the head says, as markup, and the tab's title. */
+/** What the head's lede says, as markup, and the tab's title. */
 interface Head {
-  readonly title: string;
   readonly lede: string;
   readonly tab: string;
 }
@@ -22,7 +21,7 @@ function named(repository: Repository): string {
   return `<a href="${escaped(repository.address)}"><span class="rn" translate="no">${escaped(repository.name)}</span></a>`;
 }
 
-/** The headline and its lede: how things stand, then what's worth a look. */
+/** The lede: how things stand, then what's worth a look and what grew most. */
 function headOf(grove: Grove): Head {
   const all = grove.repositories.length;
   const grew = growing(grove).length;
@@ -36,11 +35,13 @@ function headOf(grove: Grove): Head {
     busiest === undefined
       ? "No tree was written today; the grove is resting."
       : `${named(busiest)} grew most today, ${escaped(plural(busiest.seasons.today, "tree"))} written.`;
+  const counted = `<a href="#every" data-place="every">${escaped(plural(all, "repository", "repositories"))}</a>, <a href="#growing" data-place="growing">${grew.toLocaleString("en-CA")} growing</a>.`;
   return {
-    title: `<a href="#every" data-place="every">${escaped(plural(all, "repository", "repositories"))}</a>, <em><a href="#growing" data-place="growing">${grew.toLocaleString("en-CA")} growing.</a></em>`,
-    lede: [worth.length === 0 ? "Still air: nothing waits on you." : worth.join(" "), most].join(
-      " ",
-    ),
+    lede: [
+      counted,
+      worth.length === 0 ? "Still air: nothing waits on you." : worth.join(" "),
+      most,
+    ].join(" "),
     tab:
       grove.worth.length === 0
         ? "Code"
@@ -57,7 +58,7 @@ function worst(standings: Iterable<Standing>): Standing | undefined {
   )[0];
 }
 
-/** The foot's line: where it was read, how fresh, and what couldn't be. */
+/** The standing line: where it was read, how fresh, and what couldn't be. */
 function footOf(
   grove: Grove | undefined,
   now: Standing | undefined,

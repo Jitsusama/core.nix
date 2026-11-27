@@ -8,6 +8,7 @@ note behind.
 | File          | What it holds                                                  |
 | ------------- | -------------------------------------------------------------- |
 | `site.ts`     | the page: its watches, its keys, and what's open               |
+| `hearing.ts`  | what net's watches told beside their records, for the lede     |
 | `model.ts`    | net's records read back as the network they describe           |
 | `shape.ts`    | the network's shape: floors, who hangs from whom, the gateway  |
 | `words.ts`    | how figures and devices are said                               |

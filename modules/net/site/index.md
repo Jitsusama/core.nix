@@ -3,7 +3,7 @@
 Every device on the home network this minute, drawn floor by floor. The
 page watches net's records live over the sites' server, and redraws the
 moment net has read the network again (about once a minute). The line
-under the map says whether it's live, and since when. Nothing on it
+under the title says whether it's live, and since when. Nothing on it
 changes the network or any device on it.
 
 ## How to Read It

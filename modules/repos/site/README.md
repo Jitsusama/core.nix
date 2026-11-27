@@ -11,7 +11,7 @@ note behind.
 | `model.ts`    | the daemon's records and the mycelium's cells read as a grove  |
 | `draw.ts`     | the grove, the repositories as rows, and the one open          |
 | `using.ts`    | what works in each repository, and how its use is said         |
-| `head.ts`     | the headline, its lede and the line at the foot                |
+| `head.ts`     | the head's lede, its counts first, and its standing line       |
 | `address.ts`  | where the address lands, and what it says as the cursor moves  |
 | `mycelium.ts` | the cells at work, live from the node, and their homes         |
 | `page.ts`     | the page's parts marked and copied from, given what to act on  |

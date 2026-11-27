@@ -42,14 +42,18 @@ PACE_MS = 6000
 RETRY_MS = 35000
 # What system.json comes to: two machines, each worth a look for what it says of itself.
 COUNTED = "Two machines, both worth a look."
+# A clock time, which moves each minute, and so never in a live region a reader hears.
+CLOCK = re.compile(r"\d\d:\d\d")
 # What a first visit to the page may cost, drawn from system.json: 25 files,
 # about 437 KB and 397 elements since the list of what is worth a look, six to a row,
 # and since no comment is sent, its styles' included; about 445 KB since machines
 # out of reach are named apart, a cost worth the page reading well with many down;
 # 403 elements since each machine's look carries its act, opening it in the launcher;
 # 413 elements since the builders' card, which the fixture's one good builder always
-# draws, and its code, about 4.4 KB of source on main's.
-BUDGET = Budget(files=25, kilobytes=455, elements=416)
+# draws, and its code, about 4.4 KB of source on main's. One file is the kit's head.css,
+# the head every live page shares, which the gate measured at about 1.7 KB and four elements
+# more; 457 KB and 420 elements are main's line plus those, summed rather than measured.
+BUDGET = Budget(files=26, kilobytes=457, elements=420)
 
 
 @pytest.fixture
@@ -125,6 +129,10 @@ def test_the_system_page_draws_every_machine_live(system_page: Page) -> None:
     expect(system_page.locator("#standing-words"), "the page didn't say where").to_contain_text(
         "kestrel"
     )
+    expect(
+        system_page.locator("#standing-words"), "the line a reader hears said the minute"
+    ).not_to_contain_text(CLOCK)
+    expect(system_page.locator("#read-at"), "the page didn't say when").to_contain_text(CLOCK)
     for machine in ["kestrel", "osprey"]:
         row = system_page.locator(f'#parts a[data-row="machine:{machine}"]')
         expect(row, f"the page drew no row for {machine}").to_be_visible()

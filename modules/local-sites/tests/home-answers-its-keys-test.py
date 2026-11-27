@@ -134,7 +134,7 @@ def test_g_twice_and_capital_g_go_to_the_first_and_the_last(tab: Page) -> None:
 
 def test_the_keys_the_head_shows_answer_a_tap(tab: Page) -> None:
     """A tap on the head's j steps the cursor as the key does."""
-    tab.locator(".threshold .keys kbd", has_text="j").click()
+    tab.locator(".page-head .keys kbd", has_text="j").click()
     expect(tab.locator(CURSOR), "a tap on j left the cursor").to_have_text(NAMES[1])
 
 

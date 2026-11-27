@@ -74,13 +74,21 @@
   }
 
   // The masthead: the site's mark, drawn inline (not one of the switch's
-  // icons), one title, the key line, the switch and a skip link first.
+  // icons), one title, the key line, the switch and a skip link first. A
+  // page on the live sites' head draws its mark just before the head rather
+  // than in it, since the head holds only its parts (sites.md), so what
+  // comes just before the first <header> counts as its masthead too: only
+  // that one element, so a skip link's icon or a banner further up can't
+  // stand in for a mark the head lacks.
   const head = page.querySelector("header");
-  const marks = [...(head?.querySelectorAll("svg") ?? [])].filter(
-    (drawing) => drawing.closest('[role="radiogroup"]') === null,
-  );
+  const masthead = head === null ? [] : [head, head.previousElementSibling].filter(Boolean);
+  const marks = [];
+  for (const part of masthead) {
+    const drawings = part.matches("svg") ? [part] : [...part.querySelectorAll("svg")];
+    marks.push(...drawings.filter((drawing) => drawing.closest('[role="radiogroup"]') === null));
+  }
   if (marks.length === 0) {
-    missing.push("the site's mark, drawn as inline SVG in the first <header>");
+    missing.push("the site's mark, drawn as inline SVG in the first <header> or just before it");
   }
   // Only what's drawn counts, since an interface keeps its other views
   // mounted under [hidden], each with its own h1, while it shows one.

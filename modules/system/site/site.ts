@@ -1,19 +1,18 @@
 // Your machines, now: each machine Joel runs, and what it carries of the
-// mycelium, the network and the code, as the system daemon holds them. A
-// headline counts the machines and says how they stand, a list under it
+// mycelium, the network and the code, as the system daemon holds them. The
+// head's lede counts the machines and says how they stand, a list under it
 // names everything worth a look, the bridge draws them, each a pier, and
-// each machine has a section of its own below, with the other three parts
-// after them.
+// each machine has its own section below, the other three parts after them.
 // It watches the daemon's summary, parts and things over the sites'
 // server, so a machine redraws the moment its owner's answer moves, and
-// the line under the headline says whether what it shows is live and
-// since when. The cursor is focus: j and k move it through every row, and
+// the head's standing line says whether what it shows is live and since
+// when. The cursor is focus: j and k move it through every row, and
 // Return follows the link it is on.
 
 import { follow, type Standing } from "../../local-sites/kit/feed.ts";
 import { hasOwnKeys, listen, toggle } from "../../local-sites/kit/keys.ts";
 import { Held } from "../../local-sites/kit/records.ts";
-import { clockTime, said } from "../../local-sites/kit/status.ts";
+import { clockTime, said, tell } from "../../local-sites/kit/status.ts";
 import { themeSwitch } from "../../local-sites/kit/theme.ts";
 import { askedOf, landingOf, recordsOf, type Watch } from "./address.ts";
 import { bridgeOf } from "./bridge.ts";
@@ -44,10 +43,11 @@ function element<T extends Element>(selector: string, kind: new () => T): T {
 }
 
 const list = element("#parts", HTMLDivElement);
-const title = element("#headline", HTMLHeadingElement);
+const title = element("#headline", HTMLParagraphElement);
 const looks = element("#looks", HTMLDivElement);
 const standingLine = element("#standing", HTMLParagraphElement);
 const standingWords = element("#standing-words", HTMLSpanElement);
+const readAt = element("#read-at", HTMLSpanElement);
 const bridge = element("#bridge", HTMLElement);
 const places = element("#places", HTMLElement);
 const note = element("#note", HTMLParagraphElement);
@@ -142,17 +142,16 @@ function sayWhen(): void {
   const words: string[] = [];
   if (system !== undefined) {
     const at = Date.parse(system.readAt);
-    words.push(
-      system.machine,
-      Number.isNaN(at) ? "read at an unknown time" : `read ${clockTime(at)}`,
-    );
+    words.push(system.machine);
+    readAt.textContent = Number.isNaN(at) ? " Read at an unknown time." : ` Read ${clockTime(at)}.`;
   }
   if (now !== undefined) {
     words.push(now.state === "live" ? "live" : said(now));
   }
-  standingWords.textContent =
-    words.length === 0 ? "Reaching the system daemon." : `${words.join(" · ")}.`;
-  standingLine.dataset["state"] = now?.state ?? "connecting";
+  const state = now?.state ?? "connecting";
+  const spoken = words.length === 0 ? "Reaching the system daemon." : `${words.join(" · ")}.`;
+  tell(standingWords, spoken, state);
+  standingLine.dataset["state"] = state;
   const problems = [...(system?.unread ?? []), ...heard.values()];
   const unreadNote = problems.length > 0 ? `Couldn't read: ${problems.join("; ")}.` : "";
   const kept = system === undefined ? "" : keptOf(system);

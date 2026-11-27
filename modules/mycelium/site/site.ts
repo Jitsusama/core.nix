@@ -22,8 +22,9 @@
 // cell's own record doesn't, as an older node's doesn't.
 
 import { follow, type Standing } from "../../local-sites/kit/feed.ts";
+import { watchForKeys } from "../../local-sites/kit/keys.ts";
 import type { Held } from "../../local-sites/kit/records.ts";
-import { clockTime, said } from "../../local-sites/kit/status.ts";
+import { clockTime, said, tell } from "../../local-sites/kit/status.ts";
 import { expiryOf, type Heard, nowOf } from "./model.ts";
 import { asked, sayReach } from "./reach.ts";
 
@@ -37,7 +38,7 @@ const KINDS = ["network", "cell", "machine", "message"] as const;
 type Kind = (typeof KINDS)[number];
 
 const found = document.querySelector("#asof");
-if (!(found instanceof HTMLParagraphElement)) {
+if (!(found instanceof HTMLSpanElement)) {
   throw new Error("the page has no #asof, where the map says how it stands");
 }
 const asof = found;
@@ -46,6 +47,9 @@ const answered = new Set<Kind>();
 const standings = new Map<Kind, Standing>();
 // The last thing each watch couldn't read, said until it reads another.
 const unread = new Map<Kind, string>();
+// Why the last reading couldn't be drawn (view.js), said, broken, whatever a
+// feed's standing says, until a reading is drawn whole.
+let undrawn: string | undefined;
 
 let handed = Number.NEGATIVE_INFINITY;
 let waiting: number | undefined;
@@ -81,15 +85,28 @@ function sayStanding(now: Standing | undefined): string {
   return said(now);
 }
 
+/**
+ * What follows a failed drawing on the line: how the feeds stand once no
+ * change can come, as when the server or the node is gone, and otherwise
+ * that the next change is tried.
+ */
+function afterUndrawn(now: Standing | undefined): string {
+  return now !== undefined && (now.state === "stale" || now.state === "broken")
+    ? said(now)
+    : "It tries again with the next change.";
+}
+
 /** Says how the map stands, and what it couldn't read. */
 function sayHow(): void {
   const now = standing();
   const problems = [...unread.values()];
   const trouble = problems.length > 0 ? ` Couldn't read: ${problems.join("; ")}.` : "";
-  asof.textContent = `${sayStanding(now)}${trouble}`;
-  asof.dataset["state"] = now?.state ?? "connecting";
-  // The drawing's own look for a map that isn't now.
-  asof.classList.toggle("stale", now?.state === "stale" || now?.state === "broken");
+  if (undrawn !== undefined) {
+    const words = `The map couldn't draw: ${undrawn}. ${afterUndrawn(now)}${trouble}`;
+    tell(asof, words, "broken");
+    return;
+  }
+  tell(asof, `${sayStanding(now)}${trouble}`, now?.state ?? "connecting");
 }
 
 /** Hands the drawing the map as it stands now. */
@@ -206,6 +223,20 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 sayHow();
+// A reading that fails to draw says so on the standing line, broken, until
+// the next is drawn whole, which says how the map stands again, rather than
+// leaving a live map reading as broken until a feed's standing moves.
+document.addEventListener("mycelium:undrawn", (event) => {
+  undrawn = (event as CustomEvent<{ why: string }>).detail.why;
+  sayHow();
+});
+document.addEventListener("mycelium:modelled", () => {
+  undrawn = undefined;
+  sayHow();
+});
+// The map answers its keys in the drawing (view.js), so the kit is told of
+// the first one here: a touch screen shows the head's key line once typed on.
+watchForKeys();
 // Opened to be checked, the page says whether it reaches every cell.
 if (asked(location.search)) {
   sayReach(document.documentElement, document);

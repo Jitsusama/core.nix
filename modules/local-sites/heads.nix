@@ -202,14 +202,7 @@ let
   # heads.py's FIRST_WAITING holds. Putting a moved page back, or a name
   # into FIRST_WAITING, is the way past the gate, which review alone holds,
   # so do it only to unblock a merge, and say so.
-  waitingForTheHead = [
-    "Code"
-    "Home"
-    "Machines"
-    "Map"
-    "Murmurs"
-    "Network"
-  ];
+  waitingForTheHead = [ ];
 in
 pkgs.runCommandLocal "heads-are-the-kits"
   {

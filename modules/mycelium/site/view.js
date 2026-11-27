@@ -152,7 +152,6 @@ import {
   const svg = document.getElementById("map-draw");
   const world = document.getElementById("world");
   const labelsEl = document.getElementById("labels");
-  const asof = document.getElementById("asof");
   const panelBody = document.getElementById("panel-body");
   const find = document.getElementById("find");
   const findLine = document.getElementById("find-line");
@@ -4681,6 +4680,12 @@ import {
   // Between two readings: who is new and who has gone. `was` is where
   // everything stood before this reading drew, for the ghosts.
   const noteLives = (was) => {
+    // A first reading that failed before its cells were heard leaves none
+    // to compare with, so this one is heard as a first.
+    if (heardCells === null) {
+      firstLives();
+      return;
+    }
     const now = Date.now();
     const fresh = [];
     const gone = [];
@@ -4926,6 +4931,31 @@ import {
   // Each reading comes from site.ts, which says over the map how the feed
   // stands; the drawing only draws.
   let first = true;
+  // How many readings the first path has been tried on.
+  let firstTries = 0;
+  // Whether any reading has been drawn whole yet, by either path.
+  let drawnWhole = false;
+  // The address's cell, chosen on the first reading the ordinary path draws
+  // whole; one the address can't give is logged and the map drawn without
+  // it, so a step that always throws can't hold the line either.
+  const chooseFromAddress = () => {
+    try {
+      apply(false);
+    } catch (err) {
+      console.error("mycelium: the address named nothing to open", err?.stack || err);
+      chosen = null;
+      draw();
+    }
+  };
+  // One step of a first drawing the first path gave up on, logged when it
+  // throws rather than failing the reading.
+  const firstStep = (what, step) => {
+    try {
+      step();
+    } catch (err) {
+      console.error(`mycelium: couldn't ${what} on the first drawing`, err?.stack || err);
+    }
+  };
   const take = (now) => {
     try {
       // Each redraw is measured, so its cost at any size can be read from
@@ -4936,14 +4966,33 @@ import {
       sow(current);
       if (!findLine.hidden) refind({ keep: true });
       if (first) {
+        // A first path that fails is tried whole once more, and then left to
+        // the ordinary path, so a step that always throws can't hold the
+        // line at "couldn't draw" for good.
+        firstTries += 1;
+        if (firstTries > 1) first = false;
         judgeChanged();
         firstLives();
-        first = false;
         apply(false);
         hear(false);
         // A talk opened from the address was written before the ties were
         // heard, so it is written again now that they are.
         if (tieOf.size) panel();
+        // Only once the first reading is drawn whole, so one that fails part
+        // way is drawn as a first again by the next, rather than left half set.
+        first = false;
+      } else if (!drawnWhole) {
+        // A first path given up on never judged what changed since the last
+        // look, chose the address's cell or heard the node's messages as
+        // already said, so the first reading drawn here does each, its cells
+        // heard as a first. Each is tried alone, so one that always throws
+        // leaves the rest drawn and the ordinary path to the next reading.
+        const was = spots;
+        firstStep("judge what changed", judgeChanged);
+        chooseFromAddress();
+        firstStep("hear its cells", () => noteLives(was));
+        firstStep("hear its messages as said", () => hear(false));
+        firstStep("write its drawer", panel);
       } else {
         if (chosen && !knows(chosen)) chosen = null;
         const was = spots;
@@ -4953,6 +5002,7 @@ import {
         hear(true);
       }
       drawStatus();
+      drawnWhole = true;
       performance.clearMeasures("mycelium-redraw");
       performance.measure("mycelium-redraw", { start: started });
       // What was made of the reading, once drawn whole, for reach.ts to
@@ -4965,12 +5015,14 @@ import {
       // The next change brings the next reading, which is drawn whole: a
       // draw cut short leaves no shape behind for that reading to match.
       drawnFor = null;
-      asof.textContent = `The map couldn't draw: ${err?.message || err}. It tries again with the next change.`;
+      // The page says why on the standing line, broken, until a reading is
+      // drawn whole, whatever a feed's standing says meanwhile (site.ts).
+      document.dispatchEvent(new CustomEvent("mycelium:undrawn", { detail: { why: `${err?.message || err}` } }));
     }
   };
   document.addEventListener("mycelium:now", (e) => take(e.detail));
 
-  // How things stand, as one sentence over the work, its last clause the
+  // How things stand, as one sentence, the head's lede, its last clause the
   // italic turn: who needs him, else what is stuck or moving, else that
   // all is quiet. A count Now lists is the way to that list: the cells to
   // the network as a tree, who needs him to the first of them. The
@@ -4982,7 +5034,7 @@ import {
   // reads them.
   const statusWords = document.getElementById("status-words");
   const asksWords = document.getElementById("asks-words");
-  const sentenceLine = statusWords.closest("h1");
+  const sentenceLine = document.getElementById("sentence");
   const statusSaid = document.getElementById("status-said");
   let statusShown = "";
   let sentenceShown = "";

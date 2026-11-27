@@ -7,8 +7,9 @@ declares it for a machine in a realm (NODE_KINDS). It must say it's live with
 the realm drawn, its networks and the lines joining them and their cells
 in one window that opens a cell clicked, follow a change within its pace,
 two cells sharing a title moving among them, say broken when the node
-stops while keeping the realm drawn, and live again when it's back, say stale
-when the server goes, draw a record's words as words and never as markup,
+stops while keeping the realm drawn, and live again when it's back, say
+broken when a reading fails to draw and live again once the next draws, say
+stale when the server goes, draw a record's words as words and never as markup,
 list what each cell, machine, network and branch spent today, most first,
 say what waits on a cell and what holds stand, as the node judges them,
 draw every cell until one is too small to read, thin every line as the map
@@ -66,25 +67,18 @@ REDRAWN_MS = 2500
 # What node.json's realm comes to on the map, every part of the count.
 COUNTED = "8 cells, 2 moving, 1 stuck"
 CELLS = 8
-# What a first visit to the map may cost, drawn from the stand-in's cells:
-# 33 files since the balance, who started each cell, the tree beside the map,
-# what each thing is in words, how a time is said, how each thing stands, what
-# each is doing, what each spent, what waits, how wide each line is drawn, how
-# a cell is named, how the map's motion is timed, where everything stands,
-# what the ground layer's canvas touches, a reading's shape, what new work
-# hands the Launcher and what a cell's drawer offers were read in modules of
-# their own; about 668 KB since the builders, the legend's moving samples and
-# new work's line, and since no comment is sent, view.js's and the styles'
-# included, a little more with the drawer's acts and its whole question, and
-# 677.4 KB once a network's label keeps what tells it apart, and 678.2 KB
-# once a cloud machine says it's kept, a little more once a long lease counts
-# days, about 0.4 KB more once every label is kept apart and in its room,
-# about 2.4 KB more once a machine's drawer starts new work on it, 686.0 KB
-# once what each cell split from is read, about 0.9 KB more once new work
-# keeps to the machine chosen, and a little more once the kit draws a field's
-# placeholder in muted, under the 689 KB allowed; new work's line and its
-# hidden controls draw about 20 elements of the 611.
-BUDGET = Budget(files=33, kilobytes=689, elements=620)
+# What a first visit to the map may cost, drawn from the stand-in's cells: its
+# measured cost when this line was last set, 33 files, 686.7 KB and 619
+# elements, plus room for four files, 8 KB and 16 elements, so most changes
+# never touch the line and parallel ones never clash on it. The room lets the
+# map grow that much unnoticed. Every run's summary says what the map cost, and
+# a change that grows it says in its commit what it cost and why that's worth
+# it. One that would pass the line sets it again to its measured cost plus the
+# room, writing that cost here. Two that each fit can pass it together, as
+# neither moves this file, so a change that grows the map runs this test again
+# at its head over main once main's moves have changed this check's derivation
+# since (local-sites/AGENTS.md).
+BUDGET = Budget(files=37, kilobytes=695, elements=635)
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000
 TWIN_NETWORKS = 200
@@ -2195,6 +2189,169 @@ def test_a_node_that_stops_is_said_broken_with_the_realm_kept_then_live(
     # A change after it's back shows the watch delivers again, not just the old map.
     mycelium_node.tell("cell", changed=[{"key": "cell:TERN03", "standing": "moving"}])
     the_map_counts(page, "8 cells, 3 moving, 1 stuck", "the map back live missed a change")
+
+
+# Longer than site.ts's floor between two readings handed over (FLOOR_MS), so a quiet that long
+# leaves none queued.
+QUIET_MS = 2500
+# A reading the drawing can make nothing of, handed it as site.ts hands each, as a fault in the
+# drawing would leave one, once no reading has been drawn for `quiet` milliseconds, so none
+# handed over already can clear the failure before it's read.
+UNDRAWABLE_ONCE_QUIET = """(quiet) => new Promise((done) => {
+  const drawn = () => {
+    clearTimeout(waiting);
+    waiting = setTimeout(fail, quiet);
+  };
+  const fail = () => {
+    document.removeEventListener("mycelium:modelled", drawn);
+    document.dispatchEvent(new CustomEvent("mycelium:now", { detail: null }));
+    done();
+  };
+  let waiting = setTimeout(fail, quiet);
+  document.addEventListener("mycelium:modelled", drawn);
+})"""
+# Every reading from now on, handed the drawing as one it can make nothing of, so none drawn
+# whole can clear the failure while a feed's standing moves. A listener on the document that
+# captures runs before view.js's.
+UNDRAWABLE_FROM_NOW = """() => {
+  document.addEventListener("mycelium:now", (event) => {
+    if (event.detail === null) return;
+    event.stopImmediatePropagation();
+    document.dispatchEvent(new CustomEvent("mycelium:now", { detail: null }));
+  }, { capture: true });
+  document.dispatchEvent(new CustomEvent("mycelium:now", { detail: null }));
+}"""
+
+
+def test_a_reading_that_fails_to_draw_is_said_broken_until_the_next_draws(
+    mycelium_opened: Opened, mycelium_node: StandIn
+) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    the_map_counts(page, COUNTED, "the map miscounted the realm")
+    mycelium_opened.expecting("mycelium: a reading failed to draw")
+    page.evaluate(UNDRAWABLE_ONCE_QUIET, QUIET_MS)
+    the_map_stands(page, "broken")
+    asof = page.locator("#asof")
+    expect(asof, "the map didn't say it couldn't draw").to_contain_text("The map couldn't draw")
+    # The node stays live throughout, so only the next reading drawn whole can say so again.
+    mycelium_node.tell("cell", changed=[{"key": "cell:TERN03", "standing": "moving"}])
+    the_map_counts(page, "8 cells, 3 moving, 1 stuck", "the map missed the next reading")
+    the_map_stands(page, "live")
+    expect(asof, "the map still said it couldn't draw").not_to_contain_text("couldn't draw")
+
+
+def test_a_reading_that_fails_to_draw_is_said_though_a_feeds_standing_moves(
+    mycelium_opened: Opened, mycelium_served: Served
+) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    # Only once the first reading is drawn can none but the next clear the failure.
+    the_map_counts(page, COUNTED, "the map miscounted the realm")
+    mycelium_opened.expecting("mycelium: a reading failed to draw")
+    page.evaluate(UNDRAWABLE_FROM_NOW)
+    the_map_stands(page, "broken")
+    asof = page.locator("#asof")
+    expect(asof, "the map didn't say it tries again").to_contain_text("It tries again")
+    # Every watch goes stale once the server goes, and no change can come: the
+    # line says both, and stays broken.
+    _, server = mycelium_served
+    mycelium_opened.loses(server)
+    expect(asof, "the failure hid that the server went").to_contain_text(
+        "the sites' server can't be reached", timeout=PACE_MS
+    )
+    the_map_stands(page, "broken")
+    expect(asof, "a feed's standing hid that the map couldn't draw").to_contain_text(
+        "The map couldn't draw"
+    )
+    expect(asof, "the map promised a change that can't come").not_to_contain_text("It tries again")
+
+
+def test_a_reading_that_fails_to_draw_is_said_though_the_node_stops(
+    mycelium_opened: Opened, mycelium_node: StandIn
+) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    the_map_counts(page, COUNTED, "the map miscounted the realm")
+    mycelium_opened.expecting("mycelium: a reading failed to draw")
+    page.evaluate(UNDRAWABLE_FROM_NOW)
+    the_map_stands(page, "broken")
+    asof = page.locator("#asof")
+    # The node going leaves the server reached and every watch broken, so no
+    # change can come: the line says how the feeds stand, and stays broken.
+    mycelium_node.leave()
+    expect(asof, "the failure hid that the node went").to_contain_text(
+        "Not live since", timeout=PACE_MS
+    )
+    the_map_stands(page, "broken")
+    expect(asof, "a feed's standing hid that the map couldn't draw").to_contain_text(
+        "The map couldn't draw"
+    )
+    expect(asof, "the map promised a change that can't come").not_to_contain_text("It tries again")
+
+
+# Every reading site.ts hands over, held back from the map, the last kept, until the test lets them
+# through; run ahead of the page's own scripts, so even the first is held.
+READINGS_HELD = """
+window.held = null;
+const holding = (event) => {
+  if (event.detail === null) return;
+  event.stopImmediatePropagation();
+  window.held = event.detail;
+};
+document.addEventListener("mycelium:now", holding, { capture: true });
+window.letReadingsThrough = () => {
+  document.removeEventListener("mycelium:now", holding, { capture: true });
+  document.dispatchEvent(new CustomEvent("mycelium:now", { detail: window.held }));
+};
+window.passHeld = () => {
+  document.removeEventListener("mycelium:now", holding, { capture: true });
+  document.dispatchEvent(new CustomEvent("mycelium:now", { detail: window.held }));
+  document.addEventListener("mycelium:now", holding, { capture: true });
+};
+"""
+
+# A drawer that refuses its next `panelFails` writings, so a whole reading fails part way
+# through the first path, after it was read and sown, as no reading of nothing can.
+PANEL_FAILS = """
+window.panelFails = 0;
+const inner = Object.getOwnPropertyDescriptor(Element.prototype, "innerHTML");
+Object.defineProperty(Element.prototype, "innerHTML", {
+  ...inner,
+  set(html) {
+    if (this.id === "panel-body" && window.panelFails > 0) {
+      window.panelFails -= 1;
+      throw new Error("a drawer that can't be written");
+    }
+    inner.set.call(this, html);
+  },
+});
+"""
+
+
+def test_a_first_reading_that_fails_twice_still_opens_the_cell_the_address_names(
+    browser: Browser, mycelium_served: Served
+) -> None:
+    root, _ = mycelium_served
+    address = f"{root}mycelium/#cell={SOUGHT}"
+    opened = Opened(browser, address, SIZES[-1], "dark", READINGS_HELD + PANEL_FAILS)
+    try:
+        page = opened.page
+        page.wait_for_function("window.held !== null", timeout=PACE_MS)
+        # Two whole readings that fail inside the first path leave it to the ordinary one.
+        opened.expecting("mycelium: a reading failed to draw")
+        page.evaluate("window.panelFails = 2; passHeld(); passHeld()")
+        the_map_stands(page, "broken")
+        failed = page.evaluate("window.panelFails")
+        assert failed == 0, f"the first path wasn't failed twice, {failed} failings left"
+        page.evaluate("letReadingsThrough()")
+        # Its cells are heard as a first rather than compared with none, so it draws whole.
+        the_map_counts(page, COUNTED, "the first reading drawn whole failed")
+        the_map_stands(page, "live")
+        talk = page.locator(f'#panel-body a[href^="mycelium:cell/{SOUGHT}"]')
+        expect(talk.first, "the address's cell wasn't opened").to_be_visible()
+    finally:
+        opened.close()
 
 
 def test_a_server_that_goes_is_said_stale(mycelium_opened: Opened, mycelium_served: Served) -> None:

@@ -108,49 +108,17 @@ body {
   opacity: 0.8;
 }
 
-.eyebrow {
-  color: var(--tint);
-}
-
-/* A separator is a glyph read with its words, so it takes muted, as the
-   kit's own page head does, rather than the rule's shade, which a line may
-   wear and a word may not: in it the dot read at 2.00:1. */
-.eyebrow .sep,
-.standing .sep {
-  color: var(--muted);
-  padding-inline: var(--mark);
-}
-
-.threshold h1 {
+.page-head h1 {
   font-size: var(--step-display);
 }
 
-.lede {
-  max-inline-size: 36rem;
-  color: var(--text);
-  font-size: var(--step-large);
-  line-height: 1.45;
-}
-
-/* The standing line: how the home stands, led by a bud. */
-.standing {
-  display: inline-flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  align-items: baseline;
-  margin-block-start: var(--items);
+/* The counts in the standing line, parted as the eyebrow's phrases are. A
+   separator is a glyph read with its words, so it takes muted, as the kit's
+   own page head does, rather than the rule's shade, which a line may wear
+   and a word may not: in it the dot read at 2.00:1. */
+.standing .sep {
   color: var(--muted);
-  font-family: var(--mono);
-  font-feature-settings: var(--mono-features);
-  font-size: var(--step-small);
-}
-
-.standing .glyph {
-  inline-size: 0.55em;
-  block-size: 0.55em;
-  margin-inline-end: var(--mark);
-  border-radius: 50%;
-  background: var(--tint);
+  padding-inline: var(--mark);
 }
 
 /* The way through, as typography: an italic line of numbered beds. */
@@ -190,20 +158,8 @@ body {
   letter-spacing: 0.1em;
 }
 
-/* The keys and the switch, small and set under the way through. The switch is
-   the kit's (switch.css), drawn as on every other site. */
-.keys {
-  margin-block-start: var(--items);
-  color: var(--muted);
-  font-size: var(--step-small);
-}
-
-.keys kbd {
-  padding: 0 0.3em;
-  border: 1px solid var(--rule);
-  border-radius: var(--radius);
-}
-
+/* The head's keys and switch act only through the page's script, so a page
+   without one doesn't offer them. */
 html:not(.js) :is(.keys, .switch) {
   display: none;
 }

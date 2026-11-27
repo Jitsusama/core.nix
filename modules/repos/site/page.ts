@@ -243,7 +243,8 @@ function paced(act: () => void, gap: number, pacing: () => boolean): () => void 
 }
 
 // The parts whose height the feeds decide, each held at index.html's --room-<id> until they draw.
-const ROOMS = ["title", "lede", "grove", "list", "open"] as const;
+// The standing line is among them, since it sits above the grove and its trouble may wrap.
+const ROOMS = ["lede", "standing", "grove", "list", "open"] as const;
 type Room = (typeof ROOMS)[number];
 // The longest a part's room is held, so a feed that never answers, or a daemon away, leaves the
 // page fitting what it holds, the trouble said where it's seen, rather than the last visit.
@@ -287,7 +288,10 @@ function keepRoom(forgets: () => readonly Room[]): (everyFeed: boolean) => void 
       ]),
     );
     try {
-      localStorage.setItem("code-room", JSON.stringify({ width: innerWidth, heights }));
+      // Under a name of its own since the kit's head took the lede, so a visit kept before then,
+      // its heights taken of other parts, is never put back; that one is let go.
+      localStorage.setItem("code-rooms", JSON.stringify({ width: innerWidth, heights }));
+      localStorage.removeItem("code-room");
     } catch {
       // A browser that keeps nothing draws the next load from nothing, shifting as it did.
     }

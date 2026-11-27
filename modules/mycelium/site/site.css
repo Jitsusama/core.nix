@@ -45,35 +45,54 @@ body {
   }
 }
 
-/* ---- The head: one sentence over the work, how things stand, with the
-   keys said once under it, small, beside the look's switch, and the line
-   saying whether all of it is live. The page's own ground, never a bar. */
+/* ---- The head: the kit's (head.css), its lede the one sentence of how
+   things stand, and its standing line and quiet row sharing one line under
+   it, so the map keeps the screen. The page's own ground, never a bar. */
 .head {
-  display: grid;
-  gap: 0;
+  display: flex;
+  align-items: start;
+  gap: var(--mark) var(--items);
   padding: var(--mark) var(--inset) 0;
 }
 
-.sentence {
+:root .head .page-head {
+  display: grid;
+  flex: 1;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0 var(--groups);
+  align-items: center;
   margin: 0;
-  color: var(--strong);
-  font: 400 var(--step-title) / 1.1 var(--serif);
-  font-variation-settings:
-    "SOFT" 100,
-    "WONK" 1;
-  letter-spacing: -0.012em;
-  text-wrap: balance;
-  padding-block-end: var(--tie);
 }
 
-/* The mark heads the sentence at the size of its letters, in the tint:
-   a network round its hub, one cell of it dormant. */
-.sentence .mark {
-  display: inline-block;
-  inline-size: 0.82em;
-  block-size: 0.82em;
-  margin-inline-end: 0.28em;
-  vertical-align: -0.08em;
+:root .head .page-head > :not(.standing, .quiet) {
+  grid-column: 1 / -1;
+}
+
+:root .head .page-head h1 {
+  font-size: var(--step-large);
+}
+
+/* The sentence keeps its own width as it's written again, so the counts
+   it leads to never move under the hand. */
+:root .head .page-head .lede {
+  max-inline-size: none;
+  text-wrap: balance;
+}
+
+:root .head .page-head .quiet {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 var(--groups);
+}
+
+/* The mark stands beside the head in the tint: a network round its hub,
+   one cell of it dormant. */
+.head .mark {
+  inline-size: 2rem;
+  block-size: 2rem;
+  flex: none;
+  margin-block-start: var(--tie);
   color: var(--tint);
 }
 
@@ -81,7 +100,7 @@ body {
    step back are told apart by size and face rather than by fading: the
    muted ink is kept for marks. The turn's tint is deepened toward the
    strong ink for the same reason. */
-.sentence em {
+.page-head em {
   color: color-mix(in oklab, var(--tint) 60%, var(--strong));
   font-style: italic;
 }
@@ -120,17 +139,8 @@ body {
   text-decoration-thickness: 2px;
 }
 
-.under {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0 var(--groups);
-}
-
-.head .keys {
-  margin: 0;
-  color: var(--text);
-  font: italic 400 var(--step-small) / 1.4 var(--serif);
+:root .head .keys {
+  font-style: italic;
 }
 
 /* A key is the glyph to press, upright in full ink among the italic, so
@@ -382,47 +392,6 @@ body {
   flex: none;
   inline-size: 16px;
   block-size: 16px;
-}
-
-/* The standing line: whether the map is live, from whose node and since
-   when, led by a mark told by its shape: a disc while live, a dashed ring
-   while it reaches the node, a ring once it isn't live, and a struck ring
-   when the node didn't answer. The words say it too. */
-.asof {
-  display: flex;
-  align-items: baseline;
-  gap: var(--mark);
-  margin: 0 0 0 auto;
-  color: var(--text);
-  font: 400 var(--step-small) / 1.4 var(--serif);
-}
-
-.asof::before {
-  content: "";
-  flex: none;
-  align-self: center;
-  inline-size: 0.55em;
-  block-size: 0.55em;
-  border: 1.5px solid currentColor;
-  border-radius: 50%;
-  background: currentColor;
-}
-
-.asof[data-state="connecting"]::before {
-  border-style: dashed;
-  background: none;
-}
-
-.asof.stale {
-  color: var(--strong);
-}
-
-.asof.stale::before {
-  background: none;
-}
-
-.asof[data-state="broken"]::before {
-  background: linear-gradient(135deg, transparent 44%, currentColor 44% 56%, transparent 56%);
 }
 
 /* The map's own words, zoom, the whole map and Now: quiet words, the

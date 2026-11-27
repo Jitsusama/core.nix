@@ -1,7 +1,7 @@
 /* Your machines, now: each machine Joel runs, and what it carries. A
    night ground, the sun's gold for what the page speaks in, and the accent
-   only where something can be done. The first screen is one sentence and
-   one drawing: the headline counts the machines and says how they stand,
+   only where something can be done. The first screen is the kit's head
+   and one drawing: its lede counts the machines and says how they stand,
    and the bridge stands each machine as a pier, its cells over it and the
    network under it, its name and health above. Each machine's section and
    the parts across them follow (parts.css). The display serif names and
@@ -40,7 +40,7 @@ html:not([data-theme="light"]) body {
   font-size: inherit;
 }
 
-/* ---- The masthead: the page's name, each machine, and the keys. ---- */
+/* ---- The masthead: the page's mark and each machine, kept in view. ---- */
 
 .mast {
   position: sticky;
@@ -114,21 +114,9 @@ html:not([data-theme="light"]) body {
   border-radius: var(--radius);
 }
 
-/* The key line is the head's quiet row, a whole row under the wordmark and
-   the machines, said once above the work rather than inside it. */
-.keys {
+/* The key line promises keys only once the script that answers them runs. */
+html:not(.js) .page-head .keys {
   display: none;
-  flex: 1 0 100%;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--tie) var(--mark);
-  margin: 0;
-  color: var(--muted);
-  font: 400 var(--step-small) / 1.5 var(--serif);
-}
-
-.js .keys {
-  display: flex;
 }
 
 .help {
@@ -163,86 +151,34 @@ html:not([data-theme="light"]) body {
   outline: none;
 }
 
-/* ---- The hero: the eyebrow, the one sentence, and how it stands. ---- */
+/* ---- The kit's head (head.css), on the stage's own column, so its title
+   lines up with the work under it. ---- */
 
-.eyebrow {
-  margin: 0 0 var(--apart);
+:root .page-head {
+  max-inline-size: calc(var(--column) + 2 * var(--screen));
+  margin: 0 auto;
+  padding: var(--frames) var(--screen) 0;
+  box-sizing: border-box;
+  inline-size: 100%;
+}
+
+/* The lede's turn says how the machines stand in the worst health's own
+   colour, the words saying it too, and in the page's own when all is well:
+   the lede is italic already, so the colour is what sets the turn apart. */
+.page-head .lede em {
   color: var(--said);
-  font: var(--voice-weight) var(--step-body) / 1.4 var(--serif);
-  font-style: italic;
 }
 
-/* The one focal point: the machines counted, and how they stand in the
-   worst health's own colour. */
-.headline {
-  max-inline-size: 18ch;
-  margin: 0 0 var(--items);
-  color: var(--strong);
-  font: var(--title-weight) var(--step-hero) / 1 var(--serif);
-  font-variation-settings: "SOFT" var(--title-soft), "WONK" var(--title-wonk);
-  letter-spacing: var(--title-tracking);
-}
-
-.headline em {
-  color: var(--said);
-  font-style: italic;
-}
-
-.headline em.watch {
+.page-head .lede em.watch {
   color: var(--warning);
 }
 
-.headline em.bad {
+.page-head .lede em.bad {
   color: var(--alert);
 }
 
-.headline em.unread {
+.page-head .lede em.unread {
   color: var(--muted);
-}
-
-/* Where it was read, when, and whether it's live, after a half-lit dot. */
-.standing {
-  display: flex;
-  align-items: baseline;
-  gap: var(--mark);
-  margin: 0 0 var(--tie);
-  color: var(--muted);
-  font: 400 var(--step-small) / 1.5 var(--serif);
-}
-
-.standing .glyph {
-  inline-size: 0.6em;
-  block-size: 0.6em;
-  flex: none;
-  align-self: center;
-  border: 1.5px solid var(--tint);
-  border-radius: 50%;
-  background: linear-gradient(to top, var(--tint) 50%, transparent 50%);
-}
-
-.standing[data-state="live"] .glyph {
-  background: var(--tint);
-}
-
-.standing[data-state="stale"],
-.standing[data-state="broken"] {
-  color: var(--strong);
-}
-
-.standing[data-state="stale"] .glyph,
-.standing[data-state="broken"] .glyph {
-  border-color: var(--alert);
-  background: transparent;
-}
-
-.hero .switch {
-  margin-block-start: var(--tie);
-}
-
-@supports (text-wrap: balance) {
-  .headline {
-    text-wrap: balance;
-  }
 }
 
 @supports (text-wrap: pretty) {
@@ -424,15 +360,11 @@ html:not([data-theme="light"]) body {
   color: var(--text);
 }
 
-/* ---- A phone: the narrow bridge, and a headline that fits. ---- */
+/* ---- A phone: the narrow bridge, and a masthead that scrolls away. ---- */
 
 @media (max-width: 40rem) {
   .mast {
     position: static;
-  }
-
-  .headline {
-    font-size: var(--step-title);
   }
 
   .bridge .variant.wide {
@@ -457,7 +389,7 @@ html:not([data-theme="light"]) body {
     text-decoration-color: Highlight;
   }
 
-  .standing .glyph {
+  :root .page-head .standing .glyph {
     border-color: CanvasText;
     background: CanvasText;
   }

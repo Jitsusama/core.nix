@@ -2,36 +2,28 @@
 // with its radios and the devices on it, and the gateway's floor with the
 // switch, the modem and the internet. It watches net's devices, links,
 // sources, internet and concerns over the sites' server, so the map moves
-// the moment net's does, and the line under it says whether what it shows
-// is live and since when.
+// the moment net's does, and the head's standing line says whether what it
+// shows is live and since when.
 
-import { follow, type Standing } from "../../local-sites/kit/feed.ts";
+import { follow } from "../../local-sites/kit/feed.ts";
 import { hasOwnKeys, listen, toggle } from "../../local-sites/kit/keys.ts";
 import type { Held } from "../../local-sites/kit/records.ts";
-import { said } from "../../local-sites/kit/status.ts";
+import { said, tell } from "../../local-sites/kit/status.ts";
 import { themeSwitch } from "../../local-sites/kit/theme.ts";
 import { followMycelium } from "./beside.ts";
 import { details } from "./device.ts";
-import { type Child, h } from "./elements.ts";
+import { type Child, element, h } from "./elements.ts";
 import { ACROSS_LEAST } from "./grid.ts";
 import { type Drawn, drawMap } from "./map.ts";
-import { type KINDS, type Network, networkOf, type Watched } from "./model.ts";
+import { Hearing } from "./hearing.ts";
+import { KINDS, type Network, networkOf, type Watched } from "./model.ts";
 import { type Mycelium, myceliumOf } from "./mycelium.ts";
-import { type Context, found, overview } from "./panel.ts";
+import { type Context, found, overview, sayStandsNow, Standings } from "./panel.ts";
 import { type Shape, study } from "./shape.ts";
 import { el } from "./svg.ts";
 import { drawTree, heedTree, markOpened } from "./tree.ts";
 import { MapView } from "./view.ts";
 import { fragment, linkedTo, whereWords } from "./where.ts";
-
-/** The element `selector` finds, which the page's markup always holds. */
-function element<T extends Element>(selector: string, kind: new () => T): T {
-  const match = document.querySelector(selector);
-  if (!(match instanceof kind)) {
-    throw new Error(`the page has no ${selector}, which the network page draws into`);
-  }
-  return match;
-}
 
 const view = element("#map-view", HTMLElement);
 const draw = element("#map-draw", SVGSVGElement);
@@ -40,13 +32,12 @@ const body = element("#panel-body", HTMLDivElement);
 const tree = element("#tree", HTMLDivElement);
 const find = element("#find", HTMLInputElement);
 const where = element("#where", HTMLParagraphElement);
-const asof = element("#asof", HTMLParagraphElement);
+const lede = element("#lede", HTMLParagraphElement);
+const asof = element("#asof", HTMLSpanElement);
 const keys = element("#keys", HTMLDialogElement);
 
 /** The ring round the device the keys are on, outside its box. */
 const RING = { out: 4, round: 8 } as const;
-/** The worst standing first, the one the page says. */
-const WORST_FIRST = ["broken", "stale", "connecting", "live"];
 const MAP_ITEM = ".n-item";
 const FOUND_ROW = "#found .row";
 
@@ -57,9 +48,8 @@ view.tabIndex = 0;
 
 const map = new MapView(view, draw);
 const told = new Set<string>();
-const standings = new Map<string, Standing>();
-// The last thing each watch couldn't read, said until it reads another.
-const heard = new Map<string, string>();
+const standings = new Standings();
+const hearing = new Hearing(KINDS);
 
 let network: Network | undefined;
 let shape: Shape | undefined;
@@ -74,13 +64,14 @@ const now = (): number => Date.now() / 1000;
 
 /** Says whether the map is live, and what couldn't be read. */
 function sayWhen(): void {
-  const stands = [...standings.values()].sort(
-    (one, other) => WORST_FIRST.indexOf(one.state) - WORST_FIRST.indexOf(other.state),
-  )[0];
-  const problems = [...(network?.unread ?? []), ...heard.values()];
+  const stands = standings.worst();
+  const problems = [...(network?.unread ?? []), ...hearing.problems()];
   const trouble = problems.length > 0 ? ` Couldn't read: ${problems.join("; ")}.` : "";
-  asof.textContent = `${stands === undefined ? "" : said(stands)}${trouble}`;
-  asof.dataset["state"] = stands?.state ?? "connecting";
+  tell(
+    asof,
+    `${stands === undefined ? "" : said(stands)}${trouble}`,
+    stands?.state ?? "connecting",
+  );
 }
 
 function context(): Context | undefined {
@@ -94,6 +85,7 @@ function context(): Context | undefined {
     mycelium,
     open: (id) => open(id, { focusPanel: true }),
     letGo,
+    unheard: hearing.now().unheard,
   };
 }
 
@@ -164,9 +156,11 @@ function render(): void {
   network = networkOf(watched, told);
   sayWhen();
   if (network === undefined) {
+    sayStandsNow(lede, standings.worst()?.state, undefined, hearing.now());
     return;
   }
   shape = study(network);
+  sayStandsNow(lede, standings.worst()?.state, context(), hearing.now());
   const stacked = map.narrowerThan(ACROSS_LEAST);
   const flipped = drawn !== undefined && drawn.stacked !== stacked;
   drawn = drawMap(draw, network, shape, { now: now(), stacked });
@@ -466,18 +460,22 @@ function watch(kind: (typeof KINDS)[number]): Held {
   return follow(
     { feed: "net", kind },
     {
-      moved: () => {
+      moved: (_held, change) => {
         told.add(kind);
-        heard.delete(kind);
+        hearing.moved(kind, change.whole);
         drawSoon();
       },
+      // A feed that never answers moves nothing, so the lede follows it here too.
       stands: (stands) => {
         standings.set(kind, stands);
+        hearing.stands(kind, stands.state);
         sayWhen();
+        sayStandsNow(lede, standings.worst()?.state, context(), hearing.now());
       },
+      // Said, and counted by the lede and the panel alike, with the next drawing.
       problem: (what) => {
-        heard.set(kind, `${kind}: ${what}`);
-        sayWhen();
+        hearing.problem(kind, what);
+        drawSoon();
       },
     },
   ).held;

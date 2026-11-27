@@ -25,6 +25,7 @@
 <link rel="stylesheet" href="/local-sites/web/theme.css">
 <link rel="stylesheet" href="/local-sites/web/base.css">
 <link rel="stylesheet" href="/local-sites/kit/switch.css">
+<link rel="stylesheet" href="/local-sites/kit/head.css">
 <link rel="stylesheet" href="home.css">
 <link rel="alternate" type="text/markdown" href="index.md">
 </head>
@@ -32,7 +33,7 @@
 
 <a class="skip" href="#main">Skip to the sites</a>
 
-<header class="threshold">
+<div class="threshold">
   <svg class="crest" viewBox="0 0 200 200" aria-hidden="true">
     <circle class="ring" cx="100" cy="100" r="94"/>
     <circle class="beads" cx="100" cy="100" r="86"/>
@@ -50,16 +51,16 @@
     <circle class="star" cx="110" cy="52" r="1.6"/>
     <circle class="star" cx="88" cy="56" r="1"/>
   </svg>
-  <p class="eyebrow label">Your sites <span class="sep">·</span> on this machine</p>
-  <h1>Made for you, <em>kept here.</em></h1>
-  <p class="lede voice">Everything made just for you grows here, on this machine, each saying what it is and what it asks of you. Anything shared with other people goes on a shared host instead.</p>
-  <p class="standing">@standing@</p>
-  <nav aria-label="Parts">
-    <ol class="contents">
-@contents@
-    </ol>
-  </nav>
-  <p class="keys"><kbd>j</kbd> and <kbd>k</kbd> step from site to site, <kbd>Return</kbd> opens one, and <kbd>?</kbd> lists every key</p>
+  <header class="page-head" data-axis="centre">
+  <p class="eyebrow">your sites<span class="sep">·</span>on this machine</p>
+  <h1>Made for You, <em>Kept Here</em></h1>
+  <p class="lede">Everything made just for you grows here, on this machine, each saying what it is and what it asks of you.</p>
+  <!-- Written, not live: home.py writes the page again each time a site's row changes,
+       but an open tab keeps what it was given, so it draws no glyph, whose every shape
+       says how a feed stands. -->
+  <p class="standing"><span id="status" role="status">@standing@</span></p>
+  <div class="quiet">
+  <p class="keys"><kbd data-tap>j</kbd> and <kbd data-tap>k</kbd> step from site to site, <kbd>Return</kbd> opens one, and <kbd>?</kbd> lists every key</p>
   <div class="switch" role="radiogroup" aria-label="Theme">
     <label title="Light"><input type="radio" name="theme" value="light"><span class="sr">Light</span>
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
@@ -71,7 +72,14 @@
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 14.5A7.5 7.5 0 0 1 9.5 4.5a7.5 7.5 0 1 0 10 10z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
     </label>
   </div>
-</header>
+  </div>
+  </header>
+  <nav aria-label="Parts">
+    <ol class="contents">
+@contents@
+    </ol>
+  </nav>
+</div>
 
 <main id="main">
   <!-- the sites: home.py writes these -->
@@ -84,7 +92,7 @@
     <path class="leaf" d="M40 12c5 6 11 7 16 5-4-5-10-6-16-5z"/>
     <circle class="bud" cx="32" cy="12" r="3"/>
   </svg>
-  <p class="voice">Newest first in each bed. A site goes under Kept once it's settled or turned down.</p>
+  <p class="voice">Newest first in each bed. A site goes under Kept once it's settled or turned down. Anything shared with other people goes on a shared host instead.</p>
 </footer>
 
 <dialog class="keypanel" id="keys" aria-labelledby="keys-h">

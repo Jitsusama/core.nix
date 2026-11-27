@@ -9,14 +9,16 @@ live with every device drawn in its tree and on its map, a name anyone on the
 Wi-Fi chose drawn as words, drop a device that goes with its link,
 say in a machine's panel what runs there as the node moves and link it to its
 place on the mycelium map, say broken when net stops and live again, its
-devices read again, when it's back, say stale when the server goes and keep
-what it drew, draw every device and wire within a phone's width with its zoom
-buttons a finger's reach, stack a bigger house with switches and a full floor
+devices read again, when it's back, say in its lede when net has never
+answered, to a page opened later too, and count what stands once it does,
+say stale when the server goes and keep what it drew, draw every
+device and wire within a phone's width with its zoom buttons a finger's reach,
+stack a bigger house with switches and a full floor
 within a phone's width and a laptop's, draw the other way as a window narrows
-to a phone's and widens back, scroll the device the keys are on into view as
-the map narrows to a phone's and widens to a short desk's, stack in a window
-just too narrow for the map across once its floors' names are counted, keep to
-its budget,
+to a phone's and widens back, its lede still counting, scroll the device the
+keys are on into view as the map narrows to a phone's and widens to a short
+desk's, stack in a window just too narrow for the map across once its floors'
+names are counted, keep to its budget,
 and pass the web-design skill's page checks at a phone's width and a desk's in
 both looks.
 Anything the page logs fails it, but for the browser's own lines once the test
@@ -26,6 +28,7 @@ modules/local-sites/tests/live_page.py's.
 
 import json
 import os
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -55,8 +58,21 @@ TV = "mac:00:00:5e:00:53:30"
 TV_NAME = "<b>Den</b> TV"
 # The laptop mycelium runs on, by the id net gives it and the name both give it.
 KESTREL = "mac:00:00:5e:00:53:20"
-# What a first visit to the network page may cost, drawn from the stand-in's house.
+# What a first visit to the network page may cost, drawn from the stand-in's house. The kit's
+# head.css, the head every live page shares, is one of the files and a few of the kilobytes,
+# within the room the budget held before it.
 BUDGET = Budget(files=36, kilobytes=505, elements=335)
+# The lede while net answers, counting what stands, and while it isn't answering. No eero or
+# no floor would be an empty net read as an all-clear, so a count of either starts at one.
+COUNTED = re.compile(r"^\d+ devices? on [1-9]\d* eeros? across [1-9]\d* floors?, and .+\.$")
+UNANSWERED = "Net isn't answering, so no device is drawn."
+# A counted lede, split into how many devices use the network and what follows.
+USERS = re.compile(r"^(?P<users>\d+) devices? (?P<rest>on .+)$")
+# The lede over records kept from before, which counts what stands but says nothing of what's
+# worth a look, since what they ask would read as an all-clear.
+HELD = re.compile(
+    r"^\d+ devices? on [1-9]\d* eeros? across [1-9]\d* floors?, as net last told them\.$"
+)
 
 
 @pytest.fixture
@@ -69,12 +85,17 @@ def mycelium_node(tmp_path: Path) -> Iterator[StandIn]:
     yield from standing_in(tmp_path / "node.sock", "node", HERE / "node.json")
 
 
+def feeds_of(net: StandIn, node: StandIn) -> dict[str, object]:
+    """Give the server's feeds from `net` and `node`, trimmed to the kinds home.nix declares."""
+    return {
+        "net": {"socket": str(net.path), "kinds": json.loads(os.environ["NET_KINDS"])},
+        "node": {"socket": str(node.path), "kinds": json.loads(os.environ["NODE_KINDS"])},
+    }
+
+
 @pytest.fixture
 def network_served(tmp_path: Path, net_daemon: StandIn, mycelium_node: StandIn) -> Iterator[Served]:
-    feeds = {
-        "net": {"socket": str(net_daemon.path), "kinds": json.loads(os.environ["NET_KINDS"])},
-        "node": {"socket": str(mycelium_node.path), "kinds": json.loads(os.environ["NODE_KINDS"])},
-    }
+    feeds = feeds_of(net_daemon, mycelium_node)
     with serving(tmp_path, {"network": os.environ["NETWORK_SITE"]}, feeds) as served:
         yield served
 
@@ -192,8 +213,13 @@ def test_a_machine_mycelium_runs_on_links_to_its_place_on_the_map(
 def test_a_net_that_stops_is_said_broken_then_live(network_page: Page, net_daemon: StandIn) -> None:
     says_it_stands(network_page, "live")
     every_device_drawn(network_page)
+    lede = network_page.locator("#lede")
+    expect(lede, "the lede didn't count what stands").to_have_text(COUNTED)
+    counted = USERS.match(lede.inner_text())
+    assert counted, "the lede's count didn't read"
     net_daemon.leave()
     says_it_stands(network_page, "broken")
+    expect(lede, "the lede asked from records net no longer tells").to_have_text(HELD)
     # What net holds moves while it's away, so only reading it again shows it.
     net_daemon.tell("device", gone=[f"device:{PRINTER}"])
     net_daemon.start()
@@ -202,6 +228,42 @@ def test_a_net_that_stops_is_said_broken_then_live(network_page: Page, net_daemo
         0, timeout=PACE_MS
     )
     expect(device(network_page, "modem"), "the modem went with the printer").to_have_count(1)
+    # The printer was a device using the network, and nothing worth a look
+    # was about it, so only the count of devices moves, read from what net
+    # told once back rather than what the page held.
+    users = int(counted["users"]) - 1
+    back = f"{users} device{'' if users == 1 else 's'} {counted['rest']}"
+    expect(lede, "the lede didn't count what net told once back").to_have_text(back)
+
+
+def test_a_net_that_never_answers_says_so_in_the_lede(
+    browser: Browser, tmp_path: Path, net_daemon: StandIn, mycelium_node: StandIn
+) -> None:
+    net_daemon.leave()
+    feeds = feeds_of(net_daemon, mycelium_node)
+    with serving(tmp_path, {"network": os.environ["NETWORK_SITE"]}, feeds) as (root, _):
+        first = Opened(browser, f"{root}network/", SIZES[-1], "dark")
+        later = None
+        try:
+            lede = first.page.locator("#lede")
+            expect(lede, "the lede still said net was being reached").to_have_text(
+                UNANSWERED, timeout=BACK_MS
+            )
+            # A page joining the watch the server holds as broken is told
+            # every kind empty, which mustn't read as a calm, empty house.
+            later = Opened(browser, f"{root}network/", SIZES[-1], "dark")
+            expect(later.page.locator("#lede"), "a later page's lede didn't say so").to_have_text(
+                UNANSWERED, timeout=BACK_MS
+            )
+            net_daemon.start()
+            for page in (first.page, later.page):
+                expect(page.locator("#lede"), "the lede didn't count net once back").to_have_text(
+                    COUNTED, timeout=BACK_MS
+                )
+        finally:
+            first.close()
+            if later is not None:
+                later.close()
 
 
 def test_a_sites_server_that_goes_is_said_stale(
@@ -215,6 +277,9 @@ def test_a_sites_server_that_goes_is_said_stale(
     network_page.wait_for_timeout(REDRAWN_MS)
     every_device_drawn(network_page)
     says_it_stands(network_page, "stale")
+    expect(
+        network_page.locator("#lede"), "the lede asked from records the page can't follow"
+    ).to_have_text(HELD)
 
 
 # How far right of the map's room, short of any scrollbar's gutter, each device's box reaches in
@@ -292,11 +357,14 @@ def test_narrowing_a_desk_to_a_phone_draws_the_map_the_other_way(
         page = opened.page
         says_it_stands(page, "live")
         every_device_drawn(page)
+        lede = page.locator("#lede")
+        expect(lede, "a desk's lede didn't count what stands").to_have_text(COUNTED)
         assert page.evaluate(DRAWN_ACROSS, KESTREL), "a desk's map wasn't drawn across"
         page.set_viewport_size({"width": phone[0], "height": phone[1]})
         stacked = f"(kestrel) => ({DRAWN_ACROSS})(kestrel) === false"
         page.wait_for_function(stacked, arg=KESTREL, timeout=PACE_MS)
         every_device_drawn(page)
+        expect(lede, "the lede lost its count as the map stacked").to_have_text(COUNTED)
         stands_within_the_room(page, "a narrowed window")
         page.set_viewport_size({"width": desk[0], "height": desk[1]})
         across = f"(kestrel) => ({DRAWN_ACROSS})(kestrel) === true"

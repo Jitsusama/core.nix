@@ -48,7 +48,9 @@ REOPENED = "crashed and was opened once more"
 # What the three murmurs come to: all said, one of them settled.
 COUNTED = "Three murmured, two still in the air."
 # What a first visit to the page may cost, drawn from the three murmurs. The quiet
-# day's line is two of the elements and one of the kilobytes.
+# day's line is two of the elements and one of the kilobytes. The kit's head.css, the head
+# every live page shares, is one of the files and a few of the kilobytes, within the room the
+# budget held before it, as the page dropped its own head rules for it.
 BUDGET = Budget(files=20, kilobytes=423, elements=147)
 # How long ago each murmur was said, in seconds, oldest first.
 AGES = (40 * 60, 25 * 60, 10 * 60)
@@ -127,7 +129,7 @@ def the_page_stands(page: Page, state: str, timeout: int = PACE_MS) -> None:
 
 
 def the_page_counts(page: Page, counted: str, why: str) -> None:
-    expect(page.locator("#headline"), why).to_have_text(counted, timeout=PACE_MS)
+    expect(page.locator("#counted"), why).to_have_text(counted, timeout=PACE_MS)
 
 
 def rows(page: Page) -> list[str]:
@@ -253,7 +255,12 @@ def test_a_murmurs_words_are_drawn_as_words(
     hostile_murmur = murmur(
         "HERONS", now, hostile, settled=hostile, purpose=hostile, tied_to=[f"QEST-{hostile}"]
     )
-    murmuring_node.tell("murmur", changed=[hostile_murmur])
+    # One still in the air and newest, so the lede quotes its words and quest.
+    in_the_air = murmur("EGRETS", now + 1, hostile, purpose=hostile)
+    murmuring_node.tell("murmur", changed=[hostile_murmur, in_the_air])
+    expect(page.locator("#lede"), "the hostile murmur never reached the lede").to_contain_text(
+        f"from {hostile}", timeout=PACE_MS
+    )
     row = page.locator(f'#murmurs [data-key="murmur:HERONS:{now}"]')
     expect(row.locator(".words"), "the murmur's words never reached its row").to_have_text(
         hostile, timeout=PACE_MS
@@ -296,7 +303,7 @@ def test_a_tap_on_a_key_the_head_shows_does_what_typing_it_does(
     page = murmurs_opened.page
     the_page_counts(page, COUNTED, "the page miscounted the murmurs")
     _, osprey, tern = said_at
-    shown = page.locator(".hero .keys kbd")
+    shown = page.locator(".page-head .keys kbd")
     holding = page.locator("#murmurs")
     shown.filter(has_text="j").click()
     the_cursor_is_on(page, f"murmur:OSPREY:{osprey}", "a tap on j didn't step")
@@ -361,7 +368,7 @@ def test_a_first_reading_that_fails_without_a_crash_is_not_taken_again(
         read.append(page)
         # Waiting for the crash's own words, which the failure then quotes, as
         # it would a page that drew them: a quote is not a crash.
-        expect(page.locator("#headline"), "the page counted").to_have_text("Target crashed")
+        expect(page.locator("#counted"), "the page counted").to_have_text("Target crashed")
 
     # Two readings would say it was taken again; a warning alone could be a
     # load that crashed on a busy builder.
@@ -483,7 +490,7 @@ def test_a_quiet_node_is_said_in_a_line_with_no_empty_list_or_bare_sky(
             roosted = murmur("OSPREY", at - 60, "Charted.", settled="charted this morning")
             quiet_node.tell("murmur", changed=[roosted])
             the_page_counts(page, "Two murmured, one still in the air.", "the roost went unheard")
-            page.locator('#headline a[data-show="air"]').click()
+            page.locator('#counted a[data-show="air"]').click()
             options = listed.locator('[role="option"]')
             title = page.locator("#murmurs-title")
             expect(title, "the air filter didn't take").to_have_text("The murmurs still in the air")

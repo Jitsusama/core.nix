@@ -1,8 +1,10 @@
 // The panel beside the map, when no device is open: how the whole network
 // stands, said in net's own words wherever net has them, and the devices a
-// search finds.
+// search finds; and how net's feeds stand, which the head says.
 
+import type { Standing } from "../../local-sites/kit/feed.ts";
 import { type Child, facts, glyph, h } from "./elements.ts";
+import type { Heard } from "./hearing.ts";
 import type { Concern, Device, Network, Source } from "./model.ts";
 import type { Mycelium } from "./mycelium.ts";
 import type { Shape } from "./shape.ts";
@@ -17,6 +19,8 @@ interface Context {
   readonly mycelium: Mycelium;
   readonly open: (id: string) => void;
   readonly letGo: () => void;
+  /** How many of net's concern and source watches sent a line the page couldn't read. */
+  readonly unheard?: number;
 }
 
 /** How many devices a line names before it counts the rest. */
@@ -182,27 +186,195 @@ function theInternet(context: Context): Child[] {
   ];
 }
 
-/** What's worth a look: net's concerns, and any source that didn't answer. */
-function worthALook(context: Context): HTMLElement {
+/** What's worth a look: the concerns, then the sources that didn't answer. */
+function worthOf(network: Network): { worth: readonly Concern[]; quiet: readonly Source[] } {
+  return {
+    // The internet being the limit is how a home line is, not a fault, so
+    // it's said under The Internet rather than among what's worth a look.
+    worth: network.concerns.filter((concern) => concern.kind !== "ceiling"),
+    // A source that didn't answer is worth a look too, one row a source, its
+    // reason folded in, so a skim reads one problem rather than two.
+    quiet: network.sources.filter((source) => source.state !== "answering"),
+  };
+}
+
+/** The concerns and sources read that the page couldn't make out, each maybe worth a look. */
+function unreadOf(network: Network): readonly string[] {
+  return network.unread.filter(
+    (record) => record.startsWith("concern ") || record.startsWith("source "),
+  );
+}
+
+/** What the panel says of `count` things net told that couldn't be read. */
+function unreadSaid(count: number): string {
+  return `${plural(count, "thing")} net told couldn't be read, and may be worth a look.`;
+}
+
+/**
+ * How many things net told that the page couldn't read, each maybe worth a
+ * look: the records in `network` it couldn't make out, and the watches that
+ * sent a line it couldn't read at all, as a line that isn't JSON or a record
+ * with no key, which never reaches the network. The lede and the panel both
+ * count this.
+ */
+function unreadCount(network: Network, unheard: number): number {
+  return unreadOf(network).length + unheard;
+}
+
+/**
+ * The words Worth a Look says beneath its rows, or alone when it has none:
+ * how much couldn't be read, or that nothing needs a look.
+ */
+function worthHint(context: Context): string | undefined {
   const { network } = context;
-  // The internet being the limit is how a home line is, not a fault, so
-  // it's said under The Internet rather than among what's worth a look.
-  const worth = network.concerns.filter((concern) => concern.kind !== "ceiling");
-  // A source that didn't answer is worth a look too, one row a source, its
-  // reason folded in, so a skim reads one problem rather than two.
-  const quiet = network.sources.filter((source) => source.state !== "answering");
+  const unread = unreadCount(network, context.unheard ?? 0);
+  if (unread > 0) {
+    return unreadSaid(unread);
+  }
+  const { worth, quiet } = worthOf(network);
+  return worth.length === 0 && quiet.length === 0 ? "Nothing needs a look." : undefined;
+}
+
+/** How many devices use the network: every one read, less the eeros and the modem. */
+function users(context: Context): number {
+  const { network, shape } = context;
+  return network.devices.length - shape.points.length - (shape.modem === undefined ? 0 : 1);
+}
+
+/** Every feed's records heard since it went live, and every answer read. */
+const ALL_HEARD: Heard = { fresh: true, unheard: 0 };
+
+/** What net last told of the house, and what of it is worth a look, unless it's gone. */
+function asksOf(network: Network, told: boolean, unheard: number): string {
+  if (!told) {
+    // A feed that stopped keeps its last records, each source still answering
+    // as it last said, so what they ask would read as an all-clear.
+    return "as net last told them";
+  }
+  const { worth, quiet } = worthOf(network);
+  // A concern or a source the page couldn't read may be one worth a look,
+  // so it's counted as one rather than read as an all-clear, as the panel
+  // counts it.
+  const looks = worth.length + quiet.length + unreadCount(network, unheard);
+  return looks === 0 ? "and nothing needs a look" : `and ${plural(looks, "thing")} worth a look`;
+}
+
+/**
+ * What stands now, in one sentence: the head's lede. While net's feeds are
+ * live, it says what is worth a look; otherwise it says the counts are as net
+ * last told them.
+ */
+function standsNow(context: Context, told = true, unheard = 0): string {
+  const { network, shape } = context;
+  return `${plural(users(context), "device")} on ${plural(shape.points.length, "eero")} across ${plural(shape.floors.length, "floor")}, ${asksOf(network, told, unheard)}.`;
+}
+
+/**
+ * The lede while the server says it can't reach net and nothing is drawn,
+ * whether net never answered or answered once and stopped, since a page
+ * opened after can't tell the two apart.
+ */
+const UNANSWERED = "Net isn't answering, so no device is drawn.";
+
+/** The lede while nothing is drawn and the page can't reach the sites' server. */
+const UNREACHED = "The sites' server can't be reached, so no device is drawn.";
+
+/** The lede while net answers and its records, all read, name no device. */
+const NAMELESS = "Net is answering, but has named no device yet.";
+
+/** The lede while net is being reached, as the page first says it. */
+const REACHING = "Reaching net for every device on it.";
+
+/** The worst standing first, the one the page says. */
+const WORST_FIRST = ["broken", "stale", "connecting", "live"];
+
+/** Each of net's watches' standing, as its feed last said it. */
+class Standings {
+  readonly #each = new Map<string, Standing>();
+
+  /** Takes how the watch of `kind` stands now. */
+  set(kind: string, stands: Standing): void {
+    this.#each.set(kind, stands);
+  }
+
+  /** How the worst of net's feeds stands, or undefined before any has said. */
+  worst(): Standing | undefined {
+    return [...this.#each.values()].sort(
+      (one, other) => WORST_FIRST.indexOf(one.state) - WORST_FIRST.indexOf(other.state),
+    )[0];
+  }
+}
+
+/**
+ * What the lede says, from the worst of net's feeds and the network read so
+ * far, so words said of an earlier standing never outlast it. While the map
+ * draws a device it counts them, saying what's worth a look only while the
+ * feeds are live and each has told its records since: a page reconnecting
+ * to a server that restarted is told connecting and no records, then live,
+ * and only then the records that make what it holds current again. A page
+ * opened while net is down is given the records the
+ * server still holds, and draws them, so the lede counts them too rather
+ * than saying none is drawn. With none drawn, the counts are never said: a
+ * page joining a watch the server holds as broken is told every kind empty,
+ * net serves every kind empty until its first reading is done, and "0
+ * devices, and nothing needs a look" would read as an all-clear. Until
+ * every kind is read, there is no network yet, so even live feeds are still
+ * being reached.
+ */
+function ledeOf(
+  worst: string | undefined,
+  context: Context | undefined,
+  heard: Heard = ALL_HEARD,
+): string {
+  // A feed is stale while the sites' server can't be reached, broken while
+  // the server is reached and says net isn't (the kit's feed.ts), and
+  // connecting while net's records may be from before.
+  const told = worst === "live" && heard.fresh;
+  if (context !== undefined && context.network.devices.length > 0) {
+    return standsNow(context, told, heard.unheard);
+  }
+  const stands: Record<string, string> = {
+    broken: UNANSWERED,
+    // Empty records held from before a reconnect name nothing net says now.
+    live: context === undefined || !heard.fresh ? REACHING : NAMELESS,
+    stale: UNREACHED,
+  };
+  return stands[worst ?? ""] ?? REACHING;
+}
+
+/** Says what stands now in the head's lede, writing only when it changes. */
+function sayStandsNow(
+  lede: HTMLElement,
+  worst: string | undefined,
+  context: Context | undefined,
+  heard: Heard = ALL_HEARD,
+): void {
+  const words = ledeOf(worst, context, heard);
+  if (lede.textContent !== words) {
+    lede.textContent = words;
+  }
+}
+
+/**
+ * What's worth a look: net's concerns, any source that didn't answer, and
+ * how much net told that couldn't be read, counted as the lede counts it.
+ */
+function worthALook(context: Context): Child[] {
+  const { network } = context;
+  const { worth, quiet } = worthOf(network);
+  const hint = worthHint(context);
+  const said = hint === undefined ? [] : [h("p", { class: "hint" }, hint)];
   if (worth.length === 0 && quiet.length === 0) {
-    return h("p", { class: "hint" }, "Nothing needs a look.");
+    return said;
   }
   const rows = worth.length > 0 ? concernRows(context, worth) : h("ul", { class: "rows" });
   rows.prepend(...quiet.map((source) => quietRow(network, source)));
-  return rows;
+  return [rows, ...said];
 }
 
 /** How the whole network stands. */
 function overview(context: Context): Child[] {
   const { network, shape } = context;
-  const boxes = shape.points.length + (shape.modem === undefined ? 0 : 1);
   const joins =
     shape.modem === undefined
       ? "no modem was read."
@@ -213,12 +385,12 @@ function overview(context: Context): Child[] {
     h(
       "p",
       { class: "what-it-is" },
-      `${plural(network.devices.length - boxes, "device")} use `,
+      `${plural(users(context), "device")} use `,
       `${plural(shape.points.length, "eero")}, the Wi-Fi points, on `,
       `${plural(shape.floors.length, "floor")}; ${joins}`,
     ),
     h("h3", {}, "Worth a Look"),
-    worthALook(context),
+    ...worthALook(context),
     ...theInternet(context),
     ...readFrom(context),
     h(
@@ -260,4 +432,19 @@ function found(context: Context, query: string): Child[] {
 }
 
 export type { Context };
-export { concernRows, found, overview, row };
+export {
+  concernRows,
+  found,
+  ledeOf,
+  NAMELESS,
+  overview,
+  REACHING,
+  row,
+  sayStandsNow,
+  Standings,
+  standsNow,
+  UNANSWERED,
+  UNREACHED,
+  unreadSaid,
+  worthHint,
+};
