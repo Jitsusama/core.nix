@@ -6,7 +6,9 @@
 //! can be, its trouble said once, and only then is the run ready; and as
 //! its camera goes or its watch stops, the node file goes only once its
 //! nobody is written, and one it couldn't remove as its camera went is
-//! tried again; and a stop tries once more what's still owed.
+//! tried again; and a stop tries once more what's still owed; and a camera
+//! it moves to is said held by nobody while its node file still says the
+//! camera before.
 
 use std::fs::{self, File, Permissions};
 use std::os::unix::fs::{PermissionsExt, symlink};
@@ -537,6 +539,43 @@ fn a_stop_with_no_camera_tries_its_nobody_and_node_file_once_more() {
         !watch.device().exists(),
         "a stop with no camera didn't try its node file once more"
     );
+    // A try of the run's own would have said it ready, as the stop's
+    // doesn't, so on a slow machine this shows which one wrote them.
+    assert_eq!(
+        ready(&watch.read("log")),
+        0,
+        "the run's own try wrote them before the stop could"
+    );
+}
+
+#[test]
+fn a_stop_whose_nobody_still_cant_be_written_keeps_its_node_file() {
+    // A node file a killed run left, beside a holders file that can't be
+    // written, as in the test of their order.
+    let mut watch = Watch::started("kept", "", |folder| {
+        fs::create_dir(folder.join(".devices")).unwrap();
+        fs::write(folder.join(".devices/Stand-in"), "/dev/random\n").unwrap();
+        fs::set_permissions(folder, Permissions::from_mode(0o555)).unwrap();
+        assert!(
+            File::create(folder.join("probe")).is_err(),
+            "a locked folder still took a file, as it does for root"
+        );
+    });
+    watch.until(
+        |watch| complaints_of(watch, &watch.file()) == 1,
+        "a nobody it couldn't write went unsaid",
+    );
+    // Stopped still locked, so the stop's own try at its nobody fails too,
+    // and the node file that finds its holders file must stay.
+    watch.stop();
+    assert!(
+        !watch.file().exists(),
+        "a holders file was written in a locked folder"
+    );
+    assert!(
+        watch.named(),
+        "a stop removed its node file while its nobody still couldn't be written"
+    );
 }
 
 #[test]
@@ -649,6 +688,67 @@ fn a_gone_cameras_node_file_stays_until_its_nobody_is_written() {
         |watch| !watch.device().exists(),
         "a gone camera's node file stayed once its nobody was written",
     );
+}
+
+#[test]
+fn a_camera_moved_to_is_said_held_while_its_node_file_says_the_one_before() {
+    let watch = Watch::owned("moved");
+    let camera = watch.root.join("camera");
+    watch.until(
+        |watch| ready(&watch.read("log")) == 1,
+        "a camera whose files were written wasn't said ready",
+    );
+    // Held as it goes, so the look its closing wakes finds it gone.
+    let held = File::open(&camera).unwrap();
+    watch.until(
+        |watch| fs::read_to_string(watch.file()).is_ok_and(|said| !said.is_empty()),
+        "a camera held wasn't said held",
+    );
+    // A folder where the node file is written before it replaces the one
+    // there, so the node moved to can't be said even once the run widens
+    // the node files' folder, as it does before writing; and that folder
+    // locked, so the node file saying the camera before can't be removed.
+    let devices = watch.folder.join(".devices");
+    let writing = devices.join(format!(".Stand-in.{}", watch.program.id()));
+    fs::create_dir(&writing).unwrap();
+    fs::set_permissions(&devices, Permissions::from_mode(0o555)).unwrap();
+    assert!(
+        File::create(devices.join("probe")).is_err(),
+        "a locked folder still took a file, as it does for root"
+    );
+    // The camera it moves to, another node nothing else holds, held by the
+    // test, so a holder is there to be said.
+    let other = watch.root.join("other");
+    symlink("/dev/full", &other).unwrap();
+    let holding = File::open(&other).unwrap();
+    fs::write(watch.root.join("source"), other.to_str().unwrap()).unwrap();
+    fs::remove_file(&camera).unwrap();
+    drop(held);
+    // Once for the node file it couldn't remove, once for the node it
+    // couldn't say, each said after the look's holders file is written.
+    watch.until(
+        |watch| complaints_of(watch, &watch.device()) == 2,
+        "a node file it couldn't remove, or a node it couldn't say, went unsaid",
+    );
+    assert!(
+        watch.named(),
+        "the node file stopped saying the camera before while it couldn't be replaced"
+    );
+    assert!(
+        !fs::read_to_string(watch.file()).unwrap().is_empty(),
+        "the camera it moved to was said off while held, as its node file said the one before"
+    );
+    fs::set_permissions(&devices, Permissions::from_mode(0o755)).unwrap();
+    fs::remove_dir(&writing).unwrap();
+    watch.until(
+        |watch| watch.names(&other),
+        "the camera it moved to wasn't named once it could be",
+    );
+    watch.until(
+        |watch| fs::read_to_string(watch.file()).is_ok_and(|said| !said.is_empty()),
+        "the camera it moved to wasn't said held once it was named",
+    );
+    drop(holding);
 }
 
 #[test]

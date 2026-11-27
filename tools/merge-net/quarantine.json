@@ -106,9 +106,10 @@
   {
     "at": 1795414135,
     "commit": "c733a13dc676d59eefb86cce91e81c8823dd1565",
-    "due": "2026-11-25",
+    "due": "2026-12-01",
+    "due_why": "Its owner, the shaper's, took it on 26 Nov past its due. Each failure since reads as a starved rig, untested: run alone on a loaded builder, test_unshaped erred at setup 3 of 3, at e0810ee7, 5079c8bd and main b6ec65a3, and all four subtests erred so on main 0a03c1fb on 27 Nov, each its fixture's 90 s wait for the queue to be taken back timing out, while on a quiet builder at b6ec65a3 all four passed. In the run at b6ec65a3 the router let 7.1 Mbit/s of its 8 through, the trace's seconds swung from 2557 to 8675 kbit/s under a shaper holding 6782, and the router's queue kept shedding, so the 5 s it must shed nothing never came. The rig ran its client and router on one core each, as the rate test's client did until a second core ended its starving (#6254), and the fix gives each two. It comes off once twenty net runs in a row after that fix exit 0 with none of its subtests failing; a red run past the seventh after the fix starts the count again and moves the due. While it stands every check in this test goes unguarded, among them that an app beside 32 jobs gets more than half the connection with the shaper and about a fifth or less without.",
     "owner_pr": 6152,
-    "owner_session": "orchestrator",
+    "owner_session": "6EAC3DA6",
     "reason": "failed, then passed, at c733a13dc676",
     "subtests": [
       "test_an_app_outruns_the_jobs",
@@ -196,5 +197,17 @@
     "owner_session": "orchestrator",
     "reason": "has been broken since #6204, whose revert won't apply; its owner fixes it forward and takes it off this list",
     "test": "a-macs-checks-since-6b3efce3479449e4385a7c608c587a64b45eee82"
+  },
+  {
+    "at": 1795765361,
+    "commit": "b15e429906da19af7e95cc6a170d8247541b5396",
+    "due": "2026-11-29",
+    "owner_pr": 6828,
+    "owner_session": "orchestrator",
+    "reason": "failed, then passed, at b15e429906da",
+    "subtests": [
+      "test_a_detail_inside_a_thing_is_found_from_the_root_and_return_goes_there"
+    ],
+    "test": "vm-desktop-launcher-goes-places"
   }
 ]

@@ -1,11 +1,12 @@
 // Keys pressed on the launcher's command line, CommandLine.qml, through its
 // own handlers, each held to what it says the launcher: Escape and Ctrl+C
 // let the line go dropped, and Backspace or Ctrl+H on an empty line let it
-// go for normal, each naming its key, which the launcher times as acting
+// go for normal, each naming its key, which the launcher times as a move
 // (Launcher.qml's onLetGo, keyActs); Return runs what's typed and lets
 // nothing go; and the keys that only edit or choose let nothing go. So
 // the key the launcher times can't drift from the key that closed the
-// line. A held key's repeat isn't here, since the test runner sends none.
+// line. The test runner sends no repeat, so a held key's is handed to the
+// line's own handler as Qt would give it, and lets nothing go.
 // It runs in Qt's test runner over a stand-in Quickshell holding only the
 // clipboard, which fails naming each case that doesn't hold.
 import QtQuick
@@ -124,6 +125,22 @@ Item {
             keyClick("x");
             compare(letGo.count, 0, "editing and choosing keys let nothing go");
             compare(ran.count, 0, "editing and choosing keys run nothing");
+        }
+
+        // A held key's repeat, as Qt gives it: letting the line go, or
+        // running it, is a fresh press's alone.
+        function test_aHeldKeysRepeatLetsNothingGoNorRuns() {
+            const held = (key, modifiers) => ({ key, modifiers, text: "",
+                isAutoRepeat: true, accepted: false });
+            typing("vol");
+            line.pressed(held(Qt.Key_Escape, Qt.NoModifier));
+            line.pressed(held(Qt.Key_C, Qt.ControlModifier));
+            line.pressed(held(Qt.Key_Return, Qt.NoModifier));
+            typing("");
+            line.pressed(held(Qt.Key_Backspace, Qt.NoModifier));
+            line.pressed(held(Qt.Key_H, Qt.ControlModifier));
+            compare(letGo.count, 0, "a held key's repeat lets nothing go");
+            compare(ran.count, 0, "nor runs the line");
         }
 
         function test_aRegistersKeyPutsTheClipboardAndLetsNothingGo() {

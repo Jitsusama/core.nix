@@ -1625,21 +1625,39 @@ Scope {
     // where it's parked (Agents' goToFor). Only the first word said names one, and nothing is
     // typed or sent. Like talkTo, it does nothing over a launcher in use, which an open act has
     // closed before its link reaches here. A session no longer here opens Agents, its foot
-    // saying so once, so a notice from an ended one never goes nowhere unsaid. Says what it
-    // did as JSON, as talkTo does. Not goTo, which is a spot's within the launcher.
+    // saying so once, so a notice from an ended one never goes nowhere unsaid, and so does one
+    // it can't go to, as one on another machine no holder keeps (toldHere). Says what it did
+    // as JSON, as talkTo does. Not goTo, which is a spot's within the launcher.
     function goToCell(said) {
         const agents = collections.find(one => one.settings.name === "agents") ?? null;
         console.info("launcher: asked from outside to go to "
             + Presented.typedShown(String(said ?? ""), Options.reports));
         if (inUse())
             return inUseSaid;
-        const session = agents ? agents.goToFor(said) : null;
-        if (session === null) {
+        const going = agents ? agents.goToFor(said) : null;
+        if (going === null) {
             const gone = Words.of("verb:notice:goTo").said ?? {};
             toldGone();
             return { done: false, said: `${gone.gone ?? ""}: ${gone.why ?? ""}` };
         }
-        return { done: true, said: String(session.title ?? "") };
+        // Agents opened the launcher to say why as it was refused (refusedGoing), so only
+        // the why it gave is answered here.
+        if (!going.went)
+            return { done: false, said: going.why };
+        return { done: true, said: String(going.session.title ?? "") };
+    }
+
+    // Opens the launcher on Agents to say what's held for its next opening, a Go To's why it
+    // couldn't go (Sessions.goTo, said by Agents' refusedGoing), with Joel's first keys held back,
+    // as toldGone does: every act shuts the launcher before it runs, and a link comes with it
+    // shut, so the why would otherwise wait until he next opened it himself. Over a launcher
+    // in use it says nothing (inUse), the foot having said it. Whether it said so.
+    function toldHere() {
+        if (inUse())
+            return false;
+        into("agents");
+        prompt.linked();
+        return true;
     }
 
     // Says a Go To's session is no longer here, in a notice's Go To's own words, opening the
@@ -3592,8 +3610,9 @@ Scope {
         if (left.quiet)
             say([]);
         heldSaying = [];
-        // Said in the journal, never the row's name, which a source served.
-        if (Arming.stood(armed, prompt.keysTaken))
+        // Said in the journal, never the row's name, which a source served;
+        // only while open, as closing runs this too, no share having turned.
+        if (open && Arming.stood(armed, prompt.keysTaken))
             console.info("launcher: let go of an arm, as a screen share turned");
         armed = left.armed;
         forgetLetGo();
@@ -5096,7 +5115,7 @@ Scope {
             }
             planned.push(plan);
         }
-        if (planned.some(plan => plan.steps.some(step => step.change.how !== "show")))
+        if (SetWords.changes(planned))
             acting();
         const said = [];
         for (const { options, steps } of planned)
@@ -5256,11 +5275,25 @@ Scope {
         const inThing = !!top && !!thing && (top === thing || steadyId(top) === steadyId(thing));
         if ((act.targets || act.given) && act !== thing && (inThing || enter(thing))) {
             const step = held[held.length - 1];
-            acting();
-            run(step.rows.find(one => one.key === act.key) ?? act, false);
+            const chosen = step.rows.find(one => one.key === act.key) ?? act;
+            // Timed as acting only where run acts at once: one that only
+            // asks is timed by the key that answers, as commandRan says.
+            if (!onlyAsks(chosen))
+                acting();
+            run(chosen, false);
             return;
         }
         commandAsked(entry, [{ act, thing }], 1, read.bang, acting);
+    }
+
+    // Whether run, given `choice` from inside a step, only asks for a target
+    // or for words, changing no source, as run's own steps read it: no
+    // start or Return's act before them, then a verb needing a target with
+    // no run of its own (or more), or one needing words.
+    function onlyAsks(choice) {
+        return choice.start === undefined && !choice.returns
+            && ((held.length > 0 && !!choice.targets && (!choice.run || choice.verb === "more"))
+                || !!choice.given);
     }
 
     // Times the command line's key, `from`, as keyActs does an outside
@@ -5354,6 +5387,9 @@ Scope {
     function commandAgain() {
         const last = commandEarlier[commandEarlier.length - 1];
         if (last === undefined) {
+            // Saying so changes no source, so the key is a move, as
+            // commandRan times E492: a share's change beside it isn't his.
+            lineKeyActs("", true);
             commandSay("E30: No previous command line", true);
             return;
         }
@@ -8409,18 +8445,18 @@ Scope {
             // a sync still open said up to now (Awaited.frameOpen).
             waited.timedOut = true;
             waited.firedAt = KeyTimes.now();
-            // A wait ended after its closing lists nothing, so it marks
-            // nothing late and says no key listed (onOpenChanged); the
-            // held key is let go as searchAwaited lets one go shut. No case
-            // pins it: closing doesn't stop the wait, so it ends here only
-            // when a closing lands inside its answersWaitedFor, a timer's
-            // least, which no test times.
-            if (!root.open) {
+            // A wait ended after its closing marks nothing late and says no
+            // key listed (Awaited.lateOf); the held key is let go as
+            // searchAwaited lets one go shut. Only lateOf's choice is pinned
+            // (tests/awaited.qml); this call, given root.open, isn't: closing
+            // doesn't stop the wait, so it ends here only when a closing
+            // lands inside its answersWaitedFor, a timer's least, which no
+            // test times.
+            root.answersLate = Awaited.lateOf(waited, root.open);
+            if (root.answersLate === null) {
                 root.searchAwaited();
                 return;
             }
-            root.answersLate = { text: waited.text, sources: waited.sources,
-                began: waited.began };
             // The words as Trials's slow key says them (Presented.typedShown).
             const places = waited.sources.map(one => one.settings?.name ?? "");
             console.info(`launcher: ${Presented.listedWithoutSaid(waited.text, places,
@@ -14721,7 +14757,7 @@ Scope {
                         }
                         upHere: root.canGoUp
                         // The ask takes a key as answerAsk does.
-                        answerTaken: (key, at) => !["", "early"].includes(root.askSaid(key, at))
+                        answerTaken: (key, at) => Confirm.takes(root.askSaid(key, at))
                         // A search run in the drawer puts its cursor on
                         // the match.
                         onSought: (pattern, forward, count) => {

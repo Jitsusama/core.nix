@@ -13,9 +13,10 @@ const keysOwn = ["place:", "category:", "collection:"];
 const ownLength = 64;
 // What follows an own kind as the launcher writes it, an id its Nix config names, as `emoji`
 // or `Asks`: a daemon's row keyed so may hold a name, a line break or a walk's forged steps
-// there, which no id holds, so such a key is said by its kind alone. A served row's key made
-// by ReadyRows.qml is never so (Presented.js's keyMade), but Emoji, Copies and Wireless set
-// their rows' keys in their own fields, so for those this test still guards the journal.
+// there, which no id holds, so such a key is said by its kind alone. This test can't tell an id
+// from a one-word name, so a served row's key never claims an own kind: ReadyRows.qml's, Emoji's,
+// Copies' and a network's parts' are made by Presented.js's keyMade, and Agents' are its daemon's
+// `agent:` and `agents:` keys.
 const ownId = /^[A-Za-z0-9][A-Za-z0-9._-]*$/u;
 
 // A kind's word, as the launcher and its daemons write one, at most 32 letters, and the keys

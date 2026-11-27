@@ -246,11 +246,15 @@ pre,
 }
 
 /* Code sits a little under the words round it, but never under the sites'
-   12 px floor: a keycap in a small line came out at 10 px. */
+   12 px floor: a keycap in a small line came out at 10 px. It is literal,
+   so it stands upright in an italic line, a lede's or a quiet day's, rather
+   than sending the italic Monaspace face, 66 KB, for the few characters of
+   a command it names. */
 code,
 kbd,
 samp {
   font-size: max(0.85em, 12px);
+  font-style: normal;
 }
 
 pre {

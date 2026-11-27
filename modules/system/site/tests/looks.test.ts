@@ -15,12 +15,20 @@ const deeper = { command: "net", site: "network/", launcher: "Network" };
 const ACT_AS_ROW = /<a\b(?=[^>]*class="launch")[^>]*data-row/u;
 
 function machine(name: string, health: Thing["health"], side: string[] = []): Thing {
-  return { name, health, says: "", side, looks: undefined, address: undefined, ties: tiesOf({}) };
+  const [kind, ties] = ["machine", tiesOf({})];
+  return { kind, name, health, says: "", side, looks: undefined, address: undefined, ties };
 }
 
 function part(name: string, health: Part["health"], side: string[], says = ""): Part {
   const site = { ...deeper, site: `${name}/` };
-  const read = { holds: undefined, things: [], named: [], untold: 0, deeper: site };
+  const read = {
+    holds: undefined,
+    things: [],
+    named: [],
+    untold: 0,
+    machinesUntold: 0,
+    deeper: site,
+  };
   return { part: name, health, says, side, ...read };
 }
 
@@ -66,7 +74,7 @@ it("leads a machine drawn here to its section, and one past them to the map", ()
   ]);
   const [here, far] = looksOf(read, 1).looks;
   assert.equal(here?.href, "#machine-1", "a machine drawn whole leads to its own section");
-  assert.equal(here?.machine, true, "a machine's name is marked as one");
+  assert.equal(here?.thing, true, "a machine's name is marked as one");
   assert.equal(
     far?.href,
     "../mycelium/#machine=tern%20%26%20gull",
@@ -74,7 +82,7 @@ it("leads a machine drawn here to its section, and one past them to the map", ()
   );
   const network = looksOf(system([], [part("network", "bad", ["the modem is down"])]), 8).looks[0];
   assert.equal(network?.href, "../network/", "a part's look leads to its own site");
-  assert.equal(network?.machine, false, "a part's name is the page's, to translate");
+  assert.equal(network?.thing, false, "a part's name is the page's, to translate");
 });
 
 it("lists no kept answer, and says the machines' where the page says how it was read", () => {

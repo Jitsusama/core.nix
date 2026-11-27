@@ -185,6 +185,9 @@ QtObject {
             Arming.keepsSteps(null, [stepOf({}), stepOf(never)]), false);
         expect("nor one whose named source says so",
             Arming.keepsSteps(never, [stepOf({})]), false);
+        expect("nor one holding a never-kept source's row by shownBy, as For You an ask",
+            Arming.keepsSteps(null, [stepOf({}), { row: { key: "ask", shownBy: never } }]),
+            false);
         expect("one whose steps and name keep is, a step with no source among them",
             Arming.keepsSteps(null, [stepOf({}), { row: {} }]), true);
 

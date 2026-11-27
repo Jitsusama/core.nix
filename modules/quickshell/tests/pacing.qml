@@ -1215,9 +1215,12 @@ QtObject {
         check(failures, "and a step into a place of the launcher's own says its id",
             Presented.timedShown("\u2192 Programs", "\u2192 Programs", false,
                 "collection:applications"), "\u2192 collection:applications");
-        check(failures, "and an own place's id past keyShown's cut counts the row",
+        check(failures, "and an own place's key as long as keyShown's cut is said whole",
             Presented.timedShown("\u2192 Harbour", "\u2192 Harbour", false,
-                `collection:${"a".repeat(64)}`), "\u2192 7 letters");
+                `collection:${"a".repeat(53)}`), `\u2192 collection:${"a".repeat(53)}`);
+        check(failures, "but one a letter past the cut counts the row",
+            Presented.timedShown("\u2192 Harbour", "\u2192 Harbour", false,
+                `collection:${"a".repeat(54)}`), "\u2192 7 letters");
         check(failures, "but an own kind holding more than an id counts the row",
             Presented.timedShown("\u2192 Harbour House", "\u2192 Harbour House", false,
                 "place:wifi:Harbour House"), "\u2192 13 letters");

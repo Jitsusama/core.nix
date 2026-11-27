@@ -559,14 +559,16 @@ in
     # longest first. Compressed, a page takes about a third of what it
     # held, in zswap's pool, which holds at most a fifth of the memory. A
     # page zswap turns away, as one that won't compress or that finds the
-    # pool full, stays in memory as it is rather than going to disk. Their
-    # pages leave the pool only as they come back or are freed, since zswap
-    # writes back only what the rest swapped, and a full pool takes nothing
-    # until it falls to the kernel's default nine tenths of its cap. With
-    # zswap off, as hibernation turns it for the image, the setting no
-    # longer holds and they swap to disk like the rest. The kernel reads the
-    # setting up the tree, so it holds for every program's scope inside,
-    # whatever jobs-sorter gives back to a window's own.
+    # pool full, stays in memory as it is rather than going to disk. While
+    # zswap is on, their pages leave the pool only as they come back or are
+    # freed, since zswap writes back only what the rest swapped, and a full
+    # pool takes nothing until it falls to the kernel's default nine tenths
+    # of its cap. With zswap off, as hibernation turns it for the image, the
+    # setting no longer holds: they swap to disk like the rest, and zswap's
+    # shrinker may write out what the pool holds of theirs, which stays on
+    # the disk until it's read. The kernel reads the setting up the tree, so
+    # it holds for every program's scope inside, whatever jobs-sorter gives
+    # back to a window's own.
     systemd.user.slices.session.sliceConfig = {
       CPUWeight = 1000;
       IOWeight = 1000;
@@ -585,9 +587,10 @@ in
     # The disk's weight is ten times too, as session.slice's is, since
     # io.cost on a measured disk shares it by weight: at systemd's 100 his
     # programs would get no more of it than agents' sessions. The latency
-    # target a disk with no model keeps ignores it, but systemd gives the
-    # same weight to the BFQ scheduler, so on a disk BFQ runs his programs
-    # get ten times agents' share there too.
+    # target a disk with no model keeps ignores it. For the BFQ scheduler
+    # systemd scales a weight above 100 down, 1000 to 181, while
+    # agents.slice's 100 stays 100, so on a disk BFQ runs his programs get
+    # under twice agents' share.
     systemd.user.slices.app.sliceConfig = {
       CPUWeight = 1000;
       IOWeight = 1000;
@@ -1058,7 +1061,8 @@ in
             # jobs-work.slice, at the weight pi's sessions give the quest by
             # its priority, so a quest Joel drives gets more of what agents'
             # work gets, and never more than that. The disk's share acts only
-            # under io.cost or BFQ, not on io.latency targets alone.
+            # under io.cost or BFQ, not on io.latency targets alone, and BFQ
+            # squeezes a weight above 100: 400 becomes about 127.
             "--by-quest"
             "jobs-work.slice"
             "--quests"
