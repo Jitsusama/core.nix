@@ -13,7 +13,7 @@ the check held at each change are one rule, and its
 `comments-name-what-exists.sh` first sees that measure refuse a planted tree
 both ways, for a comment naming what isn't there and a waiting line nothing
 matches, each named.
-`checks.nix` runs all fourteen on core itself.
+`checks.nix` runs all fifteen on core itself.
 Many entries because each rule keeps its three files side by side, where a
 reader opening one finds the others, rather than in a folder of its own.
 `every-script-finds-what-it-imports` first sees itself fail a planted tree
@@ -47,6 +47,7 @@ removal shows in their treefmt check once they take core.
 | `every-long-file-says-why`                       | a code file past 800 lines or folder past 40 entries says why |
 | `programs-live-in-their-own-files`               | no program past five lines is a string in Nix                 |
 | `every-fixed-wait-says-why`                      | a sleep in a test says what it waits through                  |
+| `every-failed-read-says-why`                     | a file read whose failure becomes nothing says why            |
 | `every-assert-says-what-was-wrong`               | an assertion that can't show each side says what was wrong    |
 | `every-test-runs-or-fails`                       | a test that can't run fails rather than passing               |
 | `every-suppression-says-why`                     | a lint suppression says why, where it's made                  |

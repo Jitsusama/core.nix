@@ -585,7 +585,11 @@ mod tests {
             "a list gave details: {entry}"
         );
         let note = json!({"id": "n", "category": "SECURE_NOTE", "additional_information": "Hi"});
-        assert!(super::entry(&note).unwrap().get("username").is_none());
+        let note = super::entry(&note).unwrap();
+        assert!(
+            note.get("username").is_none(),
+            "a note has no username: {note}"
+        );
     }
 
     #[test]
