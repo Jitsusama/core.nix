@@ -19,10 +19,9 @@ import time
 from typing import TYPE_CHECKING
 
 import launcher_on_niri
-import pytest
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Callable
 
     from launcher_on_niri import Json, Shell
 
@@ -60,13 +59,6 @@ LINES_GIVEN = 30
 
 # The shell, started once for the file's cases.
 shell = launcher_on_niri.shell
-
-
-@pytest.fixture(autouse=True)
-def launcher_closed_after(shell: Shell) -> Iterator[None]:
-    """Close the launcher after each case, so one failing with it open fails alone."""
-    yield
-    shell.launcher_left_closed()
 
 
 def keys_said(shell: Shell, mark: int) -> list[str]:
