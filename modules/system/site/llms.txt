@@ -5,9 +5,9 @@
 > the code it holds and its own figures. Then the mycelium, the network
 > and the code across them, each judged from its own owner's answer.
 
-- [The page](index.html): a headline counting the machines and how they
-  stand, the machines drawn as the piers of a bridge, a section for
-  each machine in reach with its four ties and what can be done with it
+- [The page](index.html): a fixed title, a sentence counting the machines
+  and how they stand, a standing line, what is worth a look, the machines
+  drawn as the piers of a bridge, a section for each machine in reach with its four ties and what can be done with it
   through the launcher, those out of reach named together with when each
   was last heard, then the other three parts across them, each with its
   health (good, watch, bad or not read), walked by keyboard or pointer.

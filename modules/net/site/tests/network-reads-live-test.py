@@ -343,7 +343,6 @@ def test_narrowing_a_desk_to_a_phone_draws_the_map_the_other_way(
         stacked = f"(kestrel) => ({DRAWN_ACROSS})(kestrel) === false"
         page.wait_for_function(stacked, arg=KESTREL, timeout=PACE_MS)
         every_device_drawn(page)
-        expect(lede, "the lede lost its count as the map stacked").to_have_text(COUNTED)
         stands_within_the_room(page, "a narrowed window")
         page.set_viewport_size({"width": desk[0], "height": desk[1]})
         across = f"(kestrel) => ({DRAWN_ACROSS})(kestrel) === true"

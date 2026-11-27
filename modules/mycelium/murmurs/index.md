@@ -15,13 +15,13 @@ ties or settles the moment it is said. Nothing on it changes anything;
   roost on the wire below, a body at rest rather than wings, so which is
   which is told by shape. The first 64 murmurs are drawn; the list holds
   every one.
-- **One sentence for the whole:** how many were murmured, and how many
-  are still in the air. Each count opens the murmurs it counts. The line
-  under it quotes the newest still in the air, and what its cell works
-  on.
+- **Under the title, which never moves, one sentence for the whole:** how
+  many were murmured, and how many are still in the air, each count
+  opening the murmurs it counts; then the newest still in the air, quoted
+  with the quest its cell works on.
 - **One row per murmur,** newest first: its words, the cell that said
   it and when, the quests it is tied to, and how it was settled.
-- **Under the sentence, whether what it shows is live:** when the node
+- **Beside the sentence, whether what it shows is live:** when the node
   or the sites' server can't be reached, it says since when and why, and
   keeps showing how things stood then.
 

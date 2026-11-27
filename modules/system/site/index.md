@@ -14,13 +14,17 @@ launcher or a command.
 
 Every health is good, watch, bad or not read, each with its own mark.
 
-- **A headline that counts the machines:** how many, then how they
-  stand, as "Two machines, one in trouble and one worth a look", in the
-  worst one's colour. With every machine fine, it says all ready.
-  While it reads, it says it is reading your machines.
-- **What is worth a look, under it:** a row for each thing a machine or
-  a part has worth a look, the worst first: its mark, whose it is, and
-  what. A machine's row goes to its section below, or to the map past
+- **Under the title, a sentence that counts the machines:** how many,
+  then how they stand, as "Two machines, one in trouble and one worth a
+  look", in the worst one's colour. With every machine fine, it says all
+  ready. While it reads, it says it is reading your machines.
+- **A standing line beside it:** the machine it was read on, when, and
+  whether what it shows is live. When the daemon or the sites' server
+  can't be reached, it says since when and why, and keeps showing how
+  things stood then.
+- **What is worth a look, first on the page below the head:** a row for
+  each thing a machine or a part has worth a look, the worst first: its
+  mark, whose it is, and what. A machine's row goes to its section below, or to the map past
   the eight drawn, and a part's to its own site. Under a machine's, why
   it matters, as the system daemon judges it, and a link opening that
   machine in the launcher, where you update it or start a session
@@ -28,10 +32,6 @@ Every health is good, watch, bad or not read, each with its own mark.
   read has a row saying why, first. It lists eight at most, then how
   many more; with nothing worth a look, it says so, and until every part
   and machine has told and could be read, it says that isn't known yet.
-- **A standing line:** the machine it was read on, when, and whether
-  what it shows is live. When the daemon or the sites' server can't be
-  reached, it says since when and why, and keeps showing how things
-  stood then.
 - **The bridge:** the machines drawn as the piers of a bridge, each
   named above its pier with its health in words, and filled as far as
   its disk is. The mycelium's cells on each are dots along the deck,
