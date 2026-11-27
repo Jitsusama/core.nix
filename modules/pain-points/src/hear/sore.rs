@@ -658,10 +658,17 @@ mod tests {
                 "a swear closing a list: {filler}"
             );
         }
+        // Said with an ask, so the filler is spared; asking nothing, it is
+        // a hurt like his own "text alignment and shit".
         assert_eq!(
-            kinds("the bar and shit, all broken", AT, &[]),
+            kinds("see the bar and shit, all broken", AT, &[]),
             vec!["corrected"],
             "a filler spares the swear, not the fault said with it"
+        );
+        assert_eq!(
+            kinds("the bar and shit, all broken", AT, &[]),
+            vec!["corrected", "swore"],
+            "a filler in a fault that asks nothing went unheard"
         );
         assert_eq!(
             kinds("the page and fucking bar", AT, &[]),
