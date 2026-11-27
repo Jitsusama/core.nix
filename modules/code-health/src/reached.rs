@@ -11,6 +11,7 @@
 
 use std::collections::{HashMap, HashSet};
 
+use crate::language::{Language, language};
 use crate::measure::{File, RUN_BY_NAME, extension, is_code};
 
 /// Every code file in `paths` that no file of `files` reaches.
@@ -42,7 +43,7 @@ fn run_as_it_is(path: &str, crates: &HashSet<&str>) -> bool {
         || stem.ends_with("_test")
         || stem.ends_with("-test")
         || (extension(name) == "rs" && stem.ends_with("_tests"))
-        || (extension(name) == "py" && stem.starts_with("test_"));
+        || (language(name) == Some(Language::Python) && stem.starts_with("test_"));
     let (above, last) = split(folder);
     let in_crate = matches!(last, "tests" | "benches" | "examples") && crates.contains(above)
         || (last == "bin" && split(above).1 == "src");
@@ -180,12 +181,12 @@ impl<'a> Reach<'a> {
     fn reaches(&self, path: &str) -> bool {
         let other = |by: Option<&HashSet<&str>>| by.is_some_and(|by| by.iter().any(|b| *b != path));
         let (_, name) = split(path);
-        let (stem, extension) = name.rsplit_once('.').unwrap_or((name, ""));
+        let stem = name.rsplit_once('.').map_or(name, |(stem, _)| stem);
         let bare = path.rsplit_once('.').map_or(path, |(bare, _)| bare);
-        let by_language = match extension {
-            "rs" => other(self.modules.get(stem)),
-            "ts" | "tsx" | "js" | "mjs" | "cjs" | "py" => other(self.imports.get(stem)),
-            "qml" => other(self.types.get(stem)),
+        let by_language = match language(path) {
+            Some(Language::Rust) => other(self.modules.get(stem)),
+            Some(Language::Script | Language::Python) => other(self.imports.get(stem)),
+            Some(Language::Qml) => other(self.types.get(stem)),
             _ => false,
         };
         let folders = path

@@ -5,7 +5,8 @@
 //! folders with no reason, its lines of code repeated from elsewhere, the
 //! tests its merge net keeps in quarantine, the points its daemons wait on
 //! to agree and the lines of its VM tests (measure.rs says how each is
-//! counted, attributes.rs how a Rust line turns a lint off); the lints its
+//! counted, attributes.rs how a Rust line turns a lint off, language.rs
+//! which language each file is written in); the lints its
 //! configs turn off (lints.rs), its files nothing reaches (reached.rs) and
 //! its folders that don't say what they hold (notes.rs), as the quality
 //! standard has them; its Terraform's files not as `tofu fmt` writes them,
@@ -52,6 +53,7 @@
 mod attributes;
 mod git;
 mod hour;
+mod language;
 mod lints;
 mod measure;
 mod merges;
