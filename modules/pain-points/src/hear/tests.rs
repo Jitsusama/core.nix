@@ -11,6 +11,7 @@ use std::fs;
 use std::io::Write;
 
 mod answered;
+mod apart;
 mod hubs;
 mod sends;
 mod standing;
@@ -482,16 +483,47 @@ fn a_told_note_that_did_not_go_is_a_trouble() {
     );
 }
 
+#[test]
+fn the_keeper_hears_nothing_of_a_pain_sent_to_a_cell_whose_work_the_ledgers_dont_hold() {
+    let place = a_day_routed("apart", r#""apart":["abc123"]"#);
+    let cells = r#"{"Ok":{"Sessions":[
+        {"id":"s-live","address":"ABC123","state":"busy"},
+        {"id":"s-other","address":"GHI789","state":"busy"},
+        {"id":"s-void","address":"VOID01","state":"idle"}]}}"#;
+    let mut sent: Vec<(String, String, Put)> = Vec::new();
+    let hour = hear_putting(&place.ears(), cells, &mut |to, text, put| {
+        sent.push((to.into(), text.into(), put));
+        Sent::Went
+    })
+    .expect("a run");
+    assert!(
+        sent.iter()
+            .any(|(to, _, put)| to == "ABC123" && *put == Put::Asked),
+        "its owner is still asked: {sent:?}"
+    );
+    let notes: Vec<&str> = sent
+        .iter()
+        .filter(|(to, text, _)| to == "ORCH01" && text.contains(route::FOR_THE_KEEPER))
+        .map(|(_, text, _)| text.as_str())
+        .collect();
+    assert!(
+        notes.len() == 1 && notes[0].contains("sent to GHI789") && !notes[0].contains("ABC123"),
+        "the keeper heard of a pain kept apart from its ledgers, or not of the other: {notes:?}"
+    );
+    assert!(hour.troubles.is_empty(), "a run that went well: {hour:?}");
+}
+
 /// A day of his, with a routes file that tells the keeper of what goes
 /// to ABC123, named in another case, and a pain in GHI789's session.
 fn a_told_day(name: &str) -> Place {
+    a_day_routed(name, r#""told":["abc123"]"#)
+}
+
+/// A day of his, with a routes file holding `more` beside its usual
+/// keys, and a pain in GHI789's session.
+fn a_day_routed(name: &str, more: &str) -> Place {
     let place = Place::new(name);
-    fs::write(
-        place.root.join("state/routes.json"),
-        r#"{"from":"EAR001","fallback":"ORCH01","ledgers":"ORCH01","never":["NEVER1"],
-            "told":["abc123"]}"#,
-    )
-    .expect("routes written");
+    routed(&place, more);
     a_day(&place);
     place.log(
         "src",
@@ -504,6 +536,18 @@ fn a_told_day(name: &str) -> Place {
         )],
     );
     place
+}
+
+/// The usual routes file at `place`, holding `more` beside its keys.
+fn routed(place: &Place, more: &str) {
+    fs::write(
+        place.root.join("state/routes.json"),
+        format!(
+            r#"{{"from":"EAR001","fallback":"ORCH01","ledgers":"ORCH01","never":["NEVER1"],
+                {more}}}"#
+        ),
+    )
+    .expect("routes written");
 }
 
 #[test]

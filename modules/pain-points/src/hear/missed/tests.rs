@@ -14,6 +14,7 @@ const OFFSET: i64 = -5 * 3600;
 const NOBODY: Owning = Owning {
     lines: Vec::new(),
     keeper: None,
+    apart: BTreeSet::new(),
 };
 
 fn sent(entry: &str, words: &str) -> Heard {
@@ -120,6 +121,44 @@ fn a_pain_sent_is_written_once_beside_the_keepers_lines() {
 }
 
 #[test]
+fn a_pain_said_in_a_cell_kept_apart_gains_no_line_but_an_old_line_its_check() {
+    let ledger = folder("apart").join("misses.jsonl");
+    // Written before its cell was kept apart, then closed by a landing.
+    let before = sent("e0", "the old errand");
+    fs::write(&ledger, line_of(&before, "ABC123", OFFSET) + "\n").expect("its line");
+    let fixed = closed(before);
+    let errand = sent("e1", "the budget sheet is wrong");
+    // Carried unsent by the keeper, whose line names it, yet said apart.
+    let carried = Heard {
+        to: None,
+        routed_at: None,
+        carried: true,
+        ..sent("e3", "the errand the keeper quoted")
+    };
+    let work = Heard {
+        to: Some("GHI789".into()),
+        ..sent("e2", "the bar is the wrong colour")
+    };
+    let owning = Owning {
+        keeper: Some("ORCH01".into()),
+        apart: ["s/e0", "s/e1", "s/e3"].map(str::to_owned).into(),
+        ..NOBODY
+    };
+    write(&ledger, &[fixed, errand, carried, work], &owning, OFFSET, 0).expect("written");
+    let lines = read(&ledger);
+    assert_eq!(
+        lines.iter().map(|l| l["pain"].clone()).collect::<Vec<_>>(),
+        [json!("s/e0"), json!("s/e2")],
+        "a pain said in a cell kept apart was written, sent or carried, or another wasn't"
+    );
+    assert_eq!(
+        lines[0]["closed_by"],
+        json!("255494bb414c"),
+        "a line written before its cell was kept apart didn't gain its check"
+    );
+}
+
+#[test]
 fn a_pain_closed_since_gains_its_check_and_a_carried_one_says_so() {
     let ledger = folder("checked").join("misses.jsonl");
     let kept = [
@@ -181,6 +220,7 @@ fn only_a_named_owner_the_routes_allow_owns_a_miss() {
         ledgers: Some(keeper.into()),
         never: vec!["VOID01".into()],
         told: Vec::new(),
+        apart: Vec::new(),
     };
     // Blank, spaces alone, refused in another case, and padded.
     let ledgers = lines(&[("a", ""), ("b", "   "), ("c", "void01"), ("d", " Y2YBTS ")]);
@@ -188,7 +228,8 @@ fn only_a_named_owner_the_routes_allow_owns_a_miss() {
         owning(&ledgers, &routes(" ORCH01")),
         Owning {
             lines: lines(&[("d", "Y2YBTS")]),
-            keeper: Some("ORCH01".into())
+            keeper: Some("ORCH01".into()),
+            apart: BTreeSet::new(),
         },
         "a blank or refused owner was kept, or a named one or the keeper wasn't trimmed"
     );
@@ -210,6 +251,7 @@ fn a_pain_carried_before_it_was_sent_is_written_to_the_owner_its_carrying_line_n
             ("the clock is out", "KP0L6A"),
         ]),
         keeper: None,
+        apart: BTreeSet::new(),
     };
     let mut early = carried_unsent("e0", "the launcher is slow to open again");
     early.at = AT - 1;

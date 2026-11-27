@@ -61,8 +61,17 @@ const HOUR_MS: i64 = 3_600_000;
 
 /// A pain first heard longer than this after he said it goes to the
 /// ledgers' keeper alone: its cell has moved on, and a first run over a
-/// day of logs would otherwise send every cell a day of old pains.
+/// day of logs would otherwise send every cell a day of old pains. One
+/// said in a cell kept apart, which has no keeper, has `APART_MS`.
 pub const FRESH_MS: i64 = 2 * HOUR_MS;
+
+/// How long after he said it a pain in a cell kept apart from the keeper
+/// is still sent to that cell, since no keeper carries it after: longer,
+/// it's given up and said so. Bounded, so a first run, or a listener
+/// back after hours down, sends no such cell a day of old pains. A stall
+/// keeps `FRESH_MS`, as anywhere else, since one heard late has nothing
+/// for anyone to carry.
+pub const APART_MS: i64 = 6 * HOUR_MS;
 
 /// How long a quick question of the machine, its time zone, may take.
 const ASK_AT_MOST: Duration = Duration::from_secs(5);
@@ -381,8 +390,14 @@ pub fn hear(
 /// The lines of the keeper's ledgers, with each pain in `kept` they carry
 /// marked so. A pain the keeper has carried since it was heard is closed,
 /// though it was open on an earlier run, and one still open is looked for
-/// however old, as the keeper may carry it any day.
-fn ledgers_carrying(ears: &Ears, kept: &mut [Heard]) -> Vec<heard::Line> {
+/// however old, as the keeper may carry it any day. One said in a cell
+/// kept `apart` the keeper never hears of, so a ledger line with its
+/// words is another's, and its own cell is still sent it.
+fn ledgers_carrying(
+    ears: &Ears,
+    kept: &mut [Heard],
+    apart: &dyn Fn(&Heard) -> bool,
+) -> Vec<heard::Line> {
     let ledgers: Vec<heard::Line> = ears
         .ledgers
         .iter()
@@ -390,7 +405,7 @@ fn ledgers_carrying(ears: &Ears, kept: &mut [Heard]) -> Vec<heard::Line> {
         .collect();
     for h in kept {
         let looked = h.at >= ears.at - DAY_MS || h.closed_by.is_none();
-        if !h.carried && !stalled::is(h) && looked {
+        if !h.carried && !stalled::is(h) && looked && !apart(h) {
             h.carried = heard::carried(&h.words, &ledgers);
         }
     }
@@ -419,8 +434,9 @@ pub fn hear_putting(
         .unwrap_or_default();
     let heard_at = ears.state.join("heard.jsonl");
     let mut kept = still_kept(&heard_at, ears.at);
-    let ledgers = ledgers_carrying(ears, &mut kept);
     let cells = route::cells(cells_printed);
+    let apart = |h: &Heard| route::apart(&h.session, h.void, &cells, &routes);
+    let ledgers = ledgers_carrying(ears, &mut kept, &apart);
     hear_logs(
         ears,
         &mut following,
@@ -472,14 +488,19 @@ pub fn hear_putting(
     }
     // A listener nobody set up writes nothing of his.
     let (offset_s, from) = (ears.offset_s, ears.misses_from);
-    let owning = missed::owning(&ledgers, &routes);
+    let mut owning = missed::owning(&ledgers, &routes);
+    owning.apart = kept
+        .iter()
+        .filter(|h| apart(h))
+        .map(|h| h.key.clone())
+        .collect();
     let ledgered = routes
         .sends()
         .then(|| missed::write(&ears.misses, &kept, &owning, offset_s, from).err())
         .flatten();
     let mut hour = hour_of(&kept, ears.at);
     hour.unclosed = stood.unclosed;
-    let (waiting, given_up) = unsent(&kept, ears.at);
+    let (waiting, given_up) = unsent(&kept, ears.at, &apart);
     hour.cellless_since = cellless_since(&ears.state, ears.at, cells.is_empty() && waiting);
     hour.troubles = troubles(
         &ears.state,
@@ -570,7 +591,10 @@ fn hear_logs(
                 entry: said.entry,
                 at: said.at,
                 void: log.void,
-                carried: heard::carried(&said.words, ledgers),
+                // A pain said in a cell kept apart is that cell's own
+                // errand, never the keeper's, whatever a ledger quotes.
+                carried: !route::apart(&log.session, log.void, cells, routes)
+                    && heard::carried(&said.words, ledgers),
                 words: said.words,
                 kinds: kinds.iter().map(|k| (*k).to_string()).collect(),
                 looking_at: said.looking_at,
@@ -635,16 +659,37 @@ fn answered(kept: &mut [Heard], session: &str, (from, at): (i64, i64), by: &str)
 /// Whether any pain of the day waits to be sent, since a node naming no
 /// sessions is a trouble only then, and how many were given up on: their
 /// owner's tries spent while they were fresh, or the keeper's after them.
-fn unsent(kept: &[Heard], at: i64) -> (bool, usize) {
+/// One said in a cell kept `apart` from the keeper has no keeper after
+/// its owner, so it's given up once its owner's tries are spent or its
+/// time to be sent has passed.
+fn unsent(kept: &[Heard], at: i64, apart: &dyn Fn(&Heard) -> bool) -> (bool, usize) {
     let unsent = || {
         kept.iter()
             .filter(move |h| h.routed_at.is_none() && h.at >= at - DAY_MS)
     };
     let waiting = unsent().any(|h| !h.carried);
     let given_up = unsent()
-        .filter(|h| h.tries >= 2 * SEND_TRIES || (h.tries >= SEND_TRIES && h.at >= at - FRESH_MS))
+        .filter(|h| {
+            if apart(h) {
+                let aged = !h.carried && !stalled::is(h) && h.at < at - fresh_for(h, true);
+                h.tries >= SEND_TRIES || aged
+            } else {
+                h.tries >= 2 * SEND_TRIES || (h.tries >= SEND_TRIES && h.at >= at - FRESH_MS)
+            }
+        })
         .count();
     (waiting, given_up)
+}
+
+/// How long after he said it `pain` is still sent to its own cell: while
+/// fresh, or for a pain said in a cell kept `apart`, `APART_MS`, as no
+/// keeper carries it after. A stall is sent only while fresh either way.
+fn fresh_for(pain: &Heard, apart: bool) -> i64 {
+    if apart && !stalled::is(pain) {
+        APART_MS
+    } else {
+        FRESH_MS
+    }
 }
 
 /// Points a pain heard again in a carried-on log at the session carrying
@@ -695,7 +740,10 @@ struct Through {
 /// The owner of each pain of the last two hours not yet sent, nor
 /// carried, nor out of tries: its own live cell, else the least-held live
 /// holder of its subject, else the fallback. A pain said in a session the
-/// mycelium doesn't know has none yet.
+/// mycelium doesn't know has none yet. One said in a cell kept apart goes
+/// to that cell alone, for `APART_MS`, and to no one once it has ended.
+/// Each is tried `SEND_TRIES` times at most, so a send that went but read
+/// as failed asks no cell the same question more than that.
 fn owners_for(
     ears: &Ears,
     routes: &Routes,
@@ -720,11 +768,7 @@ fn owners_for(
     let mut by_owner: BTreeMap<String, Vec<usize>> = BTreeMap::new();
     let mut through: BTreeMap<usize, Through> = BTreeMap::new();
     for (n, pain) in kept.iter().enumerate() {
-        if pain.carried
-            || pain.routed_at.is_some()
-            || pain.tries >= SEND_TRIES
-            || pain.at < ears.at - FRESH_MS
-        {
+        if pain.carried || pain.routed_at.is_some() {
             continue;
         }
         // One said in a session the mycelium doesn't know waits, as it
@@ -732,7 +776,15 @@ fn owners_for(
         let Some(cell) = cells.get(&pain.session) else {
             continue;
         };
+        let apart = route::apart(&pain.session, pain.void, cells, routes);
+        if pain.tries >= SEND_TRIES || pain.at < ears.at - fresh_for(pain, apart) {
+            continue;
+        }
         let owner = route::own(&pain.session, pain.void, cells, routes).or_else(|| {
+            // Kept apart, it is its own cell's alone, live or not.
+            if apart {
+                return None;
+            }
             // Never back to its own cell, which the void's or a refused
             // one may be, live as it is.
             let mut takers = live.clone();
@@ -887,6 +939,7 @@ fn note_for_keeper(
             // would for its owner.
             !pain.carried
                 && !stalled::is(pain)
+                && !route::apart(&pain.session, pain.void, cells, routes)
                 && route::owner(&pain.session, pain.void, cells, routes).is_some()
                 && pain.routed_at.is_none()
                 && pain.tries < 2 * SEND_TRIES
@@ -903,7 +956,11 @@ fn note_for_keeper(
                 h.to.as_ref()
                     .is_some_and(|to| to.eq_ignore_ascii_case(keeper));
             let waits = owned.contains(&h.key) || h.unnoted_since.is_some();
-            (waits && !stalled::is(h) && !to_keeper) || late.contains(n)
+            // Nor of what was said in, or went to, a cell whose work the
+            // ledgers don't hold.
+            let apart = route::apart(&h.session, h.void, cells, routes)
+                || h.to.as_deref().is_some_and(|to| routes.keeps_apart(to));
+            (waits && !stalled::is(h) && !to_keeper && !apart) || late.contains(n)
         })
         // A late one went to no owner, so the keeper is asked of it,
         // whoever's cell it was heard in.

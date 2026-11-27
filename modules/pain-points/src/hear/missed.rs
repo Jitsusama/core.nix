@@ -34,6 +34,7 @@ use super::heard::{self, Heard, Line};
 use super::route::Routes;
 use super::stalled;
 use serde_json::{Value, json};
+use std::collections::BTreeSet;
 use std::fs::{self, File, TryLockError};
 use std::io::{ErrorKind, Write};
 use std::path::Path;
@@ -83,7 +84,7 @@ pub fn write(
         Err(e) if e.kind() == ErrorKind::NotFound => String::new(),
         Err(e) => return Err(format!("{}: {e}", ledger.display())),
     };
-    let (checked, added) = written(&text, &owed, offset_s);
+    let (checked, added) = written(&text, &owed, &owning.apart, offset_s);
     let new: String = added.into_iter().map(|line| line + "\n").collect();
     if let Some(checked) = checked {
         if fs::read_to_string(ledger).unwrap_or_default() != text {
@@ -111,16 +112,19 @@ pub fn write(
 
 /// Whom a pain carried unsent may be owed to: the ledger lines naming an
 /// owner a miss may be written to, and the ledgers' keeper that carried
-/// it, for one whose carrying lines name none.
+/// it, for one whose carrying lines name none; and the pains said in a
+/// cell kept apart, by key, which the ledger gains no line of.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Owning {
     pub lines: Vec<Line>,
     pub keeper: Option<String>,
+    pub apart: BTreeSet<String>,
 }
 
 /// Who may own a pain carried unsent, by `ledgers` and `routes`: each
 /// line's owner named, trimmed, that `routes` doesn't refuse, as no pain
 /// is sent to, and the ledgers' keeper `routes` names, unless refused.
+/// It knows no cells, so the pains kept apart are its caller's to name.
 #[must_use]
 pub fn owning(ledgers: &[Line], routes: &Routes) -> Owning {
     let allowed = |owner: &str| !owner.is_empty() && !routes.refuses(owner);
@@ -138,6 +142,7 @@ pub fn owning(ledgers: &[Line], routes: &Routes) -> Owning {
     Owning {
         lines,
         keeper: keeper.filter(|k| allowed(k)).map(str::to_owned),
+        apart: BTreeSet::new(),
     }
 }
 
@@ -197,8 +202,15 @@ fn locked(lock: &File, name: &str) -> Result<(), String> {
 
 /// What the ledger `text` becomes for `owed`: the whole of it, when a line
 /// of a pain closed or carried since says so, and the lines of pains it
-/// holds none of, to add at its end.
-fn written(text: &str, owed: &[(&Heard, &str)], offset_s: i64) -> (Option<String>, Vec<String>) {
+/// holds none of, to add at its end. A pain said in a cell kept `apart`
+/// gains no line, as the ledger doesn't hold that cell's work, though a
+/// line written before it was kept apart still gains its check.
+fn written(
+    text: &str,
+    owed: &[(&Heard, &str)],
+    apart: &BTreeSet<String>,
+    offset_s: i64,
+) -> (Option<String>, Vec<String>) {
     let mut held = Vec::new();
     let mut changed = false;
     let lines: Vec<String> = text
@@ -231,7 +243,7 @@ fn written(text: &str, owed: &[(&Heard, &str)], offset_s: i64) -> (Option<String
         .collect();
     let added = owed
         .iter()
-        .filter(|(h, _)| !held.contains(&h.key))
+        .filter(|(h, _)| !held.contains(&h.key) && !apart.contains(&h.key))
         .map(|(h, owner)| line_of(h, owner, offset_s))
         .collect();
     let whole = changed.then(|| lines.into_iter().map(|line| line + "\n").collect());
