@@ -21,7 +21,8 @@ import shlex
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
-from vm_helpers import as_account, failure_read
+from pi_conversations_read import failure_read
+from vm_helpers import as_account
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -236,7 +237,9 @@ class Host:
 def journal_tail(lines: str) -> str:
     """Give the command reading a journal match's last lines this boot, for a failure."""
     # Each line names its process and when, so one process's lines can be told from another's.
-    return f"journalctl --no-pager -o short-precise -n {JOURNAL_LINES} -b {lines}"
+    # -a gives a line holding a control code as it was written, which failure_read escapes,
+    # rather than as journalctl's "[N blob data]".
+    return f"journalctl --no-pager -a -o short-precise -n {JOURNAL_LINES} -b {lines}"
 
 
 def digest(record: bytes) -> str:
