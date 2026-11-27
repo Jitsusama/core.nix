@@ -14,20 +14,24 @@ const ownLength = 64;
 // What follows an own kind as the launcher writes it, an id its Nix config names, as `emoji`
 // or `Asks`: a daemon's row keyed so may hold a name, a line break or a walk's forged steps
 // there, which no id holds, so such a key is said by its kind alone. This test can't tell an id
-// from a one-word name, so a served row's key never claims an own kind: ReadyRows.qml's, Agents'
-// served rows' among them, Emoji's, Copies' and a network's parts' are made by Presented.js's
-// keyMade, Timers', Runs' and OnSelection's by its keyServed, from the key their daemon wrote,
-// and the rows Agents makes itself are keyed by kinds of its own, none in keysOwn. Agents' act
-// rows Talk to It, Carry Back and Let Them Start take their act's key only once it's that act's
-// own `verb:` key.
+// from a one-word name, so a served row's key never claims an own kind: every key a daemon
+// serves comes in by Presented.js's keyServed, which keeps one claiming an own kind under `row:`.
+// ReadyRows.qml's rows and acts, Agents' served rows among them, Emoji's, Copies' and a network's
+// parts' come by its keyMade, and Timers', Runs' and OnSelection's rows and Agents' act rows by
+// keyServed itself, from the key their daemon wrote; the rows Agents makes itself are keyed by
+// kinds of its own, none in keysOwn. Agents' act rows Talk to It, Carry Back and Let Them Start
+// take their act's key only once it's that act's own `verb:` key.
 // keyShown also says a served `program:<id>` whole where its id is shaped as an app's, and only
-// the programs daemon's comes to it so: keyMade keeps one any other daemon serves under `row:`,
-// which keyShown says as `program`.
+// the programs daemon's comes to it so: keyServed keeps one any other daemon serves under `row:`,
+// which keyShown says as `program`, as it says sound's `program:<device>:<name>`.
 const ownId = /^[A-Za-z0-9][A-Za-z0-9._-]*$/u;
 
-// Where the programs daemon serves its rows, the one daemon whose `program:` keys keyMade leaves
-// as served, as ReadyRows.qml's socket names it.
-const programsSocket = "/daemons/programs.sock";
+// The socket the programs daemon serves its rows on, below the runtime folder, as its unit makes
+// it (modules/programs/home.nix's `%t/daemons/programs.sock`): the one daemon whose `program:`
+// keys keyServed leaves as served. The daemon's hello names nothing of itself, and the launcher's
+// places reading it are several (Programs, Capture, Code and more), so the socket a row came over
+// is all that says which daemon served it, matched whole by Presented.js's servedBy.
+const programsSocket = "daemons/programs.sock";
 
 // A kind's word, as the launcher and its daemons write one, at most 32 letters, and the keys
 // whose kind keyShown says, as actShown leaves them, since their later parts may be someone's

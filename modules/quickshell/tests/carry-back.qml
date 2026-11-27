@@ -70,5 +70,8 @@ QtObject {
             CarryBack.keyed({ key: "carry:served" }, "carry:7"), "carry:7");
         Expect.same("and one whose thing claims the launcher's own place stays under row:",
             CarryBack.keyed({ thing: "place:Harbour" }, "carry:7"), "row:place:Harbour");
+        Expect.same("as does one the agents daemon serves claiming a program",
+            CarryBack.keyed({ thing: "program:firefox" }, "carry:7", "daemons/agents.sock"),
+            "row:program:firefox");
     }
 }

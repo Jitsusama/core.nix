@@ -17,10 +17,11 @@ const MACHINE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/u;
 
 // The key a carried row reads as carrying back under, and has its refusal
 // said on: the one ReadyRows.qml made it with from its record's key
-// (Presented.js's keyMade), so what it becomes is that row, and a thing
-// claiming a kind of the launcher's own stays under `row:`.
-function keyed(row, key) {
-    return Presented.keyMade(row, key);
+// (Presented.js's keyMade), by the agents daemon's socket, `daemon`, as
+// servedBy names it, so what it becomes is that row, and a thing claiming a
+// kind of the launcher's own, or a program, stays under `row:`.
+function keyed(row, key, daemon) {
+    return Presented.keyMade(row, key, daemon);
 }
 
 // The node's ask `served` names, or null for anything but a carry of a
