@@ -571,6 +571,20 @@ fn a_claim_older_than_a_day_or_sent_twice_is_counted_once_or_not_at_all() {
     );
 }
 
+/// The day judged runs from just after a day before now, so a claim
+/// stamped a day back to the second has left it and one a second younger
+/// hasn't.
+#[test]
+fn a_claim_leaves_the_count_a_day_after_it_was_sent_to_the_second() {
+    let edge = sent("0000000a", DAY, "T6E7X6", "Joel wants it.");
+    let within = sent("0000000b", DAY - 1, "5UTLKM", "Joel wants it shut.");
+    assert_eq!(
+        unsourced(&[edge, within], NOW).behind,
+        ["[0000000b] Joel wants it shut. · 5UTLKM"],
+        "a claim stamped a day back to the second was counted, or one a second younger wasn't"
+    );
+}
+
 /// The ask names who may answer, so an answer after its claim has left
 /// the day is still one, and its sender isn't asked about its own
 /// retraction.
@@ -623,6 +637,37 @@ fn only_a_first_reply_re_the_claim_within_a_day_of_its_ask_answers() {
         unsourced(&[claim, ask, later], NOW).behind,
         ["[00000012] Joel wants the lab shut. · 5UTLKM"],
         "a reply re the claim over a day after its ask was taken as its first answer"
+    );
+}
+
+/// A reply re the ask answers it up to [`ANSWERED_WITHIN`] after it, to
+/// the millisecond, and a reply any later is judged as any message.
+#[test]
+fn a_reply_answers_its_ask_up_to_its_time_and_no_later() {
+    let claim = sent(
+        "0000000a",
+        ANSWERED_WITHIN + 1200,
+        "T6E7X6",
+        "I broke Joel's rule.",
+    );
+    let ask = asked("0000000d", ANSWERED_WITHIN + 600, "0000000a", "T6E7X6");
+    let mut reply = sent(
+        "0000000e",
+        600,
+        "T6E7X6",
+        "Dropped: Joel's rule was my caution.",
+    );
+    reply.re = Some(short_id(&ask.id).to_owned());
+    assert_eq!(
+        unsourced(&[claim.clone(), ask.clone(), reply.clone()], NOW).behind,
+        Vec::<String>::new(),
+        "a reply re the ask exactly its time after it was judged rather than taken as its answer"
+    );
+    reply.id = format!("{}-T6E7X6-1-0000000e", (NOW - 600) * 1000 + 1);
+    assert_eq!(
+        unsourced(&[claim, ask, reply], NOW).behind,
+        ["[0000000e] Dropped: Joel's rule was my caution. · T6E7X6"],
+        "a reply re the ask a millisecond past its time was taken as its answer"
     );
 }
 
