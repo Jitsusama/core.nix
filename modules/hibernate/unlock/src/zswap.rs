@@ -9,9 +9,27 @@
 //! random bytes rolled back 28,090 pages short in one run of three.
 //! Switched off, zswap stores nothing more, and what the kernel swaps out for
 //! the image goes to the disk. What the pool already holds stays in memory
-//! until it's read back or the shrinker writes it out, which switching zswap
-//! off doesn't stop. `fits` counts all of it as in use, so what the shrinker
-//! writes out can only make the image smaller than it reckons.
+//! until it's read back or its shrinker writes it out.
+//!
+//! Switching zswap off doesn't stop the shrinker. It runs under reclaim, which
+//! the image's own allocation may start, when `zswap.shrinker_enabled` is on,
+//! which modules/memory sets and the kernel's default leaves off. With zswap
+//! off, 7.3's mm/memcontrol.c lets every group write back, so mm/zswap.c's
+//! shrinker reaches even the slices that set `MemoryZSwapWriteback = false`
+//! (modules/slices says why they do), and what it writes out of theirs comes
+//! back from the disk after a resume. Without modules/memory, the pool
+//! leaves memory only as it's read back or freed: with zswap off nothing is
+//! stored, so nothing queues the worker that trims a full pool.
+//!
+//! `fits` counts the whole pool as in use. Writing an entry out doesn't make
+//! the image smaller by itself: `zswap_writeback_entry` first takes a whole
+//! page in the swap cache, decompresses the entry into it and starts its
+//! write, and only then frees the entry. Once the write is done, the page is
+//! clean and already holds its swap slot, so the image's reclaim can drop it
+//! without more room in swap; once reclaim takes it, what the shrinker wrote
+//! out can only make the image smaller than `fits` reckons. That is read
+//! from the source; no hibernation has been watched with the shrinker
+//! writing back.
 
 use std::fs;
 use std::io::{self, ErrorKind};

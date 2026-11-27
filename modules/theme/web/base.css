@@ -440,6 +440,7 @@ select {
 ::placeholder {
   color: var(--muted);
   opacity: 1;
+  font-style: var(--placeholder-slant);
 }
 
 @supports (resize: none) {
@@ -520,11 +521,14 @@ select {
   }
 }
 
+/* Thrice the root, above a picked look's :root[data-theme]; a raised placeholder slants.
+   Unset, the slant is invalid where it is read, so a placeholder keeps its field's. */
 @media (prefers-contrast: more) {
-  :root {
+  :root:root:root {
     --muted: var(--text);
     --rule: var(--muted);
     --field: var(--text);
+    --placeholder-slant: italic;
   }
 }
 
