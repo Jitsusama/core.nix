@@ -2538,12 +2538,35 @@ ShellRoot {
         Sessions.forgetAsk(unansweredNamed);
         kittyPidFile.setText("4242\n");
         Sessions.readKittyPid();
+        // One told long past comingPatience is forgotten as another kitty
+        // starts, told nothing: the launcher, shut meanwhile, would open on
+        // it whatever Joel opens it for (tellOnOpen).
+        Sessions.goTo(unansweredRow);
+        Sessions.untaken(unansweredNamed, String(Date.now()), "unanswered");
+        const longHad = Sessions.stillSaid[unansweredNamed];
+        Sessions.stillSaid = Object.assign({}, Sessions.stillSaid, { [unansweredNamed]:
+            Object.assign({}, longHad, { at: Date.now() - Sessions.comingPatience - 1 }) });
+        kittyPidFile.setText("6262\n");
+        untell();
+        Sessions.kittyStarted?.();
+        const longKept = unansweredNamed in Sessions.stillSaid;
+        const longLost = `${heard()} ${longKept}`;
+        Sessions.forgetAsk(unansweredNamed);
+        kittyPidFile.setText("4242\n");
+        Sessions.readKittyPid();
+        expect("a press told long past comingPatience is told nothing as another kitty starts",
+            longLost === "  x0 false", longLost);
         // Asked again of the kitty that didn't answer, it could draw both
         // windows once it catches up, so a press within answerPatience of
         // the give-up is told it may yet come and takes the late tell,
-        // asking nothing; past it, the kitty is asked afresh.
+        // asking nothing; past it, the kitty is asked afresh. The press
+        // leaves the give-up's time as it was, or each press would hold the
+        // viewer another answerPatience, for as long as Joel kept pressing.
         Sessions.goTo(unansweredRow);
         Sessions.untaken(unansweredNamed, String(Date.now()), "unanswered");
+        const gaveUpAt = Date.now() - 1000;
+        Sessions.stillSaid = Object.assign({}, Sessions.stillSaid, { [unansweredNamed]:
+            Object.assign({}, Sessions.stillSaid[unansweredNamed], { at: gaveUpAt }) });
         const stillFrom = Niri.spawns.length;
         untell();
         Sessions.goTo(unansweredRow);
@@ -2558,7 +2581,9 @@ ShellRoot {
         expect("a press soon after its kitty didn't answer asks it nothing more, said may yet come",
             pressedStill === "UNANSWERED stillComing x1 0" && pressedPast === "  x0 1",
             `${pressedStill} / ${pressedPast}`);
-        expect("and takes the focus", stillTook === unansweredNamed, String(stillTook));
+        expect("and takes the focus, the give-up's time left as it was",
+            stillTook === unansweredNamed && stillHad?.at === gaveUpAt,
+            `${stillTook} ${stillHad?.at - gaveUpAt}`);
         Sessions.forgetAsk(unansweredNamed);
         // Nor does any other asker, Reopen Them All's walk, viewKept or a
         // wake, all of which ask through viewWith.
@@ -2573,6 +2598,21 @@ ShellRoot {
             !askedStill && askedStillSpawns === 0 && stillKept,
             `${askedStill} ${askedStillSpawns} ${stillKept}`);
         Sessions.forgetAsk(unansweredNamed);
+        // Held as well where no press held the ask, as the walk's, viewKept's
+        // or a wake's, so a press soon after asks nothing and is told the
+        // window may yet come; the give-up itself tells nobody.
+        const walkFrom = Niri.spawns.length;
+        Sessions.viewWith(unansweredRow.attach, unansweredNamed, null, "walked");
+        untell();
+        Sessions.untaken(unansweredNamed, String(Date.now()), "unanswered");
+        const walkTold = heard();
+        untell();
+        Sessions.goTo(unansweredRow);
+        const pressedAfterWalk = `${walkTold} / ${heard()} `
+            + `${spawnsOf(unansweredNamed, walkFrom)}`;
+        Sessions.forgetAsk(unansweredNamed);
+        expect("a viewer no press held, its kitty quiet moments ago, is asked for by no press",
+            pressedAfterWalk === "  x0 / UNANSWERED stillComing x1 1", pressedAfterWalk);
         // Held only for the kitty that didn't answer: one whose pid the file
         // says now, its word it started not yet heard, is asked afresh, as
         // is any where no kitty's pid was known at the give-up.
@@ -2588,6 +2628,13 @@ ShellRoot {
         Sessions.readKittyPid();
         Sessions.goTo(unansweredRow);
         Sessions.untaken(unansweredNamed, String(Date.now()), "unanswered");
+        // Nor is it let go as a kitty starts, as no kitty was known to lose
+        // it: comingPatience ends it.
+        kittyPidFile.setText("7878\n");
+        untell();
+        Sessions.kittyStarted?.();
+        const unknownStill = unansweredNamed in Sessions.stillSaid;
+        const unknownKept = `${heard()} ${unknownStill}`;
         const unknownFrom = Niri.spawns.length;
         Sessions.goTo(unansweredRow);
         const pressedUnknown = spawnsOf(unansweredNamed, unknownFrom);
@@ -2595,7 +2642,8 @@ ShellRoot {
         kittyPidFile.setText("4242\n");
         Sessions.readKittyPid();
         expect("a press is held only for a kitty known, the one that didn't answer",
-            pressedNewer === 1 && pressedUnknown === 1, `${pressedNewer} ${pressedUnknown}`);
+            pressedNewer === 1 && pressedUnknown === 1 && unknownKept === "  x0 true",
+            `${pressedNewer} ${pressedUnknown} ${unknownKept}`);
         // A kept viewer whose kitty didn't answer is kept again under it
         // (keepAgain), so a kitty started since asks for it (viewKept): the
         // press holding it, which a held press took over, is told it was
@@ -2701,6 +2749,19 @@ ShellRoot {
                 + `${JSON.stringify(Object.keys(Sessions.keptAsks))}`);
         Sessions.untaken(unansweredRefused, unansweredAt);
         const refusedRepeated = unansweredRefused in Sessions.refusedAsks;
+        // Heard again with its cause, as no script sends but any caller
+        // can, the first give-up's time stands, so its hold ends
+        // answerPatience after it rather than never.
+        const refusalFirstAt = Date.now() - 1000;
+        Sessions.refusalKeptAt = Object.assign({}, Sessions.refusalKeptAt,
+            { [unansweredRefused]: refusalFirstAt });
+        Sessions.stillSaid = Object.assign({}, Sessions.stillSaid, { [unansweredRefused]:
+            Object.assign({}, Sessions.stillSaid[unansweredRefused], { at: refusalFirstAt }) });
+        Sessions.untaken(unansweredRefused, String(Number(unansweredAt) + 1), "unanswered");
+        const refusalRepeatedAt = `${Sessions.refusalKeptAt[unansweredRefused] - refusalFirstAt} `
+            + `${Sessions.stillSaid[unansweredRefused]?.at - refusalFirstAt}`;
+        expect("a refusal's give-up heard again with its cause leaves the first one's time",
+            refusalRepeatedAt === "0 0", refusalRepeatedAt);
         untell();
         Sessions.untaken(unansweredRefused, unansweredAt, "refused");
         expect("heard again without its cause it's taken once, and it ends once refused",
