@@ -251,7 +251,8 @@
 
   # Explain It reads each session on its own from the realm's node, tells a node
   # that can't say from a session it doesn't know, and shows its pi's answer in
-  # the act's place only while it's the act's own
+  # the act's place only while it's the act's own, its words streamed said at
+  # most once a tenth of a second
   # (modules/quickshell/tests/explainer.qml), over a stand-in mycelium
   # (modules/quickshell/tests/explain-it-node.sh) that knows two sessions, one
   # asking Joel something, answers another late, never answers a fourth,

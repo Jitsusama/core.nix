@@ -1328,7 +1328,13 @@ Provider {
         realm: Sessions.realm
         launcher: provider.launcher
         said: Words.of("verb:on:waiting:explain").said ?? {}
-        onChanged: provider.changed()
+        // Said outright, since changedTo compares no row's `reads`, where the
+        // answer streams, and with why, so what the launcher times names it.
+        onChanged: {
+            provider.changedWhy = "Explain It's answer";
+            provider.changed();
+            provider.changedWhy = "";
+        }
     }
 
     // The answers Joel gave looks, `{ [look id]: { label, at, sent, taken,
