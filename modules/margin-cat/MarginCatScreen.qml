@@ -443,19 +443,25 @@ PanelWindow {
             // play plays on, as before: a key ends one (stroll), but for
             // a puppy's visit, which the first branch ends where niri
             // carries its window away.
-            const home = seat(tile(sat));
-            if (going?.kind === "puppy" && home !== null
-                && MarginCat.carries(saw, tilesOf(space?.id), sat) !== null) {
+            const by = going?.kind === "puppy"
+                ? MarginCat.carries(saw, tilesOf(space?.id), sat) : null;
+            if (by !== null) {
                 // The keys gone to a column niri scrolls its window away
                 // for end the puppy's visit there, the puppy fading where
                 // it was, so the cat rides off with its window as a seated
                 // cat does, never left standing on the air where that
                 // window was. Cut mid-hop, its place is a leap's frame
                 // above its seat, so it rides to its seat on that window
-                // rather than keeping the leap.
+                // rather than keeping the leap. A window scrolled wholly
+                // off the screen gives no seat (MarginCat.sits), so the
+                // cat goes as far as niri carries it, as carried() does.
                 tell("puppy");
                 halt();
-                rideTo(home);
+                const home = seat(tile(sat));
+                if (home !== null)
+                    rideTo(home);
+                else if (place !== null)
+                    rideTo({ x: place.x + by.x, y: place.y + by.y });
             } else {
                 if (going !== null && !going.kind && !byHand
                     && MarginCat.carries(saw, tilesOf(space?.id), goingTo) !== null) {
