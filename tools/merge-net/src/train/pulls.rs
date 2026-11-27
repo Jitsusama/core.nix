@@ -566,6 +566,6 @@ mod tests {
             "a rider that waited out stayed aboard, or the train still paused for it"
         );
         assert!(waits.is_empty(), "a rider that left kept its wait");
-        fs::remove_dir_all(&root).unwrap();
+        std::fs::remove_dir_all(&root).unwrap();
     }
 }
