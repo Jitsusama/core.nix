@@ -26,13 +26,14 @@ pub(crate) struct Tags {
 enum Peeled {
     /// To what isn't a tag object: the commit, most often.
     To(Oid),
-    /// To a tag object no store holds.
+    /// To a tag object no store holds, or one stored as a delta over a base
+    /// none holds: both stay so till a file is written where it would lie.
     Missing(Oid),
     /// To a tag object whose bytes are wrong: they stay so till its file
     /// is written again, as one missing stays missing.
     Corrupt(Oid),
-    /// To a tag object that wouldn't read this time, a delta's base no
-    /// store holds yet among the reasons.
+    /// To a tag object that wouldn't read this time, as for memory or an
+    /// I/O error.
     Unread(Oid),
 }
 
@@ -118,13 +119,12 @@ impl Tags {
 /// whole: what it points at is asked only its kind, as git's `peel_object`
 /// asks, so a tag on a large blob costs the blob's headers.
 fn peel(odb: &mut Odb, mut oid: Oid) -> Peeled {
-    // Only data that won't read settles; anything else is tried again.
-    let stopped = |oid, error: std::io::Error| {
-        if error.kind() == std::io::ErrorKind::InvalidData {
-            Peeled::Corrupt(oid)
-        } else {
-            Peeled::Unread(oid)
-        }
+    // Only data that won't read, or a delta's base no store holds, which
+    // the store refuses as not found, settles; anything else is tried again.
+    let stopped = |oid, error: std::io::Error| match error.kind() {
+        std::io::ErrorKind::InvalidData => Peeled::Corrupt(oid),
+        std::io::ErrorKind::NotFound => Peeled::Missing(oid),
+        _ => Peeled::Unread(oid),
     };
     for _ in 0..8 {
         match odb.kind(&oid) {
@@ -382,6 +382,34 @@ mod tests {
             ("", 0, true, "v1"),
             "a tag over a base of the wrong size was named, left to peel again, or \
              settled without its base's folder, so a base written again left it unnamed"
+        );
+    }
+
+    #[test]
+    fn a_tag_over_a_base_no_store_holds_settles_till_its_base_is_written() {
+        let objects = crate::pack_index::tests::unique("tags-unbased");
+        let (tag, base, commit) = (Oid([0x31; 20]), Oid([0x32; 20]), Oid([0x33; 20]));
+        delta_over(&objects, tag, base, &tag_over_a_byte(commit));
+        let named = || vec![("v1".to_string(), tag)];
+        let mut tags = Tags::new(Vec::new(), named(), &HashMap::new());
+        let unbased = tags.naming(commit, &mut Odb::open(&objects));
+        let folder = objects.join(&base.hex()[..2]);
+        let watched = tags.stamps.iter().any(|(path, _)| *path == folder);
+        loose(&objects, base, b"tag 1\0a");
+        let based = Tags::new(Vec::new(), named(), &HashMap::new())
+            .naming(commit, &mut Odb::open(&objects));
+        std::fs::remove_dir_all(&objects).expect("the temp folder gives its folder back");
+        assert_eq!(
+            (
+                unbased.as_str(),
+                tags.unpeeled.len(),
+                watched,
+                based.as_str()
+            ),
+            ("", 0, true, "v1"),
+            "a tag over a base no store holds was named, left to peel again every \
+             answer, or settled without the base's folder, so its base written left it \
+             unnamed"
         );
     }
 
