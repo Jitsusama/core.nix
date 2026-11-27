@@ -273,8 +273,19 @@ const DROPPED_REACHED: f64 = 0.5;
 /// send it back to the anchor's hold: a minute's return would take up its
 /// drops again as long as the line past it stays under the anchor. The
 /// probes still look for room each minute, and one that finds it ends
-/// this at once.
+/// this at once. Found again soon after the guard's return, a hold stands
+/// twice as long as the last, up to `DROPPED_STANDS_MOST_S`: a line that
+/// stayed under the anchor would otherwise have its drops taken up again
+/// for three minutes in every fourteen (drops past the anchor round 2's
+/// F22 and F37). A probe that finds room, or a return that finds no drops
+/// in `DROPS_LOOK_S`, starts it over.
 const DROPPED_STANDS_S: f64 = 600.0;
+const DROPPED_STANDS_MOST_S: f64 = 1_800.0;
+/// How long a return from a hold found by drops is judged over: drops for
+/// `DROPS_SHARE` of it find the hold again, since the hold before showed
+/// the line under the anchor, and a fresh `DROPS_LOOK_S` would keep the
+/// upload over that line for three minutes.
+const DROPS_AGAIN_S: f64 = 30.0;
 
 /// How the upload tells a queue and finds its line, which a trial may set
 /// in place of the constants above to learn how near the line it may hold.
@@ -544,6 +555,10 @@ pub struct Way {
     dropped_s: f64,
     dropped_at: Option<f64>,
     vpn_held: bool,
+    /// How long a hold found by drops stands (`DROPPED_STANDS_S`), and
+    /// when the guard last sent one back to the anchor's hold.
+    dropped_stands_s: f64,
+    returned_at: Option<f64>,
     /// What got through when the queue was last found past our CAKE, which
     /// the rate is held under, and when it next looks for more room, or
     /// until when it is looking.
@@ -600,6 +615,8 @@ impl Way {
             dropped_s: 0.0,
             dropped_at: None,
             vpn_held: false,
+            dropped_stands_s: DROPPED_STANDS_S,
+            returned_at: None,
             plateau: None,
             next_probe: 0.0,
             probing_until: None,
@@ -709,7 +726,8 @@ impl Way {
 
     /// Counts a moment a router past our standing CAKE was `dropping`,
     /// unless the VPN's own queue is held, and forgets those past
-    /// `DROPS_LOOK_S`. Answers whether they fill `DROPS_SHARE` of it.
+    /// `DROPS_LOOK_S`. Answers whether they fill `DROPS_SHARE` of it, or
+    /// of `DROPS_AGAIN_S` while a return from a hold they found is judged.
     fn count_drops(&mut self, at: f64, dt: f64, dropping: bool) -> bool {
         if dropping && !self.vpn_held {
             let moment = dt.min(1.0);
@@ -722,7 +740,48 @@ impl Way {
             self.drops.pop_front();
             self.dropped_s -= moment;
         }
+        if let Some(returned) = self.returned_at {
+            if at - returned >= DROPS_LOOK_S {
+                self.forget_the_stand();
+            } else if self.dropped_s >= DROPS_AGAIN_S * DROPS_SHARE - 0.05 {
+                return true;
+            }
+        }
         self.dropped_s >= DROPS_LOOK_S * DROPS_SHARE - 0.05
+    }
+
+    /// Takes a hold found by drops to be found anew: it stands twice as
+    /// long as the last when it comes on a return, which found them again.
+    fn found_by_drops(&mut self, at: f64) {
+        if self.returned_at.take().is_some() {
+            self.dropped_stands_s = (self.dropped_stands_s * 2.0).min(DROPPED_STANDS_MOST_S);
+        }
+        self.dropped_at = Some(at);
+        self.drops.clear();
+        self.dropped_s = 0.0;
+    }
+
+    /// Starts the stand of a hold found by drops over, from
+    /// `DROPPED_STANDS_S`: the line has room past it, or a return found no
+    /// drops.
+    fn forget_the_stand(&mut self) {
+        self.dropped_at = None;
+        self.returned_at = None;
+        self.dropped_stands_s = DROPPED_STANDS_S;
+    }
+
+    /// Whether a hold found by drops still stands at `at`.
+    fn dropped_stands(&self, at: f64) -> bool {
+        self.dropped_at
+            .is_some_and(|dropped| at - dropped < self.dropped_stands_s)
+    }
+
+    /// Takes the guard's return to the anchor's hold at `at`: one from a
+    /// hold found by drops is judged over `DROPS_AGAIN_S`.
+    fn returned(&mut self, at: f64) {
+        if self.dropped_at.take().is_some() {
+            self.returned_at = Some(at);
+        }
     }
 
     /// Counts a moment toward a queue past CAKE: one held back with the
@@ -881,9 +940,7 @@ impl Way {
             // that don't follow the rate is cut again only as often as
             // they fill their share anew.
             if by_drops {
-                self.dropped_at = Some(at);
-                self.drops.clear();
-                self.dropped_s = 0.0;
+                self.found_by_drops(at);
             }
             return true;
         }
@@ -930,7 +987,7 @@ impl Way {
                     // past it: keep it, and look higher at once.
                     self.plateau = Some(through);
                     self.next_probe = at;
-                    self.dropped_at = None;
+                    self.forget_the_stand();
                 } else {
                     // A network's ceiling sits under its router's rate, so a
                     // probe it held that carried it with our queue standing
@@ -1398,7 +1455,7 @@ impl Way {
         self.elsewhere = None;
         self.drops.clear();
         self.dropped_s = 0.0;
-        self.dropped_at = None;
+        self.forget_the_stand();
         self.under_half_since = None;
         self.late_since = None;
         self.passed_s = 0.0;
@@ -2106,17 +2163,15 @@ impl Controller {
         }
         // A hold the router's own drops found isn't a guess, and a return
         // would take up those drops again: it stands `DROPPED_STANDS_S`,
-        // then the guard's minute begins.
-        if up
-            .dropped_at
-            .is_some_and(|dropped| at - dropped < DROPPED_STANDS_S)
-        {
+        // or longer found again, then the guard's minute begins.
+        if up.dropped_stands(at) {
             self.guard.low_since = None;
             return false;
         }
         if !self.guard.breached(at, held, fed, late, cut, anchor) {
             return false;
         }
+        self.up.returned(at);
         self.up.hold_at(at, anchor * ANCHOR_HOLD);
         self.guarded += 1;
         true
@@ -5861,12 +5916,84 @@ mod tests {
         }
     }
 
+    // A line that stays under its anchor: each return finds its drops
+    // again within `DROPS_AGAIN_S`, and the hold then stands twice as
+    // long, so the upload sits near the anchor for seconds an hour rather
+    // than three minutes in every fourteen (drops past the anchor round
+    // 2's F22 and F37).
+    #[test]
+    fn a_line_still_under_its_anchor_is_found_again_at_once_and_stands_longer() {
+        let mut c = anchored(12_000.0);
+        let found = DROPS_LOOK_S * DROPS_SHARE + 30.0;
+        dropped_under(&mut c, found, (false, 0.0), |_| 6_000.0);
+        assert!(c.up.dropped_at.is_some(), "not found by drops");
+        let (mut near, mut at) = (0.0, found);
+        while at < 3_600.0 {
+            at += 1.0;
+            dropped_under(&mut c, at, (false, 0.0), |_| 6_000.0);
+            if c.up.limit().is_some_and(|h| h >= 9_000) {
+                near += 1.0;
+            }
+        }
+        assert!(
+            c.guarded >= 1,
+            "the guard never sent the hold back, so nothing was found again"
+        );
+        assert!(
+            near / (at - found) < 0.03,
+            "held near the anchor over a 6000 line for {near} s of {} s",
+            at - found
+        );
+        assert!(
+            c.up.dropped_stands_s > DROPPED_STANDS_S,
+            "found again, the hold stands only {} s",
+            c.up.dropped_stands_s
+        );
+    }
+
+    // A hold found by drops ends once a probe finds room past it, as when
+    // the air's line comes back to the cable's, without waiting out its
+    // stand (drops past the anchor round 2's F29).
+    #[test]
+    fn a_probe_finding_room_ends_a_hold_found_by_drops() {
+        let mut c = anchored(12_000.0);
+        let found = DROPS_LOOK_S * DROPS_SHARE + 30.0;
+        dropped_under(&mut c, found, (false, 0.0), |_| 6_000.0);
+        assert!(c.up.dropped_at.is_some(), "not found by drops");
+        dropped_under(&mut c, found + DROPPED_STANDS_S / 2.0, (false, 0.0), |_| {
+            20_000.0
+        });
+        assert!(
+            c.up.dropped_at.is_none(),
+            "a probe that found room left the hold standing"
+        );
+        let held = c.up.limit();
+        assert!(
+            held.is_some_and(|h| h > 6_000),
+            "held at {held:?} under a 20000 line"
+        );
+    }
+
     // Drops that don't follow the rate, as weak air's, go on under any
     // hold: each time they fill their share anew the hold is cut again,
-    // but never to under half of what the link carried.
+    // but never to under half of what the link carried. Counted afresh,
+    // they cut no sooner than they fill it again (drops past the anchor
+    // round 2's F28).
     #[test]
     fn drops_that_don_t_follow_the_rate_hold_no_lower_than_half_the_link() {
         let mut c = anchored(12_000.0);
+        let mut at = 0.0;
+        while c.up.dropped_at.is_none() && at < 1_000.0 {
+            at += 1.0;
+            dropped_under(&mut c, at, (false, 0.15), |_| 20_000.0);
+        }
+        let first = c.up.plateau;
+        assert!(first.is_some(), "never cut for drops in {at} s");
+        dropped_under(&mut c, at + 30.0, (false, 0.15), |_| 20_000.0);
+        assert_eq!(
+            c.up.plateau, first,
+            "cut again within 30 s of a cut by drops, which count afresh"
+        );
         let lowest = dropped_under(&mut c, 3_000.0, (false, 0.15), |_| 20_000.0);
         assert!(lowest < 9_000.0, "never cut for drops: {lowest}");
         assert!(
