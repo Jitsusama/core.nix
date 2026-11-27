@@ -4054,7 +4054,7 @@ Singleton {
     function lostTold(lost) {
         for (const { named, said } of lost) {
             const going = goingTo?.app === named ? goingTo : null;
-            const again = attaching[named] !== undefined;
+            const again = false && attaching[named] !== undefined;
             console.info(`sessions: ${named}'s kitty started again, so the window it may `
                 + "yet have drawn won't come; "
                 + (again ? "it's asked for of the new one, " : "") + "its press is told");
