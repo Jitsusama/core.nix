@@ -87,6 +87,7 @@ Item {
         function init() {
             line.confirming = false;
             line.answerTaken = () => true;
+            line.keyNow = () => Date.now();
             line.drawerHere = false;
             line.reselectable = false;
             line.registers = false;
@@ -434,6 +435,28 @@ Item {
             compare(answered.count, 1);
             verify(asked[0] >= before && asked[0] <= after, "asked with when the key came");
             compare(answered.signalArguments[0][1], asked[0], "answered at that time");
+        }
+
+        // The ask and visual's operator are timed on the clock the prompt is
+        // given, as the launcher gives KeyTimes' and puts its ask on it, never
+        // the wall clock: a clock read nowhere else gives each key its time.
+        function test_aKeyIsTimedOnTheClockThePromptIsGiven() {
+            line.keyNow = () => 5000;
+            toNormal();
+            keyClick("V");
+            keyClick("d");
+            compare(line.visualOperated?.at, 5000, "visual's operator timed on it");
+            line.confirming = true;
+            const asked = [];
+            line.answerTaken = (key, at) => {
+                asked.push(at);
+                return true;
+            };
+            line.keyNow = () => 5400;
+            keyClick(Qt.Key_Return);
+            compare(asked.join(" "), "5400", "the ask asked with the key's time on it");
+            compare(answered.count, 1);
+            compare(answered.signalArguments[0][1], 5400, "and answered at that time");
         }
 
         // Unhurried, the ask hears d again only if it's asked before the

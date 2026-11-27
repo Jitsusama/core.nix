@@ -237,6 +237,11 @@ Item {
     // a key on the ask's ready edge can't be timed idle and still answer.
     property var answerTaken: (key, at) => true
     signal answered(string key, real at)
+    // When a key comes, in ms, as the ask and visual's operator time it: the
+    // launcher gives KeyTimes' monotonic clock, which its ask is put on too,
+    // so a wall clock stepped back can't make every key early. A prompt
+    // given none keeps the wall clock, as it puts no ask.
+    property var keyNow: () => Date.now()
     // How soon after visual's operator the same key again is taken with
     // it (Operators.takenWith), as his Neovim's timeoutlen
     // (modules/keys/language.toml); a sequence begun never times out.
@@ -484,8 +489,6 @@ Item {
     // The same ask in its parts (Confirm.questionParts), where it says what
     // stays, so that clause alone gives way when the line can't hold it.
     property var askingParts: null
-    property double askedAt: 0
-    onAskingChanged: askedAt = Date.now()
 
     function clear() {
         input.text = "";
@@ -740,7 +743,7 @@ Item {
         // here.
         const after = visualOperated;
         const read = QueryKeys.read(standing, key, mode, editsWords);
-        const now = Date.now();
+        const now = keyNow();
         const operated = Operators.takenWith(after, key, now, wait);
         keyActed = KeyActs.acts(read, {
             alone: keyAlone,
@@ -850,7 +853,7 @@ Item {
             // the file picker's takes(rows) hooks for Return).
             if (mode === "visual" && QueryKeys.takesSelection(read.act)) {
                 prompt.operated(read.act, 0, { act: "visual", count: 0 });
-                visualOperated = { key, at: Date.now() };
+                visualOperated = { key, at: now };
             }
             // y copies what the drawer chose and gv brings the last back
             // before the mode moves, while it still holds what they act on,

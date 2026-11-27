@@ -399,6 +399,21 @@ QtObject {
                 undefined)], ["no", "no"]);
         holds("but a key of no time to such an ask is let by too",
             Confirm.answer(timeless, "Escape", undefined, 300), "early");
+        // NaN and -Infinity rule out a looser check, typeof "number" or != null, under
+        // which either time or guard falls through to a yes.
+        const untimable = [NaN, -Infinity].map(at => Confirm.asked("Close Notes?", run, run, at));
+        holds("as is a Return to an ask put at a time no clock gives, or with a guard of none",
+            untimable.map(one => Confirm.answer(one, "Return", 1400, 300))
+                .concat([Confirm.answer(ask, "Return", 1400, NaN)]), ["early", "early", "early"]);
+        holds("and a modifier alone lets no such ask go",
+            [Confirm.answer(timeless, "", 1400, 300), Confirm.answer(ask, "", 1400, NaN)],
+            ["early", "early"]);
+        holds("a key timed before its ask, as a clock gone back gives, holds its Return",
+            [Confirm.answer(ask, "Return", 999, 300), Confirm.answer(ask, "Return", -5000, 300)],
+            ["early", "early"]);
+        holds("while any other key still lets that ask go, Escape among them",
+            ["Escape", "y", "n"].map(key => Confirm.answer(ask, key, 999, 300)),
+            ["no", "no", "no"]);
         holds("and such an ask says why it can't be timed, where a timed one says nothing",
             [Confirm.untimed(timeless, 300), Confirm.untimed(ask, undefined),
                 Confirm.untimed(ask, 300)],

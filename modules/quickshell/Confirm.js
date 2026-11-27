@@ -53,13 +53,15 @@ const YES = ["Return", "Enter"];
 // the one key. An ask put at no time or with no guard can never be timed,
 // so its Return is early for as long as it stands, and every other key
 // still lets it go: a slip there costs the yes, never an unasked one, and
-// never the way out. Each is asked whole, as a comparison with a missing
-// one comes out false either way round.
+// never the way out. A key timed before its ask was put, as a clock gone
+// back or another clock would give, is timed no better, so it's held the
+// same way. Each is asked whole, as a comparison with a missing one comes
+// out false either way round.
 function answer(ask, key, now, guard) {
     if (key === "" || !Number.isFinite(now)) {
         return "early";
     }
-    if (![ask.at, guard].every(Number.isFinite)) {
+    if (![ask.at, guard].every(Number.isFinite) || now < ask.at) {
         return YES.includes(key) ? "early" : "no";
     }
     if (now - ask.at < guard) {
