@@ -6499,7 +6499,9 @@
     session's own twin with it; the window of a twin put back after the walk on the connector a
     window put back before it didn't take, unless a session took that connector, when the
     session's twin goes with it; gives windows no connector from sessions handed over outside a
-    walk; keeps, for a walk joined after Joel's focus moved, the screen in use as it began; notes a
+    walk; keeps, for a walk joined after Joel's focus moved, the screen in use as it began; gives
+    twin sessions of one boot a connector each, as the places their boot kept say; puts a session
+    kept on a screen that's gone on the screen in use as its walk began, the other twin; notes a
     window away from a screen named constructor or __proto__ as any other, without a throw; and
     ends each walk before the next case begins, starting nothing for a session in a gone folder
   '';
