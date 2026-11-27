@@ -4410,7 +4410,7 @@ Singleton {
             // (stillHeld), keeping where it slept too: let go, nothing would
             // open it there once the hold lapses. Joel's press is told it may
             // yet come (heldBack).
-            if (stillHeld(named)) {
+            if (stillHeld(named) && !pressed) {
                 if (pressed)
                     heldBack(session.address, named, session);
                 else
