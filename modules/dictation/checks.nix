@@ -289,10 +289,12 @@
       # Carrying a run of their echo past a word only his microphone heard
       # took it on to 21.5%, his side to 24.0%. Cutting a word of his far
       # below theirs, however spelled, took it to 19.8%, his side to 19.1%.
+      # Judging each word of his by his voice near it rather than across
+      # the call took his side to 19.0%.
       # The ceiling is what it reaches, as the clean meetings' is, and his
       # side's own ceiling is what his side reaches.
       ceiling = "19.8";
-      joels = "19.1";
+      joels = "19.0";
     in
     pkgs.runCommand "call-transcripts-hears-echoed-meetings-as-well-as-it-did" { } ''
       DICTATION_DEVICE=CPU ${dictation}/bin/call-transcripts score ${model} ${meetings} ${lib.escapeShellArg ceiling} ${lib.escapeShellArg joels}

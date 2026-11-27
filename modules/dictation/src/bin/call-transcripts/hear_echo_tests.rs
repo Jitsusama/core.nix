@@ -129,7 +129,8 @@ fn each_echo_cut_from_joels_words_is_told_once_and_without_them() {
 #[test]
 fn an_echo_cut_for_its_level_is_told_by_how_far_below_theirs_it_was() {
     // His microphone hears Bo's "Not yet." 20 dB down, its own way, in a
-    // take of his that has his voice in it alone first.
+    // take of his that opens with five words alone, so it's cut against
+    // his voice as well as Bo's; it would be against Bo's alone too.
     let mut writing = ada_then_bo();
     let late = SECOND / 20;
     let mut words: Vec<Word> = ["Fine", "by", "me,", "thanks", "all."]
