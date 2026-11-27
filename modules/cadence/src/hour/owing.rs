@@ -27,7 +27,7 @@ const QUEUE_DUE: i64 = 7 * DAY;
 
 /// The kind of what the hour files for its owner by name, each keeping a
 /// late line of its own; which those are is listed once, at `red`.
-const DRAG: &str = "drag";
+const DRAG: &str = owe::DRAG;
 
 /// Text from outside cadence, a finding's or a miss's words, a file's or
 /// a cell's line, quoted, with what can't be said flattened and its own
@@ -124,7 +124,7 @@ fn red(m: &Measure, lead: bool) -> bool {
 
 /// Whether the hour filed `entry` to ask its owner, a drag or a red line.
 pub(super) fn is_asked(entry: &Entry) -> bool {
-    entry.kind.as_deref() == Some(DRAG)
+    entry.kind.as_deref().is_some_and(owe::drags)
 }
 
 /// One drag as the ledger files it: its key, owner, words, what it names

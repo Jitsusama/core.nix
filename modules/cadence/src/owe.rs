@@ -178,12 +178,15 @@ pub fn settle(ledger: &mut [Entry], key: &str) -> bool {
         .is_some()
 }
 
-/// Whether a line of `kind` is one of the hour's. Its drags and its red
-/// lines are both of kind "drag", a red line marked red beside it, so
-/// either may come back as the other; said once here, so a kind the hour
-/// files later is added in one place.
-fn drags(kind: &str) -> bool {
-    kind == "drag"
+/// The one kind the hour files its lines as: a red line is a drag with
+/// `red` set, never a kind of its own.
+pub const DRAG: &str = "drag";
+
+/// Whether a line of `kind` is one of the hour's, a drag or a red line,
+/// said once here for the hour and its owners' closes alike.
+#[must_use]
+pub fn drags(kind: &str) -> bool {
+    kind == DRAG
 }
 
 /// Closes the must filed as `key` at `now`, or says the finding filed as
