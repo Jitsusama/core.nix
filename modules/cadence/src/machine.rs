@@ -135,10 +135,16 @@ pub const MEASURES: &[Measure] = &[
         Some(0.0),
         1.0,
     ),
+    // Health's day file also says, as memory.<program>.looks-by-pss-percent,
+    // how many of the day's looks counted every copy by its share. It isn't
+    // a measure, since a day reads a higher figure as worse and a move to
+    // shares would read so; a day whose measure moved reads here as a move,
+    // and that figure in health's file says whether it was the measure.
     measure(
         "health.memory.pi.most-mib",
         "resources",
-        "the most pi held at once, each copy by its own share where Linux reads it, else all it had resident",
+        "the most pi held at once, each copy by its own share where Linux reads it, \
+         else all it had resident",
         " MiB",
         None,
         1024.0,
@@ -146,7 +152,8 @@ pub const MEASURES: &[Measure] = &[
     measure(
         "health.memory.pi-conversation.copy-median-mib",
         "resources",
-        "what a typical hosted conversation's process held in memory and swap, by its own share where Linux reads it, else all it had resident",
+        "what a typical hosted conversation's process held in memory and swap, \
+         by its own share where Linux reads it, else all it had resident",
         " MiB",
         Some(300.0),
         64.0,
@@ -154,7 +161,8 @@ pub const MEASURES: &[Measure] = &[
     measure(
         "health.memory.pi-conversation.copy-p95-mib",
         "resources",
-        "what a heavy hosted conversation's process held, one in twenty, counted as the typical one is",
+        "what a heavy hosted conversation's process held, one in twenty, \
+         counted as the typical one is",
         " MiB",
         None,
         64.0,
@@ -170,7 +178,8 @@ pub const MEASURES: &[Measure] = &[
     measure(
         "health.memory.pi.copy-median-mib",
         "resources",
-        "what a typical pi in a window held in memory and swap, by its own share where Linux reads it, else all it had resident",
+        "what a typical pi in a window held in memory and swap, \
+         by its own share where Linux reads it, else all it had resident",
         " MiB",
         None,
         64.0,

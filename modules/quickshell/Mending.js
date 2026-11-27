@@ -32,9 +32,11 @@ function mended(was, change, deep) {
 // The fields each kind's changes say deep: those a watch asked deep that
 // the daemon's hello offers for the kind, as `{"session": {"deep":
 // ["presence"]}}`. A daemon offering none, or a watch asking none, says
-// every change whole, so nothing is mended deep.
+// every change whole, so nothing is mended deep. Kept with no prototype,
+// so a kind the hello names "__proto__" or "constructor" is a kind of
+// its own, not what every object inherits.
 function deepByKind(kinds, asked) {
-    const by = {};
+    const by = Object.create(null);
     if (!(plain(kinds) && Array.isArray(asked))) {
         return by;
     }
@@ -58,9 +60,10 @@ function kindOf(record) {
 }
 
 // The fields `record`'s change says deep, by its kind. Only a list is
-// taken, since `by` is a plain object: a record keyed "constructor" or
-// "toString" names a kind it inherits a function for, and mended() would
-// throw on that, losing every record of the change it came in.
+// taken, since `by` may be a plain object a caller made: a record keyed
+// "constructor" or "toString", or saying such a kind, names a kind it
+// inherits a function for, and mended() would throw on that, holding
+// the change's records before it unheard and losing those after.
 function deepOf(by, record) {
     const deep = by[kindOf(record)];
     return Array.isArray(deep) ? deep : [];

@@ -116,9 +116,10 @@ const PAUSE: &str = "pause";
 const STEP: Duration = Duration::from_secs(6);
 
 /// How often the other machines are given the stops they lack: a stop
-/// heard reaches them within this and a run, and a run more for each
-/// machine that hangs, which then waits a minute, well inside the five
-/// minutes a stop has to land in.
+/// heard reaches them within this and a run, however many machines hang,
+/// since every machine lacking it is given it at once, and one that hangs
+/// then waits a minute; well inside the five minutes a stop has to land
+/// in.
 const CARRY_EVERY: Duration = Duration::from_secs(5);
 
 /// How long each machine is given to take a stop, longer than a pause's
