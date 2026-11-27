@@ -231,7 +231,7 @@ pub struct Nearby {
 }
 
 /// How a network is joined.
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, CustomType)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, CustomType)]
 #[serde(rename_all = "camelCase")]
 #[zlink(rename_all = "camelCase")]
 pub enum Security {
