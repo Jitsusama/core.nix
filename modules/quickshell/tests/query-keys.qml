@@ -2128,9 +2128,10 @@ QtObject {
             ["nothing with no completion shown, a command's row or not",
                 { completion: "", fills: true }, ""],
             ["a command's row puts its start in the field", { fills: true }, "start"],
-            // On the answer's own row, where the question would be finished
-            // too, so the start is seen to come first.
-            ["a command's start comes before a question only started",
+            // No row is both a command's and an answer's, so the two never
+            // meet in the launcher; this only holds that the start is
+            // asked first, as completing says.
+            ["a start is asked before a question only started",
                 { fills: true, question: "2+", answered: true, answer: sum }, "start"],
             ["a question only started is finished, with no row selected",
                 { question: "2+2", selected: false, answer: sum }, "question"],
@@ -2138,7 +2139,7 @@ QtObject {
                 { question: "2+2", answered: true, answer: sum }, "question"],
             ["another row finishes what's typed, with a question beside it",
                 { question: "2+2", answer: sum }, "rest"],
-            ["what's typed is finished with no answer", { selected: false }, "rest"],
+            ["a row with no answer beside it finishes what's typed", {}, "rest"],
             // An answer with a question goes the question's way, as the
             // launcher's question is its answer's (Launcher.qml's question).
             ["an answer alone goes in the question's place",
@@ -2153,6 +2154,14 @@ QtObject {
         ];
         for (const [what, more, does] of cases)
             holds(`Ctrl+Y: ${what}`, KeyActs.completing(field(more)), does);
+        // The launcher's onCompleted has a case for each of completions, so
+        // a case here answering something else names an outcome it never
+        // does, and one never answered goes unproven.
+        const answered = cases.map(([, more]) => KeyActs.completing(field(more)));
+        holds("Ctrl+Y's cases answer only what the launcher does",
+            answered.filter(does => !KeyActs.completions().includes(does)), []);
+        holds("Ctrl+Y's cases reach everything the launcher does",
+            KeyActs.completions().filter(does => !answered.includes(does)), []);
         // [what, the answer, what Ctrl+Y puts in the question's place]
         const put = [
             ["its copy", { headline: "4", copy: "four" }, "four"],

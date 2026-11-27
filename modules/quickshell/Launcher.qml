@@ -560,7 +560,7 @@ Scope {
             about: said.about ?? "",
             side: "",
             chord: [],
-            verb: said.verb ?? ((said.copy ?? said.headline) === "" ? "close" : "copy"),
+            verb: said.verb ?? (KeyActs.answerPut(said) === "" ? "close" : "copy"),
             now: true,
             // One whose doing takes a while keeps the launcher open, as
             // asking a question does, its whole words below the rows.
@@ -569,9 +569,9 @@ Scope {
             changes: said.changes,
             reads: said.reads ?? "",
             note: said.note ?? "",
-            copies: said.run ? "" : said.copy ?? said.headline,
+            copies: said.run ? "" : KeyActs.answerPut(said),
             run: said.run ?? (() => {
-                const copy = said.copy ?? said.headline;
+                const copy = KeyActs.answerPut(said);
                 if (copy !== "")
                     Quickshell.clipboardText = copy;
             }),
@@ -744,7 +744,7 @@ Scope {
         // Counted by its kind when Return picks it (answered's `counted`).
         counted: trials.answerCounted(answer.asker?.answerKind, answer.about),
         // An answer still being asked for has nothing to copy yet.
-        verb: answer.verb ?? ((answer.copy ?? answer.headline) === "" ? "close" : "copy"),
+        verb: answer.verb ?? (KeyActs.answerPut(answer) === "" ? "close" : "copy"),
         now: true,
         stays: answer.stays ?? false,
         thing: answer.thing ?? false,
@@ -755,9 +755,9 @@ Scope {
         note: answer.note ?? "",
         // Asked by a name it had, it says so, as a row found by one does.
         once: oldWords[Fuzzy.plainly(typed)] ? [oldWords[Fuzzy.plainly(typed)]] : [],
-        copies: answer.run ? "" : answer.copy ?? answer.headline,
+        copies: answer.run ? "" : KeyActs.answerPut(answer),
         run: answer.run ?? (() => {
-            const copy = answer.copy ?? answer.headline;
+            const copy = KeyActs.answerPut(answer);
             if (copy !== "")
                 Quickshell.clipboardText = copy;
         })
@@ -14690,7 +14690,8 @@ Scope {
                             default:
                                 // KeyActs.completing said what no case
                                 // here does, so Ctrl+Y would quietly do
-                                // nothing; said, so it's seen.
+                                // nothing; said, so it's seen. Each of
+                                // KeyActs.completions has its case above.
                                 console.warn(`launcher: Ctrl+Y's completion said "${does}", `
                                     + "which the field doesn't do");
                                 return;

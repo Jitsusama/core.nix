@@ -38,7 +38,9 @@ function saysOnly(act, line) {
 // with no row selected or an answer's; what's typed finished
 // ("rest") on any other row, or with no answer; and with only an answer,
 // the answer in the question's place ("answer"), unless it does something
-// or says nothing, which leaves nothing to put there.
+// or says nothing, which leaves nothing to put there. A command's row is
+// never an answer's, which has no start, so "start" and "question" never
+// both apply and their order changes nothing.
 function completing(field) {
     if (field.completion === "") {
         return "";
@@ -58,9 +60,19 @@ function completing(field) {
 // What an answer puts in the question's place, where Ctrl+Y's completion
 // puts it ("answer" above): its copy where it has one, else its headline.
 // An empty copy is still its copy, so it puts nothing. Launcher.qml's
-// onCompleted puts this, so what's put and whether it's put are one rule.
+// onCompleted puts this, and its answer rows (answered, headline) copy it
+// on Return and say "close" for it when it's empty, so what Ctrl+Y puts,
+// what Return copies and whether either puts anything are one rule.
 function answerPut(answer) {
     return answer.copy ?? answer.headline;
+}
+
+// Everything completing answers, each a case of Launcher.qml's
+// onCompleted, so tests/query-keys.qml can hold that its cases answer
+// only these and reach every one. A function, as everything else this
+// file gives is.
+function completions() {
+    return ["", "start", "question", "rest", "answer"];
 }
 
 // Whether gv has something to take back: on the rows a selection
