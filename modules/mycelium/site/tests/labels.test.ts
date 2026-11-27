@@ -325,3 +325,16 @@ it("a no-break space, which a page draws as it is, is kept apart from a space", 
     "a no-break space was run into a space, or dropped at an end, as a page never does",
   );
 });
+
+it("networks whose keys differ only in spaces a page runs together are told apart", () => {
+  const name = "Rig the Skiff";
+  const keys = ["orchestration.skiff one", "orchestration.skiff  one", "orchestration.skiff\tone"];
+  const networks = keys.map((key) => ({ key, name, carries: name }));
+  const told = [...toldApart(networks).values()];
+  labelledApart(networks);
+  assert.equal(
+    new Set(told.map(drawn)).size,
+    told.length,
+    `two told names read alike once drawn: ${told.map((said) => JSON.stringify(said)).join(" | ")}`,
+  );
+});
