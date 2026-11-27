@@ -184,6 +184,8 @@ fn mount_type(mountinfo: &[u8], id: u64) -> Option<&[u8]> {
 /// mounts are read the first time a process needs them, and kept for its
 /// other descriptors; a descriptor or mounts that can't be read say no.
 fn on_devtmpfs(proc: &Path, fd: &OsStr, mountinfo: &OnceCell<Option<Vec<u8>>>) -> bool {
+    // A descriptor closed or a process gone since its link was read holds
+    // no camera now, just as one skipped for its link is.
     let Some(id) = fs::read(proc.join("fdinfo").join(fd))
         .ok()
         .as_deref()
@@ -192,6 +194,9 @@ fn on_devtmpfs(proc: &Path, fd: &OsStr, mountinfo: &OnceCell<Option<Vec<u8>>>) -
         return false;
     };
     mountinfo
+        // A process gone since its descriptors were listed holds no camera
+        // now; one alive whose mounts can't be read is named by maps, if at
+        // all, as it was before mounts were asked.
         .get_or_init(|| fs::read(proc.join("mountinfo")).ok())
         .as_deref()
         .and_then(|mounts| mount_type(mounts, id))
