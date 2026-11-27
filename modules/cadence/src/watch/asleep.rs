@@ -65,7 +65,9 @@ pub fn now() -> Option<Asleep> {
     })
 }
 
-#[cfg(test)]
+// Only Linux has the boot id under /proc and a boot-time clock, so
+// elsewhere these would fail on every run and hide a real failure.
+#[cfg(all(test, target_os = "linux"))]
 mod tests {
     use super::*;
 

@@ -52,8 +52,10 @@ fn spec_is_made_from_the_axes_with_its_headline_and_owners_named() {
     let ran = served(folder);
     let said = String::from_utf8_lossy(&ran.stderr);
     assert!(ran.status.success(), "cadence failed: {said}");
+    // The processor time is read from /proc, which only Linux has; the rest
+    // of the read holds everywhere.
     assert!(
-        said.contains("s of processor"),
+        !cfg!(target_os = "linux") || said.contains("s of processor"),
         "the read says its cost: {said}"
     );
     let made: Value = serde_json::from_slice(&ran.stdout).expect("one line of JSON");

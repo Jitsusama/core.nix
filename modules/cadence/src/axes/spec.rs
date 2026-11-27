@@ -174,6 +174,9 @@ mod tests {
         assert!(!read_nothing(&[axis(None), axis(Some(3.0))]), "one figure");
     }
 
+    // Only Linux has /proc, so elsewhere this would fail on every run and
+    // hide a real failure among the expected ones.
+    #[cfg(target_os = "linux")]
     #[test]
     fn processor_time_is_read_from_proc() {
         assert!(
