@@ -681,12 +681,13 @@ fn a_run_before_the_switch_that_carries_it_is_said_so_whether_it_passed_or_faile
 fn an_ask_only_the_harness_carries_counts_a_pass_with_no_switch_since() {
     let ago = 3 * 3600;
     let harness = json!({"pr": "agentic-harness.pi#2326"});
-    let core = json!({"pr": "agentic-harness.pi#2326, core.nix#6835"});
-    // A part naming no change found might be one a switch carries.
+    // A part naming no change found might be one a switch carries, so only
+    // a switch since it landed counts.
     let unfound = json!({"pr": "agentic-harness.pi#2326, elsewhere#2"});
+    let plain = json!({});
     let asks = list(&[
         landed("installed", ago, "A", &harness),
-        landed("switched", ago, "B", &core),
+        landed("switched", ago, "B", &plain),
         landed("unfound", ago, "C", &unfound),
     ]);
     let before = json!({"at": at(NOW - ago - 60)}).to_string();
@@ -884,7 +885,101 @@ fn a_merge_or_checkout_cadence_cant_find_leaves_the_ask_unjudged() {
             "{pr}, which cadence can't find, counted as carried: {:?}",
             m.behind
         );
+        // Its line stays on the card, uncounted, so the hour's outage
+        // isn't the drag.
+        assert_eq!(
+            (m.now, m.target),
+            (0.0, Some(0.0)),
+            "{pr}, which only cadence's sight holds, counted: {}",
+            m.says
+        );
     }
+}
+
+#[test]
+fn a_switch_before_its_ask_was_marked_landed_counts_once_git_shows_it_holds_the_merge() {
+    let home = state();
+    let (old, merge) = scratch(&home.path().join("core.git"), 6835);
+    // Merged, switched, then marked landed: git shows what the mark can't.
+    let between = 3 * 3600 + 30;
+    let over = |switches: &[String]| measured(home.path(), "core.nix#6835", switches, 7, &[]);
+    let m = over(&[switch(between, 7, &merge)]);
+    assert_eq!(
+        (m.target, m.behind.len()),
+        (Some(0.0), 0),
+        "a switch holding the merge before its landed mark didn't count: {} {:?}",
+        m.says,
+        m.behind
+    );
+    let m = over(&[switch(between, 7, &old)]);
+    assert!(
+        m.behind
+            .first()
+            .is_some_and(|line| line.contains("as the switch running doesn't carry it")),
+        "a switch from before landing lacking the merge counted: {:?}",
+        m.behind
+    );
+}
+
+#[test]
+fn a_failure_on_what_carries_it_is_its_cells_while_cadence_cant_tell_what_runs() {
+    let home = state();
+    std::fs::write(home.path().join(PROBES), run("card", 3000, false, 6)).expect("a run");
+    let (_, merge) = scratch(&home.path().join("core.git"), 6835);
+    // Rolled back to 6, which carries it, so 7 can't be judged.
+    let switches = [switch(3600, 6, &merge), switch(2400, 7, &merge)];
+    let m = measured(home.path(), "core.nix#6835", &switches, 6, &[]);
+    assert!(
+        m.behind.first().is_some_and(|line| {
+            line.ends_with(
+                "; its probe failed after switch 6, though cadence can't tell whether the \
+                 switch running now carries it · A",
+            ) && !line.contains(BLIND)
+        }),
+        "a failure on a switch that carries it was kept from its cell: {:?}",
+        m.behind
+    );
+    assert_eq!(
+        (m.now, m.owner.as_str()),
+        (1.0, "A"),
+        "a failure on a switch that carries it wasn't counted as its cell's: {}",
+        m.says
+    );
+}
+
+#[test]
+fn an_emptied_switch_record_leaves_it_unjudged() {
+    let home = state();
+    let m = measured(home.path(), "core.nix#6835", &[], 7, &[]);
+    assert_eq!(
+        (
+            m.target,
+            m.says.contains("the switch record unread: emptied")
+        ),
+        (None, true),
+        "an emptied switch record read as a machine never switched: {}",
+        m.says
+    );
+}
+
+#[test]
+fn an_ask_past_the_week_judges_only_the_switch_its_run_was_on() {
+    let calls = std::cell::Cell::new(0);
+    let judge = |_: &Value, _: Repo, _: u32| {
+        calls.set(calls.get() + 1);
+        Some(true)
+    };
+    let (old, pr) = (8 * DAY, json!({"pr": "core.nix#6835"}));
+    let asks = list(&[landed("unrun", old, "A", &pr), landed("ran", old, "B", &pr)]);
+    let switch = json!({"at": at(NOW - old + 60)}).to_string();
+    let ran = run("ran", 3600, false, 1200);
+    let m = unproven(&asks, Ok(&ran), Ok(&switch), &judge, NOW);
+    assert_eq!(
+        (calls.get(), m.behind.len()),
+        (1, 1),
+        "an ask past the week judged the switch running now, or wasn't counted: {:?}",
+        m.behind
+    );
 }
 
 #[test]

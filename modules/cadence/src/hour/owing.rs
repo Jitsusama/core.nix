@@ -375,7 +375,8 @@ fn unproven_asked(m: &Measure, says: &str) -> Vec<Filed> {
                     format!(
                         "cadence hour: {says}, and this one's result is yours: {ask}; \
                          {state}. A merge isn't done until he has what he asked for. Please \
-                         run its probe and fix what it shows, or say why it can't pass yet \
+                         run its probe, as the asks list names it, and fix what it shows, or \
+                         say why it can't pass yet \
                          with `cadence owe --done {done} WHY`, which holds until its state \
                          moves. It closes by itself once its probe passes here, or once it's \
                          a week landed and left to the backfill."
@@ -455,8 +456,9 @@ fn routed(class: Class) -> bool {
 
 /// Whether the ask unproven keyed by `rest`, its owner and its ask, is
 /// back in: it's its cell's until its line, whatever its state now, is gone
-/// from the measure, read, or only cadence's own sight holds it; unjudged,
-/// it stays open.
+/// from the measure, read; unjudged, it stays open. A line only cadence's
+/// own sight holds still stands, as what it can't see for an hour hasn't
+/// passed, so neither the ask nor the why its cell gave is let go.
 fn unproven_back_in(rest: &str, measures: &[Measure]) -> bool {
     let Some((owner, ask)) = rest.split_once(':') else {
         return false;
@@ -470,7 +472,6 @@ fn unproven_back_in(rest: &str, measures: &[Measure]) -> bool {
                 && !m
                     .behind
                     .iter()
-                    .filter(|line| !line.contains(unproven::BLIND))
                     .any(|line| line.starts_with(&opens) && line.ends_with(&ends))
         })
 }
@@ -1848,8 +1849,9 @@ mod tests {
     }
 
     #[test]
-    fn an_ask_only_cadences_sight_holds_isnt_put_to_its_cell_and_lets_go_of_one_put() {
+    fn an_ask_only_cadences_sight_holds_isnt_put_to_its_cell_nor_lets_go_of_one_put() {
         let card = "show the card, asked 2026-11-26T09:00:00Z";
+        let key = format!("hour:{}:1JQPPC:{card}", unproven::KEY);
         let hour = |ledger: &mut Vec<Entry>, state: &str, at: i64| {
             let mut m = measure(unproven::KEY, Class::Functional, 1.0, Some(0.0));
             m.behind = vec![format!("{card}; its probe {state} · 1JQPPC")];
@@ -1861,15 +1863,35 @@ mod tests {
             hour(&mut ledger, &blind, 1000).is_empty(),
             "what only the hour can mend was put to the cell"
         );
+        let failed = "failed after switch 1200";
         assert_eq!(
-            hour(&mut ledger, "failed after switch 1200", 4600).len(),
+            hour(&mut ledger, failed, 4600).len(),
             1,
             "a failure on what carries it wasn't put to the cell"
         );
+        // What cadence can't see for an hour hasn't passed, so the ask stands.
         hour(&mut ledger, &blind, 8200);
         assert!(
-            ledger.iter().all(|e| !e.open),
-            "the cell's ask stayed open once only the hour's sight held it"
+            ledger.iter().any(|e| e.open && e.key == key),
+            "the cell's ask was let go while only the hour's sight held its line"
+        );
+        // Nor is the why its cell gave let go by a blind hour.
+        let why = owe::done(&mut ledger, &key, Some("needs his login"), 9000).map_err(|f| f.exit);
+        assert!(why.is_ok(), "its cell couldn't close it: {why:?}");
+        hour(&mut ledger, &blind, 11800);
+        let told = hour(&mut ledger, failed, 15400);
+        assert!(
+            told.is_empty(),
+            "an hour cadence couldn't see dropped the why its cell gave: {told:?}"
+        );
+        // A failure on what carries it is the cell's, though cadence can't
+        // tell what runs now.
+        let though = "failed after switch 1201, though cadence can't tell whether the switch \
+                      running now carries it";
+        assert_eq!(
+            hour(&mut ledger, though, 19000).len(),
+            1,
+            "a failure on what carries it wasn't put to the cell, as cadence can't see what runs"
         );
     }
 

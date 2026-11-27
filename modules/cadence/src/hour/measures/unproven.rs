@@ -62,8 +62,9 @@ pub type Carried<'a> = dyn Fn(&Value, Repo, u32) -> Option<bool> + 'a;
 /// be read is unread, never none passed, and so is one that's gone or
 /// emptied: its keeper writes it, so a lost one would otherwise ask again
 /// of every ask proven. A switch record that's gone is none, as on a
-/// machine never switched, but one that can't be read is unread, or every
-/// pass would count as though no switch had come.
+/// machine never switched, but one that can't be read, or is there but
+/// emptied, is unread, or every pass would count as though no switch had
+/// come.
 #[must_use]
 pub fn read(
     state_home: &Path,
@@ -95,6 +96,7 @@ fn read_on(
         Err(err) => Err(err.to_string()),
     };
     let switches = match fs::read_to_string(state_home.join(SWITCHES)) {
+        Ok(text) if text.trim().is_empty() => Err("emptied".to_owned()),
         Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(String::new()),
         read => read.map_err(|err| err.to_string()),
     };
@@ -262,8 +264,12 @@ pub fn unproven(
     let (unnamed, mut open): (Vec<_>, Vec<_>) =
         week.into_iter().partition(|(ask, _)| !names_probe(ask));
     open.sort_by_key(|(_, (landed, _, _))| *landed);
-    let figure = count(open.len() + unnamed.len() + older.len());
     let mut open: Vec<Unproven> = open.into_iter().map(|(_, unproven)| unproven).collect();
+    // A line only cadence's own sight holds stays on the card uncounted, nor
+    // names the measure's owner, so the hour's outage can't become the
+    // drag, as the misses hold theirs.
+    let seen = |(_, line, _): &&Unproven| !line.contains(BLIND);
+    let figure = count(open.iter().filter(seen).count() + unnamed.len() + older.len());
     // The keeper is asked for the probes it hasn't written; the older asks
     // are its backfill, already dated, so that line holds no "; " and is
     // never filed.
@@ -291,7 +297,12 @@ pub fn unproven(
             .map_or_else(|| says.to_owned(), |why| format!("{says} ({why})")),
         now: figure,
         target: unjudged.is_none().then_some(0.0),
-        owner: open.first().map(|(_, _, o)| o.clone()).unwrap_or_default(),
+        owner: open
+            .iter()
+            .find(seen)
+            .or_else(|| open.first())
+            .map(|(_, _, o)| o.clone())
+            .unwrap_or_default(),
         behind: open.into_iter().map(|(_, line, _)| line).collect(),
     }
 }
@@ -335,8 +346,9 @@ fn runs(probes: &str) -> Result<BTreeMap<String, Vec<Run>>, String> {
 
 /// What a line ends with when only cadence's own sight keeps it from being
 /// judged: no checkout, git failing, or a switch that doesn't run now. It
-/// stays on the card, but isn't the answering cell's to mend, so it isn't
-/// put to the cell, as the misses hold back what the hour can't see.
+/// stays on the card uncounted, and isn't the answering cell's to mend, so
+/// it isn't put to the cell, nor lets go of what was, as the misses hold
+/// back what the hour can't see.
 pub const BLIND: &str =
     ", not live yet, as cadence can't tell whether the switch running carries it";
 
@@ -362,30 +374,36 @@ enum Carry {
 }
 
 impl Switches<'_> {
-    /// Whether the switch running at `at` carries `ask`, once one has come
-    /// since it `landed`: every change its `pr` names that a switch
-    /// carries, as `carried` judges it, the harness's coming by its install
-    /// instead. A part naming no change that can be found is taken as
-    /// carried by any switch since it landed, as there's no merge to judge.
+    /// Whether the switch running at `at` carries `ask`: every change its
+    /// `pr` names that a switch carries, as `carried` judges it, the
+    /// harness's coming by its install instead. Where every part names a
+    /// change and each is judged carried, that is the merge itself, so a
+    /// switch from before it was marked `landed` counts too, as a merge
+    /// comes before its mark; otherwise, a part naming no change that can be
+    /// found or one that can't be judged, only a switch since it landed
+    /// counts, as there's no merge it can be shown to hold.
     fn carry(&self, ask: &Value, landed: i64, at: i64) -> Carry {
-        let Some((_, line)) = self
-            .switched
-            .iter()
-            .rfind(|(switched, _)| *switched <= at)
-            .filter(|(switched, _)| *switched >= landed)
+        let Some((switched, line)) = self.switched.iter().rfind(|(switched, _)| *switched <= at)
         else {
             return Carry::Unswitched;
         };
+        let pr = ask["pr"].as_str().unwrap_or_default();
+        let changes: Vec<(Repo, u32)> = at_risk::changes(pr)
+            .into_iter()
+            .filter(|(repo, _)| *repo != Repo::Harness)
+            .collect();
         let mut carry = Carry::Carries;
-        for (repo, number) in at_risk::changes(ask["pr"].as_str().unwrap_or_default()) {
-            if repo == Repo::Harness {
-                continue;
-            }
+        for &(repo, number) in &changes {
             match (self.carried)(line, repo, number) {
                 Some(true) => {}
                 Some(false) => return Carry::Lacks,
                 None => carry = Carry::Unjudged,
             }
+        }
+        let shown =
+            carry == Carry::Carries && !changes.is_empty() && at_risk::unfound(pr).is_none();
+        if *switched < landed && !shown {
+            return Carry::Unswitched;
         }
         carry
     }
