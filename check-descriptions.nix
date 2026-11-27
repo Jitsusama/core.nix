@@ -2187,6 +2187,11 @@
     a Mac's Linux VM given other machines' keys lets exactly those in as its builder beside the
     Mac's own, and a VM given none is the very guest nixpkgs caches
   '';
+  live-page-says-its-budget = ''
+    a live page's budget passes a first visit within it, names each measure a visit is past it
+    by, refuses one asking for a file twice naming the file, and says in the run's summary what
+    each visit cost, in bytes beside its kilobytes, under the test it came from
+  '';
   load-proof-reads-its-signals = ''
     load-proof counts a refresh with the probe's frame ready and none shown as a frame niri missed,
     one that passed before the probe committed as the probe's own, none when a frame lands at every

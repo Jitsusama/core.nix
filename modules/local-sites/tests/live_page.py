@@ -86,7 +86,8 @@ MOST_DRAWN = """() => {
 # The web-design skill's checks a published page passes, each answering [] when it does.
 PAGE_CHECKS = ["gate.js", "layout.js", "svgtext.js"]
 # What each first visit cost in this run, said in its summary whether it passed or
-# not (pytest_terminal_summary), since a passing assert says nothing.
+# not (pytest_terminal_summary), since a passing assert says nothing. Each line
+# names the test it came from, since two tests of one page visit the same path.
 MEASURED: list[str] = []
 
 type Served = tuple[str, subprocess.Popen[bytes]]
@@ -102,7 +103,8 @@ class Budget:
     map, which many changes grow at once, holds a stated room instead, as its
     test says. Every run's summary says what each first visit cost, so a budget
     is set from a measure. Bytes are the bodies the server sent, which a build
-    fixes, so they don't vary.
+    fixes, so they don't vary, and each visit says them beside its kilobytes,
+    since 695.0 KB can be a few bytes past a budget of 695.
     """
 
     files: int
@@ -145,20 +147,46 @@ def serving(
         "feeds": feeds,
     }
     (folder / "config.json").write_text(json.dumps(config))
-    server = subprocess.Popen([os.environ["LOCAL_SITES"], "--config", str(folder / "config.json")])
-    deadline = time.monotonic() + STARTING_S
-    while True:
-        try:
-            socket.create_connection(("127.0.0.1", port), timeout=1).close()
-            break
-        except OSError:
-            assert time.monotonic() < deadline, f"the sites' server never listened on {port}"
-            time.sleep(0.05)
+    server = _listening(folder, port)
     try:
         yield f"http://sites.localhost:{port}/", server
     finally:
         server.kill()
         server.wait()
+
+
+@contextmanager
+def serving_again(folder: Path, root: str) -> Iterator[subprocess.Popen[bytes]]:
+    """Run the sites' server again at `root` on what `serving` wrote in `folder`, as on a restart.
+
+    For a test that took the server away (Opened.loses) and has its pages
+    find it back where they left it.
+    """
+    port = urlsplit(root).port
+    assert port is not None, f"{root} names no port to serve on again"
+    server = _listening(folder, port)
+    try:
+        yield server
+    finally:
+        server.kill()
+        server.wait()
+
+
+def _listening(folder: Path, port: int) -> subprocess.Popen[bytes]:
+    """Start the sites' server on the config in `folder`, once it listens on `port`."""
+    server = subprocess.Popen([os.environ["LOCAL_SITES"], "--config", str(folder / "config.json")])
+    deadline = time.monotonic() + STARTING_S
+    while True:
+        try:
+            socket.create_connection(("127.0.0.1", port), timeout=1).close()
+        except OSError:
+            if time.monotonic() >= deadline:
+                server.kill()
+                server.wait()
+                pytest.fail(f"the sites' server never listened on {port}")
+            time.sleep(0.05)
+        else:
+            return server
 
 
 @pytest.fixture
@@ -345,8 +373,8 @@ class Opened:
         """Hold the drawn page to `budget`, then visit it again and find nothing sent twice.
 
         A first visit asks only the sites' server, files and sockets alike, for
-        no more files and bytes than the budget says, and draws no more
-        elements. A second visit asks only that server too, and the server
+        each file once and no more files and bytes than the budget says, and
+        draws no more elements. A second visit asks only that server too, and the server
         answers every file it asks for as unchanged (304), so no body comes
         again. Each visit is counted once the network has gone quiet, so a file
         asked for late is counted, and none of the first visit's runs into the
@@ -371,20 +399,26 @@ class Opened:
 
         Every measure is taken before any is judged, so a failure names each one
         past its budget beside all three figures, and the run's summary keeps
-        them when it passes, so a budget is set again from a single run.
+        them when it passes, so a budget is set again from a single run. A file
+        asked for twice is refused rather than counted once, since the second
+        asking is a cost the page pays and a count of files apart would hide it.
         """
         asked = [request.url for request in self.asked]
+        twice = sorted({url for url in asked if asked.count(url) > 1})
         sent = sum(
             request.sizes()["responseBodySize"] for request in self.asked if request.response()
         )
         elements = self.page.evaluate("document.getElementsByTagName('*').length")
         cost = (
             f"{urlsplit(self.page.url).path} cost a first visit {len(asked)} files, "
-            f"{sent / KILOBYTE:.1f} KB and {elements} elements, against a budget of "
-            f"{budget.files} files, {budget.kilobytes} KB and {budget.elements} elements"
+            f"{sent / KILOBYTE:.1f} KB ({sent} bytes) and {elements} elements, against a "
+            f"budget of {budget.files} files, {budget.kilobytes} KB "
+            f"({budget.kilobytes * KILOBYTE} bytes) and {budget.elements} elements"
         )
-        MEASURED.append(cost)
+        MEASURED.append(f"{_this_test()}: {cost}")
         past: list[str] = []
+        if twice:
+            past.append(f"files asked for more than once, {twice}")
         if len(asked) > budget.files:
             past.append(f"files, asking for {asked}")
         if sent > budget.kilobytes * KILOBYTE:
@@ -421,3 +455,25 @@ class Opened:
         self.context.close()
         unexpected = [line for at, line in enumerate(self.logged) if not self._expected(at, line)]
         assert unexpected == [], f"the page logged {unexpected}"
+
+
+def close_every(*tabs: Opened | None) -> None:
+    """Close every tab in `tabs` not None, then fail saying what each that failed said.
+
+    A test holding two tabs closes both whatever the first's close found, so
+    what the second logged is said too rather than left behind.
+    """
+    failed: list[str] = []
+    for tab in tabs:
+        if tab is None:
+            continue
+        try:
+            tab.close()
+        except (AssertionError, Error) as error:
+            failed.append(f"{tab.address} at {tab.size} in {tab.look}: {error}")
+    assert failed == [], "closing, " + "; and ".join(failed)
+
+
+def _this_test() -> str:
+    # pytest names the test running as "its node id (its phase)".
+    return os.environ.get("PYTEST_CURRENT_TEST", "no test").rsplit(" ", 1)[0]

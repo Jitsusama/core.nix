@@ -66,8 +66,9 @@ What holds it together:
   files, kilobytes and elements, and a second to every file answered
   unchanged. A change worth more raises the budget in the same change.
   Every run's summary says what each first visit cost, passed or not,
-  and a failure names each measure past its budget beside all three,
-  and for elements, which tags grew.
+  under the test it came from and in bytes beside its kilobytes, and a
+  failure names each measure past its budget beside all three, and for
+  elements, which tags grew. A file a first visit asks for twice fails it.
 - **The map holds room instead**, since many changes grow it at once:
   its line is its measured cost when last set, written beside it, plus
   four files, 8 KB and 16 elements, so most changes never touch it. A
@@ -82,10 +83,12 @@ What holds it together:
   over main whenever main's moves since its run change the check's
   derivation, which `nix build --dry-run` on `mycelium-site-reads-live`
   shows. The map's folder, all of `modules/local-sites/` and the theme's
-  web kit build it. That run must come after main's last such move, or
-  the change boards the train. If main still goes past, the change
-  reverted for it did nothing wrong alone: it sets the line again from a
-  run over main.
+  web kit build it today, which is an example rather than the list: what
+  the check is built from moves as its inputs do, so the dry run decides
+  whether a move of main's changed it, never this list. That run must
+  come after main's last such move, or the change boards the train. If
+  main still goes past, the change reverted for it did nothing wrong
+  alone: it sets the line again from a run over main.
 
 ## Adding a Live Page
 

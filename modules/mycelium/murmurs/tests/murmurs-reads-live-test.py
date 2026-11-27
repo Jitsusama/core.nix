@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
-from live_page import LOOKS, SIZES, Budget, Opened, Served, serving
+from live_page import LOOKS, SIZES, Budget, Opened, Served, close_every, serving
 from playwright.sync_api import Browser, Error, Page, expect
 from stand_in_daemon import StandIn
 
@@ -538,9 +538,7 @@ def test_a_node_never_reached_is_said_unheard_and_never_quiet(
                 expect(quiet, "a node never reached was called quiet").to_be_hidden()
                 the_page_counts(page, "Nothing to hear yet.", "the unheard page changed its word")
         finally:
-            if second is not None:
-                second.close()
-            first.close()
+            close_every(second, first)
 
 
 def test_the_murmurs_page_keeps_to_its_budget(browser: Browser, murmurs_served: Served) -> None:
