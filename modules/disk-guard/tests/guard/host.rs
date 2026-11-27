@@ -305,15 +305,21 @@ fn each_offer_is_reclaimed_as_its_action_says() {
             offered.action
         );
     }
-    assert!(!crate_dir.exists());
+    assert!(!crate_dir.exists(), "the incremental crate stayed");
     assert_eq!(
         fs::read_dir(&target).unwrap().count(),
         1,
         "only the benchmarks are left"
     );
-    assert!(!scratch.exists());
-    assert!(!trash.join("files/old.txt").exists());
-    assert!(!trash.join("info/old.txt.trashinfo").exists());
+    assert!(!scratch.exists(), "the scratch run stayed");
+    assert!(
+        !trash.join("files/old.txt").exists(),
+        "the trashed file stayed"
+    );
+    assert!(
+        !trash.join("info/old.txt.trashinfo").exists(),
+        "its trash info stayed"
+    );
 }
 
 #[test]
@@ -499,7 +505,7 @@ fn a_workspace_goes_and_its_worktrees_are_pruned() {
     let mut scan = empty_scan(proc.path());
     let mut reclaim = Reclaim::new(&offers, &mut scan);
     assert_eq!(reclaim.reclaim(&offers[0].candidate), Outcome::Reclaimed);
-    assert!(!workspace.exists());
+    assert!(!workspace.exists(), "the workspace stayed");
     let listed = git(&repo, &["worktree", "list", "--porcelain"]);
     assert_eq!(listed.matches("worktree ").count(), 1, "{listed}");
     assert_eq!(reclaim.notes(), [] as [String; 0]);
@@ -527,7 +533,8 @@ fn a_log_is_trimmed_to_its_last_part_in_place() {
     let kept = fs::read_to_string(&log).unwrap();
     assert!(kept.len() as u64 <= KEEP, "{}", kept.len());
     assert!(kept.starts_with("line "), "from a whole line");
-    assert!(kept.ends_with(&format!("line {:010}\n", lines - 1)));
+    let last = format!("line {:010}\n", lines - 1);
+    assert!(kept.ends_with(&last), "it doesn't end at {last:?}");
 }
 
 fn run(argv: &[&str], timeout: Duration) -> (Offer, Outcome, Duration) {
@@ -635,7 +642,7 @@ fn a_producer_that_takes_its_time_keeps_the_guard_beating() {
         Some(Rc::new(RefCell::new(pacer))),
     );
     assert_eq!(outcome, Outcome::Reclaimed);
-    assert!(beats.get() > 0);
+    assert!(beats.get() > 0, "the guard never beat");
 }
 
 #[test]
@@ -666,11 +673,9 @@ fn a_candidate_no_offer_names_fails_untouched() {
             root: root.path().to_owned(),
         },
     );
-    assert!(matches!(
-        reclaim.reclaim(&named.candidate),
-        Outcome::Failed(_)
-    ));
-    assert!(stray.exists());
+    let outcome = reclaim.reclaim(&named.candidate);
+    assert!(matches!(outcome, Outcome::Failed(_)), "{outcome:?}");
+    assert!(stray.exists(), "the stray was removed");
 }
 
 /// Bands on another filesystem that read `band` whatever it holds.
@@ -730,11 +735,12 @@ fn a_filesystem_is_measured_and_settled_where_it_lies() {
     let root = tempfile::tempdir().unwrap();
     let mut disk = Filesystem::new(root.path());
     let space = disk.space().unwrap();
-    assert!(space.total > 0 && space.free <= space.total);
+    assert!(space.total > 0 && space.free <= space.total, "{space:?}");
     disk.settle().unwrap();
     let before = disk.now();
     std::thread::sleep(Duration::from_millis(5));
-    assert!(disk.now() > before);
+    let now = disk.now();
+    assert!(now > before, "the clock went from {before} to {now}");
 }
 
 #[test]

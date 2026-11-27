@@ -130,12 +130,18 @@ fn a_predicate_is_asked_in_the_checkout_with_its_branch_head_and_remote() {
            && echo '{{"finished": true}}' || echo '{{"finished": false}}'"#,
         real.display()
     );
-    assert!(ask(&predicate(&script), dir.path(), &checkout()));
+    assert!(
+        ask(&predicate(&script), dir.path(), &checkout()),
+        "not asked in the checkout with its branch, head and remote"
+    );
     let unfinished = Checkout {
         branch: Some("open".into()),
         ..checkout()
     };
-    assert!(!ask(&predicate(&script), dir.path(), &unfinished));
+    assert!(
+        !ask(&predicate(&script), dir.path(), &unfinished),
+        "a checkout on another branch was finished"
+    );
 }
 
 #[test]
@@ -152,20 +158,27 @@ fn anything_but_a_plain_yes_is_not_finished() {
         predicate.timeout = Duration::from_millis(300);
         assert!(!ask(&predicate, dir.path(), &checkout()), "{script}");
     }
-    assert!(ask(
-        &predicate(r#"echo '{"finished": true}'"#),
-        dir.path(),
-        &checkout()
-    ));
+    assert!(
+        ask(
+            &predicate(r#"echo '{"finished": true}'"#),
+            dir.path(),
+            &checkout()
+        ),
+        "a plain yes wasn't finished"
+    );
 }
 
 #[test]
 fn a_predicate_is_chosen_by_the_checkouts_remote() {
     let predicates = [predicate("true")];
     assert!(
-        disk_guard::finished::predicate_for(&predicates, "https://example.com/team/x").is_some()
+        disk_guard::finished::predicate_for(&predicates, "https://example.com/team/x").is_some(),
+        "no predicate for the team's remote"
     );
-    assert!(disk_guard::finished::predicate_for(&predicates, "https://example.com/me/x").is_none());
+    assert!(
+        disk_guard::finished::predicate_for(&predicates, "https://example.com/me/x").is_none(),
+        "a predicate was chosen for a remote none matches"
+    );
 }
 
 #[test]
@@ -177,11 +190,26 @@ fn a_finished_head_is_remembered_and_an_unfinished_one_asked_again_hourly() {
         asked += 1;
         finished
     };
-    assert!(!answers.finished(dir, "abc", 0.0, || answer(false)));
-    assert!(!answers.finished(dir, "abc", 3_000.0, || answer(true)));
-    assert!(answers.finished(dir, "abc", 3_700.0, || answer(true)));
-    assert!(answers.finished(dir, "abc", 900_000.0, || answer(false)));
-    assert!(!answers.finished(dir, "def", 900_000.0, || answer(false)));
+    assert!(
+        !answers.finished(dir, "abc", 0.0, || answer(false)),
+        "a first no was finished"
+    );
+    assert!(
+        !answers.finished(dir, "abc", 3_000.0, || answer(true)),
+        "asked again within the hour"
+    );
+    assert!(
+        answers.finished(dir, "abc", 3_700.0, || answer(true)),
+        "not asked again past the hour"
+    );
+    assert!(
+        answers.finished(dir, "abc", 900_000.0, || answer(false)),
+        "a finished head was asked again"
+    );
+    assert!(
+        !answers.finished(dir, "def", 900_000.0, || answer(false)),
+        "a new head kept the last one's answer"
+    );
     assert_eq!(asked, 3);
 }
 
