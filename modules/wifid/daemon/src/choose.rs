@@ -92,7 +92,11 @@ pub const SPURNED: Duration = Duration::from_secs(3600);
 /// four, at that night's tries it would have been tried three times
 /// before 04:00, and tried again as each keep-off ended, four. Twelve
 /// hours still tries such a point at another time of day, where it may
-/// carry well.
+/// carry well. It's kept by access point, not by where the laptop is:
+/// carried elsewhere awake, the card hears other access points, each
+/// counted afresh, so only one heard from both places stays kept off
+/// there, until its keep-off ends, a trial of it stands as the usual, or
+/// wifid restarts.
 pub const SPURNED_MOST: Duration = Duration::from_hours(12);
 
 /// Past either, an access point carries badly enough to try another: a
@@ -350,7 +354,12 @@ struct Kept {
     /// failing link for `SPURNED` at most, as it always did: past that,
     /// what it carried is old, and kept off longer (`SPURNED_MOST`) it
     /// could otherwise hold a card on a failing link, the one other point
-    /// in reach, for half a day.
+    /// in reach, for half a day. A link failing yields, as it carries
+    /// nothing; one only slow doesn't: on the night of 23 Nov 2026 each of
+    /// five tries of the desk's ch52 radio left its 2.4 GHz radio carrying
+    /// 106 to 939 ms at p95 with at most 2.5% lost, and each went back on
+    /// 0.8 to 2.8 s with 3.3 to 22.6% lost, so yielding to slowness would
+    /// try such a point every hour all the same.
     firm: Instant,
     /// The access point the move kept off left, where a trial judged
     /// against what that point carried earned it, so only another trial
@@ -5550,6 +5559,78 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_slow_link_is_held_off_a_point_kept_off_longer_past_its_first_hour() {
+        // As the 2.4 GHz radio carried at 02:48 on 24 Nov 2026: slow and
+        // lossy, but not failing.
+        let slow = carried(939, 2.5);
+        let ch52 = [desk_at(-48, None)];
+        let chosen_after = |after: Duration| {
+            let (mut chooser, fourth) = found_worse(4, Instant::now());
+            chooser.badly_on = Some(NEAR.into());
+            chooser.choose(fourth + after, (NEAR, &slow, -50, CH6), &ch52, false)
+        };
+
+        // Just past the hour a keep-off holds a failing link, halfway, and
+        // just short of its end.
+        let minute = Duration::from_secs(60);
+        let short_of_its_end = (HOUR * 8).saturating_sub(Duration::from_secs(1));
+        let held = [HOUR + minute, HOUR * 4, short_of_its_end].map(&chosen_after);
+        let ended = chosen_after(HOUR * 8);
+
+        // Held, it stays: a look each minute would send the slow radio
+        // off to scan through the whole keep-off.
+        assert_eq!(
+            held,
+            [Choice::Stay, Choice::Stay, Choice::Stay],
+            "a slow link that isn't failing didn't stay put inside its eight-hour keep-off"
+        );
+        assert_eq!(
+            ended,
+            Choice::Try(DESK.into()),
+            "a slow link didn't leave for ch52 once its keep-off ended"
+        );
+    }
+
+    #[test]
+    fn a_trial_standing_through_a_longer_keep_off_forgets_the_count_and_keeps_the_rest() {
+        let (mut chooser, fourth) = found_worse(4, Instant::now());
+        chooser.badly_on = Some(NEAR.into());
+        let failing = carried(400, 15.0);
+        let ch52 = [desk_at(-48, None)];
+        let tried_at = fourth + HOUR;
+        let tried = chooser.choose(tried_at, (NEAR, &failing, -50, CH6), &ch52, false);
+        assert_eq!(
+            tried,
+            Choice::Try(DESK.into()),
+            "a failing link didn't leave for ch52 past its keep-off's first hour"
+        );
+        let stood_at = tried_at + TRIAL;
+        let well = carried(15, 0.0);
+        let stood = chooser.choose(stood_at, (DESK, &well, -48, CH52), &[], false);
+        assert!(
+            !matches!(stood, Choice::Back(_)),
+            "ch52 carrying 15 ms off a failing link went back: {stood:?}"
+        );
+
+        // With no usual to stand as, the keep-off runs to its end. Read
+        // before the trial after it, which needs it to have run there.
+        let left = chooser.kept_for(DESK, stood_at);
+        assert_eq!(
+            left,
+            Some((HOUR * 7).saturating_sub(TRIAL)),
+            "ch52 standing well cut short the keep-off it was tried through"
+        );
+        let ended = stood_at + left.unwrap_or_default();
+        let later = tried_ch52_and_back(&mut chooser, ended);
+
+        assert_eq!(
+            chooser.kept_for(DESK, later),
+            Some(HOUR),
+            "ch52 found worse after standing well wasn't kept off an hour, as at first"
+        );
+    }
+
+    #[test]
     fn a_trial_standing_only_for_beating_a_failing_link_forgets_nothing() {
         // Slow, at exactly `LOSSY`, or quick but losing past it: each
         // beats 400 ms with 15% lost, and neither carries well.
@@ -5650,9 +5731,12 @@ pub(crate) mod tests {
         );
     }
 
-    #[test]
-    fn a_failing_link_missing_a_point_through_its_keep_off_is_held_off_it_an_hour() {
-        let (mut chooser, fourth) = found_worse(4, Instant::now());
+    /// A chooser whose card, on a failing 2.4 GHz link, missed its move
+    /// to ch52 a span after it left for it, an hour into ch52's
+    /// eight-hour keep-off: with when it missed, and what it chose then,
+    /// its miss not yet read with `unreached`.
+    pub(crate) fn missed_ch52_through_its_keep_off(start: Instant) -> (Chooser, Instant, Choice) {
+        let (mut chooser, fourth) = found_worse(4, start);
         chooser.badly_on = Some(NEAR.into());
         let failing = carried(400, 15.0);
         let ch52 = [desk_at(-48, None)];
@@ -5666,6 +5750,14 @@ pub(crate) mod tests {
         // The card is still on the 2.4 GHz radio: the move missed.
         let missed = tried + SPAN;
         let judged = chooser.choose(missed, (NEAR, &failing, -50, CH6), &ch52, false);
+        (chooser, missed, judged)
+    }
+
+    #[test]
+    fn a_failing_link_missing_a_point_through_its_keep_off_is_held_off_it_an_hour() {
+        let (mut chooser, missed, judged) = missed_ch52_through_its_keep_off(Instant::now());
+        let failing = carried(400, 15.0);
+        let ch52 = [desk_at(-48, None)];
         let said = chooser.unreached();
 
         let firm = missed + SPURNED.saturating_sub(Duration::from_secs(1));

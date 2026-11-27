@@ -23,7 +23,7 @@ use std::process::Command;
 use std::thread;
 use std::time::{Duration, Instant};
 use update_to_main::config::{
-    Batches, Busy, Config, Follow, Here, Holds, Hosted, Kept, Kind, Session, Signers, Tools,
+    Batches, Busy, Config, Follow, Here, Holds, Hosted, Kept, Kind, Says, Session, Signers, Tools,
 };
 use update_to_main::line::{Applied, Line};
 use update_to_main::{ask, held, serve, update};
@@ -602,7 +602,8 @@ fn an_ask_with_main_where_it_was_builds_nothing() {
         ending,
         Line::Unchanged {
             commit: head,
-            followed: BTreeMap::new()
+            followed: BTreeMap::new(),
+            boots: None,
         }
     );
     assert_eq!(world.builds(), 1);
@@ -1366,9 +1367,13 @@ fn a_new_kernels_userland_runs_now_and_its_kernel_from_the_next_boot() {
 /// with another, whose boot check runs `check` with the system's path as
 /// its `$1`.
 fn a_new_initrd(world: &mut World, head: &str, check: &str) -> PathBuf {
-    for system in [world.running(), world.root.join("booted")] {
-        fs::create_dir_all(&system).unwrap();
-        fs::write(system.join("initrd"), "one").unwrap();
+    // The booted system is `first` itself, so going back can make it the
+    // boot default again.
+    let first = world.running();
+    fs::write(first.join("initrd"), "one").unwrap();
+    let booted = world.root.join("booted");
+    if fs::symlink_metadata(&booted).is_err() {
+        std::os::unix::fs::symlink(&first, &booted).unwrap();
     }
     let system = world.system(head);
     fs::write(system.join("initrd"), "two").unwrap();
@@ -1512,6 +1517,292 @@ fn a_new_initrd_whose_boot_check_fails_runs_but_isnt_booted_next() {
         world.boots(),
         first,
         "the boot default should stay where it was"
+    );
+}
+
+/// The machine whose boot check failed, its why, and the system it runs.
+fn a_failed_boot_check(world: &mut World) -> (String, PathBuf) {
+    let head = world.signed("one");
+    let system = a_new_initrd(world, &head, "echo 'no passphrase prompt' >&2; exit 1");
+    let (_, ending) = world.update();
+    let Line::Done {
+        boots: Some(boots), ..
+    } = ending
+    else {
+        panic!("the failed boot check didn't say why: {ending:?}")
+    };
+    (boots, system)
+}
+
+#[test]
+fn an_unchanged_ask_after_a_failed_boot_check_says_why_the_old_system_boots() {
+    // Before, the ask after the failed check said nothing of it, so the
+    // system page read the machine as booting what it ran.
+    let mut world = World::new();
+    let (boots, _) = a_failed_boot_check(&mut world);
+    for ask in ["the next", "the one after"] {
+        let (_, again) = world.update();
+        let Line::Unchanged { boots: still, .. } = again else {
+            panic!("{ask} ask at the main it runs wasn't unchanged: {again:?}")
+        };
+        assert_eq!(
+            still.as_deref(),
+            Some(boots.as_str()),
+            "{ask} unchanged ask forgot why the machine boots its old system"
+        );
+    }
+}
+
+#[test]
+fn a_boot_check_is_said_unended_while_it_runs() {
+    // A daemon cut off in its boot check never ends it, and the boot
+    // default hasn't moved, so the asks after it must say so. The check
+    // copies what was kept while it ran, which the test puts back after,
+    // as a daemon cut off there would have left it.
+    let mut world = World::new();
+    let head = world.signed("one");
+    let seen = world.root.join("seen");
+    let kept = world.config.boots_file();
+    // The build sandbox has no cat, so the shell reads the file itself.
+    let check = format!("printf %s \"$(< {})\" > {}", kept.display(), seen.display());
+    a_new_initrd(&mut world, &head, &check);
+    let (_, ending) = world.update();
+    assert!(
+        matches!(ending, Line::Done { boots: None, .. }),
+        "{ending:?}"
+    );
+    assert!(!kept.exists(), "the passing check left the why kept");
+    fs::copy(&seen, &kept).unwrap();
+    let (_, again) = world.update();
+    let Line::Unchanged {
+        boots: Some(said), ..
+    } = again
+    else {
+        panic!("the ask after a daemon cut off in its check said nothing: {again:?}")
+    };
+    assert_eq!(
+        said, "the boot check didn't end, so the machine boots what it booted before",
+        "{said}"
+    );
+}
+
+#[test]
+fn going_back_to_a_system_whose_boot_check_failed_keeps_the_old_boot_default() {
+    // Going back used to switch, which made the system whose boot check
+    // failed the boot default, and then ended the only word of it.
+    let mut world = World::new();
+    let first = world.boots();
+    let (boots, _) = a_failed_boot_check(&mut world);
+    let one = world.head();
+    let two = world.signed("two");
+    let broken = world.system(&two);
+    fs::write(broken.join("initrd"), "two").unwrap();
+    fs::write(broken.join("breaks"), "").unwrap();
+    let (_, failed) = world.update();
+    let Line::Failed { why, .. } = &failed else {
+        panic!("the broken switch didn't fail: {failed:?}")
+    };
+    assert!(why.contains("went back to what it ran"), "{why}");
+    assert_eq!(
+        fs::canonicalize(world.boots()).unwrap(),
+        fs::canonicalize(&first).unwrap(),
+        "going back made a system whose boot check failed the boot default"
+    );
+    git(&world.origin, &["reset", "--quiet", "--hard", &one]);
+    let (_, again) = world.update();
+    let Line::Unchanged { boots: still, .. } = again else {
+        panic!("the ask at the main gone back to wasn't unchanged: {again:?}")
+    };
+    assert_eq!(
+        still.as_deref(),
+        Some(boots.as_str()),
+        "going back forgot why the machine boots its old system"
+    );
+}
+
+/// Makes the machine boot `system` and run it, as a reboot into it would.
+fn reboot_into(world: &World, system: &Path) {
+    // A file's time comes from a clock that moves a few milliseconds at a
+    // time, so a boot made in the same moment as the why kept before it
+    // would read as no newer; a real boot comes long after, as here.
+    if let Ok(kept) = fs::File::options()
+        .write(true)
+        .open(world.config.boots_file())
+    {
+        let before = std::time::SystemTime::now() - Duration::from_secs(1);
+        kept.set_modified(before).unwrap();
+    }
+    let booted = &world.config.booted;
+    if booted.is_dir() && !booted.is_symlink() {
+        fs::remove_dir_all(booted).unwrap();
+    } else {
+        fs::remove_file(booted).unwrap();
+    }
+    std::os::unix::fs::symlink(system, booted).unwrap();
+    let running = world.root.join("running");
+    fs::remove_file(&running).unwrap();
+    std::os::unix::fs::symlink(system, &running).unwrap();
+}
+
+#[test]
+fn a_reboot_into_the_old_system_says_it_left_the_machine_there() {
+    // A reboot after a failed boot check starts the old boot default, and
+    // the asks after it read healthy at main though main's system ran no
+    // more.
+    let mut world = World::new();
+    let first = world.boots();
+    let (boots, _) = a_failed_boot_check(&mut world);
+    reboot_into(&world, &first);
+    let (_, again) = world.update();
+    let Line::Unchanged {
+        boots: Some(said), ..
+    } = again
+    else {
+        panic!("the ask after the reboot said nothing of it: {again:?}")
+    };
+    assert!(
+        said.starts_with("a boot left it on another system than main's, since ")
+            && said.ends_with(&boots),
+        "{said}"
+    );
+}
+
+#[test]
+fn going_back_to_a_checked_system_makes_it_the_boot_default_again() {
+    // A machine booted many switches ago reads every newer initrd as one
+    // waiting on its check, though this one passed it: going back to it
+    // switches, so the failed switch isn't left what the machine boots.
+    let mut world = World::new();
+    let head = world.signed("one");
+    let checked = a_new_initrd(&mut world, &head, "true");
+    let (_, passed) = world.update();
+    assert!(
+        matches!(passed, Line::Done { boots: None, .. }),
+        "{passed:?}"
+    );
+    let two = world.signed("two");
+    let system = world.system(&two);
+    std::os::unix::fs::symlink(world.config.booted.join("initrd"), system.join("initrd")).unwrap();
+    fs::write(system.join("unhealthy"), "").unwrap();
+    let (_, failed) = world.update();
+    assert!(
+        matches!(&failed, Line::Failed { why, .. } if why.contains("went back to what it ran")),
+        "{failed:?}"
+    );
+    assert_eq!(
+        fs::canonicalize(world.boots()).unwrap(),
+        fs::canonicalize(&checked).unwrap(),
+        "going back left a switch that failed its health check the boot default"
+    );
+}
+
+#[test]
+fn a_rollback_by_hand_to_what_it_booted_is_no_boot() {
+    let mut world = World::new();
+    let first = world.boots();
+    a_failed_boot_check(&mut world);
+    let running = world.root.join("running");
+    fs::remove_file(&running).unwrap();
+    std::os::unix::fs::symlink(&first, &running).unwrap();
+    let (_, again) = world.update();
+    assert!(
+        matches!(again, Line::Unchanged { boots: None, .. }),
+        "a rollback by hand was said to be a boot: {again:?}"
+    );
+}
+
+#[test]
+fn a_boot_into_a_specialisation_of_main_s_system_ends_the_why() {
+    let mut world = World::new();
+    let (_, system) = a_failed_boot_check(&mut world);
+    let docked = system.join("specialisation/docked");
+    fs::create_dir_all(&docked).unwrap();
+    reboot_into(&world, &docked);
+    let (_, again) = world.update();
+    assert!(
+        matches!(again, Line::Unchanged { boots: None, .. }),
+        "an ask after main's specialisation booted said the old system boots: {again:?}"
+    );
+}
+
+#[test]
+fn a_reboot_into_main_s_system_ends_the_why_the_old_system_boots() {
+    // However its boot default moved, main's system booted is the why over.
+    let mut world = World::new();
+    let (_, system) = a_failed_boot_check(&mut world);
+    reboot_into(&world, &system);
+    let (_, again) = world.update();
+    assert!(
+        matches!(again, Line::Unchanged { boots: None, .. }),
+        "an ask after main's system booted said the old one boots: {again:?}"
+    );
+}
+
+#[test]
+fn a_switch_needing_no_boot_check_ends_the_why_the_old_system_boots() {
+    // Its switch makes it the boot default, so a reboot into it later is
+    // no boot that left the machine on an older system.
+    let mut world = World::new();
+    a_failed_boot_check(&mut world);
+    let two = world.signed("two");
+    let system = world.system(&two);
+    // The booted system's own initrd, which is what needs no boot check.
+    std::os::unix::fs::symlink(world.config.booted.join("initrd"), system.join("initrd")).unwrap();
+    let (_, switched) = world.update();
+    assert!(
+        matches!(switched, Line::Done { boots: None, .. }),
+        "a switch needing no boot check said one failed: {switched:?}"
+    );
+    reboot_into(&world, &system);
+    let (_, again) = world.update();
+    assert!(
+        matches!(again, Line::Unchanged { boots: None, .. }),
+        "a reboot into what a plain switch made the boot default was said to \
+         leave the old system: {again:?}"
+    );
+}
+
+#[test]
+fn a_system_switched_to_by_hand_isnt_said_to_boot_the_old_one() {
+    // The why speaks of the system the boot check failed for, not of one
+    // a person switched to, or rolled back to, since.
+    let mut world = World::new();
+    a_failed_boot_check(&mut world);
+    let by_hand = world.root.join("by-hand");
+    fs::create_dir_all(&by_hand).unwrap();
+    fs::remove_file(&world.config.current).unwrap();
+    std::os::unix::fs::symlink(&by_hand, &world.config.current).unwrap();
+    let (_, again) = world.update();
+    assert!(
+        matches!(again, Line::Unchanged { boots: None, .. }),
+        "an unchanged ask said why a system no longer run boots old: {again:?}"
+    );
+}
+
+#[test]
+fn a_boot_check_that_passes_later_ends_the_why_the_old_system_boots() {
+    let mut world = World::new();
+    let head = world.signed("one");
+    a_new_initrd(&mut world, &head, "echo 'no passphrase prompt' >&2; exit 1");
+    let (_, failed) = world.update();
+    assert!(
+        matches!(failed, Line::Done { boots: Some(_), .. }),
+        "{failed:?}"
+    );
+    let newer = world.signed("two");
+    let system = world.system(&newer);
+    fs::write(system.join("initrd"), "three").unwrap();
+    world.config.boot_check = Some(vec![shell(), "-c".to_owned(), "true".to_owned()]);
+    let (_, passed) = world.update();
+    assert!(
+        matches!(passed, Line::Done { boots: None, .. }),
+        "the passing boot check still said the old system boots: {passed:?}"
+    );
+    assert_eq!(world.boots(), system, "the checked system boots next");
+    let (_, again) = world.update();
+    assert!(
+        matches!(again, Line::Unchanged { boots: None, .. }),
+        "an unchanged ask kept a why the passing check ended: {again:?}"
     );
 }
 
@@ -2385,7 +2676,8 @@ fn a_folder_read_from_the_host_where_it_was_never_asks_how_main_moved() {
         world.update().1,
         Line::Unchanged {
             commit: one.clone(),
-            followed: BTreeMap::new()
+            followed: BTreeMap::new(),
+            boots: None,
         }
     );
     assert!(
@@ -2410,7 +2702,8 @@ fn a_folder_read_from_the_host_where_it_was_is_not_built() {
         world.update().1,
         Line::Unchanged {
             commit: one.clone(),
-            followed: BTreeMap::new()
+            followed: BTreeMap::new(),
+            boots: None,
         }
     );
     assert_eq!(world.builds(), 1);
@@ -2533,7 +2826,8 @@ fn a_head_that_mayn_t_be_fetched_leaves_the_machine_where_it_is() {
         world.update().1,
         Line::Unchanged {
             commit: one.clone(),
-            followed: BTreeMap::new()
+            followed: BTreeMap::new(),
+            boots: None,
         }
     );
     assert!(!world.checkout_has(&two), "main was fetched");
@@ -2591,7 +2885,8 @@ fn a_commit_the_checkout_holds_that_main_doesnt_is_never_taken() {
         world.update().1,
         Line::Unchanged {
             commit: one,
-            followed: BTreeMap::new()
+            followed: BTreeMap::new(),
+            boots: None,
         }
     );
     assert_eq!(world.read("seen"), "one");
@@ -2690,7 +2985,8 @@ fn a_hosted_folder_where_it_was_is_neither_fetched_nor_built() {
         world.update().1,
         Line::Unchanged {
             commit: one.clone(),
-            followed: BTreeMap::new()
+            followed: BTreeMap::new(),
+            boots: None,
         }
     );
     assert_eq!(
@@ -3022,6 +3318,7 @@ fn main_where_it_was_with_its_input_moved_on_is_built_again() {
         Line::Unchanged {
             commit: head.clone(),
             followed: BTreeMap::from([("core".to_owned(), pinned)]),
+            boots: None,
         }
     );
     let newer = world.core_commit("newer", true);
@@ -3839,6 +4136,7 @@ fn refuse_during_calls(world: &mut World) {
         every_ask_waits: false,
         refuses_the_ask_alone: false,
         refuses_at_most: None,
+        says: Says::Beside,
     }];
 }
 
@@ -3858,6 +4156,7 @@ fn over_its_load(world: &mut World, at_most: Option<u64>) {
         every_ask_waits: false,
         refuses_the_ask_alone: true,
         refuses_at_most: at_most,
+        says: Says::Beside,
     }];
 }
 
@@ -3878,6 +4177,49 @@ fn a_check_refusing_the_ask_alone_holds_no_switch() {
     );
     let next = world.signed("two");
     world.system(&next);
+    let Line::Refused { why, .. } = world.asked_by(&|| true).1 else {
+        panic!("an ask while over its load should be refused")
+    };
+    assert_eq!(why, "the machine is over its load");
+}
+
+/// A refusal carries what its check last said, as a Mac short of memory
+/// says which readings it judged, so its log shows why without a rerun.
+#[test]
+fn a_refusal_carries_what_its_check_said() {
+    let mut world = World::new();
+    over_its_load(&mut world, None);
+    world.config.refuse_while[0].says = Says::Why;
+    world.config.refuse_while[0].command[2] = format!(
+        "echo 'mac-room: 30% then 20% free' >&2; test -e {}/call",
+        world.root.display()
+    );
+    fs::write(world.root.join("call"), "").unwrap();
+    let head = world.signed("one");
+    world.system(&head);
+    let Line::Refused { why, .. } = world.asked_by(&|| true).1 else {
+        panic!("an ask while over its load should be refused")
+    };
+    assert_eq!(
+        why,
+        "the machine is over its load, saying mac-room: 30% then 20% free"
+    );
+}
+
+/// A check that doesn't say why it's busy keeps its words out of the
+/// refusal, as the call check's caution that a peer went unheard is no
+/// reason a call is on.
+#[test]
+fn a_refusal_leaves_out_what_a_check_said_beside() {
+    let mut world = World::new();
+    over_its_load(&mut world, None);
+    world.config.refuse_while[0].command[2] = format!(
+        "echo 'caution: a peer went unheard' >&2; test -e {}/call",
+        world.root.display()
+    );
+    fs::write(world.root.join("call"), "").unwrap();
+    let head = world.signed("one");
+    world.system(&head);
     let Line::Refused { why, .. } = world.asked_by(&|| true).1 else {
         panic!("an ask while over its load should be refused")
     };
@@ -4232,6 +4574,7 @@ fn waits_on(world: &World, why: &str, counted: &str, times: usize, at_most: Opti
         every_ask_waits: false,
         refuses_the_ask_alone: false,
         refuses_at_most: None,
+        says: Says::Beside,
     }
 }
 
@@ -4865,6 +5208,7 @@ fn heads_that_build_the_running_system_switch_nothing() {
         Line::Unchanged {
             commit: head.clone(),
             followed: BTreeMap::new(),
+            boots: None,
         }
     );
     assert_eq!(world.builds(), 1);

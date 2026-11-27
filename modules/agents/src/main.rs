@@ -56,6 +56,7 @@ use agents::feedback::{self, Landings};
 use agents::inputs::Inputs;
 use agents::kept_places::KeptPlaces;
 use agents::landed::Reading;
+use agents::offers;
 use agents::places;
 use agents::reopen::Kept;
 use agents::row::Words;
@@ -316,8 +317,8 @@ fn as_joel(
     })
 }
 
-/// Start New Work, where it can begin, Let Them Start, an answer to what
-/// a session asks and all Joel's (`as_joel`: a row's act, a line he
+/// Start New Work, where it can begin, whether the cloud can take it, Let
+/// Them Start, an answer to what a session asks and all Joel's (`as_joel`: a row's act, a line he
 /// tells, his feedback, and what the shell says he saw, read, put off or
 /// forgot), asked of `node` only for the shell, told apart by the
 /// connection each came on, so no agent lifts the stop Joel put on their
@@ -359,6 +360,9 @@ fn for_the_shell_alone(
             }
             if said["ask"] == places::ASK {
                 return Some(places::answer(|| asker::the_shell(stream), node.as_deref()));
+            }
+            if said["ask"] == offers::ASK {
+                return Some(offers::answer(|| asker::the_shell(stream), node.as_deref()));
             }
             if said["ask"] == wants::ASK {
                 let asker = asker::the_shell(stream);
@@ -444,9 +448,10 @@ const AS_JOEL: [&str; 15] = [
 
 /// Every ask the daemon answers only as it's told who asked
 /// (`for_the_shell_alone`).
-const SHELLS_ALONE: [&str; 21] = [
+const SHELLS_ALONE: [&str; 22] = [
     sprout::ASK,
     places::ASK,
+    offers::ASK,
     starts::TOLD,
     starts::KEPT,
     starts_stopped::ASK,
@@ -469,7 +474,8 @@ const SHELLS_ALONE: [&str; 21] = [
 ];
 
 /// Which of [`SHELLS_ALONE`] are answered each on a thread of its own: a
-/// start, which waits on the node a long while, its places, a start told,
+/// start, which waits on the node a long while, its places, whether the
+/// cloud can take it, a start told,
 /// an answer, which waits on the node up to acts.rs's `PATIENCE` and so
 /// queued could come back after the Talk lets a second go
 /// (TalkAnswers.js's `SENT_STANDS_MS`), and feedback, which waits on the
@@ -479,9 +485,10 @@ const SHELLS_ALONE: [&str; 21] = [
 /// windows' places as each is kept, answered apart could land out of
 /// order, and the daemon keep the one he'd left (round 000056 on #6796,
 /// F16 and F30).
-const SLOW: [&str; 6] = [
+const SLOW: [&str; 7] = [
     sprout::ASK,
     places::ASK,
+    offers::ASK,
     starts::TOLD,
     starts_stopped::ASK,
     wants::ASK,

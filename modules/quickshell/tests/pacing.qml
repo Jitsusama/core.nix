@@ -1195,6 +1195,40 @@ QtObject {
             Presented.timedShown("pirate", "", false), "6 letters");
         check(failures, "and a step is quoted whole while they're on",
             Presented.timedShown("\u2192 Harbour", "\u2192 Harbour", true), '"\u2192 Harbour"');
+        // A step into a program's page, or a place of the launcher's own,
+        // says the row by its key as a drawer's line does, so each page is
+        // timed apart (RTOIMQ, 2026-11-26); any other row is counted.
+        check(failures, "a step into a program says its desktop entry's id, never its name",
+            Presented.timedShown("\u2192 Bank statement - Chrome",
+                "\u2192 Bank statement - Chrome", false, "program:google-chrome"),
+            "\u2192 program:google-chrome");
+        check(failures, "and a step out of one says it too",
+            Presented.timedShown("\u2190 Slack", "\u2190 Slack", false, "program:slack"),
+            "\u2190 program:slack");
+        check(failures, "and a step into a place of the launcher's own says its id",
+            Presented.timedShown("\u2192 Programs", "\u2192 Programs", false,
+                "collection:applications"), "\u2192 collection:applications");
+        check(failures, "but an own kind holding more than an id counts the row",
+            Presented.timedShown("\u2192 Harbour House", "\u2192 Harbour House", false,
+                "place:wifi:Harbour House"), "\u2192 13 letters");
+        check(failures, "and a window's step, which holds its title, counts the row",
+            Presented.timedShown("\u2192 Bank statement", "\u2192 Bank statement", false,
+                "window:kitty:Bank statement"), "\u2192 14 letters");
+        check(failures, "and a daemon's record keyed as a program counts the row",
+            Presented.timedShown("\u2192 Slack", "\u2192 Slack", false, "row:program:slack"),
+            "\u2192 5 letters");
+        check(failures, "and a program's key with more past its id counts the row",
+            Presented.timedShown("\u2192 Spotify", "\u2192 Spotify", false,
+                "program:media:spotify"), "\u2192 7 letters");
+        check(failures, "and a key said whole that's neither a program nor its own counts the row",
+            Presented.timedShown("\u2192 Details", "\u2192 Details", false, "verb:details"),
+            "\u2192 7 letters");
+        check(failures, "and a step whose row has no key counts it",
+            Presented.timedShown("\u2192 Harbour", "\u2192 Harbour", false, ""),
+            "\u2192 7 letters");
+        check(failures, "and a step is quoted whole while they're on, its key aside",
+            Presented.timedShown("\u2192 Slack", "\u2192 Slack", true, "program:slack"),
+            '"\u2192 Slack"');
         check(failures, "words typed in a row say the row by its kind with reports off",
             Presented.typedInSaid("door", "wifi:Harbour House", false),
             '4 letters typed in "wifi"');
@@ -1623,10 +1657,13 @@ QtObject {
     }
 
     // A drawer comes in its key's own frame where its kind made in under
-    // 8 ms of late and no key is held, decided before it's made, never by
+    // 13 ms of late and no key is held, decided before it's made, never by
     // timing it in the frame; otherwise the frame after, so the highlight
     // never waits long on it (VKCF3Z, 2026-11-12, d4c660a6; Y2YBTS,
-    // 2026-11-16, from Joel's For You drawers made in 4 to 7 ms).
+    // 2026-11-16, from Joel's For You drawers made in 4 to 7 ms; BXNMUC,
+    // 2026-11-26, from his on, collection and notice drawers made in 7 to
+    // 8, among his drawers coming the frame after, 32% of which came
+    // within 50 ms of the key).
     function drawers(failures) {
         check(failures, "a kind not yet made comes the frame after",
             Pacing.drawerJoinsKey({}, "home", false), false);
@@ -1649,12 +1686,14 @@ QtObject {
             looks = Pacing.drawerMade(looks, forYou, making);
         check(failures, "one made in 4 to 7 ms, as For You's are, comes in the key's frame",
             Pacing.drawerJoinsKey(looks, forYou, false), true);
-        // The line falls at 8: a median just under comes in the key's
-        // frame, and one at 8 the frame after.
-        check(failures, "a median of 7.5 ms comes in the key's frame",
-            Pacing.drawerJoinsKey({ dear: [7, 8] }, "dear", false), true);
-        check(failures, "and a median of 8 ms the frame after",
-            Pacing.drawerJoinsKey({ dear: [8, 8, 8] }, "dear", false), false);
+        // The line falls at 13: a median under it, from on's 8 to 12.5,
+        // comes in the key's frame, and one at 13 the frame after.
+        check(failures, "a median of 8 ms, as on's drawers were made in, comes in the key's frame",
+            Pacing.drawerJoinsKey({ on: [7, 8, 9] }, "on", false), true);
+        check(failures, "as does a median of 12.5 ms",
+            Pacing.drawerJoinsKey({ near: [12, 13] }, "near", false), true);
+        check(failures, "and a median of 13 ms the frame after",
+            Pacing.drawerJoinsKey({ dear: [13, 13, 13] }, "dear", false), false);
         // A place's rows are of many kinds: home's people and commands make
         // theirs in a millisecond, its programs' in 10 to 114, so one of
         // Slack's came in its key's frame after 49 ms making (2026-11-12).
@@ -1677,9 +1716,9 @@ QtObject {
             false);
         check(failures, "a row with no key is its place's",
             Pacing.drawerKind("home", {}), "home");
-        for (const making of [9, 13, 9, 12])
+        for (const making of [13, 14, 13, 15])
             made = Pacing.drawerMade(made, "home", making);
-        check(failures, "one whose kind's median reaches 8 ms comes the frame after",
+        check(failures, "one whose kind's median reaches 13 ms comes the frame after",
             Pacing.drawerJoinsKey(made, "home", false), false);
         for (let at = 0; at < 8; at++)
             made = Pacing.drawerMade(made, "home", 1);
@@ -1764,8 +1803,12 @@ QtObject {
             Pacing.drawerRestsForLetters({ program: [134, 12] }, "program"), true);
         check(failures, "while a cheap one follows its letter",
             Pacing.drawerRestsForLetters({ agent: [4, 3, 5] }, "agent"), false);
+        check(failures, "as does one made in 8 ms, as on's drawers are, rather than resting",
+            Pacing.drawerRestsForLetters({ on: [7, 8, 9] }, "on"), false);
+        check(failures, "as does one at a median of 12.5 ms, under the key's line",
+            Pacing.drawerRestsForLetters({ near: [12, 13] }, "near"), false);
         check(failures, "and one at the line a drawer joins its key's frame under rests",
-            Pacing.drawerRestsForLetters({ agent: [8, 8, 8] }, "agent"), true);
+            Pacing.drawerRestsForLetters({ agent: [13, 13, 13] }, "agent"), true);
         check(failures, "its line says it followed its letter",
             Pacing.drawerCame(false, 0, true), "the frame after its letter");
     }

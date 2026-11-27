@@ -573,7 +573,11 @@ Scope {
         ignoreUnknownSignals: true
 
         function onTold(answer) {
-            if (answer?.id !== "hello" || ready.lost === null)
+            if (answer?.id !== "hello")
+                return;
+            if (ready.typedLost !== null)
+                ready.typedReask();
+            if (ready.lost === null)
                 return;
             const was = ready.lost;
             ready.lost = null;
@@ -584,7 +588,7 @@ Scope {
 
     // How the search stands, for a check that fails waiting on it to say why: what's asked,
     // the words of the answer held, what waits for the daemon to come back or was asked again
-    // as it did, and the link's finds unanswered.
+    // as it did, the same of what's typed inside a row, and the link's finds unanswered.
     function searchState() {
         return {
             asking,
@@ -592,6 +596,9 @@ Scope {
             lostTwice,
             found: found.words,
             lost: lost?.words ?? null,
+            typedAsking,
+            typedReasked,
+            typedLost: typedLost === null ? null : `${typedLost.within}\n${typedLost.words}`,
             ended: searchesEnded,
             searchless,
             asked: link?.asked ?? null,
@@ -670,18 +677,29 @@ Scope {
     readonly property var typedHeld: ({})
     property string typedAsking: ""
     property double typedAt: 0
+    // What was typed inside a row when the daemon couldn't answer, as `{ within, words }`,
+    // asked again once it says hello, as the search is (`lost`), or null: its words are
+    // never asked again by a refresh, so the place said it can't answer till the next key.
+    // Kept while the rows are drawn, till other words are typed inside a row or the search
+    // ends; stepped out of its row, it's still asked again, so a step back in finds the
+    // daemon's rows. Lost again once asked again (`typedReasked`), it's left for the next
+    // key, as the search is.
+    property var typedLost: null
+    property string typedReasked: ""
 
     // The rows made of `words` typed inside `within`'s row, or null where it
     // can't answer; its last answer there stays till the next (`searched`).
     function typedIn(within, words) {
         const asked = `${within}\n${words}`;
+        if (typedLost !== null && `${typedLost.within}\n${typedLost.words}` !== asked)
+            typedLost = null;
+        if (typedReasked !== asked)
+            typedReasked = "";
         if (typedAsking !== asked && !(typing.within === within && typing.words === words)) {
             if (!link)
                 return null;
-            typedAsking = asked;
             typedAt = Date.now();
-            link.find({ ask: "search", place: ready.place, words: words, within: within },
-                answer => ready.typedAnswered(within, words, answer));
+            typedAsk(within, words);
         }
         if (typing.within !== within)
             return [];
@@ -689,14 +707,47 @@ Scope {
             : typing.keys.map(key => rowAt(key)).filter(row => row !== null);
     }
 
-    // An answer taken, and how long it took, unless typed over since.
+    function typedAsk(within, words) {
+        typedAsking = `${within}\n${words}`;
+        link.find({ ask: "search", place: ready.place, words: words, within: within },
+            answer => ready.typedAnswered(within, words, answer));
+    }
+
+    // What was typed inside a row as the daemon went, asked once more as it comes back. It's
+    // still timed from its key (`typedAt`), so its answer says how long after the key it
+    // came, and Emoji keeps its rows in place, as for a search asked again.
+    function typedReask() {
+        const was = typedLost;
+        typedLost = null;
+        if (!link)
+            return;
+        typedReasked = `${was.within}\n${was.words}`;
+        typedAsk(was.within, was.words);
+    }
+
+    // An answer taken, and how long it took, unless typed over since. One that didn't come,
+    // the daemon gone, is asked again once it's back (`typedLost`), while the rows are drawn,
+    // and only once (`typedReasked`), which stands till other words are typed: answered, its
+    // words are what's typed, never asked again till then. The line timing an answer asked
+    // again says so, as its time from the key holds the daemon's whole restart, and one that
+    // didn't come is timed by none, as nothing answered it: its warnings say so.
     function typedAnswered(within, words, answer) {
-        if (typedAsking !== `${within}\n${words}`)
+        const asked = `${within}\n${words}`;
+        if (typedAsking !== asked)
             return;
         typedAsking = "";
         const typed = Presented.typedInSaid(words, within, Options.reports);
-        console.info(`launcher: ${place} answered ${typed} `
-            + `${Date.now() - typedAt} ms after its key`);
+        const again = typedReasked === asked;
+        if (answer === null && drawn && !again)
+            typedLost = { within, words };
+        else if (answer === null && drawn)
+            console.warn(`launcher: ${place}'s ${typed} went unanswered again once asked `
+                + "again, left for the next key");
+        if (answer !== null) {
+            const saidAgain = again ? ", asked again at its hello" : "";
+            console.info(`launcher: ${place} answered ${typed} `
+                + `${Date.now() - typedAt} ms after its key${saidAgain}`);
+        }
         const refused = answer === null || !!answer.error;
         if (refused && !typing.refused)
             console.warn(`launcher: ${place}'s daemon didn't answer ${typed}: `
@@ -716,6 +767,8 @@ Scope {
     function typedAgain() {
         typing = { within: "", words: null, keys: [], refused: typing.refused };
         typedAsking = "";
+        typedLost = null;
+        typedReasked = "";
     }
 
     // The rows an answer found, in its order, each as the place made it.
@@ -865,7 +918,7 @@ Scope {
         };
         const items = itemsOf(row);
         return maker.member(Object.assign({
-            key: row.thing ?? key,
+            key: Presented.keyMade(row, key),
             thing: !!row.drawer,
             name: row.name ?? "",
             // A heading names the rows under it and is never one: no move
@@ -1203,7 +1256,7 @@ Scope {
     // was done, so nothing else it asks is sent.
     function notOpened(key, one, why) {
         const row = served(key);
-        const shown = row?.thing ?? key;
+        const shown = Presented.keyMade(row ?? {}, key);
         const gone = Presented.quoted(Ready.openedIn(one)).slice(1, -1);
         console.info(`launcher: ${actSaid(one)} opened nothing, its ${gone} gone`);
         maker?.becomes(shown, rowAt(key), row?.name ?? "", verbOf(one), { done: () => false });
@@ -1397,7 +1450,7 @@ Scope {
         // becomes the limit's own row, so that row is the one held.
         const into = one.becomes ?? null;
         const becomesKey = into?.key ?? key;
-        const shown = into ? (into.thing ?? becomesKey) : (row.thing ?? key);
+        const shown = into ? Presented.keyMade(into, becomesKey) : Presented.keyMade(row, key);
         let answered = false;
         const becomes = into ? ready.make(into, becomesKey) : rowAt(key);
         const how = one.becomes ? undefined : { done: () => answered };
@@ -1481,6 +1534,8 @@ Scope {
         lost = null;
         reasked = "";
         lostTwice = "";
+        typedLost = null;
+        typedReasked = "";
     }
 
     // The rows whose words the clock has moved on since they were made,

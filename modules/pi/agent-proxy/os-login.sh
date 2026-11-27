@@ -19,11 +19,11 @@
 # comment. These keep out a mistake, not an attacker: the folder is the
 # person's alone, bound read-only inside the agent fence, so whatever can
 # write it already runs as the person, with their gcloud login itself.
-# That bind is the harness's: agentic-harness.pi/lib/internal/fence/fence.ts
-# binds each of its LET_THROUGH folders, pi-agent among them, read-only,
-# and agentic-harness.pi/tests/lib/internal/fence/fence-runtime-binds.test.ts
-# proves it ("can't remove, move or add anything there, so the proxy's
-# socket stays the proxy's").
+# That bind is agentic-harness.pi's fence, which binds each folder it lets
+# through, pi-agent among them, read-only. Its runtime-binds test proves it,
+# by the name kept whole on the next line for searching that repository,
+# "can't remove, move or add anything there, so the proxy's socket stays the proxy's",
+# which outlives a rename of the file, since no check here can follow it there.
 # held() trusts the folder's socket on the same bind.
 # The copy is never made in the temporary folder, which a fenced command
 # can write, and so could swap a key of its own in before gcloud reads it.
