@@ -85,8 +85,21 @@ Provider {
                 fact("on:waiting:since", one.since ? say.clock(one.since) : ""),
                 fact("pineapple:fact:count", count > 1 ? ForYou.filled(told.count, { count }) : "")
             ].filter(each => each.value !== ""),
-            body: String((Words.of("for-you:source:pineapple").tells ?? {})[one.what] ?? "")
+            body: String((Words.of("for-you:source:pineapple").tells ?? {})[one.what] ?? ""),
+            acts: actsOf(one)
         };
+    }
+
+    // The drawer's acts, given rather than taken from the row's verbs
+    // (Showing.acted), which would mark the first verb by Return: Return on
+    // the row opens where it was said, its run, so that's what ↵ names, and
+    // only where there's a link to open. Resume and the rest are inside it.
+    function actsOf(one) {
+        const open = typeof one.link === "string" && one.link !== ""
+            ? [{ name: Words.name("pineapple:act:open"), key: "\u21b5" }] : [];
+        const verbs = (Array.isArray(one.acts) ? one.acts : [])
+            .map(act => ({ name: Words.name(act.key), key: "" }));
+        return open.concat(verbs);
     }
 
     function rowOf(one) {
@@ -101,7 +114,7 @@ Provider {
             hue: one.what === "stop" ? "strong" : "action",
             stays: true,
             // A thing, so the launcher draws its drawer (Launcher.qml's
-            // detailed): who said it, what and where.
+            // detailed): what was said, where, and the acts (actsOf).
             thing: true,
             drawer: () => provider.drawerOf(one),
             verbs: () => verbs,
