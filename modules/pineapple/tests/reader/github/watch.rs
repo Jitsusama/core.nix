@@ -358,16 +358,19 @@ fn github_an_owed_thread_the_watch_lists_is_read_back_to_joels_words() {
     reading.wait().expect("the reader is gone");
 
     let seen = asked.lock().expect("what was asked").clone();
-    let since = seen.iter().find_map(|line| {
-        let read = line.contains(" /repos/example/shop/issues/12/comments?");
-        let since = line.split("since=").nth(1)?.split(['&', ' ']).next()?;
-        read.then(|| since.replace("%3A", ":"))
-    });
+    let reads: Vec<String> = seen
+        .iter()
+        .filter(|line| line.contains(" /repos/example/shop/issues/12/comments?"))
+        .filter_map(|line| {
+            let since = line.split("since=").nth(1)?.split(['&', ' ']).next()?;
+            Some(since.replace("%3A", ":"))
+        })
+        .collect();
+    // Judged from later, its stop would go unjudged in that read, and the
+    // watch would list it, no longer owed, to be read again.
     assert!(
-        since
-            .as_ref()
-            .is_some_and(|since| *since <= stamp(last - 90)),
-        "the owed thread is read from where the watch reaches, before his stop: {seen:?}"
+        reads.len() == 1 && reads[0] <= stamp(last - 90),
+        "the owed thread is read once, from where the watch reaches, before his stop: {seen:?}"
     );
     assert!(
         each(&decisions(&home), "verdict").contains(&"stop"),
