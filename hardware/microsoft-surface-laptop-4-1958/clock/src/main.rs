@@ -57,7 +57,10 @@ struct Request {
     response: Buffer,
 }
 
-const _: () = assert!(std::mem::size_of::<Request>() == 40);
+const _: () = assert!(
+    std::mem::size_of::<Request>() == 40,
+    "a request must be the 40 bytes its ioctl number says"
+);
 
 /// The kernel's `struct timex`, 208 bytes on x86-64. Only its first field,
 /// the modes to change, matters, and it's left at none, so adjtimex only
@@ -324,14 +327,15 @@ mod tests {
 
     #[test]
     fn an_offset_past_any_time_zone_is_refused() {
-        assert!(offset_from(1_747_475_245, 1_793_366_371).is_err());
-        assert!(parse_offset("-50401\n").is_err());
+        offset_from(1_747_475_245, 1_793_366_371)
+            .expect_err("a measured offset of over a year was taken");
+        parse_offset("-50401\n").expect_err("a kept offset past 14 hours was read");
     }
 
     #[test]
     fn a_kept_offset_is_read_back() {
         assert_eq!(parse_offset("28800\n"), Ok(28_800));
-        assert!(parse_offset("eight hours").is_err());
+        parse_offset("eight hours").expect_err("words were read as an offset");
     }
 
     #[test]
@@ -355,8 +359,9 @@ mod tests {
 
     #[test]
     fn a_time_past_the_aggregator_s_clock_is_refused() {
-        assert!(controller_time(i64::from(u32::MAX), 1).is_err());
-        assert!(controller_time(0, -1).is_err());
+        controller_time(i64::from(u32::MAX), 1)
+            .expect_err("a time past the 32-bit clock's last second was set");
+        controller_time(0, -1).expect_err("a time before the clock's first second was set");
     }
 
     #[test]

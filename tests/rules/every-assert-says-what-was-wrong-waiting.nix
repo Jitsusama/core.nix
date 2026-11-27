@@ -4,7 +4,6 @@
 # check fails on a file holding more, and on one holding fewer until its count
 # here is lowered, so the list only shrinks.
 {
-  "hardware/microsoft-surface-laptop-4-1958/clock/src/main.rs" = 6;
   "modules/backlight/src/curve.rs" = 11;
   "modules/backlight/src/facts.rs" = 6;
   "modules/backlight/src/follow.rs" = 20;
@@ -21,7 +20,6 @@
   "modules/cadence/src/mesh.rs" = 7;
   "modules/cadence/src/records.rs" = 5;
   "modules/cadence/src/revive.rs" = 1;
-  "modules/calls/src/lib.rs" = 5;
   "modules/chrome/open-tabs/host/src/main.rs" = 1;
   "modules/chrome/pack-extension/src/main.rs" = 1;
   "modules/console/font/src/main.rs" = 10;
@@ -178,8 +176,6 @@
   "modules/passwords/tests/keys.rs" = 3;
   "modules/people/src/lib.rs" = 12;
   "modules/people/tests/daemon.rs" = 3;
-  "modules/pi-packages/src/inuse/macos.rs" = 4;
-  "modules/pi-packages/tests/inuse.rs" = 3;
   "modules/processor-telemetry/src/layout.rs" = 3;
   "modules/processor-telemetry/src/reading.rs" = 8;
   "modules/processor-telemetry/src/resting.rs" = 10;
@@ -235,9 +231,6 @@
   "modules/spotify/spotify-recent/src/token.rs" = 9;
   "modules/spotify/spotify-recent/tests/stand_in.rs" = 5;
   "modules/systemd/shutdown-status/src/main.rs" = 1;
-  "modules/tuple/call/src/log.rs" = 3;
-  "modules/tuple/call/src/stream.rs" = 2;
-  "modules/tuple/call/tests/daemon.rs" = 1;
   "modules/tuple/people.rs" = 3;
   "modules/update-to-main/src/ask.rs" = 3;
   "modules/update-to-main/src/follow.rs" = 21;
@@ -289,7 +282,4 @@
   "tests/vm/guide/guide-install-vm-test.py" = 1;
   "tests/vm/network/wifi/wifi-joins-when-asked-vm-test.py" = 1;
   "tools/merge-net/src/watch.rs" = 24;
-  "tools/shell-preview/src/desktop.rs" = 3;
-  "tools/shell-preview/src/layout.rs" = 3;
-  "tools/shell-preview/tests/shell_preview.rs" = 1;
 }
