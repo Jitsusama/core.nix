@@ -10,6 +10,7 @@ const fn falling_hour(at: i64, red: usize) -> super::super::falling::Hour {
         at,
         red,
         unjudged: 0,
+        seen: 0,
     }
 }
 

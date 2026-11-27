@@ -208,7 +208,7 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
         let ask = message(&owner, "question", text);
         if let Err(err) = mesh.send(&ask) {
             findings::keep(&ledger_at, &ledger)?;
-            return Err(err.into());
+            return Err(err);
         }
         put::mark_asked(&mut ledger, &owner, now, &ask.id);
     }

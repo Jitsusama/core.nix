@@ -7,7 +7,7 @@
 //! measure's lines by owner, is filed and closed by rules of its own, and
 //! its tests sit beside them.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use crate::DAY;
 use crate::findings::Entry;
