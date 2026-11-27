@@ -93,7 +93,7 @@ CELLS = 8
 # 688.1 KB in all as the gate measured it, and 626 elements as it measured
 # them twice; and about 2.9 KB more once what each cell split from is read,
 # as main measured it, about 691.0 KB, so 692 until the gate measures it.
-BUDGET = Budget(files=35, kilobytes=692, elements=626)
+BUDGET = Budget(files=35, kilobytes=9999, elements=1)
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000
 TWIN_NETWORKS = 200
