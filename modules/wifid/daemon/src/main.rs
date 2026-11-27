@@ -3114,9 +3114,7 @@ impl Wifid<'_> {
             // doesn't hear is, so a chooser keeps it off as never reached
             // rather than taking the move as never asked and asking again.
             if forgotten {
-                println!(
-                    "<6>{card} didn't move to {bssid}, which wpa_supplicant no longer holds"
-                );
+                println!("<6>{card} didn't move to {bssid}, which wpa_supplicant no longer holds");
                 return Err(Refused::NotNearby);
             }
             return Err(Refused::Failed {

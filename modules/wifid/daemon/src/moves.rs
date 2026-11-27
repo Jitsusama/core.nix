@@ -934,7 +934,10 @@ mod tests {
             "a move wifid refused wasn't handed back to its chooser as the one asked"
         );
         assert!(
-            matches!(refused_with(Refused::NotJoined, asked).await, Some(Back::Refused { .. })),
+            matches!(
+                refused_with(Refused::NotJoined, asked).await,
+                Some(Back::Refused { .. })
+            ),
             "a move refused with the card off its network wasn't handed back"
         );
     }
