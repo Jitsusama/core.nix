@@ -759,22 +759,19 @@ def test_a_chord_first_after_a_restart_makes_only_its_places_rows(shell: Shell) 
     Home kept as the shell started wasn't counted as kept for an opening into a place, so the
     first chord after each switch found home again whole on its way into the place, as no
     later one does. Its fill may still catch up what CAUGHT_UP read since home was kept, as the
-    launcher means it to, so only home opened whole or another source's rows fail it.
+    launcher means it to, so only another source's rows fail it. Home found again says no
+    line of its own on a chord into a place ("home opened whole" is a home chord's), so the
+    rows are the case's one guard.
     """
     restarted = time.monotonic()
     shell.restart()
     shell.launcher_until(lambda shown: shown.get("kept"))
     answered_since(shell, restarted)
-    began = shell.mark()
     made = made_by_others(shell, "windows")
-    whole = [
-        line
-        for line in shell.log.read_bytes()[began:].decode(errors="replace").splitlines()
-        if "launcher: home opened whole" in line
-    ]
-    assert not whole, f"first into Windows after a restart, home opened whole: {whole}"
     others = {name: rows for name, rows in made.items() if name not in CAUGHT_UP}
-    assert not others, f"first into Windows after a restart, other sources made rows: {made}"
+    assert not others, (
+        f"first into Windows after a restart, other sources made rows: {others} (all: {made})"
+    )
 
 
 def test_a_chord_first_after_a_restart_is_drawn_from_its_place_kept_as_it_started(
@@ -1463,15 +1460,21 @@ def answered_since(shell: Shell, restarted: float) -> None:
     Home and the chords' places are kept a second and a half after a start, before Networks
     and Displays first answer here, so the next opening's fill makes their rows again, as it
     catches up any source changed since it was kept: 6 here, which aren't what this counts.
-    It waits out ANSWERED, then until the changes each source has said hold still for QUIET.
+    It waits out ANSWERED, then until the changes each source has said hold still for QUIET,
+    for at most SETTLED past ANSWERED or past the start, whichever comes later: a slow start
+    on a loaded builder doesn't eat the watching.
     """
     time.sleep(max(0.0, restarted + ANSWERED.total_seconds() - time.monotonic()))
-    deadline = restarted + (ANSWERED + SETTLED).total_seconds()
+    watched = time.monotonic()
+    deadline = watched + SETTLED.total_seconds()
     said = json.loads(shell.as_account(shell.ipc("changed")))
-    still = time.monotonic()
+    still = watched
     while time.monotonic() - still < QUIET.total_seconds():
         if time.monotonic() > deadline:
-            pytest.fail(f"sources still changing {ANSWERED + SETTLED} after a restart: {said}")
+            pytest.fail(
+                f"sources still changing {SETTLED} after {watched - restarted:.1f} s"
+                f" from a restart: {said}"
+            )
         time.sleep(launcher_on_niri.POLL)
         now = json.loads(shell.as_account(shell.ipc("changed")))
         if now != said:
