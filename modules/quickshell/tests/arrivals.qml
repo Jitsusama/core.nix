@@ -118,7 +118,10 @@ ShellRoot {
         property string title: "Tokens Run Out in About 50 Min"
         property string hint: "Tokens Run Out in About 50 Min"
         property string context: "at this hour's rate"
-        property var actions: [{ name: "See What Spends" }]
+        // Its Pause steers a session as Joel, which a notice's button can't tell from
+        // anyone's invoke, so it's never offered there.
+        property var actions: [{ name: "See What Spends" }, { name: "Pause Top Spender",
+            joelsOnly: true }]
     }
 
     Component.onCompleted: {
@@ -252,9 +255,16 @@ ShellRoot {
                 expect("the tokens are said as a new notice", last.includes("--app-name=Tokens")
                     && last.includes("--print-id") && !last.includes("--replace-id")
                     && last.includes("About 50 Min") && root.idOf(last) === 103, last);
+                expect("an act only Joel may choose isn't offered on the notice",
+                    last.includes("--action=0=See What Spends") && !last.includes("--action=1")
+                    && !last.includes("Pause"), last);
                 Notices.live = { "103": notice(103, "tokens") };
-                root.waiting = "the count said in place";
-                tokens.hint = "Tokens Run Out in About 49 Min";
+                // Pause names the top spender, so it changes with no word the notice shows.
+                root.waiting = "nothing said as only a hidden act changes";
+                tokens.actions = [{ name: "See What Spends" }, { name: "Pause Next Spender",
+                    joelsOnly: true }];
+                counting.stop();
+                hiddenRenamed.start();
             } else if (root.waiting === "the count said in place" && lines.length === 4) {
                 expect("the new count replaces the notice by its id",
                     last.includes("--replace-id=103") && last.includes("About 49 Min")
@@ -289,6 +299,24 @@ ShellRoot {
             }
         } catch (error) {
             fail(error.message);
+        }
+    }
+
+    // Long enough for a notice to have been said again, were a hidden act's name to count
+    // (round 000036 on #6796, F120 and F144).
+    Timer {
+        id: hiddenRenamed
+        interval: 1000
+        onTriggered: {
+            try {
+                root.expect("a hidden act renamed says the notice no more",
+                    root.said().length === 3, root.said().join(" | "));
+                root.waiting = "the count said in place";
+                tokens.hint = "Tokens Run Out in About 49 Min";
+                counting.start();
+            } catch (error) {
+                root.fail(error.message);
+            }
         }
     }
 

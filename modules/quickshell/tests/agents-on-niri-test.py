@@ -65,6 +65,14 @@ STEER = STATE / "pi/agentic-harness.pi/steer"
 # reads to call one whose owner is gone parked rather than closed.
 PARKS = STATE / "pi/agentic-harness.pi/park-workflow/parked"
 NODE = Path(os.environ["XDG_RUNTIME_DIR"]) / "mycelium" / f"{REALM}.sock"
+# The id the node answers its list of sessions under, after hello's 1, and the two asks.
+LISTED = 2
+LIST_SESSIONS = (
+    json.dumps({"id": 1, "ask": "hello"})
+    + "\n"
+    + json.dumps({"id": LISTED, "ask": "list", "kind": "session"})
+    + "\n"
+).encode()
 # Where the agents daemon serves Agents' rows, as its unit's socket is.
 ROWS = Path(os.environ["XDG_RUNTIME_DIR"]) / "daemons" / "agents.sock"
 RESTORE = STATE / "pi/restore.json"
@@ -275,15 +283,28 @@ def closed_side(address: str) -> str:
     return f"closed {ended:%H:%M}" if today else f"closed {ended:%a %H:%M}"
 
 
+def node_record(key: str) -> Json | None:
+    """Give the node's record of `key` whole, ended or not, asked over its daemon interface."""
+    with socket.socket(socket.AF_UNIX) as node:
+        node.connect(str(NODE))
+        node.sendall(LIST_SESSIONS)
+        said = node.makefile()
+        while True:
+            answer = json.loads(said.readline())
+            if answer.get("id") == LISTED:
+                records = cast("list[Json]", answer.get("records", []))
+                return next((one for one in records if one.get("key") == key), None)
+
+
 def held_by_node() -> list[str]:
     """Give the sessions the node holds alive, by their keys, asked over its daemon interface."""
     with socket.socket(socket.AF_UNIX) as node:
         node.connect(str(NODE))
-        node.sendall(b'{"id": 1, "ask": "hello"}\n{"id": 2, "ask": "list", "kind": "session"}\n')
+        node.sendall(LIST_SESSIONS)
         said = node.makefile()
         while True:
             answer = json.loads(said.readline())
-            if answer.get("id") == 2:  # noqa: PLR2004
+            if answer.get("id") == LISTED:
                 return sorted(
                     record["key"]
                     for record in answer.get("records", [])
@@ -1069,6 +1090,151 @@ def test_a_sessions_drawer_beside_the_one_drawn_comes_with_its_key(shell: Shell)
     assert not short, f"{names[1]}'s row was drawn before its drawer: {short}"
 
 
+ACT_WALKED = "a session is steered only from your own Return in the launcher"
+"""What a walk from outside is told of a session's act the shell does only as Joel."""
+AGENTS_ASKING = ("now", "For You", "Agents")
+"""A walk's steps to For You's Agents, where each session's ask stands under its cell."""
+
+
+def opens_saying_nothing_of_the_walk(shell: Shell) -> None:
+    """Joel's next opening says nothing of a walk refused: only the walk and the journal hear it.
+
+    Told on his opening, any program's walk would put words on his screen, standing over what
+    he opened for, as a top row's withheld act once did (ReadyRows.qml's withheldToWalk).
+    """
+    in_agents(shell)
+    said = " ".join(shell.showing()["saying"]).replace("\xa0", " ")
+    assert ACT_WALKED not in said, said
+    # A refusal told on opening is marked failed (Launcher.qml's toldThat).
+    assert "\u2715" not in said, said
+    shell.close_launcher()
+
+
+def test_a_sessions_acts_walked_from_outside_steer_nothing_and_say_why(shell: Shell) -> None:
+    """A walk from outside, as an agent's `launcher do` is, steers no session as Joel.
+
+    The agents daemon takes the shell's asks as Joel's and can't tell a walk from his Return,
+    so the shell refuses it (Agents.qml's joelsOwn): a sure Resume or Pause walked to a session
+    reaches none of its inbox, and the walk is told why. Pause, not Talk: a session under an
+    orchestration offers Talk only while it waits on Joel (top.rs's member_acts), and Listening
+    Quest doesn't; a walk's Talk is the orchestrator case's.
+    """
+    fold = ["agents", ORCHESTRATING, FOLD]
+    inboxes = [STEER / "PAUSED", STEER / "LISTEN"]
+    before = {path for inbox in inboxes for path in inbox.glob("*.json")}
+    try:
+        for steps, words in (
+            ([*fold, "Paused Quest", "Resume"], ""),
+            ([*fold, "Listening Quest", "Pause"], ""),
+        ):
+            walked = {"steps": steps, "words": words, "sure": True}
+            did = json.loads(shell.as_account(shell.ipc("doing", shlex.quote(json.dumps(walked)))))
+            assert did.get("refused") == ACT_WALKED, (steps, did)
+            shell.close_launcher()
+            opens_saying_nothing_of_the_walk(shell)
+        time.sleep(LINK_QUIET)
+        after = {path for inbox in inboxes for path in inbox.glob("*.json")}
+        assert after == before, sorted(after - before)
+    finally:
+        for path in {path for inbox in inboxes for path in inbox.glob("*.json")} - before:
+            path.unlink()
+
+
+def test_an_orchestrators_served_acts_walked_from_outside_steer_nothing(shell: Shell) -> None:
+    """A walk's Stop or Talk on Agents' served top row steers no orchestrator as Joel.
+
+    The top rows' acts go to the agents daemon whole, never through the tree's joelsOwn, and
+    the daemon takes the shell's asks as Joel's (round 000056 on #6796, F21); so the shell
+    withholds one a walk chose, and the walk is told why.
+    """
+    inbox = STEER / "BOSSES"
+    before = set(inbox.glob("*.json"))
+    try:
+        for steps, words in (
+            (["agents", ORCHESTRATING, "Stop"], ""),
+            (["agents", ORCHESTRATING, "Talk"], "how goes it?"),
+        ):
+            walked = {"steps": steps, "words": words, "sure": True}
+            did = json.loads(shell.as_account(shell.ipc("doing", shlex.quote(json.dumps(walked)))))
+            assert did.get("refused") == ACT_WALKED, (steps, did)
+            shell.close_launcher()
+            opens_saying_nothing_of_the_walk(shell)
+        time.sleep(LINK_QUIET)
+        after = set(inbox.glob("*.json"))
+        assert after == before, sorted(after - before)
+    finally:
+        for path in set(inbox.glob("*.json")) - before:
+            path.unlink()
+
+
+def test_a_wants_acts_walked_from_outside_are_refused_as_chosen(shell: Shell) -> None:
+    """A walk's Put It Off or Deal With It on a want is refused, and fills no session's prompt.
+
+    Deal With It waits for the launcher to be gone (Launcher.qml's runOnceGone), and ran after
+    the walk had cleared what said it was one, so its words went into the session's prompt as
+    Joel's (round 000056 on #6796, F12 and F29). It's Joel's own Return's alone (a row's
+    joelsOnly), so a walk is refused it as it chooses it.
+    """
+    wants = {"kind": "approval", "since": datetime.now(UTC).isoformat(), "said": "May I?"}
+    lay("DEALER", "Dealing Quest", {"state": "listening", "busy": False, "wants": wants})
+    inbox = STEER / "DEALER"
+    try:
+        in_for_yous_agents(shell)
+        shell.launcher_until(lambda shown: "Dealing Quest" in shown["rows"])
+        shell.close_launcher()
+        # Nor does a walk put the want off, which would take it off For You for an hour as
+        # Joel's (round 000022 on #6796, F48 and F57): it's refused, and the want stays.
+        walked = {"steps": [*AGENTS_ASKING, "Dealing Quest", "Put It Off"], "sure": True}
+        did = json.loads(shell.as_account(shell.ipc("doing", shlex.quote(json.dumps(walked)))))
+        assert did.get("refused") == ACT_WALKED, did
+        shell.close_launcher()
+        in_for_yous_agents(shell)
+        shell.launcher_until(lambda shown: "Dealing Quest" in shown["rows"])
+        shell.close_launcher()
+        walked = {"steps": [*AGENTS_ASKING, "Dealing Quest", "Deal With It"], "sure": True}
+        did = json.loads(shell.as_account(shell.ipc("doing", shlex.quote(json.dumps(walked)))))
+        # Deal With It runs once the launcher's gone, so it's refused as it's chosen, and the
+        # walk is told, rather than told done and refused once it runs (round 000038, F69).
+        assert did.get("refused") == ACT_WALKED, did
+        # Past the closed frame's wait, a second at most, and the moment after it.
+        time.sleep(2 + LINK_QUIET)
+        filled = [json.loads(one.read_text()) for one in inbox.glob("*.json")]
+        assert filled == [], filled
+    finally:
+        shell.close_launcher()
+        for one in inbox.glob("*.json"):
+            one.unlink()
+        (PRESENCE / "dealer.json").unlink()
+        # A session asking for Joel's yes, left for the cases after, would stand first in
+        # For You and Agents, so it's gone from the node before they begin.
+        deadline = time.monotonic() + 10
+        while "session:s-dealer" in held_by_node():
+            assert time.monotonic() < deadline, "the node still holds the asking session"
+            time.sleep(0.1)
+        # The node letting it go isn't enough: Agents stood it first, still needing his yes, for
+        # the whole of the paused case after this one (OSPHT4's run of 767ebf92), as the daemon
+        # hears the node a moment later. Nor is one look at an open Agents: a row that leaves
+        # while the list is open stays there dimmed until a key makes it afresh (Steady.js), so
+        # it stood for 30 s with the node holding nothing (OSPHT4's run of 8bc21200). Each look
+        # is a fresh opening, as the next case's is, read once Agents holds the orchestrator
+        # every case keeps, so an opening not yet filled can't pass, and a failure says what
+        # the node holds.
+        deadline = time.monotonic() + 15
+        while True:
+            shell.as_account(shell.ipc("collection", "agents"))
+            shell.launcher_ready()
+            shell.launcher_until(lambda shown: ORCHESTRATING in shown["rows"])
+            shown = shell.showing()
+            shell.close_launcher()
+            if "Dealing Quest" not in shown["rows"]:
+                break
+            if time.monotonic() >= deadline:
+                held = node_record("session:s-dealer")
+                failed = f"Agents still opens on the asking one: {shown}\nthe node holds: {held}"
+                raise AssertionError(failed)
+            time.sleep(0.5)
+
+
 def test_a_paused_sessions_return_lands_on_resume_and_a_second_sends_it(shell: Shell) -> None:
     """A paused session's Return lands on Resume, which changes how it stands; a second resumes."""
     row = found(shell, "paused quest", "Paused Quest")
@@ -1096,18 +1262,21 @@ def test_a_paused_sessions_return_lands_on_resume_and_a_second_sends_it(shell: S
         time.sleep(0.1)
     told = [json.loads(one.read_text()) for one in inbox.glob("*.json")]
     assert [one["act"] for one in told] == ["resume"], told
-    # A line told from anywhere, naming the quest, says who hears it before it's sent, then
-    # reaches that session's inbox as a talk does.
+    # The node takes a line told, a talk or an act as Joel's, so the daemon does none of them
+    # for a program that isn't the shell, as this test's isn't, and none reaches the inbox
+    # (ISXEG8's R-agents-acts-as-joel).
+    refused = {"error": {"code": "refused", "message": NOT_AS_JOEL}}
     asked = {"ask": "tell", "window": None, "quest": "QEST-20261107-PAUSED"}
-    assert rows_answer(asked) == {"to": "PAUSED", "name": "Paused Quest", "why": "quest"}
-    sent = rows_answer({**asked, "words": "how goes it?"})
-    assert "steered" in sent["sent"], sent
-    deadline = time.monotonic() + 10
-    while not any("text" in json.loads(one.read_text()) for one in inbox.glob("*.json")):
-        assert time.monotonic() < deadline, "the line told never reached the session's inbox"
-        time.sleep(0.1)
+    for ask in (
+        {**asked, "words": "how goes it?"},
+        {"ask": "talk", "address": "PAUSED", "text": "how goes it?"},
+        {"ask": "pause", "address": "PAUSED"},
+        {"ask": "feedback", "landing": "landing:none", "words": "too dim"},
+    ):
+        assert rows_answer(ask) == refused, ask
+    # Each is refused before the node is asked, so none can reach the inbox after its answer.
     talks = [json.loads(one.read_text()) for one in inbox.glob("*.json")]
-    assert [one["text"] for one in talks if "text" in one] == ["how goes it?"], talks
+    assert [one.get("act") for one in talks] == ["resume"], talks
 
 
 def test_a_sessions_drawer_marks_return_on_the_act_return_does(shell: Shell) -> None:
@@ -1488,6 +1657,19 @@ def in_for_you(shell: Shell) -> None:
     shell.launcher_until(lambda shown: shown["held"] == ["now", "For You"])
 
 
+def in_for_yous_agents(shell: Shell) -> None:
+    """Step into For You's Agents, where what each session asks of Joel stands under its cell.
+
+    For You gathers every cell's rows into Agents however few (ForYouCells.js's laidOut; Joel,
+    2026-11-25: "it also makes no sense for the agents to be top level").
+    """
+    in_for_you(shell)
+    shell.launcher_until(lambda shown: "Agents" in shown["rows"])
+    shell.down_to("Agents")
+    shell.step_in()
+    shell.launcher_until(lambda shown: shown["held"] == ["now", "For You", "Agents"])
+
+
 def test_an_orchestrations_waiting_sessions_fold_into_one_row_return_steps_into(
     shell: Shell,
 ) -> None:
@@ -1594,6 +1776,16 @@ def test_a_session_whose_folder_is_gone_says_so_before_return_and_is_forgotten(
     Reopen Them All counts what it will reopen, the other alone, rather than a notice saying
     after that one wasn't (VKCF3Z, 2026-11-07).
     """
+    # A walk from outside forgets none, nor puts off the last boot's, which the daemon would
+    # take as Joel's (round 000022 on #6796, F40 and F57): refused, both are still offered.
+    for steps in (
+        ["agents", "Sessions to Reopen", "Given Back", "Forget It"],
+        ["agents", "Sessions to Reopen", "Not Now"],
+    ):
+        walked = {"steps": steps, "sure": True}
+        did = json.loads(shell.as_account(shell.ipc("doing", shlex.quote(json.dumps(walked)))))
+        assert did.get("refused") == ACT_WALKED, (steps, did)
+        shell.close_launcher()
     opened(shell)
     shell.down_to("Sessions to Reopen")
     shell.step_in()
@@ -2886,6 +3078,12 @@ def arrived_shut(shell: Shell, arrive: Callable[[], None]) -> None:
         )
         time.sleep(0.1)
     made_settled(shell)
+
+
+NOT_AS_JOEL = (
+    "the agents daemon acts for you only from the launcher, and couldn't tell this came from it"
+)
+"""What the agents daemon says of an act it refused a program other than the shell."""
 
 
 def rows_answer(said: Json) -> Json:
@@ -4494,25 +4692,75 @@ def no_words_come_back(shell: Shell, drawn: Callable[[Json], bool], why: str) ->
         time.sleep(0.1)
 
 
-# What the agents daemon says of an answer from anyone but the shell's own unit, as the shell
-# here runs outside it (modules/agents/src/main.rs's ONLY_THE_SHELL).
+# What the agents daemon says of an answer from anyone but the shell, as this test's own
+# process is (modules/agents/src/main.rs's ONLY_THE_SHELL, which the two must say alike).
 ONLY_THE_SHELL = (
     "the agents daemon takes an answer only from the launcher, and couldn't tell this came from it"
 )
 
 
-def test_a_talk_to_an_asking_cell_shows_its_question_and_why_its_answer_wasnt_taken(
+def answered_once(shell: Shell, inbox: Path, steered: set[Path]) -> list[Path]:
+    """Wait for Joel's answer to reach the asking cell's inbox, the Talk reading it answered.
+
+    It takes his first answer, so a second Return while it still asks goes nowhere. Gives the
+    answer's steer, alone in the inbox beside what was there before.
+    """
+    deadline = time.monotonic() + 10
+    while not (told := sorted(set(inbox.glob("*.json")) - steered)):
+        assert time.monotonic() < deadline, "no answer reached the asking cell's inbox"
+        time.sleep(0.1)
+    # The Talk says the choice his words picked, by its label, so he sees which it took.
+    shell.launcher_until(
+        lambda shown: any(
+            (one.get("line"), one.get("stands")) == ("Right", "answered")
+            for one in cast("list[Json]", shown["talks"] or [])
+        )
+    )
+    shell.launcher_until(lambda shown: shown["typed"] == "")
+    shell.send_chars("left")
+    shell.launcher_until(lambda shown: shown["typed"] == "left")
+    shell.send_key("ret")
+    shell.launcher_until(
+        lambda shown: "you answered this already" in shown["footer"].replace("\xa0", " ")
+    )
+    # Refused, nothing is kept, so the Talk still held shows his first answer and no other.
+    shown = shell.showing()
+    talks = [(one.get("line"), one.get("stands")) for one in shown["talks"] or []]
+    assert shown["asking"], shown
+    assert ("Right", "answered") in talks, talks
+    assert not [one for one in talks if one[0] == "Left"], talks
+    assert sorted(set(inbox.glob("*.json")) - steered) == told, sorted(inbox.glob("*.json"))
+    # And his words go: the field empties on any Return, so only a Talk opened again shows it.
+    shell.close_launcher()
+    did = followed(shell, "talkTo", inbox.name)
+    assert did["done"], did
+    no_words_come_back(
+        shell,
+        lambda shown: (
+            shown["asking"]
+            and any(
+                (one.get("line"), one.get("stands")) == ("Right", "answered")
+                for one in cast("list[Json]", shown["talks"] or [])
+            )
+        ),
+        "refused words came back",
+    )
+    return told
+
+
+def test_a_talk_to_an_asking_cell_shows_its_question_and_answers_it_from_return(
     shell: Shell,
 ) -> None:
-    """A Talk opened from a link on a cell asking Joel shows its ask and why an answer isn't taken.
+    """A Talk opened from a link on a cell asking Joel shows its ask and answers it from Return.
 
     Joel opened a Talk on a cell asking him from the realm's map and found nothing of its
     question there, and nothing said after he typed (13:15 on 2026-11-24: "no feedback at
     all"). The Talk now leads with what it asks and the choices it takes; words naming none
-    are let go, the foot saying what it takes, and a choice goes to the agents daemon as Joel's
-    answer to the want he was shown. The daemon takes an answer only from the shell's own unit,
-    so no agent answers as him; the shell here runs outside it, so the daemon refuses, and the
-    Talk and the foot say why. An answer delivered is the desktop VM's (answered_in_place).
+    are let go, the foot saying what it takes, and a choice reaches its inbox as Joel's answer
+    to the want he was shown, then reads answered. The agents daemon takes that answer only
+    from the shell, so the same answer asked by this test's own process is refused, and no
+    agent answers as him (the daemon here takes the shell by its program, as package.nix's
+    `walks` says).
     """
     # As the agents daemon writes a time (clock.rs's text_of), so the want it names is known.
     since = datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
@@ -4565,23 +4813,60 @@ def test_a_talk_to_an_asking_cell_shows_its_question_and_why_its_answer_wasnt_ta
             ),
             "words that answered nothing came back",
         )
+        # The same answer from a program other than the shell, as an agent's would be, is
+        # refused before anything is looked up, and reaches no inbox.
+        theirs = {"ask": "answer", "address": "CHOOSE", "want": f"question@{since}"}
+        refused = {"error": {"code": "refused", "message": ONLY_THE_SHELL}}
+        assert rows_answer({**theirs, "value": "left"}) == refused
+        assert set(inbox.glob("*.json")) == steered, sorted(inbox.glob("*.json"))
         shell.send_chars("right")
         shell.launcher_until(lambda shown: shown["typed"] == "right")
         shell.send_key("ret")
-        shell.launcher_until(
-            lambda shown: (
-                ONLY_THE_SHELL in shown["footer"].replace("\xa0", " ")
-                and any(
-                    (one.get("line"), one.get("stands"))
-                    == ("Right", f"not delivered \u00b7 {ONLY_THE_SHELL}")
-                    for one in cast("list[Json]", shown["talks"] or [])
-                )
-            )
-        )
-        assert set(inbox.glob("*.json")) == steered, sorted(inbox.glob("*.json"))
+        told = answered_once(shell, inbox, steered)
+        said = json.loads(told[0].read_text())
+        assert (said["act"], said["value"], said["from"]) == ("answer", "right", "joel"), said
+        assert said["want"] == f"question@{since}", said
     finally:
         (PRESENCE / "choose.json").unlink(missing_ok=True)
         for one in set(inbox.glob("*.json")) - steered:
             one.unlink()
         shell.close_launcher()
         left_the_node("s-choose")
+
+
+def test_a_for_you_choice_walked_from_outside_is_told_to_the_walk_alone(shell: Shell) -> None:
+    """A walk choosing a For You answer is refused, told why, and says nothing in Joel's foot.
+
+    An answer goes as Joel's, so a walk is refused it; the refusal was also said in the foot,
+    where a terminal's walk would write over what Joel reads (round 000035 on #6796, F2).
+    """
+    since = datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    choices = [{"value": "left", "label": "Left"}, {"value": "right", "label": "Right"}]
+    ask = {"question": "Which way?", "choices": choices, "allowOther": False}
+    wants = {"kind": "question", "since": since, "said": "Which way?", "ask": ask}
+    lay("WALKAN", "Walked Quest", {"state": "listening", "busy": False, "wants": wants})
+    inbox = STEER / "WALKAN"
+    inbox.mkdir(parents=True, exist_ok=True)
+    steered = set(inbox.glob("*.json"))
+    walked_words = "what Walked Quest asks is answered only from your own Return in the launcher"
+    try:
+        in_for_yous_agents(shell)
+        shell.launcher_until(lambda shown: "Walked Quest" in shown["rows"])
+        shell.close_launcher()
+        walked = {"steps": [*AGENTS_ASKING, "Walked Quest", "Left"], "sure": True}
+        did = json.loads(shell.as_account(shell.ipc("doing", shlex.quote(json.dumps(walked)))))
+        assert did.get("refused") == walked_words, did
+        shell.close_launcher()
+        # The next opening's foot says nothing of it, and nothing reached the session.
+        in_for_yous_agents(shell)
+        shell.launcher_until(lambda shown: "Walked Quest" in shown["rows"])
+        footer = shell.showing()["footer"].replace("\xa0", " ")
+        assert "only from your own Return" not in footer, footer
+        time.sleep(LINK_QUIET)
+        assert set(inbox.glob("*.json")) == steered, sorted(inbox.glob("*.json"))
+    finally:
+        (PRESENCE / "walkan.json").unlink(missing_ok=True)
+        for one in set(inbox.glob("*.json")) - steered:
+            one.unlink()
+        shell.close_launcher()
+        left_the_node("s-walkan")

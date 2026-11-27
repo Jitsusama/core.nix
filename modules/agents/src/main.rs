@@ -56,6 +56,7 @@ use agents::feedback::{self, Landings};
 use agents::inputs::Inputs;
 use agents::kept_places::KeptPlaces;
 use agents::landed::Reading;
+use agents::offers;
 use agents::places;
 use agents::reopen::Kept;
 use agents::row::Words;
@@ -71,6 +72,11 @@ use agents::wants::{self, PUT_OFF_FOR_MS, PutOff, Wants};
 use daemon_serve::asks::Domain;
 use daemon_serve::serve::{self, Own, Shared};
 use serde_json::{Value, json};
+
+// Which asks are Joel's acts, which the shell's check holds and what a
+// refused one is told, in a file of their own beside this one.
+mod joels_acts;
+use joels_acts::{answered, held_to_the_shell, joels, not_as_joel};
 
 /// The daemon as the launcher knows it: Agents' ready rows, how its
 /// sessions stand together, each session's drawer, and the sessions
@@ -197,19 +203,11 @@ fn args(args: &[String]) -> Result<Args, Failure> {
     })
 }
 
-/// What the daemon answers of its own, beside its records: what the shell
-/// says, handed `told` to the daemon's loop, and a row's act, done by
-/// asking the node at `node`, refused where there's none, and a line Joel
-/// tells whoever `routes` says hears it. Joel's feedback on one of
-/// `landings` is kept in the file at `kept`. Not Now puts off the one
-/// of `wants` its session asks.
-fn own(
-    told: mpsc::Sender<Heard>,
-    node: Option<PathBuf>,
-    routes: Routes,
-    (landings, wants): (Landings, Wants),
-    kept: PathBuf,
-) -> Own {
+/// What the shell says for Joel, beside what the node takes as his
+/// ([`as_joel`]), each answered only for the shell, as it says what he
+/// sees and read: handed `told` to the daemon's loop, and Not Now puts
+/// off the one of `wants` its session asks.
+fn own(told: mpsc::Sender<Heard>, wants: Wants) -> Own {
     Box::new(move |said| {
         // The shell says whether the screen is shared, as Quiet.qml knows
         // it from niri's casts, so no amount is served while it is.
@@ -264,16 +262,47 @@ fn own(
             return Some(json!({"read": count}));
         }
         // Joel opens a session's drawer, by its address, so he's read what
-        // it answered him, if anything.
+        // it answered him, if anything, before `seen`, when the shell says
+        // he opened it; one not saying is taken as now.
         if said["ask"] == "heard" {
             let Some(address) = said["address"].as_str().filter(|one| !one.is_empty()) else {
                 return Some(json!({"error": {"code": "not-an-ask",
                     "message": "a heard names no `address`"}}));
             };
             let now = i64::try_from(now).unwrap_or(0);
-            let _ = told.send(Heard::Opened(address.to_owned(), now));
+            let seen = said["seen"].as_i64().unwrap_or(now);
+            let _ = told.send(Heard::Opened(address.to_owned(), now, seen));
             return Some(json!({"heard": address}));
         }
+        // Joel's Not Now on the ask a session's row showed him, refused
+        // once it asks anew: kept for an hour, which the want's record
+        // says, ringing for nothing.
+        wants.put_off(said).map(|named| match named {
+            Ok(known) => {
+                let _ = told.send(Heard::PutOffWant(known.clone(), now));
+                json!({"putOff": known, "forMs": u64::try_from(PUT_OFF_FOR_MS).unwrap_or(0)})
+            }
+            Err(why) => json!({"error": {"code": "not-an-ask", "message": why}}),
+        })
+    })
+}
+
+/// What Joel does through the daemon that the node takes as his, answered
+/// only for the shell ([`for_the_shell_alone`]): a row's act, done by
+/// asking the node at `node`, refused where there's none, a line he
+/// tells whoever `routes` says hears it, and his feedback on one of
+/// `landings`, kept in the file at `kept`, whose talk is handed `told`.
+fn as_joel(
+    told: mpsc::Sender<Heard>,
+    node: Option<PathBuf>,
+    routes: Routes,
+    landings: Landings,
+    kept: PathBuf,
+) -> Own {
+    Box::new(move |said| {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |since| since.as_millis());
         if said["ask"] == "tell" {
             return Some(tell::answer(said, &routes, node.as_deref(), now));
         }
@@ -287,18 +316,6 @@ fn own(
             }
             return Some(answer);
         }
-        // Joel's Not Now on the ask a session's row showed him, refused
-        // once it asks anew: kept for an hour, which the want's record
-        // says, ringing for nothing.
-        if let Some(named) = wants.put_off(said) {
-            return Some(match named {
-                Ok(known) => {
-                    let _ = told.send(Heard::PutOffWant(known.clone(), now));
-                    json!({"putOff": known, "forMs": u64::try_from(PUT_OFF_FOR_MS).unwrap_or(0)})
-                }
-                Err(why) => json!({"error": {"code": "not-an-ask", "message": why}}),
-            });
-        }
         acts::steer_of(said, now).map(|steer| match &node {
             Some(node) => acts::done(steer, node),
             None => json!({"error": {"code": "unsteered",
@@ -307,14 +324,19 @@ fn own(
     })
 }
 
-/// Start New Work, where it can begin, Let Them Start and an answer to
-/// what a session asks, asked of `node` only for the shell, told apart by
-/// the connection each came on, so no agent lifts the stop Joel put on
-/// their starts, reads his places nor answers one of `wants` as him; what
-/// the node says of the starts once they're let start is `stood` at once,
-/// rather than at the next poll. Feedback, a sprout, the places, letting
-/// them start and an answer wait on the node, so none holds up an ask
-/// after it. Each start the shell names by a
+/// Start New Work, where it can begin, whether the cloud can take it, Let
+/// Them Start, an answer to what a session asks and all Joel's (`as_joel`: a row's act, a line he
+/// tells, his feedback, and what the shell says he saw, read, put off or
+/// forgot), asked of `node` only for the shell, told apart by the
+/// connection each came on, so no agent lifts the stop Joel put on their
+/// starts, reads his places, answers one of `wants`, steers, tells or
+/// talks to a session as him, nor hides from him what he'd see; what the
+/// node says of the starts once they're let start is `stood` at once,
+/// rather than at the next poll. Each but which are kept asks the shell's
+/// systemd who the shell is, the first time a shell asks (asker.rs's
+/// `TAKEN`); Joel's acts are answered in the order he did them, and the
+/// rest of [`SLOW`] on threads of their own, holding up no ask after them. Each
+/// start the shell names by a
 /// token is kept on disk before the node is asked, its end before the
 /// shell hears it, and its told before that's answered, until the shell
 /// says it told Joel its end (starts.rs), so neither a restart of the
@@ -326,19 +348,25 @@ fn for_the_shell_alone(
     keeping: Keeping,
     told: mpsc::Sender<Heard>,
     (stood, words): (Arc<starts_stopped::Told>, Said),
+    as_joel: Own,
 ) {
     shared.peered(
-        &[
-            sprout::ASK,
-            places::ASK,
-            starts::TOLD,
-            starts::KEPT,
-            starts_stopped::ASK,
-            wants::ASK,
-        ],
+        &SHELLS_ALONE,
         Box::new(move |said, stream| {
+            if held_to_the_shell(said) {
+                return match asker::the_shell(stream) {
+                    Ok(()) => as_joel(said),
+                    Err(why) => Some(not_as_joel(&why, said)),
+                };
+            }
+            if joels(said) {
+                return as_joel(said);
+            }
             if said["ask"] == places::ASK {
                 return Some(places::answer(|| asker::the_shell(stream), node.as_deref()));
+            }
+            if said["ask"] == offers::ASK {
+                return Some(offers::answer(|| asker::the_shell(stream), node.as_deref()));
             }
             if said["ask"] == wants::ASK {
                 let asker = asker::the_shell(stream);
@@ -394,66 +422,57 @@ fn for_the_shell_alone(
             Some(answer)
         }),
     );
-    // Told and an answer ask the shell's systemd who the shell is, as a
-    // sprout does. An answer waits on the node up to acts.rs's PATIENCE
-    // besides, so queued behind the shell's other acts it could come back
-    // after the Talk lets a second go (TalkAnswers.js's SENT_STANDS_MS).
-    shared.slow(&[
-        "feedback",
-        sprout::ASK,
-        places::ASK,
-        starts::TOLD,
-        starts_stopped::ASK,
-        wants::ASK,
-    ]);
+    shared.slow(&SLOW);
 }
 
-/// What an answer the shell's check refused is told, as Let Them Start
-/// says its own. Joel reads it where his own Return was refused because
-/// the check couldn't be made, so it says what the daemon couldn't tell
-/// rather than who may answer.
-const ONLY_THE_SHELL: &str =
-    "the agents daemon takes an answer only from the launcher, and couldn't tell this came from it";
+/// Every ask the daemon answers only as it's told who asked
+/// (`for_the_shell_alone`).
+const SHELLS_ALONE: [&str; 22] = [
+    sprout::ASK,
+    places::ASK,
+    offers::ASK,
+    starts::TOLD,
+    starts::KEPT,
+    starts_stopped::ASK,
+    wants::ASK,
+    "pause",
+    "resume",
+    "stop",
+    "close",
+    "wake",
+    "talk",
+    "tell",
+    "feedback",
+    "not-now",
+    "put-off",
+    "forget",
+    "read",
+    "heard",
+    "sharing",
+    "keep-places",
+];
 
-/// The most of a refused answer's `want` or `address` its journal line
-/// says, its quoted JSON cut short: a want's id and an address are far
-/// shorter.
-const NAMED_AT_MOST: usize = 120;
-
-/// Joel's answer to one of `wants`, steered through `node` only where
-/// `asker` says the shell asked it: the node takes it as his, so an
-/// agent answering its own ask through this daemon would answer as him
-/// (ISXEG8's R-agent-answers-own-ask).
-fn answered(asker: Result<(), String>, wants: &Wants, said: &Value, node: Option<&Path>) -> Value {
-    if let Err(why) = asker {
-        // Why it was refused is journalled with what it named, beside the
-        // line asker.rs writes of who asked, so an agent answering its own
-        // ask can be traced to it. What it named is the asker's own, cut
-        // short, so no ask writes more than a line.
-        let named = |value: &Value| {
-            value
-                .to_string()
-                .chars()
-                .take(NAMED_AT_MOST)
-                .collect::<String>()
-        };
-        let why: &str = if why == asker::REFUSED {
-            "who asked isn't the shell"
-        } else {
-            why.as_str()
-        };
-        eprintln!(
-            "agents: an answer to {} for {} wasn't taken: {why}",
-            named(&said["want"]),
-            named(&said["address"])
-        );
-        return json!({"error": {"code": "refused", "message": ONLY_THE_SHELL}});
-    }
-    // Only an answer reaches here, so the wants always have one to give.
-    wants
-        .answer(said, node, clock::now_ms())
-        .unwrap_or_else(|| json!({"error": {"code": "not-an-ask", "message": "not an answer"}}))
-}
+/// Which of [`SHELLS_ALONE`] are answered each on a thread of its own: a
+/// start, which waits on the node a long while, its places, whether the
+/// cloud can take it, a start told,
+/// an answer, which waits on the node up to acts.rs's `PATIENCE` and so
+/// queued could come back after the Talk lets a second go
+/// (TalkAnswers.js's `SENT_STANDS_MS`), and feedback, which waits on the
+/// quest it goes to. Joel's other acts are answered in the order the
+/// shell asks them, on its connection's thread, as each but feedback was
+/// before the shell's check: a share's start and end, or the whole of his
+/// windows' places as each is kept, answered apart could land out of
+/// order, and the daemon keep the one he'd left (round 000056 on #6796,
+/// F16 and F30).
+const SLOW: [&str; 7] = [
+    sprout::ASK,
+    places::ASK,
+    offers::ASK,
+    starts::TOLD,
+    starts_stopped::ASK,
+    wants::ASK,
+    "feedback",
+];
 
 /// Follows the node: every kind of record it holds that Agents reads.
 fn follow_node(node: &Path, to: &mpsc::Sender<Heard>) {
@@ -542,6 +561,10 @@ fn started(words: Words, paths: &Paths, starts: Keeping) -> Inputs {
             clock::now_ms(),
         ),
         starts,
+        // No amount is said until the shell says the screen isn't shared,
+        // as it does once it reaches the daemon, so a share begun while the
+        // daemon was down shows none (round 000035 on #6796, F20).
+        sharing: true,
         ..Inputs::default()
     }
 }
@@ -585,14 +608,18 @@ fn serve(args: Args) -> Result<(), Failure> {
     // Kept beside what Joel has read, never rewritten, for the daily loop
     // that reads on from where it left off (80ECO2, 2026-11-11).
     let kept = args.landed.with_file_name(FEEDBACK);
-    let own = own(
+    let acts = as_joel(
         to.clone(),
         args.node.clone(),
         routes.clone(),
-        (landings.clone(), wants.clone()),
+        landings.clone(),
         kept,
     );
-    let shared = Shared::new(DOMAIN, own);
+    let says = own(to.clone(), wants.clone());
+    let as_joel: Own = Box::new(move |said| says(said).or_else(|| acts(said)));
+    // Every ask of its own is Joel's, answered only for the shell
+    // (`for_the_shell_alone`), so none is left to answer anyone else.
+    let shared = Shared::new(DOMAIN, Box::new(|_| None));
     // Read before the socket listens, so a shell's first ask of which are
     // kept is answered from them, though no record is served yet.
     let keeping = Keeping::read(&args.kept.with_file_name(starts::FILE), clock::now_ms());
@@ -602,6 +629,7 @@ fn serve(args: Args) -> Result<(), Failure> {
         keeping.clone(),
         to.clone(),
         (Arc::clone(&starts_told), starts_said),
+        as_joel,
     );
     match serve::listen(&args.socket) {
         Ok(listener) => serve::accept(Arc::clone(&shared), listener),

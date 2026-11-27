@@ -56,10 +56,20 @@ Scope {
             Qt.callLater(root.follow);
     }
 
-    // What a notice of a piece says, as one string to compare.
+    // What a notice of a piece says, as one string to compare: only the acts it offers, so a
+    // hidden act renamed, as Tokens' Pause is for each top spender, says nothing again
+    // (round 000036 on #6796, F120 and F144).
     function words(piece) {
         return JSON.stringify([root.summary(piece), root.message(piece)]
-            .concat(piece.actions.map(root.offered)));
+            .concat(root.offeredActs(piece).map(root.offered)));
+    }
+
+    // The acts a piece's notice offers. One only Joel may choose (`joelsOnly`, as Tokens'
+    // Pause) isn't offered: the notices daemon takes an action's invoke from any process of
+    // the account, so its choice can't be told from his click (round 000011 on #6796, F96).
+    // It stays on Now's own row, refused there to a walk.
+    function offeredActs(piece) {
+        return piece.actions.filter(action => !action.joelsOnly);
     }
 
     // What a piece's notice says as its summary: its hint, unless it
@@ -195,7 +205,7 @@ Scope {
     function say(fact, was, raising) {
         const piece = fact.piece;
         const mark = fact.entry.mark;
-        const actions = piece.actions;
+        const actions = root.offeredActs(piece);
         const asking = notice.createObject(root, {
             actions,
             mark,

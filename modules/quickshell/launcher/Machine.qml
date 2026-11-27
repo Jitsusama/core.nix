@@ -57,6 +57,10 @@
 // now as soon as it can; each answer here is asked again as they come.
 // With the daemon down, each thing stays, dimmed, saying it isn't
 // answering.
+//
+// Long because the disk guard's Space and What's Filling It, with each
+// holder's acts, are still made here until the guards serve their rows,
+// and they read the same guard and sessions as the answers above.
 import qs
 import Quickshell
 import QtQuick
@@ -483,6 +487,8 @@ Provider {
             const talking = agents?.talking(session.address, session.title) ?? null;
             rows.push(act("talk", {
                 key: `verb:disk:talk:${holder.path}:${session.address}`,
+                // Its words go to the session as Joel's, so a walk is refused it.
+                joelsOnly: true,
                 side: sided.map(item => item.said).join(" \u00b7 "),
                 sideItems: sided,
                 // The ask names who it's told to (VKCF3Z, 2026-11-08).

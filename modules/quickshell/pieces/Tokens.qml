@@ -69,6 +69,8 @@ Piece {
         return session === undefined ? null : {
             glyph: Words.glyph("verb:agent:pause"),
             name: `${Words.name("verb:agent:pause")} ${session.title}`,
+            // It steers the session as Joel, so a walk is refused it.
+            joelsOnly: true,
             run: () => Sessions.steer(session.address, { act: "pause" })
         };
     }).filter(action => action !== null)

@@ -4,8 +4,8 @@
 // case is proven in node, and a reading the page couldn't make sense of is
 // said rather than drawn as if it were whole.
 
-import type { Held } from "../../local-sites/kit/records.ts";
-import { object, text, texts } from "../../local-sites/kit/records.ts";
+import type { Fields, Held } from "../../local-sites/kit/records.ts";
+import { isObject, object, text, texts } from "../../local-sites/kit/records.ts";
 import { copyable, type Ties, tiesOf } from "./ties.ts";
 
 /** How a part or thing stands, as the daemon words it. */
@@ -18,10 +18,22 @@ interface Thing {
   readonly says: string;
   /** What in it is worth a look, worded for a side, worst first. */
   readonly side: readonly string[];
+  /**
+   * Every look in it, worst first, each with why it matters, as the daemon
+   * judged it; none from a daemon too old to say them, which leaves the
+   * side to say what is worth a look.
+   */
+  readonly looks: readonly ThingLook[] | undefined;
   /** Its home's address from the sites' root, when its home publishes one. */
   readonly address: string | undefined;
   /** What ties it to the other parts, a machine's (ties.ts). */
   readonly ties: Ties;
+}
+
+/** One look in a thing: its words for a side, and why it matters to Joel. */
+interface ThingLook {
+  readonly side: string;
+  readonly matters: string;
 }
 
 /** The ways deeper into a part. */
@@ -128,6 +140,27 @@ function capital(said: string): string {
 }
 
 /**
+ * A thing's looks, or none when its record carries no list of them, or one
+ * with a look missing its words: its side then says them all, as from a
+ * daemon that lists none, rather than a list that leaves one out. A look
+ * missing its why is kept with none.
+ */
+function looksOf(record: Fields): readonly ThingLook[] | undefined {
+  const looks: unknown = record["looks"];
+  if (!Array.isArray(looks)) {
+    return undefined;
+  }
+  const read = looks.flatMap((look: unknown) => {
+    const side = isObject(look) ? text(look, "side") : undefined;
+    if (!isObject(look) || side === undefined || side === "") {
+      return [];
+    }
+    return [{ side, matters: text(look, "matters") ?? "" }];
+  });
+  return read.length === looks.length ? read : undefined;
+}
+
+/**
  * The thing `key` names, read from its record. A thing not told yet is left
  * out unsaid: its part and its record are two watches, so a new machine can
  * reach its part one push before its own record arrives.
@@ -142,11 +175,29 @@ function thingOf(held: Held, key: string, unread: string[]): Thing | undefined {
     unread.push(`${key} has no name`);
     return undefined;
   }
+  const sided = texts(record, "side");
+  const listed = looksOf(record);
+  // A list and a side that disagree on whether there is anything to look at
+  // are a record caught between its two fields, either way round, so the side
+  // says them, as the machine's health is read beside it. A side the page
+  // can't read is no tear: the list is then all there is to go by.
+  const torn =
+    listed !== undefined && sided !== undefined && (listed.length === 0) !== (sided.length === 0);
+  const sent = record["looks"] !== undefined && record["looks"] !== null;
+  if (sent && (listed === undefined || torn)) {
+    unread.push(`${key}'s looks, so the page goes by its side alone, with no whys`);
+  }
+  // A side sent but unreadable is said too, since beside an empty list a bad
+  // machine would otherwise read as having nothing worth a look.
+  if (record["side"] !== undefined && record["side"] !== null && sided === undefined) {
+    unread.push(`${key}'s side, so the page goes by its looks alone`);
+  }
   return {
     name,
     health: healthOf(text(record, "health")),
     says: text(record, "says") ?? "",
-    side: texts(record, "side") ?? [],
+    side: sided ?? [],
+    looks: torn ? undefined : listed,
     address: text(record, "address"),
     ties: tiesOf(record["ties"]),
   };
@@ -221,5 +272,5 @@ function allTold(
   });
 }
 
-export type { Deeper, Health, Part, System, Thing };
+export type { Deeper, Health, Part, System, Thing, ThingLook };
 export { allTold, capital, named, numbered, systemOf, WORDS };

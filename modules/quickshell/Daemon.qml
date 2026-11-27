@@ -502,6 +502,7 @@ Scope {
             onConnectionStateChanged: {
                 if (connected) {
                     daemon.refusals = 0;
+                    daemon.failedWith = null;
                     daemon.wire = socket;
                     daemon.greet();
                 } else {
@@ -510,6 +511,7 @@ Scope {
                 }
             }
             onError: failed => {
+                daemon.failedWith = failed;
                 daemon.gone();
                 if (failed !== daemon.serverNotFound || daemon.refusals < daemon.missingTries)
                     daemon.tryAgain();
@@ -629,6 +631,11 @@ Scope {
     // How many times it's been refused since it last answered.
     property int refusals: 0
 
+    // The QLocalSocket error its link's last try failed with, null since it last connected, so a
+    // check that fails waiting on it says whether nothing was there or something refused. Null
+    // rather than -1, which is Qt's UnknownSocketError.
+    property var failedWith: null
+
     // How long to wait before trying again, after so many refusals.
     function waitAfter(refused) {
         return Math.min(2000 * 2 ** refused, 60000);
@@ -649,5 +656,69 @@ Scope {
 
         interval: 2000
         onTriggered: daemon.connectAgain()
+    }
+
+    // Asks what's lost if it's refused for now: the agents daemon refuses an act it does as
+    // Joel when it can't yet tell the shell asked, as while its user manager is slow through
+    // a switch, and nothing else would say so or send it again, so his Forget It or a kept
+    // place went undone (round 000038 on #6796, F90). Refused (`code: refused`), or given no
+    // answer as the daemon goes with a switch's restart (round 000011, F95 and F110), it's
+    // asked again a little later, as `said` gives it then, so a share's end or a place kept
+    // since goes rather than the one overtaken, at most `refusedTries` times in all. A try
+    // falling due while nothing answers waits for the connection rather than spend itself.
+    function askTillTaken(said) {
+        askedTillTaken(said, refusedTries);
+    }
+    function askedTillTaken(said, tries) {
+        const asked = typeof said === "function" ? said() : said;
+        ask(asked, answer => {
+            const unanswered = answer === null || answer === undefined;
+            if (!unanswered && answer?.error?.code !== "refused")
+                return;
+            if (tries <= 1) {
+                const why = unanswered ? "no answer" : answer.error.message;
+                console.warn(`${socket}: ${asked.ask} still not taken, so asked no more: ${why}`);
+                return;
+            }
+            // One given as a function says its latest when asked, so one try of each such ask
+            // waits, the latest, rather than ten kept places each paying the daemon's wait
+            // (round 000011, F111); one given as words names what it acts on, so each waits.
+            const alike = one => typeof said === "function" && typeof one.said === "function"
+                && one.ask === asked.ask;
+            // The one kept takes the most tries left of those it stands for, so a fresh ask
+            // isn't given up on with an older one's few (round 000036 on #6796, F139).
+            const left = refusedAgain.filter(alike).reduce((most, one) => Math.max(most, one.tries),
+                tries - 1);
+            refusedAgain = refusedAgain.filter(one => !alike(one))
+                .concat([{ said: said, ask: asked.ask, tries: left }]);
+            if (!askAgain.running)
+                askAgain.start();
+        });
+    }
+    // Past the agents daemon's own wait on its manager (asker.rs's MANAGER_PATIENCE, 3 s),
+    // so each try is a fresh look, and five of them outlast a switch's restart.
+    readonly property int refusedTries: 5
+    property var refusedAgain: []
+
+    Timer {
+        id: askAgain
+
+        interval: 4000
+        onTriggered: {
+            // Kept for the connection's return, which starts this again.
+            if (daemon.wire === null)
+                return;
+            const due = daemon.refusedAgain;
+            daemon.refusedAgain = [];
+            for (const one of due)
+                daemon.askedTillTaken(one.said, one.tries);
+        }
+    }
+
+    // A connection back asks again what waited on it, past the daemon's wait on its manager
+    // as any try is.
+    onWireChanged: {
+        if (wire !== null && refusedAgain.length > 0 && !askAgain.running)
+            askAgain.start();
     }
 }

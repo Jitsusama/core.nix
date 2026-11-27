@@ -312,6 +312,34 @@ span.mark {
   overflow-wrap: anywhere;
 }
 
+/* Why a look matters and its one act, under its words in their column, so
+   the reason reads as the look's and the names column stays clear. Quieter
+   than the words, since the look is what's read first and the why after. */
+.looks .why {
+  display: flex;
+  flex-wrap: wrap;
+  grid-column: 3;
+  gap: 0 var(--items);
+  align-items: baseline;
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--step-small);
+  line-height: 1.5;
+}
+
+/* A link, not a button: eight of them under eight looks would outshout the
+   looks. Its target is still a thumb's, 44 pixels tall (WCAG 2.5.5). */
+.looks .launch {
+  display: inline-flex;
+  align-items: center;
+  min-block-size: 44px;
+  overflow-wrap: anywhere;
+  color: var(--strong);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+}
+
 .look:hover .words {
   text-decoration: underline;
   text-decoration-thickness: 1px;

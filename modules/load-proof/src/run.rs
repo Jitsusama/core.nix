@@ -592,7 +592,8 @@ mod tests {
             !fs::metadata(to.join("src/main.rs"))
                 .expect("its mode")
                 .permissions()
-                .readonly()
+                .readonly(),
+            "the copy kept the store's read-only mode"
         );
         let _ = fs::remove_dir_all(&scratch);
     }
@@ -629,10 +630,19 @@ mod tests {
             steps,
             stopped_under,
         };
-        assert!(run(vec![step(4, &[]), step(8, &[])], None).passed());
+        assert!(
+            run(vec![step(4, &[]), step(8, &[])], None).passed(),
+            "a run whose steps all passed didn't pass"
+        );
         let failed = run(vec![step(4, &[]), step(8, &[save])], None);
-        assert!(!failed.passed());
-        assert_eq!(failed.first_failed(), Some(8));
-        assert!(!run(vec![step(4, &[])], Some(8 * GIB)).passed());
+        assert_eq!(
+            (failed.passed(), failed.first_failed()),
+            (false, Some(8)),
+            "a run with a failed save wasn't failed at its step"
+        );
+        assert!(
+            !run(vec![step(4, &[])], Some(8 * GIB)).passed(),
+            "a run stopped by memory pressure passed"
+        );
     }
 }

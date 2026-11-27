@@ -1,32 +1,49 @@
 //! Who asked, for an ask only the shell may make: Start New Work, which
-//! begins new work as Joel (sprout.rs), and an answer, which the node
-//! takes as his (main.rs's answered). The agents daemon's socket takes
-//! any process of Joel's account, an agent's command among them, and the
-//! node judges the daemon as Joel, so a sprout an agent could ask here
-//! would start work with more than the agent's own reach, and an answer
-//! would answer its own ask as him. The kernel names the process at the
-//! other end by pidfd (`SO_PEERPIDFD`), never a pid an ask says, and its
-//! cgroup says which unit runs it: only the shell's unit, under this
-//! daemon's own account, and only the unit's main process, as its manager
-//! names it, running quickshell's own program. Other programs run in that
-//! unit too (pi-ask while Super+S talks, the shell's helpers, their
-//! children and orphans), and any of them could run a program named
-//! quickshell, so the program alone is a second line, as pineapple's
-//! peer.rs holds it (ISXEG8 on #5456). The shell in turn starts new work
-//! and answers only from Joel's own Return, never a walk from outside
-//! (Agents.qml's sprout and answerKept, Now.qml's answerLook).
+//! begins new work as Joel (sprout.rs), and an answer, a row's act, a
+//! line told or feedback, which the node takes as his (main.rs's
+//! answered and `as_joel`). The agents daemon's socket takes any process
+//! of Joel's account, an agent's command among them, and the node judges
+//! the daemon as Joel, so a sprout an agent could ask here would start
+//! work with more than the agent's own reach, an answer would answer its
+//! own ask as him, and an act would steer a session as him. The kernel
+//! names the process at the other end by pidfd (`SO_PEERPIDFD`), never a
+//! pid an ask says, and its cgroup says which unit runs it: only the
+//! shell's unit, under this daemon's own account, and only the unit's
+//! main process, as its manager names it, running quickshell's own
+//! program. Other programs run in that unit too (pi-ask while Super+S
+//! talks, the shell's helpers, their children and orphans), and any of
+//! them could run a program named quickshell, so the program alone is a
+//! second line, as pineapple's peer.rs holds it (ISXEG8 on #5456).
+//! The shell in turn starts new work and answers only from Joel's own
+//! Return, never a walk from outside (Agents.qml's sprout and
+//! answerKept, Now.qml's answerLook).
 //!
 //! What this holds to: a fenced command can't move itself out of its own
 //! cgroup, but an unfenced process of Joel's could write itself into the
-//! shell's, as any process of his may steer his sessions here already.
+//! shell's.
 //! The read is jobs-broker's (../jobs-broker/src/peer.rs), which needs
 //! the pidfd for more than this does.
+//!
+//! The niri checks' daemon alone is built with the `walks` feature
+//! (package.nix's `walks`), whose judge takes the shell by its program
+//! alone: there the shell runs as a plain process in a build sandbox,
+//! with no manager, no unit and, on a kernel before 6.5, no pidfd peer.
+//! No installed daemon is built with it.
+
+#![cfg_attr(
+    feature = "walks",
+    expect(
+        dead_code,
+        reason = "the installed judge's reads go unused in the walks' build"
+    )
+)]
 
 use std::io::{self, Read};
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::sync::{Mutex, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -51,9 +68,16 @@ const SO_PEERPIDFD: libc::c_int = 77;
 ///
 /// Why: it isn't the shell's, it ended before its cgroup could be known
 /// to be its own, or the kernel names no peer by pidfd.
+#[cfg(not(feature = "walks"))]
 pub fn the_shell(stream: &UnixStream) -> Result<(), String> {
     let untold = |why: io::Error| format!("who asked can't be told: {why}");
     let (pidfd, seen) = peer_of(stream).map_err(untold)?;
+    // The one taken is looked at before the asker's own pidfd, so an asker
+    // with its pid is that same process: both run at once, and no two
+    // running processes share a pid.
+    if taken_already(taken().as_ref(), seen.pid) && alive(&pidfd) {
+        return Ok(());
+    }
     // SAFETY: getuid has no failure and touches no memory.
     let uid = unsafe { libc::getuid() };
     if !takes(&seen, uid, shells_main_pid).map_err(untold)? {
@@ -73,9 +97,83 @@ pub fn the_shell(stream: &UnixStream) -> Result<(), String> {
     }
     // Read last, so a pid taken again since any read above can't answer.
     if alive(&pidfd) {
+        *taken() = Some(Taken {
+            pidfd,
+            pid: seen.pid,
+        });
         Ok(())
     } else {
         Err(untold(gone()))
+    }
+}
+
+/// The process last taken for the shell, by a pidfd held on it, so its
+/// later asks are taken without asking its manager again. Asking it for
+/// each made a slow manager hold up every act of Joel's, and answering
+/// them each on a thread of its own let two land out of order, a share's
+/// end before its start (round 000056 on #6796, F16 and F30). Only the
+/// last is kept: a shell started since is taken in its place once it
+/// asks, and one that ended is never taken again.
+static TAKEN: Mutex<Option<Taken>> = Mutex::new(None);
+
+/// A process taken for the shell: its pidfd, and the pid it had then.
+struct Taken {
+    pidfd: OwnedFd,
+    pid: u32,
+}
+
+fn taken() -> std::sync::MutexGuard<'static, Option<Taken>> {
+    TAKEN.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// Whether `pid` is still the process `taken` stands for: it has that
+/// pid and runs yet, so the pid can't since have gone to another.
+fn taken_already(taken: Option<&Taken>, pid: u32) -> bool {
+    taken.is_some_and(|one| one.pid == pid && alive(&one.pidfd))
+}
+
+/// Whether the process at the other end of `stream` runs quickshell's
+/// program, as the walks' shell does and their own test process doesn't:
+/// the kernel names it by the pid it gives the socket, read once, which
+/// is all a sandbox on a kernel before 6.5 can tell.
+///
+/// # Errors
+///
+/// Why: it isn't the shell's program, or it can't be read.
+#[cfg(feature = "walks")]
+pub fn the_shell(stream: &UnixStream) -> Result<(), String> {
+    let untold = |why: io::Error| format!("who asked can't be told: {why}");
+    let mut said = libc::ucred {
+        pid: 0,
+        uid: 0,
+        gid: 0,
+    };
+    let mut length = libc::socklen_t::try_from(size_of::<libc::ucred>())
+        .map_err(|_| untold(io::Error::from(io::ErrorKind::InvalidInput)))?;
+    // SAFETY: SO_PEERCRED writes one ucred into the struct of the size
+    // `length` gives, and the socket is open for the call.
+    let read = unsafe {
+        libc::getsockopt(
+            stream.as_raw_fd(),
+            libc::SOL_SOCKET,
+            libc::SO_PEERCRED,
+            (&raw mut said).cast(),
+            &raw mut length,
+        )
+    };
+    if read != 0 {
+        return Err(untold(io::Error::last_os_error()));
+    }
+    // 0 for a peer in no namespace of this daemon's.
+    let pid = said.pid;
+    if pid <= 0 {
+        return Err(untold(gone()));
+    }
+    let exe = std::fs::read_link(format!("/proc/{pid}/exe")).map_err(untold)?;
+    if the_shells_program(&exe.to_string_lossy()) {
+        Ok(())
+    } else {
+        Err(REFUSED.to_owned())
     }
 }
 
@@ -460,6 +558,40 @@ mod tests {
             !Path::new(&format!("/proc/{}", pid.trim())).exists(),
             "the wedged manager {} still runs",
             pid.trim()
+        );
+    }
+
+    /// A pidfd on the process `pid`, as the kernel opens one for it.
+    fn pidfd_of(pid: u32) -> OwnedFd {
+        let pid = libc::pid_t::try_from(pid).expect("a pid");
+        // SAFETY: pidfd_open takes a pid and no flags, and gives a new
+        // descriptor or -1.
+        let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid, 0) };
+        assert!(fd >= 0, "pidfd_open: {}", io::Error::last_os_error());
+        // SAFETY: the kernel just handed this descriptor to this process,
+        // and nothing else holds it.
+        unsafe { OwnedFd::from_raw_fd(libc::c_int::try_from(fd).expect("a descriptor")) }
+    }
+
+    #[test]
+    fn a_process_taken_is_taken_again_only_while_it_runs() {
+        let mut shell = Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .expect("sleep starts");
+        let pid = shell.id();
+        let taken = Some(Taken {
+            pidfd: pidfd_of(pid),
+            pid,
+        });
+        assert!(taken_already(taken.as_ref(), pid), "the one taken, running");
+        assert!(!taken_already(taken.as_ref(), pid + 1), "another pid");
+        assert!(!taken_already(None, pid), "none taken yet");
+        shell.kill().expect("it's killed");
+        shell.wait().expect("it's reaped");
+        assert!(
+            !taken_already(taken.as_ref(), pid),
+            "once it ends, its pid could go to anyone"
         );
     }
 

@@ -20,6 +20,7 @@
       "empty": "No sessions running.",
       "none": "none running",
       "said": {
+        "actWalked": "a session is steered only from your own Return in the launcher",
         "today": "{spent} today",
         "needs": "needs you",
         "needCount": "{count} need you",
@@ -953,7 +954,7 @@
       "id": "displays",
       "once": ["Displays", "Monitors"],
       "name": "Screens",
-      "term": "Desktop/screen",
+      "term": "Machine/screen",
       "noun": "screens",
       "glyph": "display",
       "ask": "which screen?",

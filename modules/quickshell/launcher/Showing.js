@@ -34,9 +34,12 @@ const FIRST = /^./;
 // The row a step names among `rows`: the one whose steady id it is
 // (`idOf`), else whose name it is, else the only one whose name starts
 // with it. Gives { row }, or { near }, the names it might have meant,
-// nearest first, where it names none or starts more than one.
+// nearest first, where it names none or starts more than one. A heading
+// is never one, as the selection never rests on one (Headings.js): For
+// You's Agents heads each cell's rows with its name, which a step naming
+// the cell's own row would otherwise find first.
 function step(rows, said, idOf) {
-    const named = rows.filter(row => (row?.name ?? "") !== "");
+    const named = rows.filter(row => (row?.name ?? "") !== "" && row?.heading !== true);
     const byId = named.find(row => idOf(row) === said);
     if (byId) {
         return { row: byId };

@@ -2,6 +2,7 @@ use std::io::{BufRead, BufReader, ErrorKind, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::thread;
 
+use super::joels_acts::{AS_JOEL, NAMED_AT_MOST, NOT_AS_JOEL, ONLY_THE_SHELL, named};
 use super::*;
 
 /// The daemon's own socket, served as `serve` serves it, refuses a
@@ -31,6 +32,7 @@ fn the_daemons_socket_takes_no_sprout_from_anyone_but_the_shell() {
         keeping,
         told,
         (stood, Said::default()),
+        Box::new(|_| None),
     );
     let socket = folder.join("agents.sock");
     let listener = serve::listen(&socket).expect("the daemon's socket");
@@ -109,6 +111,7 @@ fn the_daemons_socket_lets_no_one_but_the_shell_lift_the_stop() {
         keeping,
         told,
         (stood, words.starts),
+        Box::new(|_| None),
     );
     let socket = folder.join("agents.sock");
     let listener = serve::listen(&socket).expect("the daemon's socket");
@@ -171,6 +174,7 @@ fn the_daemons_socket_takes_no_answer_from_anyone_but_the_shell() {
         keeping,
         told,
         (stood, Said::default()),
+        Box::new(|_| None),
     );
     let socket = folder.join("agents.sock");
     let listener = serve::listen(&socket).expect("the daemon's socket");
@@ -307,6 +311,7 @@ fn the_daemons_socket_lists_no_places_for_anyone_but_the_shell() {
         keeping,
         told,
         (stood, Said::default()),
+        Box::new(|_| None),
     );
     let socket = folder.join("agents.sock");
     let listener = serve::listen(&socket).expect("the daemon's socket");
@@ -332,4 +337,145 @@ fn the_daemons_socket_lists_no_places_for_anyone_but_the_shell() {
         "the node was never asked"
     );
     let _ = std::fs::remove_dir_all(&folder);
+}
+
+/// Each of a row's acts, a line told, feedback and what the shell says
+/// Joel saw, read, put off or forgot, on the daemon's own socket, from a
+/// connection that isn't the shell's (this test's), is refused without
+/// being done, so no agent steers, talks to or tells a session as him,
+/// nor hides from him what he'd see, by asking the daemon (ISXEG8's
+/// R-agents-acts-as-joel).
+#[test]
+fn the_daemons_socket_acts_as_joel_for_no_one_but_the_shell() {
+    let folder = std::env::temp_dir().join(format!("agents-as-joel-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&folder);
+    std::fs::create_dir_all(&folder).expect("a folder for the socket");
+    let shared = Shared::new(DOMAIN, Box::new(|_| None));
+    let (told, _heard) = mpsc::channel();
+    let stood = Arc::new(starts_stopped::Told::new(told.clone()));
+    let keeping = Keeping::read(&folder.join(starts::FILE), clock::now_ms());
+    let (done, asked) = mpsc::channel();
+    let done = std::sync::Mutex::new(done);
+    for_the_shell_alone(
+        &shared,
+        (None, Wants::default()),
+        keeping,
+        told,
+        (stood, Said::default()),
+        Box::new(move |said| {
+            let _ = done
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .send(said["ask"].clone());
+            Some(json!({"done": true}))
+        }),
+    );
+    let socket = folder.join("agents.sock");
+    let listener = serve::listen(&socket).expect("the daemon's socket");
+    serve::accept(shared, listener);
+    let asking = UnixStream::connect(&socket).expect("the daemon takes a connection");
+    let mut reading = BufReader::new(&asking);
+    for act in acts::ACTS {
+        assert!(AS_JOEL.contains(&act), "{act} is named as Joel's");
+    }
+    for act in AS_JOEL {
+        let ask = json!({"id": 1, "ask": act, "address": "P9R1KI", "text": "hi",
+            "quest": "QEST-1-SKIFF", "words": "hi", "landing": "landing:s-p:o#1",
+            "known": "may I?", "session": "s-1", "keys": ["k"], "sharing": false,
+            "places": []});
+        writeln!(&asking, "{ask}").expect("the act is asked");
+        let mut line = String::new();
+        reading.read_line(&mut line).expect("an answer");
+        let answer: Value = serde_json::from_str(&line).expect("one line of JSON");
+        assert_eq!(
+            (&answer["error"]["code"], &answer["error"]["message"]),
+            (&json!("refused"), &json!(NOT_AS_JOEL)),
+            "{act} refused in its own words, whatever the kernel lets be told of who asked"
+        );
+    }
+    assert!(
+        asked.try_recv().is_err(),
+        "none was done for a program that isn't the shell"
+    );
+    // A share's end is the shell's alone, above, as it shows amounts on
+    // what may be a shared screen; its start only hides them, so it's
+    // taken from anyone, as a slow user manager would otherwise leave them
+    // shown (round 000035 on #6796, F20).
+    writeln!(
+        &asking,
+        "{}",
+        json!({"id": 2, "ask": "sharing", "sharing": true})
+    )
+    .expect("a share's start is told");
+    let mut line = String::new();
+    reading.read_line(&mut line).expect("an answer");
+    let answer: Value = serde_json::from_str(&line).expect("one line of JSON");
+    assert_eq!(
+        answer["done"],
+        json!(true),
+        "a share's start is taken from a program that isn't the shell: {answer}"
+    );
+    assert_eq!(
+        asked.try_recv().ok(),
+        Some(json!("sharing")),
+        "the share's start was done"
+    );
+    let _ = std::fs::remove_dir_all(&folder);
+}
+
+/// Every one of Joel's acts is the shell's alone, and each but feedback
+/// is answered in the order the shell asks it, never apart, so a share's
+/// end can't land before its start, nor an older set of his places after
+/// a newer one; and each answered apart is the shell's alone too.
+#[test]
+fn joels_acts_are_the_shells_alone_and_answered_in_order() {
+    for act in AS_JOEL {
+        assert!(SHELLS_ALONE.contains(&act), "{act} is the shell's alone");
+        assert_eq!(
+            SLOW.contains(&act),
+            act == "feedback",
+            "{act} is answered in order, but feedback, which waits on its quest"
+        );
+    }
+    for ask in SLOW {
+        assert!(SHELLS_ALONE.contains(&ask), "{ask} is the shell's alone");
+    }
+}
+
+/// Each of Joel's acts is held to the shell but a share's start, which
+/// only hides his amounts (round 000035 on #6796, F20).
+#[test]
+fn each_act_as_joel_is_held_to_the_shell_but_a_shares_start() {
+    for act in AS_JOEL {
+        assert!(
+            held_to_the_shell(&json!({"ask": act, "sharing": false})),
+            "{act} is held"
+        );
+    }
+    assert!(
+        !held_to_the_shell(&json!({"ask": "sharing", "sharing": true})),
+        "a share's start isn't"
+    );
+    assert!(
+        held_to_the_shell(&json!({"ask": "sharing", "sharing": "true"})),
+        "nor one saying it in words, which the daemon reads as an end"
+    );
+    assert!(
+        !held_to_the_shell(&json!({"ask": "rows"})),
+        "nor an ask that isn't Joel's act"
+    );
+}
+
+/// What a refused ask named is journalled cut short, however long the
+/// asker made it (round 000035 on #6796, F13).
+#[test]
+fn what_a_refused_ask_named_is_journalled_cut_short() {
+    let long = json!("P".repeat(NAMED_AT_MOST * 4));
+    assert_eq!(named(&long).chars().count(), NAMED_AT_MOST);
+    assert_eq!(named(&json!("P9R1KI")), "\"P9R1KI\"", "a short one whole");
+    assert_eq!(
+        named(&json!("a\nb")),
+        "\"a\\nb\"",
+        "a line break said as JSON says it, so no ask writes a second line"
+    );
 }

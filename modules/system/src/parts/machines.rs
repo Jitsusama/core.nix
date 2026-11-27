@@ -105,7 +105,7 @@ pub fn machines(
     // its file is this machine's own and was read without the node.
     let unknown = |why: &str| {
         let mut part = unread("machines", why, deeper.clone());
-        if let Some((_, said, look)) = backup.and_then(backup_said) {
+        if let Some((said, look)) = backup.and_then(backup_said) {
             part.says = format!("{}; this machine {said}", part.says);
             part.side.push(look.side);
         }
@@ -185,13 +185,13 @@ fn name_of(said: &Value) -> &str {
 }
 
 /// What a machine's line says, in the order it's found, and what in it is
-/// worth a look: how bad, as the line says it, and the look itself, whose
-/// words for a row's side name no machine and so drop the verb ("filling
-/// disk" for "has a filling disk").
+/// worth a look: as the line says it, and the look itself, how bad it is
+/// and its words for a row's side, which name no machine and so drop the
+/// verb ("filling disk" for "has a filling disk").
 #[derive(Default)]
 struct Said {
     line: Vec<String>,
-    looks: Vec<(Health, String, Look)>,
+    looks: Vec<(String, Look)>,
 }
 
 impl Said {
@@ -205,7 +205,14 @@ impl Said {
     fn look(&mut self, health: Health, said: String, side: String, matters: &str) {
         self.line.push(said.clone());
         let matters = matters.to_owned();
-        self.looks.push((health, said, Look { side, matters }));
+        self.looks.push((
+            said,
+            Look {
+                health,
+                side,
+                matters,
+            },
+        ));
     }
 }
 
@@ -224,14 +231,14 @@ fn machine(
     } = looked(said, own, backup);
     let health = looks
         .iter()
-        .map(|(health, ..)| *health)
+        .map(|(_, look)| look.health)
         .max()
         .unwrap_or(Health::Good);
-    let named: Vec<String> = looks.iter().map(|(_, said, _)| said.clone()).collect();
+    let named: Vec<String> = looks.iter().map(|(said, _)| said.clone()).collect();
     // The side says the worst first; a sort that keeps ties in place keeps
     // the rest in the order they were found.
-    looks.sort_by(|(a, ..), (b, ..)| b.cmp(a));
-    let looks: Vec<Look> = looks.into_iter().map(|(.., look)| look).collect();
+    looks.sort_by_key(|(_, look)| std::cmp::Reverse(look.health));
+    let looks: Vec<Look> = looks.into_iter().map(|(_, look)| look).collect();
     let side = side_of(looks.iter().map(|look| look.side.clone()).collect());
     if line.is_empty() {
         line.push("is ready".to_owned());
@@ -260,11 +267,13 @@ fn machine(
 /// Being short of room is said but never worth a look: agents' builds
 /// hold the processor nearly all day, which isn't Joel's to act on, and
 /// memory waits for a day measured to tell a held shortage from a spike.
-/// A filling disk is said but never worth a look either: the disk guard
-/// calls a disk filling under a quarter free and takes back what
-/// regenerates by itself, so only one it couldn't keep from nearly full
-/// is the reader's to act on. Two machines each with hundreds of
-/// gigabytes free were once headlined both worth a look for it.
+/// A filling disk is said but never worth a look either: the band calls a
+/// disk filling under a quarter free, and on a machine running the disk
+/// guard what regenerates is taken back by itself, so only a disk nearly
+/// full is the reader's to act on. Two machines each with hundreds of
+/// gigabytes free were once headlined both worth a look for it. A machine
+/// without the guard, such as a cloud builder, is judged the same: its
+/// record says what it is, but not whether a guard runs on it.
 fn looked(said: &Value, own: Option<&Value>, backup: Option<Backup>) -> Said {
     let mut words = Said::default();
     if said.get("state").and_then(Value::as_str) == Some("unreachable") {
@@ -305,8 +314,8 @@ fn looked(said: &Value, own: Option<&Value>, backup: Option<Backup>) -> Said {
                 Health::Bad,
                 format!("has a {side}"),
                 side,
-                "Builds and sessions there fail once it fills, and the disk guard couldn't free \
-                 enough of it by itself.",
+                "Builds and sessions there fail once it fills, and nothing there freed enough of \
+                 it by itself.",
             );
         }
         _ => {}
@@ -380,21 +389,21 @@ fn ago_said(seconds: u64) -> String {
 /// hours, so its words change once an hour rather than each minute, and
 /// every watcher isn't sent them anew.
 fn backup_looks(words: &mut Said, backup: Backup) {
-    if let Some((health, said, Look { side, matters })) = backup_said(backup) {
-        words.look(health, said, side, &matters);
+    if let Some((said, look)) = backup_said(backup) {
+        words.look(look.health, said, look.side, &look.matters);
     }
 }
 
 /// A quest backup's look, its line and the look with its why, when it
 /// wants one. A late one fails only past the whole hours that were worth
 /// a look, so the same words never say both.
-fn backup_said(backup: Backup) -> Option<(Health, String, Look)> {
+fn backup_said(backup: Backup) -> Option<(String, Look)> {
     let age = match backup {
         Backup::Unread(why) => {
             return Some((
-                Health::Watch,
                 format!("can't tell when its quests last backed up ({why})"),
                 Look {
+                    health: Health::Watch,
                     side: "quest backup's time unknown".to_owned(),
                     matters: "Quests changed since its last backup would be lost with this \
                               machine's disk, and when that was can't be told."
@@ -411,9 +420,9 @@ fn backup_said(backup: Backup) -> Option<(Health, String, Look)> {
         _ => return None,
     };
     Some((
-        health,
         format!("hasn't backed up its quests in {hours} h{BACKUP_HINT}"),
         Look {
+            health,
             side: format!("no quest backup in {hours} h"),
             matters: "Quests changed since then would be lost with this machine's disk.".to_owned(),
         },
@@ -752,6 +761,16 @@ mod tests {
             "It stops when its battery runs out, and what runs there stops with it.",
             "each look says why it matters"
         );
+        let healths: Vec<Health> = part.things[0]
+            .looks
+            .iter()
+            .map(|look| look.health)
+            .collect();
+        assert_eq!(
+            healths,
+            [Health::Bad, Health::Watch],
+            "each look keeps its own health, not the machine's worst"
+        );
     }
 
     #[test]
@@ -821,7 +840,7 @@ mod tests {
     }
 
     #[test]
-    fn a_filling_disk_is_said_and_left_to_the_guard() {
+    fn a_filling_disk_is_said_but_never_worth_a_look() {
         let part = machines(
             &Ok(realm(&[laptop(&[], "filling")])),
             &Err(String::new()),
@@ -831,7 +850,7 @@ mod tests {
         assert_eq!(
             part.health,
             Health::Good,
-            "the disk guard takes back what regenerates once a disk is filling"
+            "the band decides on every machine, guard or not: a filling disk isn't worth a look"
         );
         assert_eq!(part.says, "1 machine ready");
         assert_eq!(part.side, NO_LOOK);
@@ -994,6 +1013,85 @@ mod tests {
         assert_eq!(ago_said(3_600), "1 hour ago");
         assert_eq!(ago_said(7_199), "1 hour ago");
         assert_eq!(ago_said(7_200), "2 hours ago");
+    }
+
+    #[test]
+    fn each_kind_of_look_says_its_whole_why() {
+        // This machine's backup is looked at, and another's own code, so
+        // no one machine wears every kind.
+        let mut here = laptop(&[], "nearly-full");
+        here["state"] = json!("unreachable");
+        here["power"] = json!({"on_battery": true, "charge": 12});
+        here["firmware"] = json!({"error_before_boot": 600});
+        let mut studio = json!({"name": "studio", "state": "ready", "disk_band": "healthy"});
+        studio["health"] = json!({"parts": {"code": "watch"}});
+        let part = super::machines(
+            &Ok(realm(&[here, studio])),
+            &Err(String::new()),
+            None,
+            None,
+            Some(Backup::Landed(7 * 3_600)),
+        );
+        let mut said: Vec<(&str, &str, &str)> = part
+            .things
+            .iter()
+            .flat_map(|thing| {
+                thing.looks.iter().map(|look| {
+                    (
+                        thing.name.as_str(),
+                        look.side.as_str(),
+                        look.matters.as_str(),
+                    )
+                })
+            })
+            .collect();
+        said.sort_unstable();
+        let mut whys = [
+            (
+                "laptop",
+                "out of reach",
+                "What runs there can't be read or steered from here until a link reaches it again.",
+            ),
+            (
+                "laptop",
+                "nearly full disk, 279 GB free",
+                "Builds and sessions there fail once it fills, and nothing there freed enough of \
+                 it by itself.",
+            ),
+            (
+                "laptop",
+                "on battery at 12%",
+                "It stops when its battery runs out, and what runs there stops with it.",
+            ),
+            (
+                "laptop",
+                "booted under an hour ago after a firmware error",
+                "Its firmware kept an error from before it booted, as an abrupt reset leaves, so \
+                 what ran there may have ended without warning.",
+            ),
+            (
+                "studio",
+                "code wants a look",
+                "Its own system check judged so, and that machine's system page says why.",
+            ),
+            (
+                "laptop",
+                "no quest backup in 7 h",
+                "Quests changed since then would be lost with this machine's disk.",
+            ),
+        ];
+        whys.sort_unstable();
+        assert_eq!(said, whys, "each look's why, whole, on its own machine");
+        let unread = backup_said(Backup::Unread("the backup's time file says no time"))
+            .map(|(.., look)| look.matters);
+        assert_eq!(
+            unread.as_deref(),
+            Some(
+                "Quests changed since its last backup would be lost with this machine's disk, \
+                 and when that was can't be told."
+            ),
+            "a backup whose time can't be told says why too"
+        );
     }
 
     #[test]

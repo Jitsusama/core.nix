@@ -57,11 +57,20 @@ in
       macPackages = map (package: package.name or "") mac.home.packages;
     in
     holds "each-machine-signs-with-its-hardware"
-      "A machine signs without its hardware's program or key, a Mac or a Linux machine with no TPM is given the TPM's agent, either has nothing to make its keys, the agents' key isn't served where there's no TPM, or signing alone, with no hardware, signs or fails."
+      "A machine signs without its hardware's program or key, a Mac or a Linux machine with no TPM is given the TPM's agent, either has nothing to make its keys, the agents' key isn't served where there's no TPM, the TPM's agents' socket listens where its key isn't made or isn't started once it is, its path unit isn't wanted at login, or signing alone, with no hardware, signs or fails."
       (
         lib.hasSuffix "/bin/tpm-sign" onLinux.gpg.ssh.program
         && onLinux.user.signingKey == "/home/someone/.local/share/signing/joel-signing.pub"
         && linux.systemd.user.services ? signing-key
+        &&
+          (linux.systemd.user.sockets.agent-signing.Unit.ConditionPathExists or null)
+          == "/home/someone/.ssh/agent-signing.tpm"
+        &&
+          (linux.systemd.user.paths.agent-signing-key.Path or { }) == {
+            PathExists = "/home/someone/.ssh/agent-signing.tpm";
+            Unit = "agent-signing.socket";
+          }
+        && (linux.systemd.user.paths.agent-signing-key.Install.WantedBy or [ ]) == [ "paths.target" ]
         && lib.hasSuffix "/bin/se-sign" onMac.gpg.ssh.program
         && onMac.user.signingKey == "/Users/someone/.ssh/joel-signing"
         && mac.jitsusama.signing.signer.sshKeygen == "/usr/bin/ssh-keygen"

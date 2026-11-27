@@ -20,15 +20,16 @@
 {
   # An agent's row does, on Return, the act its state makes harmless, its rows
   # the agents daemon's, made from the realm's own node's sessions, as a
-  # workstation's are (modules/quickshell/tests/agents-on-niri-test.py). The
-  # clipboard's history serves what Super+S's line attaches by Ctrl+R * and
-  # Ctrl+R +.
+  # workstation's are (modules/quickshell/tests/agents-on-niri-test.py), the
+  # daemon built to take this shell, which runs outside any unit
+  # (modules/agents/package.nix's `walks`). The clipboard's history serves
+  # what Super+S's line attaches by Ctrl+R * and Ctrl+R +.
   an-agents-return-does-its-harmless-act-on-niri = launcherOnNiri {
     name = "an-agents-return-does-its-harmless-act-on-niri";
     tests = ../tests/agents-on-niri-test.py;
     given = [
       "MYCELIUM=${lib.getExe self.inputs.mycelium.packages.x86_64-linux.default}"
-      "AGENTS=${lib.getExe (pkgs.callPackage ../../agents/package.nix { })}"
+      "AGENTS=${lib.getExe (pkgs.callPackage ../../agents/package.nix { walks = true; })}"
       "WORDS=${(import ../launcher/words.nix).file}"
       "CLIPBOARD=${lib.getExe (pkgs.callPackage ../clipboard/package.nix { })}"
       "CLIPBOARD_WORDS=${(import ../launcher/words.nix).file}"
@@ -123,6 +124,7 @@
       ${copied [
         "launcher/Openings.js"
         "launcher/Sprouting.js"
+        "launcher/StartSaid.js"
       ]}
       cp ${(import ../launcher/words.nix).places.agents} words.json
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
@@ -150,6 +152,26 @@
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml start-new-work-places.qml
+      touch $out
+    '';
+
+  # Start New Work's In the Cloud is offered only where the node's providers
+  # could make a machine, lists the places another machine knows by name, and
+  # asks a sprout that needs the cloud, as
+  # modules/quickshell/tests/start-new-work-cloud.qml holds launcher/Cloud.js to
+  # it in Qt's own engine.
+  start-new-work-goes-to-the-cloud =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "start-new-work-goes-to-the-cloud" { } ''
+      cp ${../tests/start-new-work-cloud.qml} start-new-work-cloud.qml
+      cp ${../../../tests/lib/Expect.js} Expect.js
+      ${copied [ "launcher/Cloud.js" ]}
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml start-new-work-cloud.qml
       touch $out
     '';
 
@@ -201,7 +223,9 @@
   # go to the cell, or show the network or machine it names, by its name alone;
   # to offer a sprout's plain words as new work, the cell they say they're from
   # kept only as an address; and nothing for a link naming none of them, or a
-  # second within a few seconds
+  # second within a few seconds. Each function it calls must be one the
+  # launcher's IpcHandler has, taking as many arguments as it passes, since qs
+  # refuses any other
   # (modules/quickshell/tests/mycelium-links-open-in-the-launcher.sh). Its tests
   # run as it builds.
   mycelium-links-open-in-the-launcher =
@@ -242,6 +266,8 @@
             entry
             (pkgs.writeText "niri-mimeapps.list" defaults)
             (lib.getExe askingStandIn)
+            "${../Launcher.qml}"
+            "${../mycelium-link/src/main.rs}"
           ]
         }
         touch $out

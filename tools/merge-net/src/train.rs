@@ -219,7 +219,7 @@ pub fn subject(number: u64, owner: &str, branch: &str) -> String {
 
 /// A rider as the candidate merges it: its pull request's number, its
 /// head, the merge's subject and its pull request's title.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Merging {
     pub number: u64,
     pub head: String,
@@ -460,6 +460,22 @@ fn begin(root: &Path, handed_over: bool) {
     }
 }
 
+/// A ride started before a switch went on as the build from before it:
+/// on 18 November one pushed #5426, #5460 and #5321 to main itself,
+/// under Joel's key, after the switch that made the train merge through
+/// GitHub. Between candidates it goes on as the build installed instead;
+/// when that build won't run, it goes on as it is rather than leave its
+/// riders waiting on an asker.
+fn go_on_as_installed(root: &Path) {
+    if let Some(newer) = newer(root, std::env::current_exe(), handed().as_deref()) {
+        println!(
+            "merge-net: another merge-net is installed, so the train goes on as {}",
+            newer.display()
+        );
+        println!("merge-net: {}, so it goes on as it is", hand_over(&newer));
+    }
+}
+
 /// Ride the train whose state is under `root` from the repository at
 /// `url`, until no one waits on it.
 fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
@@ -475,28 +491,29 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
     let owner = slug.split('/').next().unwrap_or_default().to_owned();
     let git = |arguments: &[&str]| run_git(&checkout, arguments);
     let mut splitting = Splitting::default();
+    let mut waits = pulls::Waits::new();
+    let ask = |rider: &Rider| pulls::asked_of(&slug, rider);
     loop {
         let waiting = riders(&root);
         if waiting.is_empty() {
             println!("merge-net: no one waits on the train");
             return Ok(ExitCode::SUCCESS);
         }
-        // A ride started before a switch went on as the build from before
-        // it: on 18 November one pushed #5426, #5460 and #5321 to main
-        // itself, under Joel's key, after the switch that made the train
-        // merge through GitHub. Between candidates it goes on as the build
-        // installed instead; when that build won't run, it goes on as it
-        // is rather than leave its riders waiting on an asker.
-        if let Some(newer) = newer(&root, std::env::current_exe(), handed().as_deref()) {
-            println!(
-                "merge-net: another merge-net is installed, so the train goes on as {}",
-                newer.display()
-            );
-            println!("merge-net: {}, so it goes on as it is", hand_over(&newer));
-        }
-        let mut mergings = aboard(&root, &git, &slug, &owner, &waiting);
+        go_on_as_installed(&root);
+        let asking = pulls::Asking {
+            ask: &ask,
+            git: &git,
+            now: crate::state::now(),
+        };
+        let aboard = aboard(&root, &asking, &owner, &waiting, &mut waits);
+        let mut mergings = aboard.mergings;
         mergings.truncate(splitting.take());
         if mergings.is_empty() {
+            // Riders left waiting on GitHub are asked again after a pause,
+            // rather than at once and over again while it can't answer.
+            if aboard.waited {
+                std::thread::sleep(UNTAKEN_PAUSE);
+            }
             continue;
         }
         git(&["fetch", "--quiet", "origin", "main"])?;

@@ -15,6 +15,7 @@ import datetime as dt
 import json
 import re
 import shlex
+import time
 from typing import TYPE_CHECKING, cast
 
 import pytest
@@ -34,6 +35,10 @@ if TYPE_CHECKING:
 
 # Each test closes the launcher after it, so one failing with it open fails alone.
 pytestmark = pytest.mark.usefixtures("launcher_closed_after")
+
+# How long what a link or an offer opens drops every key (Prompt.qml's linkQuiet), and a
+# little more.
+LINK_QUIET = 0.8
 
 
 def test_the_screen_never_locks_by_itself_however_long_the_test_waits(desktop: Desktop) -> None:
@@ -248,11 +253,11 @@ def settled(desktop: Desktop, key: str, within: dt.timedelta) -> Iterator[None]:
 
 
 def at_rotation(shown: Json) -> bool:
-    """Say whether the launcher holds a screen, inside Desktop's Screens, its Rotation selected."""
+    """Say whether the launcher holds a screen, inside Machine's Screens, its Rotation selected."""
     return bool(
         shown["open"]
-        and shown["path"][:2] == ["Desktop", "Screens"]
-        and len(shown["path"]) == len(["Desktop", "Screens", "a screen"])
+        and shown["path"][:2] == ["Machine", "Screens"]
+        and len(shown["path"]) == len(["Machine", "Screens", "a screen"])
         and (shown["selected"] or {}).get("name") == "Rotation"
     )
 
@@ -262,7 +267,7 @@ def test_a_detail_inside_a_thing_is_found_from_the_root_and_return_goes_there(
 ) -> None:
     """A detail inside a thing is found from the root, and Return goes there."""
     machine = desktop.machine
-    where = "Desktop \u203a Screens \u203a "
+    where = "Machine \u203a Screens \u203a "
 
     def spot(shown: Json) -> int:
         """Give where the screen's Rotation is listed, saying where it lives, or -1."""
@@ -285,11 +290,11 @@ def test_a_detail_inside_a_thing_is_found_from_the_root_and_return_goes_there(
         )
 
     # A screen's rotation is a step inside the screen, inside Screens,
-    # inside Desktop; from the root it's found by its name, saying so,
-    # below the focused screen's answer. In normal, l goes nowhere, as a
-    # row has no line to move along, and says Vim's way in instead, the
-    # foot naming Return and - by the keys that do them (Joel, 2026-11-05:
-    # "where in vi does that step into shit?").
+    # inside Machine, since a screen is part of the machine; from the root
+    # it's found by its name, saying so, below the focused screen's answer.
+    # In normal, l goes nowhere, as a row has no line to move along, and says
+    # Vim's way in instead, the foot naming Return and - by the keys that do
+    # them (Joel, 2026-11-05: "where in vi does that step into shit?").
     find_rotation()
     desktop.normal()
     told = desktop.showing()["selected"]["told"]
@@ -318,7 +323,7 @@ def test_a_detail_inside_a_thing_is_found_from_the_root_and_return_goes_there(
     machine.send_key("minus")
     desktop.launcher_until(
         lambda shown: (
-            shown["path"] == ["Desktop", "Screens"]
+            shown["path"] == ["Machine", "Screens"]
             and (shown["selected"] or {}).get("name") == screen
         )
     )
@@ -328,7 +333,7 @@ def test_a_detail_inside_a_thing_is_found_from_the_root_and_return_goes_there(
     machine.send_key("minus")
     desktop.launcher_until(
         lambda shown: (
-            shown["path"] == ["Desktop"] and (shown["selected"] or {}).get("name") == "Screens"
+            shown["path"] == ["Machine"] and (shown["selected"] or {}).get("name") == "Screens"
         )
     )
     machine.send_key("minus")
@@ -783,6 +788,30 @@ def test_lag_stands_in_its_place_until_its_first_ten_seconds_then_says_them(
         desktop.as_account("systemctl --user start lag-watch.service")
 
 
+def closed_after_an_offer(desktop: Desktop) -> None:
+    """Close what an offer opened, once its quiet is over, since an Escape inside it is dropped."""
+    time.sleep(LINK_QUIET)
+    desktop.close_launcher()
+
+
+def landed_after_an_offer(desktop: Desktop, held: str, words: str) -> None:
+    """Land on what an offer opened, as Joel does, once he's typed a key; `held` still holds.
+
+    Offered from outside, it holds Joel's keys as a link does: a Return before he types a key
+    lands on nothing, since one meant for a window he was typing in would end it (round 000036
+    on #6796, F135; round 000035, F1). So the Return is pressed first, then `words` typed.
+    """
+    time.sleep(LINK_QUIET)
+    desktop.machine.send_key("ret")
+    time.sleep(LINK_QUIET)
+    shown = desktop.showing()
+    assert shown["landed"] == "", shown
+    assert shown["mode"] != "normal", shown
+    desktop.machine.succeed(held)
+    desktop.type_in(words, selecting=words)
+    desktop.land()
+
+
 def test_the_launchers_catalogue_opens_places_does_actions_and_offers_what_ends_something(
     desktop: Desktop,
 ) -> None:
@@ -854,7 +883,7 @@ def test_the_launchers_catalogue_opens_places_does_actions_and_offers_what_ends_
             and (shown["selected"] or {}).get("name") == "Reboot"
         )
     )
-    desktop.close_launcher()
+    closed_after_an_offer(desktop)
     # A harmless one is done at once, and once it ends something, offered.
     awake = one(entries, "Keep Awake", "Machine")
     assert not awake["disruptive"]
@@ -869,7 +898,7 @@ def test_the_launchers_catalogue_opens_places_does_actions_and_offers_what_ends_
     assert sleep["id"] == awake["id"], "its id changed with its state"
     assert ran(sleep)["offered"]
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Keep Awake")
-    desktop.land()
+    landed_after_an_offer(desktop, held, "keep awake")
     # The last act here, so it settles before the close, where a word it's told is spent.
     with settled(desktop, "session:awake", dt.timedelta(seconds=30)):
         machine.send_key("ret")
@@ -1094,8 +1123,9 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
     desktop.launcher_until(
         lambda shown: (
             shown["held"] == ["desktop"]
-            # This window is there only while one is focused.
-            and [row for row in shown["rows"] if row != "This Window"][:2] == ["Windows", "Screens"]
+            # This window is there only while one is focused, and this machine lists no Tabs.
+            and [row for row in shown["rows"] if row != "This Window"][:2]
+            == ["Windows", "Clipboard"]
         )
     )
     # And Return on Passwords steps into it, which is walked as far as a machine shows it.
@@ -1249,8 +1279,9 @@ def walk_passwords(desktop: Desktop) -> None:
 
     The passwords daemon the shell runs runs 1Password's own manager, which asks a stand-in for
     op (tests/desktop/stand-ins/op-stand-in.sh), and copies through the wl-copy the VM alone names
-    as its copier to the session's clipboard, since a real machine copies nothing yet. One path
-    through that wiring is all this walks: what the place lists, says and copies, case by case, is
+    as its copier to the session's clipboard, since a real machine copies nothing yet;
+    keeps-copies pastes what it copies, and holds it clearing. One path through that wiring is
+    all this walks: what the place lists, says and copies, case by case, is
     the-passwords-show-every-figure-but-the-secret's and
     the-passwords-place-copies-through-its-daemon-on-niri's.
     """

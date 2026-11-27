@@ -12,15 +12,18 @@
 //!
 //! This file reads the measures and runs the hour; `card` composes what it
 //! says and keeps, `good` holds each measure to the definition of good,
-//! `owing` files its drag with each owner, `records` reads the queues'
-//! records, and `reviews` the harness's review records.
+//! `owing` files its drag with each owner, `net` reads the merge net's two
+//! files, `records` reads the queues' records, and `reviews` the
+//! harness's review records.
 
 mod card;
 mod good;
 mod ledger;
 mod lines;
 mod measures;
+mod met;
 mod moved;
+mod net;
 mod owing;
 mod parted;
 mod records;
@@ -85,10 +88,7 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
     let (_, state_home, folder) = folders()?;
     let now = now_ms() / 1000;
     let kept_at = folder.join("hour.json");
-    let mut kept: Kept = fs::read_to_string(&kept_at)
-        .ok()
-        .and_then(|text| serde_json::from_str(&text).ok())
-        .unwrap_or_default();
+    let mut kept = Kept::last(&kept_at);
     // Read once, so the misses measured and the words told for them come
     // from the same ledger; one not read whole leaves the misses unjudged.
     // A miss gone from it isn't carried, so the hour after judges the
@@ -260,7 +260,10 @@ fn gather(
     let quarantine = quarantine(&core);
     let card_text = fresh_card(folder, now);
     let [core_log, harness_log, machine_log] = axes::repository::mains(folder, now);
+    // Read even when what the last hour kept of it is lost, so the next
+    // hour has this one's count to read against.
     let (asks, asks_unread) = ledger::whole(&mission.join("asks.jsonl"), &mut kept.asks, now);
+    let asks_unread = kept.unread.clone().or(asks_unread);
     let switches = text(&state_home.join("integration/switches.jsonl"));
     // The work system's findings count against their owners, and one
     // naming none is the orchestrator's to assign.
@@ -284,16 +287,9 @@ fn gather(
         measures::told_late(&asks, now, Tracking::Derived),
         measures::to_first_slice(&asks, now, Tracking::Derived),
         measures::undated(&quarantine, &today(now), NET_RULES),
-        measures::reverts(&text(&folder.join("reverted.json")), now, NET_RULES),
-        measures::broken(
-            &text(&state_home.join("net/results.jsonl")),
-            now,
-            NET,
-            &measures::Main::read(&core, &quarantine),
-            &measures::failed_in,
-        ),
         landed(&core_log, &harness_log, &machine_log, now),
     ];
+    all.extend(net::read_both(folder, state_home, &core, &quarantine, now));
     all.extend(measures::said_none(misses, now));
     all.push(measures::cited::read(
         state_home,
@@ -302,6 +298,10 @@ fn gather(
         orchestrator,
     ));
     all.push(measures::holds::read(state_home, &asks, now));
+    // Only the hour that files keeps what it read of the mesh; a look by
+    // hand names no orchestrator, and keeps nothing.
+    let keeps = orchestrator.is_some();
+    all.push(measures::causes::read(state_home, folder, now, keeps));
     all.extend(parted::dates_at_risk(state_home, &core, &asks, now));
     all.extend(found);
     let per_merge = rounds_per_merge(state_home, &core, &core_log, &harness_log, now);
@@ -309,24 +309,13 @@ fn gather(
     all.extend(measures::merge_to_on(&card_text, NET_RULES));
     let fetched = &mut kept.fetched;
     all.extend(measures::unlocked(&core, checkouts, now, BUMPS, fetched));
-    if let Some((median, target)) = measures::card_median(&card_text, "Last commit to merge") {
-        all.push(Measure {
-            key: "commit-to-merge".to_owned(),
-            class: Class::Ship,
-            says: "median minutes from last commit to merge".to_owned(),
-            now: median,
-            target: Some(target),
-            owner: NET_RULES.to_owned(),
-            behind: Vec::new(),
-        });
-    }
+    all.extend(measures::commit_to_merge(&card_text, NET_RULES));
     all.extend(measures::clean(&text(
         &state_home.join("code-health/hour.json"),
     )));
     let apps = fs::read_to_string(state_home.join(measures::apps::FILE)).ok();
     all.extend(measures::apps::apps(apps.as_deref(), now));
-    let wifid = measures::wifi::read(now);
-    all.push(measures::wifi::video(wifid.as_deref(), &TimeZone::system()));
+    all.extend(met::met(state_home, now));
     // The balance service names a day's file by the date here, so read yesterday's too.
     let day = |at| text(&state_home.join(format!("mycelium/balance/{}.jsonl", today(at))));
     let minutes = [day(now - DAY), day(now)].join("\n");

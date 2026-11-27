@@ -149,15 +149,19 @@ class Shell:
                 self.daemons["clipboard-history"] = history
         self.launch("wb")
 
-    def restart(self) -> None:
+    def restart(self, while_down: Callable[[], None] | None = None) -> None:
         """End the shell alone and start it again, as a switch restarts its unit.
 
         Its daemons go on running, as their own units do through a switch that leaves them be,
         and its log goes on where it was, so a mark made before still reads what came after.
+        `while_down` runs once it has ended, before it starts, to change what it reads as it
+        starts with no write of its own racing it.
         """
         assert self.process is not None, "the shell was never started"
         self.process.terminate()
         self.process.wait(timeout=10)
+        if while_down is not None:
+            while_down()
         self.launch("ab")
         # smithay keeps one keymap active for the seat and sends a virtual keyboard's only when
         # it differs from that one, while a keyboard made since is given the seat's own: the
@@ -660,6 +664,23 @@ class Shell:
 
 # How long the rows weighed must hold still before a count of them is read.
 WEIGHED_STILL = 1.0
+# How long no key is said presented before every key pressed counts as shown: a key's frame
+# comes within a few, and its record a moment after.
+PRESENTED_STILL = timedelta(milliseconds=500)
+
+
+def keys_presented_settled(shell: Shell) -> list[Json]:
+    """Give the keys the launcher said presented, once no more have come for PRESENTED_STILL."""
+    deadline = time.monotonic() + WAITING.total_seconds()
+    presented = json.loads(shell.as_account(shell.ipc("keysPresented")))
+    still = time.monotonic()
+    while time.monotonic() - still < PRESENTED_STILL.total_seconds():
+        assert time.monotonic() < deadline, f"keys kept being presented: {presented}"
+        time.sleep(POLL)
+        now = json.loads(shell.as_account(shell.ipc("keysPresented")))
+        if len(now) != len(presented):
+            presented, still = now, time.monotonic()
+    return cast("list[Json]", presented)
 
 
 def weighed_held_still(shell: Shell, timeout: float = 10.0) -> int:

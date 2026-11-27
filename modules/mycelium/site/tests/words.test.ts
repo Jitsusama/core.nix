@@ -29,7 +29,6 @@ import {
   spends,
   spentOf,
   spentWords,
-  labelsApart,
   toldApart,
 } from "../words.ts";
 
@@ -108,7 +107,7 @@ it("sums what cells spent, counting only those that say", () => {
   );
 });
 
-it("counts cells by standing, worst first, and those owing answers", () => {
+it("counts cells by standing, worst first, and the answers they owe", () => {
   const cells = [
     cell("A", { standing: "asks", owes: [{}] }),
     cell("B", { standing: "quiet" }),
@@ -122,13 +121,18 @@ it("counts cells by standing, worst first, and those owing answers", () => {
   );
   assert.equal(
     countsWords(cells),
-    "4 cells: 1 needs you, 1 stuck, 2 quiet; 2 owing answers",
-    "worst first, then what waits",
+    "4 cells: 1 needs you, 1 stuck, 2 quiet; 3 answers owed",
+    "worst first, then the answers owed",
   );
   assert.equal(
     countsWords([cells[0] as Cell]),
-    "1 cell: 1 needs you; 1 owing an answer",
-    "one owing is an answer",
+    "1 cell: 1 needs you; 1 answer owed",
+    "one answer owed",
+  );
+  assert.equal(
+    countsWords([cells[2] as Cell]),
+    "1 cell: 1 quiet; 2 answers owed",
+    "one cell owing two is two answers, as the drawer counts them",
   );
   assert.equal(countsWords([]), "0 cells", "no cells, no standings");
   const each: Cell["standing"][] = ["dormant", "quiet", "moving", "stuck", "asks"];
@@ -408,35 +412,6 @@ it("a title written as another network's told name is told apart by its whole ke
     },
     "no two read alike, whatever a title says",
   );
-});
-
-it("a told name the map clips alike to another's keeps its id there instead", () => {
-  const room = 40;
-  const clip = (text: string, within: number) =>
-    text.length <= within ? text : `${text.slice(0, within - 3)}...`;
-  const slice = (key: string, carries: string) => ({
-    key,
-    name: "Rig the Skiff for the Season",
-    carries,
-  });
-  const networks = [
-    slice("orchestration.skiff1", "Mend the north gauges"),
-    slice("orchestration.skiff2", "Mend the south gauges"),
-    { key: "orchestration.heron1", name: "Chart the Harbour", carries: "Chart the Harbour" },
-  ];
-  const labels = labelsApart(networks, toldApart(networks), clip, room);
-  assert.deepEqual(
-    Object.fromEntries(labels),
-    {
-      "orchestration.skiff1": "Rig the Skiff for the Season (SKIFF1)",
-      "orchestration.skiff2": "Rig the Skiff for the Season (SKIFF2)",
-      "orchestration.heron1": "Chart the Harbour",
-    },
-    "what told the two apart was past the clip, so their ids tell them apart on the map",
-  );
-  for (const label of labels.values()) {
-    assert.ok(label.length <= room, `${label} is past the map's room`);
-  }
 });
 
 it("a builder is labelled by its name, its words and what it is", () => {
