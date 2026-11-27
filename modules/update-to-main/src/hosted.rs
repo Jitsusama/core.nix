@@ -254,13 +254,14 @@ pub fn descends(config: &Config, older: &str, newer: &str) -> Result<bool, Failu
 /// Whether main at `head` holds `commit`: by root's copy when it has
 /// both, and otherwise by the host's word. The copy borrows a checkout
 /// holding only part of main's history, so one with `head` may still lack
-/// `commit`, and that proves nothing; with no host to ask, it reads as not
-/// held, as it always has. A copy with both that can't walk between them
-/// asks the host too, where there is one.
+/// `commit`, and that proves nothing: with no host to ask, it can't be
+/// told, which stops the update as any hold nobody can see does. A copy
+/// with both that can't walk between them asks the host too, where there
+/// is one.
 pub fn holds(config: &Config, hosted: &Hosted, commit: &str, head: &str) -> Result<bool, Failure> {
     let main = Repo::main(config);
     let in_copy = git::has(&main, head);
-    if in_copy && (git::has(&main, commit) || hosted.api.is_none()) {
+    if in_copy && git::has(&main, commit) {
         match git::descends(&main, commit, head) {
             Err(_) if hosted.api.is_some() => {}
             said => return said,
@@ -269,7 +270,7 @@ pub fn holds(config: &Config, hosted: &Hosted, commit: &str, head: &str) -> Resu
     let Some(api) = &hosted.api else {
         return Err(Failure::new(format!(
             "root's copy hasn't got {}, and no host's API is configured to ask",
-            git::short(head)
+            git::short(if in_copy { commit } else { head })
         )));
     };
     let account = run::account(&hosted.user)?;
