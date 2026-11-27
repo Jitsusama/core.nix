@@ -310,6 +310,9 @@ fn a_sentence_ending_at_a_half_of_the_day_ends_before_a_capital() {
         "The fix merged at 9:00 a.m. It goes live at 22:45.",
         "The train lands by 9:00 a.m. The fix is live now.",
         "The review was at 9:00 AM. It goes live at 22:45.",
+        // Before a quote or a bracket the half's stop ends its sentence too.
+        "The review was at 9:00 a.m. \"It goes live at 22:45,\" said its owner.",
+        "The review was at 9:00 a.m. (It goes live at 22:45.)",
     ] {
         let m = judged(&said(text), "", &cites, &by);
         assert!(
@@ -327,6 +330,10 @@ fn a_sentence_ending_at_a_half_of_the_day_ends_before_a_capital() {
             "The call is at 10 a.m. Could you approve the Chrome flag?",
             "Could you approve the Chrome flag",
         ),
+        (
+            "It goes live at 10:45 p.m. **Please approve the Chrome flag.**",
+            "Please approve the Chrome flag",
+        ),
     ] {
         let m = judged(&said(text), "", &cites, &by);
         assert_eq!(
@@ -335,6 +342,13 @@ fn a_sentence_ending_at_a_half_of_the_day_ends_before_a_capital() {
             "the ask after a half of the day in {text:?} went uncounted"
         );
     }
+    // Before a digit the half's stop closes the half alone, so the time
+    // before it is judged with the live one after.
+    let line = said("The fix merged at 9:00 a.m. 2 hours on, it goes live at 22:45.");
+    assert!(
+        !judged(&line, "", &cites, &by).behind.is_empty(),
+        "a half's stop before a digit ended its sentence"
+    );
 }
 
 #[test]
