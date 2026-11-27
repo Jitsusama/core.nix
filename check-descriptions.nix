@@ -3692,6 +3692,12 @@
     and told so, left running through a switch, its host's restart and the kernel killing one
     of its commands for memory, and a Mac gets none
   '';
+  pi-conversations-read-says-what-it-read = ''
+    what the pi host VM test's failures read from the machine is said on one line, blank lines
+    dropped, an empty read and a failed one saying so with its exit, one cut short by its
+    timeout naming its own seconds, and every character a terminal would act on but a newline
+    written as its escape within its line, readable words kept as they are
+  '';
   pi-conversations-set-heap-growth = ''
     a realm's conversationHeapGrowingPercent reaches each of its conversations' own processes,
     attended and background, as V8's --heap-growing-percent after their heap and before the
