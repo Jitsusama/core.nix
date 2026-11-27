@@ -155,7 +155,10 @@ pub fn built(config: &Config, head: &str, followed: &Followed) -> Result<Followe
 /// an input followed, the nearest such input's own lock at the commit
 /// followed, since that's the lock the build reads it from; core's, for
 /// core/mycelium/kit with only core followed. None where that lock has no
-/// such input.
+/// such input. Where main's lock points an input on the way at another of
+/// its own, as a machine's flake setting `core.inputs.mycelium.follows`
+/// does, the build reads that one whatever the parent's lock pins, so it
+/// is main's lock that pins it.
 fn pinned(
     config: &Config,
     lock: &Value,
@@ -168,6 +171,11 @@ fn pinned(
             .map(str::to_owned)
             .ok_or_else(|| Failure::new(format!("the flake's lock pins {name} to no commit")))
     };
+    match pointed(lock, name) {
+        Pointed::To(locked) => return Ok(Some((rev(locked)?, "the flake's lock pins".to_owned()))),
+        Pointed::Nowhere => return Ok(None),
+        Pointed::Unpointed => {}
+    }
     let nearest = name.rmatch_indices('/').find_map(|(cut, _)| {
         let parent = &name[..cut];
         Some((
@@ -202,6 +210,75 @@ fn pinned(
     hosted::found(lock, name)
         .map(|locked| Ok((rev(locked)?, "the flake's lock pins".to_owned())))
         .transpose()
+}
+
+/// How many follows a lock's input may pass through before it names a node:
+/// a lock Nix wrote is never deeper, and one that loops ends here.
+const FOLLOWS_AT_MOST: usize = 32;
+
+/// Where main's lock points an input, told apart from one it leaves to its
+/// parent's lock.
+enum Pointed<'a> {
+    /// No input on the path is a follows, so the build reads it where its
+    /// parent's lock says.
+    Unpointed,
+    /// A follows on the path comes to this node's locked source.
+    To(&'a Value),
+    /// A follows on the path names nothing locked.
+    Nowhere,
+}
+
+/// Where main's `lock` points the input `name`, when an input on its path is
+/// a follows, a path of inputs from the lock's root, rather than a node of
+/// its own.
+fn pointed<'a>(lock: &'a Value, name: &str) -> Pointed<'a> {
+    let Some(mut node) = lock["root"].as_str() else {
+        return Pointed::Unpointed;
+    };
+    let mut follows = false;
+    let met = |follows: bool| {
+        if follows {
+            Pointed::Nowhere
+        } else {
+            Pointed::Unpointed
+        }
+    };
+    for own in name.split('/') {
+        match &lock["nodes"][node]["inputs"][own] {
+            Value::String(next) => node = next.as_str(),
+            Value::Array(path) => {
+                follows = true;
+                match followed_to(lock, path, 0) {
+                    Some(next) => node = next,
+                    None => return Pointed::Nowhere,
+                }
+            }
+            _ => return met(follows),
+        }
+    }
+    let locked = &lock["nodes"][node]["locked"];
+    if follows && locked.is_object() {
+        Pointed::To(locked)
+    } else {
+        met(follows)
+    }
+}
+
+/// The node a follows `path` comes to in `lock`, from its root, each input
+/// on it a node's or a follows of its own; none when it names nothing.
+fn followed_to<'a>(lock: &'a Value, path: &'a [Value], depth: usize) -> Option<&'a str> {
+    if depth > FOLLOWS_AT_MOST {
+        return None;
+    }
+    let mut node = lock["root"].as_str()?;
+    for own in path {
+        node = match &lock["nodes"][node]["inputs"][own.as_str()?] {
+            Value::String(next) => next.as_str(),
+            Value::Array(inner) => followed_to(lock, inner, depth + 1)?,
+            _ => return None,
+        };
+    }
+    Some(node)
 }
 
 /// What the build is given so each followed input is its followed commit.
