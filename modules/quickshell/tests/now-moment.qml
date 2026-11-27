@@ -2918,19 +2918,30 @@ ShellRoot {
         WaitingOnYou.now = [toDo("Pay It", new Date(Date.now() - 3600000).toISOString())];
         expect("his own heavier than a session's ask, home names his own",
             now.homeSays() === "Pay It \u00b7 1 more", now.homeSays());
-        // And time alone lifts a to-do past the ask, though nothing banded
-        // For You again: home reads the bands at its own minute, as its
-        // rows do, not those kept since its items changed (#6777's seventh
-        // review, F75). Sign In, raised two hours ago, weighs the ask's 50
-        // once it has waited fifteen more.
+        // And time alone brings a to-do level with the ask, and his own
+        // leads a tie (ForYouCells.js's leading): home reads the bands at
+        // its own minute, as its rows do, not those kept since its items
+        // changed (#6777's seventh review, F75). Sign In, raised two hours
+        // ago, weighs at most 50 (ForYou.js's WAITED_MOST), the ask's
+        // weight here, once it has waited about twelve more; this ask has
+        // no `since`, so it never ages past it (#7014's review, F1 and F15).
         WaitingOnYou.now = [toDo("Sign In")];
-        const keptBands = now.forYouBands;
         const later = Date.now() + 16 * 3600000;
-        expect("time alone lifting his own past the ask, home names it then",
+        expect("time alone bringing his own level with the ask, home names it then",
             now.homeSays() === "Session C needs you \u00b7 1 more"
-                && now.homeSays(later) === "Sign In \u00b7 1 more"
-                && now.forYouBands === keptBands,
+                && now.homeSays(later) === "Sign In \u00b7 1 more",
             JSON.stringify([now.homeSays(), now.homeSays(later)]));
+        // And reading home later leaves the bands kept for this minute,
+        // which For You's rows share (#7014's review, F4 and F7). Home is
+        // read now first, so the minute kept is this one, whatever read came
+        // before.
+        now.homeSays();
+        const keptMinute = now.bandsKept.minute;
+        const keptTimes = now.bandsKept.times;
+        now.homeSays(later);
+        expect("a read later keeps the bands kept for now",
+            now.bandsKept.minute === keptMinute && now.bandsKept.times === keptTimes,
+            JSON.stringify([keptMinute, now.bandsKept.minute, keptTimes, now.bandsKept.times]));
         Location.here = here;
         Facts.all = [];
         WaitingOnYou.now = [];
