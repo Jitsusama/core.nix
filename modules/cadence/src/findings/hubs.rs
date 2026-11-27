@@ -79,11 +79,12 @@ pub fn put_late(
     let mut drags: BTreeSet<String> = BTreeSet::new();
     let mut dragged = 0;
     // One back, its figure in, waits only on its owner's word of the fix,
-    // which it was asked for, so it goes to nobody else.
-    for entry in ledger
-        .iter_mut()
-        .filter(|e| e.open && !e.late && e.due < now && e.back.is_none())
-    {
+    // which it was asked for, so it goes to nobody else; nor does one
+    // waiting only on the change its owner named going live here, which
+    // is the switch's to do.
+    for entry in ledger.iter_mut().filter(|e| {
+        e.open && !e.late && e.due < now && e.back.is_none() && !e.shown.awaits_switch(now)
+    }) {
         // A must its owner filed stays its owner's, so it's only ever late.
         let found = if entry.kind.is_none() {
             holder_for(entry, hubs, &live, &held)

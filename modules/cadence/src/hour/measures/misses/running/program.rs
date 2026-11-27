@@ -251,6 +251,9 @@ mod tests {
         }
     }
 
+    // It sets times with GNU touch's `-d @SECONDS`, which BSD touch refuses,
+    // so elsewhere it would fail on every run and hide a real failure.
+    #[cfg(target_os = "linux")]
     #[test]
     fn a_change_was_installed_when_current_last_moved() {
         let place = std::env::temp_dir().join(format!("cadence-swapped-{}", std::process::id()));

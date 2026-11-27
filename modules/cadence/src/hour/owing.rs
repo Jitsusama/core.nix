@@ -1,6 +1,7 @@
 //! What the hour owes: its drag filed in the loop's ledger with each of
 //! its owners, due a day on, or a week for a queue's change, and each drag
-//! filed before closed once it is back in.
+//! filed before closed once it is back in and, but for those with a rule
+//! of their own, its fix is shown (`shown`).
 //!
 //! Long because each kind of drag, Joel's misses, a merge's rounds, dates
 //! told late, the work system's findings, the worst queue and each
@@ -12,6 +13,10 @@ use std::collections::BTreeMap;
 use crate::DAY;
 use crate::findings::Entry;
 use crate::owe::{self, Owed};
+
+pub mod shown;
+
+pub use shown::held_to_a_fix;
 
 use super::lines::figure;
 use super::measures::queues::{self, QUEUE};
@@ -616,30 +621,8 @@ fn back_in(key: &str, measures: &[Measure]) -> bool {
             .map(|(owner, date)| format!("{date} · {owner}"));
         return m.target.is_some() && line.is_none_or(|line| !m.behind.contains(&line));
     }
-    // A path is measured for each origin the deployer names, sampled or
-    // not, so a path gone from the hour is an origin no longer named, and
-    // its ask is settled as the queues' are, rather than held open for good;
-    // a sampler that stopped leaves its paths unjudged, so their asks stay.
-    if key.starts_with(path::PREFIX) && !measures.iter().any(|m| m.key == key) {
+    if gone(key, measures) {
         return true;
-    }
-    // A relay that logged nothing carried nothing, as when it is stopped and
-    // pi goes to the origin itself, whose own calls judge that hour; its
-    // asks are settled rather than going late on a count no one can make.
-    // A journal unread says nothing, so its asks stay.
-    if key.starts_with(relay::PREFIX)
-        && measures
-            .iter()
-            .any(|m| m.key == key && m.says.ends_with(relay::QUIET))
-    {
-        return true;
-    }
-    // An unread file leaves only its one line, never a figure, so a drag
-    // isn't closed while its figure can't be seen; a figure written with no
-    // reading is still its figure, unjudged. His apps aren't routed, so a
-    // figure's drag is filed under its key alone.
-    if key.starts_with(apps::FIGURE) && !measures.iter().any(|m| m.key == key) {
-        return measures.iter().any(|m| m.key.starts_with(apps::FIGURE));
     }
     // The ask for a check closes once the check merged and only a measure
     // holds the miss; that hold is its own finding, closing once judged.
@@ -699,6 +682,29 @@ fn back_in(key: &str, measures: &[Measure]) -> bool {
                         !m.behind.iter().any(|line| line.ends_with(&named))
                     }))
         })
+}
+
+/// Whether what the drag filed as `key` measures is gone, so its ask is
+/// settled with no figure to come back in or fix to show. A path is
+/// measured for each origin the deployer names, sampled or not, so a path
+/// gone from the hour is an origin no longer named; a sampler that stopped
+/// leaves its paths unjudged, so their asks stay. A relay that logged
+/// nothing carried nothing, as when it is stopped and pi goes to the
+/// origin itself, whose own calls judge that hour; a journal unread says
+/// nothing. A figure of his apps gone from an hour that read their file
+/// was renamed or dropped by its owner; an unread file leaves only its one
+/// line, never a figure, so none is gone then.
+fn gone(key: &str, measures: &[Measure]) -> bool {
+    let key = key.strip_prefix("hour:").unwrap_or(key);
+    let carried = measures.iter().any(|m| m.key == key);
+    (key.starts_with(path::PREFIX) && !carried)
+        || (key.starts_with(relay::PREFIX)
+            && measures
+                .iter()
+                .any(|m| m.key == key && m.says.ends_with(relay::QUIET)))
+        || (key.starts_with(apps::FIGURE)
+            && !carried
+            && measures.iter().any(|m| m.key.starts_with(apps::FIGURE)))
 }
 
 /// Whether no measure this hour carries `key`, itself or as the measure
@@ -767,8 +773,9 @@ fn fixed_lately(ledger: &[Entry], key: &str, now: i64) -> bool {
 
 /// Files the hour's drag in the loop's ledger as a must of kind `drag`,
 /// due a day on, unless it's open there already, and closes each drag
-/// filed before that is back in. Says what to tell the owner of each one
-/// newly filed. The drag leads, then every measure past its target is
+/// filed before that is back in, with its fix shown where it's held to
+/// one. Says what to tell the owner of each one newly filed, and how a
+/// line held to a fix shown closes. The drag leads, then every measure past its target is
 /// filed with its owner, as Joel asked of the loops (26 November): a red
 /// line only the card shows steers nothing. That takes in the ones the
 /// drag passes over, as a merge whose rounds past five caught nothing,
@@ -781,21 +788,22 @@ pub fn file(
     date: &str,
     now: i64,
 ) -> Vec<(String, String)> {
-    let closing: Vec<String> = ledger
-        .iter()
-        .filter(|e| e.open && is_asked(e))
-        .filter(|e| match e.key.strip_prefix("hour:") {
-            Some(key) if key.starts_with(QUEUE) => queues::answered(key, measures),
-            Some(key) => {
-                back_in(&e.key, measures)
-                    || (vanished(key, e.owner.as_deref(), measures) && now >= e.last_to + DAY)
+    // A line whose subject is gone closes with nothing to show; one held
+    // to a fix shown closes once back in with its fix shown, and any
+    // other once back in.
+    for e in ledger.iter_mut().filter(|e| e.open && is_asked(e)) {
+        let back = |e: &Entry| back_in(&e.key, measures);
+        match e.key.strip_prefix("hour:") {
+            Some(key) if key.starts_with(QUEUE) => e.open = !queues::answered(key, measures),
+            Some(key) if vanished(key, e.owner.as_deref(), measures) && now >= e.last_to + DAY => {
+                e.open = false;
             }
-            None => back_in(&e.key, measures),
-        })
-        .map(|e| e.key.clone())
-        .collect();
-    for key in closing {
-        owe::settle(ledger, &key);
+            _ if held_to_a_fix(&e.key, &e.axis) && !gone(&e.key, measures) => {
+                let back = back(e);
+                shown::close(e, back, date, now);
+            }
+            _ => e.open = !back(e),
+        }
     }
     let lead = drag(measures).map(|m| m.key.clone());
     // A line filed as red that now leads keeps its own late line, as the
@@ -899,7 +907,12 @@ pub fn file(
             e.names
                 .extend(one.names.into_iter().map(|name| (name, now)));
         }
-        told.push((one.owner, one.text));
+        let text = if held_to_a_fix(&key, m.class.name()) {
+            format!("{} {}", one.text, shown::closes_by(&key))
+        } else {
+            one.text
+        };
+        told.push((one.owner, text));
     }
     told
 }
@@ -909,6 +922,7 @@ mod tests {
     use super::super::measure;
     use super::super::measures::cited;
     use super::*;
+    use crate::findings::shown::{Said, Word};
 
     #[test]
     fn a_miss_cadence_cant_see_running_isnt_put_to_its_owner() {
@@ -1080,8 +1094,22 @@ mod tests {
         );
     }
 
+    /// Names `fix` as the fix of each open line filed under `prefix`, as its
+    /// owner does with `cadence owe --done`, at `at`.
+    fn name_fix(ledger: &mut [Entry], prefix: &str, at: i64) {
+        for e in ledger
+            .iter_mut()
+            .filter(|e| e.open && e.key.starts_with(prefix))
+        {
+            e.shown.word = Some(Word {
+                said: Said::Fix("core #6000".to_owned()),
+                at,
+            });
+        }
+    }
+
     #[test]
-    fn a_drag_is_filed_once_with_its_owner_and_closes_once_back_in() {
+    fn a_drag_is_filed_once_with_its_owner_and_closes_once_back_in_with_its_fix() {
         let mut ledger = Vec::new();
         let out = [measure("slips", Class::Slip, 3.0, Some(0.0))];
         let told = file(&mut ledger, &out, "2026-11-14", 1000);
@@ -1099,7 +1127,13 @@ mod tests {
             file(&mut ledger, &back, "2026-11-14", 8200).is_empty(),
             "none told"
         );
-        assert!(!ledger[0].open, "back in closes it");
+        assert!(ledger[0].open, "back in with no fix named closed it");
+        name_fix(&mut ledger, "hour:slips", 9000);
+        file(&mut ledger, &back, "2026-11-14", 11_800);
+        assert!(
+            !ledger[0].open,
+            "back in with its fix named didn't close it"
+        );
     }
 
     fn recurring(lines: &[&str]) -> Measure {
@@ -1364,8 +1398,12 @@ mod tests {
             file(ledger, std::slice::from_ref(m), "2026-11-26", at).len()
         };
         assert_eq!(asked(&mut ledger, &out, 1000), 1, "a red line wasn't asked");
+        name_fix(&mut ledger, "hour:ship", 2000);
         asked(&mut ledger, &back, 4600);
-        assert!(!ledger[0].open, "back in didn't close it");
+        assert!(
+            !ledger[0].open,
+            "back in with its fix named didn't close it"
+        );
         assert_eq!(
             asked(&mut ledger, &out, 8200),
             0,
@@ -1922,6 +1960,7 @@ mod tests {
             "an hour its journal went unread closed the ask"
         );
         past.now = 10.0;
+        name_fix(&mut ledger, "hour:relay:", 7000);
         file(&mut ledger, &[past], "2026-11-26", 8200);
         assert!(
             !ledger
