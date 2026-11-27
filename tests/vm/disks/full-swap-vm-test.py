@@ -31,12 +31,15 @@ def watched(machine: BaseMachine) -> BaseMachine:
 
 
 def test_swap_goes_through_a_compressed_pool_held_to_a_fifth(watched: BaseMachine) -> None:
-    """Swap goes through zswap's zstd pool, held to a fifth of memory, in front of the file."""
+    """Swap goes through zswap's zstd pool, held to a fifth of memory, in front of the file.
+
+    Its shrinker is off, so only a full pool writes its coldest pages on to the file.
+    """
     settings = watched.succeed(
         "cd /sys/module/zswap/parameters"
         " && cat enabled compressor max_pool_percent shrinker_enabled"
     ).split()
-    assert settings == ["Y", "zstd", "20", "Y"]
+    assert settings == ["Y", "zstd", "20", "N"], f"zswap's settings read {settings}"
     assert "zram" not in watched.succeed("cat /proc/swaps")
 
 

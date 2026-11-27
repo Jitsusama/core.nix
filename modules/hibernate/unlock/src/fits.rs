@@ -385,7 +385,11 @@ mod tests {
             let memory = Memory::parse(meminfo).unwrap();
             Fit::of(memory, Zones::parse(ZONES), GIB, swap_room(SWAPS)).least
         };
-        assert_eq!(least(&pooled) - least(LAPTOP), 500_000 * 1024);
+        assert_eq!(
+            least(&pooled).checked_sub(least(LAPTOP)),
+            Some(500_000 * 1024),
+            "the pool wasn't counted as in use, at what it takes"
+        );
     }
 
     #[test]
