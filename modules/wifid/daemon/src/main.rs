@@ -74,7 +74,6 @@ use std::net::IpAddr;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::Arc;
-use std::time::SystemTime;
 
 use futures_util::StreamExt;
 use tokio::sync::{mpsc, watch};
@@ -107,7 +106,7 @@ use state::{Progress, Reach, State, Trouble};
 use store::{Saved, Store};
 use supplicant::{InterfaceProxy, Join, JoinableProxy, Step, SupplicantProxy};
 use transition::{Heed, Request};
-use warned::Warned;
+use warned::{Boot, Warned};
 
 /// Where wifid keeps what it must remember between starts.
 const STATE: &str = "/var/lib/wifid";
@@ -270,8 +269,11 @@ async fn serve(
     // A switch restarts wifid, and the hand-over below would hold a card
     // to the point it's on, so each warning still lasting is taken in
     // first: one forgotten held the card to a point about to drop it.
-    let warned = RefCell::new(Warned::kept_in(&Path::new(KEPT).join("warned")));
-    take_in_warnings(&warned.borrow(), &arrivals, &state);
+    let warned = RefCell::new(take_in_warnings(
+        &Path::new(KEPT).join("warned"),
+        &arrivals,
+        &state,
+    ));
     let wifid = Wifid {
         bus: &bus,
         supplicant: &supplicant,
@@ -1701,16 +1703,34 @@ async fn station(
     }
 }
 
-/// Takes in each warning a wifid before kept that still lasts, so the
-/// moves and the chooser keep off its point as they did then.
-fn take_in_warnings(warned: &Warned, arrivals: &RefCell<Arrivals>, state: &watch::Sender<State>) {
-    for (card, point, until) in warned.lasting(Instant::now(), SystemTime::now()) {
+/// Takes in each warning a wifid before kept in that file that still
+/// lasts, so the moves and the chooser keep off its point as they did
+/// then, and says any it forgot, as a restart that forgets them would
+/// otherwise read as one that had none.
+fn take_in_warnings(
+    file: &Path,
+    arrivals: &RefCell<Arrivals>,
+    state: &watch::Sender<State>,
+) -> Warned {
+    let boot = match Boot::now() {
+        Ok(boot) => boot,
+        Err(error) => {
+            eprintln!("<4>forgets the warnings kept before, as it can't read the boot clock: {error}");
+            return Warned::none(file);
+        }
+    };
+    let (warned, forgotten) = Warned::kept_in(file, boot);
+    for said in forgotten {
+        eprintln!("<4>{said}");
+    }
+    for (card, point, until) in warned.lasting(Instant::now(), boot) {
         arrivals.borrow_mut().warned(&card, &point, until);
         change(state, |state| state.kept_off(&card, &point, until));
         let left = until.saturating_duration_since(Instant::now());
         let minutes = left.as_secs().div_ceil(60);
         println!("<6>{card} keeps off {point} for {minutes} more minutes, as it warned before");
     }
+    warned
 }
 
 /// Tells everyone listening what changed, if anything did.
@@ -3748,16 +3768,21 @@ impl Wifid<'_> {
         // moves now hold, not only for what was decided.
         if let Some(from) = from.as_deref() {
             let lasts = request.keeps_off(&followed);
-            let now = (Instant::now(), SystemTime::now());
-            let until = lasts.map(|lasts| now.0 + lasts);
+            let now = Instant::now();
+            let until = lasts.map(|lasts| now + lasts);
             self.arrivals
                 .borrow_mut()
                 .heeded(card, from, &followed, until);
             if let (Some(lasts), Some(until)) = (lasts, until) {
                 change(self.state, |state| {
-                    state.warned_off(card, from, (now.0, until));
+                    state.warned_off(card, from, (now, until));
                 });
-                if let Err(error) = self.warned.borrow_mut().warned(card, from, until, now) {
+                let kept = Boot::now().and_then(|boot| {
+                    self.warned
+                        .borrow_mut()
+                        .warned(card, from, until, (now, boot))
+                });
+                if let Err(error) = kept {
                     eprintln!("<4>can't keep {from}'s warning to {card} past a restart: {error}");
                 }
                 let minutes = lasts.as_secs() / 60;

@@ -147,9 +147,9 @@ in
         StateDirectory = "wifid";
         StateDirectoryMode = "0700";
         # Each point that warned a card it drops it, which a restart must
-        # remember but the disk never keeps, as it says where the machine
-        # was. Beside the sockets in /run/wifid, and kept as wifid stops, so
-        # a stop and a start remember it as a restart does; a boot clears it.
+        # remember and a boot needn't, as no warning lasts past an hour.
+        # Beside the sockets in /run/wifid, and kept as wifid stops, so a
+        # switch's stop and start remember it as a restart does.
         RuntimeDirectory = "wifid/kept";
         RuntimeDirectoryMode = "0700";
         RuntimeDirectoryPreserve = "yes";
