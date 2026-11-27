@@ -64,7 +64,7 @@ STRETCH = 4096
 # shows on Joel's own screen, where niri presents at the display's flip.
 COPIED_BEFORE_PRESENTED = timedelta(milliseconds=250)
 
-# How a key's line says its drawing, and what its render thread's times make of it (Trials.qml's
+# How a key's line says its drawing, and what its render thread's times make of it (Thread.js's
 # drawingApart), each part rounded to a millisecond apart, so the three may miss the whole by two.
 DRAWING_SPLIT = re.compile(
     r"(?P<drawing>\d+) drawing it \((?P<syncing>\d+) syncing, (?P<rendering>\d+) rendering,"
