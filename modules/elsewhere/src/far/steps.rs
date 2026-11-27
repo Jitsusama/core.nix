@@ -161,7 +161,17 @@ pub(super) fn stopping() -> String {
 # that nothing below it, a link included, can be seen or cleared. False
 # only when a link stays, never for a folder that couldn't be opened,
 # which fails what follows in its own words. One cleared is said, and
-# noted in `relinked`; one at the scratch is noted in `scratched`.
+# noted in `relinked`; one at the scratch is noted in `scratched`. The
+# folder the quests' scratches lie in, above the scratch, is asked here
+# no more than `copies` or `linked` ask it: a link put at it takes a
+# write in the folder above it, which the fence around the far line,
+# writing only the quest's scratch, never lets a job make. Whatever no
+# such fence holds could as well put one at any folder above, up to
+# the home, and clear what the line keeps itself, so asking stops at
+# the scratch. One put there once the copy is made, before it's
+# entered, leaves the job untaken, as `entered` measures where the copy
+# was made, not names; through any other, the line reads, writes and
+# clears only where it leads, which whatever put it there can write.
 unlinked() {{
   scratched=
   [ ! -L "${{job%/*/*/*}}" ] || {{ scratched=1; return 1; }}

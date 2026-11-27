@@ -335,20 +335,31 @@ fn a_link_put_at_a_copy_s_own_name_as_it_crosses_is_never_read_through() {
     // A cp that, once the first file is copied, puts a link at that very
     // copy's name to a file of the job's, as a job of the quest may
     // meanwhile: the copy's size, read after, would be that file's, and
-    // it would be listed as crossed at it.
+    // it would be listed as crossed at it. A read leaves no trace on a
+    // file, so the job's is closed to reading: a line reading through the
+    // link fails there, says the copy didn't come back and clears the
+    // link, which the link still standing shows beside the list. As root,
+    // which reads it anyway, only the list shows it. The file's size and
+    // mode show a write or a chmod through the link, and its being there
+    // a clear.
     let planting = "PATH=${PATH#*:} cp \"$@\" || exit\n\
          [ -e \"$HOME/planted\" ] || \
          { rm -f \"$2\" && ln -s \"$HOME/target\" \"$2\" && : > \"$HOME/planted\"; }";
     let programs = [("cp", planting)];
     let job = "mkdir out && printf a > out/a && printf b > out/b && \
-         printf target > \"$HOME/target\"";
+         printf target > \"$HOME/target\" && chmod 0 \"$HOME/target\"";
     let (code, err, home) = far_line(Left::Whole, &[("x", "x")], job, &kind, None, &programs);
-    let target = std::fs::read_to_string(home.join("target")).unwrap_or_default();
+    let link = std::fs::read_link(handover(&home).join(BACK).join("0")).ok();
+    let target = std::fs::symlink_metadata(home.join("target"))
+        .ok()
+        .map(|target| (target.is_file(), target.len(), target.permissions().mode() & 0o777));
     let listed = std::fs::read_to_string(handover(&home).join(BROUGHT)).unwrap_or_default();
     assert!(
-        home.join("planted").exists() && target == "target",
-        "the far line wrote or cleared through a link put at a copy's own name \
-         ({code:?}): {target:?} {err}"
+        home.join("planted").exists()
+            && link == Some(home.join("target"))
+            && target == Some((true, 6, 0)),
+        "the far line read, wrote or cleared through a link put at a copy's own name, or \
+         cleared the link ({code:?}): {link:?} {target:?} {err}"
     );
     assert!(
         code == Some(0) && err.contains(HALTED) && listed == "\ncut\n",

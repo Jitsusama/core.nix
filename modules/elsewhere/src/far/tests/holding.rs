@@ -651,6 +651,21 @@ fn a_link_put_above_the_job_s_folder_in_its_copy_before_it_s_entered_leaves_it_u
         code == Some(75) && err.contains("the job's copy was moved or linked from its place"),
         "the far line didn't leave the job untaken and say its copy moved ({code:?}): {err}"
     );
+    // The copy, its run's file and the job's tree go, the link in the
+    // copy taken as itself, but what was moved out of the copy stays
+    // where it went, unsaid: a known strand. The line clears by the
+    // copy's names alone, never by where a link leads, so it can't know
+    // the folder the link names was the copy's own rather than a decoy.
+    // A job a strict fence holds can move it only within the quest's
+    // scratch, so it stays there, as anything else that job writes does.
+    assert!(
+        !work(&home).join("1").exists()
+            && !work(&home).join("1.run").exists()
+            && !handover(&home).join(TREE).exists()
+            && home.join("aside/deep/x").exists(),
+        "the far line kept its copy, its run's file or the job's tree, or cleared what was \
+         moved out of the copy through the link ({code:?}): {err}"
+    );
     let _ = std::fs::remove_dir_all(&home);
 }
 
