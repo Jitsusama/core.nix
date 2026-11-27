@@ -55,7 +55,7 @@ pub fn mark_asked(ledger: &mut [Entry], owner: &str, now: i64, id: &str) {
     for entry in ledger.iter_mut().filter(|e| {
         e.open
             && e.asked.is_none()
-            && e.kind.as_deref() == Some("drag")
+            && super::owing::is_asked(e)
             && e.owner.as_deref() == Some(owner)
             && e.last_to == now
     }) {

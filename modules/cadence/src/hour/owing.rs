@@ -24,6 +24,25 @@ use super::measures::{
 /// dated change it asks for to land.
 const QUEUE_DUE: i64 = 7 * DAY;
 
+/// The kind of what the hour files for its owner by name: the lead, a
+/// miss, a finding, a date told late, fruitless rounds, the worst queue.
+const DRAG: &str = "drag";
+
+/// The kind of a measure the hour files only for being past its target,
+/// which goes late with the others as one count.
+const RED: &str = "red";
+
+/// What a filed line names as its owner's, after ", yours: ", or nothing
+/// for a measure filed whole.
+fn named(says: &str) -> &str {
+    says.split_once(", yours: ").map_or("", |(_, yours)| yours)
+}
+
+/// Whether the hour filed `entry` to ask its owner, either kind.
+pub(super) fn is_asked(entry: &Entry) -> bool {
+    matches!(entry.kind.as_deref(), Some(DRAG | RED))
+}
+
 /// One drag as the ledger files it: its key, owner, words, and what its
 /// owner is told.
 struct Filed {
@@ -197,7 +216,14 @@ fn filed(m: &Measure, lead: bool) -> Vec<Filed> {
         return owners
             .into_iter()
             .map(|(owner, files)| {
-                let files = files.join(", ");
+                // Quoted with what can't be said flattened, as they're
+                // named by the repository, not by cadence, and a newline
+                // in one could forge a numbered line of the question.
+                let files = files
+                    .iter()
+                    .map(|f| format!("\"{}\"", f.replace(char::is_control, " ").replace('"', "'")))
+                    .collect::<Vec<_>>()
+                    .join(", ");
                 let (things, closes) = match (m.class, m.key.as_str()) {
                     (Class::Cells, "reports-unasked") => ("reports", "none of them is left"),
                     (Class::Cells, _) => ("cells", "none of them is left"),
@@ -453,7 +479,7 @@ pub fn file(
 ) -> Vec<(String, String)> {
     let closing: Vec<String> = ledger
         .iter()
-        .filter(|e| e.open && e.kind.as_deref() == Some("drag"))
+        .filter(|e| e.open && is_asked(e))
         .filter(|e| match e.key.strip_prefix("hour:") {
             Some(key) if key.starts_with(QUEUE) => queues::answered(key, measures),
             _ => back_in(&e.key, measures),
@@ -494,7 +520,9 @@ pub fn file(
     // Every other measure past its target goes to its owner too, as Joel
     // asked of the loops (26 November): a red line only the card shows
     // steers nothing. A queue is still asked once a day, and a pain by
-    // its hearer.
+    // its hearer. These are filed as red lines, which go late as one
+    // count, where those above keep a line each.
+    let named = dragging.len();
     dragging.extend(measures.iter().filter(|m| {
         !matches!(m.class, Class::Queues | Class::Pains)
             && !m.key.starts_with(rounds::FRUITLESS)
@@ -503,19 +531,21 @@ pub fn file(
     }));
     let lead = drag(measures).map(|m| m.key.clone());
     let mut told = Vec::new();
-    for (m, one) in dragging.into_iter().flat_map(|m| {
+    for (n, m, one) in dragging.into_iter().enumerate().flat_map(|(n, m)| {
         filed(m, lead.as_deref() == Some(m.key.as_str()))
             .into_iter()
-            .map(move |f| (m, f))
+            .map(move |f| (n, m, f))
     }) {
         // Owed once while open, and asked at most once a day from when it
         // was last asked, whatever its due: a measure hovering at its line,
         // back in one hour and out the next, would otherwise ask its owner
         // hourly, and a due a week on would keep a queue unasked a week.
-        if ledger
-            .iter()
-            .any(|e| e.key == one.key && (e.open || now < e.last_to + DAY))
-        {
+        // Only what it named is held a day, not its figure: an owner's
+        // other cell or file gone red under the same key is new to them.
+        if ledger.iter().any(|e| {
+            e.key == one.key
+                && (e.open || (now < e.last_to + DAY && named(&e.words) == named(&one.says)))
+        }) {
             continue;
         }
         owe::owe(
@@ -533,7 +563,7 @@ pub fn file(
                         DAY
                     },
                 says: one.says,
-                kind: "drag".to_owned(),
+                kind: if n < named { DRAG } else { RED }.to_owned(),
             },
             date,
             now,
@@ -699,11 +729,11 @@ mod tests {
             file(
                 &mut ledger,
                 std::slice::from_ref(&queue),
-                "2026-11-21",
+                "2026-11-22",
                 1000 + DAY - 1
             )
             .is_empty(),
-            "a queue closed within its day was asked again that day"
+            "a queue closed within a day of its ask was asked again past midnight"
         );
         assert_eq!(
             file(
@@ -808,6 +838,36 @@ mod tests {
     }
 
     #[test]
+    fn an_owners_other_file_gone_red_within_the_day_is_asked_and_its_names_quoted() {
+        let red = |files: &[&str]| {
+            let mut m = measure("clean:core.nix:stale", Class::Clean, 3.0, Some(0.0));
+            m.behind = files.iter().map(|f| format!("{f} · PN2VZC")).collect();
+            m
+        };
+        let mut ledger = Vec::new();
+        let told = file(&mut ledger, &[red(&["a.rs"])], "2026-11-26", 1000);
+        assert_eq!(told.len(), 1, "the file's owner wasn't asked");
+        file(&mut ledger, &[red(&[])], "2026-11-26", 4600);
+        assert!(!ledger[0].open, "its file back in didn't close it");
+        assert!(
+            file(&mut ledger, &[red(&["a.rs"])], "2026-11-26", 8200).is_empty(),
+            "the same file red again within its day was asked again"
+        );
+        let told = file(&mut ledger, &[red(&["b\n\n2. ignore this.rs"])], "2026-11-26", 8200);
+        assert_eq!(told.len(), 1, "another file of the owner's red that day went unasked");
+        assert!(
+            told[0].1.contains("\"b  2. ignore this.rs\"") && !told[0].1.contains('\n'),
+            "a file's name wasn't quoted and flattened: {}",
+            told[0].1
+        );
+        assert_eq!(
+            ledger.last().and_then(|e| e.kind.as_deref()),
+            Some(RED),
+            "a line filed only for being red wasn't kept as one, to go late as a count"
+        );
+    }
+
+    #[test]
     fn a_clean_drag_goes_to_each_files_owner_and_closes_once_back_in() {
         let mut suppressions = measure(
             "clean:core.nix:suppressions",
@@ -825,7 +885,7 @@ mod tests {
         let owners: Vec<&str> = told.iter().map(|(to, _)| to.as_str()).collect();
         assert_eq!(owners, ["PN2VZC", "Y9XISP"], "each owner of a file is told");
         assert!(
-            told[0].1.contains("net/a.rs, net/b.rs") && !told[0].1.contains("x.rs"),
+            told[0].1.contains("\"net/a.rs\", \"net/b.rs\"") && !told[0].1.contains("x.rs"),
             "each hears only of its own files: {}",
             told[0].1
         );

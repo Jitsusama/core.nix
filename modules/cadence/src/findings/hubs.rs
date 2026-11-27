@@ -281,8 +281,9 @@ pub fn put_late(
         entry.late = true;
         // The hour files every measure past its target, so its red lines
         // go late together; each is said as one count, which would
-        // otherwise crowd the day's worse and better off its note.
-        if entry.kind.as_deref() == Some(DRAG) {
+        // otherwise crowd the day's worse and better off its note. Its
+        // misses, findings, dates told late and queue keep a line each.
+        if entry.kind.as_deref() == Some(RED) {
             dragged += 1;
             drags.insert(entry.owner.clone().unwrap_or_else(|| "no owner".to_owned()));
             continue;
@@ -304,8 +305,10 @@ pub fn put_late(
     (put, lines)
 }
 
-/// The kind the hour files a measure past its target as.
-const DRAG: &str = "drag";
+/// The kind the hour files a measure past its target as when nothing
+/// but its being red asks it: not the lead, a miss, a finding, a date told
+/// late, fruitless rounds or the worst queue.
+const RED: &str = "red";
 
 /// Each of `put` as the need the mesh keeps, asked by `asker` at `at_ms`,
 /// its id the asker's and the moment's with its place among them, so no
@@ -544,21 +547,27 @@ mod tests {
     fn the_hours_red_lines_gone_late_are_said_as_one_count() {
         let mut ledger = ledger("crashes:chrome");
         ledger[0].kind = Some("hole".into());
-        for (key, owner) in [("hour:a", "B"), ("hour:b", "C"), ("hour:c", "B")] {
+        for (key, owner, kind) in [
+            ("hour:a", "B", RED),
+            ("hour:b", "C", RED),
+            ("hour:c", "B", RED),
+            ("hour:miss:the host crashed", "D", "drag"),
+        ] {
             let mut drag = self::ledger(key).remove(0);
-            drag.kind = Some(DRAG.into());
+            drag.kind = Some(kind.into());
             drag.owner = Some(owner.into());
+            drag.words = key.to_owned();
             ledger.push(drag);
         }
-        let (put, lines) = put_late(&mut ledger, &[], |_| true, 2 * DAY + 1);
-        assert!(put.is_empty(), "a red line went to a hub: {put:?}");
+        let (_, lines) = put_late(&mut ledger, &[], |_| true, 2 * DAY + 1);
         assert_eq!(
             lines,
             [
                 "Late: crashes:chrome got worse, open since d1, with A",
+                "Late: hour:miss:the host crashed, open since d1, with D",
                 "Late: 3 of the hour's red lines asked of their owners, with B, C"
             ],
-            "the hour's red lines took a line each, or the must lost its own"
+            "the hour's red lines took a line each, or the must or Joel's miss lost its own"
         );
         assert!(ledger.iter().all(|e| e.late), "one wasn't marked late");
     }
