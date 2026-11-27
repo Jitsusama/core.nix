@@ -546,6 +546,10 @@ def test_the_map_draws_the_realm_live(mycelium_opened: Opened) -> None:
 # node serves the ties the map draws talk from, it draws without them, and
 # says it is still reading them.
 READING_TALK = "Reading what passed between cells."
+# A pair the node serves no tie for, so its drawer counts the talk from the
+# messages, and the words its drawer says that in.
+UNTIED = f"c:HERON2|c:{HEARD}"
+UNTIED_TALK = "Talk on the mesh in the last ten minutes"
 
 
 @pytest.fixture
@@ -581,6 +585,16 @@ def test_the_map_draws_before_the_node_says_what_passed(
     expect(drawer, "a cell's drawer said nothing passed before it was heard").to_contain_text(
         "Still reading"
     )
+    # HERON2 has no tie, so its talk is counted from the messages alone, and
+    # the counts line stays hidden rather than saying none passed.
+    page.evaluate(f"location.hash = '#talk=' + encodeURIComponent('{UNTIED}')")
+    expect(drawer, "an untied talk's drawer didn't open").to_contain_text(UNTIED_TALK)
+    expect(
+        drawer, "an untied talk's drawer said nothing passed before it was heard"
+    ).to_contain_text("Still reading")
+    expect(
+        drawer.locator(".counts"), "an untied talk counted messages before they were heard"
+    ).to_have_count(0)
     page.evaluate(f"location.hash = '#talk=' + encodeURIComponent('c:HERON1|c:{HEARD}')")
     expect(drawer, "a talk's drawer said nothing passed before it was heard").to_contain_text(
         "Still reading"
@@ -594,6 +608,10 @@ def test_the_map_draws_before_the_node_says_what_passed(
     expect(
         drawer.locator(".lately li"), "a talk's drawer open as messages answered listed none"
     ).to_have_count(TALKERS["HERON1"])
+    page.evaluate(f"location.hash = '#talk=' + encodeURIComponent('{UNTIED}')")
+    expect(drawer.locator(".counts"), "an untied talk didn't count what was heard").to_have_text(
+        re.compile(rf"^{TALKERS['HERON2']} message\b")
+    )
     opened.close()
 
 
