@@ -779,7 +779,9 @@ mod tests {
         let _ = fs::remove_dir_all(&state);
         fs::create_dir_all(&state).expect("a state folder");
         // A program that answers any words it's given, standing in for
-        // notify-send once the notices server is back.
+        // notify-send once the notices server is back. It's run by its own
+        // path: a program built to be many reads the name it's run by, so
+        // a link naming it notify-send wouldn't answer.
         let answers = std::env::var_os("PATH")
             .and_then(|path| {
                 std::env::split_paths(&path)
@@ -787,9 +789,9 @@ mod tests {
                     .find(|program| program.is_file())
             })
             .expect("a true on PATH");
-        let notify = state.join("notify-send");
+        let missing = state.join("notify-send");
         let knocking = Knocking {
-            notify: Some(&notify),
+            notify: Some(&missing),
             busctl: None,
             again: Duration::from_secs(10),
         };
@@ -809,17 +811,12 @@ mod tests {
             start,
         );
         assert_eq!(unknocked.len(), 1, "kept to try again: {unknocked:?}");
-        std::os::unix::fs::symlink(&answers, &notify).expect("notify-send back");
+        let back = Knocking {
+            notify: Some(&answers),
+            ..knocking
+        };
         let later = start + Duration::from_secs(10);
-        tell_new(
-            &state,
-            &live,
-            &[],
-            &knocking,
-            &mut told,
-            &mut unknocked,
-            later,
-        );
+        tell_new(&state, &live, &[], &back, &mut told, &mut unknocked, later);
         assert!(
             told.contains_key("slack:C4:1.0@pineapple override") && unknocked.is_empty(),
             "told once a later try knocks: {told:?} {unknocked:?}"
