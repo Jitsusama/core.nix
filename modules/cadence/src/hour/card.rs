@@ -101,11 +101,18 @@ pub struct Held {
 }
 
 /// The card's line naming the drag, due at `due`, and whom it goes to. The
-/// queues never lead, so one past isn't the drag, but the line mustn't say
-/// everything is in while one is out.
+/// queues, and the measures asked of their owners apart, as the claims of
+/// his rule, never lead, so one past isn't the drag, but the line mustn't
+/// say everything is in while one is out.
 fn drag_line(measures: &[Measure], due: &str) -> String {
     let Some(m) = drag(measures) else {
-        return if super::measures::queues::worst(measures).is_some() {
+        let queue = super::measures::queues::worst(measures).is_some();
+        let apart = measures
+            .iter()
+            .any(|m| m.class != Class::Queues && m.past().is_some());
+        return if apart {
+            "Drag: none leads; every judged measure out is asked of its owner apart.".to_owned()
+        } else if queue {
             "Drag: none, every judged measure but the queues is in; the worst queue's owner \
              is asked apart."
                 .to_owned()
@@ -465,6 +472,17 @@ mod tests {
         assert!(
             card.contains("Drag: none, every judged measure but the queues is in"),
             "a queue out was said to be in: {card}"
+        );
+        let claims = measure(
+            crate::hour::measures::ruled::KEY,
+            Class::Cells,
+            2.0,
+            Some(0.0),
+        );
+        let (card, _) = compose("18:10", &[claims], &Kept::default(), &none(), "tomorrow");
+        assert!(
+            card.contains("Drag: none leads; every judged measure out is asked of its owner"),
+            "a measure out but asked apart was said to be in: {card}"
         );
         assert_eq!(
             next.drag.map(|d| d.unmoved),

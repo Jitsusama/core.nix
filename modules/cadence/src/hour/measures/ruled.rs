@@ -19,8 +19,9 @@
 //! Joel ruled it". A date anywhere else dates something else, as a
 //! deadline, the hour a rule was broken, or when a cell told him, and a
 //! quote with no date may be the claimer's own words for the rule. A claim
-//! inside quotes or backticks is words about a claim, not one. Each claim
-//! in a message is judged, so one backed claim hides no other.
+//! inside quotes or backticks, in a fenced block or on a line quoted with
+//! `>`, is words about a claim, not one. Each claim in a message is
+//! judged, so one backed claim hides no other.
 //!
 //! A denial, as "not Joel's rule", claims nothing, and nor does a line
 //! of cadence's own card passed on: a measure's line, every line set in
@@ -591,15 +592,50 @@ pub fn unbacked(text: &str) -> Option<String> {
         .map(|at| said[at].to_owned())
 }
 
-/// `text` with its curly apostrophes made straight, the lines of cadence's
-/// card it passes on taken out, as [`uncarded`] does, and its quotes put
-/// by stand-ins, as [`unquoted`] does.
+/// `text` with its curly apostrophes made straight, its quoted blocks put
+/// by stand-ins, as [`unfenced`] does, the lines of cadence's card it
+/// passes on taken out, as [`uncarded`] does, and its quotes put by
+/// stand-ins, as [`unquoted`] does.
 fn plain(text: &str) -> String {
     let text = text
         .replace(unseen, "")
         .replace(['\u{2018}', '\u{2019}'], "'")
         .replace(FILLERS, " ");
-    unquoted(&uncarded(&text))
+    unquoted(&uncarded(&unfenced(&text)))
+}
+
+/// `text` with each block it quotes put by a line of three dots: a fenced
+/// one, between lines opening with three backticks or tildes, as a cell
+/// pastes code, a diff or a log, and each line opening with `>`, as a
+/// cell quotes another's words to answer them. What's quoted is words
+/// about a claim, not one. A fence left open is put back as written, as
+/// [`unquoted`] puts back a quote left open, since a stray fence would
+/// otherwise hide every claim after it; a line that opens and closes its
+/// own span, as "```joel's rule```", is left to [`unquoted`].
+fn unfenced(text: &str) -> String {
+    let fence = |line: &str| {
+        let line = line.trim();
+        let mark = ["```", "~~~"]
+            .into_iter()
+            .find(|mark| line.starts_with(mark));
+        mark.is_some_and(|mark| line.len() < 2 * mark.len() || !line.ends_with(mark))
+    };
+    let mut kept: Vec<&str> = Vec::new();
+    let mut fenced: Option<Vec<&str>> = None;
+    for line in text.lines() {
+        match fenced.as_mut() {
+            Some(_) if fence(line) => {
+                kept.push("...");
+                fenced = None;
+            }
+            Some(within) => within.push(line),
+            None if fence(line) => fenced = Some(vec![line]),
+            None if line.trim_start().starts_with('>') => kept.push("..."),
+            None => kept.push(line),
+        }
+    }
+    kept.extend(fenced.unwrap_or_default());
+    kept.join("\n")
 }
 
 /// The marks that draw as a blank but are no space, as U+2800 or the

@@ -218,9 +218,30 @@ fn a_claim_inside_quotes_is_words_about_a_claim_and_isnt_counted() {
     let about = [
         "The measure counts messages like \"Joel wants\" and nothing more.",
         "It asks of `joel's rule` claims.",
+        "The module reads:\n```rust\n//! two cells had broken Joel's rule\n```\nIt's fine.",
+        "  ~~~\n  Joel wants it shut.\n  ~~~",
+        "> T6E7X6: I broke Joel's rule.\nThat wasn't his rule at all.",
     ];
     for text in about {
         assert_eq!(unbacked(text), None, "a quoted claim was counted: {text}");
+    }
+    // A fence or a quote ends where it ends, and a fence left open is
+    // put back, so neither hides a claim of the cell's own.
+    let own = [
+        ("```\nlog\n```\nJoel wants it shut.", "Joel wants it shut."),
+        ("> his words?\nJoel wants it shut.", "Joel wants it shut."),
+        ("```\nJoel wants it shut.", "Joel wants it shut."),
+        (
+            "```Joel's rule``` and Joel wants it shut.",
+            "`...``...``...` and Joel wants it shut.",
+        ),
+    ];
+    for (text, claim) in own {
+        assert_eq!(
+            unbacked(text).as_deref(),
+            Some(claim),
+            "a claim beside a fence or a quote was hidden: {text}"
+        );
     }
 }
 

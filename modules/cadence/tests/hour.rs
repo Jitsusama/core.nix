@@ -410,6 +410,56 @@ fn a_finding_two_days_open_counts_apart_and_is_owed_to_its_owner() {
     );
 }
 
+/// A claim of Joel's rule an hour old, with no word of his, is named on
+/// the card and asked of its sender by the run sending the card; the next
+/// run reads that ask back from the mesh and the ledger it kept, and asks
+/// no one again that day.
+#[test]
+fn a_claim_of_his_rule_is_asked_of_its_sender_once_a_day() {
+    let account = account();
+    let messages = account
+        .path()
+        .join("state/pi/agentic-harness.pi/mesh-workflow/messages");
+    let ms = (std::time::SystemTime::now() - std::time::Duration::from_hours(1))
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("a clock past 1970")
+        .as_millis();
+    let id = format!("{ms}-T6E7X6-1-1f2e3d4c");
+    fs::write(
+        messages.join(format!("{id}.json")),
+        format!(
+            r##"{{"v": 1, "id": "{id}", "at": "", "from": "T6E7X6", "pid": 1,
+                "to": ["#quest/wcjqsg"], "intent": "fyi", "text": "I broke Joel's rule."}}"##
+        ),
+    )
+    .expect("a claim");
+    let asks = || {
+        files(&messages)
+            .iter()
+            .filter_map(|file| fs::read_to_string(messages.join(file)).ok())
+            .filter(|text| {
+                text.contains("\"@T6E7X6\"")
+                    && text.contains("\"text\":\"cadence hour: your message 1f2e3d4c ")
+            })
+            .count()
+    };
+    for run in ["first", "second"] {
+        let ran = hour(account.path(), &["--to", "WCJQSG"]);
+        let said = String::from_utf8_lossy(&ran.stderr);
+        assert!(ran.status.success(), "cadence failed: {said}");
+        let card = String::from_utf8_lossy(&ran.stdout);
+        assert!(
+            card.contains("[1f2e3d4c] I broke Joel's rule. · T6E7X6"),
+            "the {run} hour didn't name the unanswered claim: {card}"
+        );
+        assert_eq!(
+            asks(),
+            1,
+            "after the {run} hour its sender wasn't asked, or was asked again within the day"
+        );
+    }
+}
+
 #[test]
 fn the_run_sending_the_card_keeps_the_hour_and_owes_its_drag() {
     let account = account();
