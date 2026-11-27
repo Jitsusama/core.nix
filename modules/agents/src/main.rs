@@ -666,6 +666,23 @@ fn vocabulary(path: &Path) -> Result<Words, Failure> {
         })
 }
 
+/// Hears the sessions' inboxes and the files `paths` names, telling `to`.
+///
+/// # Errors
+///
+/// 1 when it can't hear the files. Without the inboxes only talks not yet
+/// taken go unshown, so every row is still served and it says so instead.
+fn follow_paths(paths: &Paths, to: mpsc::Sender<Heard>) -> Result<(), Failure> {
+    if let Err(why) = sources::follow_inboxes(&paths.steer, to.clone()) {
+        eprintln!(
+            "agents: can't hear the sessions' inboxes, so talks not yet taken go unshown: {why}"
+        );
+    }
+    sources::follow_files(paths, to).map_err(|why| {
+        Failure::new(Exit::Failed, "agents can't hear the files it reads").because(why.to_string())
+    })
+}
+
 /// Serves the rows until the sources it hears from are gone.
 ///
 /// # Errors
@@ -749,16 +766,7 @@ fn serve(args: Args) -> Result<(), Failure> {
         steer: args.steer,
         shells: args.shells,
     };
-    // Without them only talks not yet taken go unshown, so every row is
-    // still served.
-    if let Err(why) = sources::follow_inboxes(&paths.steer, to.clone()) {
-        eprintln!(
-            "agents: can't hear the sessions' inboxes, so talks not yet taken go unshown: {why}"
-        );
-    }
-    sources::follow_files(&paths, to).map_err(|why| {
-        Failure::new(Exit::Failed, "agents can't hear the files it reads").because(why.to_string())
-    })?;
+    follow_paths(&paths, to)?;
     let mut inputs = started(words, &paths, keeping);
     let mut served = Served::default();
     let mut held_landed = Rc::clone(served.landed());

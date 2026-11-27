@@ -248,7 +248,7 @@ pub fn the_shell(stream: &UnixStream) -> Result<(), String> {
     if pid <= 0 {
         return Err(untold(&gone()));
     }
-    let exe = std::fs::read_link(format!("/proc/{pid}/exe")).map_err(untold)?;
+    let exe = std::fs::read_link(format!("/proc/{pid}/exe")).map_err(|why| untold(&why))?;
     if the_shells_program(&exe.to_string_lossy()) {
         Ok(())
     } else {
