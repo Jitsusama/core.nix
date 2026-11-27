@@ -3242,7 +3242,7 @@ Scope {
     // as `returned` reads.
     function pressArming(choice, counted) {
         const did = Arming.pressed(armed, steadyId(choice), { keysTaken: prompt.keysTaken,
-            counted, now: Date.now(), wait: Options.keyTiming.wait });
+            counted, now: KeyTimes.now(), wait: Options.keyTiming.wait });
         armed = did.armed;
         if (did.act === "ends")
             run(Object.assign({}, choice, { confirm: false }), false);
