@@ -1114,8 +1114,10 @@ fn a_listing_that_failed_on_a_filling_disk_is_tried_again_within_minutes() {
     fs::write(store.root.join("listing-broken"), "").unwrap();
     let mut guard = store.guard(store.config("100%", "0%"));
     step_later_until(&store, &mut guard, 0.0, &CALM, |store, _| lists(store) == 1);
-    // Heard failing at once, so it took a moment and rests no longer.
-    step_later(&mut guard, 0.0, &CALM);
+    // Heard failing at once, so it took a moment and rests no longer. Heard
+    // only a step later, at 60 s, it seemed a minute long and rested nine,
+    // past the six below: three of four runs on a loaded room on 27 November.
+    heard_later(&mut guard, 0.0, &CALM);
     fs::remove_file(store.root.join("listing-broken")).unwrap();
     step_later(&mut guard, 60.0, &CALM);
     assert_eq!(lists(&store), 1, "not at once: a listing costs the disk");
