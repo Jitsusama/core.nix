@@ -476,14 +476,14 @@ mod tests {
         }
     }
 
-    fn open(head: &str, draft: bool) -> Asked {
-        Ok(Some(Pull {
+    fn open(head: &str, draft: bool) -> Pull {
+        Pull {
             number: 6821,
             title: "Ours".to_owned(),
             head: head.to_owned(),
             branch: format!("jitsusama/{head}"),
             draft,
-        }))
+        }
     }
 
     /// The heads still aboard under `root`.
@@ -507,9 +507,9 @@ mod tests {
         let waiting: Vec<Rider> = heads.iter().map(|&head| ours(head)).collect();
         let ask = |rider: &Rider| match rider.head.as_str() {
             "unasked" => Err("gh pr: unexpected EOF".to_owned()),
-            "drafted" => open("drafted", true),
+            "drafted" => Ok(Some(open("drafted", true))),
             "closed" => Ok(None),
-            head => open(head, false),
+            head => Ok(Some(open(head, false))),
         };
         let git = |arguments: &[&str]| {
             if arguments.contains(&"unfetched") {
