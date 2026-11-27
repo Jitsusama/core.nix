@@ -3295,10 +3295,11 @@
   passwords-copier-keeps-a-secret-in-memory-on-niri = ''
     on a nested niri, Passwords' copier, given a secret on its standard input as the daemon gives
     it, pastes it whole on Joel's display, offered marked secret, makes nothing under TMPDIR,
-    runs nothing from PATH, typed or not, can't be read through /proc and holds it in locked
-    memory, says it's ready only once it can't
-    be read and held once it holds the copy, and refuses a standard input it can't read whole,
-    never saying it held it
+    runs nothing from PATH, typed or not, can't be read through /proc and holds as much of it
+    in locked memory as the secret is long, says it's ready only once it can't be read and held
+    once it holds the copy, pastes whole and keeps locked a secret that outgrows its first page,
+    and refuses a standard input it can't read or one past its cap of a MiB, never saying it
+    held either
   '';
   passwords-holds-no-secret = ''
     the passwords daemon holds every entry each password manager lists without a secret, even one

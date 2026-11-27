@@ -19,7 +19,8 @@ the cat then running the real one so a copier that leans on it still holds its c
 6. A standard input it can't read is refused for that reason, making nothing under TMPDIR and
    running nothing.
 7. A standard input past the copier's cap is refused for being past it, rather than held in
-   part, so a refusal for any other reason, such as memory it couldn't lock, fails here.
+   part, so a refusal for any other reason, such as memory it couldn't lock, fails here; it
+   makes nothing under TMPDIR and runs nothing either.
 8. A secret long enough to outgrow the copier's first page pastes whole, making nothing under
    TMPDIR, running nothing and staying locked in memory once grown. It's copied with no type
    given, where stock wl-copy asks xdg-mime for one, so case 3's xdg-mime has a copy to run on.
@@ -207,6 +208,7 @@ class Cases:
         ended, said, told = ended_within(copier)
         failed = stalled or refusal(ended, said, PAST_THE_CAP)
         self.check("a stdin past the cap is refused", failed or self.anything_made())
+        self.check("a stdin past the cap runs nothing", self.anything_ran())
         self.check("a stdin past the cap is never said held", said_held(told))
 
 
