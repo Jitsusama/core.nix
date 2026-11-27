@@ -14,7 +14,9 @@
 # tells the shell is held to what Sessions.qml's handler takes, so the two
 # can't drift apart while both stand-ins pass, and the words it reads as
 # kitten's wait running out, or its socket not listening, are what the
-# packaged kitten says then.
+# packaged kitten says then. Long because every door shares the one set of
+# stand-ins and is held to the one handler, so a door split off would
+# need its own copy of both, which could drift from the others.
 # usage: opens-in-sessions-doors.sh <sh> <opens-in-sessions.sh> <python3> <Sessions.qml> <kitten>
 set -euo pipefail
 
