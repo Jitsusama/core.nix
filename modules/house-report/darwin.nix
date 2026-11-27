@@ -40,8 +40,12 @@ let
   # so does house-report-key whenever the key or its folder changes, so
   # a key put in place or swapped is taken within seconds, as Linux's
   # path unit takes one there. Copied, the key itself stays root's, and
-  # no second name for it, whoever made one, can keep it from the daemon
-  # or hand another file over. The folders tested are the key's real
+  # no second name can hand another file over: a key with one is refused.
+  # Any account that can reach the key may give it one, as macOS lets an
+  # account link a file it can't read, so that refusal keeps the key from
+  # the daemon until the name goes, failing closed, and says nothing of
+  # making it anew (keys said plainly round 7's F1, F4, F10 and F15).
+  # The folders tested are the key's real
   # ones, every link resolved, each up to / root's and written or taken
   # by no other account, by its mode or an access list, the key root's
   # and read by no other account itself; the key is then read
@@ -62,16 +66,18 @@ let
   # F10 and F14; round 2's F6 and F9; round 3's F8 and F11). Only the
   # first refusal that holds is said, so whether to say it is decided
   # apart from them, by the same three tests of the file the key's name
-  # comes to, every link followed, and by its names, whatever refusal is
-  # said: one of its folder, its link, its copy's folder or one of the
-  # key's own (keys said plainly round 2's F1, F8 and F10; round 3's F1,
+  # comes to, every link followed, whatever refusal is said: one of its
+  # folder, its link, its copy's folder or one of the key's own (keys
+  # said plainly round 2's F1, F8 and F10; round 3's F1,
   # F5, F6, F7 and F10). Those tests copy nothing, so a folder another
   # account may change can only make the advice wrong, never hand a key
   # over. A folder's refusal, which says the key "is under" it, says to
   # make the key anew too, since an account that may change the folder
   # may have put another of root's files at the key's name by a hard
-  # link, which outlasts the folder's fix; and a key with a second name
-  # is refused, saying the same (keys said plainly round 6's F4).
+  # link, which outlasts the folder's fix (keys said plainly round 6's
+  # F4). A key with a second name is refused saying only that, since a
+  # second name doesn't show that an account knows or changed it (round
+  # 7's F1).
   # Following every link takes readlink's -f, which macOS has from 12.3
   # (round 6's F1, F2, F5 and F6). Each
   # run copies through a name of its own, so two runs
@@ -127,7 +133,7 @@ let
     elif [ ! -f "$houseReportRead" ]; then
       houseReportWhy="isn't there as a file"
     elif [ "$(/usr/bin/stat -f %l "$houseReportRead")" != 1 ]; then
-      houseReportWhy="has another name, which another account may have given it"
+      houseReportWhy="has another name, which any account that can reach it may give it"
     elif [ "$(/usr/bin/stat -f %u "$houseReportRead")" != 0 ]; then
       houseReportWhy="isn't root's"
     elif [ -n "$(/usr/bin/find "$houseReportRead" -maxdepth 0 -perm +066)" ]; then
@@ -153,8 +159,7 @@ let
       :
     elif [ "$(/usr/bin/stat -f %u "$houseReportSeen")" != 0 ] \
       || [ -n "$(/usr/bin/find "$houseReportSeen" -maxdepth 0 -perm +066)" ] \
-      || /bin/ls -le "$houseReportSeen" | /usr/bin/grep -qE "$houseReportKnowing" \
-      || [ "$(/usr/bin/stat -f %l "$houseReportSeen")" != 1 ]; then
+      || /bin/ls -le "$houseReportSeen" | /usr/bin/grep -qE "$houseReportKnowing"; then
       houseReportDo=$houseReportKnown
     fi
     houseReportSaid=${copied}.said
