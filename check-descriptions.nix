@@ -6749,7 +6749,8 @@
     sets the clock from the machine's servers past it when it's silent
   '';
   vm-commits-are-signed = ''
-    commits are signed with the TPM's keys, PINs asked for
+    commits are signed with the TPM's keys, PINs asked for; the agents' socket stays off until
+    their key is made, and its path unit starts it once it is
   '';
   vm-desk-facts-follow-a-replug = ''
     desk-facts names a USB sound card plugged into a running machine, stops naming it once it's
