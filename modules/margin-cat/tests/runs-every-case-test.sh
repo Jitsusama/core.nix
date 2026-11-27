@@ -11,6 +11,7 @@
 # with the limit in force said once, wherever this user can't raise a hard
 # limit; limits and guards that aren't whole seconds, refused; and a second
 # scratch file that can't be made, every case left unrun and the first let go.
+# A run that makes both lets both go as it ends, too.
 # usage: runs-every-case-test.sh <runs-every-case.sh>
 # CAPPED_MUST_RUN, set by the check, fails the run where the capped case
 # can't be shown, rather than leaving it out, so a build passes only having
@@ -60,15 +61,15 @@ EOF
 
 # A mktemp making the runner's first scratch file and refusing its second,
 # read from BASH_ENV as the refusing ulimit is. Each is made in a subshell,
-# so the first leaves a mark in the scratch folder for the second to see.
+# so the first leaves a mark in the scratch folder for the second to see,
+# naming the file it made, so a case can tell one let go from one never made.
 cat >"$here/making-one" <<'EOF'
 mktemp() {
   if [ -e "$TMPDIR/.made" ]; then
     echo "mktemp: refused the second" >&2
     return 1
   fi
-  : >"$TMPDIR/.made"
-  command mktemp "$@"
+  command mktemp "$@" | tee "$TMPDIR/.made"
 }
 EOF
 
@@ -96,8 +97,10 @@ runs() {
     echo "${each#*:}" >"$folder/${each%%:*}.qml"
   done
   code=0
+  # TMPDIR is set only where scratch is, so a caller without one keeps none.
   said=$(cd "$folder" && { [ -z "$cap" ] || { ulimit -St $((cap - 2)) && ulimit -Ht "$cap"; }; } &&
-    TMPDIR=${scratch:-${TMPDIR-}} BASH_ENV=$start CASE_LIMIT=$limit CASE_GUARD=$guard \
+    { [ -z "$scratch" ] || export TMPDIR=$scratch; } &&
+    BASH_ENV=$start CASE_LIMIT=$limit CASE_GUARD=$guard \
     "$BASH" "$runner" "$here/qml" 2>&1) ||
     code=$?
   echo "$said"
@@ -120,8 +123,14 @@ took() {
     failing "$1.qml never said its time as $2 of its own and $3 by the clock"
 }
 
+# Its scratch files are made in a folder of its own, which it leaves empty.
+scratch=$here/scratch-ends
+mkdir "$scratch"
 runs ends 1 60 a-passes:pass b-fails:fail c-spins:spin d-dies:die e-after:pass
+scratch=
 ends 1
+left=$(ls -A "$here/scratch-ends")
+[ -z "$left" ] || failing "the run left its scratch folder holding: $left"
 holds "b-fails.qml failed, exit code 2"
 holds "c-spins.qml ran past its 1 s of its own time"
 holds "d-dies.qml was killed: out of memory, or past its hard 11 s"
@@ -183,8 +192,12 @@ start=
 scratch=
 ends 1
 holds "the runner couldn't make its scratch files"
+# mktemp's own reason reaches the log, as the runner passes it on.
+holds "mktemp: refused the second"
 never "a-marks.qml"
 [ ! -e "$here/one-scratch-file/a-marks.qml.ran" ] || failing "a-marks.qml ran"
+made=$(<"$here/scratch/.made")
+[[ $made == "$here/scratch/"?* ]] || failing "the stand-in made no first scratch file: '$made'"
 left=$(ls -A "$here/scratch")
 [ "$left" = .made ] || failing "the runner left its scratch folder holding: $left"
 
