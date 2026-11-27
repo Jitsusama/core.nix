@@ -8,6 +8,7 @@ mod handing;
 mod heard;
 mod holding;
 mod leaving;
+mod naming;
 mod sweeping;
 mod unpacking;
 mod words;
