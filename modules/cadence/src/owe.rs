@@ -133,6 +133,7 @@ pub fn owe(ledger: &mut Vec<Entry>, owed: Owed, date: &str, now: i64) {
         entry.put_to.clear();
         entry.back = None;
         entry.fixed = None;
+        entry.closed = None;
         return;
     }
     ledger.push(Entry {
@@ -156,6 +157,7 @@ pub fn owe(ledger: &mut Vec<Entry>, owed: Owed, date: &str, now: i64) {
         put_to: Vec::new(),
         back: None,
         fixed: None,
+        closed: None,
     });
 }
 
@@ -170,11 +172,20 @@ pub fn settle(ledger: &mut [Entry], key: &str) -> bool {
         .is_some()
 }
 
-/// Closes the must filed as `key`, or says the finding filed as `key` was
-/// fixed by `fix`, saying which; a finding with no fix said is refused,
-/// since its figure gone quiet shows no fix.
-fn done(ledger: &mut [Entry], key: &str, fix: Option<&str>) -> Result<String, Failure> {
-    if settle(ledger, key) {
+/// Closes the must filed as `key` at `now`, or says the finding filed as
+/// `key` was fixed by `fix`, saying which; a finding with no fix said is
+/// refused, since its figure gone quiet shows no fix. A drag closed this
+/// way keeps when, and the fix its owner named.
+fn done(ledger: &mut [Entry], key: &str, fix: Option<&str>, now: i64) -> Result<String, Failure> {
+    if let Some(entry) = ledger
+        .iter_mut()
+        .find(|e| e.open && e.kind.is_some() && e.key == key)
+    {
+        entry.open = false;
+        if entry.kind.as_deref() == Some("drag") {
+            entry.closed = Some(now);
+            entry.fixed = fix.map(str::to_owned);
+        }
         return Ok(match fix {
             Some(fix) => format!("cadence: {key} is done, by {fix}"),
             None => format!("cadence: {key} is done"),
@@ -225,7 +236,7 @@ pub fn run(args: impl Iterator<Item = String>, now: i64) -> Result<(), Failure> 
             owe(&mut ledger, owed, &date, now);
             format!("cadence: {key} is owed, open until `cadence owe --done {key}`")
         }
-        Asked::Done { key, fix } => done(&mut ledger, &key, fix.as_deref())?,
+        Asked::Done { key, fix } => done(&mut ledger, &key, fix.as_deref(), now)?,
     };
     findings::keep(&kept_at, &ledger).map_err(|err| {
         Failure::new(Exit::Failed, format!("keeping {}", kept_at.display()))
@@ -359,7 +370,7 @@ mod tests {
             !settle(&mut ledger, "crashes:tec") && ledger[0].open,
             "a finding of cadence's own was closed by hand"
         );
-        let unsaid = done(&mut ledger, "crashes:tec", None).map_err(|f| f.exit);
+        let unsaid = done(&mut ledger, "crashes:tec", None, DAY).map_err(|f| f.exit);
         assert_eq!(
             unsaid,
             Err(Exit::Usage),
@@ -367,13 +378,13 @@ mod tests {
         );
         let waits = "cadence: crashes:tec is fixed by core #6000, closing once its figure is back \
                      two days";
-        let said = done(&mut ledger, "crashes:tec", Some("core #6000")).map_err(|f| f.exit);
+        let said = done(&mut ledger, "crashes:tec", Some("core #6000"), DAY).map_err(|f| f.exit);
         assert_eq!(
             said,
             Ok(waits.to_owned()),
             "a fix said wasn't kept, waiting on its figure"
         );
-        let nowhere = done(&mut ledger, "crashes:nothing", Some("core #6000"));
+        let nowhere = done(&mut ledger, "crashes:nothing", Some("core #6000"), DAY);
         assert_eq!(
             nowhere.map_err(|f| f.exit),
             Err(Exit::NotFound),
@@ -381,7 +392,7 @@ mod tests {
         );
         ledger[0].fixed = None;
         owe(&mut ledger, owed("crashes:tec", DUE), "d1", DAY);
-        let over = done(&mut ledger, "crashes:tec", None).map_err(|f| f.exit);
+        let over = done(&mut ledger, "crashes:tec", None, DAY).map_err(|f| f.exit);
         assert_eq!(
             (over, ledger[0].open, ledger[0].kind.as_deref()),
             (Ok("cadence: crashes:tec is done".to_owned()), true, None),
@@ -457,8 +468,22 @@ mod tests {
             owe(&mut ledger, drag(), "d1", DAY);
             ledger[0].late = true;
             ledger[0].put_to = vec!["S".to_owned()];
-            assert!(settle(&mut ledger, key), "{key} wasn't closed");
-            owe(&mut ledger, drag(), "d3", 3 * DAY);
+            let said = done(&mut ledger, key, Some("core #6000"), 2 * DAY).map_err(|f| f.exit);
+            assert_eq!(
+                (said, ledger[0].closed, ledger[0].fixed.as_deref()),
+                (
+                    Ok(format!("cadence: {key} is done, by core #6000")),
+                    Some(2 * DAY),
+                    Some("core #6000")
+                ),
+                "{key} closed by its owner didn't keep when, or the fix named"
+            );
+            let again = Owed {
+                due: DUE + 3 * DAY,
+                says: format!("{key} is back"),
+                ..drag()
+            };
+            owe(&mut ledger, again, "d3", 3 * DAY);
             let entry = &ledger[0];
             assert_eq!(
                 (
@@ -469,6 +494,16 @@ mod tests {
                 ),
                 (1, true, 1, "d3"),
                 "{key} filed again after it closed opened a second line: {ledger:?}"
+            );
+            assert_eq!(
+                (
+                    entry.due,
+                    entry.words.as_str(),
+                    entry.closed,
+                    entry.fixed.as_deref()
+                ),
+                (DUE + 3 * DAY, format!("{key} is back").as_str(), None, None),
+                "{key} reopened kept its closed run's date, words or fix: {entry:?}"
             );
             assert!(
                 !entry.late && entry.put_to.is_empty(),

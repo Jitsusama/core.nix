@@ -36,9 +36,17 @@ pub const LENT_BUILDER: &str = "lent builder unlike the local run";
 type Pattern = &'static [&'static [&'static str]];
 
 /// Each class and the ways of saying it, tried in order, the first naming
-/// a cause taking it. A word that might sit inside another is padded with
-/// a space, as the cause is.
+/// a cause taking it, so a narrow class comes before a broad one that
+/// shares a word with it. A word matches only where one starts, so "test"
+/// isn't found in "latest"; it may end inside one, so "pass" finds
+/// "passes", unless it ends with a space, as "pin " does, which matches
+/// only a whole word, so it isn't found in "ping".
 const FOLDS: &[(&str, &[Pattern])] = &[
+    (TWIN, &[&[&["twin"]]]),
+    (
+        LENT_BUILDER,
+        &[&[&["lent builder", "builder kernel", "lender"]]],
+    ),
     (
         TEST_PASSES_UNDONE,
         &[
@@ -74,7 +82,9 @@ const FOLDS: &[(&str, &[Pattern])] = &[
             &[
                 "comment",
                 "description",
-                "doc",
+                "doc ",
+                "docs ",
+                "documentation",
                 "commit message",
                 "pr text",
                 "guide",
@@ -114,7 +124,6 @@ const FOLDS: &[(&str, &[Pattern])] = &[
             "reports success",
         ]]],
     ),
-    (TWIN, &[&[&["twin"]]]),
     (
         MAIN_MOVES,
         &[&[&[
@@ -130,14 +139,14 @@ const FOLDS: &[(&str, &[Pattern])] = &[
             "stale tracking main",
         ]]],
     ),
-    (
-        GNU_ONLY,
-        &[&[&[" mac ", " mac's", " mac,", " macs ", "macos", "bsd", "gnu"]]],
-    ),
+    (GNU_ONLY, &[&[&["mac ", "macs ", "macos", "bsd ", "gnu "]]]),
     (
         PIN_LAGS,
         &[&[&[
-            " pin",
+            "pin ",
+            "pins ",
+            "pinned",
+            "pinning",
             "older mycelium",
             "old binary",
             "override in a prebuild",
@@ -153,7 +162,8 @@ const FOLDS: &[(&str, &[Pattern])] = &[
             "timeout",
             "times out",
             "deadline",
-            "flake",
+            "flaky",
+            "flakiness",
             "retry schedule",
             "suspend",
             "monotonic",
@@ -163,10 +173,6 @@ const FOLDS: &[(&str, &[Pattern])] = &[
     (
         UNSENT,
         &[&[&["unseen", "unheard", "fyi", "wake", "journaled, never shown"]]],
-    ),
-    (
-        LENT_BUILDER,
-        &[&[&["lent builder", "builder kernel", "lender"]]],
     ),
 ];
 
@@ -189,11 +195,25 @@ pub fn fold(plain: &str) -> String {
 fn says(text: &str, way: Pattern) -> bool {
     let mut from = 0;
     way.iter().all(|step| {
-        let end = step
-            .iter()
-            .filter_map(|word| text[from..].find(word).map(|at| from + at + word.len()))
-            .min();
+        let end = step.iter().filter_map(|word| found(text, from, word)).min();
         end.inspect(|&end| from = end).is_some()
+    })
+}
+
+/// Where `word` first ends in `text` at or after `from`, found only where
+/// a word starts, and, for one ending in a space, only where a word ends:
+/// a letter or digit never stands either side of it.
+fn found(text: &str, from: usize, word: &str) -> Option<usize> {
+    let whole = word.strip_suffix(' ');
+    let needle = whole.unwrap_or(word);
+    let inside = |c: char| c.is_alphanumeric();
+    text[from..].match_indices(needle).find_map(|(at, _)| {
+        let start = from + at;
+        let end = start + needle.len();
+        let starts =
+            !needle.starts_with(inside) || !text[..start].chars().next_back().is_some_and(inside);
+        let ends = whole.is_none() || !text[end..].chars().next().is_some_and(inside);
+        (starts && ends).then_some(end)
     })
 }
 
@@ -242,19 +262,43 @@ mod tests {
         }
     }
 
-    /// The hand fold took these for laptop and pinning causes, by "mac"
-    /// inside "machine" and "pin" inside "stopping".
+    /// The hand fold took the first two for laptop and pinning causes, by
+    /// "mac" inside "machine" and "pin" inside "stopping"; a review of
+    /// the fold found each of the rest misfolded by a word inside another.
     #[test]
     fn a_word_inside_another_folds_nothing_and_an_unnamed_cause_shows_unfolded() {
         for said in [
             "after-check proves machine health, not the change",
             "a walk that stops to give way when stopping frees nothing",
+            "a module left out of flake.nix",
+            "nix flake check skipped on darwin",
+            "the attestation step bypasses signing",
+            "uses the latest main without rebasing",
+            "a docker image built with another base",
+            "an awake host refuses a terror",
         ] {
             assert_eq!(
                 fold(said),
                 format!("{UNFOLDED}{said}"),
                 "{said:?} was folded by a word found inside another"
             );
+        }
+    }
+
+    /// A whole word still folds beside punctuation, a word ending inside
+    /// a longer one folds as before, and a narrow class comes before a
+    /// broad one sharing its words.
+    #[test]
+    fn a_whole_word_folds_beside_punctuation_and_a_narrow_class_comes_first() {
+        for (said, class) in [
+            ("a ping probe times out on a loaded builder", TIMING),
+            ("the mac's build breaks", GNU_ONLY),
+            ("a pin, kept past the switch", PIN_LAGS),
+            ("a fix on the error path, not its twin", TWIN),
+            ("a flaky check under a busy builder", TIMING),
+            ("the docs say more than the code does", WORDS_DIFFER),
+        ] {
+            assert_eq!(fold(said), class, "{said:?} folded into the wrong class");
         }
     }
 }

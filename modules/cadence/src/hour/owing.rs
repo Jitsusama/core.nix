@@ -257,25 +257,34 @@ fn told_late_asked(m: &Measure, says: &str) -> Vec<Filed> {
 
 /// The ask to each class's owner about a cause found on three or more
 /// changes in a week, filed class by class, so each owner fixes the cause
-/// once rather than each change's reviewer fixing it again. Until a named
-/// fix closes it, it also closes once the class is found on fewer, and a
-/// case after that brings the same line back, counted as reopened.
+/// once rather than each change's reviewer fixing it again. It closes once
+/// its owner names the fix, and stays closed for the week its cases count
+/// over, or once the class is found on fewer; a case after that brings the
+/// same line back, counted as reopened. The class is quoted, since an
+/// unfolded one is in a sender's own words, so it never reads as
+/// cadence's. A measure that couldn't read the mesh asks nobody: its line
+/// names no class.
 fn causes_asked(m: &Measure) -> Vec<Filed> {
     m.behind
         .iter()
         .filter_map(|line| line.rsplit_once(" · "))
+        .filter(|(line, _)| causes::class_of(line) != "unread")
         .map(|(line, owner)| {
             let class = causes::class_of(line);
+            let found = line.get(class.len() + 1..).unwrap_or_default().trim();
+            let key = format!("hour:{}:{class}", m.key);
             Filed {
-                key: format!("hour:{}:{class}", m.key),
-                says: format!("a cause found again and again, yours: {line}"),
+                says: format!("a cause found again and again, yours: \"{class}\", {found}"),
                 text: format!(
-                    "cadence hour: a cause is found again and again, and it is yours: {line}. \
-                     Please reply within a day with the one fix that stops it at its root, \
-                     such as a check that refuses it or a shared piece every change uses, \
-                     or why it can't have one. It stays open until you name the fix; until \
-                     then it also closes once the class falls under three changes in a week."
+                    "cadence hour: a cause is found again and again, and it is yours: \
+                     \"{class}\", {found}. Please reply within a day with the one fix that \
+                     stops it at its root, such as a check that refuses it or a shared piece \
+                     every change uses, or why it can't have one. Once it lands, name it with \
+                     `cadence owe --done '{key}' FIX`, and it stays closed for the week its \
+                     cases count over; until then it also closes once the class falls under \
+                     three changes in a week."
                 ),
+                key,
                 owner: owner.to_owned(),
             }
         })
@@ -459,6 +468,17 @@ fn back_in(key: &str, measures: &[Measure]) -> bool {
         })
 }
 
+/// Whether `key` is a class of cause its owner closed by naming its fix
+/// within the week before `now`: its cases still count from before the
+/// fix, so filing it again would ask for the fix just named.
+fn fixed_lately(ledger: &[Entry], key: &str, now: i64) -> bool {
+    key.strip_prefix("hour:")
+        .is_some_and(|key| key.starts_with(causes::KEY))
+        && ledger
+            .iter()
+            .any(|e| e.key == key && e.closed.is_some_and(|at| at > now - causes::WITHIN))
+}
+
 /// Files the hour's drag in the loop's ledger as a must of kind `drag`,
 /// due a day on, unless it's open there already, and closes each drag
 /// filed before that is back in. Says what to tell the owner of each one
@@ -524,7 +544,8 @@ pub fn file(
         .into_iter()
         .flat_map(|m| filed(m).into_iter().map(move |f| (m, f)))
     {
-        if ledger.iter().any(|e| e.open && e.key == one.key) {
+        if ledger.iter().any(|e| e.open && e.key == one.key) || fixed_lately(ledger, &one.key, now)
+        {
             continue;
         }
         owe::owe(
@@ -734,8 +755,8 @@ mod tests {
             "a class of cause wasn't asked of its own owner beside what leads"
         );
         assert!(
-            told[1].1.contains("racy test: on 4 changes") && !told[1].1.contains("stale"),
-            "an owner heard of a class not theirs: {}",
+            told[1].1.contains("\"racy test\", on 4 changes") && !told[1].1.contains("stale"),
+            "an owner heard of a class not theirs, or not quoted as a sender's words: {}",
             told[1].1
         );
         let key = "hour:causes-recurring:racy test";
@@ -744,7 +765,11 @@ mod tests {
             "a class wasn't filed under its own key: {ledger:?}"
         );
         let unread = recurring(&["unread: no mesh messages folder here · 1JQPPC"]);
-        file(&mut ledger, &[unread], "2026-11-26", 4600);
+        let blind = file(&mut ledger, &[unread], "2026-11-26", 4600);
+        assert!(
+            blind.is_empty() && !ledger.iter().any(|e| e.key.ends_with(":unread")),
+            "a mesh that couldn't be read was asked of the keeper as a cause: {blind:?}"
+        );
         assert!(
             ledger
                 .iter()
@@ -770,6 +795,23 @@ mod tests {
             ),
             (1, true, 1, "2026-11-27"),
             "a class come back opened a second line rather than reopening its own"
+        );
+        // Its owner names the fix, as `cadence owe --done` does; the cases
+        // from before it still count the class over for the week.
+        let at = ledger.iter().position(|e| e.key == key).expect("its line");
+        ledger[at].open = false;
+        ledger[at].closed = Some(90_000);
+        let fixed = file(&mut ledger, &[recurring(&[racy])], "2026-11-27", 93_600);
+        assert!(
+            fixed.is_empty() && !ledger[at].open && ledger[at].reopened == 1,
+            "a class its owner closed by naming the fix was asked again: {fixed:?}"
+        );
+        let week = 90_000 + causes::WITHIN + 1;
+        let past = file(&mut ledger, &[recurring(&[racy])], "2026-12-04", week);
+        assert_eq!(
+            (past.len(), ledger[at].open, ledger[at].reopened),
+            (1, true, 2),
+            "a class still over a week after its fix wasn't asked again"
         );
     }
 

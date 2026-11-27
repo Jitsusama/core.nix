@@ -12,9 +12,12 @@
 //! council round it collects, as `{cause, change, run, severity}`. The
 //! mesh lets its messages go after about a week, so the lines read from
 //! it are kept in cadence's folder, and each hour opens only the messages
-//! written since the last, dropping a line its sender withdrew. One class
-//! goes by many wordings, so each is folded to one by the patterns in
-//! `folds`.
+//! this machine wrote since the last, by its own clock, since a sender's
+//! may run fast or slow and a message relayed late was sent before it was
+//! written here. A line its sender withdrew is dropped. One class goes by
+//! many wordings, so each is folded to one by the patterns in `folds`;
+//! the wording is kept beside its class, so a pattern changed folds every
+//! kept case anew.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -27,15 +30,16 @@ mod folds;
 
 use folds::{MAIN_MOVES, PIN_LAGS, TEST_PASSES_UNDONE, TIMING, UNSENT, fold};
 
+use super::misses::symbiosis;
 use super::{Class, DAY, Measure, count, lines};
-use crate::mesh::{Mesh, Message, stamped_at};
+use crate::mesh::{Message, stamped_at};
 use crate::write_whole;
 
 /// The measure's key, from one hour to the next.
 pub const KEY: &str = "causes-recurring";
 
-/// How far back a case counts.
-const WITHIN: i64 = 7 * DAY;
+/// How far back a case counts, in seconds.
+pub const WITHIN: i64 = 7 * DAY;
 
 /// How many changes one class must be found on in that week to be one
 /// fix's worth rather than each change's own.
@@ -55,7 +59,11 @@ const SLACK_MS: i64 = 3_600_000;
 
 /// The shape of what a reading keeps: one of another shape reads the
 /// mesh's week again.
-const VERSION: u32 = 1;
+const VERSION: u32 = 2;
+
+/// The most letters an unfolded class keeps of its sender's words, so no
+/// line sent makes a key or an ask of any length.
+const UNFOLDED_AT_MOST: usize = 100;
 
 /// Who owns fixing each class, by its counted name and the repository its
 /// change is in, or any repository where that is empty, as the keeper
@@ -73,13 +81,21 @@ const OWNERS: &[(&str, &str, &str)] = &[
 ];
 
 /// Short names a repository goes by, and the name it is counted under.
-const REPOS: &[(&str, &str)] = &[("core", "core.nix"), ("harness", "agentic-harness.pi")];
+const REPOS: &[(&str, &str)] = &[
+    ("core", "core.nix"),
+    ("harness", "agentic-harness.pi"),
+    ("agentic-harness", "agentic-harness.pi"),
+];
 
 /// One class of cause found on one change.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Case {
     /// The class, folded to the name it is counted under.
     pub class: String,
+    /// The class as it was said, written plain, which is folded again
+    /// whenever the case is read back.
+    #[serde(default)]
+    pub said: String,
     /// The change, as `<repo>#<number>`.
     pub change: String,
     /// When it was said, in seconds.
@@ -104,21 +120,22 @@ struct Kept {
 /// under `state_home`'s harness folder, keeping what it read of the mesh in
 /// `folder` when `keeps`, as the hour that files does. A look by hand keeps
 /// nothing, and reads the week since the last kept reading. With no mesh
-/// folder to read it is past its target, rather than reading no causes as
-/// none recurring.
+/// folder, or one that can't be listed, it is past its target, rather
+/// than reading no causes as none recurring.
 #[must_use]
 pub fn read(state_home: &Path, folder: &Path, now: i64, keeps: bool) -> Measure {
     let root = state_home.join("pi/agentic-harness.pi");
     let review = fs::read_to_string(root.join("review/causes.jsonl")).unwrap_or_default();
-    let mesh = Mesh { root };
-    if !mesh.root.join("mesh-workflow/messages").is_dir() {
-        return Measure {
-            now: 1.0,
-            behind: vec![format!(
-                "unread: no mesh messages folder here, so no cause line could be read · {KEEPER}"
-            )],
-            ..recurring(&[], now)
-        };
+    let messages = root.join("mesh-workflow/messages");
+    let unread = |why: &str| Measure {
+        now: 1.0,
+        behind: vec![format!(
+            "unread: {why}, so no cause line could be read · {KEEPER}"
+        )],
+        ..recurring(&[], now)
+    };
+    if !messages.is_dir() {
+        return unread("no mesh messages folder here");
     }
     let kept_at = folder.join("causes.json");
     let kept: Kept = fs::read_to_string(&kept_at)
@@ -126,14 +143,46 @@ pub fn read(state_home: &Path, folder: &Path, now: i64, keeps: bool) -> Measure 
         .and_then(|text| serde_json::from_str(&text).ok())
         .filter(|kept: &Kept| kept.v == VERSION)
         .unwrap_or_default();
-    let from_ms = (kept.through_ms - SLACK_MS).max((now - WITHIN) * 1000);
-    let sent = mesh.sent_since(from_ms);
-    let withdrawn: BTreeSet<&str> = sent
-        .iter()
-        .filter_map(|m| m.supersedes.as_deref())
+    let now_ms = now * 1000;
+    // A mark past now says this machine's clock stepped back since it was
+    // kept, and a file written in the step would sit behind it, so the
+    // week is read anew.
+    let mark = if kept.through_ms > now_ms {
+        0
+    } else {
+        kept.through_ms
+    };
+    let since_ms = (now - WITHIN) * 1000;
+    let from_ms = (mark - SLACK_MS).max(since_ms);
+    let Ok((listed, _)) = symbiosis::listed(&messages, from_ms, since_ms) else {
+        return unread("the mesh's messages can't be listed");
+    };
+    let heard: Vec<(Message, i64)> = listed
+        .into_iter()
+        .filter_map(|(path, name, written)| {
+            let message: Message = serde_json::from_slice(&fs::read(&path).ok()?).ok()?;
+            genuine(&message, &name).then_some((message, written))
+        })
         .collect();
-    let mut cases = kept.cases;
-    cases.extend(said(&sent));
+    // Only its sender withdraws a line, so another's word leaves it
+    // counted.
+    let withdrawn: BTreeSet<&str> = heard
+        .iter()
+        .filter_map(|(m, _)| {
+            m.supersedes
+                .as_deref()
+                .filter(|id| sender_of(id) == Some(m.from.as_str()))
+        })
+        .collect();
+    let mut cases: Vec<Case> = kept
+        .cases
+        .into_iter()
+        .map(|case| Case {
+            class: class_named(&case.said),
+            ..case
+        })
+        .collect();
+    cases.extend(said(&heard));
     cases.retain(|case| {
         case.said_in
             .as_deref()
@@ -246,13 +295,27 @@ fn owner_of(class: &str, repo: &str) -> &'static str {
     owned_in(repo).or_else(|| owned_in("")).unwrap_or(KEEPER)
 }
 
-/// The cases the cells' cause lines in `sent` say, those sent to the
-/// keeper, each dated when its message was and naming it.
-fn said(sent: &[Message]) -> Vec<Case> {
-    let heard = format!("@{KEEPER}");
-    sent.iter()
-        .filter(|m| m.to.iter().any(|to| *to == heard || to == KEEPER))
-        .filter_map(|m| Some((stamped_at(&m.id)? / 1000, m)))
+/// Whether `message` is the one its file `name` names, sent by whom its
+/// id says, so no file can stand in for another message or sender.
+fn genuine(message: &Message, name: &str) -> bool {
+    name.strip_suffix(".json") == Some(message.id.as_str())
+        && sender_of(&message.id) == Some(message.from.as_str())
+}
+
+/// Who sent the message `id` names, as `<ms>-<from>-<pid>-<short id>`.
+fn sender_of(id: &str) -> Option<&str> {
+    id.split('-').nth(1)
+}
+
+/// The cases the cells' cause lines in `heard` say, those sent to the
+/// keeper, each with when this machine wrote it, in ms, dated when its
+/// message was sent, or written where its stamp is later, and naming it.
+fn said(heard: &[(Message, i64)]) -> Vec<Case> {
+    let to_keeper = format!("@{KEEPER}");
+    heard
+        .iter()
+        .filter(|(m, _)| m.to.iter().any(|to| *to == to_keeper || to == KEEPER))
+        .filter_map(|(m, written)| Some((stamped_at(&m.id)?.min(*written) / 1000, m)))
         .flat_map(|(at, m)| {
             m.text.lines().flat_map(move |line| {
                 cause_line(line, at).into_iter().map(|case| Case {
@@ -280,14 +343,16 @@ fn cause_line(line: &str, at: i64) -> Vec<Case> {
     if !line.to_lowercase().starts_with("cause:") {
         return Vec::new();
     }
-    let class = folded(cause);
-    if class.is_empty() {
+    let said = plain(cause);
+    if said.is_empty() {
         return Vec::new();
     }
+    let class = class_named(&said);
     changes(change)
         .into_iter()
         .map(|change| Case {
             class: class.clone(),
+            said: said.clone(),
             change,
             at,
             said_in: None,
@@ -296,20 +361,45 @@ fn cause_line(line: &str, at: i64) -> Vec<Case> {
 }
 
 /// The changes `named` names, as `<repo>#<number>`: "core.nix#6310, #6311"
-/// names two, the second in the first's repository.
+/// names two, the second in the first's repository, and "core #6310" one,
+/// its repository written apart from its number.
 fn changes(named: &str) -> Vec<String> {
-    let mut repo = String::new();
-    named
+    let words: Vec<&str> = named
         .split([',', ' ', ';'])
-        .filter_map(|word| {
-            let (in_repo, number) = word.trim().split_once('#')?;
-            let number: u64 = number.trim_end_matches(['.', ')']).parse().ok()?;
-            if !in_repo.is_empty() {
-                repo = repo_named(in_repo);
+        .map(str::trim)
+        .filter(|word| !word.is_empty())
+        .collect();
+    let mut repo = String::new();
+    let mut found = Vec::new();
+    for (at, word) in words.iter().enumerate() {
+        let Some((in_repo, number)) = word.split_once('#') else {
+            let apart = words.get(at + 1).is_some_and(|next| next.starts_with('#'));
+            if apart && is_repo(word) {
+                repo = repo_named(word);
             }
-            (!repo.is_empty()).then(|| format!("{repo}#{number}"))
-        })
-        .collect()
+            continue;
+        };
+        let Ok(number) = number.trim_end_matches(['.', ')']).parse::<u64>() else {
+            continue;
+        };
+        if !in_repo.is_empty() {
+            repo = repo_named(in_repo);
+        }
+        if !repo.is_empty() {
+            found.push(format!("{repo}#{number}"));
+        }
+    }
+    found
+}
+
+/// Whether a word written alone is a repository's name: one with an owner
+/// before it, or one `REPOS` knows, never a word such as "and".
+fn is_repo(word: &str) -> bool {
+    let last = word.rsplit('/').next().unwrap_or(word).to_lowercase();
+    word.contains('/')
+        || REPOS
+            .iter()
+            .any(|&(short, full)| short == last || full == last)
 }
 
 /// A repository as it is counted: the last part of its path, lower case,
@@ -322,12 +412,29 @@ fn repo_named(said: &str) -> String {
         .map_or(last, |(_, full)| (*full).to_owned())
 }
 
-/// A class written plain, lower case, quotes, a closing stop and extra
+/// The class `said`, written plain, is counted under: the one its words
+/// fold into, or its own first `UNFOLDED_AT_MOST` letters, marked.
+fn class_named(said: &str) -> String {
+    let class = fold(said);
+    match class.strip_prefix(folds::UNFOLDED) {
+        Some(words) => format!(
+            "{}{}",
+            folds::UNFOLDED,
+            words
+                .chars()
+                .take(UNFOLDED_AT_MOST)
+                .collect::<String>()
+                .trim_end()
+        ),
+        None => class,
+    }
+}
+
+/// A class written plain: lower case, quotes, a closing stop and extra
 /// spaces gone, a curled apostrophe straight and a colon a comma, since a
-/// colon ends the class on the measure's line; then folded by the class
-/// its words say. Nothing written folds to nothing.
-fn folded(class: &str) -> String {
-    let plain = class
+/// colon ends the class on the measure's line.
+fn plain(class: &str) -> String {
+    class
         .trim()
         .trim_matches(['"', '\'', '`'])
         .trim_end_matches('.')
@@ -336,11 +443,7 @@ fn folded(class: &str) -> String {
         .join(" ")
         .to_lowercase()
         .replace('\u{2019}', "'")
-        .replace(':', ",");
-    if plain.is_empty() {
-        return plain;
-    }
-    fold(&plain)
+        .replace(':', ",")
 }
 
 /// The cases the harness's `causes.jsonl` holds, each dated when its round
@@ -349,14 +452,16 @@ fn folded(class: &str) -> String {
 fn reviewed(text: &str) -> Vec<Case> {
     lines(text)
         .filter_map(|line: Value| {
-            let class = folded(line["cause"].as_str()?);
+            let said = plain(line["cause"].as_str()?);
             let at = super::seconds(&line["at"]).or_else(|| run_at(&line["run"]))?;
             let changes = changes(line["change"].as_str()?);
-            (!class.is_empty()).then(|| {
+            (!said.is_empty()).then(|| {
+                let class = class_named(&said);
                 changes
                     .into_iter()
                     .map(|change| Case {
                         class: class.clone(),
+                        said: said.clone(),
                         change,
                         at,
                         said_in: None,
