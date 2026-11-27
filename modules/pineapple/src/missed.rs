@@ -66,7 +66,7 @@ fn minutes(count: u64) -> String {
 /// where none of its span was read. No round reads that span again, so
 /// only Joel's word marks it done.
 #[must_use]
-pub fn row(id: String, title: &str, why: String, step: String, at: u64, whole: bool) -> Value {
+pub fn row(id: &str, title: &str, why: &str, step: &str, at: u64, whole: bool) -> Value {
     json!({
         "id": id,
         "title": title,
@@ -243,7 +243,7 @@ mod tests {
     /// A row of `kind`'s from `from` to `to`, under the prefix `p-`.
     fn of(kind: &str, from: u64, to: u64) -> Value {
         let id = named("p-", kind, Some(from), to);
-        row(id, "Missed", kind.to_owned(), "Look".to_owned(), AT, true)
+        row(&id, "Missed", kind, "Look", AT, true)
     }
 
     #[test]

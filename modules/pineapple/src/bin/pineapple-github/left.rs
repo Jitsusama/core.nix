@@ -75,15 +75,15 @@ impl Left {
         let what = if whole { "what" } else { "parts of what" };
         let stamp = |millis: u64| github::stamp(millis / 1000);
         missed::row(
-            missed::named(&self.prefix, "own", from, to),
+            &missed::named(&self.prefix, "own", from, to),
             &format!("The Safe Word Missed Part of {}", self.name),
-            format!(
+            &format!(
                 "The safe word never read {what} was said in pull requests and issues you take \
                  part in that changed {}, as more changed than its search could give, so a stop \
                  said there then wasn't heard",
                 missed::when(from, Some(to), at)
             ),
-            format!(
+            &format!(
                 "Search {}'s issues and pull requests for pineapple involves:{login} \
                  updated:{}..{}, for a stop said then",
                 self.name,
@@ -109,14 +109,14 @@ impl Left {
         let what = if whole { "what" } else { "parts of what" };
         let kind = if thread.pull { "pull" } else { "issues" };
         missed::row(
-            missed::named(
+            &missed::named(
                 &self.prefix,
                 &format!("thread-{:016x}", fnv(&thread.key())),
                 from,
                 to,
             ),
             &format!("The Safe Word Missed a Thread on {}", self.name),
-            format!(
+            &format!(
                 "The safe word never read {what} was said on {}#{} {}, as {} failed to give it \
                  however often it was asked, so a stop said there then wasn't heard",
                 thread.repo,
@@ -124,7 +124,7 @@ impl Left {
                 missed::when(from, Some(to), at),
                 self.name
             ),
-            format!(
+            &format!(
                 "Read {}/{}/{kind}/{} for a stop said then",
                 self.web, thread.repo, thread.number
             ),
