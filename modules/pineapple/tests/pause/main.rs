@@ -4,8 +4,10 @@
 //! the real ones would, and writing down everything asked of it. What it
 //! says of a machine that refuses it or is never reached is in reach.rs,
 //! the script another machine runs for it in script.rs, and how a stop
-//! a reader keeps here is given to the other machines in carry.rs.
+//! a reader keeps here is given to the other machines in carry.rs, and
+//! a machine that can't begin a run in Joel's home in begun.rs.
 
+mod begun;
 mod carry;
 mod reach;
 mod script;
@@ -30,7 +32,9 @@ struct Unit {
 /// thaws what it's asked to, refuses whatever `refusing` names, and
 /// answers as mycelium does a command it never ran for what `unreached`
 /// names, and one whose link dropped once it began for what `dropped`
-/// names; mycelium lists no session on the machine `unlisted` names.
+/// names; mycelium lists no session on the machine `unlisted` names, and
+/// the one `homeless` names refuses, in its words, any run but one
+/// begun in the scratch folder.
 /// When `peek` names a file, what it holds as the Mac is asked is kept in
 /// `peeked`, and when `block` names one, a folder is made there as the
 /// Mac is asked, so no file can be written in its place. How many
@@ -45,6 +49,7 @@ struct Machine {
     unreached: Option<&'static str>,
     dropped: Option<&'static str>,
     unlisted: Option<&'static str>,
+    homeless: Option<(&'static str, &'static str)>,
     peek: Option<PathBuf>,
     peeked: Option<String>,
     block: Option<PathBuf>,
@@ -124,6 +129,11 @@ impl Runs for Machine {
         }
         if self.refusing.is_some_and(|refused| asked.contains(refused)) {
             return Err("refused here".to_owned());
+        }
+        if let Some((_, words)) = self.homeless.filter(|(room, _)| asked.contains(room))
+            && !asked.contains("--folder /tmp ")
+        {
+            return Err(words.to_owned());
         }
         if self.unreached.is_some_and(|never| asked.contains(never)) {
             return Err(NEVER_RAN.to_owned());

@@ -53,26 +53,59 @@ pub(super) const BEGUN: &str = "pineapple: begun there";
 /// 255 of that mycelium's own can't read as the script never running.
 const OWN_FAILURE: u8 = 70;
 
+/// The folder a run is asked to begin in once a machine refused to begin
+/// it in the one pineapple runs in here: a cloud room's account can't
+/// enter Joel's home, but may begin in the shared scratch folder and
+/// write its own stops folder from there.
+pub(super) const SCRATCH: &str = "/tmp";
+
+/// What mycelium says, as newer nodes say it, when a machine refuses to
+/// begin a run in the folder asked.
+const CANT_BEGIN_IN: &str = " can't begin this in ";
+
+/// What an older node's fence says when it couldn't start the shell in
+/// the folder asked, which the machine's account can't enter.
+const NO_SHELL: &str = "spawn bash EACCES";
+
+/// The status that word ends with, which a script that began never
+/// ends with on its own.
+const SHELL_REFUSED: &str = "(exit status: 126)";
+
 /// What `mycelium` is asked to run `script` on `machine`, in `realm` or
 /// its own, for a stop given there and for `pineapple stop` alike.
 ///
 /// It names no folder, so the run asks for the one pineapple runs in
 /// here, Joel's home, where a fenced run there may write the stops
-/// folder beneath it. A cloud room keeps that folder from its own
-/// account, so its shell never starts; neither the root nor the shared
-/// scratch folder serves instead, since a fenced run may write only
-/// the folder it starts in.
+/// folder beneath it. A machine that can't begin it there, as a cloud
+/// room, is asked again by [`run_in_scratch`]; no one folder serves
+/// every machine, since a fenced Mac writes only the folder a run
+/// begins in.
 pub(super) fn run_there(machine: &str, realm: Option<&str>, script: String) -> Vec<String> {
+    run_in(machine, realm, None, script)
+}
+
+/// What `mycelium` is asked to run `script` on `machine` in [`SCRATCH`],
+/// once it refused to begin it where [`run_there`] asks.
+pub(super) fn run_in_scratch(machine: &str, realm: Option<&str>, script: String) -> Vec<String> {
+    run_in(machine, realm, Some(SCRATCH), script)
+}
+
+fn run_in(machine: &str, realm: Option<&str>, folder: Option<&str>, script: String) -> Vec<String> {
     let mut args = asked(&["run"], realm);
-    args.extend([
-        "--need".to_owned(),
-        format!("machine={machine}"),
-        "--".to_owned(),
-        "sh".to_owned(),
-        "-c".to_owned(),
-        script,
-    ]);
+    args.extend(["--need".to_owned(), format!("machine={machine}")]);
+    if let Some(folder) = folder {
+        args.extend(["--folder".to_owned(), folder.to_owned()]);
+    }
+    args.extend(["--".to_owned(), "sh".to_owned(), "-c".to_owned(), script]);
     args
+}
+
+/// Whether `why` a run failed is the machine refusing to begin it in the
+/// folder asked, before anything ran there: either as newer nodes say
+/// it, or as an older node's fence answers a shell it couldn't start.
+pub(super) fn refused_to_begin(why: &str) -> bool {
+    why.contains(CANT_BEGIN_IN)
+        || (why.contains(NO_SHELL) && why.trim_end().ends_with(SHELL_REFUSED))
 }
 
 /// Whether `why` a run failed is mycelium saying the command never ran.
@@ -356,12 +389,13 @@ pub fn elsewhere(plan: &Plan, runs: &mut dyn Runs, at: &Reached, said: &Value, a
             realm: at.realm.clone(),
         };
     };
-    let args = run_there(
-        &at.machine,
-        at.realm.as_deref(),
-        script(said, act, at.realm.as_deref()),
-    );
-    let (failed, reached) = match runs.run(mycelium, &args) {
+    let there = script(said, act, at.realm.as_deref());
+    let realm = at.realm.as_deref();
+    let mut answer = runs.run(mycelium, &run_there(&at.machine, realm, there.clone()));
+    if answer.as_ref().is_err_and(|why| refused_to_begin(why)) {
+        answer = runs.run(mycelium, &run_in_scratch(&at.machine, realm, there));
+    }
+    let (failed, reached) = match answer {
         Ok(_) => (Vec::new(), true),
         Err(why) => (
             vec![couldnt(&format!("{act} there"), &without_begun(&why))],

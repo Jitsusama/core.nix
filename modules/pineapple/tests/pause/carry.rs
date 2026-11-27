@@ -17,7 +17,7 @@ use serde_json::{Value, json};
 use super::{FORKS, Machine, asked_with, json, machine, plan, scratch};
 
 /// A live stop from Slack, standing, as a reader keeps it.
-fn heard(id: &str) -> Value {
+pub(super) fn heard(id: &str) -> Value {
     json!({
         "id": id,
         "shadow": false,
@@ -33,7 +33,7 @@ fn heard(id: &str) -> Value {
     })
 }
 
-fn keep(state: &Path, name: &str, record: &Value) {
+pub(super) fn keep(state: &Path, name: &str, record: &Value) {
     let stops = state.join("stops");
     fs::create_dir_all(&stops).expect("a stops folder");
     fs::write(stops.join(format!("{name}.json")), format!("{record:#}\n")).expect("kept");

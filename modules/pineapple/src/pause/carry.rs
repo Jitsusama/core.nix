@@ -491,7 +491,8 @@ fn give(
         .iter()
         .map(|args| (mycelium.as_path(), args.as_slice()))
         .collect();
-    runs.run_all(&each)
+    let answers = runs.run_all(&each);
+    begun_elsewhere(mycelium, runs, at, script, answers)
         .into_iter()
         .map(|answer| {
             answer.map(|_| ()).map_err(|why| Untaken {
@@ -500,6 +501,46 @@ fn give(
             })
         })
         .collect()
+}
+
+/// `answers` to runs of `script` on each of `at`, with each machine that
+/// refused to begin it there asked once more, all together, to begin it
+/// in the scratch folder, its second answer kept in place of its first.
+fn begun_elsewhere(
+    mycelium: &Path,
+    runs: &mut dyn Runs,
+    at: &[Reached],
+    script: &str,
+    mut answers: Vec<Result<String, String>>,
+) -> Vec<Result<String, String>> {
+    let refused: Vec<usize> = answers
+        .iter()
+        .enumerate()
+        .filter(|(_, answer)| {
+            answer
+                .as_ref()
+                .is_err_and(|why| reach::refused_to_begin(why))
+        })
+        .map(|(index, _)| index)
+        .collect();
+    if refused.is_empty() {
+        return answers;
+    }
+    let asked: Vec<Vec<String>> = refused
+        .iter()
+        .map(|&index| {
+            let one = &at[index];
+            reach::run_in_scratch(&one.machine, one.realm.as_deref(), script.to_owned())
+        })
+        .collect();
+    let each: Vec<(&Path, &[String])> = asked
+        .iter()
+        .map(|args| (mycelium, args.as_slice()))
+        .collect();
+    for (index, answer) in refused.into_iter().zip(runs.run_all(&each)) {
+        answers[index] = answer;
+    }
+    answers
 }
 
 /// What a give answers when what each machine was given couldn't be noted:
