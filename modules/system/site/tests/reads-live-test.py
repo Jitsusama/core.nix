@@ -7,7 +7,11 @@ say it's live with every machine drawn and counted, follow a machine that
 turns and one that goes, say broken when the daemon stops and live again
 when it's back, say stale when the server goes, and pass the web-design skill's
 page checks at a phone's width and a desk's in both looks. It must open with
-what is worth a look, each leading where it can be seen whole. Its keys and
+what is worth a look, each leading where it can be seen whole, a machine's
+long name leaving its look's words room at both widths, a machine's look
+saying why it matters with its one act, the launcher's row, at both widths,
+and a good part read
+from a kept answer never among them, its note said where it belongs. Its keys and
 places must move the cursor from section to section, and a machine's address
 must put it on that machine. Anything the page
 logs fails it, since that is how it drew four empty parts unseen on 16 November.
@@ -38,8 +42,9 @@ COUNTED = "Two machines, both worth a look."
 # What a first visit to the page may cost, drawn from system.json: 25 files,
 # about 437 KB and 397 elements since the list of what is worth a look, six to a row,
 # and since no comment is sent, its styles' included; about 445 KB since machines
-# out of reach are named apart, a cost worth the page reading well with many down.
-BUDGET = Budget(files=25, kilobytes=450, elements=400)
+# out of reach are named apart, a cost worth the page reading well with many down;
+# 403 elements since each machine's look carries its act, opening it in the launcher.
+BUDGET = Budget(files=25, kilobytes=450, elements=410)
 
 
 @pytest.fixture
@@ -322,6 +327,154 @@ def test_a_says_what_the_list_cannot_know(system_page: Page, system_daemon: Stan
     )
 
 
+def test_a_kept_answer_is_no_look(system_page: Page, system_daemon: StandIn) -> None:
+    says_it_stands(system_page, "live")
+    quieted(system_page, system_daemon)
+    # The daemon stands a part on its owner's last answer only while that is
+    # fresh enough to, so the note it carries says how the page was read: the
+    # machines' in the page's note, a part's in its own section.
+    machines = "as read at 00:19; just now mycelium machines gave no answer in 20 s"
+    code = "as read at 00:19; just now repos --json gave no answer in 20 s"
+    system_daemon.tell(
+        "part",
+        changed=[
+            {"key": "part:machines", "side": [machines]},
+            {"key": "part:code", "side": [code]},
+        ],
+    )
+    expect(system_page.locator("#note"), "the machines' kept answer went unsaid").to_contain_text(
+        f"Machines {machines}.", timeout=PACE_MS
+    )
+    aside = system_page.locator("[data-part='part-code'] .aside")
+    expect(aside, "the code part's kept answer went unsaid").to_have_text(f"A{code[1:]}")
+    expect(aside, "the code part's kept answer was hidden").to_be_visible()
+    expect(system_page.locator("#looks"), "a kept answer was listed as a look").to_have_text(
+        "Nothing is worth a look."
+    )
+    # An answer the keys ask for is said before the note, never in its place.
+    system_page.locator('#places a[data-place="machine-2"]').click()
+    system_page.keyboard.press("y")
+    expect(system_page.locator("#note"), "y's answer hid the kept note").to_have_text(
+        re.compile(rf"^(Copied|Couldn't copy).* Machines {re.escape(machines)}\.$")
+    )
+
+
+# A thumb's target, as WCAG 2.5.5 sizes one, in CSS pixels.
+THUMB = 44
+
+
+# A why told afresh, so the list redraws under a focused act.
+ANEW = "What ran there may have ended without warning, as it did again."
+# The look's words told afresh, which changes the key its row is found by.
+REWORDED = "booted 2 hours ago after a firmware error"
+# A look of kestrel's listed before the one with the act, so a step back
+# from the act that forgot it stands after its own look would land here,
+# rather than on the first row, where both would land.
+LEAD = {"side": "runs hot under load", "matters": "Its builds may slow while it cools."}
+# The key of the row after kestrel's firmware look among every row the keys
+# step through, or its own where it is the last.
+AFTER_KESTREL = """() => {
+  const rows = [...document.querySelectorAll('#looks a[data-row], #parts a[data-row]')];
+  const at = rows.findIndex((row) => row.matches('a.look') && row.textContent.includes('firmware'));
+  return rows[Math.min(at + 1, rows.length - 1)]?.dataset.row ?? null;
+}"""
+# The key of the look a lands on after kestrel's firmware look, the list's first after its last.
+NEXT_LOOK = """() => {
+  const looks = [...document.querySelectorAll('#looks a[data-row]')];
+  const at = looks.findIndex((row) => row.textContent.includes('firmware'));
+  return looks[(at + 1) % looks.length]?.dataset.row ?? null;
+}"""
+
+
+@pytest.mark.parametrize("size", SIZES, ids=[f"{width}px" for width, _ in SIZES])
+def test_a_machines_look_says_why_it_matters_and_opens_it_in_the_launcher(
+    browser: Browser, system_served: Served, system_daemon: StandIn, size: tuple[int, int]
+) -> None:
+    root, _ = system_served
+    opened = Opened(browser, f"{root}system/", size, "dark")
+    page = opened.page
+    try:
+        says_it_stands(page, "live")
+        firmware = "booted 3 hours ago after a firmware error"
+        matters = "What ran there may have ended without warning."
+        system_daemon.tell(
+            "machine",
+            changed=[
+                {
+                    "key": "machine:kestrel",
+                    "looks": [LEAD, {"side": firmware, "matters": matters}],
+                }
+            ],
+        )
+        looks = page.locator("#looks a.look")
+        row = page.locator("#looks li").filter(has=page.locator("a.look", has_text="firmware"))
+        why = row.locator(".why")
+        expect(why, "the look didn't say why it matters").to_contain_text(matters, timeout=PACE_MS)
+        expect(why, "the look's why was hidden").to_be_visible()
+        launch = why.get_by_role("link", name="Open kestrel in the Launcher")
+        expect(launch, "the look's act didn't open its launcher row").to_have_attribute(
+            "href", "mycelium:machine/kestrel?from=system"
+        )
+        box = launch.bounding_box()
+        assert box is not None, "the look's act wasn't drawn"
+        assert box["height"] >= THUMB, f"the act is {box['height']} px tall, under a thumb's"
+        words = row.locator(".words").bounding_box()
+        drawn = why.bounding_box()
+        assert words is not None, "the look's words weren't drawn"
+        assert drawn is not None, "the look's why wasn't drawn"
+        # Under the words, in their column, so the reason reads as this look's.
+        assert abs(drawn["x"] - words["x"]) < 1, "the why stood apart from its look's words"
+        assert drawn["y"] >= words["y"] + words["height"] - 1, "the why ran beside its words"
+        # As drawn, not as named: a flex box drops the spaces between runs of
+        # text, which the name read aloud keeps.
+        assert launch.inner_text() == "Open kestrel in the Launcher", launch.inner_text()
+        opened.passes_the_skills_checks()
+        # The act is the look's, so a redraw keeps focus on it, and the keys
+        # step on from it as from its look.
+        launch.focus()
+        system_daemon.tell(
+            "machine",
+            changed=[
+                {"key": "machine:kestrel", "looks": [LEAD, {"side": firmware, "matters": ANEW}]}
+            ],
+        )
+        expect(why, "the look's why wasn't redrawn").to_contain_text(ANEW, timeout=PACE_MS)
+        expect(launch, "a redraw took focus off the look's act").to_be_focused()
+        # Its words changed too, which changes the row's key: the act under the
+        # row in its place keeps focus, so Return still opens the launcher.
+        system_daemon.tell(
+            "machine",
+            changed=[
+                {"key": "machine:kestrel", "looks": [LEAD, {"side": REWORDED, "matters": ANEW}]}
+            ],
+        )
+        expect(row, "the look wasn't reworded").to_contain_text(
+            REWORDED, ignore_case=True, timeout=PACE_MS
+        )
+        expect(launch, "rewording the look took focus off its act").to_be_focused()
+        # A step back from the act lands on its own look, which it stands after,
+        # and not on the look before it.
+        expect(looks.first, "the lead look wasn't listed first").to_contain_text(
+            LEAD["side"], ignore_case=True
+        )
+        page.keyboard.press("k")
+        expect(row.locator("a.look"), "k from the act left its look").to_be_focused()
+        launch.focus()
+        after = page.evaluate(AFTER_KESTREL)
+        page.keyboard.press("j")
+        held = page.evaluate("document.activeElement?.dataset?.row ?? null")
+        assert held == after, f"j from the act went to {held}, not {after}"
+        # a steps to the next look from the act as from its look, never back onto its own.
+        launch.focus()
+        following = page.evaluate(NEXT_LOOK)
+        assert following is not None, "no look was listed to step to"
+        page.keyboard.press("a")
+        landed = page.evaluate("document.activeElement?.dataset?.row ?? null")
+        assert landed == following, f"a from the act went to {landed}, not {following}"
+    finally:
+        opened.close()
+
+
 def test_a_machines_address_puts_the_cursor_on_it(browser: Browser, system_served: Served) -> None:
     root, _ = system_served
     opened = Opened(browser, f"{root}system/#machine=osprey", SIZES[-1], "dark")
@@ -502,6 +655,65 @@ def test_a_machine_out_of_reach_is_named_apart(system_page: Page, system_daemon:
         " return away.scrollWidth > away.clientWidth; })()"
     )
     assert spills is False, "the list out of reach spilled past a phone's width"
+
+
+# A spot machine's name, as long as the provider's: sized to it, the names'
+# column once took a phone's whole width and left the words a letter wide.
+LONG_NAME = "gull-spot-provider-s99ia2-1795535220"
+# A name with nowhere to break, twice as long: only the act's own wrapping keeps
+# "Open ... in the Launcher" inside a phone's width, as a hyphen would otherwise.
+UNBROKEN_NAME = LONG_NAME.replace("-", "") * 2
+# The least of the list's width each look's words keep, whatever the names:
+# the names' column takes two fifths at most, and the mark and gaps a little.
+WORDS_KEEP = 0.4
+# Where each look's words run to, against the list's width and the window's.
+WORDS_ROOM = """(() => {
+  const list = document.querySelector('#looks').getBoundingClientRect();
+  const words = [...document.querySelectorAll('#looks .words')]
+    .map((w) => w.getBoundingClientRect());
+  return { least: Math.min(...words.map((w) => w.width)) / list.width,
+    past: Math.max(...words.map((w) => w.right)) - innerWidth };
+})()"""
+# How far past the window the furthest of the looks' acts runs.
+ACT_PAST = """(() => Math.max(...[...document.querySelectorAll('#looks .launch')]
+  .map((act) => act.getBoundingClientRect().right)) - innerWidth)()"""
+
+
+def test_a_long_name_leaves_its_words_room_at_every_size(
+    system_page: Page, system_daemon: StandIn
+) -> None:
+    says_it_stands(system_page, "live")
+    counted(system_page)
+    acts = {"link": f"mycelium:machine/{UNBROKEN_NAME}?from=system", "commands": []}
+    long: dict[str, object] = {
+        **machine_called(UNBROKEN_NAME),
+        "health": "bad",
+        "says": "has a nearly full disk, 54 GB free",
+        "side": ["nearly full disk, 54 GB free"],
+        "ties": {
+            "reached": True,
+            "heard_at": None,
+            "cells": {"busy": 1, "idle": 0, "ended": 0},
+            "network": None,
+            "code": None,
+            "figures": None,
+            "acts": acts,
+        },
+    }
+    system_daemon.tell("machine", changed=[long])
+    things = ["machine:kestrel", "machine:osprey", f"machine:{UNBROKEN_NAME}"]
+    system_daemon.tell("part", changed=[{"key": "part:machines", "things": things}])
+    look = system_page.locator(f"#looks a[data-row^='look:machine:{UNBROKEN_NAME}:']")
+    expect(look, "the long-named machine's look never came").to_be_visible(timeout=PACE_MS)
+    act = system_page.locator(f"#looks a.launch[href='{acts['link']}']")
+    expect(act, "the long-named machine's look drew no act").to_be_visible()
+    for width, height in SIZES:
+        system_page.set_viewport_size({"width": width, "height": height})
+        room = system_page.evaluate(WORDS_ROOM)
+        assert room["past"] <= 0, f"at {width} px a look's words ran {room['past']} px past"
+        assert room["least"] >= WORDS_KEEP, f"at {width} px a look's words kept {room['least']}"
+        past = system_page.evaluate(ACT_PAST)
+        assert past <= 0, f"at {width} px a look's act ran {past} px past the window"
 
 
 def test_a_machine_that_goes_leaves_its_part(system_page: Page, system_daemon: StandIn) -> None:

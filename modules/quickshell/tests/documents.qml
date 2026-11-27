@@ -15,8 +15,9 @@
 // own while Documents holds none, and only that row is made again as
 // Documents' change. What's typed inside a step is asked of its daemon
 // within it, and its answer's rows held beside the watch's, the same key
-// the same row, and one not answered is said as none. It exits 0 once
-// every case
+// the same row, and one not answered is said as none. A search's answer
+// to words typed over is held, and one asked before the search ended is
+// let go, what's typed after asked anew. It exits 0 once every case
 // holds, and otherwise 1, saying which didn't.
 import qs
 import Quickshell
@@ -264,6 +265,285 @@ ShellRoot {
                 error: { code: "unknown-ask", message: "no" } });
             Expect.expect("one refused is none", borrower.typedIn(move, "soon") === null, "");
             Expect.expect("and its rows let go", borrower.rows(time).length === 0, "");
+            // A search's answer to words typed over is held, as Emoji and
+            // Code show it while what's typed on is asked; one asked
+            // before the search ended, as the launcher shutting ends it,
+            // is let go, or it stood at the next opening for what's typed
+            // on from it. What's typed after is asked anew. Each is
+            // answered as the daemon would, through what the link awaits,
+            // so what search() kept when it asked is what's weighed.
+            const link = borrower.link;
+            link.wire = { write: line => {}, flush: () => {} };
+            const asked = words => {
+                borrower.search(words);
+                const id = `find-${link.asked}`;
+                return () => link.awaited[id]({ id, words, keys: ["row:calendar:own"] });
+            };
+            const typedOver = asked("pla");
+            const late = asked("plan");
+            typedOver();
+            Expect.expect("a search's answer to words typed over is held, still asking",
+                borrower.found.words === "pla" && borrower.asking === "plan",
+                JSON.stringify([borrower.found.words, borrower.asking]));
+            borrower.ended();
+            const searching = link.asked;
+            const anew = asked("plan");
+            Expect.expect("ended, what's typed after is asked anew",
+                link.asked === searching + 1, link.asked - searching);
+            late();
+            Expect.expect("and an answer asked before it ended is let go, the live ask still asked",
+                borrower.found.words === null && borrower.asking === "plan",
+                JSON.stringify([borrower.found.words, borrower.asking]));
+            anew();
+            Expect.expect("while the one asked after is taken",
+                borrower.found.words === "plan", borrower.found.words);
+            borrower.ended();
+            link.wire = null;
+            // Ended, what was typed inside a row is asked anew too, and its
+            // answer still to come let go.
+            link.wire = { write: line => {}, flush: () => {} };
+            borrower.typedIn(move, "lunch");
+            const typedAsk = `find-${link.asked}`;
+            borrower.ended();
+            link.awaited[typedAsk]({ id: typedAsk, keys: [], rows: {} });
+            Expect.expect("ended, an answer to what was typed inside a row is let go",
+                borrower.typing.words === null && borrower.typedAsking === "",
+                JSON.stringify([borrower.typing.words, borrower.typedAsking]));
+            link.wire = null;
+            // One the daemon couldn't answer, gone or not yet there, is
+            // asked again once it says hello, since nothing else asks it
+            // till the next key, while its rows are drawn; one whose search
+            // ended or whose words were typed over since isn't. Its hello
+            // says the daemon stands as it did, so no later case finds it
+            // changed.
+            borrower.drawn = true;
+            const stood = { state: link.state, sources: link.sources, offered: link.offered };
+            const hello = () => link.said(JSON.stringify(
+                { id: "hello", state: stood.state, sources: stood.sources, kinds: stood.offered }));
+            borrower.search("road");
+            Expect.expect("asked of no daemon, it's answered with nothing",
+                borrower.asking === "" && borrower.found.words === null,
+                JSON.stringify([borrower.asking, borrower.found.words]));
+            link.wire = { write: line => {}, flush: () => {} };
+            const greeted = link.asked;
+            hello();
+            Expect.expect("and is asked again once the daemon says hello",
+                link.asked === greeted + 1 && borrower.asking === "road",
+                JSON.stringify([link.asked - greeted, borrower.asking]));
+            const again = `find-${link.asked}`;
+            link.awaited[again]({ id: again, words: "road", keys: ["row:calendar:own"] });
+            Expect.expect("its answer taken", borrower.found.words === "road",
+                borrower.found.words);
+            // Answered once asked again, its words are asked as any are once rows moving under
+            // them let the answer go; only words lost again after it wait for the next key.
+            borrower.letFoundGo();
+            const unheld = link.asked;
+            borrower.search("road");
+            Expect.expect("answered once asked again, its words are asked anew",
+                link.asked === unheld + 1, link.asked - unheld);
+            // Its answer let go of what was asked again, so lost now, it waits for the next
+            // hello as any lost search does rather than being held back as lost twice.
+            link.gone();
+            Expect.expect("lost after its answer, it waits for the hello as any lost search does",
+                borrower.searchState().lost === "road" && borrower.lostTwice === "",
+                JSON.stringify(borrower.searchState()));
+            link.wire = { write: line => {}, flush: () => {} };
+            const regained = link.asked;
+            hello();
+            Expect.expect("and is asked once it says hello",
+                link.asked === regained + 1 && borrower.asking === "road",
+                JSON.stringify([link.asked - regained, borrower.asking]));
+            const roadAgain = `find-${link.asked}`;
+            link.awaited[roadAgain]({ id: roadAgain, words: "road", keys: ["row:calendar:own"] });
+            const unasked = (what, set) => {
+                link.wire = null;
+                set();
+                link.wire = { write: line => {}, flush: () => {} };
+                const before = link.asked;
+                hello();
+                Expect.expect(what, link.asked === before, link.asked - before);
+            };
+            unasked("one typed back from to words whose answer is held isn't asked again", () => {
+                borrower.search("roads");
+                borrower.search("road");
+            });
+            unasked("one whose search ended isn't asked again", () => {
+                borrower.search("rows");
+                borrower.ended();
+            });
+            unasked("one whose rows went undrawn isn't asked again", () => {
+                borrower.search("rows");
+                borrower.drawn = false;
+            });
+            unasked("nor one lost while they're undrawn", () => borrower.search("rides"));
+            // A connection that goes with the search asked loses it to be
+            // asked again, and a line that isn't JSON is said once a
+            // connection: two here and one after it goes again are said
+            // twice in the log, which checks/documents.nix counts.
+            borrower.drawn = true;
+            borrower.search("ride");
+            link.gone();
+            Expect.expect("a connection gone with the search asked, it waits for the next",
+                borrower.asking === "" && borrower.searchState().lost === "ride",
+                JSON.stringify(borrower.searchState()));
+            link.said("{\"id\": \"find-");
+            link.said("{\"id\": \"find-");
+            Expect.expect("a line that isn't JSON is said", link.unreadSaid, "");
+            link.wire = { write: line => {}, flush: () => {} };
+            const regreeted = link.asked;
+            hello();
+            Expect.expect("and the search is asked once it's back",
+                link.asked === regreeted + 1 && borrower.asking === "ride",
+                JSON.stringify([link.asked - regreeted, borrower.asking]));
+            link.gone();
+            Expect.expect("gone again, the next line that isn't JSON is said too",
+                !link.unreadSaid, "");
+            link.said("{\"id\": \"find-");
+            // Lost again once it was asked again, it waits for the next key, so a search that
+            // is what takes the daemon down isn't asked at every restart till systemd gives up.
+            link.wire = { write: line => {}, flush: () => {} };
+            const restarted = link.asked;
+            hello();
+            Expect.expect("lost again after it was asked again, it isn't asked a third time",
+                link.asked === restarted && borrower.searchState().lost === null,
+                JSON.stringify([link.asked - restarted, borrower.searchState()]));
+            borrower.search("ride");
+            Expect.expect("nor by a refresh of what's typed",
+                link.asked === restarted && borrower.asking === "",
+                JSON.stringify([link.asked - restarted, borrower.asking]));
+            borrower.search("rid");
+            borrower.search("ride");
+            link.gone();
+            link.wire = { write: line => {}, flush: () => {} };
+            const retyped = link.asked;
+            hello();
+            Expect.expect("while typed again, it's asked again once more",
+                link.asked === retyped + 1 && borrower.asking === "ride",
+                JSON.stringify([link.asked - retyped, borrower.asking]));
+            // Held back once lost twice, its words searched after the search ends, or after the
+            // rows go undrawn and are drawn again, are a new search: lost, they're asked again
+            // once the daemon says hello, as any are.
+            const anewOnce = (what, renew) => {
+                link.gone();
+                Expect.expect(`${what}: lost twice first`, borrower.lostTwice === "ride",
+                    JSON.stringify(borrower.searchState()));
+                renew();
+                Expect.expect(`${what}, nothing is held back or was asked again`,
+                    borrower.lostTwice === "" && borrower.reasked === "",
+                    JSON.stringify(borrower.searchState()));
+                link.wire = { write: line => {}, flush: () => {} };
+                const renewed = link.asked;
+                borrower.search("ride");
+                Expect.expect(`${what}, its words are asked`, link.asked === renewed + 1,
+                    link.asked - renewed);
+                link.gone();
+                Expect.expect(`${what}, lost, they wait for the hello`,
+                    borrower.searchState().lost === "ride", JSON.stringify(borrower.searchState()));
+                link.wire = { write: line => {}, flush: () => {} };
+                const rehello = link.asked;
+                hello();
+                Expect.expect(`${what}, and are asked once it says hello`,
+                    link.asked === rehello + 1 && borrower.asking === "ride",
+                    JSON.stringify([link.asked - rehello, borrower.asking]));
+            };
+            anewOnce("once the search ended", () => borrower.ended());
+            anewOnce("once the rows went undrawn and came back", () => {
+                borrower.drawn = false;
+                borrower.drawn = true;
+            });
+            // What's typed inside a row, lost as the daemon goes, is asked again once it says
+            // hello, as the search is, since no refresh asks words already answered, even with
+            // nothing: an Emoji group said it couldn't answer till the next key. Lost again once
+            // asked again, it's left for the next key; typed again, it's asked again once more.
+            borrower.ended();
+            link.wire = null;
+            const typedState = () => JSON.stringify([borrower.typedLost, borrower.typedReasked,
+                borrower.typedAsking, borrower.typing.words, borrower.typing.refused]);
+            const typedLost = words => borrower.typedLost?.within === move
+                && borrower.typedLost?.words === words;
+            Expect.expect("what's typed in a row, lost, says it can't answer",
+                borrower.typedIn(move, "thu 3") === null && typedLost("thu 3"), typedState());
+            link.wire = { write: line => {}, flush: () => {} };
+            const typedGreeted = link.asked;
+            Expect.expect("and isn't asked again by a refresh",
+                borrower.typedIn(move, "thu 3") === null && link.asked === typedGreeted,
+                link.asked - typedGreeted);
+            // Its key as long ago as a daemon's restart, so asking again anew would be seen.
+            borrower.typedAt = 1;
+            hello();
+            Expect.expect("but once the daemon says hello",
+                link.asked === typedGreeted + 1 && borrower.typedAsking === `${move}\nthu 3`,
+                typedState());
+            Expect.expect("still timed from its key", borrower.typedAt === 1, borrower.typedAt);
+            const typedAgainAsk = `find-${link.asked}`;
+            link.awaited[typedAgainAsk](Object.assign(answer("thu 3"), { id: typedAgainAsk }));
+            Expect.expect("its answer taken, what's typed is the daemon's rows",
+                borrower.typedIn(move, "thu 3")?.map(made => made.name).join(", ") === "Thursday",
+                typedState());
+            link.wire = null;
+            borrower.typedIn(move, "thu 4");
+            link.wire = { write: line => {}, flush: () => {} };
+            hello();
+            link.gone();
+            link.wire = { write: line => {}, flush: () => {} };
+            const typedRestarted = link.asked;
+            hello();
+            Expect.expect("lost again once asked again, it isn't asked a third time",
+                link.asked === typedRestarted && borrower.typedLost === null, typedState());
+            Expect.expect("nor by a refresh of what's typed",
+                borrower.typedIn(move, "thu 4") === null && link.asked === typedRestarted,
+                link.asked - typedRestarted);
+            link.wire = null;
+            borrower.typedIn(move, "thu");
+            borrower.typedIn(move, "thu 4");
+            link.wire = { write: line => {}, flush: () => {} };
+            const typedRetyped = link.asked;
+            hello();
+            Expect.expect("while typed again, it's asked again once more",
+                link.asked === typedRetyped + 1 && borrower.typedAsking === `${move}\nthu 4`,
+                typedState());
+            // Each let go before the hello, so each rule is seen to do it, and the hello then
+            // asks nothing.
+            const typedUnasked = (what, set) => {
+                link.wire = null;
+                set();
+                const kept = borrower.typedLost;
+                link.wire = { write: line => {}, flush: () => {} };
+                const before = link.asked;
+                hello();
+                Expect.expect(what, kept === null && link.asked === before, typedState());
+            };
+            typedUnasked("one typed over since isn't asked again", () => {
+                borrower.typedIn(move, "fri");
+                link.wire = { write: line => {}, flush: () => {} };
+                borrower.typedIn(move, "fri 2");
+            });
+            Expect.expect("and what's typed over it is still asked",
+                borrower.typedAsking === `${move}\nfri 2`, typedState());
+            typedUnasked("one whose search ended isn't asked again", () => {
+                borrower.typedIn(move, "sat");
+                borrower.ended();
+            });
+            typedUnasked("one whose rows went undrawn isn't asked again", () => {
+                borrower.typedIn(move, "sun");
+                borrower.drawn = false;
+            });
+            typedUnasked("nor one lost while they're undrawn", () => borrower.typedIn(move, "mon"));
+            // The search and what's typed inside a row, both lost, are both asked at the hello.
+            borrower.drawn = true;
+            borrower.ended();
+            link.wire = null;
+            borrower.search("tue");
+            borrower.typedIn(move, "wed");
+            link.wire = { write: line => {}, flush: () => {} };
+            const bothLost = link.asked;
+            hello();
+            Expect.expect("the search and what's typed in a row, both lost, are both asked again",
+                link.asked === bothLost + 2 && borrower.asking === "tue"
+                    && borrower.typedAsking === `${move}\nwed`, typedState());
+            borrower.ended();
+            borrower.drawn = false;
+            link.wire = null;
             standIn.open = false;
             const closed = documents.tally.rows;
             documents.served.turned();

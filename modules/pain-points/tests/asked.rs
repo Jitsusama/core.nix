@@ -185,6 +185,11 @@ fn hear_over_nothing_hears_nothing_and_says_the_hour() {
         ])
         .env("HOME", &home)
         .env("XDG_STATE_HOME", home.join("state"))
+        // A realm whose node isn't running, so no node of the machine's
+        // own can be asked for its hubs, which a listener with no routes
+        // to send by doesn't say.
+        .env("XDG_RUNTIME_DIR", home.join("run"))
+        .env("MYCELIUM_REALM", "nowhere")
         .env_remove("JOURNAL_STREAM")
         .stdin(Stdio::null())
         .output()
@@ -199,6 +204,11 @@ fn hear_over_nothing_hears_nothing_and_says_the_hour() {
     assert!(
         said(&output.stdout).contains("0 pains heard"),
         "it never said the hour: {}",
+        said(&output.stdout)
+    );
+    assert!(
+        !said(&output.stdout).contains("named no hubs"),
+        "a listener nobody set up to send said it had no hubs: {}",
         said(&output.stdout)
     );
     assert!(
@@ -247,6 +257,57 @@ fn test_names_a_misses_test_in_the_missions_ledger_or_says_why_not() {
     );
 }
 
+#[test]
+fn test_writes_a_miss_its_owner_says_nothing_heard_then_names_its_fix() {
+    let mission = std::env::temp_dir().join(format!("pain-points-owned-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&mission);
+    std::fs::create_dir_all(&mission).expect("a folder");
+    let kept = mission.join("misses.jsonl");
+    let at = "2026-11-24T20:38:19-05:00";
+    let folder = mission.to_str().expect("a folder named in UTF-8");
+    let what = "a du walked his guarded folders";
+    let test = "core modules/du/tests/du.sh du-leaves-guarded-folders-alone";
+    let owned = ran(&[
+        "test",
+        "--miss",
+        at,
+        "--owner",
+        "0FX11G",
+        "--what",
+        what,
+        "--test",
+        test,
+        "--ledgers",
+        folder,
+    ]);
+    let fix = "core #6470";
+    let named = ran(&["test", "--miss", at, "--fix", fix, "--ledgers", folder]);
+    let ledger = std::fs::read_to_string(&kept).unwrap_or_default();
+    let _ = std::fs::remove_dir_all(&mission);
+    for (output, act) in [(&owned, "writing the miss"), (&named, "naming its fix")] {
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "{act} ended {:?}: {}",
+            output.status,
+            said(&output.stderr)
+        );
+    }
+    let lines: Vec<serde_json::Value> = ledger
+        .lines()
+        .filter_map(|line| serde_json::from_str(line).ok())
+        .collect();
+    let written = serde_json::json!({
+        "at": at, "what": what, "owner": "0FX11G", "heard_by": "its owner", "test": test,
+        "check": fix,
+    });
+    assert_eq!(
+        lines,
+        [written],
+        "the ledger doesn't hold the owner's one miss, its test and fix: {ledger}"
+    );
+}
+
 /// pain-points hear over a home of its own, at 20:00 UTC on 16 November.
 fn heard_in(home: &std::path::Path) -> Output {
     Command::new(env!("CARGO_BIN_EXE_pain-points"))
@@ -259,6 +320,10 @@ fn heard_in(home: &std::path::Path) -> Output {
         ])
         .env("HOME", home)
         .env("XDG_STATE_HOME", home.join("state"))
+        // A realm whose node isn't running, so the run never asks the
+        // machine's own node for its hubs.
+        .env("XDG_RUNTIME_DIR", home.join("run"))
+        .env("MYCELIUM_REALM", "nowhere")
         .env_remove("JOURNAL_STREAM")
         .stdin(Stdio::null())
         .output()

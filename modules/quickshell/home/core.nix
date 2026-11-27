@@ -3,6 +3,7 @@
 [
   "shell.qml"
   "KeyNames.js"
+  "KeyActs.js"
   "QueryKeys.js"
   "CommandLine.qml"
   "Editing.js"
@@ -62,6 +63,8 @@
   "launcher/Flash.js"
   "launcher/Makings.js"
   "launcher/Presented.js"
+  "launcher/KeysSaid.js"
+  "launcher/ActsSaid.js"
   "launcher/ChangesPresented.js"
   "launcher/Spots.js"
   "launcher/Wanted.js"
@@ -100,4 +103,6 @@
   "launcher/Lately.js"
   "Drafts.qml"
   "launcher/Drafts.js"
+  # Agents' Talk and Now's For You both say what an agent asks with it.
+  "launcher/TalkAnswers.js"
 ]

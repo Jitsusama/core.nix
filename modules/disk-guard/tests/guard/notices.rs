@@ -14,6 +14,8 @@ fn status(bands: &[(&str, Band, u64)], last: Option<LastPass>) -> Status {
         filesystems: bands
             .iter()
             .map(|&(path, band, free)| FilesystemStatus {
+                waiting: false,
+                held: false,
                 path: PathBuf::from(path),
                 band,
                 free: free * GIB,

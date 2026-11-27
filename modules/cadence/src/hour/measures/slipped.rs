@@ -7,18 +7,41 @@ use super::*;
 
 const NOW: i64 = 1_794_700_000;
 
-fn at(seconds: i64) -> String {
+/// A moment, `seconds` since 1970, as the asks list writes one; the
+/// measures beside this one read their asks' times with it too.
+pub(super) fn at(seconds: i64) -> String {
     Timestamp::from_second(seconds)
         .map(|t| t.to_string())
         .unwrap_or_default()
 }
 
-/// The asks list `asks` would make, one line each.
-fn list(asks: &[Value]) -> String {
+/// The asks list `asks` would make, one line each; the measures beside
+/// this one write their asks lists with it too.
+pub(super) fn list(asks: &[Value]) -> String {
     asks.iter()
         .map(ToString::to_string)
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+/// The twin the keeper folds into `ask`: the same moment and words, its
+/// id marked `~`, closed at `closed`, in seconds, and with no ruling of
+/// its own, as a folded copy is. Read as the ask's latest line, it would
+/// close it, so each measure of the asks shows it was skipped by still
+/// reading the ask as it was.
+pub(super) fn twin(ask: &Value, closed: i64) -> Value {
+    let mut twin = ask.clone();
+    if let Some(fields) = twin.as_object_mut() {
+        let id = fields
+            .get("id")
+            .and_then(Value::as_str)
+            .unwrap_or("0a1b2c3d")
+            .to_owned();
+        fields.insert("id".to_owned(), json!(format!("{id}~1")));
+        fields.insert("closed".to_owned(), json!(at(closed)));
+        fields.remove("parked");
+    }
+    twin
 }
 
 #[test]
@@ -158,5 +181,20 @@ fn the_day_boundary_and_each_asks_own_moves_decide_an_old_date() {
         ],
         "the day's edge moved, one ask's rewrite answered another's date, or an old \
          slip's line didn't say how long ago it was due"
+    );
+}
+
+/// The keeper folds a copy of an ask into it, marking the copy's id with
+/// `~`; written after the ask, the copy, with no date of its own, would
+/// read as its latest line and answer the date it slipped.
+#[test]
+fn a_twin_folded_into_an_ask_is_not_read_as_its_latest_line() {
+    let ask = json!({"id": "0a1b2c3d", "at": at(NOW - 3 * DAY), "words": "fold",
+        "owner": "F", "expected": at(NOW - 3600)});
+    let text = list(&[ask.clone(), twin(&ask, NOW - 1800)]);
+    assert_eq!(
+        slips(&text, NOW, Tracking::His).behind,
+        ["fold · F"],
+        "a twin written after its ask stood for it and answered or parked its slip"
     );
 }

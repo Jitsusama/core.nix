@@ -7,16 +7,21 @@
 //! his own IM: [`OwnIm`] is the one thing [`tell`] sends to, and nothing
 //! makes one but [`own_im`], which asks Slack for the IM with Joel alone
 //! and has Slack's conversations.info say it's an IM and his before it's
-//! trusted, so no caller can name a channel. It says only the alert's fixed form,
-//! [`text`]: who stopped what, the words said, and where. And it sends
-//! from the safe word's own reader, never from an agent or a tool.
+//! trusted, so no caller can name a channel. A reader over a tool gateway
+//! sends by [`tell_self`], through the gateway's one tool that sends a
+//! message from Joel to himself and can name nobody else. Either says only
+//! the alert's fixed form, [`text`]: who stopped what, the words said, and
+//! where. And it sends from the safe word's own reader, never from an
+//! agent or a tool.
 
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
-use serde_json::Value;
+use serde_json::{Value, json};
 use slack_people::{Account, Slack};
 use ureq::Agent;
+
+use crate::mcp::{Called, Gateway, never_connected};
 
 /// How long Slack has to answer before it's given up on.
 const PATIENCE: Duration = Duration::from_secs(10);
@@ -47,7 +52,9 @@ pub struct Alert<'a> {
 }
 
 /// How many characters of the words said are shown, so a long message
-/// doesn't flood Joel's phone; the link has the rest.
+/// doesn't flood Joel's phone; the link has the rest. A row's words are
+/// already its gist, cut shorter in tell.rs, so this guards only words
+/// that came some other way, such as a line written before rows were cut.
 const WORDS_SHOWN: usize = 300;
 
 /// How every alert begins, so the reader knows its own when a search
@@ -146,12 +153,13 @@ pub enum Missed {
     Unsure(String),
 }
 
-/// Sends one alert to Joel's own IM, unfurling nothing under it.
+/// Sends one alert to Joel's own IM, unfurling nothing under it, and
+/// gives the text that went.
 ///
 /// # Errors
 ///
 /// Why it didn't go, and whether it may have all the same.
-pub fn tell(origin: &str, account: &Account, own: &OwnIm, alert: Alert) -> Result<(), Missed> {
+pub fn tell(origin: &str, account: &Account, own: &OwnIm, alert: Alert) -> Result<String, Missed> {
     let said = text(alert);
     let mut answer = agent()
         .post(format!("{origin}/api/{POST}"))
@@ -166,10 +174,7 @@ pub fn tell(origin: &str, account: &Account, own: &OwnIm, alert: Alert) -> Resul
         .map_err(|error| {
             let why = format!("couldn't reach Slack: {error}");
             // Only a connection never made is sure not to have posted.
-            if matches!(
-                error,
-                ureq::Error::HostNotFound | ureq::Error::ConnectionFailed
-            ) {
+            if never_connected(&error) {
                 Missed::NotSent(why)
             } else {
                 Missed::Unsure(why)
@@ -180,7 +185,216 @@ pub fn tell(origin: &str, account: &Account, own: &OwnIm, alert: Alert) -> Resul
         .body_mut()
         .read_json()
         .map_err(|error| Missed::Unsure(format!("Slack answered {status}: {error}")))?;
-    refused(&took).map_err(|why| Missed::NotSent(format!("Slack answered {status}: {why}")))
+    refused(&took).map_err(|why| Missed::NotSent(format!("Slack answered {status}: {why}")))?;
+    Ok(said)
+}
+
+/// The gateway's tool that sends a message from Joel to himself, which
+/// takes the message alone and can't be given anyone else to send to.
+const TO_SELF: &str = "slack_send_message_to_self";
+
+/// What's said in place of the words when the gateway won't take them.
+const WORDS_NOT_TAKEN: &str = "(the words are at the link)";
+
+/// Sends one alert to Joel from himself through `gateway`. It refuses a
+/// mention, so `@here`, `@channel` and `@everyone` in what others wrote
+/// are said as `(at)here` and so on; any failing of the tool, or a
+/// refusal of it before it ran, is met by sending it once more with the
+/// words left to the link, so the title and where still reach his phone.
+/// Only that second answer is judged, as it holds none of the words, and
+/// any line of it the failing quotes is left out first, since the title
+/// and where are still from Slack: a rate spent there, Slack refusing
+/// the gateway's sign-in, or a refusal before it ran did nothing, so the
+/// alert is tried again whole the next round.
+///
+/// The tool's failing promises nothing of whether Slack took the message,
+/// so a second failing is counted as may have gone: two such rounds and
+/// it's given up on, rather than sent twice a round for ten minutes. One
+/// that failed before the tool was asked, as a session opened or its
+/// backend was turned on, went nowhere, so it's tried again each round.
+/// It gives the text that went, its mentions said otherwise or its words
+/// left to the link as they were.
+///
+/// # Errors
+///
+/// Why it didn't go, and whether it may have all the same.
+pub fn tell_self(gateway: &mut Gateway, alert: Alert) -> Result<String, Missed> {
+    let ask = |gateway: &mut Gateway, alert| {
+        let said = unmentioned(&text(alert));
+        let called = gateway.call(TO_SELF, &json!({ "message": &said }));
+        (said, called)
+    };
+    let (said, sent) = match ask(gateway, alert) {
+        (_, Err(called)) if !alert.words.is_empty() && plainly(gateway, &called) => {
+            let plain = Alert {
+                words: WORDS_NOT_TAKEN,
+                ..alert
+            };
+            ask(gateway, plain)
+        }
+        asked => asked,
+    };
+    let put = gateway.put_to(TO_SELF);
+    let Err(called) = sent else {
+        return Ok(said);
+    };
+    let nothing_ran = |why: &str| {
+        let why = unquoted(why, &said);
+        spent(&why) || refuses_the_sign_in(&why)
+    };
+    Err(match called {
+        Called::Unreachable(why) | Called::Unreadable(why) | Called::Failed(why) if !put => {
+            Missed::NotSent(why)
+        }
+        Called::Failed(why) if nothing_ran(&why) => Missed::NotSent(why),
+        Called::Unreachable(why) | Called::Unreadable(why) | Called::Failed(why) => {
+            Missed::Unsure(why)
+        }
+        Called::NotReached(why) | Called::Declined(why) => Missed::NotSent(why),
+        Called::Refused => Missed::NotSent("the gateway refused Joel's sign-in".to_owned()),
+        Called::NoSignIn(_) => Missed::NotSent("no sign-in to the gateway was given".to_owned()),
+    })
+}
+
+/// A failing's words without any line of `said` it quotes, as written or
+/// as JSON would write it, however its writer escapes it: the title and
+/// where are still from Slack, so a name in them can't be read as the
+/// gateway's own word for a rate spent. Each line is taken out before the
+/// failing's escapes are read back and again after, so a name holding a
+/// backslash of its own is found quoted as written and as escaped.
+fn unquoted(why: &str, said: &str) -> String {
+    let lines: Vec<&str> = said
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .collect();
+    let without = |mut left: String| {
+        for line in &lines {
+            let json = serde_json::to_string(line).unwrap_or_default();
+            let inner = json.get(1..json.len().saturating_sub(1)).unwrap_or(line);
+            left = left.replace(line, "").replace(inner, "");
+        }
+        left
+    };
+    without(unescaped(&without(why.to_owned())))
+}
+
+/// `why` with each of JSON's escapes read back, from left to right: `\\`,
+/// `\"`, `\/`, the control characters' and `\uXXXX`, a surrogate pair as
+/// one, since JSON writers other than serde's escape so what isn't ASCII,
+/// `&`, `<`, `>` or `/`. What names no character is left as it was.
+fn unescaped(why: &str) -> String {
+    let mut out = String::with_capacity(why.len());
+    let mut rest = why;
+    while let Some(at) = rest.find('\\') {
+        out.push_str(&rest[..at]);
+        rest = &rest[at..];
+        let (read, taken) = match rest.as_bytes().get(1) {
+            Some(b'u') => escape(rest),
+            Some(&mark) => short(mark).map_or((None, 1), |read| (Some(read), 2)),
+            None => (None, 1),
+        };
+        match read {
+            Some(read) => out.push(read),
+            None => out.push_str(&rest[..taken]),
+        }
+        rest = &rest[taken..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// The character a backslash and `mark` name in JSON, where `mark` isn't
+/// `u`; none where they name none.
+fn short(mark: u8) -> Option<char> {
+    Some(match mark {
+        b'"' => '"',
+        b'\\' => '\\',
+        b'/' => '/',
+        b'b' => '\u{8}',
+        b'f' => '\u{c}',
+        b'n' => '\n',
+        b'r' => '\r',
+        b't' => '\t',
+        _ => return None,
+    })
+}
+
+/// The character the `\uXXXX` escape opening `at` names, two escapes for a
+/// surrogate pair, and how many bytes it took; none where it names none,
+/// the `\u` alone taken where no four digits follow it.
+fn escape(at: &str) -> (Option<char>, usize) {
+    let unit = |from: usize| {
+        at.get(from..from + 2).filter(|mark| *mark == "\\u")?;
+        let digits = at.get(from + 2..from + 6)?;
+        if !digits.bytes().all(|digit| digit.is_ascii_hexdigit()) {
+            return None;
+        }
+        u16::from_str_radix(digits, 16).ok()
+    };
+    let Some(first) = unit(0) else {
+        return (None, 2);
+    };
+    if let Some(second) = unit(6)
+        && let Some(Ok(pair)) = char::decode_utf16([first, second]).next()
+        && pair.len_utf16() == 2
+    {
+        return (Some(pair), 12);
+    }
+    (char::from_u32(u32::from(first)), 6)
+}
+
+/// Whether a send that came back `called` is sent once more without its
+/// words: its tool's failing or refusal, or a failing after the tool was
+/// asked, as its backend was turned on, when nothing had run.
+fn plainly(gateway: &Gateway, called: &Called) -> bool {
+    if gateway.put_to(TO_SELF) {
+        matches!(called, Called::Failed(_) | Called::Declined(_))
+    } else {
+        gateway.asked_of(TO_SELF)
+    }
+}
+
+/// Whether a tool's failing says Slack's rate was spent, which did nothing:
+/// either of Slack's words for it, `ratelimited` and `rate_limited`, or
+/// HTTP's or a person's. It's asked only of a failing to send the alert
+/// without its words, every line sent left out of it first, so nobody can
+/// hold an alert back by saying "rate limit" in words or a name it quotes.
+fn spent(why: &str) -> bool {
+    let why = why.to_ascii_lowercase();
+    why.split(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+        .any(|word| word == "ratelimited" || word == "rate_limited")
+        || why.contains("rate limit")
+        || why.contains("too many requests")
+}
+
+/// Whether a tool's failing says Slack refused the gateway's sign-in, so
+/// nothing was posted, as the reader's ears tell it.
+fn refuses_the_sign_in(why: &str) -> bool {
+    why.split(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+        .any(crate::deaf::refuses_the_sign_in)
+}
+
+/// The words that mention everyone said so they don't, as the gateway
+/// refuses to send a mention: `@` before `here`, `channel` or `everyone`
+/// as a whole word, in any case, is said as `(at)`, while an address such
+/// as `ops@channel4.com` is left as written.
+fn unmentioned(text: &str) -> String {
+    let mut said = String::with_capacity(text.len());
+    for (at, character) in text.char_indices() {
+        let everyone = || {
+            let rest = text[at + character.len_utf8()..].to_ascii_lowercase();
+            ["here", "channel", "everyone"].iter().any(|word| {
+                rest.strip_prefix(word)
+                    .is_some_and(|after| !after.starts_with(|next: char| next.is_alphanumeric()))
+            })
+        };
+        if character == '@' && everyone() {
+            said.push_str("(at)");
+        } else {
+            said.push(character);
+        }
+    }
+    said
 }
 
 fn agent() -> Agent {
@@ -257,6 +471,8 @@ pub fn told_as(line: &Value) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::fmt::Write as _;
+
     use serde_json::json;
 
     use super::*;
@@ -314,6 +530,146 @@ mod tests {
              Where: https://example.slack.com/archives/C1/p1?thread_ts=1&amp;cid=C1",
             "a masked link, a mention and <!here> come out escaped"
         );
+    }
+
+    #[test]
+    fn a_mention_of_everyone_is_said_as_at() {
+        assert_eq!(
+            unmentioned("pineapple override @here and @Channel, @everyone; mail joel@example.com"),
+            "pineapple override (at)here and (at)Channel, (at)everyone; mail joel@example.com",
+            "each mention of everyone, in any case, and nothing else"
+        );
+        assert_eq!(
+            unmentioned("ends with @"),
+            "ends with @",
+            "an @ at the end is left"
+        );
+        assert_eq!(
+            unmentioned("mail ops@channel4.com or @hereford, but @here."),
+            "mail ops@channel4.com or @hereford, but (at)here.",
+            "only the whole word, so an address or a longer name is left"
+        );
+    }
+
+    #[test]
+    fn only_a_rate_spent_is_said_as_spent() {
+        assert!(spent("Slack said: ratelimited"), "Slack's own word");
+        assert!(spent("Slack said: rate_limited"), "Slack's other word");
+        assert!(spent("Rate limit exceeded"), "in other words");
+        assert!(spent("429 Too Many Requests"), "in HTTP's");
+        assert!(!spent("Slack said: not_allowed"), "a refusal is no rate");
+        assert!(
+            !spent("Slack said: ratelimitedness"),
+            "Slack's words count only whole"
+        );
+    }
+
+    #[test]
+    fn a_name_from_slack_quoted_in_a_failing_is_no_rate_spent() {
+        let said = text(Alert {
+            title: "A stop in owner/rate_limited \"x\"",
+            words: WORDS_NOT_TAKEN,
+            link: "https://x.slack.com/archives/C1/p1",
+        });
+        let json = serde_json::to_string(&said).expect("text as JSON");
+        for why in [
+            format!("could not post {said}"),
+            format!("could not post {json}"),
+        ] {
+            assert!(spent(&why), "quoted, the name reads as Slack's word: {why}");
+            assert!(
+                !spent(&unquoted(&why, &said)),
+                "left out, it doesn't: {why}"
+            );
+        }
+        assert!(
+            spent(&unquoted(&format!("rate_limited, for {json}"), &said)),
+            "the gateway's own word still counts"
+        );
+    }
+
+    #[test]
+    fn a_name_from_slack_quoted_in_a_failing_is_no_sign_in_refused() {
+        let said = text(Alert {
+            title: "A stop in owner/invalid_auth",
+            words: WORDS_NOT_TAKEN,
+            link: "https://x.slack.com/archives/C1/p1",
+        });
+        let why = format!("could not post {said}");
+        assert!(
+            refuses_the_sign_in(&why),
+            "quoted, the name reads as a refusal"
+        );
+        assert!(
+            !refuses_the_sign_in(&unquoted(&why, &said)),
+            "left out, it doesn't"
+        );
+        assert!(
+            refuses_the_sign_in(&unquoted(&format!("invalid_auth, for {said}"), &said)),
+            "the gateway's own word still counts"
+        );
+    }
+
+    #[test]
+    fn a_name_quoted_with_its_characters_escaped_is_left_out_too() {
+        let said = text(Alert {
+            title: "A stop in owner/rate_limited & caf\u{e9} \u{1f34d}",
+            words: WORDS_NOT_TAKEN,
+            link: "https://x.slack.com/archives/C1/p1",
+        });
+        // As Python's JSON writes it, and Go's: whatever isn't ASCII, and
+        // `&`, `<` and `>`, as `\uXXXX`; and `/` as PHP's writes it.
+        let json = serde_json::to_string(&said).expect("text as JSON");
+        let mut escaped = String::new();
+        for each in json.chars() {
+            if each == '/' {
+                escaped.push_str("\\/");
+            } else if each.is_ascii() && !matches!(each, '&' | '<' | '>') {
+                escaped.push(each);
+            } else {
+                for unit in each.encode_utf16(&mut [0; 2]) {
+                    write!(escaped, "\\u{unit:04x}").expect("a String takes any text");
+                }
+            }
+        }
+        let why = format!("could not post {escaped}");
+        assert!(spent(&why), "quoted, the name reads as Slack's word");
+        assert!(
+            !spent(&unquoted(&why, &said)),
+            "left out, escaped as it was, it doesn't: {why}"
+        );
+        assert!(
+            spent(&unquoted(&format!("rate_limited, for {escaped}"), &said)),
+            "the gateway's own word still counts"
+        );
+        assert_eq!(
+            unescaped(r"\u00e9 \ud83c\udf4d \ud83c \u12 \uzzzz"),
+            "\u{e9} \u{1f34d} \\ud83c \\u12 \\uzzzz",
+            "what names no character is left as it was"
+        );
+        assert_eq!(
+            unescaped(r#"\\u0072 \/ \" \n \q \"#),
+            "\\u0072 / \" \n \\q \\",
+            "read from left to right, an escaped backslash opens no escape"
+        );
+    }
+
+    #[test]
+    fn a_name_holding_a_backslash_of_its_own_is_left_out_however_quoted() {
+        let said = text(Alert {
+            title: "A stop in x/\\u0072ate_limited#12 caf\u{e9}",
+            words: WORDS_NOT_TAKEN,
+            link: "https://x.slack.com/archives/C1/p1",
+        });
+        let json = serde_json::to_string(&said).expect("text as JSON");
+        let ascii = json.replace('\u{e9}', r"\u00e9");
+        for quoted in [said.as_str(), json.as_str(), ascii.as_str()] {
+            let why = format!("could not post {quoted}");
+            assert!(
+                !spent(&unquoted(&why, &said)),
+                "left out, quoted as {quoted}, it reads as no rate spent"
+            );
+        }
     }
 
     #[test]

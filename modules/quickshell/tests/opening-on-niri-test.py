@@ -158,11 +158,19 @@ COLLECTED_AFTER = timedelta(seconds=1)
 
 # How long after a start every source here has first answered: what warming once waited out by
 # beginning at 6 s. The restart case passed waiting 5 s past home kept (2026-11-12), but on a
-# gate's loaded builder Networks, Traffic and Displays answered later still, so past it the
-# case waits until no source has said a change for QUIET, for at most SETTLED.
+# gate's loaded builder some sources answered later still, so past it the case waits until no
+# source outside CAUGHT_UP has said a change for QUIET, for at most SETTLED.
 ANSWERED = timedelta(seconds=6)
 QUIET = timedelta(seconds=2)
 SETTLED = timedelta(seconds=30)
+
+# The sources whose rows the first chord after a restart may still catch up, since they read
+# what they show late, past home being kept; any other making rows is home found again whole.
+# No wait settles them, so none waits on them: on a loaded gate's builder that chord made 4, 3
+# and 4 of their rows after the quiet (2026-11-26), and Traffic says no change at all while the
+# launcher is shut, so a wait on each having said one ran out every time (#6890's run,
+# 2026-11-26).
+CAUGHT_UP = ("networks", "traffic", "displays")
 
 # How long after his first chord into a restart Joel, seeing nothing open, presses it again.
 PRESSED_AGAIN = timedelta(milliseconds=300)
@@ -751,14 +759,31 @@ def test_a_chord_first_after_a_restart_makes_only_its_places_rows(shell: Shell) 
 
     Home kept as the shell started wasn't counted as kept for an opening into a place, so the
     first chord after each switch found home again whole on its way into the place, as no
-    later one does.
+    later one does. Home found again says no line of its own on a chord into a place ("home
+    opened whole" is a home chord's), and makes no rows where its sources haven't changed
+    since warming found it, so the searches each chord runs show it: the first may run no more
+    than a later chord into the same place. Its fill may still catch up what CAUGHT_UP read
+    since home was kept, as the launcher means it to, so only another source's rows fail it.
     """
     restarted = time.monotonic()
     shell.restart()
     shell.launcher_until(lambda shown: shown.get("kept"))
     answered_since(shell, restarted)
-    made = made_by_others(shell, "windows")
-    assert not made, f"first into Windows after a restart, other sources made rows: {made}"
+    made, first = opened_into(shell, "windows")
+    shell.close_launcher()
+    shell.launcher_closed()
+    _, later = opened_into(shell, "windows")
+    assert later >= 1, (
+        f"a later chord into Windows searched {later} times, so searches can't show home found"
+    )
+    assert first <= later, (
+        f"first into Windows after a restart searched {first} times, a later chord {later},"
+        f" as home found again would; other sources made rows: {made}"
+    )
+    others = {name: rows for name, rows in made.items() if name not in CAUGHT_UP}
+    assert not others, (
+        f"first into Windows after a restart, other sources made rows: {others} (all: {made})"
+    )
 
 
 def test_a_chord_first_after_a_restart_is_drawn_from_its_place_kept_as_it_started(
@@ -1442,37 +1467,58 @@ def test_a_restart_after_a_switch_starts_from_files_compiled_before_it(shell: Sh
 
 
 def answered_since(shell: Shell, restarted: float) -> None:
-    """Wait until every source has first answered since the restart at `restarted`.
+    """Wait until every source outside CAUGHT_UP has first answered since the restart.
 
-    Home and the chords' places are kept a second and a half after a start, before Networks
-    and Displays first answer here, so the next opening's fill makes their rows again, as it
-    catches up any source changed since it was kept: 6 here, which aren't what this counts.
-    It waits out ANSWERED, then until the changes each source has said hold still for QUIET.
+    Home and the chords' places are kept a second and a half after a start, and a source that
+    answers after that would leave its place to be searched again, or its rows made again, by
+    the next chord, which aren't what the case counts. It waits out ANSWERED from `restarted`,
+    then until the changes each such source has said hold still for QUIET, for at most
+    SETTLED. CAUGHT_UP's changes aren't watched, since the case allows their rows and no wait
+    settles them.
     """
+
+    def changes() -> dict[str, int]:
+        said = json.loads(shell.as_account(shell.ipc("changed")))
+        return {name: count for name, count in said.items() if name not in CAUGHT_UP}
+
     time.sleep(max(0.0, restarted + ANSWERED.total_seconds() - time.monotonic()))
-    deadline = time.monotonic() + SETTLED.total_seconds()
-    said = json.loads(shell.as_account(shell.ipc("changed")))
+    watched = time.monotonic()
+    deadline = watched + SETTLED.total_seconds()
+    said = changes()
     still = time.monotonic()
     while time.monotonic() - still < QUIET.total_seconds():
         if time.monotonic() > deadline:
-            pytest.fail(f"sources still changing {SETTLED} after a restart: {said}")
+            pytest.fail(
+                f"sources still changing {SETTLED.total_seconds():.0f} s into a watch begun"
+                f" {watched - restarted:.1f} s after a restart: {said}"
+            )
         time.sleep(launcher_on_niri.POLL)
-        now = json.loads(shell.as_account(shell.ipc("changed")))
+        now = changes()
         if now != said:
             said, still = now, time.monotonic()
 
 
 def made_by_others(shell: Shell, place: str) -> dict[str, int]:
-    """Open into the place by its chord, and give the rows each other source made meanwhile.
+    """Open into the place by its chord, and give the rows each other source made meanwhile."""
+    return opened_into(shell, place)[0]
 
-    A try a closing's spots landed in counts nothing of the opening's, so it's closed, its own
-    spots waited for, and made again.
+
+def opened_into(shell: Shell, place: str) -> tuple[dict[str, int], int]:
+    """Open into the place by its chord, and give the rows each other source made, and searches.
+
+    A try a closing's spots landed in counts nothing of the opening's rows, so it's closed, its
+    own spots waited for, and made again. The searches are the first try's whatever follows,
+    since a closing's spots search nothing and only the first chord may find home again.
     """
+    searches: int | None = None
     for _ in range(REOPENINGS_TRIED):
         began = shell.mark()
         before = json.loads(shell.as_account(shell.ipc("made")))["rows"]
+        searched = launcher_on_niri.searched(shell)
         shell.as_account(shell.ipc("collection", place))
         shell.launcher_ready()
+        if searches is None:
+            searches = launcher_on_niri.searched(shell) - searched
         after = json.loads(shell.as_account(shell.ipc("made")))["rows"]
         said, _ = shell.said_since(began)
         if not any(line.startswith(SPOTS_MADE_SHUT) for line in said):
@@ -1482,11 +1528,13 @@ def made_by_others(shell: Shell, place: str) -> dict[str, int]:
         shell.reported(SPOTS_MADE_SHUT[0], lambda _: True, closing)
     else:
         pytest.fail(f"a closing's spots were made as each of {REOPENINGS_TRIED} tries opened")
-    return {
+    made = {
         name: rows - before.get(name, 0)
         for name, rows in after.items()
         if name != place and rows > before.get(name, 0)
     }
+    assert searches is not None, f"no try was made, with REOPENINGS_TRIED {REOPENINGS_TRIED}"
+    return made, searches
 
 
 def working_spent(opening: Json) -> None:
@@ -1529,6 +1577,12 @@ def test_a_place_its_chord_opened_is_drawn_as_it_stood(shell: Shell) -> None:
     opening = filled_after(shell, timed)
     assert opening.get("into") == "on", f"the opening didn't say its chord: {opening}"
     working_spent(opening)
+    # Its rows, its card and its hold are lapped apart from the ask, since an opening into a
+    # place asked 13 to 18 ms where home asked 1 to 3 (Joel's journal, 2026-11-24).
+    laps = {"asking", "kept rows", "kept card", "letting go"}
+    assert laps <= set(cast("dict[str, float]", opening.get("parts", {}))), (
+        f"the kept opening's laps went unsaid: {opening.get('parts')}"
+    )
     took = [line for line in said_of_chords(shell, since).splitlines() if "opening took" in line]
     assert took, "the opening said nothing of its time"
     assert "; its thread ran " in took[-1], f"the opening's line didn't say its thread: {took[-1]}"
@@ -1968,21 +2022,34 @@ def test_a_letter_reordering_a_kept_place_lists_it_afresh_from_its_first_row(
     whole = shell.showing()["count"]
     shell.send_chars("f")
     shell.launcher_until(lambda shown: shown["typed"] == "f" and cast("int", shown["count"]) > 0)
+    settled(shell)
+    # How many the held answer lists, which the letter typed again lists in its own frame.
+    held_count = cast("int", shell.showing()["count"])
     shell.send_key("backspace")
     shell.launcher_until(lambda shown: shown["typed"] == "" and shown["count"] == whole)
     for _ in range(ROWS_DOWN):
         shell.send_key("down")
     shell.launcher_until(lambda shown: cast("int", shown["seen"]["at"]) == ROWS_DOWN)
-    first: list[Json] = []
-
-    def typed_f(shown: Json) -> bool:
-        if shown["typed"] == "f" and not first:
-            first.append(shown)
-        return bool(first)
-
+    # Counted once every key before it is presented, so the letter's is the next: its own first
+    # frame is judged, as what's showing is made once a turn and a frame listing the rows
+    # before it, or none, could go unsaid, and a letter that let the held answer go passed
+    # once its own answer came.
+    before = len(launcher_on_niri.keys_presented_settled(shell))
     shell.send_chars("f")
-    shell.launcher_until(typed_f)
-    assert cast("int", first[0]["count"]) > 0, f"the held answer's letter listed none: {first}"
+    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+    presented: list[Json] = []
+    while len(presented) <= before and time.monotonic() < deadline:
+        presented = json.loads(shell.as_account(shell.ipc("keysPresented")))
+        time.sleep(launcher_on_niri.POLL)
+    assert len(presented) > before, f"the letter was never presented: {presented}"
+    letter = presented[before]
+    # One that let the held answer go waits on its own, up to the launcher's bound, so a quick
+    # answer could list the same count; waited says it did, and is None where nothing said.
+    assert letter["waited"] is not None, f"the letter's search recorded no parts: {letter}"
+    assert letter["waited"] is False, f"the letter waited on its answers: {letter}"
+    assert letter["listed"] == held_count, (
+        f"the letter's first frame listed {letter['listed']}, not the {held_count} held: {letter}"
+    )
     laid = json.loads(shell.as_account(shell.ipc("laidOut")))
     selection = laid["selection"]
     assert selection is not None, f"the letter left no selection drawn: {laid['rows']}"

@@ -63,6 +63,41 @@ function nextChange(zone, seconds) {
         : null;
 }
 
+// A zone's next two changes after a moment, in seconds, each as
+// nextChange gives it, so a zone that changes twice a year shows its whole
+// year (VKCF3Z: "next two changes"). Either is null where the years kept
+// hold no more.
+function nextTwo(zone, seconds) {
+    const next = nextChange(zone, seconds);
+    return { next, after: next ? nextChange(zone, next.when / SECOND) : null };
+}
+
+// A zone's abbreviation where tzdata names one, and "" where it writes
+// only the offset, one rule for the Abbreviation fact and each change's
+// note alike.
+function named(abbreviation) {
+    return WRITTEN_OFFSET.test(abbreviation) ? "" : abbreviation;
+}
+
+// What a change turns a zone to: its abbreviation where tzdata names one,
+// then its offset, never an offset written twice.
+function turnsTo(change) {
+    return [named(change.abbreviation), offset(change.minutes)].filter(one => one !== "")
+        .join(", ");
+}
+
+// What a zone's drawer says of its next two changes, as nextTwo gives
+// them: each when it comes, null where the years kept hold none, and what
+// it turns the zone to. After That is null, left out, only where there's no
+// next change; past the last change kept it says the years end, as Next
+// Change does, rather than looking like a zone that changes once more and
+// never again.
+function changesSaid(changes) {
+    const told = change => change ? { when: change.when, note: turnsTo(change) }
+        : { when: null, note: "" };
+    return { next: told(changes.next), after: changes.next ? told(changes.after) : null };
+}
+
 function said(place) {
     return place.trim().toLowerCase().replace(PLACE_GAPS, " ").replace(LEADING_THE, "");
 }

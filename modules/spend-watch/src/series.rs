@@ -36,6 +36,7 @@ use crate::estimate::Ratios;
 use crate::history::{History, sql as fail};
 use rusqlite::Connection;
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::rc::Rc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Source {
@@ -142,6 +143,185 @@ pub struct Inputs {
     fed_budgets: HashSet<String>,
 }
 
+/// Every hour of `turn_hours` from the first read on, kept between a
+/// running daemon's passes, so a pass rereads only the hours that moved
+/// since (`hour_moves`). Each pass read every hour again before, which
+/// took it back off the disk once the machine had dropped it from memory:
+/// about 60 MB a pass on 24 November. A name repeated across rows is kept
+/// once, since a session spends in many hours and a model in most.
+#[derive(Debug, Default)]
+pub struct Hours {
+    /// The first hour kept, and the last move read.
+    read: Option<(i64, i64)>,
+    rows: BTreeMap<i64, Vec<HourRow>>,
+    names: HashSet<Rc<str>>,
+    /// How many times every hour was read whole.
+    whole: usize,
+    /// How many hours the last refresh read again.
+    reread: usize,
+}
+
+/// One row of `turn_hours`, but for its hour and turns.
+#[derive(Debug, Clone, PartialEq)]
+struct HourRow {
+    session: Rc<str>,
+    quest: Option<Rc<str>>,
+    model: Rc<str>,
+    kind: Rc<str>,
+    provider: Rc<str>,
+    budget: Option<Rc<str>>,
+    cost: f64,
+}
+
+impl Hours {
+    /// Brings every hour from `from` on up to date with the history: the
+    /// hours that moved since the last read, or every one when none was
+    /// kept from as early. The last move is read before the rows, so a turn
+    /// added between the two is read again next time rather than missed.
+    ///
+    /// A move is the highest yet plus one, so a write rolled back hands its
+    /// numbers out again. Moves read inside a write not yet committed, as a
+    /// failed commit can leave open, are therefore not kept as read: the
+    /// next refresh reads every hour again, as it does when the last move
+    /// is lower than the one kept, which only a history taken back or
+    /// brought up again under a running daemon can make.
+    pub fn refresh(&mut self, db: &Connection, from: i64) -> Result<(), String> {
+        let settled = db.is_autocommit();
+        let latest: i64 = db
+            .query_row("SELECT COALESCE(MAX(move), 0) FROM hour_moves", [], |row| {
+                row.get(0)
+            })
+            .map_err(fail)?;
+        match self.read {
+            Some((first, through)) if first <= from && through <= latest => {
+                let moved: Vec<i64> = {
+                    let mut statement = db
+                        .prepare("SELECT hour FROM hour_moves WHERE move > ?1 AND hour >= ?2")
+                        .map_err(fail)?;
+                    let rows = statement
+                        .query_map([through, from], |row| row.get(0))
+                        .map_err(fail)?;
+                    rows.collect::<Result<_, _>>().map_err(fail)?
+                };
+                self.reread = moved.len();
+                for hour in moved {
+                    let mut read = self.read_rows(db, hour, hour + 1)?;
+                    match read.remove(&hour) {
+                        Some(rows) => self.rows.insert(hour, rows),
+                        None => self.rows.remove(&hour),
+                    };
+                }
+                self.rows = self.rows.split_off(&from);
+                // Names only the dropped rows held go with them, so a
+                // forgotten session isn't kept for the daemon's whole life.
+                self.names.retain(|name| Rc::strong_count(name) > 1);
+            }
+            _ => {
+                // Nothing is marked as read until the read has worked, so
+                // one that fails halfway leaves no mark over emptied hours
+                // and the next refresh reads every hour again.
+                self.read = None;
+                self.whole += 1;
+                self.rows = BTreeMap::new();
+                self.names.clear();
+                self.rows = self.read_rows(db, from, i64::MAX)?;
+                self.reread = self.rows.len();
+            }
+        }
+        self.read = settled.then_some((from, latest));
+        Ok(())
+    }
+
+    /// How many times every hour was read whole, for tests that a kept
+    /// picture reads its hours once.
+    #[cfg(test)]
+    pub(crate) fn whole(&self) -> usize {
+        self.whole
+    }
+
+    /// The rows of the hours from `from` to before `to`, by the hour, in
+    /// the order the picture splits them by.
+    fn read_rows(
+        &mut self,
+        db: &Connection,
+        from: i64,
+        to: i64,
+    ) -> Result<BTreeMap<i64, Vec<HourRow>>, String> {
+        let mut statement = db
+            .prepare(
+                "SELECT hour, session, quest, model, kind, provider, budget, cost FROM turn_hours
+                 WHERE hour >= ?1 AND hour < ?2
+                 ORDER BY hour, session, quest, model, kind, provider, budget",
+            )
+            .map_err(fail)?;
+        let rows = statement
+            .query_map([from, to], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, Option<String>>(6)?,
+                    row.get::<_, f64>(7)?,
+                ))
+            })
+            .map_err(fail)?;
+        let mut out: BTreeMap<i64, Vec<HourRow>> = BTreeMap::new();
+        for row in rows {
+            let (hour, session, quest, model, kind, provider, budget, cost) = row.map_err(fail)?;
+            let row = HourRow {
+                session: self.name(session),
+                quest: quest.map(|quest| self.name(quest)),
+                model: self.name(model),
+                kind: self.name(kind),
+                provider: self.name(provider),
+                budget: budget.map(|budget| self.name(budget)),
+                cost,
+            };
+            out.entry(hour).or_default().push(row);
+        }
+        // They're kept for the daemon's life, so without the room pushing
+        // leaves spare.
+        for rows in out.values_mut() {
+            rows.shrink_to_fit();
+        }
+        Ok(out)
+    }
+
+    /// `name`, kept once however many rows hold it.
+    fn name(&mut self, name: String) -> Rc<str> {
+        if let Some(kept) = self.names.get(name.as_str()) {
+            return Rc::clone(kept);
+        }
+        let kept: Rc<str> = Rc::from(name);
+        self.names.insert(Rc::clone(&kept));
+        kept
+    }
+
+    /// Each session's cost over every hour kept, which is what a run's
+    /// sessions spent by their own logs. It's summed from the hours, which
+    /// their triggers keep in step with every turn to within float rounding,
+    /// rather than from the turns: on 21 November the 28,016 sessions runs
+    /// named took 399 seconds and 412 MB of scattered reads from 41 million
+    /// turns once the history fell out of memory.
+    fn cost_by_session(&self) -> HashMap<Rc<str>, f64> {
+        let mut costs: HashMap<Rc<str>, f64> = HashMap::new();
+        for row in self.rows.values().flatten() {
+            *costs.entry(Rc::clone(&row.session)).or_default() += row.cost;
+        }
+        costs
+    }
+
+    /// The rows from hour `from` to before `to`, each beside its hour.
+    fn between(&self, from: i64, to: i64) -> impl Iterator<Item = (i64, &HourRow)> {
+        self.rows
+            .range(from..to.max(from))
+            .flat_map(|(hour, rows)| rows.iter().map(move |row| (*hour, row)))
+    }
+}
+
 /// Each session's repo, by its id.
 type Repos = HashMap<String, String>;
 /// An agent's session's kind and name, by its id.
@@ -155,11 +335,28 @@ type LoggedAt = HashMap<String, BTreeMap<i64, (f64, Option<String>)>>;
 type ByHour = Vec<(i64, Known)>;
 
 impl Inputs {
+    /// The window from hour `from` to before `to`, with every hour read
+    /// afresh.
+    #[cfg(test)]
     pub fn read(
         history: &History,
         budgets: &Budgets,
         from: i64,
         to: i64,
+    ) -> Result<Inputs, String> {
+        let mut hours = Hours::default();
+        hours.refresh(&history.db, i64::MIN)?;
+        Inputs::read_with(history, budgets, &hours, (from, to))
+    }
+
+    /// The window from hour `from` to before `to`, its turns read from the
+    /// hours `hours` keeps, which hold every hour from `from` on: a run's
+    /// sessions' cost is summed over all of them.
+    pub fn read_with(
+        history: &History,
+        budgets: &Budgets,
+        hours: &Hours,
+        (from, to): (i64, i64),
     ) -> Result<Inputs, String> {
         let db = &history.db;
         let mut inputs = Inputs {
@@ -174,8 +371,8 @@ impl Inputs {
             fed_budgets: HashSet::new(),
         };
         let (repos, agents) = inputs.read_sessions(db)?;
-        let (quest_at, logged_at, turns) = inputs.read_turns(db, from, to, &repos)?;
-        inputs.read_runs(db, (from, to), &repos, &quest_at, &logged_at)?;
+        let (quest_at, logged_at, turns) = inputs.read_turns(hours, from, to, &repos);
+        inputs.read_runs(db, hours, (from, to), (&repos, &quest_at, &logged_at))?;
         for (hour, turn) in turns {
             let known = inputs.labelled(hour, turn, &agents, &logged_at);
             inputs.known.entry(hour).or_default().push(known);
@@ -230,37 +427,22 @@ impl Inputs {
     /// its log said in each hour, for its subagents.
     fn read_turns(
         &self,
-        db: &Connection,
+        hours: &Hours,
         from: i64,
         to: i64,
         repos: &Repos,
-    ) -> Result<(QuestAt, LoggedAt, ByHour), String> {
+    ) -> (QuestAt, LoggedAt, ByHour) {
         let mut quest_at = QuestAt::new();
         let mut logged_at = LoggedAt::new();
         let mut turns = ByHour::new();
-        let mut statement = db
-            .prepare(
-                "SELECT hour, session, quest, model, kind, provider, budget, cost FROM turn_hours
-                 WHERE hour >= ?1 AND hour < ?2
-                 ORDER BY hour, session, quest, model, kind, provider, budget",
-            )
-            .map_err(fail)?;
-        let rows = statement
-            .query_map([from, to], |row| {
-                Ok((
-                    row.get::<_, i64>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, Option<String>>(2)?,
-                    row.get::<_, String>(3)?,
-                    row.get::<_, String>(4)?,
-                    row.get::<_, String>(5)?,
-                    row.get::<_, Option<String>>(6)?,
-                    row.get::<_, f64>(7)?,
-                ))
-            })
-            .map_err(fail)?;
-        for row in rows {
-            let (hour, session, quest, model, kind, provider, logged, list) = row.map_err(fail)?;
+        for (hour, row) in hours.between(from, to) {
+            let session = row.session.to_string();
+            let quest = row.quest.as_deref().map(str::to_owned);
+            let model = row.model.to_string();
+            let kind = row.kind.to_string();
+            let provider = row.provider.to_string();
+            let logged = row.budget.as_deref().map(str::to_owned);
+            let list = row.cost;
             quest_at.insert((hour, session.clone()), quest.clone());
             let said = logged_at.entry(session.clone()).or_default().entry(hour);
             let said = said.or_insert((f64::NEG_INFINITY, None));
@@ -287,7 +469,7 @@ impl Inputs {
                 },
             ));
         }
-        Ok((quest_at, logged_at, turns))
+        (quest_at, logged_at, turns)
     }
 
     /// The budget a session drew on by its log at an hour: what it said
@@ -309,10 +491,9 @@ impl Inputs {
     fn read_runs(
         &mut self,
         db: &Connection,
+        hours: &Hours,
         (from, to): (i64, i64),
-        repos: &Repos,
-        quest_at: &QuestAt,
-        logged_at: &LoggedAt,
+        (repos, quest_at, logged_at): (&Repos, &QuestAt, &LoggedAt),
     ) -> Result<(), String> {
         let mut statement = db
             .prepare("SELECT kind, model, persona, parent, started, cost, sessions FROM runs")
@@ -330,7 +511,7 @@ impl Inputs {
                 ))
             })
             .map_err(fail)?;
-        let logged_cost = run_sessions_cost(db)?;
+        let logged_cost = hours.cost_by_session();
         for row in rows {
             let (kind, model, persona, parent, started, cost, sessions) = row.map_err(fail)?;
             let hour = crate::time::hour_of(started);
@@ -366,7 +547,7 @@ impl Inputs {
             let logged: f64 = ids
                 .iter()
                 .filter(|id| self.logged.contains(*id))
-                .filter_map(|id| logged_cost.get(id))
+                .filter_map(|id| logged_cost.get(id.as_str()))
                 .sum();
             let rest = known.list - logged;
             if rest > 1e-9 {
@@ -917,32 +1098,6 @@ impl Inputs {
     }
 }
 
-/// What each session a run names spent by its own log, all of it, asked
-/// once: asked of each session apart, 12,784 of them on 16 November, it
-/// was most of what reading the inputs took on every pass.
-///
-/// It's summed from the turns' hours, which their triggers keep in step
-/// with every turn added or taken, to within float rounding, rather than
-/// from the turns: on 21 November the 28,016 sessions runs
-/// named took 399 seconds and 412 MB of scattered reads from 41 million
-/// turns once the history fell out of memory, and the pass behind each
-/// figure took half an hour.
-fn run_sessions_cost(db: &Connection) -> Result<HashMap<String, f64>, String> {
-    let mut statement = db
-        .prepare(
-            "SELECT session, SUM(cost) FROM turn_hours WHERE session IN
-             (SELECT ids.value FROM runs, json_each(CASE WHEN json_valid(runs.sessions)
-              THEN runs.sessions ELSE '[]' END) ids) GROUP BY session",
-        )
-        .map_err(fail)?;
-    let rows = statement
-        .query_map([], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, f64>(1)?))
-        })
-        .map_err(fail)?;
-    rows.collect::<Result<_, _>>().map_err(fail)
-}
-
 /// The run of `items`, sorted by budget, that are `budget`'s.
 fn of_budget<'a, T>(items: &'a [T], budget: &str, of: impl Fn(&T) -> &String) -> &'a [T] {
     let first = items.partition_point(|item| of(item).as_str() < budget);
@@ -1042,6 +1197,102 @@ mod tests {
                 [session],
             )
             .unwrap();
+    }
+
+    // A running daemon's hours are read whole once, then only the hours
+    // a turn moved since, and hold what a fresh read finds whether a turn
+    // arrives late for an hour gone, an hour loses its last turn, a write
+    // is rolled back, the first hour kept moves on, the moves go back, or a
+    // whole read fails.
+    #[test]
+    fn kept_hours_are_read_again_only_where_a_turn_moved_them() {
+        let history = history();
+        let fresh = |from: i64| {
+            let mut hours = Hours::default();
+            hours.refresh(&history.db, from).unwrap();
+            hours.rows
+        };
+        let sessions = |kept: &Hours| -> Vec<(i64, String)> {
+            let mut all: Vec<_> = kept
+                .between(i64::MIN, i64::MAX)
+                .map(|(hour, row)| (hour, row.session.to_string()))
+                .collect();
+            all.sort();
+            all
+        };
+        budgeted(&history, "s1", H, "anthropic", None, 1.0);
+        budgeted(&history, "s2", H + 1, "anthropic", Some("delta"), 2.0);
+        let mut kept = Hours::default();
+        kept.refresh(&history.db, H).unwrap();
+        assert_eq!(
+            sessions(&kept),
+            [(H, "s1".to_owned()), (H + 1, "s2".to_owned())],
+            "the first read missed an hour"
+        );
+        assert_eq!(kept.reread, 2, "the first read wasn't every hour");
+        kept.refresh(&history.db, H).unwrap();
+        assert_eq!(kept.reread, 0, "an hour no turn moved was read again");
+        budgeted(&history, "s3", H, "anthropic", None, 4.0);
+        budgeted(&history, "s1", H + 2, "anthropic", None, 8.0);
+        kept.refresh(&history.db, H).unwrap();
+        assert_eq!(kept.rows, fresh(H), "a late turn or a new hour was missed");
+        assert_eq!(kept.reread, 2, "more than the two hours moved were read");
+        assert!(
+            Rc::ptr_eq(&kept.rows[&H][0].model, &kept.rows[&(H + 1)][0].model),
+            "a model read again wasn't kept once with the hours not read"
+        );
+        history
+            .db
+            .execute("DELETE FROM turns WHERE session = 's2'", [])
+            .unwrap();
+        kept.refresh(&history.db, H).unwrap();
+        assert_eq!(kept.rows, fresh(H), "an hour with no turns left was kept");
+        assert_eq!(kept.reread, 1, "more than the hour emptied was read");
+        assert!(
+            !kept.names.contains("s2"),
+            "a session forgotten kept its name"
+        );
+        assert!(
+            kept.names.contains("s1") && kept.names.contains("anthropic"),
+            "a name still in use was dropped"
+        );
+        history.db.execute_batch("BEGIN").unwrap();
+        budgeted(&history, "s4", H + 1, "anthropic", None, 16.0);
+        kept.refresh(&history.db, H).unwrap();
+        history.db.execute_batch("ROLLBACK").unwrap();
+        budgeted(&history, "s5", H + 1, "anthropic", None, 32.0);
+        kept.refresh(&history.db, H).unwrap();
+        assert_eq!(kept.rows, fresh(H), "a move handed out again was missed");
+        assert_eq!(kept.whole, 2, "a write not committed was kept as read");
+        kept.refresh(&history.db, H + 2).unwrap();
+        assert_eq!(kept.rows, fresh(H + 2), "hours before the first were kept");
+        assert_eq!(kept.whole, 2, "the hours were read whole again");
+        kept.refresh(&history.db, H).unwrap();
+        assert_eq!(kept.rows, fresh(H), "an earlier first hour wasn't read");
+        assert_eq!(
+            kept.whole, 3,
+            "an earlier first hour didn't read every hour"
+        );
+        history.db.execute_batch("DELETE FROM hour_moves").unwrap();
+        kept.refresh(&history.db, H).unwrap();
+        assert_eq!(
+            kept.whole, 4,
+            "moves lower than the last kept didn't read every hour"
+        );
+        history
+            .db
+            .execute_batch("ALTER TABLE turn_hours RENAME TO hours_away")
+            .unwrap();
+        assert!(
+            kept.refresh(&history.db, H - 1).is_err(),
+            "a read of hours gone from the history worked"
+        );
+        history
+            .db
+            .execute_batch("ALTER TABLE hours_away RENAME TO turn_hours")
+            .unwrap();
+        kept.refresh(&history.db, H).unwrap();
+        assert_eq!(kept.rows, fresh(H), "a whole read that failed was kept");
     }
 
     fn by_budget(pieces: &[Piece]) -> Vec<(String, f64)> {

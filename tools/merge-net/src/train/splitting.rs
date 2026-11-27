@@ -87,6 +87,16 @@ impl Splitting {
         false
     }
 
+    /// Whether the train searches no red, waits on no builder, and is one
+    /// red or refusal from nothing that would empty it, so a change that
+    /// boards now rides a run that could land it, rather than one that
+    /// could drop it for a red or an outage not its own. After a rider
+    /// fell alone, or GitHub refused the first rider, the next red or
+    /// refusal drops every rider, a boarder whose red it isn't among them.
+    pub(super) fn clear(&self) -> bool {
+        self.suspects == 0 && !self.fell_alone && !self.turned && self.untaken_since.is_none()
+    }
+
     /// A builder took a candidate, whatever it found.
     pub(super) fn taken(&mut self) {
         self.untaken_since = None;

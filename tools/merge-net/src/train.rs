@@ -50,6 +50,9 @@
 //! off. What landed, and each rider that left unlanded with when it
 //! boarded, is kept a line each in `train/landed.jsonl`, so a day's rides
 //! can be counted against the runs again they saved.
+//!
+//! Long because one ride, from boarding through each run to landing, is
+//! read here in order; its parts that stand alone are modules below.
 
 use std::fs;
 use std::io;
@@ -441,6 +444,7 @@ pub fn ride(url: &str) -> Result<ExitCode, String> {
     let root = crate::state::State::from_env().root;
     begin(&root, handed().is_some());
     let ridden = ride_from(&root, url);
+    right_of_way::run_ends(&root);
     way(&root, &Ended::Otherwise);
     ridden
 }
@@ -448,8 +452,9 @@ pub fn ride(url: &str) -> Result<ExitCode, String> {
 /// Begin a ride under `root`. A train that was killed left its right of
 /// way behind, so one starting afresh holds none, and however it stops,
 /// changes merge alone again; one a ride was `handed_over` from holds
-/// what that ride held.
+/// what that ride held. A run a killed train marked isn't running either.
 fn begin(root: &Path, handed_over: bool) {
+    right_of_way::run_ends(root);
     if !handed_over {
         way(root, &Ended::Otherwise);
     }
@@ -510,6 +515,16 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
         let candidate = git(&["rev-parse", "HEAD"])?;
         let log = folder(&root).join(format!("{candidate}.log"));
         let began = crate::state::now();
+        // Only a clear run takes changes that would merge alone, so none
+        // boards a red's search or an outage only to fall with its riders.
+        // One that boards rides the next candidate, cut once this one ends.
+        if splitting.clear() {
+            right_of_way::run_begins(&root, began);
+            println!(
+                "merge-net: the train's run is clear, so a change that would merge alone \
+                 boards it until the run ends"
+            );
+        }
         println!(
             "merge-net: the train runs changed-checks at {} over {}",
             short(&candidate),
@@ -522,12 +537,14 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
         match gate(&checkout, &log) {
             Gated::Passed => splitting.taken(),
             Gated::Red => {
+                right_of_way::run_ends(&root);
                 splitting.taken();
                 way(&root, &Ended::Otherwise);
                 red(&root, &candidate, &log, &done.merged, &mut splitting);
                 continue;
             }
             Gated::Unsent => {
+                right_of_way::run_ends(&root);
                 // The train stays in its ride rather than waiting for a
                 // ready, since a rider is told it needn't ask again.
                 let now = crate::state::now();
@@ -537,17 +554,26 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
                 continue;
             }
         }
-        let hub = GitHub { slug: slug.clone() };
+        // Said before the first merge, so an outside merge can wait it out:
+        // one between the train's merges left main untested on 25 November,
+        // reverting all three of a run's. Each line until the one saying it
+        // ends is the landing's, and a train stopped between leaves it
+        // unended, so an outside merge waits on.
+        println!("merge-net: the train lands {} on main", short(&candidate));
         let landing = land(
             &checkout,
             &git,
-            &hub,
+            &GitHub { slug: slug.clone() },
             &base,
             &candidate,
             &mergings,
             &done.merged,
         );
+        // Held through the landing, whose recuts a change merged alone
+        // would send back to run again.
+        right_of_way::run_ends(&root);
         after_landing(&root, landing, &done.merged, began, &mut splitting);
+        println!("merge-net: the landing of {} ends", short(&candidate));
     }
 }
 

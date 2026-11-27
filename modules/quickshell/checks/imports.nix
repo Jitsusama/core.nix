@@ -14,6 +14,11 @@
     "Ex.js"
     "Operators.js"
   ];
+  "CommandLine.qml" = [
+    "Bands.js"
+    "Commands.js"
+    "LineEditing.js"
+  ];
   "Commands.js" = [ "Ex.js" ];
   "ConnectedKeyboards.qml" = [ "launcher/Keyboards.js" ];
   "Copied.qml" = [ "Copied.js" ];
@@ -32,6 +37,7 @@
   "Files.qml" = [ "FileFacts.js" ];
   "Finding.js" = [ "LineEditing.js" ];
   "ForYouHolds.qml" = [ "pieces/Holding.js" ];
+  "KeyActs.js" = [ "QueryKeys.js" ];
   "KeyboardLayout.qml" = [ "launcher/Keyboards.js" ];
   "Mark.qml" = [ "MarkSize.js" ];
   "ModeMarks.js" = [ "QueryKeys.js" ];
@@ -39,6 +45,7 @@
   "NoiseCancelling.qml" = [ "launcher/ByEar.js" ];
   "NoticeLine.qml" = [ "NoticeLine.js" ];
   "NoticeRow.qml" = [ "Columns.js" ];
+  "Pasting.qml" = [ "Pasting.js" ];
   "PiSource.qml" = [ "PiSource.js" ];
   "PixelMark.qml" = [
     "MarkSize.js"
@@ -49,6 +56,7 @@
     "Bands.js"
     "Confirm.js"
     "Editing.js"
+    "KeyActs.js"
     "KeyNames.js"
     "MarkSize.js"
     "Measures.js"
@@ -67,6 +75,7 @@
     "Measures.js"
     "Reading.js"
   ];
+  "Reopening.js" = [ "Places.js" ];
   "ScreenPicture.qml" = [ "Wallpaper.js" ];
   "Sessions.qml" = [
     "PiSource.js"
@@ -83,7 +92,7 @@
   ];
   "SetWords.js" = [
     "Commands.js"
-    "launcher/Presented.js"
+    "launcher/ActsSaid.js"
   ];
   "SpendWatch.qml" = [ "SpendWatch.js" ];
   "StatusLine.qml" = [ "Bands.js" ];
@@ -106,6 +115,10 @@
     "launcher/Links.js"
     "launcher/Nearby.js"
     "launcher/Order.js"
+  ];
+  "launcher/ActsSaid.js" = [
+    "launcher/KeysSaid.js"
+    "launcher/Presented.js"
   ];
   "launcher/AgentsFold.qml" = [ "launcher/AgentWindows.js" ];
   "launcher/Applications.qml" = [
@@ -148,15 +161,20 @@
     "launcher/Keeping.js"
     "launcher/Moment.js"
     "launcher/NowDrawers.js"
-    "launcher/Numbers.js"
     "launcher/Zones.js"
   ];
+  "launcher/Cloud.js" = [ "launcher/Sprouting.js" ];
   "launcher/Displays.qml" = [
     "Fuzzy.js"
     "Hearing.js"
+    "launcher/ActsSaid.js"
     "launcher/Order.js"
-    "launcher/Presented.js"
     "launcher/Seen.js"
+  ];
+  "launcher/Emoji.qml" = [
+    "launcher/EmojiDrawer.js"
+    "launcher/EmojiSearch.js"
+    "launcher/ReadyRows.js"
   ];
   "launcher/EmojiSearch.js" = [ "Fuzzy.js" ];
   "launcher/Explainer.qml" = [ "launcher/Explaining.js" ];
@@ -219,6 +237,7 @@
     "Hearing.js"
     "Marks.js"
     "When.js"
+    "launcher/ActsSaid.js"
     "launcher/Ago.js"
     "launcher/ForYou.js"
     "launcher/ForYouCells.js"
@@ -236,6 +255,7 @@
     "launcher/Presented.js"
     "launcher/SessionRow.js"
     "launcher/Showing.js"
+    "launcher/TalkAnswers.js"
     "pieces/Holding.js"
   ];
   "launcher/NowGroups.js" = [ "launcher/Order.js" ];
@@ -251,6 +271,7 @@
     "launcher/Notice.js"
   ];
   "launcher/Power.qml" = [ "launcher/Seen.js" ];
+  "launcher/Presented.js" = [ "launcher/KeysSaid.js" ];
   "launcher/Program.js" = [
     "FileFacts.js"
     "launcher/Numbers.js"
@@ -284,6 +305,7 @@
     "Confirm.js"
     "Fuzzy.js"
     "launcher/ActForms.js"
+    "launcher/ActsSaid.js"
     "launcher/Beneath.js"
     "launcher/Found.js"
     "launcher/Moved.js"
@@ -322,6 +344,7 @@
     "launcher/Addresses.js"
     "launcher/Numbers.js"
   ];
+  "launcher/TalkAnswers.js" = [ "TalkLine.js" ];
   "launcher/TalkOn.js" = [ "launcher/Order.js" ];
   "launcher/Today.qml" = [
     "launcher/Moment.js"
@@ -347,6 +370,7 @@
     "launcher/NowDrawers.js"
     "launcher/Numbers.js"
   ];
+  "launcher/Wheres.js" = [ "launcher/Sprouting.js" ];
   "launcher/WindowTargets.qml" = [ "launcher/HeldWindows.js" ];
   "launcher/Windows.qml" = [
     "Fuzzy.js"
@@ -358,8 +382,8 @@
   "launcher/Wireless.qml" = [
     "Fuzzy.js"
     "launcher/ActForms.js"
+    "launcher/ActsSaid.js"
     "launcher/Order.js"
-    "launcher/Presented.js"
     "launcher/ReadyRows.js"
     "launcher/WirelessPlate.js"
   ];

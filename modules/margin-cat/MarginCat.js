@@ -82,31 +82,27 @@ function closeHeard(close, now) {
     return { closed: close.gone, on: close.stands, before: close.seen };
 }
 
-// A walk's beats, in ms at the theme's pace, each a pose of the theme's own
-// (Joel, 2026-11-12: "proper smooth animations with character to them"):
-// it stands and turns its head the way it's going, stops a moment to
-// think, draws back a cell crouched, as anticipation, then walks, easing
-// in over its first stride and out over its last, its strides stepped by
-// the ground it covers so its feet never slide. It walks onto its seat and
-// no further, and crouches a moment as it stops, before it sits (Joel,
-// 2026-11-14 17:19: "i never want the kitty to skid into place").
+// A walk's beats, in ms at the theme's pace, each a pose of the theme's own (Joel, 2026-11-12:
+// "proper smooth animations with character to them"): it stands and turns its head the way it's
+// going, stops a moment to think, draws back a cell crouched, as anticipation, then walks, easing
+// in over its first stride and out over its last, its strides stepped by the ground it covers so
+// its feet never slide. It walks onto its seat and no further, and crouches a moment as it stops,
+// before it sits (Joel, 2026-11-14 17:19: "i never want the kitty to skid into place").
 const TURNS = 140;
 const CROUCHES = 110;
 const SETTLES = 180;
 const LANDS = 120;
 // How far, in its own cells, it draws back.
 const DRAWS_BACK = 1;
-// Its pace, in cells a second: an amble over a short way, each walk taking
-// about `CRUISES` ms where it can, and never over `HURRIES`, so a long way
-// is a gentle long walk, several seconds across a column, rather than a
-// dash (VKCF3Z, 2026-11-12: fast motion at the edge of his eye pulls focus,
-// and a walk blocks nothing of his). Each stride, one drawing, covers
-// `STRIDE_SECONDS` at its pace: never under two cells, so four drawings
-// walk its own length, nor over three at a run, so its paws are always
-// seen moving (Joel, 2026-11-14 17:19: "i always want to see its paws
-// moving when it is walking or running"; VKCF3Z d1d1ead2). Three cells a
-// drawing held two frames at 60 Hz is about 90 cells a second, so a hurry
-// is capped under it, rather than its stride stretched.
+// Its pace, in cells a second: an amble over a short way, each walk taking about `CRUISES` ms
+// where it can, and never over `HURRIES`, so a long way is a gentle long walk, several seconds
+// across a column, rather than a dash (VKCF3Z, 2026-11-12: fast motion at the edge of his eye
+// pulls focus, and a walk blocks nothing of his). Each stride, one drawing, covers
+// `STRIDE_SECONDS` at its pace: never under two cells, so four drawings walk its own length, nor
+// over three at a run, so its paws are always seen moving (Joel, 2026-11-14 17:19:
+// "i always want to see its paws moving when it is walking or running"; VKCF3Z d1d1ead2). Three
+// cells a drawing held two frames at 60 Hz is about 90 cells a second, so a hurry is capped under
+// it, rather than its stride stretched.
 const AMBLES = 40;
 const HURRIES = 80;
 const CRUISES = 2000;
@@ -191,30 +187,49 @@ function behind(frame, kind) {
     return Math.round(HEARS + frame + (kind === "resize" ? RESIZES : 0));
 }
 
-// Whether it's drawn over the windows rather than under them: on a leg
-// of a walk `aboard` a floating window, onto it, along it or off it
-// (MarginCatFloats.js), in front of the tiled window behind, which would
-// hide it and have it pop on (Joel, 2026-11-15 23:34: "the whole kitty
-// should not have to be rendered when you are seeing it come on to your
-// screen"); or at rest while its `seat`, the column it sits on, is a
-// floating window's, which sits in front of the tiled windows, so the one
-// behind would hide it (Joel, 2026-11-13 18:59), and not once it's
-// `leaving` that seat on any other leg. Anywhere else
-// it's under them, so a window passing in front of it covers it rather
-// than wearing it on its face, however late the shell hears niri: on top,
-// a loaded machine showed it on a sliding window's face for two to four
-// frames (VKCF3Z, 3fe38ef5).
+// How far niri moved the window `id` between two tilings, `was` and `now`, as { x, y }: null
+// where it's in only one, or hasn't moved. niri scrolls a workspace's columns as one strip, so
+// as the keys go to a column off the screen's edge the cat's window goes the other way (Joel,
+// 2026-11-14 17:24: "focusing to a window off the left or right edge").
+function carries(was, now, id) {
+    const before = (was ?? []).find(one => one.id === id);
+    const after = (now ?? []).find(one => one.id === id);
+    if (!before || !after) {
+        return null;
+    }
+    const by = { x: after.left - before.left, y: after.top - before.top };
+    return Math.abs(by.x) < 0.01 && Math.abs(by.y) < 0.01 ? null : by;
+}
+
+// How far from its place the cat is drawn `t` ms after niri set off the scroll that carried it,
+// `from` that far as it did: all of it at once, none once niri's spring settles, on that spring,
+// so it goes with its window as niri draws it rather than ahead of it. niri's
+// `horizontal-view-movement` rides the theme's spring, as its slide does (modules/niri).
+function lags(from, t, spring) {
+    const left = 1 - slid(Math.max(0, t), spring);
+    return { x: from.x * left, y: from.y * left };
+}
+
+// Whether it's drawn over the windows rather than under them: on a leg of a walk `aboard` a
+// floating window, onto it, along it or off it (MarginCatFloats.js), in front of the tiled window
+// behind, which would hide it and have it pop on (Joel, 2026-11-15 23:34: "the whole kitty
+// should not have to be rendered when you are seeing it come on to your screen"); or at rest while
+// its `seat`, the column it sits on, is a floating window's, which sits in front of the tiled
+// windows, so the one behind would hide it (Joel, 2026-11-13 18:59), and not once it's `leaving`
+// that seat on any other leg. Anywhere else it's under them, so a window passing in front of it
+// covers it rather than wearing it on its face, however late the shell hears niri: on top, a
+// loaded machine showed it on a sliding window's face for two to four frames (VKCF3Z, 3fe38ef5).
 function above(seat, leaving, aboard) {
     return aboard === true || (seat?.floats === true && !leaving);
 }
 
-// How far into a resize niri says began `began` ms before it told of it the cat's first frame
-// shows, rather than RESIZES' guess at it, and a frame further: a cat late of the edge of a window
-// growing down over it is in that window's face, and one early is in the gap it leaves (VKCF3Z,
-// 3bc784ec). As `behind` gives with no word from niri.
-function behindResize(frame, began) {
+// How far into niri's motion of `kind` it says began `began` ms before it told of it the cat's
+// first frame shows, rather than a guess at it, and for a resize a frame further: a cat late of
+// the edge of a window growing down over it is in that window's face, and one early is in the gap
+// it leaves (VKCF3Z, 3bc784ec). As `behind` gives with no word from niri.
+function behindTold(frame, kind, began) {
     return typeof began === "number" && began >= 0
-        ? Math.round(HEARS + 2 * frame + began) : behind(frame, "resize");
+        ? Math.round(HEARS + (kind === "resize" ? 2 : 1) * frame + began) : behind(frame, kind);
 }
 
 // Whether it's drawn over the windows, `now` as the screen has it: while Joel's hand `holds` it and
@@ -388,19 +403,26 @@ function strokes(was, at, rested) {
     return rested >= SETTLED && (was === null || was.x !== at.x || was.y !== at.y);
 }
 
-// What niri's answer for frame `frame`, whose sync began at `synchronizing` (undefined when
-// nothing was kept of it), says of a rest the cat asked for as it sat at `satAt`, once
-// `satFrom` frames had begun, both on the monotonic clock. "begins" for one synced after it
-// sat, which holds its cells where it sits. "asks" for one begun after its ask but synced
-// before it sat, which spent the ask on a frame that missed it. "waits" for one begun before
-// it sat, a walk's frame still on its way, whose answer asking again for would draw a frame
-// of its own. A frame nothing was kept of, as one niri never had a surface for, begins it
-// rather than asking for frame after frame.
-function restFrom(frame, synchronizing, satFrom, satAt) {
-    if (frame <= satFrom) {
-        return "waits";
+// What niri's answer for frame `frame` says of a rest the cat asked for as it sat at `satAt`, on
+// the monotonic clock, once `satFrom` frames had begun, from `times`, what
+// FramePresentation.timesOf kept of that frame. "begins" for one synced after it sat, which holds
+// its cells where it sits. "asks" for one that took the ask but synced before it sat, which spent
+// the ask on a frame that missed it. "waits" for any other synced before it sat, a walk's frame
+// still on its way, whose answer asking again for would draw a frame of its own. Only the frame
+// can say it took the ask: the render thread counts a frame begun before it takes the ask, so
+// frame `satFrom` may have taken it. One begun before that took any ask before the cat counted,
+// and so before it asked, so it waits: one nothing was kept of, its times overwritten by 16
+// newer, and one that took an earlier sitting's ask, as the cat stopped and sat again before
+// niri answered for it. From frame `satFrom` on, one nothing was kept of, as one niri never had
+// a surface for, begins it rather than asking for frame after frame.
+function restFrom(frame, times, satFrom, satAt) {
+    if (times.synchronizing === undefined) {
+        return frame < satFrom ? "waits" : "begins";
     }
-    return synchronizing === undefined || synchronizing >= satAt ? "begins" : "asks";
+    if (times.synchronizing >= satAt) {
+        return "begins";
+    }
+    return times.asked && frame >= satFrom ? "asks" : "waits";
 }
 
 // Which way a cat `size` across leans into a pointer `across` it: -1 to its left, 1 to its right.

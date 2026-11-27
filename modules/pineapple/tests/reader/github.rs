@@ -14,9 +14,13 @@
 //! nothing, and never for more repositories than its searches allow, and
 //! its journal names it, not GitHub, when it can't be read. A site of a
 //! company's own weighs no writer's standing; who may stop Joel on GitHub
-//! itself, where any account may comment, is in standing.rs.
+//! itself, where any account may comment, is in standing.rs; a stop of
+//! Joel's a search indexed late, in late.rs; one heard after his resume, in `heard_after.rs`.
 
+mod heard_after;
+mod late;
 mod standing;
+mod watch;
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -371,13 +375,13 @@ fn github_joels_own_stop_nobody_was_notified_of_is_found_by_searching_for_the_wo
     assert_eq!(said[0]["reaches"], json!(["pr:example/shop#12"]));
     let searched = format!(
         "q=pineapple%20involves%3A{LOGIN}%20updated%3A%3E%3D{}",
-        stamp(last - 600).replace(':', "%3A")
+        stamp(last - 3600).replace(':', "%3A")
     );
     let asked = asked.lock().expect("what was asked");
     assert!(
         asked.iter().any(|line| line.contains(&searched)),
-        "it searches for the word where Joel takes part, from as far back as \
-         a search's index lags: {asked:?}"
+        "it searches for the word where Joel takes part, from an hour back, \
+         as far as a search's index may lag: {asked:?}"
     );
     let reads = asked
         .iter()
@@ -392,7 +396,7 @@ fn github_joels_own_stop_nobody_was_notified_of_is_found_by_searching_for_the_wo
 }
 
 #[test]
-fn github_a_pull_request_notified_and_searched_is_read_from_the_searchs_ten_minutes() {
+fn github_a_pull_request_notified_and_searched_is_judged_as_far_back_as_the_search_reaches() {
     let (origin, asked) = answering(|line, now| {
         if line.contains(" /notifications?") {
             return answer_with(line, now, &[]);
@@ -410,7 +414,7 @@ fn github_a_pull_request_notified_and_searched_is_read_from_the_searchs_ten_minu
     assert_eq!(
         each(&decisions(&home), "verdict"),
         ["stop", "stop-asked"],
-        "named by both, it's read from the farther back of the two, and read \
+        "named by both, it's judged from the farther back of the two, and read \
          again as notified, nothing is judged twice"
     );
     std::fs::remove_dir_all(&home).expect("the case's home goes");
@@ -465,7 +469,7 @@ fn github_an_incomplete_search_is_searched_again_from_as_far_back() {
     reading.kill().expect("the reader stops");
     reading.wait().expect("the reader is gone");
 
-    let from = format!("updated%3A%3E%3D{}", stamp(last - 600).replace(':', "%3A"));
+    let from = format!("updated%3A%3E%3D{}", stamp(last - 3600).replace(':', "%3A"));
     let searched = searches(&asked);
     assert!(
         searched[..2].iter().all(|line| line.contains(&from)),

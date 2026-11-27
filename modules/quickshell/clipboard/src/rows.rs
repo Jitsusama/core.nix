@@ -80,8 +80,8 @@ impl Words {
         self.fill(if count == 1 { one } else { many }, &[("count", &figure)])
     }
 
-    /// A count in figures, grouped with the marks the words were given: an
-    /// emoji group's side.
+    /// A count in figures, grouped with the marks the words were given: every
+    /// count above none `counted` says, and an emoji group's side.
     pub fn figure(&self, count: usize) -> String {
         #[expect(
             clippy::cast_precision_loss,

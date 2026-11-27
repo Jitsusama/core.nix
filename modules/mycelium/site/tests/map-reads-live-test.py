@@ -76,9 +76,15 @@ CELLS = 8
 # their own; about 668 KB since the builders, the legend's moving samples and
 # new work's line, and since no comment is sent, view.js's and the styles'
 # included, a little more with the drawer's acts and its whole question, and
-# under the 677 KB allowed; new work's line and its hidden controls draw about 20 elements of the
-# 611.
-BUDGET = Budget(files=33, kilobytes=677, elements=620)
+# 677.4 KB once a network's label keeps what tells it apart, and 678.2 KB
+# once a cloud machine says it's kept, a little more once a long lease counts
+# days, about 0.4 KB more once every label is kept apart and in its room,
+# about 2.4 KB more once a machine's drawer starts new work on it, 686.0 KB
+# once what each cell split from is read, about 0.9 KB more once new work
+# keeps to the machine chosen, and a little more once the kit draws a field's
+# placeholder in muted, under the 689 KB allowed; new work's line and its
+# hidden controls draw about 20 elements of the 611.
+BUDGET = Budget(files=33, kilobytes=689, elements=620)
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000
 TWIN_NETWORKS = 200
@@ -94,6 +100,8 @@ BASIN = "shoal"
 BASIN_MARK = f"{BASIN} basin"
 BASIN_MACHINES = ("pool-a", "pool-b")
 BASIN_CELLS = ("HERON1", "HERON2")
+# A cloud machine made for the person to keep declares its end in this year.
+KEPT_UNTIL = "9999-01-01T00:00:00Z"
 # A cell find is asked for by name, and the title its drawer heads it with.
 SOUGHT = "TERN03"
 SOUGHT_TITLE = "Count the Cleats"
@@ -122,7 +130,7 @@ HELD_ON = ["#orchestration/skiff1", "#repo/harbour"]
 WAITS = ("asked", "held")
 MINUTE = timedelta(minutes=1)
 ASKER_SHORT, WAITED_SHORT, HOLDER_SHORT = "Count the Cleats", "Chart The Harbour", "Paint The Hull"
-ASKED_WORDS = f"a question waiting; it came from {ASKER_SHORT} {{}} min ago, with no answer yet"
+ASKED_WORDS = f"owes {ASKER_SHORT} an answer: asked {{}} min ago, with no answer yet"
 HELD_WORDS = "holding Rig the Skiff for the Season and the harbour repository"
 # HERON1, which leads node.json's Chart the Harbour, said by its forage to
 # have been started by SKIFF1, which leads Rig the Skiff, so the one network
@@ -210,8 +218,10 @@ def twin() -> dict[str, list[dict[str, object]]]:
                 "networks": heard,
             }
         )
-    # Still listed by the machine it left, an hour older.
-    cells.append({**copy.deepcopy(cells[1]), "machine": "osprey", "since": "2026-11-16T08:00:00Z"})
+    # Still listed by the machine it left, an hour older, under a key of its
+    # own, so the page holds both copies and has to choose.
+    left = {**copy.deepcopy(cells[1]), "machine": "osprey", "since": "2026-11-16T08:00:00Z"}
+    cells.append({**left, "key": f"{left['key']}@osprey"})
     for n in range(TWIN_RECEPTORS):
         name = f"radio{n}@kestrel"
         cells.append({**copy.deepcopy(receptor), "key": f"cell:{name}", "name": name})
@@ -285,6 +295,16 @@ def basins() -> dict[str, list[dict[str, object]]]:
     for cell, machine in zip(moved, BASIN_MACHINES, strict=True):
         cell["machine"] = machine
     return {**reading, "machine": reading["machine"] + pool, "cell": cells}
+
+
+def lent() -> dict[str, list[dict[str, object]]]:
+    """Node.json's realm with osprey a cloud machine the person keeps."""
+    reading = json.loads((HERE / "node.json").read_text())["kinds"]
+    machines = copy.deepcopy(reading["machine"])
+    for machine in machines:
+        if machine["name"] == "osprey":
+            machine["declared"] = {"reach": ["internet"], "leaves_at": KEPT_UNTIL}
+    return {**reading, "machine": machines}
 
 
 def feeding(cell: str, ago: timedelta = timedelta()) -> dict[str, object]:
@@ -400,6 +420,13 @@ def crowd_served(tmp_path: Path) -> Iterator[Served]:
 @pytest.fixture
 def basins_served(tmp_path: Path) -> Iterator[Served]:
     stand_in = StandIn(tmp_path / "basins.sock", "node", basins()).start()
+    yield from serve(tmp_path, stand_in)
+    stand_in.leave()
+
+
+@pytest.fixture
+def lent_served(tmp_path: Path) -> Iterator[Served]:
+    stand_in = StandIn(tmp_path / "lent.sock", "node", lent()).start()
     yield from serve(tmp_path, stand_in)
     stand_in.leave()
 
@@ -560,6 +587,144 @@ def test_the_map_draws_how_cells_connect_and_answers_a_click_in_one_window(
     ).to_be_visible()
 
 
+# On 15 November 2026 Joel said of the map: "clicking on networks is
+# confusing, often the entire line isn't put into view", and "when I select a
+# network lane, nodes directly connected to it should be more prominent". The
+# skiff's network, opened, is fitted whole with its branch, clear of its
+# drawer; the cells it joins stay strong while the heron's step back.
+SKIFF_TITLE = "Rig the Skiff for the Season"
+SKIFF_JOINS = ("SKIFF1", "TERN01", "TERN02", "GULL01", "TERN03")
+SKIFF_LEAVES = ("HERON1", "HERON2")
+HERONS = "orchestration.heron1"
+HERONS_TITLE = "Chart the Harbour"
+# The alpha a cell's marks are drawn at, strong and stepped back (site.css's
+# .focused .far is 0.22), with room either side for a mark's own opacity.
+STRONG_ALPHA = 0.9
+STEPPED_BACK_ALPHA = 0.5
+RECT = "(e) => { const r = e.getBoundingClientRect(); return [r.left, r.top, r.right, r.bottom]; }"
+
+
+def strongest(page: Page, cell: str) -> float:
+    """Say the alpha of the strongest mark a cell is drawn with."""
+    return max(float(mark["alpha"] or 0) for mark in marks_of(page, f"c:{cell}"))
+
+
+def test_a_network_opened_is_put_into_view_whole_and_what_it_joins_stands_out(
+    mycelium_opened: Opened,
+) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    the_map_counts(page, COUNTED, "the map miscounted the realm")
+    page.locator("#map-view").focus()
+    page.keyboard.press("0")
+    settled(page, "0 didn't fit the whole map")
+    for cell in SKIFF_LEAVES:
+        assert strongest(page, cell) >= STRONG_ALPHA, f"{cell} stepped back with nothing open"
+    page.evaluate(f"location.hash = '#net={BRANCHED_FROM}'")
+    expect(page.locator("#panel-title"), "the skiff's drawer never opened").to_have_text(
+        SKIFF_TITLE
+    )
+    settled(page, "the skiff's network never stood still once opened")
+    view = page.locator("#map-view").evaluate(RECT)
+    drawer = page.locator("#panel").evaluate(RECT)
+    for cell in SKIFF_JOINS:
+        left, top, right, bottom = page.locator(
+            f'#world circle.cell[data-key="c:{cell}"]'
+        ).evaluate(RECT)
+        inside = view[0] <= left and right <= view[2] and view[1] <= top and bottom <= view[3]
+        assert inside, f"opening the skiff left {cell} at {left, top, right, bottom} outside {view}"
+        under = left < drawer[2] and drawer[0] < right and top < drawer[3] and drawer[1] < bottom
+        assert not under, f"opening the skiff left {cell} under its drawer at {drawer}"
+        assert strongest(page, cell) >= STRONG_ALPHA, f"{cell}, joined to the skiff, stepped back"
+    for cell in SKIFF_LEAVES:
+        assert strongest(page, cell) <= STEPPED_BACK_ALPHA, (
+            f"{cell}, joined to nothing of the skiff's, stood out as strong as its cells"
+        )
+    hub = page.locator(f'#world .hub[data-key="h:{HERONS}"]')
+    expect(hub, "the heron's network stood out beside the skiff's").to_have_class(
+        re.compile(r"\bfar\b")
+    )
+    branch = page.locator(f'#world .hub[data-key="h:{BRANCH}"]')
+    expect(branch, "the skiff's branch stepped back").not_to_have_class(re.compile(r"\bfar\b"))
+
+
+# The same day: "i want to be able to hover over a network and have some small
+# bit hover giving me awareness of its purpose without drilling in." Pointing
+# at the heron's network says its name, what it is for and how it stands,
+# and opens nothing.
+def test_a_network_pointed_at_says_what_it_is_for_and_how_it_stands_unopened(
+    mycelium_opened: Opened,
+) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    peek = page.locator("#peek")
+    expect(peek, "a peek stood with nothing pointed at").to_be_hidden()
+    # The map taking focus walks to the first machine and peeks at it in
+    # the corner, so the pointer's peek must then name the heron's instead.
+    page.locator("#map-view").focus()
+    page.keyboard.press("0")
+    settled(page, "0 didn't fit the whole map")
+    before = page.url
+    ring = page.locator(f'#world .hub[data-key="h:{HERONS}"] .m-hub').bounding_box()
+    assert ring, "the map drew no ring for the heron's network to point at"
+    page.mouse.move(ring["x"] + ring["width"] / 2, ring["y"] + ring["height"] / 2)
+    expect(peek, "pointing at a network said nothing of it").to_be_visible()
+    said = peek.locator("p")
+    expect(said, "the peek should say a name, a purpose and a health").to_have_count(3)
+    expect(said.nth(0), "the peek misnamed the network").to_have_text(HERONS_TITLE)
+    expect(said.nth(1), "the peek said nothing of what it is for").to_have_text(re.compile(r"\S"))
+    expect(said.nth(2), "the peek said nothing of how it stands").to_have_text(re.compile(r": \S"))
+    assert page.url == before, f"pointing at a network went from {before} to {page.url}"
+
+
+# The same day: "i need to be able to get an overview at any cell about its
+# purpose, what is is doing, it's health at various levels and other stuff.
+# this also includes networks, and collections of cells that are celled off
+# of a parent." A cell's drawer and a network's each open on its purpose,
+# what it is doing and its health, the network's by its own cells, each
+# branch and the whole.
+def test_a_cell_and_a_network_each_open_on_its_purpose_doing_and_health(
+    mycelium_opened: Opened,
+) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    glance = page.locator("#panel-body dl.glance").first
+    page.evaluate("location.hash = '#cell=TERN01'")
+    # A cell's title is set in title case, as its drawer names it.
+    expect(page.locator("#panel-title"), "TERN01's drawer never opened").to_contain_text(
+        "Mend The Sails"
+    )
+    expect(glance.locator("dt"), "a cell's drawer opened on no glance").to_have_text(
+        ["Purpose", "Doing", "Health"]
+    )
+    told = glance.locator("dd")
+    expect(told.nth(1), "the cell's glance missed what it's doing").to_contain_text(
+        "Stitch the jib"
+    )
+    for n in (0, 2):
+        expect(told.nth(n), f"the cell's glance left its row {n} empty").to_have_text(
+            re.compile(r"\S")
+        )
+    page.evaluate(f"location.hash = '#net={BRANCHED_FROM}'")
+    expect(page.locator("#panel-title"), "the skiff's drawer never opened").to_have_text(
+        SKIFF_TITLE
+    )
+    expect(glance.locator("dt"), "a network's drawer opened on no glance").to_have_text(
+        ["Purpose", "Doing", "Health"]
+    )
+    levels = glance.locator("dd").nth(2).locator(".row .name")
+    expect(levels, "the skiff's health wasn't said by its cells, its branch and all").to_have_text(
+        [
+            re.compile(r"^Its own \d+ cells?$"),
+            re.compile(r", \d+ cells?$"),
+            re.compile(r"^All \d+ together$"),
+        ]
+    )
+    expect(
+        glance.locator(f'dd .row[data-go="net={BRANCH}"]'), "the branch's health opens no branch"
+    ).to_be_visible()
+
+
 def test_a_cell_that_moves_is_drawn_moving(mycelium_opened: Opened, mycelium_node: StandIn) -> None:
     page = mycelium_opened.page
     the_map_stands(page, "live")
@@ -571,7 +736,7 @@ def test_a_cell_that_moves_is_drawn_moving(mycelium_opened: Opened, mycelium_nod
 # The two cells node.json names "Mend the Sails": the first moving, the
 # second needing Joel.
 NAMESAKES = ("TERN01", "TERN02")
-NAMESAKES_OWE = f"{ASKER_SHORT}'s question waiting since"
+NAMESAKES_OWE = f"hasn't answered {ASKER_SHORT}'s question of"
 
 
 def standing_of(page: Page, cell: str) -> set[str]:
@@ -911,6 +1076,76 @@ def test_the_view_and_now_answer_their_keys(mycelium_opened: Opened) -> None:
     )
 
 
+# The map's width and the drawer's, in pixels: a fit is made for the map's width less the
+# drawer's while the drawer is open, and for the whole of it while shut.
+WIDTHS = """[document.getElementById("world").ownerSVGElement.getBoundingClientRect().width,
+  document.getElementById("panel").offsetWidth]"""
+
+
+# How far the window narrows under a view moved by hand.
+NARROWED_PX = 80
+
+
+def fitted_about(view: tuple[float, float, float], wide: float) -> float:
+    """Say which point of the map a view `wide` pixels across fits in its middle (viewOf)."""
+    tx, _, k = view
+    return (wide / 2 - tx) / k
+
+
+def test_a_fit_takes_the_whole_width_until_the_drawer_opens(mycelium_opened: Opened) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    page.locator("#map-view").focus()
+    page.keyboard.press("0")
+    shut = settled(page, "0 didn't fit the whole map")
+    whole, drawer = page.evaluate(WIDTHS)
+    middle = fitted_about(shut, whole)
+    # Opening Now opens the drawer, and a view following the whole map fits it again clear of
+    # it, about the same middle; a gutter kept while shut would put that middle a half a
+    # drawer off, and a glide stopped part way would leave it somewhere between.
+    page.keyboard.press(".")
+    expect(page.locator("#now-control"), ". didn't open Now").to_have_attribute(
+        "aria-expanded", "true"
+    )
+    opened = settled(page, "the map never stood still once Now opened")
+    clear = max(whole - drawer, whole / 2)
+    assert fitted_about(opened, clear) == pytest.approx(middle, abs=1), (
+        f"shut, the map was fitted about {middle} across {whole} px, and open about "
+        f"{fitted_about(opened, clear)} across the {clear} px the drawer leaves"
+    )
+    assert opened[2] <= shut[2], f"the map grew from {shut} as the drawer took room: {opened}"
+    page.keyboard.press(".")
+    expect(page.locator("#now-control"), ". didn't close Now").to_have_attribute(
+        "aria-expanded", "false"
+    )
+    assert settled(page, "the map never stood still once Now shut") == pytest.approx(
+        shut, abs=0.05
+    ), "shutting the drawer didn't fit the map across the whole width again"
+    # Moved by hand, the view keeps its middle through a resize by the map's own change in
+    # width, the drawer open or not: measured by the room the drawer leaves, it would jump
+    # half a drawer the first resize after the drawer opened.
+    # Unmoved, the view would follow the whole map and fit it afresh, which can shift it the same
+    # way, so the pan is checked to have landed.
+    page.keyboard.press("Shift+ArrowLeft")
+    moved = settled(page, "the map never stood still once moved")
+    assert moved == pytest.approx((shut[0] + PANNED, shut[1], shut[2]), abs=0.05), (
+        f"Shift+Left didn't pan the map {PANNED} px from {shut}: {moved}"
+    )
+    page.keyboard.press(".")
+    expect(page.locator("#now-control"), ". didn't open Now again").to_have_attribute(
+        "aria-expanded", "true"
+    )
+    held = settled(page, "the moved map never stood still once Now opened")
+    width, height = SIZES[-1]
+    page.set_viewport_size({"width": width - NARROWED_PX, "height": height})
+    resized = settled(page, "the moved map never stood still once the window narrowed")
+    narrowed, _ = page.evaluate(WIDTHS)
+    assert resized[0] - held[0] == pytest.approx((narrowed - whole) / 2, abs=1), (
+        f"the map narrowed from {whole} to {narrowed} px with the drawer open, and the view "
+        f"moved from {held} to {resized}, not by half that"
+    )
+
+
 # Node.json's cells that need the reader, as Now lists them: the one asking
 # something, then the one stuck. Node.json lists them in that order too, so
 # waits.test.ts is what proves the order; this proves the page follows it.
@@ -1104,6 +1339,11 @@ HANDED = "Sent to the Launcher's Start New Work"
 HANDED_END = (
     "; nothing starts until you press Return there."
     " If it didn't open, wait a moment, then s brings the words back."
+)
+# What the map says when the machine the open line names leaves before Return.
+LEFT_OSPREY = (
+    "osprey has left the map, so the work won't start there;"
+    " Return starts it where new work starts."
 )
 # Where a box lies on the page, scrolled or not: left, top, width, height.
 PLACED = """(selector) => {
@@ -1299,6 +1539,14 @@ def sent_again(page: Page, want: str) -> None:
     page.keyboard.press("Enter")
     handed = page.evaluate("window.talkedTo")
     assert handed == want, f"sent again as {handed}, not {want}"
+
+
+def sent_as(page: Page, words: str, want: str) -> None:
+    """Write `words` over new work's open line and send them, as `want`."""
+    page.locator("#sprout").fill(words)
+    page.locator("#sprout").press("Enter")
+    handed = page.evaluate("window.talkedTo")
+    assert handed == want, f"{words} was sent as {handed}, not {want}"
 
 
 def test_new_work_sends_again_from_the_cell_it_went_from(mycelium_opened: Opened) -> None:
@@ -1613,6 +1861,25 @@ def test_a_basins_machines_are_drawn_as_one(browser: Browser, basins_served: Ser
         body = page.locator("#panel-body")
         said = "A basin, drawn as one machine: 2 machines"
         expect(body, "the drawer didn't say it was a basin").to_contain_text(said)
+        # The Launcher's Machines has a row for each of its machines, none for
+        # it: its name holds a space, which no machine's name does, so the
+        # map never offers a link to a row that isn't there.
+        expect(
+            body.locator('a[href^="mycelium:machine/"]'), "the basin linked a row it has none of"
+        ).to_have_count(0)
+        # New work from it starts on any of the cloud's machines.
+        cloud = body.get_by_role("button", name="Start New Work on the Cloud")
+        expect(cloud, "the basin didn't start work on the cloud").to_have_attribute(
+            "data-sprout-on", "cloud"
+        )
+        page.evaluate(TALK_HELD)
+        cloud.click()
+        on = page.locator("#sprout-on-words")
+        expect(on, "the basin's button didn't offer the cloud").to_have_text("On the cloud")
+        page.keyboard.type("tidy")
+        page.keyboard.press("Enter")
+        handed = page.evaluate("window.talkedTo")
+        assert handed == "mycelium:sprout?words=tidy&on=cloud", f"the basin handed {handed}"
         for name in BASIN_MACHINES:
             exactly = page.locator(".name", has_text=re.compile(f"^{re.escape(name)}$"))
             row = body.locator(".health .row", has=exactly)
@@ -1622,6 +1889,11 @@ def test_a_basins_machines_are_drawn_as_one(browser: Browser, basins_served: Ser
         expect(body, "the cell lost its own machine").to_contain_text(
             f"on {BASIN_MACHINES[0]}, in the {BASIN} basin", timeout=PACE_MS
         )
+        # Words kept for the cloud go there again, though no machine is it.
+        page.locator("#map-view").focus()
+        page.keyboard.press("s")
+        expect(on, "the kept words lost the cloud").to_have_text("On the cloud")
+        page.keyboard.press("Escape")
         # Its links to the Launcher name that machine too, never the basin.
         expect(
             body.locator('a[href^="mycelium:cell/"]:not([data-go-to])'),
@@ -1757,6 +2029,32 @@ def test_a_network_whose_cell_another_started_grows_out_of_it(
             "data-branch-of", re.compile("."), timeout=PACE_MS
         )
         expect(foraged, "the cell's drawer kept a forage that went").to_have_count(0)
+        # A forage saying only what the cell split from grows the same branch,
+        # since a sprout's start can go unsaid while its split stays, and both
+        # drawers say it split, never that anybody started it.
+        split = {"started_by": None, "split_from": GROWN_BY, "parent": None}
+        forage_node.tell("forage", changed=[{**forage, "lineage": split}])
+        expect(hub, "the network never grew out of the one it split from").to_have_attribute(
+            "data-branch-of", GROWN_FROM, timeout=PACE_MS
+        )
+        page.evaluate(f"location.hash = '#net={GROWN}'")
+        expect(body, "the branch's drawer never said what its cell split from").to_contain_text(
+            f"Split from {GROWN_BY_TITLE}: 1 of its 2 cells", timeout=PACE_MS
+        )
+        expect(body, "the branch's drawer said a split was a start").not_to_contain_text(
+            "Started by"
+        )
+        page.evaluate(f"location.hash = '#cell={GROWN_CELL}'")
+        said = body.locator("dl.facts > div", has=page.locator("dt", has_text="Split from"))
+        expect(said, "the cell's drawer never said what it split from").to_contain_text(
+            GROWN_BY_TITLE, timeout=PACE_MS
+        )
+        expect(body, "a split was said to be a start").not_to_contain_text(f"by {GROWN_BY_TITLE}")
+        forage_node.tell("forage", gone=[key])
+        expect(hub, "the branch outlived the split that grew it").not_to_have_attribute(
+            "data-branch-of", re.compile("."), timeout=PACE_MS
+        )
+        expect(said, "the cell's drawer kept a split that went").to_have_count(0)
     finally:
         opened.close()
 
@@ -1798,6 +2096,42 @@ def test_a_cell_whose_own_record_names_its_starter_grows_a_branch_with_no_forage
         expect(body, "the cell's drawer never said who its record named").to_contain_text(
             f"by {GROWN_BY_TITLE}", timeout=PACE_MS
         )
+        # While it moves, the machine it left may list it too, under a key of
+        # its own. The map draws the copy started latest and names that copy's
+        # starter, so what it draws and the branch it grows change together.
+        kinds = json.loads((HERE / "node.json").read_text())["kinds"]
+        heron = next(cell for cell in kinds["cell"] if cell["name"] == GROWN_CELL)
+        left = {
+            **heron,
+            "key": f"cell:{GROWN_CELL}@kestrel",
+            "kind": "cell",
+            "heard": heard,
+            "machine": "kestrel",
+        }
+        mycelium_node.tell("cell", changed=[{**left, "since": "2026-11-16T09:00:00Z"}])
+        expect(body, "the map never drew the copy started latest").to_contain_text(
+            "network, on kestrel", timeout=PACE_MS
+        )
+        expect(body, "a copy the map doesn't draw named the starter").not_to_contain_text(
+            f"by {GROWN_BY_TITLE}"
+        )
+        expect(hub, "a copy the map doesn't draw kept the branch").not_to_have_attribute(
+            "data-branch-of", re.compile(".")
+        )
+        the_map_counts(page, COUNTED, "a cell two machines list was counted twice")
+        # Told again as started earlier, it keeps its place as the copy told
+        # last, so only the later copy standing gives the branch back.
+        mycelium_node.tell("cell", changed=[{**left, "since": "2026-11-16T07:00:00Z"}])
+        expect(body, "the map drew a copy started earlier").to_contain_text(
+            "network, on osprey", timeout=PACE_MS
+        )
+        expect(hub, "the branch never came back with the copy that names it").to_have_attribute(
+            "data-branch-of", GROWN_FROM, timeout=PACE_MS
+        )
+        expect(body, "the copy that stands never named its starter").to_contain_text(
+            f"by {GROWN_BY_TITLE}", timeout=PACE_MS
+        )
+        mycelium_node.tell("cell", gone=[left["key"]])
         # Once the record stops naming its starter, the branch goes, and so
         # does the cell's word of who started it.
         mycelium_node.tell("cell", changed=[{**said, "started_by": None, "started_by_from": None}])
@@ -1935,9 +2269,18 @@ def test_a_reading_that_moves_no_shape_is_painted_over_the_map_as_drawn(
     page.keyboard.press(".")
     legend = page.locator('#panel-body details[data-keep="legend"] > summary')
     expect(legend, ". never opened Now with its legend").to_be_visible()
+    # Opening the drawer fits the whole map clear of it, a glide that places the names as it
+    # goes, so the case marks them only once the view stands still.
+    settled(page, "the map never stood still once Now opened")
     page.evaluate(MARK_DRAWN)
     *_, focused = page.evaluate(STILL_DRAWN)
     assert focused, "the legend's summary took no focus"
+    # The ring is said as an answer the cell owes, and never as one waiting on him,
+    # which is what a question waiting once made him read it as.
+    expect(
+        page.locator('#panel-body details[data-keep="legend"] dd', has_text="An answer owed:"),
+        "the legend never said a ring is an answer owed, or let it read as his",
+    ).to_contain_text(re.compile("a cell another cell asked something.*, never one waiting on you"))
     # A turn's worth of context, which moves no cell and no network.
     used = {"limit": 1000000, "used": 12000}
     last = "2026-11-16T10:00:00Z"
@@ -2123,6 +2466,240 @@ def spent(page: Page) -> list[str]:
     return lines[1:2] + lines[3:]
 
 
+def test_a_machines_drawer_opens_its_row_in_the_launcher(mycelium_opened: Opened) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    page.evaluate("location.hash = '#machine=osprey'")
+    expect(page.locator("#panel-title"), "osprey's drawer never opened").to_have_text("osprey")
+    # Its row's acts are where Joel starts work on it, as the system page's link is.
+    link = page.locator("#panel-body").get_by_role("link", name="Open It in the Launcher")
+    expect(link, "osprey's drawer didn't open its row").to_have_attribute(
+        "href", "mycelium:machine/osprey"
+    )
+
+
+# The skiff's network as two machines feed it in node.json, each cell
+# counted where it is drawn: TERN01 is listed in the skiff and in its
+# branch but drawn in the branch, so the skiff draws SKIFF1, TERN02 and
+# GULL01 as its own. kestrel runs two of those and both of the branch's,
+# osprey runs GULL01.
+FED_NETWORK = "orchestration.skiff1"
+FED_BY = ["kestrel", "feeds it 4 cells", "osprey", "feeds it 1 cell"]
+
+
+def test_a_network_fed_by_two_machines_lists_each_with_its_cells(
+    mycelium_opened: Opened,
+) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    page.evaluate(f"location.hash = '#net={FED_NETWORK}'")
+    body = page.locator("#panel-body")
+    expect(body, "the skiff's drawer miscounted its cells or machines").to_contain_text(
+        "A network of 3 cells, with 2 more in 1 branch, fed by 2 machines.", timeout=PACE_MS
+    )
+    # A network belongs to no machine, so its drawer lists every one that
+    # feeds it, its branch's cells counted in.
+    rows = body.locator("h3:text-is('Its Machines') + ul.rows li")
+    expect(rows, "the skiff's drawer didn't list both machines").to_have_count(2)
+    lines = [line for row in rows.all_inner_texts() for line in row.splitlines() if line]
+    assert lines == FED_BY, f"Its Machines read {lines}, not {FED_BY}"
+    # Each opens that machine's own drawer.
+    rows.nth(1).get_by_role("button").click()
+    expect(page.locator("#panel-title"), "osprey's row didn't open osprey").to_have_text("osprey")
+
+
+def test_a_kept_cloud_machine_says_so_and_opens_its_row(
+    browser: Browser, lent_served: Served
+) -> None:
+    root, _ = lent_served
+    opened = Opened(browser, f"{root}mycelium/#machine=osprey", SIZES[-1], "light")
+    try:
+        page = opened.page
+        the_map_stands(page, "live")
+        body = page.locator("#panel-body")
+        expect(body.locator(".carries"), "osprey didn't say it was kept").to_contain_text(
+            "A cloud machine, kept until you let it go. A cord runs from it"
+        )
+        expect(
+            body.locator(".health"), "osprey's health counted down a kept lease"
+        ).to_contain_text("kept until you let it go")
+        link = body.get_by_role("link", name="Open It in the Launcher")
+        expect(link, "a cloud machine's drawer didn't open its row").to_have_attribute(
+            "href", "mycelium:machine/osprey"
+        )
+        # It is no device on the home network, so the network page has no row.
+        expect(
+            body.get_by_role("link", name="osprey on the network page"),
+            "a cloud machine linked the home network's page",
+        ).to_have_count(0)
+        # A cell on it says so where it says the machine it runs on, and in
+        # its machine's row.
+        page.evaluate("location.hash = '#cell=GULL01'")
+        kept = "on osprey, a cloud machine, kept until you let it go"
+        expect(body, "GULL01 didn't say its machine was kept").to_contain_text(kept)
+        row = body.locator(".rows .row", has=page.locator(".name", has_text=re.compile("^osprey$")))
+        expect(row, "GULL01's machine row counted down a kept lease").to_contain_text(
+            "a cloud machine, kept until you let it go"
+        )
+    finally:
+        opened.close()
+
+
+def test_new_work_from_a_machines_drawer_starts_on_it_until_unticked(
+    mycelium_opened: Opened,
+) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    page.evaluate(TALK_HELD)
+    page.evaluate("location.hash = '#machine=osprey'")
+    expect(page.locator("#panel-title"), "osprey's drawer never opened").to_have_text("osprey")
+    here = page.locator("#panel-body").get_by_role("button", name="Start New Work Here")
+    here.click()
+    expect(page.locator("#sprout-on-words"), "osprey wasn't offered").to_have_text("On osprey")
+    expect(page.locator("#sprout-from-line"), "a machine offered a cell").to_be_hidden()
+    page.keyboard.type("tidy the rows")
+    page.keyboard.press("Enter")
+    handed = page.evaluate("window.talkedTo")
+    want = "mycelium:sprout?words=tidy%20the%20rows&on=osprey"
+    assert handed == want, f"the machine's drawer handed {handed}, not {want}"
+    expect(page.locator("#where"), "the hand-off didn't name its machine").to_have_text(
+        f"{HANDED}, on osprey{HANDED_END}"
+    )
+    expect(here, "the keys didn't go back to the drawer's button").to_be_focused()
+    # Words kept to send again go back to the machine they went to, even
+    # under another machine's drawer, as they go from the cell they did.
+    on = page.locator("#sprout-on-words")
+    page.evaluate("location.hash = '#machine=kestrel'")
+    expect(page.locator("#panel-title"), "kestrel's drawer never opened").to_have_text("kestrel")
+    sent_again(page, want)
+    page.locator("#map-view").focus()
+    page.keyboard.press("s")
+    expect(on, "the kept words lost their machine").to_have_text("On osprey")
+    # New words over them are new work, on the machine open now.
+    page.locator("#sprout").fill("fresh")
+    expect(on, "new words kept the old machine").to_have_text("On kestrel")
+    sent_as(page, "fresh", "mycelium:sprout?words=fresh&on=kestrel")
+    # Escape lets the words go, so s offers the open drawer's machine.
+    page.locator("#map-view").focus()
+    page.keyboard.press("s")
+    page.keyboard.press("Escape")
+    page.locator("#map-view").focus()
+    page.keyboard.press("s")
+    expect(page.locator("#sprout"), "Escape kept the words").to_have_value("")
+    expect(on, "s didn't offer the open machine").to_have_text("On kestrel")
+    sent_as(page, "here", "mycelium:sprout?words=here&on=kestrel")
+    # A tick lets it go, so the work starts where new work does when Joel
+    # names none.
+    page.locator("#map-view").focus()
+    page.keyboard.press("s")
+    page.locator("#sprout-on").uncheck()
+    sent_as(page, "anywhere", "mycelium:sprout?words=anywhere")
+    # Words that went on no machine come back on none, under any drawer.
+    page.locator("#map-view").focus()
+    page.keyboard.press("s")
+    expect(page.locator("#sprout-on-line"), "unticked words found a machine").to_be_hidden()
+    page.keyboard.press("Escape")
+    # The whole map names no machine.
+    page.evaluate("location.hash = ''")
+    expect(page.locator("#panel-body [data-sprout-on]"), "a drawer stayed").to_have_count(0)
+    page.locator("#map-view").focus()
+    page.keyboard.press("s")
+    expect(page.locator("#sprout-on-line"), "the whole map offered a machine").to_be_hidden()
+
+
+def test_new_works_words_kept_for_a_machine_that_left_go_with_it(
+    mycelium_opened: Opened, mycelium_node: StandIn
+) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    page.evaluate(TALK_HELD)
+    page.evaluate("location.hash = '#machine=osprey'")
+    expect(page.locator("#panel-title"), "osprey's drawer never opened").to_have_text("osprey")
+    page.locator("#panel-body").get_by_role("button", name="Start New Work Here").click()
+    page.keyboard.type("last")
+    page.keyboard.press("Enter")
+    page.evaluate("location.hash = '#machine=kestrel'")
+    expect(page.locator("#panel-title"), "kestrel's drawer never opened").to_have_text("kestrel")
+    osprey = page.locator('#world [data-key="m:osprey"]')
+    expect(osprey, "the map didn't draw osprey").to_have_count(1)
+    mycelium_node.tell("machine", gone=["machine:osprey"])
+    expect(osprey, "the map kept a machine that left").to_have_count(0, timeout=PACE_MS)
+    # Sent to the machine open now, they'd start work where Joel didn't ask.
+    page.locator("#map-view").focus()
+    page.keyboard.press("s")
+    expect(page.locator("#sprout"), "words for a gone machine came back").to_have_value("")
+    expect(page.locator("#sprout-on-words"), "s didn't offer the open machine").to_have_text(
+        "On kestrel"
+    )
+
+
+def test_new_works_words_from_a_gone_cell_never_take_the_open_machine(
+    mycelium_opened: Opened, mycelium_node: StandIn
+) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    page.evaluate(TALK_HELD)
+    page.evaluate(f"location.hash = '#cell={NEEDING[1]}'")
+    page.locator("#panel-body").get_by_role("button", name="Start New Work From It").click()
+    page.keyboard.type("orphan")
+    page.keyboard.press("Enter")
+    page.evaluate("location.hash = '#machine=kestrel'")
+    expect(page.locator("#panel-title"), "kestrel's drawer never opened").to_have_text("kestrel")
+    mycelium_node.tell("cell", gone=[f"cell:{NEEDING[1]}"])
+    the_map_counts(page, "7 cells, 2 moving", "the gone cell was still counted")
+    # Words that went on no machine go again on none, though their cell
+    # has left and a machine's drawer is open: sent on kestrel, they'd
+    # start work where Joel never asked.
+    sent_again(page, "mycelium:sprout?words=orphan")
+    # New words typed over ones kept from a gone cell are new work, so
+    # they go on the open drawer's machine, as a fresh line's would.
+    page.evaluate("location.hash = '#cell=HERON2'")
+    page.locator("#panel-body").get_by_role("button", name="Start New Work From It").click()
+    page.keyboard.type("stray")
+    page.keyboard.press("Enter")
+    mycelium_node.tell("cell", gone=["cell:HERON2"])
+    heron = page.locator('#world [data-key="c:HERON2"]')
+    expect(heron, "the map kept a cell that left").to_have_count(0, timeout=PACE_MS)
+    page.evaluate("location.hash = '#machine=kestrel'")
+    expect(page.locator("#panel-title"), "kestrel's drawer never opened").to_have_text("kestrel")
+    page.locator("#map-view").focus()
+    page.keyboard.press("s")
+    expect(page.locator("#sprout"), "the gone cell's words never came back").to_have_value("stray")
+    expect(page.locator("#sprout-on-line"), "kept words took the open machine").to_be_hidden()
+    page.locator("#sprout").fill("mended")
+    expect(page.locator("#sprout-on-words"), "new words didn't take the open machine").to_have_text(
+        "On kestrel"
+    )
+    page.evaluate("window.talkedTo = null")
+    sent_as(page, "mended", "mycelium:sprout?words=mended&on=kestrel")
+
+
+def test_new_works_machine_that_leaves_while_the_line_is_open_is_let_go_at_return(
+    mycelium_opened: Opened, mycelium_node: StandIn
+) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    page.evaluate(TALK_HELD)
+    page.evaluate("location.hash = '#machine=osprey'")
+    expect(page.locator("#panel-title"), "osprey's drawer never opened").to_have_text("osprey")
+    page.locator("#panel-body").get_by_role("button", name="Start New Work Here").click()
+    page.keyboard.type("late")
+    osprey = page.locator('#world [data-key="m:osprey"]')
+    mycelium_node.tell("machine", gone=["machine:osprey"])
+    expect(osprey, "the map kept a machine that left").to_have_count(0, timeout=PACE_MS)
+    page.evaluate("window.talkedTo = null")
+    # A Return held a little long repeats; the repeat must send nothing
+    # before Joel has read why the machine went.
+    page.locator("#sprout").focus()
+    page.keyboard.down("Enter")
+    page.keyboard.down("Enter")
+    page.keyboard.up("Enter")
+    assert page.evaluate("window.talkedTo") is None, "the words went on, held Return or not"
+    expect(page.locator("#sprout-on-line"), "the gone machine stayed offered").to_be_hidden()
+    expect(page.locator("#where"), "the map didn't say the machine left").to_have_text(LEFT_OSPREY)
+    sent_as(page, "late", "mycelium:sprout?words=late")
+
+
 def test_what_each_spent_today_is_listed_most_first(mycelium_opened: Opened) -> None:
     page = mycelium_opened.page
     the_map_stands(page, "live")
@@ -2180,11 +2757,11 @@ def test_what_waits_and_what_holds_are_said_as_the_node_judges(
         ages = range(round(ASKED_AGO / MINUTE), round((read - since) / MINUTE) + 1)
         reach = [f"{HELD_WORDS} since {day_clock(held['since'], at)}" for at in ends]
         until = [f"until {day_clock(held['until'], at)} at most" for at in ends]
-        first = lines.index("Questions Waiting") if "Questions Waiting" in lines else len(lines)
+        first = lines.index("Answers Owed") if "Answers Owed" in lines else len(lines)
         glance = next(n for n, line in enumerate(lines) if line.startswith("Your whole network"))
         assert first < glance, f"Now should say what holds the flow before the glance: {lines}"
         said = lines[first : first + 6]
-        assert said[:2] == ["Questions Waiting", WAITED_SHORT], f"Now misread who waits: {said}"
+        assert said[:2] == ["Answers Owed", WAITED_SHORT], f"Now misread who owes: {said}"
         assert said[2:3] in [[ASKED_WORDS.format(age)] for age in ages], (
             f"Now misread the question waiting: {said}"
         )
@@ -2194,7 +2771,7 @@ def test_what_waits_and_what_holds_are_said_as_the_node_judges(
         page.evaluate(f"location.hash = '#cell={WAITED}'")
         title = page.locator("#panel-title")
         expect(title, f"{WAITED}'s drawer never opened").to_have_text(WAITED_SHORT)
-        waits = f"{ASKER_SHORT}'s question waiting since"
+        waits = f"hasn't answered {ASKER_SHORT}'s question of"
         owed = [f"{waits} {day_clock(asked['since'], at)}" for at in ends]
         expect(body, f"{WAITED}'s health left out the question waiting on it").to_contain_text(
             re.compile("|".join(map(re.escape, owed)))
@@ -2418,6 +2995,42 @@ def test_the_map_keeps_to_its_budget(browser: Browser, mycelium_served: Served) 
         the_map_counts(opened.page, COUNTED, "the map didn't draw")
         opened.keeps_to(BUDGET)
         the_map_stands(opened.page, "live")
+    finally:
+        opened.close()
+
+
+# Every raster the page fetched, shows as an image or paints from a style, by
+# its address: a file of a raster kind, or a raster's data written inline.
+RASTERS = r"""() => {
+  const raster = /\.(png|jpe?g|gif|webp|avif|bmp|ico)([?#]|$)|^data:image\/(?!svg)/iu;
+  const fetched = performance.getEntriesByType("resource").map((each) => each.name);
+  const shown = [...document.querySelectorAll("img, picture source, image, input[type=image]")]
+    .map((each) => each.currentSrc || each.src || each.getAttribute("href") || each.srcset || "");
+  const url = /url\("?([^")]*)"?\)/gu;
+  const painted = [...document.querySelectorAll("*")].flatMap((each) =>
+    [...getComputedStyle(each).backgroundImage.matchAll(url)].map((found) => found[1])
+  );
+  return {
+    fetched: fetched.filter((each) => raster.test(each)),
+    shown: shown.filter((each) => raster.test(each)),
+    painted: painted.filter((each) => raster.test(each)),
+  };
+}"""
+
+
+def test_the_map_is_drawn_as_vectors_with_no_raster_picture(
+    browser: Browser, mycelium_served: Served
+) -> None:
+    """The map is drawn from shapes, never a picture (Joel, 14 November: "stick to svgs")."""
+    root, _ = mycelium_served
+    opened = Opened(browser, f"{root}mycelium/", SIZES[-1], "dark")
+    try:
+        the_map_stands(opened.page, "live")
+        the_map_counts(opened.page, COUNTED, "the map didn't draw")
+        found = opened.page.evaluate(RASTERS)
+        assert found == {"fetched": [], "shown": [], "painted": []}, (
+            f"the map fetched, showed or painted a raster picture: {found}"
+        )
     finally:
         opened.close()
 
