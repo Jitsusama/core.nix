@@ -279,8 +279,8 @@ holding a space, as one broken across two lines does, is counted too.
 - Measures: `rulings-unsourced`
 - Target: 0 messages on the mesh in the last day saying Joel ruled or wants something with, in
   that sentence or the one either side, no date or clock time beside his name or he with only
-  words of saying between and tied to his saying, and no answer from their sender to cadence's ask about it. Each
-  is asked of its sender, for his dated words or the claim dropped.
+  words of saying between and tied to his saying, and no answer from their sender to cadence's
+  ask about it. Each is asked of its sender, for his dated words or the claim dropped.
 - Joel, 22 Nov 15:49: "i have said multiple times that security is not acceptable if it blocks us
   from getting stuff done."
 - Over costs him: a cell's own caution held against the work as if he had ruled it.

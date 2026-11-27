@@ -101,7 +101,7 @@ pub fn holds(sent: &[Message], asks: &str, now: i64) -> Measure {
 }
 
 /// When a message was sent, in seconds: its `at`, or else its id's stamp.
-pub(super) fn sent_at(m: &Message) -> Option<i64> {
+fn sent_at(m: &Message) -> Option<i64> {
     m.at.parse::<Timestamp>()
         .ok()
         .map(Timestamp::as_second)

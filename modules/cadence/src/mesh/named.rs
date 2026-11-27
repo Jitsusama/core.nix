@@ -46,23 +46,27 @@ impl Mesh {
     /// read for ever. A pipe put in a message's place between its listing
     /// and its opening still can: that takes a cell writing the mesh's
     /// files by hand, which the measures reading this can't guard against.
+    /// Every file is opened and judged, but only the messages `keep` holds
+    /// to are kept, so a read over days holds no more than it uses.
     pub fn sent_as_named(
         &self,
         from_ms: i64,
         to_ms: i64,
+        keep: impl Fn(&Message) -> bool,
     ) -> Result<(Vec<Message>, Vec<String>), String> {
         let messages = self.messages();
-        read_listed(|| files(&messages, from_ms), from_ms, to_ms)
+        read_listed(|| files(&messages, from_ms), from_ms, to_ms, &keep)
     }
 }
 
 /// The messages and torn files among those `listing` gives, stamped from
-/// `from_ms` to `to_ms`, listing again to find any that moved between a
-/// listing and their reading.
+/// `from_ms` to `to_ms`, the messages only those `keep` holds to, listing
+/// again to find any that moved between a listing and their reading.
 fn read_listed(
     listing: impl Fn() -> Result<Vec<PathBuf>, String>,
     from_ms: i64,
     to_ms: i64,
+    keep: &dyn Fn(&Message) -> bool,
 ) -> Result<(Vec<Message>, Vec<String>), String> {
     let stamped = |p: &&PathBuf| {
         let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or_default();
@@ -70,14 +74,14 @@ fn read_listed(
     };
     let (mut read, mut moved) = (Read::default(), BTreeSet::<Option<OsString>>::new());
     for path in listing()?.iter().filter(stamped) {
-        if !read.file(path)? {
+        if !read.file(path, keep)? {
             moved.insert(path.file_name().map(ToOwned::to_owned));
         }
     }
     if !moved.is_empty() {
         for path in listing()?.iter().filter(stamped) {
             if moved.remove(&path.file_name().map(ToOwned::to_owned)) {
-                read.file(path)?;
+                read.file(path, keep)?;
             }
         }
     }
@@ -157,8 +161,9 @@ impl Read {
     /// away and why when it can't be read for any other reason. What was
     /// opened is judged, not what was listed, since a link may have taken
     /// the file's place between the two; one that isn't a plain file, or
-    /// is past [`LARGEST`], is named as no message.
-    fn file(&mut self, path: &Path) -> Result<bool, String> {
+    /// is past [`LARGEST`], is named as no message. A message `keep`
+    /// doesn't hold to is read and let go.
+    fn file(&mut self, path: &Path, keep: &dyn Fn(&Message) -> bool) -> Result<bool, String> {
         let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
             return Ok(true);
         };
@@ -181,7 +186,12 @@ impl Read {
             return Ok(true);
         }
         match serde_json::from_slice::<Loose>(&bytes) {
-            Ok(loose) if loose.id == stem => self.sent.push(loose.into()),
+            Ok(loose) if loose.id == stem => {
+                let message = Message::from(loose);
+                if keep(&message) {
+                    self.sent.push(message);
+                }
+            }
             Ok(_) => {}
             Err(_) => self.torn.push(stem.to_owned()),
         }
@@ -278,7 +288,9 @@ mod tests {
             mesh.messages().join("12-B-1-cc.json"),
         )
         .expect("the message couldn't be renamed");
-        let (sent, _) = mesh.sent_as_named(0, 100).expect("the messages were read");
+        let (sent, _) = mesh
+            .sent_as_named(0, 100, |_| true)
+            .expect("the messages were read");
         assert_eq!(
             ids(&sent),
             ["10-A-1-aa"],
@@ -296,12 +308,14 @@ mod tests {
         put(&mesh, "", "10-A-1-aa", "A");
         fs::write(mesh.messages().join("11-A-1-bb.json"), "{")
             .expect("the torn file couldn't be written");
-        let (sent, torn) = mesh.sent_as_named(0, 100).expect("the messages were read");
+        let (sent, torn) = mesh
+            .sent_as_named(0, 100, |_| true)
+            .expect("the messages were read");
         assert_eq!(ids(&sent), ["10-A-1-aa"], "one torn file hid the others");
         assert_eq!(torn, ["11-A-1-bb"], "a torn file wasn't named");
         fs::remove_dir_all(dir.path().join("mesh-workflow")).expect("the mesh couldn't be removed");
         assert!(
-            mesh.sent_as_named(0, 100).is_err(),
+            mesh.sent_as_named(0, 100, |_| true).is_err(),
             "a messages folder that can't be listed was read as no messages"
         );
     }
@@ -315,7 +329,9 @@ mod tests {
         put(&mesh, "", "10-A-1-aa", "A");
         fs::write(mesh.messages().join("900-A-1-zz.json"), "{")
             .expect("the future file couldn't be written");
-        let (sent, torn) = mesh.sent_as_named(0, 100).expect("the messages were read");
+        let (sent, torn) = mesh
+            .sent_as_named(0, 100, |_| true)
+            .expect("the messages were read");
         let read: Vec<(&str, &[String])> = sent
             .iter()
             .map(|m| (m.id.as_str(), m.to.as_slice()))
@@ -328,6 +344,25 @@ mod tests {
         assert!(
             torn.is_empty(),
             "a file stamped past the read was named: {torn:?}"
+        );
+    }
+
+    /// A message the reader has no use for is read, so a torn one is
+    /// still named, but not held.
+    #[test]
+    fn only_the_messages_kept_are_held_and_every_file_is_judged() {
+        let (_dir, mesh) = mesh();
+        put(&mesh, "", "10-A-1-aa", "A");
+        put(&mesh, "", "11-B-1-bb", "B");
+        fs::write(mesh.messages().join("12-A-1-cc.json"), "{")
+            .expect("the torn file couldn't be written");
+        let (sent, torn) = mesh
+            .sent_as_named(0, 100, |m| m.from == "B")
+            .expect("the messages were read");
+        assert_eq!(
+            (ids(&sent), torn),
+            (vec!["11-B-1-bb"], vec!["12-A-1-cc".to_owned()]),
+            "a message not kept was held, or a torn file went unnamed"
         );
     }
 
@@ -371,7 +406,7 @@ mod tests {
             }
         }
         let (sent, torn) = mesh
-            .sent_as_named(NOON, NOON + DAY_MS)
+            .sent_as_named(NOON, NOON + DAY_MS, |_| true)
             .expect("the messages were read");
         assert_eq!(
             ids(&sent),
@@ -406,7 +441,8 @@ mod tests {
                 went.clone()
             }])
         };
-        let (sent, torn) = read_listed(listing, 0, 100).expect("the moved message was read");
+        let (sent, torn) =
+            read_listed(listing, 0, 100, &|_| true).expect("the moved message was read");
         assert_eq!(
             (ids(&sent), torn.len(), listings.get()),
             (vec![id], 0, 2),
@@ -436,7 +472,7 @@ mod tests {
         fs::set_permissions(&day, fs::Permissions::from_mode(0o000))
             .expect("the day's folder couldn't be shut");
         let shut = fs::read_dir(&day).is_err();
-        let read = mesh.sent_as_named(NOON, NOON + DAY_MS);
+        let read = mesh.sent_as_named(NOON, NOON + DAY_MS, |_| true);
         fs::set_permissions(&day, fs::Permissions::from_mode(0o755))
             .expect("the day's folder couldn't be opened again");
         // Run as root, a shut folder still lists, so there's nothing to see.
@@ -461,7 +497,7 @@ mod tests {
         fs::set_permissions(&file, fs::Permissions::from_mode(0o000))
             .expect("the message couldn't be shut");
         let shut = fs::File::open(&file).is_err();
-        let read = mesh.sent_as_named(NOON, NOON + DAY_MS);
+        let read = mesh.sent_as_named(NOON, NOON + DAY_MS, |_| true);
         // Run as root, a shut file still opens, so there's nothing to see.
         if shut {
             assert!(
@@ -482,7 +518,7 @@ mod tests {
         file.set_len(LARGEST + 1)
             .expect("the huge file couldn't be grown");
         let (sent, torn) = mesh
-            .sent_as_named(NOON, NOON + DAY_MS)
+            .sent_as_named(NOON, NOON + DAY_MS, |_| true)
             .expect("the messages were read");
         assert_eq!(
             (sent.len(), torn),

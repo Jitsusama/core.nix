@@ -95,6 +95,8 @@ fn a_date_or_a_clock_given_as_when_he_said_it_backs_a_claim() {
         "He said so on 22 Nov. Joel ruled it.",
         "On 22 Nov he said Joel wants it.",
         "Joel wants it, his words of 10:05.",
+        "Joel at 10:05 said he wants it.",
+        "Joel wants it. Joel (22 Nov 15:49): security never blocks the work.",
     ];
     for text in backed {
         assert!(
@@ -131,6 +133,9 @@ fn words_that_only_look_like_a_date_or_a_quote_back_nothing() {
         // A time after him with no word of his saying is a cell's own.
         "I broke Joel's rule. I told him at 10:08.",
         "Joel wants the lab shut; I'll tell him at 14:00.",
+        "I broke Joel's rule. I told Joel at 10:08.",
+        "Joel wants the lab shut; I'll ask Joel at 14:00.",
+        "Joel wants it. I pinged Joel on 26 Nov.",
         // What he said, told with no date, is a claim of his words too.
         "Joel said the launcher hangs.",
     ];
@@ -221,6 +226,8 @@ fn a_claim_with_a_word_inside_joelish_isnt_one() {
         "Joel's calendar has the review at 3.",
         "Per Joelle, the lab is shut.",
         "Joel's willingness is not the question.",
+        "Joel's call at 16:35 dropped its video.",
+        "This measures Joel's calls under load.",
     ] {
         assert_eq!(
             unbacked(text),
@@ -229,7 +236,7 @@ fn a_claim_with_a_word_inside_joelish_isnt_one() {
         );
     }
     assert!(
-        unbacked("Those were Joel's calls.").is_some(),
+        unbacked("Those were Joel's rules.").is_some(),
         "a claim in the plural went uncounted"
     );
     assert!(
@@ -266,7 +273,10 @@ fn a_denial_of_his_rule_claims_nothing() {
 fn the_cards_lines_passed_on_claim_nothing() {
     let relay = format!(
         "From the hour's card:\n✕ {SAYS}: 1, at most 0\n  [0000000a] I broke Joel's rule. · \
-         T6E7X6\n- [0000000b] Joel wants it. · 5UTLKM"
+         T6E7X6\n- [0000000b] Joel wants it. · 5UTLKM\n✓ pains Joel said that nobody has \
+         taken up: 0, at most 0\n· pains Joel said that nobody has taken up: 2, unjudged\n\
+         Drag: pains Joel said that nobody has taken up, 3 against at most 0, to 1JQPPC by \
+         10:00."
     );
     assert_eq!(
         unbacked(&relay),
@@ -277,6 +287,17 @@ fn the_cards_lines_passed_on_claim_nothing() {
         unbacked(&format!("{relay}\nAnd Joel wants it shut.")).is_some(),
         "a claim of the relayer's own beside the card's lines went uncounted"
     );
+    for shaped in [
+        "- [NOTE] Joel's rule: nobody reaches the lab · T6E7X6",
+        "[x] Joel wants it shut · DONE",
+        "✓ Joel wants it shut.",
+        "Drag: Joel wants it shut.",
+    ] {
+        assert!(
+            unbacked(shaped).is_some(),
+            "a line only shaped a little like the card's hid its claim: {shaped}"
+        );
+    }
 }
 
 /// The ask's text is written by [`ask`] and read back by [`about`], so
@@ -376,11 +397,10 @@ fn a_senders_answer_re_the_ask_or_the_claim_clears_it_and_isnt_counted() {
             "[00000012] Joel wants T6E7X6 to stop. · 5UTLKM",
             "[00000014] Held: Joel wants it held. · IKQ63G",
             "[00000016] So Joel wants it shut. · IKQ63G",
-            "[00000019] I stand by it: Joel wants it. · T6E7X6",
         ],
-        "an answered claim or an answer was counted, or a reply clearing nothing, re a \
-         claim never asked about, another's claim, its ask or another cadence message, \
-         sent before the ask or after the first answer, went uncounted"
+        "an answered claim, an answer or a later reply of the cell asked was counted, or \
+         a reply clearing nothing, re a claim never asked about, another's claim, its ask \
+         or another cadence message, or sent before the ask, went uncounted"
     );
     let m = unsourced(&[sent("00000011", 60, CADENCE, "Joel wants it.")], NOW);
     assert_eq!(
@@ -451,11 +471,11 @@ fn put(folder: &Path, m: &Message) {
 }
 
 /// The measure reads two days of messages, so an answer to an ask sent
-/// late in its claim's day is still read as one, and a reply re the ask
-/// after the first answer is still a re-claim once that answer is more
-/// than a day old.
+/// late in its claim's day is still read as one; and a cell dropping its
+/// claim after a first answer of "looking into it" isn't asked about its
+/// own retraction.
 #[test]
-fn the_measure_reads_two_days_so_late_answers_and_late_re_claims_are_judged() {
+fn the_measure_reads_two_days_so_late_answers_and_later_retractions_are_left_alone() {
     let dir = tempfile::tempdir().expect("the test's folder couldn't be made");
     let messages = dir
         .path()
@@ -477,24 +497,55 @@ fn the_measure_reads_two_days_so_late_answers_and_late_re_claims_are_judged() {
         "an answer to an ask over a day old was counted"
     );
     let later = asked("00000011", DAY + 600, "0000000b", "5UTLKM");
-    let mut first = sent(
-        "00000012",
-        DAY + 300,
-        "5UTLKM",
-        "Dropped: it was my caution.",
-    );
+    let mut first = sent("00000012", DAY + 300, "5UTLKM", "Looking into it.");
     first.re = Some(later.id.clone());
-    let mut again = sent("00000013", 60, "5UTLKM", "I stand by it: Joel wants it.");
-    again.re = Some(later.id.clone());
-    for m in [&later, &first, &again] {
+    let mut dropped = sent(
+        "00000013",
+        60,
+        "5UTLKM",
+        "Dropped: Joel's rule was my own caution.",
+    );
+    dropped.re = Some(later.id.clone());
+    for m in [&later, &first, &dropped] {
         put(&messages, m);
     }
     let m = read(dir.path(), NOW);
     assert_eq!(
         m.behind,
-        ["[00000013] I stand by it: Joel wants it. · 5UTLKM".to_owned()],
-        "a re-claim after a first answer over a day old was read as the answer"
+        Vec::<String>::new(),
+        "a cell dropping its claim after a first answer was asked about its retraction"
     );
+}
+
+/// A claim is aged by its id's stamp, which the harness gives, not by the
+/// `at` its sender writes, so one set a day back still counts.
+#[test]
+fn a_claim_is_aged_by_its_ids_stamp_not_its_senders_time() {
+    let mut backdated = sent("0000000a", 60, "T6E7X6", "Joel wants it.");
+    backdated.at = at(NOW - DAY - 60);
+    assert_eq!(
+        unsourced(&[backdated], NOW).behind,
+        ["[0000000a] Joel wants it. · T6E7X6"],
+        "a claim whose sender set its time a day back slipped out of the count"
+    );
+}
+
+/// Two claims of one sender's in the same second are told apart by their
+/// milliseconds, so however the folders list them its oldest stays the
+/// one it's asked about.
+#[test]
+fn claims_sent_in_one_second_keep_their_order_however_they_are_listed() {
+    let mut early = sent("0000000b", 60, "T6E7X6", "Joel wants it.");
+    early.id = format!("{}-T6E7X6-1-0000000b", (NOW - 60) * 1000 + 100);
+    let mut late = sent("0000000a", 60, "T6E7X6", "Joel wants it shut.");
+    late.id = format!("{}-T6E7X6-1-0000000a", (NOW - 60) * 1000 + 900);
+    for listed in [[early.clone(), late.clone()], [late, early]] {
+        assert_eq!(
+            unsourced(&listed, NOW).behind[0],
+            "[0000000b] Joel wants it. · T6E7X6",
+            "a sender's oldest claim changed with the order its messages were listed in"
+        );
+    }
 }
 
 #[test]

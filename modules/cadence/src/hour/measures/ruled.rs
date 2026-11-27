@@ -7,25 +7,30 @@
 //!
 //! A claim is backed when its sentence, or the one before or after it,
 //! says when he said it: a date, as "26 Nov" or "2026-11-26" or "Thu
-//! 26", or a clock time, tied to his saying. It follows his name with
-//! only words of saying between, as "Joel, 11:30"; or follows he, his or
-//! him past a word of his saying, as "he said on 22 Nov"; or leads his
-//! name or he with a word of his saying next, as "On 22 Nov, Joel ruled
-//! it". A date anywhere else dates something else, as a deadline, the
-//! hour a rule was broken, or when a cell told him, and a quote with no
-//! date may be the claimer's own words for the rule. A claim inside quotes or
-//! backticks is words about a claim, not one. Each claim in a message is
-//! judged, so one backed claim hides no other.
+//! 26", or a clock time, tied to his saying. It follows his name, he,
+//! his or him, with only words of saying between, and is tied to his
+//! saying by nothing but a stop between, as "Joel, 11:30", by a word of
+//! his saying between or just after, as "he said on 22 Nov" or "Joel at
+//! 10:05 said", or by the rule it dates, as "Joel's rule of 22 Nov"; or
+//! it leads his name or he with a word of his saying next, as "On 22 Nov,
+//! Joel ruled it". A date anywhere else dates something else, as a
+//! deadline, the hour a rule was broken, or when a cell told him, and a
+//! quote with no date may be the claimer's own words for the rule. A claim
+//! inside quotes or backticks is words about a claim, not one. Each claim
+//! in a message is judged, so one backed claim hides no other.
 //!
 //! A denial, as "not Joel's rule", claims nothing, and nor does a line
-//! of cadence's own card passed on, as `[0000000a] ... · T6E7X6`.
+//! of cadence's own card passed on, as `[0000000a] ... · T6E7X6` or a
+//! measure's own line, as `✓ pains Joel said ...: 0, at most 0`.
 //!
-//! Cadence's own messages are left out, and so is the first answer to its
-//! ask, re the ask or re the claim, from the cell asked. An answer takes
-//! its claim off the count, whatever it says: cadence can't judge whether
-//! the words given are his, so the answer is read by whoever reads the
-//! mesh. A message whose id isn't well formed, or names another sender,
-//! is read as no one's, since its asks would go astray.
+//! Cadence's own messages are left out, and so is every reply to its ask,
+//! re the ask or re the claim, from the cell asked: the ask tells it to
+//! say the claim is dropped, and the words it drops it in name the claim.
+//! The first such reply is the answer, and takes its claim off the count,
+//! whatever it says: cadence can't judge whether the words given are his,
+//! so the answer is read by whoever reads the mesh. A message whose id
+//! isn't well formed, or names another sender, is read as no one's, since
+//! its asks would go astray.
 //!
 //! The mesh is a shared folder with nothing signed, so this counts the
 //! cells that write through the harness as it is meant to be used: a
@@ -55,12 +60,14 @@ const SAYS: &str = "messages in the last day saying Joel ruled or wants somethin
 
 /// The words that claim a rule or wish of Joel's, lower case, each read
 /// only where a word starts.
-const CLAIMS: [&str; 17] = [
+///
+/// "Joel's call" isn't among them: in this repository it names his phone
+/// and video calls far more often than his decisions.
+const CLAIMS: [&str; 16] = [
     "joel's rule",
     "joel's standing rule",
     "joel's wish",
     "joel's will",
-    "joel's call",
     "joel ruled",
     "joel rules",
     "joel wants",
@@ -136,7 +143,7 @@ const SAID: [&str; 9] = [
 
 /// The names of a rule, which stand between his name and its date only
 /// as "Joel's rule of 22 Nov": "Joel's rule at 10:08" dates its breaking.
-const RULES: [&str; 5] = ["rule", "ruling", "wish", "call", "orders"];
+const RULES: [&str; 4] = ["rule", "ruling", "wish", "orders"];
 
 /// The words that deny a claim they come just before, lower case.
 const DENIALS: [&str; 10] = [
@@ -160,10 +167,11 @@ const TORN_LONGEST: usize = 48;
 
 /// The measure, from the mesh's messages of the last two days under
 /// `state_home`'s harness folder. Only the last day's are judged, but an
-/// ask sent late in a claim's day may be answered after it, and a later
-/// reply to an ask is a re-claim only while the first answer is still
-/// read, so both days are read. With no messages folder there, or one that can't be listed or
-/// read, it's left unjudged, rather than reading the messages it missed
+/// ask sent late in a claim's day may be answered after it, so both days
+/// are read. Only cadence's own, replies, and those naming him are kept,
+/// since nothing else can claim, ask or answer, and two days of the mesh
+/// held whole would weigh on the hour. With no messages folder there, or
+/// one that can't be listed or read, it's left unjudged, rather than reading the messages it missed
 /// as none unsourced and closing their asks. A file that isn't a message
 /// is named in what it says and read past.
 #[must_use]
@@ -174,7 +182,9 @@ pub fn read(state_home: &Path, now: i64) -> Measure {
     if !mesh.root.join("mesh-workflow/messages").is_dir() {
         return unread("no mesh messages folder here");
     }
-    match mesh.sent_as_named((now - 2 * DAY) * 1000, (now + AHEAD) * 1000) {
+    let used =
+        |m: &Message| m.from == CADENCE || m.re.is_some() || m.text.to_lowercase().contains("joel");
+    match mesh.sent_as_named((now - 2 * DAY) * 1000, (now + AHEAD) * 1000, used) {
         Ok((sent, torn)) if torn.is_empty() => unsourced(&sent, now),
         Ok((sent, torn)) => {
             let mut named: Vec<String> = torn
@@ -212,7 +222,11 @@ fn clean(text: &str) -> String {
         c.is_control()
             || matches!(
                 c,
-                '\u{200b}'..='\u{200f}' | '\u{2028}'..='\u{202e}' | '\u{2060}'..='\u{2069}'
+                '\u{061c}'
+                    | '\u{180e}'
+                    | '\u{200b}'..='\u{200f}'
+                    | '\u{2028}'..='\u{202e}'
+                    | '\u{2060}'..='\u{2069}'
                     | '\u{feff}'
             )
     };
@@ -259,7 +273,12 @@ pub fn unsourced(sent: &[Message], now: i64) -> Measure {
         .filter(|&(at, _)| at > now - DAY && at <= now)
         .filter_map(|(at, m)| Some((at, m, unbacked(&m.text)?)))
         .collect();
-    found.sort_by_key(|&(at, _, _)| at);
+    // By the millisecond, and by id within one, so two claims sent in the
+    // same second keep their order however the folders list them, and a
+    // sender's oldest, the one it's asked about, never changes hands.
+    found.sort_by(|(_, a, _), (_, b, _)| {
+        (stamped_at(&a.id), &a.id).cmp(&(stamped_at(&b.id), &b.id))
+    });
     Measure {
         key: KEY.to_owned(),
         class: Class::Cells,
@@ -297,14 +316,15 @@ fn stamp(m: &Message) -> Option<i64> {
     stamped_at(&m.id).map(|ms| ms / 1000)
 }
 
-/// The ids of the answers in `sent` to a claim of his rule, and the claims
-/// they answer, by sender and short id. Only a claim this measure asked
-/// about has an answer: the first reply, after the ask, from the cell it
-/// asked, re its ask or re the claim the ask names. The ask, not the
-/// claim, says who may answer, so an answer counts after its claim has
-/// left the day. A later reply, one before the ask, one re a message never
-/// asked about, or one re any other of cadence's, is judged as any other
-/// message, so a cell can't keep claiming his rule under its first answer.
+/// The ids of the replies in `sent` to an ask about a claim of his rule,
+/// and the claims answered, by sender and short id. Only a claim this
+/// measure asked about has an answer: the first reply, after the ask, from
+/// the cell it asked, re its ask or re the claim the ask names. The ask,
+/// not the claim, says who may answer, so an answer counts after its
+/// claim has left the day. A later reply of the cell asked, re either, is
+/// not judged either, since a cell dropping the claim names it; but it
+/// answers nothing. A reply before the ask, one re a message never asked
+/// about, or one re any other of cadence's, is judged as any other.
 fn answers<'a>(sent: &[&'a Message]) -> (BTreeSet<&'a str>, BTreeSet<(&'a str, &'a str)>) {
     let asks: Vec<(&str, &str, &Message)> = sent
         .iter()
@@ -328,8 +348,7 @@ fn answers<'a>(sent: &[&'a Message]) -> (BTreeSet<&'a str>, BTreeSet<(&'a str, &
             continue;
         };
         let claim = claim_of.get(re).copied().unwrap_or(re);
-        let first = !answered.contains(&(m.from.as_str(), claim));
-        if first && asked_before(claim, &m.from, stamped_at(&m.id)) {
+        if asked_before(claim, &m.from, stamped_at(&m.id)) {
             answers.insert(m.id.as_str());
             answered.insert((m.from.as_str(), claim));
         }
@@ -367,21 +386,41 @@ fn plain(text: &str) -> String {
 }
 
 /// `text` with no line of cadence's card in it: neither a claim the card
-/// names, as `[0000000a] I broke Joel's rule. · T6E7X6`, nor what the
+/// names, as `[0000000a] I broke Joel's rule. · T6E7X6`, nor a measure's
+/// line, as `✓ pains Joel said that nobody has taken up: 0, at most 0` or
+/// the drag's `Drag: ..., 3 against at most 0, ...`, nor what this
 /// measure says it counts. The card is made to be passed on, and a cell
-/// passing it on claims nothing of its own.
+/// passing it on claims nothing of its own. Each is held to the card's
+/// own shape, a short id of eight hex digits or a measure's figure, so a
+/// line merely bracketed or ticked is still read.
 fn uncarded(text: &str) -> String {
     let plain = |part: &str| !part.is_empty() && part.chars().all(|c| c.is_ascii_alphanumeric());
+    let short = |id: &str| {
+        id.len() == 8
+            && id
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    };
+    let figured = |line: &str| {
+        line.rsplit_once(": ")
+            .is_some_and(|(_, figure)| figure.starts_with(|c: char| c.is_ascii_digit()))
+    };
     let carded = |line: &str| {
         let line = line.trim_start_matches(|c: char| c.is_whitespace() || c == '-' || c == '*');
         let named = line
             .strip_prefix('[')
             .and_then(|rest| rest.split_once("] "))
-            .is_some_and(|(id, _)| plain(id));
-        named
+            .is_some_and(|(id, _)| short(id))
             && line
                 .rsplit_once(" · ")
-                .is_some_and(|(_, from)| plain(from.trim_end()))
+                .is_some_and(|(_, from)| plain(from.trim_end()));
+        let measured = ["✓ ", "✕ ", "· "]
+            .iter()
+            .any(|mark| line.strip_prefix(mark).is_some_and(figured));
+        let drag = line
+            .strip_prefix("Drag: ")
+            .is_some_and(|rest| rest.contains(" against at most "));
+        named || measured || drag
     };
     text.lines()
         .filter(|line| !carded(line))
@@ -504,8 +543,21 @@ fn dated_by_him(sentence: &str) -> bool {
             let named = lower[him].starts_with("joel");
             let after = (him + 1..tokens.len()).take(BESIDE + 1);
             let before = (0..him).rev().take(BESIDE + 1);
-            let follows = reached(after, starts, saying)
-                .is_some_and(|date| named || (him + 1..date).any(said));
+            // "I told Joel at 10:08" has only words of saying between, as
+            // "Joel at 10:05 said" does: the date is his only when tied to
+            // his saying, as "per Joel" ties it, or set straight after his
+            // name.
+            let past = |date: usize| date + if timed(date) { 1 } else { 2 };
+            let per = him > 0 && lower[him - 1] == "per";
+            let his_saying = |date: usize| {
+                let between = him + 1..date;
+                per || (named && between.clone().all(|at| lower[at].is_empty()))
+                    || between
+                        .clone()
+                        .any(|at| said(at) || RULES.contains(&lower[at].as_str()))
+                    || said(past(date))
+            };
+            let follows = reached(after, starts, saying).is_some_and(his_saying);
             let leads = reached(before, ends, saying).is_some() && says_next(him);
             follows || leads
         })

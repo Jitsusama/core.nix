@@ -162,7 +162,8 @@ pub fn drag(measures: &[Measure]) -> Option<&Measure> {
 
 /// The measures read from the mesh's messages under `state_home`: the
 /// holds no ask in `asks` dates, over the last two hours, and the claims
-/// of Joel's rule with no word of his, over the last day. Each reads the
+/// of Joel's rule with no word of his, judged over the last day from two
+/// days read. Each reads the
 /// messages itself, since each reads a different span; they're gathered
 /// in one call so the hour's gather stays within clippy's hundred.
 #[must_use]
