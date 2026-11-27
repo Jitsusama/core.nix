@@ -2136,26 +2136,14 @@ impl crate::replay::Controller for Controller {
 /// three dips are the path's.
 const THIRD_FROM: usize = 10;
 
-/// A round trip this close to the one heard before it is that one again:
-/// the controller is told the VPN's median about once a second, and
-/// stamps it on every second drained since, so one lucky median can be
-/// heard twice in a row (base third-least round 1's F33).
-const SAME_MS: f64 = 0.001;
-
-/// The third-least of `heard`, each run of one round trip heard again in a
-/// row counted once, or its least while it holds fewer than `THIRD_FROM`,
-/// or none while it holds none: three running minima, so the five minutes
-/// of round trips `VPN_LEAST_S` keeps aren't sorted each second.
+/// The third-least of `heard`, or its least while it holds fewer than
+/// `THIRD_FROM`, or none while it holds none: three running minima, so the
+/// five minutes of round trips `VPN_LEAST_S` keeps aren't sorted each
+/// second.
 fn third_least(heard: impl ExactSizeIterator<Item = f64>) -> Option<f64> {
     let enough = heard.len() >= THIRD_FROM;
     let (mut first, mut second, mut third) = (f64::INFINITY, f64::INFINITY, f64::INFINITY);
-    let mut before = f64::NAN;
     for ms in heard {
-        let again = (ms - before).abs() < SAME_MS;
-        before = ms;
-        if again {
-            continue;
-        }
         if ms < first {
             (first, second, third) = (ms, first, second);
         } else if ms < second {
@@ -4194,25 +4182,6 @@ mod tests {
             third_least(std::iter::empty()),
             None,
             "no round trip answered one"
-        );
-    }
-
-    #[test]
-    fn one_median_stamped_on_two_seconds_is_one_dip() {
-        let mut heard = vec![60.0; 20];
-        heard[5] = 40.0;
-        heard[6] = 40.0;
-        heard[12] = 41.0;
-        assert_eq!(
-            third_least(heard.iter().copied()),
-            Some(60.0),
-            "one median heard twice in a row counted as two dips"
-        );
-        heard[15] = 42.0;
-        assert_eq!(
-            third_least(heard.iter().copied()),
-            Some(42.0),
-            "three dips apart didn't move the base"
         );
     }
 
