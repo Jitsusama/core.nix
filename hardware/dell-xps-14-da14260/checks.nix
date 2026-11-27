@@ -18,18 +18,18 @@ let
     ipu7-drivers
     ;
   # A few files of a source, with each patch given applied to them, as the
-  # machine builds them (tests/patched-kernel-source.sh).
+  # machine builds them (core's kernel's tests/patched-kernel-source.sh).
   patched =
     source: patches: files:
     pkgs.runCommandLocal "patched-source" { nativeBuildInputs = [ pkgs.patchutils ]; } ''
-      ${lib.getExe pkgs.bash} ${./tests/patched-kernel-source.sh} ${source} ${
+      ${lib.getExe pkgs.bash} ${../../modules/kernel/tests/patched-kernel-source.sh} ${source} ${
         pkgs.writeText "patches" (lib.concatMapStrings (patch: "${patch}\n") patches)
       } $out ${lib.escapeShellArgs files}
     '';
+  # Every patch the XPS 14's kernel is built with, in the order it applies them.
+  kernelPatches = lib.filter (patch: patch != null) (map (patch: patch.patch) kernel.kernelPatches);
   # A few files of the kernel's source, as the XPS 14 builds them.
-  kernelSource = patched kernel.src (
-    lib.filter (patch: patch != null) (map (patch: patch.patch) kernel.kernelPatches)
-  );
+  kernelSource = patched kernel.src kernelPatches;
 in
 {
   # The GPU's security controller waits 20 s from xe's start for its link
@@ -267,20 +267,44 @@ in
   # afresh, so the power-off after found it still in its bootloader and
   # refused, rolling the hibernation back with the laptop left on. Nothing
   # takes the driver off the chip for it any more, so its thaw must be the
-  # plain wake btintel-pcie-pm makes it, and never the resume that resets.
+  # plain wake the kernel has made it since 7.3.6, and every reset in the
+  # wake it shares must sit under a test a thaw can't meet. The driver's C
+  # is read as tests and blocks, not as words, so an else, a second reset
+  # or a braceless if is judged too (tests/thaw-is-a-plain-wake.py).
   bluetooth-lets-a-hibernation-power-off =
     let
       driver = "drivers/bluetooth/btintel_pcie.c";
     in
-    pkgs.runCommandLocal "bluetooth-lets-a-hibernation-power-off" { } ''
-      source=${kernelSource [ driver ]}/${driver}
-      if ! grep -q '\.thaw = btintel_pcie_thaw,' "$source" ||
-        grep -q '\.thaw = btintel_pcie_resume,' "$source"; then
-        echo "Bluetooth's thaw resets its chip, so a hibernation's power-off can be refused." >&2
-        exit 1
-      fi
-      touch $out
-    '';
+    pkgs.runCommandLocal "bluetooth-lets-a-hibernation-power-off"
+      { nativeBuildInputs = [ pkgs.python3 ]; }
+      ''
+        python3 ${./tests/thaw-is-a-plain-wake.py} ${kernelSource [ driver ]}/${driver}
+        touch $out
+      '';
+
+  # The patches taken from linux-next were made against 7.3 as the XPS 14
+  # builds it, and next.nix says each applies with no offset or fuzz. A
+  # point release moved two of them under that claim with nothing to say
+  # so, so they're applied here as the build applies them, held to their
+  # hunks' own lines (tests/patches-apply-exactly.sh).
+  the-patches-from-linux-next-apply-exactly =
+    let
+      fromNext = lib.filter (
+        patch: lib.hasPrefix "${toString ./kernel/next}/" (toString patch)
+      ) kernelPatches;
+      list = patches: pkgs.writeText "patches" (lib.concatMapStrings (patch: "${patch}\n") patches);
+    in
+    assert lib.assertMsg (fromNext != [ ]) (
+      "The XPS 14 takes no patch from linux-next now: drop "
+      + "the-patches-from-linux-next-apply-exactly along with kernel/next.nix."
+    );
+    pkgs.runCommandLocal "the-patches-from-linux-next-apply-exactly"
+      { nativeBuildInputs = [ pkgs.patchutils ]; }
+      ''
+        ${lib.getExe pkgs.bash} ${./tests/patches-apply-exactly.sh} ${kernel.src} \
+          ${list kernelPatches} ${list fromNext} "$TMPDIR/source"
+        touch $out
+      '';
 
   # Bluetooth's chip once halted with an exception dump the driver couldn't
   # read, and as only a dump it could read led to a reset, the chip stayed

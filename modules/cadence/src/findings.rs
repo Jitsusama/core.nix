@@ -77,6 +77,11 @@ pub struct Entry {
     /// `cadence owe --done`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fixed: Option<String>,
+    /// When its owner closed a drag with `cadence owe --done`, in
+    /// seconds, so one its measure counts over a week isn't filed again
+    /// the next hour from the cases the fix came after.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub closed: Option<i64>,
 }
 
 /// Whether a count is nought, so a line never reopened stays as it was.
@@ -218,6 +223,7 @@ pub fn update(
                 put_to: Vec::new(),
                 back: None,
                 fixed: None,
+                closed: None,
             });
         }
     }

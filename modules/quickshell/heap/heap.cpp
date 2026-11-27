@@ -70,17 +70,21 @@
 // until the next collection let one opening of Joel's shell run two whole
 // collections 16 s apart, each inside a key, 115 ms of its 175 and 193
 // (2026-11-19). A miss never starts the collector later than twice the room
-// past what the chunks held at the first ask since a collection ended, nor
-// sooner than Qt itself would, so a heap whose sweeps keep a few items in
-// each chunk it grew into doesn't grow by the room at every one; an ask
+// past what the chunks held at the first ask since a collection ended, and
+// twice what the sweeps kept beyond what the last kept then, nor sooner than Qt
+// itself would, so a heap whose sweeps keep a few items in each chunk it
+// grew into doesn't grow by the room at every one, and one kept past the
+// two rooms isn't collected at every miss: two of Joel's openings, their
+// items too large for the runs the sweeps left, spent 1955 and 1949 ms of
+// their 3269 and 3320 collecting once for each chunk (2026-11-25); an ask
 // with no collection since the last, the opening's after the closing's or
 // one for another room, shares its ceiling; and it reckons from what each
 // sweep left, not from where leaveRoom set it, so asking twice leaves the
 // room once. weigh() says where the next starts. Every ask after a
 // collection moves the ceiling, so such a heap may climb by twice the room
-// at each: four rooms between closings when one ran while the launcher was
-// shut, six with the census, where main let it climb by the room at each
-// ask. The closing's line says what it holds.
+// at each, and twice what its sweeps kept: four rooms between closings when
+// one ran while the launcher was shut, six with the census, besides what
+// was kept, where main let it climb by the room at each ask. The closing's line says what it holds.
 //
 // What jemalloc holds is read because the shell's memory outside its heap
 // and files was 165 to 200 MB on Joel's shell, against 126 in the lab,
@@ -335,6 +339,10 @@ QVariantMap Heap::weigh() const {
     const std::optional<std::size_t> resident = residentHeld(*manager);
     const std::optional<std::size_t> freeObjects = freePages(manager->blockAllocator);
     const std::optional<std::size_t> freeShapes = freePages(manager->icAllocator);
+    // A chunk the kernel won't say the pages of makes free unknown, rather
+    // than nothing, as it does resident.
+    const double freeMB =
+        freeObjects && freeShapes ? megabytes(*freeObjects + *freeShapes) : -1.0;
     return {
         {QStringLiteral("live"), megabytes(manager->getRegularItemsMem() + large)},
         {QStringLiteral("held"), megabytes(manager->getAllocatedMem())},
@@ -343,9 +351,7 @@ QVariantMap Heap::weigh() const {
         {QStringLiteral("collectsAt"), megabytes(manager->heldBeforeCollecting())},
         {QStringLiteral("collectsOutsideAt"), megabytes(manager->unmanagedHeapSizeGCLimit)},
         {QStringLiteral("outside"), megabytes(manager->unmanagedHeapSize)},
-        // A chunk the kernel won't say the pages of makes free unknown, rather
-        // than nothing, as it does resident.
-        {QStringLiteral("free"), freeObjects && freeShapes ? megabytes(*freeObjects + *freeShapes) : -1.0},
+        {QStringLiteral("free"), freeMB},
     };
 }
 

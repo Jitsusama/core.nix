@@ -1,7 +1,7 @@
-// The shapes and words by which Presented.js's keyShown, kindsLed, appShown and actShown tell how
-// much of a row's key a journal line may say with reports off: what the launcher and its daemons
-// write there, as against what someone else did. Data alone, kept apart from the code that reads
-// it, so Presented.js stays one file biome can hold to its length.
+// The shapes and words by which Presented.js's keyShown, kindsLed and appShown, and ActsSaid.js's
+// actShown, tell how much of a row's key a journal line may say with reports off: what the
+// launcher and its daemons write there, as against what someone else did. Data alone, kept apart
+// from the code that reads it, so Presented.js stays one file biome can hold to its length.
 .pragma library
 
 // The kinds of key the launcher gives its own rows, whose rest, where it has an id's shape

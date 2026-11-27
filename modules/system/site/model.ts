@@ -175,12 +175,29 @@ function thingOf(held: Held, key: string, unread: string[]): Thing | undefined {
     unread.push(`${key} has no name`);
     return undefined;
   }
+  const sided = texts(record, "side");
+  const listed = looksOf(record);
+  // A list and a side that disagree on whether there is anything to look at
+  // are a record caught between its two fields, either way round, so the side
+  // says them, as the machine's health is read beside it. A side the page
+  // can't read is no tear: the list is then all there is to go by.
+  const torn =
+    listed !== undefined && sided !== undefined && (listed.length === 0) !== (sided.length === 0);
+  const sent = record["looks"] !== undefined && record["looks"] !== null;
+  if (sent && (listed === undefined || torn)) {
+    unread.push(`${key}'s looks, so the page goes by its side alone, with no whys`);
+  }
+  // A side sent but unreadable is said too, since beside an empty list a bad
+  // machine would otherwise read as having nothing worth a look.
+  if (record["side"] !== undefined && record["side"] !== null && sided === undefined) {
+    unread.push(`${key}'s side, so the page goes by its looks alone`);
+  }
   return {
     name,
     health: healthOf(text(record, "health")),
     says: text(record, "says") ?? "",
-    side: texts(record, "side") ?? [],
-    looks: looksOf(record),
+    side: sided ?? [],
+    looks: torn ? undefined : listed,
     address: text(record, "address"),
     ties: tiesOf(record["ties"]),
   };

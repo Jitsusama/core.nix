@@ -18,6 +18,8 @@ rustPlatform.buildRustPackage rec {
       ./Cargo.lock
       ./src
       ./tests
+      ../subject-hubs/Cargo.toml
+      ../subject-hubs/src
       ../terminal-kit/Cargo.toml
       ../terminal-kit/src
     ];

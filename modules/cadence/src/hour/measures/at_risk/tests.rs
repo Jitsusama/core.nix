@@ -422,3 +422,17 @@ fn an_ask_is_read_from_its_latest_line_and_the_list_s_own_apart() {
     assert_eq!(ours.behind.len(), 1, "the derived ask went uncounted");
     assert_eq!(ours.key, "dates-at-risk-derived", "the list's own key");
 }
+
+#[test]
+fn a_twin_folded_into_an_ask_doesnt_close_its_date_at_risk() {
+    let mut ask = ask_waiting("fold", "F", (NOW + 3 * 3600, "core.nix#6595"), &json!({}));
+    ask["id"] = "0a1b2c3d".into();
+    let twin = super::super::slipped::twin(&ask, NOW - 60);
+    let m = read(&list(&[ask, twin]));
+    assert_eq!(
+        m.behind.len(),
+        1,
+        "a twin written after its ask closed its date at risk: {:?}",
+        m.behind
+    );
+}
