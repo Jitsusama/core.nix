@@ -239,6 +239,9 @@ pub struct Memory {
     /// to shares, or where some copy's share couldn't be read. None for a
     /// day kept with looks before this count was, whose looks' measure
     /// isn't known, rather than 0, which would say they were all by Rss.
+    /// Left out of the file then, not written as null, which a build
+    /// holding a plain count can't read, so it would start the day afresh.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub looks_by_pss: Option<u64>,
 }
 
@@ -693,6 +696,42 @@ mod tests {
             "by Pss",
             "more by Pss than copies reads as all, not a wrapped count"
         );
+    }
+
+    #[test]
+    fn a_day_of_unknown_count_reads_back_on_a_build_that_counts_plainly() {
+        /// The day as a build holding the count as a plain number reads it.
+        #[derive(Debug, Default, Deserialize)]
+        #[serde(default)]
+        struct Plain {
+            looks: u64,
+            looks_by_pss: u64,
+        }
+        let unknown = Memory {
+            looks: 3,
+            ..Memory::default()
+        };
+        let written = serde_json::to_string(&unknown).expect("a day written");
+        assert!(
+            !written.contains("looks_by_pss"),
+            "an unknown count is left out, not null: {written}"
+        );
+        let plain: Plain = serde_json::from_str(&written).expect("the plain build reads it");
+        assert_eq!((plain.looks, plain.looks_by_pss), (3, 0));
+        let counted = Memory {
+            looks: 3,
+            looks_by_pss: Some(2),
+            ..Memory::default()
+        };
+        let written = serde_json::to_string(&counted).expect("a day written");
+        let again: Memory = serde_json::from_str(&written).expect("read back");
+        assert_eq!(
+            again.looks_by_pss,
+            Some(2),
+            "a known count reads back: {written}"
+        );
+        let plain: Plain = serde_json::from_str(&written).expect("the plain build reads it");
+        assert_eq!(plain.looks_by_pss, 2);
     }
 
     #[test]
