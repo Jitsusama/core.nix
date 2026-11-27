@@ -40,7 +40,8 @@
 //! evaluation, or whose rule crashed, which said nothing of what it never
 //! reached. A derivation that failed for another reason than its builder or
 //! a dependency, one no check names, a check that no longer evaluates, a
-//! build no builder took, more failed checks than `MOST_REBUILT`, and a
+//! check the riders added, whose flake is theirs to fix before it reaches
+//! main, a build no builder took, more failed checks than `MOST_REBUILT`, and a
 //! check excused as a flake twice already in the ride count as the riders',
 //! so the train splits on them as before, its log saying why of each, so a
 //! judging that couldn't finish reads apart from a rider's break. Each
@@ -57,6 +58,7 @@ use serde_json::json;
 
 pub(super) use self::lent::{Lenders, Lent};
 use checks_said::{added, built, held_at, quarantined};
+use owner::{MOST_OWNER_MERGES, owner_in};
 
 use super::gated::{CHANGED_FAILED, Gated, RUNS_AGAIN, gated};
 use crate::state::{State, now, short};
@@ -81,6 +83,8 @@ pub(super) enum Blame {
     Spent,
     /// It wasn't built again, since a check before it was the riders'.
     Unbuilt,
+    /// The riders added it, so its red, flake or break, is theirs.
+    Added,
     /// It passed at the base, and at the candidate when built again.
     Flaky,
     /// It fails at the base too, and only as it fails there.
@@ -383,18 +387,17 @@ pub(super) fn fails_as_at_base(words: &str, base: &str, derivation: &str) -> boo
 /// passes there, at the candidate. A check the ride can excuse no more
 /// is built at the base only where its red there could still be main's.
 fn blame(words: &str, check: &str, derivation: &str, judging: &mut Judging<'_>) -> Blame {
+    // No commit but the riders' holds a check they added, so none else can
+    // own its red, and a flake of it would reach main with them.
+    if added(words).contains(check) {
+        return Blame::Added;
+    }
     let rule = REPORTS_EVERY_FAILURE.contains(&check);
     let spent = (judging.excused_before)(check) >= MOST_EXCUSED;
     if spent && !rule {
         return Blame::Spent;
     }
-    // A check the riders added isn't at the base, so only its build again
-    // at the candidate tells a flake of theirs from their break.
-    let (at_base, base_words) = if added(words).contains(check) {
-        (Gated::Passed, String::new())
-    } else {
-        (judging.at_base)(check)
-    };
+    let (at_base, base_words) = (judging.at_base)(check);
     match at_base {
         Gated::Red if !rule => Blame::Masked,
         Gated::Red if judging.rules_moved => Blame::RuleMoved,
@@ -643,13 +646,22 @@ fn tell(root: &Path, url: &str, red: &Red<'_>, judged: &[(String, Blame)]) {
             | Blame::RuleMoved
             | Blame::Untaken
             | Blame::Spent
-            | Blame::Unbuilt => {
+            | Blame::Unbuilt
+            | Blame::Added => {
                 continue;
             }
         };
+        // Told already at this base, by an earlier ride: its owner isn't
+        // looked for again, since each merge looked at costs evaluations.
+        if state.found(kind, check, red.base) {
+            continue;
+        }
         let owner = owner_in(root, url, red, check, &failed);
         if owner.is_none() {
-            println!("merge-net: no merge since the last passed head owns {check}");
+            println!(
+                "merge-net: no merge of the last {MOST_OWNER_MERGES} since the last passed head \
+                 owns {check}"
+            );
         }
         // The red's own words are the gate's: a flake's rebuild passed.
         let finding = json!({
@@ -666,28 +678,6 @@ fn tell(root: &Path, url: &str, red: &Red<'_>, judged: &[(String, Blame)]) {
             println!("merge-net: the finding for {check} wasn't written: {why}");
         }
     }
-}
-
-/// The PR that owns `check`, failed beside `failed`, as the net's watch
-/// reads an owner: the newest merge from the head it last passed to the
-/// candidate's base that moved the check, at the repository `url`, under
-/// the state folder `root`; none where it passed nothing yet, or finds no
-/// such merge. The merges are read in the train's checkout, which has just
-/// fetched the base, rather than the watch's clone, which may not hold it.
-fn owner_in(root: &Path, url: &str, red: &Red<'_>, check: &str, failed: &[String]) -> Option<u64> {
-    let passed = State::at(root.to_path_buf()).heads().0?;
-    let world = crate::world::Real {
-        state: root.to_path_buf(),
-        checkout: red.checkout.to_path_buf(),
-        url: url.to_owned(),
-        system: crate::SYSTEM.to_owned(),
-        booted: 0,
-        branch: "main".to_owned(),
-        moving: std::sync::Mutex::new(()),
-        dropped: std::sync::Mutex::default(),
-        follow: None,
-    };
-    crate::watch::owner_of(&world, &passed, red.base, check, failed)
 }
 
 /// How the train says whose a red is.
@@ -707,6 +697,7 @@ fn said(blamed: Blame) -> &'static str {
             "was excused as a flake as often as a ride excuses one, so it's taken as its riders'"
         }
         Blame::Unbuilt => "wasn't built again, a check before it being its riders'",
+        Blame::Added => "was added by its riders, so it's theirs",
         Blame::Flaky => "passed at the base and when built again, so it's a flake",
         Blame::Main => "fails at the base too, and only as it fails there, so it's main's",
     }
@@ -742,8 +733,7 @@ fn built_log(root: &Path, candidate: &str, check: &str, how: &str) -> PathBuf {
 /// How a check built at the base ended, from its exit `code` and `words`:
 /// red only where a builder failed, since then main itself fails it. Any
 /// other failure, an evaluation's or a fetch's, says nothing of main's
-/// check, and a check the riders add isn't at the base to evaluate, so it
-/// reads as untaken and the red stays the riders'.
+/// check, so it reads as unsent and the red stays the riders'.
 pub(super) fn at_base(code: Option<i32>, words: &str) -> Gated {
     match code {
         Some(0) => Gated::Passed,
@@ -765,6 +755,8 @@ fn plainly_named(check: &str) -> bool {
 mod checks_said;
 #[path = "flaky/lent.rs"]
 mod lent;
+#[path = "flaky/owner.rs"]
+mod owner;
 
 #[cfg(test)]
 #[path = "flaky/owner_tests.rs"]

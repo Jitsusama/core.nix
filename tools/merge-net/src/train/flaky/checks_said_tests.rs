@@ -1,6 +1,6 @@
 //! A red as changed-checks' own words shape its judging: beside a check
 //! main's quarantine excused, judged without it, but only one main's list
-//! holds; and of a check the riders added, which no base has.
+//! holds; and of a check the riders added, which is theirs.
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
@@ -129,9 +129,13 @@ fn only_changed_checks_says_which_check_the_quarantine_excused() {
 
 /// Main's list is read at the base, and only what it excuses whole is
 /// held: a test listed for some of its subtests still fails its own way.
+/// A list git can't show or serde can't read holds nothing.
 #[test]
 fn what_mains_quarantine_holds_is_read_at_the_base() {
-    let checkout = std::env::temp_dir().join(format!("merge-net-held-{}", std::process::id()));
+    // A name of its own: a turn test of this binary keeps
+    // merge-net-held-{pid}, and tests run beside each other.
+    let checkout =
+        std::env::temp_dir().join(format!("merge-net-held-at-base-{}", std::process::id()));
     let _ = fs::remove_dir_all(&checkout);
     fs::create_dir_all(checkout.join("tools/merge-net")).unwrap();
     git(&checkout, &["init", "-q", "-b", "main"]).unwrap();
@@ -155,27 +159,36 @@ fn what_mains_quarantine_holds_is_read_at_the_base() {
         held_at(&checkout, &before).is_empty(),
         "a base whose list isn't there held a check"
     );
+    assert!(
+        held_at(&checkout, &"0".repeat(40)).is_empty(),
+        "a base the checkout lacks held a check"
+    );
+    fs::write(checkout.join(QUARANTINE), format!(r#"[{{"test": "{HELD}""#)).unwrap();
+    git(&checkout, &["commit", "-q", "-am", "broken"]).unwrap();
+    let broken = git(&checkout, &["rev-parse", "HEAD"]).unwrap();
+    assert!(
+        held_at(&checkout, &broken).is_empty(),
+        "a list that isn't JSON held a check"
+    );
     fs::remove_dir_all(&checkout).unwrap();
 }
 
-/// A check the riders added isn't at the base, so it is never built there;
-/// built again at the candidate, a pass is a flake and a red their break,
-/// never a builder that didn't take it.
+/// A check the riders added is at no commit but theirs, so its red is
+/// theirs, flake or break: it is built neither at the base nor again, and
+/// a flake of it never lands with them.
 #[test]
-fn a_check_the_riders_added_is_judged_only_at_the_candidate() {
+fn a_check_the_riders_added_is_theirs_and_built_no_more() {
     let said =
         words(&[], &["a-theme"]).replace("kind     check\n", "kind     check\nadded    a-theme\n");
     let never = |check: &str| -> (Gated, String) {
         panic!("{check}, which the riders added, was built at the base")
     };
+    let not_again = |check: &str| -> Gated {
+        panic!("{check}, which the riders added, was built again at the candidate")
+    };
     assert_eq!(
-        judged(&said, &never, &|_| Gated::Red, &|_| Gated::Passed, &[]),
-        Ok(vec![("a-theme".to_owned(), Blame::Riders)]),
-        "a check the riders added that failed again wasn't their break"
-    );
-    assert_eq!(
-        judged(&said, &never, &passes, &|_| Gated::Passed, &[]),
-        Ok(vec![("a-theme".to_owned(), Blame::Flaky)]),
-        "a check the riders added that passed again wasn't a flake"
+        judged(&said, &never, &not_again, &|_| Gated::Passed, &[]),
+        Ok(vec![("a-theme".to_owned(), Blame::Added)]),
+        "a check the riders added wasn't taken as theirs"
     );
 }
