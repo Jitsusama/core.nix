@@ -130,13 +130,22 @@ impl Watch {
         let folder = folder(dir)?;
         let key = key(&folder)?;
         let fsid: [u8; 8] = key[..8].try_into().map_err(io::Error::other)?;
+        // Which watched folders have gone is read before either lock, as
+        // the daemon's mark does, since reading a folder's handle on a
+        // loaded disk can take seconds, in which the listener would wait
+        // on them and the kernel's queue could overflow.
+        let marked = self
+            .groups
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .iter()
+            .any(|group| group.fsid.get() == Some(&fsid));
+        let gone = if marked { Vec::new() } else { self.gone_now() };
         let mut groups = self.groups.lock().unwrap_or_else(PoisonError::into_inner);
         if let Some(found) = groups.iter().find(|group| group.fsid.get() == Some(&fsid)) {
             mark(&found.fd, &folder)?;
         } else {
-            self.give_back(&mut groups, |dir, key| {
-                handle(dir).is_ok_and(|now| now == key)
-            });
+            self.give_back(&mut groups, &gone);
             if let Some(unused) = groups.iter().find(|group| group.fsid.get().is_none()) {
                 mark(&unused.fd, &folder)?;
                 // Under the groups' lock, so no other id took it meanwhile.
@@ -151,23 +160,41 @@ impl Watch {
                 groups.push(Arc::new(made));
             }
         }
-        drop(groups);
+        // Still under the groups' lock, so no give-back meanwhile closes
+        // the group this folder was just marked in for want of a folder.
         self.dirs
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .insert(key.clone(), dir.to_owned());
+        drop(groups);
         Ok(key)
     }
 
-    /// Forgets each watched folder that `still` says is no longer the one
-    /// marked, by its path and key, and gives back every group under an id
-    /// none of the folders left lies under. Closing a group drops its
-    /// marks, which hold their inodes. A watch that kept every group it
-    /// made would have work trees removed hours before still take a group
-    /// each, and run out of its 64 within a daemon's life.
-    fn give_back(&self, groups: &mut Vec<Arc<Group>>, still: impl Fn(&Path, &[u8]) -> bool) {
+    /// Each watched folder that has [`gone`], by its key and path, read
+    /// with the folders' lock held only to copy them.
+    fn gone_now(&self) -> Vec<(Vec<u8>, PathBuf)> {
+        let watched: Vec<(Vec<u8>, PathBuf)> = self
+            .dirs
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .iter()
+            .map(|(key, dir)| (key.clone(), dir.clone()))
+            .collect();
+        watched
+            .into_iter()
+            .filter(|(key, dir)| gone(dir, key))
+            .collect()
+    }
+
+    /// Forgets each watched folder in `gone`, by its key and path, and
+    /// gives back every group under an id none of the folders left lies
+    /// under. Closing a group drops its marks, which hold their inodes. A
+    /// watch that kept every group it made would have work trees removed
+    /// hours before still take a group each, and run out of its 64 within
+    /// a daemon's life.
+    fn give_back(&self, groups: &mut Vec<Arc<Group>>, gone: &[(Vec<u8>, PathBuf)]) {
         let mut dirs = self.dirs.lock().unwrap_or_else(PoisonError::into_inner);
-        dirs.retain(|key, dir| still(dir, key));
+        dirs.retain(|key, dir| !gone.iter().any(|(went, at)| went == key && at == dir));
         let live: HashSet<&[u8]> = dirs.keys().filter_map(|key| key.get(..8)).collect();
         groups.retain(|group| group.fsid.get().is_none_or(|fsid| live.contains(&fsid[..])));
     }
@@ -312,6 +339,19 @@ fn dfid_name(record: &[u8]) -> Option<(Vec<u8>, &[u8])> {
     Some((key, &name[..name.iter().position(|&byte| byte == 0)?]))
 }
 
+/// Whether the folder watched at `dir` as `key` has gone: another folder
+/// stands at its path, or none does. Any other failure to read its handle,
+/// as a guard short of descriptors or a parent closed for a moment, keeps
+/// it. A folder forgotten while its mark lives has its opens dropped
+/// unheard, while the guard, reading its handle again once the failure
+/// passes, would believe it had heard them.
+fn gone(dir: &Path, key: &[u8]) -> bool {
+    match handle(dir) {
+        Ok(now) => now != key,
+        Err(error) => matches!(error.raw_os_error(), Some(libc::ENOENT | libc::ENOTDIR)),
+    }
+}
+
 /// Which folder `dir` is now, by its filesystem's id and file handle: the
 /// way a mark names it. The handle carries the inode's generation, so a
 /// folder made anew where one was removed differs even when its inode
@@ -383,7 +423,7 @@ mod tests {
     use super::{Seen, Watch};
     use std::collections::HashMap;
     use std::os::fd::OwnedFd;
-    use std::path::{Path, PathBuf};
+    use std::path::PathBuf;
     use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 
     const HANDLE: [u8; 8] = [1, 2, 3, 4, 5, 6, 7, 8];
@@ -407,13 +447,13 @@ mod tests {
             .dirs
             .lock()
             .unwrap()
-            .insert(key, PathBuf::from("/gone"));
+            .insert(key.clone(), PathBuf::from("/gone"));
         let mut groups = vec![
             Arc::new(stand_in(None)),
             Arc::new(stand_in(Some(kept))),
             Arc::new(stand_in(Some(went))),
         ];
-        watch.give_back(&mut groups, |dir, _| dir != Path::new("/gone"));
+        watch.give_back(&mut groups, &[(key.clone(), PathBuf::from("/gone"))]);
         let ids: Vec<_> = groups
             .iter()
             .map(|group| group.fsid.get().copied())
@@ -428,6 +468,40 @@ mod tests {
             dirs.values().collect::<Vec<_>>(),
             [&PathBuf::from("/w")],
             "a folder gone since it was marked was still watched"
+        );
+    }
+
+    #[test]
+    fn a_folder_is_gone_only_when_another_or_none_stands_at_its_path() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = tempfile::tempdir().unwrap();
+        let parent = root.path().join("target");
+        let deps = parent.join("deps");
+        std::fs::create_dir_all(&deps).unwrap();
+        let key = super::handle(&deps).unwrap();
+        assert!(
+            !super::gone(&deps, &key),
+            "the folder marked counted as gone"
+        );
+        // Root reads past a closed parent, so only another account can
+        // see a handle that can't be read for it.
+        // SAFETY: geteuid only reads the caller's id.
+        if unsafe { libc::geteuid() } != 0 {
+            let mode = |bits| std::fs::Permissions::from_mode(bits);
+            std::fs::set_permissions(&parent, mode(0o000)).unwrap();
+            let closed = super::gone(&deps, &key);
+            std::fs::set_permissions(&parent, mode(0o755)).unwrap();
+            assert!(
+                !closed,
+                "a folder whose handle couldn't be read past a closed parent counted as gone"
+            );
+        }
+        std::fs::remove_dir(&deps).unwrap();
+        assert!(super::gone(&deps, &key), "a removed folder wasn't gone");
+        std::fs::create_dir(&deps).unwrap();
+        assert!(
+            super::gone(&deps, &key),
+            "a folder made anew at its path passed as the one marked"
         );
     }
 
