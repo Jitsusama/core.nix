@@ -40,8 +40,12 @@ let
   # so does house-report-key whenever the key or its folder changes, so
   # a key put in place or swapped is taken within seconds, as Linux's
   # path unit takes one there. Copied, the key itself stays root's, and
-  # no second name for it, whoever made one, can keep it from the daemon
-  # or hand another file over. The folders tested are the key's real
+  # no second name can hand another file over: a key with one is refused.
+  # Any account that can reach the key may give it one, as macOS lets an
+  # account link a file it can't read, so that refusal keeps the key from
+  # the daemon until the name goes, failing closed, and says nothing of
+  # making it anew (keys said plainly round 7's F1, F4, F10 and F15).
+  # The folders tested are the key's real
   # ones, every link resolved, each up to / root's and written or taken
   # by no other account, by its mode or an access list, the key root's
   # and read by no other account itself; the key is then read
@@ -53,7 +57,30 @@ let
   # leaves the daemon no key, said once until the reason changes, and
   # ends nothing, a switch included, its cleanup too (round 3's F10,
   # round 4's F14), which takes away any run's leftover name too (round
-  # 5's F9). Each run copies through a name of its own, so two runs
+  # 5's F9). A key another account owns, may read or write, or may read,
+  # write, take or change the rights of by an access list, is refused
+  # saying, after what it costs, to make it anew on both machines, since
+  # that account may know it or have changed it, and a new owner or mode
+  # leaves it so; one other accounts may only run, or reach by lesser
+  # rights, is refused without it (keys said plainly round 1's F2, F3,
+  # F10 and F14; round 2's F6 and F9; round 3's F8 and F11). Only the
+  # first refusal that holds is said, so whether to say it is decided
+  # apart from them, by the same three tests of the file the key's name
+  # comes to, every link followed, whatever refusal is said: one of its
+  # folder, its link, its copy's folder or one of the key's own (keys
+  # said plainly round 2's F1, F8 and F10; round 3's F1,
+  # F5, F6, F7 and F10). Those tests copy nothing, so a folder another
+  # account may change can only make the advice wrong, never hand a key
+  # over. A folder's refusal, which says the key "is under" it, says to
+  # make the key anew too, since an account that may change the folder
+  # may have put another of root's files at the key's name by a hard
+  # link, which outlasts the folder's fix (keys said plainly round 6's
+  # F4). A key with a second name is refused saying only that, since a
+  # second name doesn't show that an account knows or changed it (round
+  # 7's F1).
+  # Following every link takes readlink's -f, which macOS has from 12.3
+  # (round 6's F1, F2, F5 and F6). Each
+  # run copies through a name of its own, so two runs
   # can't move the same file (round 4's F21), though a failing run may
   # take away the copy one beside it just made, or a slower one put back
   # a key just swapped; the watch job runs again each minute too, so
@@ -78,6 +105,10 @@ let
     houseReportKey=${lib.escapeShellArg keyFile}
     houseReportCopy=${copy}
     houseReportWhy=
+    houseReportDo=
+    houseReportKnown="; make it anew here and on the shaped machine,"
+    houseReportKnown="$houseReportKnown as another account may know or have changed it"
+    houseReportKnowing='^ *[0-9]+: .* allow (.*,)?(read|write|append|writesecurity|chown)(,|$)'
     /usr/bin/install -d -o root -g wheel -m 0755 ${copied} \
       || houseReportWhy="has nowhere to be copied to"
     houseReportFolder=$(cd -P "$(/usr/bin/dirname "$houseReportKey")" 2>/dev/null && pwd -P) \
@@ -101,21 +132,42 @@ let
       houseReportWhy="is a link"
     elif [ ! -f "$houseReportRead" ]; then
       houseReportWhy="isn't there as a file"
+    elif [ "$(/usr/bin/stat -f %l "$houseReportRead")" != 1 ]; then
+      houseReportWhy="has another name, which any account that can reach it may give it"
     elif [ "$(/usr/bin/stat -f %u "$houseReportRead")" != 0 ]; then
       houseReportWhy="isn't root's"
-    elif [ -n "$(/usr/bin/find "$houseReportRead" -maxdepth 0 -perm +077)" ]; then
-      houseReportWhy="may be read by an account other than root's"
+    elif [ -n "$(/usr/bin/find "$houseReportRead" -maxdepth 0 -perm +066)" ]; then
+      houseReportWhy="may be read or written by an account other than root's"
+    elif /bin/ls -le "$houseReportRead" \
+      | /usr/bin/grep -qE "$houseReportKnowing"; then
+      houseReportWhy="has an access list letting others read, write or take it or change its rights"
+    elif [ -n "$(/usr/bin/find "$houseReportRead" -maxdepth 0 -perm +011)" ]; then
+      houseReportWhy="may be run by an account other than root's"
     elif /bin/ls -le "$houseReportRead" | /usr/bin/grep -qE '^ *[0-9]+: .* allow '; then
       houseReportWhy="has an access list letting another account in"
     elif ! /usr/bin/install -o nobody -g nobody -m 0400 "$houseReportRead" "$houseReportNew" \
       || ! /bin/mv -f "$houseReportNew" "$houseReportCopy"; then
       houseReportWhy="couldn't be copied for nobody"
     fi
+    houseReportSeen=$(/usr/bin/readlink -f "$houseReportRead" 2>/dev/null) || houseReportSeen=
+    if [ -z "$houseReportWhy" ]; then
+      :
+    elif [ "''${houseReportWhy#is under }" != "$houseReportWhy" ]; then
+      houseReportDo=$houseReportKnown
+    elif [ -z "$houseReportFolder" ] \
+      || [ ! -f "$houseReportSeen" ] || [ -L "$houseReportSeen" ]; then
+      :
+    elif [ "$(/usr/bin/stat -f %u "$houseReportSeen")" != 0 ] \
+      || [ -n "$(/usr/bin/find "$houseReportSeen" -maxdepth 0 -perm +066)" ] \
+      || /bin/ls -le "$houseReportSeen" | /usr/bin/grep -qE "$houseReportKnowing"; then
+      houseReportDo=$houseReportKnown
+    fi
     houseReportSaid=${copied}.said
     /bin/rm -f ${copied}/said 2>/dev/null || :
     if [ -n "$houseReportWhy" ]; then
       /bin/rm -f "$houseReportCopy" "$houseReportCopy".* 2>/dev/null || :
       houseReportWhy="house-report: $houseReportKey $houseReportWhy, so the daemon has no key"
+      houseReportWhy="$houseReportWhy$houseReportDo"
       if [ -n "''${houseReportAtSwitch:-}" ]; then
         echo "$houseReportWhy" >&2
         /bin/rm -f "$houseReportSaid" 2>/dev/null || :

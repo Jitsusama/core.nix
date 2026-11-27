@@ -59,6 +59,10 @@ in
         makes, which the shaped machine's house can't name.
       '';
     };
+    # The advice on making and replacing the key answers house keys round
+    # 2's F5 and F7 and made anew round 1's F2, F9 and F11 and round 2's
+    # F1 and F9; the rounds are cited here rather than in the docs it
+    # renders (made anew round 3's F2).
     keyFile = lib.mkOption {
       type = lib.types.nullOr (
         lib.types.pathWith {
@@ -82,11 +86,9 @@ in
         can read the key may sign a report. A key either machine ever let
         another account read is replaced on both by new bytes, made once
         that way, rather than given a new mode or copied back in, since a
-        copy taken of it stays good (house keys round 2's F5 and F7; made
-        anew round 1's F2, F9 and F11). Each machine's file is made anew
+        copy taken of it stays good. Each machine's file is made anew
         by that `install` before the bytes go in, since a write into a
-        file already there keeps its mode (made anew round 2's F1 and
-        F9). On Linux the service reads it
+        file already there keeps its mode. On Linux the service reads it
         through systemd's credentials, a copy made as it starts, so it
         may be root's alone: a key put there or swapped restarts the
         service, and while none is there the service fails to start,

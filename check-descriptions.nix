@@ -1857,9 +1857,13 @@
     every folder on its real path is root's and written or taken by no other account, by its mode
     or an access list, each tested whole within the walk, reading it in that real folder, set once,
     as a plain file root's and read by no other account, through a name of each run's own, its text
-    naming no chown or chmod and no install or mv but its own, however spelled; and the build
-    refuses a Mac's key outside /etc, /private/etc or /var/root, or spelled through or ending in
-    dots
+    naming no chown or chmod and no install or mv but its own, however spelled; a key another
+    account owns, may read or write, or may read, write, take or change the rights of by an access
+    list, is said, last and once, to need making anew on both machines, not a new owner or mode,
+    decided past the refusals by the file its name comes to, every link followed, whichever
+    refusal is said, and one other accounts may only run or reach by lesser rights isn't;
+    and the build refuses a Mac's key outside /etc, /private/etc or /var/root, or spelled through
+    or ending in dots
   '';
   house-report-is-told-an-address = ''
     a Linux machine runs house-report as a service of its own account that writes nothing, started
@@ -1867,6 +1871,11 @@
     house reads one, IPv4 alone, sent to with the shaper's port: a name, a malformed address, an
     IPv4 one written as IPv6, or any IPv6 one, which a report would leave from a temporary
     address no house names, is refused as the machine builds
+  '';
+  house-report-knows-which-lists-leak-a-key = ''
+    the pattern a Mac's key job tests an access list by, as the job's text sets it, takes a line
+    granting another account read, write, append, writesecurity or chown, alone or among other
+    rights, as letting it know the key, and not one granting only lesser rights or denying any
   '';
   house-report-passes-clippy = ''
     clippy finds nothing in house-report or its tests
