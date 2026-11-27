@@ -203,10 +203,7 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
     };
     hear_fixes(&mesh, &mut ledger, &folder, &state_home, checkouts, now)?;
     let told = file(&mut ledger, &measures, &date, now);
-    if let Some(line) = owing::shown::tally(&ledger, now) {
-        print!("{line}");
-        card.push_str(&line);
-    }
+    tell_shown(&ledger, now, &mut card);
     // A question, so the line wakes its owner and wants an answer. Its
     // lines carry its id only once it's gone. The asked owners' lines are
     // kept before the card or any failure is said, so their ids stand
@@ -234,6 +231,15 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
     findings::keep(&ledger_at, &ledger)?;
     write_whole(&kept_at, &serde_json::to_string(&next)?)?;
     Ok(())
+}
+
+/// Says, and puts on `card`, how the lines held to a fix shown stand, when
+/// any does.
+fn tell_shown(ledger: &[findings::Entry], now: i64, card: &mut String) {
+    if let Some(line) = owing::shown::tally(ledger, now) {
+        print!("{line}");
+        card.push_str(&line);
+    }
 }
 
 /// Hears the replies to the hour's questions naming the fixes of the lines

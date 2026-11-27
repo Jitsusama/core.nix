@@ -161,8 +161,8 @@ pub fn hear(ledger: &mut [Entry], questions: &[Message], replies: &[Message]) {
                 && held_to_a_fix(&e.key, &e.axis)
                 && e.asked.contains(&question.id)
         }) {
-            let Some(said) =
-                item_for(&question.text, &reply.text, &reply.from, &entry.key).and_then(word_of)
+            let Some(said) = item_for(&question.text, &reply.text, &reply.from, &entry.key)
+                .and_then(|item| word_of(&item))
             else {
                 continue;
             };
@@ -245,7 +245,7 @@ fn items(reply: &str) -> Vec<(usize, String)> {
 /// The word an item of a reply says of its line's fix: none needed, as
 /// `None:` and why, or the change that fixed it, as `core #123`. Anything
 /// else names no fix. Each keeps at most `SAID_AT_MOST` of its words.
-fn word_of(item: String) -> Option<Said> {
+fn word_of(item: &str) -> Option<Said> {
     let item = flat(item.trim_start_matches(['*', '_', ' ']));
     let said = |text: &str| text.trim().chars().take(SAID_AT_MOST).collect::<String>();
     if item
