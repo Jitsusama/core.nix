@@ -50,7 +50,9 @@ pub fn run(folder: &Path, state_home: &Path, told: &Told, now: i64) -> io::Resul
     let held = |unit: &str| holders::owner(unit, &told.owners, &known).is_some();
     let today = read(state_home, now - DAY, now, &held);
     let before = kept(&days, now);
-    let judged = judge::judge(&today, &before);
+    let mut judged = judge::judge(&today, &before);
+    let machine = fs::read_to_string("/proc/sys/kernel/hostname").unwrap_or_default();
+    on_machine(&mut judged.worse, machine.trim(), today.to);
     let kept_at = folder.join("findings.jsonl");
     let _held = findings::lock(&kept_at)?;
     let mut ledger = findings::read(&kept_at);
@@ -379,9 +381,65 @@ fn utc_date(at: i64) -> String {
         .unwrap_or_default()
 }
 
+/// Says in each of `worse` that names a unit or a program which machine
+/// read it and when its day ended, so its owner reads the same journal over
+/// the same hours: a unit's failure is in no other machine's records, and
+/// a day run by hand ends at any hour. A machine with no name says none.
+fn on_machine(worse: &mut [judge::Finding], machine: &str, to: i64) {
+    let ended = Timestamp::from_second(to)
+        .map(|t| {
+            t.to_zoned(TimeZone::system())
+                .strftime("%Y-%m-%d %H:%M")
+                .to_string()
+        })
+        .unwrap_or_default();
+    let read = if machine.is_empty() {
+        format!("read over the day to {ended}")
+    } else {
+        format!("read on {machine} over the day to {ended}")
+    };
+    for finding in worse.iter_mut().filter(|f| f.key.contains(':')) {
+        finding.words = format!("{}, {read}", finding.words);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_units_finding_names_the_machine_and_the_hours_it_was_read_over() {
+        let mut worse = vec![judge::Finding {
+            key: "failed:serve-a-*.service".to_owned(),
+            bar: None,
+            before: Some(0.0),
+            now: 1.0,
+            words: "a failure of serve-a-*.service, new, once".to_owned(),
+        }];
+        worse.push(judge::Finding {
+            key: "oom.machine".to_owned(),
+            words: "kills went from 0 to 2".to_owned(),
+            ..worse[0].clone()
+        });
+        on_machine(&mut worse, "host-a", 10 * DAY);
+        let ended = Timestamp::from_second(10 * DAY)
+            .expect("a time")
+            .to_zoned(TimeZone::system())
+            .strftime("%Y-%m-%d %H:%M")
+            .to_string();
+        assert_eq!(
+            (worse[0].words.as_str(), worse[1].words.as_str()),
+            (
+                format!(
+                    "a failure of serve-a-*.service, new, once, read on host-a over the day \
+                     to {ended}"
+                )
+                .as_str(),
+                "kills went from 0 to 2"
+            ),
+            "a unit's finding didn't name where and when it was read, or a figure did"
+        );
+    }
 
     #[test]
     fn a_day_kept_today_isnt_held_against_itself() {

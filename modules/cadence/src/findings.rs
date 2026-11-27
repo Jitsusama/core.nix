@@ -186,6 +186,15 @@ pub fn update(
         // closed stays closed, and the finding opens a line of its own.
         let newest = ledger.iter_mut().rev().find(|e| e.key == finding.key);
         if let Some(entry) = newest.filter(|e| e.open || e.kind.is_none()) {
+            // A run again within half a day of the one that last found it,
+            // typed or a timer that fired twice, reads mostly the same hours,
+            // so what it finds is most likely the same failure: it neither
+            // forgets a fix said since nor puts off the two days' close. A
+            // failure after the fix is still found by the next day's run.
+            if entry.open && day.to - entry.last_to < DAY / 2 {
+                entry.words.clone_from(&finding.words);
+                continue;
+            }
             if !entry.open {
                 entry.open = true;
                 entry.reopened += 1;
@@ -568,6 +577,34 @@ pub(crate) mod tests {
             fixed(&mut ledger, "crashes:tec", "core #6001"),
             None,
             "a closed finding took a fix"
+        );
+    }
+
+    #[test]
+    fn a_run_again_the_same_evening_keeps_a_fix_said_since() {
+        let mut ledger = Vec::new();
+        let worse = [found("crashes:tec")];
+        update(&mut ledger, &day("d1", DAY), &worse, &owners());
+        tell(&mut ledger, "d1", None);
+        fixed(&mut ledger, "crashes:tec", "core #6000");
+        update(&mut ledger, &day("d1", DAY + 3 * 3600), &worse, &owners());
+        assert_eq!(
+            (ledger[0].fixed.as_deref(), ledger[0].last_to),
+            (Some("core #6000"), DAY),
+            "a run again that evening forgot the fix or put off its close: {ledger:?}"
+        );
+        update(&mut ledger, &day("d2", 2 * DAY), &[], &owners());
+        update(&mut ledger, &day("d3", 3 * DAY), &[], &owners());
+        assert_eq!(
+            (ledger[0].open, ledger[0].back.as_deref()),
+            (false, None),
+            "a fix said before a run again that evening didn't close it: {ledger:?}"
+        );
+        update(&mut ledger, &day("d4", 4 * DAY), &worse, &owners());
+        assert_eq!(
+            (ledger.len(), ledger[0].open, ledger[0].reopened),
+            (1, true, 1),
+            "a failure a day on wasn't found as one that came back: {ledger:?}"
         );
     }
 
