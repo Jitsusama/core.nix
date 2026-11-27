@@ -4,7 +4,7 @@
 //! left for the next run rather than holding this one past its unit's
 //! limit.
 
-use std::io::{ErrorKind, Read};
+use std::io::{self, ErrorKind, Read};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc;
@@ -95,6 +95,7 @@ impl Node {
             .unwrap_or_else(|unanswered| {
                 self.silent = Some(match unanswered {
                     Unanswered::Late => Silence::Late,
+                    Unanswered::Refused => Silence::Unstarted(ErrorKind::InvalidInput),
                     Unanswered::Unstarted(kind) => Silence::Unstarted(kind),
                 });
                 None
@@ -139,9 +140,9 @@ impl Node {
             // run: each spends its try, and the pain is given up after its
             // last.
             Ok(_)
-            | Err(Unanswered::Unstarted(
-                ErrorKind::InvalidInput | ErrorKind::ArgumentListTooLong,
-            )) => Sent::Failed,
+            | Err(Unanswered::Refused | Unanswered::Unstarted(ErrorKind::ArgumentListTooLong)) => {
+                Sent::Failed
+            }
             // It was tried, so it spends a try as any failed send does.
             Err(Unanswered::Late) => {
                 self.silent = Some(Silence::Late);
@@ -168,8 +169,22 @@ pub fn node_took(answer: &str) -> bool {
 enum Unanswered {
     /// Still running at its limit, and so stopped.
     Late,
+    /// Refused before the machine was asked to start it, for what it was
+    /// given, as a word holding a NUL is.
+    Refused,
     /// It couldn't be started at all, as this error says.
     Unstarted(ErrorKind),
+}
+
+/// Why a command that couldn't be started gave no answer: refused for
+/// what it was given only when the machine wasn't asked, since the
+/// machine's own EINVAL, for an executable it can't load, reads as the
+/// same kind and says nothing of the words.
+fn unstarted(e: &io::Error) -> Unanswered {
+    match (e.kind(), e.raw_os_error()) {
+        (ErrorKind::InvalidInput, None) => Unanswered::Refused,
+        (kind, _) => Unanswered::Unstarted(kind),
+    }
 }
 
 /// What a command printed, when it ended within `limit`.
@@ -185,7 +200,7 @@ fn answer_within(command: &mut Command, limit: Duration) -> Result<Option<String
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
-        .map_err(|e| Unanswered::Unstarted(e.kind()))?;
+        .map_err(|e| unstarted(&e))?;
     let Some(mut out) = child.stdout.take() else {
         return Ok(None);
     };
@@ -234,5 +249,25 @@ fn ended_within(child: &mut Child, limit: Duration) -> Option<bool> {
                 return running.is_err().then_some(false);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_words_refused_before_the_machine_is_asked_are_the_send_s_own() {
+        let nul = io::Error::new(ErrorKind::InvalidInput, "nul byte found in provided data");
+        assert_eq!(
+            unstarted(&nul),
+            Unanswered::Refused,
+            "words refused before the machine was asked weren't the send's own"
+        );
+        assert_eq!(
+            unstarted(&io::Error::from_raw_os_error(22)),
+            Unanswered::Unstarted(ErrorKind::InvalidInput),
+            "the machine's EINVAL, for an executable it can't load, was read as the words'"
+        );
     }
 }

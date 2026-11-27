@@ -152,6 +152,31 @@ fn a_pain_closed_since_gains_its_check_and_a_carried_one_says_so() {
     );
 }
 
+#[test]
+fn a_miss_moved_to_another_owner_stays_theirs_as_each_run_writes_the_ledger() {
+    let ledger = folder("moved").join("misses.jsonl");
+    let kept = [sent("e1", "the bar is the wrong colour")];
+    write(&ledger, &kept, &NOBODY, OFFSET, 0).expect("written");
+    let mut line = read(&ledger).remove(0);
+    line["owner"] = json!("DEF456");
+    line["owned_before"] = json!(["ABC123"]);
+    fs::write(&ledger, format!("{line}\n")).expect("the miss moved");
+    // The run still knows the pain as sent to its first owner, and one
+    // closing since rewrites its line whole.
+    write(&ledger, &kept, &NOBODY, OFFSET, 0).expect("written again");
+    write(&ledger, &[closed(kept[0].clone())], &NOBODY, OFFSET, 0).expect("closed");
+    let lines = read(&ledger);
+    assert_eq!(
+        (lines.len(), &lines[0]["owner"], &lines[0]["owned_before"]),
+        (1, &json!("DEF456"), &json!(["ABC123"])),
+        "a run gave a moved miss back to the cell it was first sent to: {lines:?}"
+    );
+    assert_eq!(
+        lines[0]["closed_by"], "255494bb414c",
+        "a moved miss didn't gain its check: {lines:?}"
+    );
+}
+
 /// A pain the keeper carried before it was sent: never sent, so never
 /// routed, carried.
 fn carried_unsent(entry: &str, words: &str) -> Heard {

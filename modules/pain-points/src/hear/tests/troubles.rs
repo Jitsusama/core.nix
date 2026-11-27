@@ -128,6 +128,55 @@ fn a_mycelium_that_names_no_sessions_for_a_quarter_hour_is_a_trouble() {
 }
 
 #[test]
+fn a_mycelium_that_could_not_be_started_is_a_trouble_at_once_by_its_error() {
+    let place = Place::new("unstarted-node");
+    place.routes();
+    let ears = Ears {
+        unnamed: Some("entity not found".into()),
+        ..place.ears()
+    };
+    let hour = hear(&ears, "", &mut |_, _| false).expect("a run");
+    assert!(
+        hour.troubles
+            .iter()
+            .any(|t| t.contains("couldn't be started") && t.contains("entity not found")),
+        "the first run says why no session was named, with nothing waiting: {hour:?}"
+    );
+    a_day(&place);
+    let hour = hear(&ears, "", &mut |_, _| false).expect("a run");
+    assert!(
+        !said(&hour).contains("so pains wait"),
+        "a known cause isn't said as a node silent: {}",
+        said(&hour)
+    );
+    let later = Ears {
+        at: AT + 20 * 60_000,
+        ..ears
+    };
+    let hour = hear(&later, "", &mut |_, _| false).expect("a run");
+    assert_eq!(
+        hour.troubles
+            .iter()
+            .filter(|t| t.contains("named no sessions") || t.contains("couldn't be started to"))
+            .count(),
+        1,
+        "the cause is said once, not as a silence too: {hour:?}"
+    );
+    fs::remove_file(place.root.join("state/routes.json")).expect("routes gone");
+    let unset = Ears {
+        unnamed: Some("entity not found".into()),
+        ..place.ears()
+    };
+    let hour = hear(&unset, "", &mut |_, _| false).expect("a run");
+    assert!(
+        hour.troubles
+            .iter()
+            .all(|t| !t.contains("couldn't be started to")),
+        "a listener nobody set up has no such trouble: {hour:?}"
+    );
+}
+
+#[test]
 fn an_earlier_run_dated_ahead_of_this_one_holds_no_outage_back() {
     let place = Place::new("future-hour");
     place.routes();
@@ -173,6 +222,42 @@ fn an_earlier_run_dated_ahead_of_this_one_holds_no_outage_back() {
         since(&before, AT + 5 * minute),
         Some(AT - 5 * minute),
         "a count carries on"
+    );
+}
+
+#[test]
+fn the_journal_says_each_held_send_by_why_and_an_unstarted_mycelium_once() {
+    use std::io::ErrorKind;
+    use std::time::{Duration, Instant};
+    let mut node = Node::new(
+        "mycelium".into(),
+        None,
+        Instant::now(),
+        Duration::from_secs(1),
+    );
+    node.held = 2;
+    node.fromless = 3;
+    node.silent = Some(Silence::Unstarted(ErrorKind::NotFound));
+    let mid_run = crate::hear::waits(&node, false);
+    let unstarted = format!(
+        "; the mycelium couldn't be started: {}",
+        ErrorKind::NotFound
+    );
+    for said in [
+        "; 2 sends wait for the next run, as the mycelium stopped answering",
+        "; 3 sends wait for the next run, as routes.json named no one to send as when it began",
+        unstarted.as_str(),
+    ] {
+        assert!(
+            mid_run.contains(said),
+            "the journal didn't say {said:?} of the run's held sends: {mid_run:?}"
+        );
+    }
+    let at_its_start = crate::hear::waits(&node, true);
+    assert!(
+        !at_its_start.contains("couldn't be started") && at_its_start.contains("3 sends wait"),
+        "a mycelium unstarted as the run began, a trouble already, was said twice: \
+         {at_its_start:?}"
     );
 }
 

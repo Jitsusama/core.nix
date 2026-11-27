@@ -29,6 +29,13 @@ pub(super) struct Owned<'a> {
     what: &'a str,
 }
 
+impl<'a> Owned<'a> {
+    /// The cell the miss is written for.
+    pub(super) fn owner(self) -> &'a str {
+        self.owner
+    }
+}
+
 /// The miss `--owner` and `--what` write at `at`, if they're given, or why
 /// they can't: each said plainly on one line, and at a time as the ledger
 /// writes one. `--what` goes with `--owner`; `--owner` alone moves a miss
@@ -160,7 +167,7 @@ pub(super) fn own_in(
                 let mut line = json!({"at": at, "what": what, "owner": owner, "heard_by": OWNER});
                 saying.on(&mut line);
                 lines.push(line.to_string());
-                match saying.says() {
+                match saying.says(false) {
                     more if more.is_empty() => {
                         format!("pain-points: wrote {owner}'s miss at {at}, owing its test")
                     }
@@ -173,7 +180,10 @@ pub(super) fn own_in(
                     return Ok((None, said));
                 }
                 lines[index] = line.to_string();
-                format!("pain-points: {owner}'s miss at {at} now {}", saying.says())
+                format!(
+                    "pain-points: {owner}'s miss at {at} now {}",
+                    saying.says(false)
+                )
             }
             _ => {
                 let refused = format!("a miss in {name} is at {at} already");

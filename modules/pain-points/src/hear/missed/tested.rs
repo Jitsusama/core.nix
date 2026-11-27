@@ -20,6 +20,7 @@
 mod owned;
 
 use super::held;
+use crate::hear::route::Routes;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::fs;
@@ -28,7 +29,7 @@ use std::path::{Path, PathBuf};
 use terminal_kit::{Exit, Failure, Help};
 
 /// The flags `test` takes, each with a value.
-pub const FLAGS: [&str; 7] = [
+pub const FLAGS: [&str; 8] = [
     "--miss",
     "--test",
     "--none",
@@ -36,6 +37,7 @@ pub const FLAGS: [&str; 7] = [
     "--what",
     "--fix",
     "--ledgers",
+    "--routes",
 ];
 
 /// What `pain-points test --help` says.
@@ -72,11 +74,15 @@ pub fn help() -> Help {
         .option("--what WORDS", "what went wrong for him, with --owner")
         .option("--fix CHANGE", "the change fixing a miss its owner wrote")
         .option("--ledgers DIR", "its ledger's folder, or the mission's")
+        .option(
+            "--routes DIR",
+            "the folder of the routes it never sends to, or the listener's",
+        )
         .exit(
             Exit::Usage,
             "no miss, a test and why it's none both or neither, a test not REPO PATH NAME, \
-             a fix not REPO #N or on a heard miss, or a miss its owner writes half said, \
-             said none or at a time taken",
+             a fix not REPO #N or on a heard miss, a miss its owner writes half said, \
+             said none or at a time taken, or an owner the routes never send to",
         )
         .exit(Exit::NotFound, "no ledger, or no one miss at that time")
         .exit(Exit::TryAgain, "the ledger stayed locked")
@@ -150,11 +156,14 @@ impl Saying<'_> {
         said && fixed && moved
     }
 
-    /// How the miss reads once this is said, or nothing for nothing said.
-    fn says(self) -> String {
+    /// How the miss reads once this is said, or nothing for nothing said;
+    /// one `still` its owner's, where more than that was said, is said to
+    /// be, so it doesn't read as moved.
+    fn says(self, still: bool) -> String {
         let fixed = self.fix.map(|fix| format!("names its fix, {fix}"));
         let said = self.said.map(Said::says);
-        let moved = self.owner.map(|owner| format!("is {owner}'s"));
+        let still = if still { "still " } else { "" };
+        let moved = self.owner.map(|owner| format!("is {still}{owner}'s"));
         said.into_iter()
             .chain(fixed)
             .chain(moved)
@@ -164,16 +173,24 @@ impl Saying<'_> {
 }
 
 /// Moves the miss on `line` to `owner`, adding whose it was to its
-/// `owned_before`, and says whether it was `owner`'s already.
+/// `owned_before`, and says whether it was `owner`'s already: a cell's
+/// address read whatever its case, as the mesh reads it, so a move to the
+/// same cell typed in small letters moves nothing.
 fn moved_to(line: &mut Value, owner: &str) -> bool {
     let was = line["owner"].as_str().map(str::to_owned);
-    if was.as_deref() == Some(owner) {
+    if was
+        .as_deref()
+        .is_some_and(|was| was.eq_ignore_ascii_case(owner))
+    {
         return true;
     }
     if let Some(was) = was {
-        match line.get_mut("owned_before").and_then(Value::as_array_mut) {
-            Some(before) => before.push(json!(was)),
-            None => line["owned_before"] = json!([was]),
+        // Whatever `owned_before` held that isn't a list is kept as its
+        // first, so no earlier owner is lost to a hand-written line.
+        match line.get_mut("owned_before") {
+            Some(Value::Array(before)) => before.push(json!(was)),
+            Some(Value::Null) | None => line["owned_before"] = json!([was]),
+            Some(other) => *other = json!([other.take(), was]),
         }
     }
     line["owner"] = json!(owner);
@@ -211,6 +228,19 @@ pub fn named(given: &BTreeMap<&str, String>) -> Result<String, Failure> {
     let written = owned::given(given, at).map_err(|what| wrongly(&what))?;
     let fix = owned::fix(given).map_err(|what| wrongly(&what))?;
     let owner = owned::moved(given).map_err(|what| wrongly(&what))?;
+    // A miss is only ever asked of its owner, so one given to a cell the
+    // routes never send to would wait on no one, as pain-points never
+    // gives one there itself.
+    let routes = given
+        .get("--routes")
+        .map_or_else(|| crate::state_home().join("pain-points"), PathBuf::from);
+    let routes = Routes::read(&routes);
+    let given_to = owner.or(written.map(owned::Owned::owner));
+    if let Some(cell) = given_to.filter(|cell| routes.refuses(cell)) {
+        return Err(wrongly(&format!(
+            "routes.json never sends to {cell}, so the miss would wait on no one"
+        )));
+    }
     let neither = "give --test, --none with why it was no miss, --fix, or --owner to move it";
     let said = match (given.get("--test"), given.get("--none")) {
         (Some(test), None) => Some(Said::Test(test.trim())),
@@ -268,6 +298,7 @@ fn name_in<'a>(ledger: &Path, at: &str, said: impl Into<Saying<'a>>) -> Result<S
         let mut found = 0;
         let mut heard = false;
         let mut already = false;
+        let mut still = false;
         let mut lines: Vec<String> = before
             .lines()
             .map(|line| {
@@ -279,6 +310,11 @@ fn name_in<'a>(ledger: &Path, at: &str, said: impl Into<Saying<'a>>) -> Result<S
                 }
                 found += 1;
                 heard = read["heard_by"] != owned::OWNER;
+                still = said.owner.is_some_and(|owner| {
+                    read["owner"]
+                        .as_str()
+                        .is_some_and(|was| was.eq_ignore_ascii_case(owner))
+                });
                 already = said.on(&mut read);
                 read.to_string()
             })
@@ -294,11 +330,11 @@ fn name_in<'a>(ledger: &Path, at: &str, said: impl Into<Saying<'a>>) -> Result<S
             return Err(failed.try_this("its test, as a heard miss closes on its landing"));
         }
         if already {
-            let said = format!("pain-points: the miss at {at} already {}", said.says());
+            let said = format!("pain-points: the miss at {at} already {}", said.says(false));
             return Ok((None, said));
         }
         lines.push(String::new());
-        let said = format!("pain-points: the miss at {at} now {}", said.says());
+        let said = format!("pain-points: the miss at {at} now {}", said.says(still));
         Ok((Some(lines.join("\n")), said))
     })
 }
@@ -471,7 +507,39 @@ mod tests {
             .collect();
         flags.insert("--miss", AT.to_owned());
         flags.insert("--ledgers", folder.display().to_string());
+        flags.insert("--routes", folder.display().to_string());
         flags
+    }
+
+    #[test]
+    fn a_miss_is_never_given_to_a_cell_the_routes_never_send_to() {
+        let heard = json!({"at": AT, "owner": "WCJQSG", "heard_by": "x"});
+        let path = ledger("moved-refused", &format!("{heard}\n"));
+        let folder = path.parent().expect("the ledger's folder");
+        let routes = r#"{"from":"EAR001","never":["VOID01"]}"#;
+        fs::write(folder.join("routes.json"), routes).expect("the routes");
+        let refused = named(&flags(&path, &[("--owner", "void01")])).expect_err("it moved");
+        assert!(
+            matches!(refused.exit, Exit::Usage),
+            "a move to a cell never sent to wasn't refused as usage"
+        );
+        let kept = fs::read_to_string(&path).expect("the ledger");
+        assert_eq!(
+            kept,
+            format!("{heard}\n"),
+            "a refused move changed the ledger"
+        );
+        let written = [
+            ("--owner", "VOID01"),
+            ("--what", "a search walked his folders"),
+        ];
+        let mut flags = flags(&path, &written);
+        flags.insert("--miss", "2026-11-14T18:00:00-05:00".to_owned());
+        let refused = named(&flags).expect_err("it was written");
+        assert!(
+            matches!(refused.exit, Exit::Usage),
+            "a miss written for a cell never sent to wasn't refused as usage"
+        );
     }
 
     #[test]
@@ -505,6 +573,52 @@ mod tests {
             (&line["owner"], &line["owned_before"], &line["test"]),
             (&json!("85PKB2"), &json!(["WCJQSG", "KP0L6A"]), &json!(test)),
             "a move with its test didn't take both, keeping each owner before: {line}"
+        );
+    }
+
+    #[test]
+    fn a_test_named_with_the_owner_it_has_says_it_stays_theirs_not_moved() {
+        let heard = json!({"at": AT, "owner": "KP0L6A", "heard_by": "x"});
+        let path = ledger("kept-owner", &format!("{heard}\n"));
+        let test = "core modules/x/src/y.rs a_test";
+        let said =
+            named(&flags(&path, &[("--owner", "kp0l6a"), ("--test", test)])).expect("tested");
+        assert!(
+            said.contains("now names its test") && said.contains("is still kp0l6a's"),
+            "a test named with the owner it had read as a move: {said}"
+        );
+        let kept = fs::read_to_string(&path).expect("the ledger");
+        let line: Value = serde_json::from_str(kept.trim()).expect("the miss's line");
+        assert!(
+            line.get("owned_before").is_none(),
+            "a miss kept by its owner gained an owner before: {line}"
+        );
+    }
+
+    #[test]
+    fn a_move_reads_a_cell_whatever_its_case_and_keeps_an_owner_before_not_listed() {
+        let heard = json!({"at": AT, "owner": "KP0L6A", "owned_before": "WCJQSG"});
+        let path = ledger("moved-cased", &format!("{heard}\n"));
+        let read = |path: &Path| -> Value {
+            let kept = fs::read_to_string(path).expect("the ledger");
+            serde_json::from_str(kept.trim()).expect("the miss's line")
+        };
+        let said = named(&flags(&path, &[("--owner", "kp0l6a")])).expect("moved");
+        assert!(
+            said.contains("already"),
+            "the same cell in small letters was read as another: {said}"
+        );
+        assert_eq!(
+            read(&path)["owner"],
+            json!("KP0L6A"),
+            "a move to the same cell wrote its owner again"
+        );
+        named(&flags(&path, &[("--owner", "85PKB2")])).expect("moved");
+        let line = read(&path);
+        assert_eq!(
+            (&line["owner"], &line["owned_before"]),
+            (&json!("85PKB2"), &json!(["WCJQSG", "KP0L6A"])),
+            "an owner before written as no list was lost: {line}"
         );
     }
 
