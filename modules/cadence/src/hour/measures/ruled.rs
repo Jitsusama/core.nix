@@ -21,7 +21,9 @@
 //! quote with no date may be the claimer's own words for the rule. A claim
 //! inside quotes or backticks, in a fenced block or on a line quoted with
 //! `>`, is words about a claim, not one. Each claim in a message is
-//! judged, so one backed claim hides no other.
+//! judged, so one backed claim hides no other. A claim is read as its
+//! reader sees it, so neither a line break inside its sentence nor
+//! spacing of another width, as two spaces or a no-break one, hides it.
 //!
 //! A denial, as "not Joel's rule", claims nothing, and nor does a line
 //! of cadence's own card passed on: a measure's line, every line set in
@@ -571,10 +573,19 @@ fn about(ask: &str) -> Option<&str> {
 /// nothing beside it backs: neither it nor the sentence before or after
 /// it says when he said it. Every claim is judged, so a backed one hides
 /// no other.
+///
+/// A sentence a line break cuts, as a hard-wrapped one, is judged across
+/// the break too, rather than its lines joined before they're split into
+/// sentences: every rule here reads a line as ending a sentence, and a
+/// list's items, a label or a fence's marks each stand on a line of their
+/// own, so joined they would claim, deny or date across lines what they
+/// never did. A claim the break cuts in two is found in the two halves
+/// joined, and a claim beside a break is backed by the sentence the two
+/// halves make as well as by its neighbours.
 #[must_use]
 pub fn unbacked(text: &str) -> Option<String> {
     let plain = plain(text);
-    let said = sentences(&plain);
+    let (said, cut) = wrapped(&plain);
     let names_him = |sentence: &str| words(&sentence.to_lowercase()).iter().any(|w| w == "joel");
     let opens_on_him = |sentence: &str| {
         let first = sentence.split_whitespace().next().map(bare);
@@ -589,23 +600,62 @@ pub fn unbacked(text: &str) -> Option<String> {
         let he = by == at || names_him(sentence) || (by == at + 1 && opens_on_him(sentence));
         dated_by_him(sentence, he)
     };
-    let backed =
-        |at: usize| (at.saturating_sub(1)..(at + 2).min(said.len())).any(|by| backs(at, by));
-    (0..said.len())
-        .find(|&at| claims(said[at]) && !backed(at))
-        .map(|at| said[at].to_owned())
+    // The sentence `at` makes with the next, when a line break cut them.
+    let joined = |at: usize| cut[at].then(|| format!("{} {}", said[at], said[at + 1]));
+    let backed = |at: usize| {
+        (at.saturating_sub(1)..(at + 2).min(said.len())).any(|by| backs(at, by))
+            || [at.checked_sub(1), Some(at)]
+                .into_iter()
+                .flatten()
+                .filter_map(joined)
+                .any(|whole| dated_by_him(&whole, true))
+    };
+    (0..said.len()).find_map(|at| {
+        if claims(said[at]) {
+            return (!backed(at)).then(|| said[at].to_owned());
+        }
+        let whole = joined(at)?;
+        let split = claims(&whole) && !claims(said[at + 1]);
+        (split && !backed(at) && !backed(at + 1)).then_some(whole)
+    })
+}
+
+/// The sentences of `text`, as [`sentences`] splits them, each with
+/// whether a line break cut it: whether it ends a line that ends in no
+/// stop, with a line of words just after.
+fn wrapped(text: &str) -> (Vec<&str>, Vec<bool>) {
+    let lines: Vec<&str> = text.lines().collect();
+    let mut said = Vec::new();
+    let mut cut = Vec::new();
+    for (at, &line) in lines.iter().enumerate() {
+        let these = sentences(line);
+        let goes_on = !line.trim_end().ends_with(['.', '?', '!'])
+            && lines.get(at + 1).is_some_and(|next| !next.trim().is_empty());
+        cut.extend((1..=these.len()).map(|n| goes_on && n == these.len()));
+        said.extend(these);
+    }
+    (said, cut)
 }
 
 /// `text` with its curly apostrophes made straight, its quoted blocks put
 /// by stand-ins, as [`unfenced`] does, the lines of cadence's card it
-/// passes on taken out, as [`uncarded`] does, and its quotes put by
-/// stand-ins, as [`unquoted`] does.
+/// passes on taken out, as [`uncarded`] does, its quotes put by
+/// stand-ins, as [`unquoted`] does, and each run of blanks within a line
+/// made one space.
 fn plain(text: &str) -> String {
     let text = text
         .replace(unseen, "")
         .replace(['\u{2018}', '\u{2019}'], "'")
         .replace(FILLERS, " ");
-    unquoted(&uncarded(&unfenced(&text)))
+    let kept = unquoted(&uncarded(&unfenced(&text)));
+    // A claim is matched as words with one space between, so two spaces,
+    // or a no-break or thin space, would otherwise hide one its reader
+    // sees. The blanks are evened out last, since the card's lines are
+    // told by how deep each is set in.
+    kept.lines()
+        .map(|line| line.split_whitespace().collect::<Vec<_>>().join(" "))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// `text` with each block it quotes put by a line of three dots: a fenced

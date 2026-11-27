@@ -913,6 +913,37 @@ fn a_claim_is_given_short_however_it_is_spaced() {
     }
 }
 
+/// A claim is read as its reader sees it, so neither a line break inside
+/// its sentence, as a hard-wrapped message has, nor spacing of another
+/// width hides it; a date the break parts from it still backs it, and a
+/// denial the break parts from it still denies it.
+#[test]
+fn a_claim_split_by_a_line_break_or_odd_spacing_is_read_whole() {
+    for (text, claim) in [
+        ("That breaks Joel's\nrule.", "That breaks Joel's rule."),
+        ("Joel  wants it shut.", "Joel wants it shut."),
+        ("Joel\u{a0}wants it shut.", "Joel wants it shut."),
+        ("Joel\u{2009}wants it shut.", "Joel wants it shut."),
+        ("Joel\u{202f}wants it shut.", "Joel wants it shut."),
+    ] {
+        assert_eq!(
+            unbacked(text).as_deref(),
+            Some(claim),
+            "a claim split by its spacing went uncounted, or was given split: {text:?}"
+        );
+    }
+    assert_eq!(
+        unbacked("Joel said on\n22 Nov that the lab stays shut."),
+        None,
+        "a claim whose date a line break parted from it was counted"
+    );
+    assert_eq!(
+        unbacked("That isn't Joel's\nrule."),
+        None,
+        "a denial a line break parted from its claim was read as a claim"
+    );
+}
+
 /// A claim's words reach the card and the keeper, so no mark in them may
 /// break the card's line, turn its sender round, or carry words no reader
 /// sees; a torn file's name, cleaned the same way, can't either.
