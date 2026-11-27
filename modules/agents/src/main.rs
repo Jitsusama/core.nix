@@ -662,6 +662,14 @@ fn vocabulary(path: &Path) -> Result<Words, Failure> {
 /// 78 when the vocabulary can't be read, and 1 when it can't listen on
 /// its socket or hear the files it reads.
 fn serve(args: Args) -> Result<(), Failure> {
+    // Its judge is the walks' weak one, so a walks build that got installed
+    // says so at every start rather than acting as Joel for any process
+    // named as the shell, unsaid (round 000011 on #6796, F109).
+    #[cfg(feature = "walks")]
+    eprintln!(
+        "agents: built for the niri walks, taking any process running quickshell's program \
+         for the shell; no machine should run this build"
+    );
     let words = vocabulary(&args.vocabulary)?;
     let (to, heard) = mpsc::channel();
     // What the poll and Let Them Start last told of agents' starts, so
