@@ -52,15 +52,16 @@ function felt(drawn) {
     return drawn > FELT_MS;
 }
 
-// The trial with one more key timed: how long its search took and how long
-// until the frame that drew it, both in milliseconds, and `parts` what the
+// The trial with one more key timed: `key` its search, its press to the
+// frame that drew it and how late the shell heard it, in ms ({ searched,
+// drawn, heard }, heard 0 or left out where on time), and `parts` what the
 // search spent its time on ({ lists, rows, answers }, the rows' time split
 // `within` matching, ordering, making and spots, with how many choices were
-// looked at and found) or null. Each felt key
-// is kept with its parts, the first few of an opening, so what's slow is
-// named by Joel's own use rather than guessed (Joel, 2026-10-25: "i felt a
-// bit of lag btw with the launcher").
-function timed(trial, searched, drawn, parts) {
+// looked at and found) or null. Each felt key is kept with its parts and
+// hearing, the first few of an opening, so what's slow is named by Joel's
+// own use, not guessed, and a key heard late is never read as slow to draw
+// (Joel, 2026-10-25: "i felt a bit of lag btw with the launcher").
+function timed(trial, { searched, drawn, heard = 0 }, parts) {
     if (!trial) {
         return trial;
     }
@@ -68,7 +69,7 @@ function timed(trial, searched, drawn, parts) {
     const kept = parts?.composing
         ? Object.assign({}, parts, { composing: showingKept(parts.composing) }) : parts ?? null;
     const keptFelt = felt(drawn) && was.felt.length < FELT_KEPT
-        ? was.felt.concat([{ searched, drawn, parts: kept }]) : was.felt;
+        ? was.felt.concat([{ searched, drawn, heard, parts: kept }]) : was.felt;
     return Object.assign({}, trial, { timed: {
         count: was.count + 1,
         searched: was.searched + searched,

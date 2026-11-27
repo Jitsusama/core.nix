@@ -8,7 +8,8 @@
 // are kept; a close after the pipe was killed is kept once it starts
 // again; and a start with too many lines cuts them, the next close
 // adding to the file cut rather than the one it replaced. Last, a slow key
-// and a slow step are timed, whose lines the check reads with reports off.
+// and a slow step are timed, whose lines the check reads with reports off,
+// the opening keeping how late each felt key was heard.
 // It exits 0 once every case holds, and otherwise 1, saying which didn't.
 import Quickshell
 import Quickshell.Io
@@ -155,6 +156,12 @@ ShellRoot {
                 root.made.timed(2, 900, null, "\u2192 Harbour House", null,
                     "\u2192 Harbour House");
                 root.made.timed(2, 900, null, "page down", null, "", true);
+                // Each felt key keeps how late it was heard, 0 for one with
+                // no press time, so pain-points charges that wait to hearing
+                // rather than to drawing.
+                const heard = root.made.trial.timed.felt.map(key => key.heard);
+                if (JSON.stringify(heard) !== "[37,0,0,0]")
+                    return Expect.fail(`felt keys kept as heard ${JSON.stringify(heard)} ms late`);
                 root.stage = "done";
                 console.info("every case holds");
                 Qt.callLater(() => Qt.exit(0));

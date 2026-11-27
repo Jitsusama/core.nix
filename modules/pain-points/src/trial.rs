@@ -18,13 +18,16 @@ pub struct Keys {
     pub returns: u32,
 }
 
-/// A key Joel could feel: how long its search took and how long until
-/// the frame that drew it, in milliseconds.
+/// A key Joel could feel: how long its search took, how long from its
+/// press until the frame that drew it, and how late after its press the
+/// shell heard it, in milliseconds. `heard` is 0 for a key heard on time
+/// and in trials kept before the launcher said it.
 #[derive(Debug, Clone, Default, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct Felt {
     pub searched: f64,
     pub drawn: f64,
+    pub heard: f64,
 }
 
 /// The keys the launcher timed in one opening, of which the felt ones
@@ -267,6 +270,27 @@ mod tests {
         assert_eq!(trial.timed.as_ref().map(|t| t.felt.len()), Some(1));
         assert_eq!(trial.frames.as_ref().map(|f| f.longest), Some(69.0));
         assert_eq!(trial.found(), 19521, "an older trial was found at its pick");
+        let felt = trial.timed.as_ref().map(|t| t.felt[0].heard);
+        assert_eq!(
+            felt,
+            Some(0.0),
+            "a key kept before hearing was said is heard on time"
+        );
+    }
+
+    #[test]
+    fn a_felt_key_keeps_how_late_it_was_heard() {
+        let trials = read(r#"{"timed":{"felt":[{"searched":2,"drawn":45,"heard":37}]}}"#);
+        let felt = trials[0].timed.as_ref().map(|t| t.felt[0].clone());
+        assert_eq!(
+            felt,
+            Some(Felt {
+                searched: 2.0,
+                drawn: 45.0,
+                heard: 37.0,
+            }),
+            "its hearing is read beside its search and drawing"
+        );
     }
 
     #[test]
