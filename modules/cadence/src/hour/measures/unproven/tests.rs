@@ -756,35 +756,64 @@ fn git(repo: &Path, args: &[&str], when: i64) -> String {
     String::from_utf8_lossy(&out.stdout).trim().to_owned()
 }
 
-#[test]
-fn a_switch_counts_only_once_the_core_it_built_holds_the_merge() {
+/// Commits what's staged in `repo`, or nothing, as `subject` at `when`,
+/// and says the commit.
+fn commit(repo: &Path, subject: &str, when: i64) -> String {
+    git(
+        repo,
+        &["commit", "-q", "--allow-empty", "-m", subject],
+        when,
+    );
+    git(repo, &["rev-parse", "HEAD"], when)
+}
+
+/// A scratch repository at `path`, a commit before the merge of change
+/// `number` and the merge, three hours ago; says the two.
+fn scratch(path: &Path, number: u32) -> (String, String) {
+    std::fs::create_dir_all(path).expect("a scratch repository");
+    git(path, &["init", "-q", "-b", "main"], NOW);
+    let old = commit(path, "before", NOW - 3 * 3600 - 600);
+    let merge = commit(path, &format!("feat: it (#{number})"), NOW - 3 * 3600 - 60);
+    (old, merge)
+}
+
+/// A state folder holding a pass of the ask "card" half an hour ago, and
+/// room for the switches.
+fn state() -> tempfile::TempDir {
     let home = tempfile::tempdir().expect("a state folder");
-    let core = home.path().join("core.git");
-    std::fs::create_dir_all(&core).expect("a scratch core");
-    let ago = 3 * 3600;
-    git(&core, &["init", "-q", "-b", "main"], NOW);
-    let commit = |subject: &str, when: i64| {
-        git(
-            &core,
-            &["commit", "-q", "--allow-empty", "-m", subject],
-            when,
-        );
-        git(&core, &["rev-parse", "HEAD"], when)
-    };
-    let old = commit("before", NOW - ago - 600);
-    let merge = commit("feat: the card (#6835)", NOW - ago - 60);
     std::fs::create_dir_all(home.path().join("mission")).expect("a folder for the record");
     std::fs::write(home.path().join(PROBES), run("card", 1800, true, 1200)).expect("a record");
     std::fs::create_dir_all(home.path().join("integration")).expect("a folder for switches");
-    let switch =
-        |ago: i64, core: &str| json!({"at": at(NOW - ago), "revs": {"core": core}}).to_string();
-    let asks = list(&[landed("card", ago, "A", &json!({"pr": "core.nix#6835"}))]);
-    let measured = |switches: &[String]| {
-        std::fs::write(home.path().join(SWITCHES), switches.join("\n")).expect("switches");
-        super::read(home.path(), home.path(), &[], &asks, NOW)
-    };
+    home
+}
+
+/// A switch `ago` seconds before now to `generation`, built from `core`.
+fn switch(ago: i64, generation: u64, core: &str) -> String {
+    json!({"at": at(NOW - ago), "generation": generation, "revs": {"core": core}}).to_string()
+}
+
+/// The measure of the ask "card" landed three hours ago naming `pr`, kept
+/// in `home` with `switches`, on a machine running `running`, with
+/// `checkouts` besides core's.
+fn measured(
+    home: &Path,
+    pr: &str,
+    switches: &[String],
+    running: u64,
+    checkouts: &[String],
+) -> Measure {
+    let asks = list(&[landed("card", 3 * 3600, "A", &json!({"pr": pr}))]);
+    std::fs::write(home.join(SWITCHES), switches.join("\n")).expect("switches");
+    super::read_on(home, home, checkouts, &asks, NOW, Some(running))
+}
+
+#[test]
+fn a_switch_counts_only_once_the_core_it_built_holds_the_merge() {
+    let home = state();
+    let (old, merge) = scratch(&home.path().join("core.git"), 6835);
+    let over = |switches: &[String]| measured(home.path(), "core.nix#6835", switches, 7, &[]);
     // Built from a core before the merge, the pass ran on old code.
-    let m = measured(&[switch(3600, &old)]);
+    let m = over(&[switch(3600, 7, &old)]);
     assert!(
         m.behind.first().is_some_and(|line| line.contains(
             "passed before a switch could carry it, not live yet, as the switch running \
@@ -793,17 +822,19 @@ fn a_switch_counts_only_once_the_core_it_built_holds_the_merge() {
         "a pass on a switch built before the merge proved it: {:?}",
         m.behind
     );
-    // A revision core's checkout lacks can't be judged, so isn't live.
-    let m = measured(&[switch(3600, "0123456789abcdef")]);
+    // A revision core's checkout lacks can't be judged, so isn't live, and
+    // isn't the cell's to mend.
+    let m = over(&[switch(3600, 7, "0123456789abcdef")]);
     assert!(
         m.behind.first().is_some_and(|line| {
-            line.contains("cadence can't tell whether the switch running carries it")
+            line.contains("its probe passed on a switch cadence can't judge")
+                && line.contains(BLIND)
         }),
         "a switch that couldn't be judged counted as carrying it: {:?}",
         m.behind
     );
     // Built from the merge, the pass after it proves it.
-    let m = measured(&[switch(3600, &old), switch(2400, &merge)]);
+    let m = over(&[switch(3600, 6, &old), switch(2400, 7, &merge)]);
     assert_eq!(
         (m.target, m.behind.len()),
         (Some(0.0), 0),
@@ -814,7 +845,104 @@ fn a_switch_counts_only_once_the_core_it_built_holds_the_merge() {
 }
 
 #[test]
-fn a_part_a_switch_doesnt_carry_holds_it_back_whatever_the_harness_carries() {
+fn a_switch_back_to_what_lacks_the_merge_holds_the_ask_back() {
+    let home = state();
+    let (old, merge) = scratch(&home.path().join("core.git"), 6835);
+    let over = |switches: &[String], running: u64| {
+        measured(home.path(), "core.nix#6835", switches, running, &[])
+    };
+    // Switched to the merge, then to a core before it: the pass ran on the
+    // later, whatever an earlier switch held.
+    let m = over(&[switch(3600, 6, &merge), switch(2400, 7, &old)], 7);
+    assert!(
+        m.behind.first().is_some_and(|line| line.contains(
+            "passed before a switch could carry it, not live yet, as the switch running \
+             doesn't carry it"
+        )),
+        "a pass after a switch back to old code proved it: {:?}",
+        m.behind
+    );
+    // Rolled back, the record's last switch no longer runs, so nothing
+    // since can be judged by it.
+    let m = over(&[switch(3600, 6, &old), switch(2400, 7, &merge)], 6);
+    assert!(
+        m.behind.first().is_some_and(|line| line.contains(BLIND)),
+        "a pass after a rollback proved what no longer runs: {:?}",
+        m.behind
+    );
+}
+
+#[test]
+fn a_merge_or_checkout_cadence_cant_find_leaves_the_ask_unjudged() {
+    let home = state();
+    let (old, merge) = scratch(&home.path().join("core.git"), 6835);
+    let switches = [switch(3600, 6, &old), switch(2400, 7, &merge)];
+    for pr in ["core.nix#9999", "world#5"] {
+        let m = measured(home.path(), pr, &switches, 7, &[]);
+        assert!(
+            m.behind.first().is_some_and(|line| line.contains(BLIND)),
+            "{pr}, which cadence can't find, counted as carried: {:?}",
+            m.behind
+        );
+    }
+}
+
+#[test]
+fn a_mycelium_change_counts_once_the_core_switched_to_pins_it() {
+    let home = state();
+    let core = home.path().join("core.git");
+    let mycelium = home.path().join("mycelium");
+    let (pinned_old, pinned_merge) = scratch(&mycelium, 5);
+    std::fs::create_dir_all(&core).expect("a scratch core");
+    git(&core, &["init", "-q", "-b", "main"], NOW);
+    let pinning = |rev: &str, when: i64| {
+        let lock = json!({"nodes": {
+            "root": {"inputs": {"mycelium": "mycelium"}},
+            "mycelium": {"locked": {"rev": rev}},
+        }});
+        std::fs::write(core.join("flake.lock"), lock.to_string()).expect("a lock");
+        git(&core, &["add", "flake.lock"], when);
+        commit(&core, "chore: pin", when)
+    };
+    let lags = pinning(&pinned_old, NOW - 3 * 3600);
+    let pins = pinning(&pinned_merge, NOW - 3 * 3600 + 60);
+    let checkouts = [format!("mycelium={}", mycelium.display())];
+    let over = |switches: &[String]| measured(home.path(), "mycelium#5", switches, 7, &checkouts);
+    let m = over(&[switch(3600, 7, &lags)]);
+    assert!(
+        m.behind
+            .first()
+            .is_some_and(|line| line.contains("as the switch running doesn't carry it")),
+        "a core pinning mycelium before its merge carried it: {:?}",
+        m.behind
+    );
+    let m = over(&[switch(3600, 6, &lags), switch(2400, 7, &pins)]);
+    assert_eq!(
+        (m.target, m.behind.len()),
+        (Some(0.0), 0),
+        "a pass on a core pinning the merge didn't prove it: {} {:?}",
+        m.says,
+        m.behind
+    );
+}
+
+#[test]
+fn the_harness_part_of_an_ask_waits_on_its_install_not_the_switch() {
+    let pr = json!({"pr": "agentic-harness.pi#2326, core.nix#6835"});
+    let asks = list(&[landed("mixed", 3 * 3600, "A", &pr)]);
+    let switch = json!({"at": at(NOW - 3600)}).to_string();
+    let judge = |_: &Value, repo: Repo, _: u32| (repo != Repo::Harness).then_some(true);
+    let passed = run("mixed", 600, true, 1200);
+    let m = unproven(&asks, Ok(&passed), Ok(&switch), &judge, NOW);
+    assert!(
+        m.behind.is_empty(),
+        "a harness part no switch names held back a pass on the core: {:?}",
+        m.behind
+    );
+}
+
+#[test]
+fn a_part_a_switch_doesnt_carry_holds_it_back() {
     let ago = 3 * 3600;
     let pr = json!({"pr": "agentic-harness.pi#2326, mycelium#5"});
     let asks = list(&[landed("mixed", ago, "A", &pr)]);
@@ -829,7 +957,7 @@ fn a_part_a_switch_doesnt_carry_holds_it_back_whatever_the_harness_carries() {
         m.behind
             .first()
             .is_some_and(|line| line.contains("as the switch running doesn't carry it")),
-        "a pin not carrying its mycelium change let a pass count: {:?}",
+        "a part the switch doesn't carry let a pass count: {:?}",
         m.behind
     );
 }

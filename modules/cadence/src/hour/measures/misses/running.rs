@@ -564,6 +564,13 @@ pub(in crate::hour::measures) fn holds(
     carries(&repos.get(repo)?.to_string_lossy(), merge, &rev)
 }
 
+/// The system generation running here, while the system profile is what
+/// runs; `None` otherwise, as after a boot into an older generation.
+pub(in crate::hour::measures) fn running_generation() -> Option<u64> {
+    let (generation, same) = system_profile();
+    generation.filter(|_| same)
+}
+
 /// The revisions a switch was built from, by repository, from a line of
 /// integration's `switches.jsonl`.
 fn switched(switch: &Value) -> BTreeMap<String, String> {

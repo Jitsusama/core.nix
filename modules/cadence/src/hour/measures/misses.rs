@@ -25,8 +25,8 @@ mod tested;
 
 pub use held::{BLIND, HELD, held};
 use running::LASTING;
-pub(super) use running::holds;
 pub use running::{UNRUN, UNSEEN, hosts_started};
+pub(super) use running::{holds, running_generation};
 pub use symbiosis::{Findings, KEY as FINDINGS, findings, held_for_good, held_unseen};
 pub use tested::{UNTESTED, untested};
 

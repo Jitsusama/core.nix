@@ -60,10 +60,10 @@ pub type Carried<'a> = dyn Fn(&Value, Repo, u32) -> Option<bool> + 'a;
 /// by its merge on the main of cadence's checkouts, core's in `folder` and
 /// each of `checkouts`, as the misses read them. A probe record that can't
 /// be read is unread, never none passed, and so is one that's gone or
-/// emptied: its keeper writes it, so a lost one would otherwise ask again of every ask
-/// proven. A switch record that's gone is none, as on a machine never
-/// switched, but one that can't be read is unread, or every pass would
-/// count as though no switch had come.
+/// emptied: its keeper writes it, so a lost one would otherwise ask again
+/// of every ask proven. A switch record that's gone is none, as on a
+/// machine never switched, but one that can't be read is unread, or every
+/// pass would count as though no switch had come.
 #[must_use]
 pub fn read(
     state_home: &Path,
@@ -71,6 +71,22 @@ pub fn read(
     checkouts: &[String],
     asks: &str,
     now: i64,
+) -> Measure {
+    let running = misses::running_generation();
+    read_on(state_home, folder, checkouts, asks, now, running)
+}
+
+/// The measure as `read` has it, on a machine whose system generation
+/// `running` runs, if known: the newest switch is judged only while it
+/// does, since a switch back, or a boot into an older generation, leaves
+/// the record naming what doesn't run, as the misses read it.
+fn read_on(
+    state_home: &Path,
+    folder: &Path,
+    checkouts: &[String],
+    asks: &str,
+    now: i64,
+    running: Option<u64>,
 ) -> Measure {
     let probes = match fs::read_to_string(state_home.join(PROBES)) {
         Ok(text) if text.trim().is_empty() => Err(NONE_KEPT.to_owned()),
@@ -90,9 +106,19 @@ pub fn read(
         .min()
         .unwrap_or(now)
         - SINCE;
+    let newest = switches.as_deref().ok().and_then(|record| {
+        lines(record)
+            .filter_map(|line| Some((seconds(&line["at"])?, line)))
+            .max_by_key(|(at, _)| *at)
+            .map(|(_, line)| line)
+    });
     let merges: RefCell<BTreeMap<&str, Option<BTreeMap<u64, String>>>> = RefCell::default();
     let judged: RefCell<BTreeMap<Judging, Option<bool>>> = RefCell::default();
     let carried = |line: &Value, repo: Repo, number: u32| {
+        let runs = running.is_some() && line["generation"].as_u64() == running;
+        if newest.as_ref() == Some(line) && !runs {
+            return None;
+        }
         let name = repo_name(repo);
         let key = (line["revs"].to_string(), name, number);
         if let Some(known) = judged.borrow().get(&key) {
@@ -101,7 +127,17 @@ pub fn read(
         let merge = merges
             .borrow_mut()
             .entry(name)
-            .or_insert_with(|| misses::merges_since(repos.get(name)?, since))
+            .or_insert_with(|| {
+                let path = repos.get(name)?;
+                let read = misses::merges_since(path, since);
+                if read.is_none() {
+                    eprintln!(
+                        "cadence: couldn't read {name}'s main at {}, so no ask of it is judged",
+                        path.display()
+                    );
+                }
+                read
+            })
             .as_ref()
             .and_then(|merges| merges.get(&u64::from(number)).cloned());
         let held = merge.and_then(|merge| misses::holds(line, name, &merge, &repos));
@@ -297,6 +333,13 @@ fn runs(probes: &str) -> Result<BTreeMap<String, Vec<Run>>, String> {
     Ok(by_ask)
 }
 
+/// What a line ends with when only cadence's own sight keeps it from being
+/// judged: no checkout, git failing, or a switch that doesn't run now. It
+/// stays on the card, but isn't the answering cell's to mend, so it isn't
+/// put to the cell, as the misses hold back what the hour can't see.
+pub const BLIND: &str =
+    ", not live yet, as cadence can't tell whether the switch running carries it";
+
 /// The machine's switches, oldest first, and how each is judged to carry a
 /// change.
 struct Switches<'a> {
@@ -390,26 +433,42 @@ fn unproven_ask(
             switches.carry(ask, landed, at)
         }
     };
+    let ran_on = last.map(|run| (run, carry(run.at)));
+    let proven = ran_on.is_some_and(|(run, on)| run.passed && on == Carry::Carries);
+    // One past the week only counts, so the switch it would run on now,
+    // which costs git, isn't asked of it.
+    if landed < now - SINCE {
+        return (!proven).then(|| (landed, String::new(), String::new()));
+    }
+    if proven {
+        return None;
+    }
+    // Only a failure on what carries it is the cell's to mend while cadence
+    // can't tell what runs now; otherwise the line is the hour's own.
+    let failed_on_it = ran_on.is_some_and(|(run, on)| !run.passed && on == Carry::Carries);
     let unswitched = match carry(now) {
         Carry::Carries => "",
         Carry::Unswitched => ", not live yet, as no switch has come since it landed",
         Carry::Lacks => ", not live yet, as the switch running doesn't carry it",
-        Carry::Unjudged => {
-            ", not live yet, as cadence can't tell whether the switch running carries it"
+        Carry::Unjudged if failed_on_it => {
+            ", though cadence can't tell whether the switch running now carries it"
         }
+        Carry::Unjudged => BLIND,
     };
-    let on_switch = |run: &Run| carry(run.at) == Carry::Carries;
-    let state = match (!names_probe(ask), last) {
-        (_, Some(run)) if run.passed && on_switch(run) => return None,
+    let state = match (!names_probe(ask), ran_on) {
+        (_, Some((run, Carry::Unjudged))) => format!(
+            "its probe {} on a switch cadence can't judge",
+            if run.passed { "passed" } else { "failed" }
+        ),
         // A failure there says no more of the change than a pass does.
-        (_, Some(run)) if !on_switch(run) => format!(
+        (_, Some((run, on))) if on != Carry::Carries => format!(
             "its probe {} before a switch could carry it",
             if run.passed { "passed" } else { "failed" }
         ),
         (true, _) => "it names no probe".to_owned(),
         (false, None) if runs.is_none() => "its probe runs unread".to_owned(),
         (false, None) => "its probe hasn't run since it landed".to_owned(),
-        (false, Some(run)) => match run.switch {
+        (false, Some((run, _))) => match run.switch {
             Some(switch) => format!("its probe failed after switch {switch}"),
             None => "its probe failed".to_owned(),
         },
