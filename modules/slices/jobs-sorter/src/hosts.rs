@@ -1023,7 +1023,11 @@ mod tests {
             call[at + 2].clone()
         };
         assert_eq!(weight("CPUWeight"), "400");
-        assert_eq!(weight("IOWeight"), "400", "the disk follows the rank, not systemd's 100");
+        assert_eq!(
+            weight("IOWeight"),
+            "400",
+            "the disk follows the rank, not systemd's 100"
+        );
     }
 
     #[test]
