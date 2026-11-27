@@ -69,6 +69,7 @@ pub fn parse(text: &str) -> Result<Vec<Fate>, String> {
         .map(|line| {
             let (name, folders) = line
                 .split_once(':')
+                .filter(|(name, _)| !name.trim().is_empty())
                 .ok_or_else(|| format!("no fate named before a colon: {line}"))?;
             let folders: Vec<String> = folders.split_whitespace().map(str::to_owned).collect();
             if folders.is_empty() {
@@ -233,16 +234,7 @@ mod tests {
     }
 
     #[test]
-    fn fates_txt_reads_and_names_the_map() {
-        let named: Vec<String> = fates().into_iter().map(|fate| fate.name).collect();
-        assert!(
-            named.iter().any(|name| name == "the map's first visit"),
-            "fates.txt lost the map's fate: {named:?}"
-        );
-    }
-
-    #[test]
-    fn every_folder_the_maps_check_is_built_from_shares_its_fate() {
+    fn each_folder_fates_txt_names_for_the_map_is_shared() {
         // The page is built from the theme's web kit, which the theme's
         // type, colours, space and palettes set, and the sites' strip,
         // build and feeds too, so a move in any can join a map change in
@@ -365,7 +357,12 @@ mod tests {
 
     #[test]
     fn a_fate_refuses_a_line_it_cannot_read() {
-        for line in ["no colon here", "bare:", "slashless: modules/mycelium/site"] {
+        for line in [
+            "no colon here",
+            "bare:",
+            "slashless: modules/mycelium/site",
+            ": modules/nameless/",
+        ] {
             assert!(parse(line).is_err(), "read a fate from {line:?}");
         }
         assert_eq!(

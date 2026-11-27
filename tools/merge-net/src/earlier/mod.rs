@@ -15,6 +15,7 @@ use std::process::Command;
 
 use crate_reach::Crates;
 
+use crate::rules::fates::Fate;
 use crate::{candidates, git, gone, lines, patch_id, ready, rules, stands};
 
 /// The record of the run that passed at an earlier commit of `commit`'s
@@ -108,15 +109,8 @@ pub fn judged(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Resul
         let mut shared = ready::shared(&branch, &main_side);
         let (at_base, checked) = (|f: &str| at(&base, f), |f: &str| at(candidate, f));
         shared.retain(|file| !ready::stands_apart(file, &rebased, &main_side, &at_base, &checked));
-        let mut beside = crates.beside(&files, &since);
-        for fated in rules::fates::beside(&fates, &branch, &main_side) {
-            if !beside.contains(&fated) {
-                beside.push(fated);
-            }
-        }
-        shared.retain(|file| !beside.contains(file));
-        shared.extend(beside);
-        Some(shared)
+        let beside = crates.beside(&files, &since);
+        Some(sharing(shared, beside, &fates, &branch, &main_side))
     };
     let same = |candidate: &str| {
         ready::when_same(candidate, change.as_deref()?, base_of, id_of, |base| {
@@ -135,6 +129,28 @@ pub fn judged(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Resul
         files,
         before,
     })
+}
+
+/// What a change shares with what main moved since its base: the files
+/// both changed that don't stand apart, then those main moved in a crate
+/// `beside` them or in one of `fates` the change has a path in, which
+/// never stand apart, since what they share is their crate's or fate's
+/// whole build, not one file's text.
+fn sharing(
+    mut shared: Vec<String>,
+    mut beside: Vec<String>,
+    fates: &[Fate],
+    branch: &ready::Side,
+    main: &ready::Side,
+) -> Vec<String> {
+    for fated in rules::fates::beside(fates, branch, main) {
+        if !beside.contains(&fated) {
+            beside.push(fated);
+        }
+    }
+    shared.retain(|file| !beside.contains(file));
+    shared.extend(beside);
+    shared
 }
 
 /// The tree merging `commit` into `main` in the repository at `folder`
@@ -208,6 +224,93 @@ mod tests {
         assert!(
             !ready::stands_apart(&file, &as_its_own, &main, &base, &own),
             "a head's own copy, lacking main's entry, stood apart from it"
+        );
+    }
+
+    /// What a change to `ours` shares with main's moves of `theirs` once
+    /// `standing` of the files both changed are left after standing apart,
+    /// under the fates `fates.txt` holds.
+    fn shared_with(ours: &[&str], theirs: &[&str], standing: &[&str]) -> Vec<String> {
+        let own = |files: &[&str]| {
+            files
+                .iter()
+                .map(|file| (*file).to_owned())
+                .collect::<Vec<_>>()
+        };
+        let (ours, theirs, none) = (own(ours), own(theirs), Vec::new());
+        let nothing = |_: &str| String::new();
+        let branch = ready::Side {
+            changed: &ours,
+            gone: &none,
+            text: &nothing,
+        };
+        let main = ready::Side {
+            changed: &theirs,
+            gone: &none,
+            text: &nothing,
+        };
+        sharing(
+            own(standing),
+            Vec::new(),
+            &rules::fates::fates(),
+            &branch,
+            &main,
+        )
+    }
+
+    #[test]
+    fn a_theme_move_main_made_holds_a_map_change_to_a_fresh_run() {
+        let shared = shared_with(
+            &["modules/mycelium/site/view.js"],
+            &["modules/theme/type.nix", "docs/testing.md"],
+            &[],
+        );
+        assert_eq!(
+            shared,
+            vec!["modules/theme/type.nix".to_owned()],
+            "main's move in the map's fate wasn't shared with a map change"
+        );
+        let passed = "a".repeat(40);
+        let built = |_: &str| r#"{"run":["changed-checks"]}"#.to_owned();
+        let before = |shared: &[String]| {
+            ready::checked_before(std::slice::from_ref(&passed), &built, &|_| true, &|_| {
+                Some(shared.to_vec())
+            })
+        };
+        assert_eq!(
+            before(&[]),
+            ready::Before::Clean(passed.clone()),
+            "an earlier pass sharing nothing didn't speak for the head"
+        );
+        assert_eq!(
+            before(&shared),
+            ready::Before::Shares(passed.clone(), shared.clone()),
+            "an earlier pass spoke for a map change over main's move in its fate"
+        );
+    }
+
+    #[test]
+    fn a_fated_file_that_stood_apart_is_shared_all_the_same() {
+        // A file both sides changed may stand apart by its text, but in a
+        // fate what's shared is the fate's whole build.
+        let shared = shared_with(
+            &["modules/mycelium/site/view.js"],
+            &["modules/mycelium/site/view.js"],
+            &[],
+        );
+        assert_eq!(
+            shared,
+            vec!["modules/mycelium/site/view.js".to_owned()],
+            "a fated file that stood apart was dropped from what's shared"
+        );
+        let apart = shared_with(
+            &["modules/net/site/panel.ts"],
+            &["modules/theme/type.nix"],
+            &[],
+        );
+        assert!(
+            apart.is_empty(),
+            "a change outside every fate shared {apart:?}"
         );
     }
 
