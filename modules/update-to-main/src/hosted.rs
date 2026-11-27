@@ -217,8 +217,10 @@ pub fn descends(config: &Config, older: &str, newer: &str) -> Result<bool, Failu
     if older == newer {
         return Ok(true);
     }
+    // A copy that can't walk between the two, as one missing history between
+    // commits it holds, settles nothing either, so its error asks the host.
     let main = Repo::main(config);
-    if git::has(&main, newer) && git::descends(&main, older, newer)? {
+    if git::has(&main, newer) && matches!(git::descends(&main, older, newer), Ok(true)) {
         return Ok(true);
     }
     if let Some(found) = read::found(config, newer)
@@ -246,12 +248,16 @@ pub fn descends(config: &Config, older: &str, newer: &str) -> Result<bool, Failu
 /// both, and otherwise by the host's word. The copy borrows a checkout
 /// holding only part of main's history, so one with `head` may still lack
 /// `commit`, and that proves nothing; with no host to ask, it reads as not
-/// held, as it always has.
+/// held, as it always has. A copy with both that can't walk between them
+/// asks the host too, where there is one.
 pub fn holds(config: &Config, hosted: &Hosted, commit: &str, head: &str) -> Result<bool, Failure> {
     let main = Repo::main(config);
     let in_copy = git::has(&main, head);
     if in_copy && (git::has(&main, commit) || hosted.api.is_none()) {
-        return git::descends(&main, commit, head);
+        match git::descends(&main, commit, head) {
+            Err(_) if hosted.api.is_some() => {}
+            said => return said,
+        }
     }
     let Some(api) = &hosted.api else {
         return Err(Failure::new(format!(
