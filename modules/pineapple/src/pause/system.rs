@@ -60,8 +60,8 @@ impl Runs for System {
 impl System {
     /// Starts every program at once and waits for them together, each
     /// given `limit` from the start. One that ended is answered once what
-    /// it printed is read, or at the limit with its exit alone, as a
-    /// program it started may still hold its output open.
+    /// it printed is read, or at the limit as unknown, as a program it
+    /// started may still hold its output open.
     fn run_together(&self, runs: &[(&Path, &[String])]) -> Vec<Result<String, String>> {
         let began = Instant::now();
         let (mut running, mut answers): (Vec<_>, Vec<_>) = runs
@@ -80,7 +80,7 @@ impl System {
                 // children may hold them.
                 let ended = match one.child.try_wait() {
                     Ok(Some(status)) if one.read() => Ok(status),
-                    Ok(Some(status)) if late => Err(unread(status)),
+                    Ok(Some(status)) if late => Err(Err(unread(status))),
                     Ok(None) if late => {
                         // Killed at its limit; it may have ended meanwhile,
                         // which is as good.
@@ -143,13 +143,17 @@ fn start(program: &Path, args: &[String]) -> Result<Running, String> {
     }
 }
 
-/// What a program that ended as `status` says answers, its output unread.
-fn unread(status: ExitStatus) -> Result<String, String> {
-    if status.success() {
-        Ok(String::new())
-    } else {
-        Err(format!("what it printed still held open ({status})"))
-    }
+/// What a program that ended as `status` answers while what it printed is
+/// still held open at the limit, as by a program it started: never a
+/// success, since a caller reading its words would take none for nothing
+/// printed, such as no agents' work running; and never ending in its
+/// status, since a 255 so ending reads as the command never running there
+/// (src/pause/reach.rs), when it may have begun.
+fn unread(status: ExitStatus) -> String {
+    format!(
+        "it ended ({status}), but what it printed was still held open at the \
+         limit, so what it did there is unknown"
+    )
 }
 
 impl Running {
@@ -192,6 +196,7 @@ mod tests {
     use std::path::Path;
     use std::time::{Duration, Instant};
 
+    use super::super::reach::{BEGUN, didnt_run};
     use super::{AT_ONCE, Runs, System};
 
     /// `sh -c` running `line`.
@@ -250,14 +255,21 @@ mod tests {
         let mut system = System {
             limit: Duration::from_secs(4),
         };
-        let one = sh("sleep 1");
-        let runs = vec![(Path::new("sh"), one.as_slice()); AT_ONCE + 1];
+        let each: Vec<Vec<String>> = (0..=AT_ONCE)
+            .map(|at| sh(&format!("sleep 1; echo {at}")))
+            .collect();
+        let runs: Vec<(&Path, &[String])> = each
+            .iter()
+            .map(|one| (Path::new("sh"), one.as_slice()))
+            .collect();
         let began = Instant::now();
         let answers = system.run_all(&runs);
         let took = began.elapsed();
-        assert!(
-            answers.len() == AT_ONCE + 1 && answers.iter().all(Result::is_ok),
-            "each answered: {answers:?}"
+        let said: Vec<Result<String, String>> =
+            (0..=AT_ONCE).map(|at| Ok(format!("{at}\n"))).collect();
+        assert_eq!(
+            answers, said,
+            "each answered in the order asked, across lots"
         );
         assert!(
             took >= Duration::from_secs(2),
@@ -275,14 +287,33 @@ mod tests {
         let began = Instant::now();
         let answers = system.run_all(&[(Path::new("sh"), &leaving), (Path::new("sh"), &hung)]);
         let took = began.elapsed();
+        assert!(
+            answers[0]
+                .as_ref()
+                .is_err_and(|why| why.contains("still held open")),
+            "it ended well, but its words unread aren't taken for none: {answers:?}"
+        );
         assert_eq!(
-            answers,
-            [Ok(String::new()), Err("no answer in 1 s".to_owned())],
-            "it ended well, its output unread, and the hung one was killed"
+            answers[1],
+            Err("no answer in 1 s".to_owned()),
+            "the hung one was killed: {answers:?}"
         );
         assert!(
             took < Duration::from_secs(3),
             "neither waited on the output its child holds: {took:?}"
+        );
+    }
+
+    #[test]
+    fn one_begun_that_failed_with_its_output_held_isnt_taken_for_never_run() {
+        let mut system = System {
+            limit: Duration::from_secs(1),
+        };
+        let begun = sh(&format!("echo '{BEGUN}' >&2; sleep 5 & exit 255"));
+        let answers = system.run_all(&[(Path::new("sh"), &begun)]);
+        assert!(
+            answers[0].as_ref().is_err_and(|why| !didnt_run(why)),
+            "its words unread, it may have begun, so it isn't read as never run: {answers:?}"
         );
     }
 }

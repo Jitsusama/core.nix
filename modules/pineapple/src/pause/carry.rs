@@ -14,8 +14,10 @@
 //! there; one that never held it is given nothing. A stop no longer kept
 //! here, such as one read from an answer that couldn't be read, forgotten
 //! once the answer could be, is taken away from each machine given it.
-//! Each machine lacking a stop is given it at once, so one that doesn't
-//! answer holds none of the others up. A machine that couldn't take what
+//! The machines lacking a stop are given it sixteen at a time
+//! (src/pause/system.rs), so one that doesn't answer holds none of its
+//! lot up past their limit, and a later lot up by that limit at most. A
+//! machine that couldn't take what
 //! it was given is tried again after a minute, never sooner, for every
 //! stop at once, so one out of reach costs a run a minute.
 //!
@@ -294,9 +296,9 @@ pub fn taken_away(name: &str) -> String {
     )
 }
 
-/// Asks mycelium to run `script` on each machine `at` names, all at once,
-/// so one out of reach holds none of the others up; answers each in the
-/// order named.
+/// Asks mycelium to run `script` on each machine `at` names, sixteen at
+/// a time, so one out of reach holds the others up by a run's limit at
+/// most; answers each in the order named.
 fn give(plan: &Plan, runs: &mut dyn Runs, at: &[Reached], script: &str) -> Vec<Result<(), String>> {
     if at.is_empty() {
         return Vec::new();

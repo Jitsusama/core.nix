@@ -81,7 +81,7 @@ pub(super) fn run_there(machine: &str, realm: Option<&str>, script: String) -> V
 /// Whether `why` a run failed is mycelium saying the command never ran.
 /// The script's word may share its line with the status, when nothing
 /// was said after it.
-fn didnt_run(why: &str) -> bool {
+pub(super) fn didnt_run(why: &str) -> bool {
     why.trim_end().ends_with(DIDNT_RUN)
         && !why.lines().any(|line| line.trim_start().starts_with(BEGUN))
 }

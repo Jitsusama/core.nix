@@ -321,7 +321,8 @@ fn a_stop_is_taken_away_from_every_machine_at_once_and_kept_noted_where_it_faile
     let mut carrier = Carrier::default();
     carrier.carry(&named, &state, "here", 0, &mut here);
     fs::remove_file(state.join(format!("stops/{name}.json"))).expect("forgotten here");
-    here.unreached = Some("machine=builder");
+    // The last one fails, so answers paired in reverse would show.
+    here.unreached = Some("machine=far");
 
     let (gives, _) = carrier.carry(&named, &state, "here", 10, &mut here);
 
@@ -331,7 +332,7 @@ fn a_stop_is_taken_away_from_every_machine_at_once_and_kept_noted_where_it_faile
         .collect();
     assert_eq!(
         failed,
-        vec![("mac", false), ("builder", true), ("far", false)],
+        vec![("mac", false), ("builder", false), ("far", true)],
         "each is given its end, and only the one out of reach fails: {gives:?}"
     );
     assert_eq!(
@@ -342,7 +343,7 @@ fn a_stop_is_taken_away_from_every_machine_at_once_and_kept_noted_where_it_faile
     );
     let noted = fs::read_to_string(state.join(format!("carried/{name}.json"))).unwrap_or_default();
     assert!(
-        noted.contains("\"builder\"") && !noted.contains("\"mac\"") && !noted.contains("\"far\""),
+        noted.contains("\"far\"") && !noted.contains("\"mac\"") && !noted.contains("\"builder\""),
         "only the one still holding it is noted: {noted}"
     );
     let asked = here.asked.len();
@@ -356,7 +357,7 @@ fn a_stop_is_taken_away_from_every_machine_at_once_and_kept_noted_where_it_faile
     let (later, _) = carrier.carry(&named, &state, "here", 10 + AGAIN_MS, &mut here);
     assert_eq!(
         later,
-        vec![gave(name, "builder", Gift::Removal)],
+        vec![gave(name, "far", Gift::Removal)],
         "after a minute only the one still holding it is asked again"
     );
     assert!(
