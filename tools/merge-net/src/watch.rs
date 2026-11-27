@@ -1107,7 +1107,7 @@ fn told_fixed(
 /// no merge since `base` moved it alone. Each merge asks for two
 /// derivations, or four, so it's read only for an outcome that names an
 /// owner.
-fn owner_of(
+pub(crate) fn owner_of(
     world: &dyn World,
     base: &str,
     head: &str,

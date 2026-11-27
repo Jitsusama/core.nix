@@ -1,7 +1,7 @@
-// The shapes and words by which Presented.js's keyShown, kindsLed, appShown and actShown tell how
-// much of a row's key a journal line may say with reports off: what the launcher and its daemons
-// write there, as against what someone else did. Data alone, kept apart from the code that reads
-// it, so Presented.js stays one file biome can hold to its length.
+// The shapes and words by which Presented.js's keyShown, kindsLed and appShown, and ActsSaid.js's
+// actShown, tell how much of a row's key a journal line may say with reports off: what the
+// launcher and its daemons write there, as against what someone else did. Data alone, kept apart
+// from the code that reads it, so Presented.js stays one file biome can hold to its length.
 .pragma library
 
 // The kinds of key the launcher gives its own rows, whose rest, where it has an id's shape
@@ -13,8 +13,13 @@ const keysOwn = ["place:", "category:", "collection:"];
 const ownLength = 64;
 // What follows an own kind as the launcher writes it, an id its Nix config names, as `emoji`
 // or `Asks`: a daemon's row keyed so may hold a name, a line break or a walk's forged steps
-// there, which no id holds, so such a key is said by its kind alone. A served row is never
-// keyed so (Presented.js's keyMade), so this test is a fail-safe for a key made elsewhere.
+// there, which no id holds, so such a key is said by its kind alone. This test can't tell an id
+// from a one-word name, so a served row's key never claims an own kind: ReadyRows.qml's, Agents'
+// served rows' among them, Emoji's, Copies' and a network's parts' are made by Presented.js's
+// keyMade, and the rows Agents makes itself are keyed by kinds of its own, none in keysOwn.
+// keyShown also says a served `program:<id>` whole where its id is shaped as an app's, which
+// holds while only the programs daemon serves two-part `program:` keys: sound's are
+// `program:<device>:<name>`, said as `program`.
 const ownId = /^[A-Za-z0-9][A-Za-z0-9._-]*$/u;
 
 // A kind's word, as the launcher and its daemons write one, at most 32 letters, and the keys

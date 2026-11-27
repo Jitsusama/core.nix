@@ -253,7 +253,7 @@ mod tests {
     fn someone_calling_rings_until_answered() {
         let mut log = Log::new(NOON - 10_000);
         let heard = log.heard(&line("11:59:55.000", "received incoming call: 7"), NOON);
-        assert!(heard.rang);
+        assert!(heard.rang, "an incoming call should begin a ring");
         assert_eq!(heard.missed, None);
         assert_eq!(
             log.ringing(),
@@ -366,8 +366,11 @@ mod tests {
             &line("11:59:56.000", "daemon loop started, waiting for events..."),
             NOON,
         );
-        assert!(heard.started);
-        assert!(heard.rang);
+        assert!(
+            heard.started,
+            "the daemon's loop starting should say Tuple started"
+        );
+        assert!(heard.rang, "Tuple starting should end the ring going");
         assert_eq!(log.ringing(), None);
     }
 

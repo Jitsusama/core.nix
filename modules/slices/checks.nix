@@ -89,7 +89,9 @@
   # swap before work is ended, but for the hard part the sessions' kitty
   # keeps, which the next check holds; every slice above claims both kinds.
   # Whether the parents' floors cover them is the VM test's to say, since
-  # one is a share of memory and another a size.
+  # one is a share of memory and another a size. What session.slice and
+  # app.slice swap out stays compressed in memory, never on the disk, so
+  # what Joel comes back to faults back without waiting on it.
   session-memory-is-protected =
     let
       inherit (graphical.config) systemd;
@@ -102,13 +104,15 @@
       agents = systemd.user.slices.agents.sliceConfig;
     in
     holds "session-memory-is-protected"
-      "A slice above session.slice, app.slice or agents.slice lacks its memory floor, so they have none."
+      "A slice above session.slice, app.slice or agents.slice lacks its memory floor, so they have none, or session.slice or app.slice writes what it swaps out to the disk."
       (
         same (above "MemoryMin")
         && same (above "MemoryLow")
         && systemd.user.slices.session.sliceConfig ? MemoryMin
         && systemd.user.slices.app.sliceConfig ? MemoryMin
         && agents ? MemoryLow
+        && (systemd.user.slices.session.sliceConfig.MemoryZSwapWriteback or true) == false
+        && (systemd.user.slices.app.sliceConfig.MemoryZSwapWriteback or true) == false
       );
 
   # The compositor and the shell are how Joel drives the machine, so inside
@@ -157,15 +161,19 @@
           given = "${services.jobs-sorter.serviceConfig.ExecStart} ";
         in
         lib.hasInfix " --under ${slice} " given || lib.hasInfix " --under '${slice}=" given;
+      # Each claim by what it means, so a failure names the one that broke.
+      claims = {
+        "the apps don't outweigh it ten times on the processor" =
+          weight slices.app >= 10 * weight slices.agents;
+        "the apps don't outweigh it ten times on the disk" = disk slices.app >= 10 * disk slices.agents;
+        "the sorter doesn't watch app.slice" = watches "app.slice";
+        "the sorter doesn't watch agents.slice" = watches "agents.slice";
+      };
+      broken = lib.attrNames (lib.filterAttrs (_: held: !held) claims);
     in
     holds "sessions-sit-beside-the-programs"
-      "Agents' sessions have no slice beside the apps, the apps don't outweigh it ten times over on the processor and the disk, or the sorter doesn't watch it."
-      (
-        weight slices.app >= 10 * weight slices.agents
-        && disk slices.app >= 10 * disk slices.agents
-        && watches "app.slice"
-        && watches "agents.slice"
-      );
+      "Agents' sessions don't sit beside the apps: ${lib.concatStringsSep "; " broken}."
+      (broken == [ ]);
 
   # Under every core's load, the processor's one power budget holds each
   # near the same clock, so one of Joel's threads ran no faster on a
