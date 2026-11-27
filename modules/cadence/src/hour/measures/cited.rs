@@ -12,6 +12,10 @@
 //! a time only when that message says it. Which cell owns a piece of work
 //! is the orchestrator's to say, so only a switch time is held to one
 //! cell: the one running the switches.
+//!
+//! Long because reading a line's times, its halves of the day and its
+//! sentences is one reading the three counts share, and split apart
+//! they would drift, as a time read one way and judged another.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
@@ -460,18 +464,27 @@ fn timed_uncited<'a>(
         let switch = said.iter().any(|w| w.starts_with("switch"));
         // The citation and the message it names must give the one time,
         // so a line on the dial isn't backed by a citation of the morning
-        // that cites the evening.
+        // that cites the evening. Only a time to Joel on the dial is
+        // widened to its other half: the owner's word gives the half
+        // whenever the line names one, so an owner's dial "9:05" never
+        // backs a line of "21:05".
         let gives = |cite: &&Cite, clock: &Clock| {
+            if switch && !cite.owner.eq_ignore_ascii_case(SWITCHES) {
+                return false;
+            }
+            let quoted = clock_times(&cite.item);
+            if !quoted.iter().any(|q| q.is(clock)) {
+                return false;
+            }
             let Some(told) = senders.get(&cite.msgid) else {
                 return false;
             };
             let told = clock_times(&told.text);
-            let quoted = clock_times(&cite.item);
+            let owner_gives = |t: &Clock| t.is(clock) && (t.hour == clock.hour || clock.dial);
             quoted
                 .iter()
                 .filter(|q| q.is(clock))
-                .any(|q| told.iter().any(|t| t.is(clock) && t.is(q)))
-                && (!switch || cite.owner.eq_ignore_ascii_case(SWITCHES))
+                .any(|q| told.iter().any(|t| owner_gives(t) && t.is(q)))
         };
         if !clocks
             .iter()
@@ -665,7 +678,10 @@ fn shown(said: &str) -> String {
 
 /// The sentences of `text`, by its lines and the stops ending them, a
 /// stop ending one only before a space or the line's end, so a name such
-/// as `core.nix` stays whole.
+/// as `core.nix` stays whole. The stop after a half of the day, as in
+/// "p.m." or "pm.", ends its sentence only where the next word opens
+/// with a capital: before a word in lower case or a digit, it closes
+/// the half alone.
 fn sentences(text: &str) -> Vec<&str> {
     let mut found = Vec::new();
     for line in text.lines() {
@@ -673,13 +689,14 @@ fn sentences(text: &str) -> Vec<&str> {
         let mut chars = line.char_indices().peekable();
         while let Some((at, c)) = chars.next() {
             let next_is_space = chars.peek().is_none_or(|(_, next)| next.is_whitespace());
-            // The stop closing "a.m." or "p.m." ends the time's half of
-            // the day, not its sentence.
-            let ends_half = c == '.' && {
-                let before = line[..at].to_ascii_lowercase();
-                before.ends_with("a.m") || before.ends_with("p.m")
+            if !matches!(c, '.' | '?' | '!') || !next_is_space {
+                continue;
+            }
+            let runs_on = c == '.' && ends_half(&line[..at]) && {
+                let next = line[at + 1..].trim_start().chars().next();
+                next.is_some_and(|next| !next.is_uppercase())
             };
-            if matches!(c, '.' | '?' | '!') && next_is_space && !ends_half {
+            if !runs_on {
                 found.push(line[start..=at].trim());
                 start = at + 1;
             }
@@ -688,6 +705,25 @@ fn sentences(text: &str) -> Vec<&str> {
     }
     found.retain(|sentence| !sentence.is_empty());
     found
+}
+
+/// Whether `before` ends in a half of the day as a stop would close it:
+/// "a.m" or "p.m", or "am" or "pm" alone or straight after a time's
+/// digits, in either case. Only its last word is read, so a line of
+/// many stops costs no more than its length.
+fn ends_half(before: &str) -> bool {
+    let word = before
+        .rsplit(char::is_whitespace)
+        .next()
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if word.ends_with("a.m") || word.ends_with("p.m") {
+        return true;
+    }
+    let Some(lead) = word.strip_suffix("am").or_else(|| word.strip_suffix("pm")) else {
+        return false;
+    };
+    lead.is_empty() || lead.ends_with(|c: char| c.is_ascii_digit())
 }
 
 /// The words of `text`, lower case, of letters and digits.

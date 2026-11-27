@@ -1,3 +1,9 @@
+//! The uncited-lines measure's cases: times, asks and the morning note's
+//! items, each backed or not, and the hour's reading of the writer's day.
+//!
+//! Long because each case builds its lines, citations and messages in
+//! the few helpers at the top, which every case shares.
+
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -281,13 +287,91 @@ fn a_dial_time_is_backed_only_where_the_citation_and_its_message_give_one_half()
 
 #[test]
 fn a_time_after_a_p_m_in_the_same_line_is_still_judged() {
-    let line = said("It went live at 10:45 p.m. and then 23:30 for the rest.");
     let by = sent(&[("aa11bb22", "16V6F4", "live at 22:45")]);
     let only_first = cited(&[(NOW - 300, "16V6F4", "aa11bb22", "live at 22:45")]);
+    for text in [
+        "It went live at 10:45 p.m. and then 23:30 for the rest.",
+        "It went live at 10:45 P.M. and then 23:30 for the rest.",
+        "It went live at 10:45 pm. and then 23:30 for the rest.",
+        "It went live at 10:45pm. and then 23:30 for the rest.",
+    ] {
+        assert!(
+            (judged(&said(text), "", &only_first, &by).now - 1.0).abs() < f64::EPSILON,
+            "the 23:30 after the half in {text:?} went unjudged, read as a sentence of its own"
+        );
+    }
+}
+
+#[test]
+fn a_sentence_ending_at_a_half_of_the_day_ends_before_a_capital() {
+    let by = sent(&[("aa11bb22", "16V6F4", "live at 22:45")]);
+    let cites = cited(&[(NOW - 300, "16V6F4", "aa11bb22", "live at 22:45")]);
+    for text in [
+        "The fix merged at 9:00 a.m. It goes live at 22:45.",
+        "The train lands by 9:00 a.m. The fix is live now.",
+        "The review was at 9:00 AM. It goes live at 22:45.",
+    ] {
+        let m = judged(&said(text), "", &cites, &by);
+        assert!(
+            m.behind.is_empty(),
+            "a time in the sentence before {text:?}'s live one was judged with it: {:?}",
+            m.behind
+        );
+    }
+    for (text, ask) in [
+        (
+            "It goes live at 10:45 p.m. Please approve the Chrome flag.",
+            "Please approve the Chrome flag",
+        ),
+        (
+            "The call is at 10 a.m. Could you approve the Chrome flag?",
+            "Could you approve the Chrome flag",
+        ),
+    ] {
+        let m = judged(&said(text), "", &cites, &by);
+        assert_eq!(
+            m.behind,
+            [format!("{ask}, an ask citing no owner's word · WCJQSG")],
+            "the ask after a half of the day in {text:?} went uncounted"
+        );
+    }
+}
+
+#[test]
+fn a_24_hour_line_is_not_backed_by_an_owner_s_dial_time() {
+    let line = said("It goes live at 21:05.");
+    let by = sent(&[("aa11bb22", "16V6F4", "goes live at 9:05")]);
+    let cites = cited(&[(NOW - 300, "16V6F4", "aa11bb22", "live at 9:05")]);
     assert!(
-        (judged(&line, "", &only_first, &by).now - 1.0).abs() < f64::EPSILON,
-        "the 23:30 after a p.m. went unjudged, read as a sentence of its own"
+        (judged(&line, "", &cites, &by).now - 1.0).abs() < f64::EPSILON,
+        "an owner's 9:05 on the dial backed a line to Joel of 21:05"
     );
+}
+
+#[test]
+fn a_line_s_half_must_be_given_by_both_its_citation_and_its_message() {
+    let ago = NOW - 300;
+    for (line, quoted, message, why) in [
+        (
+            "It goes live at 10:45 am.",
+            "live at 10:45",
+            "live at 22:45",
+            "a message of the evening backed a line of the morning",
+        ),
+        (
+            "It goes live at 10:45 am.",
+            "live at 22:45",
+            "live at 10:45",
+            "a citation of the evening backed a line of the morning",
+        ),
+    ] {
+        let by = sent(&[("aa11bb22", "16V6F4", message)]);
+        let cites = cited(&[(ago, "16V6F4", "aa11bb22", quoted)]);
+        assert!(
+            (judged(&said(line), "", &cites, &by).now - 1.0).abs() < f64::EPSILON,
+            "{why}"
+        );
+    }
 }
 
 #[test]
