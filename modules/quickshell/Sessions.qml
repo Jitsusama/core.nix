@@ -3083,7 +3083,7 @@ Singleton {
             refusalKeptAt = Object.assign({}, refusalKeptAt, { [named]: Date.now() });
             const told = disownedSaid[named] ?? null;
             stillSaid = Object.assign({}, stillSaid,
-                { [named]: { said: told, at: Date.now(), under: sessionsKittyPid } });
+                { [named]: { said: told, at: Date.now() } });
             // A place viewKept let go for the ask is kept again under the
             // pid asked, as for any give-up, so a kitty come since asks for
             // it once the refused window closes (viewKept keeps it while
