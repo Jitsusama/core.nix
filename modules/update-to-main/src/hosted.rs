@@ -224,6 +224,13 @@ pub fn descends(config: &Config, older: &str, newer: &str) -> Result<bool, Failu
     if matches!(copied, Some(Ok(true))) {
         return Ok(true);
     }
+    // A copy holding both that walked between them and found no way is the
+    // answer, since a commit missing between them fails the walk instead: a
+    // rewritten main is refused, not turned into a failure by a host that
+    // can't be asked.
+    if matches!(copied, Some(Ok(false))) && git::has(&main, older) {
+        return Ok(false);
+    }
     // With no host to ask, that error is the answer: a no would say main
     // went another way, when the copy only couldn't tell.
     let unasked = || match copied {
@@ -253,9 +260,10 @@ pub fn descends(config: &Config, older: &str, newer: &str) -> Result<bool, Failu
 
 /// Whether main at `head` holds `commit`: by root's copy when it has
 /// both, and otherwise by the host's word. The copy borrows a checkout
-/// holding only part of main's history, so one with `head` may still lack
-/// `commit`, and that proves nothing: with no host to ask, it can't be
-/// told, which stops the update as any hold nobody can see does. A copy
+/// that may be shallow, holding only part of main's history, so one with
+/// `head` may still lack `commit`, and that proves nothing: with no host to
+/// ask, it can't be told, which stops the update as any hold nobody can see
+/// does. A checkout fetched whole lacking it shows main doesn't hold it. A copy
 /// with both that can't walk between them asks the host too, where there
 /// is one.
 pub fn holds(config: &Config, hosted: &Hosted, commit: &str, head: &str) -> Result<bool, Failure> {
@@ -268,6 +276,12 @@ pub fn holds(config: &Config, hosted: &Hosted, commit: &str, head: &str) -> Resu
         }
     }
     let Some(api) = &hosted.api else {
+        // A checkout fetched whole holds every commit before a head it has,
+        // so one lacking `commit` shows main doesn't hold it; only a shallow
+        // one, cut off below some commit, can't say.
+        if in_copy && !shallow(hosted)? {
+            return Ok(false);
+        }
         return Err(Failure::new(format!(
             "root's copy hasn't got {}, and no host's API is configured to ask",
             git::short(if in_copy { commit } else { head })
@@ -276,6 +290,20 @@ pub fn holds(config: &Config, hosted: &Hosted, commit: &str, head: &str) -> Resu
     let account = run::account(&hosted.user)?;
     let token = token(hosted, &account)?;
     read::descends(config, api, &token, commit, head)
+}
+
+/// Whether the checkout holds only part of main's history, cut off below
+/// some commit by a shallow fetch.
+fn shallow(hosted: &Hosted) -> Result<bool, Failure> {
+    let account = run::account(&hosted.user)?;
+    let mut command = run::command_as("git".as_ref(), &account, &hosted.path, &hosted.checkout);
+    command.env("GIT_CONFIG_NOSYSTEM", "1");
+    let said = run::output(
+        command,
+        "asking whether the checkout is shallow",
+        ["rev-parse", "--is-shallow-repository"],
+    )?;
+    Ok(said != "false")
 }
 
 /// The file at `path` in the folder at `commit`, or none.
