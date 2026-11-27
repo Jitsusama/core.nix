@@ -2450,7 +2450,8 @@
     model-relay is installed only where a machine names an origin, listens where only its account
     may ask, removes its socket when stopped, runs with its socket in background.slice, forwards
     to the origin named alone, outlasts a switch, stops waiting on its answers in time to leave
-    before its stop timeout, and tells every pi where to find it
+    before its stop timeout, keeps more connections than its default and no more than it takes,
+    and tells every pi where to find it
   '';
   mona-sans-vf-is-the-whole-face = ''
     the graphical role's fontconfig, asked for Mona Sans VF by name as GitHub asks, gives the variable
@@ -2513,7 +2514,8 @@
     names, lending that key to no machine and adding no key file to its agent, and an agent on a Mac whose sessions sign commits with that key,
     finding the system's ssh before the account's programs; the node may hold 65536 open files
     on Linux, under a hard 524288, systemd's own default, and 10240 on a Mac, naming no hard limit;
-    the home realm's node writes how it would ease the machine, asking the harness to park
+    the home realm's node writes how it would ease the machine, naming each machine lent for
+    agents it may ease onto, by a name the flag can't misread, asking the harness to park
     sessions and making its carries only where told to, on Linux and a Mac alike, and a further
     realm's doesn't; one naming none runs it dialling nothing, and one in no realm has neither a
     realm nor a node
@@ -2602,16 +2604,16 @@
     latest with either copy's networks, its drawing, reach and starter all read from that copy,
     reach judging it by both copies' networks in either order, a cell with no name the map
     can't draw found unreachable and said as words, with its machine, rather than lost,
-    a network the node sets within none growing out of the one whose cells started more of its
-    cells than any other, a tie going to starts and then by name, where the node sets a network
-    standing, no start from inside it counting, of two that started each other's cells the
-    stronger the trunk and no branch looping back round, every network's choices settled
-    strongest first so a choice left over from a loop waits behind stronger ones, a cell's
-    forage saying what it split from, else the first
-    forage listing a cell with a forage here, growing a branch where no start is said or the
-    start grows none or would loop, counting toward the trunk as a start does and counted
-    apart from the starts, a cell started and split from two networks counting toward each,
-    the drawer saying a branch's starts and splits each out of its cells, what each key asks of
+    a network the node sets within none growing out of the one whose cells started or split
+    more of its cells than any other, a tie going to starts and then by name, where the node
+    sets a network standing, no start from inside it counting, of two that started each other's
+    cells the stronger the trunk and no branch looping back round, every network's choices
+    settled strongest first so a choice left over from a loop waits behind stronger ones, a
+    cell's forage saying what it split from, else the first forage listing it, for a cell with
+    a forage here, growing a branch where no start is said or the start grows none or would
+    loop, counting toward the trunk as a start does and counted apart from the starts, a cell
+    started and split from two networks counting toward each, the drawer saying a branch's
+    starts and splits each out of its cells, what each key asks of
     the map, its tree, its find line, the
     page and the theme switch, chords, typing and a key named after an object's own asking
     nothing, the tree's networks and branches by name under a machine or a network and the
@@ -2638,7 +2640,9 @@
     while the node is away with the realm
     kept drawn and live once it's back, stale once the server goes with the realm kept, a record's
     words drawn as words and never as markup, what each spent today listed most first in Now, a
-    machine's drawer and a network's, what waits on a cell and what holds stand said as the node
+    machine's drawer and a network's, a network two machines feed listing each with the cells it
+    draws there, its branch's counted in, what waits on a cell and what holds stand said as the
+    node
     judges them, every cell drawn a step out from the whole map and folded only once too small to
     read, every line thinned as the map steps out past its own size, the talk between two networks
     drawn as one line as warm as its warmest pair until it or a cell it touches opens, a receptor's
@@ -3283,7 +3287,10 @@
     going back within seconds, keeping no page; and pain-points hear keeps what Joel said that
     hurt, or a turn that stalled him, with his words in its own 0700 state for a fortnight, and
     asks the session's own cell for a fix time, once, never the void or a cell the routes say
-    never to, sending nothing without them, and exits failed when it couldn't route
+    never to, and one the void heard or an ended session's the least-held live holder of its
+    subject through that subject's hub, by the session's purpose or his words, kept as a need,
+    and the fallback only when no hub takes it, sending nothing without them, and exits failed
+    when it couldn't route
   '';
   pain-points-passes-clippy = ''
     clippy finds nothing in pain-points or its tests
@@ -3294,15 +3301,21 @@
   '';
   passwords-copier-keeps-a-secret-in-memory-on-niri = ''
     on a nested niri, Passwords' copier, given a secret on its standard input as the daemon gives
-    it, pastes it whole on Joel's display, makes nothing under TMPDIR, runs nothing from PATH,
-    can't be read through /proc and holds it in locked memory, and refuses a standard input it
-    can't read whole
+    it, pastes it whole on Joel's display, offered marked secret, makes nothing under TMPDIR,
+    runs nothing from PATH, typed or not, can't be read through /proc and holds as much of it
+    in locked memory as the secret is long, says it's ready only once it can't be read and held
+    once it holds the copy, pastes whole and keeps locked a secret that outgrows its first page,
+    pastes whole a secret of exactly its cap of a MiB, and refuses a standard input it can't
+    read or one a byte past that cap, never saying it held either
   '';
   passwords-holds-no-secret = ''
     the passwords daemon holds every entry each password manager lists without a secret, even one
     given with its secrets on, answers over its standard input and output as the shell runs it, a
     held list or get without asking a manager, gives a secret only to the ask for it, never to a
-    watch, or to the clipboard marked sensitive and cleared when its time is up, refuses a copy
+    watch, or to the clipboard marked sensitive and cleared when its time is up, writes it to the
+    copier only once the copier says it's ready and answers it copied only once the copier says it
+    holds it, answering a refused copy with the copier's reason, ends the copy it holds as it
+    ends itself, killed or not, refuses a copy
     before reading any secret while no copier is named, types a password only into the niri
     window it was asked for once the launcher has let go of the keys and while that window still
     has them, refusing a second while one is under way, never into one an agent's process is
@@ -4293,9 +4306,10 @@
     leftovers after three quiet seconds
   '';
   sign-in-program-never-waits-for-good = ''
-    a sign-in program's token is taken trimmed, slow or ending after its output; one failing,
-    printing nothing, missing, printing what isn't text or past 64 KiB is none; one hanging,
-    lingering or printing for good runs over within its patience, killed with what it started
+    a sign-in program's token is taken trimmed, slow, ending after its output or once a hold
+    writing it is let go; one failing, printing nothing, missing, printing what isn't text or
+    past 64 KiB is none; one hanging, lingering or printing for good runs over within its
+    patience, killed with what it started
   '';
   sign-in-program-passes-clippy = ''
     clippy finds nothing in sign-in-program, which runs a reader's sign-in, or its tests
@@ -4451,6 +4465,17 @@
   '';
   stands-alone = ''
     nothing here names a machine, its repository or employer
+  '';
+  subject-hubs-passes-clippy = ''
+    clippy finds nothing in subject-hubs, the subjects' hubs and needs cadence and pain-points
+    share, or its tests
+  '';
+  subject-hubs-reads-hubs-and-keeps-needs = ''
+    the hubs a mycelium node lists are read from the line with the list's id, one or several a
+    subject, none from a node that holds no hubs and an error from any other refusal, a record
+    that can't be read or a subject that isn't a plain name left out; the narrowest subject
+    whose every word is said, of a live hub, takes a thing first; and each need put to a hub is
+    kept once in its UTC day's file of the mesh's needs, in the shape the harness keeps its own
   '';
   subtests-read-no-word-as-an-option = ''
     the build of a VM test's subtests hands run-subtests the check and its words past --, in
@@ -4771,7 +4796,11 @@
   the-cat-runner-names-how-each-case-ended = ''
     the margin cat's case runner fails a run with a case that failed, ran past its own processor
     time, was killed from outside or hung past the clock's guard, names each by how it ended and
-    says every case's time, and stops at a hang, naming the cases it left unrun
+    says every case's time, and stops at a hang, naming the cases it left unrun; it refuses
+    limits that aren't whole seconds before any case runs, and, where the builder holds the run
+    below a case's hard limit, says so once with the hard limit in force, what would fit and
+    ulimit's reason, and runs no case; the check fails where that can't be shown; and a case
+    whose limits are refused as it is run fails unrun rather than running with none
   '';
   the-cats-walk-is-read-only-from-its-lists = ''
     the cat's code is read as no walk, by the rule it breaks, when WALKS holds anything but
@@ -5851,7 +5880,8 @@
     then lists once as his, leads with the locked manager's row, whose Return unlocks it, one
     refused saying why the next time the launcher opens, types an entry's password on Return
     into the window the launcher opened over, landing on the row from the find first, copies it
-    by Copy the Password through the daemon to the clipboard as the launcher goes, the
+    by Copy the Password through the daemon and Passwords' own wl-copy to the clipboard as the
+    launcher goes, the
     margin wearing the clipboard's mark and the foot, opened again, counting to its clearing,
     nothing on screen saying it, reads an entry in full as the selection rests on it, never as
     Joel's own ask, its drawer never saying its password, and holds its acts in the design's order
@@ -6392,7 +6422,9 @@
   tuple-ends-its-flags = ''
     The real tuple takes a name that starts with a dash after "--" as a name, never a flag, for each
     command the launcher runs on a contact: call start, call join, and contacts favorite and
-    unfavorite
+    unfavorite; and its script, which stops Tuple's daemon, refuses before reaching tuple from a
+    person's shell in their home or a checkout, the repository's dev shell, a bare environment,
+    the root, and shells holding only some of the build's folders
   '';
   tuple-keeps-its-logs = ''
     Tuple's service keeps the daemon's last three logs, newest first, before it starts, and an empty
@@ -6500,7 +6532,9 @@
     say beside it, its trouble said once too; and a loopback's file is said ready only once it and
     its node are written; and as a loopback's camera goes or its watch is stopped, its node file
     goes only once its nobody is written, and as its camera goes, one it couldn't remove is tried
-    again until it can be; and a loopback with no camera is said ready only once its node file is
+    again until it can be; and a stop tries its nobody and node file once more, whether it comes
+    with no camera or just as its camera went; and a loopback with no camera is said ready only
+    once its node file is
     gone or can't be there
   '';
   usb-camera-holders-forget-a-killed-run = ''
@@ -6741,10 +6775,11 @@
     gives it back into the window it opened over, and the launcher forgets it all when asked; and a
     copy marked secret reaches Joel's own X11 client but never a command fenced as pi fences one,
     given the display: handed the cookie it reaches no socket, with the sockets open it holds no
-    cookie, and with both walls gone it reads it; and a password Passwords copies by its Return
-    pastes into a terminal and into a page, Super+V never lists it and the history keeps nothing
-    of it, a command whose wl-paste is the fence's shim is refused it by the clipboard door while
-    an ordinary copy after it reaches that command, and it's held till about 30 s and then gone
+    cookie, and with both walls gone it reads it; and a password Passwords copies by its Copy the
+    Password, each copy proven its own, pastes into a terminal and into a page, Super+V never
+    lists it and the history keeps nothing of it, a command whose wl-paste is the fence's shim is
+    refused it by the clipboard door while an ordinary copy after it reaches that command, and
+    it's held till about 30 s and then gone
   '';
   vm-desktop-keeps-pace = ''
     the launcher draws its keys, arrowed or typed, nearly as soon while every core is busy in
@@ -7369,15 +7404,15 @@
   '';
   vm-wifi-moves = ''
     the card moves between the access points of one network: on at once from one that doesn't
-    answer, to another when an account asks, keeping its neighbours, and to the one its point
-    names when the point warns it drops the card, in time, keeping its chooser off the point.
-    It stays for a plain ask, and says it. Warned, it looks over the named one's channel first
-    when it isn't heard, stopping a look under way too; it stops a look to move when it is
-    heard. It's let go of its point when the whole network drops it, let go rather than sent
-    back when the point it's warned to doesn't answer, and back within wifid's
-    2 s for a way back past any wait the point bids, its other networks off, from one gone
-    since it was heard, or free to join any network when it can't get back either; another
-    network forgets them
+    answer, to another when an account asks, keeping its neighbours, to another within seconds
+    of its echoes being lost during a call, and to the one its point names when the point warns
+    it drops the card, in time, keeping its chooser off the point. It stays for a plain ask, and
+    says it. Warned, it looks over the named one's channel first when it isn't heard, stopping a
+    look under way too; it stops a look to move when it is heard. It's let go of its point when
+    the whole network drops it, let go rather than sent back when the point it's warned to
+    doesn't answer, and back within wifid's 2 s for a way back past any wait the point bids, its
+    other networks off, from one gone since it was heard, or free to join any network when it
+    can't get back either; another network forgets them
   '';
   vms-reach-the-launcher = ''
     a workstation with a desktop gives its launcher the VMs, read through the daemon's own virsh,

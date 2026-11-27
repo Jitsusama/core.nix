@@ -388,9 +388,20 @@ ShellRoot {
             + `, answered ${JSON.stringify(root.answered)}`
             + `, letting go ${lettingGo.state} ${root.letGo} ${JSON.stringify(root.letGoGiven)}`
             + ` awaiting ${Object.keys(lettingGo.awaited).length}`
-            + `, relinked ${root.relinked}, refused ${lettingGo.refusals} times`
+            + `, relinked ${root.relinked}, backed off ${lettingGo.refusals} times`
+            + `, its last try ${root.failure(lettingGo.failedWith)}`
             + `, the census heard ${root.heardSaid} of ${root.heardLines.join(" and ")}`);
         Qt.exit(1);
+    }
+
+    // A link's last failure in words, by QLocalSocket's LocalSocketError, so a FAIL line read
+    // from any step says it without Qt's enum beside it.
+    function failure(code) {
+        if (code === null)
+            return "none failed since it last connected or was relinked, if it tried at all";
+        const named = { "-1": "unknown", 0: "refused", 1: "closed by the daemon",
+            2: "found nothing there", 3: "not allowed" }[code];
+        return `failed with ${code}${named === undefined ? "" : `, ${named}`}`;
     }
 
     function heldWay(key) {
@@ -408,7 +419,10 @@ ShellRoot {
     readonly property var steps: [
         {
             what: "no daemon is said as not answering",
+            // The let-go link's socket is a symlink to the daemon's, not there yet, so its
+            // first try says it found nothing, as its FAIL line's words would.
             holds: () => people.state === "not answering" && !none.answered
+                && lettingGo.failedWith === lettingGo.serverNotFound
         },
         {
             what: "a get with no daemon is given none at once",
@@ -427,19 +441,24 @@ ShellRoot {
             // tries end 14 s in, so a daemon slower than that to start on a
             // busy builder could leave it unconnected. Once the daemon
             // answers, the link is connected again here, once, and waited for
-            // as long as a restart's, rather than inside the let-go step's ten
-            // seconds. Its tries count afresh, as the file watch's do, so a
-            // refused relink is tried again 2 s on rather than 16 s, and one
-            // finding no socket is tried again at all.
+            // as long as a restart's from then, rather than what's left of this
+            // step or inside the let-go step's ten seconds. Its tries count
+            // afresh, as the file watch's do, so a refused relink is tried again
+            // 2 s on rather than 16 s, and one finding no socket is tried again
+            // at all, 2, 6 and 14 s on, each inside the 20 s it's given. What
+            // its tries failed with counts afresh too, so a FAIL line names
+            // only the relink's, and it's said gone once the relink connects.
             polls: 400,
             holds: () => {
                 const answering = people.state === "answering" && "slack" in people.sources;
                 if (answering && lettingGo.wire === null && !root.relinked) {
                     root.relinked = true;
+                    root.left = 400;
                     lettingGo.refusals = 0;
+                    lettingGo.failedWith = null;
                     lettingGo.connectAgain();
                 }
-                return answering && lettingGo.wire !== null;
+                return answering && lettingGo.wire !== null && lettingGo.failedWith === null;
             }
         },
         {
@@ -835,6 +854,19 @@ ShellRoot {
                     root.fail(now.what);
                 }
             }
+        }
+    }
+
+    // The whole run ends here, short of the check's 150 s timeout, so a run slowed past it
+    // fails with its FAIL line, naming the step it was on, rather than killed with none. This
+    // counts from the file loading, the timeout from the shell starting, so the 40 s between
+    // are the shell's own start as well as the FAIL line's.
+    Timer {
+        running: true
+        interval: 110000
+        onTriggered: {
+            waiting.stop();
+            root.fail(`${root.steps[root.step]?.what ?? "its end"}, still waiting at 110 s`);
         }
     }
 

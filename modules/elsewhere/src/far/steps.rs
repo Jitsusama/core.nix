@@ -14,6 +14,8 @@ use super::{
     MOST_FILES, TREE, UNTAKEN, quoted,
 };
 use crate::settings::Kind;
+use std::ffi::OsStr;
+use std::path::{Path, PathBuf};
 
 /// The far line's watch on the job's archives as they cross: `arrived`,
 /// once the list is whole and each archive on it is its listed size, with
@@ -247,18 +249,31 @@ fi"#
 pub(super) const RUN: &str = ".run";
 
 /// The far line's first step, finding the cache its scratches lie in as
-/// `scratches` does here: a relative one, as the XDG spec says, is none.
-pub(super) const CACHE: &str =
-    "cache=${XDG_CACHE_HOME:-}; case $cache in /*) ;; *) cache=$HOME/.cache ;; esac";
+/// [`cache`] does here, leaving it empty where none is found.
+pub(super) const CACHE: &str = "cache=${XDG_CACHE_HOME:-}; case $cache in /*) ;; *) cache=; \
+     case ${HOME:-} in /*) cache=$HOME/.cache ;; esac ;; esac";
+
+/// The cache the quests' scratches lie in, from the environment's
+/// `XDG_CACHE_HOME` and `HOME`: a relative cache, as the XDG spec says,
+/// is none, and a home that isn't absolute gives none either, rather than
+/// one found from wherever the line runs or from the root.
+pub(super) fn cache(xdg: Option<&OsStr>, home: Option<&OsStr>) -> Option<PathBuf> {
+    let absolute = |it: &&OsStr| Path::new(it).is_absolute();
+    xdg.filter(absolute).map(PathBuf::from).or_else(|| {
+        home.filter(absolute)
+            .map(|home| Path::new(home).join(".cache"))
+    })
+}
 
 /// The far line's step defining `cleared`, which takes each path it is
 /// given away whole, its folders made the far line's own to enter and
 /// write first, since a job may close one so that nothing under it can be
 /// taken, `copies`, true once no link stands at the copies' folder,
-/// `placed`, true once none stands at the copy either, and `stays`,
-/// saying where one can't be cleared that the copy stays. It comes first,
-/// before any step that clears, so each finds all four whichever runs
-/// first. `cleared` opens what its walk meets only below
+/// `placed`, true once none stands at the copy either, `pinned` and
+/// `entered`, which keep where the copy was made and ask the job's folder
+/// is in it, and `stays`, saying where one can't be cleared that the copy
+/// stays. It comes first, before any step that clears, so each finds all
+/// of them whichever runs first. `cleared` opens what its walk meets only below
 /// each path, and a link met there as itself alone; a folder above a path
 /// is passed through as `rm` passes it.
 pub(super) const CLEARING: &str = r#"# Takes each path away whole,
@@ -299,13 +314,24 @@ copies() {
 placed() {
   copies && [ -d "$work" ] && [ ! -L "$work" ]
 }
+# Keeps where the copy was made, read once as it's made, so `entered`
+# measures the job's folder against that rather than where the copy's
+# name leads by the cd: a link put above the copy meanwhile would lead
+# both the cd and a second read to wherever it points. The dot keeps a
+# name's trailing newlines, which a substitution would strip.
+pinned() {
+  place=$(cd -P "$work" && pwd -P && echo .) && place=${place%?.}
+}
 # True once the copy is `placed` and the working folder is the very one
-# the copy holds at `$1` within it, by where the cd landed, not by names:
-# a link put at a folder of the copy, or above it and taken down again,
-# around the cd would otherwise have the job run where it points. Where
-# the copy's own place can't be read, nothing is taken as entered.
+# the copy held at `$1` within it as it was made, by where the cd landed,
+# not by names: a link put at a folder of the copy, or above it, around
+# the cd would otherwise have the job run where it points. Both its path
+# and the folder itself are asked, since a shell's pwd -P may resolve
+# the path it remembers by name rather than ask where it is. Where the
+# copy's place wasn't read, nothing is taken as entered.
 entered() {
-  placed && place=$(cd -P "$work" && pwd -P) && [ "$(pwd -P)" = "$place${1:+/$1}" ]
+  placed && [ -n "$place" ] && cwd=$(pwd -P && echo .) &&
+    [ "${cwd%?.}" = "$place${1:+/$1}" ] && [ . -ef "$place${1:+/$1}" ]
 }
 # Says the copy isn't the folder it was where `placed` no longer holds.
 moved() {
@@ -522,6 +548,19 @@ fi
     )
 }
 
+/// The paths `kind` brings back, quoted for the shell, each once, so a
+/// path a kind names twice is never lost twice.
+fn each_once(kind: &Kind) -> String {
+    let mut paths = Vec::new();
+    for path in &kind.brings_back {
+        let path = quoted(path.trim_matches('/'));
+        if !paths.contains(&path) {
+            paths.push(path);
+        }
+    }
+    paths.join(" ")
+}
+
 /// The far line's step leaving what `kind` brings back in the handover.
 /// What comes back crosses under its number, since a kind may bring back
 /// what lies under a folder a share keeps home. A hidden file is left, as
@@ -543,15 +582,7 @@ pub(super) fn bringing(kind: &Kind) -> String {
             freed()
         );
     }
-    // Each once, so a path a kind names twice is never lost twice.
-    let mut paths = Vec::new();
-    for path in &kind.brings_back {
-        let path = quoted(path.trim_matches('/'));
-        if !paths.contains(&path) {
-            paths.push(path);
-        }
-    }
-    let paths = paths.join(" ");
+    let paths = each_once(kind);
     format!(
         // A subshell of its own, which every write that fails ends, since
         // a shell that isn't interactive may itself exit when a redirection
@@ -578,13 +609,17 @@ lose() {{
 }}
 # A link put at the handover, a folder above it or its folder for
 # copies, or anything at a copy's name, as the files are listed or cross
-# would have the list begun, or each later file copied or cleared,
-# through it, so the rest stays and the list gets no end.
+# would have the list begun, the one crossing read or cleared, or each
+# later file copied, through it, so nothing more is brought back and
+# the list gets no end of its own.
 linked() {{
   [ -L "${{job%/*/*}}" ] || [ -L "${{job%/*}}" ] || [ -L "$job" ] || [ -L "$job/{BACK}" ]
 }}
 halted() {{
-  printf "elsewhere: a link was put at its handover as it brought back, so the rest stays\n" >&2
+  {HALTING}
+}}
+crowded() {{
+  {CROWDING}
 }}
 # The sorted list's name is tried with the others, then left free for
 # sort's own write.
@@ -627,12 +662,18 @@ LC_ALL=C sort -u "$names" > "$names.in" ||
   }}
   while IFS= read -r file; do
     # Where its folder for copies is made new, nothing stands at a
-    # copy's name until it's written.
-    ! linked && [ ! -e "$job/{BACK}/$n" ] && [ ! -L "$job/{BACK}/$n" ] || {{ halted; exit 1; }}
+    # copy's name until it's written: a link there is one put at the
+    # handover, and anything else is said in words of its own.
+    ! linked && [ ! -L "$job/{BACK}/$n" ] || {{ halted; exit 1; }}
+    [ ! -e "$job/{BACK}/$n" ] || {{ crowded; exit 1; }}
     size=$(wc -c 2>/dev/null < "$file") || {{ missing; continue; }}
     past $size && {{ kept $size; continue; }}
-    cp "$file" "$job/{BACK}/$n" && copied=$(wc -c < "$job/{BACK}/$n") ||
-      {{ missing; continue; }}
+    cp "$file" "$job/{BACK}/$n"; crossed=$?
+    # A link put as it crossed took the copy through it, so neither its
+    # size nor a clearing of it is read through the link, and the file
+    # is left unlisted with the rest.
+    ! linked || {{ halted; exit 1; }}
+    [ $crossed -eq 0 ] && copied=$(wc -c < "$job/{BACK}/$n") || {{ missing; continue; }}
     # Only what crossed counts toward the totals, at the size it crossed.
     past $copied && {{ kept $copied; continue; }}
     files=$((files + 1)) bytes=$(($bytes + $copied))
@@ -645,6 +686,7 @@ LC_ALL=C sort -u "$names" > "$names.in" ||
 }} > "$job/{BROUGHT}"
 else
   printf "elsewhere: couldn't list what to bring back beside %s\n" "$work" >&2
+  ! linked || {{ halted; exit 1; }}
   lose > "$job/{BROUGHT}"
 fi
 ) || wrote=$?
@@ -657,6 +699,22 @@ fi
 /// handover, so the list of what's brought back gets no end.
 const UNENDED: &str = "printf \"elsewhere: its handover wasn't cleared, so the list of what \
 it brings back isn't ended and nothing is brought back\\n\" >&2";
+
+/// What the far line says where a link was put at the handover as it
+/// brought back, so it stops.
+const HALTING: &str = "printf \"elsewhere: a link was put at its handover as it brought back, \
+so nothing more is brought back\\n\" >&2";
+
+/// What the far line says where something not a link was put at a
+/// copy's name as it brought back, so it stops.
+const CROWDING: &str = "printf \"elsewhere: something was put at a copy's name as it brought \
+back, so nothing more is brought back\\n\" >&2";
+
+/// What the far line says where a link was put back at the handover, or
+/// at the list's name, once `unlinked` cleared one there, so the list
+/// isn't cut through it and the near side waits it out.
+const RELINKED: &str = "printf \"elsewhere: a link was put back at its handover once cleared, so \
+its list isn't cut and nothing is brought back\\n\" >&2";
 
 /// What the far line says where a list that couldn't be written whole
 /// couldn't be cut either, so the near side waits it out.
@@ -674,7 +732,7 @@ fn ended() -> String {
 # list with no end; this line's words say why, where the near side's
 # own read as a slow crossing. One put there, or at a copy's name, as
 # the files were listed or copied is looked for before the list begins
-# and before each copy, which leaves the rest and the end.
+# and before and after each copy, which leaves the rest and the end.
 ! copies || rm -f "$names" "$names".*
 {freed}if [ -z "$handed" ]; then wrote=1
   {UNENDED}
@@ -688,17 +746,23 @@ fi
 # hide it, and never through a link that couldn't be cleared at its name
 # or at the handover. Where one cleared there took the job's folder with
 # it, the folder is made again, so the near side still reads the cut:
-# only the levels `unlinked` clears, each where no folder of its own
-# stands, and none of them a link as the cut is written, so a link put
-# back meanwhile is never made or written through, and a quest's scratch
+# only the levels `unlinked` clears, each where no folder stands, one
+# another far line of the quest made meanwhile kept as its own, and the
+# cut written only where none of them, nor the list's name, is a link as
+# it looks, which it says in words of its own. Each mkdir, and the
+# write, goes by name, so that narrows a link put back meanwhile to the
+# span from that look to them rather than closing it. A quest's scratch
 # that went is never made again.
 if [ $wrote -ne 0 ] && [ -n "$handed" ]; then
   for at in "${{job%/*/*}}" "${{job%/*}}" "$job"; do
-    [ -d "$at" ] && [ ! -L "$at" ] || mkdir "$at" 2>/dev/null || break
+    {{ [ -d "$at" ] || mkdir "$at" 2>/dev/null || [ -d "$at" ]; }} && [ ! -L "$at" ] || break
   done
-  {{ [ ! -L "${{job%/*/*}}" ] && [ ! -L "${{job%/*}}" ] && [ ! -L "$job" ] &&
-    [ ! -L "$job/{BROUGHT}" ] && printf '\n%s\n' {CUT} >> "$job/{BROUGHT}"; }} 2>/dev/null ||
-    {UNCUT}
+  if [ -L "${{job%/*/*}}" ] || [ -L "${{job%/*}}" ] || [ -L "$job" ] ||
+    [ -L "$job/{BROUGHT}" ]; then
+    {RELINKED}
+  else
+    {{ printf '\n%s\n' {CUT} >> "$job/{BROUGHT}"; }} 2>/dev/null || {UNCUT}
+  fi
 fi
 "#,
         freed = freed(),

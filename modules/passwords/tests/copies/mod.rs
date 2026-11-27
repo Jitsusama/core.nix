@@ -5,6 +5,10 @@
 //! copying ask. A copy goes with the daemon however it ends, since the
 //! shell starts a new one at once, which knows of no copy to clear, and
 //! Joel would read the password as gone while it could still be pasted.
+//! The copier is given the secret only once it says it's ready, having
+//! shut the account's other processes out of its memory, and a copy is
+//! answered as copied only once it says it holds it: one it refuses is
+//! answered with its reason, and one that says nothing is ended unwritten.
 
 use std::path::Path;
 
@@ -56,11 +60,142 @@ fn a_copy_is_marked_sensitive_and_cleared_when_its_time_is_up() {
     });
     let flags = std::fs::read_to_string(&flagged).unwrap();
     assert!(
-        flags.contains("--sensitive") && flags.contains("--foreground"),
+        flags.contains("--sensitive")
+            && flags.contains("--foreground")
+            && flags.contains("--say-held"),
         "{flags}"
     );
     // The copier is ended once its time is up, which clears the clipboard.
     until("the copy is cleared", || !copier_runs(&running.copied()));
+}
+
+#[test]
+fn a_refused_copy_is_answered_with_its_reason() {
+    let running = Running::with_env(
+        "copy-refused",
+        &[("keeping", KEEPING)],
+        &[("COPIER_REFUSES", "it is past 1 MiB")],
+    );
+    let mut client = running.client();
+    client.ask(&json!({"id": 1, "ask": "list", "asked": true}));
+    let refused = client.ask(&json!({"id": 2, "ask": "copy", "key": "entry:keeping:gh"}));
+    assert_eq!(refused["error"]["code"], "refused", "{refused}");
+    assert!(
+        refused["error"]["message"]
+            .as_str()
+            .is_some_and(|said| said.contains("it is past 1 MiB")),
+        "a refused copy didn't say the copier's reason: {refused}"
+    );
+    holds_no_secret(&refused);
+}
+
+#[test]
+fn a_copier_that_never_says_its_ready_is_given_nothing() {
+    let running = Running::with_env(
+        "copy-unready",
+        &[("keeping", KEEPING)],
+        &[("COPIER_SILENT", "1")],
+    );
+    let mut client = running.client();
+    client.ask(&json!({"id": 1, "ask": "list", "asked": true}));
+    let refused = client.ask(&json!({"id": 2, "ask": "copy", "key": "entry:keeping:gh"}));
+    // Answered in the copier's time, though a child it left behind still
+    // holds its standard error.
+    assert_eq!(refused["error"]["code"], "refused", "{refused}");
+    holds_no_secret(&refused);
+    // It's ended, with nothing written to it.
+    until("the copier is ended", || !copier_runs(&running.copied()));
+    let given = std::fs::read_to_string(running.copied()).unwrap_or_default();
+    assert!(
+        given.is_empty(),
+        "a copier that never said it was ready was given {given:?}"
+    );
+}
+
+#[test]
+fn nothing_is_written_to_the_copier_before_its_ready() {
+    let running = Running::with_env(
+        "copy-waits",
+        &[("keeping", KEEPING)],
+        &[("COPIER_WAITS", "1"), ("PASSWORDS_CLEARS_MS", "600000")],
+    );
+    let mut client = running.client();
+    client.ask(&json!({"id": 1, "ask": "list", "asked": true}));
+    let copied = client.ask(&json!({"id": 2, "ask": "copy", "key": "entry:keeping:gh"}));
+    assert_eq!(copied["copied"], true, "{copied}");
+    // The copier writes its flags once it has read all it was given.
+    until("the copier has read the copy", || {
+        running.copied().with_extension("flags").exists()
+    });
+    let early = std::fs::read(running.copied().with_extension("early"))
+        .expect("the copier looked for what it was given early");
+    assert!(
+        early.is_empty(),
+        "the copier was given {} bytes before it was ready",
+        early.len()
+    );
+    let held = std::fs::read_to_string(running.copied()).unwrap_or_default();
+    assert_eq!(held, "hunter2", "the copy isn't held whole");
+}
+
+#[test]
+fn a_copier_that_never_says_it_holds_the_copy_is_refused() {
+    let running = Running::with_env(
+        "copy-unheld",
+        &[("keeping", KEEPING)],
+        &[("COPIER_UNHELD", "1")],
+    );
+    let mut client = running.client();
+    client.ask(&json!({"id": 1, "ask": "list", "asked": true}));
+    let refused = client.ask(&json!({"id": 2, "ask": "copy", "key": "entry:keeping:gh"}));
+    assert_eq!(refused["error"]["code"], "refused", "{refused}");
+    assert!(
+        refused["error"]["message"]
+            .as_str()
+            .is_some_and(|said| said.contains("never said it held the copy")),
+        "an unheld copy didn't say why it was refused: {refused}"
+    );
+    holds_no_secret(&refused);
+    until("the unheld copier is ended", || {
+        !copier_runs(&running.copied())
+    });
+}
+
+/// A manager knowing one login whose password, 128 KiB long, is past what
+/// a pipe holds, so a copier that never reads it can't take it all.
+const LONG: &str = r#"
+echo '{"state":"answering"}'
+long=$(printf '%131072s' '' | tr ' ' x)
+github='{"id":"gh","title":"GitHub","category":"login","version":1'
+password='{"id":"password","label":"password","type":"hidden","purpose":"password"'
+while read -r line; do
+  [[ $line =~ \"id\":([0-9]+) ]] && id=${BASH_REMATCH[1]}
+  [[ $line =~ \"ask\":\"([a-z-]+)\" ]] && ask=${BASH_REMATCH[1]}
+  case $ask in
+    list) printf '{"id":%s,"entries":[%s}]}\n' "$id" "$github" ;;
+    get) printf '{"id":%s,"entry":%s,"details":[%s,"value":"%s"}]}}\n' \
+      "$id" "$github" "$password" "$long" ;;
+    reveal) printf '{"id":%s,"value":"%s"}\n' "$id" "$long" ;;
+  esac
+done
+"#;
+
+#[test]
+fn a_copier_that_never_takes_the_copy_is_refused_in_its_time() {
+    let running = Running::with_env("copy-deaf", &[("long", LONG)], &[("COPIER_DEAF", "1")]);
+    let mut client = running.client();
+    client.ask(&json!({"id": 1, "ask": "list", "asked": true}));
+    let refused = client.ask(&json!({"id": 2, "ask": "copy", "key": "entry:long:gh"}));
+    assert_eq!(refused["error"]["code"], "refused", "{refused}");
+    assert!(
+        refused["error"]["message"]
+            .as_str()
+            .is_some_and(|said| said.contains("never took the whole copy")),
+        "a copy the copier never took didn't say why it was refused: {refused}"
+    );
+    until("the deaf copier is ended", || {
+        !copier_runs(&running.copied())
+    });
 }
 
 #[test]

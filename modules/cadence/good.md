@@ -260,6 +260,69 @@ holding a space, as one broken across two lines does, is counted too.
 - Over costs him: an ask is called landed when it merged, so he finds for himself that what he
   asked for doesn't work, or never reached him.
 
+## The Sessions' Failed Model Calls
+
+- Measures: `calls:failed`
+- Target: 100 model calls the sessions made in the hour that stopped on an error.
+- Joel, 26 Nov 16:42: "we need some set of cells maintaining the health of mycelium at all
+  timees"
+- Over costs him: each one is a turn of his sessions that stalls and retries, whatever route it
+  took, as a third of them did on the evening of 26 November.
+
+## The Sessions' Failed Call Share
+
+- Measures: `calls:failed-share`
+- Target: 2 per cent of the sessions' model calls in the hour stopped on an error.
+- Joel, 26 Nov 16:42: "we need some set of cells maintaining the health of mycelium at all
+  timees"
+- Over costs him: a quiet hour hides failures in its count, so the share says when the way out
+  is failing whatever the load.
+
+## The Path to Each Origin
+
+- Measures: `path:tls:*`
+- Target: 1 second, the hour's median TLS setup to the origin.
+- Joel, 26 Nov 16:42: "we need some set of cells maintaining the health of mycelium at all
+  timees"
+- Over costs him: a slow path stalls every call and push his sessions make through it, and
+  names where the fault is when the calls fail.
+
+## The Model Relay's Origin Resets
+
+- Measures: `relay:origin-resets`
+- Target: 400 requests the origin reset in the hour.
+- Joel, 26 Nov 16:42: "we need some set of cells maintaining the health of mycelium at all
+  timees"
+- Over costs him: his sessions' model requests are cut and sent again, slowing every turn, and
+  each reset past a retry reaches him as an error.
+
+## The Model Relay Sending Pi Direct
+
+- Measures: `relay:goes-direct`
+- Target: 150 requests the relay gave back for pi to make itself in the hour.
+- Joel, 26 Nov 16:42: "we need some set of cells maintaining the health of mycelium at all
+  timees"
+- Over costs him: each one leaves the relay's shared connections, so his sessions open their
+  own and meet "other side closed" when the origin drops them.
+
+## The Model Relay's Reset Share
+
+- Measures: `relay:reset-share`
+- Target: 2 per cent of the requests asked of the relay in the hour reset by the origin.
+- Joel, 26 Nov 16:42: "we need some set of cells maintaining the health of mycelium at all
+  timees"
+- Over costs him: a busy hour hides resets in its count, so the share says when the origin is
+  failing whatever the load.
+
+## The Model Relay's 502s
+
+- Measures: `relay:answered-502`
+- Target: 50 requests the relay answered pi with a 502 in the hour.
+- Joel, 26 Nov 16:42: "we need some set of cells maintaining the health of mycelium at all
+  timees"
+- Over costs him: "502" on his own screen mid-turn, as he saw at 16:38 on 26 November before
+  anything else did.
+
 ## Broken on Main
 
 - Measures: `broken`

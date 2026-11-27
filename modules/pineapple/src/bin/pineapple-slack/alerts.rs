@@ -100,10 +100,11 @@ pub fn give_up_through(state: &Path, from: u64) {
 }
 
 /// The oldest an alert may be and still be said let go, taken once as a
-/// reader starts: twenty minutes before Joel's phone was last told, so
+/// reader starts: twenty minutes before phoned.jsonl's newest line, kept
+/// as a reader told Joel's phone, wrote an alert down or let one go, so
 /// one written while no reader ran, or aging out in the last round before
 /// one stopped, is said too, while one from before alerts were ever let
-/// go with a word is left as it was. A reader that never told his phone
+/// go with a word is left as it was. A reader that never kept a line
 /// takes twenty minutes back, and the earlier of the two is taken, so a
 /// clock set back can't move it ahead.
 pub fn let_go_from(state: &Path) -> u64 {
@@ -122,7 +123,8 @@ pub fn let_go_from(state: &Path) -> u64 {
 /// Slack or the gateway answers, so one aging out in an outage is said
 /// too; only those written before `from`, as [`let_go_from`] gives it,
 /// go unsaid. One whose sends may have gone is said so, those left after
-/// their last such send included.
+/// their last such send included. An alert the daemon wrote down twice is
+/// said once.
 fn give_up(state: &Path, im: Option<&str>, from: u64) {
     let phoned = state.join("phoned.jsonl");
     let kept = lines(&phoned);
@@ -168,6 +170,7 @@ fn give_up(state: &Path, im: Option<&str>, from: u64) {
         if let Err(error) = record::append(&phoned, &one) {
             eprintln!("<3>couldn't keep a phone alert's line: {error}");
         }
+        told.insert(named);
     }
 }
 
