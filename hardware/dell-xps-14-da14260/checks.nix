@@ -26,10 +26,10 @@ let
         pkgs.writeText "patches" (lib.concatMapStrings (patch: "${patch}\n") patches)
       } $out ${lib.escapeShellArgs files}
     '';
+  # Every patch the XPS 14's kernel is built with, in the order it applies them.
+  kernelPatches = lib.filter (patch: patch != null) (map (patch: patch.patch) kernel.kernelPatches);
   # A few files of the kernel's source, as the XPS 14 builds them.
-  kernelSource = patched kernel.src (
-    lib.filter (patch: patch != null) (map (patch: patch.patch) kernel.kernelPatches)
-  );
+  kernelSource = patched kernel.src kernelPatches;
 in
 {
   # The GPU's security controller waits 20 s from xe's start for its link
@@ -267,20 +267,41 @@ in
   # afresh, so the power-off after found it still in its bootloader and
   # refused, rolling the hibernation back with the laptop left on. Nothing
   # takes the driver off the chip for it any more, so its thaw must be the
-  # plain wake btintel-pcie-pm makes it, and never the resume that resets.
+  # plain wake the kernel has made it since 7.3.6, and never the resume
+  # that resets (tests/thaw-is-a-plain-wake.sh).
   bluetooth-lets-a-hibernation-power-off =
     let
       driver = "drivers/bluetooth/btintel_pcie.c";
     in
     pkgs.runCommandLocal "bluetooth-lets-a-hibernation-power-off" { } ''
-      source=${kernelSource [ driver ]}/${driver}
-      if ! grep -q '\.thaw = btintel_pcie_thaw,' "$source" ||
-        grep -q '\.thaw = btintel_pcie_resume,' "$source"; then
-        echo "Bluetooth's thaw resets its chip, so a hibernation's power-off can be refused." >&2
-        exit 1
-      fi
+      ${lib.getExe pkgs.bash} ${./tests/thaw-is-a-plain-wake.sh} \
+        ${kernelSource [ driver ]}/${driver}
       touch $out
     '';
+
+  # The patches taken from linux-next were made against 7.3 as the XPS 14
+  # builds it, and next.nix says each applies with no offset or fuzz. A
+  # point release moved two of them under that claim with nothing to say
+  # so, so they're applied here as the build applies them, held to their
+  # hunks' own lines (tests/patches-apply-exactly.sh).
+  the-patches-from-linux-next-apply-exactly =
+    let
+      fromNext = lib.filter (
+        patch: lib.hasPrefix "${toString ./kernel/next}/" (toString patch)
+      ) kernelPatches;
+      list = patches: pkgs.writeText "patches" (lib.concatMapStrings (patch: "${patch}\n") patches);
+    in
+    assert lib.assertMsg (fromNext != [ ]) (
+      "The XPS 14 takes no patch from linux-next now: drop "
+      + "the-patches-from-linux-next-apply-exactly along with kernel/next.nix."
+    );
+    pkgs.runCommandLocal "the-patches-from-linux-next-apply-exactly"
+      { nativeBuildInputs = [ pkgs.patchutils ]; }
+      ''
+        ${lib.getExe pkgs.bash} ${./tests/patches-apply-exactly.sh} ${kernel.src} \
+          ${list kernelPatches} ${list fromNext} "$TMPDIR/source"
+        touch $out
+      '';
 
   # Bluetooth's chip once halted with an exception dump the driver couldn't
   # read, and as only a dump it could read led to a reset, the chip stayed
@@ -298,6 +319,21 @@ in
     pkgs.runCommandLocal "bluetooth-recovers-from-an-unread-exception" { } ''
       ${lib.getExe pkgs.bash} ${./tests/every-unread-dump-resets.sh} \
         ${kernelSource [ driver ]}/${driver}
+      touch $out
+    '';
+
+  # A join through wpa_supplicant recorded the network's name only after
+  # finding the access point's country, and one that names none ended the
+  # join's last step first, so networkd couldn't match the network's file.
+  # Core's kernel carried the fix until 7.3.6 took it, so the kernel the
+  # laptop builds must still name the network first
+  # (tests/ssid-before-country.sh).
+  wifi-names-a-network-without-a-country =
+    let
+      sme = "net/wireless/sme.c";
+    in
+    pkgs.runCommandLocal "wifi-names-a-network-without-a-country" { } ''
+      ${lib.getExe pkgs.bash} ${./tests/ssid-before-country.sh} ${kernelSource [ sme ]}/${sme}
       touch $out
     '';
 

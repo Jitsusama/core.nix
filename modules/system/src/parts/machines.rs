@@ -272,8 +272,8 @@ fn machine(
 /// guard what regenerates is taken back by itself, so only a disk nearly
 /// full is the reader's to act on. Two machines each with hundreds of
 /// gigabytes free were once headlined both worth a look for it. A machine
-/// without the guard, such as a cloud builder, is judged the same, since
-/// its record doesn't say which it is.
+/// without the guard, such as a cloud builder, is judged the same: its
+/// record says what it is, but not whether a guard runs on it.
 fn looked(said: &Value, own: Option<&Value>, backup: Option<Backup>) -> Said {
     let mut words = Said::default();
     if said.get("state").and_then(Value::as_str) == Some("unreachable") {
@@ -840,7 +840,7 @@ mod tests {
     }
 
     #[test]
-    fn a_filling_disk_is_said_and_left_to_the_guard() {
+    fn a_filling_disk_is_said_but_never_worth_a_look() {
         let part = machines(
             &Ok(realm(&[laptop(&[], "filling")])),
             &Err(String::new()),
@@ -850,7 +850,7 @@ mod tests {
         assert_eq!(
             part.health,
             Health::Good,
-            "the disk guard takes back what regenerates once a disk is filling"
+            "the band decides on every machine, guard or not: a filling disk isn't worth a look"
         );
         assert_eq!(part.says, "1 machine ready");
         assert_eq!(part.side, NO_LOOK);

@@ -2450,7 +2450,8 @@
     model-relay is installed only where a machine names an origin, listens where only its account
     may ask, removes its socket when stopped, runs with its socket in background.slice, forwards
     to the origin named alone, outlasts a switch, stops waiting on its answers in time to leave
-    before its stop timeout, and tells every pi where to find it
+    before its stop timeout, keeps more connections than its default and no more than it takes,
+    and tells every pi where to find it
   '';
   mona-sans-vf-is-the-whole-face = ''
     the graphical role's fontconfig, asked for Mona Sans VF by name as GitHub asks, gives the variable
@@ -2513,7 +2514,8 @@
     names, lending that key to no machine and adding no key file to its agent, and an agent on a Mac whose sessions sign commits with that key,
     finding the system's ssh before the account's programs; the node may hold 65536 open files
     on Linux, under a hard 524288, systemd's own default, and 10240 on a Mac, naming no hard limit;
-    the home realm's node writes how it would ease the machine, asking the harness to park
+    the home realm's node writes how it would ease the machine, naming each machine lent for
+    agents it may ease onto, by a name the flag can't misread, asking the harness to park
     sessions and making its carries only where told to, on Linux and a Mac alike, and a further
     realm's doesn't; one naming none runs it dialling nothing, and one in no realm has neither a
     realm nor a node
@@ -3285,7 +3287,10 @@
     going back within seconds, keeping no page; and pain-points hear keeps what Joel said that
     hurt, or a turn that stalled him, with his words in its own 0700 state for a fortnight, and
     asks the session's own cell for a fix time, once, never the void or a cell the routes say
-    never to, sending nothing without them, and exits failed when it couldn't route
+    never to, and one the void heard or an ended session's the least-held live holder of its
+    subject through that subject's hub, by the session's purpose or his words, kept as a need,
+    and the fallback only when no hub takes it, sending nothing without them, and exits failed
+    when it couldn't route
   '';
   pain-points-passes-clippy = ''
     clippy finds nothing in pain-points or its tests
@@ -3693,10 +3698,11 @@
     a realm whose node refuses --heap-growing-percent as a bad option fails the build its
     conversations' unit names, saying the realm, the percent, the node and what to do, as node 22
     and the tree's own node refuse an option they don't know, one whose node fails another way,
-    never ends or can't be run, a package's folder among them, fails saying which and what to do,
-    node 22, which pi is built with, takes it and the rendered unit files name that proof, and a
-    machine cross-built for another platform has the proof stand unproven and warns of it, where
-    one built on its own platform doesn't
+    never ends, ignores being told to end, is killed before its limit or can't be run, a package's
+    folder among them, fails saying which and what to do, node 22, which pi is built with, takes
+    it and the rendered unit files name that proof, and a machine cross-built for another platform
+    has the proof stand unproven and warns of it unless its realm accepts that, where one built on
+    its own platform doesn't
   '';
   pi-conversations-take-heap-growth = ''
     node 22, which pi is built with, and the tree's own node, each started with the word a realm's
@@ -4460,6 +4466,17 @@
   '';
   stands-alone = ''
     nothing here names a machine, its repository or employer
+  '';
+  subject-hubs-passes-clippy = ''
+    clippy finds nothing in subject-hubs, the subjects' hubs and needs cadence and pain-points
+    share, or its tests
+  '';
+  subject-hubs-reads-hubs-and-keeps-needs = ''
+    the hubs a mycelium node lists are read from the line with the list's id, one or several a
+    subject, none from a node that holds no hubs and an error from any other refusal, a record
+    that can't be read or a subject that isn't a plain name left out; the narrowest subject
+    whose every word is said, of a live hub, takes a thing first; and each need put to a hub is
+    kept once in its UTC day's file of the mesh's needs, in the shape the harness keeps its own
   '';
   subtests-read-no-word-as-an-option = ''
     the build of a VM test's subtests hands run-subtests the check and its words past --, in
@@ -5912,6 +5929,10 @@
     ready now; and while the place is off, its one row opens the browser a manager fills, else
     a manager's own app, else nothing, its note saying which
   '';
+  the-patches-from-linux-next-apply-exactly = ''
+    each patch the XPS 14 takes from linux-next applies to its kernel's source, after every patch
+    applied before it, with no offset or fuzz, as next.nix says they do
+  '';
   the-people-are-one-person-each = ''
     every source's people join into one person per email address, a source that knows two
     addresses for someone joining them, each standing as the first source that says, favourites
@@ -6413,7 +6434,8 @@
     command the launcher runs on a contact: call start, call join, and contacts favorite and
     unfavorite; and its script, which stops Tuple's daemon, refuses before reaching tuple from a
     person's shell in their home or a checkout, the repository's dev shell, a bare environment,
-    the root, and shells holding only some of the build's folders
+    the root, a home holding its own runtime folder, and shells holding only some of the build's
+    folders
   '';
   tuple-keeps-its-logs = ''
     Tuple's service keeps the daemon's last three logs, newest first, before it starts, and an empty
@@ -6523,8 +6545,9 @@
     goes only once its nobody is written, and as its camera goes, one it couldn't remove is tried
     again until it can be; and a stop tries its nobody and node file once more, whether it comes
     with no camera or just as its camera went; and a loopback with no camera is said ready only
-    once its node file is
-    gone or can't be there
+    once its node file is gone or can't be there; and a camera a loopback moves to is said held
+    while its node file still says the camera before; and a wrong file nobody holds is tried twice
+    as long each time, up to sixteen seconds, while a held camera is looked at each interval
   '';
   usb-camera-holders-forget-a-killed-run = ''
     each USB camera watch's unit, the relayed one's too, forgets what says its node in the folder it
@@ -6738,7 +6761,8 @@
     sets the clock from the machine's servers past it when it's silent
   '';
   vm-commits-are-signed = ''
-    commits are signed with the TPM's keys, PINs asked for
+    commits are signed with the TPM's keys, PINs asked for; the agents' socket stays off until
+    their key is made, and its path unit starts it once it is
   '';
   vm-desk-facts-follow-a-replug = ''
     desk-facts names a USB sound card plugged into a running machine, stops naming it once it's
@@ -7464,6 +7488,10 @@
     something in it held, or a find from the root showing a row of its, the launcher open, or a
     terminal's show walked into it; never open on another place, at home or on another's find,
     and at once on stepping in
+  '';
+  wifi-names-a-network-without-a-country = ''
+    the XPS 14's kernel records the name of the network a card joined even when its access point
+    names no country, so networkd matches that network's file
   '';
   wifi-sessions-survive-fragmented-memory = ''
     the XPS 14's kernel lets Wi-Fi's block-ack reorder buffers come from vmalloc when memory is
