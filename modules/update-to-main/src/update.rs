@@ -11,7 +11,9 @@
 //! switch the follower asked for waits, once built, while someone is at the
 //! machine. With a boot check, a system whose kernel, initrd or kernel
 //! parameters changed becomes what the machine boots only once it passes.
-//! Each step is told as it starts.
+//! Each step is told as it starts. Long because these steps are one ordered
+//! sequence over shared state, and each going back must see the switch it
+//! undoes, so splitting them would scatter one update across files.
 
 use crate::busy;
 use crate::config::{Config, Kind};
