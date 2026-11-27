@@ -2933,7 +2933,9 @@ Singleton {
     // can, and the launcher, shut meanwhile, keeps the words it was told
     // until it opens (tellOnOpen). The 15 minutes an asked place keeps
     // (Viewers.js) bound it, past which a window coming is told nothing.
-    // An ask afresh ends it (viewWith), its press holding the ask.
+    // An ask afresh ends it (viewWith), its press holding the ask, and so
+    // does another kitty starting (kittyStarted), which can't draw what
+    // the one before was asked: under is that one's pid.
     // Cases shorten comingPatience to see one too late.
     property var stillSaid: ({})
     property int comingPatience: 900000
@@ -3047,7 +3049,7 @@ Singleton {
             const told = disownedSaid[named] ?? null;
             if (told !== null)
                 stillSaid = Object.assign({}, stillSaid,
-                    { [named]: { said: told, at: Date.now() } });
+                    { [named]: { said: told, at: Date.now(), under: sessionsKittyPid } });
             // A place viewKept let go for the ask is kept again under the
             // pid asked, as for any give-up, so a kitty come since asks for
             // it once the refused window closes (viewKept keeps it while
@@ -3169,7 +3171,8 @@ Singleton {
             pressedAgain(named, said, going);
         else if (said !== null && unanswered) {
             unhosted(said, said.startedInHost ? "startedStillComing" : "stillComing");
-            stillSaid = Object.assign({}, stillSaid, { [named]: { said, at: Date.now() } });
+            stillSaid = Object.assign({}, stillSaid,
+                { [named]: { said, at: Date.now(), under: sessionsKittyPid } });
         }
         else if (said !== null)
             unhosted(said, said.startedInHost ? "startedUntaken" : "untaken");
@@ -3971,14 +3974,32 @@ Singleton {
         return pid;
     }
     // A sessions kitty started, as its unit says once it has written its
-    // pid (home.nix's sessions-kitty): its pid is read, and a place kept
-    // for a kitty other than the one that didn't take its viewer is asked
-    // for (viewKept). A unit started again makes its folder anew, which
-    // the watch on the file misses, and its kitty draws nothing till
-    // asked, so with Joel away and niri quiet nothing else would ask.
+    // pid (home.nix's sessions-kitty): its pid is read, a press told its
+    // window may yet come of the kitty before is told it won't
+    // (stillLostTo), and a place kept for a kitty other than the one that
+    // didn't take its viewer is asked for (viewKept). A unit started again
+    // makes its folder anew, which the watch on the file misses, and its
+    // kitty draws nothing till asked, so with Joel away and niri quiet
+    // nothing else would ask.
     function kittyStarted() {
         readKittyPid();
+        stillLostTo(sessionsKittyPid);
         viewKept();
+    }
+    // Each press told its window may yet come of a kitty other than the one
+    // up now is told the ask is over, as that kitty's gone with it. One
+    // whose kitty wasn't known is left to comingPatience.
+    function stillLostTo(pid) {
+        const lost = Object.keys(stillSaid)
+            .filter(named => (stillSaid[named].under ?? "") !== ""
+                && stillSaid[named].under !== pid);
+        for (const named of lost) {
+            const said = stillSaid[named].said;
+            forgetStill(named);
+            console.info(`sessions: ${named}'s kitty started again, so the window it may `
+                + "yet have drawn won't come; its press is told");
+            unhosted(said, said.startedInHost ? "startedUntaken" : "untaken");
+        }
     }
     // The pid the file says now, read without taking it as the one
     // windows are judged by, so a read can't change what's running while
