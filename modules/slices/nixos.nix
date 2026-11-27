@@ -128,10 +128,11 @@ let
   # measured: 5.8 GB/s of reads, but 403 MB/s of writes once its cache was
   # full. A machine names its measured disks, the one behind /home among
   # them, in jitsusama.slices.disks, and then sets no targets. The
-  # weights follow the CPU's: the compositor's ten times an app's, the work
-  # Joel starts a hundredth of one, timed and awaited work ahead of agents'
-  # within it, and the account ten times the system's other slices. Without
-  # io.cost they do nothing, so a machine that names no disk keeps targets.
+  # weights follow the CPU's: Joel's session and programs ten times agents'
+  # sessions, the work Joel starts a hundredth of one, timed and awaited
+  # work ahead of agents' within it, and the account ten times the system's
+  # other slices. Without io.cost they do nothing, so a machine that names
+  # no disk keeps targets.
   #
   # Name a disk with a model measured on it, never the kernel's guess: in
   # VM runs a model three times faster than the disk was the worst of
@@ -147,11 +148,11 @@ let
   # the choice is now io.cost against no order inside the account. Naming
   # a disk drops user.slice's target over the system's builds too, where
   # io.cost shares the disk by user.slice's weight of 1000 against the
-  # system's 100 instead. The VM
-  # runs measured a qos of 10 ms at the 95th percentile both ways, ranging
-  # from 50 to 150% of the model; a max of 100 alone was never measured,
-  # and would hold every read to the model. Whether it holds on a disk
-  # like that one is measured on the machine that names it.
+  # system's 100 instead. The VM runs measured a qos of 10 ms at the 95th
+  # percentile both ways, ranging from 50 to 150% of the model; a max of
+  # 100 alone was never measured, and would hold every read to the model.
+  # Whether it holds on a disk like that one is measured on the machine
+  # that names it.
   disks = config.jitsusama.slices.disks;
   latency = lib.optionalAttrs (disks == { }) { IODeviceLatencyTargetSec = "/home 1ms"; };
   settings = attrs: lib.concatStringsSep " " (lib.mapAttrsToList (k: v: "${k}=${toString v}") attrs);
@@ -419,7 +420,9 @@ in
       /sys/class/block, each with the model io.cost measured on it. Naming
       any drops user.slice's latency target, so the disk behind /home belongs here,
       with a model measured on it and the qos the VM runs measured: 10 ms at
-      the 95th percentile both ways, from 50 to 150% of the model.
+      the 95th percentile both ways, from 50 to 150% of the model. A virtual
+      disk's speed says nothing of a real one's, so that qos is a start to
+      measure from on the disk named, not a measure of it.
       The name is the kernel's, which follows the order disks are found in:
       on a machine with two of a kind, the model can land on the other one.
     '';
@@ -582,7 +585,9 @@ in
     # The disk's weight is ten times too, as session.slice's is, since
     # io.cost on a measured disk shares it by weight: at systemd's 100 his
     # programs would get no more of it than agents' sessions. The latency
-    # target a disk with no model keeps ignores it.
+    # target a disk with no model keeps ignores it, but systemd gives the
+    # same weight to the BFQ scheduler, so on a disk BFQ runs his programs
+    # get ten times agents' share there too.
     systemd.user.slices.app.sliceConfig = {
       CPUWeight = 1000;
       IOWeight = 1000;
@@ -600,7 +605,8 @@ in
     # weight. Raising app.slice's weight to 500 changed nothing then, as it
     # can't reach what competes inside it. Beside it, the sessions meet
     # Joel's programs as one group, which his weight now puts first, and
-    # the sorter weighs the window he is at first among them. Whoever starts
+    # the sorter weighs the window he is at first among them, on the
+    # processor and the disk alike. Whoever starts
     # their terminal names this slice, and kitty puts each window's scope
     # in its own. Its floor is soft but for two parts, hard: the floor the
     # kitty drawing every session's window keeps for itself (Quickshell's

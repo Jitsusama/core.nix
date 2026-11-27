@@ -4380,7 +4380,7 @@ mod tests {
     }
 
     /// A runtime control folder under the temporary folder named for `name`, holding each of
-    /// `units`' folders with the five files systemd writes for the sorter's settings, and
+    /// `units`' folders with the six files systemd writes for the sorter's settings, and
     /// the sorter's mark.
     fn control_with(name: &str, units: &[&str]) -> PathBuf {
         let control = std::env::temp_dir().join(format!("{name}-{}", std::process::id()));
@@ -4394,6 +4394,7 @@ mod tests {
                 "50-MemoryZSwapWriteback.conf",
                 "50-ManagedOOMPreference.conf",
                 "50-MemoryMin.conf",
+                "50-IOWeight.conf",
             ] {
                 fs::write(folder.join(file), "[Service]\n").expect("a setting's file");
             }
