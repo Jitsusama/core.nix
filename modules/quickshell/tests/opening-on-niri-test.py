@@ -763,14 +763,17 @@ def test_a_chord_first_after_a_restart_searches_no_more_than_a_later_one(shell: 
     opened whole" is a home chord's), and makes no rows where its sources haven't changed
     since warming found it, so the searches each chord runs show it: the first may run no more
     than a later chord into the same place, opened once home is kept again. Its fill may still
-    catch up what CAUGHT_UP read since home was kept, as the launcher means it to, so only
-    another source's rows fail it besides.
+    catch up what CAUGHT_UP read since home was kept, as the launcher means it to, and what a
+    source said after the wait held still, which any chord makes, so only another source's rows
+    fail it besides: Spend said a change past the wait and made 1 row (z6569, 2026-11-27).
     """
     restarted = time.monotonic()
     shell.restart()
     shell.launcher_until(lambda shown: shown.get("kept"))
-    answered_since(shell, restarted)
+    settled = answered_since(shell, restarted)
     made, first, tries = opened_into(shell, "windows")
+    since = changes_said(shell)
+    changed = {name for name, count in since.items() if count != settled.get(name, 0)}
     shell.close_launcher()
     shell.launcher_until(lambda shown: not shown["open"] and shown.get("kept"))
     _, later, _ = opened_into(shell, "windows")
@@ -781,10 +784,12 @@ def test_a_chord_first_after_a_restart_searches_no_more_than_a_later_one(shell: 
         f"first into Windows after a restart searched {first} times, a later chord {later},"
         f" as home found again would; other sources made rows: {made} (try {tries})"
     )
-    others = {name: rows for name, rows in made.items() if name not in CAUGHT_UP}
+    others = {
+        name: rows for name, rows in made.items() if name not in CAUGHT_UP and name not in changed
+    }
     assert not others, (
         f"into Windows after a restart, other sources made rows: {others} (all: {made}),"
-        f" on try {tries} of its first chord"
+        f" on try {tries} of its first chord; changed past the wait: {sorted(changed)}"
     )
 
 
@@ -1468,7 +1473,13 @@ def test_a_restart_after_a_switch_starts_from_files_compiled_before_it(shell: Sh
     )
 
 
-def answered_since(shell: Shell, restarted: float) -> None:
+def changes_said(shell: Shell) -> dict[str, int]:
+    """Count the changes each source outside CAUGHT_UP has said since the shell started."""
+    said = json.loads(shell.as_account(shell.ipc("changed")))
+    return {name: count for name, count in said.items() if name not in CAUGHT_UP}
+
+
+def answered_since(shell: Shell, restarted: float) -> dict[str, int]:
     """Wait until every source outside CAUGHT_UP has first answered since the restart.
 
     Home and the chords' places are kept a second and a half after a start, and a source that
@@ -1476,17 +1487,12 @@ def answered_since(shell: Shell, restarted: float) -> None:
     the next chord, which aren't what the case counts. It waits out ANSWERED from `restarted`,
     then until the changes each such source has said hold still for QUIET, for at most
     SETTLED. CAUGHT_UP's changes aren't watched, since the case allows their rows and no wait
-    settles them.
+    settles them. It gives the changes as they held still, so a change said after them shows.
     """
-
-    def changes() -> dict[str, int]:
-        said = json.loads(shell.as_account(shell.ipc("changed")))
-        return {name: count for name, count in said.items() if name not in CAUGHT_UP}
-
     time.sleep(max(0.0, restarted + ANSWERED.total_seconds() - time.monotonic()))
     watched = time.monotonic()
     deadline = watched + SETTLED.total_seconds()
-    said = changes()
+    said = changes_said(shell)
     still = time.monotonic()
     while time.monotonic() - still < QUIET.total_seconds():
         if time.monotonic() > deadline:
@@ -1495,9 +1501,10 @@ def answered_since(shell: Shell, restarted: float) -> None:
                 f" {watched - restarted:.1f} s after a restart: {said}"
             )
         time.sleep(launcher_on_niri.POLL)
-        now = changes()
+        now = changes_said(shell)
         if now != said:
             said, still = now, time.monotonic()
+    return said
 
 
 def made_by_others(shell: Shell, place: str) -> dict[str, int]:
