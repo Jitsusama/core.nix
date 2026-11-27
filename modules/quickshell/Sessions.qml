@@ -2866,8 +2866,8 @@ Singleton {
         else if (again !== null && againRecent)
             unhosted(again, again.startedInHost ? "startedCameAgain" : "cameAgain");
         else if (still !== null && stillRecent)
-            unhosted(still.said, still.said.startedInHost ? "startedComeAfterAll"
-                : "comeAfterAll");
+            unhosted(still.said, still.said.startedInHost ? "startedCameAfterAll"
+                : "cameAfterAll");
     }
     // A press of a viewer whose window came refused and is listed now as
     // the kitty's, its pid read again as each press reads it, is its own

@@ -2482,7 +2482,7 @@ ShellRoot {
         untell();
         Sessions.windowHeard({ id: 124, pid: 4242, opened: unansweredNamed });
         expect("a press told its window may yet come is told it came, once it does",
-            heard() === "UNANSWERED comeAfterAll x1", heard());
+            heard() === "UNANSWERED cameAfterAll x1", heard());
         Sessions.forgetAsk(unansweredNamed);
         // Told only within comingPatience, past which a window coming is
         // told nothing, and only for the ask it was told of: a press since
@@ -2514,7 +2514,7 @@ ShellRoot {
         untell();
         Sessions.windowHeard({ id: 125, pid: 4242, opened: unansweredStart });
         expect("a start told its window may yet come is told it came, as started",
-            heard() === "q-started startedComeAfterAll x1", heard());
+            heard() === "q-started startedCameAfterAll x1", heard());
         Sessions.forgetAsk(unansweredStart);
         const causedUntaken = ["refused", "none"].map(cause => {
             Sessions.goTo(unansweredRow);
@@ -2606,7 +2606,7 @@ ShellRoot {
         untell();
         Sessions.windowHeard({ id: 128, pid: 4242, opened: unansweredRefused });
         expect("a disowned press whose kitty didn't answer is told its window came, late",
-            heard() === "REFUSEDLATE comeAfterAll x1", heard());
+            heard() === "REFUSEDLATE cameAfterAll x1", heard());
         Sessions.forgetAsk(unansweredRefused);
         const lapsedAt = refusedLateFor(129);
         Sessions.untaken(unansweredRefused, lapsedAt, "unanswered");
