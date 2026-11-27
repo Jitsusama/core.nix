@@ -270,14 +270,14 @@ mod tests {
             switched.said,
             "The organisation holds WARP's switch, so it's left connected"
         );
-        assert!(!cli.asked("disconnect"));
+        assert!(!cli.asked("disconnect"), "disconnect was asked");
     }
 
     #[test]
     fn disconnecting_while_always_on_says_when_it_comes_back() {
         let cli = heard(Contract::whole().with("disconnect", done()));
         let switched = switch(&cli, Act::Disconnect).expect("it reads");
-        assert!(cli.asked("disconnect"));
+        assert!(cli.asked("disconnect"), "disconnect wasn't asked");
         assert_eq!(
             switched,
             Switched {
@@ -338,7 +338,7 @@ mod tests {
                 .with("connect", done()),
         );
         let switched = switch(&cli, Act::Connect).expect("it reads");
-        assert!(cli.asked("connect"));
+        assert!(cli.asked("connect"), "connect wasn't asked");
         assert_eq!(
             (switched.done, switched.refused, switched.said.as_str()),
             (true, None, "WARP is connecting")
@@ -349,7 +349,7 @@ mod tests {
     fn warp_already_standing_as_asked_is_said_and_warp_cli_isnt_asked() {
         let cli = heard(Contract::whole().with("connect", done()));
         let switched = switch(&cli, Act::Connect).expect("it reads");
-        assert!(!cli.asked("connect"));
+        assert!(!cli.asked("connect"), "connect was asked");
         assert_eq!(
             (switched.done, switched.said.as_str()),
             (true, "WARP is already connected")
@@ -360,7 +360,7 @@ mod tests {
                 .with("disconnect", done()),
         );
         let switched = switch(&off, Act::Disconnect).expect("it reads");
-        assert!(!off.asked("disconnect"));
+        assert!(!off.asked("disconnect"), "disconnect was asked");
         assert_eq!(switched.said, "WARP is already disconnected");
     }
 
@@ -370,7 +370,7 @@ mod tests {
         // refuses one it won't answer.
         let cli = heard(Contract::whole().with("status", status("Disconnected")));
         let switched = switch(&cli, Act::Connect).expect("it reads");
-        assert!(cli.asked("connect"));
+        assert!(cli.asked("connect"), "connect wasn't asked");
         assert_eq!(
             (switched.done, switched.refused, switched.said.as_str()),
             (
