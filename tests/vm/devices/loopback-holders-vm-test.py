@@ -68,6 +68,13 @@ class Camera:
         """Give how to run a program with the camera it's given held open."""
         return f"{self.bash} -c 'exec 3< {camera}; exec {program} 300'"
 
+    def relay_holds(self, device: str) -> None:
+        """Wait until the relay, the stand-in's service, holds that loopback open."""
+        relay = self.machine.succeed("systemctl show -P MainPID stand-in.service").strip()
+        self.machine.wait_until_succeeds(
+            f"readlink /proc/{relay}/fd/* | grep -q -x -F {device}", timeout=FOLLOWING
+        )
+
     def named(self, name: str) -> None:
         """Wait until the file names that program."""
         self.machine.wait_until_succeeds(f"grep -q -x {name} {self.file}", timeout=FOLLOWING)
@@ -135,13 +142,38 @@ def pointed(camera: Camera) -> Iterator[Callable[[str], None]]:
 
 def test_the_relay_holding_the_camera_isnt_named(camera: Camera) -> None:
     """The relay holding the camera isn't named, since the holders leave out its unit."""
-    device = camera.device()
-    relay = camera.machine.succeed("systemctl show -P MainPID stand-in.service").strip()
-    camera.machine.wait_until_succeeds(
-        f"readlink /proc/{relay}/fd/* | grep -q -x -F {device}", timeout=FOLLOWING
-    )
+    camera.relay_holds(camera.device())
     camera.machine.sleep(duration=NOTICING)
     assert camera.holders() == []
+
+
+def test_a_persons_own_unit_named_as_the_relays_is_named(camera: Camera) -> None:
+    """A person's own unit named as the relay's is named, while the relay's own still isn't.
+
+    Anyone may start a unit of that name under their own manager, so leaving it out would let
+    them hide a camera reader as the relay. Only the system's manager puts the relay's unit
+    where the holders leave it out.
+    """
+    device = camera.device()
+    camera.relay_holds(device)
+    uid = camera.machine.succeed("id -u someone").strip()
+    # Started, not only waited for, since another test's ending stops whatever someone runs,
+    # their manager too.
+    camera.machine.succeed(f"systemctl start user@{uid}.service")
+    camera.machine.wait_for_unit(f"user@{uid}.service")
+    try:
+        camera.machine.succeed(
+            "systemd-run --user --machine=someone@ --unit=stand-in -p Type=exec -- "
+            + camera.holding(camera.sleep, device)
+        )
+        camera.named("sleep")
+        assert camera.holders() == ["sleep"]
+    finally:
+        # A unit that never started can't be stopped, and the file naming nobody says it's gone.
+        camera.machine.succeed(
+            "systemctl --user --machine=someone@ stop stand-in.service || true"
+        )
+    camera.nobody()
 
 
 def test_each_program_another_account_has_it_open_with_is_named(

@@ -7184,9 +7184,9 @@
   '';
   vm-loopback-says-who-holds-it = ''
     a loopback camera's file names each program another account holds it with, not its relay's unit
-    however a program names itself, one line a name, catches a holder that forks, empties when they
-    close it or the camera stops, keeps its folder, follows a new loopback, and takes no loopback of
-    another name
+    however a program names itself, yet names one in that account's own unit of the relay's name,
+    one line a name, catches a holder that forks, empties when they close it or the camera stops,
+    keeps its folder, follows a new loopback, and takes no loopback of another name
   '';
   vm-machines-find-each-other-at-home = ''
     a machine on a network it trusts finds another there by its .local name through both
