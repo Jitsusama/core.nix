@@ -90,6 +90,56 @@ fn a_refused_copy_is_answered_with_its_reason() {
 }
 
 #[test]
+fn a_copier_that_refuses_before_its_ready_is_answered_with_its_reason() {
+    let running = Running::with_env(
+        "copy-refused-early",
+        &[("keeping", KEEPING)],
+        &[("COPIER_REFUSES_EARLY", "it can't go undumpable")],
+    );
+    let mut client = running.client();
+    client.ask(&json!({"id": 1, "ask": "list", "asked": true}));
+    let refused = client.ask(&json!({"id": 2, "ask": "copy", "key": "entry:keeping:gh"}));
+    assert_eq!(refused["error"]["code"], "refused", "{refused}");
+    assert!(
+        refused["error"]["message"]
+            .as_str()
+            .is_some_and(|said| said.contains("it can't go undumpable")),
+        "a copier refusing before it was ready wasn't answered with its reason: {refused}"
+    );
+    holds_no_secret(&refused);
+    let given = std::fs::read_to_string(running.copied()).unwrap_or_default();
+    assert!(
+        given.is_empty(),
+        "a copier that refused before it was ready was given {given:?}"
+    );
+}
+
+#[test]
+fn a_copier_that_refuses_partway_through_is_answered_with_its_reason() {
+    let running = Running::with_env(
+        "copy-refused-part",
+        &[("long", LONG)],
+        &[("COPIER_REFUSES_PART", "it is past 1 MiB")],
+    );
+    let mut client = running.client();
+    client.ask(&json!({"id": 1, "ask": "list", "asked": true}));
+    let refused = client.ask(&json!({"id": 2, "ask": "copy", "key": "entry:long:gh"}));
+    assert_eq!(refused["error"]["code"], "refused", "{refused}");
+    // Its own reason, not the write it broke off, which the daemon would
+    // say in its place.
+    assert!(
+        refused["error"]["message"]
+            .as_str()
+            .is_some_and(|said| said.contains("it is past 1 MiB")),
+        "a copier refusing partway through wasn't answered with its reason: {refused}"
+    );
+    assert!(
+        !refused.to_string().contains(&"x".repeat(64)),
+        "a copier refusing partway through had the secret said back: {refused}"
+    );
+}
+
+#[test]
 fn a_copier_that_never_says_its_ready_is_given_nothing() {
     let running = Running::with_env(
         "copy-unready",
@@ -117,7 +167,13 @@ fn nothing_is_written_to_the_copier_before_its_ready() {
     let running = Running::with_env(
         "copy-waits",
         &[("keeping", KEEPING)],
-        &[("COPIER_WAITS", "1"), ("PASSWORDS_CLEARS_MS", "600000")],
+        // Its own patience, since it waits 1.3 s before it's ready, which
+        // the tests' 3 s left too little room over on a busy host.
+        &[
+            ("COPIER_WAITS", "1"),
+            ("PASSWORDS_CLEARS_MS", "600000"),
+            ("PASSWORDS_COPIER_PATIENCE_MS", "20000"),
+        ],
     );
     let mut client = running.client();
     client.ask(&json!({"id": 1, "ask": "list", "asked": true}));
