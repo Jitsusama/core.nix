@@ -190,6 +190,10 @@ struct Sentence<'a> {
     words: Vec<&'a str>,
     closes: Vec<bool>,
     opens: Vec<bool>,
+    /// For each word, whether a word that lists something stands before
+    /// it since the line its sentence last opened, read once for every
+    /// word rather than back from each swear.
+    listed: Vec<bool>,
     exclaimed: Vec<bool>,
     asked: Vec<bool>,
 }
@@ -201,6 +205,9 @@ struct Sentence<'a> {
 /// wiped my branch" swears.
 fn filler(sentence: &Sentence, at: usize) -> bool {
     let words = &sentence.words;
+    if !FILLERS.contains(&words[at]) {
+        return false;
+    }
     let between = words[..at]
         .iter()
         .rev()
@@ -208,17 +215,13 @@ fn filler(sentence: &Sentence, at: usize) -> bool {
         .take_while(|w| FILLER_BETWEEN.contains(w))
         .count();
     let join = at.checked_sub(between + 1);
-    let listed = join.is_some_and(|j| {
-        let opening = (0..=j).rev().find(|&k| sentence.opens[k]).unwrap_or(0);
-        FILLER_JOINS.contains(&words[j])
-            && words[opening..j].iter().any(|w| !INTERJECTIONS.contains(w))
-    });
+    let listed = join.is_some_and(|j| FILLER_JOINS.contains(&words[j]) && sentence.listed[j]);
     let tail = FILLER_TAILS.iter().any(|tail| {
         words.get(at + 1..=at + tail.len()) == Some(tail) && sentence.closes[at + tail.len()]
     });
     let ends =
         sentence.closes[at] || tail || words.get(at + 1).is_some_and(|n| FILLER_ONTO.contains(n));
-    FILLERS.contains(&words[at]) && listed && ends
+    listed && ends
 }
 
 /// Whether the text before a stop ends in a word shortened, read back
@@ -292,7 +295,10 @@ fn ends_in(piece: &str, these: &[char]) -> bool {
 }
 
 /// A piece's clauses, each with whether the line after it opens a
-/// sentence: it ends a line, and the next line opens with no bullet.
+/// sentence: it ends a line, and the next line opens with no bullet. A
+/// stop a sentence runs across ("...", "etc.") closes the clause before
+/// it, unless it runs on into a letter, as "core.nix" does, so "the
+/// brackets and shit... see the page" ends its filler there.
 fn clauses(piece: &str) -> Vec<(&str, bool)> {
     let bytes = piece.as_bytes();
     let mut out = Vec::new();
@@ -300,10 +306,11 @@ fn clauses(piece: &str) -> Vec<(&str, bool)> {
     for (at, c) in piece.char_indices() {
         let spaced =
             c == '-' && at > 0 && bytes[at - 1] == b' ' && bytes.get(at + 1) == Some(&b' ');
-        if !(CLAUSE_ENDS.contains(&c) || spaced) {
+        let end = at + c.len_utf8();
+        let stop = c == '.' && !piece[end..].starts_with(char::is_alphanumeric);
+        if !(CLAUSE_ENDS.contains(&c) || spaced || stop) {
             continue;
         }
-        let end = at + c.len_utf8();
         let bulleted = piece[end..]
             .trim_start_matches([' ', '\t'])
             .starts_with(BULLETS);
@@ -322,6 +329,7 @@ fn sentence(piece: &str) -> Sentence<'_> {
         words: Vec::new(),
         closes: Vec::new(),
         opens: Vec::new(),
+        listed: Vec::new(),
         exclaimed: Vec::new(),
         asked: Vec::new(),
     };
@@ -339,6 +347,12 @@ fn sentence(piece: &str) -> Sentence<'_> {
         } else if count > 0 {
             opening = false;
         }
+    }
+    let mut lists = false;
+    for (word, opens) in said.words.iter().zip(&said.opens) {
+        lists &= !opens;
+        said.listed.push(lists);
+        lists |= !INTERJECTIONS.contains(word);
     }
     for part in pieces(piece, false) {
         let asks = ends_in(part, &ASKS);
@@ -815,6 +829,49 @@ mod tests {
             "a run of 120,000 marks took {:?} to read",
             started.elapsed()
         );
+    }
+
+    #[test]
+    fn a_stop_a_sentence_runs_across_closes_a_filler_s_clause() {
+        let none: Vec<&str> = Vec::new();
+        for filler in [
+            "consider tax brackets and shit... help me understand the take home",
+            "consider tax brackets and shit. . . help me understand the take home",
+            "add the costs and shit etc. see the page",
+        ] {
+            assert_eq!(
+                kinds(filler, AT, &[]),
+                none,
+                "a filler before a run of stops swore: {filler}"
+            );
+        }
+        assert!(
+            kinds("the costs and shit... it wiped my branch!", AT, &[]).contains(&"swore"),
+            "a swear exclaimed after a run of stops went unheard"
+        );
+    }
+
+    #[test]
+    fn a_long_message_of_swears_is_read_in_bounded_time() {
+        // Each swear read back to its sentence's opening, as before, took
+        // time growing with the square of a long pasted message.
+        for long in [
+            "yes ".repeat(15_000) + &"and shit ".repeat(7_000),
+            "damn, ".repeat(20_000),
+            "the costs and shit ".repeat(8_000),
+        ] {
+            let started = std::time::Instant::now();
+            assert!(
+                kinds(&long, AT, &[]).contains(&"swore"),
+                "a long run of swears wasn't heard"
+            );
+            assert!(
+                started.elapsed() < std::time::Duration::from_secs(5),
+                "a message of {} bytes took {:?} to read",
+                long.len(),
+                started.elapsed()
+            );
+        }
     }
 
     #[test]
