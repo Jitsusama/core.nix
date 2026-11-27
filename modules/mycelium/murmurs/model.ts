@@ -69,14 +69,16 @@ const PARAGRAPHS: ReadonlySet<string> = new Set(["\u001C", "\u001D", "\u001E", "
 
 /**
  * How many characters of a murmur the lede quotes, and of its quest's name, before each is
- * trimmed: the most that keeps the whole lede inside the four lines its box holds on a 390 px
- * phone, the width the sites are checked at, so nothing in it is ever cut away. The murmur's
- * row says both whole. It's sized for prose: wide letters in both, a word too long to break or
- * a narrower phone takes a fifth line, which the box grows to hold rather than cutting it,
+ * trimmed: the most that keeps the whole lede inside the four lines its box holds on a 340 px
+ * phone, so a 390 px one, the width the sites are checked at, holds it in any browser, and
+ * nothing in it is ever cut away. Browsers set the same words a little apart: cut at 84 and
+ * 48, the lede that fit four lines at 390 in one took five in another. The murmur's row says
+ * both whole. It's sized for prose: wide letters in both, a word too long to break or a
+ * narrower phone takes a fifth line, which the box grows to hold rather than cutting it,
  * moving what's under it down a line as the lede draws.
  */
-const QUOTED = 84;
-const NAMED = 48;
+const QUOTED = 76;
+const NAMED = 40;
 
 /** A quest's short id, from its whole id or the short one itself. */
 function short(quest: string): string {

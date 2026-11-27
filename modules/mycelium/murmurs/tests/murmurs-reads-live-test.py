@@ -63,8 +63,8 @@ NEWEST = (
 # take the lines the ones it opens on do. The headlines: a node never reached, and every count
 # said in words, any part of it settled, then counts past them in numerals. The ledes: a node
 # never reached, nothing said, all settled, and the longest the model writes, a quest's name and
-# a murmur's prose both in Title Case or both in lower case, cut at their whole 48 and 84
-# characters, which must fit the four lines the lede's box holds.
+# a murmur's prose both in Title Case or both in lower case, each cut where the model cuts it,
+# which must fit the four lines the lede's box holds.
 HEAD_FORMS = """async () => {
   const { headline, lede, UNHEARD } = await import("./model.js");
   const { escaped, headlineOf } = await import("./draw.js");

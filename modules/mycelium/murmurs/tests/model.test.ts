@@ -150,7 +150,7 @@ it("the lede quotes the newest still in the air, cut on a word", () => {
     line.startsWith(`Newest in the air, from ${FSI}Watch the osprey shore${PDI}: ${FSI}gulls`),
     `the lede should quote osprey's murmur, not kestrel's settled one: ${line}`,
   );
-  assert.ok(line.endsWith(`over the...${PDI}`), `the quote should end on a whole word: ${line}`);
+  assert.ok(line.endsWith(`wheel over...${PDI}`), `the quote should end on a whole word: ${line}`);
 });
 
 it("the lede keeps room for the murmur however long its quest's name runs", () => {
@@ -161,11 +161,11 @@ it("the lede keeps room for the murmur however long its quest's name runs", () =
   const line = lede(murmurs);
   assert.ok(
     line.startsWith(
-      `Newest in the air, from ${FSI}the nightly audit, which found everything in...${PDI}: ${FSI}`,
+      `Newest in the air, from ${FSI}the nightly audit, which found...${PDI}: ${FSI}`,
     ),
     `the quest's name should be cut on a word before the murmur: ${line}`,
   );
-  const quoted = `${"gulls wheel over the cistern ".repeat(2)}gulls wheel over the...`;
+  const quoted = `${"gulls wheel over the cistern ".repeat(2)}gulls wheel over...`;
   assert.ok(
     line.endsWith(`: ${FSI}${quoted}${PDI}`),
     `the murmur should follow the name, cut at its own most: ${line}`,
