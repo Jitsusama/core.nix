@@ -252,7 +252,6 @@ fn act(args: &[String]) -> Result<(), Failure> {
             transcribe(Path::new(model), Path::new(mine), Path::new(theirs))
         }
         ["hear", model, ref clips @ ..] if !clips.is_empty() => hear_clips(Path::new(model), clips),
-        ["score", model, set] => score::score(Path::new(model), Path::new(set), [None, None]),
         ["score", model, set, ref ceilings @ ..] if ceilings.len() <= 2 => {
             let Some(most) = ceilings
                 .iter()
