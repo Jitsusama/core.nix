@@ -97,11 +97,15 @@ class Inner implements Placed {
   readonly #page: Page;
   readonly #attributes: Record<string, string>;
   readonly #scrolls: boolean;
+  /** One that scrolls holds more than its box shows. */
+  readonly scrollHeight: number;
+  readonly clientHeight = 1;
 
   constructor(parent: Placed, page: Page, says: string, told: Omit<Control, "says">) {
     this.parentElement = parent;
     this.#page = page;
     this.#scrolls = told.scrolls === true;
+    this.scrollHeight = this.#scrolls ? 2 : 1;
     this.textContent = says;
     this.#attributes = { ...told.attributes };
     this.localName = told.kind ?? ("href" in told.attributes ? "a" : "button");

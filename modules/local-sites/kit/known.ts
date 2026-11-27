@@ -18,6 +18,10 @@ interface Placed {
   focus?(options?: FocusOptions): void;
   blur?(): void;
   checkVisibility?(options?: { readonly visibilityProperty?: boolean }): boolean;
+  readonly scrollHeight?: number;
+  readonly clientHeight?: number;
+  readonly scrollWidth?: number;
+  readonly clientWidth?: number;
 }
 
 /** Whether `node` is `row` or inside it. */
@@ -284,6 +288,18 @@ function focusable(control: Placed): boolean {
 }
 
 /**
+ * Whether `control` scrolls, holding more than its box shows, which lets
+ * it take focus in Chromium though its markup says it takes none.
+ */
+function scrolls(control: Placed): boolean {
+  const over = (whole?: number, shown?: number) => (whole ?? 0) > (shown ?? 0);
+  return (
+    over(control.scrollHeight, control.clientHeight) ||
+    over(control.scrollWidth, control.clientWidth)
+  );
+}
+
+/**
  * Whether `control` takes no press though a browser may still name it
  * focused until it next draws: disabled, inert, or hidden, by itself or
  * what holds it. Whether its markup lets it take focus is `focusable`'s,
@@ -304,4 +320,4 @@ function refuses(control: Placed): boolean {
 }
 
 export type { Known, Placed };
-export { alike, focusable, inside, knownAs, refuses };
+export { alike, focusable, inside, knownAs, refuses, scrolls };

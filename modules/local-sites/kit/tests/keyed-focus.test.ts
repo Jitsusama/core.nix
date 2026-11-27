@@ -255,10 +255,10 @@ it("a focused control that takes no press where it stands hands focus to its row
   assert.equal(hidden, "row", "a scroller taken out of the drawing");
   // A control a page lets take focus only by its tabindex, which goes.
   const pin: Act = { says: "pin", kind: "span", attributes: { tabindex: "0", "data-act": "pin" } };
-  const untabbed = inPlace((control) => control.removeAttribute("tabindex"), {
-    acts: ["open", pin],
-  });
-  assert.equal(untabbed, "row", "no longer focusable");
+  const untab = (control: Row["children"][number]) => control.removeAttribute("tabindex");
+  assert.equal(inPlace(untab, { acts: ["open", pin] }), "row", "no longer focusable");
+  const before = { acts: ["open", pin], early: true };
+  assert.equal(inPlace(untab, before), "row", "untabbed between its press and the drawing");
 });
 
 it("a focused control marked in place for another act hands focus to its row", () => {

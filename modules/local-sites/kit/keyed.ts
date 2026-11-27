@@ -17,7 +17,16 @@
 // drawing, and the records the throwing call moved are the page's to draw
 // again, whole, since keyed keeps no note of them.
 
-import { alike, focusable, inside, type Known, knownAs, type Placed, refuses } from "./known.ts";
+import {
+  alike,
+  focusable,
+  inside,
+  type Known,
+  knownAs,
+  type Placed,
+  refuses,
+  scrolls,
+} from "./known.ts";
 
 /** As much of a drawn row as keyed reads: its key, kept on it. */
 interface Drawn {
@@ -108,11 +117,13 @@ function keyed<Row, Item extends Drawn>(holder: Holder<Item>, drawing: Drawing<R
   // its row is drawn afresh, since a row kept keeps its control.
   const redrawing = focus !== null && (moved === null || moved.has(focus.key));
   const known = redrawing && focused !== null ? knownAs(focused, holder) : null;
-  // A control whose markup lets it take no focus but the page let take
-  // it, a scroller say, may keep it as long as it stays the control it
-  // was; only that is let pass, since one disabled, inert or hidden since
-  // it took focus takes no press, which the drawing reads afresh.
-  const granted = redrawing && focused !== null && !focusable(focused);
+  // A scroller, which takes focus though its markup says it takes none,
+  // may keep it as long as it stays the control it was; only that is let
+  // pass, since one disabled, inert or hidden since it took focus takes no
+  // press, which the drawing reads afresh. Only what scrolls is granted:
+  // a control whose tabindex or href the page took away before drawing
+  // took focus by its markup, which no longer lets it.
+  const granted = redrawing && focused !== null && !focusable(focused) && scrolls(focused);
 
   const before = { focused, known, page, holder, redrawing, granted };
 
