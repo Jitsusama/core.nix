@@ -252,6 +252,36 @@ fn an_echo_cut_for_their_sound_is_told_by_how_far_under_it_it_was() {
 }
 
 #[test]
+fn a_cut_only_a_wordless_take_heard_last_makes_is_told_once_the_call_is_written_down_whole() {
+    // Joel's word is told nothing as his line is heard, since nothing of
+    // theirs is under it yet. Bo's take over it comes after, and Parakeet
+    // hears no words in it, so it's no line and tells nothing either: only
+    // writing the call down whole is left to tell the cut its sound makes.
+    let mut writing = ada_then_bo();
+    joel_says(&mut writing, 61_000, "Yeah.", -30.0);
+    assert!(
+        writing.untold_cuts().is_empty(),
+        "Joel's word was cut before Bo's take was heard, so telling it later shows nothing"
+    );
+    let wordless = Ok((None, Vec::new()));
+    writing.take_heard(Side::Theirs, 60 * SECOND, &vec![1.0; 2 * SECOND], wordless);
+    assert!(
+        joels_written(&writing).is_empty(),
+        "Joel's word under Bo's wordless take wasn't cut, so telling it shows nothing"
+    );
+    write_down_whole(
+        &Shared::new(Book::default()),
+        "call:e1",
+        &mut writing,
+        "Joel",
+    );
+    assert!(
+        writing.untold_cuts().is_empty(),
+        "the cut Bo's wordless take made wasn't told when the call was written down whole"
+    );
+}
+
+#[test]
 fn a_cut_his_voice_heard_later_brings_back_is_told_written_back() {
     // His words 20 dB below Bo's "Not yet.", spelling none of it, are cut
     // against Bo's level while none of his is heard alone. Five of his
