@@ -533,10 +533,9 @@ READING_TALK = "Reading what passed between cells."
 
 @pytest.fixture
 def slow_talk_node(tmp_path: Path) -> Iterator[StandIn]:
-    reading = json.loads((HERE / "node.json").read_text())["kinds"]
     heard = int(datetime.now(UTC).timestamp() * 1000)
-    tie = {"key": "tie:SKIFF1~TERN01", "heard": heard, "strength": 1, "today": [1, 0]}
-    stand_in = StandIn(tmp_path / "slow.sock", "node", {**reading, "tie": [tie]}).start()
+    tie = {"key": f"tie:HERON1~{HEARD}", "heard": heard, "strength": 1, "today": [3, 0]}
+    stand_in = StandIn(tmp_path / "slow.sock", "node", {**talking(), "tie": [tie]}).start()
     stand_in.withhold("message")
     yield stand_in
     stand_in.leave()
@@ -561,13 +560,23 @@ def test_the_map_draws_before_the_node_says_what_passed(
     box = page.locator('#world circle.cell[data-key="c:TERN01"]').bounding_box()
     assert box, "the map drew no TERN01 to open"
     page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
-    expect(
-        page.locator("#panel-body"), "a cell's drawer said nothing passed before it was heard"
-    ).to_contain_text("Still reading")
+    drawer = page.locator("#panel-body")
+    expect(drawer, "a cell's drawer said nothing passed before it was heard").to_contain_text(
+        "Still reading"
+    )
+    page.evaluate(f"location.hash = '#talk=' + encodeURIComponent('c:HERON1|c:{HEARD}')")
+    expect(drawer, "a talk's drawer said nothing passed before it was heard").to_contain_text(
+        "Still reading"
+    )
     slow_talk_node.answer("message")
     expect(
         page.locator("#asof"), "the map still said it was reading what passed"
     ).not_to_contain_text(READING_TALK, timeout=PACE_MS)
+    # The drawer open as the messages first answer lists them, rather than
+    # saying nothing passed until the next change draws it again.
+    expect(
+        drawer.locator(".lately li"), "a talk's drawer open as messages answered listed none"
+    ).to_have_count(TALKERS["HERON1"])
     opened.close()
 
 
