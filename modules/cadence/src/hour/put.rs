@@ -79,25 +79,29 @@ pub fn mark_asked(ledger: &mut [Entry], owner: &str, now: i64, id: &str) {
     }
 }
 
-/// Undoes the hour's filing for each of `unsent`, owners whose question
-/// never went, back to `before`, the ledger as the hour read it: each of
-/// their lines is as it was, so the next hour files and asks it again,
-/// rather than holding it open as asked by a question nobody had. The
-/// lines of owners already asked stand, and so does all else the hour
-/// did. A filing only changes lines in place or adds them after, so a
-/// line keeps its place.
-pub fn unfile(ledger: &mut Vec<Entry>, before: &[Entry], unsent: &[&str]) {
-    let theirs = |e: &Entry| e.owner.as_deref().is_some_and(|o| unsent.contains(&o));
-    let mut at = 0;
-    ledger.retain(|e| {
-        at += 1;
-        at <= before.len() || !theirs(e)
-    });
-    for (line, was) in ledger.iter_mut().zip(before) {
-        if theirs(&*line) || theirs(was) {
+/// The ledger as the hour leaves it for the owners in `asked`, whose
+/// questions went, and as `before`, the ledger as the hour read it, for
+/// every other line: those of owners never asked and those of no owner,
+/// which only the card tells. So it can be kept before the card goes: the
+/// questions' ids stand whatever the card does, while a line never asked
+/// or told is filed and told again next hour, rather than held open as
+/// asked by a question nobody had. A filing only changes lines in place
+/// or adds them after, so a line keeps its place.
+#[must_use]
+pub fn asked_only(ledger: &[Entry], before: &[Entry], asked: &[&str]) -> Vec<Entry> {
+    let theirs = |e: &Entry| e.owner.as_deref().is_some_and(|o| asked.contains(&o));
+    let mut kept: Vec<Entry> = ledger
+        .iter()
+        .enumerate()
+        .filter(|(at, e)| *at < before.len() || theirs(e))
+        .map(|(_, e)| e.clone())
+        .collect();
+    for (line, was) in kept.iter_mut().zip(before) {
+        if !theirs(&*line) || !theirs(was) {
             line.clone_from(was);
         }
     }
+    kept
 }
 
 #[cfg(test)]
@@ -216,24 +220,27 @@ mod tests {
     fn a_question_that_never_went_leaves_its_owner_s_lines_as_the_hour_found_them() {
         let mut closed = entry("hour:b", "DEF456", NOW - 7200, "drag");
         closed.open = false;
+        let mut finding = entry("crashes:chrome", "", NOW - 7200, "hole");
+        finding.owner = None;
         let before = vec![
             entry("hour:a", "ABC123", NOW - 7200, "drag"),
             closed.clone(),
+            finding.clone(),
         ];
-        // The hour asked ABC123 of a new line, and filed DEF456's line
-        // again and a new one, then DEF456's question failed.
+        // The hour asked ABC123 of a new line, filed DEF456's line again
+        // and a new one, then DEF456's question failed; a finding of no
+        // owner was marked late, for the card to tell.
         let mut ledger = before.clone();
         ledger[0].last_to = NOW;
         ledger[1].open = true;
         ledger[1].last_to = NOW;
+        ledger[2].late = true;
         ledger.push(entry("hour:c", "ABC123", NOW, "drag"));
         ledger.push(entry("hour:d", "DEF456", NOW, "drag"));
-        let asked = ledger.clone();
-        unfile(&mut ledger, &before, &["DEF456"]);
         assert_eq!(
-            ledger,
-            [asked[0].clone(), closed, asked[2].clone()],
-            "an owner never asked kept the hour's filing, so their lines read as asked, \
+            asked_only(&ledger, &before, &["ABC123"]),
+            [ledger[0].clone(), closed, finding, ledger[3].clone()],
+            "an owner never asked, or a line only the card tells, kept the hour's filing, \
              or an owner asked lost theirs"
         );
     }

@@ -203,35 +203,60 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
         root: state_home.join("pi/agentic-harness.pi"),
     };
     // A question, so the line wakes its owner and wants an answer. Its
-    // lines carry its id only once it's gone. When one fails, the hour's
-    // filing is undone for its owner and those after, so the next hour
-    // asks each again, and the ledger is kept as the owners asked left it
-    // before the failure is said, so theirs aren't asked again as
-    // questions of nobody's.
+    // lines carry its id only once it's gone. The asked owners' lines are
+    // kept before the card or any failure is said, so their ids stand
+    // though a send fails or the run is stopped: asked again, each would
+    // wake its owner a second time and count against collaboration as a
+    // question of nobody's. Every other line waits on the card.
     let asks = put::asks(told);
-    for (n, (owner, text)) in asks.iter().enumerate() {
-        let ask = message(owner, "question", text.clone());
-        if let Err(err) = mesh.send(&ask) {
-            let unsent: Vec<&str> = asks[n..].iter().map(|(o, _)| o.as_str()).collect();
-            put::unfile(&mut ledger, &before, &unsent);
-            findings::keep(&ledger_at, &ledger)?;
-            return Err(err);
-        }
-        put::mark_asked(&mut ledger, owner, now, &ask.id);
+    let failed = ask_owners(&mesh, &asks, &mut ledger, now).err();
+    let went = failed.as_ref().map_or(asks.len(), |(n, _)| *n);
+    keep_asked(&ledger_at, &ledger, &before, &asks[..went])?;
+    if let Some((_, err)) = failed {
+        return Err(err);
     }
-    // Kept once the questions have gone and before the card, so their ids
-    // stand though the card's send fails or the run is stopped: asked
-    // again, each would wake its owner a second time and count against
-    // collaboration as a question of nobody's. A card that fails costs
-    // only the card.
-    findings::keep(&ledger_at, &ledger)?;
     let routes = fs::read_to_string(state_home.join("pain-points/routes.json")).ok();
     let keeper = measures::keeper(routes.as_deref());
     for (whom, intent) in card_to(to, keeper.as_deref()) {
         mesh.send(&message(whom, intent, card.clone()))?;
     }
+    // Kept whole once the card has gone, so a card that fails tells its
+    // findings and "fixed" lines again next hour rather than never.
+    findings::keep(&ledger_at, &ledger)?;
     write_whole(&kept_at, &serde_json::to_string(&next)?)?;
     Ok(())
+}
+
+/// Asks each owner its lines and marks the lines of each question gone
+/// with its id. A send that fails stops the asking, saying how many went.
+fn ask_owners(
+    mesh: &Mesh,
+    asks: &[(String, String)],
+    ledger: &mut [findings::Entry],
+    now: i64,
+) -> Result<(), (usize, io::Error)> {
+    for (n, (owner, text)) in asks.iter().enumerate() {
+        let ask = message(owner, "question", text.clone());
+        mesh.send(&ask).map_err(|err| (n, err))?;
+        put::mark_asked(ledger, owner, now, &ask.id);
+    }
+    Ok(())
+}
+
+/// Keeps the ledger as the hour left it for the owners of `asked`, whose
+/// questions went, and as it was read for every other line. With none
+/// asked there's nothing to keep before the card.
+fn keep_asked(
+    at: &Path,
+    ledger: &[findings::Entry],
+    before: &[findings::Entry],
+    asked: &[(String, String)],
+) -> io::Result<()> {
+    if asked.is_empty() {
+        return Ok(());
+    }
+    let owners: Vec<&str> = asked.iter().map(|(owner, _)| owner.as_str()).collect();
+    findings::keep(at, &put::asked_only(ledger, before, &owners))
 }
 
 /// The misses measured from a ledger not read whole, left unjudged, and
