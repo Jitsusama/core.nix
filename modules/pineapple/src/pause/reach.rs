@@ -53,25 +53,20 @@ pub(super) const BEGUN: &str = "pineapple: begun there";
 /// 255 of that mycelium's own can't read as the script never running.
 const OWN_FAILURE: u8 = 70;
 
-/// The folder a stop's run there starts in. Unnamed, a run asks for the
-/// folder pineapple runs in here, Joel's home, which another machine may
-/// hold under that name but keep from whoever runs there, such as a
-/// room's own account, which can't start a shell in it. The root won't
-/// do either, since a fenced run there refuses a folder holding the
-/// home. The script reads and writes only by whole paths, so the shared
-/// scratch folder, which every account may enter, serves on every
-/// machine.
-pub(super) const FOLDER: &str = "/tmp";
-
 /// What `mycelium` is asked to run `script` on `machine`, in `realm` or
-/// its own, in [`FOLDER`].
+/// its own, for a stop given there and for `pineapple stop` alike.
+///
+/// It names no folder, so the run asks for the one pineapple runs in
+/// here, Joel's home, where a fenced run there may write the stops
+/// folder beneath it. A cloud room keeps that folder from its own
+/// account, so its shell never starts; neither the root nor the shared
+/// scratch folder serves instead, since a fenced run may write only
+/// the folder it starts in.
 pub(super) fn run_there(machine: &str, realm: Option<&str>, script: String) -> Vec<String> {
     let mut args = asked(&["run"], realm);
     args.extend([
         "--need".to_owned(),
         format!("machine={machine}"),
-        "--folder".to_owned(),
-        FOLDER.to_owned(),
         "--".to_owned(),
         "sh".to_owned(),
         "-c".to_owned(),
