@@ -11,8 +11,9 @@
 onLinux {
   # pain-points' tests run as it builds: what an opening, a message to pi
   # or a go in Chrome lost Joel, which are one go at a thing, what of a
-  # pick it may say, and that nothing he typed to pi and no page he
-  # visited is kept.
+  # pick it may say, that nothing he typed to pi and no page he visited
+  # is kept, and that a pain no cell of its own takes goes through its
+  # subject's hub before the fallback.
   pain-points-names-what-slowed-him = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in pain-points, its tests included.
   pain-points-passes-clippy = passesClippy "pain-points-passes-clippy" (

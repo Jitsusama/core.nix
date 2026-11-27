@@ -979,7 +979,8 @@ fn waiting_in(ours: &[u8]) -> bool {
 /// on the network alone says nothing of the change either: on 19 November
 /// two such failed #5650's comparison and told its owner so. One ended
 /// while it still waited for a turn on the Mac that took it built
-/// nothing there either. A log that can't be read leaves the ending as it
+/// nothing there either, nor did one built off a Mac, which no Mac took
+/// (`macs::built_off_a_mac`). A log that can't be read leaves the ending as it
 /// was.
 fn mac_ending(code: Option<i32>, ours: Option<&[u8]>) -> Option<i32> {
     let Some(ours) = ours else {
@@ -992,6 +993,11 @@ fn mac_ending(code: Option<i32>, ours: Option<&[u8]>) -> Option<i32> {
         None if !taken_in(ours) || waiting_in(ours) => Some(UNCOMPARED),
         Some(UNSENT | UNREACHED) => Some(UNSENT),
         Some(code) if code != 0 && unresolved(&String::from_utf8_lossy(ours)) => Some(UNCOMPARED),
+        // Rested to the next round rather than sent again at once, since
+        // each send is a whole run on a lender that refuses it the same way.
+        Some(code) if code != 0 && crate::macs::built_off_a_mac(&String::from_utf8_lossy(ours)) => {
+            Some(UNCOMPARED)
+        }
         code => code,
     }
 }
@@ -1858,8 +1864,8 @@ mod tests {
         kept_drv(&dir, "origin/main", "vm-a", evaluate).expect("evaluated");
         kept_drv(&dir, "origin/main", "vm-a", evaluate).expect("evaluated");
         assert_eq!(asked.get(), 3, "a name that moves is evaluated each time");
-        let failed = kept_drv(&dir, commit, "vm-b", || Err("nix failed".to_owned()));
-        assert!(failed.is_err());
+        kept_drv(&dir, commit, "vm-b", || Err("nix failed".to_owned()))
+            .expect_err("an evaluation that failed gave a derivation");
         assert!(
             !dir.join(format!("{commit}-vm-b")).exists(),
             "a failure isn't kept"
@@ -1876,15 +1882,18 @@ mod tests {
              to download 'https://github.com/someone/core/archive/{commit}.tar.gz': \
              HTTP error 503\n"
         );
-        assert!(unfetched(log.lines(), commit));
+        assert!(
+            unfetched(log.lines(), commit),
+            "the builder's failed fetch of the change's own source was taken as its failure"
+        );
         assert!(
             !unfetched(log.lines(), "0123456789abcdef0123456789abcdef01234567"),
             "another input's fetch is the test's own to fail on"
         );
-        assert!(!unfetched(
-            "error: builder failed with exit code 1".lines(),
-            commit
-        ));
+        assert!(
+            !unfetched("error: builder failed with exit code 1".lines(), commit),
+            "a builder that failed was taken as a fetch that failed"
+        );
     }
 
     #[test]
@@ -2013,7 +2022,10 @@ mod tests {
         for named in ["#7", "vm-a", "0123456789abcdef", "line two"] {
             assert!(body.contains(named), "{named}");
         }
-        assert!(!body.contains('\u{2014}'));
+        assert!(
+            !body.contains('\u{2014}'),
+            "the body holds a long dash:\n{body}"
+        );
     }
 
     #[test]
@@ -2027,7 +2039,10 @@ mod tests {
             "nix-offload: the VM builder has 4 VM tests, so this waits for room\n",
         )
         .unwrap();
-        assert!(!clock.overdue(&log, start));
+        assert!(
+            !clock.overdue(&log, start),
+            "a run waiting its turn is overdue at its start"
+        );
         assert!(
             !clock.overdue(&log, start + LONGEST * 2),
             "queued, however long"
@@ -2038,8 +2053,14 @@ mod tests {
             "waits for room\nnix-offload: building on the lent builder b\n",
         )
         .unwrap();
-        assert!(!clock.overdue(&log, taken));
-        assert!(!clock.overdue(&log, taken + SILENT));
+        assert!(
+            !clock.overdue(&log, taken),
+            "a run is overdue as a builder takes it"
+        );
+        assert!(
+            !clock.overdue(&log, taken + SILENT),
+            "a run silent for no longer than the silent limit is overdue"
+        );
         assert!(
             clock.overdue(&log, taken + SILENT + Duration::from_secs(1)),
             "silent"
@@ -2060,7 +2081,10 @@ mod tests {
         let mut text = fs::read_to_string(&log).unwrap();
         text.push_str("nix-offload: 15 runs wait ahead of this, so this waits for room\n");
         fs::write(&log, &text).unwrap();
-        assert!(!clock.overdue(&log, start));
+        assert!(
+            !clock.overdue(&log, start),
+            "a run waiting its turn is overdue at its start"
+        );
         assert!(
             !clock.overdue(&log, start + SILENT * 2),
             "queued, though the run before it was taken"
@@ -2068,8 +2092,14 @@ mod tests {
         let taken = start + SILENT * 2;
         text.push_str("nix-offload: building on the lent builder b\n");
         fs::write(&log, &text).unwrap();
-        assert!(!clock.overdue(&log, taken));
-        assert!(clock.overdue(&log, taken + SILENT + Duration::from_secs(1)));
+        assert!(
+            !clock.overdue(&log, taken),
+            "a run is overdue as a builder takes it"
+        );
+        assert!(
+            clock.overdue(&log, taken + SILENT + Duration::from_secs(1)),
+            "a run silent past the limit after a builder took it isn't overdue"
+        );
         let _ = fs::remove_file(&log);
     }
 
@@ -2084,7 +2114,11 @@ mod tests {
         while now <= start + LONGEST {
             text.push_str("still going\n");
             fs::write(&log, &text).unwrap();
-            assert!(!clock.overdue(&log, now));
+            assert!(
+                !clock.overdue(&log, now),
+                "a run still writing is overdue {:?} in, before the longest",
+                now - start
+            );
             now += Duration::from_mins(10);
         }
         text.push_str("still going\n");
@@ -3319,5 +3353,23 @@ error: Cannot build '/nix/store/lvq948h202w1y515cz4g89fjgynya8d5-system-0.1.0.dr
             "the log net.log points at didn't say why the run compared nothing"
         );
         fs::remove_file(&log).unwrap();
+    }
+
+    #[test]
+    fn a_mac_comparison_built_off_a_mac_waits_for_the_next_round() {
+        let refused = "error: Cannot build '/nix/store/j7qs-checks.drv'.\n       Reason: \
+            platform mismatch\n       Required system: 'aarch64-darwin'\n       Current \
+            system: 'x86_64-linux'\n";
+        assert_eq!(
+            mac_ending(Some(1), Some(refused.as_bytes())),
+            Some(UNCOMPARED),
+            "a comparison a Linux lender refused was sent again or blamed on the merge"
+        );
+        let failed = format!("{refused}error: builder for '/nix/store/a-x.drv' failed\n");
+        assert_eq!(
+            mac_ending(Some(1), Some(failed.as_bytes())),
+            Some(1),
+            "a check that failed beside the refusals wasn't read as failing"
+        );
     }
 }

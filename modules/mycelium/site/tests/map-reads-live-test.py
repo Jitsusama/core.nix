@@ -594,7 +594,14 @@ HERONS_TITLE = "Chart the Harbour"
 # .focused .far is 0.22), with room either side for a mark's own opacity.
 STRONG_ALPHA = 0.9
 STEPPED_BACK_ALPHA = 0.5
-RECT = "(e) => { const r = e.getBoundingClientRect(); return [r.left, r.top, r.right, r.bottom]; }"
+# The view's box, the drawer's and each named cell's, read in one task. A cell
+# found in one call and measured in the next can be redrawn between the two,
+# and a circle taken out of the page measures all zeros, as on 27 November.
+BOXES = """(keys) => [document.getElementById('map-view'), document.getElementById('panel'),
+  ...keys.map((key) => document.querySelector(`#world circle.cell[data-key="c:${key}"]`))]
+  .map((e) => { if (!e || !e.isConnected) return null; const r = e.getBoundingClientRect();
+    return [r.left, r.top, r.right, r.bottom]; })"""
+DRAWN = f"(keys) => ({BOXES})(keys).every((box) => box !== null && box[2] > box[0])"
 
 
 def strongest(page: Page, cell: str) -> float:
@@ -618,12 +625,13 @@ def test_a_network_opened_is_put_into_view_whole_and_what_it_joins_stands_out(
         SKIFF_TITLE
     )
     settled(page, "the skiff's network never stood still once opened")
-    view = page.locator("#map-view").evaluate(RECT)
-    drawer = page.locator("#panel").evaluate(RECT)
-    for cell in SKIFF_JOINS:
-        left, top, right, bottom = page.locator(
-            f'#world circle.cell[data-key="c:{cell}"]'
-        ).evaluate(RECT)
+    try:
+        page.wait_for_function(DRAWN, arg=list(SKIFF_JOINS), timeout=PACE_MS)
+    except PlaywrightTimeoutError as undrawn:
+        message = f"opening the skiff left one of {SKIFF_JOINS} undrawn"
+        raise AssertionError(message) from undrawn
+    view, drawer, *boxes = page.evaluate(BOXES, list(SKIFF_JOINS))
+    for cell, (left, top, right, bottom) in zip(SKIFF_JOINS, boxes, strict=True):
         inside = view[0] <= left and right <= view[2] and view[1] <= top and bottom <= view[3]
         assert inside, f"opening the skiff left {cell} at {left, top, right, bottom} outside {view}"
         under = left < drawer[2] and drawer[0] < right and top < drawer[3] and drawer[1] < bottom
@@ -2469,6 +2477,36 @@ def test_a_machines_drawer_opens_its_row_in_the_launcher(mycelium_opened: Opened
     expect(link, "osprey's drawer didn't open its row").to_have_attribute(
         "href", "mycelium:machine/osprey"
     )
+
+
+# The skiff's network as two machines feed it in node.json, each cell
+# counted where it is drawn: TERN01 is listed in the skiff and in its
+# branch but drawn in the branch, so the skiff draws SKIFF1, TERN02 and
+# GULL01 as its own. kestrel runs two of those and both of the branch's,
+# osprey runs GULL01.
+FED_NETWORK = "orchestration.skiff1"
+FED_BY = ["kestrel", "feeds it 4 cells", "osprey", "feeds it 1 cell"]
+
+
+def test_a_network_fed_by_two_machines_lists_each_with_its_cells(
+    mycelium_opened: Opened,
+) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    page.evaluate(f"location.hash = '#net={FED_NETWORK}'")
+    body = page.locator("#panel-body")
+    expect(body, "the skiff's drawer miscounted its cells or machines").to_contain_text(
+        "A network of 3 cells, with 2 more in 1 branch, fed by 2 machines.", timeout=PACE_MS
+    )
+    # A network belongs to no machine, so its drawer lists every one that
+    # feeds it, its branch's cells counted in.
+    rows = body.locator("h3:text-is('Its Machines') + ul.rows li")
+    expect(rows, "the skiff's drawer didn't list both machines").to_have_count(2)
+    lines = [line for row in rows.all_inner_texts() for line in row.splitlines() if line]
+    assert lines == FED_BY, f"Its Machines read {lines}, not {FED_BY}"
+    # Each opens that machine's own drawer.
+    rows.nth(1).get_by_role("button").click()
+    expect(page.locator("#panel-title"), "osprey's row didn't open osprey").to_have_text("osprey")
 
 
 def test_a_kept_cloud_machine_says_so_and_opens_its_row(

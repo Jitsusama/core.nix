@@ -605,7 +605,11 @@ Scope {
     // Where in `rows` each row is, by what it is, so asking whether a row
     // is among them looks at its namesakes alone: never a Set, which Qt's
     // engine searches key by key for an object (RowsKept.js), every row
-    // against every other.
+    // against every other. Rows sharing a key, or with none, share one
+    // bucket: `among` still asks for the very row, so none is lost or let
+    // in, but many of them would bring back every row against every other.
+    // Each provider calling poolFor keys its rows apart (Runs by its run,
+    // Copies by the history's copy, Applications by its program).
     function byWhat(rows) {
         const by = Object.create(null);
         for (let at = 0; at < rows.length; at += 1) {
