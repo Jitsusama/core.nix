@@ -2,7 +2,7 @@
 # Claude plan's terms allow rather than impersonating it. Its billing guard
 # stops pi at the first request Anthropic would charge to usage credits
 # rather than the plan's limits, so pi never runs on extra usage. pi-claude
-# loads it for one command (claude.nix); a machine on the Claude plan loads
+# loads it for one command (default.nix); a machine on the Claude plan loads
 # it for every pi (home.nix).
 #
 # Patched so a used-up plan limit says so plainly: which limit, when it
@@ -22,8 +22,8 @@ pkgs.applyPatches {
     hash = "sha256-9BHTz/IRf8jZczVYoXtypepBDmWJ9+5id6hwZUdeSV0=";
   };
   patches = [
-    ./claude-plan-limit.patch
-    ./claude-login-once.patch
-    ./claude-unloaded-tool.patch
+    ./plan-limit.patch
+    ./login-once.patch
+    ./unloaded-tool.patch
   ];
 }

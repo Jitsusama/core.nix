@@ -63,11 +63,20 @@ pub enum Before {
 }
 
 impl Before {
-    /// Whether this earlier pass lets the head merge as it stands, with no
-    /// run of its own or the train's: only when main moved none of its
+    /// The commit whose run lets the head merge as it stands, with no run
+    /// of its own or the train's: one only when main moved none of its
     /// files, since no run saw what main moved.
+    pub fn speaker(&self) -> Option<&str> {
+        match self {
+            Self::Clean(checked) => Some(checked.as_str()),
+            Self::Shares(..) | Self::Unchecked => None,
+        }
+    }
+
+    /// Whether an earlier run speaks for the head, as [`Before::speaker`]
+    /// names it.
     pub fn speaks_for_the_head(&self) -> bool {
-        matches!(self, Self::Clean(_))
+        self.speaker().is_some()
     }
 }
 
@@ -76,9 +85,9 @@ impl Before {
 /// diff of hundreds of files, so a day of a change's passes isn't each
 /// read. Candidates come newest record first (a head behind main before
 /// them, as [`speakers`] puts it), not newest base, so a clean
-/// pass past these two can go unread; that costs the head a run at most,
-/// since the cap only ever turns a `Clean` into `Shares`, never the other
-/// way.
+/// pass past these two can go unread; that costs a run at the head, or the
+/// train's run of the merged tree, since the cap only ever turns a `Clean`
+/// into `Shares`, never the other way.
 const SHARING_READ: usize = 2;
 
 /// Whether the head is the same change as one of `candidates`, newest

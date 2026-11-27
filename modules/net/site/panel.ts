@@ -210,8 +210,20 @@ function standsNow(context: Context): string {
   return `${plural(users(context), "device")} on ${plural(shape.points.length, "eero")} across ${plural(shape.floors.length, "floor")}, and ${asks}.`;
 }
 
-/** The lede while net has never answered and is no longer being reached. */
+/** The lede while net has never answered and the server says it can't reach it. */
 const UNANSWERED = "Net hasn't answered, so no device is drawn.";
+
+/** The lede while net answered once, and the server now says it can't reach it. */
+const STOPPED = "Net stopped answering, so no device is drawn.";
+
+/** The lede while nothing is drawn and the page can't reach the sites' server. */
+const UNREACHED = "The sites' server can't be reached, so no device is drawn.";
+
+/** The lede while net answers and has named no device, as on its first reading. */
+const NAMELESS = "Net is answering, but has named no device yet.";
+
+/** The lede while net is being reached, as the page first says it. */
+const REACHING = "Reaching net for every device on it.";
 
 /** How net's feeds stand for the lede: whether any was ever live, and the worst now. */
 interface Answering {
@@ -247,27 +259,33 @@ class Standings {
 }
 
 /**
- * What the lede says, or null to leave it as it is: what stands now while
- * the map draws a device, and that net hasn't answered once its feeds stop
- * reaching it before any was live. A page opened while net is down is given
- * the records the server still holds, and draws them, so the lede counts
- * them too rather than saying none is drawn. With none drawn, the counts
- * are never said: a page joining a watch the server holds as broken is told
- * every kind empty, a live feed's records may not have come yet, and "0
- * devices, and nothing needs a look" would read as an all-clear either way.
+ * What the lede says: what stands now while the map draws a device, and
+ * otherwise how net's feeds stand, so words said of an earlier standing
+ * never outlast it. A page opened while net is down is given the records
+ * the server still holds, and draws them, so the lede counts them too
+ * rather than saying none is drawn. With none drawn, the counts are never
+ * said: a page joining a watch the server holds as broken is told every
+ * kind empty, net serves every kind empty until its first reading is done,
+ * and "0 devices, and nothing needs a look" would read as an all-clear.
  */
-function ledeOf(answering: Answering, context: Context | undefined): string | null {
+function ledeOf(answering: Answering, context: Context | undefined): string {
   if (context !== undefined && context.network.devices.length > 0) {
     return standsNow(context);
   }
-  const unreached = answering.worst === "broken" || answering.worst === "stale";
-  return !answering.answered && unreached ? UNANSWERED : null;
+  // A feed is stale while the sites' server can't be reached, and broken while
+  // the server is reached and says net isn't (the kit's feed.ts).
+  const stands: Record<string, string> = {
+    broken: answering.answered ? STOPPED : UNANSWERED,
+    live: NAMELESS,
+    stale: UNREACHED,
+  };
+  return stands[answering.worst ?? ""] ?? REACHING;
 }
 
 /** Says what stands now in the head's lede, writing only when it changes. */
 function sayStandsNow(lede: HTMLElement, answering: Answering, context: Context | undefined): void {
   const words = ledeOf(answering, context);
-  if (words !== null && lede.textContent !== words) {
+  if (lede.textContent !== words) {
     lede.textContent = words;
   }
 }
@@ -348,10 +366,14 @@ export {
   concernRows,
   found,
   ledeOf,
+  NAMELESS,
   overview,
+  REACHING,
   row,
+  STOPPED,
   sayStandsNow,
   Standings,
   standsNow,
   UNANSWERED,
+  UNREACHED,
 };

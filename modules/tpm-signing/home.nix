@@ -55,8 +55,16 @@ in
 
   # Started by the first signature that wants it, it loads the key before it
   # serves, as the agent's patch makes ssh-tpm-agent do (../ssh-tpm-agent).
+  # It listens only where the agents' key is made. Without it, the first ask,
+  # such as pi's agent proxy listing its keys, starts an agent over a
+  # dangling link that fails, and leaves the socket failed with it. A key made
+  # after login wants `systemctl --user start agent-signing.socket`, as
+  # docs/installing.md says.
   systemd.user.sockets.agent-signing = {
-    Unit.Description = "The agents' signing key's own ssh-tpm-agent, which asks nothing";
+    Unit = {
+      Description = "The agents' signing key's own ssh-tpm-agent, which asks nothing";
+      ConditionPathExists = "${agentKey}.tpm";
+    };
     Socket = {
       ListenStream = "%t/${agentSocket}";
       SocketMode = "0600";

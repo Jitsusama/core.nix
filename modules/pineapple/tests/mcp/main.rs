@@ -1,6 +1,7 @@
 //! A tool gateway's tools called over HTTP, against a fake gateway on a
 //! port of this machine's own: what it is asked, in what order, with which
-//! session and sign-in, and what the caller is told.
+//! session and sign-in, and what the caller is told. What Joel's phone is
+//! told through the tool that sends to him alone is in phone.rs.
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
@@ -14,6 +15,8 @@ use pineapple::mcp::{Called, Gateway};
 use pineapple::sign_in::SignIn;
 use serde_json::{Value, json};
 
+mod phone;
+
 /// One request the fake gateway took.
 #[derive(Clone, Debug)]
 struct Seen {
@@ -26,6 +29,7 @@ struct Seen {
 
 /// What the fake gateway answers: its status, the session it names and
 /// its body, with the type the body is sent as.
+#[derive(Clone)]
 struct Reply {
     status: u16,
     session: Option<&'static str>,
@@ -616,7 +620,7 @@ fn an_answer_that_isnt_json_rpc_is_unreadable_unless_the_gateway_is_down_or_busy
                 heard, said,
                 "a {kind} page in a {code} is unreadable, a cause that lasts, unless it's the \
                  gateway's own failing, which may have done what was asked, or a spent rate or \
-                 a server saying it can't take it now, either sure to have done nothing: \
+                 a server saying it can't take it now, either taken to have done nothing: \
                  {called:?}"
             );
             let _ = fs::remove_dir_all(&dir);
@@ -673,18 +677,38 @@ fn a_gateway_passing_on_slacks_refusal_counts_as_refused() {
 
 #[test]
 fn a_session_that_wont_open_is_not_reached_since_the_tool_was_never_asked() {
-    let dir = scratch("wont-open");
-    let (url, _) = gateway(|one, _| match one.method.as_str() {
-        "initialize" => status(502),
-        _ => status(202),
-    });
-    let mut gateway = Gateway::new(&url, sign_in(&dir).as_os_str());
-    let called = gateway.call("slack_send_message_to_self", &json!({"message": "hi"}));
-    assert!(
-        matches!(called, Err(Called::NotReached(_))),
-        "a gateway failing as a session opens never saw the tool asked: {called:?}"
-    );
-    let _ = fs::remove_dir_all(&dir);
+    let failing = |message: &str| {
+        json_reply(&json!({ "jsonrpc": "2.0", "id": 1, "error": { "message": message } }))
+    };
+    for (at, (opening, said)) in [
+        (status(502), "not reached"),
+        (status(503), "not reached"),
+        (failing("unsupported version"), "not reached"),
+        (failing("invalid_auth"), "failed"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let dir = scratch(&format!("wont-open-{at}"));
+        let (url, _) = gateway(move |one, _| match one.method.as_str() {
+            "initialize" => opening.clone(),
+            _ => status(202),
+        });
+        let mut gateway = Gateway::new(&url, sign_in(&dir).as_os_str());
+        let called = gateway.call("slack_send_message_to_self", &json!({"message": "hi"}));
+        let heard = match called {
+            Err(Called::NotReached(_)) => "not reached",
+            Err(Called::Failed(_)) => "failed",
+            _ => "something else",
+        };
+        assert_eq!(
+            heard, said,
+            "a gateway failing as a session opens never saw the tool asked, but one naming a \
+             sign-in refused is still said as failing, so the reader can tell Joel of it: \
+             {called:?}"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
 }
 
 #[test]

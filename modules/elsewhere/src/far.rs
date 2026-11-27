@@ -99,10 +99,10 @@ pub fn plain_quest(quest: &str) -> bool {
 const WORKSPACE: &str = "pi/agentic-harness.pi/quest-workspace";
 
 /// The folder holding each quest's scratch, as the harness and mycelium
-/// both find it.
+/// both find it: a relative cache, as the XDG spec says, is no cache.
 pub fn scratches() -> PathBuf {
     let cache = std::env::var_os("XDG_CACHE_HOME")
-        .filter(|it| !it.is_empty())
+        .filter(|it| Path::new(it).is_absolute())
         .map_or_else(
             || PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".cache"),
             PathBuf::from,
@@ -269,7 +269,7 @@ pub fn script(
     kind: &Kind,
     command: &[String],
 ) -> String {
-    let scratches = format!("\"${{XDG_CACHE_HOME:-$HOME/.cache}}\"/{WORKSPACE}/{quest}");
+    let scratches = format!("\"$cache\"/{WORKSPACE}/{quest}");
     let job = format!("{scratches}/{HANDOVER}/{id}");
     let work = format!("{scratches}/{}", quoted(&format!("{scratch}/{id}")));
     let inside = quoted(&within.to_string_lossy());
@@ -298,10 +298,10 @@ pub fn script(
     let freed = freed();
     let setup = kind.setup.trim();
     format!(
-        r#"job={job}
+        r#"{CACHE}
+job={job}
 work={work}
-mine=
-tab=$(printf '\t')
+mine= tab=$(printf '\t')
 {CLEARING}
 {crossing}
 {copying}
@@ -791,7 +791,7 @@ mod steps;
 use names::within_tree;
 use names::{Folders, tracked};
 use steps::{
-    CLEARING, RUN, bringing, copying, crossing, freed, handing, stopping, sweeping, waiting,
+    CACHE, CLEARING, RUN, bringing, copying, crossing, freed, handing, stopping, sweeping, waiting,
 };
 
 pub use heard::{Heard, REFUSES, UNTAKEN, relay};
