@@ -187,9 +187,7 @@ def test_what_waits_on_its_person_is_said_first(forage_page: Page) -> None:
     says_it_stands(forage_page, "live")
     every_cell_drawn(forage_page)
     lede = forage_page.locator("#lede")
-    expect(lede, "the lede didn't say what waits").to_contain_text(
-        "One thing waits on you, from KESTRL."
-    )
+    expect(lede, "the lede didn't say what waits").to_contain_text("One waits on you, from KESTRL.")
     expect(lede, "the lede didn't say the plan furthest to go").to_contain_text(
         "KESTRL has furthest to go, 2 of 5 steps done."
     )
@@ -605,13 +603,14 @@ def test_a_first_visit_holds_still_and_a_long_link_never_widens_the_page(
 
 
 # The longest ledes the page's own model writes, built of only the fields its lede reads: things
-# counted past a thousand, the cells waiting and those without purpose each one named and the
-# rest counted or two named, and a plan's steps past a hundred. Every cell is named by six of
-# an address's widest letters and figures.
+# counted past a thousand, or one thing two cells on its quest wait on, the cells waiting and
+# those without purpose each one named and the rest counted or two named, and a plan's steps
+# past a hundred. Every cell is named by six of an address's widest letters and figures.
 LEDE_FORMS = """async () => {
   const { lede } = await import("./model.js");
-  const cell = (at, { waits = 0, purpose = "Keeps the shore.", ticked = 0, open = 0 } = {}) => ({
-    cell: `MWM${String(at).padStart(3, "W")}`, quest: `QEST-${at}`, purpose,
+  const cell = (at, { waits = 0, quest = `QEST-${at}`, purpose = "Keeps the shore.",
+    ticked = 0, open = 0 } = {}) => ({
+    cell: `MWM${String(at).padStart(3, "W")}`, quest, purpose,
     documents: [{ id: `p${at}`, kind: "plan", title: "", stage: "build", ticked, open }],
     waits: Array.from({ length: waits }, (_, each) => ({
       id: `w${each}`, title: "", why: "", minutes: undefined, when: undefined, ready: true })),
@@ -622,21 +621,33 @@ LEDE_FORMS = """async () => {
     ...Array.from({ length: hollow }, (_, at) => cell(waiting + at, { purpose: "" })),
     cell(waiting + hollow, { ticked: 112, open: 29 }),
   ];
+  const shared = (hollow) => [
+    cell(0, { waits: 1, quest: "QEST-0" }), cell(1, { waits: 1, quest: "QEST-0" }),
+    ...Array.from({ length: hollow }, (_, at) => cell(2 + at, { purpose: "" })),
+    cell(2 + hollow, { ticked: 112, open: 29 }),
+  ];
   const text = (words) => {
     const held = document.createElement("p");
     held.textContent = words;
     return held.innerHTML;
   };
-  return [grove(39, 113), grove(2, 2)].map((each) => text(lede(each)));
+  return [grove(39, 113), grove(2, 2), shared(113), shared(2)].map((each) => text(lede(each)));
 }"""
-# The lines the lede's box holds at each width, which every lede the model writes fits: a
-# phone's four, and a desk's three, where the lede is as wide as it grows, within a pixel,
-# since the page rounds the height it lays out.
-LEDE_LINES = {SIZES[0]: 4, SIZES[1]: 3, WIDE_DESK: 3}
+# The lines the lede's box holds, which every lede the model writes fits: a phone's four, and
+# from DESK_PX, as site.css's own rule says, three, where the lede is as wide as it grows; within
+# a pixel, since the page rounds the height it lays out.
+DESK_PX = 1024
 LAID_WITHIN = 1
 
 
-@pytest.mark.parametrize("size", [*SIZES, WIDE_DESK])
+def lede_lines(size: tuple[int, int]) -> int:
+    """Say how many lines the lede's box holds in a window `size` wide."""
+    return 3 if size[0] >= DESK_PX else 4
+
+
+# Past SIZES' desk the lede lays out as it does there, its type no longer fluid and its width
+# capped, so a wider desk would only repeat it.
+@pytest.mark.parametrize("size", SIZES)
 def test_the_lede_keeps_the_lines_it_opens_on(
     browser: Browser, forage_served: Served, size: tuple[int, int]
 ) -> None:
@@ -659,8 +670,9 @@ def test_the_lede_keeps_the_lines_it_opens_on(
             if px != said["opening"]
         }
         assert not grew, f"at {size} these ledes leave {said['opening']} px: {grew}"
-        assert abs(said["opening"] - LEDE_LINES[size] * said["line"]) < LAID_WITHIN, (
-            f"at {size} the lede's box is {said['opening']} px, not {LEDE_LINES[size]} lines"
+        lines = lede_lines(size)
+        assert abs(said["opening"] - lines * said["line"]) < LAID_WITHIN, (
+            f"at {size} the lede's box is {said['opening']} px, not {lines} lines"
         )
     finally:
         opened.close()

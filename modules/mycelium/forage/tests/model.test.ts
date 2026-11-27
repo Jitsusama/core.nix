@@ -355,7 +355,7 @@ it("the lede first says what waits on its person, and from which cells", () => {
   assert.ok(lede(two).startsWith("2 wait on you, from KESTRL and OSPREY. "), lede(two));
   const [one] = foragesOf(told([forage("OSPREY", { waits: [look] })])).forages;
   assert.ok(one);
-  assert.ok(lede([one]).startsWith("One thing waits on you, from OSPREY. "), lede([one]));
+  assert.ok(lede([one]).startsWith("One waits on you, from OSPREY. "), lede([one]));
 });
 
 it("a find matches what a cell's quest waits on", () => {
