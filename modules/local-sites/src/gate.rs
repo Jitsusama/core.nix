@@ -40,7 +40,7 @@ pub fn pass(feed: &Feed, line: &str) -> Passed {
     };
     let id = said.get("id").cloned().unwrap_or(Value::Null);
     let ask = said.get("ask").and_then(Value::as_str).unwrap_or("");
-    for unsupported in ["place", "every", "when", "deep"] {
+    for unsupported in ["place", "every", "when", "deep", "latest"] {
         if said.get(unsupported).is_some() {
             return Passed::Refused(error(
                 &id,
@@ -187,6 +187,7 @@ mod tests {
                     Kind {
                         fields: Some(vec!["title".to_owned(), "presence".to_owned()]),
                         deep: None,
+                        latest: None,
                     },
                 ),
             ]),
@@ -256,6 +257,12 @@ mod tests {
     fn a_page_cant_ask_how_the_feed_asks() {
         let deep = r#"{"id": 9, "ask": "watch", "kind": "session", "deep": ["presence"]}"#;
         assert_eq!(code(&pass(&node(), deep)), "refused");
+        let latest = r#"{"id": 10, "ask": "watch", "kind": "session", "latest": 20}"#;
+        assert_eq!(
+            code(&pass(&node(), latest)),
+            "refused",
+            "one page's latest would cut what every tab sharing the watch holds"
+        );
     }
 
     #[test]

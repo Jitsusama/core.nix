@@ -38,6 +38,9 @@ class StandIn:
         self.records = {kind: {str(r["key"]): r for r in rs} for kind, rs in records.items()}
         self.lock = threading.Lock()
         self.watches: list[tuple[socket.socket, object, str]] = []
+        # Every watch it was asked, whole, so a test can say what a page's
+        # server asks of its daemon.
+        self.asked: list[dict[str, object]] = []
         self.connections: list[socket.socket] = []
         self.server: socket.socket | None = None
 
@@ -119,6 +122,7 @@ class StandIn:
                 records = list(self.records[kind].values())
                 if verb == "watch":
                     self.watches.append((conn, ask_id, kind))
+                    self.asked.append(ask)
             self._send(conn, {"id": ask_id, "records": records})
         else:
             refused = {"code": "unknown-kind", "message": f"no {kind} here"}

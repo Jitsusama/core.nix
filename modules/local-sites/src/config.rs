@@ -45,6 +45,9 @@ pub struct Kind {
     /// The fields asked of the daemon deep, so a change inside one says
     /// only what moved in it (the node's `deep`).
     pub deep: Option<Vec<String>>,
+    /// How many of the kind's records the daemon is asked for, those it
+    /// heard latest, so a page is sent only those (the node's `latest`).
+    pub latest: Option<u64>,
 }
 
 impl Config {
@@ -133,11 +136,18 @@ fn feed_of(name: &str, said: &Value, runtime: Option<&Path>) -> Result<Feed, Str
             let deep = said("deep").map(|deep| {
                 words(Some(deep)).ok_or_else(|| format!("feed {name}'s {kind} deep isn't names"))
             });
+            let latest = said("latest").map(|latest| {
+                latest
+                    .as_u64()
+                    .filter(|count| *count > 0)
+                    .ok_or_else(|| format!("feed {name}'s {kind} latest isn't a count"))
+            });
             Ok((
                 kind.clone(),
                 Kind {
                     fields: fields.transpose()?,
                     deep: deep.transpose()?,
+                    latest: latest.transpose()?,
                 },
             ))
         })
@@ -169,8 +179,9 @@ mod tests {
         "documents": "/home/joel/sites",
         "mounts": {"kit": "/nix/store/kit"},
         "feeds": {"node": {"socket": "mycelium/work.sock", "kinds": {
-            "machine": {"fields": null, "deep": null},
-            "session": {"fields": ["title", "presence"], "deep": ["presence"]}
+            "machine": {"fields": null, "deep": null, "latest": null},
+            "session": {"fields": ["title", "presence"], "deep": ["presence"]},
+            "message": {"fields": ["at"], "latest": 20}
         }}}
     }"#;
 
@@ -193,6 +204,19 @@ mod tests {
             node.kinds["session"].fields.as_deref(),
             Some(&["title".to_owned(), "presence".to_owned()][..])
         );
+        assert_eq!(node.kinds["message"].latest, Some(20));
+    }
+
+    #[test]
+    fn a_latest_that_isnt_a_count_is_refused() {
+        for latest in ["0", "-1", "2.5", r#""20""#] {
+            let wrong = WHOLE.replace(r#""latest": 20"#, &format!(r#""latest": {latest}"#));
+            let why = Config::from_json(&wrong, Some(Path::new("/run"))).expect_err(latest);
+            assert!(
+                why.contains("message latest isn't a count"),
+                "{latest}: {why}"
+            );
+        }
     }
 
     #[test]
