@@ -146,6 +146,21 @@ onLinux {
           ${lib.getExe' copier "wl-copy"} ${lib.getExe pkgs.bash}
         touch $out
       '';
+  # The copier check's reads of how a copier ended are bounded, each
+  # answering within its patience: a copier still running hasn't refused,
+  # one that ended is said with its code and what it said, even with a
+  # child holding its standard error open, one that never ends is killed,
+  # a reader that never reads is given up on without spinning, and a
+  # copier saying nothing says nothing. Its copiers are bash scripts, so
+  # it needs no display (tests/copier-check-reads-bounded-test.py).
+  passwords-copier-check-reads-are-bounded =
+    pkgs.runCommandLocal "passwords-copier-check-reads-are-bounded"
+      { nativeBuildInputs = [ pkgs.python3 ]; }
+      ''
+        python3 ${./tests/copier-check-reads-bounded-test.py} ${lib.getExe pkgs.bash} \
+          ${./tests/copier-keeps-a-secret-in-memory.py}
+        touch $out
+      '';
   # clippy finds nothing in the passwords daemon, its tests included.
   passwords-passes-clippy = passesClippy "passwords-passes-clippy" (
     pkgs.callPackage ./package.nix { }
