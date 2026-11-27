@@ -80,8 +80,8 @@ use std::time::{Duration, Instant};
 mod asks;
 
 use passwords::{
-    Ask, Changes, DOMAIN, DRAWER, Held, KIND, Of, PATIENCE, Said, Standing, VERSION, ask, audit,
-    cli, error, key, named, now, rows, said, standing, waited_until,
+    Ask, CLEAR_WAIT, Changes, DOMAIN, DRAWER, Held, KIND, Of, PATIENCE, Said, Standing, VERSION,
+    ask, audit, cli, error, key, named, now, rows, said, standing, waited_until,
 };
 use ready_rows::kept::Kept;
 use secret_asks::engine::{self, Engine, Setting};
@@ -1360,37 +1360,54 @@ fn copy(shared: &Shared, value: &str) -> Result<u64, String> {
     // copy whose time ran out while the lid was closed goes on waking, not
     // as long after as a sleep had left.
     let clears_at = u64::try_from(u128::from(now()) + clears.as_millis()).unwrap_or(u64::MAX);
-    let shared = Arc::clone(shared);
-    std::thread::spawn(move || {
-        let awake_since = Instant::now();
-        // A copy something else replaced was ended as it was, so its wait
-        // stops at its next look rather than waking on to its own time.
-        let still_ours = || {
-            lock(&shared)
-                .copied
-                .as_ref()
-                .is_some_and(|child| child.id() == pid)
-        };
-        waited_until(
-            clears_at,
-            clears,
-            now,
-            || awake_since.elapsed(),
-            still_ours,
-            std::thread::sleep,
-        );
-        let mut daemon = lock(&shared);
-        if daemon
-            .copied
-            .as_ref()
-            .is_some_and(|child| child.id() == pid)
-            && let Some(mut child) = daemon.copied.take()
-        {
-            let _ = child.kill();
-            let _ = child.wait();
-        }
-    });
+    let waiting = Arc::clone(shared);
+    let spawned = std::thread::Builder::new()
+        .name(CLEAR_WAIT.to_owned())
+        .spawn(move || {
+            let awake_since = Instant::now();
+            // A copy something else replaced was ended as it was, so its
+            // wait stops at its next look rather than waking on to its own
+            // time.
+            let still_ours = || {
+                lock(&waiting)
+                    .copied
+                    .as_ref()
+                    .is_some_and(|child| child.id() == pid)
+            };
+            waited_until(
+                clears_at,
+                clears,
+                now,
+                || awake_since.elapsed(),
+                still_ours,
+                std::thread::sleep,
+            );
+            ended_if_held(&waiting, pid);
+        });
+    if let Err(why) = spawned {
+        // With nothing to end it, the copy would never clear, so it's
+        // ended now and refused.
+        ended_if_held(shared, pid);
+        return Err(format!(
+            "couldn't copy: nothing could wait to clear it: {why}"
+        ));
+    }
     Ok(clears_at)
+}
+
+/// Ends the copier of the copy held, if it's still the one `pid` names,
+/// which clears it; one copied over since was ended as it was.
+fn ended_if_held(shared: &Shared, pid: u32) {
+    let mut daemon = lock(shared);
+    if daemon
+        .copied
+        .as_ref()
+        .is_some_and(|child| child.id() == pid)
+        && let Some(mut child) = daemon.copied.take()
+    {
+        let _ = child.kill();
+        let _ = child.wait();
+    }
 }
 
 /// Why nothing is typed: no typist is named, as the checks that copy

@@ -304,27 +304,29 @@ fn a_copy_goes_as_the_daemon_is_killed() {
 
 #[test]
 fn a_copy_copied_over_stays_past_the_time_the_one_before_it_clears() {
-    // Each copy clears 5 s on and the second is asked 2 s after the first,
-    // so between their two times only the first one's clear could end the
-    // second, and it's held past the first's time by half a second.
+    // Each copy clears COPIED_OVER_CLEARS on and the second is asked 2 s
+    // after the first, so between their two times only the first one's
+    // clear could end the second, and it's held past the first's time by
+    // half a second. The second may be taken up to 6 s late on a loaded
+    // machine before the first clears by itself.
     let running = Running::with_env(
         "copy-copied-over",
         &[("keeping", KEEPING)],
-        &[("PASSWORDS_CLEARS_MS", "5000")],
+        &[("PASSWORDS_CLEARS_MS", &COPIED_OVER_CLEARS.to_string())],
     );
     let mut client = running.client();
     client.ask(&json!({"id": 1, "ask": "list", "asked": true}));
     let (_, first_clears) = held(&running, &mut client, 2);
-    // Two of the first copy's 5 s pass, so the second's time falls 2 s past it.
+    // Two of the first copy's 8 s pass, so the second's time falls 2 s past it.
     std::thread::sleep(std::time::Duration::from_secs(2));
     // held waits until a new copier is the only one, so the first is gone.
     let (second, second_clears) = held(&running, &mut client, 3);
-    // The daemon took the second copy at its time less the 5 s, which must
-    // come well before the first's own clear, or a slow machine had the
+    // The daemon took the second copy at its time less its clear, which
+    // must come before the first's own clear, or a slow machine had the
     // first clear by itself and nothing was copied over.
-    let taken = second_clears - 5_000;
+    let taken = second_clears - COPIED_OVER_CLEARS;
     assert!(
-        taken + 1_000 <= first_clears,
+        taken < first_clears,
         "the second copy was taken only {} ms before the first's time, so none was copied over",
         i128::from(first_clears) - i128::from(taken)
     );
@@ -342,9 +344,11 @@ fn a_copy_copied_over_stays_past_the_time_the_one_before_it_clears() {
         "the copy before it cleared the copy copied over it"
     );
     until("the second copy clears", || !copier_runs(&running.copied()));
-    // Seen cleared within a poll of it going, so no earlier than its time
-    // less a poll's slack, and no later than its time and a loaded
-    // machine's oversleep, as a sleep only ever runs long.
+    // The daemon ends it once the wall clock reads its time, and the test
+    // reads that clock only after seeing it gone, so it's never seen early
+    // but for the clock being set back meanwhile, which 100 ms allows. It's
+    // seen no later than its time and a loaded machine's oversleep, as a
+    // sleep only ever runs long.
     let cleared = i128::from(since_the_epoch()) - i128::from(second_clears);
     assert!(
         (-100..=5_000).contains(&cleared),
@@ -354,30 +358,25 @@ fn a_copy_copied_over_stays_past_the_time_the_one_before_it_clears() {
 
 #[test]
 fn a_copy_copied_over_stops_waiting_to_clear() {
-    // Each copy waits to clear on a thread of its own. The one copied over
-    // was ended as it was, so its thread ends at its next look rather than
-    // waking on to its own ten minutes: the daemon's threads fall back to
-    // what they were with one copy held.
+    // Each copy waits to clear on a thread of its own, named for it. The
+    // one copied over was ended as it was, so its thread ends at its next
+    // look rather than waking on to its own ten minutes, leaving only the
+    // new copy's: a thread other than the first's, so the wait can't pass
+    // before the new one is named, or on the first's left running.
     let running = held_copy("copy-stops-waiting");
     let mut client = running.client();
-    // The thread that gave the copier its copy ends once it's given, so
-    // the count is taken once it holds still, never with that one in it,
-    // which would hide a wait left running.
-    let holding_one = settled_threads(running.pid());
+    let first = std::cell::RefCell::new(Vec::new());
+    until("one thread waits to clear the first copy", || {
+        *first.borrow_mut() = clear_waits(running.pid());
+        first.borrow().len() == 1
+    });
     held(&running, &mut client, 3);
-    let started = std::time::Instant::now();
-    loop {
-        let running_now = threads_of(running.pid());
-        if running_now <= holding_one {
-            break;
-        }
-        assert!(
-            started.elapsed() < std::time::Duration::from_secs(20),
-            "the copy copied over never stopped waiting to clear: {running_now} threads, \
-             {holding_one} with one copy held"
-        );
-        std::thread::sleep(std::time::Duration::from_millis(20));
-    }
+    let now = std::cell::RefCell::new(Vec::new());
+    let first = first.into_inner();
+    until("only the new copy waits to clear", || {
+        *now.borrow_mut() = clear_waits(running.pid());
+        now.borrow().len() == 1 && !first.contains(&now.borrow()[0])
+    });
 }
 
 /// A daemon holding a copy far longer than a test takes, so only its
@@ -423,30 +422,21 @@ fn held(running: &Running, client: &mut crate::common::Client, id: u64) -> (u32,
     (seen.get().expect("the wait saw the copier"), clears)
 }
 
-/// How many threads a process runs once two looks half a second apart
-/// agree, so a thread on its way out isn't counted.
-fn settled_threads(pid: u32) -> usize {
-    let started = std::time::Instant::now();
-    let mut last = threads_of(pid);
-    loop {
-        std::thread::sleep(std::time::Duration::from_millis(500));
-        let now = threads_of(pid);
-        if now == last {
-            return now;
-        }
-        assert!(
-            started.elapsed() < std::time::Duration::from_secs(20),
-            "the daemon's threads never held still: {last} then {now}"
-        );
-        last = now;
-    }
-}
+/// How long each copy in the copied-over case holds, in milliseconds.
+const COPIED_OVER_CLEARS: u64 = 8_000;
 
-/// How many threads a process runs.
-fn threads_of(pid: u32) -> usize {
+/// The threads of a process that wait for a copy to clear, by their ids,
+/// leaving out any that ended as they were looked at.
+fn clear_waits(pid: u32) -> Vec<u32> {
     std::fs::read_dir(format!("/proc/{pid}/task"))
         .expect("the daemon runs")
-        .count()
+        .filter_map(Result::ok)
+        .filter(|task| {
+            std::fs::read_to_string(task.path().join("comm"))
+                .is_ok_and(|name| name.trim_end() == passwords::CLEAR_WAIT)
+        })
+        .filter_map(|task| task.file_name().to_str()?.parse().ok())
+        .collect()
 }
 
 /// Milliseconds since the epoch, as the daemon tells a clear time.
