@@ -418,12 +418,11 @@ pub fn sql(error: rusqlite::Error) -> String {
 }
 
 /// Whether `error` is another connection holding the history, by SQLite's
-/// own code rather than its words: busy while another writes, or locked.
+/// own code rather than its words: busy while it writes. Locked isn't
+/// that: without a shared cache it's this connection's own statement in
+/// the way, which would meet every open alike, so it's said instead.
 fn held(error: &rusqlite::Error) -> bool {
-    matches!(
-        error.sqlite_error_code(),
-        Some(rusqlite::ErrorCode::DatabaseBusy | rusqlite::ErrorCode::DatabaseLocked)
-    )
+    error.sqlite_error_code() == Some(rusqlite::ErrorCode::DatabaseBusy)
 }
 
 /// Runs `step` with SQLite's sorts going through files, then puts them back
@@ -544,7 +543,9 @@ impl History {
         match made {
             // Left for the next open, which makes it once no writer holds it.
             Err(error) if held(&error) => Ok(()),
-            made => made.map_err(sql),
+            // Named, since the open's error is all a reader sees, and
+            // SQLite's words alone don't say it was the index that failed.
+            made => made.map_err(|error| format!("couldn't make the sessions index: {error}")),
         }
     }
 
@@ -1082,9 +1083,12 @@ mod tests {
             WAIT,
             "the open didn't put back its wait on a writer after trying the index"
         );
+        // A guard on the test itself rather than the open: no connection
+        // could make the index past the writer, so this holds whatever
+        // the open does, and only says the writer really held it.
         assert!(
             !indexed(&opened),
-            "the index was made beside the writer, so the open didn't go without it"
+            "the index was made beside the writer, so the writer didn't hold the history"
         );
         writer.execute_batch("COMMIT;").unwrap();
         assert!(
@@ -1109,7 +1113,7 @@ mod tests {
         assert!(
             opened
                 .as_ref()
-                .is_err_and(|why| why.contains("no such table")),
+                .is_err_and(|why| why.contains("sessions index") && why.contains("no such table")),
             "an index that can't be made was gone on from: {:?}",
             opened.err()
         );
