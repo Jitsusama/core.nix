@@ -98,8 +98,11 @@ QtObject {
         const side = { side: "carrying back", sideItems: [{ said: "carrying back", keep: 4 }] };
 
         const done = recording();
-        CarryBack.carry({ thing: "carry:7", key: "carry:other", name: "Harbour" },
-            "carry:other", ask, words, done);
+        CarryBack.carry({
+            row: { thing: "carry:7", key: "carry:other", name: "Harbour" },
+            key: "carry:other",
+            ask
+        }, words, done);
         Expect.same("Carry Back has its row, keyed by its thing, read as carrying back, then asks",
             done.told, [["becomes", "carry:7", side, "Harbour", "carry back"], ["find", ask]]);
         Expect.same("which stays carrying back while the node hasn't answered",
@@ -109,8 +112,8 @@ QtObject {
         Expect.same("with no refusal said", done.told.length, 2);
 
         const refused = recording();
-        CarryBack.carry({ thing: "place:Harbour", name: "Harbour" }, "carry:7", ask, words,
-            refused);
+        CarryBack.carry({ row: { thing: "place:Harbour", name: "Harbour" }, key: "carry:7", ask },
+            words, refused);
         refused.answer({ id: 3, refused: true, error: { message: "skiff is out of reach" } });
         Expect.same("a refusal is said on the row it read as carrying back, row: kept",
             refused.told.slice(0, 1).concat(refused.told.slice(2)),

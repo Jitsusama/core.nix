@@ -286,7 +286,7 @@ Provider {
     }
 
     function carryBack(key, row, ask) {
-        CarryBack.carry(row, key, ask, Words.of("verb:carry:back").said ?? {}, {
+        CarryBack.carry({ row, key, ask }, Words.of("verb:carry:back").said ?? {}, {
             becomes: (shown, side, name, doing, until) =>
                 provider.becomes(shown, side, name, doing, until),
             refused: (shown, why) => provider.refused(shown, why),
