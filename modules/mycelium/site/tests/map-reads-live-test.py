@@ -2317,6 +2317,28 @@ def test_a_first_reading_that_fails_twice_still_opens_the_cell_the_address_names
         opened.close()
 
 
+def test_a_first_reading_that_fails_once_is_drawn_whole_by_the_first_path(
+    browser: Browser, mycelium_served: Served
+) -> None:
+    root, _ = mycelium_served
+    opened = Opened(browser, f"{root}mycelium/#cell={SOUGHT}", SIZES[-1], "dark", READINGS_HELD)
+    try:
+        page = opened.page
+        page.wait_for_function("window.held !== null", timeout=PACE_MS)
+        # One first reading that fails leaves the first path to try the next whole once more.
+        opened.expecting("mycelium: a reading failed to draw")
+        page.evaluate(UNDRAWABLE)
+        the_map_stands(page, "broken")
+        page.evaluate("letReadingsThrough()")
+        # The first path's second try draws it whole, choosing the address's cell as it goes.
+        the_map_counts(page, COUNTED, "the first path's second try failed")
+        the_map_stands(page, "live")
+        talk = page.locator(f'#panel-body a[href^="mycelium:cell/{SOUGHT}"]')
+        expect(talk.first, "the address's cell wasn't opened").to_be_visible()
+    finally:
+        opened.close()
+
+
 def test_a_server_that_goes_is_said_stale(mycelium_opened: Opened, mycelium_served: Served) -> None:
     page = mycelium_opened.page
     the_map_stands(page, "live")
