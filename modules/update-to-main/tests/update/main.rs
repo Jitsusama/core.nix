@@ -2964,7 +2964,11 @@ fn a_main_whose_last_commit_the_checkout_lacks_is_asked_of_the_host() {
     assert_eq!(world.update().1, done(&one), "the first head wasn't read");
     let two = world.hosted_commit("two", None);
     world.answer();
-    assert_eq!(shallow_checkout(&world), two, "the checkout wasn't fetched to two");
+    assert_eq!(
+        shallow_checkout(&world),
+        two,
+        "the checkout wasn't fetched to two"
+    );
     assert!(
         !world.checkout_has(&one),
         "the checkout wasn't left holding two without one"
@@ -2983,9 +2987,17 @@ fn shallow_checkout(world: &World) -> String {
     let checkout = &world.config.hosted.as_ref().unwrap().checkout;
     git(
         checkout,
-        &["fetch", "--quiet", "--depth=1", "origin", "+main:refs/shallow"],
+        &[
+            "fetch",
+            "--quiet",
+            "--depth=1",
+            "origin",
+            "+main:refs/shallow",
+        ],
     );
-    git(checkout, &["rev-parse", "refs/shallow"]).trim().to_owned()
+    git(checkout, &["rev-parse", "refs/shallow"])
+        .trim()
+        .to_owned()
 }
 
 /// A main gone another way from what the machine ran, whose head the
@@ -3001,7 +3013,11 @@ fn a_main_the_host_says_went_another_way_is_refused_though_the_checkout_lacks_it
     git(&world.origin, &["reset", "--quiet", "--hard", &start]);
     let two = world.hosted_commit("two", None);
     world.answer();
-    assert_eq!(shallow_checkout(&world), two, "the checkout wasn't fetched to two");
+    assert_eq!(
+        shallow_checkout(&world),
+        two,
+        "the checkout wasn't fetched to two"
+    );
     assert!(
         !world.checkout_has(&one),
         "the checkout held what the machine ran"
@@ -3011,7 +3027,10 @@ fn a_main_the_host_says_went_another_way_is_refused_though_the_checkout_lacks_it
     let Line::Refused { why, .. } = &ending else {
         panic!("a main the host says went another way wasn't refused: {ending:?}")
     };
-    assert!(why.contains("doesn't descend"), "refused for another reason: {why}");
+    assert!(
+        why.contains("doesn't descend"),
+        "refused for another reason: {why}"
+    );
 }
 
 /// A held commit main holds, which the checkout lacks below the head it
@@ -3022,11 +3041,19 @@ fn a_held_commit_the_checkout_lacks_is_asked_of_the_host() {
     let stopped = world.hosted_commit("stopped", None);
     world.answer();
     world.system(&stopped);
-    assert_eq!(world.update().1, done(&stopped), "the first head wasn't read");
+    assert_eq!(
+        world.update().1,
+        done(&stopped),
+        "the first head wasn't read"
+    );
     held::ask(&world.config, &format!("hold {stopped}"), Some(1000));
     let two = world.hosted_commit("two", None);
     world.answer();
-    assert_eq!(shallow_checkout(&world), two, "the checkout wasn't fetched to two");
+    assert_eq!(
+        shallow_checkout(&world),
+        two,
+        "the checkout wasn't fetched to two"
+    );
     assert!(
         !world.checkout_has(&stopped),
         "the checkout held the held commit"
