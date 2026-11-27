@@ -396,4 +396,31 @@ mod tests {
             "an answer naming no builders has none"
         );
     }
+
+    #[test]
+    fn a_name_a_state_and_a_lender_s_word_are_read_as_plain_words() {
+        let said = read(&json!([
+            { "name": "os\u{202e}prey\u{1b}[31m", "state": " answering " },
+            { "name": " kite\u{200b}", "state": "running\n", "lent": true,
+              "said": " passing " },
+            { "name": "\u{200b}\u{1b}[0m", "state": "running" },
+        ]));
+        let named: Vec<(&str, &str)> = said
+            .iter()
+            .map(|(name, _, says, _)| (name.as_str(), says.as_str()))
+            .collect();
+        assert_eq!(
+            named,
+            vec![
+                ("kite", "is lent and takes builds"),
+                ("osprey", "answers and takes builds"),
+            ],
+            "a name is shown as plain words, with none left a builder without one, and a padded \
+             state or lender's word is the word this build knows"
+        );
+        assert!(
+            said.iter().all(|(_, health, _, _)| *health == Health::Good),
+            "no padded known word is worth a look: {said:?}"
+        );
+    }
 }
