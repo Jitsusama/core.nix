@@ -1202,17 +1202,27 @@ def test_a_wants_acts_walked_from_outside_are_refused_as_chosen(shell: Shell) ->
             assert time.monotonic() < deadline, "the node still holds the asking session"
             time.sleep(0.1)
         # The node letting it go isn't enough: Agents stood it first, still needing his yes, for
-        # the whole of the paused case after this one (OSPHT4's run of 767ebf92). So the case
-        # waits for Agents too, and says what the node holds of it, ended or not, if it stays.
-        shell.as_account(shell.ipc("collection", "agents"))
-        shell.launcher_ready()
-        try:
-            shell.launcher_until(lambda shown: "Dealing Quest" not in shown["rows"])
-        except AssertionError as failed:
-            message = f"{failed}\nthe node holds of it: {node_record('session:s-dealer')}"
-            raise AssertionError(message) from failed
-        finally:
+        # the whole of the paused case after this one (OSPHT4's run of 767ebf92), as the daemon
+        # hears the node a moment later. Nor is one look at an open Agents: a row that leaves
+        # while the list is open stays there dimmed until a key makes it afresh (Steady.js), so
+        # it stood for 30 s with the node holding nothing (OSPHT4's run of 8bc21200). Each look
+        # is a fresh opening, as the next case's is, read once Agents holds the orchestrator
+        # every case keeps, so an opening not yet filled can't pass, and a failure says what
+        # the node holds.
+        deadline = time.monotonic() + 15
+        while True:
+            shell.as_account(shell.ipc("collection", "agents"))
+            shell.launcher_ready()
+            shell.launcher_until(lambda shown: ORCHESTRATING in shown["rows"])
+            shown = shell.showing()
             shell.close_launcher()
+            if "Dealing Quest" not in shown["rows"]:
+                break
+            if time.monotonic() >= deadline:
+                held = node_record("session:s-dealer")
+                failed = f"Agents still opens on the asking one: {shown}\nthe node holds: {held}"
+                raise AssertionError(failed)
+            time.sleep(0.5)
 
 
 def test_a_paused_sessions_return_lands_on_resume_and_a_second_sends_it(shell: Shell) -> None:
