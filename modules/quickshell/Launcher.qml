@@ -13234,9 +13234,11 @@ Scope {
         const settled = openSettled < 0 ? asked + openWorked : openSettled;
         const begun = openBegun < 0 ? drawn : openBegun;
         // A whole opening's first frame is the one it's told of here, as
-        // it's swapped, so it's split as a kept one's is in openShown.
+        // it's swapped, so it's split as a kept one's is in openShown, but
+        // only where its drawing is that frame (Thread.drawingIsFrame).
         const split = openFirstSplit
-            ?? (frame === undefined ? null : frameSplit({ frame, begun: beganAt }, sized));
+            ?? (frame === undefined || !Thread.drawingIsFrame(openFirstDrawn, openBegun, beganAt)
+                ? null : frameSplit({ frame, begun: beganAt }, sized));
         const after = Object.assign({ settling: Math.round(settled - asked - openWorked),
             waiting: Math.round(begun - settled), drawing: Math.round(drawn - begun),
             sizing: Math.round(sized - drawn) }, split ?? {});

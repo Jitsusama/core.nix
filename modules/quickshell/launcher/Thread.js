@@ -104,3 +104,13 @@ function drawingApart(split) {
     return ` (${split.syncing} syncing, ${split.rendering} rendering,`
         + ` ${split.heard} before the shell heard it swapped)`;
 }
+
+// Whether an opening's drawing is the frame it's told of as it's sized,
+// so that frame's split adds up to it: none of its frames swapped before
+// (`firstDrawn` under 0), and its drawing begun as that frame began. A
+// kept opening a key fills while its first frame draws is sized a frame
+// later, its drawing timed from the first, so the later frame's split
+// would leave a frame out of the parts; it's said whole instead.
+function drawingIsFrame(firstDrawn, begun, frameBegun) {
+    return firstDrawn < 0 && begun === frameBegun;
+}
