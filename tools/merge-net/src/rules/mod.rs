@@ -1,7 +1,9 @@
 //! Which changes run their VM tests before they merge: `must-run.txt`
 //! names each area, the paths that are it and the tests it runs. Beside
-//! it, which lock changes may leave the lock's area untouched (`lock`).
+//! it, which lock changes may leave the lock's area untouched (`lock`),
+//! and which folders one check measures together (`fates`).
 
+pub mod fates;
 pub mod lock;
 
 use crate::watch::Changed;

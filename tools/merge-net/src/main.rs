@@ -320,7 +320,8 @@ fn ready(commit: &str) -> Result<ExitCode, String> {
         }
         eprintln!(
             "merge-net: {} doesn't sit on origin's main as it is now, {}, and its base \
-             lacks main's newest rules for which VM tests run (must-run.txt, lock-after.txt), \
+             lacks main's newest rules for which VM tests run (must-run.txt, lock-after.txt, \
+             fates.txt), \
              so what needs said of it can't speak for them; rebase onto origin/main, push, \
              and merge again",
             short(&commit),
@@ -379,7 +380,8 @@ fn may_merge(commit: &str, main: &str, passes: &[&str], files: &[String], said: 
     }
     eprintln!(
         "merge-net: merge-net needs wasn't asked at {}, nor at an earlier commit of the same \
-         change on a base holding main's rules for it (must-run.txt, lock-after.txt), so no \
+         change on a base holding main's rules for it (must-run.txt, lock-after.txt, \
+         fates.txt), so no \
          one has heard which VM tests run before it merges; run merge-net needs there, run \
          what it names, and merge again",
         short(commit)
@@ -454,8 +456,10 @@ fn run_again(commit: &str) -> String {
 }
 
 /// The newest commit on `main` to change the rules for which VM tests run
-/// before a merge, the inputs a lock may move alone among them, or nothing
-/// when git can't say.
+/// before a merge, the inputs a lock may move alone among them, or the
+/// folders that share a fate, or nothing when git can't say. The fates
+/// are built into the program, so a merge-net built from a head lacking
+/// main's newest would judge it by fewer fates than main holds.
 fn newest_rules(main: &str) -> String {
     git(&[
         "log",
@@ -465,6 +469,7 @@ fn newest_rules(main: &str) -> String {
         "--",
         "tools/merge-net/must-run.txt",
         rules::lock::LOCK_AFTER,
+        rules::fates::FATES_TXT,
     ])
     .unwrap_or_default()
 }
@@ -677,9 +682,12 @@ fn git(arguments: &[&str]) -> Result<String, String> {
 
 /// What git says, run in the repo at `repo`.
 fn git_at(repo: &Path, arguments: &[&str]) -> Result<String, String> {
+    // Paths come back as they are named, not C-quoted for a byte over
+    // 0x7f, so one in a fate's folder still starts with the folder.
     let ran = Command::new("git")
         .arg("-C")
         .arg(repo)
+        .args(["-c", "core.quotePath=false"])
         .args(arguments)
         .output()
         .map_err(|error| format!("running git: {error}"))?;
@@ -722,6 +730,25 @@ mod tests {
         fs::write(repo.join("w"), words).unwrap();
         git_in(repo, &["commit", "-qam", "w"]);
         git_in(repo, &["rev-parse", "HEAD"])
+    }
+
+    #[test]
+    fn a_path_with_a_byte_past_ascii_is_read_as_named() {
+        let repo = env::temp_dir().join(format!("merge-net-named-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&repo);
+        fs::create_dir_all(repo.join("modules/theme")).unwrap();
+        git_in(&repo, &["init", "-q", "-b", "main"]);
+        git_in(&repo, &["commit", "-q", "--allow-empty", "-m", "base"]);
+        fs::write(repo.join("modules/theme/caf\u{e9}.toml"), "").unwrap();
+        git_in(&repo, &["add", "-A"]);
+        git_in(&repo, &["commit", "-qm", "theme"]);
+        let named = git_at(&repo, &["diff", "--name-only", "HEAD~", "HEAD"]);
+        assert_eq!(
+            named.as_deref(),
+            Ok("modules/theme/caf\u{e9}.toml"),
+            "git's quoting hid the path from its folder"
+        );
+        fs::remove_dir_all(&repo).unwrap();
     }
 
     #[test]
