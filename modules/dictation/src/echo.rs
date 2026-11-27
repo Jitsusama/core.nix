@@ -764,6 +764,23 @@ mod tests {
     }
 
     #[test]
+    fn a_word_far_below_theirs_is_their_echo_only_while_they_go_on_speaking() {
+        // Their words run 5,000 to 6,200 ms. At 5,300 ms more of theirs
+        // follows within a second, so it's their echo; at 6,500 ms their
+        // line has ended with none of his cut before, so it may be his
+        // answer, however far below them.
+        let own = "Fine by me, I'll book the room for us.";
+        for (from_ms, written) in [(5_300, own.to_owned()), (6_500, format!("{own} Right."))] {
+            let right = at_level(timed("Right.", from_ms), -42.0);
+            assert_eq!(
+                heard_under_their_lunch(-20.0, &[right]),
+                [written],
+                "a word {from_ms} ms in, against their line ending at 6200 ms, was judged wrongly"
+            );
+        }
+    }
+
+    #[test]
     fn a_word_far_below_theirs_is_held_to_his_voice_once_five_of_his_are_heard_alone() {
         // Words 16 dB below theirs but near his voice's -40 dB are cut while
         // four of his are heard alone, and kept as his from the fifth.
