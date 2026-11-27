@@ -18,10 +18,13 @@ pub const GRACE: Duration = Duration::from_secs(10);
 /// A shell loop asking `request` again until `seconds` have passed, and
 /// waiting `every` after each. A server that refused one, its status 400
 /// or more, is given a second before the next: asked again at once, it
-/// went on refusing for most of an hour.
+/// went on refusing for most of an hour. The time is read with `date`,
+/// not bash's `$SECONDS`, since a plainer `sh` such as dash leaves that
+/// empty and the loop asked nothing.
 pub fn repeated(seconds: &str, request: &str, every: &str) -> String {
     format!(
-        "end=$((SECONDS + {seconds})); while [ $SECONDS -lt $end ]; do a=$({request}); \
+        "end=$(($(date +%s) + {seconds})); while [ \"$(date +%s)\" -lt \"$end\" ]; do \
+         a=$({request}); \
          echo \"$a\"; case $a in [45]*) sleep 1;; esac; {every} done"
     )
 }
@@ -40,13 +43,13 @@ pub fn scripts(seconds: u64) -> [String; 4] {
     let up = repeated(
         &s,
         "head -c 4000000000 /dev/zero | curl -s -g -o /dev/null -X POST -T - \
-         --max-time $((end - SECONDS + 1)) -w '%{http_code} %{size_upload}\\n' \
+         --max-time $((end - $(date +%s) + 1)) -w '%{http_code} %{size_upload}\\n' \
          \"$1/__up\"",
         "",
     );
     let down = repeated(
         &s,
-        "curl -s -g -o /dev/null --max-time $((end - SECONDS + 1)) \
+        "curl -s -g -o /dev/null --max-time $((end - $(date +%s) + 1)) \
          -w '%{http_code} %{size_download}\\n' \"$1/__down?bytes=5000000\"",
         "",
     );
