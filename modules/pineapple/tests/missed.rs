@@ -66,6 +66,81 @@ fn what_was_never_read_is_said_as_minutes_before_the_row() {
 }
 
 #[test]
+fn each_searchs_row_is_written_whole_as_for_you_reads_it() {
+    // Every field written out, so a row's words are checked byte for
+    // byte, not only read so.
+    let (from, to) = (Some(AT - 30 * MINUTE), Some(AT - 20 * MINUTE));
+    assert_eq!(
+        missed(Search::Phrase, from, to, AT),
+        serde_json::json!({
+            "id": "pineapple-slack-missed-phrase-1794998200000-1794998800000",
+            "title": "The Safe Word Missed Part of Slack",
+            "why": "The safe word never read what said pineapple in Slack without tagging you \
+                    from 30 to 20 minutes before this was raised, as more was said than it \
+                    could read, so a stop said then wasn't heard",
+            "whole": true,
+            "raisedAt": "2026-11-18T11:06:40Z",
+            "minutes": 2,
+            "ready": true,
+            "doneWhen": {"by": "person"},
+            "steps": ["Search Slack for pineapple, for a stop said then"],
+        }),
+        "the phrase search's row, every field as For You reads it"
+    );
+    assert_eq!(
+        missed(Search::Tag, from, to, AT),
+        serde_json::json!({
+            "id": "pineapple-slack-missed-tag-1794998200000-1794998800000",
+            "title": "The Safe Word Missed Part of Slack",
+            "why": "The safe word never read what tagged you in Slack without saying pineapple \
+                    from 30 to 20 minutes before this was raised, as more was said than it \
+                    could read, so a stop said then wasn't heard",
+            "whole": true,
+            "raisedAt": "2026-11-18T11:06:40Z",
+            "minutes": 2,
+            "ready": true,
+            "doneWhen": {"by": "person"},
+            "steps": ["Look in Slack's Activity for a stop that mentioned you then"],
+        }),
+        "the tag search's row, every field as For You reads it"
+    );
+}
+
+#[test]
+fn a_row_whose_end_cant_be_told_is_named_to_when_its_raised_and_kept() {
+    let folder = std::env::temp_dir().join(format!(
+        "pineapple-missed-unended-{}-{:?}",
+        std::process::id(),
+        std::time::SystemTime::now()
+    ));
+    let file = folder.join("missed.json");
+    std::fs::create_dir_all(&folder).expect("the folder is made");
+    let unended = missed(Search::Tag, Some(AT - 5 * MINUTE), None, AT);
+    keep_missed(&file, Search::Tag, unended.clone(), AT).expect("written");
+    // Too far off to meet it, so it's only the week's keep that's tried.
+    let far = missed(
+        Search::Tag,
+        Some(AT - 60 * MINUTE),
+        Some(AT - 50 * MINUTE),
+        AT + MINUTE,
+    );
+    keep_missed(&file, Search::Tag, far, AT + MINUTE).expect("written");
+    let rows = rows_in(&file);
+    let _ = std::fs::remove_dir_all(&folder);
+    assert!(
+        unended["id"]
+            .as_str()
+            .is_some_and(|id| id.ends_with(&format!("-{AT}"))),
+        "named to when it's raised, as no end can be read: {unended:?}"
+    );
+    assert!(
+        rows.len() == 2 && rows.iter().any(|row| row["id"] == unended["id"]),
+        "so the next keep ages it from then and keeps it, where named to 0 it would go: \
+         {rows:?}"
+    );
+}
+
+#[test]
 fn each_span_never_read_is_kept_a_week_beside_the_others() {
     let folder = std::env::temp_dir().join(format!(
         "pineapple-missed-file-{}-{:?}",
@@ -454,10 +529,13 @@ fn rows_of_the_phrase_search_met_are_said_as_its_own() {
         ))],
         "two of its spans that overlap are one row, named for its search: {rows:?}"
     );
-    assert!(
-        rows[0]["why"]
-            .as_str()
-            .is_some_and(|why| why.contains("said pineapple in Slack without tagging you")),
-        "and said as its search's: {rows:?}"
+    assert_eq!(
+        rows[0]["whole"], true,
+        "the two overlap, so none of it was read: {rows:?}"
+    );
+    assert_eq!(
+        rows[0]["steps"],
+        serde_json::json!(["Search Slack for pineapple, for a stop said then"]),
+        "and it's said with its search's step: {rows:?}"
     );
 }
