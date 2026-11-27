@@ -1936,7 +1936,18 @@ QtObject {
         ];
         for (const [what, keys, mode, intoHere, moved] of cases)
             holds(`${what} ${moved ? "only moves" : "does more than move"}`,
-                moving(keys, mode, intoHere), moved);
+                orThrown(() => moving(keys, mode, intoHere)), moved);
+    }
+
+    // What `asked` gives, or what it threw, said as the case's answer, so a
+    // guard asked of a key it shouldn't be fails that case by name and the
+    // cases after it still run.
+    function orThrown(asked) {
+        try {
+            return asked();
+        } catch (error) {
+            return `threw ${error}`;
+        }
     }
 
     function keysActing(holds) {
@@ -2016,7 +2027,7 @@ QtObject {
                 { answering: true, repeated: true }]
         ];
         for (const [what, keys, mode, line] of idle)
-            holds(`${what} acts on nothing`, acting(keys, mode, line), false);
+            holds(`${what} acts on nothing`, orThrown(() => acting(keys, mode, line)), false);
         const acted = [
             ["Backspace on an empty find, leaving it", ["Backspace"], "find", { text: "" }],
             ["Escape on the find", ["Escape"], "find", {}],
@@ -2066,7 +2077,7 @@ QtObject {
                 { fillLeaves: () => { throw new Error("fillLeaves asked of j"); } }]
         ];
         for (const [what, keys, mode, line] of acted)
-            holds(`${what} acts`, acting(keys, mode, line), true);
+            holds(`${what} acts`, orThrown(() => acting(keys, mode, line)), true);
     }
 
     // Whether gv has something to take back (KeyActs.reselectHere), by
