@@ -31,6 +31,11 @@ pub enum Sent {
     Went,
     /// Tried and not taken, which spends one of the pain's tries.
     Failed,
+    /// Tried and not answered within its limit, which spends a try as a
+    /// failed send does. The cell may have it all the same, so its retry
+    /// goes to that cell again rather than to a second that would work on
+    /// it beside the first (#6774's round, F16).
+    Late,
     /// Not tried this run, its tries kept: the node had stopped answering,
     /// had no one to send as, or the cell is one the routes never send to.
     Held,
@@ -145,7 +150,7 @@ impl Node {
             // It was tried, so it spends a try as any failed send does.
             Err(Unanswered::Late) => {
                 self.silent = Some(Silence::Late);
-                Sent::Failed
+                Sent::Late
             }
             // Never sent, so it spends no try; one the machine won't start
             // now won't start for the rest of the run either.

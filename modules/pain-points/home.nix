@@ -41,9 +41,9 @@ in
   home.packages = [ package ];
 
   # Made at login, so hear's first run can write there before any pi
-  # session has made it. Its lines say what each session needed of
-  # another, so only his account reads it.
-  systemd.user.tmpfiles.rules = [ "d ${config.xdg.stateHome}/${needs} 0700 - - -" ];
+  # session has made it. It names no mode, so one the harness gives its
+  # own folder is never set back at the next login.
+  systemd.user.tmpfiles.rules = [ "d ${config.xdg.stateHome}/${needs} - - - -" ];
 
   systemd.user.services.pain-points = {
     Unit.Description = "Names the launcher's, pi's and Chrome's interactions that slowed Joel most today";

@@ -67,6 +67,10 @@ pub struct Heard {
     /// while one fits, however the holders' counts have moved since.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub sends_failed_at: Vec<String>,
+    /// The holder its last send ran past its limit at, which may have it
+    /// all the same, so a retry goes back there while it fits.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sent_late_at: Option<String>,
     /// When a note to the ledgers' keeper of it, sent to its owner, was
     /// first held for a node that wasn't answering: it goes in the next
     /// run's note.
@@ -196,6 +200,7 @@ mod tests {
             routed_at: None,
             tries: 0,
             sends_failed_at: Vec::new(),
+            sent_late_at: None,
             unnoted_since: None,
             taken_by: None,
             answered_at: None,

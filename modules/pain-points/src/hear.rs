@@ -448,7 +448,7 @@ pub fn hear_putting(
             return Sent::Held;
         }
         let answer = send(to, text, put);
-        failed += usize::from(answer == Sent::Failed);
+        failed += usize::from(matches!(answer, Sent::Failed | Sent::Late));
         out_of_time += usize::from(answer == Sent::OutOfTime);
         unstarted += usize::from(answer == Sent::Unstarted);
         answer
@@ -581,6 +581,7 @@ fn hear_logs(
                 routed_at: None,
                 tries: 0,
                 sends_failed_at: Vec::new(),
+                sent_late_at: None,
                 unnoted_since: None,
                 taken_by: None,
                 answered_at: None,
@@ -745,6 +746,7 @@ fn owners_for(
                 &held,
                 routes,
                 &pain.sends_failed_at,
+                pain.sent_late_at.as_deref(),
             ) else {
                 return routes.fallback.clone();
             };
@@ -845,6 +847,14 @@ fn route_waiting(
                     unkept.get_or_insert_with(|| error.to_string());
                 }
             }
+            // A send that ran past its limit may have gone, so its retry
+            // is the same cell's, not a second's beside it.
+            Sent::Late => {
+                for n in pains {
+                    kept[n].tries += 1;
+                    kept[n].sent_late_at = Some(owner.clone());
+                }
+            }
             // Only a send made and failed spends a try.
             Sent::Failed => {
                 for n in pains {
@@ -937,7 +947,7 @@ fn note_for_keeper(
                 kept[n].to = Some(keeper.clone());
                 kept[n].routed_at = Some(ears.at);
             }
-            Sent::Failed => kept[n].tries = kept[n].tries.max(SEND_TRIES) + 1,
+            Sent::Failed | Sent::Late => kept[n].tries = kept[n].tries.max(SEND_TRIES) + 1,
             Sent::Held | Sent::OutOfTime | Sent::Unstarted => {}
         }
     }
@@ -963,7 +973,7 @@ fn wait_for_note(kept: &mut [Heard], of: &[usize], sent: Sent, at: i64) {
     for &n in of {
         kept[n].unnoted_since = match sent {
             Sent::Held | Sent::OutOfTime | Sent::Unstarted => kept[n].unnoted_since.or(Some(at)),
-            Sent::Went | Sent::Failed => None,
+            Sent::Went | Sent::Failed | Sent::Late => None,
         };
     }
 }

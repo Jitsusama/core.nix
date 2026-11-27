@@ -74,7 +74,7 @@ fn a_void_pain_goes_to_a_holder_of_its_words_subject_and_is_kept_as_a_need() {
             .any(|(to, text)| to == "ORCH01" && text.contains("sent to FIT002")),
         "the ledger wasn't told the void's pain went to its holder: {asked:?}"
     );
-    let why = "put to you as a holder of launcher";
+    let why = "put to you as a holder of the subject \"launcher\"";
     assert!(
         asked
             .iter()
@@ -167,7 +167,12 @@ fn one_no_hub_takes_goes_to_the_fallback_as_before() {
 
 #[test]
 fn only_a_send_to_a_holder_that_failed_spends_a_try() {
-    for (answer, tries) in [(Sent::Failed, 1), (Sent::Held, 0), (Sent::OutOfTime, 0)] {
+    for (answer, tries) in [
+        (Sent::Failed, 1),
+        (Sent::Late, 1),
+        (Sent::Held, 0),
+        (Sent::OutOfTime, 0),
+    ] {
         let place = Place::new("hub-tries");
         place.routes();
         a_day(&place);
@@ -201,13 +206,35 @@ fn a_retry_goes_to_another_holder_than_the_one_it_failed_at_however_they_reorder
         .into_iter()
         .enumerate()
     {
-        retried_away_from_its_failure(&format!("hub-retry-{n}"), &order);
+        let retried = retried_after(&format!("hub-retry-{n}"), &order, Sent::Failed);
+        assert_eq!(
+            retried,
+            ["FIT003"],
+            "named {order:?}, the retry went back to the holder it failed at"
+        );
     }
 }
 
-/// A run whose send to FIT002 fails, then one whose hub names its holders
-/// in `order`, which must give the pain to FIT003.
-fn retried_away_from_its_failure(name: &str, order: &[&str]) {
+#[test]
+fn a_retry_after_a_send_that_ran_late_goes_to_the_same_holder() {
+    // The late send may have gone, so a second holder would work on the
+    // pain beside the first; named either way, the first keeps it.
+    for (n, order) in [["FIT003", "FIT002"], ["FIT002", "FIT003"]]
+        .into_iter()
+        .enumerate()
+    {
+        let retried = retried_after(&format!("hub-late-{n}"), &order, Sent::Late);
+        assert_eq!(
+            retried,
+            ["FIT002"],
+            "named {order:?}, the retry after a late send went to a second holder"
+        );
+    }
+}
+
+/// A run whose send to FIT002 answers `first`, then one whose hub names
+/// its holders in `order`: the owners the retry gave the void's pain to.
+fn retried_after(name: &str, order: &[&str], first: Sent) -> Vec<String> {
     let place = Place::new(name);
     place.routes();
     a_day(&place);
@@ -218,24 +245,61 @@ fn retried_away_from_its_failure(name: &str, order: &[&str]) {
         {"id":"s-fit","address":"FIT002","state":"idle"},
         {"id":"s-fit3","address":"FIT003","state":"idle"},
         {"id":"s-hub","address":"HUB001","state":"idle"}]}}"#;
-    let first = ears_with(
+    let once = ears_with(
         &place,
         vec![Hub::new("launcher", "HUB001", &["FIT002", "FIT003"])],
     );
-    let failed = asked_in(&first, cells, |to| {
-        if to == "FIT002" {
-            Sent::Failed
-        } else {
-            Sent::Went
-        }
+    let tried = asked_in(&once, cells, |to| {
+        if to == "FIT002" { first } else { Sent::Went }
     });
-    assert_eq!(owners_of(&failed, VOIDS), ["FIT002"], "{failed:?}");
+    assert_eq!(owners_of(&tried, VOIDS), ["FIT002"], "{tried:?}");
     let then = ears_with(&place, vec![Hub::new("launcher", "HUB001", order)]);
     let retried = asked_in(&then, cells, |_| Sent::Went);
+    owners_of(&retried, VOIDS)
+        .into_iter()
+        .map(str::to_owned)
+        .collect()
+}
+
+#[test]
+fn pains_put_to_a_hub_in_one_run_spread_by_least_held_each_need_its_own_id() {
+    let place = Place::new("hub-spread");
+    place.routes();
+    a_day(&place);
+    let froze = "the launcher froze again, wtf";
+    place.log(
+        "void",
+        "s-void",
+        &place.root.join("void"),
+        &[
+            user("v1", "2026-11-16T19:50:00.000Z", VOIDS),
+            user("v2", "2026-11-16T19:52:00.000Z", froze),
+        ],
+    );
+    let cells = r#"{"Ok":{"Sessions":[
+        {"id":"s-live","address":"ABC123","state":"busy"},
+        {"id":"s-void","address":"VOID01","state":"idle"},
+        {"id":"s-fit","address":"FIT002","state":"idle"},
+        {"id":"s-fit3","address":"FIT003","state":"idle"},
+        {"id":"s-hub","address":"HUB001","state":"idle"}]}}"#;
+    let ears = ears_with(
+        &place,
+        vec![Hub::new("launcher", "HUB001", &["FIT002", "FIT003"])],
+    );
+    let asked = asked_in(&ears, cells, |_| Sent::Went);
+    let mut owners = [owners_of(&asked, VOIDS), owners_of(&asked, froze)].concat();
+    owners.sort_unstable();
     assert_eq!(
-        owners_of(&retried, VOIDS),
-        ["FIT003"],
-        "named {order:?}, the retry went back to the holder it failed at: {retried:?}"
+        owners,
+        ["FIT002", "FIT003"],
+        "two pains in one run weren't spread one to each holder: {asked:?}"
+    );
+    let needs = place.needs();
+    let ids: BTreeSet<&str> = needs.iter().filter_map(|n| n["need"].as_str()).collect();
+    assert_eq!(
+        (needs.len(), ids.len()),
+        (2, 2),
+        "two needs put in one run didn't each keep an id of its own: {needs:?}"
     );
 }
 
