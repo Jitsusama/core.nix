@@ -792,6 +792,7 @@ done
 # pass unseen. It names those it doesn't know, and any cause written other
 # than as a bare word (quoted, hyphenated, a variable or with a comment
 # after), which it couldn't tell from one it knows, so none is skipped.
+# A reader that fails says so, as its silence would pass.
 unknown=$("$python" - "$script" "$sessions" << 'EOF'
 import re
 import sys
@@ -808,7 +809,7 @@ if odd:
 else:
     print(" ".join(sorted(told - names)) if told and names else "(none read)")
 EOF
-)
+) || unknown="(the reader failed, ending $?)"
 if [ -n "$unknown" ]; then
   echo "FAIL the shell's untaken doesn't know the script's causes: $unknown"
   failed=1
