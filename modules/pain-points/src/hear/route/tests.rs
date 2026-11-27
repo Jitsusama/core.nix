@@ -189,7 +189,7 @@ fn a_hub_gives_the_narrowest_subjects_least_held_live_holder_never_one_refused()
         subject_hubs::Hub::new("launcher:dock", "HUB001", &["C00003"]),
     ];
     let held: BTreeMap<String, usize> = [("A00001".to_owned(), 2), ("B00002".to_owned(), 1)].into();
-    let took = holder(&said, &hubs, &live, &held, &routes, &[], None)
+    let took = holder(&said, &hubs, (&live, &live), &held, &routes, &[], None)
         .map(|(hub, fit, words)| (hub.cell.as_str(), fit, words));
     assert_eq!(
         took,
@@ -203,8 +203,16 @@ fn a_hub_gives_the_narrowest_subjects_least_held_live_holder_never_one_refused()
     );
     let retried = |held: &BTreeMap<String, usize>, failed_at: &[&str]| {
         let failed_at: Vec<String> = failed_at.iter().map(|f| (*f).to_owned()).collect();
-        holder(&said, &hubs, &live, held, &routes, &failed_at, None)
-            .map(|(_, fit, _)| fit.to_owned())
+        holder(
+            &said,
+            &hubs,
+            (&live, &live),
+            held,
+            &routes,
+            &failed_at,
+            None,
+        )
+        .map(|(_, fit, _)| fit.to_owned())
     };
     // A00001 now holds fewer than B00002, which reorders the holders:
     // the one failed at still isn't given it.
@@ -227,16 +235,28 @@ fn a_hub_gives_the_narrowest_subjects_least_held_live_holder_never_one_refused()
          hub's holder holding fewest"
     );
     let late = |at: &str| {
-        holder(&said, &hubs, &live, &held, &routes, &[], Some(at)).map(|(_, fit, _)| fit)
+        holder(&said, &hubs, (&live, &live), &held, &routes, &[], Some(at)).map(|(_, fit, _)| fit)
     };
+    // C00003 holds only the broader hub's subject, wherever it still fits
+    // (#7022's round, F10).
     assert_eq!(
-        [late("A00001"), late("GONE01")],
-        [Some("A00001"), Some("B00002")],
+        [late("A00001"), late("C00003"), late("GONE01")],
+        [Some("A00001"), Some("C00003"), Some("B00002")],
         "a pain whose send ran late went to a second holder while the first fit, or to \
          the first gone, not to the one holding fewest"
     );
+    // HUB002's own cell may hold no pain, as one heard in the void, and
+    // its hub still stands for its holders (#7022's round, F3).
+    let takers: BTreeSet<String> = live.iter().filter(|a| *a != "HUB002").cloned().collect();
+    let took = holder(&said, &hubs, (&live, &takers), &held, &routes, &[], None)
+        .map(|(hub, fit, _)| (hub.cell.as_str(), fit));
+    assert_eq!(
+        took,
+        Some(("HUB002", "B00002")),
+        "a hub whose cell holds no pain took nothing for its holders"
+    );
     let none = BTreeSet::from(["HUB001".to_owned(), "VOID01".to_owned()]);
-    let took = holder(&said, &hubs, &none, &held, &routes, &[], None)
+    let took = holder(&said, &hubs, (&none, &none), &held, &routes, &[], None)
         .map(|(hub, fit, _)| (hub.cell.as_str(), fit));
     assert_eq!(
         took, None,
@@ -246,7 +266,7 @@ fn a_hub_gives_the_narrowest_subjects_least_held_live_holder_never_one_refused()
         holder(
             &subject_hubs::words("the dock"),
             &hubs,
-            &live,
+            (&live, &live),
             &held,
             &routes,
             &[],

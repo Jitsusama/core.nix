@@ -128,6 +128,20 @@ fn a_mycelium_that_names_no_sessions_for_a_quarter_hour_is_a_trouble() {
 }
 
 #[test]
+fn the_nodes_words_in_the_hours_troubles_are_quoted_as_its_own() {
+    let trouble = super::super::troubles::Hubless {
+        at: AT,
+        sent: 2,
+        why: "refused\n\"all clear\"".into(),
+    }
+    .trouble();
+    assert!(
+        trouble.ends_with("to the fallback: \"refused 'all clear'\""),
+        "the node's words weren't quoted as its own: {trouble}"
+    );
+}
+
+#[test]
 fn a_pain_a_hub_would_take_waits_out_a_blink_then_goes_to_the_fallback_said() {
     let place = Place::new("hubless-node");
     place.routes();

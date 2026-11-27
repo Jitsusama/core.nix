@@ -209,21 +209,25 @@ pub fn said(pain: &Heard, cells: &BTreeMap<String, Cell>, routes: &Routes) -> Ve
 /// reordered it (#6774's round, F1 and F7). A holder at `late_at`, where
 /// a send of it ran past its limit and so may have gone, is given it
 /// again while it fits, so no second holder works on it beside the first
-/// (#6774's round, F16).
+/// (#6774's round, F16). A hub counts while its cell is among `live`,
+/// every live cell, and gives the pain only to one of `takers`: a
+/// session heard in the void holds none, though a hub it keeps still
+/// stands for its holders (#7022's round, F3).
 pub fn holder<'a>(
     said: &[String],
     hubs: &'a [subject_hubs::Hub],
-    live: &BTreeSet<String>,
+    (live, takers): (&BTreeSet<String>, &BTreeSet<String>),
     held: &BTreeMap<String, usize>,
     routes: &Routes,
     failed_at: &[String],
     late_at: Option<&str>,
 ) -> Option<(&'a subject_hubs::Hub, &'a str, Vec<String>)> {
-    let takes = |a: &str| live.contains(a) && !routes.refuses(a);
+    let stands = |a: &str| live.contains(a) && !routes.refuses(a);
+    let takes = |a: &str| takers.contains(a) && !routes.refuses(a);
     // Each hub that takes it, narrowest first, with its live holders
     // least-held first.
     let taking: Vec<(&subject_hubs::Hub, Vec<String>, Vec<&String>)> =
-        subject_hubs::taking(said, hubs, &takes)
+        subject_hubs::taking(said, hubs, &stands)
             .into_iter()
             .map(|(hub, subject)| {
                 let mut fits: Vec<&String> = hub.fits.iter().filter(|f| takes(f)).collect();
@@ -290,8 +294,8 @@ fn place(pain: &Heard, cells: &BTreeMap<String, Cell>) -> String {
 /// The most of a window's title a finding quotes.
 const TITLE_AT_MOST: usize = 80;
 
-/// His words, cut short where they run long.
-fn quoted(words: &str) -> String {
+/// His words, or the node's, cut short where they run long.
+pub(super) fn quoted(words: &str) -> String {
     // His words can't close their own quote and speak outside it, as a
     // window's title can't, nor carry a control character, which a send's
     // arguments can't hold.

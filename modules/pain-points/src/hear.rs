@@ -822,7 +822,7 @@ fn owners_for(
             let Some((hub, fit, words)) = route::holder(
                 &said,
                 &ears.hubs,
-                &takers,
+                (&live, &takers),
                 &held,
                 routes,
                 &pain.sends_failed_at,

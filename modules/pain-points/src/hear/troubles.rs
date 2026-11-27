@@ -98,7 +98,9 @@ pub struct Hubless {
 }
 
 impl Hubless {
-    /// As the hour's troubles say it.
+    /// As the hour's troubles say it, the node's words quoted as its own,
+    /// since they stay an hour and reach cadence's measure (#7022's
+    /// round, F14).
     #[must_use]
     pub fn trouble(&self) -> String {
         let pains = match self.sent {
@@ -107,7 +109,7 @@ impl Hubless {
         };
         format!(
             "the mycelium named no hubs, so {pains} went to the fallback: {}",
-            self.why
+            super::route::quoted(&self.why)
         )
     }
 }
