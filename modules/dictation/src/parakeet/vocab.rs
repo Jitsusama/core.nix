@@ -136,7 +136,7 @@ pub(super) mod tests {
     fn a_piece_that_would_break_a_line_is_never_written() {
         // A transcript's lines are its paragraphs. call-transcripts'
         // `said::spoken` already folds a take's whitespace, a newline or a
-        // tab, into one space, so this guards against the other controls,
+        // tab, into one space, so the guard is for the other controls,
         // such as DEL and ESC, and for `Word::text`, which keeps each word
         // as its pieces spell it.
         for piece in ["\n", " a\n\nb", "\t", "\r", "\u{7f}", "\u{1b}"] {
