@@ -9,6 +9,10 @@
 //! error line. `read` reads the journal, systemd and the sockets; the rest
 //! is a decision over what was read, and main.rs sends.
 //!
+//! A process running as the account's user can write journal lines that
+//! read as a unit's retries and so silence its loop, which it could do as
+//! well by stopping cadence.
+//!
 //! Long because each thing told (a loop, a failure, a daemon's source) is
 //! decided here beside the night's journal that shows it, replayed tick by
 //! tick in the tests.
@@ -36,6 +40,11 @@ pub const WITHIN: i64 = 15 * 60;
 /// mending itself, as merge-net's at 20:13 on 13 November did.
 pub const LOOPING: usize = 3;
 
+/// How many of a unit's quiet retries within `WITHIN` are left out of its
+/// loop count. Past them they all count, since no start limit fails a
+/// build lender, so nothing else would tell of one reloaded over and over.
+pub const QUIET_RETRIES: usize = LOOPING * 2;
+
 /// How long a daemon not answering, or reading a source unreachable or
 /// refused, must hold before it is told: a daemon restarting, or the
 /// network coming back from sleep, mends itself within a tick. Signed out
@@ -60,16 +69,31 @@ pub const PROCESS_EXITED: &str = "98e322203f7a4ed290d09fe03c09fe15";
 /// 30 seconds, and the account's other units' 60.
 const EXITS_BEFORE: i64 = 5 * 60;
 
+/// How much longer than its unit's restart delay an exit may come before
+/// the restart it pairs with: systemd waits the delay once the unit has
+/// stopped, and the stop itself takes a moment.
+const STOPPING: i64 = 30;
+
 /// One restart systemd scheduled, of `unit`, at a moment in seconds; the
 /// status its process exited with just before, when it exited itself
-/// rather than being killed; and whether any exit of it was read before
-/// it, since systemd journals a failed exit or a kill but not a clean one.
+/// rather than being killed; and whether an exit of the invocation it
+/// restarts was read before it, since systemd journals a failed exit or a
+/// kill but not a clean one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Restart {
     pub unit: String,
     pub at: i64,
     pub after: Option<u32>,
-    pub exited: bool,
+    pub exit_read: bool,
+}
+
+/// An exit of a unit's process not yet paired with its restart: the status
+/// it exited with, when it exited itself; when; and the invocation of the
+/// unit it ended, when its journal line names one.
+struct Exit {
+    status: Option<u32>,
+    at: i64,
+    invocation: Option<String>,
 }
 
 /// A unit in the failed state, since when, when systemd says, and whether
@@ -105,15 +129,21 @@ pub struct Daemon {
     pub answer: Answer,
 }
 
-/// What one tick read. `retries` are, for each unit restarted after an
-/// exit of its own, the statuses its `RestartForceExitStatus` names: the
-/// unit retries on these by design, as repos-refresh does on 69 while the
-/// network is away, so a restart after one is no loop, and its start limit
-/// fails it, told as failed, if the retries never end. `quiet` are those
-/// whose retries are clean exits systemd doesn't journal, as the build
-/// lenders' 75 and 100 are, also their `SuccessExitStatus`: restarted
-/// only on failure, with no exit read before, such a restart followed one
-/// of those, as a failure or a kill is journalled.
+/// What one tick read. `retries` holds, for each unit restarted after an
+/// exit with a status or with no exit read before, the statuses its
+/// `RestartForceExitStatus` names. The unit retries on these by design, as
+/// repos-refresh does on 69 while the network is away, so a restart after
+/// one is no loop. If those retries never end, its start limit fails it,
+/// and it is told as failed.
+///
+/// `quiet` holds the units that restart only on failure and whose retry
+/// statuses are all in their `SuccessExitStatus` too, as the build
+/// lenders' 75 and 100 are. systemd journals no clean exit, though it
+/// journals a failure or a kill. So a restart of such a unit with no exit
+/// read before it followed one of its retries, and is no loop either. The
+/// lenders have no start limit to fail them, though, so past
+/// `QUIET_RETRIES` such restarts of one unit within `WITHIN`, they count
+/// again.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Read {
     pub restarts: Vec<Restart>,
@@ -179,11 +209,18 @@ pub fn answer(line: &str) -> Answer {
 }
 
 /// Reads the restarts in journalctl's JSON lines, one object a line, in
-/// the journal's order, each with the status of its unit's exit before
-/// it. A line of a process's exit is no restart; any other is one.
+/// the journal's order, each with its unit's exit before it. A line of a
+/// process's exit is no restart; any other is one.
+///
+/// An exit pairs only with a restart of the invocation it ended, so one
+/// left over from an invocation before isn't read as the next one's. When
+/// both lines name their invocation, they must name the same one. When
+/// either doesn't, the exit must come no longer before the restart than
+/// the unit's restart delay, which `delay` gives in seconds, and
+/// `STOPPING`; with no delay known, no longer than `EXITS_BEFORE`.
 #[must_use]
-pub fn restarts(journal: &str) -> Vec<Restart> {
-    let mut exited: BTreeMap<String, Option<u32>> = BTreeMap::new();
+pub fn restarts(journal: &str, mut delay: impl FnMut(&str) -> Option<i64>) -> Vec<Restart> {
+    let mut unpaired: BTreeMap<String, Exit> = BTreeMap::new();
     let mut restarts = Vec::new();
     for entry in journal
         .lines()
@@ -193,24 +230,78 @@ pub fn restarts(journal: &str) -> Vec<Restart> {
         let Some(unit) = field("USER_UNIT").or_else(|| field("UNIT")) else {
             continue;
         };
-        if field("MESSAGE_ID") == Some(PROCESS_EXITED) {
-            let status = field("EXIT_STATUS").and_then(|s| s.parse().ok());
-            let own = field("EXIT_CODE") == Some("exited");
-            exited.insert(unit.to_owned(), status.filter(|_| own));
-            continue;
-        }
         let Some(micros) = field("__REALTIME_TIMESTAMP").and_then(|t| t.parse::<i64>().ok()) else {
             continue;
         };
-        let exit = exited.remove(unit);
+        let at = micros / 1_000_000;
+        let invocation = field("USER_INVOCATION_ID").or(field("INVOCATION_ID"));
+        if field("MESSAGE_ID") == Some(PROCESS_EXITED) {
+            let status = field("EXIT_STATUS").and_then(|s| s.parse().ok());
+            let own = field("EXIT_CODE") == Some("exited");
+            let exit = Exit {
+                status: status.filter(|_| own),
+                at,
+                invocation: invocation.map(str::to_owned),
+            };
+            unpaired.insert(unit.to_owned(), exit);
+            continue;
+        }
+        let pending = unpaired.remove(unit);
+        let exit = pending.filter(|exit| match (exit.invocation.as_deref(), invocation) {
+            (Some(ended), Some(restarted)) => ended == restarted,
+            _ => at - exit.at <= delay(unit).map_or(EXITS_BEFORE, |d| d + STOPPING),
+        });
         restarts.push(Restart {
             unit: unit.to_owned(),
-            at: micros / 1_000_000,
-            after: exit.flatten(),
-            exited: exit.is_some(),
+            at,
+            after: exit.as_ref().and_then(|exit| exit.status),
+            exit_read: exit.is_some(),
         });
     }
     restarts
+}
+
+/// The whole seconds in a span as `systemctl show` writes one, such as
+/// `100ms`, `1.5s` or `1min 30s`, rounded up: none for `infinity`, an
+/// empty value or a unit it doesn't know.
+fn seconds(span: &str) -> Option<i64> {
+    if span.trim().is_empty() {
+        return None;
+    }
+    let mut micros: u64 = 0;
+    for word in span.split_whitespace() {
+        let digits = word
+            .find(|c: char| !c.is_ascii_digit() && c != '.')
+            .unwrap_or(word.len());
+        let (number, unit) = word.split_at(digits);
+        let per: u64 = match unit {
+            "" | "us" => 1,
+            "ms" => 1_000,
+            "s" => 1_000_000,
+            "min" => 60_000_000,
+            "h" => 3_600_000_000,
+            "d" => 86_400_000_000,
+            "w" => 604_800_000_000,
+            _ => return None,
+        };
+        let (whole, part) = number.split_once('.').unwrap_or((number, ""));
+        // A part of a unit is taken as a whole one, as the span is rounded
+        // up anyway.
+        let whole = whole
+            .parse::<u64>()
+            .ok()?
+            .checked_add(u64::from(part.bytes().any(|b| b != b'0')))?;
+        micros = micros.checked_add(whole.checked_mul(per)?)?;
+    }
+    i64::try_from(micros.div_ceil(1_000_000)).ok()
+}
+
+/// The value `key` has in `systemctl show`'s `Key=value` lines, or nothing.
+fn value<'a>(shown: &'a str, key: &str) -> &'a str {
+    shown
+        .lines()
+        .find_map(|line| line.strip_prefix(key)?.strip_prefix('='))
+        .unwrap_or_default()
 }
 
 /// The exit statuses `systemctl show -p RestartForceExitStatus --value`
@@ -230,18 +321,51 @@ pub fn retry_statuses(shown: &str) -> Vec<u32> {
 /// on failure and every retry status is a success status too.
 #[must_use]
 pub fn retrying(shown: &str) -> (Vec<u32>, bool) {
-    let value = |key: &str| {
-        shown
-            .lines()
-            .find_map(|line| line.strip_prefix(key)?.strip_prefix('='))
-            .unwrap_or_default()
-    };
-    let statuses = retry_statuses(value("RestartForceExitStatus"));
-    let succeeding = retry_statuses(value("SuccessExitStatus"));
-    let quiet = value("Restart") == "on-failure"
+    let statuses = retry_statuses(value(shown, "RestartForceExitStatus"));
+    let succeeding = retry_statuses(value(shown, "SuccessExitStatus"));
+    let quiet = value(shown, "Restart") == "on-failure"
         && !statuses.is_empty()
         && statuses.iter().all(|s| succeeding.contains(s));
     (statuses, quiet)
+}
+
+/// What the journal's lines up to `at` say of the restarts in the `WITHIN`
+/// before it, with `show` giving what `systemctl show` says of a unit. The
+/// lines go back `EXITS_BEFORE` further, so the exit before the first
+/// restart counted is read too, and the restarts before the `WITHIN` are
+/// then dropped. A unit is asked about once at most: for its restart delay
+/// when an exit and a restart of it can't be paired by their invocation,
+/// and for its retries when a restart of it followed an exit with a status
+/// or had no exit read before it.
+#[must_use]
+pub fn paired(journal: &str, at: i64, show: impl Fn(&str) -> String) -> Read {
+    let mut said: BTreeMap<String, String> = BTreeMap::new();
+    let mut shown_of = |unit: &str| {
+        said
+            .entry(unit.to_owned())
+            .or_insert_with(|| show(unit))
+            .clone()
+    };
+    let delay = |unit: &str| seconds(value(&shown_of(unit), "RestartUSec"));
+    let mut read = Read {
+        restarts: restarts(journal, delay),
+        ..Read::default()
+    };
+    read.restarts.retain(|r| r.at > at - WITHIN);
+    let retried: std::collections::BTreeSet<String> = read
+        .restarts
+        .iter()
+        .filter(|r| (r.after.is_some() || !r.exit_read) && !a_run(&r.unit))
+        .map(|r| r.unit.clone())
+        .collect();
+    for unit in retried {
+        let (statuses, quiet) = retrying(&shown_of(unit.as_str()));
+        if quiet {
+            read.quiet.insert(unit.clone());
+        }
+        read.retries.insert(unit, statuses);
+    }
+    read
 }
 
 /// Reads what a tick needs: the restarts systemd scheduled in the
@@ -265,38 +389,24 @@ pub fn read(at: i64, now: bool, runtime: Option<&Path>) -> Read {
             &format!("MESSAGE_ID={PROCESS_EXITED}"),
         ],
     );
-    let mut read = Read {
-        restarts: restarts(&journal.unwrap_or_default()),
-        ..Read::default()
-    };
-    // The exits before were read only to pair them; a restart counts in
-    // the `WITHIN` alone, as `cadence units` says them.
-    read.restarts.retain(|r| r.at > at - WITHIN);
-    let retried: std::collections::BTreeSet<String> = read
-        .restarts
-        .iter()
-        .filter(|r| (r.after.is_some() || !r.exited) && !a_run(&r.unit))
-        .map(|r| r.unit.clone())
-        .collect();
-    for unit in retried {
-        let show = [
+    let systemctl_show = |unit: &str| {
+        let asked = [
             "--user",
             "show",
             "-p",
             "Restart",
             "-p",
+            "RestartUSec",
+            "-p",
             "RestartForceExitStatus",
             "-p",
             "SuccessExitStatus",
             "--",
-            &unit,
+            unit,
         ];
-        let (statuses, quiet) = retrying(&run("systemctl", &show).unwrap_or_default());
-        if quiet {
-            read.quiet.insert(unit.clone());
-        }
-        read.retries.insert(unit, statuses);
-    }
+        run("systemctl", &asked).unwrap_or_default()
+    };
+    let mut read = paired(&journal.unwrap_or_default(), at, systemctl_show);
     if !now {
         return read;
     }
@@ -455,25 +565,75 @@ pub fn due(
     tells
 }
 
-/// Everything broken now, each with when it began.
-fn broken(read: &Read, told: &Told, now: i64, clock: &impl Fn(i64) -> String) -> Vec<Broken> {
-    let mut broken = Vec::new();
+/// How many of the restarts in the `WITHIN` before `now` were left out of
+/// the loop count as retries, by unit, as `cadence units` says them, such
+/// as `none left out as retries` or `5 of them left out as retries
+/// (nix-offload.service 3, repos-refresh.service 2)`.
+#[must_use]
+pub fn retries_said(read: &Read, now: i64) -> String {
+    let Counted { left, .. } = counted(read, now);
+    if left.is_empty() {
+        return "none left out as retries".to_owned();
+    }
+    let by_unit: Vec<String> = left
+        .iter()
+        .map(|(unit, count)| format!("{unit} {count}"))
+        .collect();
+    format!(
+        "{} of them left out as retries ({})",
+        left.values().sum::<usize>(),
+        by_unit.join(", ")
+    )
+}
+
+/// The restarts in the `WITHIN` before `now` that count toward each unit's
+/// loop, by unit, and how many of each unit's were left out as retries. A
+/// restart after an exit with a status its unit names for retries is left
+/// out. So is a quiet unit's with no exit read before it, unless more than
+/// `QUIET_RETRIES` of those fall in the `WITHIN`, when they all count.
+fn counted(read: &Read, now: i64) -> Counted<'_> {
     let mut looping: BTreeMap<&str, Vec<i64>> = BTreeMap::new();
-    let retry = |r: &Restart| {
+    let mut left: BTreeMap<&str, usize> = BTreeMap::new();
+    let mut quiet: BTreeMap<&str, Vec<i64>> = BTreeMap::new();
+    for r in read
+        .restarts
+        .iter()
+        .filter(|r| r.at > now - WITHIN && r.at <= now && !a_run(&r.unit))
+    {
         let listed = r.after.is_some_and(|status| {
             read.retries
                 .get(&r.unit)
                 .is_some_and(|s| s.contains(&status))
         });
-        listed || (!r.exited && read.quiet.contains(&r.unit))
-    };
-    for r in read
-        .restarts
-        .iter()
-        .filter(|r| r.at > now - WITHIN && r.at <= now && !a_run(&r.unit) && !retry(r))
-    {
-        looping.entry(&r.unit).or_default().push(r.at);
+        if listed {
+            *left.entry(&r.unit).or_default() += 1;
+        } else if !r.exit_read && read.quiet.contains(&r.unit) {
+            quiet.entry(&r.unit).or_default().push(r.at);
+        } else {
+            looping.entry(&r.unit).or_default().push(r.at);
+        }
     }
+    for (unit, times) in quiet {
+        if times.len() > QUIET_RETRIES {
+            looping.entry(unit).or_default().extend(times);
+        } else {
+            *left.entry(unit).or_default() += times.len();
+        }
+    }
+    Counted { looping, left }
+}
+
+/// A window's restarts by unit: the moments of those counted toward a
+/// loop, and how many were left out as retries.
+struct Counted<'a> {
+    looping: BTreeMap<&'a str, Vec<i64>>,
+    left: BTreeMap<&'a str, usize>,
+}
+
+/// Everything broken now, each with when it began.
+fn broken(read: &Read, told: &Told, now: i64, clock: &impl Fn(i64) -> String) -> Vec<Broken> {
+    let mut broken = Vec::new();
+    let Counted { looping, .. } = counted(read, now);
     for (unit, mut times) in looping {
         times.sort_unstable();
         let key = format!("loop:{unit}");
@@ -582,7 +742,7 @@ mod tests {
                 unit: unit.to_owned(),
                 at,
                 after: None,
-                exited: false,
+                exit_read: false,
             })
             .collect()
     }
@@ -824,19 +984,19 @@ mod tests {
             "\nnot json\n",
         );
         assert_eq!(
-            restarts(journal),
+            restarts(journal, |_| None),
             [
                 Restart {
                     unit: "slack-unreads.service".into(),
                     at: 1_794_620_862,
                     after: None,
-                    exited: false,
+                    exit_read: false,
                 },
                 Restart {
                     unit: "merge-net.service".into(),
                     at: 1_794_620_013,
                     after: None,
-                    exited: false,
+                    exit_read: false,
                 },
             ],
             "each line's unit and moment, in seconds"
@@ -844,21 +1004,29 @@ mod tests {
     }
 
     /// A journal line, as journalctl writes them: a process's exit, or a
-    /// restart scheduled after it.
-    fn exit(unit: &str, code: &str, status: &str) -> String {
+    /// restart scheduled after it, at a moment in seconds.
+    fn exit(unit: &str, code: &str, status: &str, at: i64) -> String {
         serde_json::json!({
-            "__REALTIME_TIMESTAMP": "1794620800000000", "USER_UNIT": unit,
+            "__REALTIME_TIMESTAMP": format!("{at}000000"), "USER_UNIT": unit,
             "MESSAGE_ID": PROCESS_EXITED, "EXIT_CODE": code, "EXIT_STATUS": status,
         })
         .to_string()
     }
 
-    fn restart(unit: &str, seconds: i64) -> String {
+    fn restart(unit: &str, at: i64) -> String {
         serde_json::json!({
-            "__REALTIME_TIMESTAMP": format!("{seconds}000000"), "USER_UNIT": unit,
+            "__REALTIME_TIMESTAMP": format!("{at}000000"), "USER_UNIT": unit,
             "MESSAGE_ID": RESTART_SCHEDULED,
         })
         .to_string()
+    }
+
+    /// A journal line naming the invocation of its unit it was written in,
+    /// as systemd's lines of a unit do.
+    fn of_invocation(line: &str, invocation: &str) -> String {
+        let mut entry: serde_json::Value = serde_json::from_str(line).expect("a JSON line");
+        entry["USER_INVOCATION_ID"] = invocation.into();
+        entry.to_string()
     }
 
     #[test]
@@ -866,17 +1034,17 @@ mod tests {
         // Two units' exits come before either's restart, as when the
         // network drops, so each must keep its own.
         let journal = [
-            exit("repos-refresh.service", "exited", "69"),
-            exit("pi-sweep.service", "killed", "15"),
+            exit("repos-refresh.service", "exited", "69", 50),
+            exit("pi-sweep.service", "killed", "15", 60),
             restart("repos-refresh.service", 100),
             // Restarted again with no exit read before it.
             restart("repos-refresh.service", 200),
             restart("pi-sweep.service", 300),
         ]
         .join("\n");
-        let after: Vec<(String, Option<u32>, bool)> = restarts(&journal)
+        let after: Vec<(String, Option<u32>, bool)> = restarts(&journal, |_| None)
             .into_iter()
-            .map(|r| (r.unit, r.after, r.exited))
+            .map(|r| (r.unit, r.after, r.exit_read))
             .collect();
         assert_eq!(
             after,
@@ -935,7 +1103,7 @@ mod tests {
                     unit: unit.to_owned(),
                     at,
                     after,
-                    exited: after.is_some(),
+                    exit_read: after.is_some(),
                 })
                 .collect()
         };
@@ -948,10 +1116,10 @@ mod tests {
         let mut quiet = restarted("nix-offload.service", None);
         let mut killed = restarted("nix-offload-vm.service", None);
         for r in &mut killed {
-            r.exited = true;
+            r.exit_read = true;
         }
         // Two listed retries and one other restart: only one counts.
-        quiet[1].exited = true;
+        quiet[1].exit_read = true;
         restarts.extend(quiet);
         restarts.extend(killed);
         let lender = |unit: &str| (unit.to_owned(), vec![75, 100]);
@@ -986,6 +1154,179 @@ mod tests {
             ],
             "a retry on a listed status, or a quiet one, was told as a loop, or a loop on \
              another status or a kill wasn't"
+        );
+    }
+
+    /// What `systemctl show` says of a build lender: restarted only on
+    /// failure, a minute after, and retrying on clean exits.
+    const LENDER: &str = "Restart=on-failure\nRestartUSec=1min\n\
+                          RestartForceExitStatus=75 100\nSuccessExitStatus=75 100\n";
+
+    fn lender(times: &[i64]) -> Read {
+        Read {
+            restarts: of("nix-offload.service", times),
+            retries: [("nix-offload.service".to_owned(), vec![75, 100])].into(),
+            quiet: ["nix-offload.service".to_owned()].into(),
+            ..Read::default()
+        }
+    }
+
+    #[test]
+    fn a_lenders_quiet_retries_are_told_as_a_loop_once_past_twice_a_loops_count() {
+        let times: Vec<i64> = (1..=7).map(|n| TICK + n * 60).collect();
+        assert_eq!(times.len(), QUIET_RETRIES + 1, "one restart past the cap");
+        let now = TICK + 8 * 60;
+        let capped = lender(&times[..QUIET_RETRIES]);
+        assert!(
+            due(&capped, &mut Told::default(), now, watchdog, clock).is_empty(),
+            "a lender's quiet retries up to the cap were told as a loop"
+        );
+        assert_eq!(
+            retries_said(&capped, now),
+            "6 of them left out as retries (nix-offload.service 6)",
+            "cadence units didn't say the retries it left out"
+        );
+        let past = lender(&times);
+        let tells = due(&past, &mut Told::default(), now, watchdog, clock);
+        assert_eq!(tells.len(), 1, "one more wasn't told: {tells:?}");
+        assert!(
+            tells[0]
+                .text
+                .starts_with("nix-offload.service is restarting in a loop: 7 restarts"),
+            "past the cap, every quiet retry counts: {}",
+            tells[0].text
+        );
+        assert_eq!(
+            retries_said(&past, now),
+            "none left out as retries",
+            "quiet retries past the cap were still said to be left out"
+        );
+    }
+
+    #[test]
+    fn a_unit_whose_retries_are_journalled_counts_a_restart_with_no_exit_read() {
+        // repos-refresh's 69 is no success status, so systemd journals its
+        // exit, and a restart with none read before it is no retry.
+        let times = [TICK + 60, TICK + 120, TICK + 180];
+        let read = Read {
+            restarts: of("repos-refresh.service", &times),
+            retries: [("repos-refresh.service".to_owned(), vec![69])].into(),
+            ..Read::default()
+        };
+        let told: Vec<String> = due(&read, &mut Told::default(), TICK + 200, watchdog, clock)
+            .into_iter()
+            .map(|tell| tell.unit)
+            .collect();
+        assert_eq!(
+            told,
+            ["repos-refresh.service"],
+            "restarts with no exit read were left out though the unit's retries aren't quiet"
+        );
+    }
+
+    #[test]
+    fn a_lender_restarted_with_no_exit_read_is_asked_about_and_one_killed_isnt() {
+        let (quiet, killed) = ("nix-offload.service", "nix-offload-vm.service");
+        let at = TICK + WITHIN;
+        let journal = [
+            restart(quiet, at - 120),
+            of_invocation(&exit(killed, "killed", "9", at - 200), "a"),
+            of_invocation(&restart(killed, at - 140), "a"),
+        ]
+        .join("\n");
+        let asked = std::cell::RefCell::new(Vec::new());
+        let read = paired(&journal, at, |unit| {
+            asked.borrow_mut().push(unit.to_owned());
+            LENDER.to_owned()
+        });
+        assert_eq!(
+            asked.into_inner(),
+            [quiet],
+            "a restart with no exit read wasn't asked about, or one after a kill was"
+        );
+        assert_eq!(
+            read.quiet,
+            std::collections::BTreeSet::from([quiet.to_owned()]),
+            "a lender restarted with no exit read wasn't read as quiet"
+        );
+        assert_eq!(
+            read.retries,
+            BTreeMap::from([(quiet.to_owned(), vec![75, 100])]),
+            "a unit's retries were read for a restart that can't be one"
+        );
+    }
+
+    #[test]
+    fn an_exit_before_the_window_pairs_with_a_restart_in_it_and_a_restart_before_is_dropped() {
+        let refresh = "repos-refresh.service";
+        let at = TICK + WITHIN;
+        let journal = [
+            of_invocation(&exit(refresh, "exited", "69", at - WITHIN - 60), "r"),
+            restart("merge-net.service", at - WITHIN - 30),
+            of_invocation(&restart(refresh, at - WITHIN + 30), "r"),
+        ]
+        .join("\n");
+        let shown = "Restart=on-failure\nRestartUSec=30s\nRestartForceExitStatus=69\n";
+        let read = paired(&journal, at, |_| shown.to_owned());
+        assert_eq!(
+            read.restarts,
+            [Restart {
+                unit: refresh.into(),
+                at: at - WITHIN + 30,
+                after: Some(69),
+                exit_read: true,
+            }],
+            "an exit read before the window didn't pair, or a restart before it was kept"
+        );
+    }
+
+    #[test]
+    fn a_stale_kill_leaves_a_later_quiet_restart_quiet() {
+        let (lost, stale, fresh) = (
+            "nix-offload.service",
+            "nix-offload-more.service",
+            "nix-offload-vm.service",
+        );
+        let at = TICK + WITHIN;
+        let journal = [
+            // A kill whose own restart was never read, and a restart of the
+            // invocation after it.
+            of_invocation(&exit(lost, "killed", "9", at - 200), "k"),
+            of_invocation(&restart(lost, at - 100), "l"),
+            // Lines naming no invocation, paired by the lender's minute:
+            // a kill long before its restart, and one just before.
+            exit(stale, "killed", "9", at - 600),
+            restart(stale, at - 60),
+            exit(fresh, "killed", "9", at - 100),
+            restart(fresh, at - 60),
+        ]
+        .join("\n");
+        let read = paired(&journal, at, |_| LENDER.to_owned());
+        let exits_read: Vec<(&str, bool)> = read
+            .restarts
+            .iter()
+            .map(|r| (r.unit.as_str(), r.exit_read))
+            .collect();
+        assert_eq!(
+            exits_read,
+            [(lost, false), (stale, false), (fresh, true)],
+            "a kill of an invocation before was paired with a later restart, or one just \
+             before its restart wasn't"
+        );
+        assert_eq!(
+            retries_said(&read, at),
+            "2 of them left out as retries (nix-offload-more.service 1, nix-offload.service 1)",
+            "a quiet restart after a stale kill was counted"
+        );
+    }
+
+    #[test]
+    fn a_span_systemctl_writes_is_read_in_whole_seconds_rounded_up() {
+        let spans = ["100ms", "1.5s", "1min 30s", "0", "infinity", "", "2y"];
+        assert_eq!(
+            spans.map(seconds),
+            [Some(1), Some(2), Some(90), Some(0), None, None, None],
+            "a restart delay as systemctl show writes it was misread"
         );
     }
 }

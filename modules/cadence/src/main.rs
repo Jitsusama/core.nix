@@ -212,8 +212,9 @@ fn units_now(mut args: impl Iterator<Item = String>) -> Result<(), Failure> {
         clock,
     );
     println!(
-        "{} restarts in fifteen minutes, {} units failed, {} daemons asked",
+        "{} restarts in fifteen minutes, {}, {} units failed, {} daemons asked",
         read.restarts.len(),
+        units::retries_said(&read, at.unwrap_or(now)),
         read.failed.len(),
         read.daemons.len()
     );
