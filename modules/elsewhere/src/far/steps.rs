@@ -81,12 +81,15 @@ pub(super) fn waiting(bytes: u64, untaken: &str) -> String {
     format!(
         r#"relinked=
 unlinked || {{
-  printf "elsewhere: a link at the job's handover couldn't be cleared\n" >&2
+  if [ -n "$scratched" ]; then printf 'elsewhere: %s\n' "$scratch_link" >&2
+  else printf "elsewhere: a link at the job's handover couldn't be cleared\n" >&2; fi
   say {untaken}
   exit {UNTAKEN}
 }}
 [ -z "$relinked" ] ||
   printf "elsewhere: what crossed through it is out of reach, so the wait may run out\n" >&2
+# Only a link cleared from here on is one the cut can say was put back.
+relinked=
 # By the clock, since a pass over a large tree takes long itself: each
 # pass spends what the clock moved over it, never less than the second
 # it slept, as when the clock steps back or stands still, nor more than
@@ -158,9 +161,10 @@ pub(super) fn stopping() -> String {
 # that nothing below it, a link included, can be seen or cleared. False
 # only when a link stays, never for a folder that couldn't be opened,
 # which fails what follows in its own words. One cleared is said, and
-# noted in `relinked`.
+# noted in `relinked`; one at the scratch is noted in `scratched`.
 unlinked() {{
-  [ ! -L "${{job%/*/*/*}}" ] || return 1
+  scratched=
+  [ ! -L "${{job%/*/*/*}}" ] || {{ scratched=1; return 1; }}
   chmod u+rwx "${{job%/*/*/*}}" 2>/dev/null
   for at in "${{job%/*/*}}" "${{job%/*}}" "$job"; do
     [ ! -L "$at" ] || {{ rm -f "$at" 2>/dev/null
@@ -242,9 +246,10 @@ if [ -n "$judged" ] && [ -d "$runs" ] && [ ! -L "$runs" ]; then
       *) continue ;;
     esac
     copies || {{
-      printf "elsewhere: a link at its copies' folder couldn't be cleared, or one stands at \
-the quest's scratch, so the sweep stops, \
-and this run is untaken if it still stands once its files cross\n" >&2
+      if [ -n "$scratched" ]; then stand=$scratch_link
+      else stand="a link at its copies' folder couldn't be cleared"; fi
+      printf 'elsewhere: %s, so the sweep stops, %s\n' "$stand" \
+        "and this run is untaken if it still stands once its files cross" >&2
       break
     }}
     {{ cleared "$copy.names" "$copy.tar" "$copy.back" "$copy.back".* "$copy" &&
@@ -315,9 +320,10 @@ cleared() {
 # couldn't write itself, so what this guards is which machine is blamed
 # and what is kept. One cleared is said. A link at the quest's scratch,
 # which the copies' folder lies in, is refused as `unlinked` refuses it,
-# never cleared.
+# never cleared, and noted in `scratched`.
 copies() {
-  [ ! -L "${work%/*/*}" ] || return 1
+  scratched=
+  [ ! -L "${work%/*/*}" ] || { scratched=1; return 1; }
   [ ! -L "${work%/*}" ] || { rm -f "${work%/*}" 2>/dev/null
     [ -L "${work%/*}" ] || printf "elsewhere: a link at its copies' folder was cleared\n" >&2; }
   [ ! -L "${work%/*}" ]
@@ -352,13 +358,20 @@ moved() {
   printf "elsewhere: the job's copy was moved or linked from its place\n" >&2
 }
 # Says the copy stays, as a link at the copies' folder couldn't be
-# cleared or one stands at the quest's scratch, and fails, so what
-# would clear it is passed over.
+# cleared or one stands at the quest's scratch, as `scratched` says,
+# and fails, so what would clear it is passed over.
 stays() {
-  printf "elsewhere: a link at its copies' folder couldn't be cleared, \
-or one stands at the quest's scratch, so its copy stays\n" >&2
+  if [ -n "$scratched" ]; then stand=$scratch_link
+  else stand="a link at its copies' folder couldn't be cleared"; fi
+  printf 'elsewhere: %s, so its copy stays\n' "$stand" >&2
   return 1
-}"#;
+}
+# What a link at the quest's scratch is said to be: neither `unlinked`
+# nor `copies` clears one, since a scratch that went is never made
+# again, so it stands, and the quest is untaken on this machine, until
+# it's removed there by hand.
+scratch_link="a link stands at the quest's scratch, which only its removal there by hand clears"
+scratched="#;
 
 /// The far line's step making the job's tree of its files, `copied`: 0
 /// once made, 1 for the tree's own fault, which every try meets, and 2
@@ -547,6 +560,7 @@ stuck="a link it left at its handover couldn't be cleared"
 if unlinked; then
   stuck="its folder for copies or its list couldn't be made new"
   cleared "$job/{BACK}" "$job/{BROUGHT}" && mkdir -p "$job/{BACK}" && stuck=
+elif [ -n "$scratched" ]; then stuck=$scratch_link
 fi
 if [ -n "$stuck" ]; then
   printf 'elsewhere: %s, so nothing is brought back\n' "$stuck" >&2
@@ -812,7 +826,9 @@ fi
 pub(super) fn freed() -> String {
     format!(
         r#"handed=
-if unlinked; then handed=1; else
+if unlinked; then handed=1; elif [ -n "$scratched" ]; then
+  printf 'elsewhere: %s, so its tree stays\n' "$scratch_link" >&2
+else
   printf "elsewhere: a link at the job's handover couldn't be cleared, so its tree stays\n" >&2
 fi
 cd / && {{
