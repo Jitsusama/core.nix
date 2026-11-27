@@ -60,6 +60,36 @@ new PerformanceObserver((list) => {
     globalThis.shifted += each.hadRecentInput ? 0 : each.value;
   }
 }).observe({ type: "layout-shift", buffered: true });"""
+# The longest the page is held unseen for its first draw, as site.ts's UNSEEN_MS and site.css's
+# fallback hold it. The still test passes only if the stand-in draws inside it: past it, the
+# page is shown before it has drawn, so neither its stillness nor its draw showing it is what
+# the test reads.
+UNSEEN_MS = 1000
+# What site.css makes of the body's opacity while the page is held, and once it is shown.
+UNSEEN = "0"
+SEEN = "1"
+# The mark index.html sets on the page and site.ts clears once it first draws.
+WAITS = re.compile(r"\bwaits\b")
+# How the page is held, read the way it sets it: the mark index.html sets and site.ts clears,
+# what site.css makes of the body's opacity under it, whether a machine's place is drawn, and
+# when. It's read once as the page loads, before a watch can draw, and once as the mark goes,
+# since by the time a test looks the cap may have shown the page anyway.
+HELD = """const heldOf = () => ({
+  waits: document.documentElement.classList.contains("waits"),
+  opacity: getComputedStyle(document.body).opacity,
+  drawn: document.querySelector("#places a[data-place]") !== null,
+  at: performance.now(),
+});
+document.addEventListener("DOMContentLoaded", () => {
+  globalThis.loaded = heldOf();
+});
+new MutationObserver((_, watching) => {
+  const waits = document.documentElement.classList.contains("waits");
+  if (globalThis.loaded !== undefined && !waits) {
+    globalThis.shown = heldOf();
+    watching.disconnect();
+  }
+}).observe(document, { attributes: true, attributeFilter: ["class"], subtree: true });"""
 
 
 @pytest.fixture
@@ -813,10 +843,25 @@ def test_the_system_page_holds_still_as_it_draws(
     try:
         page = context.new_page()
         page.add_init_script(SHIFTS)
+        page.add_init_script(HELD)
         page.goto(f"{root}system/")
         says_it_stands(page, "live")
         counted(page)
-        expect(page.locator("body"), "the page stayed unseen").to_be_visible()
+        html = page.locator("html")
+        expect(html, "the page was never shown").not_to_have_class(WAITS, timeout=PACE_MS)
+        loaded = page.evaluate("() => globalThis.loaded")
+        assert loaded is not None, "the page was never read as it loaded"
+        assert not loaded["drawn"], "the page drew as it loaded, so its hold went unread"
+        assert loaded["waits"], "the page wasn't marked to wait as it loaded"
+        opacity = loaded["opacity"]
+        assert opacity == UNSEEN, f"the page was at opacity {opacity} before it drew"
+        shown = page.evaluate("() => globalThis.shown")
+        assert shown is not None, "the page's mark went before the page had loaded"
+        at = shown["at"]
+        assert at < UNSEEN_MS, f"the page was shown at {at:.0f} ms, by the cap, not its draw"
+        assert shown["drawn"], "the page was shown before its machines drew"
+        opacity = shown["opacity"]
+        assert opacity == SEEN, f"the page was at opacity {opacity} once shown"
         page.wait_for_timeout(1000)
         shifted = page.evaluate("() => globalThis.shifted")
         assert shifted < STILL, f"the page at {width} px shifted {shifted} as it drew"
