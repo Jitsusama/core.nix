@@ -4,12 +4,16 @@
 //! each time, that asking ahead never holds up a step-in, and that it
 //! asks nobody once Slack refuses the sign-in.
 //!
-//! The stand-in and what every case shares are here; the cases are
-//! beside this, a file to each of slack-people, what wants Joel, and
-//! the rows the launcher is served.
+//! The stand-in and what more than one file of cases shares are here;
+//! the cases are beside this. slack-people's are in people.rs, with the
+//! Slack it asks. slack-unreads' are in three: what wants Joel and the
+//! socket it's asked on (`wanting.rs`), its rows and messages
+//! (`rows.rs`), and what it does without a sign-in it can use
+//! (`signed_out.rs`).
 
 mod people;
 mod rows;
+mod signed_out;
 mod wanting;
 
 use std::io::{BufRead, BufReader, Read, Write};
@@ -113,49 +117,6 @@ fn credentials(test: &str) -> PathBuf {
     path
 }
 
-/// Runs the program over the stand-in, given these lines, and says what
-/// it said back, a line each. What it keeps goes in a cache home beside
-/// the sign-in's file, so a second run with the same file finds it.
-fn told(stand_in: &StandIn, credentials: &PathBuf, lines: &str) -> Vec<String> {
-    said_to(started(&stand_in.origin, credentials), lines)
-}
-
-/// What the program said back to these lines, a line each.
-fn said_to(mut program: std::process::Child, lines: &str) -> Vec<String> {
-    program
-        .stdin
-        .take()
-        .unwrap()
-        .write_all(lines.as_bytes())
-        .unwrap();
-    let out = program.wait_with_output().unwrap();
-    String::from_utf8(out.stdout)
-        .unwrap()
-        .lines()
-        .map(str::to_owned)
-        .collect()
-}
-
-/// The program, started over Slack at `origin` with this sign-in, and
-/// without the launcher's words, so it says who they are alone, as each
-/// case but one hears it.
-fn started(origin: &str, credentials: &PathBuf) -> std::process::Child {
-    program(origin, credentials).spawn().unwrap()
-}
-
-/// The program to run over Slack at `origin` with this sign-in.
-fn program(origin: &str, credentials: &PathBuf) -> Command {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_slack-people"));
-    command
-        .arg(credentials)
-        .arg(origin)
-        .env("XDG_CACHE_HOME", cache(credentials))
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null());
-    command
-}
-
 /// The cache home a run with this sign-in's file keeps in.
 fn cache(credentials: &std::path::Path) -> PathBuf {
     credentials.with_extension("cache")
@@ -167,129 +128,10 @@ fn forget(credentials: &std::path::Path) {
     let _ = std::fs::remove_dir_all(cache(credentials));
 }
 
-/// Ada as the program says her, her zone with her, active.
-const ADA: &str = concat!(
-    r#"{"email":"ada@example.com","id":"U1","team":"T1","name":"Ada Lovelace","#,
-    r#""zone":"Europe/London","presence":"active","status":"","emoji":"","handle":""}"#
-);
-
-/// Ada asked about again, once she's set a status.
-const ADA_WRITING: &str = concat!(
-    r#"{"email":"ada@example.com","id":"U1","team":"T1","name":"Ada Lovelace","#,
-    r#""zone":"Europe/London","presence":"active","status":"Writing","emoji":"📝","handle":""}"#
-);
-
-/// Ada while Slack can't say whether she's active or away.
-const ADA_UNSAID: &str = concat!(
-    r#"{"email":"ada@example.com","id":"U1","team":"T1","name":"Ada Lovelace","#,
-    r#""zone":"Europe/London","presence":"","status":"","emoji":"","handle":""}"#
-);
-
-/// Grace as the program says her, found by a search, as an enterprise
-/// grid has it, and away.
-const GRACE: &str = concat!(
-    r#"{"email":"grace@example.com","id":"U2","team":"T1","name":"Grace Hopper","#,
-    r#""zone":"America/New_York","presence":"away","status":"","emoji":"","handle":""}"#
-);
-
-/// Grace found ahead, before anyone asked how she is.
-const GRACE_WHO: &str = concat!(
-    r#"{"email":"grace@example.com","id":"U2","team":"T1","name":"Grace Hopper","#,
-    r#""zone":"America/New_York","presence":"","status":"","emoji":"","handle":""}"#
-);
-
-/// Someone Slack knows nobody by, as the program says them.
-fn nobody(email: &str) -> String {
-    format!(r#"{{"email":"{email}","id":null,"team":"T1","name":"","zone":"","presence":"","#)
-        + r#""status":"","emoji":"","handle":""}"#
-}
-
-/// Every method the program may ask, each only reading.
-const READS: [&str; 4] = [
-    "users.lookupByEmail?",
-    "search.messages?",
-    "users.info?",
-    "users.getPresence?",
-];
-
-/// Whether everything the stand-in heard was a GET of one of the reads.
-fn only_read(heard: &[Heard]) -> bool {
-    heard.iter().all(|heard| {
-        let method = heard.line.trim_start_matches("GET /api/");
-        heard.line.starts_with("GET /api/") && READS.iter().any(|read| method.starts_with(read))
-    })
-}
-
-/// Slack as a workspace that looks Ada up by her address, and as an
-/// enterprise grid for Grace and Eve, refusing that to the sign-in: a
-/// search finds each by their handle, and only Grace's profile keeps the
-/// address asked about.
-fn slack(line: &str) -> String {
-    if line.contains("email=lin%40example.com") || line.contains("users.info?user=U4") {
-        r#"{"ok": true, "user": {"id": "U4", "team_id": "T1", "name": "lin",
-            "profile": {"real_name": "Lin Chen"}}}"#
-            .into()
-    } else if line.contains("search.messages") && line.contains("lin") {
-        // Lin's direct messages with Joel, U0, newest first, and one of
-        // hers elsewhere that isn't theirs.
-        concat!(
-            r#"{"ok": true, "messages": {"matches": ["#,
-            r#"{"channel": {"id": "D4", "is_im": true, "name": "U4"}, "user": "U4","#,
-            r#""text": "See you there &amp; then", "ts": "1730312345.000100","#,
-            r#""permalink": "https://slack.example/archives/D4/p2"},"#,
-            r#"{"channel": {"id": "C1", "is_im": false, "name": "general"}, "user": "U4","#,
-            r#""text": "Hello all", "ts": "1730312320.000000"},"#,
-            r#"{"channel": {"id": "D4", "is_im": true, "name": "U4"}, "user": "U0","#,
-            r#""text": "Lunch, <@U4>?", "ts": "1730312300.000000"}]}}"#
-        )
-        .into()
-    } else if line.contains("email=ada%40example.com") {
-        r#"{"ok": true, "user": {"id": "U1", "team_id": "T1", "tz": "Europe/London",
-            "profile": {"real_name": "Ada Lovelace"}}}"#
-            .into()
-    } else if line.contains("email=grace%40example.com") || line.contains("email=eve%40example.com")
-    {
-        r#"{"ok": false, "error": "not_allowed_token_type"}"#.into()
-    } else if line.contains("search.messages") && line.contains("grace") {
-        r#"{"ok": true, "messages": {"matches": [{"user": "U2", "username": "grace"}]}}"#.into()
-    } else if line.contains("search.messages") && line.contains("eve") {
-        r#"{"ok": true, "messages": {"matches": [{"user": "U3", "username": "eve"}]}}"#.into()
-    } else if line.contains("users.info") && line.contains("user=U2") {
-        r#"{"ok": true, "user": {"id": "U2", "team_id": "T1", "tz": "America/New_York",
-            "profile": {"real_name": "Grace Hopper", "email": "Grace@Example.com"}}}"#
-            .into()
-    } else if line.contains("users.info") && line.contains("user=U1") {
-        r#"{"ok": true, "user": {"id": "U1", "team_id": "T1", "tz": "Europe/London",
-            "profile": {"real_name": "Ada Lovelace", "status_text": "Writing",
-                "status_emoji_display_info": [{"emoji_name": "memo", "unicode": "1f4dd"}]}}}"#
-            .into()
-    } else if line.contains("users.getPresence") && line.contains("user=U1") {
-        r#"{"ok": true, "presence": "active"}"#.into()
-    } else if line.contains("users.getPresence") && line.contains("user=U2") {
-        r#"{"ok": true, "presence": "away"}"#.into()
-    } else if line.contains("users.info") && line.contains("user=U3") {
-        r#"{"ok": true, "user": {"id": "U3", "team_id": "T1",
-            "profile": {"real_name": "Another Eve", "email": "eve@elsewhere.example"}}}"#
-            .into()
-    } else {
-        r#"{"ok": false, "error": "users_not_found"}"#.into()
-    }
-}
-
-/// Slack as `slack` has it, but too busy to say who anyone is again or
-/// whether they're active.
-fn busy(line: &str) -> String {
-    if line.contains("users.info") || line.contains("users.getPresence") {
-        r#"{"ok": false, "error": "ratelimited"}"#.into()
-    } else {
-        slack(line)
-    }
-}
-
 /// Slack as it answers what wants Joel: Ada's direct message with two
 /// unread, a channel with one unread and a mention of him, another unread
 /// with none, and three mentions in threads.
-fn wanting(line: &str) -> String {
+fn wants_joel(line: &str) -> String {
     let said = if line.contains("client.counts") {
         concat!(
             r#"{"ok": true, "ims": [{"id": "D1", "has_unreads": true, "mention_count": 2,"#,
@@ -338,6 +180,10 @@ fn unreads_from(
         .arg(waiting(run))
         .arg(&stand_in.origin)
         .arg("50")
+        // Only the sign-in a case writes is read, never one the keyring
+        // of whoever runs the tests would give, which would reach the
+        // stand-in and be printed by any assert of what it heard.
+        .env_remove("SIGN_IN_KEYRING")
         .stderr(Stdio::null())
         .spawn()
         .unwrap()

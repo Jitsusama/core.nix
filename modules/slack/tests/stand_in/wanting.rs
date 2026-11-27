@@ -6,12 +6,12 @@ use std::process::Command;
 
 use super::{
     StandIn, asked, credentials, forget, listed, socket, unreads, unreads_from, until, waiting,
-    wanting,
+    wants_joel,
 };
 
 #[test]
 fn what_wants_joel_is_held_whole_each_conversation_named_once() {
-    let stand_in = StandIn::new(wanting);
+    let stand_in = StandIn::new(wants_joel);
     let path = credentials("unreads");
     let run = path.with_extension("unreads");
     // Asked before, as when Slack refused the sign-in an earlier run had.
@@ -76,7 +76,7 @@ fn what_wants_joel_is_held_whole_each_conversation_named_once() {
 
 /// Slack as it answers a search for "launcher" and what's around a
 /// message, or that it's had too many searches, for "busy"; and what
-/// wants Joel, as `wanting` does.
+/// wants Joel, as `wants_joel` does.
 fn searching(line: &str) -> String {
     if line.contains("search.messages") && line.contains("query=busy") {
         r#"{"ok": false, "error": "ratelimited"}"#.into()
@@ -115,12 +115,12 @@ fn searching(line: &str) -> String {
         r#"{"ok": true, "user": {"id": "U9", "name": "ada", "profile": {"real_name": "Ada L"}}}"#
             .into()
     } else {
-        wanting(line)
+        wants_joel(line)
     }
 }
 
 /// Slack as it answers for #random's newest messages, a post and a reply
-/// also sent to the channel, and what wants Joel, as `wanting` does.
+/// also sent to the channel, and what wants Joel, as `wants_joel` does.
 fn posting(line: &str) -> String {
     if line.contains("conversations.history") && line.contains("channel=C3") {
         concat!(
@@ -131,7 +131,7 @@ fn posting(line: &str) -> String {
         )
         .into()
     } else {
-        wanting(line)
+        wants_joel(line)
     }
 }
 
@@ -171,7 +171,7 @@ fn a_socket_systemd_hands_it_is_the_one_it_answers_on() {
     // before the daemon runs, and handed to it as it starts, so the ask
     // that started it is answered. A daemon that made a socket of its own
     // would leave that ask on one nobody accepts from.
-    let stand_in = StandIn::new(wanting);
+    let stand_in = StandIn::new(wants_joel);
     let path = credentials("unreads-handed");
     let run = path.with_extension("handed");
     std::fs::create_dir_all(socket(&run).parent().unwrap()).unwrap();
