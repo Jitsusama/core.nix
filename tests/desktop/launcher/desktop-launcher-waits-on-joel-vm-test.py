@@ -263,6 +263,21 @@ def test_the_launchers_agents_list_the_sessions_from_the_moment_the_shell_starts
     assert named in first, first
 
 
+def testqc_gone(desktop: Desktop, title: str) -> None:
+    """End TESTQC's session, its presence first, whatever the case it served left.
+
+    Nothing here reads the launcher, which can be what failed: the area's
+    launcher_closed_after closes it without asking it, and a read that raised
+    here skipped the rest (round 1 on #7104, 1, 6, 10 and 11).
+    """
+    try:
+        desktop.as_account(f"rm -f {PI_PRESENCE}/testqc.json")
+    finally:
+        windows = [w for w in desktop.windows() if w["title"] == title]
+        for window in windows:
+            desktop.as_account(f"niri msg action close-window --id {window['id']}")
+
+
 def test_the_launchers_home_says_how_its_sessions_stand_rather_than_naming_them(
     desktop: Desktop,
 ) -> None:
@@ -292,11 +307,7 @@ def test_the_launchers_home_says_how_its_sessions_stand_rather_than_naming_them(
         )
         desktop.shoot("launcher-home-agents", ticking=NOWS_CLOCK)
     finally:
-        if desktop.showing()["open"]:
-            desktop.close_launcher()
-        window = desktop.window_titled(long)["id"]
-        desktop.as_account(f"niri msg action close-window --id {window}")
-        desktop.as_account(f"rm -f {PI_PRESENCE}/testqc.json")
+        testqc_gone(desktop, long)
 
 
 def test_the_launchers_agents_hold_still_as_one_changes_the_selection_on_its_row(
@@ -438,10 +449,7 @@ def test_where_an_agents_title_is_cut_holds_still_as_its_side_changes(desktop: D
     try:
         holds_still()
     finally:
-        if desktop.showing()["open"]:
-            desktop.close_launcher()
-        desktop.as_account(f"niri msg action close-window --id {desktop.window_titled(long)['id']}")
-        desktop.as_account(f"rm -f {PI_PRESENCE}/testqc.json")
+        testqc_gone(desktop, long)
 
 
 # Each quest keeps what only Joel can do in a file of its own, written by
