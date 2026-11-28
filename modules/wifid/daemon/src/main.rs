@@ -1725,14 +1725,38 @@ fn take_in_warnings(
     for said in forgotten {
         eprintln!("<4>wifid {said}");
     }
-    for (card, point, until) in warned.lasting(Instant::now(), boot) {
-        arrivals.borrow_mut().warned(&card, &point, until);
-        change(state, |state| state.kept_off(&card, &point, until));
-        let left = until.saturating_duration_since(Instant::now());
-        let minutes = left.as_secs().div_ceil(60);
-        println!("<6>{card} keeps off {point} for {minutes} more minutes, as it warned before");
+    let mut kept_off = Vec::new();
+    change(state, |state| {
+        let now = (Instant::now(), boot);
+        kept_off = keep_off_as_warned(&warned, &mut arrivals.borrow_mut(), state, now);
+    });
+    for said in kept_off {
+        println!("<6>{said}");
     }
     warned
+}
+
+/// Keeps the moves and the chooser off each point whose warning a wifid
+/// before kept and that still lasts at `now`, `boot` on the boot clock,
+/// and says each for the journal: a move from there is let join what it
+/// hears (`Arrivals::drops`), and the chooser hears nothing of it
+/// (`State::warned_from`).
+fn keep_off_as_warned(
+    warned: &Warned,
+    arrivals: &mut Arrivals,
+    state: &mut State,
+    (now, boot): (Instant, Boot),
+) -> Vec<String> {
+    let mut said = Vec::new();
+    for (card, point, until) in warned.lasting(now, boot) {
+        arrivals.warned(&card, &point, until);
+        state.kept_off(&card, &point, until);
+        let minutes = until.saturating_duration_since(now).as_secs().div_ceil(60);
+        said.push(format!(
+            "{card} keeps off {point} for {minutes} more minutes, as it warned before"
+        ));
+    }
+    said
 }
 
 /// Tells everyone listening what changed, if anything did.
@@ -4041,6 +4065,40 @@ mod tests {
         assert!(
             !joined_throughout(["4way_handshake", "completed"], [Some(HALL), Some(HALL)]),
             "a join that ended between the reads was taken as landed before its signal"
+        );
+    }
+
+    #[test]
+    fn a_warning_kept_before_a_restart_keeps_the_moves_and_the_chooser_off_its_point() {
+        const DESK: &str = "02:00:00:00:01:00";
+        let folder = tempfile::tempdir().expect("a folder");
+        let file = folder.path().join("warned");
+        let now = Instant::now();
+        let boot = Boot::now().expect("the boot clock");
+        let until = now + Duration::from_secs(600);
+        Warned::none(&file)
+            .warned("wlan2", DESK, until, (now, boot))
+            .expect("kept");
+        let (warned, _) = Warned::kept_in(&file, boot);
+        let (mut arrivals, mut state) = (Arrivals::default(), State::default());
+
+        let said = keep_off_as_warned(&warned, &mut arrivals, &mut state, (now, boot));
+
+        assert!(
+            arrivals.drops("wlan2", DESK, now),
+            "a move from a point that warned before a restart would go back there"
+        );
+        assert_eq!(
+            state.warned_from("wlan2", now),
+            Some(DESK),
+            "the chooser heard a point that warned before a restart"
+        );
+        assert_eq!(
+            said,
+            vec![format!(
+                "wlan2 keeps off {DESK} for 10 more minutes, as it warned before"
+            )],
+            "a point kept off as it warned before a restart wasn't said so"
         );
     }
 
