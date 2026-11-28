@@ -27,7 +27,6 @@ from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
 
 import pytest
-from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import (
     Browser,
     BrowserContext,
@@ -38,6 +37,7 @@ from playwright.sync_api import (
     WebSocket,
     sync_playwright,
 )
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Mapping

@@ -912,7 +912,9 @@ def test_a_page_whose_script_never_runs_is_shown_at_its_cap(
     root, _ = system_served
     ready = readied(HELD, FIRST_SEEN, emptied="**/system/site.js")
     opened = Opened(browser, f"{root}system/", SIZES[-1], "dark", before=ready)
-    opened.first(lambda page: shown_by_its_cap(page, "#places a[data-place]", "whose script never ran"))
+    opened.first(
+        lambda page: shown_by_its_cap(page, "#places a[data-place]", "whose script never ran")
+    )
     opened.close()
 
 
