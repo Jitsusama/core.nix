@@ -1,8 +1,8 @@
 //! `launcher`, the launcher in a terminal: any place, row or drawer the
-//! running shell's launcher holds, printed as text or as JSON, so every
+//! running desktop's launcher holds, printed as text or as JSON, so every
 //! integration the launcher has gets a command line with it (docs/design.md,
 //! "As deep as the deepest"). It knows nothing a provider knows: it asks the
-//! shell (`qs ipc call launcher show`, launcher/Showing.js), which walks the
+//! desktop (`qs ipc call launcher show`, launcher/Showing.js), which walks the
 //! same rows Return does, and only lays out what comes back.
 //!
 //!     launcher [show] [--drawers] [--json] [step ...] [-- step ...]
@@ -10,9 +10,9 @@
 //! Each step is a row's name, in any case, a hyphen for a space, or the
 //! start of only one: `launcher show machine disk`. With none it shows
 //! home, as a bare `launcher` does. Text is set as the launcher sets a row, in the theme's roles;
-//! `--drawers` asks the shell for each row's drawer too (`launcher
+//! `--drawers` asks the desktop for each row's drawer too (`launcher
 //! drawers` over its IPC, since it builds them only then) and sets them
-//! after the rows, and `--json` prints the shell's answer as it came.
+//! after the rows, and `--json` prints the desktop's answer as it came.
 //!
 //!     launcher do step ... [--yes] [-- words]
 //!
@@ -34,12 +34,12 @@
 //! its own. It inks with the terminal kit's pen, from the account's theme
 //! (look.rs). Its help, its failures and its exits take the terminal kit's
 //! shape (`help()`), `--json` among the kit's flags: a step that names
-//! nothing exits 66; a shell that doesn't answer 69; an act asked
+//! nothing exits 66; a desktop that doesn't answer 69; an act asked
 //! about and answered no, or with no terminal to ask on and no `--yes`,
 //! or a place the launcher didn't get into, as Passwords refuses a walk
-//! from outside, or an act the shell refused as it ran it, as a yes to a
+//! from outside, or an act the desktop refused as it ran it, as a yes to a
 //! secret ask without Joel's own key press, 77; an act whose daemon had
-//! no answer to give 69 too; an act the shell failed at 1; an answer it
+//! no answer to give 69 too; an act the desktop failed at 1; an answer it
 //! doesn't know, never done, 70.
 
 mod asking;
@@ -293,11 +293,11 @@ fn run(asked: Asked, json: bool, words: &Words, look: &Look) -> Result<(), Failu
     }
 }
 
-/// Does what the steps name: asked once unsure, and where the shell asks
+/// Does what the steps name: asked once unsure, and where the desktop asks
 /// first, its question put on the terminal, y asking again, sure; with
 /// nothing to answer on, refused but for `--yes`, which was sure from the
 /// start. Once asked, it's the row asked about that's done, by the
-/// steady ids the shell gave with its question, so rows moving between
+/// steady ids the desktop gave with its question, so rows moving between
 /// the question and the y can't put another in its place.
 fn done(qs: &str, steps: &[String], said: &str, yes: bool, words: &Words) -> Result<(), Failure> {
     // A row its provider's daemon makes, as Power's Charge Limit, is there
@@ -317,7 +317,7 @@ fn done(qs: &str, steps: &[String], said: &str, yes: bool, words: &Words) -> Res
         let text = |key: &str| answer.get(key).and_then(Value::as_str).map(str::to_string);
         if let Some(question) = text("asks") {
             if sure {
-                // The shell asking again once told it's sure is its own
+                // The desktop asking again once told it's sure is its own
                 // failure, never a second ask.
                 return Err(Failure::new(Exit::Bug, question));
             }
@@ -348,7 +348,7 @@ fn done(qs: &str, steps: &[String], said: &str, yes: bool, words: &Words) -> Res
             let name = names.last().map_or("", String::as_str);
             return Err(Failure::new(Exit::Refused, words.unopened(name)));
         }
-        // An act the shell refused as it ran it, as a yes to a secret ask
+        // An act the desktop refused as it ran it, as a yes to a secret ask
         // it withholds, refused again however often it's asked; or one whose
         // daemon had no answer, which may yet have been done, since an ask
         // sent and never answered is told so as well as one never sent: it
@@ -368,9 +368,9 @@ fn done(qs: &str, steps: &[String], said: &str, yes: bool, words: &Words) -> Res
             return Err(Failure::new(Exit::Failed, words.failed(name)));
         }
         // Only an answer saying done is done: one this program doesn't know,
-        // as a refusal the shell learnt to give before this did, exited 0
+        // as a refusal the desktop learnt to give before this did, exited 0
         // as done, which is how a withheld walk was said done. Whether such
-        // an act ran isn't known, so it's said so, as from a shell and a
+        // an act ran isn't known, so it's said so, as from a desktop and a
         // launcher of different switches.
         if answer.get("done").and_then(Value::as_bool) == Some(true) {
             return Ok(());
@@ -407,8 +407,8 @@ enum Ask {
     Settled { drawers: bool },
 }
 
-/// What the shell shows at the steps, or how to exit, said on stderr,
-/// where a step names nothing or the shell doesn't answer.
+/// What the desktop shows at the steps, or how to exit, said on stderr,
+/// where a step names nothing or the desktop doesn't answer.
 fn ask(steps: &[String], how: Ask, words: &Words) -> Result<Value, Failure> {
     let qs = qs();
     let answer = match how {
@@ -418,13 +418,13 @@ fn ask(steps: &[String], how: Ask, words: &Words) -> Result<Value, Failure> {
     heard(answer, words)
 }
 
-/// The qs that asks the shell: Quickshell's, or a stand-in's in a check.
+/// The qs that asks the desktop: Quickshell's, or a stand-in's in a check.
 fn qs() -> String {
     env::var("LAUNCHER_QS").unwrap_or_else(|_| "qs".to_string())
 }
 
-/// What the shell answered, or how to exit, said on stderr, where a step
-/// names nothing or the shell doesn't answer.
+/// What the desktop answered, or how to exit, said on stderr, where a step
+/// names nothing or the desktop doesn't answer.
 fn heard(answer: Result<Answer, String>, words: &Words) -> Result<Value, Failure> {
     match answer {
         Ok(Answer::Shown(shown)) => Ok(shown),
@@ -471,10 +471,10 @@ mod tests {
     }
 
     #[test]
-    fn an_act_the_shell_withheld_exits_refused_saying_why() {
+    fn an_act_the_desktop_withheld_exits_refused_saying_why() {
         let said = Words::from_value(&serde_json::json!({"terminal": {
             "refused": "{name} not done \u{b7} {why}"}}));
-        // Typed as an agent types them, so the path said is the shell's.
+        // Typed as an agent types them, so the path said is the desktop's.
         let failure = done(
             &asking::stand_in::qs("refused"),
             &words(&["asks", "kil", "y"]),

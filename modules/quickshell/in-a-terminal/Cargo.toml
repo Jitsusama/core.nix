@@ -1,5 +1,5 @@
 # `launcher`, the launcher in a terminal: any place, row or drawer the
-# running shell holds, printed as text or JSON (src/main.rs says how).
+# running desktop holds, printed as text or JSON (src/main.rs says how).
 [package]
 name = "launcher"
 version = "0.1.0"
