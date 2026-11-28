@@ -763,18 +763,7 @@ impl Way {
                 self.dropped_s += moment;
             }
         }
-        while let Some(&(when, moment)) = self.drops.front()
-            && when <= at - DROPS_LOOK_S
-        {
-            self.drops.pop_front();
-            self.dropped_s -= moment;
-        }
-        while let Some(&(when, moment)) = self.heard.front()
-            && when <= at - DROPS_LOOK_S
-        {
-            self.heard.pop_front();
-            self.heard_s -= moment;
-        }
+        self.forget_drops_before(at);
         if let Some(returned) = self.returned_at {
             if at - returned >= DROPS_LOOK_S {
                 self.forget_the_stand();
@@ -798,6 +787,24 @@ impl Way {
     }
 
     /// Starts the drops' count, and the moments it heard, afresh.
+    /// Forgets the moments heard and dropping past `DROPS_LOOK_S` before
+    /// `at`: only judged moments count them, so a spell without readings
+    /// would keep older ones (drops stand longer round 5's F1).
+    fn forget_drops_before(&mut self, at: f64) {
+        while let Some(&(when, moment)) = self.drops.front()
+            && when <= at - DROPS_LOOK_S
+        {
+            self.drops.pop_front();
+            self.dropped_s -= moment;
+        }
+        while let Some(&(when, moment)) = self.heard.front()
+            && when <= at - DROPS_LOOK_S
+        {
+            self.heard.pop_front();
+            self.heard_s -= moment;
+        }
+    }
+
     fn forget_the_drops(&mut self) {
         self.drops.clear();
         self.dropped_s = 0.0;
@@ -840,6 +847,7 @@ impl Way {
     /// for any reason is no quiet one (drops stand longer round 4's F27).
     fn returned(&mut self, at: f64) {
         if let Some(dropped) = self.dropped_at.take() {
+            self.forget_drops_before(at);
             let looked = (at - dropped).min(DROPS_LOOK_S);
             let quiet = self.dropped_s < looked * QUIET_STAND
                 && self.heard_s >= looked * (1.0 - QUIET_STAND);
@@ -981,7 +989,11 @@ impl Way {
         // by cable came while the VPN's own queue was held, which is why
         // its seconds count none.
         let dropping = heard && ours.queued && ours.waiting && lost >= offered * DROPPED_PAST;
-        let by_drops = self.count_drops(at, dt, dropping, heard) && (backing_off || !line_full);
+        // A moment with nothing queued offers the router nothing to drop,
+        // so it says nothing of a stand's quiet (drops stand longer round
+        // 5's F2).
+        let telling = heard && ours.queued;
+        let by_drops = self.count_drops(at, dt, dropping, telling) && (backing_off || !line_full);
         // With the other way's queue standing late, our flows wait on acks
         // that come late, so they send under any rate, the router's line
         // or ours: on 18 November a download filling the router's queue
@@ -6100,6 +6112,46 @@ mod tests {
         );
     }
 
+    // A spell without readings before a return leaves nothing older than
+    // `DROPS_LOOK_S` in its judgement, so a stand heard only long before
+    // it isn't judged quiet (drops stand longer round 5's F1).
+    #[test]
+    fn a_return_after_a_spell_unread_forgets_what_was_heard_before_it() {
+        let mut c = anchored(12_000.0);
+        let up = &mut c.up;
+        up.found_by_drops(0.0);
+        heard_for(up, (0.0, DROPS_LOOK_S), 0.0);
+        up.returned(DROPS_LOOK_S * 1.5);
+        assert!(
+            up.returned_at.is_none(),
+            "a stand heard only before half a look unread was judged quiet"
+        );
+    }
+
+    // A moment with nothing queued offers the router nothing to drop, so
+    // an idle stand isn't heard quiet (drops stand longer round 5's F2).
+    #[test]
+    fn an_idle_moment_says_nothing_of_a_stand_s_quiet() {
+        let mut c = anchored(12_000.0);
+        let up = &mut c.up;
+        let mut at = 0.0;
+        while at < 10.0 {
+            up.own(
+                at,
+                1.0,
+                Ours::default(),
+                (1_000.0, 1_000.0),
+                Tunnel::Unheard,
+            );
+            at += 1.0;
+        }
+        assert!(
+            up.heard_s.abs() < 1e-9,
+            "ten idle seconds were heard for {} s",
+            up.heard_s
+        );
+    }
+
     // A return is judged on its own drops: those the stand's probes made
     // before it don't find the hold again, and drops for `DROPS_SHARE` of
     // `DROPS_AGAIN_S` after it do (drops stand longer round 1's F6, F43,
@@ -6228,7 +6280,12 @@ mod tests {
         // How the stand went, how many of its last seconds were heard, and
         // whether the moments before were reached unheard or not at all.
         for (how, heard, reached, quiet) in [
-            ("beside a copy at home outweighing what crossed", 0.0, true, false),
+            (
+                "beside a copy at home outweighing what crossed",
+                0.0,
+                true,
+                false,
+            ),
             ("cut for its delay but in its last 30 s", 30.0, false, false),
             ("unheard just over its share", most - 1.0, true, false),
             ("unheard for its share", most, false, true),
@@ -6279,7 +6336,10 @@ mod tests {
             let up = &mut c.up;
             up.found_by_drops(0.0);
             let returned = DROPPED_STANDS_S;
-            heard_for(up, (returned - DROPS_LOOK_S, returned), dropped);
+            // The look's last moment is the return's own, and its first is
+            // a look before it (drops stand longer round 5's F1).
+            let look = (returned - DROPS_LOOK_S + 1.0, returned + 1.0);
+            heard_for(up, look, dropped);
             up.returned(returned);
             assert_eq!(
                 up.returned_at.is_some(),
