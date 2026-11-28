@@ -6,7 +6,8 @@ realm under test names, node.json, through the node feed exactly as home.nix
 declares it for a machine in a realm (NODE_KINDS). It must say it's live with
 the realm drawn, its networks and the lines joining them and their cells
 in one window that opens a cell clicked, follow a change within its pace,
-two cells sharing a title moving among them, say broken when the node
+two cells sharing a title moving among them, tell a network titled as one
+of its own groups from the group, say broken when the node
 stops while keeping the realm drawn, and live again when it's back, say stale
 when the server goes, draw a record's words as words and never as markup,
 list what each cell, machine, network and branch spent today, most first,
@@ -384,6 +385,23 @@ def namesakes() -> dict[str, list[dict[str, object]]]:
     return {**reading, "unanswered": [{**asked, "waiting_on": list(NAMESAKES)}]}
 
 
+# A network titled as one of the page's own groups, the receptors at the
+# realm's edge, and what tells the two apart: its id after its title.
+OWN_TITLED = "orchestration.tern01"
+OWN_GROUP = "Receptors"
+OWN_TOLD = "Receptors (TERN01)"
+
+
+def own_titled() -> dict[str, list[dict[str, object]]]:
+    """Node.json's realm with OWN_TITLED titled as the page's own group of receptors."""
+    reading = json.loads((HERE / "node.json").read_text())["kinds"]
+    networks = copy.deepcopy(reading["network"])
+    for network in networks:
+        if network["name"] == OWN_TITLED:
+            network["title"] = OWN_GROUP
+    return {**reading, "network": networks}
+
+
 def foraging() -> dict[str, list[dict[str, object]]]:
     """Node.json's realm with forages served, none of them yet, as a node serves the kind."""
     reading = json.loads((HERE / "node.json").read_text())["kinds"]
@@ -483,6 +501,18 @@ def namesakes_node(tmp_path: Path) -> Iterator[StandIn]:
 @pytest.fixture
 def namesakes_served(tmp_path: Path, namesakes_node: StandIn) -> Iterator[Served]:
     yield from serve(tmp_path, namesakes_node)
+
+
+@pytest.fixture
+def own_titled_node(tmp_path: Path) -> Iterator[StandIn]:
+    stand_in = StandIn(tmp_path / "own-titled.sock", "node", own_titled()).start()
+    yield stand_in
+    stand_in.leave()
+
+
+@pytest.fixture
+def own_titled_served(tmp_path: Path, own_titled_node: StandIn) -> Iterator[Served]:
+    yield from serve(tmp_path, own_titled_node)
 
 
 @pytest.fixture
@@ -1185,6 +1215,21 @@ def test_cells_sharing_a_title_that_move_are_drawn_moving(
         assert "m-nucleus" in standing_of(page, second), f"{second} stopped being drawn moving"
         still_owe(page, f"once {first} went quiet")
         the_map_stands(page, "live")
+    finally:
+        opened.close()
+
+
+def test_a_network_titled_as_the_pages_own_group_carries_its_id(
+    browser: Browser, own_titled_served: Served
+) -> None:
+    root, _ = own_titled_served
+    opened = Opened(browser, f"{root}mycelium/#net={OWN_TITLED}", SIZES[-1], "dark")
+    try:
+        page = opened.page
+        the_map_stands(page, "live")
+        expect(
+            page.locator("#panel-title"), "a network titled as the receptors read as them"
+        ).to_have_text(OWN_TOLD)
     finally:
         opened.close()
 
