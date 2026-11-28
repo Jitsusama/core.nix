@@ -146,61 +146,66 @@ impl StandIn {
     }
 }
 
-/// A sign-in as the harness keeps it, in a file of the test's own.
-fn credentials(test: &str) -> PathBuf {
-    let path =
-        std::env::temp_dir().join(format!("slack-people-{test}-{}.json", std::process::id()));
-    std::fs::write(
-        &path,
-        r#"{"token": {"accessToken": "xoxc-mine", "cookie": "d-cookie", "userId": "U0",
-            "teamId": "T1", "teamName": "Team", "scopes": []}}"#,
-    )
-    .unwrap();
-    path
-}
+/// A case's own folder, made afresh for the test and this run and open
+/// to this user alone, holding all that its runs keep: its sign-in, the
+/// cache beside it, its daemon's run and what that writes, and the socket
+/// it listens on as systemd's watchdog. Nothing at those names can be
+/// made or linked first by another run or user, and the folder goes,
+/// with all of it, once the case lets go, failing or not.
+struct Case(PathBuf);
 
-/// The cache home a run with this sign-in's file keeps in.
-fn cache(credentials: &std::path::Path) -> PathBuf {
-    credentials.with_extension("cache")
-}
+impl Case {
+    /// A `Case` named for the test and this run.
+    fn new(test: &str) -> Case {
+        let folder = std::env::temp_dir().join(format!("slack-{test}-{}", std::process::id()));
+        if let Err(error) = std::fs::DirBuilder::new().mode(0o700).create(&folder) {
+            panic!(
+                "{} couldn't be made afresh, so the case might read what another left \
+                 in it: {error}. A run killed partway leaves its folder: remove it once \
+                 no run is using it.",
+                folder.display()
+            );
+        }
+        Case(folder)
+    }
 
-/// Forgets a test's sign-in and what its runs kept.
-fn forget(credentials: &std::path::Path) {
-    let _ = std::fs::remove_file(credentials);
-    let _ = std::fs::remove_dir_all(cache(credentials));
-}
-
-/// A sign-in's file that isn't there, in a folder made afresh for the
-/// test and this run and open to this user alone, so no other run's or
-/// user's file can stand in for it. The folder, with whatever a run kept
-/// in it, goes once the case lets go.
-struct NoSignIn(PathBuf);
-
-impl NoSignIn {
-    /// The sign-in's file, which nothing makes.
-    fn path(&self) -> PathBuf {
+    /// The sign-in's file, which nothing makes until `signed_in` does.
+    fn sign_in(&self) -> PathBuf {
         self.0.join("sign-in.json")
+    }
+
+    /// The sign-in's file, holding a sign-in as the harness keeps it.
+    fn signed_in(&self) -> PathBuf {
+        let path = self.sign_in();
+        std::fs::write(
+            &path,
+            r#"{"token": {"accessToken": "xoxc-mine", "cookie": "d-cookie", "userId": "U0",
+                "teamId": "T1", "teamName": "Team", "scopes": []}}"#,
+        )
+        .unwrap();
+        path
+    }
+
+    /// The path the case's slack-unreads runs over (`unreads`).
+    fn run(&self) -> PathBuf {
+        self.0.join("run")
+    }
+
+    /// Where the case listens as systemd's watchdog would.
+    fn notify(&self) -> PathBuf {
+        self.0.join("notify")
     }
 }
 
-impl Drop for NoSignIn {
+impl Drop for Case {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.0);
     }
 }
 
-/// A `NoSignIn` named for the test and this run.
-fn no_sign_in(test: &str) -> NoSignIn {
-    let folder =
-        std::env::temp_dir().join(format!("slack-{test}-no-sign-in-{}", std::process::id()));
-    if let Err(error) = std::fs::DirBuilder::new().mode(0o700).create(&folder) {
-        panic!(
-            "{} couldn't be made afresh, so a case without a sign-in might read \
-             what's in it: {error}",
-            folder.display()
-        );
-    }
-    NoSignIn(folder)
+/// The cache home a run with this sign-in's file keeps in, beside it.
+fn cache(credentials: &std::path::Path) -> PathBuf {
+    credentials.with_extension("cache")
 }
 
 /// Slack as it answers what wants Joel: Ada's direct message with two
@@ -232,27 +237,55 @@ fn wants_joel(line: &str) -> String {
 
 /// A slack-unreads a case started over `run`, stopped once the case lets
 /// go of it, so a case failing partway leaves no daemon asking a stand-in
-/// that's gone. What it kept beside `run`, its socket's folder and what it
-/// asks of Joel, goes then too.
+/// that's gone. What it kept beside `run` goes with the case's folder.
 struct Running {
     child: Child,
-    run: PathBuf,
+    /// Where what it writes to its standard error is kept, beside `run`.
+    said: PathBuf,
+    /// Whether the case has stopped it.
+    stopped: bool,
 }
 
 impl Running {
-    /// Stops it, failing the case if it had already ended on its own, and
-    /// waits for it to end. What it kept stays until the case lets go.
+    /// `command` started, what it writes to its standard error kept
+    /// beside `run`.
+    fn started(mut command: Command, run: &std::path::Path) -> Running {
+        let said = run.with_extension("stderr");
+        let file = std::fs::File::create_new(&said).unwrap();
+        Running {
+            child: command.stderr(file).spawn().unwrap(),
+            said,
+            stopped: false,
+        }
+    }
+
+    /// Stops it, failing the case if it had already ended on its own,
+    /// saying how and what it wrote, and waits for it to end. What it kept
+    /// stays until the case lets go.
     fn stop(&mut self) {
+        assert!(
+            !self.stopped,
+            "slack-unreads was stopped twice, so the case stops what it already stopped"
+        );
+        self.stopped = true;
         let ended = self
             .child
             .try_wait()
             .expect("couldn't ask whether slack-unreads had ended");
-        assert!(
-            ended.is_none(),
-            "slack-unreads had ended before it was stopped: {ended:?}"
-        );
+        if let Some(status) = ended {
+            panic!(
+                "slack-unreads had ended before it was stopped ({status}), having written:\n{}",
+                self.written()
+            );
+        }
         self.end()
             .expect("slack-unreads couldn't be stopped, or wasn't seen to end");
+    }
+
+    /// What it wrote to its standard error, or why that can't be read.
+    fn written(&self) -> String {
+        std::fs::read_to_string(&self.said)
+            .unwrap_or_else(|error| format!("({} couldn't be read: {error})", self.said.display()))
     }
 
     /// Kills it and waits for it, as both stopping and letting go do.
@@ -266,11 +299,27 @@ impl Drop for Running {
     fn drop(&mut self) {
         // Stopped already, or failing: either way, nothing more to say.
         let _ = self.end();
-        let _ = std::fs::remove_file(waiting(&self.run));
-        if let Some(folder) = socket(&self.run).parent() {
-            let _ = std::fs::remove_dir_all(folder);
-        }
     }
+}
+
+#[test]
+#[should_panic(expected = "slack-unreads had ended before it was stopped (exit status: 0)")]
+fn a_daemon_ended_before_it_is_stopped_fails_its_case_saying_how() {
+    let case = Case::new("ended-early");
+    let mut ended = Running::started(Command::new("true"), &case.run());
+    ended.child.wait().expect("true couldn't be waited for");
+    ended.stop();
+}
+
+#[test]
+#[should_panic(expected = "slack-unreads was stopped twice")]
+fn a_daemon_stopped_twice_fails_its_case_without_blaming_the_daemon() {
+    let case = Case::new("stopped-twice");
+    let mut reading = Command::new("cat");
+    reading.stdin(Stdio::piped());
+    let mut running = Running::started(reading, &case.run());
+    running.stop();
+    running.stop();
 }
 
 /// slack-unreads, started over the stand-in with this sign-in, asking
@@ -292,16 +341,12 @@ fn unreads_from(
     credentials: &std::path::Path,
     run: &std::path::Path,
 ) -> Running {
-    Running {
-        child: unreads_command(command, stand_in, credentials, run)
-            .spawn()
-            .unwrap(),
-        run: run.to_owned(),
-    }
+    Running::started(unreads_command(command, stand_in, credentials, run), run)
 }
 
 /// `command` set to run slack-unreads as `unreads_from` starts it, reading
-/// only what the case gives it.
+/// only what the case gives it. `unreads_from` keeps what it writes to its
+/// standard error, for a case to say if it ends on its own.
 fn unreads_command(
     mut command: Command,
     stand_in: &StandIn,
@@ -313,8 +358,7 @@ fn unreads_command(
         .arg(socket(run))
         .arg(waiting(run))
         .arg(&stand_in.origin)
-        .arg("50")
-        .stderr(Stdio::null());
+        .arg("50");
     shut_out(&mut command);
     command
 }

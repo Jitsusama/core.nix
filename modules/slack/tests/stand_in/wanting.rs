@@ -5,15 +5,15 @@
 use std::process::Command;
 
 use super::{
-    StandIn, asked, credentials, forget, listed, socket, unreads, unreads_from, until, waiting,
-    wants_joel,
+    Case, StandIn, asked, listed, socket, unreads, unreads_from, until, waiting, wants_joel,
 };
 
 #[test]
 fn what_wants_joel_is_held_whole_each_conversation_named_once() {
     let stand_in = StandIn::new(wants_joel);
-    let path = credentials("unreads");
-    let run = path.with_extension("unreads");
+    let case = Case::new("unreads");
+    let path = case.signed_in();
+    let run = case.run();
     // Asked before, as when Slack refused the sign-in an earlier run had.
     std::fs::write(waiting(&run), "{}").unwrap();
     let mut program = unreads(&stand_in, &path, &run);
@@ -69,7 +69,6 @@ fn what_wants_joel_is_held_whole_each_conversation_named_once() {
                     || header == "Authorization: Bearer xoxc-mine")),
         "{heard:?}"
     );
-    forget(&path);
 }
 
 /// Slack as it answers a search for "launcher" and what's around a
@@ -136,8 +135,9 @@ fn posting(line: &str) -> String {
 #[test]
 fn a_notice_from_a_channel_is_said_a_post_or_a_reply_by_its_history() {
     let stand_in = StandIn::new(posting);
-    let path = credentials("unreads-posted");
-    let run = path.with_extension("posted");
+    let case = Case::new("unreads-posted");
+    let path = case.signed_in();
+    let run = case.run();
     let mut program = unreads(&stand_in, &path, &run);
     until("the socket never came", || socket(&run).exists());
     let posted = |id: u64, channel: &str, words: &str| {
@@ -158,7 +158,6 @@ fn a_notice_from_a_channel_is_said_a_post_or_a_reply_by_its_history() {
     let unknown = posted(5, "#nowhere", "hi");
     assert_eq!(unknown["error"]["code"], "unknown", "{unknown}");
     program.stop();
-    forget(&path);
 }
 
 #[test]
@@ -168,8 +167,9 @@ fn a_socket_systemd_hands_it_is_the_one_it_answers_on() {
     // that started it is answered. A daemon that made a socket of its own
     // would leave that ask on one nobody accepts from.
     let stand_in = StandIn::new(wants_joel);
-    let path = credentials("unreads-handed");
-    let run = path.with_extension("handed");
+    let case = Case::new("unreads-handed");
+    let path = case.signed_in();
+    let run = case.run();
     std::fs::create_dir_all(socket(&run).parent().unwrap()).unwrap();
     let mut launcher = Command::new("systemd-socket-activate");
     launcher
@@ -183,14 +183,14 @@ fn a_socket_systemd_hands_it_is_the_one_it_answers_on() {
     );
     assert_eq!(hello["domain"], "slack");
     program.stop();
-    forget(&path);
 }
 
 #[test]
 fn a_search_asked_over_the_socket_says_each_message_and_what_is_around_it() {
     let stand_in = StandIn::new(searching);
-    let path = credentials("unreads-search");
-    let run = path.with_extension("search");
+    let case = Case::new("unreads-search");
+    let path = case.signed_in();
+    let run = case.run();
     let mut program = unreads(&stand_in, &path, &run);
     until("the socket never came", || socket(&run).exists());
     let hello = || {
@@ -275,5 +275,4 @@ fn a_search_asked_over_the_socket_says_each_message_and_what_is_around_it() {
         "{:?}",
         stand_in.heard()
     );
-    forget(&path);
 }

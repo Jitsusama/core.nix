@@ -406,6 +406,25 @@ fn say_as_it_comes(context: &Context, said: run::Said<'_>) {
     }
 }
 
+/// What a run found, for a person, once it's over: that it passed, or what
+/// stopped its load and where it first failed.
+fn summary(run: &run::Run) -> String {
+    if run.passed() {
+        return "passes: everything felt as it does idle, up to twenty builds\n".to_owned();
+    }
+    let mut lines = String::new();
+    if let Some(bytes) = run.stopped_under {
+        let _ = writeln!(lines, "stopped: free memory fell under {} GiB", bytes >> 30);
+    }
+    match run.first_failed() {
+        Some(builds) => {
+            let _ = writeln!(lines, "fails: first at {builds} builds");
+        }
+        None => lines.push_str("fails: the load didn't run to the end\n"),
+    }
+    lines
+}
+
 /// Runs the load proof whole, saying each step's reading as it comes, and
 /// passes only when every step felt as idle did.
 fn ran(context: &Context) -> Result<(), Failure> {
@@ -437,20 +456,8 @@ fn ran(context: &Context) -> Result<(), Failure> {
             "first_failed_builds": run.first_failed(),
             "stopped_under_free_bytes": run.stopped_under,
         })))?;
-    } else if run.passed() {
-        said(context.say("passes: everything felt as it does idle, up to twenty builds\n"))?;
     } else {
-        let mut lines = String::new();
-        if let Some(bytes) = run.stopped_under {
-            let _ = writeln!(lines, "stopped: free memory fell under {} GiB", bytes >> 30);
-        }
-        match run.first_failed() {
-            Some(builds) => {
-                let _ = writeln!(lines, "fails: first at {builds} builds");
-            }
-            None => lines.push_str("fails: the load didn't run to the end\n"),
-        }
-        said(context.say(&lines))?;
+        said(context.say(&summary(&run)))?;
     }
     if run.passed() {
         Ok(())
@@ -553,6 +560,51 @@ mod tests {
         assert_eq!(
             answer,
             json!({"schema": "load-proof.keys/1", "keys": 2, "p99_ms": 4.0})
+        );
+    }
+
+    /// A run whose steps ran these builds, the save failing in each step
+    /// `failing` names, stopped under `stopped_under` bytes free if any.
+    fn ran_steps(builds: &[usize], failing: &[usize], stopped_under: Option<u64>) -> run::Run {
+        let save = judge::Failed {
+            signal: "save",
+            missing: None,
+            figures: vec![("p99_ms", "p99 40.0 ms against 9.0 ms idle".to_owned())],
+        };
+        run::Run {
+            steps: builds
+                .iter()
+                .map(|&builds| run::Step {
+                    builds,
+                    failed: if failing.contains(&builds) {
+                        vec![save.clone()]
+                    } else {
+                        Vec::new()
+                    },
+                })
+                .collect(),
+            stopped_under,
+        }
+    }
+
+    #[test]
+    fn a_run_that_passes_after_a_failure_is_summed_up_by_its_first() {
+        let recovered = ran_steps(&[4, 8, 12], &[8], None);
+        assert_eq!(
+            summary(&recovered),
+            "fails: first at 8 builds\n",
+            "a run that failed at 8 builds and passed at 12 should say only where it \
+             first failed, never that it failed from 8 builds on"
+        );
+    }
+
+    #[test]
+    fn a_run_stopped_under_memory_with_a_failure_says_both() {
+        let stopped = ran_steps(&[4, 8], &[4], Some(8 << 30));
+        assert_eq!(
+            summary(&stopped),
+            "stopped: free memory fell under 8 GiB\nfails: first at 4 builds\n",
+            "a run stopped under memory after failing at 4 builds should say both"
         );
     }
 
