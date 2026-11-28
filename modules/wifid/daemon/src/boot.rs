@@ -13,7 +13,7 @@
 //! A type of its own rather than a `Duration`, so the compiler refuses a
 //! boot instant where tokio's is meant, and the other way round.
 
-use std::ops::{Add, Sub};
+use std::ops::{Add, AddAssign, Sub};
 
 use tokio::time::Duration;
 
@@ -64,6 +64,12 @@ impl Add<Duration> for Instant {
 
     fn add(self, later: Duration) -> Instant {
         Instant(self.0 + later)
+    }
+}
+
+impl AddAssign<Duration> for Instant {
+    fn add_assign(&mut self, later: Duration) {
+        self.0 += later;
     }
 }
 
@@ -127,6 +133,9 @@ mod tests {
             now,
             "five minutes back read otherwise"
         );
+        let mut stepped = now;
+        stepped += Duration::from_mins(5);
+        assert_eq!(stepped, later, "five minutes stepped on read otherwise");
         assert_eq!(
             now.checked_sub(now.since_boot() + Duration::from_secs(1)),
             None,
