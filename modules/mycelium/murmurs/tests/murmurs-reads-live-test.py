@@ -421,29 +421,21 @@ def said_quiet(page: Page, why: str) -> None:
     )
 
 
-# The kit's code faces, by file. The italic one is what a quiet day's line once
-# sent for the two words of the command it names; the upright one is what it
-# draws them in.
+# The kit's italic code face, by file: what a quiet day's line once sent for the
+# two words of the command it names.
 ITALIC_CODE = "fonts/monaspace-italic.woff2"
-UPRIGHT_CODE = "fonts/monaspace.woff2"
+# The family the kit draws code in, whichever of Monaspace's faces it names.
+CODE_FAMILY = "Monaspace "
 
-# The face each piece of code on the quiet line is drawn in, read in one task.
+# The family and slant each piece of code on the quiet line is drawn in, and its line's slant,
+# read in one task from the line's own computed style. The head draws its keys in the upright
+# code face whatever the quiet line draws, so a face loaded or asked for says nothing of it.
 QUIET_CODE = """() => [...document.querySelectorAll('#quiet code')].map((code) => ({
     words: code.textContent,
+    family: getComputedStyle(code).fontFamily.split(',')[0].trim().replace(/["']/gu, ''),
     style: getComputedStyle(code).fontStyle,
     line: getComputedStyle(code.parentElement).fontStyle,
 }))"""
-
-# How each upright face of the quiet code's own family stands. The head preloads the upright
-# file whatever the page draws, so a request for it proves nothing; a face is loaded only once
-# something is drawn in it.
-QUIET_FACES = """() => {
-    const code = document.querySelector('#quiet code');
-    const family = getComputedStyle(code).fontFamily.split(',')[0].trim().replace(/["']/gu, '');
-    return [...document.fonts]
-        .filter((face) => face.family.replace(/["']/gu, '') === family && face.style === 'normal')
-        .map((face) => ({ family, status: face.status }));
-}"""
 
 
 def test_a_quiet_day_sends_no_italic_code_face(
@@ -465,6 +457,9 @@ def test_a_quiet_day_sends_no_italic_code_face(
             assert all(each["line"] == "italic" for each in code), (
                 f"the quiet line is no longer italic, so nothing here is tested: {code}"
             )
+            assert all(each["family"].startswith(CODE_FAMILY) for each in code), (
+                f"the quiet line's code isn't drawn in the kit's code face: {code}"
+            )
             assert all(each["style"] == "normal" for each in code), (
                 f"the quiet line's code leans with it: {code}"
             )
@@ -472,12 +467,6 @@ def test_a_quiet_day_sends_no_italic_code_face(
             opened.page.evaluate("document.fonts.ready.then(() => true)")
             opened.page.wait_for_load_state("networkidle")
             urls = [request.url for request in opened.asked]
-            # The head preloads the upright code face whatever the page draws, so a
-            # request for it says nothing; that the face is loaded is what does.
-            upright = opened.page.evaluate(QUIET_FACES)
-            assert any(face["status"] == "loaded" for face in upright), (
-                f"the quiet line's code drew in no upright code face of its own: {upright}"
-            )
             faces = [url for url in urls if url.endswith(ITALIC_CODE)]
             assert faces == [], f"a quiet day's line sent the italic code face: {faces}"
             opened.keeps_to(BUDGET)
