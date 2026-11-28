@@ -77,6 +77,8 @@ const standings = new Map<Kind, Standing>();
 // The last thing each watch couldn't read, said until it reads another.
 const unread = new Map<Kind, string>();
 
+// When the last reading was handed over, on the page's own clock, which never steps back:
+// on the wall clock, one set back would hold the next reading for as long as it went.
 let handed = Number.NEGATIVE_INFINITY;
 let waiting: number | undefined;
 let owed = false;
@@ -207,8 +209,9 @@ function sayPastPatience(): void {
 function handOver(): void {
   waiting = undefined;
   owed = false;
-  handed = Date.now();
-  const now = { ...nowOf(heard, handed), unread: unreadOf(standing()) };
+  handed = performance.now();
+  const at = Date.now();
+  const now = { ...nowOf(heard, at), unread: unreadOf(standing()) };
   told = now.unread;
   // A line the drawing wrote of a reading it couldn't draw is that reading's alone:
   // the drawing takes each reading as it's handed, so one that fails again says so again.
@@ -221,7 +224,7 @@ function handOver(): void {
   // so draw again the moment the first of them does.
   globalThis.clearTimeout(expires);
   const due = expiryOf(now);
-  expires = due === undefined ? undefined : globalThis.setTimeout(owe, due - handed + 1);
+  expires = due === undefined ? undefined : globalThis.setTimeout(owe, due - at + 1);
 }
 
 /**
@@ -245,7 +248,7 @@ function owe(): void {
   if (document.hidden || !drawable() || waiting !== undefined) {
     return;
   }
-  const wait = handed + FLOOR_MS - Date.now();
+  const wait = handed + FLOOR_MS - performance.now();
   if (wait <= 0) {
     handOver();
   } else {
