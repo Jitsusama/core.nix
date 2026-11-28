@@ -843,6 +843,20 @@ def test_a_reload_holds_the_page_still(code_page: Page) -> None:
     assert room == "", f"the list's room, {room}, was held after every feed had drawn"
 
 
+def test_a_reload_with_its_room_kept_is_seen_at_once(code_page: Page) -> None:
+    says_it_stands(code_page, "live")
+    expect(row(code_page, "github:owl/core"), "Code drew no row for core").to_be_visible()
+    code_page.add_init_script(HELD)
+    code_page.reload()
+    says_it_stands(code_page, "live")
+    loaded = code_page.evaluate("() => globalThis.loaded")
+    assert loaded is not None, "the reload was never read as it loaded"
+    # Every part's room is held from the first paint, so nothing is gained by waiting unseen.
+    assert not loaded["waits"], "a reload with its room kept was marked to wait as it loaded"
+    opacity = loaded["opacity"]
+    assert opacity == SEEN, f"a reload with its room kept was at opacity {opacity} as it loaded"
+
+
 # What a page holds at DOMContentLoaded of each part's room, before any feed can draw.
 HELD_ROOM = """document.addEventListener("DOMContentLoaded", () => {
   const style = document.documentElement.style;
