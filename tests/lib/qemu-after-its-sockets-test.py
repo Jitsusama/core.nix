@@ -99,6 +99,8 @@ def test_a_socket_that_never_comes_fails_and_ends_what_the_script_started(
 
 
 def test_the_rest_of_qemu_is_the_qemu_given() -> None:
-    """The rest of qemu, qemu-img among it, is the qemu given."""
+    """The rest of qemu, qemu-img among it, is the qemu given, not one the wrapper writes."""
     qemu_img = (QEMU / "bin" / "qemu-img").resolve()
-    assert qemu_img.read_text().startswith("#!"), f"qemu-img is {qemu_img}, not the given qemu's"
+    assert not qemu_img.is_relative_to(QEMU.resolve()), (
+        f"qemu-img is {qemu_img}, the wrapper's own rather than the given qemu's"
+    )
