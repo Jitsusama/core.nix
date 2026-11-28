@@ -26,7 +26,7 @@ use update_to_main::config::{
     Batches, Busy, Config, Follow, Here, Holds, Hosted, Kept, Kind, Says, Session, Signers, Tools,
 };
 use update_to_main::line::{Applied, Line};
-use update_to_main::{ask, held, serve, update};
+use update_to_main::{ask, follow, held, serve, update};
 
 /// The shell the stand-ins run under: the build's own in Nix's sandbox,
 /// which has no /usr/bin/env.
@@ -4178,7 +4178,7 @@ fn an_input_asked_for_moves_only_when_asked_and_stays_till_the_lock_passes_it() 
             && overridden.trim().ends_with(&format!("rev={wanted}")),
         "the build wasn't given core's mycelium at the commit asked for: {overridden}"
     );
-    world.commit_in("mycelium", "newer", true);
+    let newer = world.commit_in("mycelium", "newer", true);
     // Matched on what it judges, so a field the line gains elsewhere doesn't
     // change what this case asks.
     let kept = BTreeMap::from([(NESTED.to_owned(), wanted.clone())]);
@@ -4187,6 +4187,27 @@ fn an_input_asked_for_moves_only_when_asked_and_stays_till_the_lock_passes_it() 
         matches!(&ending, Line::Unchanged { commit, followed, .. }
             if *commit == head && *followed == kept),
         "a plain ask didn't keep mycelium where it was asked, past the lock's pin: {ending:?}"
+    );
+    // A lock caught up with what was asked rules again, while the ask is
+    // still kept, so it is the lock's pin that lets it go.
+    fs::write(
+        world.origin.join("flake.lock"),
+        pinning_nested(&core, &wanted),
+    )
+    .unwrap();
+    git(&world.origin, &["add", "flake.lock"]);
+    let caught_up = world.signed("two");
+    world.system(&caught_up);
+    assert_eq!(
+        world.update().1,
+        done(&caught_up),
+        "mycelium was still overridden once the lock pinned what was asked"
+    );
+    world.system(&format!("{caught_up}+{newer}"));
+    assert_eq!(
+        world.update_at(NESTED, &newer),
+        done_following(&caught_up, &[(NESTED, &newer)]),
+        "an ask at mycelium past the lock's pin wasn't built"
     );
     // A lock gone off the line of what was asked rules again, rather than
     // refusing every update with no ask able to clear it.
@@ -4207,18 +4228,71 @@ fn an_input_asked_for_moves_only_when_asked_and_stays_till_the_lock_passes_it() 
         done(&aside),
         "mycelium was held where it was asked once the lock pinned it off that line"
     );
-    fs::write(
-        world.origin.join("flake.lock"),
-        pinning_nested(&core, &wanted),
-    )
-    .unwrap();
-    git(&world.origin, &["add", "flake.lock"]);
-    let caught_up = world.signed("two");
-    world.system(&caught_up);
+}
+
+/// The follower doesn't look where an input followed only when asked is,
+/// since its moving is no reason to ask: a repository of its out of reach
+/// would otherwise fail every look.
+#[test]
+fn the_follower_doesnt_look_at_an_input_followed_only_when_asked() {
+    let world = asking_nested(World::new());
+    world.signed("one");
+    fs::rename(world.root.join("mycelium"), world.root.join("mycelium-gone")).unwrap();
+    let heads = follow::heads(&world.config, None);
+    assert!(
+        heads.as_ref().is_ok_and(|heads| !heads.contains_key(NESTED)),
+        "the follower looked at an input followed only when asked: {heads:?}"
+    );
+}
+
+/// A person's `ask --at INPUT=COMMIT` reaches the socket in the words it
+/// reads, so the update is built with the input at that commit.
+#[test]
+fn an_ask_at_an_input_s_commit_from_the_command_line_builds_it() {
+    let world = following();
+    let pinned = world.core_commit("pinned", true);
+    let wanted = world.core_commit("wanted", true);
+    world.core_commit("newer", true);
+    let head = world.signed_pinning("one", &pinned);
+    world.system(&format!("{head}+{wanted}"));
+    let socket = serving(&world);
+    let asked = Command::new(env!("CARGO_BIN_EXE_update-to-main"))
+        .args(["ask", "--socket"])
+        .arg(&socket)
+        .args(["--at", &format!("core={wanted}")])
+        .output()
+        .unwrap();
+    let said = String::from_utf8_lossy(&asked.stdout);
+    assert!(
+        asked.status.success(),
+        "an ask at core's commit failed: {said}{}",
+        String::from_utf8_lossy(&asked.stderr)
+    );
+    let ending: Option<Line> = said.lines().last().and_then(|l| serde_json::from_str(l).ok());
     assert_eq!(
-        world.update().1,
-        done(&caught_up),
-        "mycelium was still overridden once the lock pinned what was asked"
+        ending,
+        Some(done_following(&head, &[("core", &wanted)])),
+        "an ask at core's commit wasn't built at it: {said}"
+    );
+}
+
+/// An ask cut off at the most the socket reads is refused as cut off, so
+/// the inputs past the cut aren't lost from an ask that seems whole.
+#[test]
+fn the_socket_refuses_an_ask_cut_off_at_the_most_it_reads() {
+    use std::io::{BufRead, BufReader, Write};
+    let world = following();
+    let socket = serving(&world);
+    let pairs = format!(" core {}", "a".repeat(40)).repeat(30);
+    // Exactly the most it reads, so nothing is left unread on the socket.
+    let ask = &format!("update at{pairs}")[..1024];
+    let mut stream = std::os::unix::net::UnixStream::connect(&socket).unwrap();
+    stream.write_all(ask.as_bytes()).unwrap();
+    let mut answer = String::new();
+    BufReader::new(&stream).read_line(&mut answer).unwrap();
+    assert!(
+        answer.contains("an ask is at most 1024 bytes"),
+        "an ask cut off at the most the socket reads wasn't refused as cut off: {answer}"
     );
 }
 
@@ -4511,6 +4585,18 @@ fn a_hold_on_main_s_commit_pushed_into_an_input_s_repository_still_stops_main() 
     assert!(
         why.contains(&format!("main at {} holds it", &two[..12])),
         "a held commit of main's wasn't judged in main: {why}"
+    );
+    // Only a copy that has the commit could tempt a judgement to skip main.
+    let copy = world.config.follows_folder().join("core/mycelium.git");
+    let has = Command::new(program("git"))
+        .arg("-C")
+        .arg(&copy)
+        .args(["cat-file", "-e", &format!("{one}^{{commit}}")])
+        .status()
+        .unwrap();
+    assert!(
+        has.success(),
+        "mycelium's copy never got main's commit, so main being skipped went untried"
     );
 }
 
@@ -4985,6 +5071,34 @@ fn an_input_s_copy_looks_for_held_commits_once_however_many_it_lacks() {
     assert_eq!(
         of_mycelium, 1,
         "mycelium's copy wasn't fetched once for three holds it lacks: {tried}"
+    );
+}
+
+/// A copy made at an earlier judgement and behind what main's lock now
+/// pins is fetched before a hold is judged in it: judged as it was, it
+/// would lack what the build reads and leave the hold untold.
+#[test]
+fn an_input_s_copy_behind_its_pin_is_fetched_before_a_hold_is_judged() {
+    let world = asking_nested(World::new());
+    let pinned = world.commit_in("mycelium", "pinned", true);
+    let one = main_pinning_mycelium(&world, &pinned);
+    world.system(&one);
+    held::ask(&world.config, &format!("hold {}", "d".repeat(40)), Some(1000));
+    assert_eq!(world.update().1, done(&one), "main wasn't built");
+    let copy = world.config.follows_folder().join("core/mycelium.git");
+    assert!(copy.exists(), "judging a hold made no copy of mycelium");
+    let later = world.commit_in("mycelium", "later", true);
+    let two = main_pinning_mycelium(&world, &later);
+    held::ask(&world.config, &format!("hold {later}"), Some(1000));
+    world.system(&two);
+    // An input that moves only when asked isn't fetched for the update, so
+    // only judging the hold can bring its copy up to the pin.
+    let Line::Refused { why, .. } = world.update().1 else {
+        panic!("a hold of what a copy behind its pin lacks let main through")
+    };
+    assert!(
+        why.contains(&format!("main at {} holds it", &two[..12])),
+        "a hold of what a copy behind its pin lacks wasn't judged held: {why}"
     );
 }
 

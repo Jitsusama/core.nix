@@ -674,6 +674,12 @@ mod tests {
             !cut_off("update"),
             "a short ask without its newline was taken as cut off"
         );
+        let most = usize::try_from(ASK_AT_MOST).expect("the most fits");
+        let at_most = format!("{}\n", &long[..most - 1]);
+        assert!(
+            !cut_off(&at_most),
+            "a whole ask of {ASK_AT_MOST} bytes, its newline last, was taken as cut off"
+        );
     }
 
     #[test]
