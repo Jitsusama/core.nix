@@ -3396,7 +3396,7 @@ pub(crate) mod tests {
     #[test]
     fn a_call_with_its_link_gone_may_give_way_to_a_point_spurned_past_its_firm() {
         // The office's radio, kept off firm for its first hour.
-        const OFFICE: &str = "6c:ae:f6:c1:84:2b";
+        const OFFICE: &str = "02:00:00:00:a9:00";
         let mut chooser = Chooser::default();
         let now = Instant::now();
         chooser.spurn(HALL, DESK, true, now);
