@@ -131,6 +131,34 @@ QtObject {
             title: "Letters" })], []);
         Expect.same("a window retitled keeps its tile", held.windows[1].layout.tile_size,
             [900, 800]);
+        // A window said again where it sits keeps the very layout niri last
+        // said, so the cat's tiles (MarginCatTiles.js's hears) never read a
+        // window used long after a scroll as one just scrolled.
+        const saidOf = held.windows[1].layout;
+        NiriRecords.take(held, [window(1, { order: 3000000, column: 4, title: "Letters",
+            urgent: true })], []);
+        Expect.expect("a window used or ringing where it sits keeps its very layout",
+            held.windows[1].layout === saidOf, "it was made anew");
+        const takenAgain = NiriRecords.held();
+        NiriRecords.take(takenAgain, Object.values(held.records), []);
+        NiriRecords.keepLayouts(held, takenAgain);
+        Expect.expect("and so does one taken anew with its tile unchanged",
+            takenAgain.windows[1].layout === saidOf, "it was made anew");
+        NiriRecords.take(held, [window(1, { order: 3000000, column: 5, title: "Letters",
+            urgent: true })], []);
+        Expect.expect("one moved to another column is laid out anew",
+            held.windows[1].layout !== saidOf
+                && held.windows[1].layout.pos_in_scrolling_layout[0] === 5,
+            "it kept its old layout");
+        const usedLater = NiriRecords.held();
+        NiriRecords.take(usedLater, Object.values(held.records).map(record =>
+            record.key === "layout:1" ? Object.assign({}, record, { tile_size: [800, 800] })
+                : record), []);
+        NiriRecords.keepLayouts(held, usedLater);
+        Expect.same("and one taken anew with a new tile takes it",
+            usedLater.windows[1].layout.tile_size, [800, 800]);
+        NiriRecords.take(held, [window(1, { order: 2000000, column: 4, title: "Letters" })],
+            []);
         NiriRecords.take(held, [], ["layout:1"]);
         Expect.same("a tile let go leaves only its place",
             held.windows[1].layout, { pos_in_scrolling_layout: [4, 1] });

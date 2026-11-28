@@ -23,9 +23,15 @@ const HANG: Duration = Duration::from_secs(5);
 /// so a loaded builder can't cut it off before the child is running.
 const SETTLED: Duration = Duration::from_secs(2);
 
+/// How soon a case takes an answer to have come at once: far under the
+/// patience it gives, however loaded the machine.
+const AT_ONCE: Duration = Duration::from_secs(2);
+
 /// Taken by each case for its whole run. A program written while another
 /// case's thread forks can be held open for writing in that child, and
-/// running it then fails with ETXTBSY; one case at a time can't race so.
+/// running it then fails with ETXTBSY. The library tries such a program
+/// again, but the wait would cost a case its timing, so one case at a
+/// time can't race so.
 static TURN: Mutex<()> = Mutex::new(());
 
 /// This case's turn, kept however an earlier case ended.
@@ -138,12 +144,83 @@ fn sign_in_that_prints_nothing_gives_no_token() {
 }
 
 #[test]
+fn sign_in_still_held_for_writing_is_run_once_let_go() {
+    let _turn = turn();
+    let at = folder("busy");
+    let path = program(&at, "echo stand-in-token");
+    // Held as a child forked mid-write holds it: running it fails with
+    // ETXTBSY until the hold is let go.
+    let held = std::fs::OpenOptions::new()
+        .write(true)
+        .open(&path)
+        .expect("the program held for writing");
+    let first = std::process::Command::new(&path).output();
+    assert!(
+        first
+            .as_ref()
+            .is_err_and(|error| error.raw_os_error() == Some(libc::ETXTBSY)),
+        "the hold makes running it fail as busy: {first:?}"
+    );
+    let began = Instant::now();
+    let letting_go = thread::spawn(move || {
+        thread::sleep(SHORT);
+        drop(held);
+    });
+    let (answer, _) = asked(path, AMPLE);
+    let took = began.elapsed();
+    letting_go.join().expect("the hold is let go");
+    std::fs::remove_dir_all(&at).expect("the case's folder goes");
+    assert_eq!(
+        answer,
+        SignIn::Token("stand-in-token".into()),
+        "a program busy being written is run once it can be"
+    );
+    assert!(
+        took >= SHORT,
+        "and only once the hold was let go, so it was tried again: {took:?}"
+    );
+}
+
+#[test]
 fn sign_in_that_cant_be_run_gives_no_token() {
     let _turn = turn();
     let at = folder("absent");
-    let (answer, _) = asked(at.join("no-such-program"), AMPLE);
+    let (answer, took) = asked(at.join("no-such-program"), AMPLE);
     std::fs::remove_dir_all(&at).expect("the case's folder goes");
     assert_eq!(answer, SignIn::Missing, "a missing program is no token");
+    assert!(
+        took < AT_ONCE,
+        "and is told at once, not tried again as a busy one is: {took:?}"
+    );
+}
+
+#[test]
+fn sign_in_held_for_writing_past_its_patience_gives_no_token() {
+    let _turn = turn();
+    let at = folder("held");
+    let path = program(&at, "echo stand-in-token");
+    // Running it fails with ETXTBSY for as long as this hold stands,
+    // which is past its patience.
+    let held = std::fs::OpenOptions::new()
+        .write(true)
+        .open(&path)
+        .expect("the program held for writing");
+    let (answer, took) = asked(path, SHORT);
+    drop(held);
+    std::fs::remove_dir_all(&at).expect("the case's folder goes");
+    assert_eq!(
+        answer,
+        SignIn::Missing,
+        "a program never run is no token, not one that ran over"
+    );
+    assert!(
+        took >= SHORT,
+        "it was tried for its whole patience: {took:?}"
+    );
+    assert!(
+        took < SHORT + AT_ONCE,
+        "and given up on once it was spent: {took:?}"
+    );
 }
 
 #[test]

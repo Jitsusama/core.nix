@@ -99,10 +99,10 @@ mod tests {
         assert_eq!(shown(at, &toronto()), "2026-10-30 23:59:00.000");
         let now = moment("now", &toronto(), noon()).unwrap();
         assert_eq!(i128::from(now), noon().as_nanosecond());
+        let refused = moment("teatime", &toronto(), noon()).unwrap_err();
         assert!(
-            moment("teatime", &toronto(), noon())
-                .unwrap_err()
-                .contains("teatime")
+            refused.contains("teatime"),
+            "a moment not read didn't name what was given: {refused}"
         );
     }
 
@@ -111,7 +111,12 @@ mod tests {
         assert_eq!(length("500ms").unwrap(), 500_000_000);
         assert_eq!(length("30s").unwrap(), 30_000_000_000);
         assert_eq!(length("5m").unwrap(), 300_000_000_000);
-        assert!(length("30").unwrap_err().contains("unit"));
-        assert!(length("3d").unwrap_err().contains("unit"));
+        for given in ["30", "3d"] {
+            let refused = length(given).unwrap_err();
+            assert!(
+                refused.contains("unit"),
+                "{given}'s refusal didn't ask for a unit: {refused}"
+            );
+        }
     }
 }

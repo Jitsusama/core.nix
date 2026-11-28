@@ -33,8 +33,12 @@
 //! issue that changed (one the search finds, only when it says it has
 //! changed since it was read), one more for each repository where
 //! something on one is to be judged, and a page more for each hundred of
-//! a long list. One his limit refuses is tried again whole, so nothing it couldn't read is
-//! skipped, but for a search of what's older than one GitHub cut short (own.rs).
+//! a long list. What his limit refuses, or a thread that fails, is owed
+//! and read again, less often while it fails, what was read judged
+//! meanwhile, so nothing it couldn't read is skipped, but for a search of
+//! what's older than one GitHub cut short (own.rs) and one failing for
+//! hours (owed.rs), each named in the journal and to Joel in For You,
+//! beside the row of what waits on him (left.rs).
 //!
 //! Unless `run` is given `--live`, it is in shadow: every stop's record
 //! says so, and nothing acting on records takes a shadow one for a stop.
@@ -59,20 +63,25 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use pineapple::github::{self, Kind, Said, Thread, add_page, found, notified, worth_judging};
+use pineapple::Joel;
+use pineapple::github::{self, Said, Thread, add_page, found, notified, worth_judging};
 use pineapple::progress::{self, Judged};
 use pineapple::sign_in::{self, SignIn};
-use pineapple::{Context, Joel};
 use serde_json::{Value, json};
 use terminal_kit::{Exit, Failure, Format, Help, flags};
 use ureq::Agent;
 
 mod judging;
+mod left;
+mod owed;
 mod own;
+mod said;
 mod watch;
 
 use judging::judge;
+use left::Left;
 use own::Searched;
+use said::said_on;
 use watch::Watched;
 
 /// How often GitHub is asked, unless a test says otherwise: a stop Joel
@@ -127,6 +136,12 @@ const SITE: &str = "github";
 
 /// How many judged keys are kept: far more than a few rounds find.
 const KEPT: usize = 1000;
+
+/// How many pull requests and issues a round may fail to read before it
+/// asks no more and owes the rest: one broken thread is read past, while
+/// a GitHub failing or hanging on every one costs a round at most three
+/// asks, a minute at its patience, and little of Joel's shared limit.
+const FAILS: usize = 3;
 
 /// Milliseconds in a second.
 const MILLIS: u64 = 1000;
@@ -337,12 +352,15 @@ fn shown(site: &str) -> String {
 
 /// Where it keeps what it judged, beside the Slack reader's log and stops.
 fn state() -> PathBuf {
-    std::env::var_os("XDG_STATE_HOME")
-        .map_or_else(
-            || PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".local/state"),
-            PathBuf::from,
-        )
-        .join("pineapple")
+    state_home().join("pineapple")
+}
+
+/// Where Joel's programs keep their state, For You's folder among it.
+fn state_home() -> PathBuf {
+    std::env::var_os("XDG_STATE_HOME").map_or_else(
+        || PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".local/state"),
+        PathBuf::from,
+    )
 }
 
 /// When each site was last read whole, so a quiet reader is told from one
@@ -389,15 +407,17 @@ fn run(how: &Run) -> Result<(), Failure> {
         since: seconds().saturating_sub(LOOK_BACK),
         keys: Vec::new(),
         own: None,
+        owed: Vec::new(),
     });
     let mut own = Searched::new(judged.since, judged.own, first, INDEX_LAG);
     let mut watched = Watched::default();
+    let name = shown(&how.site);
+    let left = Left::new(&how.site, &name, &how.origin, how.shadow, &state_home());
     let agent: Agent = Agent::config_builder()
         .timeout_global(Some(PATIENCE))
         .http_status_as_error(false)
         .build()
         .into();
-    let name = shown(&how.site);
     loop {
         match token() {
             SignIn::Token(token) => {
@@ -407,7 +427,7 @@ fn run(how: &Run) -> Result<(), Failure> {
                     token: &token,
                     agent: &agent,
                 };
-                let reading = (&mut own, &mut watched);
+                let reading = (&mut own, &mut watched, &left);
                 round(&github, how, &state, &mut judged, reading);
             }
             SignIn::Missing => eprintln!("<4>no {name} sign-in yet, so nothing is read"),
@@ -433,11 +453,15 @@ fn token() -> SignIn {
 /// Why the site didn't answer, as far as a round cares.
 enum Unread {
     /// What was asked for is gone, or not Joel's to read: the round goes
-    /// on without it.
+    /// on without it, though one owed stays owed (owed.rs).
     Gone(String),
-    /// The site couldn't be asked now, its rate limit included: the round
-    /// is tried again whole.
+    /// The site couldn't be asked now: what the round wanted is asked
+    /// again, a round that couldn't ask what changed whole, a pull request
+    /// or issue the next round.
     Failed(String),
+    /// Joel's rate limit is spent, so the round asks nothing more, and
+    /// owes what it hasn't read.
+    Limited(String),
 }
 
 /// GitHub, or a site speaking its API, asked as Joel.
@@ -518,7 +542,7 @@ impl GitHub<'_> {
         let why = || format!("{name} answered {status} for {path}: {message}");
         match status {
             200 => Ok((said, next)),
-            _ if limited => Err(Unread::Failed(format!("{}, its rate limit", why()))),
+            _ if limited => Err(Unread::Limited(format!("{}, its rate limit", why()))),
             403 | 404 | 410 => Err(Unread::Gone(why())),
             _ => Err(Unread::Failed(why())),
         }
@@ -538,7 +562,7 @@ fn who(github: &GitHub<'_>, how: &Run) -> Option<String> {
             }
             login
         }
-        Err(Unread::Gone(why) | Unread::Failed(why)) => {
+        Err(Unread::Gone(why) | Unread::Failed(why) | Unread::Limited(why)) => {
             eprintln!("<4>couldn't ask {} who Joel is: {why}", github.name);
             None
         }
@@ -588,14 +612,17 @@ fn searched(github: &GitHub<'_>, query: &str) -> Result<Value, Unread> {
 }
 
 /// One round: what changed since the last, judged oldest first, and how
-/// far it has read moved on only once every pull request and issue it
-/// named was read; Joel's own search only once its first search answered.
+/// far it has read moved on, Joel's own search only once what it found
+/// lets it (own.rs). What it couldn't read is owed, read again from where
+/// it was to be (owed.rs); at a spent limit, or after [`FAILS`] failures,
+/// it reads no more, and owes what's left. What nothing reads again is
+/// told to Joel in rows of its own (left.rs).
 fn round(
     github: &GitHub<'_>,
     how: &Run,
     state: &Path,
     judged: &mut Judged,
-    (own, watched): (&mut Searched, &mut Watched),
+    (own, watched, left): (&mut Searched, &mut Watched, &Left),
 ) {
     let began = seconds();
     let Some(login) = who(github, how) else {
@@ -610,7 +637,7 @@ fn round(
     let since = github::stamp(from);
     let notified = match changed(github, how, &since) {
         Ok(threads) => threads,
-        Err(Unread::Gone(why) | Unread::Failed(why)) => {
+        Err(Unread::Gone(why) | Unread::Failed(why) | Unread::Limited(why)) => {
             eprintln!("<4>couldn't ask {} what changed: {why}", github.name);
             return;
         }
@@ -621,23 +648,12 @@ fn round(
     let mine = how.authored_by.is_none();
     let hits = mine.then(|| own.search(github, &how.site, &login));
     let reach = own.reach();
-    let mut threads: Vec<(Thread, u64, u64)> = Vec::new();
-    for thread in hits.iter().flat_map(|hits| hits.threads.iter()) {
-        threads.push((thread.clone(), reach, own.read_from()));
-    }
-    // Where he spoke lately, his words are listed long before searched,
-    // and only what's fresh is read there.
+    let found = hits.iter().flat_map(|hits| hits.threads.iter());
+    let found = found.map(|thread| (thread.clone(), reach, own.read_from()));
     let spoken = mine.then(|| watched.listed(github, (&how.site, &login), reach, &judged.keys));
-    for thread in spoken.into_iter().flatten() {
-        if !threads.iter().any(|(known, _, _)| *known == thread) {
-            threads.push((thread, reach, reach));
-        }
-    }
-    for thread in notified {
-        if !threads.iter().any(|(listed, _, _)| *listed == thread) {
-            threads.push((thread, from, from));
-        }
-    }
+    let found = owed::with_spoken(found.collect(), spoken, reach, &mut judged.owed);
+    let notified = notified.into_iter().map(|thread| (thread, from, from));
+    let threads = owed::list(found, notified.collect(), &judged.owed);
     // Where logins are addresses, what Joel says is by his address.
     let joel = Joel {
         slack_ids: Vec::new(),
@@ -651,7 +667,8 @@ fn round(
             .trim_end_matches('/')
             .eq_ignore_ascii_case(GITHUB);
     let (mut heard, mut learned) = (Vec::new(), HashMap::new());
-    for (thread, from, read_from) in &threads {
+    let (mut failed, mut gone, mut unasked) = (Vec::new(), Vec::new(), threads.len());
+    for (place, (thread, from, read_from)) in threads.iter().enumerate() {
         // What this round judges, which alone is worth asking about a repository.
         let keeps = |said: &Said| {
             said.at >= *from
@@ -661,17 +678,31 @@ fn round(
         let since = github::stamp(*read_from);
         match said_on(github, thread, &since, (open, &login), &keeps, &mut learned) {
             Ok(found) => {
+                // One owed is judged from further back, so what it judges
+                // now isn't told of as too old.
                 if mine {
-                    for (said, _, _, _) in &found {
+                    for (said, _, _, _) in found.iter().filter(|(said, _, _, _)| !keeps(said)) {
                         own.too_old(said, &joel, &judged.keys);
                     }
                 }
                 heard.extend(found.into_iter().filter(|(said, _, _, _)| keeps(said)));
             }
-            Err(Unread::Gone(why)) => eprintln!("<4>{} can't be read: {why}", thread.key()),
+            Err(Unread::Gone(why)) => {
+                eprintln!("<4>{} can't be read: {why}", thread.key());
+                gone.push(place);
+            }
             Err(Unread::Failed(why)) => {
                 eprintln!("<4>couldn't read {}: {why}", thread.key());
-                return;
+                failed.push(place);
+                if failed.len() == FAILS {
+                    unasked = place + 1;
+                    break;
+                }
+            }
+            Err(Unread::Limited(why)) => {
+                eprintln!("<4>couldn't read {}: {why}", thread.key());
+                unasked = place;
+                break;
             }
         }
     }
@@ -683,8 +714,10 @@ fn round(
     }
     judged.since = began;
     if let Some(hits) = hits {
-        own.moved_on(began, hits);
+        own.moved_on(began, hits, left);
     }
+    let read = (&failed[..], &gone[..], unasked);
+    judged.owed = owed::kept(left, &threads, read, &judged.owed, began);
     // Kept only where Joel's words are searched for, as a site read by
     // what he opened never moves it on, and dropping that flag later
     // would search from its first start.
@@ -693,97 +726,6 @@ fn round(
     judged.keys.drain(..over);
     progress::write(state, &how.site, judged, millis());
 }
-
-/// What was said on a pull request or issue since `since`, each with it,
-/// the place it's about and whether an outsider said it: where anyone may
-/// comment (`open`), a writer not the repository's own, or anyone on a
-/// repository Joel doesn't work in. Reviews can't be asked for by time,
-/// so all are read and the round keeps those since. Whether he works in
-/// it is asked only when something there is one the round `keeps`, which
-/// most threads hold nothing of, and once a round however many threads it
-/// has, so his rate limit isn't spent on the rest.
-fn said_on(
-    github: &GitHub<'_>,
-    thread: &Thread,
-    since: &str,
-    who: (bool, &str),
-    keeps: &dyn Fn(&Said) -> bool,
-    learned: &mut HashMap<String, bool>,
-) -> Result<Sayings, Unread> {
-    let (open, login) = who;
-    let base = format!("/repos/{}", thread.repo);
-    let number = thread.number;
-    let opened = github.get(&format!("{base}/issues/{number}"), &[])?;
-    // Opening it, as a pull request from his fork, he chose to work there.
-    let joel_opened = opened["user"]["login"]
-        .as_str()
-        .is_some_and(|by| by.eq_ignore_ascii_case(login));
-    let mut found = github::said(&opened, thread, Kind::Opening);
-    // Its writer's standing alone, before anything said after it joins it.
-    let opened_by_own = found.first().is_some_and(|it| it.own);
-    let recent = [("since", since), ("per_page", PAGE)];
-    let comments = github.all(&format!("{base}/issues/{number}/comments"), &recent)?;
-    found.extend(github::said(&comments, thread, Kind::Comment));
-    if thread.pull {
-        let on_lines = github.all(&format!("{base}/pulls/{number}/comments"), &recent)?;
-        found.extend(github::said(&on_lines, thread, Kind::ReviewComment));
-        let reviews = github.all(
-            &format!("{base}/pulls/{number}/reviews"),
-            &[("per_page", PAGE)],
-        )?;
-        found.extend(github::said(&reviews, thread, Kind::Review));
-    }
-    let works_in =
-        !open || joel_opened || (found.iter().any(keeps) && joel_works_in(github, &base, learned)?);
-    let trusted = !open || joel_opened || (works_in && opened_by_own);
-    let opening = if trusted {
-        format!(
-            "{}\n\n{}",
-            opened["title"].as_str().unwrap_or_default(),
-            opened["body"].as_str().unwrap_or_default()
-        )
-    } else {
-        String::new()
-    };
-    let context = thread.context(&opening);
-    Ok(found
-        .into_iter()
-        .map(|said| {
-            let outsider = open && !(works_in && said.own);
-            (said, thread.clone(), context.clone(), outsider)
-        })
-        .collect())
-}
-
-/// Whether Joel works in the repository at `base`, asked of GitHub only
-/// the first time a round wants to know, and asked again the next round,
-/// so a change to what he may do there is heard within a minute.
-fn joel_works_in(
-    github: &GitHub<'_>,
-    base: &str,
-    learned: &mut HashMap<String, bool>,
-) -> Result<bool, Unread> {
-    if let Some(&known) = learned.get(base) {
-        return Ok(known);
-    }
-    let known = match github.get(base, &[]) {
-        Ok(repo) => github::works_in(&repo),
-        // Unreadable, it's one he doesn't work in; his own words still count.
-        Err(Unread::Gone(why)) => {
-            eprintln!(
-                "<4>{why}, so a stop there by anyone but Joel counts this round \
-                 only on what he opened"
-            );
-            false
-        }
-        Err(failed) => return Err(failed),
-    };
-    learned.insert(base.to_owned(), known);
-    Ok(known)
-}
-
-/// What a round hears: each saying, with where and whether by an outsider.
-type Sayings = Vec<(Said, Thread, Context, bool)>;
 
 fn since_epoch() -> Duration {
     SystemTime::now()

@@ -256,33 +256,64 @@ QtObject {
         // Working Emoji's steps out costs a few walks over its rows, never a
         // walk for each row: a Map or a Set in Qt's engine looks a key up by
         // walking every key it holds, which took Emoji's first letter 26 to
-        // 39 ms and a narrowing 67 to 104, against a walk's 0.5 (2026-11-11). Each is held to a
-        // multiple of one walk making and reading an object of its keys,
-        // the fastest of five batches each, since a slower one is the
-        // builder's other work or the collector.
-        const fastest = work => {
-            let least = Infinity;
-            for (let batch = 0; batch < 5; batch += 1) {
-                const began = Date.now();
-                for (let round = 0; round < 10; round += 1) {
-                    work();
-                }
-                least = Math.min(least, (Date.now() - began) / 10);
+        // 39 ms and a narrowing 67 to 104, against a walk's 0.5 (2026-11-11).
+        // A walk makes an object of the rows a case held and reads each row
+        // it lists now from it, so each case is held to a walk over its own
+        // lists and the bound grows and shrinks with them. For a first
+        // letter and a narrowing that's a walk over Emoji, as their rows
+        // are; a narrowing of a ranking holds 844 rows and lists 77, and
+        // with a Map costs fewer than twenty walks over Emoji, so held to
+        // those it would pass. Eight rows moving among Emoji's reach what
+        // none of those do, working out which rows stay and each move, and
+        // are held only to what they end as: that path's healthy steps took
+        // 26 to 53 walks on a lender, and with a walk over the rows staying
+        // for each row 89 to 151 (#7167's lent runs), too near for one
+        // bound to tell apart. The other three are held to twenty, between
+        // what a healthy first letter took, a few, and what it took with a
+        // Map in placesOf, staying and steps, 30 to 200 (72 to 128 ms
+        // against 0.6 to 2.2, #7015's lent run), so a Map fails every
+        // batch and a busy lender's healthy run has room. Timed as
+        // ranking.qml's latching is, to the same twenty: each of five
+        // batches times a walk over fifty rounds and the steps over ten
+        // back to back, and it holds when three batches do. A walk's fifty
+        // rounds leave fifty objects of its rows behind, so the collector
+        // runs twice before each timing and the steps never pay to collect
+        // them. Timed apart, as the fastest walk against the fastest steps,
+        // a quiet walk could be held against steps that were all busy, as
+        // ranking.qml's latching was (A4315520, 2026-11-26).
+        const moving = emoji.filter((_, at) => at % 240 !== 7)
+            .concat(emoji.filter((_, at) => at % 240 === 7).reverse());
+        Expect.same("eight rows moving among Emoji's are eight moves",
+            RowsKept.steps(emoji, moving, 8).map(step => step.move !== undefined),
+            Array(8).fill(true));
+        Expect.same("and end where they're listed", done(emoji, moving, 8),
+            { rows: moving.join(" "), drawn: "" });
+        const timed = (work, rounds) => {
+            gc();
+            gc();
+            const began = Date.now();
+            for (let round = 0; round < rounds; round += 1) {
+                work();
             }
-            return least;
+            return (Date.now() - began) / rounds;
         };
-        const walk = fastest(() => {
+        const walking = (was, now) => {
             const places = Object.create(null);
-            emoji.forEach((key, at) => { places[key] = at; });
-            return ranked.filter(key => places[key] !== undefined).length;
-        });
+            was.forEach((key, at) => { places[key] = at; });
+            return now.filter(key => places[key] !== undefined).length;
+        };
         for (const [what, was, now] of [["a first letter", emoji, ranked],
             ["a narrowing", emoji, narrowed], ["a narrowing of a ranking", ranked,
                 ranked.filter((_, at) => at % 11 === 0)]]) {
-            const took = fastest(() => RowsKept.steps(was, now, 8));
-            console.info(`${what} took ${took} ms against a walk's ${walk}`);
-            Expect.same(`${what} takes ${took} ms, at most ten walks of ${walk} ms`,
-                took <= 10 * walk + 1, true);
+            const batches = Array.from({ length: 5 }, () => {
+                const walk = timed(() => walking(was, now), 50);
+                return { walk, took: timed(() => RowsKept.steps(was, now, 8), 10) };
+            });
+            const said = batches.map(one => `${one.took} against ${one.walk}`).join(", ");
+            console.info(`${what} took, in ms against a walk's: ${said}`);
+            const held = batches.filter(one => one.took <= 20 * one.walk + 1).length;
+            Expect.same(`${what} takes at most twenty walks and a ms in three batches, `
+                + `${held} held, in ms: ${said}`, held >= 3, true);
         }
 
         // Lists drawn from a seeded sequence (Park and Miller's), the same

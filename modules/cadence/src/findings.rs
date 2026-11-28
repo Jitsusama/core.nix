@@ -33,7 +33,11 @@ pub struct Entry {
     pub key: String,
     /// The mesh address it was given to, or none when no owner matched.
     pub owner: Option<String>,
-    /// The date it first appeared, and the last one it was found on.
+    /// The date it first appeared, and the last one it was found on. A
+    /// drag reopened takes the day it reopened as its first, so "open
+    /// since" reads from then and the queue's once-a-day ask holds, and
+    /// `reopened` counts the times before; a finding of cadence's own
+    /// keeps its first day through a reopening.
     pub first: String,
     pub last: String,
     /// When the last day it was found on ended, in seconds since the epoch.
@@ -77,6 +81,11 @@ pub struct Entry {
     /// `cadence owe --done`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fixed: Option<String>,
+    /// When its owner closed a drag with `cadence owe --done`, in
+    /// seconds, so one its measure counts over a week isn't filed again
+    /// the next hour from the cases the fix came after.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub closed: Option<i64>,
 }
 
 /// Whether a count is nought, so a line never reopened stays as it was.
@@ -218,6 +227,7 @@ pub fn update(
                 put_to: Vec::new(),
                 back: None,
                 fixed: None,
+                closed: None,
             });
         }
     }

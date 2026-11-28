@@ -19,6 +19,7 @@ import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "../PiSource.js" as Pi
 import "Order.js" as Order
+import "Presented.js" as Presented
 
 Provider {
     id: provider
@@ -63,6 +64,8 @@ Provider {
         const round = bare.replace(/-.*$/, "");
         return {
             id: bare,
+            // A string, as Launcher.qml's startsWith on a found row's key
+            // needs: Daemon.qml's took() holds no record whose key isn't.
             key: record.key ?? `run:${id}`,
             kind: record["run.kind"]
                 ?? (id.startsWith("fleet.") ? "fleet" : kinds[round] ? round : "review"),
@@ -82,8 +85,9 @@ Provider {
     })
 
     // Each kind by Agents' own word for it: a fleet or a council is several
-    // subagents at once.
-    readonly property var kinds: ({
+    // subagents at once. With no prototype, so a round the node names
+    // "constructor" is a review, never a function written into its row.
+    readonly property var kinds: Object.assign(Object.create(null), {
         fleet: "fleet",
         council: "council",
         judge: "judge",
@@ -226,7 +230,7 @@ Provider {
         const spent = cost(run.participants);
         const row = member({
             thing: true,
-            key: run.key,
+            key: Presented.keyServed(run.key),
             verb: session ? "go to" : "copy",
             // With no session to go to, it copies its id for want of one, as
             // a job's row does, so Return goes into its parts instead
@@ -311,8 +315,9 @@ Provider {
     // (Provider.qml's poolFor), as Applications does: a day holds hundreds
     // of runs, each matched by its name and by its id, and the first letters
     // pass nearly every row's mask, so one letter's search of them took up
-    // to 62 ms on Joel's shell (2026-11-25). A run coming makes `all` anew,
-    // which is looked through whole.
+    // to 62 ms on Joel's shell (2026-11-25). A run, a session or the
+    // screen's sharing changing makes `all` anew, but a finished run's row
+    // is kept (`kept`), so only the rows made again are looked at besides.
     function search(typed) {
         const words = Fuzzy.words(typed);
         const need = Fuzzy.letters(words);

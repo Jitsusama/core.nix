@@ -21,9 +21,12 @@ import shlex
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
+from pi_conversations_read import failure_read
 from vm_helpers import as_account
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from test_driver.machine import BaseMachine, QemuMachine
 
 UNIT = "pi-host-work-attended.service"
@@ -38,7 +41,7 @@ WORK = "/home/alice/work"
 SWITCH = "/home/alice/.local/state/pi/agentic-harness.pi/park-workflow/switch"
 ROSTER = f"/home/alice/.local/state/pi/agentic-harness.pi/host-rosters/{KEY}.json"
 # What a ready host holding both says, as systemd's status and the journal show it, as a
-# pattern grep -E and Python read alike: it counts those it runs awake and parked apart, and
+# pattern for grep -E: it counts those it runs awake and parked apart, and
 # either may be awake after a start, so the two add up to both, with none dropped.
 HOLDING_BOTH = (
     r"ready: loaded (2, parked 0|1, parked 1|0, parked 2)"
@@ -58,6 +61,16 @@ COMING_BACK = dt.timedelta(minutes=2)
 PARKING = dt.timedelta(minutes=6)
 # A reboot: the host parking what it holds as it stops, a boot, and the host's start.
 REBOOTING = dt.timedelta(minutes=6)
+# How long a failure's read of how the unit stands may take, so it can't hang the failure it says.
+READING_SECONDS = 30
+# How much of each journal a failure quotes: the manager's and the host's apart, so a host's
+# chatter can't push out the manager's word on why it stopped.
+JOURNAL_LINES = 20
+# The journal's matches for the unit, as root reads alice's: --user-unit matches the caller's own
+# uid, which is root's here. The manager's lines about a unit carry USER_UNIT, and the unit's own
+# output _SYSTEMD_USER_UNIT.
+MANAGER_LINES = f"_UID=1000 USER_UNIT={UNIT}"
+HOST_LINES = f"_UID=1000 _SYSTEMD_USER_UNIT={UNIT}"
 # How long a viewer stays attached, long enough to wake a parked conversation and draw it.
 VIEWING_SECONDS = 20
 ROWS = 40
@@ -97,8 +110,10 @@ class Host:
 
     def asked(self, request: dict[str, Any]) -> str:
         """Give the command that sends the host one request through its socket."""
-        # A host answers a start asked again under its id with the first answer, and refuses
-        # an id used for another start, so each request has an id of its own.
+        # A host answers an open asked again under its id with the first answer, and refuses
+        # an id used for another open, so each command has an id of its own. Only opens are
+        # remembered by id, so a poll that runs one list command again and again is answered
+        # afresh each time.
         self.sent += 1
         sent = {"v": 1, "id": f"{request['op']}-{self.sent}", **request}
         return f"{self.asking} {shlex.quote(json.dumps(sent))}"
@@ -114,36 +129,86 @@ class Host:
         sessions = self.ask({"op": "list"})["sessions"]
         return {one["sessionId"]: one["state"] for one in sessions}
 
+    def reading(self, command: str) -> str:
+        """Give what a command run as root printed, for a failure, or why it couldn't be read."""
+        # Its errors too, since a read that fails says why only there.
+        try:
+            status, out = self.machine.execute(
+                f"{{ {command}; }} 2>&1",
+                timeout=READING_SECONDS,
+            )
+        except Exception as error:  # noqa: BLE001 # A failure's read mustn't hide what failed.
+            return f"nothing, as reading it failed: {error!r}"
+        return failure_read(status, out, READING_SECONDS)
+
+    def standing(self) -> str:
+        """Say how the unit stands, for a failure: its states, its result and its status line."""
+        # StatusText alone is empty in the commonest states a host fails in: starting,
+        # failed, or being started again.
+        fields = "ActiveState,SubState,Result,MainPID,StatusText"
+        command = f"export XDG_RUNTIME_DIR=/run/user/1000; systemctl --user show -p {fields} {UNIT}"
+        return self.reading(f"su - alice -c {shlex.quote(command)}")
+
+    def waited(self, what: str, wait: Callable[[], object], own: str = HOST_LINES) -> None:
+        """Wait, and should it fail, say what the host never did, how it stands and its journal."""
+        try:
+            wait()
+        except Exception as error:
+            # The driver's wait fails as a bare timeout, so whatever failed is chained below
+            # and this says what the host showed meanwhile. The manager's lines say why a host
+            # never came back, failing to start or started again; the host's own, each naming
+            # its process, say how far it got.
+            message = (
+                f"the host never {what}; the unit says {self.standing()};"
+                f" its manager's journal ends {self.reading(journal_tail(MANAGER_LINES))};"
+                f" its own ends {self.reading(journal_tail(own))}"
+            )
+            raise AssertionError(message) from error
+
     def until_serving_both(self, timeout: dt.timedelta = COMING_BACK) -> None:
         """Wait until the host is ready again, saying it holds both."""
-        self.until(
-            f"systemctl --user show -p StatusText --value {UNIT}"
-            f" | grep -qxE {shlex.quote(HOLDING_BOTH)}",
-            timeout,
+        self.waited(
+            "said it holds both",
+            lambda: self.until(
+                f"systemctl --user show -p StatusText --value {UNIT}"
+                f" | grep -qxE {shlex.quote(HOLDING_BOTH)}",
+                timeout,
+            ),
         )
 
     def until_started_again(self, killed: str) -> None:
         """Wait until a process other than the killed one runs the host and says it holds both."""
         # The unit keeps the killed process's status line until another replaces it, so the
         # new process's own ready line is what says it holds both.
-        self.until(
-            f"pid=$(systemctl --user show -p MainPID --value {UNIT});"
-            f' test "$pid" -ne 0 && test "$pid" -ne {killed}',
+        self.waited(
+            "started again",
+            lambda: self.until(
+                f"pid=$(systemctl --user show -p MainPID --value {UNIT});"
+                f' test "$pid" -ne 0 && test "$pid" -ne {killed}',
+            ),
         )
         started = self.show("MainPID")
-        self.machine.wait_until_succeeds(
-            f"journalctl --no-pager _PID={started} | grep -qE {shlex.quote(HOLDING_BOTH)}",
-            timeout=COMING_BACK,
+        # This boot's alone, since an earlier boot's process may have had the same id.
+        process = f"_PID={started}"
+        self.waited(
+            f"said, as process {started}, that it holds both",
+            lambda: self.machine.wait_until_succeeds(
+                f"journalctl --no-pager -b {process} | grep -qE {shlex.quote(HOLDING_BOTH)}",
+                timeout=COMING_BACK,
+            ),
+            process,
         )
 
     def until_said_holding_both(self) -> None:
         """Wait until the host has told the journal, this boot, that it holds both."""
         # The host writes its ready line just after telling systemd it is ready, so the unit
         # can be active a moment before the journal holds the line.
-        self.machine.wait_until_succeeds(
-            f"journalctl --no-pager -b _UID=1000 _SYSTEMD_USER_UNIT={UNIT}"
-            f" | grep -qE {shlex.quote(HOLDING_BOTH)}",
-            timeout=COMING_BACK,
+        self.waited(
+            "told the journal this boot that it holds both",
+            lambda: self.machine.wait_until_succeeds(
+                f"journalctl --no-pager -b {HOST_LINES} | grep -qE {shlex.quote(HOLDING_BOTH)}",
+                timeout=COMING_BACK,
+            ),
         )
 
     def record(self, name: str) -> bytes:
@@ -152,12 +217,7 @@ class Host:
 
     def said(self) -> str:
         """Give what alice's manager, and the host, told the journal about the unit this boot."""
-        # --user-unit matches the caller's own uid, which is root's here. The manager's lines
-        # about a unit carry USER_UNIT, and the unit's own output _SYSTEMD_USER_UNIT.
-        return self.machine.succeed(
-            f"journalctl --no-pager -b _UID=1000 USER_UNIT={UNIT}"
-            f" + _UID=1000 _SYSTEMD_USER_UNIT={UNIT}",
-        )
+        return self.machine.succeed(f"journalctl --no-pager -b {MANAGER_LINES} + {HOST_LINES}")
 
     def view(self, name: str) -> str:
         """Attach a viewer to a conversation through a terminal and give what it was drawn."""
@@ -172,6 +232,14 @@ class Host:
             f" script -qfec {shlex.quote(viewer)} {drawn} > /dev/null 2>&1 || true",
         )
         return CONTROLS.sub("", self.machine.succeed(f"cat {drawn}"))
+
+
+def journal_tail(lines: str) -> str:
+    """Give the command reading a journal match's last lines this boot, for a failure."""
+    # Each line names its process and when, so one process's lines can be told from another's.
+    # -a gives a line holding a control code as it was written, which failure_read escapes,
+    # rather than as journalctl's "[N blob data]".
+    return f"journalctl --no-pager -a -o short-precise -n {JOURNAL_LINES} -b {lines}"
 
 
 def digest(record: bytes) -> str:

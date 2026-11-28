@@ -1203,12 +1203,11 @@ fn set_in_memory(kept: &[PathBuf], ranks: &mut Ranks) {
         match result {
             Ok(output) if output.status.success() => {
                 ranks.in_memory.done(&scope, keep.then_some(0));
-                let says = if keep {
-                    "Keeping in memory"
-                } else {
-                    "Let go to disk"
-                };
-                eprintln!("{says} {unit}, a window Joel was at within two hours.");
+                // The call is made under a slice that keeps writeback off too, so
+                // the window is still let go if that slice's setting is lifted; the
+                // log says what the kernel does with it now.
+                let above = || holds::kept_above(&scope, |file| fs::read_to_string(file).ok());
+                eprintln!("{}", holds::kept_said(&unit, keep, above));
             }
             Ok(output) => {
                 if !std::mem::replace(&mut ranks.in_memory.failed, true) {
@@ -4380,7 +4379,7 @@ mod tests {
     }
 
     /// A runtime control folder under the temporary folder named for `name`, holding each of
-    /// `units`' folders with the five files systemd writes for the sorter's settings, and
+    /// `units`' folders with the six files systemd writes for the sorter's settings, and
     /// the sorter's mark.
     fn control_with(name: &str, units: &[&str]) -> PathBuf {
         let control = std::env::temp_dir().join(format!("{name}-{}", std::process::id()));
@@ -4394,6 +4393,7 @@ mod tests {
                 "50-MemoryZSwapWriteback.conf",
                 "50-ManagedOOMPreference.conf",
                 "50-MemoryMin.conf",
+                "50-IOWeight.conf",
             ] {
                 fs::write(folder.join(file), "[Service]\n").expect("a setting's file");
             }

@@ -21,7 +21,10 @@ onLinux {
   # secret, even one a manager gives with its secrets on; a held list or
   # get asks no manager anything; a secret goes only to the ask for it,
   # never to a watch, or to the clipboard marked sensitive, cleared when
-  # its time is up, and copying is refused while no copier is named;
+  # its time is up, written once the copier says it's ready and answered
+  # copied once it says it holds it, a refusal answered with its reason,
+  # the copy held ending as the daemon ends, killed or not,
+  # and copying is refused while no copier is named;
   # a password is typed on the typist's standard input alone, never its
   # arguments, into the window niri says has the keys once the launcher
   # has let go of them, and nothing is typed, nor any secret read, while
@@ -101,6 +104,69 @@ onLinux {
         export HOME=$PWD
         zsh -f ${./tests/passwords-completion.zsh} \
           ${pkgs.callPackage ./completion.nix { }}/share/zsh/site-functions/_passwords
+        touch $out
+      '';
+  # Passwords' copier, run as the daemon runs it on the account's niri
+  # nested in the sandbox, keeps a secret it's given on its standard input
+  # in its own memory, locked and unreadable through /proc: it pastes on
+  # Joel's display, and nothing is made under TMPDIR, where any process of
+  # the account's could read it, nor run from PATH. It says it's ready only
+  # once it can't be read, and held only once Joel's display has the copy,
+  # so one paste at once pastes it whole (case 10). One it can't read whole
+  # is refused, never said held, and told to say held of a copy that isn't
+  # sensitive, it ends saying so, never ready or held (case 14)
+  # (tests/copier-keeps-a-secret-in-memory.py).
+  passwords-copier-keeps-a-secret-in-memory-on-niri =
+    let
+      files = lib.filterAttrs (name: _: lib.hasPrefix "niri/" name) (account graphical).xdg.configFile;
+      copier = pkgs.callPackage ./copier.nix { };
+      inherit (pkgs) mesa;
+    in
+    pkgs.runCommandLocal "passwords-copier-keeps-a-secret-in-memory-on-niri"
+      {
+        nativeBuildInputs = [
+          graphical.config.programs.niri.package
+          pkgs.dbus
+          pkgs.python3
+          pkgs.sway-unwrapped
+          pkgs.wl-clipboard
+        ];
+        __EGL_VENDOR_LIBRARY_FILENAMES = "${mesa}/share/glvnd/egl_vendor.d/50_mesa.json";
+        LIBGL_DRIVERS_PATH = "${mesa}/lib/dri";
+        GBM_BACKENDS_PATH = "${mesa}/lib/gbm";
+        LIBGL_ALWAYS_SOFTWARE = 1;
+      }
+      ''
+        export HOME=$PWD XDG_CONFIG_HOME=$PWD
+        ${lib.concatLines (
+          lib.mapAttrsToList (name: file: "install -D -m 644 ${file.source} ${lib.escapeShellArg name}") files
+        )}
+        ${lib.getExe pkgs.bash} ${../../tests/lib/nested-niri.sh} niri/config.kdl logs \
+          python3 ${./tests/copier-keeps-a-secret-in-memory.py} \
+          ${lib.getExe' copier "wl-copy"} ${lib.getExe pkgs.bash}
+        touch $out
+      '';
+  # The copier check's reads of a copier are bounded, each answering
+  # within its patience: a copier still running hasn't refused, one that
+  # ended is said with its code and what it said, even with a child
+  # holding its standard error open, one that never ends is killed, a
+  # reader that never reads is given up on without spinning, and a copier
+  # saying nothing says nothing. A line is read whole and exactly, as the
+  # daemon reads it: one said in pieces is joined, two said at once are
+  # answered in turn, 'ready ' is never 'ready', one with no end is cut off
+  # at a cap, and a half line is answered as said only once the copier
+  # closed its standard output, the next read finishing one held open.
+  # What was read past a line comes first in how the copier ended, and a
+  # refusal keeps none of it. A copier with no pipe to read is refused by
+  # name, and a read that raised fails by what it raised, not as a hang.
+  # Its copiers are bash scripts, so it needs no display
+  # (tests/copier-check-reads-bounded-test.py).
+  passwords-copier-check-reads-are-bounded =
+    pkgs.runCommandLocal "passwords-copier-check-reads-are-bounded"
+      { nativeBuildInputs = [ pkgs.python3 ]; }
+      ''
+        python3 ${./tests/copier-check-reads-bounded-test.py} ${lib.getExe pkgs.bash} \
+          ${./tests/copier-keeps-a-secret-in-memory.py}
         touch $out
       '';
   # clippy finds nothing in the passwords daemon, its tests included.

@@ -58,7 +58,7 @@ in
   # asks' rows be; a yes walked from outside is never sent; a no goes as served;
   # and while the screen is shared, or niri hasn't said its casts, a row is
   # hidden, with no act and no frame timed, counting nothing once shown until
-  # his next move.
+  # his next move, and two hidden at once differ only by when each was asked.
   the-asks-say-how-long-each-was-shown-over-passwords =
     # Kept in Nix because each line copies a file Nix gives it beside the
     # cases, or sets what the shell runs them with.

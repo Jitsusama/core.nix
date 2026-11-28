@@ -13,6 +13,7 @@ let
   places = {
     "agents" = ./words/agents.json;
     "applications" = ./words/applications.json;
+    "asked" = ./words/asked.json;
     "asks" = ./words/asks.json;
     "ask" = ./words/ask.json;
     "bluetooth" = ./words/bluetooth.json;

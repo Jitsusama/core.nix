@@ -21,6 +21,7 @@ dependencies = [
  "jiff",
  "serde",
  "serde_json",
+ "subject-hubs",
  "tempfile",
  "terminal-kit",
 ]
@@ -272,6 +273,14 @@ dependencies = [
  "serde",
  "serde_core",
  "zmij",
+]
+
+[[package]]
+name = "subject-hubs"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

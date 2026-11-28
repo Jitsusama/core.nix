@@ -172,21 +172,26 @@ it("only the latest messages are heard, the newest last, as who sent them where"
     message(at, `2026-11-16T07:${String(at).padStart(2, "0")}:00Z`),
   );
   const { messages } = nowOf(told([...sent].reverse()), AT);
-  assert.equal(messages.length, LATEST_MESSAGES);
-  assert.deepEqual(messages.at(0), {
+  assert.equal(messages?.length, LATEST_MESSAGES);
+  assert.deepEqual(messages?.at(0), {
     at: "2026-11-16T07:05:00Z",
     from: "OSPREY",
     intent: "fyi",
     groups: ["peer.tern01"],
   });
-  assert.equal(messages.at(-1)?.at, "2026-11-16T07:24:00Z");
+  assert.equal(messages?.at(-1)?.at, "2026-11-16T07:24:00Z");
+});
+
+it("messages the node hasn't told yet are none heard, not none said", () => {
+  const { messages } = nowOf({ ...told([]), message: undefined }, AT);
+  assert.equal(messages, null, "messages not yet told read as none said");
 });
 
 it("a message with no time to it is passed over", () => {
   const { at: _at, ...timeless } = message(1, "2026-11-16T07:01:00Z");
   const { messages } = nowOf(told([timeless, message(2, "2026-11-16T07:02:00Z")]), AT);
   assert.deepEqual(
-    messages.map((each) => each.at),
+    messages?.map((each) => each.at),
     ["2026-11-16T07:02:00Z"],
   );
 });

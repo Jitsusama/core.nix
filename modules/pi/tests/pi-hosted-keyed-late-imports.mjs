@@ -24,6 +24,7 @@ import {
   breakingPackage,
   cached,
   counted,
+  evaluatedBy,
   evaluations,
   folder,
   gate,
@@ -157,16 +158,16 @@ const racedGate = gate("raced");
 const racingLoad = open("racing-loads", [racing.loads]);
 await racedGate.reached;
 const lateRace = racingLate("raced-late");
-assert.equal(
-  await pendingAfter(lateRace, 200),
-  true,
-  "a late import was given a module a load was still evaluating",
-);
+const lateWaited = await pendingAfter(lateRace, 200);
+assert.equal(lateWaited, true, "a late import was given a module a load was still evaluating");
+const racedTwice = await evaluatedBy("raced", 2, SETTLES_MS);
+assert.equal(racedTwice, 2, "a late import waited on the load, not evaluating its own");
 racedGate.putAway();
 racedGate.open();
 assert.equal(await within(lateRace, "a late import beside a load never ended"), "whole");
 const raced = await within(racingLoad, "a load beside a late import never ended");
 assert.equal(await raced("raced-loads"), "whole", "a load raced by a late import saw nothing");
+assert.equal(evaluations().raced, 2, "a late import racing a load didn't evaluate its own");
 
 // Nor is a load given a module that an import made as an extension runs is
 // still evaluating: it evaluates its own.

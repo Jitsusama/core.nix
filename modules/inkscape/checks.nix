@@ -107,6 +107,13 @@ onLinux {
       cp ${playing} launcher/Playing.qml
       cp ${singleton "Shortcuts.qml" "property var actions: []"} Shortcuts.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      # The lint comes before NOW, so the time the cases allow a row's
+      # clock to have moved on holds only the daemon's and the shell's
+      # start. A row's age is judged from NOW in a span (agos), and this
+      # check was quarantined for failing on a loaded builder: should it
+      # fail twice at one commit, suspect it first, undo the quarantine's
+      # revert and relist it, rather than chase the launcher.
+      ${shellFolderLint}
       export XDG_DATA_HOME=$TMPDIR/data XDG_DATA_DIRS=$PWD/share NOW=$(date +%s)
       mkdir -m 700 $XDG_RUNTIME_DIR
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
@@ -125,8 +132,16 @@ onLinux {
         "dated": true}, ${builtins.toJSON drawn}]
       EOF
       ${lib.getExe programs} "$XDG_RUNTIME_DIR/daemons/programs.sock" sources.json &
-      ${shellFolderLint}
-      timeout 60 ${qs} -p shell.qml
+      # timeout ends 124 on its TERM and 137 once it kills a shell that
+      # ignored that; a case that fails exits without either, so a run
+      # that stops with no FAIL line was the clock, and says so.
+      ended=0
+      timeout -k 10 120 ${qs} -p shell.qml || ended=$?
+      case $ended in
+        0) ;;
+        124 | 137) echo "FAIL: the cases didn't end within 120 s (timeout ended $ended)"; exit 1 ;;
+        *) exit $ended ;;
+      esac
       touch $out
     '';
 

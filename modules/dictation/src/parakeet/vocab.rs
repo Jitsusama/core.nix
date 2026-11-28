@@ -88,10 +88,14 @@ impl Vocab {
 }
 
 /// Whether a piece is English text: no special token such as `<unk>` or
-/// `<|nospeech|>`, and nothing outside ASCII but the mark of a word's start.
+/// `<|nospeech|>`, and nothing outside ASCII but the mark of a word's start,
+/// nor a control such as a newline, which would break a transcript's line.
 fn english(piece: &str) -> bool {
     let special = piece.len() > 2 && piece.starts_with('<') && piece.ends_with('>');
-    !special && piece.chars().all(|c| c == SPACE || c.is_ascii())
+    !special
+        && piece
+            .chars()
+            .all(|c| c == SPACE || (c.is_ascii() && !c.is_ascii_control()))
 }
 
 #[cfg(test)]
@@ -126,6 +130,16 @@ pub(super) mod tests {
         let allowed: Vec<usize> = (0..vocab.blank()).filter(|&t| vocab.allowed(t)).collect();
         assert_eq!(allowed, [2, 3, 4, 6, 7]);
         assert!(english("\u{2581}hello"), "the tokenizer's mark refused");
+    }
+
+    #[test]
+    fn a_piece_that_would_break_a_line_is_never_written() {
+        // A transcript's lines are its paragraphs, so a piece writing a
+        // newline, a tab or another control would let what someone said
+        // open a paragraph the transcript reads as its own note.
+        for piece in ["\n", " a\n\nb", "\t", "\r", "\u{7f}"] {
+            assert!(!english(piece), "{piece:?} may be written");
+        }
     }
 
     #[test]

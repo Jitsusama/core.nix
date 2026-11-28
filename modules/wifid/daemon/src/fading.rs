@@ -176,9 +176,9 @@ mod tests {
     use crate::radio::Radio;
     use crate::state::Security;
 
-    const DESK: &str = "6c:ae:f6:c1:84:26";
-    const HALL: &str = "6c:ae:f6:ba:85:86";
-    const ROOM: &str = "6c:ae:f6:ba:85:87";
+    const DESK: &str = "02:00:00:00:a4:00";
+    const HALL: &str = "02:00:00:00:a1:00";
+    const ROOM: &str = "02:00:00:00:a2:00";
 
     fn heard(bssid: &str, signal: i16) -> Heard {
         Heard {
@@ -305,7 +305,7 @@ mod tests {
     fn a_faint_wide_link_gives_way_to_a_narrower_band_only_ten_db_louder_still() {
         // The desk's own 2.4 GHz radio is heard louder than its 5 GHz one
         // from the same place.
-        const NEAR: &str = "6c:ae:f6:c1:84:27";
+        const NEAR: &str = "02:00:00:00:a5:00";
         let short = [heard(DESK, -74), heard_on(NEAR, -57, 2437)];
         let enough = [heard(DESK, -74), heard_on(NEAR, -56, 2437)];
         let wide = [heard(DESK, -74), heard(HALL, -66)];
@@ -383,7 +383,7 @@ mod tests {
 
     #[test]
     fn a_lossy_wide_link_gives_way_to_its_own_band_before_a_louder_narrower_one() {
-        const NEAR: &str = "6c:ae:f6:c1:84:27";
+        const NEAR: &str = "02:00:00:00:a5:00";
         let both = [
             heard(DESK, -50),
             heard_on(NEAR, -40, 2437),

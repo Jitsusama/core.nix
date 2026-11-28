@@ -75,6 +75,20 @@ onLinux {
   vm-cores-kept-from-their-owner = import ./cores-kept-from-their-owner.nix {
     inherit self pkgs;
   };
+  # What the pi host test's failures say they read from the machine, apart
+  # from any VM. Named without vm- so the machine queue doesn't take these
+  # milliseconds for a VM test.
+  pi-conversations-read-says-what-it-read =
+    let
+      python = pkgs.python3.withPackages (python: [ python.pytest ]);
+    in
+    pkgs.runCommandLocal "pi-conversations-read-says-what-it-read" { } ''
+      cp ${./pi_conversations_read.py} pi_conversations_read.py
+      cp ${./pi-conversations-read-test.py} pi-conversations-read-test.py
+      PYTHONPATH=. PYTHONDONTWRITEBYTECODE=1 ${python}/bin/python -m pytest \
+        -p no:cacheprovider --import-mode=importlib --quiet pi-conversations-read-test.py
+      touch $out
+    '';
   # Whether a pi host gives back what it held after a kill -9 and a reboot
   # shows only with the account's own systemd starting it, and a boot.
   vm-pi-conversations-come-back =
