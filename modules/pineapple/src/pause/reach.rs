@@ -53,10 +53,32 @@ pub(super) const BEGUN: &str = "pineapple: begun there";
 /// 255 of that mycelium's own can't read as the script never running.
 const OWN_FAILURE: u8 = 70;
 
+/// What `mycelium` is asked to run `script` on `machine`, in `realm` or
+/// its own, for a stop given there and for `pineapple stop` alike.
+///
+/// It names no folder, so the run asks for the one pineapple runs in
+/// here, Joel's home, where a fenced run there may write the stops
+/// folder beneath it. A cloud room keeps that folder from its own
+/// account, so its shell never starts; neither the root nor the shared
+/// scratch folder serves instead, since a fenced run may write only
+/// the folder it starts in.
+pub(super) fn run_there(machine: &str, realm: Option<&str>, script: String) -> Vec<String> {
+    let mut args = asked(&["run"], realm);
+    args.extend([
+        "--need".to_owned(),
+        format!("machine={machine}"),
+        "--".to_owned(),
+        "sh".to_owned(),
+        "-c".to_owned(),
+        script,
+    ]);
+    args
+}
+
 /// Whether `why` a run failed is mycelium saying the command never ran.
 /// The script's word may share its line with the status, when nothing
 /// was said after it.
-fn didnt_run(why: &str) -> bool {
+pub(super) fn didnt_run(why: &str) -> bool {
     why.trim_end().ends_with(DIDNT_RUN)
         && !why.lines().any(|line| line.trim_start().starts_with(BEGUN))
 }
@@ -334,15 +356,11 @@ pub fn elsewhere(plan: &Plan, runs: &mut dyn Runs, at: &Reached, said: &Value, a
             realm: at.realm.clone(),
         };
     };
-    let mut args = asked(&["run"], at.realm.as_deref());
-    args.extend([
-        "--need".to_owned(),
-        format!("machine={}", at.machine),
-        "--".to_owned(),
-        "sh".to_owned(),
-        "-c".to_owned(),
+    let args = run_there(
+        &at.machine,
+        at.realm.as_deref(),
         script(said, act, at.realm.as_deref()),
-    ]);
+    );
     let (failed, reached) = match runs.run(mycelium, &args) {
         Ok(_) => (Vec::new(), true),
         Err(why) => (

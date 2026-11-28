@@ -116,9 +116,10 @@ const PAUSE: &str = "pause";
 const STEP: Duration = Duration::from_secs(6);
 
 /// How often the other machines are given the stops they lack: a stop
-/// heard reaches them within this and a run, however many machines hang,
-/// since every machine lacking it is given it at once, and one that hangs
-/// then waits a minute; well inside the five minutes a stop has to land
+/// heard reaches them within this and a [`CARRY_STEP`] for each sixteen
+/// lacking it, since they're given it sixteen at a time, each lot waiting
+/// for the one before, and one that hangs then waits a minute; for a mesh
+/// of tens of machines, well inside the five minutes a stop has to land
 /// in.
 const CARRY_EVERY: Duration = Duration::from_secs(5);
 
