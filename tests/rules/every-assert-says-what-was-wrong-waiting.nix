@@ -187,10 +187,8 @@
   "modules/shaper/src/oneway.rs" = 5;
   "modules/shaper/src/replay.rs" = 14;
   "modules/slack/src/lib.rs" = 4;
-  "modules/slices/jobs-sorter/src/low.rs" = 10;
   "modules/slices/jobs-sorter/src/main.rs" = 21;
   "modules/slices/jobs-sorter/src/quests.rs" = 3;
-  "modules/slices/jobs-sorter/src/revive.rs" = 20;
   "modules/spend-watch/src/collection.rs" = 10;
   "modules/spend-watch/src/config.rs" = 13;
   "modules/spend-watch/src/feed_tests.rs" = 11;
