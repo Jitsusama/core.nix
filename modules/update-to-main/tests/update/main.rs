@@ -5074,6 +5074,58 @@ fn a_nested_input_main_s_lock_points_elsewhere_is_judged_at_that_pin() {
     );
 }
 
+/// Core's own flake may point its mycelium at another input of its own,
+/// kit, which Nix copies into main's lock as a follows through core: with
+/// core followed, the build then reads core's kit from core's lock at the
+/// commit followed, so a hold is judged at that pin rather than at the
+/// one main's lock kept from an older core.
+#[test]
+fn a_nested_input_following_its_parent_s_own_input_is_judged_at_the_parent_s_pin() {
+    let world = asking_nested(following());
+    let older = world.commit_in("mycelium", "older", true);
+    let newer = world.commit_in("mycelium", "newer", true);
+    let core_pinning_kit = |message: &str, kit: &str| {
+        let lock = serde_json::json!({
+            "nodes": {
+                "root": { "inputs": { "mycelium": ["kit"], "kit": "kit" } },
+                "kit": { "locked": { "type": "github", "rev": kit } },
+            },
+            "root": "root",
+            "version": 7,
+        });
+        let core = world.root.join("core");
+        fs::write(core.join("flake.lock"), lock.to_string()).unwrap();
+        git(&core, &["add", "flake.lock"]);
+        world.core_commit(message, true)
+    };
+    let at_older = core_pinning_kit("kit at older", &older);
+    core_pinning_kit("kit at newer", &newer);
+    let lock = serde_json::json!({
+        "nodes": {
+            "root": { "inputs": { "core": "core" } },
+            "core": {
+                "inputs": { "mycelium": ["core", "kit"], "kit": "kit" },
+                "locked": { "type": "github", "rev": at_older },
+            },
+            "kit": { "locked": { "type": "github", "rev": older } },
+        },
+        "root": "root",
+        "version": 7,
+    });
+    fs::write(world.origin.join("flake.lock"), lock.to_string()).unwrap();
+    git(&world.origin, &["add", "flake.lock"]);
+    let head = world.signed("one");
+    world.system(&head);
+    held::ask(&world.config, &format!("hold {newer}"), Some(1000));
+    let Line::Refused { why, .. } = world.update().1 else {
+        panic!("a hold of what core's kit pin holds let main through at main's older kit pin")
+    };
+    assert!(
+        why.contains(&format!("main at {} holds it", &head[..12])),
+        "a hold of what core's kit pin holds wasn't said held by it: {why}"
+    );
+}
+
 #[test]
 fn building_elsewhere_sends_only_the_heavy_pieces_away() {
     let mut world = World::new();
