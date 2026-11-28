@@ -158,7 +158,10 @@ pub(crate) const VPN_MARGIN_MS: f64 = 5.0;
 /// a millisecond a second whenever the VPN's CAKE held nothing went from
 /// 25 to 62 ms on 11 November, under a queue of 100 to 350 ms standing for
 /// minutes, and counted none of it; a path that moved is learned within
-/// this, or at once when the guard lets go.
+/// this, or at once when the guard lets go. The least is the third-least
+/// heard in it, or the least while too few are (`third_least`), since a base from one
+/// sample on 27 November, 58.9 ms among round trips of 60 to 75, held for
+/// five minutes and read their jitter as a queue hidden past ours.
 const VPN_LEAST_S: f64 = 300.0;
 /// How many cuts of a run for a queue only the VPN's round trip meets
 /// must find it back where the run's first found it, less the round
@@ -1937,8 +1940,8 @@ impl Controller {
 
     /// The upload's queue in the router that only the VPN's flow waits in,
     /// in ms.
-    /// It's what the VPN's round trip took over the least heard in the last
-    /// `VPN_LEAST_S`, whatever its CAKE held then, past what the
+    /// It's what the VPN's round trip took over the third-least heard in the
+    /// last `VPN_LEAST_S`, whatever its CAKE held then, past what the
     /// probes on the link found each way, while the VPN's CAKE held a
     /// queue: then the VPN sends as fast as it's let, and what it fills is
     /// the upload's. With our CAKE holding nothing, the VPN's flow is
@@ -1961,7 +1964,7 @@ impl Controller {
         {
             self.vpn_heard.pop_front();
         }
-        let base = self.vpn_heard.iter().map(|&(_, ms)| ms).fold(vpn, f64::min);
+        let base = third_least(self.vpn_heard.iter().map(|&(_, ms)| ms)).unwrap_or(vpn);
         self.vpn_base = Some(base);
         let Some(ours) = queued else {
             return 0.0;
@@ -2355,6 +2358,33 @@ impl crate::replay::Controller for Controller {
             down: limits.down,
         }
     }
+}
+
+/// How many round trips `third_least` needs before it answers the
+/// third-least, not the least. With three alone the third-least is the
+/// highest of them, so after the guard lets go a queue still standing
+/// would be its own base (base third-least round 1's F2); ten seconds in,
+/// three dips are the path's.
+const THIRD_FROM: usize = 10;
+
+/// The third-least of `heard`, or its least while it holds fewer than
+/// `THIRD_FROM`, or none while it holds none: three running minima, so the
+/// five minutes of round trips `VPN_LEAST_S` keeps aren't sorted each
+/// second.
+fn third_least(heard: impl ExactSizeIterator<Item = f64>) -> Option<f64> {
+    let enough = heard.len() >= THIRD_FROM;
+    let (mut first, mut second, mut third) = (f64::INFINITY, f64::INFINITY, f64::INFINITY);
+    for ms in heard {
+        if ms < first {
+            (first, second, third) = (ms, first, second);
+        } else if ms < second {
+            (second, third) = (ms, second);
+        } else if ms < third {
+            third = ms;
+        }
+    }
+    let least = if enough { third } else { first };
+    least.is_finite().then_some(least)
 }
 
 #[cfg(test)]
@@ -4333,6 +4363,56 @@ mod tests {
             c.vpn_base().map(f64::round),
             Some(25.0),
             "a queue of minutes was taken for the path"
+        );
+    }
+
+    // As on 27 November: one round trip through the VPN, 58.9 ms among
+    // round trips of 60 to 75, was its least for five minutes, and the
+    // jitter over it read as a queue hidden past ours. One dip, or two,
+    // leave the least where the rest put it; three are the path's.
+    #[test]
+    fn one_dip_in_the_vpn_s_round_trip_doesn_t_lower_its_least() {
+        const DIPS: [u32; 3] = [50, 100, 150];
+        for (dips, least) in [(1, 60.0), (2, 60.0), (3, 40.0)] {
+            let mut c = Controller::new(None, None);
+            for moment in 0..200_u32 {
+                let at = f64::from(moment) * 0.1;
+                let dipped = DIPS[..dips].contains(&moment);
+                let ms = if dipped { 40.0 } else { 60.0 };
+                c.step(&Seen {
+                    at_s: at,
+                    ..through_the_vpn(false, ms)(at)
+                });
+            }
+            assert_eq!(
+                c.vpn_base().map(f64::round),
+                Some(least),
+                "40 ms heard {dips} times among round trips of 60"
+            );
+        }
+    }
+
+    #[test]
+    fn a_few_round_trips_answer_their_least_not_their_highest() {
+        // After the guard lets go, a queue still standing: 90, 92 and 140
+        // ms. As the third-least the base would be 140, the queue's own.
+        assert_eq!(
+            third_least([90.0, 92.0, 140.0].into_iter()),
+            Some(90.0),
+            "three round trips answered other than their least"
+        );
+        let ten = [
+            140.0, 90.0, 141.0, 92.0, 142.0, 95.0, 143.0, 144.0, 145.0, 146.0,
+        ];
+        assert_eq!(
+            third_least(ten.into_iter()),
+            Some(95.0),
+            "ten round trips didn't answer their third-least"
+        );
+        assert_eq!(
+            third_least(std::iter::empty()),
+            None,
+            "no round trip answered one"
         );
     }
 
@@ -6710,20 +6790,37 @@ mod tests {
     // what it delivered, 7 to 9 Mbit/s under a line with room, and the
     // queue formed past the VPN's CAKE, where Joel's upload inside the VPN
     // got 2 to 3% of the link. Held under the tunnel, the queue is the
-    // CAKE's, where his packets go first.
+    // CAKE's, where his packets go first. The wait is the median second's
+    // over the last minute, not its mean: each look past the upload's hold
+    // lifts the VPN's CAKE with it, past the tunnel, and one at 63 s made
+    // two thirds or more of that minute's wait, so where it fell in the
+    // share's climb decided the mean: from 12 to 64 ms over tunnels of 7
+    // to 9 Mbit/s. Unheld, the median second waits tens of seconds.
     #[test]
     fn a_wait_inside_the_tunnel_holds_the_vpn_s_own_queue_not_the_upload() {
         let mut c = anchored(12_000.0);
         let mut queued = 0.0;
-        let (lowest, waited) =
-            filling_a_tunnel(&mut c, (0.0, 120.0), |_| 7_500.0, false, &mut queued);
+        let (mut lowest, mut waits) = (f64::INFINITY, Vec::new());
+        let mut at = 0.0;
+        while at < 120.0 {
+            // Just under a second, so each call makes ten steps.
+            let (low, wait) = filling_a_tunnel(&mut c, (at, 0.95), |_| 7_500.0, false, &mut queued);
+            lowest = lowest.min(low);
+            if at >= 60.0 {
+                waits.push(wait);
+            }
+            at += 1.0;
+        }
+        waits.sort_by(f64::total_cmp);
+        let waited = waits[waits.len() / 2];
         assert!(
             lowest >= 10_799.0,
             "the upload was cut to {lowest} for the tunnel's own queue"
         );
         assert!(
             waited < 30.0,
-            "the tunnel held {waited:.0} ms on average past the VPN's CAKE, at a share of {:.2}",
+            "the tunnel held {waited:.0} ms in the median second past the VPN's CAKE, at a \
+             share of {:.2}",
             c.tunnel_share()
         );
         assert!(c.why().contains("inside its tunnel"), "{}", c.why());
