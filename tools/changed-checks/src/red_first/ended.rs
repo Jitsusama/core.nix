@@ -89,10 +89,11 @@ pub fn reason(log: &str) -> String {
 }
 
 /// The name the log of the check `name`'s build over the base is kept
-/// under in the cache, from this run's `pid`. A check's name is an
+/// under in the cache, one for each check, so a run's replaces the last
+/// rather than every run's piling up there. A check's name is an
 /// attribute's, which may hold a slash, a space or a quote, so any
 /// character a file's name can't safely hold becomes a dash.
-pub fn kept_as(pid: u32, name: &str) -> String {
+pub fn kept_as(name: &str) -> String {
     let name: String = name
         .chars()
         .map(|character| {
@@ -103,7 +104,7 @@ pub fn kept_as(pid: u32, name: &str) -> String {
             }
         })
         .collect();
-    format!("red-first-{pid}-{name}.log")
+    format!("red-first-{name}.log")
 }
 
 /// Build the check `name` over the base, stopping it at `deadline` and
@@ -157,9 +158,17 @@ pub fn built_over(
     let ended = built(passed, &log);
     if let Built::Unbuilt(reason) = &ended {
         let folder = crate::cache().join("changed-checks");
-        // Runs judging the same check at once each keep their own.
-        let kept = folder.join(kept_as(std::process::id(), name));
-        let _ = fs::create_dir_all(&folder).and_then(|()| fs::write(&kept, &*log));
+        let kept = folder.join(kept_as(name));
+        // Runs judging the same check at once each write their own, and
+        // the last to end puts its whole over the one kept, so a kept log
+        // is never two runs' words torn together.
+        let writing = kept.with_extension(format!("log.{}", std::process::id()));
+        let replaced = fs::create_dir_all(&folder)
+            .and_then(|()| fs::write(&writing, &*log))
+            .and_then(|()| fs::rename(&writing, &kept));
+        if replaced.is_err() {
+            let _ = fs::remove_file(&writing);
+        }
         eprintln!(
             "changed-checks: {name} couldn't be built over the base, though no builder failed \
              it ({reason}; nix's words are in {}), so its tests weren't asked to fail there",

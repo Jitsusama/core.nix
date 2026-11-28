@@ -409,17 +409,17 @@ fn a_build_left_unbuilt_says_nixs_last_error_cut_short() {
 #[test]
 fn a_kept_log_is_named_by_the_check_with_what_a_file_cant_hold_dashed() {
     let kept = [
-        kept_as(7, "vm-a_b.2"),
-        kept_as(7, "../a b/\"c\""),
-        kept_as(7, "caf\u{e9}*"),
+        kept_as("vm-a_b.2"),
+        kept_as("../a b/\"c\""),
+        kept_as("caf\u{e9}*"),
     ];
 
     assert_eq!(
         kept,
         [
-            "red-first-7-vm-a_b.2.log",
-            "red-first-7-..-a-b--c-.log",
-            "red-first-7-caf--.log",
+            "red-first-vm-a_b.2.log",
+            "red-first-..-a-b--c-.log",
+            "red-first-caf--.log",
         ],
         "a check's name was kept as a file's name it can't safely be"
     );

@@ -304,6 +304,37 @@ fn a_build_over_the_base_no_builder_failed_is_said_and_not_counted_red() {
 }
 
 #[test]
+fn a_check_left_unbuilt_again_keeps_one_log_replacing_the_last() {
+    let stand_in = committed("red-unbuilt-again", CHANGE, "a3.drv");
+    fs::write(stand_in.path("failing-over"), "a\n").expect("written");
+    for words in ["error: the first run's\n", "error: the second run's\n"] {
+        fs::write(stand_in.path("failing.said"), words).expect("written");
+        let ran = stand_in.run(&["--system", "x86_64-linux"]);
+        assert!(ran.status.success(), "{}", text(&ran.stderr));
+    }
+
+    let kept: Vec<String> = fs::read_dir(stand_in.path("cache/changed-checks"))
+        .expect("the cache was made")
+        .filter_map(Result::ok)
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .filter(|name| name.starts_with("red-first-"))
+        .collect();
+
+    assert_eq!(
+        kept,
+        ["red-first-a.log"],
+        "a check left unbuilt in two runs didn't keep one log under its name, or left a \
+         file it wrote on the way"
+    );
+    let words = fs::read_to_string(stand_in.path("cache/changed-checks/red-first-a.log"))
+        .expect("the kept log is read");
+    assert_eq!(
+        words, "error: the second run's\n",
+        "the kept log isn't the last run's alone"
+    );
+}
+
+#[test]
 fn a_check_reading_none_of_the_changes_code_is_said_and_not_built_over_the_base() {
     let stand_in = committed("red-only-tests", CHANGE, "a2.drv");
 
