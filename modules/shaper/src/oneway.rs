@@ -6261,6 +6261,35 @@ mod tests {
         }
     }
 
+    // A stand heard throughout is quiet while its drops fill under
+    // `QUIET_STAND` of what was looked at, and not once they fill it. The
+    // share is written out, a fifth, rather than read from the constant,
+    // so moving it fails here as holding it with `<=` does (drops stand
+    // longer round 4's F28).
+    #[test]
+    fn a_stand_is_quiet_only_under_its_share_of_drops() {
+        let share = DROPS_LOOK_S / 5.0;
+        for (dropped, quiet) in [
+            (DROPS_LOOK_S * 0.15, true),
+            (share - 1.0, true),
+            (share, false),
+            (DROPS_LOOK_S * 0.25, false),
+        ] {
+            let mut c = anchored(12_000.0);
+            let up = &mut c.up;
+            up.found_by_drops(0.0);
+            let returned = DROPPED_STANDS_S;
+            heard_for(up, (returned - DROPS_LOOK_S, returned), dropped);
+            up.returned(returned);
+            assert_eq!(
+                up.returned_at.is_some(),
+                quiet,
+                "a stand dropping {dropped} s of {DROPS_LOOK_S} was judged quiet {}",
+                up.returned_at.is_some()
+            );
+        }
+    }
+
     // A stand that lapses with the upload back at the guard's share ended
     // without a return, so a return later, for a cut of another kind, has
     // no lowered bar; one that lapses held low is still returned from
