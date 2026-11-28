@@ -940,10 +940,11 @@ def test_a_phone_reads_every_word_code_draws(
 def test_a_name_stays_inside_its_stand_at_every_width(
     browser: Browser, code_served: Served, size: tuple[int, int]
 ) -> None:
-    """No name spills past its stand, however long, and one that fits keeps one line.
+    """No name spills past its stand or widens it, however long, and one that fits keeps a line.
 
     A name wraps at its dots and dashes, and one with neither breaks wherever it must
-    only when it is wider than the room it has, so it is never cut and never spills.
+    only when it is wider than the room it has, so it is never cut and never spills. Each
+    stand keeps the width the grove gives it, so a stand grown to hold its name fails too.
     """
     root, _ = code_served
     opened = Opened(browser, f"{root}code/", size, LOOKS[0])
@@ -953,17 +954,18 @@ def test_a_name_stays_inside_its_stand_at_every_width(
         expect(named, "Code drew no stand's name in its grove").to_be_visible(timeout=PACE_MS)
         opened.page.evaluate("document.fonts.ready.then(() => true)")
         for name in (LONG_NAME, WIDER_THAN_A_PHONE):
-            said = opened.page.evaluate(SPILT, name)
+            said = opened.page.evaluate(SPILT, [name, STAND_PX])
             assert said["stands"] > 0, f"Code drew no stand in its grove at {size}"
             assert said["named"] == said["stands"], f"a stand drew no name at {size}: {said}"
             assert said["spilt"] == [], f"{name} spilt past its stand at {size}: {said}"
+            assert said["resized"] == [], f"{name} resized its stand at {size}: {said}"
         if size == SIZES[0]:
-            said = opened.page.evaluate(SPILT, LONG_NAME)
+            said = opened.page.evaluate(SPILT, [LONG_NAME, STAND_PX])
             assert said["lines"] == 1, f"{LONG_NAME} broke though a phone has room: {said}"
         else:
             fitting = opened.page.evaluate(FITTING, [STAND_PX - FIT_SPARE, STAND_PX])
             assert fitting is not None, f"no name could be made to just fit a stand: {size}"
-            said = opened.page.evaluate(SPILT, fitting["name"])
+            said = opened.page.evaluate(SPILT, [fitting["name"], STAND_PX])
             assert said["lines"] == 1, f"a name that fits its stand broke at a desk: {fitting}"
             assert said["spilt"] == [], f"a name that fits spilt past its stand: {said}"
     finally:
@@ -1012,10 +1014,15 @@ FITTING = """([least, most]) => {
   return found;
 }"""
 
-# Each stand's name set to `name`, then how many stands and names there are,
-# each name drawn past its stand, and the most lines any name took.
-SPILT = """(name) => {
+# Each stand's name set to `name`, then how many stands and names there are, each name drawn
+# past its stand, each stand not as wide as the grove gives it, and the most lines any name
+# took. A grid of stands, as on a phone, gives each its column, every column alike; otherwise
+# each stand is `given` wide.
+SPILT = """([name, given]) => {
   const spilt = [];
+  const resized = [];
+  const grove = getComputedStyle(document.querySelector(".grove"));
+  const width = grove.display === "grid" ? Number.parseFloat(grove.gridTemplateColumns) : given;
   const stands = document.querySelectorAll(".grove .stand");
   let named = 0;
   let lines = 0;
@@ -1033,8 +1040,11 @@ SPILT = """(name) => {
     if (drawn.left < room.left - 0.5 || drawn.right > room.right + 0.5) {
       spilt.push(`${Math.round(drawn.width)} px in ${Math.round(room.width)}`);
     }
+    if (Math.abs(room.width - width) > 0.5) {
+      resized.push(`${Math.round(room.width)} px for ${Math.round(width)}`);
+    }
   }
-  return { stands: stands.length, named, lines, spilt };
+  return { stands: stands.length, named, lines, spilt, resized };
 }"""
 
 
