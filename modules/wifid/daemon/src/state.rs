@@ -645,6 +645,17 @@ impl State {
         self.settle_warnings();
     }
 
+    /// Keeps the point that warned a card off its chooser until `until`
+    /// instead, if it's still the one kept off, as the machine wakes and
+    /// the warning's end is timed again (`Wifid::retime_warnings`).
+    pub fn retimed(&mut self, card: &str, point: &str, until: Instant) {
+        if let Some(warning) = self.warned_off.get_mut(card)
+            && warning.point.eq_ignore_ascii_case(point)
+        {
+            warning.until = until;
+        }
+    }
+
     /// When the access point a card is on warned it drops the card, if it
     /// did since wifid began and that's still kept to at `now`: the
     /// warning's own heed is then moving the card off it, looking first or
@@ -1617,6 +1628,31 @@ mod tests {
             state.warned_from("wlan2", now),
             Some(&*warned),
             "a warning from before a restart didn't keep its point off"
+        );
+    }
+
+    #[test]
+    fn a_keep_off_timed_again_as_the_machine_wakes_ends_then_for_its_own_point_alone() {
+        let mut state = at_the_inn();
+        let warned = state.point_of("wlan2").expect("on a point");
+        let now = Instant::now();
+        let ten = now + Duration::from_secs(600);
+        state.kept_off("wlan2", &warned, ten);
+        state.at("wlan2", Some("/Interfaces/0/BSSs/2".into()));
+
+        state.retimed("wlan2", "02:00:00:00:0f:00", now);
+        assert_eq!(
+            state.warned_from("wlan2", now),
+            Some(&*warned),
+            "another point's warning timed this one's again"
+        );
+        let minute = now + Duration::from_secs(60);
+        state.retimed("wlan2", &warned.to_uppercase(), minute);
+
+        assert_eq!(
+            state.warned_from("wlan2", minute),
+            None,
+            "a keep-off timed again to end at the minute still kept its point off then"
         );
     }
 

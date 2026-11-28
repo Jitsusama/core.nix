@@ -497,6 +497,7 @@ async fn follow(
             }
             Some(sleep) = sleeps.recv() => {
                 if sleep.args().is_ok_and(|args| !args.start) {
+                    wifid.retime_warnings();
                     networks.asked.send_modify(|asked| *asked += 1);
                 }
             }
@@ -1768,18 +1769,21 @@ fn keep_off_as_warned(
     for (card, point, until) in warned.lasting(now, boot) {
         arrivals.warned(&card, &point, until);
         state.kept_off(&card, &point, until);
-        // Rounded up from the milliseconds, as a warning lasts until one
-        // has none left, so even its last second reads as a minute.
-        let minutes = until
-            .saturating_duration_since(now)
-            .as_millis()
-            .div_ceil(60_000);
-        let unit = if minutes == 1 { "minute" } else { "minutes" };
+        let left = minutes_more(until.saturating_duration_since(now));
         said.push(format!(
-            "{card} keeps off {point} for {minutes} more {unit}, as it warned before"
+            "{card} keeps off {point} for {left}, as it warned before"
         ));
     }
     said
+}
+
+/// The time a keep-off has left, for the journal, in minutes rounded up
+/// from the milliseconds, as a warning lasts until it has none left, so
+/// even its last second reads as a minute.
+fn minutes_more(left: Duration) -> String {
+    let minutes = left.as_millis().div_ceil(60_000);
+    let unit = if minutes == 1 { "minute" } else { "minutes" };
+    format!("{minutes} more {unit}")
 }
 
 /// Tells everyone listening what changed, if anything did.
@@ -2164,6 +2168,35 @@ impl Wifid<'_> {
                 }
                 Ok((false, _)) => {}
                 Err(error) => eprintln!("<4>can't read how far {card} has joined: {error}"),
+            }
+        }
+    }
+
+    /// Times each keep-off again by the warning kept of it, as the machine
+    /// wakes. A point's warning runs by the point's own clock, which went
+    /// on as the laptop slept, but an `Instant` stops then, so a keep-off
+    /// timed by one outlasted the point's word by the sleep, and ended
+    /// later than the same warning read back after a restart (warned.rs).
+    /// A keep-off whose warning couldn't be kept stays as it was.
+    fn retime_warnings(&self) {
+        let boot = match Boot::now() {
+            Ok(boot) => boot,
+            Err(error) => {
+                eprintln!(
+                    "<4>can't time the keep-offs again as wifid wakes, as it can't read the boot \
+                     clock: {error}"
+                );
+                return;
+            }
+        };
+        let now = Instant::now();
+        for (card, point, until) in self.warned.borrow().ends(now, boot) {
+            self.arrivals.borrow_mut().retimed(&card, &point, until);
+            change(self.state, |state| state.retimed(&card, &point, until));
+            let left = until.saturating_duration_since(now);
+            if !left.is_zero() {
+                let left = minutes_more(left);
+                println!("<7>{card} keeps off {point} {left}, timed as it woke");
             }
         }
     }

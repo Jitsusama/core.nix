@@ -198,6 +198,19 @@ impl Warned {
             .collect()
     }
 
+    /// Each card's warning kept, as the card, the point and the `Instant`
+    /// it ends at, `now` being `boot` on the boot clock: `now` itself for
+    /// one already run out, as a keep-off timed again by it then ends.
+    pub fn ends(&self, now: Instant, boot: Boot) -> Vec<(String, String, Instant)> {
+        self.kept
+            .iter()
+            .map(|(card, kept)| {
+                let until = instant(kept.ends, now, boot).unwrap_or(now);
+                (card.clone(), kept.point.clone(), until)
+            })
+            .collect()
+    }
+
     /// Keeps that the point warned the card it drops it, kept off until
     /// then, in place of the card's warning before, and forgets every
     /// warning that has run out, `now` being `boot` on the boot clock.
@@ -350,6 +363,39 @@ mod tests {
             fs::metadata(&file).expect("a file").permissions().mode() & 0o777,
             0o600,
             "a partial file left readable past wifid was kept so"
+        );
+    }
+
+    #[test]
+    fn a_warning_ends_by_the_boot_clock_once_the_laptop_has_slept() {
+        let folder = tempfile::tempdir().expect("a folder");
+        let file = folder.path().join("warned");
+        let warned_at = Instant::now();
+        let ten = Duration::from_secs(600);
+        let mut warned = Warned::none(&file);
+        warned
+            .warned("wlan2", DESK, warned_at + ten, (warned_at, boot(600)))
+            .expect("kept");
+        warned
+            .warned("wlan3", HALL, warned_at + ten * 2, (warned_at, boot(600)))
+            .expect("kept");
+
+        // 3 s on by an `Instant`, which stops as the laptop sleeps, but a
+        // quarter of an hour on by the boot clock, which doesn't.
+        let woke = warned_at + Duration::from_secs(3);
+        let ends = warned.ends(woke, boot(600 + 900));
+
+        assert_eq!(
+            ends,
+            vec![
+                ("wlan2".to_owned(), DESK.to_owned(), woke),
+                (
+                    "wlan3".to_owned(),
+                    HALL.to_owned(),
+                    woke + Duration::from_secs(300)
+                ),
+            ],
+            "a warning's end wasn't timed by the boot clock, or one run out as it slept lasted"
         );
     }
 
