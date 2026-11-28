@@ -53,6 +53,33 @@ QtObject {
             failures.push(`${what}: got ${got}, wanted ${want}`);
     }
 
+    // An opening's chord is felt from as its frame was heard, however late
+    // openDrawn runs after it, so the keys' and the acts' handlers before
+    // it never lengthen the chord's figure (Presented.chordBefore).
+    function chordBefore(failures) {
+        // The chord at wall 1000, the frame heard at mono 5040, and the
+        // two clocks read 30 ms after it, at mono 5070 and wall 1070.
+        const steady = (mono, wall) => [() => mono, () => wall];
+        check(failures, "a chord is felt to its frame as heard, not to now",
+            Presented.chordBefore(1000, 5040, ...steady(5070, 1070)), 40);
+        check(failures, "read as the frame is heard, the chord's time is all of it",
+            Presented.chordBefore(1000, 5070, ...steady(5070, 1070)), 70);
+        check(failures, "read later, the chord's time holds",
+            Presented.chordBefore(1000, 5040, ...steady(5500, 1500)), 40);
+        check(failures, "with no chord, none is felt",
+            Presented.chordBefore(-1, 5040, ...steady(5070, 1070)), -1);
+        check(failures, "a fraction of a millisecond is rounded, not cut",
+            Presented.chordBefore(1000, 5040.6, ...steady(5070, 1070)), 41);
+
+        // Each read 10 ms after the one before, as a busy thread may: the
+        // monotonic clock read first puts the chord's figure 10 ms long,
+        // never short, so a delay never flatters the 50 ms bar.
+        let clocksRead = 0;
+        const readFirst = (at) => () => at + 10 * clocksRead++;
+        check(failures, "a delay between the clocks' reads lengthens the chord's figure",
+            Presented.chordBefore(1000, 5040, readFirst(5070), readFirst(1070)), 50);
+    }
+
     // An opening says what its own work went on, slowest first, so the
     // line Joel's slow opening left names its cause (2026-11-10).
     function opening(failures) {
@@ -1911,6 +1938,7 @@ QtObject {
         const failures = [];
         const every = 250;
         drawers(failures);
+        chordBefore(failures);
 
         const first = Pacing.heard(Pacing.rested(), 1000, every);
         check(failures, "the first change is taken at once", first.now, true);

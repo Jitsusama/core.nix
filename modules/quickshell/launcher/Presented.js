@@ -84,6 +84,21 @@ function screensSaid(times) {
     return screens.length === 0 ? "" : `; on ${screens.join(" and ")}`;
 }
 
+// How many whole ms Joel's chord came before an opening's frame at `sized`, on the monotonic clock
+// (KeyTimes.now) that frame is read on; -1 with no chord (`chordAt` below 0). The chord is a wall
+// time (Date.now), so it's taken across by reading `mono` and `wall`, the two clocks, side by
+// side now, and the time since the frame, `mono - sized`, comes off: the frame is timed as the
+// shell's thread first heard it swapped, before the keys' and the acts' handlers ran, so their
+// work isn't said as the opening's (F47 on #6984). The monotonic clock is read first, so a delay
+// between the two reads lengthens the chord's figure and never flatters the 50 ms bar.
+function chordBefore(chordAt, sized, mono, wall) {
+    if (chordAt < 0) {
+        return -1;
+    }
+    const monoNow = mono();
+    return Math.round(wall() - chordAt - (monoNow - sized));
+}
+
 // Where a set's time went, each part's median over those stamped with when the shell heard it and
 // when its frame began, or "" where none was: a key from its press.
 function wentTo(times) {

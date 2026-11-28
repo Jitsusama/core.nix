@@ -12450,7 +12450,7 @@ Scope {
 
     // Its first frame drawn, the opening is timed to it; drawn at its size,
     // it's filled in.
-    function openShown(begun, frame) {
+    function openShown(begun, frame, swappedAt) {
         if (!opening)
             return;
         const sized = drawnAsAsked();
@@ -12464,7 +12464,7 @@ Scope {
             presentedSized(frame);
         openFramesWaited += 1;
         if (openFirstDrawn < 0) {
-            openFirstDrawn = KeyTimes.now();
+            openFirstDrawn = swappedAt ?? KeyTimes.now();
             openFirstSplit = frameSplit({ frame, begun }, openFirstDrawn);
             openFirstMade = tallies();
             openFirstWeighings = keysWeighings;
@@ -12478,7 +12478,7 @@ Scope {
         // left shut, and said, since it shows at a size it wasn't asked.
         if (openFramesSized === 0)
             Report.say(`filled an opening not at its size, after ${openFramesWaited} frames`);
-        openDrawn();
+        openDrawn(undefined, undefined, swappedAt);
         // Filled once niri has presented that frame, not as it's swapped:
         // filled at once, niri presented the kept frame a median 132 ms
         // after it was drawn, against 33 ms for a letter's, since the
@@ -13277,7 +13277,9 @@ Scope {
         openWorkedClocks = feltClocks();
         openWorked = KeyTimes.now() - openAsked;
     }
-    function openDrawn(beganAt, frame) {
+    // Told when its frame was heard swapped (`swappedAt`), or timed as
+    // it's called where it wasn't waiting on a frame.
+    function openDrawn(beganAt, frame, swappedAt) {
         const asked = openAsked;
         openAsked = -1;
         // Shut before its frame, an opening makes no record, so what
@@ -13291,12 +13293,14 @@ Scope {
         }
         if ((!open && !opening) || asked < 0)
             return;
-        const sized = KeyTimes.now();
+        const sized = swappedAt ?? KeyTimes.now();
         const drawn = openFirstDrawn < 0 ? sized : openFirstDrawn;
         const took = Math.round(sized - asked);
         // Joel's wait runs from his chord to the frame niri shows at the
-        // card's size, so it's felt from here, not from the first frame.
-        const felt = chordAt < 0 ? -1 : Math.round(Date.now() - chordAt);
+        // card's size, so it's felt from here, not from the first frame,
+        // and from as that frame was heard, however late this runs.
+        const felt = Presented.chordBefore(chordAt, sized, () => KeyTimes.now(),
+            () => Date.now());
         feltBegin(felt < 0 ? asked : sized - felt, felt >= 0);
         const heard = Math.round(chordHeardAfter);
         chordAt = -1;
@@ -14309,7 +14313,8 @@ Scope {
             enabled: root.afterFrames.length > 0 || root.afterFramesDrawing.length > 0
 
             // Each is told when its frame began, so a drawer's time says how
-            // much of it waited for its frame and how much drew it.
+            // much of it waited for its frame and how much drew it, and when
+            // the shell heard that frame swapped.
             function onAfterAnimating() {
                 const begun = KeyTimes.now();
                 // The frame about to begin, as FramePresentation will number it.
@@ -14318,7 +14323,7 @@ Scope {
                         || root.afterFrames.includes(root.openShown)) && root.openBegun < 0)
                     root.openBegun = begun;
                 root.afterFramesDrawing = root.afterFramesDrawing
-                    .concat(root.afterFrames.map(then => () => then(begun, frame)));
+                    .concat(root.afterFrames.map(then => heard => then(begun, frame, heard)));
                 root.afterFrames = [];
             }
 
@@ -14329,14 +14334,20 @@ Scope {
             // said as the key's (Joel's down onto Slack, 28 ms before the
             // shell heard its frame swapped, as the drawer made in 28,
             // 2026-11-13). Their own handlers then find nothing to time.
-            // Each is run as what waits on the frame is, so a throw timing
-            // one holds none of it back.
+            // What waited on it is told when the swap was heard, read once
+            // first, so an opening's time to its frame doesn't count the
+            // keys' or the acts' work here as heard late. Another
+            // frameSwapped handler Qt calls before this one, as this one
+            // enabled again after them is, still counts in it. Each is run
+            // as what waits on the frame is, so a throw timing one holds
+            // none of it back.
             function onFrameSwapped() {
+                const heard = KeyTimes.now();
                 Thrown.runEach([() => root.keysFrameSwapped(), () => root.actsFrameSwapped()],
                     said => console.warn(`launcher: timing a frame threw: ${said}`));
                 const due = root.afterFramesDrawing;
                 root.afterFramesDrawing = [];
-                root.afterFramesRun(due);
+                root.afterFramesRun(due.map(then => () => then(heard)));
                 if (root.afterFrames.length > 0)
                     card.Window.window?.update();
             }
