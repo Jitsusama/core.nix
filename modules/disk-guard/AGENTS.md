@@ -57,10 +57,10 @@ or launchd, and [`home.nix`][2] the account's.
   schedule, as a cache gaining a version ends an older one's use. Upkeep
   that kept something only the system daemon could have vouched for,
   while it couldn't be asked, as when a switch restarts both daemons,
-  comes again ten minutes later, once: a second such in a row counts as
-  done, since on 27 November a system daemon busy with its own passes
-  went unheard upkeep after upkeep, and each came back for a walk of
-  15 GB.
+  comes again ten minutes later, or once a survey's spacing ends if
+  that's later, and once: a second such in a row counts as done, since
+  on 27 November a system daemon busy with its own passes went unheard
+  upkeep after upkeep, and each came back for a walk of 15 GB.
 - **Spacing.** A pass that walks every source waits after the last one
   ended twelve times as long as that one walked, at most three hours,
   kept across restarts, so a survey slowed by a busy disk waits the
@@ -78,7 +78,11 @@ or launchd, and [`home.nix`][2] the account's.
   on its own disk: a producers' or a clear's pass, which walks only its
   own sources, a reach that met its band first, or a disk that rested or
   was held off judges none. A guard restarted while any is marked marks
-  every disk it watches again, as which they were isn't kept.
+  every disk it watches again, as which they were isn't kept. Upkeep
+  merely due again waits, since it walks every source as any does: the
+  retry ten minutes after one the system daemon went unheard for, the
+  retry after one left unfinished and a builds disk's hourly upkeep past
+  its budget each come once the spacing ends.
 - **Windows.** How long a thing has to sit idle before it goes narrows with
   each band, and counts only time the machine was awake. Even while healthy,
   waste goes, and so does what nobody has used for long: a build after a
@@ -327,7 +331,8 @@ or launchd, and [`home.nix`][2] the account's.
   them its own retries: ten minutes after one that kept what only an
   unheard system daemon could vouch for, though not after a second in a
   row, judged once a step for every disk, and at the next spare step
-  after one left unfinished. An upkeep made due for a reason of its own
+  after one left unfinished, each once a survey's spacing has ended, as
+  the builds budget's hourly upkeep waits too. An upkeep made due for a reason of its own
   gets its own retry. A producers' or clear's survey that offers nothing
   makes no pass, so its walk leaves no seconds. Any account may pass
   through the machine's state folder to its journal but not list it, and

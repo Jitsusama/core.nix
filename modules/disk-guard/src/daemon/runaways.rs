@@ -370,7 +370,9 @@ impl Guard {
             self.mark_spent();
         }
         // A builds disk passing its budget changes no holder, and on a
-        // healthy root nothing else would bring upkeep for six hours.
+        // healthy root nothing else would bring upkeep for six hours. It
+        // spends nothing, so its upkeep waits out a survey's spacing as
+        // any upkeep merely due again does.
         let looked = self
             .budget_looked
             .is_some_and(|at| tick.wall - at < crate::survey::BUDGET_LOOKS_EVERY);

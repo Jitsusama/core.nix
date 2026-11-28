@@ -25,7 +25,9 @@ pub(super) const PASS_WEIGHT: f64 = 0.3;
 /// both daemons, so the user's upkeep can begin while the system's is down;
 /// ten minutes lets it come back. Only once in a row: on 27 November the
 /// system daemon, busy with its own passes, went unheard upkeep after
-/// upkeep, and each came back for another walk of 15 GB.
+/// upkeep, and each came back for another walk of 15 GB. It walks every
+/// source as any upkeep does, so it waits out a survey's spacing too,
+/// coming later than this when the last survey walked for long.
 pub(super) const UNHEARD_AGAIN: f64 = 600.0;
 
 /// The trees whose builds are spent: every tree a finished quest lists,

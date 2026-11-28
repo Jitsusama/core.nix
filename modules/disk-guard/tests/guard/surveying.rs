@@ -1,10 +1,13 @@
 //! What a guard learns from a pass after a survey: which disks' spent
 //! builds were judged, and when upkeep comes again.
 
-use crate::daemon::{CALM, Home, held_tree, owned_trees, surveyed_before, tick, touch, wall};
+use crate::daemon::{
+    CALM, Home, fake_system, held_tree, owned_trees, socket_dir, surveyed_before, tick, touch, wall,
+};
 use crate::steps::{DRAINED, fill, margin_and_free, on_shm, writes_a_share};
 use disk_guard::clock::Tick;
 use disk_guard::config::{Config, Source};
+use disk_guard::daemon::{Guard, Places};
 use disk_guard::pool::pool;
 use disk_guard::state::Memory;
 use disk_guard::units::{Size, Span};
@@ -199,6 +202,41 @@ fn a_reach_that_met_its_band_first_leaves_what_an_owner_left_to_be_judged() {
         home.memory()["spent_due"],
         true,
         "a reach that met its band judged the builds an owner left"
+    );
+}
+
+#[test]
+fn upkeep_again_for_an_unheard_system_daemon_waits_out_the_spacing() {
+    // The retry is a whole survey like any upkeep, and walks every source
+    // ten minutes after the last: on 27 November each walked 15 GB.
+    let home = Home::new();
+    let built = held_tree(&home, 400);
+    fs::remove_dir_all(home.root.join("proc/400")).unwrap();
+    home.hidden(300, 77);
+    let sockets = socket_dir();
+    let socket = sockets.path().join("system.socket");
+    let places = Places {
+        system: Some(socket.clone()),
+        ..home.places()
+    };
+    let start = wall();
+    let mut guard = Guard::new(crate::unpaced(owned_trees(&home)), &places).unwrap();
+    guard.step(&after(start, 0.0), &CALM).unwrap();
+    assert!(built.exists(), "kept while nothing vouches for process 300");
+    drop(guard);
+    // Spaced twelve times its two minutes' walk, till 24 minutes on.
+    remember(&home, |memory| memory.surveyed = Some((start + 1.0, 120.0)));
+    let _heard = fake_system(&socket, false);
+    let mut again = Guard::new(crate::unpaced(owned_trees(&home)), &places).unwrap();
+    again.step(&after(start, 660.0), &CALM).unwrap();
+    assert!(
+        built.exists(),
+        "upkeep for an unheard system daemon came again within the spacing"
+    );
+    again.step(&after(start, 1500.0), &CALM).unwrap();
+    assert!(
+        !built.exists(),
+        "upkeep for an unheard system daemon never came again after the spacing"
     );
 }
 
