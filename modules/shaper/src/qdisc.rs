@@ -305,8 +305,9 @@ pub fn tins(json: &str) -> Vec<Tin> {
     tins
 }
 
-/// Where real-time traffic goes: an app's calls and everything Tuple's
-/// daemon sends, in CAKE's tin order (bulk, best effort, video, voice).
+/// Where real-time traffic goes: an app's calls, everything Tuple's daemon
+/// sends and, while no call is on, a turn Joel typed, in CAKE's tin order
+/// (bulk, best effort, video, voice).
 const VIDEO: usize = 2;
 
 /// What each of CAKE's four tins sent a second, in kbit/s, in diffserv4's

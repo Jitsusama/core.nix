@@ -1175,28 +1175,15 @@ struct Call {
 }
 
 impl Call {
-    /// Asks a-call-is-on again once `CALL_EVERY` has passed, says so in the
-    /// journal when the answer changes, and gives the `calling` set's
-    /// members. When it can't tell, what was last known stands, for under
-    /// `CALL_UNSURE`, after which a call is taken to have ended. It asks
-    /// about this machine alone (`--here`), since the set holds this
-    /// machine's own UDP: a call on a laptop beside it would only put this
-    /// machine's traffic ahead of the laptop's call on the same uplink.
-    fn heed(&mut self, now: Instant, users: &Path) -> Vec<String> {
+    /// Asks whether a call is on, by `ask` (`ask_here` but in tests), once
+    /// `CALL_EVERY` has passed, says so in the journal when the answer
+    /// changes, and gives the `calling` set's members. When it can't tell,
+    /// what was last known stands, for under `CALL_UNSURE`, after which a
+    /// call is taken to have ended.
+    fn heed(&mut self, now: Instant, ask: impl FnOnce() -> Option<bool>) -> Vec<String> {
         if self.asked.is_none_or(|at| now - at >= CALL_EVERY) {
             self.asked = Some(now);
-            let asked = Command::new("a-call-is-on")
-                .arg("--here")
-                .arg(users)
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .status();
-            let on = match asked.map(|s| s.code()) {
-                Ok(Some(0)) => Some(true),
-                Ok(Some(1)) => Some(false),
-                _ => None,
-            };
-            if let Some(said) = self.answered(on, now) {
+            if let Some(said) = self.answered(ask(), now) {
                 eprintln!("{said}");
             }
         }
@@ -1244,6 +1231,25 @@ impl Call {
     }
 }
 
+/// Whether a call is on in any account, as a-call-is-on says, or none when
+/// it can't tell. It asks about this machine alone (`--here`), since the
+/// `calling` set holds this machine's own UDP: a call on a laptop beside it
+/// would only put this machine's traffic ahead of the laptop's call on the
+/// same uplink.
+fn ask_here(users: &Path) -> Option<bool> {
+    let asked = Command::new("a-call-is-on")
+        .arg("--here")
+        .arg(users)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+    match asked.map(|s| s.code()) {
+        Ok(Some(0)) => Some(true),
+        Ok(Some(1)) => Some(false),
+        _ => None,
+    }
+}
+
 /// Each set's members at this step: the slices as they stand, the sessions
 /// running a turn, whether a call is on and the work put first.
 fn sorted(
@@ -1254,10 +1260,28 @@ fn sorted(
     now: Instant,
 ) -> classes::Sets {
     let mut sets = classes::read(&options.cgroups);
-    (sets.bulk5, sets.typed5) = classes::by_typing(&options.cgroups, sessions);
-    sets.calling = call.heed(now, &options.users);
+    let typed;
+    (sets.bulk5, typed) = classes::by_typing(&options.cgroups, sessions);
+    place_for_the_call(&mut sets, typed, call, now, || ask_here(&options.users));
     sets.first = first.heed(&options.cgroups, &options.users);
     sets
+}
+
+/// Hears whether a call is on, by `ask`, and puts the units running a
+/// typed turn, `typed`, where that says. It hears first, so a call that
+/// starts this step takes a typed turn out of the video tin this step too,
+/// and it places them by whether a call may be on, as the VPN's pin does,
+/// so a call a-call-is-on has gone silent on still keeps them out of it
+/// (model calls ahead round 2's F25 and F29).
+fn place_for_the_call(
+    sets: &mut classes::Sets,
+    typed: Vec<String>,
+    call: &mut Call,
+    now: Instant,
+    ask: impl FnOnce() -> Option<bool>,
+) {
+    sets.calling = call.heed(now, ask);
+    classes::place_typed(sets, typed, call.may_be_on());
 }
 
 /// Runs each of `texts` through nft as a transaction of its own, so one
@@ -1850,7 +1874,7 @@ fn watch_real_time(shaped: &mut BTreeMap<String, Shaped>, t: f64) {
         let live = s.real_time.count(packets, t);
         if live != was {
             if live {
-                eprintln!("{name}: real-time traffic flows now");
+                eprintln!("{name}: {}", realtime::FLOWS);
             } else {
                 // Worded apart from the line it ends, which the VM tests
                 // look for.
@@ -3257,6 +3281,75 @@ mod tests {
             "a minute counted across an answer ended the call"
         );
         assert!(call.on, "a call heard 30 s ago was ended");
+    }
+
+    const WINDOW: &str = "user.slice/user-1000.slice/user@1000.service/app.slice/pi-window.service";
+
+    /// The step `sorted` takes to place a typed turn, with a-call-is-on's
+    /// answer `heard` at `now`.
+    fn placed(call: &mut Call, heard: Option<bool>, now: Instant) -> classes::Sets {
+        let mut sets = classes::Sets::default();
+        place_for_the_call(&mut sets, vec![WINDOW.into()], call, now, || heard);
+        sets
+    }
+
+    // A call heard this step takes a typed turn out of the video tin this
+    // step, not the next (model calls ahead round 2's F25).
+    #[test]
+    fn a_typed_turn_goes_as_best_effort_once_a_call_is_heard() {
+        let start = Instant::now();
+        let mut call = Call::default();
+        let sets = placed(&mut call, Some(false), start);
+        assert_eq!(
+            sets.typed_video5,
+            [WINDOW],
+            "with no call on, a typed turn didn't go as video"
+        );
+        let sets = placed(&mut call, Some(true), start + CALL_EVERY);
+        assert_eq!(sets.calling, classes::calling(true), "the call wasn't heard");
+        assert!(
+            sets.typed_video5.is_empty(),
+            "a typed turn went as video in the step a call was heard: {sets:?}"
+        );
+        assert_eq!(
+            sets.typed5,
+            [WINDOW],
+            "during a call a typed turn left best effort"
+        );
+    }
+
+    // a-call-is-on silent for a minute empties the calling set, but the call
+    // may go on, so a typed turn stays out of its tin (model calls ahead
+    // round 2's F29).
+    #[test]
+    fn a_call_gone_silent_still_keeps_a_typed_turn_out_of_video() {
+        let start = Instant::now();
+        let at = |s: u64| start + Duration::from_secs(s);
+        let mut call = Call::default();
+        placed(&mut call, Some(true), start);
+        for s in (2..=60).step_by(2) {
+            placed(&mut call, None, at(s));
+        }
+        let sets = placed(&mut call, None, at(62));
+        assert!(
+            sets.calling.is_empty(),
+            "a minute's silence kept apps' UDP in the video tin"
+        );
+        assert!(
+            sets.typed_video5.is_empty(),
+            "a typed turn went as video while a call may be on: {sets:?}"
+        );
+        assert_eq!(
+            sets.typed5,
+            [WINDOW],
+            "a typed turn left best effort while a call may be on"
+        );
+        let sets = placed(&mut call, Some(false), at(64));
+        assert_eq!(
+            sets.typed_video5,
+            [WINDOW],
+            "an answer of no call kept a typed turn out of video"
+        );
     }
 
     // The controller's holds land on a link only while it holds the

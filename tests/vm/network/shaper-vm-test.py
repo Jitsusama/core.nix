@@ -65,6 +65,9 @@ LOCAL_LEAST = 500
 SHAPING = dt.timedelta(seconds=15)
 # How long a set may take to hold a slice held open for it.
 HOLDING = dt.timedelta(seconds=10)
+# How long real-time traffic still counts as flowing after its last second, as
+# src/realtime.rs's LIVE_HOLD_S has it.
+LIVE_HOLD = dt.timedelta(seconds=30)
 # How long the client may take to boot to its first queues, or a tunnel or a
 # plugged-in link to come up.
 COMING_UP = dt.timedelta(seconds=30)
@@ -440,7 +443,10 @@ def test_apps(connection: Connection) -> None:
 
 
 def test_pi_sessions(connection: Connection) -> None:
-    """A pi window running a turn nobody typed goes in bulk, and one a person typed doesn't.
+    """A pi window running a turn nobody typed goes in bulk, and one a person typed as video.
+
+    A typed turn goes as video while no call is on, as here, ahead of agents' model calls,
+    which go as best effort to the same origin.
 
     The harness keeps /run/user/<uid>/pi/typed/<pid> while a pi runs a typed turn, so
     the shaper reads it through its sandbox. A send is run inside the window's cgroup, as
@@ -487,10 +493,11 @@ def test_pi_sessions(connection: Connection) -> None:
     connection.still("eth1")
     client.succeed(f"mkdir -p /run/user/1000/pi/typed && touch /run/user/1000/pi/typed/{pid}")
     client.wait_until_fails(listed, timeout=HOLDING)
-    connection.reaches(
-        "best effort", "a typed pi's open connection", send_again, "eth1", LEAST_TRANSFER
+    client.wait_until_succeeds(
+        "nft list set inet shaper typed_video5 | grep -q pi-window", timeout=HOLDING
     )
-    connection.reaches("best effort", "a typed pi", send, "eth1", LEAST_TRANSFER)
+    connection.reaches("video", "a typed pi's open connection", send_again, "eth1", LEAST_TRANSFER)
+    connection.reaches("video", "a typed pi", send, "eth1", LEAST_TRANSFER)
     client.succeed(f"rm /run/user/1000/pi/typed/{pid}")
     client.wait_until_succeeds(listed, timeout=HOLDING)
     client.succeed("systemctl -M alice@ --user stop pi-window.service")
@@ -500,14 +507,18 @@ def test_real_time(connection: Connection) -> None:
     """A call's packets show in the shaper's status and its journal.
 
     Datagrams an app sends past 443 are a call's, in the video tin, and a few hundred in a
-    second are as many as a call's audio sends; the shaper looks once a second.
+    second are as many as a call's audio sends; the shaper looks once a second. A typed pi's
+    video, just before, counts too, so this waits until that has stopped counting and reads
+    only what the journal said since (model calls ahead round 2's F24, F21 and F30).
     """
-    connection.run("app.slice", connection.datagrams(9000, n=600))
+    client = connection.client
+    flows = "real-time traffic flows (a call, a screen share or a typed turn)"
     # grep reads it all: one that stops at the match leaves the status writing to nothing.
-    connection.client.wait_until_succeeds(
-        "shaper status | grep 'real-time traffic flows'", timeout=SHAPING
-    )
-    connection.client.succeed("journalctl -u shaper | grep -q 'real-time traffic flows'")
+    client.wait_until_fails(f"shaper status | grep '{flows}'", timeout=LIVE_HOLD + SHAPING)
+    since = client.succeed("date +%s").strip()
+    connection.run("app.slice", connection.datagrams(9000, n=600))
+    client.wait_until_succeeds(f"shaper status | grep '{flows}'", timeout=SHAPING)
+    client.succeed(f"journalctl -u shaper --since @{since} | grep -q '{flows}'")
 
 
 def test_tuple(connection: Connection) -> None:
