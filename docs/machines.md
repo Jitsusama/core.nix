@@ -208,6 +208,12 @@ hours at most: it has room only from two readings a minute or more apart,
 both at 35% free or over, with nothing swapped out between. Its load isn't
 read, since a load counts work nothing can move.
 
+A refusal ends with the command's last line on standard error only with
+`saysWhy`, as mac-room.sh's readings do, since a line said beside, as
+the call check's caution that a peer went unheard, is no reason it's
+busy. A machine's own command that explains itself there sets it; what
+one that can't tell says is kept either way.
+
 A repository whose host signs nothing is followed by what the host names
 instead. With `hosted` set, root asks the host for main over TLS with a
 token the account's `token` command prints, reads that commit's objects from
@@ -538,6 +544,24 @@ every-script-finds-what-it-imports = core.lib.everyScriptFindsWhatItImports pkgs
   inherit ((treefmt pkgs).config.settings.formatter) mypy;
 };
 ```
+
+Its Rust says when a file read fails rather than reading nothing, as core's
+does, through a twelfth:
+
+```nix
+every-failed-read-says-why = core.lib.everyFailedReadSaysWhy pkgs {
+  src = ./.;
+  # How many reads that take a failure as nothing each file holds while they go.
+  waiting = { };
+};
+```
+
+A `fs::read_to_string` or `fs::read` outside its tests whose failure its
+expression takes as nothing says why in a comment on its statement, or on
+a line of its own just above it, as [conventions.md][6] says. When core
+learns a shape the rule missed, a lock bump can find reads a repository
+never touched: the failure names each one, and their counts per file are
+the waiting list to give it.
 
 Its names say the glossary's words, as core's do, through a check that reads
 the glossary of the core it locks:

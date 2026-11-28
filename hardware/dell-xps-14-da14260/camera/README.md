@@ -21,7 +21,10 @@ same kernel and regenerated with it, and `camera.nix` applies them:
 `ipu7-survives-resume`, `cvs-link-owner-wait`,
 `ipu-bridge-da14260-upside-down`, `hm1092-ir-sensor`, `hm1092-ir-flood`,
 `ipu7-mono-formats`, `ipu7-outlives-open-files` and
-`ipu7-isys-skips-unread-log`. The one
+`ipu7-isys-skips-unread-log`. `ipu7-isys-releases-firmware` left at
+7.3.6, which releases the capture side's firmware memory at an unbind
+itself (mainline's 628a575c99e7); `the-camera-holds-no-memory-it-never-uses`
+reads the kernel's source to hold it there. The one
 exception is `cvs-privacy-led.patch`, kept here as it was fetched from the
 media list, under that name and hash, so the kernel built from it keeps its
 store path now that the list turns fetches away.

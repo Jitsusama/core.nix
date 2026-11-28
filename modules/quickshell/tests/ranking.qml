@@ -49,7 +49,19 @@ QtObject {
         return out;
     }
 
+    // A throw before the last case ends as a failure at once, naming it,
+    // rather than leaving qml running until the check's timeout ends it
+    // with nothing said.
     Component.onCompleted: {
+        try {
+            run();
+        } catch (error) {
+            console.warn(`the test threw: ${error}`);
+            Qt.exit(1);
+        }
+    }
+
+    function run() {
         const failures = [];
         let asked = 0;
         const expect = (what, got, wanted) => {
@@ -510,32 +522,45 @@ QtObject {
             row("constructor", "A"), row("__proto__", "B"), row("constructor", "A", { rich: 1 })
         ]))), "constructor __proto__");
 
-        // Latching a pick costs a few walks over the rows picked, never a
-        // walk for each latch: a Set in Qt's engine looks a key up by
-        // walking every key it holds (H6EDLC, 2026-11-11). It's held to a
-        // multiple of one walk making and reading an object of the keys,
-        // the fastest of five batches, since a slower one is the builder's
-        // other work or the collector.
-        const fastest = work => {
-            let least = Infinity;
-            for (let batch = 0; batch < 5; batch += 1) {
-                const began = Date.now();
-                for (let round = 0; round < 10; round += 1) {
-                    work();
-                }
-                least = Math.min(least, (Date.now() - began) / 10);
+        // Latching a pick costs walks over the rows picked, never a walk
+        // for each latch: a Set in Qt's engine looks a key up by walking
+        // every key it holds (H6EDLC, 2026-11-11). It's held to twenty
+        // walks making and reading an object of the keys: in batches timing
+        // a walk and the latching back to back, healthy latching took 5 to
+        // 14 walks on busy lenders, and a Set 46 to 63 (#6941's lent runs,
+        // 2026-11-27), so twenty leaves room for a healthy run's spread and
+        // fails a Set in every batch, though at the slow end of that spread
+        // a latching half again as slow would fail. Those batches timed a
+        // walk over about 4 ms with one collection before; a walk is now
+        // timed over fifty rounds, about 20 ms, so the clock's millisecond
+        // and one stall weigh as little on it as on a latching's ten. Those
+        // fifty rounds leave fifty objects of every key behind, so the
+        // collector runs twice before each timing, as member-light's
+        // weighing does, and neither pays to collect the other's garbage.
+        // Timed apart, as the fastest of the walks against the fastest of
+        // the latchings, a quiet walk could be held against latchings
+        // that were all busy: 5.2 ms against 0.4 on a lender running 315
+        // builds, and 2.5 alone (A4315520, 2026-11-26). It holds when
+        // three of the five batches do, so one stall raising its batch's
+        // bound can't let a slow latching through.
+        const timed = (work, rounds) => {
+            gc();
+            gc();
+            const began = Date.now();
+            for (let round = 0; round < rounds; round += 1) {
+                work();
             }
-            return least;
+            return (Date.now() - began) / rounds;
         };
         const everyRow = Array.from({ length: 1914 }, (_, at) =>
             row(`emoji:${at}`, `Emoji ${at}`));
         const everyKey = {};
         everyRow.forEach((one, at) => { everyKey[one.key] = at; });
-        const walk = fastest(() => {
+        const walking = () => {
             const places = Object.create(null);
             everyRow.forEach((one, at) => { places[one.key] = at; });
             return everyRow.filter(one => places[one.key] !== undefined).length;
-        });
+        };
         const pickedOf = {};
         everyRow.forEach((one, at) => {
             const asked = `q${at % 40}`;
@@ -544,10 +569,15 @@ QtObject {
         const latchedAt = {};
         everyRow.forEach((one, at) => { latchedAt[`r${at}`] = one.key; });
         const there = Rank.standing(everyKey);
-        const took = fastest(() => Rank.relatch(latchedAt, pickedOf, "em", there));
-        console.info(`latching a pick took ${took} ms against a walk's ${walk}`);
-        expect(`latching a pick takes ${took} ms, at most ten walks of ${walk} ms`,
-            took <= 10 * walk + 1, true);
+        const batches = Array.from({ length: 5 }, () => {
+            const walk = timed(walking, 50);
+            return { walk, took: timed(() => Rank.relatch(latchedAt, pickedOf, "em", there), 10) };
+        });
+        const said = batches.map(one => `${one.took} against ${one.walk}`).join(", ");
+        console.info(`latching a pick took, in ms against a walk's: ${said}`);
+        const held = batches.filter(one => one.took <= 20 * one.walk + 1).length;
+        expect(`latching a pick takes at most twenty walks and a ms in three batches, `
+            + `${held} held, in ms: ${said}`, held >= 3, true);
 
         // Said as warnings, since Qt keeps ordinary logging quiet.
         for (const failure of failures)

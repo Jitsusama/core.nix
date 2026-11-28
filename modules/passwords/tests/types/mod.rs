@@ -15,13 +15,12 @@
 //! in the build's sandbox: run beneath an agent, every window is refused.
 
 use std::io::{BufRead, BufReader, Write};
-use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixDatagram, UnixListener};
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 
-use crate::common::{KEEPING, Running, until};
+use crate::common::{KEEPING, Running, program, program_copied, until};
 use crate::holds_no_secret;
 use serde_json::{Value, json};
 
@@ -71,6 +70,10 @@ const KITTY_PACKAGE: &str = "kitty-package/bin";
 /// then holds on, so Linux names it as the program it stands in for.
 const HOLDS: &str = "echo $$ > \"$0\"; while :; do sleep 1; done";
 
+/// Where what's started as a window's says on its standard error, kept so
+/// a stand-in that never says its id is failed with why.
+const STARTED_SAID: &str = "started-said";
+
 /// The stand-ins for one test: niri, answering from what the test sets,
 /// the typist and kitty, and each process started as a window's, ended
 /// as the test ends.
@@ -95,9 +98,7 @@ impl Desk {
             ("pi", PI),
             ("pi-spawner", PI),
         ] {
-            let path = folder.join(name);
-            std::fs::write(&path, script).unwrap();
-            std::fs::set_permissions(&path, PermissionsExt::from_mode(0o755)).unwrap();
+            program(&folder.join(name), script);
         }
         let focused = Arc::new(Mutex::new(Value::Null));
         let holding = Arc::new(Mutex::new(false));
@@ -164,7 +165,10 @@ impl Desk {
     fn start(&mut self, program: &str, args: &str) -> u32 {
         let said = Command::new("/bin/sh")
             .arg("-c")
-            .arg(format!("{program} {args} >/dev/null 2>&1 & echo $!"))
+            .arg(format!(
+                "{program} {args} >/dev/null 2>>\"{}\" & echo $!",
+                self.folder.join(STARTED_SAID).display()
+            ))
             .output()
             .unwrap();
         let pid: u32 = String::from_utf8_lossy(&said.stdout)
@@ -244,16 +248,22 @@ impl Desk {
                 .map(|folder| folder.join("bash"))
                 .find(|bash| bash.is_file())
                 .expect("bash is on the path");
-            std::fs::copy(bash, &program).expect("bash is copied");
+            program_copied(&bash, &program);
         }
         program.to_string_lossy().into_owned()
     }
 
     /// The id a stand-in wrote to `said`, once it has, kept to end.
     fn said(&mut self, said: &std::path::Path, name: &str) -> u32 {
-        until(&format!("{name} says its id"), || {
-            std::fs::read_to_string(said).is_ok_and(|id| id.ends_with('\n'))
-        });
+        let started = std::time::Instant::now();
+        while !std::fs::read_to_string(said).is_ok_and(|id| id.ends_with('\n')) {
+            assert!(
+                started.elapsed() < std::time::Duration::from_secs(20),
+                "{name} never said its id; what was started said: {:?}",
+                std::fs::read_to_string(self.folder.join(STARTED_SAID)).unwrap_or_default()
+            );
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
         let pid = std::fs::read_to_string(said)
             .unwrap()
             .trim()
@@ -667,12 +677,10 @@ fn nothing_is_typed_into_a_terminal_with_a_session_below_what_kitty_names() {
     let mut desk = Desk::new("kitty-below");
     let shell = desk.folder.join("zsh");
     let at = desk.folder.display().to_string();
-    std::fs::write(
+    program(
         &shell,
-        format!("#!/bin/sh\n\"{at}/pi\" \"{at}/beneath\"\n:\n"),
-    )
-    .unwrap();
-    std::fs::set_permissions(&shell, PermissionsExt::from_mode(0o755)).unwrap();
+        &format!("#!/bin/sh\n\"{at}/pi\" \"{at}/beneath\"\n:\n"),
+    );
     let (kitty, front) = desk.kitty(&shell.display().to_string());
     until("pi starts below the shell", || {
         std::fs::read_to_string(desk.folder.join("beneath")).is_ok_and(|id| id.ends_with('\n'))
@@ -691,8 +699,7 @@ fn a_type_asked_while_one_is_under_way_is_refused_and_typed_once() {
     let window = desk.plain();
     desk.focus(WINDOW, window, "firefox");
     let slow = desk.folder.join("slow-typist");
-    std::fs::write(&slow, SLOW_TYPIST).unwrap();
-    std::fs::set_permissions(&slow, PermissionsExt::from_mode(0o755)).unwrap();
+    program(&slow, SLOW_TYPIST);
     let typist = slow.to_string_lossy().into_owned();
     let (running, journal) = running("twice", &desk, &[("PASSWORDS_TYPIST", &typist)]);
     let mut client = running.client();

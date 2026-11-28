@@ -8,6 +8,7 @@
 // kept showing what it offered before.
 import QtQuick
 import "Held.js" as Held
+import "Thrown.js" as Thrown
 
 QtObject {
     // A test that throws ends as a failure, rather than leaving qml running.
@@ -636,25 +637,29 @@ QtObject {
             message: "joel's secret", stack
         });
         check("an Error says its kind and frame, never its message",
-            Held.thrown(shaped(TypeError, "refreshNow@file:///Launcher.qml:5991\nwalk@x:1")),
+            Thrown.shown(shaped(TypeError, "refreshNow@file:///Launcher.qml:5991\nwalk@x:1")),
             "TypeError: thrown at refreshNow@file:///Launcher.qml:5991");
         check("a frame with no function still says where",
-            Held.thrown(shaped(Error, "@file:///Launcher.qml:12:4")),
+            Thrown.shown(shaped(Error, "@file:///Launcher.qml:12:4")),
             "Error: thrown at @file:///Launcher.qml:12:4");
         check("a first line shaped as another engine's message is left out",
-            Held.thrown(shaped(Error, "Error: could not reach joel@box:22\nf@x:1")),
+            Thrown.shown(shaped(Error, "Error: could not reach joel@box:22\nf@x:1")),
             "Error: thrown");
-        check("as is a stack with none", Held.thrown(shaped(RangeError, undefined)),
+        check("as is a stack with none", Thrown.shown(shaped(RangeError, undefined)),
             "RangeError: thrown");
         const named = shaped(Error, "f@x:1");
         named.name = "joel's secret";
-        check("an Error named otherwise is said as Error", Held.thrown(named),
+        check("an Error named otherwise is said as Error", Thrown.shown(named),
             "Error: thrown at f@x:1");
-        check("a thrown string says its type, never itself", Held.thrown("joel's secret"),
+        const unsayable = shaped(Error, "f@x:1");
+        unsayable.name = Symbol("joel's secret");
+        check("one whose name can't be said as text is said bare, throwing none",
+            Thrown.shown(unsayable), "Error: thrown");
+        check("a thrown string says its type, never itself", Thrown.shown("joel's secret"),
             "Error: string thrown");
-        check("as does a thrown object", Held.thrown({ message: "joel's secret" }),
+        check("as does a thrown object", Thrown.shown({ message: "joel's secret" }),
             "Error: object thrown");
-        check("and nothing thrown", Held.thrown(undefined), "Error: undefined thrown");
+        check("and nothing thrown", Thrown.shown(undefined), "Error: undefined thrown");
     }
 
     // What Ctrl+O, Ctrl+I, Ctrl+T and Tab keep once a step is left by

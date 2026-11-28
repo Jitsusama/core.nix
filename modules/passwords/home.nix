@@ -255,6 +255,9 @@ in
       # IPC and a virtual keyboard, so a type or a read would need no act
       # of his (ISXEG8's R-type-password-spawned, 2026-11-25). The checks
       # that walk it turn it on, where no agent runs and no secret is real.
+      # No copier is named either, so a Return never copies: Passwords'
+      # own wl-copy (copier.nix), which offers a copy as sensitive and
+      # holds it in memory alone, is named here when the place turns on.
       off = true;
       managers = map (manager: {
         inherit (manager)

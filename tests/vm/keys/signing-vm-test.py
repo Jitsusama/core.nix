@@ -11,6 +11,7 @@ signer the module lists are signing.nix's, given as the `values` fixture.
 from __future__ import annotations
 
 import shlex
+import time
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any
@@ -100,6 +101,11 @@ def keys(joel: Joel, values: dict[str, Any]) -> Keys:
     """
     joel.run("mkdir -p ~/.ssh ~/.local/share/signing")
     joel.run(f"ssh-tpm-keygen -N {values['pin']} -C joel@test -f {JOEL_KEY}")
+    # With no agents' key at login, their socket doesn't listen, so the wait below
+    # proves something started it once the key was made. Its state must be exactly
+    # inactive: a socket that failed is a fault, not the condition at work.
+    state = joel.run("systemctl --user is-active agent-signing.socket || true").strip()
+    assert state == "inactive", state
     # No PIN: an empty answer to both of the keygen's prompts.
     joel.run(
         f"SSH_ASKPASS_REQUIRE=force SSH_ASKPASS={values['noPin']}"
@@ -111,10 +117,10 @@ def keys(joel: Joel, values: dict[str, Any]) -> Keys:
     )
     joel.run("systemctl --user restart ssh-tpm-agent")
     joel.machine.wait_for_unit("signing-key.service", "joel")
-    # The agents' own agent reads its key as it starts, so it starts again too.
-    joel.run("systemctl --user stop agent-signing.service")
-    # Its socket listens only once the agents' key is there, which it wasn't at login.
-    joel.run("systemctl --user start agent-signing.socket")
+    # The agents' socket listens only once their key is there, which it wasn't at
+    # login, and its path unit starts it when the key appears. Their agent never
+    # ran over an older key, so nothing needs stopping first.
+    joel.machine.wait_for_unit("agent-signing.socket", "joel")
     joel.run("git init -q repo")
     return Keys(
         joel=joel.fingerprint(f"{JOEL_KEY}.pub"), agent=joel.fingerprint(f"{AGENT_KEY}.pub")
@@ -280,6 +286,85 @@ def test_sign_as_picks_the_key_outright(joel: Joel, keys: Keys) -> None:
     """SIGN_AS picks the key outright."""
     joel.run(at_terminal("SIGN_AS=agent git -C repo commit -q --allow-empty -m 'chosen'"))
     assert joel.signer_of_last_commit() == ["G", keys.agent]
+
+
+def test_a_stopped_agents_socket_listens_again_until_its_path_unit_stops(
+    joel: Joel, keys: Keys
+) -> None:
+    """The agents' socket, stopped by hand while their key is there, listens again.
+
+    agent-signing-key.path starts it again once it stops, and their agent lists their key
+    through it, so it serves as well as listens. A stop that should hold stops the path unit
+    first and the socket after it, as docs/installing.md says; once neither unit has a job left
+    to run, the socket is still off, so nothing queued was about to start it. Starting the path
+    unit is the way back on, and it's started however the case ends, so the tests after it get
+    the socket.
+    """
+    joel.run("systemctl --user stop agent-signing.socket")
+    _serves_again(joel, keys)
+    try:
+        joel.run("systemctl --user stop agent-signing-key.path")
+        joel.run("systemctl --user stop agent-signing.socket")
+        path_state = _state(joel, "agent-signing-key.path")
+        assert path_state == "inactive", path_state
+        _settled(joel)
+        _stays_off(joel)
+    except BaseException:
+        # Back on for the tests after it, without a second failure here hiding the first.
+        joel.run("systemctl --user start agent-signing-key.path || true")
+        raise
+    joel.run("systemctl --user start agent-signing-key.path")
+    _serves_again(joel, keys)
+
+
+# The two units the stopped-socket case stops, and the helpers it reads them with.
+SIGNING_UNITS = "agent-signing-key.path agent-signing.socket"
+
+
+def _state(joel: Joel, unit: str) -> str:
+    return joel.run(f"systemctl --user is-active {unit} || true").strip()
+
+
+def _say_why(joel: Joel) -> None:
+    print(joel.run(f"systemctl --user status --no-pager {SIGNING_UNITS} || true"))
+    print(joel.run("journalctl --user -u agent-signing.socket -n 30 --no-pager || true"))
+
+
+def _serves_again(joel: Joel, keys: Keys) -> None:
+    socket = f"XDG_RUNTIME_DIR={joel.runtime} systemctl --user is-active -q agent-signing.socket"
+    try:
+        joel.machine.wait_until_succeeds(f"su - joel -c {shlex.quote(socket)}", timeout=WAITING)
+    except Exception:
+        _say_why(joel)
+        raise
+    listed = joel.run(f"SSH_AUTH_SOCK={joel.runtime}/agent-signing.sock ssh-add -l")
+    assert keys.agent in listed, listed
+
+
+def _settled(joel: Joel) -> None:
+    # Only these two units' jobs: anything else the manager runs can't start the socket
+    # without queuing a job of its own. A list-jobs that fails fails the case, through
+    # joel.run, rather than reading as a queue still busy.
+    deadline = time.monotonic() + WAITING.total_seconds()
+    while queued := joel.run(f"systemctl --user list-jobs --no-legend {SIGNING_UNITS}").strip():
+        if time.monotonic() >= deadline:
+            _say_why(joel)
+            pytest.fail(f"the units' jobs never ran in {WAITING}:\n{queued}")
+        time.sleep(0.5)
+
+
+def _stays_off(joel: Joel) -> None:
+    # Read once, with neither unit's job left to run: a start already queued has run by
+    # now and left the socket active, and nothing else is set to start it.
+    socket_state = _state(joel, "agent-signing.socket")
+    if socket_state == "inactive":
+        return
+    _say_why(joel)
+    if _state(joel, "agent-signing-key.path") == "active":
+        cause = "agent-signing-key.path started again and started it"
+    else:
+        cause = "agent-signing-key.path is still stopped, so something else started it"
+    pytest.fail(f"agent-signing.socket is {socket_state} once both units stopped: {cause}")
 
 
 @pytest.mark.usefixtures("keys", "refusing")

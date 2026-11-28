@@ -303,7 +303,9 @@ Some fixes this laptop needs are in no release yet, and two are in no tree
 at all. `kernel/next.nix` carries them in `kernel/next/`, applied to 7.3
 with no offset or fuzz, each patch's header naming where
 it comes from: linux-next's commits and their series, a posting to a list,
-or a local fix.
+or a local fix. `the-patches-from-linux-next-apply-exactly` holds them to
+that, since a point release can move code under a patch that still applies
+at an offset, and the build says nothing of it.
 
 | Patch                                | What it gives                                          |
 | ------------------------------------ | ------------------------------------------------------ |

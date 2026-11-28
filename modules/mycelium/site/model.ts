@@ -35,7 +35,11 @@ import { BALANCE_FRESH_MS, type Balance, balanceOf, latestReading, sharesOf } fr
 import { foragedOf, type Split, type Started, splitsOf, startedOf } from "./lineage.ts";
 import type { Builder } from "./words.ts";
 
-/** How many messages the map hears, the latest, as `mycelium messages` says. */
+/**
+ * How many messages the map hears, the latest, as `mycelium messages` says.
+ * The sites' node feed asks the node for no more (`latest` in
+ * modules/local-sites/home.nix), so the two move together.
+ */
 const LATEST_MESSAGES = 20;
 
 /**
@@ -74,7 +78,8 @@ interface Heard {
   readonly network: Held;
   readonly cell: Held;
   readonly machine: Held;
-  readonly message: Held;
+  /** None until the node first answers, as a slow node's may come last. */
+  readonly message?: Held | undefined;
   readonly balance?: Held;
   readonly builder?: Held;
   readonly unanswered?: Held | undefined;
@@ -140,7 +145,8 @@ interface Now {
   readonly cells: readonly Fields[];
   readonly machines: readonly Fields[];
   readonly builders: readonly Builder[];
-  readonly messages: readonly Message[];
+  /** None while the node hasn't told them, which the drawing says. */
+  readonly messages: readonly Message[] | null;
   readonly balance: Balance | null;
   readonly waits: readonly Wait[] | null;
   readonly ties: readonly Tie[] | null;
@@ -308,8 +314,14 @@ function standsOf(machines: readonly Fields[]): Fields[] {
   return [...lone, ...stands];
 }
 
-/** The latest messages, the newest last, each only who sent it, how and where. */
-function messagesOf(held: Held): Message[] {
+/**
+ * The latest messages, the newest last, each only who sent it, how and
+ * where; none while the node hasn't told them.
+ */
+function messagesOf(held: Held | undefined): Message[] | null {
+  if (held === undefined) {
+    return null;
+  }
   const told: Message[] = [];
   for (const record of held.all()) {
     const at = text(record, "at");

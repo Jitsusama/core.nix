@@ -26,15 +26,19 @@
 // stores after them, reading back as they were made
 // (qtdeclarative-small-runs-split-first.patch); and what's made after a
 // sweep over chunks half and a quarter full fills the half-full ones, so the
-// others empty and are freed once what they kept is let go
-// (qtdeclarative-chunks-fullest-filled-first.patch). Its census counts all that's
-// live and names a shape kept by its property names, but no key taken from
-// data. Its holders count names the property that keeps the most first,
+// others empty and are freed once what they kept is let go, and a sweep
+// leaves each bin's runs fullest chunk first and the list it sorted them by
+// empty (qtdeclarative-chunks-fullest-filled-first.patch). Its census counts
+// all that's live and names a shape kept by its property names, but no key
+// taken from data. Its holders count names the property that keeps the most first,
 // each by the file declaring it and its folder, counts what the engine
 // keeps and what it had no time to name apart, and leaves no mark behind:
 // asked twice it says the same, and what was counted and then let go is
 // collected; and it counts nothing during a collection or over a mark it
-// didn't set. And what it says of jemalloc, which
+// didn't set. What it says letting go of a holder frees outside the heap,
+// the text of the strings that holder alone keeps, is about what a
+// collection takes from there once it's let go, and next to none of what
+// two holders share. And what it says of jemalloc, which
 // the test is linked with as Quickshell is: what's in use grows by a block
 // kept, and what's freed and kept by one let go, and neither is more than
 // what's resident. And where it stands, read without a
@@ -59,16 +63,19 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <private/qv4engine_p.h>
 #include <private/qv4mm_p.h>
 #include <sys/mman.h>
 #include <unistd.h>
 #include <utility>
+#include <vector>
 
 namespace {
 
@@ -443,8 +450,9 @@ qint64 sweepsOf(const QJSEngine &engine) {
 
 // Whether a burst kept past twice the room, growing the chunks by
 // BURST_ROOMS rooms, collects at least once and no more than once for
-// each room it grows by, with `litter` objects made and dropped after a
-// collection and before the first ask since it, on a heap holding over
+// each room it grows by and once besides, with `litter` objects made
+// and dropped after a collection and before the first ask since it, on
+// a heap holding over
 // twice what's live in runs too small for it, as Joel's shell held 201
 // to 209 MB for 63 to 68 live. With none, its ask stands for the
 // closing's, straight after the closing's collection. With some, it
@@ -514,7 +522,8 @@ bool pacesABurstPastTheRoom(int litter) {
     if (!made || !unswept || !holedThrough || grown.chunks < upTo || !paced)
         std::fprintf(stderr,
                      "FAIL a burst kept past twice the room collects at least once and no more "
-                     "than once for each room it grows by, with %d dropped before the ask: "
+                     "than once for each room it grows by and once besides, with %d dropped "
+                     "before the ask: "
                      "%lld collections over %.2f to %.2f MB of chunks, up to %.2f, swept %.2f "
                      "then %.2f MB, collecting at %.2f then %.2f MB, %.2f MB unswept at the "
                      "ask; made %s, unswept %s, holed throughout %s\n",
@@ -532,7 +541,7 @@ bool pacesABurstPastTheRoom(int litter) {
 // did; sweeps that keep less cap it there too rather than wrapping past
 // it; and each slot kept beyond moves it by two, as Qt lets what's used
 // grow.
-bool roomCapsWhatsKept() {
+bool ceilingFollowsWhatsKept() {
     QJSEngine engine;
     Heap heap(&engine);
     const QJSValue few = keepScattered(engine);
@@ -558,6 +567,9 @@ bool roomCapsWhatsKept() {
     const double slotMb = static_cast<double>(QV4::Chunk::SlotSize) / mb;
     const double cap =
         static_cast<double>(manager->slotsHeldWhenRoomLeft) * slotMb + 2 * SMALL_ROOM_MB;
+    // Where standing() says the rooms alone cap the chunks, which a
+    // closing's line puts beside where the collector starts.
+    const double roomsAt = heap.standing().value(QStringLiteral("roomsCapAt")).toDouble();
     QStringList values;
     for (int each = 0; each < BURST_VALUES; each++)
         values << QStringLiteral("v%1: i").arg(each);
@@ -588,7 +600,8 @@ bool roomCapsWhatsKept() {
     engine.collectGarbage();
     const double moved = 2 * static_cast<double>(beyond) * slotMb;
     const bool holds = made && fromTheSweep && grown >= upTo && std::abs(same - cap) < SAME_MB &&
-                       std::abs(less - cap) < SAME_MB && std::abs(more - cap - moved) < SAME_MB;
+                       std::abs(less - cap) < SAME_MB && std::abs(more - cap - moved) < SAME_MB &&
+                       std::abs(roomsAt - cap) < SAME_MB;
     if (!holds)
         std::fprintf(stderr,
                      "FAIL the ceiling is twice the room past what was held at the ask, and "
@@ -596,11 +609,11 @@ bool roomCapsWhatsKept() {
                      "%.2f MB at the ask, %.2f kept by the last sweep of %.2f in use, grown "
                      "to %.2f; "
                      "collecting at %.2f, %.2f and %.2f MB for sweeps keeping as much, half "
-                     "and %.2f MB more, against %.2f, %.2f and %.2f; made %s, from the sweep "
-                     "%s\n",
+                     "and %.2f MB more, against %.2f, %.2f and %.2f; the rooms alone at %.2f; "
+                     "made %s, from the sweep %s\n",
                      asked.chunks, sweptAskedMb, usedAtAsk, grown, same, less, more, moved / 2, cap,
-                     cap,
-                     cap + moved, made ? "yes" : "no", fromTheSweep ? "yes" : "no");
+                     cap, cap + moved, roomsAt, made ? "yes" : "no",
+                     fromTheSweep ? "yes" : "no");
     return holds;
 }
 
@@ -719,9 +732,12 @@ bool givesBack() {
     const double given = heap.giveBack();
     const Weight after = weighed(engine, heap);
     const ReadBack read = readBack(engine, few);
-    const bool taken = after.free < GIVEN_LEFT_MB;
-    const bool said = given > thinned.free / 2 && given <= thinned.free + GIVEN_LEFT_MB;
-    const bool resident = thinned.resident >= thinned.free &&
+    // Free and resident are -1 where the kernel won't say, which is never
+    // read as none.
+    const bool taken = after.free >= 0 && after.free < GIVEN_LEFT_MB;
+    const bool said = thinned.free >= 0 && given > thinned.free / 2 &&
+                      given <= thinned.free + GIVEN_LEFT_MB;
+    const bool resident = after.resident >= 0 && thinned.resident >= thinned.free &&
                           thinned.resident - after.resident > given / 2;
     if (!taken || !said || !resident || !read.asMade())
         std::fprintf(stderr,
@@ -788,17 +804,22 @@ struct Lending {
     bool calm = false;
     ReadBack read{};
 
-    // Whether it said about as much as was counted free.
+    // Whether it said about as much as was counted free, where free is
+    // known: -1 says the kernel wouldn't say, never that nothing was free.
     [[nodiscard]] bool saidAsCounted() const {
-        return lent > free / 2 && lent <= free + GIVEN_LEFT_MB;
+        return free >= 0 && lent > free / 2 && lent <= free + GIVEN_LEFT_MB;
     }
 
     // Whether the kernel marked at least half as many pages lent, which
-    // giving them back never does, where it counts them.
-    [[nodiscard]] bool markedAsLent() const { return marked < 0 || marked > free / 2; }
+    // giving them back never does, where it counts them and free is known.
+    [[nodiscard]] bool markedAsLent() const {
+        return free >= 0 && (marked < 0 || marked > free / 2);
+    }
 
     // Whether the kernel's take left next to none of the free pages resident.
-    [[nodiscard]] bool goneOnceTaken() const { return took && freeTaken < GIVEN_LEFT_MB; }
+    [[nodiscard]] bool goneOnceTaken() const {
+        return took && freeTaken >= 0 && freeTaken < GIVEN_LEFT_MB;
+    }
 
     // Whether it said what was counted, was marked lent, was gone once
     // taken, and left what's kept and made after reading as made: what
@@ -861,14 +882,19 @@ bool lendsBack() {
     const Lending lending = first.calm ? first : lentOnce();
     const bool firstAsLent = first.calm || first.asLent();
     const bool asLent = lending.asLent();
-    const bool held = !lending.calm || (lending.lentBefore >= 0 &&
-                                        lending.lentAfter - lending.lentBefore > lending.free / 2);
-    const bool kept = !lending.calm || lending.freeLent > lending.free / 2;
+    // Free and resident are -1 where the kernel won't say, which is never
+    // read as none.
+    const bool held =
+        !lending.calm || (lending.free >= 0 && lending.lentBefore >= 0 &&
+                          lending.lentAfter - lending.lentBefore > lending.free / 2);
+    const bool kept =
+        !lending.calm || (lending.free >= 0 && lending.freeLent > lending.free / 2);
     // What's held counted resident falls by what the kernel took, so a count
     // that ignored which pages are in memory fails; a take the kernel made
     // early has already lowered it, so only a calm lending is judged.
-    const bool fell =
-        !lending.calm || lending.residentLent - lending.residentTaken > lending.lent / 2;
+    const bool fell = !lending.calm || (lending.residentTaken >= 0 &&
+                                        lending.residentLent - lending.residentTaken >
+                                            lending.lent / 2);
     const ReadBack &read = lending.read;
     if (!lending.counted)
         std::fprintf(stderr,
@@ -1190,7 +1216,10 @@ constexpr int LONG_RUN_STORES = 800;
 // first and none drained; no case that weighs what's made reaches the last.
 // It holds only if the last bin has runs of chunks using both more and
 // less, so a layout that left none there fails it rather than passing with
-// nothing tried.
+// nothing tried. It walks the objects' allocator alone: the shapes'
+// allocator goes through the same sweep, so it proves nothing more, and a
+// fresh engine's few shapes rarely mix chunks of differing use, so walking
+// it would read as a check with nothing tried.
 bool sortsEachBinFullestFirst() {
     QJSEngine engine;
     Heap heap(&engine);
@@ -1205,38 +1234,32 @@ bool sortsEachBinFullestFirst() {
             .arg(LONG_RUN_STORES / 8)
             .arg(LONG_RUN_STORES));
     engine.collectGarbage();
-    const QV4::MemoryManager *manager = engine.handle()->memoryManager;
-    using Allocator = QV4::BlockAllocator;
+    const QV4::BlockAllocator &allocator = engine.handle()->memoryManager->blockAllocator;
     bool ordered = true;
-    const char *outOfOrder = "";
     std::size_t badBin = 0;
     uint badBefore = 0;
     uint badAfter = 0;
     int longRuns = 0;
     uint leastUsed = std::numeric_limits<uint>::max();
     uint mostUsed = 0;
-    for (const auto &[name, allocator] :
-         {std::pair<const char *, const Allocator *>{"objects'", &manager->blockAllocator},
-          std::pair<const char *, const Allocator *>{"shapes'", &manager->icAllocator}})
-        for (std::size_t bin = 0; bin < Allocator::NumBins; ++bin) {
-            uint before = std::numeric_limits<uint>::max();
-            for (const QV4::HeapItem *m = allocator->freeBins[bin]; m; m = m->freeData.next) {
-                const uint used = m->chunk()->nUsedSlots();
-                if (used > before && ordered) {
-                    ordered = false;
-                    outOfOrder = name;
-                    badBin = bin;
-                    badBefore = before;
-                    badAfter = used;
-                }
-                before = used;
-                if (allocator == &manager->blockAllocator && bin == Allocator::NumBins - 1) {
-                    ++longRuns;
-                    leastUsed = std::min(leastUsed, used);
-                    mostUsed = std::max(mostUsed, used);
-                }
+    for (std::size_t bin = 0; bin < QV4::BlockAllocator::NumBins; ++bin) {
+        uint before = std::numeric_limits<uint>::max();
+        for (const QV4::HeapItem *m = allocator.freeBins[bin]; m; m = m->freeData.next) {
+            const uint used = m->chunk()->nUsedSlots();
+            if (used > before && ordered) {
+                ordered = false;
+                badBin = bin;
+                badBefore = before;
+                badAfter = used;
+            }
+            before = used;
+            if (bin == QV4::BlockAllocator::NumBins - 1) {
+                ++longRuns;
+                leastUsed = std::min(leastUsed, used);
+                mostUsed = std::max(mostUsed, used);
             }
         }
+    }
     // Read only once the bins are walked, since what it makes would take
     // runs from their heads and push what's left back on.
     const QJSValue read =
@@ -1264,10 +1287,69 @@ bool sortsEachBinFullestFirst() {
     else if (!ordered)
         std::fprintf(stderr,
                      "FAIL each bin's runs come fullest chunk first after a sweep: in bin %zu "
-                     "of the %s allocator a chunk using %u slots came after one using %u, and "
-                     "the last bin held %d runs, of chunks using %u to %u slots\n",
-                     badBin, outOfOrder, badAfter, badBefore, longRuns, leastUsed, mostUsed);
+                     "a chunk using %u slots came after one using %u, and the last bin held "
+                     "%d runs, of chunks using %u to %u slots\n",
+                     badBin, badAfter, badBefore, longRuns, leastUsed, mostUsed);
     return tried && intact && ordered;
+}
+
+// How many stores of 1024 values, 260 slots each, about seven to a chunk,
+// the case of the sort list keeps, so its sweep keeps a few dozen chunks.
+constexpr int SORTED_STORES = 200;
+
+// Whether a sweep leaves empty the list it sorts the kept chunks by, in
+// both allocators, read straight after a collection that kept chunks
+// holding what's made. The list keeps its room from sweep to sweep, so one
+// left holding what it sorted holds chunks a later sweep may free, which
+// nothing reads now but the next change to the sweep could. It holds only
+// if each allocator's list has room for what its sweep kept, which only a
+// sort leaves, since it puts every chunk kept in the list and empties it
+// without giving back its room, so a Qt whose collection stopped sorting,
+// or sweeping, fails it rather than passing with nothing sorted. The
+// stores make the objects' allocator keep a few dozen chunks, more than a
+// fresh engine's own objects fill, so its list's room can only have grown
+// in this sweep, and a list left holding them shows plainly. The shapes'
+// allocator keeps at least the chunk of the engine's own shapes, so its
+// list has room for one once its sweep sorted.
+bool emptiesTheSortList() {
+    QJSEngine engine;
+    Heap heap(&engine);
+    heap.leaveRoom(ROOM_MB);
+    const QJSValue kept = engine.evaluate(
+        QStringLiteral("(() => { const kept = []; for (let i = 0; i < %1; i++) "
+                       "kept.push(new Array(1024)); return kept; })()")
+            .arg(SORTED_STORES));
+    engine.collectGarbage();
+    const QV4::MemoryManager *manager = engine.handle()->memoryManager;
+    const QV4::BlockAllocator &objects = manager->blockAllocator;
+    const QV4::BlockAllocator &shapes = manager->icAllocator;
+    // Seven stores to a chunk keep about 29 of them.
+    const bool objectsSorted =
+        objects.chunks.size() >= static_cast<std::size_t>(SORTED_STORES / 10) &&
+        objects.byUse.capacity() >= objects.chunks.size();
+    const bool shapesSorted = !shapes.chunks.empty() && shapes.byUse.capacity() >= 1;
+    const bool tried = !kept.isError() && objectsSorted && shapesSorted;
+    const bool emptied = objects.byUse.empty() && shapes.byUse.empty();
+    const char *unsorted = "both were";
+    if (!objectsSorted)
+        unsorted = shapesSorted ? "the objects' weren't" : "neither was";
+    else if (!shapesSorted)
+        unsorted = "the shapes' weren't";
+    if (!tried)
+        std::fprintf(stderr,
+                     "FAIL a sweep sorted the chunks it kept, the objects' few dozen and the "
+                     "shapes' one or more: %s, the objects' list with room for %zu beside "
+                     "%zu chunks and the shapes' for %zu beside %zu%s\n",
+                     unsorted, objects.byUse.capacity(), objects.chunks.size(),
+                     shapes.byUse.capacity(), shapes.chunks.size(),
+                     kept.isError() ? qPrintable(QStringLiteral(", ") + kept.toString()) : "");
+    else if (!emptied)
+        std::fprintf(stderr,
+                     "FAIL a sweep leaves the list it sorts kept chunks by empty: the objects' "
+                     "list held %zu beside %zu chunks kept, and the shapes' %zu beside %zu\n",
+                     objects.byUse.size(), objects.chunks.size(), shapes.byUse.size(),
+                     shapes.chunks.size());
+    return tried && emptied;
 }
 
 bool expect(const char *what, bool holds, const Weight &before, const Weight &after) {
@@ -1347,18 +1429,66 @@ constexpr int LARGE_VALUES = 100000;
 
 double megabytesOf(std::size_t bytes) { return static_cast<double>(bytes) / (1024.0 * 1024.0); }
 
-// The MB of this process's pages the kernel has swapped out, zswap's pool
-// included, since each is left a swap entry wherever it's kept, or -1 when
-// it doesn't say.
-double swappedOut() {
-    QFile status(QStringLiteral("/proc/self/status"));
-    if (!status.open(QIODevice::ReadOnly))
-        return -1;
-    const QRegularExpressionMatch match =
-        QRegularExpression(QStringLiteral("^VmSwap:\\s+(\\d+) kB$"),
-                           QRegularExpression::MultilineOption)
-            .match(QString::fromLatin1(status.readAll()));
-    return match.hasMatch() ? match.captured(1).toDouble() / 1024.0 : -1;
+// Bits 62 and 63 of a page's entry in /proc/self/pagemap: set while the
+// kernel has it swapped out, to zswap's pool or the disk, and while it's
+// mapped in memory. An entry is one or the other, never both, and both are
+// kept for a reader with no privilege, who's shown no frame numbers.
+constexpr int PAGE_SWAPPED_BIT = 62;
+constexpr int PAGE_PRESENT_BIT = 63;
+
+// How far the page map's count of pages in memory may stray from mincore's
+// with nothing swapped, for a page the kernel takes or gives between the
+// two reads.
+constexpr std::size_t MAPPED_SLACK_PAGES = 64;
+
+// The MB of the heap's own pages the page map says are in memory, and
+// swapped out, each read of the same entry.
+struct Mapped {
+    double present;
+    double swapped;
+};
+
+// What the page map says of the heap's own pages, in its chunks and its
+// large items, or nothing when the kernel won't say. Only the heap's, since
+// the whole process's would let another allocator's swapped pages stand in
+// for a chunk the count leaves out. A large item is read over the span
+// weigh reads it resident over (heap.cpp's spanOf): its segment whole, or
+// its header and size to a page and at least a chunk, the heap's either
+// way, and pages past the item were never written, so none is swapped.
+std::optional<Mapped> pagesMapped(const QV4::MemoryManager &manager) {
+    QFile pagemap(QStringLiteral("/proc/self/pagemap"));
+    if (!pagemap.open(QIODevice::ReadOnly | QIODevice::Unbuffered))
+        return std::nullopt;
+    const auto page = static_cast<std::size_t>(sysconf(_SC_PAGESIZE));
+    std::size_t present = 0;
+    std::size_t swapped = 0;
+    const auto count = [&](const void *start, std::size_t length) {
+        const std::size_t first = reinterpret_cast<std::uintptr_t>(start) / page;
+        const std::size_t pages = (length + page - 1) / page;
+        std::vector<quint64> entries(pages);
+        const auto bytes = static_cast<qint64>(pages * sizeof(quint64));
+        if (!pagemap.seek(static_cast<qint64>(first * sizeof(quint64))) ||
+            pagemap.read(reinterpret_cast<char *>(entries.data()), bytes) != bytes)
+            return false;
+        for (const quint64 entry : entries) {
+            present += (entry >> PAGE_PRESENT_BIT) & 1;
+            swapped += (entry >> PAGE_SWAPPED_BIT) & 1;
+        }
+        return true;
+    };
+    for (const QV4::BlockAllocator *allocator : {&manager.blockAllocator, &manager.icAllocator})
+        for (const QV4::Chunk *chunk : allocator->chunks)
+            if (!count(chunk, QV4::Chunk::ChunkSize))
+                return std::nullopt;
+    for (const auto &huge : manager.hugeItemAllocator.chunks)
+        if (!count(huge.chunk,
+                   huge.segment != nullptr
+                       ? huge.size
+                       : std::max<std::size_t>(
+                             (huge.size + QV4::Chunk::HeaderSize + page - 1) & ~(page - 1),
+                             QV4::Chunk::ChunkSize)))
+            return std::nullopt;
+    return Mapped{megabytesOf(present * page), megabytesOf(swapped * page)};
 }
 
 // Whether what's held resident covers what's live, and passes what's held
@@ -1373,8 +1503,17 @@ double swappedOut() {
 // page it ends in and the rest of a whole chunk, so those are let over. A
 // read a page or less past a large item's chunk isn't caught, and nor is
 // one stopping short of its end, since the item's own bytes, which live
-// counts, come first. A page of this process the kernel swapped out is no
-// longer resident, so what's live is judged less what it has swapped.
+// counts, come first. A page of the heap the kernel swapped out is no
+// longer resident, so what's live is judged less what of the heap it has
+// swapped, and only the heap's, so no other memory of the process can
+// make up for an allocator the count leaves out. The page map is read
+// whole: what it says is in memory is mincore's resident, give or take a
+// page the kernel moved between the reads, which fails a read of the wrong
+// pages whatever is swapped; and since an entry is in memory or swapped,
+// never both, the two stay within what's held and its headers, which fails
+// one reading the wrong bit. Resident and swapped aren't summed against
+// held, since mincore counts a page in the swap cache that the page map
+// calls swapped.
 bool residentCoversWhatsLive() {
     QJSEngine engine;
     Heap heap(&engine);
@@ -1388,8 +1527,15 @@ bool residentCoversWhatsLive() {
             .arg(LARGE_VALUES)
             .arg(HUGE_LENGTH));
     const Weight weight = weighed(engine, heap);
-    const double swapped = std::max(swappedOut(), 0.0);
     const QV4::MemoryManager *manager = engine.handle()->memoryManager;
+    // A refusal counts nothing swapped, which can only fail a sound count,
+    // and says so, so a failure isn't laid on the resident count.
+    const std::optional<Mapped> mapped = pagesMapped(*manager);
+    if (!mapped)
+        std::fprintf(stderr, "note: the kernel wouldn't give the heap's page map, so nothing "
+                             "of it is counted swapped\n");
+    const double present = mapped ? mapped->present : -1.0;
+    const double swapped = mapped ? mapped->swapped : 0.0;
     const double shapes = megabytesOf(manager->icAllocator.usedMem());
     const double large = megabytesOf(manager->getLargeItemsMem());
     const auto page = static_cast<std::size_t>(sysconf(_SC_PAGESIZE));
@@ -1412,16 +1558,22 @@ bool residentCoversWhatsLive() {
     }
     const bool made = shapes > 1 && chunked >= LARGE_ITEMS && segmented >= 1;
     const bool covers = weight.resident >= 0 && weight.resident + swapped >= weight.live;
-    const bool bounded = weight.resident <= weight.held + megabytesOf(over);
-    if (kept.isError() || !made || !covers || !bounded)
+    const double slack = megabytesOf(MAPPED_SLACK_PAGES * page);
+    const bool read = !mapped || (present <= weight.resident + slack &&
+                                  (swapped > 0 || present >= weight.resident - slack));
+    const bool bounded = weight.resident <= weight.held + megabytesOf(over) &&
+                         present + swapped <= weight.held + megabytesOf(over);
+    if (kept.isError() || !made || !covers || !read || !bounded)
         std::fprintf(stderr,
                      "FAIL what's held resident covers the %.1f MB live, less %.1f MB swapped, "
                      "%.1f MB of it shapes and %.1f MB large items, %d made by the chunk "
-                     "allocator and %d with a segment, and passes the %.1f MB held by at most "
-                     "%.2f MB: %.1f MB resident\n",
-                     weight.live, swapped, shapes, large, chunked, segmented, weight.held,
-                     megabytesOf(over), weight.resident);
-    return !kept.isError() && made && covers && bounded;
+                     "allocator and %d with a segment, the page map's %.1f MB in memory "
+                     "agrees within %.2f MB, and neither it with what's swapped nor what's "
+                     "resident passes the %.1f MB held by more than %.2f MB: %.1f MB "
+                     "resident\n",
+                     weight.live, swapped, shapes, large, chunked, segmented, present, slack,
+                     weight.held, megabytesOf(over), weight.resident);
+    return !kept.isError() && made && covers && read && bounded;
 }
 
 // How many closures the place test keeps, each from a call of its own.
@@ -1924,6 +2076,88 @@ bool freesWhatItAloneHolds() {
     return held;
 }
 
+// How many strings the test of what's freed outside the heap keeps under
+// one property, and under the one array two properties hold, and how many
+// characters each is past its number, so that each keeps about 8 KB of text
+// outside the heap, and all of one property's together about 16 MB.
+constexpr int TEXTS = 2000;
+constexpr int TEXT_LENGTH = 4096;
+constexpr double TEXT_MB =
+    static_cast<double>(TEXTS) * TEXT_LENGTH * sizeof(char16_t) / (1024.0 * 1024.0);
+
+// What the heap holds outside it once a collection has run, in megabytes.
+double outsideOnceCollected(QJSEngine &engine, const Heap &heap) {
+    engine.collectGarbage();
+    return heap.weigh().value(QStringLiteral("outside")).toDouble();
+}
+
+// Whether freedBy() counts the text a property's strings alone keep outside
+// the heap: about what weigh() says outside falls by once it's let go and a
+// collection runs, each string made apart so none shares another's text;
+// and next to none for either of two properties holding one array of such
+// strings, since the other keeps it; and says it in its line.
+bool freesTheTextItAloneHolds() {
+    QTemporaryDir shell;
+    QDir files(shell.path());
+    const bool wrote =
+        files.mkdir(QStringLiteral("pieces")) && files.cd(QStringLiteral("pieces")) &&
+        written(files, QStringLiteral("Texts.qml"),
+                QStringLiteral("import QtQml\nQtObject {\n    property var texts: []\n"
+                               "    property var aShares: []\n    property var bShares: null\n"
+                               "    function letTextsGo() { texts = []; }\n"
+                               "    Component.onCompleted: {\n"
+                               "        for (let i = 0; i < %1; i++)\n"
+                               "            texts.push('x'.repeat(%2) + i);\n"
+                               "        for (let i = 0; i < %1; i++)\n"
+                               "            aShares.push('y'.repeat(%2) + i);\n"
+                               "        bShares = aShares;\n"
+                               "    }\n}\n")
+                    .arg(TEXTS)
+                    .arg(TEXT_LENGTH));
+    if (!wrote) {
+        std::fprintf(stderr, "FAIL the text test's file wasn't written in %s\n",
+                     qPrintable(shell.path()));
+        return false;
+    }
+    QQmlEngine engine;
+    Heap heap(&engine);
+    QQmlComponent component(&engine,
+                            QUrl::fromLocalFile(files.filePath(QStringLiteral("Texts.qml"))));
+    const std::unique_ptr<QObject> made(component.create());
+    if (!made) {
+        std::fprintf(stderr, "FAIL the text test's object wasn't made: %s\n",
+                     qPrintable(component.errorString()));
+        return false;
+    }
+    const double before = outsideOnceCollected(engine, heap);
+    const QVariantMap texts = heap.freedBy(QStringLiteral("pieces/Texts.qml texts"));
+    const QVariantMap first = heap.freedBy(QStringLiteral("pieces/Texts.qml aShares"));
+    const QVariantMap second = heap.freedBy(QStringLiteral("pieces/Texts.qml bShares"));
+    const bool cleared = !anyMarked(engine.handle()->memoryManager);
+    QMetaObject::invokeMethod(made.get(), "letTextsGo");
+    const double fell = before - outsideOnceCollected(engine, heap);
+    const double textsMB = texts.value(QStringLiteral("outside")).toDouble();
+    const double firstMB = first.value(QStringLiteral("outside")).toDouble();
+    const double secondMB = second.value(QStringLiteral("outside")).toDouble();
+    const QString line = texts.value(QStringLiteral("said")).toString();
+    const bool frees = texts.value(QStringLiteral("held")).toBool() && fell > TEXT_MB / 2 &&
+                       std::abs(textsMB - fell) <= fell / 5;
+    const bool shared = first.value(QStringLiteral("held")).toBool() &&
+                        second.value(QStringLiteral("held")).toBool() &&
+                        firstMB < TEXT_MB / 50 && secondMB < TEXT_MB / 50;
+    const bool said = line.contains(QStringLiteral("MB outside it"));
+    const bool held = frees && shared && said && cleared;
+    if (!held)
+        std::fprintf(stderr,
+                     "FAIL freedBy() counts the text a property's strings alone keep outside "
+                     "the heap, about what falls there once it's let go, and next to none for "
+                     "two sharing one array of them: texts %.2f MB outside against %.2f MB "
+                     "fallen there (%.2f made), shared %.2f and %.2f MB, cleared %s: %s\n",
+                     textsMB, fell, TEXT_MB, firstMB, secondMB, cleared ? "yes" : "no",
+                     qPrintable(line));
+    return held;
+}
+
 // How many objects each object made in script holds in the test of what
 // the sweep takes anyway.
 constexpr int DROPPED = 20000;
@@ -2251,7 +2485,7 @@ int main(int argc, char **argv) {
     const bool ownLimits = roomKeepsQtsOwnLimits();
     const bool burstPaced = pacesABurstPastTheRoom(0);
     const bool litterPaced = pacesABurstPastTheRoom(LITTER);
-    const bool capped = roomCapsWhatsKept();
+    const bool capped = ceilingFollowsWhatsKept();
     const bool follows = allocatorFollows(heap);
     const bool given = givesBack();
     const bool lent = lendsBack();
@@ -2259,6 +2493,7 @@ int main(int argc, char **argv) {
     const bool whole = leavesLargeRunsWhole();
     const bool fullest = fillsTheFullestFirst();
     const bool inOrder = sortsEachBinFullestFirst();
+    const bool emptied = emptiesTheSortList();
     const bool census = namesWhatsKept();
     const bool covered = residentCoversWhatsLive();
     const bool placed = placesWhatMadeIt();
@@ -2268,14 +2503,15 @@ int main(int argc, char **argv) {
     const bool waitsItOut = waitsOutACollection();
     const bool stray = leavesAStrayMark();
     const bool alone = freesWhatItAloneHolds();
+    const bool aloneOutside = freesTheTextItAloneHolds();
     const bool swept = leavesTheSweepsAlone();
     const bool chained = followsAChain();
     return grows && falls && holds && scattered && bounded && timed && collects && roomy &&
                    roomyOutside && lasting && lastingOutside && stillCollectsOutside &&
                    reckoned && ownLimits && burstPaced && litterPaced && capped && follows &&
-                   given && lent && fits && whole && fullest && inOrder && census && covered &&
-                   placed && stands && underWay && holdsIt && waitsItOut && stray && alone &&
-                   swept && chained
+                   given && lent && fits && whole && fullest && inOrder && emptied && census &&
+                   covered && placed && stands && underWay && holdsIt && waitsItOut && stray &&
+                   alone && aloneOutside && swept && chained
                ? 0
                : 1;
 }

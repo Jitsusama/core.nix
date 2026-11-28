@@ -11,6 +11,9 @@ const ampersand = /&/g;
 const opening = /</g;
 const closing = />/g;
 const newline = /\n/g;
+// Every break Qt keeps between lines: a newline, or a line or paragraph
+// separator, as a title's own name may hold one (Identifier.titleBreaks).
+const breaks = /[\n\u2028\u2029]/g;
 // A drawer lays each line of a run that fits with no-break spaces, so Qt
 // wraps it only between items; a space typed finds one, or "Pirate flag"
 // in Emoji's drawer would be found nowhere. A pattern pasted from one is
@@ -166,11 +169,12 @@ function escaped(text) {
 // A text as rich text, each place the pattern's found washed: its ink and
 // ground as the wash gives them, as Neovim's Search draws a match. A
 // `spaced` text's breaks each stand for a space, as a title's do, so a
-// match runs on across one as the eye reads it; any other's end a match.
+// match runs on across one as the eye reads it, letter for letter as the
+// drawer's search does (DrawerLines.runsOn); any other's end a match.
 function washed(text, pattern, wash, spaced) {
     let at = 0;
     let html = "";
-    const read = spaced === true ? text.replace(newline, " ") : text;
+    const read = spaced === true ? text.replace(breaks, " ") : text;
     for (const [start, end] of found(pattern, read)) {
         html += escaped(text.slice(at, start))
             + `<span style="color:${wash.ink};background-color:${wash.ground}">`
@@ -178,4 +182,19 @@ function washed(text, pattern, wash, spaced) {
         at = end;
     }
     return html + escaped(text.slice(at));
+}
+
+// What a drawer's reader, a rich text, is given to hold a text in: a block
+// keeping every space and break as written, `leading` px a line where it's
+// set. A `styled` text is markup already, its links in its `ink` rather
+// than rich text's blue, and isn't washed, since washing inside markup
+// isn't done; any other is escaped, or washed where a pattern is `sought`.
+// Drawer.qml's reader and tests/query-keys.qml both build it here, so the
+// break a test reads back is the one the drawer's reader gives.
+function readerText(text, { leading, styled, ink, sought, wash, spaced } = {}) {
+    const spacing = leading > 0
+        ? `; line-height:${leading}px; -qt-line-height-type:fixed` : "";
+    const held = styled ? text.replace(/<a /g, `<a style="color:${ink}" `)
+        : sought ? washed(text, sought, wash, spaced) : escaped(text);
+    return `<div style="white-space:pre-wrap${spacing}">${held}</div>`;
 }

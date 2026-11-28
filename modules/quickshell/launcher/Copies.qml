@@ -142,9 +142,11 @@ Provider {
         }
         const held = served.held ?? {};
         const picture = served.kind === "picture";
+        // Keyed by ready.thing's keyMade, its thing as every served row's,
+        // since shown keeps served's, so one claiming the launcher's own
+        // kind is kept under `row:`.
         const fields = {
             thing: true,
-            key: served.thing,
             glyph: Theme.glyph[shown.glyph] ?? Theme.glyph.clipboard,
             hue: served.hue ?? "text"
         };

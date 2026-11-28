@@ -426,7 +426,9 @@ fn reverted(hub: &dyn Hub, made: &[(&Merging, String)], mut why: String) -> Land
 }
 
 /// Whether the pass of an earlier candidate of the same changes speaks for
-/// `candidate` on `main`, as `ready` takes one for a rebased change.
+/// `candidate` on `main`, as `ready` takes one for a rebased change. A red
+/// the train excused as main's or a flake's speaks as a pass would, from
+/// the record it kept beside `checkout` (`excused`).
 fn still_passes(checkout: &Path, candidate: &str, main: &str) -> bool {
     let Ok(here) = std::env::current_dir() else {
         return false;
@@ -440,7 +442,17 @@ fn still_passes(checkout: &Path, candidate: &str, main: &str) -> bool {
             .status()
             .is_ok_and(|status| status.success())
     };
-    let judged = crate::earlier::judged(candidate, main, &on_main);
+    let mut recent = super::excused::recent(checkout);
+    recent.extend(crate::ready::recent_records());
+    let record = |commit: &str| {
+        let excused = super::excused::record(checkout, commit);
+        if excused.is_empty() {
+            crate::ready::record(commit)
+        } else {
+            excused
+        }
+    };
+    let judged = crate::earlier::judged_among(candidate, main, &on_main, &recent, &record);
     let _ = std::env::set_current_dir(here);
     judged.is_ok_and(|judged| judged.before.speaks_for_the_head())
 }

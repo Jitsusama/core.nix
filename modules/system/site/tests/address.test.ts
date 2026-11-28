@@ -20,9 +20,14 @@ function terns(count: number): string[] {
 /**
  * A system whose machines part names `named`, with only the machines in
  * `arrived` having sent their records, and no machines part at all when
- * `named` is undefined.
+ * `named` is undefined; the part also names the builders `untold`, whose
+ * records haven't come.
  */
-function systemWith(named: readonly string[] | undefined, arrived: readonly string[]): System {
+function systemWith(
+  named: readonly string[] | undefined,
+  arrived: readonly string[],
+  untold: readonly string[] = [],
+): System {
   const summary = new Held();
   const part = new Held();
   const machine = new Held();
@@ -44,7 +49,10 @@ function systemWith(named: readonly string[] | undefined, arrived: readonly stri
               says: "all fine",
               side: [],
               holds: `${named.length} machines`,
-              things: named.map((name) => `machine:${name}`),
+              things: [
+                ...named.map((name) => `machine:${name}`),
+                ...untold.map((name) => `builder:${name}`),
+              ],
               deeper: { command: "mycelium machines", site: "mycelium/", launcher: "Agents" },
             },
           ],
@@ -167,6 +175,11 @@ it("the records are coming while the machines part is untold or names a machine 
     recordsOf(systemWith(["kestrel", "heron"], ["kestrel"]), LIVE, false),
     "coming",
     "a machine named and not come",
+  );
+  assert.equal(
+    recordsOf(systemWith(["kestrel"], ["kestrel"], ["osprey"]), LIVE, false),
+    "in",
+    "a builder not come keeps no machine waiting",
   );
 });
 

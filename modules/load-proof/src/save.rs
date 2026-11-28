@@ -171,7 +171,10 @@ mod tests {
         let newest = text.next().to_vec();
         saves.save(&newest).unwrap();
         assert_eq!(fs::read(folder.join(SAVED)).unwrap(), newest);
-        assert!(!folder.join(WRITING).exists());
+        assert!(
+            !folder.join(WRITING).exists(),
+            "the save being written was left once it was saved"
+        );
         drop(saves);
         assert!(!folder.join(SAVED).exists(), "the probe tidies up");
         fs::remove_dir_all(&folder).unwrap();

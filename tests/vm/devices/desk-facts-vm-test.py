@@ -62,7 +62,7 @@ def desk(machine: BaseMachine) -> Desk:
     machine.wait_for_unit("user@1000.service")
     machine.wait_for_unit("desk-facts.service", "joel")
     # Only QEMU's monitor plugs devices in and takes them out.
-    assert isinstance(machine, QemuMachine)
+    assert isinstance(machine, QemuMachine), f"QEMU doesn't run the machine: {machine!r}"
     return Desk(machine)
 
 
@@ -76,7 +76,7 @@ def plugged(desk: Desk) -> list[str]:
 @pytest.fixture(scope="module")
 def pulled(desk: Desk, plugged: list[str]) -> list[str]:
     """Pull the card out once it's been named, and give the cards sound.json names then."""
-    assert plugged
+    assert plugged, "the card plugged in was never named"
     desk.machine.send_monitor_command("device_del speakers")
     return desk.until(named=False)
 
@@ -84,7 +84,7 @@ def pulled(desk: Desk, plugged: list[str]) -> list[str]:
 @pytest.fixture(scope="module")
 def replugged(desk: Desk, pulled: list[str]) -> list[str]:
     """Plug the card in again once it's gone, and give the cards sound.json names then."""
-    assert not pulled
+    assert not pulled, f"the card pulled out is still named: {pulled}"
     # QEMU frees the id only once the guest has let the device go.
     desk.machine.wait_until_succeeds("! ls /proc/asound/card*/usbid", timeout=HEARING)
     desk.machine.send_monitor_command(PLUG)
@@ -134,7 +134,8 @@ def test_a_usb_keyboard_is_named_with_its_polling_rate_until_it_s_pulled_out(des
     desk.machine.wait_until_succeeds(named, timeout=HEARING)
     said = json.loads(as_account(desk.machine, f"cat {keyboards}"))
     facts = {fact["name"]: fact["value"] for fact in said["QEMU QEMU USB Keyboard"]}
-    assert facts["polling rate"].endswith(" a second")
+    rate = facts["polling rate"]
+    assert rate.endswith(" a second"), f"the polling rate isn't a count a second: {rate!r}"
     assert int(facts["keys"]) > 0
     desk.machine.send_monitor_command("device_del keys")
     desk.machine.wait_until_fails(named, timeout=HEARING)

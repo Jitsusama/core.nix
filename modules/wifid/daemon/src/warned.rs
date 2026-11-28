@@ -45,11 +45,22 @@ pub struct Warned {
 }
 
 impl Warned {
-    /// The warnings kept in this file. One that can't be read is begun
-    /// again empty, which forgets what a restart forgot before.
+    /// The warnings kept in this file. One that can't be read is said so
+    /// and begun again empty, which forgets what a restart forgot before.
     pub fn kept_in(file: &Path) -> Warned {
-        let kept = fs::read(file).ok();
-        let kept = kept.and_then(|kept| serde_json::from_slice(&kept).ok());
+        let shown = file.display();
+        let kept = match fs::read(file) {
+            Ok(kept) => serde_json::from_slice(&kept)
+                .inspect_err(|error| println!("<4>the warnings kept in {shown} are torn: {error}"))
+                .ok(),
+            // The runtime folder goes with the machine, so no file is
+            // the first wifid since it started, which was warned of none.
+            Err(error) if error.kind() == io::ErrorKind::NotFound => None,
+            Err(error) => {
+                println!("<4>the warnings kept in {shown} can't be read: {error}");
+                None
+            }
+        };
         Warned {
             file: file.to_path_buf(),
             kept: kept.unwrap_or_default(),

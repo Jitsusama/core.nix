@@ -373,6 +373,27 @@ QtObject {
             { error: "E518: Unknown option: wfii" });
         holds("a word for a number says E521", set("volume=loud"),
             { error: "E521: Number required after =: volume=loud" });
+        // Whether a line's plans change an option, which times its Return
+        // as acting (Launcher.qml's commandSet), as :setl over several
+        // things plans one each. A word :set refuses has no plan, as the
+        // launcher answers its error first, so one here fails the case
+        // rather than passing as changing none.
+        const planOf = arg => {
+            const plan = set(arg);
+            if (plan.error !== undefined) {
+                throw new Error(`:set ${arg} was refused: ${plan.error}`);
+            }
+            return { steps: plan.changes.map(change => ({ change })) };
+        };
+        holds("a line only saying options changes none, :set all and :set nothing among them",
+            ["volume?", "all", "", "volume? wifi?"].map(arg => SetWords.changes([planOf(arg)])),
+            [false, false, false, false]);
+        holds("one setting any changes it, said beside it or not",
+            ["volume=40", "volume? mute", "nowifi", "volume+=5"].map(arg =>
+                SetWords.changes([planOf(arg)])), [true, true, true, true]);
+        holds(":setl over several things changes where any one's plan does",
+            [SetWords.changes([planOf("volume?"), planOf("mute")]),
+                SetWords.changes([planOf("volume?"), planOf("mute?")])], [true, false]);
         const clocked = Object.assign({ position: { kind: "number", least: 0, clock: true } },
             options);
         const placed = arg => (SetWords.setting(arg, clocked).changes ?? [])[0]?.value;

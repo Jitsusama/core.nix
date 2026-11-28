@@ -261,11 +261,14 @@
       # took the rate from 17.5% to 17.4%, 594 words wrong to 590: the four
       # cut are one of theirs heard in his microphone. The ceiling fails
       # the code from before it. The meetings hold no echo, so the check
-      # also names each line of Joel's the filter leaves out.
+      # also names each line of Joel's the filter leaves out. His side has
+      # a ceiling of its own, 12.0% when echo far below theirs is cut, so a
+      # rule cutting his words can't pass on the far end's alone.
       ceiling = "17.4";
+      joels = "12.0";
     in
     pkgs.runCommand "call-transcripts-hears-meetings-as-well-as-it-did" { } ''
-      DICTATION_DEVICE=CPU ${dictation}/bin/call-transcripts score ${model} ${meetings} ${lib.escapeShellArg ceiling}
+      DICTATION_DEVICE=CPU ${dictation}/bin/call-transcripts score ${model} ${meetings} ${lib.escapeShellArg ceiling} ${lib.escapeShellArg joels}
       touch $out
     '';
 
@@ -286,11 +289,15 @@
       # Carrying a run of their echo past a word only his microphone heard
       # took it on to 21.5%, his side to 24.0%. Cutting a word of his far
       # below theirs, however spelled, took it to 19.8%, his side to 19.1%.
-      # The ceiling is what it reaches, as the clean meetings' is.
+      # Judging each word of his by his voice near it rather than across
+      # the call took his side to 19.0%.
+      # The ceiling is what it reaches, as the clean meetings' is, and his
+      # side's own ceiling is what his side reaches.
       ceiling = "19.8";
+      joels = "19.0";
     in
     pkgs.runCommand "call-transcripts-hears-echoed-meetings-as-well-as-it-did" { } ''
-      DICTATION_DEVICE=CPU ${dictation}/bin/call-transcripts score ${model} ${meetings} ${lib.escapeShellArg ceiling}
+      DICTATION_DEVICE=CPU ${dictation}/bin/call-transcripts score ${model} ${meetings} ${lib.escapeShellArg ceiling} ${lib.escapeShellArg joels}
       touch $out
     '';
 

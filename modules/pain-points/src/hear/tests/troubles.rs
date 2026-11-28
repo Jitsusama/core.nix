@@ -128,6 +128,172 @@ fn a_mycelium_that_names_no_sessions_for_a_quarter_hour_is_a_trouble() {
 }
 
 #[test]
+fn a_pain_a_hub_would_take_waits_out_a_blink_then_goes_to_the_fallback_said() {
+    let place = Place::new("hubless-node");
+    place.routes();
+    a_day(&place);
+    let minute = 60_000;
+    let void = "why is the launcher so slow";
+    // Whom the void's pain went to this run, and whether the card says
+    // pains went to the fallback for want of hubs, naming the error.
+    let run = |at: i64, hubless: Option<&str>| {
+        let ears = Ears {
+            at,
+            hubless: hubless.map(String::from),
+            ..place.ears()
+        };
+        let mut to = Vec::new();
+        let hour = hear(&ears, CELLS, &mut |owner, text| {
+            if text.contains(void) && !text.contains(route::FOR_THE_KEEPER) {
+                to.push(owner.to_owned());
+            }
+            true
+        })
+        .expect("a run");
+        let said = hour
+            .troubles
+            .iter()
+            .any(|t| t.contains("named no hubs") && t.contains("connection refused"));
+        (to, said, hour)
+    };
+    let refused = Some("connection refused");
+    let (to, said, hour) = run(AT, refused);
+    assert!(
+        to.is_empty() && !said,
+        "a node that blinked for one run sent the void's pain on, or failed the run: {to:?} \
+         {hour:?}"
+    );
+    assert_eq!(hour.hubless_since, Some(AT), "the outage wasn't counted");
+    let (to, said, _) = run(AT + 10 * minute, refused);
+    assert!(to.is_empty() && !said, "within the grace: {to:?}");
+    let (to, said, hour) = run(AT + 15 * minute, refused);
+    assert_eq!(to, ["ORCH01"], "past a blink it didn't go to the fallback");
+    assert!(
+        said,
+        "a pain going to the fallback past a blink wasn't said on the card: {hour:?}"
+    );
+    let (to, said, hour) = run(AT + 20 * minute, None);
+    assert!(
+        to.is_empty() && said && hour.hubless_since.is_none(),
+        "with hubs named again, the outage still counted, or the hour's fallback wasn't \
+         said: {to:?} {hour:?}"
+    );
+    assert!(
+        !run(AT + 76 * minute, None).1,
+        "the fallback was still said past its hour"
+    );
+    fs::remove_file(place.root.join("state/routes.json")).expect("routes gone");
+    run(AT + 80 * minute, refused);
+    let (to, said, hour) = run(AT + 95 * minute, refused);
+    assert!(
+        to.is_empty() && !said && hour.hubless_since.is_none(),
+        "a listener nobody set up counted or said the node out: {hour:?}"
+    );
+}
+
+#[test]
+fn a_node_out_of_reach_while_no_pain_needs_a_hub_is_no_trouble() {
+    let place = Place::new("hubless-quiet");
+    place.routes();
+    let minute = 60_000;
+    for at in [
+        AT,
+        AT + 5 * minute,
+        AT + 10 * minute,
+        AT + 15 * minute,
+        AT + 20 * minute,
+    ] {
+        let ears = Ears {
+            at,
+            hubless: Some("connection refused".into()),
+            ..place.ears()
+        };
+        let hour = hear(&ears, CELLS, &mut |_, _| true).expect("a run");
+        assert!(
+            hour.troubles.is_empty(),
+            "a node out of reach failed a run with no pain to route: {hour:?}"
+        );
+    }
+}
+
+#[test]
+fn a_pain_for_want_of_hubs_whose_send_failed_is_not_said_to_have_gone() {
+    let place = Place::new("hubless-failed");
+    place.routes();
+    a_day(&place);
+    let minute = 60_000;
+    let mut hour = Hour::default();
+    // Runs five minutes apart, as its timer runs them, so the outage is
+    // carried from each to the next until it is past a blink.
+    for at in [AT, AT + 5 * minute, AT + 10 * minute, AT + 15 * minute] {
+        let ears = Ears {
+            at,
+            hubless: Some("connection refused".into()),
+            ..place.ears()
+        };
+        hour = hear(&ears, CELLS, &mut |owner, _| owner != "ORCH01").expect("a run");
+    }
+    assert!(
+        !hour.troubles.iter().any(|t| t.contains("named no hubs")),
+        "a fallback send that failed was said to have gone for want of hubs: {hour:?}"
+    );
+}
+
+#[test]
+fn a_stall_no_hub_could_take_goes_to_the_fallback_at_once_while_the_node_blinks() {
+    let place = Place::new("hubless-stall");
+    place.routes();
+    let said = [user("a", "2026-11-16T19:50:00.000Z", "make the bar green")];
+    place.log("src", "s-live", Path::new("/home/j/src"), &said);
+    // 19:50 UTC, and a three-minute wait for pi's first call, in a
+    // session that has ended and named no purpose, so the stall says no
+    // word a hub could take it by.
+    timed(&place, "s-live", 1_794_858_600_000, 180_000);
+    let cells = r#"{"Ok":{"Sessions":[
+        {"id":"s-live","address":"ABC123","state":"ended"}]}}"#;
+    let ears = Ears {
+        hubless: Some("connection refused".into()),
+        ..place.ears()
+    };
+    let mut to = Vec::new();
+    let hour = hear(&ears, cells, &mut |owner, text| {
+        if text.contains("stalled") && !text.contains(route::FOR_THE_KEEPER) {
+            to.push(owner.to_owned());
+        }
+        true
+    })
+    .expect("a run");
+    assert_eq!(
+        to,
+        ["ORCH01"],
+        "a stall no hub could take waited out a blink: {hour:?}"
+    );
+    assert!(
+        !hour.troubles.iter().any(|t| t.contains("named no hubs")),
+        "a stall no hub could take was said to go for want of hubs: {hour:?}"
+    );
+}
+
+#[test]
+fn a_node_that_couldnt_be_asked_for_hubs_is_named_by_its_socket() {
+    let place = Place::new("hubless-socket");
+    let runtime = place.root.join("run");
+    let (hubs, why) = hubs_named(&place.root, Some(runtime.clone()), Some("nowhere".into()));
+    let socket = runtime.join("mycelium/nowhere.sock");
+    assert!(hubs.is_empty(), "a node never asked named hubs: {hubs:?}");
+    let why = why.expect("a node not there couldn't be asked");
+    assert!(
+        why.starts_with(&format!("{}: ", socket.display())),
+        "the socket asked isn't named: {why}"
+    );
+    assert_eq!(
+        hubs_named(&place.root, None, Some("nowhere".into())),
+        (Vec::new(), None),
+        "a machine with no runtime folder read as a node that couldn't be asked"
+    );
+}
+
+#[test]
 fn an_earlier_run_dated_ahead_of_this_one_holds_no_outage_back() {
     let place = Place::new("future-hour");
     place.routes();

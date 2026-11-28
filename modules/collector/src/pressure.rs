@@ -439,22 +439,33 @@ mod tests {
             .iter()
             .map(|s| (s.place.clone(), s.resource, s.file.display().to_string()))
             .collect();
-        assert!(files.contains(&(
-            "the machine".into(),
-            "memory",
-            "/r/proc/pressure/memory".into()
-        )));
-        assert!(files.contains(&("the machine".into(), "io", "/r/proc/pressure/io".into())));
-        assert!(files.contains(&(
-            "app.slice".into(),
-            "cpu",
-            format!("{manager}/app.slice/cpu.pressure")
-        )));
-        assert!(files.contains(&(
-            "session.slice".into(),
-            "memory",
-            format!("{manager}/session.slice/memory.pressure")
-        )));
+        for wanted in [
+            (
+                "the machine".to_owned(),
+                "memory",
+                "/r/proc/pressure/memory".to_owned(),
+            ),
+            (
+                "the machine".to_owned(),
+                "io",
+                "/r/proc/pressure/io".to_owned(),
+            ),
+            (
+                "app.slice".to_owned(),
+                "cpu",
+                format!("{manager}/app.slice/cpu.pressure"),
+            ),
+            (
+                "session.slice".to_owned(),
+                "memory",
+                format!("{manager}/session.slice/memory.pressure"),
+            ),
+        ] {
+            assert!(
+                files.contains(&wanted),
+                "{wanted:?} wasn't among the files found: {files:?}"
+            );
+        }
         assert_eq!(found.len(), 8, "{files:?}");
         // Outside an account's manager there are no slices of its own.
         assert_eq!(sources(Path::new("/r"), "0::/\n").len(), 2);

@@ -357,7 +357,7 @@ mod tests {
 
     /// Midnight in UTC on 16 November 2026, in seconds.
     const NOV16: u64 = 1_794_787_200;
-    const HOME: &str = "6c:ae:f6:c2:d6:b2";
+    const HOME: &str = "02:00:00:00:aa:00";
 
     /// A stay of `n` seconds from `NOV16` carrying `up` kbit/s with the
     /// upload's own delay at `delay(t)`.
@@ -615,7 +615,7 @@ mod tests {
         );
         assert!(windows("evening 2026-11-16T05:00Z").is_err(), "no end");
         assert_eq!(
-            anchor("6C:AE:F6:C2:D6:B2=12000"),
+            anchor("02:00:00:00:AA:00=12000"),
             Ok((HOME.to_owned(), 12_000)),
             "named by its router, as the recorder names it"
         );
