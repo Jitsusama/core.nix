@@ -94,7 +94,7 @@ fn said<'a>(value: &'a Value, key: &str) -> &'a str {
     value.get(key).and_then(Value::as_str).unwrap_or_default()
 }
 
-/// Everything the shell showed, as lines for a terminal: with
+/// Everything the desktop showed, as lines for a terminal: with
 /// `every_drawer`, each row's drawer after the rows, as Tab would open it,
 /// two empty lines apart, since one already parts a drawer's own groups.
 pub fn shown(shown: &Value, look: &Look, room: Room, words: &Words, every_drawer: bool) -> String {

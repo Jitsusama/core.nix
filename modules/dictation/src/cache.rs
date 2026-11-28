@@ -194,6 +194,10 @@ mod tests {
     fn a_missing_cache_is_left_alone() {
         let cache = scratch("missing").join("not-there");
         forget_others(&cache, &cache.join("kept"));
-        assert!(!cache.exists());
+        assert!(
+            !cache.exists(),
+            "forgetting made the missing cache: {}",
+            cache.display()
+        );
     }
 }

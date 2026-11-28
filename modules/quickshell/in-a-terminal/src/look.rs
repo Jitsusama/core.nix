@@ -1,6 +1,6 @@
 //! How the launcher's words are inked in a terminal: by the kit's pen for
 //! stdout, which reads the account's theme and decides the ink as every
-//! command does. The shell names a row's mark by its glyph rather than by
+//! command does. The desktop names a row's mark by its glyph rather than by
 //! what it means, so on the console (`TERM=linux`) the glyph is swapped for
 //! the stand-in the same theme gives it (../../theme/glyphs.nix's
 //! `console`), which the console's font can draw.

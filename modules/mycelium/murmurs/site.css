@@ -47,7 +47,12 @@ code {
   text-transform: lowercase;
 }
 
+/* The headline's counts wrap where its opening words don't, so the box holds the lines the
+   longest count takes: four on a phone and in a narrow window, three a little wider, and two
+   from a third of a desk up. Each step comes a little past where one browser's counts take a
+   line fewer, since another breaks them a few pixels later. */
 .headline {
+  min-block-size: 2lh;
   max-inline-size: 18ch;
   margin: 0;
   color: var(--strong);
@@ -82,7 +87,12 @@ code {
   text-decoration-color: currentColor;
 }
 
+/* The lede quotes the newest murmur in the air, so how many lines it takes turns on where its
+   words wrap. The model trims the quote and its quest's name to what four lines hold on a
+   phone, and the box is held at those four, so the head stays still as the node answers and as
+   murmurs settle, and nothing in it is cut away. */
 .lede {
+  min-block-size: 4lh;
   max-inline-size: 33rem;
   margin: 0;
   color: var(--text);
@@ -327,6 +337,18 @@ code {
   color: var(--text);
   font-size: var(--step-small);
   font-style: italic;
+}
+
+@media (max-width: 45rem) {
+  .headline {
+    min-block-size: 3lh;
+  }
+}
+
+@media (max-width: 38.75rem) {
+  .headline {
+    min-block-size: 4lh;
+  }
 }
 
 @supports (text-wrap: pretty) {

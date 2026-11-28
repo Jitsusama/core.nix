@@ -59,9 +59,26 @@ const WORDS: readonly string[] = [
 
 /** A stop that would sit before the ellipsis a cut murmur ends with. */
 const TRAILING_STOP = /[,;:.]$/u;
+/**
+ * The controls that embed, override or isolate a direction, which could close the isolates the
+ * page holds a writer's words in, or run on past them, and the separators that end a paragraph
+ * for direction, and every isolate open in it, said as the space they stand for.
+ */
+const DIRECTIONS = /[\u202A-\u202E\u2066-\u2069]/gu;
+const PARAGRAPHS: ReadonlySet<string> = new Set(["\u001C", "\u001D", "\u001E", "\u0085", "\u2029"]);
 
-/** How many characters of a murmur the lede quotes before it trims. */
-const QUOTED = 140;
+/**
+ * How many characters of a murmur the lede quotes, and of its quest's name, before each is
+ * trimmed: the most that keeps the whole lede inside the four lines its box holds on a 340 px
+ * phone, so a 390 px one, the width the sites are checked at, holds it in any browser, and
+ * nothing in it is ever cut away. Browsers set the same words a little apart: cut at 84 and
+ * 48, the lede that fit four lines at 390 in one took five in another. The murmur's row says
+ * both whole. It's sized for prose: wide letters in both, a word too long to break or a
+ * narrower phone takes a fifth line, which the box grows to hold rather than cutting it,
+ * moving what's under it down a line as the lede draws.
+ */
+const QUOTED = 76;
+const NAMED = 40;
 
 /** A quest's short id, from its whole id or the short one itself. */
 function short(quest: string): string {
@@ -77,6 +94,12 @@ function called(purpose: string, writer: string): string {
 /** `count` as a sentence opens with it: a word to ten, a numeral past. */
 function counted(count: number): string {
   return WORDS[count] ?? String(count);
+}
+
+/** `words` as a writer's text is drawn: without the controls of direction it held. */
+function plain(words: string): string {
+  const said = [...words.replace(DIRECTIONS, "")];
+  return said.map((character) => (PARAGRAPHS.has(character) ? " " : character)).join("");
 }
 
 /** Every murmur `held` holds, newest first, with each it couldn't read named. */
@@ -103,13 +126,16 @@ function murmursOf(held: Held): Murmurs {
     if (settled === undefined && said !== null) {
       unread.push(`${record.key}'s settling, which isn't words`);
     }
+    // Plain before it's judged, so a settling of nothing but controls is as empty as "".
+    const how = plain(settled ?? "");
+    const who = plain(writer);
     murmurs.push({
       key: record.key,
-      writer,
-      quest: called(text(record, "purpose") ?? "", writer),
-      words,
-      ties: (ties ?? []).map(short).filter((each) => each !== writer),
-      settled: settled === undefined || settled === "" ? null : settled,
+      writer: who,
+      quest: called(plain(text(record, "purpose") ?? ""), who),
+      words: plain(words),
+      ties: (ties ?? []).map((each) => plain(short(each))).filter((each) => each !== who),
+      settled: how === "" ? null : how,
       at,
     });
   }
@@ -127,11 +153,14 @@ function headline(murmurs: readonly Murmur[]): Headline {
   const open = inTheAir(murmurs).length;
   const said = murmurs.length;
   if (said === 0) {
-    return { lead: "Nothing murmured", turn: "yet.", said, open };
+    // As long as a count's, so the head keeps the lines it opens on.
+    return { lead: "Nothing murmured,", turn: "nothing in the air.", said, open };
   }
   const lead = `${counted(said)} murmured,`;
   if (open === 0) {
-    return { lead, turn: "every one come to roost.", said, open };
+    // "all", as "all still in the air." says, since "every one" took a phone's headline a line
+    // past every other count and the words the page opens with.
+    return { lead, turn: "all come to roost.", said, open };
   }
   if (open === said) {
     return { lead, turn: "all still in the air.", said, open };
@@ -153,6 +182,21 @@ function trimmed(words: string, most: number): string {
   return `${kept.replace(TRAILING_STOP, "")}...`;
 }
 
+/** What the page says while it hasn't heard the node, beside the words it opens on. */
+const UNHEARD = {
+  headline: "Not hearing the mycelium node.",
+  lede: "The mycelium node didn't say what its sessions murmur; the line below says why.",
+};
+
+/**
+ * `words` cut at `most`, between a first-strong isolate and its pop, the plain text form of
+ * `<bdi>`, so a direction they set, or one a cut leaves open, runs no further than them. The
+ * words are plain, as murmursOf reads them, so none of theirs can close the isolate early.
+ */
+function isolated(words: string, most: number): string {
+  return `\u2068${trimmed(words, most)}\u2069`;
+}
+
 /** The line under the sentence: the newest murmur still in the air, and who said it. */
 function lede(murmurs: readonly Murmur[]): string {
   if (murmurs.length === 0) {
@@ -162,7 +206,8 @@ function lede(murmurs: readonly Murmur[]): string {
   if (newest === undefined) {
     return "Every murmur has been settled; the newest says how on its row.";
   }
-  return `Newest in the air, from ${newest.quest}: ${trimmed(newest.words, QUOTED)}`;
+  const quest = isolated(newest.quest, NAMED);
+  return `Newest in the air, from ${quest}: ${isolated(newest.words, QUOTED)}`;
 }
 
 /** How long ago `at` was, from `now`, both in seconds, said short. */
@@ -188,4 +233,4 @@ function questsOf(murmurs: readonly Murmur[]): readonly string[] {
 }
 
 export type { Headline, Murmur, Murmurs };
-export { ago, headline, inTheAir, lede, murmursOf, questsOf, short, trimmed };
+export { ago, headline, inTheAir, lede, murmursOf, questsOf, short, trimmed, UNHEARD };

@@ -1,7 +1,7 @@
 #compdef launcher
 # zsh's completion for launcher, which `launcher completion zsh` writes:
 # its commands, and after `show` or `do` the rows the place the steps typed
-# so far reach holds, which launcher asks the running shell for (`launcher names
+# so far reach holds, which launcher asks the running desktop for (`launcher names
 # <step ...>`), so what's offered is what the launcher holds now.
 
 _launcher() {

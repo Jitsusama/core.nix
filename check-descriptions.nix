@@ -960,12 +960,14 @@
     skill's page checks and its homes check passing at a phone's width and a desk's in both looks, a
     repository's weight and due upkeep said in its row and drawer, its ages told again each minute
     in place with the focused tree kept, today's growth yesterday's once the day turns, no row
-    moving as the cursor steps, a reload not shifting as the feeds arrive, a second's burst of
-    records drawing the list a few times, a first visit within its budget of files, bytes and
-    elements, both visits reaching only the sites' server and the second answered unchanged, the
-    map at the page's foot drawing a thread for each cell joining two repositories, walked by its
-    keys, opening one as the list does, and handing the keys to the list once its last tie goes,
-    and nothing logged
+    moving as the cursor steps, a reload not shifting as the feeds arrive, the headline and lede
+    it opens with holding two lines, those of its live ones and of those it writes for counts up
+    to 999 repositories and for one thing worth a look of each kind but a gone folder, at 390,
+    1440 and 1920 wide, a second's burst of records drawing the list a few times, a first visit
+    within its budget of files, bytes and elements, both visits reaching only the sites' server
+    and the second answered unchanged, the map at the page's foot drawing a thread for each cell
+    joining two repositories, walked by its keys, opening one as the list does, and handing the
+    keys to the list once its last tie goes, and nothing logged
   '';
   collector-keeps-what-it-is-sent = ''
     the collector reads a span it was sent back at its moment and in its trace, and keeps what a
@@ -2131,15 +2133,15 @@
     item or a session's want, and History says how each went, newest first
   '';
   launcher-completes-in-zsh = ''
-    launcher completes in zsh, typed in a real line editor against a stand-in shell: its command,
-    each row as its step is typed, the rows inside the steps typed so far, its flags anywhere, and
-    nothing after a step that names nothing
+    launcher completes in zsh, typed in a real line editor against a stand-in desktop: its
+    command, each row as its step is typed, the rows inside the steps typed so far, its flags
+    anywhere, and nothing after a step that names nothing
   '';
   launcher-fits-what-it-shows-to-the-terminal = ''
-    `launcher` lays what the shell shows out to the terminal's width, a count and then a side giving
-    way by whole items and a name cut only at a word, inks it only where the terminal takes colour,
-    in its sixteen unless it says it takes 24-bit, sets every row's drawer after the rows when
-    asked, and says a miss and the nearest names in the launcher's words
+    `launcher` lays what the desktop shows out to the terminal's width, a count and then a side
+    giving way by whole items and a name cut only at a word, inks it only where the terminal takes
+    colour, in its sixteen unless it says it takes 24-bit, sets every row's drawer after the rows
+    when asked, and says a miss and the nearest names in the launcher's words
   '';
   launcher-passes-clippy = ''
     clippy finds nothing in launcher, the launcher in a terminal, or its tests
@@ -4707,9 +4709,11 @@
     kept and live once it's back, stale once the server goes with them kept, a murmur's words
     drawn as words and never as markup, j, k, g, G and ? answering, a tap on a key its head shows
     doing what typing it does, the web-design skill's page checks passing at a phone's width and a
-    desk's in both looks, a first visit within its budget of files, bytes and elements, both visits
-    reaching only the sites' server and the second answered unchanged, a tab whose renderer dies
-    before its first reading opened once more and said, and nothing logged
+    desk's in both looks, every headline it writes taking the lines the one it opens on takes and
+    every lede fitting whole in the four lines its box opens on, at 390 and 1440 wide, a first
+    visit within its budget of files, bytes and elements, both visits reaching only the sites'
+    server and the second answered unchanged, a tab whose renderer dies before its first reading
+    opened once more and said, and nothing logged
   '';
   start-new-work-asks-only-a-sprout = ''
     Start New Work asks the realm's node only a sprout of the trimmed words or link, after --,
@@ -5880,9 +5884,9 @@
     relayed and starting its relay on the capture node; the relay is bound to that node, takes
     its loopback under the Brio's name, and starts with its own plugins on the Brio's NV12 at
     1080p and 30 frames a second and on its MJPEG, taken only where NV12 can't be had; the
-    loopback's holders file is named as the Brio is and removed when the Brio goes, the shell
-    lists the Brio only while that file is there, the Brio's own watch writes in the hidden
-    folder, never beside it, and the seat's give-back is dropped
+    loopback's holders file is named as the Brio is, its name claimed from boot, and removed
+    when the Brio goes, the shell lists the Brio only while that file is there, the Brio's own
+    watch writes in the hidden folder, never beside it, and the seat's give-back is dropped
   '';
   the-mx-brio-is-the-seats = ''
     a graphical machine runs no relay on the MX Brio, has no udev rule marking a camera relayed
@@ -6541,8 +6545,9 @@
   tuple-completes-in-zsh = ''
     Tab in zsh offers tuple's commands and subcommands, through Tuple's own completion and the real
     tuple, among them every command core runs against it and the flags its followers pass, in a
-    folder of its own whose daemon alone it stops; its editors' script refuses to run with a
-    runtime or data folder outside that folder
+    folder of its own whose daemon alone it stops; its editors' script refuses before any tuple runs
+    a home, runtime or data folder but that folder's own, a person's home holding its own runtime
+    and data folders among them
   '';
   tuple-ends-its-flags = ''
     The real tuple takes a name that starts with a dash after "--" as a name, never a flag, for each
@@ -6580,11 +6585,13 @@
     Started line from health is refused, each refusal proven first on a table of settings
   '';
   tuple-shares-through-the-portal = ''
-    Tuple reads the portal setting where the switch writes it, and the script refuses an empty data
-    folder to find; first, the folder of its own that the checks running the real tuple share
-    sends tuple's stop only to its own home, runtime and data folders, the runtime folder made
-    first, ends before any tuple runs when it can't be made, keeps a script's status, and is
-    removed as a script ends but for a stop cut off, which keeps it and says how to stop it
+    Tuple reads the portal setting where the switch writes it, and the script refuses before any
+    tuple runs a data folder to find that's empty, isn't a whole path or ends in a slash; first,
+    the folder of its own that the checks running the real tuple share is made under the TMPDIR
+    given, sends tuple's stop only to its own home and every folder XDG names, the runtime folder
+    made first, ends before any tuple runs when it can't be made, keeps a script's status, even
+    with no stderr, and is removed as a script ends but for a stop cut off, which keeps it and says
+    how to stop it
   '';
   tuple-takes-no-real-time-priority = ''
     Tuple's daemon may take no real-time priority, and goes first by a nice below 0 and a CPU weight

@@ -24,7 +24,9 @@
 //!
 //! With --usb, NODE is a USB camera's, and the file is FOLDER/<the camera's
 //! name>, made and removed with the camera: it's written while the camera
-//! is there and removed when its node goes or this is stopped. A program
+//! is there and removed when its node goes or this is stopped. A name a
+//! loopback claims in FOLDER/.claimed is its, so the camera's file is then
+//! FOLDER/<the name> (<its node>), said once in the log. A program
 //! holding the camera is listed only while the camera streams, since
 //! programs that only look at a camera, such as `PipeWire`'s, open it for a
 //! moment as it comes; while anyone holds it, it looks once a second, as
@@ -670,13 +672,23 @@ fn usb(events: &mut Events, options: &Options, run: &mut Run) -> Result<(), Fail
     let Ok(node) = fs::canonicalize(&options.source) else {
         return Ok(());
     };
-    let output = camera::camera_file(&options.sysfs, &node, &options.output).map_err(|error| {
+    let named = camera::camera_file(&options.sysfs, &node, &options.output).map_err(|error| {
         Failure::new(
             Exit::Failed,
             "loopback-holders can't name the camera's file",
         )
         .because(format!("{}: {error}", node.display()))
     })?;
+    let output = named.path;
+    // Quoted, as the record quotes a holder, since a USB camera names
+    // itself.
+    if let Some(claimed) = named.gave_way_to {
+        say(&format!(
+            "a loopback's file is called {:?}, so this camera's is {:?}",
+            claimed.to_string_lossy(),
+            output.file_name().unwrap_or_default().to_string_lossy()
+        ));
+    }
     tidy(&output);
     if let Some(file) = device_file(&output) {
         tidy(&file);
@@ -1035,7 +1047,11 @@ mod tests {
     #[test]
     fn an_idle_usb_camera_names_nobody() {
         let camera = Camera::new("listed-idle", "MX Brio 705 for Business");
-        assert!(listed(named(&["firefox"]), Some(&camera.sysfs), &camera.node).is_empty());
+        assert_eq!(
+            listed(named(&["firefox"]), Some(&camera.sysfs), &camera.node),
+            BTreeSet::new(),
+            "an idle USB camera was said held"
+        );
     }
 
     #[test]
@@ -1047,7 +1063,11 @@ mod tests {
             named(&["firefox"])
         );
         camera.alternate("2-1:1.1", 0);
-        assert!(listed(named(&["firefox"]), Some(&camera.sysfs), &camera.node).is_empty());
+        assert_eq!(
+            listed(named(&["firefox"]), Some(&camera.sysfs), &camera.node),
+            BTreeSet::new(),
+            "a USB camera that stopped streaming was still said held"
+        );
     }
 
     #[test]
@@ -1173,14 +1193,20 @@ mod tests {
                 .unwrap();
         assert_eq!(read.card.as_deref(), Some("Stand-in"));
         assert_eq!(read.units, ["a.service", "b.scope"]);
-        assert!(!read.usb);
+        assert!(
+            !read.usb,
+            "a start without --usb was read as a USB camera's"
+        );
         assert_eq!(read.sysfs, Path::new("/sys"));
         assert_eq!(read.debugfs, Path::new("/sys/kernel/debug"));
         assert_eq!(
             (read.source.as_path(), read.output.as_path()),
             (Path::new("/run/d"), Path::new("/run/o"))
         );
-        assert!(given("--usb /dev/video0 /run/camera-holders").unwrap().usb);
+        assert!(
+            given("--usb /dev/video0 /run/camera-holders").unwrap().usb,
+            "--usb wasn't read as a USB camera's"
+        );
         let forgetting = given("--usb --forget /dev/video0 /run/camera-holders").unwrap();
         assert!(
             forgetting.usb && forgetting.forget,

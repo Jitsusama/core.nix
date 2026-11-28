@@ -723,7 +723,11 @@ mod tests {
     fn a_stronger_signal_is_faster() {
         let one = radio(Some(6), 80, 2, None);
 
-        assert!(estimate(&one, 5200, -50) > estimate(&one, 5200, -70));
+        let (strong, weak) = (estimate(&one, 5200, -50), estimate(&one, 5200, -70));
+        assert!(
+            strong > weak,
+            "-50 dBm came to {strong}, against {weak} at -70"
+        );
     }
 
     #[test]
@@ -731,7 +735,11 @@ mod tests {
         let narrow = radio(Some(6), 20, 2, None);
         let wide = radio(Some(6), 80, 2, None);
 
-        assert!(estimate(&wide, 5200, -55) > 3 * estimate(&narrow, 5200, -55));
+        let (fast, slow) = (estimate(&wide, 5200, -55), estimate(&narrow, 5200, -55));
+        assert!(
+            fast > 3 * slow,
+            "80 MHz came to {fast}, not over three times 20 MHz's {slow}"
+        );
     }
 
     #[test]
@@ -739,7 +747,11 @@ mod tests {
         let four = radio(Some(4), 40, 2, None);
         let six = radio(Some(6), 40, 2, None);
 
-        assert!(estimate(&six, 5200, -55) > estimate(&four, 5200, -55));
+        let (newer, older) = (estimate(&six, 5200, -55), estimate(&four, 5200, -55));
+        assert!(
+            newer > older,
+            "Wi-Fi 6 came to {newer}, against Wi-Fi 4's {older}"
+        );
     }
 
     #[test]

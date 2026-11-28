@@ -29,6 +29,52 @@ function saysOnly(act, line) {
     return saying.includes(act) && !(act === "cannotChange" && QueryKeys.chosen(line.mode));
 }
 
+// What Ctrl+Y's completion does, given how the field stands (`field`),
+// so Launcher.qml's onCompleted, which does it, and its fillLeaves, which
+// says before it whether it leaves a place, read the one rule: nothing
+// with no grey completion shown; a command's start put in the field
+// ("start", Launcher.qml's fill, out at the top) where the selected row
+// has one (`fills`); a question only started finished first ("question"),
+// with no row selected or an answer's; what's typed finished
+// ("rest") on any other row, or with no answer; and with only an answer,
+// the answer in the question's place ("answer"), unless it does something
+// or says nothing, which leaves nothing to put there. A command's row is
+// never an answer's, which has no start, so "start" and "question" never
+// both apply and their order changes nothing.
+function completing(field) {
+    if (field.completion === "") {
+        return "";
+    }
+    if (field.fills) {
+        return "start";
+    }
+    if (field.question !== "" && (!field.selected || field.answered)) {
+        return "question";
+    }
+    if (field.selected || !field.answer) {
+        return "rest";
+    }
+    return !field.answer.run && answerPut(field.answer) !== "" ? "answer" : "";
+}
+
+// What an answer puts in the question's place, where Ctrl+Y's completion
+// puts it ("answer" above): its copy where it has one, else its headline.
+// An empty copy is still its copy, so it puts nothing. Launcher.qml's
+// onCompleted puts this, and its answer rows (answered, headline) copy it
+// on Return and say "close" for it when it's empty, so what Ctrl+Y puts,
+// what Return copies and whether either puts anything are one rule.
+function answerPut(answer) {
+    return answer.copy ?? answer.headline;
+}
+
+// Everything completing answers, each a case of Launcher.qml's
+// onCompleted, so tests/query-keys.qml can hold that its cases answer
+// only these and reach every one. A function, as everything else this
+// file gives is.
+function completions() {
+    return ["", "start", "question", "rest", "answer"];
+}
+
 // Whether gv has something to take back: on the rows a selection
 // (Launcher.qml's lastVisual, `rows`), and in the drawer the kind it last
 // chose by (Prompt.qml's lastChosen, `chosen`); with neither it does

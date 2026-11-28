@@ -392,7 +392,8 @@ mod tests {
             fs::metadata(&file).unwrap().permissions().mode() & 0o777,
             0o600
         );
-        assert!(store.saved.join("lantern.network").exists());
+        let network = store.saved.join("lantern.network");
+        assert!(network.exists(), "the network's file wasn't saved");
     }
 
     #[test]
@@ -418,7 +419,7 @@ mod tests {
 
         store.let_go_of_password(&file).unwrap();
 
-        assert!(!file.exists());
+        assert!(!file.exists(), "a password no network names stayed");
     }
 
     #[test]
@@ -429,7 +430,7 @@ mod tests {
 
         store.let_go_of_password(&elsewhere).unwrap();
 
-        assert!(elsewhere.exists());
+        assert!(elsewhere.exists(), "a password kept elsewhere went");
     }
 
     #[test]
@@ -486,7 +487,7 @@ mod tests {
         assert_eq!(networks.len(), 1);
         assert_eq!(networks[0].network.name, "Roadside Inn");
         assert_eq!(networks[0].file, inn);
-        assert!(networks[0].declared);
+        assert!(networks[0].declared, "nix's network wasn't declared");
     }
 
     #[test]
@@ -507,7 +508,8 @@ mod tests {
             kept.contains("DNS=10.42.0.53\nMulticastDNS=yes\n"),
             "{kept}"
         );
-        assert!(!store.saved.join("lantern.network").exists());
+        let second = store.saved.join("lantern.network");
+        assert!(!second.exists(), "saving again wrote a second file");
     }
 
     #[test]
@@ -535,7 +537,8 @@ mod tests {
                 store.saved.join("café-wi-fi.network")
             ]
         );
-        assert!(store.runtime.join("50-wifi-café-wi-fi-2.network").exists());
+        let given = store.runtime.join("50-wifi-café-wi-fi-2.network");
+        assert!(given.exists(), "networkd wasn't given the second file");
     }
 
     #[test]
@@ -547,7 +550,8 @@ mod tests {
         let refused = store.save(&lantern());
 
         assert!(matches!(refused, Err(Failure::Declared)), "{refused:?}");
-        assert!(!store.saved.join("lantern.network").exists());
+        let saved = store.saved.join("lantern.network");
+        assert!(!saved.exists(), "nix's network was saved over");
     }
 
     #[test]
@@ -597,8 +601,9 @@ mod tests {
 
         store.give_networkd_all().unwrap();
 
-        assert!(foreign.exists());
-        assert!(store.runtime.join("50-wifi-lantern.network").exists());
+        assert!(foreign.exists(), "a file that isn't text was taken away");
+        let given = store.runtime.join("50-wifi-lantern.network");
+        assert!(given.exists(), "networkd's copy of the network went");
     }
 
     #[test]
@@ -610,7 +615,8 @@ mod tests {
 
         assert_eq!(forgotten, lantern());
         assert_eq!(store.networks().unwrap().saved, vec![]);
-        assert!(!store.runtime.join("50-wifi-lantern.network").exists());
+        let given = store.runtime.join("50-wifi-lantern.network");
+        assert!(!given.exists(), "networkd kept the network's file");
     }
 
     #[test]
@@ -622,14 +628,15 @@ mod tests {
         let refused = store.forget("Roadside Inn");
 
         assert!(matches!(refused, Err(Failure::Declared)), "{refused:?}");
-        assert!(inn.exists());
+        assert!(inn.exists(), "forgetting took nix's file away");
     }
 
     #[test]
     fn a_network_never_saved_cant_be_forgotten() {
         let (_root, store) = store();
 
-        assert!(matches!(store.forget("Lantern"), Err(Failure::NotSaved)));
+        let refused = store.forget("Lantern");
+        assert!(matches!(refused, Err(Failure::NotSaved)), "{refused:?}");
     }
 
     #[test]
@@ -643,7 +650,7 @@ mod tests {
 
         store.forget("Lantern").unwrap();
 
-        assert!(!sealed.exists());
+        assert!(!sealed.exists(), "the sealed password outlived its network");
     }
 
     #[test]
@@ -657,7 +664,7 @@ mod tests {
 
         store.forget("Lantern").unwrap();
 
-        assert!(elsewhere.exists());
+        assert!(elsewhere.exists(), "a password kept elsewhere went");
     }
 
     #[test]
@@ -680,7 +687,8 @@ mod tests {
 
         store.trust("Lantern", true).unwrap();
 
-        assert!(store.networks().unwrap().saved[0].network.trusted);
+        let trusted = store.networks().unwrap().saved[0].network.trusted;
+        assert!(trusted, "the network read back untrusted");
         let given = fs::read_to_string(store.runtime.join("50-wifi-lantern.network")).unwrap();
         assert!(given.contains("MulticastDNS=yes"), "{given}");
     }
@@ -692,7 +700,8 @@ mod tests {
 
         store.trust("Lantern", false).unwrap();
 
-        assert!(!store.networks().unwrap().saved[0].network.trusted);
+        let trusted = store.networks().unwrap().saved[0].network.trusted;
+        assert!(!trusted, "the network read back trusted");
         let given = fs::read_to_string(store.runtime.join("50-wifi-lantern.network")).unwrap();
         assert!(given.contains("MulticastDNS=no"), "{given}");
     }
@@ -712,10 +721,8 @@ mod tests {
     fn a_network_never_saved_cant_be_trusted() {
         let (_root, store) = store();
 
-        assert!(matches!(
-            store.trust("Lantern", true),
-            Err(Failure::NotSaved)
-        ));
+        let refused = store.trust("Lantern", true);
+        assert!(matches!(refused, Err(Failure::NotSaved)), "{refused:?}");
     }
 
     #[test]

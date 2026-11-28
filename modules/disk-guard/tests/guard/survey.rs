@@ -320,6 +320,73 @@ fn temp_leftovers_trash_and_scratch_are_offered() {
 }
 
 #[test]
+fn core_dumps_and_builds_no_nix_runs_are_offered_and_a_running_build_is_not() {
+    use std::os::unix::fs::PermissionsExt;
+    let root = tempfile::tempdir().unwrap();
+    let root = real(root.path());
+    let cores = dir(&root.join("coredump"));
+    let dump = cores.join(format!(
+        "core.app.1000.{}.4242.1700000000000000.zst",
+        "ab".repeat(16)
+    ));
+    file(&dump, "a dump");
+    let builds = dir(&root.join("builds"));
+    // Nix makes a build's folder private; one opened to others was kept.
+    let private = |path: &Path| {
+        fs::set_permissions(path, fs::Permissions::from_mode(0o700)).unwrap();
+    };
+    let abandoned = dir(&builds.join("nix-4243-1"));
+    file(&abandoned.join("out"), "half built");
+    private(&abandoned);
+    let running = dir(&builds.join("nix-4244-1"));
+    private(&running);
+    let boot = dir(&root.join("boot"));
+    let config = Config::parse(&format!(
+        r#"{{ "version": 1, "scope": "system", "boot": "{}", "sources": {{
+             "cores": {{ "kind": "coredumps", "path": "{}" }},
+             "builds": {{ "kind": "nix-builds", "path": "{}" }} }} }}"#,
+        boot.display(),
+        cores.display(),
+        builds.display()
+    ))
+    .unwrap();
+    // The worker that made the running build, started before it.
+    let worker = Process {
+        pid: 4244,
+        exe: Some(PathBuf::from("/run/current-system/sw/bin/nix-daemon")),
+        cmdline: vec![OsString::from("nix-daemon")],
+        readable: true,
+        ..Default::default()
+    };
+    let found = offers(&config, &[worker], &|_| false);
+    let paths: Vec<&Path> = found
+        .iter()
+        .map(|offer| offer.candidate.path.as_path())
+        .collect();
+    assert_eq!(
+        paths,
+        [abandoned.as_path(), dump.as_path()],
+        "the running build was offered, or the others weren't"
+    );
+    let offered = find(&found, &dump);
+    assert_eq!(offered.candidate.class, Class::Coredump);
+    assert_eq!(
+        offered.action,
+        Action::Entry {
+            root: cores.clone()
+        }
+    );
+    let offered = find(&found, &abandoned);
+    assert_eq!(offered.candidate.class, Class::NixBuild);
+    assert_eq!(
+        offered.action,
+        Action::Entry {
+            root: builds.clone()
+        }
+    );
+}
+
+#[test]
 fn what_a_killed_git_left_staged_is_offered_once_no_git_works_there() {
     // One large repository held 70 folders a fetch stages its packs in, 9.8
     // GiB, left by fetches killed on the way; git removes them only as it

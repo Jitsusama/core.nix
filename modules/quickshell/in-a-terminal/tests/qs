@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # A stand-in for Quickshell's qs, answering `qs ipc call -- launcher names
-# <path>` (or show) as a running shell would for a home of three rows and a Machine
-# of two, so launcher's completion is typed against what a shell says
-# without one running. Any other path names nothing, as the shell says.
+# <path>` (or show) as a running desktop would for a home of three rows and a Machine
+# of two, so launcher's completion is typed against what a desktop says
+# without one running. Any other path names nothing, as the desktop says.
 # The step's mark is matched by its bytes, since $'\u203a' is only the
 # mark in a UTF-8 locale, which the build sandbox has none of.
 case $6 in
