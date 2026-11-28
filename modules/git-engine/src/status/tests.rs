@@ -12,11 +12,12 @@ fn an_ignore_or_attributes_file_that_isnt_a_plain_file_reads_as_empty() {
     std::fs::create_dir_all(&device).expect("the temp folder takes a folder");
     for name in [".gitignore", ".gitattributes"] {
         fifo(&waiting.join(name));
-        std::os::unix::fs::symlink("/dev/zero", device.join(name))
+        // A device that reads as empty, so a reader that took it for a file
+        // fails by the assert below rather than reading without end.
+        std::os::unix::fs::symlink("/dev/null", device.join(name))
             .expect("the temp folder takes a link");
     }
-    // The FIFOs first, so a reader that waits on one waits there, and
-    // never reads the device without end.
+    // The FIFOs first, so a reader that waits on one waits there.
     let heard = apart(move || {
         let mut cache = Cache::default();
         [waiting, device].map(|dir| {
