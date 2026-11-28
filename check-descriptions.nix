@@ -4164,7 +4164,8 @@
     nothing of them when none are named
   '';
   resolved-is-set-per-network = ''
-    a laptop leaves resolved's global DNS settings as they ship
+    a laptop leaves resolved's global DNS settings as they ship, and caches what a local server
+    answers
   '';
   rhythm-learns-when-joel-stops = ''
     rhythm finds each night's stop at the last busy minute before four hours' sleep, never at

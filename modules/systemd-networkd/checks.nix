@@ -51,9 +51,13 @@
   # A development DNS server answers for its own domains through a file in
   # resolved.conf.d, so resolved's global settings stay as they ship: a
   # server, domain, DNSSEC or DNS over TLS set there would reach it as well.
-  # What a network needs goes in its own .network file. The machine checked
-  # has networkd without the laptop role, whose keyboard and power modules
-  # leave resolved alone, so it holds whichever networking the role takes.
+  # What a network needs goes in its own .network file. One exception is
+  # held too: resolved caches what a server on the loopback answers. A VPN's
+  # DNS proxy and that development server both answer there and neither
+  # caches, so without it every lookup went to them, a repeat included. The
+  # machine checked has networkd without the laptop role, whose keyboard and
+  # power modules leave resolved alone, so it holds whichever networking the
+  # role takes.
   resolved-is-set-per-network =
     let
       laptop = bareNixos [
@@ -64,9 +68,10 @@
       resolve = laptop.config.services.resolved.settings.Resolve;
     in
     holds "resolved-is-set-per-network"
-      "A machine with networkd sets resolved's global servers, domains, DNSSEC or DNS over TLS."
+      "A laptop sets resolved's global DNS settings, or doesn't cache a local server's answers."
       (
         laptop.config.services.resolved.enable
+        && (resolve.CacheFromLocalhost or false) == true
         && resolve.DNS == [ ]
         && resolve.Domains == [ ]
         && resolve.DNSSEC == false
