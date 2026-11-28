@@ -388,8 +388,9 @@ mod tests {
 
     /// What `judged` makes shared of a change to `ours` over main's moves
     /// of `theirs`, through the step it runs, each file read as `texts`
-    /// gives it: at the base, the earlier pass, main and the merged head.
-    fn shared_as_judged(ours: &[&str], theirs: &[&str], texts: [&str; 4]) -> Vec<String> {
+    /// gives it: at the base, the earlier pass, main, the head and the head
+    /// merged into main.
+    fn shared_as_judged(ours: &[&str], theirs: &[&str], texts: [&str; 5]) -> Vec<String> {
         let own = |files: &[&str]| {
             files
                 .iter()
@@ -397,13 +398,19 @@ mod tests {
                 .collect::<Vec<_>>()
         };
         let (ours, theirs, none) = (own(ours), own(theirs), Vec::new());
-        let [base, checked, main, head] = texts.map(str::to_owned);
+        let [base, checked, main, head, merged] = texts.map(str::to_owned);
         let (at_base, at_checked) = (|_: &str| base.clone(), |_: &str| checked.clone());
         let (at_main, at_head) = (|_: &str| main.clone(), |_: &str| head.clone());
+        let at_merged = |_: &str| merged.clone();
         let branch = ready::Side {
             changed: &ours,
             gone: &none,
             text: &at_head,
+        };
+        let rebased = ready::Side {
+            changed: &ours,
+            gone: &none,
+            text: &at_merged,
         };
         let main_side = ready::Side {
             changed: &theirs,
@@ -412,7 +419,7 @@ mod tests {
         };
         let sides = Sides {
             branch: &branch,
-            rebased: &branch,
+            rebased: &rebased,
             main: &main_side,
         };
         shared_over(
@@ -426,18 +433,26 @@ mod tests {
 
     #[test]
     fn judging_shares_main_s_fated_moves_after_files_stand_apart() {
-        // Each side moves its own key, so the file stands apart by its text.
+        // Each side moves its own key, so the file stands apart by its text
+        // merged into main, which the head's own, lacking main's key, isn't.
         let texts = [
             r#"{"a": 1, "b": 1}"#,
             r#"{"a": 2, "b": 1}"#,
             r#"{"a": 1, "b": 2}"#,
+            r#"{"a": 2, "b": 1}"#,
             r#"{"a": 2, "b": 2}"#,
         ];
         let outside = "modules/net/site/hosts.json";
         assert_eq!(
             shared_as_judged(&[outside], &[outside], texts),
             Vec::<String>::new(),
-            "a file outside every fate whose keys stand apart was shared"
+            "a file outside every fate whose keys stand apart as merged was shared"
+        );
+        let [base, checked, main, head, _] = texts;
+        assert_eq!(
+            shared_as_judged(&[outside], &[outside], [base, checked, main, head, head]),
+            vec![outside.to_owned()],
+            "a file whose merged text lacks main's key stood apart"
         );
         // In a fate, the file is shared all the same, which it isn't once
         // the fold runs before files stand apart.
