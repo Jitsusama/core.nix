@@ -348,7 +348,7 @@ async fn serve(
     // How well each access point carries, measured from where the machine
     // is, and the card moved to one carrying better (moves.rs), with what
     // each carried at each hour kept for a trusted network (learn.rs).
-    tokio::spawn(measure::follow(
+    let measuring = tokio::spawn(measure::follow(
         state.subscribe(),
         calling.subscribe(),
         asks.clone(),
@@ -375,6 +375,19 @@ async fn serve(
     tokio::select! {
         result = follow(&wifid, air, networks, heard) => result,
         result = answer(wifi) => result,
+        why = measuring_stopped(measuring) => Err(why),
+    }
+}
+
+/// Why wifid stops once its measuring does. `measure::follow` runs as long
+/// as wifid does, so it ends only by panicking, as `learn::booted` does
+/// where the boot clock can't be read. Left running without it, wifid would
+/// never move a card again and nothing would say so; stopping says why in
+/// the journal, and systemd starts it again (`Restart`).
+async fn measuring_stopped(measuring: tokio::task::JoinHandle<()>) -> Box<dyn Error> {
+    match measuring.await {
+        Ok(()) => "measuring the access points ended".into(),
+        Err(error) => format!("measuring the access points stopped: {error}").into(),
     }
 }
 
@@ -4618,6 +4631,18 @@ mod tests {
     // zbus hands a stream each message only once the one before has been
     // taken, as a channel with room for one does, so nothing it says after
     // that gets through, replies included, until somebody reads.
+    #[tokio::test]
+    async fn measuring_that_panics_stops_wifid_saying_why() {
+        let measuring = tokio::spawn(async { panic!("the boot clock can't be read") });
+
+        let why = measuring_stopped(measuring).await.to_string();
+        assert!(
+            why.starts_with("measuring the access points stopped: ")
+                && why.contains("the boot clock can't be read"),
+            "a panic in measuring didn't say it was measuring that stopped, and why: {why}"
+        );
+    }
+
     #[tokio::test]
     async fn a_drained_stream_is_read_while_nobody_reads_what_it_gave() {
         let (feeding, fed) = mpsc::channel(1);

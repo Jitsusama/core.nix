@@ -398,7 +398,7 @@ pub async fn follow(
                 }
             }
             _ = told.tick() => {
-                let (now, hour) = (Instant::now(), learn::hour_here());
+                let (now, booted, hour) = (Instant::now(), learn::booted(), learn::hour_here());
                 let joined = state.borrow().joined();
                 let call = calling.borrow().on(now);
                 keep_with_cards(&mut choosers, &joined, |card| state.borrow().has_card(card));
@@ -412,14 +412,14 @@ pub async fn follow(
                     let video = measures.video_of(&on.point, now);
                     println!("<6>{}", said(&on, (&best, &carried), video, call));
                     let around = state.borrow().around(&on.card);
-                    learn_from(&mut learned, &on, &carried, &around, (now, hour));
+                    learn_from(&mut learned, &on, &carried, &around, (booted, hour));
                     let chooser = chooser_of(&mut choosers, &on);
                     if let Some(minute) = measures.minute_of(&on.point, now) {
                         chooser.took_minute(now, &on.point, &minute);
                     }
                     moves::choose(
                         chooser,
-                        (now, hour),
+                        (now, booted, hour),
                         (&on, &carried),
                         (&measures, &learned),
                         (&asks, &state, &back),
@@ -431,7 +431,7 @@ pub async fn follow(
                 let Some(card) = took_back(&mut choosers, answer, Instant::now()) else {
                     continue;
                 };
-                let (now, hour) = (Instant::now(), learn::hour_here());
+                let (now, booted, hour) = (Instant::now(), learn::booted(), learn::hour_here());
                 let call = calling.borrow().on(now);
                 let joined = state.borrow().joined();
                 let Some(on) = joined.into_iter().find(|on| on.card == card) else {
@@ -444,7 +444,7 @@ pub async fn follow(
                 chooser.looked_over(now);
                 moves::choose(
                     chooser,
-                    (now, hour),
+                    (now, booted, hour),
                     (&on, &carried),
                     (&measures, &learned),
                     (&asks, &state, &back),
@@ -758,13 +758,14 @@ fn counted(station: &Station) -> Option<Counts> {
 }
 
 /// Folds what the access point a card is on carried into what it's learned
-/// to carry at this hour, heard as loud as it's heard now, as of `now`.
+/// to carry at this hour, heard as loud as it's heard now, as of `booted`
+/// on the boot clock (`learn::booted`).
 fn learn_from(
     learned: &mut Learned,
     on: &Joined,
     carried: &Measured,
     around: &[Heard],
-    (now, hour): (Instant, u8),
+    (booted, hour): (Duration, u8),
 ) {
     let Some(heard) = around.iter().find(|heard| heard.bssid == on.point) else {
         return;
@@ -775,7 +776,7 @@ fn learn_from(
         hour,
         signal: heard.signal,
         trusted: on.trusted,
-        at: now,
+        booted,
     };
     if let Err(error) = learned.carried(&here, carried) {
         eprintln!("<4>can't keep what {} carried: {error}", on.point);
