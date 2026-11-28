@@ -633,7 +633,15 @@ fn the_casts_stand_unheard_until_each_stream_of_niris_says_them() {
     // and a share begun now isn't taken for none.
     let told = told_through(&running, &mut watch, 1);
     assert_eq!(casts(), "starting", "casts heard before niri said them");
-    assert_eq!(casts_said(&told), Vec::<Value>::new());
+    // The stand-in is counted once it has written its beginning, which
+    // the daemon may not have read by the time the watch begins. Hearing
+    // niri answer then tells the watch how every source stands, casts
+    // still starting among them, which is true, so only casts said heard
+    // would be wrong.
+    assert!(
+        casts_said(&told).iter().all(|said| said == "starting"),
+        "casts said heard before niri said them: {told:?}"
+    );
     // Heard, a watch is told the casts before it's told they're heard.
     let sharing = json!({"stream_id": 7, "kind": "PipeWire", "is_active": true});
     running
