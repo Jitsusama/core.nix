@@ -44,9 +44,36 @@ function waiting(kept, told) {
     return kept.filter(one => one.about !== told.about).concat([told]);
 }
 
-// The words of `tells`, in the order they were told, as the foot says them.
+// A tell's words as the foot draws them, Return's end last: the foot moves
+// the first word it's given to the far end (Launcher.qml's foot.shown), and
+// each tell's words are ordered for that, as a refusal's why comes first
+// to stand at the end beside its what (Becoming.js's told).
+function drawn(words) {
+    return words.length === 0 ? [] : words.slice(1).concat([words[0]]);
+}
+
+// The words of `tells`, in the order they were told, as the foot is given
+// them: ordered so its one move of the first word to the far end draws each
+// tell whole beside itself. Joined end to end, only the first tell's first
+// word moved, and every later refusal's why stood beside the one before's
+// what, whether they fitted or not (#7116's third stack round, 35 and 36).
 function said(tells) {
-    return [].concat(...tells.map(one => one.told));
+    const whole = tells.filter(one => one.told.length > 0);
+    if (whole.length === 0) {
+        return [];
+    }
+    const newest = whole.slice(-1)[0].told;
+    return [newest[0]].concat(...whole.slice(0, -1).map(one => drawn(one.told)),
+        newest.slice(1));
+}
+
+// Whether the foot's words `told` are the words `words` an opening said:
+// the same list, or one holding the same words in the same order, as a
+// list handed through a Binding's value may not keep its identity
+// (#7116's third stack round, 37).
+function sameWords(told, words) {
+    return told === words || (Array.isArray(words) && told.length === words.length
+        && JSON.stringify(told) === JSON.stringify(words));
 }
 
 // The words of `tells` that `fits` lets the foot say, a whole tell giving

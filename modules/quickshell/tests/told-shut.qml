@@ -18,11 +18,16 @@ QtObject {
                 ToldShut.tell(one.told, one.loose, one.about, one.at));
         return waiting;
     }
-    // What an opening at `now` says after `tells`, as the foot's words in
-    // one line.
+    // The words `said` as the foot draws them, each its mark and word, in
+    // order from its left end to Return's.
+    function shown(said) {
+        return ToldShut.drawn(said).map(one => one.slice(0, 2).join(" "));
+    }
+    // What an opening at `now` says after `tells`, as the foot draws its
+    // words, in one line.
     function opened(tells, now) {
         const due = ToldShut.due(kept(tells), now);
-        return { words: due.said.map(said => said.slice(0, 2).join(" ")).join(" | "),
+        return { words: shown(due.said).join(" | "),
             loose: due.loose, lapsed: due.lapsed };
     }
 
@@ -56,7 +61,7 @@ QtObject {
         const started = [["Start New Work", "asked", "text"], ["Start New Work", "up", "text"]];
         Expect.same("a start's words under one mark are each kept",
             opened([{ told: started, at: 0 }], minute).words,
-            "Start New Work asked | Start New Work up");
+            "Start New Work up | Start New Work asked");
         const both = kept([{ told: asleep, at: 0 }, { told: started, at: 0 }]);
         Expect.same("taking a start's words back leaves another's",
             ToldShut.said(ToldShut.without(both, started)).map(one => one[0]), ["Quest B"]);
@@ -70,15 +75,19 @@ QtObject {
         Expect.same("a second act refused while shut leaves the first's whole",
             opened([{ told: refused("timed out", "VPN not connected"), at: 0,
                 about: "VPN not connected" },
-            { told: refused("timed out", "Home not disconnected"), at: minute,
+            { told: refused("no answer", "Home not disconnected"), at: minute,
                 about: "Home not disconnected" }], 2 * minute).words,
-            "timed out  | x VPN not connected | timed out  | x Home not disconnected");
+            "x VPN not connected | timed out  | x Home not disconnected | no answer ");
+        Expect.same("a refusal beside a session's word is drawn whole beside it",
+            opened([{ told: refused("timed out", "VPN not connected"), at: 0,
+                about: "VPN not connected" }, { told: came, at: 0 }], minute).words,
+            "x VPN not connected | timed out  | Quest A came after all");
         Expect.same("and the same act refused again takes its place whole",
             opened([{ told: refused("no answer", "VPN not connected"), at: 0,
                 about: "VPN not connected" },
             { told: refused("timed out", "VPN not connected"), at: minute,
                 about: "VPN not connected" }], 2 * minute).words,
-            "timed out  | x VPN not connected");
+            "x VPN not connected | timed out ");
         // A walk's tallies mark each count by the count, and are about the
         // walk (Agents.qml's tellAll), so only its newest is said.
         const tally = (gone, reopened) => [[String(gone), "gone", "alert"],
@@ -87,7 +96,7 @@ QtObject {
             opened([{ told: tally(1, 3), at: 0, about: "reopen them all" },
                 { told: tally(2, 2), at: 0, about: "reopen them all" },
                 { told: tally(3, 1), at: 0, about: "reopen them all" }], minute).words,
-            "3 gone | 1 reopened");
+            "1 reopened | 3 gone");
         // Taking one back from what an opening said, as a start takes back
         // its words (Launcher.qml's untell), with the foot showing them still
         // or not.
@@ -127,9 +136,16 @@ QtObject {
         const firstWhole = ["timed out", "x"];
         Expect.same("a narrow foot gives the newest refusal way whole",
             ToldShut.fitting(refusals, roomFor(3)).map(one => one[0]), firstWhole);
-        Expect.same("and says both where both fit",
-            ToldShut.fitting(refusals, roomFor(4)).map(one => one[0]),
-            ["timed out", "x", "no answer", "x"]);
+        Expect.same("and says both where both fit, each why beside its own what",
+            shown(ToldShut.fitting(refusals, roomFor(4))),
+            ["x VPN not connected", "timed out ", "x Home not disconnected", "no answer "]);
+        // The foot's words handed through a Binding may come back a copy.
+        const said = ToldShut.said(refusals);
+        Expect.same("the foot's words are the opening's whether the same list or a copy",
+            [ToldShut.sameWords(said, said),
+                ToldShut.sameWords(JSON.parse(JSON.stringify(said)), said),
+                ToldShut.sameWords(said.slice(0, 2), said), ToldShut.sameWords(said, null)],
+            [true, true, false, false]);
         Expect.same("the one tell left is left for the foot to cut",
             ToldShut.fitting(refusals, roomFor(1)).map(one => one[0]), firstWhole);
         Expect.same("a lapsed tell counts its words",

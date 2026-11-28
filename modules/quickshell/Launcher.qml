@@ -3849,7 +3849,7 @@ Scope {
     function keysFittedIn(told, loose, room) {
         footFitted.keys += 1;
         const wide = keys => keysWide(keys, loose);
-        const whole = told === toldSaid.said && toldSaid.tells.length > 1
+        const whole = toldSaid.tells.length > 1 && ToldShut.sameWords(told, toldSaid.said)
             ? ToldShut.fitting(toldSaid.tells, keys => wide(keys) <= room) : told;
         return Standing.keysFitted(whole, wide, room, footYielding);
     }
