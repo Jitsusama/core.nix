@@ -65,7 +65,7 @@ pub struct Thing {
     pub name: String,
     /// The name the node gave it, where that isn't `name`: a reader is shown
     /// its name made plain, but a page that finds it by the node's name, as
-    /// the map finds a builder, is led there by this one. It is never shown,
+    /// the map finds a machine or a builder, is led there by this one. It is never shown,
     /// only matched, so it stays as the node wrote it. None where the two
     /// agree, or where the node gave it no name the map could find.
     pub called: Option<String>,

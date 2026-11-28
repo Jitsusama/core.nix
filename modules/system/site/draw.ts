@@ -106,10 +106,11 @@ const HERE = "system/";
 /**
  * Where a machine is on the mycelium map, its cells hanging from it. This
  * page is a machine's home, so its name and its cells lead on to the map
- * rather than back here.
+ * rather than back here, by the node's own name, which the map knows it by
+ * and the plain one shown here may not be.
  */
 function onTheMap(thing: Thing): string {
-  return `../mycelium/#machine=${encodeURIComponent(thing.name)}`;
+  return `../mycelium/#machine=${encodeURIComponent(thing.called ?? thing.name)}`;
 }
 
 /**

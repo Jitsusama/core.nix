@@ -29,6 +29,9 @@ draws them.
   never counted among them, said in the aside while none is worth a look,
   none drawn where the node names none, and a look at one led to it on the
   map, kept apart from a machine's of the same name.
+- `called.test.ts` tries that a machine shown by its name made plain is
+  led to the map by the node's own: its look past those drawn, its name
+  and its cells where it is drawn whole, and its row out of reach.
 - `bridge.test.ts` tries the bridge drawing: a pier for each machine, wide
   and narrow, its name and health over it, a dot for each cell and one
   for several past what a pier holds, on one scale, what lies past its
