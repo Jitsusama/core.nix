@@ -81,12 +81,15 @@ pub(super) fn waiting(bytes: u64, untaken: &str) -> String {
     format!(
         r#"relinked=
 unlinked || {{
-  printf "elsewhere: a link at the job's handover couldn't be cleared\n" >&2
+  if [ -n "$scratched" ]; then printf 'elsewhere: %s\n' "$scratch_link" >&2
+  else printf "elsewhere: a link at the job's handover couldn't be cleared\n" >&2; fi
   say {untaken}
   exit {UNTAKEN}
 }}
 [ -z "$relinked" ] ||
   printf "elsewhere: what crossed through it is out of reach, so the wait may run out\n" >&2
+# Only a link cleared from here on is one the cut can say was put back.
+relinked=
 # By the clock, since a pass over a large tree takes long itself: each
 # pass spends what the clock moved over it, never less than the second
 # it slept, as when the clock steps back or stands still, nor more than
@@ -158,9 +161,20 @@ pub(super) fn stopping() -> String {
 # that nothing below it, a link included, can be seen or cleared. False
 # only when a link stays, never for a folder that couldn't be opened,
 # which fails what follows in its own words. One cleared is said, and
-# noted in `relinked`.
+# noted in `relinked`; one at the scratch is noted in `scratched`. The
+# folder the quests' scratches lie in, above the scratch, is asked here
+# no more than `copies` or `linked` ask it: a link put at it takes a
+# write in the folder above it, which the fence around the far line,
+# writing only the quest's scratch, never lets a job make. Whatever no
+# such fence holds could as well put one at any folder above, up to
+# the home, and clear what the line keeps itself, so asking stops at
+# the scratch. One put there once the copy is made, before it's
+# entered, leaves the job untaken, as `entered` measures where the copy
+# was made, not names; through any other, the line reads, writes and
+# clears only where it leads, which whatever put it there can write.
 unlinked() {{
-  [ ! -L "${{job%/*/*/*}}" ] || return 1
+  scratched=
+  [ ! -L "${{job%/*/*/*}}" ] || {{ scratched=1; return 1; }}
   chmod u+rwx "${{job%/*/*/*}}" 2>/dev/null
   for at in "${{job%/*/*}}" "${{job%/*}}" "$job"; do
     [ ! -L "$at" ] || {{ rm -f "$at" 2>/dev/null
@@ -242,9 +256,10 @@ if [ -n "$judged" ] && [ -d "$runs" ] && [ ! -L "$runs" ]; then
       *) continue ;;
     esac
     copies || {{
-      printf "elsewhere: a link at its copies' folder couldn't be cleared, or one stands at \
-the quest's scratch, so the sweep stops, \
-and this run is untaken if it still stands once its files cross\n" >&2
+      if [ -n "$scratched" ]; then stand=$scratch_link
+      else stand="a link at its copies' folder couldn't be cleared"; fi
+      printf 'elsewhere: %s, so the sweep stops, %s\n' "$stand" \
+        "and this run is untaken if it still stands once its files cross" >&2
       break
     }}
     {{ cleared "$copy.names" "$copy.tar" "$copy.back" "$copy.back".* "$copy" &&
@@ -315,9 +330,10 @@ cleared() {
 # couldn't write itself, so what this guards is which machine is blamed
 # and what is kept. One cleared is said. A link at the quest's scratch,
 # which the copies' folder lies in, is refused as `unlinked` refuses it,
-# never cleared.
+# never cleared, and noted in `scratched`.
 copies() {
-  [ ! -L "${work%/*/*}" ] || return 1
+  scratched=
+  [ ! -L "${work%/*/*}" ] || { scratched=1; return 1; }
   [ ! -L "${work%/*}" ] || { rm -f "${work%/*}" 2>/dev/null
     [ -L "${work%/*}" ] || printf "elsewhere: a link at its copies' folder was cleared\n" >&2; }
   [ ! -L "${work%/*}" ]
@@ -352,13 +368,20 @@ moved() {
   printf "elsewhere: the job's copy was moved or linked from its place\n" >&2
 }
 # Says the copy stays, as a link at the copies' folder couldn't be
-# cleared or one stands at the quest's scratch, and fails, so what
-# would clear it is passed over.
+# cleared or one stands at the quest's scratch, as `scratched` says,
+# and fails, so what would clear it is passed over.
 stays() {
-  printf "elsewhere: a link at its copies' folder couldn't be cleared, \
-or one stands at the quest's scratch, so its copy stays\n" >&2
+  if [ -n "$scratched" ]; then stand=$scratch_link
+  else stand="a link at its copies' folder couldn't be cleared"; fi
+  printf 'elsewhere: %s, so its copy stays\n' "$stand" >&2
   return 1
-}"#;
+}
+# What a link at the quest's scratch is said to be: neither `unlinked`
+# nor `copies` clears one, since a scratch that went is never made
+# again, so it stands, and the quest is untaken on this machine, until
+# it's removed there by hand.
+scratch_link="a link stands at the quest's scratch, which only its removal there by hand clears"
+scratched="#;
 
 /// The far line's step making the job's tree of its files, `copied`: 0
 /// once made, 1 for the tree's own fault, which every try meets, and 2
@@ -547,6 +570,7 @@ stuck="a link it left at its handover couldn't be cleared"
 if unlinked; then
   stuck="its folder for copies or its list couldn't be made new"
   cleared "$job/{BACK}" "$job/{BROUGHT}" && mkdir -p "$job/{BACK}" && stuck=
+elif [ -n "$scratched" ]; then stuck=$scratch_link
 fi
 if [ -n "$stuck" ]; then
   printf 'elsewhere: %s, so nothing is brought back\n' "$stuck" >&2
@@ -636,6 +660,9 @@ linked() {{
 halted() {{
   {HALTING}
 }}
+strayed() {{
+  {STRAYING}
+}}
 crowded() {{
   {CROWDING}
 }}
@@ -656,44 +683,50 @@ LC_ALL=C sort -u "$names" > "$names.in" ||
   {{ rm -f "$names.in" "$names.lost" && true > "$names.in" && lose > "$names.lost" ||
     exit 1; }}
 ! linked || {{ halted; exit 1; }}
+# Keeps where the copies' folder is, read once, so what's cleared at a
+# copy's name is cleared from inside that very folder: a link put at
+# the handover, or above it, between a look and a clearing would
+# otherwise have the clearing take what it points at. The dot keeps a
+# name's trailing newlines, as `pinned`'s does. The pin is then held to
+# where it must be, the folder the quests' scratches lie in, which the
+# fence keeps the job from writing, with the job's own names below it:
+# a link put from the quest's scratch down as it was read would have it
+# land elsewhere, so the far line stops rather than trust it.
+above=${{job%/*/*/*/*}}
+above_at=$(cd -P "$above" && pwd -P && echo .) && above_at=${{above_at%?.}} &&
+  copies_at=$(cd -P "$job/{BACK}" && pwd -P && echo .) && copies_at=${{copies_at%?.}} &&
+  [ "$copies_at" = "$above_at${{job#"$above"}}/{BACK}" ] ||
+  {{ strayed; exit 1; }}
 {{
   n=0 files=0 bytes=0 most_files={MOST_FILES} most_bytes={MOST_BYTES}
-  # One that can't be read or copied keeps its number, listed with no
-  # size, so the near side lands the rest and says it's missing.
-  missing() {{
-    rm -f "$job/{BACK}/$n"
-    printf "elsewhere: %s didn't come back\n" "$file" >&2
-    printf '%s\t%s\n' - "$file" || exit 1
-    n=$((n + 1))
-  }}
-  # One past what a share holds, alone or with what crossed before it,
-  # is listed marked with its size and never crosses, so the near side
-  # lands the rest and says why without waiting for it.
-  past() {{
-    [ $1 -gt {LARGEST_FILE} ] || [ $((files + 1)) -gt $most_files ] ||
-      [ $(($bytes + $1)) -gt $most_bytes ]
-  }}
-  kept() {{
-    rm -f "$job/{BACK}/$n"
-    printf '>%s\t%s\n' $(($1)) "$file" || exit 1
-    n=$((n + 1))
-  }}
+{each_file}
   while IFS= read -r file; do
     # Where its folder for copies is made new, nothing stands at a
     # copy's name until it's written: a link there is one put at the
     # handover, and anything else is said in words of its own.
     ! linked && [ ! -L "$job/{BACK}/$n" ] || {{ halted; exit 1; }}
     [ ! -e "$job/{BACK}/$n" ] || {{ crowded; exit 1; }}
-    size=$(wc -c 2>/dev/null < "$file") || {{ missing; continue; }}
+    # Only a plain file is sized, and only a plain copy, so a pipe, a
+    # socket or a device a job's process put at either name since find
+    # listed it or since it crossed is missing, never opened: wc's open
+    # of a pipe would hold the far line. cp -RP copies what stands at
+    # the file's name as it stands, never reading a pipe or a device, or
+    # through a link, so what was put there after the look is copied as
+    # itself and is then no plain copy, and a link halts as one at the
+    # copy's name does. What stays open is each span from a look to the
+    # open after it: wc's here and below, and cp's own.
+    [ -f "$file" ] && [ ! -L "$file" ] && size=$(wc -c 2>/dev/null < "$file") ||
+      {{ missing; continue; }}
     past $size && {{ kept $size; continue; }}
-    cp "$file" "$job/{BACK}/$n"; crossed=$?
+    cp -RP "$file" "$job/{BACK}/$n"; crossed=$?
     # A link put as it crossed, at the handover or at the copy's own
     # name, took the copy through it, so neither its size nor a clearing
     # of it is read through the link, which at a pipe would hold the far
     # line and at a file would list it at that file's size, and the file
     # is left unlisted with the rest.
     ! linked && [ ! -L "$job/{BACK}/$n" ] || {{ halted; exit 1; }}
-    [ $crossed -eq 0 ] && copied=$(wc -c < "$job/{BACK}/$n") || {{ missing; continue; }}
+    [ $crossed -eq 0 ] && [ -f "$job/{BACK}/$n" ] && copied=$(wc -c < "$job/{BACK}/$n") ||
+      {{ missing; continue; }}
     # Only what crossed counts toward the totals, at the size it crossed.
     past $copied && {{ kept $copied; continue; }}
     files=$((files + 1)) bytes=$(($bytes + $copied))
@@ -711,7 +744,56 @@ else
 fi
 ) || wrote=$?
 {ended}"#,
+        each_file = each_file(),
         ended = ended(),
+    )
+}
+
+/// What the far line says where the copies' folder isn't the one it
+/// pinned as it brought back, so it stops rather than clear elsewhere.
+const STRAYING: &str = "printf \"elsewhere: its folder for copies isn't where it was as it \
+brought back, so nothing more is brought back\\n\" >&2";
+
+/// What `bringing` does with each file it lists that can't cross as it
+/// is: one missing, one kept past what a share holds, and the test of
+/// which.
+fn each_file() -> String {
+    format!(
+        r#"  # One that can't be read or copied keeps its number, listed with no
+  # size, so the near side lands the rest and says it's missing. Its
+  # copy is cleared whole, since what cp met there may be a folder.
+  missing() {{
+    uncopied cleared
+    printf "elsewhere: %s didn't come back\n" "$file" >&2
+    printf '%s\t%s\n' - "$file" || exit 1
+    n=$((n + 1))
+  }}
+  # Takes away what stands at the copy's name by `$@`, from inside the
+  # copies' folder only once the cd landed in the very one `copies_at`
+  # pinned, by its path and by the folder itself, so a link put at the
+  # handover or above it since can't lead the clearing to what it points
+  # at. Where it didn't land there, nothing is cleared and the far line
+  # stops, as it does for a link it sees.
+  uncopied() {{
+    (
+      cd -P "$job/{BACK}" 2>/dev/null && landed=$(pwd -P && echo .) &&
+        [ "${{landed%?.}}" = "$copies_at" ] && [ . -ef "$copies_at" ] || exit 1
+      "$@" "./$n"
+      exit 0
+    ) || {{ strayed; exit 1; }}
+  }}
+  # One past what a share holds, alone or with what crossed before it,
+  # is listed marked with its size and never crosses, so the near side
+  # lands the rest and says why without waiting for it.
+  past() {{
+    [ $1 -gt {LARGEST_FILE} ] || [ $((files + 1)) -gt $most_files ] ||
+      [ $(($bytes + $1)) -gt $most_bytes ]
+  }}
+  kept() {{
+    uncopied rm -f
+    printf '>%s\t%s\n' $(($1)) "$file" || exit 1
+    n=$((n + 1))
+  }}"#
     )
 }
 
@@ -812,7 +894,9 @@ fi
 pub(super) fn freed() -> String {
     format!(
         r#"handed=
-if unlinked; then handed=1; else
+if unlinked; then handed=1; elif [ -n "$scratched" ]; then
+  printf 'elsewhere: %s, so its tree stays\n' "$scratch_link" >&2
+else
   printf "elsewhere: a link at the job's handover couldn't be cleared, so its tree stays\n" >&2
 fi
 cd / && {{

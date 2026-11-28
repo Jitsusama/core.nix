@@ -8,6 +8,8 @@ mod handing;
 mod heard;
 mod holding;
 mod leaving;
+mod naming;
+mod sizing;
 mod sweeping;
 mod unpacking;
 mod words;
@@ -468,7 +470,7 @@ fn what_comes_back_comes_back_under_its_own_name_past_one_that_failed() {
         // under root as well.
         &[(
             "cp",
-            "case $1 in early/b) exit 1 ;; esac\nPATH=${PATH#*:} exec cp \"$@\"",
+            "case $2 in early/b) exit 1 ;; esac\nPATH=${PATH#*:} exec cp \"$@\"",
         )],
     );
     assert!(

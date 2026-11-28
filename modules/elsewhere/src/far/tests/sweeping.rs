@@ -281,9 +281,8 @@ exec head \"$@\""
     let said = sweep_with(&runs.join("9"), &[("head", &head), ("rm", &rm)]);
     assert_eq!(
         said,
-        "elsewhere: a link at its copies' folder couldn't be cleared, or one stands at the \
-         quest's scratch, so the sweep stops, and this run is untaken if it still stands once \
-         its files cross\n",
+        "elsewhere: a link at its copies' folder couldn't be cleared, so the sweep stops, and \
+         this run is untaken if it still stands once its files cross\n",
         "the sweep didn't say why it stopped, once and alone"
     );
     assert_eq!(
@@ -564,6 +563,33 @@ fn a_far_line_whose_copies_lie_through_a_link_clears_nothing_it_leads_to() {
         left_in(&real),
         ["2", "2.run"],
         "the sweep cleared what the copies' folder, a link, leads to"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn a_link_at_the_quest_s_scratch_stops_the_sweep_and_says_it_stands_there() {
+    // The scratch itself a link, as a job of the quest may leave it: the
+    // sweep clears nothing through it, never clears it, and says it is
+    // the scratch's, which only its removal there clears, not the
+    // copies' folder's.
+    let root = scratch("far-swept-scratch");
+    let real = root.join("real");
+    let runs = real.join("s");
+    copy(&runs, "2", &format!("{} {}", gone(), here()));
+    std::os::unix::fs::symlink(&real, root.join("q")).unwrap();
+    let said = sweep_with(&root.join("q/s/9"), &[]);
+    assert_eq!(
+        said,
+        "elsewhere: a link stands at the quest's scratch, which only its removal there by hand \
+         clears, so the sweep stops, and this run is untaken if it still stands once its files \
+         cross\n",
+        "the sweep didn't say the link stands at the quest's scratch"
+    );
+    assert!(
+        left_in(&runs) == ["2", "2.run"]
+            && std::fs::symlink_metadata(root.join("q")).is_ok_and(|at| at.is_symlink()),
+        "the sweep cleared through the link at the quest's scratch, or cleared it"
     );
     let _ = std::fs::remove_dir_all(&root);
 }

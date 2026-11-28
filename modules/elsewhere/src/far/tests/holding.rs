@@ -3,8 +3,9 @@
 //! above it while the line waited, and a tree gone, each judged before an
 //! archive is taken, a link put there later redirecting none, one that
 //! can't be cleared keeping the tree as the line clears the copy, one a
-//! killed run left above it going before anything is read, files handed
-//! over once it went waited for, and links at
+//! killed run left above it going before anything is read, one left at
+//! the quest's scratch leaving it untaken, said as the scratch's, files
+//! handed over once it went waited for, and links at
 //! the copies' folder or the copy, put while it's made, leaving it
 //! untaken, or put as the list of what's brought back is sorted, cutting
 //! the list, and a link put at the job's folder in the copy, or above the
@@ -144,6 +145,53 @@ fn a_link_a_killed_run_left_above_the_job_s_handover_goes_before_anything_is_rea
             && !err.contains("so the wait may run out")
             && !err.contains("handover wasn't cleared"),
         "a far line with no link at its handover said one ({code:?}): {err}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
+fn a_link_left_at_the_quest_s_scratch_leaves_the_job_untaken_and_says_it_stands_there() {
+    // The quest's scratch moved aside, with a link to it at its name, as
+    // the far line begins, as a job of the quest may leave it: never
+    // cleared, nothing read through it, and said as the scratch's, which
+    // only its removal there clears, not as a link at the handover.
+    let swapping = format!(
+        r#"[ -e "$HOME/swapped" ] || {{
+  at='{FIRST}' && moved="$HOME/${{at%/*/*/*/*/*}}"
+  mv "$moved" "$HOME/aside" && ln -s "$HOME/aside" "$moved" && : > "$HOME/swapped"
+}}
+PATH=${{PATH#*:}} exec uname "$@""#
+    );
+    let archive = archive_of("a", "inside");
+    let list = format!("{}\t0.tar\nend\n", archive.len());
+    let programs = [("uname", swapping.as_str())];
+    let (code, err, home) = reading(&list, &[("0.tar", &archive)], &programs);
+    let scratch = handover(&home)
+        .ancestors()
+        .nth(3)
+        .map(std::fs::symlink_metadata);
+    assert!(
+        home.join("swapped").exists()
+            && code == Some(75)
+            && err.contains(
+                "a link stands at the quest's scratch, which only its removal there by hand clears"
+            )
+            && !err.contains("a link at the job's handover"),
+        "a link left at the quest's scratch wasn't answered untaken, said as the scratch's \
+         ({code:?}): {err}"
+    );
+    assert!(
+        scratch.is_some_and(|at| at.is_ok_and(|at| at.is_symlink()))
+            && home
+                .join("aside")
+                .join(HANDOVER)
+                .join("1")
+                .join(TREE)
+                .join("0.tar")
+                .exists()
+            && !home.join("read").exists()
+            && !work(&home).join("ran").exists(),
+        "the link at the quest's scratch was cleared, or something was read through it: {err}"
     );
     let _ = std::fs::remove_dir_all(&home);
 }
@@ -603,6 +651,21 @@ fn a_link_put_above_the_job_s_folder_in_its_copy_before_it_s_entered_leaves_it_u
         code == Some(75) && err.contains("the job's copy was moved or linked from its place"),
         "the far line didn't leave the job untaken and say its copy moved ({code:?}): {err}"
     );
+    // The copy, its run's file and the job's tree go, the link in the
+    // copy taken as itself, but what was moved out of the copy stays
+    // where it went, unsaid: a known strand. The line clears by the
+    // copy's names alone, never by where a link leads, so it can't know
+    // the folder the link names was the copy's own rather than a decoy.
+    // A job a strict fence holds can move it only within the quest's
+    // scratch, so it stays there, as anything else that job writes does.
+    assert!(
+        !work(&home).join("1").exists()
+            && !work(&home).join("1.run").exists()
+            && !handover(&home).join(TREE).exists()
+            && home.join("aside/deep/x").exists(),
+        "the far line kept its copy, its run's file or the job's tree, or cleared what was \
+         moved out of the copy through the link ({code:?}): {err}"
+    );
     let _ = std::fs::remove_dir_all(&home);
 }
 
@@ -622,7 +685,8 @@ fn a_link_put_above_the_copy_before_it_s_entered_leaves_it_untaken() {
         ),
         (
             "${1%/*/*}",
-            "or one stands at the quest's scratch, so its copy stays",
+            "a link stands at the quest's scratch, which only its removal there by hand clears, \
+             so its copy stays",
         ),
     ] {
         let finding = refusing(
