@@ -4176,6 +4176,11 @@
   rhythm-passes-clippy = ''
     clippy finds nothing in rhythm or its tests
   '';
+  rules-here-fails-a-broken-rule = ''
+    rules-here runs a rule that's a script over the tree as its check's own command, passing a
+    tree that keeps it and failing, with the rule named and what it found printed, one with an
+    assert! planted that says nothing, and names and counts a rule whose check builds as not run
+  '';
   run-subtests-keeps-what-is-named = ''
     run-subtests runs a VM test whole with pytest picking the tests named, refusing a word pytest
     would read as more and a script that doesn't hand its tests to pytest, refuses a check that
