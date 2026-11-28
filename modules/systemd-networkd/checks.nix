@@ -49,24 +49,33 @@
       );
 
   # A development DNS server answers for its own domains through a file in
-  # resolved.conf.d, so resolved's global settings stay as they ship: a
+  # resolved.conf.d, so resolved's global servers stay as they ship: a
   # server, domain, DNSSEC or DNS over TLS set there would reach it as well.
-  # What a network needs goes in its own .network file. The machine checked
-  # has networkd without the laptop role, whose keyboard and power modules
-  # leave resolved alone, so it holds whichever networking the role takes.
+  # What a network needs goes in its own .network file. Two global settings
+  # are the module's own and held here: LLMNR is off, and resolved caches
+  # what a server on the loopback answers. A VPN's DNS proxy and that
+  # development server both answer there and neither caches, so without the
+  # second every lookup went to them, a repeat included, and a cache turned
+  # off whole would undo it. The machine checked has networkd without the
+  # laptop role, whose keyboard and power modules leave resolved alone, so
+  # it holds whichever networking the role takes.
   resolved-is-set-per-network =
     let
-      laptop = bareNixos [
+      machine = bareNixos [
         self.nixosModules.workstation
         self.nixosModules.graphical
         self.nixosModules.systemd-networkd
       ];
-      resolve = laptop.config.services.resolved.settings.Resolve;
+      resolve = machine.config.services.resolved.settings.Resolve;
     in
     holds "resolved-is-set-per-network"
-      "A machine with networkd sets resolved's global servers, domains, DNSSEC or DNS over TLS."
+      "A machine with networkd sets global DNS, asks LLMNR or skips caching local answers."
       (
-        laptop.config.services.resolved.enable
+        machine.config.services.resolved.enable
+        && (resolve.CacheFromLocalhost or false) == true
+        && (resolve.Cache or true) != false
+        && (resolve.Cache or "yes") != "no"
+        && resolve.LLMNR == "no"
         && resolve.DNS == [ ]
         && resolve.Domains == [ ]
         && resolve.DNSSEC == false

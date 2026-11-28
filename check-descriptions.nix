@@ -4197,7 +4197,8 @@
     nothing of them when none are named
   '';
   resolved-is-set-per-network = ''
-    a laptop leaves resolved's global DNS settings as they ship
+    a machine with networkd leaves resolved's global DNS servers as they ship, turns LLMNR off,
+    and caches what a local server answers
   '';
   rhythm-learns-when-joel-stops = ''
     rhythm finds each night's stop at the last busy minute before four hours' sleep, never at
