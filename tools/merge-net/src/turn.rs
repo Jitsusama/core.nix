@@ -576,6 +576,7 @@ pub fn waiting(head: &str, passes: &[&str], files: &[String]) -> bool {
         return false;
     };
     eprintln!("{why}");
+    crate::risks::heard(&why);
     crate::answers::keep(head, crate::answers::Verdict::Hold, &shared);
     true
 }

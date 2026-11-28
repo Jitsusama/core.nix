@@ -40,6 +40,10 @@
 //!
 //! `merge-net status` says where the net is.
 //!
+//! Each risk the net sees to when a pull request merges, a refusal of
+//! `ready`, a step of it that couldn't run, or a train's red or split, is
+//! told to the dates ledger as it happens, a line each (`risks.rs`).
+//!
 //! `watch --branch` follows another branch than main, and lands its reverts
 //! there, to prove the net on a throwaway branch; `MERGE_NET_STATE` then
 //! names a state folder of its own, so its hold stops no switch.
@@ -72,6 +76,7 @@ mod places;
 mod quarantine;
 mod ready;
 mod rerun;
+mod risks;
 mod rules;
 mod running;
 mod sharing;
@@ -92,6 +97,7 @@ use std::process::{Command, ExitCode, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use command::Asked;
+use risks::{Risk, Risks, Seen};
 use state::{State, short};
 use watch::Round;
 use world::Real;
@@ -123,17 +129,79 @@ fn main() -> ExitCode {
             follow,
         } => watching(from, branch, once, follow),
         Asked::Needs { base } => needs::needs(&base),
-        Asked::Ready { commit } => ready(&commit),
+        Asked::Ready { commit } => {
+            let ended = ready(&commit);
+            let head =
+                git(&["rev-parse", "--verify", &format!("{commit}^{{commit}}")]).unwrap_or(commit);
+            let slug = train::slug_of(&repository());
+            let pull = |head: &str| train::pull_number(&slug, head);
+            tell_of_ready(
+                &head,
+                &ended,
+                &risks::refusal(),
+                &Risks::from_env(&slug),
+                &pull,
+            );
+            ended
+        }
         Asked::Status => Ok(status()),
         Asked::RunAgain { commit } => rerun::again(&commit),
-        Asked::Ride => {
-            train::ride(&env::var("MERGE_NET_REPOSITORY").unwrap_or_else(|_| REPOSITORY.to_owned()))
-        }
+        Asked::Ride => train::ride(&repository()),
     };
     done.unwrap_or_else(|why| {
         eprintln!("merge-net: {why}");
         ExitCode::FAILURE
     })
+}
+
+/// The repository the net watches: the one `MERGE_NET_REPOSITORY` names,
+/// or core's.
+fn repository() -> String {
+    env::var("MERGE_NET_REPOSITORY").unwrap_or_else(|_| REPOSITORY.to_owned())
+}
+
+/// Tell `risks`, the dates ledger, of what `ready` asked of `head` ended
+/// as: a refusal, for `refused`, or a step that couldn't run, each on the
+/// pull request `pull` finds headed by it, if any. A head that may merge
+/// risks nothing.
+fn tell_of_ready(
+    head: &str,
+    ended: &Result<ExitCode, String>,
+    refused: &str,
+    risks: &Risks,
+    pull: &dyn Fn(&str) -> Option<u64>,
+) {
+    let (risk, why) = match ended {
+        Ok(code) if *code == ExitCode::SUCCESS => return,
+        Ok(_) if refused.is_empty() => (
+            Risk::Refused,
+            format!(
+                "ready refused {}; it said why to whoever asked",
+                short(head)
+            ),
+        ),
+        Ok(_) => (
+            Risk::Refused,
+            format!("ready refused {}: {refused}", short(head)),
+        ),
+        Err(why) => (
+            Risk::StepFailed,
+            format!("a step of ready couldn't run for {}: {why}", short(head)),
+        ),
+    };
+    risks.tell(&Seen {
+        pr: pull(head),
+        risk,
+        run: head,
+        why: &why,
+    });
+}
+
+/// Say `said` as why `ready` refuses a head, and keep it for the line that
+/// tells the dates ledger so.
+fn refuse(said: &str) {
+    eprintln!("merge-net: {said}");
+    risks::heard(said);
 }
 
 /// Follow `branch`, a round at a time, until stopped, or once with `once`.
@@ -156,7 +224,7 @@ fn watching(
     let world = Real {
         state: state.root.clone(),
         checkout: state.root.join("core"),
-        url: env::var("MERGE_NET_REPOSITORY").unwrap_or_else(|_| REPOSITORY.to_owned()),
+        url: repository(),
         system: SYSTEM.to_owned(),
         booted: holds::booted().unwrap_or(0),
         branch,
@@ -294,10 +362,7 @@ fn candidates_at(
 fn ready(commit: &str) -> Result<ExitCode, String> {
     let commit = git(&["rev-parse", "--verify", &format!("{commit}^{{commit}}")])?;
     if let Some(said) = train::riding(&commit) {
-        eprintln!(
-            "merge-net: {} rides the merge train: {said}",
-            short(&commit)
-        );
+        refuse(&format!("{} rides the merge train: {said}", short(&commit)));
         return Ok(ExitCode::FAILURE);
     }
     git(&["fetch", "--quiet", "origin", "main"])?;
@@ -319,14 +384,14 @@ fn ready(commit: &str) -> Result<ExitCode, String> {
         if rules.is_empty() || holds(&rules, &commit) {
             return by_change(&commit, &main, &on_main);
         }
-        eprintln!(
-            "merge-net: {} doesn't sit on origin's main as it is now, {}, and its base \
-             lacks main's newest rules for which VM tests run (must-run.txt, lock-after.txt), \
-             so what needs said of it can't speak for them; rebase onto origin/main, push, \
-             and merge again",
+        refuse(&format!(
+            "{} doesn't sit on origin's main as it is now, {}, and its base lacks main's \
+             newest rules for which VM tests run (must-run.txt, lock-after.txt), so what \
+             needs said of it can't speak for them; rebase onto origin/main, push, and merge \
+             again",
             short(&commit),
             short(&main)
-        );
+        ));
         return Ok(ExitCode::FAILURE);
     }
     if !ready::built_there(&ready::record(&commit), &on_main) {
@@ -363,28 +428,28 @@ fn may_merge(commit: &str, main: &str, passes: &[&str], files: &[String], said: 
             .then(|| train::drafted(&branch))
             .flatten()
         {
-            eprintln!("merge-net: {said}");
+            refuse(&said);
             return ExitCode::FAILURE;
         }
         // Before the right of way, which boards the train itself, so a
         // head no round read neither boards it nor merges.
         if let Err(said) = earlier::same::read_by_a_round(commit, main, files) {
-            eprintln!("merge-net: {said}");
+            refuse(&said);
             return ExitCode::FAILURE;
         }
         if let Some(said) = train::gives_way(commit) {
-            eprintln!("merge-net: {said}");
+            refuse(&said);
             return ExitCode::FAILURE;
         }
         return turn::passed(commit, passes, files, said);
     }
-    eprintln!(
-        "merge-net: merge-net needs wasn't asked at {}, nor at an earlier commit of the same \
-         change on a base holding main's rules for it (must-run.txt, lock-after.txt), so no \
-         one has heard which VM tests run before it merges; run merge-net needs there, run \
-         what it names, and merge again",
+    refuse(&format!(
+        "merge-net needs wasn't asked at {}, nor at an earlier commit of the same change on \
+         a base holding main's rules for it (must-run.txt, lock-after.txt), so no one has \
+         heard which VM tests run before it merges; run merge-net needs there, run what it \
+         names, and merge again",
         short(commit)
-    );
+    ));
     ExitCode::FAILURE
 }
 
@@ -512,7 +577,7 @@ fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result
             // The train merges what it carries, so a head no round read
             // boards no more than it merges through may_merge.
             if let Err(said) = earlier::same::read_by_a_round(commit, main, &files) {
-                eprintln!("merge-net: {said}");
+                refuse(&said);
                 return Ok(ExitCode::FAILURE);
             }
             // A head behind main boards the train as one on it does
@@ -523,26 +588,26 @@ fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result
                     aboard::keep_regated(commit, &boarded, &shared);
                 }
                 let said = boarding::behind_said(commit, main, &checked, &shared, &boarded);
-                eprintln!("merge-net: {said}");
+                refuse(&said);
                 return Ok(ExitCode::FAILURE);
             }
             // Its run again keeps the place this pass's gate had.
             turn::keep_place(&[commit, &checked]);
             let boarded = aboard::boards(commit, main, &checked, &files);
             aboard::keep_regated(commit, &boarded, &shared);
-            eprintln!(
-                "merge-net: the same change passed at {}, but main has since moved {}; {}",
+            refuse(&format!(
+                "the same change passed at {}, but main has since moved {}; {}",
                 short(&checked),
                 shared.join(", "),
                 aboard::ride_or_run_again(commit, &boarded)
-            );
+            ));
         }
-        ready::Before::Unchecked => eprintln!(
-            "merge-net: no changed-checks run that built what it named passed at {}, or at \
-             an earlier commit of the same change; run changed-checks there, committed so \
-             it's sent, and merge again",
+        ready::Before::Unchecked => refuse(&format!(
+            "no changed-checks run that built what it named passed at {}, or at an earlier \
+             commit of the same change; run changed-checks there, committed so it's sent, and \
+             merge again",
             short(commit)
-        ),
+        )),
     }
     Ok(ExitCode::FAILURE)
 }
@@ -723,6 +788,87 @@ mod tests {
         fs::write(repo.join("w"), words).unwrap();
         git_in(repo, &["commit", "-qam", "w"]);
         git_in(repo, &["rev-parse", "HEAD"])
+    }
+
+    /// What `ready` ending as `ended` told the dates ledger, its file under
+    /// a folder named `name` of the test's own, with `refused` heard and
+    /// the pull request numbered 6900.
+    fn told_of_ready(name: &str, ended: &Result<ExitCode, String>, refused: &str) -> String {
+        let folder = env::temp_dir().join(format!("merge-net-{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&folder);
+        let file = folder.join("mission/risks.jsonl");
+        let risks = Risks::new(Some(file.clone()), "Jitsusama/core.nix");
+        let head = "0123456789abcdef0123456789abcdef01234567";
+        tell_of_ready(head, ended, refused, &risks, &|asked| {
+            (asked == head).then_some(6900)
+        });
+        let told = fs::read_to_string(&file).unwrap_or_default();
+        let _ = fs::remove_dir_all(&folder);
+        told
+    }
+
+    #[test]
+    fn a_refusal_tells_the_ledger_why_on_the_heads_pull_request() {
+        let told = told_of_ready(
+            "refused",
+            &Ok(ExitCode::FAILURE),
+            "no changed-checks run that built what it named passed at 0123456789ab",
+        );
+        let lines: Vec<serde_json::Value> = told
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        assert_eq!(lines.len(), 1, "a refusal told {told:?}");
+        let line = &lines[0];
+        assert_eq!(
+            (&line["risk"], &line["pr"], &line["eta_added_min"]),
+            (
+                &serde_json::json!("refused"),
+                &serde_json::json!(6900),
+                &serde_json::json!(30)
+            ),
+            "the refusal wasn't told on the head's pull request: {line}"
+        );
+        assert_eq!(
+            line["run"], "0123456789abcdef0123456789abcdef01234567",
+            "the refusal's line didn't name the head ready was asked of"
+        );
+        assert!(
+            line["why"]
+                .as_str()
+                .is_some_and(|why| why.contains("no changed-checks run")),
+            "the refusal's line didn't say what ready said: {line}"
+        );
+    }
+
+    #[test]
+    fn a_step_that_couldnt_run_tells_the_ledger_and_a_ready_head_nothing() {
+        let told = told_of_ready(
+            "step-failed",
+            &Err("running git: No such file or directory".to_owned()),
+            "",
+        );
+        let line: serde_json::Value = serde_json::from_str(told.trim_end()).unwrap();
+        assert_eq!(
+            (&line["risk"], &line["pr"], &line["eta_added_min"]),
+            (
+                &serde_json::json!("step-failed"),
+                &serde_json::json!(6900),
+                &serde_json::json!(20)
+            ),
+            "a step that couldn't run wasn't told: {line}"
+        );
+        assert!(
+            line["why"]
+                .as_str()
+                .is_some_and(|why| why.contains("running git")),
+            "the failed step's line didn't say what failed: {line}"
+        );
+        assert_eq!(
+            told_of_ready("ready", &Ok(ExitCode::SUCCESS), ""),
+            "",
+            "a head that may merge was told as a risk"
+        );
     }
 
     #[test]

@@ -48,6 +48,8 @@
 //! words name a failed check: the train cuts again a minute on, keeping
 //! its riders and its search, and only once its candidates have gone
 //! untaken for half an hour do the last one's riders fall.
+//! Each rider of a red that falls, and each rider of a candidate that
+//! splits, is told to the dates ledger as a risk to its date (`risks.rs`).
 //! A rider that conflicts, or that rode a failed candidate alone, falls:
 //! `train/fell/<head>` says why, and `ready` runs that head again alone, as
 //! before the train. A rider whose pull request moved on, or closed, steps
@@ -66,6 +68,7 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 
+use crate::risks::{Risk, Risks, Seen};
 use crate::state::short;
 use right_of_way::Ended;
 pub use right_of_way::gives_way;
@@ -214,6 +217,16 @@ pub fn seat(rides: bool, fell: Option<String>) -> Seat {
         (None, true) => Seat::Rides,
         (None, false) => Seat::Board,
     }
+}
+
+/// The number of the open pull request into main of the repository
+/// `slug` whose head is `head`, found by its commit; none where GitHub has
+/// none or can't be asked.
+pub fn pull_number(slug: &str, head: &str) -> Option<u64> {
+    pulls::pull_at(slug, head)
+        .ok()
+        .flatten()
+        .map(|pull| pull.number)
 }
 
 /// The subject GitHub's merge button gives the merge of pull request
@@ -539,6 +552,7 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
     let mut waits = pulls::Waits::new();
     let ask = |rider: &Rider| pulls::asked_of(&slug, rider);
     let mut flakes = flaky::Flakes::default();
+    let risks = Risks::from_env(&slug);
     loop {
         let waiting = riders(&root);
         if waiting.is_empty() {
@@ -553,6 +567,9 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
         };
         let aboard = aboard(&root, &asking, &owner, &waiting, &mut waits);
         let mut mergings = aboard.mergings;
+        // Every rider aboard, kept before the split takes some, so a red
+        // that drops them all tells the ledger each one's pull request.
+        let pulls = mergings.clone();
         mergings.truncate(splitting.take());
         if mergings.is_empty() {
             // Riders left waiting on GitHub are asked again after a pause,
@@ -592,7 +609,11 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
                 right_of_way::run_ends(&root);
                 splitting.taken();
                 way(&root, &Ended::Otherwise);
-                red(&root, &candidate, &log, &done.merged, &mut splitting);
+                let told = Told {
+                    risks: &risks,
+                    pulls: &pulls,
+                };
+                red(&root, &candidate, &log, &done.merged, &mut splitting, &told);
                 continue;
             }
             Gated::Unsent => {
@@ -789,10 +810,43 @@ fn unsent(
     false
 }
 
+/// Where the train tells the dates ledger of a risk to its riders, and
+/// the riders' pull requests, by which it names each.
+struct Told<'a> {
+    risks: &'a Risks,
+    pulls: &'a [Merging],
+}
+
+impl Told<'_> {
+    /// Tell the ledger of `risk` to the rider at `head`, at `candidate`,
+    /// for `why`.
+    fn tell(&self, risk: Risk, head: &str, candidate: &str, why: &str) {
+        let pr = self
+            .pulls
+            .iter()
+            .find(|pull| pull.head == head)
+            .map(|pull| pull.number);
+        self.risks.tell(&Seen {
+            pr,
+            risk,
+            run: candidate,
+            why,
+        });
+    }
+}
+
 /// After the candidate `candidate` of `merged` riders failed, its words in
 /// `log`: the next takes fewer riders, or the rider that rode it alone
-/// falls, or every rider does, as `splitting` says.
-fn red(root: &Path, candidate: &str, log: &Path, merged: &[String], splitting: &mut Splitting) {
+/// falls, or every rider does, as `splitting` says, each told to the
+/// dates ledger through `told`.
+fn red(
+    root: &Path,
+    candidate: &str,
+    log: &Path,
+    merged: &[String],
+    splitting: &mut Splitting,
+    told: &Told,
+) {
     let (falling, why) = match splitting.red(merged.len()) {
         After::Falls => (merged.to_vec(), "the candidate it rode alone"),
         After::AllFall => (
@@ -801,13 +855,19 @@ fn red(root: &Path, candidate: &str, log: &Path, merged: &[String], splitting: &
              failed too, so its red is not one rider's; the last",
         ),
         After::Narrows => {
-            println!(
-                "merge-net: the candidate {} failed changed-checks, so the train takes its \
-                 first {} of {} riders next",
+            let said = format!(
+                "the candidate {} failed changed-checks, so the train takes its first {} of \
+                 {} riders next",
                 short(candidate),
                 splitting.take(),
                 merged.len()
             );
+            println!("merge-net: {said}");
+            // Each rider of the split waits on another run, those taken
+            // next as much as those left for after them.
+            for head in merged {
+                told.tell(Risk::Split, head, candidate, &said);
+            }
             return;
         }
     };
@@ -824,6 +884,7 @@ fn red(root: &Path, candidate: &str, log: &Path, merged: &[String], splitting: &
             log.display()
         );
         let _ = fall(root, head, &said);
+        told.tell(Risk::Red, head, candidate, &said);
     }
 }
 
@@ -848,7 +909,7 @@ fn gate(checkout: &Path, log: &Path) -> (Gated, Option<i32>) {
 }
 
 /// `owner/name` of the repository at `url`.
-fn slug_of(url: &str) -> String {
+pub fn slug_of(url: &str) -> String {
     // An ssh origin names its host before a colon, git@github.com:owner/repo.
     let path = url.rsplit_once(':').map_or(url, |(_, path)| path);
     path.trim_end_matches('/')
