@@ -3117,8 +3117,11 @@ import {
     );
   };
 
-  // Signal against noise, in doing.ts's words.
+  // Signal against noise, in doing.ts's words. Until the messages are
+  // heard there is no talk to weigh, and no line would read as though none
+  // passed, so it says they are unread as a cell's drawer does.
   const talkLine = (messages, among) => {
+    if (!current.messagesHeard) return unreadHint();
     const said = talkLineWords(messages, current.messages.length, Boolean(among));
     return said ? `<p class="talk-line">${esc(said)}</p>` : "";
   };
