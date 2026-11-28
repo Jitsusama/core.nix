@@ -30,7 +30,7 @@ mod folds;
 mod heard;
 
 use folds::{MAIN_MOVES, PIN_LAGS, TEST_PASSES_UNDONE, TIMING, UNSENT, fold};
-use heard::{message_in, sender_of};
+use heard::{opened, sender_of};
 
 use super::misses::symbiosis;
 use super::{Class, DAY, Measure, count, lines};
@@ -247,10 +247,7 @@ pub fn read(state_home: &Path, folder: &Path, now: i64, keeps: bool) -> Measure 
     let Ok((listed, _)) = symbiosis::listed(&messages, from_ms, since_ms) else {
         return unread("the mesh's messages can't be listed");
     };
-    let heard: Vec<(Message, i64)> = listed
-        .into_iter()
-        .filter_map(|(path, name, written)| Some((message_in(&path, &name)?, written)))
-        .collect();
+    let (heard, through_ms) = opened(listed, now_ms, since_ms);
     let withdrawn = withdrawals(kept.withdrawn, &heard);
     let mut cases: Vec<Case> = kept
         .cases
@@ -280,7 +277,7 @@ pub fn read(state_home: &Path, folder: &Path, now: i64, keeps: bool) -> Measure 
         .then(|| {
             let next = Kept {
                 v: VERSION,
-                through_ms: now * 1000,
+                through_ms,
                 cases: cases.clone(),
                 withdrawn: kept_withdrawals(&withdrawn, now),
             };
