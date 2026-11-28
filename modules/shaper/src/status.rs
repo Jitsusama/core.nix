@@ -13,7 +13,7 @@ use terminal_kit::layout::{self, Align, Room};
 use terminal_kit::{Context, Exit, Failure, Pen};
 
 use crate::rate::{float, whole};
-use crate::{LinkStatus, cpu, lanes, mbit, qdisc, sh, words};
+use crate::{LinkStatus, cpu, lanes, mbit, qdisc, realtime, sh, words};
 
 /// CAKE's four tins, in the order `tc` gives them.
 const TINS: [&str; 4] = ["bulk", "best effort", "video", "voice"];
@@ -110,7 +110,7 @@ fn said(link: &LinkStatus, room: Room) -> Vec<String> {
         say(format!("at {leader}'s rate: both reach the same router"));
     }
     if link.live {
-        say("real-time traffic flows: a call's or a screen share's".to_owned());
+        say(realtime::FLOWS.to_owned());
     }
     let found = link.heard.as_ref().and_then(|heard| heard.plateau);
     if let Some(plateau) = found {

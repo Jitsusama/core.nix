@@ -1,11 +1,20 @@
-//! Whether a call's or a screen share's traffic crosses a link, from the
-//! packets CAKE's video tins send, which `qdisc::video_packets` reads.
+//! Whether real-time traffic crosses a link, from the packets CAKE's video
+//! tins send, which `qdisc::video_packets` reads: a call's, a screen
+//! share's, or a turn Joel typed while no call is on.
 
 use crate::rate::float;
 
+/// What the status and the journal say while real-time traffic flows. It
+/// names a typed turn beside a call, since one goes as video while no call
+/// is on (classes.rs's `place_typed`), and the status then says so for
+/// `LIVE_HOLD_S` after it: read as a call alone, a typed turn would pass
+/// for one (model calls ahead round 2's F31). The VM test looks for it.
+pub const FLOWS: &str = "real-time traffic flows (a call, a screen share or a typed turn)";
+
 /// Packets a second in the video tins, both ways together, that say a call
 /// or a screen share runs: a call's audio alone is about 50 a second each
-/// way, where nothing else is classed there.
+/// way, where nothing else is classed there but a turn Joel typed while no
+/// call is on. Nothing but the status and the journal read what it gives.
 const LIVE_PACKETS: f64 = 20.0;
 /// How long after its last such second real-time traffic still counts as
 /// flowing, so a pause in talk doesn't put the floor back mid-call.

@@ -5,6 +5,9 @@
 //! its slice or unit is made again, so the sets are refilled from the
 //! cgroup tree as it stands. nft takes a cgroup by its path and looks the ID
 //! up itself, so the sets are written as paths.
+//!
+//! Long because its tests, over half of it, walk each set a cgroup can land
+//! in and the one transaction that refills them all.
 
 use std::collections::BTreeMap;
 use std::fmt::Write;
@@ -51,9 +54,14 @@ pub struct Sets {
     /// typed, which `untyped` finds.
     pub bulk5: Vec<String>,
     /// The windows and hosts whose pi sessions run a turn a person typed,
-    /// which `typed` finds: each packet they send goes as best effort,
-    /// even on a connection a turn nobody typed opened as bulk.
+    /// which `typed` finds, while a call may be on (`place_typed`): each
+    /// packet they send goes as best effort, even on a connection a turn
+    /// nobody typed opened as bulk.
     pub typed5: Vec<String>,
+    /// The same windows and hosts while no call may be on (`place_typed`):
+    /// each packet they send goes as video but what pi marks bulk, a set of
+    /// their own so that Tuple's `video5` stays the call's alone.
+    pub typed_video5: Vec<String>,
     /// The protocols whose every packet from an app goes as video, which
     /// `calling` gives: UDP while a call is on, and none otherwise.
     pub calling: Vec<String>,
@@ -251,8 +259,26 @@ pub fn typed(root: &Path, sessions: &[Session]) -> Vec<String> {
     units(root, sessions, true)
 }
 
-/// The units with no typed turn, then those with one: the two sets the
-/// sessions fill each step.
+/// Puts the units running a typed turn, `typed`, where their packets go:
+/// as video while no call may be on, as best effort while one may, as
+/// `on_a_call` says. Agents' model calls go as best effort to the same
+/// origin a typed turn reaches, and CAKE shares one host flow by flow, so
+/// beside the relay's many connections a typed turn would have had about
+/// one flow's part of it (model calls ahead round 1's F17). While a call
+/// may be on, the call goes first, as it always does. `on_a_call` is the
+/// call's `may_be_on`, as the VPN's pin takes it, not the `calling` set,
+/// which empties once a-call-is-on has been silent for a minute though
+/// the call may go on (model calls ahead round 2's F29).
+pub fn place_typed(sets: &mut Sets, typed: Vec<String>, on_a_call: bool) {
+    (sets.typed5, sets.typed_video5) = if on_a_call {
+        (typed, Vec::new())
+    } else {
+        (Vec::new(), typed)
+    };
+}
+
+/// The units with no typed turn, then those with one: the sessions fill
+/// `bulk5` with the first each step, and `place_typed` puts the second.
 pub fn by_typing(root: &Path, sessions: &[Session]) -> (Vec<String>, Vec<String>) {
     (untyped(root, sessions), typed(root, sessions))
 }
@@ -338,6 +364,7 @@ pub fn transaction(table: &str, sets: &Sets, local: &Local) -> String {
     fill("models5", &sets.models5, true);
     fill("bulk5", &sets.bulk5, true);
     fill("typed5", &sets.typed5, true);
+    fill("typed_video5", &sets.typed_video5, true);
     fill("calling", &sets.calling, false);
     fill("vpns", &local.marks, false);
     fill("local4", &local.v4, false);
@@ -479,6 +506,42 @@ mod tests {
             [format!("{ACCOUNT}/background.slice")],
             "the rest of background wasn't left as bulk"
         );
+    }
+
+    #[test]
+    fn a_typed_turn_goes_as_video_until_a_call_is_on() {
+        let window = format!("{ACCOUNT}/app.slice/pi-window.service");
+        let tuple = format!("{ACCOUNT}/app.slice/tuple.service");
+        let mut sets = Sets {
+            video5: vec![tuple.clone()],
+            ..Sets::default()
+        };
+        place_typed(&mut sets, vec![window.clone()], false);
+        assert_eq!(
+            sets.typed_video5,
+            std::slice::from_ref(&window),
+            "with no call on, a typed turn wasn't put ahead of the model calls"
+        );
+        assert!(
+            sets.typed5.is_empty(),
+            "a typed turn was named twice: {sets:?}"
+        );
+        assert_eq!(
+            sets.video5,
+            std::slice::from_ref(&tuple),
+            "a typed turn went in the call's own set"
+        );
+        place_typed(&mut sets, vec![window.clone()], true);
+        assert_eq!(
+            sets.typed5,
+            [window],
+            "during a call a typed turn left best effort"
+        );
+        assert!(
+            sets.typed_video5.is_empty(),
+            "a typed turn went as video beside a call: {sets:?}"
+        );
+        assert_eq!(sets.video5, [tuple], "the call's own set was changed");
     }
 
     #[test]
@@ -673,6 +736,7 @@ mod tests {
              flush set inet shaper models5\n\
              flush set inet shaper bulk5\n\
              flush set inet shaper typed5\n\
+             flush set inet shaper typed_video5\n\
              flush set inet shaper calling\n\
              flush set inet shaper vpns\n\
              add element inet shaper vpns { 0xca6c, 0x80000 }\n\
