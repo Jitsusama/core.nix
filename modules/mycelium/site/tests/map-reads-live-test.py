@@ -558,9 +558,8 @@ def test_the_map_draws_before_the_node_says_what_passed(
     expect(page.locator("#asof"), "the map didn't say it was reading what passed").to_contain_text(
         READING_TALK
     )
-    box = page.locator('#world circle.cell[data-key="c:TERN01"]').bounding_box()
-    assert box, "the map drew no TERN01 to open"
-    page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+    x, y = aimed(page, '#world circle.cell[data-key="c:TERN01"]', "c:TERN01", "TERN01's click")
+    page.mouse.click(x, y)
     drawer = page.locator("#panel-body")
     expect(drawer, "a cell's drawer said nothing passed before it was heard").to_contain_text(
         "Still reading"
