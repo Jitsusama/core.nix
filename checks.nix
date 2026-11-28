@@ -747,6 +747,7 @@ gather {
     ./modules/systemd-networkd/checks.nix
     ./modules/tcp/checks.nix
     ./modules/terminal-kit/checks.nix
+    ./modules/test-pace/checks.nix
     ./modules/theme/checks.nix
     ./modules/theme/web/checks.nix
     ./modules/to-do/checks.nix

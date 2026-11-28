@@ -108,11 +108,11 @@ fn a_link_or_a_pipe_in_the_shared_memory_s_place_is_neither_followed_nor_waited_
         0,
         "no pipe made"
     );
-    let began = std::time::Instant::now();
+    let began = test_pace::Timed::start();
     assert!(!database_written(dir.path()), "a pipe read as written");
     assert!(
-        began.elapsed() < std::time::Duration::from_secs(5),
-        "a pipe held the guard {:?}",
-        began.elapsed()
+        began.within(std::time::Duration::from_secs(5)),
+        "a pipe held the guard: it {}",
+        began.said(std::time::Duration::from_secs(5))
     );
 }

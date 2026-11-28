@@ -54,6 +54,17 @@
     waiting = import ./every-failed-read-says-why-waiting.nix;
   };
 
+  # A bound on how long a test's step took is stated at idle, and a busy
+  # builder or laptop makes every step take several times as long, so a
+  # bound that doesn't allow for the host's pace fails changes that never
+  # touched it. Those before the rule wait, counted by file, in
+  # tests/rules/every-timed-step-allows-for-load-waiting.nix, and a count
+  # may only fall.
+  every-timed-step-allows-for-load = pkgs.callPackage ./every-timed-step-allows-for-load.nix { } {
+    src = ../..;
+    waiting = import ./every-timed-step-allows-for-load-waiting.nix;
+  };
+
   # A failure that says only "assertion failed" makes the reader run the test
   # again to learn anything, so an assertion the language can't show both
   # sides of carries a message. Those before the rule wait, counted by

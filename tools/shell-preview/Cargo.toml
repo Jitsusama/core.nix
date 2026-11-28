@@ -13,3 +13,7 @@ libc = "0.2"
 serde_json = "1"
 # Its help, exits and failures, as every command's (docs/commands.md).
 terminal-kit = { path = "../../modules/terminal-kit" }
+
+[dev-dependencies]
+# How long a timed step may take on a host as busy as the one testing.
+test-pace = { path = "../../modules/test-pace" }

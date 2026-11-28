@@ -27,7 +27,7 @@
   "modules/disk-guard/tests/guard/anchor.rs" = 3;
   "modules/disk-guard/tests/guard/cli.rs" = 2;
   "modules/disk-guard/tests/guard/collecting.rs" = 6;
-  "modules/disk-guard/tests/guard/commands.rs" = 7;
+  "modules/disk-guard/tests/guard/commands.rs" = 5;
   "modules/disk-guard/tests/guard/config.rs" = 2;
   "modules/disk-guard/tests/guard/daemon.rs" = 21;
   "modules/disk-guard/tests/guard/decide.rs" = 18;
@@ -57,9 +57,9 @@
   "modules/disk-guard/tests/guard/pool.rs" = 1;
   "modules/disk-guard/tests/guard/procs.rs" = 7;
   "modules/disk-guard/tests/guard/reclaim.rs" = 4;
-  "modules/disk-guard/tests/guard/serve.rs" = 8;
+  "modules/disk-guard/tests/guard/serve.rs" = 7;
   "modules/disk-guard/tests/guard/snapshots.rs" = 7;
-  "modules/disk-guard/tests/guard/socket.rs" = 5;
+  "modules/disk-guard/tests/guard/socket.rs" = 4;
   "modules/disk-guard/tests/guard/state.rs" = 2;
   "modules/disk-guard/tests/guard/survey.rs" = 4;
   "modules/disk-guard/tests/guard/temp.rs" = 3;

@@ -162,9 +162,13 @@ fn a_command_past_its_time_is_killed_with_everything_it_started() {
     let script = format!("sleep 30 & echo $! > {}; sleep 30", pid_file.display());
     let mut job = job(&["sh", "-c", &script]);
     job.timeout = Duration::from_millis(500);
-    let started = Instant::now();
+    let started = test_pace::Timed::start();
     assert!(matches!(run(&job).unwrap(), Ran::TimedOut));
-    assert!(started.elapsed() < Duration::from_secs(5));
+    assert!(
+        started.within(Duration::from_secs(5)),
+        "{}",
+        started.said(Duration::from_secs(5))
+    );
     let pid: u32 = std::fs::read_to_string(&pid_file)
         .unwrap()
         .trim()
@@ -186,9 +190,18 @@ fn a_child_holding_the_output_open_cant_hold_the_guard() {
     // the output pipe open.
     let mut job = job(&["sh", "-c", "setsid sleep 3 & exit 0"]);
     job.timeout = Duration::from_millis(500);
-    let started = Instant::now();
-    let _ = run(&job).unwrap();
-    assert!(started.elapsed() < Duration::from_secs(2));
+    // Held short of the three seconds the left child holds the output, which
+    // a guard reading it to its end waits out.
+    let started = test_pace::Timed::start().short_of(Duration::from_secs(3));
+    let ran = run(&job).unwrap();
+    // Finished once the shell's exit is GRACE old, not timed out: a guard
+    // that gave up on the held output at its time would be quick too.
+    assert!(matches!(ran, Ran::Finished(_)), "{ran:?}");
+    assert!(
+        started.within(Duration::from_secs(2)),
+        "{}",
+        started.said(Duration::from_secs(2))
+    );
 }
 
 /// The guard blocks its stop signals in every thread, so it stops only
@@ -299,7 +312,7 @@ fn a_command_that_answers_as_it_reads_has_all_its_input_and_answers_read() {
     // Past what a pipe holds each way, so a writer that wrote it all
     // before reading would wait on a command waiting on it.
     let input = vec![b'x'; 256 << 10];
-    let started = Instant::now();
+    let started = test_pace::Timed::start();
     let output = finished(fed(&job(&["cat"]), &input).unwrap());
     assert_eq!(output.status, Some(0), "{output:?}");
     assert_eq!(
@@ -308,8 +321,9 @@ fn a_command_that_answers_as_it_reads_has_all_its_input_and_answers_read() {
         "lost some of what it said"
     );
     assert!(
-        started.elapsed() < Duration::from_secs(5),
-        "writing and reading waited on each other"
+        started.within(Duration::from_secs(5)),
+        "writing and reading waited on each other: it {}",
+        started.said(Duration::from_secs(5))
     );
 }
 
@@ -317,12 +331,15 @@ fn a_command_that_answers_as_it_reads_has_all_its_input_and_answers_read() {
 fn a_command_that_never_reads_its_input_is_killed_at_its_time() {
     let mut job = job(&["sleep", "30"]);
     job.timeout = Duration::from_millis(500);
-    let started = Instant::now();
+    // Held short of the command's thirty seconds, which a writer blocked on
+    // its input waits out before the command is killed.
+    let started = test_pace::Timed::start().short_of(Duration::from_secs(30));
     let ran = fed(&job, &vec![b'x'; 1 << 20]).unwrap();
     assert!(matches!(ran, Ran::TimedOut), "{ran:?}");
     assert!(
-        started.elapsed() < Duration::from_secs(5),
-        "a writer blocked on its input held it"
+        started.within(Duration::from_secs(5)),
+        "a writer blocked on its input held it: it {}",
+        started.said(Duration::from_secs(5))
     );
 }
 

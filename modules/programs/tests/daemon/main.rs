@@ -43,6 +43,7 @@ use std::time::{Duration, Instant};
 
 use daemon_client::{Client, Daemon};
 use serde_json::{Value, json};
+use test_pace::Timed;
 
 /// A page's list that prints its file, or refuses while it's gone, as
 /// open-now does while niri stalls, saying so in a file beside it.
@@ -733,7 +734,7 @@ fn a_file_that_file_preview_never_answers_is_said_unanswered_and_holds_up_nothin
     let running = Running::new("stuck");
     let mut client = running.client();
     let before = client.ask(&json!({"id": 1, "ask": "get", "keys": ["preview:/c.png"]}));
-    let asked = Instant::now();
+    let asked = Timed::start();
     let stuck = client.ask(&json!({"id": 2, "ask": "get", "keys": ["preview:/stuck.png"]}));
     assert_eq!(
         stuck["records"][0]["answering"],
@@ -741,21 +742,22 @@ fn a_file_that_file_preview_never_answers_is_said_unanswered_and_holds_up_nothin
         "a file file-preview never answers isn't said as answered: {stuck}"
     );
     assert!(
-        asked.elapsed() < Duration::from_secs(6),
-        "it waited {:?} on a file that never answers",
-        asked.elapsed()
+        asked.within(Duration::from_secs(6)),
+        "it waited on a file that never answers: it {}",
+        asked.said(Duration::from_secs(6))
     );
     let waiting = std::fs::read_to_string(running.path("file-preview.waiting"))
         .expect("the stuck stand-in says the child it waits on");
     let left = Path::new("/proc").join(waiting.trim()).join("stat");
     // Stopped, it's gone or a zombie waiting on its reaper, polled for as
     // the kill lands, a GLANCE apart.
-    let stopped = Instant::now();
+    let stopped = Timed::start();
     while std::fs::read_to_string(&left).is_ok_and(|stat| !stat.contains(") Z ")) {
         assert!(
-            stopped.elapsed() < Duration::from_secs(2),
-            "the stuck file-preview's own child ran on: {}",
-            waiting.trim()
+            stopped.within(Duration::from_secs(2)),
+            "the stuck file-preview's own child ran on: {}: it {}",
+            waiting.trim(),
+            stopped.said(Duration::from_secs(2))
         );
         std::thread::sleep(GLANCE);
     }
@@ -769,7 +771,9 @@ fn a_file_that_file_preview_never_answers_is_said_unanswered_and_holds_up_nothin
         before["records"][0]["shown"]["by"], after["records"][0]["shown"]["by"],
         "the stuck file-preview was kept rather than stopped"
     );
-    let asked = Instant::now();
+    // Held short of the three seconds file-preview is given to answer, so
+    // asking the stuck file again fails however busy the machine.
+    let asked = Timed::start().short_of(Duration::from_secs(3));
     let again = client.ask(&json!({"id": 4, "ask": "get", "keys": ["preview:/stuck.png"]}));
     assert_eq!(
         again["records"][0]["answering"],
@@ -777,9 +781,9 @@ fn a_file_that_file_preview_never_answers_is_said_unanswered_and_holds_up_nothin
         "the stuck file is said as answered: {again}"
     );
     assert!(
-        asked.elapsed() < Duration::from_secs(1),
-        "an unchanged stuck file was asked again, waiting {:?}",
-        asked.elapsed()
+        asked.within(Duration::from_secs(1)),
+        "an unchanged stuck file was asked again: it {}",
+        asked.said(Duration::from_secs(1))
     );
 }
 

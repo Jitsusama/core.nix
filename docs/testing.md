@@ -758,6 +758,25 @@ waits, in a comment on its line or just above, or by sleeping for a named
 constant such as `UNHEARD`. Those before the rule wait, counted by file, in
 `tests/rules/every-fixed-wait-says-why-waiting.nix`, and a count only falls.
 
+A bound on how long a step took, "asked, it ended within two seconds",
+states what an idle host takes, and a builder running sixteen builds makes
+every step take several times as long. So a timed step allows for the
+host's pace: how many tasks were ready to run each minute, per processor,
+from one up to a most. In Rust, start it with `test_pace::Timed::start()`
+and judge it with `within` against the idle bound, which `said` puts in a
+failed assert's message (modules/test-pace/); in Python, multiply the bound
+by `vm_helpers.pace(vm_helpers.busyness())`, as `vm_helpers.paced` does for
+the driver's waits. A bound that tells right behaviour from wrong by time
+alone, such as one that ends at once where the wrong one waits out a fixed
+five seconds' grace, must not stretch past that wrong time: in Rust, start
+it with `Timed::start().short_of(wrong)`, counting from when the wrong
+path's clock starts, and say in a comment what the wrong time is; in
+Python, take the `min` of the paced bound and the wrong time less a
+margin. `every-timed-step-allows-for-load` holds the pace, though not the
+cap, which only the test's author can judge, and the bounds at idle
+before the rule wait, counted by file, in
+`tests/rules/every-timed-step-allows-for-load-waiting.nix`.
+
 A test that can't run, for want of a filesystem, a device or a tool, fails
 rather than returning early, since a skip nobody sees passes a gate that
 proved nothing; it runs where it can, such as in a VM. An `#[ignore]` says

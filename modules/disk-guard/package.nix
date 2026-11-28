@@ -1,6 +1,7 @@
 # The disk guard, built from this directory, its scenarios run as it builds.
 # Its command line takes its shape from the terminal kit (../terminal-kit),
-# so the source is cut from the folder holding both.
+# and its scenarios time their steps by the test pace (../test-pace), so the
+# source is cut from the folder holding them all.
 {
   git,
   lib,
@@ -20,6 +21,8 @@ rustPlatform.buildRustPackage rec {
       ./tests/held-stop.rs
       ../terminal-kit/Cargo.toml
       ../terminal-kit/src
+      ../test-pace/Cargo.toml
+      ../test-pace/src
     ];
   };
   sourceRoot = "${src.name}/disk-guard";

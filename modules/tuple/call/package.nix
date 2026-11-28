@@ -1,7 +1,8 @@
 # tuple-call, built from this directory, its tests run as it builds. It
 # serves with the serving side every daemon shares (../../daemon-serve),
 # and its socket's tests ask it with a crate every daemon's tests share
-# (../../daemon-client), and takes its shape from the terminal kit
+# (../../daemon-client) and time their steps by the test pace
+# (../../test-pace), and takes its shape from the terminal kit
 # (../../terminal-kit), so the source is cut from the modules folder
 # holding them all, and built from this one.
 {
@@ -25,6 +26,8 @@ rustPlatform.buildRustPackage rec {
       ../../daemon-serve/src
       ../../terminal-kit/Cargo.toml
       ../../terminal-kit/src
+      ../../test-pace/Cargo.toml
+      ../../test-pace/src
     ];
   };
   sourceRoot = "${src.name}/tuple/call";

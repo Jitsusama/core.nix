@@ -702,6 +702,7 @@ says which module broke.
 | example machine | a whole machine built only from core's outputs, as a machine repository would | | `example-nixos`, `example-laptop`, `example-apple-laptop`, `example-darwin` |
 | bare machine | the least machine of a class that evaluates, which a check adds one module to, for checks only | | `lib.bareNixosModule`, `lib.bareDarwinModule`, `bareNixos` |
 | stand-in | something standing in for a real program or device in a check | fake | |
+| pace | how many times longer than at idle a test's wait or timed step may take on a machine this busy: its ready tasks per processor, from one up to a most | load factor | `vm_helpers.pace`, `test_pace::Timed` |
 | shot | a picture a VM test takes of one state of the screen | photograph | `screendump`, `shots-changed` |
 | decision record | a document saying why the design is what it is | ADR | `docs/decisions/` |
 

@@ -7,7 +7,7 @@
 use std::io::BufRead;
 use std::os::unix::process::ExitStatusExt;
 use std::process::{Command, Stdio};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 /// Set in the child, which stands in for the guard.
 const HELD: &str = "DISK_GUARD_TEST_HELD_STEP";
@@ -17,6 +17,9 @@ fn main() {
         held_step();
         return;
     }
+    // Held short of the held step's thirty seconds, which a stop waiting for
+    // the step to end takes: begun before the guard, as its step is.
+    let stepping = test_pace::Timed::start().short_of(Duration::from_secs(30));
     let mut child = Command::new(std::env::current_exe().unwrap())
         .env(HELD, "1")
         .stdout(Stdio::piped())
@@ -28,7 +31,10 @@ fn main() {
         said.read_line(&mut line).unwrap() > 0,
         "the guard never stepped"
     );
-    let told = Instant::now();
+    // Held short of the five seconds the system's unit gives a stop before
+    // it kills the guard (nixos.nix's TimeoutStopSec), which a stop slower
+    // than that would never reach.
+    let told = test_pace::Timed::start().short_of(Duration::from_secs(5));
     let pid = libc::pid_t::try_from(child.id()).unwrap();
     // SAFETY: kill takes a pid and a signal and touches no memory.
     assert_eq!(
@@ -40,19 +46,25 @@ fn main() {
         if let Some(ended) = child.try_wait().unwrap() {
             break ended;
         }
-        if told.elapsed() > Duration::from_secs(10) {
+        if !stepping.within(Duration::from_secs(10)) {
             let _ = child.kill();
-            panic!("the step held the stop past 10 s");
+            panic!(
+                "the step held the stop: it {}",
+                stepping.said(Duration::from_secs(10))
+            );
         }
         std::thread::sleep(Duration::from_millis(20));
     };
-    let took = told.elapsed();
     assert_eq!(
         ended.signal(),
         Some(libc::SIGTERM),
         "it ended otherwise: {ended:?}"
     );
-    assert!(took < Duration::from_secs(2), "it took {took:?} to stop");
+    assert!(
+        told.within(Duration::from_secs(2)),
+        "stopping {}",
+        told.said(Duration::from_secs(2))
+    );
 }
 
 /// Blocks its stops as the daemon does, before any thread, starts the

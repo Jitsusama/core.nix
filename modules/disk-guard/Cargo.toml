@@ -24,6 +24,8 @@ zbus = "5"
 
 [dev-dependencies]
 tempfile = "3"
+# How long a timed step may take on a machine as busy as the one testing.
+test-pace = { path = "../test-pace" }
 # Peer to peer, so scenarios serve the desktop's services without a bus.
 zbus = { version = "5", features = ["p2p"] }
 

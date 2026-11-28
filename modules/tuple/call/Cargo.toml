@@ -21,3 +21,5 @@ terminal-kit = { path = "../../terminal-kit" }
 # The daemon started for a test, and its client, as every daemon's tests
 # share them (tests/daemon.rs).
 daemon-client = { path = "../../daemon-client" }
+# How long a timed step may take on a host as busy as the one testing.
+test-pace = { path = "../../test-pace" }

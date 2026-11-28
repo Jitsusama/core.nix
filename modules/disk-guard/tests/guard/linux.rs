@@ -315,7 +315,9 @@ fn a_commit_that_hangs_is_given_up_on_for_the_fallback() {
     let stuck = Arc::new(AtomicBool::new(false));
     let (release, released) = mpsc::channel::<()>();
     let (done, finished) = mpsc::channel::<()>();
-    let started = Instant::now();
+    // Held short of the five seconds the hung commit holds, which waiting on
+    // it rather than falling back takes.
+    let started = test_pace::Timed::start().short_of(Duration::from_secs(5));
     patiently(
         &stuck,
         PATIENCE,
@@ -332,9 +334,9 @@ fn a_commit_that_hangs_is_given_up_on_for_the_fallback() {
     )
     .unwrap();
     assert!(
-        started.elapsed() < Duration::from_secs(2),
-        "{:?}",
-        started.elapsed()
+        started.within(Duration::from_secs(2)),
+        "{}",
+        started.said(Duration::from_secs(2))
     );
     finished.recv_timeout(Duration::from_secs(5)).unwrap();
     let deadline = Instant::now() + Duration::from_secs(5);
@@ -349,7 +351,9 @@ fn while_a_commit_is_stuck_no_other_is_begun() {
     let stuck = Arc::new(AtomicBool::new(true));
     let (beginning, begun) = mpsc::channel::<()>();
     let fell_back = Cell::new(false);
-    let started = Instant::now();
+    // Held short of the patience a commit is given, which waiting on one
+    // known stuck takes, so the bound doesn't stretch at all.
+    let started = test_pace::Timed::start().short_of(PATIENCE);
     patiently(
         &stuck,
         PATIENCE,
@@ -365,8 +369,9 @@ fn while_a_commit_is_stuck_no_other_is_begun() {
     .unwrap();
     assert!(fell_back.get());
     assert!(
-        started.elapsed() < PATIENCE,
-        "no waiting on a commit known stuck"
+        started.within(PATIENCE),
+        "no waiting on a commit known stuck: it {}",
+        started.said(PATIENCE)
     );
     assert!(begun.recv_timeout(Duration::from_millis(200)).is_err());
 }
@@ -443,7 +448,9 @@ fn a_stop_ends_a_wait_for_a_commit_that_never_comes() {
     // A wait in the kernel held a stop 23 s at a switch; this one ends at
     // the next look.
     let looks = Cell::new(0);
-    let started = Instant::now();
+    // Held short of the longest a commit is waited for, which a wait that
+    // heard the stop only once that ran out takes.
+    let started = test_pace::Timed::start().short_of(LONGEST);
     let waited = committed(
         reading([at(10, false)]),
         || {
@@ -454,13 +461,13 @@ fn a_stop_ends_a_wait_for_a_commit_that_never_comes() {
         LONGEST,
     );
     assert_eq!(waited.unwrap_err().kind(), io::ErrorKind::Interrupted);
-    assert!(started.elapsed() < LONGEST / 2, "{:?}", started.elapsed());
+    assert!(started.within(LONGEST / 2), "{}", started.said(LONGEST / 2));
 }
 
 #[test]
 fn a_commit_that_never_comes_is_waited_for_no_longer_than_the_longest() {
     // Nothing dirty, nothing to commit: the frees show at the next commit.
-    let started = Instant::now();
+    let started = test_pace::Timed::start();
     committed(
         reading([at(10, false)]),
         || false,
@@ -469,9 +476,9 @@ fn a_commit_that_never_comes_is_waited_for_no_longer_than_the_longest() {
     )
     .unwrap();
     assert!(
-        started.elapsed() < Duration::from_secs(2),
-        "{:?}",
-        started.elapsed()
+        started.within(Duration::from_secs(2)),
+        "{}",
+        started.said(Duration::from_secs(2))
     );
 }
 

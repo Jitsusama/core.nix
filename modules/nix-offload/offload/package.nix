@@ -1,8 +1,9 @@
 # nix-offload, which lends the machine a builder while its queue holds
 # builds back, built from this directory, its tests run as it builds. It
-# reads which crates read which from ../../crate-reach, and takes its help
-# from ../../terminal-kit, so the source is cut from the modules folder
-# holding them, and built from this one.
+# reads which crates read which from ../../crate-reach, takes its help
+# from ../../terminal-kit, and its tests time their steps by
+# ../../test-pace, so the source is cut from the modules folder holding
+# them, and built from this one.
 {
   bubblewrap,
   cacert,
@@ -71,6 +72,8 @@ rustPlatform.buildRustPackage (
         ../../crate-reach/src
         ../../terminal-kit/Cargo.toml
         ../../terminal-kit/src
+        ../../test-pace/Cargo.toml
+        ../../test-pace/src
       ];
     };
     sourceRoot = "${src.name}/nix-offload/offload";

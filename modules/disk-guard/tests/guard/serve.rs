@@ -552,9 +552,15 @@ fn waiting_ends_early_for_a_signal_to_stop() {
     assert!(started.elapsed() >= Duration::from_millis(50));
     // Raised at this thread, which blocks it, so it waits to be taken.
     assert_eq!(unsafe { libc::raise(libc::SIGUSR2) }, 0);
-    let started = std::time::Instant::now();
+    // Held short of the five seconds the wait is given, which one blind to
+    // the signal already waiting would wait out.
+    let started = test_pace::Timed::start().short_of(Duration::from_secs(5));
     assert!(wait(Duration::from_secs(5)), "told to stop");
-    assert!(started.elapsed() < Duration::from_secs(1));
+    assert!(
+        started.within(Duration::from_secs(1)),
+        "{}",
+        started.said(Duration::from_secs(1))
+    );
 }
 
 /// How long `held_up` watched before it left, given when a stop waits:
