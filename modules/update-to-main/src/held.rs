@@ -364,7 +364,7 @@ fn stopped_by(
     // for every commit. A rate limit or a host that's down leaves it untold.
     let in_main = match &config.hosted {
         Some(hosted) => match hosted::holds(config, hosted, &hold.commit, head) {
-            Err(failure) if theirs && unknown_to_host(&failure) => false,
+            Err(failure) if theirs && read::unknown_to_host(&failure) => false,
             seen => judged(seen, &mut unknown),
         },
         None => judged(git::descends(&main, &hold.commit, head), &mut unknown),
@@ -398,65 +398,9 @@ fn judged(seen: Result<bool, Failure>, unknown: &mut Option<String>) -> bool {
     })
 }
 
-/// Curl's exit for an answer file that isn't there, as an API served from
-/// files says it knows no such commit.
-const NO_ANSWER_FILE: &str = "(exit status: 37)";
-
-/// Whether an ask of main's host failed by its saying it knows no such
-/// commit: curl's own line for each failed answer names its HTTP code, and
-/// an API served from files has no answer file for it. Only the ask itself
-/// can say so; a step before it, such as the account's token command, may
-/// fail with any exit and print anything.
-fn unknown_to_host(failure: &Failure) -> bool {
-    let Some(how) = failure
-        .why
-        .strip_prefix(read::ASKING_THE_HOST)
-        .and_then(|rest| rest.strip_prefix(" failed "))
-    else {
-        return false;
-    };
-    how == NO_ANSWER_FILE
-        || failure
-            .lines
-            .iter()
-            .any(|line| line.trim_end().ends_with(" answered 404"))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn only_a_host_s_404_says_it_knows_no_such_commit() {
-        let failed = |line: &str| Failure {
-            why: "reading main's folder from the host failed (exit status: 22)".into(),
-            lines: vec![line.to_owned()],
-        };
-        let unfiled = Failure::new("reading main's folder from the host failed (exit status: 37)");
-        assert!(
-            unknown_to_host(&unfiled),
-            "an API served from files with no answer for the commit wasn't read as not knowing it"
-        );
-        let compare = "https://api.example/repos/kestrel/core/compare/a...b";
-        assert!(
-            unknown_to_host(&failed(&format!("{compare} answered 404"))),
-            "a 404 wasn't read as a commit the host doesn't know"
-        );
-        for code in ["429", "500", "000", "4040"] {
-            assert!(
-                !unknown_to_host(&failed(&format!("{compare} answered {code}"))),
-                "a {code} was read as a commit the host doesn't know"
-            );
-        }
-        let token = Failure {
-            why: "asking for a token failed (exit status: 37)".into(),
-            lines: vec![format!("{compare} answered 404")],
-        };
-        assert!(
-            !unknown_to_host(&token),
-            "a token command's failure was read as the host not knowing the commit"
-        );
-    }
 
     #[test]
     fn a_pause_holds_until_resumed_and_keeps_who_asked_first() {
