@@ -17,7 +17,7 @@
 //! harness that builds it, `Running` and `Following`, is theirs to share.
 
 use std::io::Write;
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::os::unix::net::UnixListener;
 use std::path::PathBuf;
 use std::process::{Child, Command};
@@ -140,9 +140,12 @@ impl Running {
                 folder.display()
             );
         }
-        // Made afresh, so a folder made again since, or a link planted
-        // there, fails here rather than feeding this run what it holds.
-        std::fs::create_dir(&folder)
+        // Made afresh, and only this user's, so anything made or planted
+        // there since it was cleared fails here rather than feeding this
+        // run what it holds.
+        std::fs::DirBuilder::new()
+            .mode(0o700)
+            .create(&folder)
             .unwrap_or_else(|error| panic!("{} should be made afresh: {error}", folder.display()));
         for inner in ["run/daemons", "data/tuple/0", "state", "bin"] {
             std::fs::create_dir_all(folder.join(inner)).unwrap();

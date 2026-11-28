@@ -156,18 +156,23 @@ fn read_cmos(rtc: &Path) -> Result<i64, String> {
 
 /// Whether `offset` is one a time zone could give, the one check of both
 /// the offset measured and the offset kept, so the two can't drift apart.
-fn a_zones(offset: i64) -> bool {
-    offset.abs() <= OFFSET_LIMIT
+/// A range rather than `abs`, which wraps `i64::MIN` to itself in a release
+/// build.
+fn within_a_zone(offset: i64) -> bool {
+    (-OFFSET_LIMIT..=OFFSET_LIMIT).contains(&offset)
 }
 
 /// The firmware's offset, checked to be one a time zone could give.
 fn offset_from(controller: i64, cmos: i64) -> Result<i64, String> {
-    let offset = controller - cmos;
-    if !a_zones(offset) {
-        return Err(format!(
-            "the Aggregator's clock is {offset} s from the CMOS clock, past any time zone's offset"
-        ));
-    }
+    let offset = controller
+        .checked_sub(cmos)
+        .filter(|&offset| within_a_zone(offset))
+        .ok_or_else(|| {
+            format!(
+                "the Aggregator's clock reads {controller} and the CMOS clock {cmos}, \
+                 further apart than any time zone's offset"
+            )
+        })?;
     Ok(offset)
 }
 
@@ -176,7 +181,7 @@ fn parse_offset(text: &str) -> Result<i64, String> {
         .trim()
         .parse()
         .map_err(|error| format!("the offset kept, {text:?}: {error}"))?;
-    if !a_zones(offset) {
+    if !within_a_zone(offset) {
         return Err(format!(
             "the offset kept, {offset} s, is past any time zone's offset"
         ));
@@ -335,10 +340,12 @@ mod tests {
 
     #[test]
     fn an_offset_past_any_time_zone_is_refused() {
-        offset_from(1_747_475_245, 1_793_366_371)
-            .expect_err("a measured offset of over a year was taken");
         parse_offset("-50401\n").expect_err("a kept offset past 14 hours behind was read");
         parse_offset("50401\n").expect_err("a kept offset past 14 hours ahead was read");
+        parse_offset(&i64::MIN.to_string()).expect_err("the furthest kept offset behind was read");
+        parse_offset(&i64::MAX.to_string()).expect_err("the furthest kept offset ahead was read");
+        offset_from(i64::from(u32::MAX), i64::MIN)
+            .expect_err("a CMOS clock too far behind to subtract from was taken");
     }
 
     #[test]
