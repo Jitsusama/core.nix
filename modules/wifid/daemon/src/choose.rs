@@ -284,6 +284,21 @@ pub enum Refusal {
     Stale,
 }
 
+/// Whether a hold on a call's give-ways holds one whose link is gone too.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum GoneLink {
+    /// A gone link may still give way: a try that answers costs it a
+    /// second or so, less than no link at all.
+    GivesWay,
+    /// A gone link is held too, as a third give-way within `SPURNED` never
+    /// stood either: a stranger whose points take the card in and never
+    /// finish its handshake costs each try the seconds wifid waits for it
+    /// to arrive, and one that can push the call's loss to `fading::GONE`
+    /// would otherwise have it leave for a new such point every
+    /// `fading::BETWEEN`.
+    Held,
+}
+
 /// What's been chosen lately, to keep the card from hunting.
 #[derive(Default)]
 pub struct Chooser {
@@ -383,17 +398,9 @@ pub struct Chooser {
     /// in radio range naming itself the network from point after point,
     /// none of which answers, could otherwise have the call leave its own
     /// point every `fading::BETWEEN`, as `missed` keeps the chooser's own
-    /// moves from doing. A call whose link is gone isn't held after a
-    /// second, as a try that answers costs it a second or so, less than no
-    /// link at all (`holds_a_gone_link`).
-    gives_way_from: Option<Instant>,
-    /// Whether that hold holds a call whose link is gone too, as a third
-    /// give-way within `SPURNED` never stood either: a stranger whose
-    /// points take the card in and never finish its handshake costs each
-    /// try the seconds wifid waits for it to arrive, and one that can push
-    /// the call's loss to `fading::GONE` would otherwise have it leave for
-    /// a new such point every `fading::BETWEEN`.
-    holds_a_gone_link: bool,
+    /// moves from doing. Whether it holds a call whose link is gone, after
+    /// a third such, is kept with it (`GoneLink`).
+    gives_way_from: Option<(Instant, GoneLink)>,
     /// When a give-way last missed back where it began, and the miss before
     /// that. Only a give-way's miss counts toward its hold: a trial's,
     /// outside the call, says nothing of the points a fading call may
@@ -1129,8 +1136,9 @@ impl Chooser {
     /// link is `gone` and the miss was no third within `SPURNED`.
     pub fn may_give_way(&self, now: Instant, gone: bool) -> bool {
         let refused = self.refusal_holds.is_some_and(|from| now < from);
-        let missed =
-            (!gone || self.holds_a_gone_link) && self.gives_way_from.is_some_and(|from| now < from);
+        let missed = self
+            .gives_way_from
+            .is_some_and(|(from, gone_link)| now < from && (!gone || gone_link == GoneLink::Held));
         !self.lately_moved(now) && !self.following(now) && !refused && !missed
     }
 
@@ -1289,7 +1297,7 @@ impl Chooser {
     /// doesn't hold it from choosing for a settle, unless it's the second
     /// give-way such within `SPURNED`, which holds give-ways and choosing
     /// alike for a settle, and a gone link's give-ways too where it's the
-    /// third (`holds_a_gone_link`); found on a third point, it did, as
+    /// third (`GoneLink::Held`); found on a third point, it did, as
     /// `judge` takes a trial.
     pub fn followed(&mut self, now: Instant, point: &str) {
         let Some(gave) = self.gave.as_mut() else {
@@ -1314,8 +1322,12 @@ impl Chooser {
                 };
                 if lately(self.gave_missed) {
                     self.moved = Some(now);
-                    self.gives_way_from = Some(now + SETTLE);
-                    self.holds_a_gone_link = lately(self.gave_missed_before);
+                    let gone_link = if lately(self.gave_missed_before) {
+                        GoneLink::Held
+                    } else {
+                        GoneLink::GivesWay
+                    };
+                    self.gives_way_from = Some((now + SETTLE, gone_link));
                     self.began_holding = true;
                 } else {
                     self.moved = gave.moved_before;
