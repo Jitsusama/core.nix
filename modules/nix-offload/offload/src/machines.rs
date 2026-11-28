@@ -957,8 +957,20 @@ impl File {
 /// store a whole build may be sent to, if the helper gave one.
 #[derive(Clone, Copy)]
 pub struct Lending<'a> {
+    /// Its full name, as the lender made it: `NAME<seconds>`.
+    pub name: &'a str,
     pub line: &'a str,
     pub store: Option<&'a str>,
+}
+
+impl Lending<'_> {
+    /// The names its owner may hold it by: its full name, and its machines
+    /// line's host, the ssh alias every build reaches it by.
+    fn names(&self) -> Vec<String> {
+        let mut names = vec![self.name.to_owned()];
+        names.extend(holds::host_names(&proof::named(self.line)));
+        names
+    }
 }
 
 /// The two machines files: `every` for every build, holding only the one
@@ -1080,14 +1092,17 @@ impl Machines {
         }
     }
 
-    /// Say each hold on a builder standing or beside that's new since the
-    /// last time, and each that ended, and keep what's said.
-    fn say_held(&mut self, holds: &Holds) {
+    /// Say each hold on a builder standing or beside, or on the one
+    /// `lending`, that's new since the last time, and each that ended, and
+    /// keep what's said.
+    fn say_held(&mut self, holds: &Holds, lending: Option<Lending>) {
         let held: BTreeMap<String, String> = self
             .standing
             .iter()
             .chain(&self.beside)
-            .filter_map(|builder| holds.of(builder.names().iter().map(String::as_str)))
+            .map(Standing::names)
+            .chain(lending.map(|lending| lending.names()))
+            .filter_map(|names| holds.of(names.iter().map(String::as_str)))
             .map(|hold| (hold.machine.clone(), hold.to_string()))
             .collect();
         for (machine, said) in &held {
@@ -1288,9 +1303,19 @@ impl Machines {
     /// Say the one lent, and those beside that answer, to every build, each
     /// for its big work; the one lent with the standing builders that
     /// answer to a build that asks for them; and its store, a line of its
-    /// own, or nothing.
+    /// own, or nothing. A builder its owner holds is named to no build.
     pub fn show(&mut self, lending: Option<Lending>) {
         self.reread();
+        let holds = holds::now(&self.holds);
+        self.say_held(&holds, lending);
+        // The one lent, held, is left out of every machines file as one
+        // that isn't lent is, while its store and place are still said, so
+        // `there` knows it stands and says why it sends it nothing.
+        let offered = lending.filter(|lending| {
+            holds
+                .of(lending.names().iter().map(String::as_str))
+                .is_none()
+        });
         // First, so the service never meets a line before its instance.
         if let Some(cloud) = &mut self.cloud {
             cloud.say(lending.and(self.place.as_ref()));
@@ -1301,9 +1326,9 @@ impl Machines {
                 .map_or_else(String::new, |store| format!("{store}\n")),
         );
         if let Some(anything) = &mut self.anything {
-            let any = lending.map(|lending| for_any_work(lending.line));
+            let any = offered.map(|lending| for_any_work(lending.line));
             let (line, state) = &self.proven;
-            let state = match lending {
+            let state = match offered {
                 Some(lending) if line.as_deref() == Some(lending.line) => *state,
                 Some(_) => State::Unproven,
                 None if line.is_none() => *state,
@@ -1331,12 +1356,10 @@ impl Machines {
             self.named = named;
             anything.say(said);
         }
-        let lent = lending.map(|lending| for_big_work(lending.line));
+        let lent = offered.map(|lending| for_big_work(lending.line));
         let lent = lent.as_deref();
         // A builder its owner holds is left out as one that doesn't answer
         // is, and isn't asked whether it does.
-        let holds = holds::now(&self.holds);
-        self.say_held(&holds);
         let free = |builder: &Standing| {
             holds
                 .of(builder.names().iter().map(String::as_str))
@@ -1937,6 +1960,7 @@ mod tests {
         );
         let read = |path| fs::read_to_string(path).expect("read");
         machines.show(Some(Lending {
+            name: "lend-5",
             line: "ssh-ng://lent",
             store: Some("ssh-ng://lent?ssh-key=/k"),
         }));
@@ -2063,6 +2087,7 @@ mod tests {
         .going_on_from(passed("ssh-ng://work"));
         let read = |path| fs::read_to_string(path).expect("read");
         machines.show(Some(Lending {
+            name: "lend-5",
             line: "ssh-ng://lent",
             store: None,
         }));
@@ -2154,6 +2179,7 @@ mod tests {
         .for_anything(anything.clone());
         let read = |path| fs::read_to_string(path).expect("read");
         machines.show(Some(Lending {
+            name: "lend-5",
             line: "ssh-ng://lent x86_64-linux /key 8 1 kvm,nixos-test,big-parallel,benchmark - KEY",
             store: None,
         }));
@@ -2338,7 +2364,11 @@ mod tests {
         fs::write(folder("vm-3").join(there::NAMED_ONLY), "").expect("write");
         let line = "ssh-ng://lent x86_64-linux /k 8 1 big-parallel - K";
         machines.proven(Some(line), State::Failing);
-        machines.show(Some(Lending { line, store: None }));
+        machines.show(Some(Lending {
+            name: "lend-5",
+            line,
+            store: None,
+        }));
         assert_eq!(
             fs::read_to_string(&anything).expect("read"),
             format!("{line}\nssh-ng://vm x86_64-linux /k 4 1 big-parallel - K\n"),
@@ -2387,7 +2417,11 @@ mod tests {
         proof::write(&folder("vm-3"), Some(&failed), None, seconds());
         let read = |path| fs::read_to_string(path).expect("read");
         let line = "ssh-ng://lent x86_64-linux /k 8 1 big-parallel - K";
-        let lent = Some(Lending { line, store: None });
+        let lent = Some(Lending {
+            name: "lend-5",
+            line,
+            store: None,
+        });
         machines.proven(Some(line), State::Passing);
         machines.show(lent);
         assert_eq!(read(&anything), format!("{line}\n"));
@@ -2417,6 +2451,7 @@ mod tests {
         // A new builder stands, its line not yet proven.
         let next = "ssh-ng://next x86_64-linux /k 8 1 big-parallel - K";
         machines.show(Some(Lending {
+            name: "lend-5",
             line: next,
             store: None,
         }));
@@ -2453,7 +2488,11 @@ mod tests {
         let heard = || fs::read_to_string(&told).unwrap_or_default();
         let line = "ssh-ng://lent x86_64-linux /k 8 1 big-parallel - K";
         machines.proven(Some(line), State::Passing);
-        machines.show(Some(Lending { line, store: None }));
+        machines.show(Some(Lending {
+            name: "lend-5",
+            line,
+            store: None,
+        }));
         assert_eq!(heard(), "", "nothing to tell while the lent one answers");
         machines.proven(None, State::Dropped);
         machines.show(None);
@@ -2466,10 +2505,12 @@ mod tests {
         );
         let next = "ssh-ng://next x86_64-linux /k 8 1 big-parallel - K";
         machines.show(Some(Lending {
+            name: "lend-5",
             line: next,
             store: None,
         }));
         machines.show(Some(Lending {
+            name: "lend-5",
             line: next,
             store: None,
         }));

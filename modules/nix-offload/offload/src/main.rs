@@ -405,6 +405,7 @@ struct Leaving {
 impl Lent {
     fn lending(&self) -> machines::Lending<'_> {
         machines::Lending {
+            name: &self.name,
             line: &self.line,
             store: self.store.as_deref(),
         }
@@ -4023,6 +4024,7 @@ fn ask(
             }
             machines.placing(Some(placed(&place)));
             machines.show(Some(machines::Lending {
+                name: &name,
                 line,
                 store: store.as_deref(),
             }));
@@ -4247,6 +4249,7 @@ fn adopt(settings: &Settings, machines: &mut Machines, into_day: u32) -> Option<
     };
     machines.placing(Some(placed(&place)));
     machines.show(Some(machines::Lending {
+        name: &name,
         line,
         store: store.as_deref(),
     }));

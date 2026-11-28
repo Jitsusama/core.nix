@@ -3930,6 +3930,10 @@ fn vouched_store_in(dir: &Path, file: &Path) -> Option<String> {
     let store = fs::read_to_string(dir.join("store"))
         .ok()
         .filter(|store| !store.trim().is_empty())?;
+    if let Some(hold) = lent_hold(dir) {
+        say_lent_held(dir, &hold);
+        return None;
+    }
     if vouched_in(file, &store) {
         return Some(store);
     }
@@ -3958,8 +3962,45 @@ fn vouched_store_in(dir: &Path, file: &Path) -> Option<String> {
 }
 
 /// Whether `dir`'s lender names a builder that stands, vouched for or not.
+/// One its owner holds counts as none, as the lender leaves it out of its
+/// machines files.
 pub fn builder_stands(dir: &Path) -> bool {
     fs::read_to_string(dir.join("store")).is_ok_and(|store| !store.trim().is_empty())
+        && lent_hold(dir).is_none()
+}
+
+/// The hold on the builder `dir`'s lender names, as the holds read now say.
+fn lent_hold(dir: &Path) -> Option<Hold> {
+    lent_hold_in(dir, &holds::folder())
+}
+
+/// [`lent_hold`], with the holds in `folder`. A lent builder is held by
+/// its ssh alias, as its store names it, or by its full name, as its
+/// health says it (`proof.rs`).
+fn lent_hold_in(dir: &Path, folder: &Path) -> Option<Hold> {
+    let store = fs::read_to_string(dir.join("store")).ok()?;
+    let mut names =
+        builder(store.trim()).map_or_else(Vec::new, |lent| holds::host_names(&lent.host));
+    let health = fs::read_to_string(dir.join(proof::HEALTH)).unwrap_or_default();
+    let said: serde_json::Value = serde_json::from_str(&health).unwrap_or_default();
+    names.extend(said["builder"].as_str().map(str::to_owned));
+    holds::now(folder).of(names.iter().map(String::as_str))
+}
+
+/// Says `hold` on the builder in `dir` once a process, however often a run
+/// looks at it, as each builder root doesn't vouch for is said.
+fn say_lent_held(dir: &Path, hold: &Hold) {
+    static SAID: std::sync::Mutex<BTreeSet<(PathBuf, String)>> =
+        std::sync::Mutex::new(BTreeSet::new());
+    if SAID
+        .lock()
+        .is_ok_and(|mut said| said.insert((dir.to_path_buf(), hold.to_string())))
+    {
+        eprintln!(
+            "nix-offload: {hold}, so nothing goes to the builder in {}",
+            dir.display()
+        );
+    }
 }
 
 /// Whether `dir`'s builder stands but root doesn't vouch for it.
@@ -4375,6 +4416,12 @@ pub fn waited(dir: &Path, waiting: Waiting) -> Option<String> {
 /// `answered`: on 22 November one waited 30 s, not the minutes root may
 /// take.
 fn waited_vouching(dir: &Path, waiting: Waiting, file: &Path) -> Option<String> {
+    // Its lender makes no other while it stands, so a run waiting for one
+    // would wait its whole time for nothing.
+    if let Some(hold) = lent_hold(dir) {
+        say_lent_held(dir, &hold);
+        return None;
+    }
     if !waiting.asks {
         if builder_stands(dir) {
             eprintln!(

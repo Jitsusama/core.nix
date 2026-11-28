@@ -471,6 +471,38 @@ fn a_lent_builder_is_sent_the_build_and_its_status_comes_back() {
 }
 
 #[test]
+fn a_lent_builder_its_owner_holds_is_sent_nothing_and_the_run_says_why() {
+    for name in ["nix-offload", "lend-5"] {
+        let folder = tempfile::tempdir().unwrap();
+        let offload = folder.path().join("offload");
+        fs::create_dir(&offload).unwrap();
+        fs::write(offload.join("store"), STORE).unwrap();
+        fs::write(offload.join("health.json"), r#"{"builder": "lend-5"}"#).unwrap();
+        let held = folder.path().join("nix-offload/held");
+        fs::create_dir_all(&held).unwrap();
+        fs::write(held.join(name), "testing it by hand\n").unwrap();
+        stand_ins(folder.path(), 0);
+        let ran = there_asked(
+            folder.path(),
+            &offload,
+            &["--never-ask", "-L", "github:o/r/abc", "checks.x.a"],
+        );
+        assert_ne!(ran.status.code(), Some(0), "held as {name}: {ran:?}");
+        assert!(
+            !folder.path().join("ssh-was-given").exists(),
+            "the builder held as {name} was sent the build"
+        );
+        let said = String::from_utf8_lossy(&ran.stderr);
+        assert!(
+            said.contains(&format!(
+                "{name} is held (testing it by hand), so nothing goes"
+            )),
+            "{said}"
+        );
+    }
+}
+
+#[test]
 fn a_build_asked_to_outlive_its_caller_is_sent_to_go_on_alone() {
     // A prebuild whose caller hit its own time limit at 05:14 on 3
     // November lost the kernel it was compiling five minutes later.
